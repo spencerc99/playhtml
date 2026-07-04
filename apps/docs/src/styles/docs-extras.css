@@ -2237,23 +2237,51 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   border: none;
 }
 
-.ph-hover-cursor-pad {
+.ph-can-hover-pad {
   min-height: 120px;
   margin: 0 auto;
   max-width: 360px;
   padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.8rem;
   border: 1.5px solid var(--ph-ink);
   border-radius: 8px;
   box-shadow: var(--ph-shadow-brick);
-  transition: background 0.15s ease;
+  background: linear-gradient(135deg, var(--ph-paper-warm), var(--ph-paper-deep));
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
 }
-.ph-hover-cursor-pad__label {
+.ph-can-hover-pad[data-playhtml-hover] {
+  background: linear-gradient(135deg, var(--ph-mustard), var(--ph-paper-deep));
+  transform: translateY(-2px);
+}
+.ph-can-hover-pad__label {
   margin: 0;
   font-family: var(--ph-font-body);
-  font-size: 0.92rem;
+  font-size: 1rem;
   line-height: 1.45;
   color: var(--ph-ink);
   text-shadow: 0 1px 0 rgba(244, 239, 229, 0.9);
+}
+.ph-can-hover-pad__state {
+  align-self: flex-start;
+  display: inline-flex;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--ph-ink);
+  border-radius: 999px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.ph-can-hover-pad[data-playhtml-hover] .ph-can-hover-pad__state {
+  background: var(--ph-ink);
+  color: var(--ph-paper);
 }
 
 /* Capabilities slot: let the burrow use full width and shrink so the meadow can wrap/scroll. */
