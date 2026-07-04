@@ -7,10 +7,9 @@ export function CanHoverDemo(): React.ReactElement {
   return (
     <CanHoverElement standalone>
       <div id="ph-cap-hover-pad" className="ph-can-hover-pad">
-        <span className="ph-can-hover-pad__label">hover here</span>
-        <span className="ph-can-hover-pad__state" aria-hidden="true">
-          shared hover
-        </span>
+        <p className="ph-can-hover-pad__label">
+          Hover here with a friend - the pad lights up for everyone.
+        </p>
       </div>
     </CanHoverElement>
   );
