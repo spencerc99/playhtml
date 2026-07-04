@@ -244,16 +244,12 @@ function getMoveBoundsClamp(
   boundsRoot: HTMLElement,
   currentData: MoveData,
   nextData: MoveData,
+  basePosition = getMoveBoundsBasePosition(element, boundsRoot, currentData),
 ): MoveData {
   const minVisible = getMinVisibleFraction(element);
   const minVisiblePx = getMinVisiblePx(element);
   const w = element.offsetWidth;
   const h = element.offsetHeight;
-  const basePosition = getMoveBoundsBasePosition(
-    element,
-    boundsRoot,
-    currentData,
-  );
   const keepX = keepVisibleSlice(w, minVisible, minVisiblePx);
   const keepY = keepVisibleSlice(h, minVisible, minVisiblePx);
   const minX = keepX - w - basePosition.x;
@@ -465,7 +461,14 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
 }
 
 // @ts-ignore
-type MoveLocalData = { startMouseX: number; startMouseY: number };
+type MoveLocalData = {
+  startMouseX: number;
+  startMouseY: number;
+  dragX?: number;
+  dragY?: number;
+  boundsBaseX?: number;
+  boundsBaseY?: number;
+};
 type SpinLocalData = { startMouseX: number };
 type GrowLocalData = { maxScale: number; isHovering: boolean };
 
@@ -503,11 +506,22 @@ export const TagTypeToElement: DefaultTagInitializers = {
         setData(clampedData);
       }
     },
-    onDragStart: (e: MouseEvent | TouchEvent, { setLocalData }) => {
+    onDragStart: (
+      e: MouseEvent | TouchEvent,
+      { data, element, setLocalData },
+    ) => {
       const { clientX, clientY } = getClientCoordinates(e);
+      const boundsRoot = getMoveBoundsRoot(element);
+      const boundsBasePosition = boundsRoot
+        ? getMoveBoundsBasePosition(element, boundsRoot, data)
+        : undefined;
       setLocalData({
         startMouseX: clientX,
         startMouseY: clientY,
+        dragX: data.x,
+        dragY: data.y,
+        boundsBaseX: boundsBasePosition?.x,
+        boundsBaseY: boundsBasePosition?.y,
       });
     },
     onDrag: (
@@ -520,14 +534,32 @@ export const TagTypeToElement: DefaultTagInitializers = {
 
       const boundsRoot = getMoveBoundsRoot(element);
       if (boundsRoot) {
+        const dragData = {
+          x: localData.dragX ?? data.x,
+          y: localData.dragY ?? data.y,
+        };
+        const dragX = dragData.x + clientX - localData.startMouseX;
+        const dragY = dragData.y + clientY - localData.startMouseY;
+        const boundsBasePosition =
+          localData.boundsBaseX !== undefined &&
+          localData.boundsBaseY !== undefined
+            ? { x: localData.boundsBaseX, y: localData.boundsBaseY }
+            : getMoveBoundsBasePosition(element, boundsRoot, dragData);
         // The cursor itself is not clamped; only the element's persisted
         // translate is. Lower min-visible values can opt into partial
         // overhang while keeping a visible slice inside the bounds.
-        const clampedData = getMoveBoundsClamp(element, boundsRoot, data, {
-          x: newX,
-          y: newY,
-        });
-        setData(roundMoveData(clampedData));
+        const clampedData = getMoveBoundsClamp(
+          element,
+          boundsRoot,
+          dragData,
+          {
+            x: dragX,
+            y: dragY,
+          },
+          boundsBasePosition,
+        );
+        const roundedData = roundMoveData(clampedData);
+        setData(roundedData);
         // Only advance the cursor anchor by the portion of the delta that
         // actually translated the element. If the clamp ate some of the
         // delta (cursor went past the bound), hold that "debt" in the
@@ -535,11 +567,15 @@ export const TagTypeToElement: DefaultTagInitializers = {
         // before the element starts moving again. Without this, a fast
         // drag past one edge lets the return drag fling the element to
         // the opposite edge (apparent dt vs. clamped dt mismatch).
-        const usedDx = clampedData.x - data.x;
-        const usedDy = clampedData.y - data.y;
+        const usedDx = clampedData.x - dragData.x;
+        const usedDy = clampedData.y - dragData.y;
         setLocalData({
           startMouseX: localData.startMouseX + usedDx,
           startMouseY: localData.startMouseY + usedDy,
+          dragX: roundedData.x,
+          dragY: roundedData.y,
+          boundsBaseX: boundsBasePosition.x,
+          boundsBaseY: boundsBasePosition.y,
         });
         return;
       }

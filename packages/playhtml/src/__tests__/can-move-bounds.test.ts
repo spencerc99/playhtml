@@ -26,6 +26,7 @@ function makeDragHarness({
   startY = 0,
   elementLeft = 0,
   elementTop = 0,
+  syncData = true,
 }: {
   elementWidth: number;
   elementHeight: number;
@@ -37,6 +38,7 @@ function makeDragHarness({
   startY?: number;
   elementLeft?: number;
   elementTop?: number;
+  syncData?: boolean;
 }) {
   const container = document.createElement("div");
   container.id = "arena";
@@ -100,7 +102,9 @@ function makeDragHarness({
     }) as DOMRect;
 
   const setData = vi.fn((next: { x: number; y: number }) => {
-    state.data = next;
+    if (syncData) {
+      state.data = next;
+    }
   });
   const setLocalData = vi.fn(
     (next: { startMouseX: number; startMouseY: number }) => {
@@ -122,7 +126,20 @@ function makeDragHarness({
     );
   };
 
-  return { container, element, state, setData, setLocalData, drag };
+  const start = (mouseX: number, mouseY: number) => {
+    const onDragStart = TagTypeToElement[TagType.CanMove].onDragStart!;
+    onDragStart(
+      { clientX: mouseX, clientY: mouseY } as MouseEvent,
+      {
+        data: state.data,
+        localData: state.localData,
+        setLocalData,
+        element,
+      } as any,
+    );
+  };
+
+  return { container, element, state, setData, setLocalData, drag, start };
 }
 
 describe("can-move bounds clamp", () => {
@@ -285,6 +302,23 @@ describe("can-move bounds clamp", () => {
     // Cursor back to 160. newX = 200 + (160 - 200) = 160. Inside → moves.
     drag(160, 0);
     expect(state.data.x).toBe(160);
+  });
+
+  it("does not advance cursor debt again while clamped data is still syncing", () => {
+    const { drag, start, state } = makeDragHarness({
+      elementWidth: 100,
+      elementHeight: 100,
+      containerWidth: 300,
+      containerHeight: 300,
+      syncData: false,
+    });
+
+    start(0, 0);
+    drag(10_000, 0);
+    expect(state.localData.startMouseX).toBe(200);
+
+    drag(10_000, 0);
+    expect(state.localData.startMouseX).toBe(200);
   });
 
   it("falls back to 0 when the keep-visible slice is larger than the container (inverted clamp)", () => {
