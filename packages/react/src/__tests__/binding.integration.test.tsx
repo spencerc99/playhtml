@@ -1,10 +1,10 @@
-// ABOUTME: Tests React element binding lifecycle against the real playhtml core.
-// ABOUTME: Verifies data-source changes remove handlers created after asynchronous ID assignment.
+// ABOUTME: Tests React hooks and element bindings against the real playhtml core.
+// ABOUTME: Verifies binding cleanup and presence-room readiness across navigation.
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { elementHandlers, playhtml, resetPlayHTML, TagType } from "playhtml";
-import { withSharedState } from "../index";
+import { PlayProvider, usePresenceRoom, withSharedState } from "../index";
 
 describe("CanPlayElement binding lifecycle", () => {
   beforeEach(async () => {
@@ -58,5 +58,73 @@ describe("CanPlayElement binding lifecycle", () => {
     ).toBe(false);
 
     unmount();
+  });
+});
+
+describe("usePresenceRoom navigation readiness", () => {
+  const originalPath = window.location.pathname + window.location.search;
+
+  beforeEach(async () => {
+    (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = false;
+    (globalThis as any).PLAYHTML_TEST_PROVIDER_THROW = false;
+    (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
+    await resetPlayHTML();
+    document.body.innerHTML = "";
+    history.replaceState(null, "", "/presence-room-a");
+    await playhtml.init({});
+  });
+
+  afterEach(async () => {
+    cleanup();
+    (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = false;
+    history.replaceState(null, "", originalPath);
+    await resetPlayHTML();
+    document.body.innerHTML = "";
+  });
+
+  it("recovers when the provider remounts while the next page is syncing", async () => {
+    function RoomStatus() {
+      const room = usePresenceRoom("chat");
+      return <div data-testid="room">{room ? "ready" : "loading"}</div>;
+    }
+
+    const firstRender = render(
+      <PlayProvider>
+        <RoomStatus />
+      </PlayProvider>,
+    );
+    await waitFor(() => {
+      expect(firstRender.getByTestId("room").textContent).toBe("ready");
+    });
+
+    (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = true;
+    history.replaceState(null, "", "/presence-room-b");
+
+    let navigation!: Promise<void>;
+    act(() => {
+      navigation = playhtml.handleNavigation();
+    });
+    firstRender.unmount();
+
+    const secondRender = render(
+      <PlayProvider>
+        <RoomStatus />
+      </PlayProvider>,
+    );
+    expect(secondRender.getByTestId("room").textContent).toBe("loading");
+
+    const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as Array<{
+      emit: (type: string, value: boolean) => void;
+    }>;
+    act(() => {
+      providers.at(-1)?.emit("sync", true);
+    });
+    await act(async () => {
+      await navigation;
+    });
+
+    await waitFor(() => {
+      expect(secondRender.getByTestId("room").textContent).toBe("ready");
+    });
   });
 });
