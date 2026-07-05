@@ -1,8 +1,5 @@
 # Unreleased
 
-- Restore Wikipedia link patina on pages with absolute article links
-- Bug fixes with the keyboard collector (#217)
-
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
