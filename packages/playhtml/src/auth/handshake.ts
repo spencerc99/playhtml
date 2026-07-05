@@ -8,6 +8,7 @@ import type {
   PermissionsStatusMessage,
   GatedWriteResultMessage,
   PermissionAction,
+  GatedWriteOp,
 } from "@playhtml/common";
 import { buildAuthChallengePayload } from "@playhtml/common";
 import { signChallengeForPid } from "./identity";
@@ -22,7 +23,7 @@ import {
 const SESSION_TOKEN_KEY_PREFIX = "playhtml_auth_token_";
 
 interface PendingGatedWrite {
-  element: HTMLElement;
+  target: EventTarget;
   elementId: string;
   action: PermissionAction;
   timer: ReturnType<typeof setTimeout>;
@@ -205,12 +206,55 @@ function handleGatedWriteResult(message: GatedWriteResultMessage): void {
   pendingGatedWrites.delete(message.opId);
   clearTimeout(pending.timer);
   if (!message.ok) {
-    dispatchPermissionDenied(pending.element, {
+    dispatchPermissionDenied(pending.target, {
       action: pending.action,
       elementId: pending.elementId,
       reason: message.reason ?? "rejected by server",
     });
   }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+function valuesEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function buildGatedWriteOps(args: {
+  before: unknown;
+  after: unknown;
+  keyed: boolean;
+}): GatedWriteOp[] {
+  if (!args.keyed) {
+    return [{ op: "replace", key: "", value: args.after }];
+  }
+
+  if (!isPlainRecord(args.after)) {
+    return [{ op: "replace", key: "", value: args.after }];
+  }
+
+  const before = isPlainRecord(args.before) ? args.before : {};
+  const ops: GatedWriteOp[] = [];
+  for (const [key, value] of Object.entries(args.after)) {
+    if (!Object.prototype.hasOwnProperty.call(before, key)) {
+      ops.push({ op: "create", key, value });
+    } else if (!valuesEqual(before[key], value)) {
+      ops.push({ op: "update", key, value });
+    }
+  }
+  for (const key of Object.keys(before)) {
+    if (!Object.prototype.hasOwnProperty.call(args.after, key)) {
+      ops.push({ op: "delete", key });
+    }
+  }
+  return ops;
 }
 
 /**
@@ -219,10 +263,10 @@ function handleGatedWriteResult(message: GatedWriteResultMessage): void {
  * value arrives via normal Yjs sync once the server applies it.
  */
 export function sendGatedWrite(args: {
-  element: HTMLElement;
+  target: EventTarget;
   tag: string;
   elementId: string;
-  data: unknown;
+  ops: GatedWriteOp[];
 }): void {
   const ctx = context;
   if (!ctx) return;
@@ -231,14 +275,14 @@ export function sendGatedWrite(args: {
     const pending = pendingGatedWrites.get(opId);
     if (!pending) return;
     pendingGatedWrites.delete(opId);
-    dispatchPermissionDenied(pending.element, {
+    dispatchPermissionDenied(pending.target, {
       action: pending.action,
       elementId: pending.elementId,
       reason: "timed out waiting for server",
     });
   }, GATED_WRITE_TIMEOUT_MS);
   pendingGatedWrites.set(opId, {
-    element: args.element,
+    target: args.target,
     elementId: args.elementId,
     action: "write",
     timer,
@@ -249,7 +293,7 @@ export function sendGatedWrite(args: {
       opId,
       tag: args.tag,
       elementId: args.elementId,
-      data: args.data,
+      ops: args.ops,
     }),
   );
 }

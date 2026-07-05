@@ -119,6 +119,7 @@ import type {
   AuthResumeMessage,
   Counters,
   GatedWriteMessage,
+  GatedWriteOp,
   GatedWriteResultMessage,
   PermissionsStatusMessage,
   WellKnownPermissionsConfig,
@@ -2705,6 +2706,43 @@ export class PartyServer extends YServer {
     );
   }
 
+  /** Server-authoritative op replay into play[tag][elementId]. */
+  private applyGatedOps(
+    tag: string,
+    elementId: string,
+    ops: GatedWriteOp[]
+  ): void {
+    const yDoc = this.document;
+    yDoc.transact(() => {
+      if (ops.length === 1 && ops[0].op === "replace") {
+        this.assignPlaySubtrees(yDoc, { [tag]: { [elementId]: ops[0].value } });
+        return;
+      }
+
+      const store = syncedStore<{ play: Record<string, any> }>({ play: {} }, yDoc);
+      // @ts-ignore
+      store.play[tag] ??= {};
+      const tagObj = store.play[tag];
+      if (
+        tagObj[elementId] === undefined ||
+        tagObj[elementId] === null ||
+        typeof tagObj[elementId] !== "object" ||
+        Array.isArray(tagObj[elementId])
+      ) {
+        tagObj[elementId] = {};
+      }
+
+      const elementProxy = tagObj[elementId] as Record<string, unknown>;
+      for (const op of ops) {
+        if (op.op === "delete") {
+          delete elementProxy[op.key];
+        } else {
+          elementProxy[op.key] = op.value;
+        }
+      }
+    }, GATED_WRITE_ORIGIN);
+  }
+
   private async handleGatedWrite(
     message: GatedWriteMessage,
     sender: Party.Connection
@@ -2716,7 +2754,8 @@ export class PartyServer extends YServer {
     if (
       typeof message.tag !== "string" ||
       typeof message.elementId !== "string" ||
-      JSON.stringify(message.data ?? null).length > MAX_GATED_WRITE_BYTES
+      !Array.isArray(message.ops) ||
+      JSON.stringify(message.ops ?? null).length > MAX_GATED_WRITE_BYTES
     ) {
       reply({ type: "gated_write_result", opId, ok: false, reason: "invalid request" });
       return;
@@ -2744,7 +2783,7 @@ export class PartyServer extends YServer {
       pid: pid ?? undefined,
       counters: this.getConnectionCounters(sender),
       currentData: this.readElementData(message.tag, message.elementId),
-      incomingData: message.data,
+      ops: message.ops,
     });
 
     if (!verdict.ok) {
@@ -2752,10 +2791,11 @@ export class PartyServer extends YServer {
       return;
     }
 
-    this.applyGatedData(message.tag, message.elementId, verdict.data);
+    this.applyGatedOps(message.tag, message.elementId, verdict.ops);
+    const data = this.readElementData(message.tag, message.elementId);
     await this.storeGatedSnapshot(message.elementId, {
       tag: message.tag,
-      data: verdict.data,
+      data,
     });
     reply({ type: "gated_write_result", opId, ok: true });
   }

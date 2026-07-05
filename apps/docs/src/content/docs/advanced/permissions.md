@@ -67,6 +67,8 @@ The same rules arrive in the browser automatically, so `can()`, disabled buttons
 - `"/blog/*"` for a trailing-prefix glob; it matches `/blog`, `/blog/post-1`, and deeper paths.
 - `"/*"` for a site-wide default. If you leave it out, unlisted pages are open unless another rule matches them.
 
+Element ids and page-data channel names share the same rule namespace. For example, `{ "elements": { "my-channel": "write:admin" } }` gates writes to `playhtml.createPageData("my-channel", …)` the same way it gates an element with `id="my-channel"`.
+
 When multiple paths match the same element id, the most specific path wins and replaces the less specific rule for that element. Exact paths beat globs, longer globs beat shorter globs, and `"/*"` is the fallback. The replacement is per element, not per action: a `/blog/post-1` rule for `comment-*` does not inherit `delete` from a broader `/blog/*` rule.
 
 For small sites, the older flat form still works and means `"/*"`:

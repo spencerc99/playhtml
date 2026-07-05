@@ -8,11 +8,13 @@ import {
   satisfiesRole,
   requiredRolesForAction,
   findRulesForElement,
+  findBestRuleForElement,
   verifyAuthSignature,
   LOCAL_HOST_IDENTIFIER,
   type AuthChallengeMessage,
   type AuthResponseMessage,
   type Counters,
+  type GatedWriteOp,
   type PermissionRule,
   type EnforceableRoles,
   type WellKnownPermissionsConfig,
@@ -100,6 +102,7 @@ export function pruneCounterLog(
 
 /** Yjs transaction origin marking server-authoritative gated writes. */
 export const GATED_WRITE_ORIGIN = "__playhtml_gated__";
+const PAGE_DATA_TAG = "__page__";
 
 export interface AuthSessionRecord {
   pid: string;
@@ -320,25 +323,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
-function entriesEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-}
-
 export type GatedWriteVerdict =
-  | { ok: true; data: unknown }
+  | { ok: true; ops: GatedWriteOp[] }
   | { ok: false; reason: string };
 
 /**
- * Decides whether a verified pid may replace a gated element's data, and
- * returns the (possibly adjusted) data to apply.
- *
- * Two layers:
- * - "write"-gated elements: a satisfied write role replaces the value wholesale.
- * - entry-level rules (create/update/delete): the element data must be a keyed
- *   map of object entries (`Record<entryKey, entry>`). The server diffs current
- *   vs incoming keys, checks each change, stamps `createdBy` with the verified
- *   pid on creates, and pins `createdBy` to its original value on updates so
- *   entry ownership can never be rewritten by clients.
+ * Decides whether a verified pid may apply a batch of gated write operations,
+ * and returns the normalized operations to apply all at once.
  */
 export function evaluateGatedWrite(args: {
   rules: PermissionRule[];
@@ -349,123 +340,163 @@ export function evaluateGatedWrite(args: {
   /** Server-attested counter totals for this pid (earned roles). */
   counters?: Counters;
   currentData: unknown;
-  incomingData: unknown;
+  ops: GatedWriteOp[];
 }): GatedWriteVerdict {
-  const { rules, roles, roomPath, elementId, pid, counters, currentData, incomingData } =
+  const { rules, roles, roomPath, elementId, pid, counters, currentData, ops } =
     args;
   const principal = { pid, verified: pid !== undefined, counters };
-  const check = (required: ReturnType<typeof requiredRolesForAction>) =>
+  const check = (
+    required: ReturnType<typeof requiredRolesForAction>,
+    candidate = principal
+  ) =>
     required === null ||
-    satisfiesRole(required, principal, roles, {
+    satisfiesRole(required, candidate, roles, {
       requireVerifiedForKeyRoles: true,
     });
 
-  const writeRequired = requiredRolesForAction(
-    rules,
-    elementId,
-    "write",
-    roomPath,
-  );
-  const writeSatisfied = writeRequired !== null && check(writeRequired);
-
-  const hasEntryRules = findRulesForElement(rules, elementId, roomPath).some(
-    (rule) =>
-      rule.create !== undefined ||
-      rule.update !== undefined ||
-      rule.delete !== undefined,
-  );
-
-  if (!hasEntryRules) {
-    if (writeRequired === null || writeSatisfied) {
-      return { ok: true, data: incomingData };
-    }
-    return { ok: false, reason: "missing required role for write" };
+  if (!Array.isArray(ops) || ops.length === 0) {
+    return { ok: false, reason: "gated write requires at least one operation" };
   }
 
-  // A satisfied element-level write role overrides entry checks (admin path),
-  // but ownership stamps still apply below for consistency.
-  if (!isPlainObject(incomingData)) {
+  const hasReplace = ops.some((op) => op.op === "replace");
+  if (hasReplace && ops.length !== 1) {
     return {
       ok: false,
-      reason:
-        "entry-level rules (create/update/delete) require the element data to be a keyed map of object entries",
+      reason: "replace operations cannot be batched with keyed operations",
     };
   }
+
+  const hasOwn = (record: Record<string, unknown>, key: string) =>
+    Object.prototype.hasOwnProperty.call(record, key);
   const current = isPlainObject(currentData) ? currentData : {};
-  const result: Record<string, unknown> = {};
+  const working: Record<string, unknown> = { ...current };
+  const normalizedOps: GatedWriteOp[] = [];
 
-  for (const [key, incomingEntry] of Object.entries(incomingData)) {
-    const currentEntry = current[key];
-    if (currentEntry === undefined) {
-      // create
-      if (!writeSatisfied) {
-        const required = requiredRolesForAction(
-          rules,
-          elementId,
-          "create",
-          roomPath,
-        );
-        if (!check(required)) {
-          return { ok: false, reason: `not allowed to create entry "${key}"` };
-        }
-      }
-      result[key] = isPlainObject(incomingEntry)
-        ? { ...incomingEntry, createdBy: pid }
-        : incomingEntry;
-    } else if (!entriesEqual(currentEntry, incomingEntry)) {
-      // update
-      const ownerPid = isPlainObject(currentEntry)
-        ? (currentEntry.createdBy as string | undefined)
-        : undefined;
-      if (!writeSatisfied) {
-        const required = requiredRolesForAction(
-          rules,
-          elementId,
-          "update",
-          roomPath,
-        );
-        const allowed =
-          required === null ||
-          satisfiesRole(required, { ...principal, isCreator: ownerPid !== undefined && ownerPid === pid }, roles, {
-            requireVerifiedForKeyRoles: true,
-          });
-        if (!allowed) {
-          return { ok: false, reason: `not allowed to update entry "${key}"` };
-        }
-      }
-      result[key] = isPlainObject(incomingEntry)
-        ? { ...incomingEntry, ...(ownerPid !== undefined ? { createdBy: ownerPid } : {}) }
-        : incomingEntry;
+  const hasValue = (op: GatedWriteOp) =>
+    Object.prototype.hasOwnProperty.call(op, "value");
+  const ownerOf = (entry: unknown) =>
+    isPlainObject(entry) ? (entry.createdBy as string | undefined) : undefined;
+  const stampCreatedBy = (value: unknown) =>
+    isPlainObject(value) ? { ...value, createdBy: pid } : value;
+  const pinCreatedBy = (value: unknown, ownerPid: string | undefined) => {
+    if (!isPlainObject(value)) return value;
+    const pinned = { ...value };
+    if (ownerPid === undefined) {
+      delete pinned.createdBy;
     } else {
-      result[key] = currentEntry;
+      pinned.createdBy = ownerPid;
     }
-  }
+    return pinned;
+  };
 
-  for (const [key, currentEntry] of Object.entries(current)) {
-    if (key in incomingData) continue;
-    // delete
-    if (!writeSatisfied) {
-      const ownerPid = isPlainObject(currentEntry)
-        ? (currentEntry.createdBy as string | undefined)
-        : undefined;
+  for (const op of ops) {
+    if (typeof op?.op !== "string" || typeof op.key !== "string") {
+      return { ok: false, reason: "invalid gated write operation" };
+    }
+
+    if (op.op === "replace") {
+      if (op.key !== "" || !hasValue(op)) {
+        return { ok: false, reason: "invalid replace operation" };
+      }
+      const rule = findBestRuleForElement(rules, elementId, roomPath);
+      const required = rule?.write;
+      if (required === undefined || !satisfiesRole(required, principal, roles, {
+        requireVerifiedForKeyRoles: true,
+      })) {
+        return { ok: false, reason: "missing required role for write" };
+      }
+      normalizedOps.push({ op: "replace", key: "", value: op.value });
+      continue;
+    }
+
+    if (op.key === "") {
+      return { ok: false, reason: "keyed operations require an entry key" };
+    }
+
+    if (op.op === "create") {
+      if (!hasValue(op)) {
+        return { ok: false, reason: `create entry "${op.key}" requires a value` };
+      }
+      if (!isPlainObject(op.value)) {
+        return { ok: false, reason: `create entry "${op.key}" requires an object value` };
+      }
+      if (hasOwn(working, op.key)) {
+        return { ok: false, reason: `entry "${op.key}" already exists` };
+      }
+      const required = requiredRolesForAction(
+        rules,
+        elementId,
+        "create",
+        roomPath,
+      );
+      if (!check(required)) {
+        return { ok: false, reason: `not allowed to create entry "${op.key}"` };
+      }
+      const value = stampCreatedBy(op.value);
+      working[op.key] = value;
+      normalizedOps.push({ op: "create", key: op.key, value });
+      continue;
+    }
+
+    if (op.op === "update") {
+      if (!hasValue(op)) {
+        return { ok: false, reason: `update entry "${op.key}" requires a value` };
+      }
+      if (!isPlainObject(op.value)) {
+        return { ok: false, reason: `update entry "${op.key}" requires an object value` };
+      }
+      if (!hasOwn(working, op.key)) {
+        return { ok: false, reason: `cannot update missing entry "${op.key}"` };
+      }
+      const ownerPid = ownerOf(working[op.key]);
+      const required = requiredRolesForAction(
+        rules,
+        elementId,
+        "update",
+        roomPath,
+      );
+      if (
+        !check(required, {
+          ...principal,
+          isCreator: ownerPid !== undefined && ownerPid === pid,
+        })
+      ) {
+        return { ok: false, reason: `not allowed to update entry "${op.key}"` };
+      }
+      const value = pinCreatedBy(op.value, ownerPid);
+      working[op.key] = value;
+      normalizedOps.push({ op: "update", key: op.key, value });
+      continue;
+    }
+
+    if (op.op === "delete") {
+      if (!hasOwn(working, op.key)) {
+        return { ok: false, reason: `cannot delete missing entry "${op.key}"` };
+      }
+      const ownerPid = ownerOf(working[op.key]);
       const required = requiredRolesForAction(
         rules,
         elementId,
         "delete",
         roomPath,
       );
-      const allowed =
-        required === null ||
-        satisfiesRole(required, { ...principal, isCreator: ownerPid !== undefined && ownerPid === pid }, roles, {
-          requireVerifiedForKeyRoles: true,
-        });
-      if (!allowed) {
-        return { ok: false, reason: `not allowed to delete entry "${key}"` };
+      if (
+        !check(required, {
+          ...principal,
+          isCreator: ownerPid !== undefined && ownerPid === pid,
+        })
+      ) {
+        return { ok: false, reason: `not allowed to delete entry "${op.key}"` };
       }
+      delete working[op.key];
+      normalizedOps.push({ op: "delete", key: op.key });
+      continue;
     }
+
+    return { ok: false, reason: "invalid gated write operation" };
   }
 
-  return { ok: true, data: result };
+  return { ok: true, ops: normalizedOps };
 }
 
 // ---------------------------------------------------------------------------
@@ -492,6 +523,10 @@ export function collectChangedElementIds(
     if (path.length === 1) {
       // Change on a tag map: changed keys are element ids.
       for (const key of event.changes.keys.keys()) ids.add(String(key));
+      continue;
+    }
+    if (path[0] === PAGE_DATA_TAG) {
+      ids.add(String(path[1]));
       continue;
     }
     ids.add(String(path[1]));

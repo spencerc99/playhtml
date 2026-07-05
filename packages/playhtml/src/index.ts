@@ -60,6 +60,7 @@ import {
   setIdentity,
   isLocallyGated,
   isServerGated,
+  usesKeyedGatedWrites,
   isServerEnforced,
   isPermissionsStatusPending,
   dispatchPermissionDenied,
@@ -75,6 +76,7 @@ import {
   handleAuthMessage,
   requestVerification,
   sendGatedWrite,
+  buildGatedWriteOps,
 } from "./auth/handshake";
 import {
   canUseRealtimePresenceTransport,
@@ -1607,17 +1609,25 @@ function createPlayElementData<T extends TagType, TData = any>(
         }
         if (isServerGated(elementId)) {
           // Server-mediated write path (wait-for-server): materialize the
-          // full snapshot, send it, and let the authoritative value come
-          // back via normal Yjs sync. Never write gated keys locally.
-          let snapshot: unknown;
+          // intended mutation, send explicit ops, and let the authoritative
+          // value come back via normal Yjs sync. Never write gated keys locally.
+          const before = clonePlain(dataProxy);
+          let after: unknown;
           if (typeof newData === "function") {
-            const draft = clonePlain(dataProxy);
+            const draft = clonePlain(before);
             (newData as (d: unknown) => void)(draft);
-            snapshot = draft;
+            after = draft;
           } else {
-            snapshot = clonePlain(newData);
+            after = clonePlain(newData);
           }
-          sendGatedWrite({ element, tag, elementId, data: snapshot });
+          const ops = buildGatedWriteOps({
+            before,
+            after,
+            keyed: usesKeyedGatedWrites(elementId),
+          });
+          if (ops.length > 0) {
+            sendGatedWrite({ target: element, tag, elementId, ops });
+          }
           return;
         }
       }

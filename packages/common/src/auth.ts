@@ -415,6 +415,14 @@ export function matchesRulePattern(pattern: string, elementId: string): boolean 
   return p === elementId;
 }
 
+export function matchSpecificity(pattern: string, elementId: string): number {
+  const p = normalizeMatch(pattern);
+  if (!matchesRulePattern(pattern, elementId)) return -1;
+  if (p === "*") return 0;
+  if (p.endsWith("*")) return 10_000 + p.slice(0, -1).length;
+  return 1_000_000 + p.length;
+}
+
 export function ruleAppliesToPath(
   rule: Pick<PermissionRule, "path">,
   roomPath: string | undefined,
@@ -457,6 +465,36 @@ export function findRulesForElement(
   );
 }
 
+export function findBestRuleForElement(
+  rules: PermissionRule[],
+  elementId: string,
+  roomPath?: string,
+): PermissionRule | null {
+  let winner: PermissionRule | null = null;
+  let winnerPathSpecificity = -1;
+  let winnerMatchSpecificity = -1;
+  const effectiveRoomPath = roomPath ?? "";
+
+  for (const rule of rules) {
+    if (!ruleAppliesToPath(rule, roomPath)) continue;
+    if (!matchesRulePattern(rule.match, elementId)) continue;
+
+    const pathRank = pathSpecificity(rule.path, effectiveRoomPath);
+    const matchRank = matchSpecificity(rule.match, elementId);
+    if (
+      pathRank > winnerPathSpecificity ||
+      (pathRank === winnerPathSpecificity &&
+        matchRank > winnerMatchSpecificity)
+    ) {
+      winner = rule;
+      winnerPathSpecificity = pathRank;
+      winnerMatchSpecificity = matchRank;
+    }
+  }
+
+  return winner;
+}
+
 /**
  * Returns the role refs required for `action` on `elementId`, or null when no
  * matching rule restricts the action (= allowed for anyone).
@@ -470,19 +508,7 @@ export function requiredRolesForAction(
   action: PermissionAction,
   roomPath?: string,
 ): RoleRef | null {
-  const matchingRules = findRulesForElement(rules, elementId, roomPath);
-  let winner: PermissionRule | null = null;
-  let winnerSpecificity = -1;
-  const effectiveRoomPath = roomPath ?? "";
-
-  for (const rule of matchingRules) {
-    const specificity = pathSpecificity(rule.path, effectiveRoomPath);
-    if (specificity > winnerSpecificity) {
-      winner = rule;
-      winnerSpecificity = specificity;
-    }
-  }
-
+  const winner = findBestRuleForElement(rules, elementId, roomPath);
   if (!winner) return null;
   const specific = winner[action];
   if (specific !== undefined) return specific;
@@ -751,13 +777,22 @@ export interface PermissionsStatusMessage {
   roomPath?: string;
 }
 
+export interface GatedWriteOp {
+  op: "create" | "update" | "delete" | "replace";
+  key: string;
+  value?: unknown;
+}
+
 export interface GatedWriteMessage {
   type: "gated_write";
   opId: string;
   tag: string;
   elementId: string;
-  /** Full replacement value for the element's data (wait-for-server semantics). */
-  data: unknown;
+  /**
+   * Per-key operations for keyed-map data. Whole-element writes use a single
+   * replace op with key "" and the replacement value.
+   */
+  ops: GatedWriteOp[];
 }
 
 export interface GatedWriteResultMessage {

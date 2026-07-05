@@ -15,8 +15,10 @@ import type {
 import { normalizePathname } from "../room";
 import {
   PERMISSION_ACTIONS,
+  findBestRuleForElement,
   isEarnedRoleCondition,
   looksLikeCssSelector,
+  matchSpecificity,
   matchesRulePattern,
   meetsEarnedCondition,
   normalizeElementRules,
@@ -334,21 +336,28 @@ function requiredRolesForTarget(
   }
 
   let winningClientRule: PermissionRule | null = null;
-  let winningClientSpecificity = -1;
+  let winningClientPathSpecificity = -1;
+  let winningClientMatchSpecificity = -1;
   const roomPath = getCurrentRoomPath();
   const effectiveRoomPath = roomPath ?? "";
 
   for (const rule of state.clientRules) {
     if (!ruleAppliesToPath(rule, roomPath)) continue;
-    const matches = element
-      ? safeMatches(element, rule.match) ||
-        (elementId !== null && matchesRulePattern(rule.match, elementId))
-      : elementId !== null && matchesRulePattern(rule.match, elementId);
+    const idMatches =
+      elementId !== null && matchesRulePattern(rule.match, elementId);
+    const matches = element ? safeMatches(element, rule.match) || idMatches : idMatches;
     if (!matches) continue;
-    const specificity = pathSpecificity(rule.path, effectiveRoomPath);
-    if (specificity > winningClientSpecificity) {
+    const pathRank = pathSpecificity(rule.path, effectiveRoomPath);
+    const matchRank =
+      idMatches && elementId !== null ? matchSpecificity(rule.match, elementId) : 0;
+    if (
+      pathRank > winningClientPathSpecificity ||
+      (pathRank === winningClientPathSpecificity &&
+        matchRank > winningClientMatchSpecificity)
+    ) {
       winningClientRule = rule;
-      winningClientSpecificity = specificity;
+      winningClientPathSpecificity = pathRank;
+      winningClientMatchSpecificity = matchRank;
     }
   }
 
@@ -441,20 +450,31 @@ export function isServerGated(elementId: string): boolean {
   );
 }
 
+export function usesKeyedGatedWrites(elementId: string): boolean {
+  const status = state.serverStatus;
+  if (!status?.enforced) return false;
+  const rule = findBestRuleForElement(status.rules, elementId, status.roomPath);
+  return (
+    rule?.create !== undefined ||
+    rule?.update !== undefined ||
+    rule?.delete !== undefined
+  );
+}
+
 /**
  * True when any permission gating (attribute, client rules, or server rules)
  * applies to the element — i.e. setData should run the can() check at all.
  */
 export function isLocallyGated(
-  element: HTMLElement,
+  element: HTMLElement | null,
   elementId: string,
 ): boolean {
-  if (element.hasAttribute("permissions")) return true;
+  if (element?.hasAttribute("permissions")) return true;
   const roomPath = getCurrentRoomPath();
   for (const rule of state.clientRules) {
     if (!ruleAppliesToPath(rule, roomPath)) continue;
     if (
-      safeMatches(element, rule.match) ||
+      (element !== null && safeMatches(element, rule.match)) ||
       matchesRulePattern(rule.match, elementId)
     ) {
       return true;
@@ -464,13 +484,13 @@ export function isLocallyGated(
 }
 
 export function dispatchPermissionDenied(
-  element: HTMLElement,
+  target: EventTarget,
   detail: { action: PermissionAction; elementId: string; reason: string },
 ): void {
   console.warn(
     `[playhtml] Permission denied: ${detail.action} on #${detail.elementId} (${detail.reason})`,
   );
-  element.dispatchEvent(
+  target.dispatchEvent(
     new CustomEvent(PERMISSION_DENIED_EVENT, { detail, bubbles: true }),
   );
 }

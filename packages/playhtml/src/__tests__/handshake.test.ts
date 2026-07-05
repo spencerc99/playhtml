@@ -7,6 +7,7 @@ import {
   handleAuthMessage,
   requestVerification,
   sendGatedWrite,
+  buildGatedWriteOps,
 } from "../auth/handshake";
 import {
   getMe,
@@ -149,9 +150,15 @@ describe("gated writes", () => {
     element.addEventListener(PERMISSION_DENIED_EVENT, denied);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    sendGatedWrite({ element, tag: "can-play", elementId: "title", data: { a: 1 } });
+    sendGatedWrite({
+      target: element,
+      tag: "can-play",
+      elementId: "title",
+      ops: [{ op: "replace", key: "", value: { a: 1 } }],
+    });
     const message = JSON.parse(sent.at(-1)!);
     expect(message.type).toBe("gated_write");
+    expect(message.ops).toEqual([{ op: "replace", key: "", value: { a: 1 } }]);
 
     handleAuthMessage({
       type: "gated_write_result",
@@ -175,12 +182,49 @@ describe("gated writes", () => {
     element.addEventListener(PERMISSION_DENIED_EVENT, denied);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    sendGatedWrite({ element, tag: "can-play", elementId: "title", data: { a: 1 } });
+    sendGatedWrite({
+      target: element,
+      tag: "can-play",
+      elementId: "title",
+      ops: [{ op: "replace", key: "", value: { a: 1 } }],
+    });
     expect(JSON.parse(sent.at(-1)!).type).toBe("gated_write");
 
     vi.advanceTimersByTime(10_000);
 
     expect(denied).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+
+  it("builds keyed ops from before/after snapshots", () => {
+    const ops = buildGatedWriteOps({
+      keyed: true,
+      before: {
+        a: { text: "same" },
+        b: { text: "old" },
+        c: { text: "delete me" },
+      },
+      after: {
+        a: { text: "same" },
+        b: { text: "new" },
+        d: { text: "create me" },
+      },
+    });
+
+    expect(ops).toEqual([
+      { op: "update", key: "b", value: { text: "new" } },
+      { op: "create", key: "d", value: { text: "create me" } },
+      { op: "delete", key: "c" },
+    ]);
+  });
+
+  it("builds whole-element replace ops for non-keyed gated writes", () => {
+    expect(
+      buildGatedWriteOps({
+        keyed: false,
+        before: { text: "old" },
+        after: { text: "new" },
+      })
+    ).toEqual([{ op: "replace", key: "", value: { text: "new" } }]);
   });
 });

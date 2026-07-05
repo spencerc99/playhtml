@@ -398,7 +398,7 @@ describe("earned roles (visit-counted)", () => {
       pid: visitorPk,
       counters: { days: 1 },
       currentData: {},
-      incomingData: { e1: { text: "hi" } },
+      ops: [{ op: "create", key: "e1", value: { text: "hi" } }],
     });
     expect(firstDay.ok).toBe(false);
 
@@ -410,10 +410,10 @@ describe("earned roles (visit-counted)", () => {
       pid: visitorPk,
       counters: { days: 2 },
       currentData: {},
-      incomingData: { e1: { text: "hi" } },
+      ops: [{ op: "create", key: "e1", value: { text: "hi" } }],
     });
     expect(secondDay.ok).toBe(true);
-    expect((secondDay as any).data.e1.createdBy).toBe(visitorPk);
+    expect((secondDay as any).ops[0].value.createdBy).toBe(visitorPk);
   });
 
   it("does not grant earned roles from counters without a verified pid", () => {
@@ -428,7 +428,7 @@ describe("earned roles (visit-counted)", () => {
       pid: undefined,
       counters: { sessions: 2 },
       currentData: {},
-      incomingData: { e1: { text: "hi" } },
+      ops: [{ op: "create", key: "e1", value: { text: "hi" } }],
     });
 
     expect(verdict.ok).toBe(false);
@@ -529,6 +529,35 @@ describe("rule matching", () => {
     expect(requiredRolesForAction(rules, "y", "write")).toBeNull();
   });
 
+  it("uses an exact element id before a glob at the same path", () => {
+    const rules: PermissionRule[] = [
+      { match: "note-*", write: "admin" },
+      { match: "note-public", write: "anyone" },
+    ];
+
+    expect(requiredRolesForAction(rules, "note-public", "write")).toBe("anyone");
+  });
+
+  it("uses the longer matching glob before a shorter glob at the same path", () => {
+    const rules: PermissionRule[] = [
+      { match: "note-*", write: "admin" },
+      { match: "note-public-*", write: "anyone" },
+    ];
+
+    expect(requiredRolesForAction(rules, "note-public-1", "write")).toBe("anyone");
+  });
+
+  it("keeps path specificity above element-match specificity", () => {
+    const rules: PermissionRule[] = [
+      { match: "note-public", path: "/*", write: "anyone" },
+      { match: "note-*", path: "/wall", write: "admin" },
+    ];
+
+    expect(requiredRolesForAction(rules, "note-public", "write", "/wall")).toBe(
+      "admin"
+    );
+  });
+
   it("respects rule path scoping", () => {
     const rules: PermissionRule[] = [
       { match: "x", path: "/wall", write: "admin" },
@@ -537,6 +566,12 @@ describe("rule matching", () => {
     expect(requiredRolesForAction(rules, "x", "write", "/other")).toBeNull();
     expect(isElementGated(rules, "x", "/wall")).toBe(true);
     expect(isElementGated(rules, "x", "/other")).toBe(false);
+  });
+
+  it("recognizes page-data channel names as gated ids", () => {
+    const rules: PermissionRule[] = [{ match: "my-channel", write: "admin" }];
+
+    expect(isElementGated(rules, "my-channel", undefined)).toBe(true);
   });
 
   it("uses the most specific matching path per element id without merging actions", () => {
@@ -588,9 +623,12 @@ describe("evaluateGatedWrite", () => {
       elementId: "title",
       pid: adminPk,
       currentData: { text: "old" },
-      incomingData: { text: "new" },
+      ops: [{ op: "replace", key: "", value: { text: "new" } }],
     });
-    expect(allowed).toEqual({ ok: true, data: { text: "new" } });
+    expect(allowed).toEqual({
+      ok: true,
+      ops: [{ op: "replace", key: "", value: { text: "new" } }],
+    });
 
     const denied = evaluateGatedWrite({
       rules,
@@ -599,7 +637,7 @@ describe("evaluateGatedWrite", () => {
       elementId: "title",
       pid: alicePk,
       currentData: { text: "old" },
-      incomingData: { text: "new" },
+      ops: [{ op: "replace", key: "", value: { text: "new" } }],
     });
     expect(denied.ok).toBe(false);
   });
@@ -613,7 +651,7 @@ describe("evaluateGatedWrite", () => {
       elementId: "board",
       pid: undefined,
       currentData: {},
-      incomingData: { a: 1 },
+      ops: [{ op: "replace", key: "", value: { a: 1 } }],
     });
     expect(denied.ok).toBe(false);
   });
@@ -629,10 +667,12 @@ describe("evaluateGatedWrite", () => {
       elementId: "notes",
       pid: alicePk,
       currentData: {},
-      incomingData: { n1: { text: "hi", createdBy: "pk_forged" } },
+      ops: [
+        { op: "create", key: "n1", value: { text: "hi", createdBy: "pk_forged" } },
+      ],
     });
     expect(created.ok).toBe(true);
-    expect((created as any).data.n1.createdBy).toBe(alicePk);
+    expect((created as any).ops[0].value.createdBy).toBe(alicePk);
 
     // Alice updates her own entry — allowed, ownership preserved
     const updated = evaluateGatedWrite({
@@ -642,10 +682,16 @@ describe("evaluateGatedWrite", () => {
       elementId: "notes",
       pid: alicePk,
       currentData: { n1: { text: "hi", createdBy: alicePk } },
-      incomingData: { n1: { text: "edited", createdBy: bobPk } },
+      ops: [
+        {
+          op: "update",
+          key: "n1",
+          value: { text: "edited", createdBy: bobPk },
+        },
+      ],
     });
     expect(updated.ok).toBe(true);
-    expect((updated as any).data.n1.createdBy).toBe(alicePk);
+    expect((updated as any).ops[0].value.createdBy).toBe(alicePk);
 
     // Bob can't update Alice's entry
     const denied = evaluateGatedWrite({
@@ -655,7 +701,13 @@ describe("evaluateGatedWrite", () => {
       elementId: "notes",
       pid: bobPk,
       currentData: { n1: { text: "hi", createdBy: alicePk } },
-      incomingData: { n1: { text: "vandalized", createdBy: alicePk } },
+      ops: [
+        {
+          op: "update",
+          key: "n1",
+          value: { text: "vandalized", createdBy: alicePk },
+        },
+      ],
     });
     expect(denied.ok).toBe(false);
 
@@ -667,7 +719,7 @@ describe("evaluateGatedWrite", () => {
       elementId: "notes",
       pid: bobPk,
       currentData: { n1: { text: "hi", createdBy: alicePk } },
-      incomingData: {},
+      ops: [{ op: "delete", key: "n1" }],
     });
     expect(deleteDenied.ok).toBe(false);
 
@@ -679,12 +731,12 @@ describe("evaluateGatedWrite", () => {
       elementId: "notes",
       pid: alicePk,
       currentData: { n1: { text: "hi", createdBy: alicePk } },
-      incomingData: {},
+      ops: [{ op: "delete", key: "n1" }],
     });
     expect(deleted.ok).toBe(true);
   });
 
-  it("lets an element-level write role override entry checks (admin path)", () => {
+  it("uses element-level write as fallback for unspecified entry actions", () => {
     const rules: PermissionRule[] = [
       { match: "notes", write: "admin", update: "creator" },
     ];
@@ -695,12 +747,12 @@ describe("evaluateGatedWrite", () => {
       elementId: "notes",
       pid: adminPk,
       currentData: { n1: { text: "hi", createdBy: alicePk } },
-      incomingData: {},
+      ops: [{ op: "delete", key: "n1" }],
     });
     expect(verdict.ok).toBe(true);
   });
 
-  it("rejects non-keyed-map data under entry-level rules", () => {
+  it("rejects whole-element replace under entry-level rules without write", () => {
     const rules: PermissionRule[] = [{ match: "notes", update: "creator" }];
     const verdict = evaluateGatedWrite({
       rules,
@@ -709,9 +761,45 @@ describe("evaluateGatedWrite", () => {
       elementId: "notes",
       pid: alicePk,
       currentData: {},
-      incomingData: [1, 2, 3],
+      ops: [{ op: "replace", key: "", value: [1, 2, 3] }],
     });
     expect(verdict.ok).toBe(false);
+  });
+
+  it("rejects an update op for a missing key", () => {
+    const rules: PermissionRule[] = [{ match: "notes", update: "creator" }];
+    const verdict = evaluateGatedWrite({
+      rules,
+      roles,
+      roomPath: undefined,
+      elementId: "notes",
+      pid: alicePk,
+      currentData: {},
+      ops: [{ op: "update", key: "missing", value: { text: "nope" } }],
+    });
+
+    expect(verdict.ok).toBe(false);
+  });
+
+  it("does not treat absent keys as deletes when evaluating a create op", () => {
+    const rules: PermissionRule[] = [
+      { match: "notes", create: "verified", delete: "creator" },
+    ];
+
+    const verdict = evaluateGatedWrite({
+      rules,
+      roles,
+      roomPath: undefined,
+      elementId: "notes",
+      pid: bobPk,
+      currentData: { a: { text: "A", createdBy: alicePk } },
+      ops: [{ op: "create", key: "b", value: { text: "B" } }],
+    });
+
+    expect(verdict.ok).toBe(true);
+    expect((verdict as any).ops).toEqual([
+      { op: "create", key: "b", value: { text: "B", createdBy: bobPk } },
+    ]);
   });
 });
 
@@ -742,6 +830,35 @@ describe("collectChangedElementIds", () => {
       el.set("text", "deep change");
     });
     expect(Array.from(collected[2]!)).toEqual(["guestbook"]);
+  });
+
+  it("maps page-data channel changes to the channel name", () => {
+    const doc = new Y.Doc();
+    const play = doc.getMap("play");
+    const collected: Array<Set<string> | null> = [];
+    play.observeDeep((events) => {
+      collected.push(collectChangedElementIds(events as any));
+    });
+
+    doc.transact(() => {
+      const page = new Y.Map();
+      play.set("__page__", page);
+    });
+    expect(collected[0]).toBeNull();
+
+    doc.transact(() => {
+      const page = play.get("__page__") as Y.Map<any>;
+      const channel = new Y.Map();
+      page.set("my-channel", channel);
+    });
+    expect(Array.from(collected[1]!)).toEqual(["my-channel"]);
+
+    doc.transact(() => {
+      const page = play.get("__page__") as Y.Map<any>;
+      const channel = page.get("my-channel") as Y.Map<any>;
+      channel.set("count", 1);
+    });
+    expect(Array.from(collected[2]!)).toEqual(["my-channel"]);
   });
 
   it("removes ambient element data when no gated snapshot exists", () => {
