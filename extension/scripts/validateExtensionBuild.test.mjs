@@ -62,3 +62,19 @@ test("passes when manifest resources exist in the build directory", async () => 
 
   await expect(validateExtensionBuild(dir)).resolves.toBeUndefined();
 });
+
+test("passes when web accessible resource patterns match build files", async () => {
+  const dir = await makeBuildDir({
+    manifest_version: 3,
+    web_accessible_resources: [
+      {
+        resources: ["inventory/*"],
+        matches: ["<all_urls>"],
+      },
+    ],
+  });
+  await mkdir(path.join(dir, "inventory"), { recursive: true });
+  await writeFile(path.join(dir, "inventory/bottle.svg"), "");
+
+  await expect(validateExtensionBuild(dir)).resolves.toBeUndefined();
+});
