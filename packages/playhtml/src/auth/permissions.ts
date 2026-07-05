@@ -2,7 +2,6 @@
 // ABOUTME: check, permissions attribute parsing, and identity/permissions change events.
 
 import type {
-  Counters,
   PermissionAction,
   PermissionActionSpec,
   PermissionRule,
@@ -16,11 +15,9 @@ import { normalizePathname } from "../room";
 import {
   PERMISSION_ACTIONS,
   findBestRuleForElement,
-  isEarnedRoleCondition,
   looksLikeCssSelector,
   matchSpecificity,
   matchesRulePattern,
-  meetsEarnedCondition,
   normalizeElementRules,
   pathSpecificity,
   parsePermissionsSpec,
@@ -64,11 +61,6 @@ export interface MeState {
   source: PlayerIdentity["source"];
   verified: boolean;
   roles: string[];
-  /**
-   * Server-attested counter totals for this identity in the room (undefined
-   * until the handshake completes). Powers earned roles like `{ days: 2 }`.
-   */
-  counters: Counters | undefined;
   /** True when `entry.createdBy` is this player's pid. */
   owns: (entry: unknown) => boolean;
 }
@@ -81,8 +73,6 @@ interface PermissionsState {
   serverStatusPending: boolean;
   identity: PlayerIdentity | null;
   verified: boolean;
-  /** Server-attested counter totals (from auth_ok). */
-  counters: Counters | undefined;
   resolvedRoles: string[];
 }
 
@@ -93,7 +83,6 @@ const state: PermissionsState = {
   serverStatusPending: false,
   identity: null,
   verified: false,
-  counters: undefined,
   resolvedRoles: [],
 };
 
@@ -173,21 +162,6 @@ export function setVerified(verified: boolean): void {
   );
 }
 
-/** Records the server-attested counter totals (arrive with auth_ok). */
-export function setCounters(counters: Counters): void {
-  if (
-    state.counters?.days === counters.days &&
-    state.counters?.sessions === counters.sessions
-  ) {
-    return;
-  }
-  state.counters = counters;
-  resolveRoles();
-  document.dispatchEvent(
-    new CustomEvent(IDENTITY_CHANGE_EVENT, { detail: getMe() }),
-  );
-}
-
 export function getMe(): MeState {
   const pid = state.identity?.publicKey;
   return {
@@ -195,7 +169,6 @@ export function getMe(): MeState {
     name: state.identity?.name,
     source: state.identity?.source,
     verified: state.verified,
-    counters: state.counters,
     roles: [...state.resolvedRoles],
     owns: (entry: unknown) =>
       pid !== undefined &&
@@ -222,7 +195,6 @@ export function __resetPermissionsForTests(): void {
   state.serverStatusPending = false;
   state.identity = null;
   state.verified = false;
-  state.counters = undefined;
   state.resolvedRoles = [];
 }
 
@@ -258,11 +230,7 @@ function resolveRoles(): void {
   for (const [name, definition] of Object.entries(
     state.serverStatus?.roles ?? {},
   )) {
-    if (isEarnedRoleCondition(definition)) {
-      if (state.verified && meetsEarnedCondition(definition, state.counters)) {
-        roles.add(name);
-      }
-    } else if (pid && definition.includes(pid)) {
+    if (pid && definition.includes(pid)) {
       roles.add(name);
     }
   }
@@ -279,16 +247,8 @@ function combinedKeyRoles(): EnforceableRoles {
   for (const [name, definition] of Object.entries(
     state.serverStatus?.roles ?? {},
   )) {
-    if (isEarnedRoleCondition(definition)) {
-      // Earned conditions come only from the server (it owns the counters).
-      combined[name] = definition;
-    } else {
-      const existing = combined[name];
-      combined[name] = [
-        ...(Array.isArray(existing) ? existing : []),
-        ...definition,
-      ];
-    }
+    const existing = combined[name];
+    combined[name] = [...(existing ?? []), ...definition];
   }
   return combined;
 }
@@ -423,7 +383,6 @@ export function can(
   const principal = {
     pid,
     verified: state.verified,
-    counters: state.counters,
     isCreator: creator !== undefined && creator === pid,
   };
 

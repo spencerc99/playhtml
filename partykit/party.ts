@@ -92,9 +92,9 @@ import {
 import {
   AUTH_SESSION_TTL_MS,
   AUTH_STORAGE_KEYS,
-  DEFAULT_DAY_MS,
   GATED_WRITE_ORIGIN,
   collectChangedElementIds,
+  planGatedReverts,
   createChallenge,
   createSessionToken,
   evaluateGatedWrite,
@@ -103,13 +103,10 @@ import {
   isWellKnownCacheFresh,
   parseRoomName,
   pruneSessions,
-  pruneCounterLog,
-  recordVisit,
   removeElementDataFromPlayDoc,
   verifyChallengeResponse,
   MAX_GATED_WRITE_BYTES,
   type AuthSessions,
-  type CounterLog,
   type GatedSnapshots,
   type PendingChallenge,
   type WellKnownCacheEntry,
@@ -117,7 +114,6 @@ import {
 import type {
   AuthResponseMessage,
   AuthResumeMessage,
-  Counters,
   GatedWriteMessage,
   GatedWriteOp,
   GatedWriteResultMessage,
@@ -131,7 +127,6 @@ const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
 const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
 const AUTH_CHALLENGE_STATE_KEY = "__playhtmlAuthChallenge";
 const AUTH_VERIFIED_PID_STATE_KEY = "__playhtmlVerifiedPid";
-const AUTH_COUNTERS_STATE_KEY = "__playhtmlCounters";
 const CONNECTION_OPENED_AT_STATE_KEY = "__playhtmlConnectionOpenedAt";
 
 type PartyServerConnectionState = Record<string, unknown> & {
@@ -139,7 +134,6 @@ type PartyServerConnectionState = Record<string, unknown> & {
   [MESSAGE_LIMIT_STATE_KEY]?: MessageLimitState;
   [AUTH_CHALLENGE_STATE_KEY]?: PendingChallenge | null;
   [AUTH_VERIFIED_PID_STATE_KEY]?: string | null;
-  [AUTH_COUNTERS_STATE_KEY]?: Counters | null;
   [CONNECTION_OPENED_AT_STATE_KEY]?: number;
 };
 
@@ -2527,7 +2521,6 @@ export class PartyServer extends YServer {
     updates: {
       challenge?: PendingChallenge | null;
       verifiedPid?: string | null;
-      counters?: Counters | null;
     }
   ): void {
     const authConnection =
@@ -2539,37 +2532,8 @@ export class PartyServer extends YServer {
       if ("challenge" in updates) next[AUTH_CHALLENGE_STATE_KEY] = updates.challenge;
       if ("verifiedPid" in updates)
         next[AUTH_VERIFIED_PID_STATE_KEY] = updates.verifiedPid;
-      if ("counters" in updates)
-        next[AUTH_COUNTERS_STATE_KEY] = updates.counters;
       return next;
     });
-  }
-
-  private getConnectionCounters(
-    connection: Party.Connection
-  ): Counters | undefined {
-    const state = (connection as Party.Connection<PartyServerConnectionState>)
-      .state;
-    const value = state?.[AUTH_COUNTERS_STATE_KEY];
-    return value ?? undefined;
-  }
-
-  private getDayMs(): number {
-    return readPositiveNumberEnv("AUTH_DAY_MS", DEFAULT_DAY_MS);
-  }
-
-  /**
-   * Counts a verified appearance toward earned roles ({ "days": N }): bumps
-   * the pid's persisted counters and returns the current totals.
-   */
-  private async recordVerifiedVisit(pid: string): Promise<Counters> {
-    const log =
-      ((await this.ctx.storage.get(AUTH_STORAGE_KEYS.counters)) as
-        | CounterLog
-        | undefined) ?? {};
-    const record = recordVisit(log, pid, Date.now(), this.getDayMs());
-    await this.ctx.storage.put(AUTH_STORAGE_KEYS.counters, pruneCounterLog(log));
-    return { days: record.days, sessions: record.sessions };
   }
 
   /** The cryptographically verified pid for a connection, or null. */
@@ -2622,11 +2586,9 @@ export class PartyServer extends YServer {
     sessions[token] = { pid: message.pid, expiresAt };
     await this.setAuthSessions(sessions);
 
-    const counters = await this.recordVerifiedVisit(message.pid);
     this.setConnectionAuthState(sender, {
       challenge: null,
       verifiedPid: message.pid,
-      counters,
     });
     this.sendCustomMessage(
       sender,
@@ -2635,7 +2597,6 @@ export class PartyServer extends YServer {
         pid: message.pid,
         token,
         expiresAt,
-        stats: { counters },
       })
     );
   }
@@ -2658,11 +2619,9 @@ export class PartyServer extends YServer {
       return;
     }
 
-    const counters = await this.recordVerifiedVisit(record.pid);
     this.setConnectionAuthState(sender, {
       challenge: null,
       verifiedPid: record.pid,
-      counters,
     });
     this.sendCustomMessage(
       sender,
@@ -2671,7 +2630,6 @@ export class PartyServer extends YServer {
         pid: record.pid,
         token: message.token,
         expiresAt: record.expiresAt,
-        stats: { counters },
       })
     );
   }
@@ -2781,7 +2739,6 @@ export class PartyServer extends YServer {
       roomPath,
       elementId: message.elementId,
       pid: pid ?? undefined,
-      counters: this.getConnectionCounters(sender),
       currentData: this.readElementData(message.tag, message.elementId),
       ops: message.ops,
     });
@@ -2841,25 +2798,26 @@ export class PartyServer extends YServer {
       if (transaction.origin === GATED_WRITE_ORIGIN) return;
 
       const changed = collectChangedElementIds(events as Array<Y.YEvent<any>>);
-      const snapshots = this.gatedSnapshotsCache ?? {};
-      const candidates =
-        changed === null ? Object.keys(snapshots) : Array.from(changed);
+      const reverts = planGatedReverts(
+        changed,
+        rules,
+        roomPath,
+        this.gatedSnapshotsCache ?? {}
+      );
 
-      for (const elementId of candidates) {
-        if (!isElementGated(rules, elementId, roomPath)) continue;
-        const snapshot = snapshots[elementId];
-        if (!snapshot) {
+      for (const revert of reverts) {
+        // Defer the corrective write out of the observer callback.
+        if (revert.action === "remove") {
           // The server cannot know a client's defaultData here, so no stored
           // snapshot means the only authoritative baseline is absence.
           queueMicrotask(() => {
-            this.restoreMissingGatedSnapshot(elementId);
+            this.restoreMissingGatedSnapshot(revert.elementId);
           });
-          continue;
+        } else {
+          queueMicrotask(() => {
+            this.restoreGatedSnapshot(revert.elementId, revert.snapshot!);
+          });
         }
-        // Defer the corrective write out of the observer callback.
-        queueMicrotask(() => {
-          this.restoreGatedSnapshot(elementId, snapshot);
-        });
       }
     });
   }

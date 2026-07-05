@@ -12,7 +12,7 @@ import {
   PresenceRoom,
   PresenceView,
 } from "playhtml";
-import type { Counters, CursorZoneOptions, MeState, PermissionAction } from "playhtml";
+import type { CursorZoneOptions, MeState, PermissionAction } from "playhtml";
 
 // Stable protocol event names (duplicated from playhtml so this module only
 // has type-level imports from it — keeps vi.mock("playhtml") setups working).
@@ -193,8 +193,6 @@ export function usePlayerIdentity(): {
   name: string | undefined;
   verified: boolean;
   roles: string[];
-  /** Server-attested counter totals in this room (earned roles). */
-  counters: Counters | undefined;
 } {
   const { cursors, getMyPlayerIdentity } = useContext(PlayContext);
   const me = useMeState();
@@ -204,7 +202,6 @@ export function usePlayerIdentity(): {
     name: cursors.name,
     verified: me?.verified ?? false,
     roles: me?.roles ?? [],
-    counters: me?.counters,
   };
 }
 

@@ -36,15 +36,14 @@ Put your rules at `https://your-domain/.well-known/playhtml.json`:
 ```json
 {
   "roles": {
-    "admin": ["pk_04a1…"],
-    "returning": { "days": 2 }
+    "admin": ["pk_04a1…"]
   },
   "elements": {
     "/*": {
       "site-title": "write:admin"
     },
     "/wall": {
-      "guestbook": "create:returning, update:creator, delete:creator|admin"
+      "guestbook": "create:verified, update:creator, delete:creator|admin"
     },
     "/blog/*": {
       "comment-*": "create:verified, update:creator, delete:creator|admin"
@@ -101,31 +100,23 @@ The low-level `rules` array is still available as an escape hatch when you want 
 }
 ```
 
-Named roles, when you want them — defined as explicit key lists **or earned by showing up**:
-
-:::note
-Earned roles (the `{ "days": N }` / `{ "sessions": N }` counter conditions below) are the least settled part of this beta — the counter vocabulary is likely to grow and change. Explicit key-list roles are the stablest option.
-:::
+Named roles, when you want them, are explicit key lists:
 
 ```json
 {
   "roles": {
-    "admin": ["pk_04a1…", "pk_9bb2…"],
-    "returning": { "days": 2 },
-    "regular": { "days": 5 }
+    "admin": ["pk_04a1…", "pk_9bb2…"]
   },
   "elements": {
     "/*": {
       "site-title": "write:admin"
     },
     "/guestbook": {
-      "guestbook": "create:returning, update:creator, delete:creator|regular|admin"
+      "guestbook": "create:verified, update:creator, delete:creator|admin"
     }
   }
 }
 ```
-
-`{ "days": N }` grants the role to any verified identity the server has seen in the room on at least N **distinct days** (counted server-side against the key, once per day — uninflatable by reconnecting or clearing storage). This is how standing accrues naturally: read on your first visit, write once you've returned, moderate once you're a regular. `days` is one of the built-in server-attested **counters**; `{ "sessions": N }` (total verified handshakes) works the same way. The server reports your totals in `playhtml.me.counters` after the handshake — e.g. `playhtml.me.counters.days`.
 
 ### Other places to declare rules
 
@@ -184,7 +175,7 @@ When a write is denied, `setData` becomes a no-op and the element fires a `permi
 Four live examples on this site exercise the whole system (their rules live in [`/.well-known/playhtml.json`](https://playhtml.fun/.well-known/playhtml.json)):
 
 - [`/permissions`](https://playhtml.fun/permissions) — **the locked room**: identity panel, an admin-gated title, creator-owned notes, and a live event log. The best place to watch the handshake and denials happen.
-- [`/guestbook`](https://playhtml.fun/guestbook) — **the village guestbook**: the canonical earned-roles example. Visitors read, returning visitors (2 sessions) sign, regulars (5 sessions) sweep up after others, and the keeper's key can do anything — including changing the rules, which is just editing the well-known file.
+- [`/guestbook`](https://playhtml.fun/guestbook) — **the village guestbook**: visitors read, verified visitors sign, creators amend or remove their own entries, and the keeper's key can moderate the room.
 - [`/garden`](https://playhtml.fun/garden) — **community garden**: claim a plot (one per pid), water only your own plant (`update:creator`).
 - [`/shop`](https://playhtml.fun/shop) — **the corner shop**: a single owner key gates the sign and marquee; the doorbell stays open to everyone.
 
@@ -202,11 +193,9 @@ The end-to-end protocol suite (handshake, gated writes, entry ownership, backsto
 ```bash
 SUPABASE_URL=http://127.0.0.1:9 SUPABASE_KEY=bad ADMIN_TOKEN=dev \
   bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 \
-  --var SUPABASE_LOAD_TIMEOUT_MS:200 --var AUTH_DAY_MS:1500 &
-SMOKE_DAY_MS=1500 bun run smoke:partykit:auth
+  --var SUPABASE_LOAD_TIMEOUT_MS:200 &
+bun run smoke:partykit:auth
 ```
-
-(`AUTH_DAY_MS` compresses the counter "day" so the earned-roles ladder can be exercised in seconds.)
 
 ## Notes & limits
 

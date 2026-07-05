@@ -3019,7 +3019,6 @@ export type {
   CursorPresenceView,
   PresenceRoom,
   PresenceView,
-  Counters,
   PermissionAction,
   PermissionActionSpec,
   PermissionRule,

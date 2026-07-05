@@ -7,7 +7,6 @@ import {
   getMe,
   setIdentity,
   setVerified,
-  setCounters,
   setServerPermissionsStatus,
   isServerGated,
   isLocallyGated,
@@ -243,54 +242,6 @@ describe("ergonomic config forms", () => {
     expect(can("write", comment)).toBe(false);
     setVerified(true);
     expect(can("write", comment)).toBe(true);
-  });
-});
-
-describe("earned roles (server-attested days)", () => {
-  it("grants condition roles once counters.days meets the threshold", () => {
-    setIdentity(identity(OTHER_PK));
-    setServerPermissionsStatus({
-      type: "permissions_status",
-      enforced: true,
-      roles: { returning: { days: 2 }, regular: { days: 5 } },
-      rules: [
-        { match: "guestbook", create: "returning", delete: ["creator", "regular"] },
-      ],
-    });
-
-    // Day 1: verified but new — can't sign the book yet.
-    setVerified(true);
-    setCounters({ days: 1 });
-    expect(getMe().roles).toEqual([]);
-    expect(getMe().counters?.days).toBe(1);
-    expect(can("create", "#guestbook")).toBe(false);
-
-    // Day 2: returning — can sign, still can't moderate.
-    setCounters({ days: 2 });
-    expect(getMe().roles).toContain("returning");
-    expect(can("create", "#guestbook")).toBe(true);
-    expect(can("delete", "#guestbook", { creator: ADMIN_PK })).toBe(false);
-
-    // Day 5: a regular — can sweep up other people's entries.
-    setCounters({ days: 5 });
-    expect(getMe().roles).toContain("regular");
-    expect(can("delete", "#guestbook", { creator: ADMIN_PK })).toBe(true);
-  });
-
-  it("does not resolve earned roles while the identity is unverified", () => {
-    setIdentity(identity(OTHER_PK));
-    setServerPermissionsStatus({
-      type: "permissions_status",
-      enforced: true,
-      roles: { returning: { sessions: 2 } },
-      rules: [{ match: "guestbook", create: "returning" }],
-    });
-
-    setCounters({ sessions: 2 });
-
-    expect(getMe().verified).toBe(false);
-    expect(getMe().roles).not.toContain("returning");
-    expect(can("create", "#guestbook")).toBe(false);
   });
 });
 

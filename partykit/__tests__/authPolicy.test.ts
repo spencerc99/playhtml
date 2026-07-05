@@ -8,13 +8,13 @@ import {
   isChallengeExpired,
   verifyChallengeResponse,
   pruneSessions,
-  pruneCounterLog,
-  recordVisit,
   evaluateGatedWrite,
   isElementGated,
   collectChangedElementIds,
+  planGatedReverts,
   removeElementDataFromPlayDoc,
   AUTH_CHALLENGE_TTL_MS,
+  type GatedSnapshots,
 } from "../auth";
 import {
   buildAuthChallengePayload,
@@ -296,142 +296,6 @@ describe("sanitizeWellKnownConfig", () => {
     expect(config!.rules!.map((r) => r.match)).toEqual(["real-id"]);
     expect(warn).toHaveBeenCalledTimes(2);
     warn.mockRestore();
-  });
-});
-
-describe("earned roles (visit-counted)", () => {
-  const visitorPk = "pk_" + "dd".repeat(65);
-  const DAY = 1000;
-
-  it("counts one visit per day bucket, idempotent within a day", () => {
-    const log = {};
-    expect(recordVisit(log, visitorPk, 0, DAY)).toMatchObject({
-      days: 1,
-      sessions: 1,
-    });
-    expect(recordVisit(log, visitorPk, 500, DAY)).toMatchObject({
-      days: 1,
-      sessions: 2,
-    }); // same day
-    expect(recordVisit(log, visitorPk, 1200, DAY)).toMatchObject({
-      days: 2,
-      sessions: 3,
-    }); // next day
-    expect(recordVisit(log, visitorPk, 1300, DAY)).toMatchObject({
-      days: 2,
-      sessions: 4,
-    });
-    expect(recordVisit(log, visitorPk, 5000, DAY)).toMatchObject({
-      days: 3,
-      sessions: 5,
-    });
-  });
-
-  it("prunes the least-recently-seen pids past the cap", () => {
-    const log = {};
-    recordVisit(log, "pk_old", 100, DAY);
-    recordVisit(log, "pk_new", 5000, DAY);
-    const pruned = pruneCounterLog(log, 1);
-    expect(Object.keys(pruned)).toEqual(["pk_new"]);
-  });
-
-  it("satisfiesRole honors { days: N } via principal.counters.days", () => {
-    const roles = { returning: { days: 2 }, regular: { days: 5 } };
-    expect(
-      satisfiesRole(
-        "returning",
-        { pid: visitorPk, verified: true, counters: { days: 2 } },
-        roles
-      )
-    ).toBe(true);
-    expect(
-      satisfiesRole(
-        "returning",
-        { pid: visitorPk, verified: true, counters: { days: 1 } },
-        roles
-      )
-    ).toBe(false);
-    // unverified principals never have server-attested counters
-    expect(
-      satisfiesRole("returning", { pid: visitorPk, verified: false }, roles)
-    ).toBe(false);
-    expect(
-      satisfiesRole(
-        "returning",
-        { pid: visitorPk, verified: false, counters: { days: 2 } },
-        roles
-      )
-    ).toBe(false);
-    expect(
-      satisfiesRole(
-        "regular",
-        { pid: visitorPk, verified: true, counters: { days: 7 } },
-        roles
-      )
-    ).toBe(true);
-  });
-
-  it("sanitizer accepts { days: N } role definitions and drops junk", () => {
-    const config = sanitizeWellKnownConfig({
-      roles: {
-        returning: { days: 2 },
-        broken: { days: "lots" },
-        zero: { days: 0 },
-      },
-      elements: { guestbook: "create:returning" },
-    });
-    expect(config).not.toBeNull();
-    expect(config!.roles).toEqual({ returning: { days: 2 } });
-  });
-
-  it("gates entry creation behind earned days in evaluateGatedWrite", () => {
-    const rules = [
-      { match: "guestbook", create: "returning", update: "creator" },
-    ];
-    const roles = { returning: { days: 2 } };
-
-    const firstDay = evaluateGatedWrite({
-      rules,
-      roles,
-      roomPath: undefined,
-      elementId: "guestbook",
-      pid: visitorPk,
-      counters: { days: 1 },
-      currentData: {},
-      ops: [{ op: "create", key: "e1", value: { text: "hi" } }],
-    });
-    expect(firstDay.ok).toBe(false);
-
-    const secondDay = evaluateGatedWrite({
-      rules,
-      roles,
-      roomPath: undefined,
-      elementId: "guestbook",
-      pid: visitorPk,
-      counters: { days: 2 },
-      currentData: {},
-      ops: [{ op: "create", key: "e1", value: { text: "hi" } }],
-    });
-    expect(secondDay.ok).toBe(true);
-    expect((secondDay as any).ops[0].value.createdBy).toBe(visitorPk);
-  });
-
-  it("does not grant earned roles from counters without a verified pid", () => {
-    const rules = [{ match: "guestbook", create: "returning" }];
-    const roles = { returning: { sessions: 2 } };
-
-    const verdict = evaluateGatedWrite({
-      rules,
-      roles,
-      roomPath: undefined,
-      elementId: "guestbook",
-      pid: undefined,
-      counters: { sessions: 2 },
-      currentData: {},
-      ops: [{ op: "create", key: "e1", value: { text: "hi" } }],
-    });
-
-    expect(verdict.ok).toBe(false);
   });
 });
 
@@ -879,5 +743,65 @@ describe("collectChangedElementIds", () => {
 
     expect(firstTag.has("title")).toBe(false);
     expect(secondTag.has("title")).toBe(false);
+  });
+});
+
+describe("planGatedReverts (backstop decision)", () => {
+  const rules: PermissionRule[] = [{ match: "guestbook", write: "admin" }];
+  const snapshot = { tag: "can-play", data: { entries: {} } };
+
+  it("restores a gated element that has a stored snapshot", () => {
+    const snapshots: GatedSnapshots = { guestbook: snapshot };
+    const reverts = planGatedReverts(
+      new Set(["guestbook"]),
+      rules,
+      undefined,
+      snapshots,
+    );
+    expect(reverts).toEqual([
+      { elementId: "guestbook", action: "restore", snapshot },
+    ]);
+  });
+
+  it("removes (never adopts) a gated element with no snapshot", () => {
+    const reverts = planGatedReverts(
+      new Set(["guestbook"]),
+      rules,
+      undefined,
+      {},
+    );
+    expect(reverts).toEqual([{ elementId: "guestbook", action: "remove" }]);
+  });
+
+  it("ignores changes to elements that aren't gated", () => {
+    const reverts = planGatedReverts(
+      new Set(["free-canvas"]),
+      rules,
+      undefined,
+      {},
+    );
+    expect(reverts).toEqual([]);
+  });
+
+  it("checks every known gated snapshot when the change set is unknown (null)", () => {
+    // collectChangedElementIds returns null when whole tags were replaced —
+    // the backstop must then re-check every element it has a snapshot for.
+    const snapshots: GatedSnapshots = { guestbook: snapshot };
+    const reverts = planGatedReverts(null, rules, undefined, snapshots);
+    expect(reverts).toEqual([
+      { elementId: "guestbook", action: "restore", snapshot },
+    ]);
+  });
+
+  it("respects path scope: a rule scoped to /wall doesn't gate elements on other paths", () => {
+    const scoped: PermissionRule[] = [
+      { path: "/wall", match: "guestbook", write: "admin" },
+    ];
+    expect(
+      planGatedReverts(new Set(["guestbook"]), scoped, "/wall", {}),
+    ).toEqual([{ elementId: "guestbook", action: "remove" }]);
+    expect(
+      planGatedReverts(new Set(["guestbook"]), scoped, "/other", {}),
+    ).toEqual([]);
   });
 });

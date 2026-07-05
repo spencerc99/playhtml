@@ -15,7 +15,6 @@ import { signChallengeForPid } from "./identity";
 import {
   setServerPermissionsStatus,
   setVerified,
-  setCounters,
   dispatchPermissionDenied,
   setServerPermissionsPending,
 } from "./permissions";
@@ -179,9 +178,6 @@ function handleAuthOk(message: AuthOkMessage): void {
     return;
   }
   storeToken(context.roomId, message.token);
-  if (message.stats?.counters) {
-    setCounters(message.stats.counters);
-  }
   setVerified(true);
   settleVerification(true);
 }

@@ -1,10 +1,6 @@
-// ABOUTME: The village guestbook — canonical earned-roles example: visitors read,
-// ABOUTME: returning visitors sign, regulars moderate, the keeper (owner pk) holds the deed.
+// ABOUTME: The village guestbook permissions demo: visitors read, verified users sign.
+// ABOUTME: Entry creators tend their own notes, while the keeper key moderates the book.
 import { playhtml } from "../packages/playhtml/src";
-import {
-  describeGuestbookStanding,
-  type GuestbookCounterName,
-} from "./utils/guestbookStanding";
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -31,25 +27,47 @@ let api: {
 };
 
 // ---------------------------------------------------------------------------
-// The ladder — which rung you stand on, derived from server-attested state.
+// The ladder — which rung you stand on, derived from verified identity state.
 // ---------------------------------------------------------------------------
 
-type Rung = "visitor" | "returning" | "regular" | "keeper";
+type Rung = "visitor" | "verified" | "keeper";
 
 function myRung(): Rung {
-  const { roles } = playhtml.me;
+  const { roles, verified } = playhtml.me;
   if (roles.includes("admin")) return "keeper";
-  if (roles.includes("regular")) return "regular";
-  if (roles.includes("returning")) return "returning";
+  if (verified) return "verified";
   return "visitor";
 }
 
-const RUNG_ORDER: Rung[] = ["visitor", "returning", "regular", "keeper"];
-const STANDING_COUNTER: GuestbookCounterName = "sessions";
-const REGULAR_THRESHOLD = 5;
+const RUNG_ORDER: Rung[] = ["visitor", "verified", "keeper"];
+
+function describeStanding(rung: Rung, canSign: boolean): {
+  standing: string;
+  signNote: string;
+} {
+  if (rung === "keeper") {
+    return {
+      standing: "you are the keeper · you may tend the whole book",
+      signNote: "the book is yours to tend.",
+    };
+  }
+
+  if (canSign) {
+    return {
+      standing: "you are verified · you may sign and tend your own entry",
+      signNote: "you may sign. you can amend or remove your own entry later.",
+    };
+  }
+
+  return {
+    standing: playhtml.permissionsEnforced
+      ? "checking your key…"
+      : "you are a visitor · the book is readable, but signing needs verification",
+    signNote: "",
+  };
+}
 
 function renderStanding(): void {
-  const me = playhtml.me;
   const rung = myRung();
   const rungIndex = RUNG_ORDER.indexOf(rung);
 
@@ -61,14 +79,7 @@ function renderStanding(): void {
 
   const canSign = playhtml.can("create", "#village-guestbook");
   ($("sign-btn") as HTMLButtonElement).disabled = !canSign;
-  const copy = describeGuestbookStanding({
-    rung,
-    counterName: STANDING_COUNTER,
-    counters: me.counters,
-    permissionsEnforced: playhtml.permissionsEnforced,
-    canSign,
-    regularThreshold: REGULAR_THRESHOLD,
-  });
+  const copy = describeStanding(rung, canSign);
   $("standing").textContent = copy.standing;
   $("sign-note").textContent = copy.signNote;
 }
@@ -118,7 +129,6 @@ function renderBook(book: Book): void {
     }
     if (playhtml.can("delete", "#village-guestbook", { entry })) {
       const sweep = document.createElement("button");
-      // Regulars sweeping someone else's entry vs. removing your own.
       sweep.textContent = playhtml.me.owns(entry) ? "remove" : "sweep up";
       sweep.onclick = () => {
         if (!api || !confirm("remove this entry from the book?")) return;
@@ -170,11 +180,9 @@ playhtml.onIdentityChange(() => {
 void playhtml.init({
   cursors: { enabled: true },
   permissions: {
-    // Mirrors /.well-known/playhtml.json. `create:returning` is deliberately
-    // NOT mirrored: earned counters only exist server-side, so in client-only
-    // mode signing stays open rather than impossible.
+    // Mirrors /.well-known/playhtml.json for client-side affordances.
     elements: {
-      "village-guestbook": "update:creator, delete:creator|regular|admin",
+      "village-guestbook": "create:verified, update:creator, delete:creator|admin",
     },
   },
 });

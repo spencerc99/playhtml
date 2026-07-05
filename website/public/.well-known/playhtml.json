@@ -16,9 +16,7 @@
   "roles": {
     "admin": [
       "pk_0494b0d6b651671ea6ac0e8540b77f622ef971834e4e4a3d540ea78860b1fcd982a37c5a306070303b7869542697f06987987e51980c08b5f3237dd0fee64dfbe1"
-    ],
-    "returning": { "sessions": 2 },
-    "regular": { "sessions": 5 }
+    ]
   },
   "elements": {
     "/permissions": {
@@ -33,7 +31,7 @@
       "shop-marquee": "write:admin"
     },
     "/guestbook": {
-      "village-guestbook": "create:returning, update:creator, delete:creator|regular|admin"
+      "village-guestbook": "create:verified, update:creator, delete:creator|admin"
     }
   }
 }

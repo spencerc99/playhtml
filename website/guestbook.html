@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="a village guestbook where trust accrues naturally — read on your first visit, sign when you return, sweep up once you're a regular"
+      content="a village guestbook where verified visitors can sign, creators tend their own notes, and the keeper moderates"
     />
     <meta name="og:image" content="https://playhtml.fun/playhtml.png" />
     <title>the village guestbook · playhtml</title>
@@ -84,16 +84,14 @@
   <body>
     <h1>📖 the village guestbook</h1>
     <p class="hint">
-      a guestbook where standing <em>accrues naturally</em>, the way it does in
-      a real place. nobody signs up for anything — the room simply remembers
-      who keeps coming back. the playhtml server counts verified sessions
-      against your key, so the ladder can't be climbed by clearing cookies.
+      a guestbook where signing is tied to a verified playhtml identity. visitors
+      can read, verified visitors can sign, entry creators can tend their own
+      notes, and the keeper's key can sweep up after the room.
     </p>
 
     <div id="ladder">
       <div class="rung" data-rung="visitor"><b>🌒 visitor</b>first session — read the book</div>
-      <div class="rung" data-rung="returning"><b>🌓 returning</b>2nd session — sign the book</div>
-      <div class="rung" data-rung="regular"><b>🌕 regular</b>5th session — sweep up after others</div>
+      <div class="rung" data-rung="verified"><b>🌓 verified</b>proved key — sign the book</div>
       <div class="rung" data-rung="keeper"><b>🗝️ keeper</b>holds the deed — anything, incl. the rules</div>
     </div>
     <p id="standing">checking your standing…</p>
@@ -111,8 +109,8 @@
       the keeper's powers (and everyone's) live in
       <a href="/.well-known/playhtml.json" target="_blank">/.well-known/playhtml.json</a>
       — the deed to this room. changing the rules <em>is</em> editing that
-      file: raise the bar to regulars-only signing, add a second keeper's key,
-      or lower the ladder entirely. the server re-reads it within minutes.
+      file: add a second keeper's key, change who can sign, or adjust creator
+      permissions. the server re-reads it within minutes.
     </div>
 
     <script type="module" src="./guestbook.ts"></script>
