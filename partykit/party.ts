@@ -105,6 +105,7 @@ import {
   pruneSessions,
   pruneCounterLog,
   recordVisit,
+  removeElementDataFromPlayDoc,
   verifyChallengeResponse,
   MAX_GATED_WRITE_BYTES,
   type AuthSessions,
@@ -2449,7 +2450,9 @@ export class PartyServer extends YServer {
   private async getPermissionsConfig(): Promise<WellKnownPermissionsConfig | null> {
     const now = Date.now();
     if (isWellKnownCacheFresh(this.permissionsCache, now)) {
-      return this.permissionsCache!.config;
+      const config = this.permissionsCache!.config;
+      if (config) await this.armGatedEnforcement(config);
+      return config;
     }
     if (this.permissionsLoadPromise) {
       return this.permissionsLoadPromise;
@@ -2462,7 +2465,9 @@ export class PartyServer extends YServer {
         )) as WellKnownCacheEntry | undefined;
         if (isWellKnownCacheFresh(stored, now)) {
           this.permissionsCache = stored!;
-          return stored!.config;
+          const config = stored!.config;
+          if (config) await this.armGatedEnforcement(config);
+          return config;
         }
 
         const { domain } = parseRoomName(this.name);
@@ -2476,7 +2481,9 @@ export class PartyServer extends YServer {
         return config;
       } catch (error) {
         console.error(`[Auth] Failed to load permissions config:`, error);
-        return this.permissionsCache?.config ?? null;
+        const config = this.permissionsCache?.config ?? null;
+        if (config) await this.armGatedEnforcement(config);
+        return config;
       } finally {
         this.permissionsLoadPromise = null;
       }
@@ -2491,16 +2498,16 @@ export class PartyServer extends YServer {
 
   private async initAuthForConnection(connection: Party.Connection): Promise<void> {
     const config = await this.getPermissionsConfig();
-    if (!config) return;
 
     const status: PermissionsStatusMessage = {
       type: "permissions_status",
-      enforced: true,
-      roles: config.roles ?? {},
-      rules: config.rules ?? [],
+      enforced: config !== null,
+      roles: config?.roles ?? {},
+      rules: config?.rules ?? [],
       roomPath: this.getRoomPath(),
     };
     this.sendCustomMessage(connection, JSON.stringify(status));
+    if (!config) return;
     this.issueChallenge(connection);
   }
 
@@ -2802,10 +2809,10 @@ export class PartyServer extends YServer {
         if (!isElementGated(rules, elementId, roomPath)) continue;
         const snapshot = snapshots[elementId];
         if (!snapshot) {
-          // First sight (e.g. a client seeding defaultData): adopt the
-          // current value as authoritative.
+          // The server cannot know a client's defaultData here, so no stored
+          // snapshot means the only authoritative baseline is absence.
           queueMicrotask(() => {
-            void this.adoptGatedSnapshot(elementId);
+            this.restoreMissingGatedSnapshot(elementId);
           });
           continue;
         }
@@ -2817,21 +2824,15 @@ export class PartyServer extends YServer {
     });
   }
 
-  private async adoptGatedSnapshot(elementId: string): Promise<void> {
-    const play = this.document.getMap("play") as Y.Map<any>;
-    let found: { tag: string; data: unknown } | null = null;
-    play.forEach((tagMap: any, tag: string) => {
-      if (found || !(tagMap instanceof Y.Map)) return;
-      if (tagMap.has(elementId)) {
-        const value = tagMap.get(elementId);
-        found = {
-          tag,
-          data: typeof value?.toJSON === "function" ? value.toJSON() : value,
-        };
-      }
-    });
-    if (found) {
-      await this.storeGatedSnapshot(elementId, found);
+  private restoreMissingGatedSnapshot(elementId: string): void {
+    let removed = false;
+    this.document.transact(() => {
+      removed = removeElementDataFromPlayDoc(this.document, elementId);
+    }, GATED_WRITE_ORIGIN);
+    if (removed) {
+      console.warn(
+        `[Auth] Reverting unauthorized direct write to gated element ${elementId} in room ${this.name}`
+      );
     }
   }
 

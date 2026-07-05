@@ -16,6 +16,7 @@ import {
   setVerified,
   setCounters,
   dispatchPermissionDenied,
+  setServerPermissionsPending,
 } from "./permissions";
 
 const SESSION_TOKEN_KEY_PREFIX = "playhtml_auth_token_";
@@ -24,6 +25,7 @@ interface PendingGatedWrite {
   element: HTMLElement;
   elementId: string;
   action: PermissionAction;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 interface HandshakeContext {
@@ -37,6 +39,7 @@ let resumeAttempted = false;
 const pendingGatedWrites = new Map<string, PendingGatedWrite>();
 
 const VERIFY_TIMEOUT_MS = 15_000;
+const GATED_WRITE_TIMEOUT_MS = 10_000;
 
 interface PendingVerification {
   promise: Promise<boolean>;
@@ -53,6 +56,13 @@ function settleVerification(ok: boolean): void {
   pendingVerification = null;
 }
 
+function clearPendingGatedWrites(): void {
+  for (const pending of pendingGatedWrites.values()) {
+    clearTimeout(pending.timer);
+  }
+  pendingGatedWrites.clear();
+}
+
 /**
  * (Re)binds the handshake to the current provider/room. Called at init and on
  * navigation when the main provider is rebuilt — verification state is per
@@ -61,15 +71,15 @@ function settleVerification(ok: boolean): void {
 export function bindHandshake(next: HandshakeContext): void {
   context = next;
   resumeAttempted = false;
-  pendingGatedWrites.clear();
+  clearPendingGatedWrites();
   settleVerification(false);
   setVerified(false);
-  setServerPermissionsStatus(null);
+  setServerPermissionsPending(true);
 }
 
 export function unbindHandshake(): void {
   context = null;
-  pendingGatedWrites.clear();
+  clearPendingGatedWrites();
   settleVerification(false);
   setVerified(false);
   setServerPermissionsStatus(null);
@@ -110,6 +120,7 @@ export function requestVerification(): Promise<boolean> {
   resumeAttempted = false;
   setVerified(false);
   if (!context) return Promise.resolve(false);
+  clearToken(context.roomId);
   if (!pendingVerification) {
     let resolve!: (ok: boolean) => void;
     const promise = new Promise<boolean>((r) => (resolve = r));
@@ -159,6 +170,13 @@ async function handleChallenge(message: AuthChallengeMessage): Promise<void> {
 
 function handleAuthOk(message: AuthOkMessage): void {
   if (!context) return;
+  const expectedPid = context.getPid();
+  if (expectedPid !== undefined && message.pid !== expectedPid) {
+    clearToken(context.roomId);
+    setVerified(false);
+    settleVerification(false);
+    return;
+  }
   storeToken(context.roomId, message.token);
   if (message.stats?.counters) {
     setCounters(message.stats.counters);
@@ -185,6 +203,7 @@ function handleGatedWriteResult(message: GatedWriteResultMessage): void {
   const pending = pendingGatedWrites.get(message.opId);
   if (!pending) return;
   pendingGatedWrites.delete(message.opId);
+  clearTimeout(pending.timer);
   if (!message.ok) {
     dispatchPermissionDenied(pending.element, {
       action: pending.action,
@@ -208,10 +227,21 @@ export function sendGatedWrite(args: {
   const ctx = context;
   if (!ctx) return;
   const opId = crypto.randomUUID();
+  const timer = setTimeout(() => {
+    const pending = pendingGatedWrites.get(opId);
+    if (!pending) return;
+    pendingGatedWrites.delete(opId);
+    dispatchPermissionDenied(pending.element, {
+      action: pending.action,
+      elementId: pending.elementId,
+      reason: "timed out waiting for server",
+    });
+  }, GATED_WRITE_TIMEOUT_MS);
   pendingGatedWrites.set(opId, {
     element: args.element,
     elementId: args.elementId,
     action: "write",
+    timer,
   });
   ctx.send(
     JSON.stringify({

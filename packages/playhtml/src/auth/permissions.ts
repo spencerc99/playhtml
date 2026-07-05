@@ -12,6 +12,7 @@ import type {
   PlayerIdentity,
   RoleRef,
 } from "@playhtml/common";
+import { normalizePathname } from "../room";
 import {
   PERMISSION_ACTIONS,
   isEarnedRoleCondition,
@@ -75,6 +76,7 @@ interface PermissionsState {
   /** Client rules normalized from config.elements + config.rules. */
   clientRules: PermissionRule[];
   serverStatus: PermissionsStatusMessage | null;
+  serverStatusPending: boolean;
   identity: PlayerIdentity | null;
   verified: boolean;
   /** Server-attested counter totals (from auth_ok). */
@@ -86,6 +88,7 @@ const state: PermissionsState = {
   config: {},
   clientRules: [],
   serverStatus: null,
+  serverStatusPending: false,
   identity: null,
   verified: false,
   counters: undefined,
@@ -105,7 +108,20 @@ export function setServerPermissionsStatus(
   status: PermissionsStatusMessage | null,
 ): void {
   state.serverStatus = status;
+  state.serverStatusPending = false;
   if (status?.enforced) warnOnClientServerDrift(status);
+  resolveRoles();
+  document.dispatchEvent(
+    new CustomEvent(PERMISSIONS_CHANGE_EVENT, { detail: getMe() }),
+  );
+}
+
+export function setServerPermissionsPending(pending: boolean): void {
+  if (state.serverStatusPending === pending) return;
+  state.serverStatusPending = pending;
+  if (pending) {
+    state.serverStatus = null;
+  }
   resolveRoles();
   document.dispatchEvent(
     new CustomEvent(PERMISSIONS_CHANGE_EVENT, { detail: getMe() }),
@@ -192,11 +208,16 @@ export function isServerEnforced(): boolean {
   return state.serverStatus?.enforced ?? false;
 }
 
+export function isPermissionsStatusPending(): boolean {
+  return state.serverStatusPending;
+}
+
 /** Test-only: returns permissions state to its initial empty shape. */
 export function __resetPermissionsForTests(): void {
   state.config = {};
   state.clientRules = [];
   state.serverStatus = null;
+  state.serverStatusPending = false;
   state.identity = null;
   state.verified = false;
   state.counters = undefined;
@@ -290,7 +311,7 @@ function resolveTarget(
 
 function getCurrentRoomPath(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  return window.location.pathname || "/";
+  return normalizePathname(window.location.pathname || "/");
 }
 
 /**

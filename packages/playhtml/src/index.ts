@@ -61,6 +61,7 @@ import {
   isLocallyGated,
   isServerGated,
   isServerEnforced,
+  isPermissionsStatusPending,
   dispatchPermissionDenied,
   __resetPermissionsForTests,
   IDENTITY_CHANGE_EVENT,
@@ -79,6 +80,7 @@ import {
   canUseRealtimePresenceTransport,
   RealtimePresenceTransport,
 } from "./presence-transport";
+import { normalizePathname } from "./room";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -134,13 +136,6 @@ function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   return includeSearch
     ? transformedPathname + window.location.search
     : transformedPathname;
-}
-
-/**
- * Normalizes a pathname by stripping filename extensions, consistent with getDefaultRoom
- */
-function normalizePathname(pathname: string): string {
-  return pathname.replace(/\.[^/.]+$/, "");
 }
 
 /**
@@ -1586,6 +1581,17 @@ function createPlayElementData<T extends TagType, TData = any>(
       // Prevent writes for read-only shared consumer elements
       const elementIdFromAttr = getIdForElement(element);
       if (isSharedReadOnly(element, elementIdFromAttr)) {
+        return;
+      }
+      if (isPermissionsStatusPending()) {
+        const queuedData =
+          typeof newData === "function" ? newData : clonePlain(newData);
+        const retry = () => {
+          elementData.onChange(queuedData as TData);
+        };
+        document.addEventListener(PERMISSIONS_CHANGE_EVENT, retry, {
+          once: true,
+        });
         return;
       }
       // Permission gating — synchronous cache lookups; elements with no

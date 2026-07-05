@@ -40,6 +40,25 @@ export function buildAuthChallengePayload(args: {
   return [AUTH_PROTOCOL, nonce, roomId, origin, String(ts)].join("|");
 }
 
+export function parseAuthChallengePayload(payload: string): {
+  protocol: string;
+  nonce: string;
+  roomId: string;
+  origin: string;
+  ts: number;
+} {
+  const parts = payload.split("|");
+  if (parts.length !== 5) {
+    throw new Error("Invalid auth challenge payload");
+  }
+  const [protocol, nonce, roomId, origin, tsRaw] = parts;
+  const ts = Number(tsRaw);
+  if (!protocol || !nonce || !roomId || !origin || !Number.isFinite(ts)) {
+    throw new Error("Invalid auth challenge payload");
+  }
+  return { protocol, nonce, roomId, origin, ts };
+}
+
 // ---------------------------------------------------------------------------
 // Crypto helpers (browser + workers + node >= 19 via globalThis.crypto)
 // ---------------------------------------------------------------------------

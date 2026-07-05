@@ -498,3 +498,23 @@ export function collectChangedElementIds(
   }
   return ids;
 }
+
+export function removeElementDataFromPlayDoc(
+  doc: Y.Doc,
+  elementId: string,
+): boolean {
+  const play = doc.getMap("play") as Y.Map<any>;
+  let removed = false;
+  play.forEach((tagMap: any) => {
+    if (
+      typeof tagMap?.has !== "function" ||
+      typeof tagMap.delete !== "function"
+    ) {
+      return;
+    }
+    if (!tagMap.has(elementId)) return;
+    tagMap.delete(elementId);
+    removed = true;
+  });
+  return removed;
+}

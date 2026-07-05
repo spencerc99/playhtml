@@ -10,6 +10,10 @@ import {
   vi,
 } from "vitest";
 import { playhtml } from "../index";
+import {
+  setServerPermissionsPending,
+  setServerPermissionsStatus,
+} from "../auth/permissions";
 
 async function waitForCondition(
   predicate: () => boolean,
@@ -161,6 +165,39 @@ describe("playhtml basic setup with SyncedStore", () => {
     });
     expect(el.classList.contains("toggled")).toBe(false);
     expect(el.classList.contains("clicked")).toBe(false);
+  });
+
+  it("queues setData while permissions status is pending", async () => {
+    const el = document.createElement("div");
+    el.id = "pending-permissions";
+    el.setAttribute("can-toggle", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-toggle");
+
+    const handler = playhtml
+      .elementHandlers!.get("can-toggle")!
+      .get("pending-permissions")!;
+
+    setServerPermissionsPending(true);
+    handler.setData({ on: true });
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(playhtml.syncedStore["can-toggle"]["pending-permissions"]).toEqual({
+      on: false,
+    });
+
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: false,
+      roles: {},
+      rules: [],
+    });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(playhtml.syncedStore["can-toggle"]["pending-permissions"]).toEqual({
+      on: true,
+    });
   });
 
   it("removes handlers for unmounted elements so replacements can register", async () => {

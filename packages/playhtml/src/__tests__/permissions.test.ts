@@ -194,6 +194,21 @@ describe("ergonomic config forms", () => {
     expect(can("write", title)).toBe(true);
   });
 
+  it("normalizes .html pathnames before matching path-keyed element rules", () => {
+    window.history.pushState({}, "", "/notes.html");
+    configurePermissions({
+      roles: { admin: [ADMIN_PK] },
+      elements: {
+        "/notes": { title: "write:admin" },
+      },
+    });
+    const title = makeElement("title");
+    setIdentity(identity(OTHER_PK));
+
+    expect(can("write", title)).toBe(false);
+    expect(isLocallyGated(title, "title")).toBe(true);
+  });
+
   it("treats flat element rules as applying on every path", () => {
     window.history.pushState({}, "", "/other");
     configurePermissions({

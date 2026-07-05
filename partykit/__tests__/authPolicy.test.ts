@@ -13,10 +13,12 @@ import {
   evaluateGatedWrite,
   isElementGated,
   collectChangedElementIds,
+  removeElementDataFromPlayDoc,
   AUTH_CHALLENGE_TTL_MS,
 } from "../auth";
 import {
   buildAuthChallengePayload,
+  parseAuthChallengePayload,
   exportPublicKeyHex,
   sanitizeWellKnownConfig,
   satisfiesRole,
@@ -81,6 +83,24 @@ describe("wellKnownUrlForDomain", () => {
 
 describe("challenge verification", () => {
   const roomId = encodeURIComponent("example.com-/wall");
+
+  it("parses canonical challenge payloads by field name", () => {
+    const payload = buildAuthChallengePayload({
+      nonce: "nonce",
+      roomId,
+      origin: "https://example.com",
+      ts: 1234,
+    });
+
+    expect(parseAuthChallengePayload(payload)).toEqual({
+      protocol: "playhtml-auth-v1",
+      nonce: "nonce",
+      roomId,
+      origin: "https://example.com",
+      ts: 1234,
+    });
+    expect(() => parseAuthChallengePayload("bad|payload")).toThrow();
+  });
 
   it("accepts a correctly signed response bound to the room's domain", async () => {
     const { pid, privateKey } = await makeKeypair();
@@ -722,5 +742,25 @@ describe("collectChangedElementIds", () => {
       el.set("text", "deep change");
     });
     expect(Array.from(collected[2]!)).toEqual(["guestbook"]);
+  });
+
+  it("removes ambient element data when no gated snapshot exists", () => {
+    const doc = new Y.Doc();
+    const play = doc.getMap("play");
+    const firstTag = new Y.Map();
+    const firstData = new Y.Map();
+    firstData.set("text", "ambient");
+    firstTag.set("title", firstData);
+    play.set("can-play", firstTag);
+    const secondTag = new Y.Map();
+    const secondData = new Y.Map();
+    secondData.set("x", 1);
+    secondTag.set("title", secondData);
+    play.set("can-move", secondTag);
+
+    expect(removeElementDataFromPlayDoc(doc, "title")).toBe(true);
+
+    expect(firstTag.has("title")).toBe(false);
+    expect(secondTag.has("title")).toBe(false);
   });
 });
