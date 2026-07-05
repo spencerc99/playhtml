@@ -147,8 +147,8 @@ interface CanMoveElementProps {
 ```
 
 - **`bounds`**: id or CSS selector of the container to keep the element inside. `"arena"`, `"#arena"`, and `".grid"` all work.
-- **`boundsMinVisible`**: fraction (`0–1`) of the element that must stay inside `bounds` on every edge. Default `0.25`. Use `1` to pin the element fully inside, `0` to drop the fraction constraint entirely.
-- **`boundsMinVisiblePx`**: absolute pixel floor on the keep-visible slice. Default `60`. Useful when an image has transparent padding around its paint, where a pure fraction of the layout bbox might otherwise let the visible pixels clip into invisible border.
+- **`boundsMinVisible`**: fraction (`0–1`) of the element that must stay inside `bounds` on every edge. Default `1`, which keeps the full element inside. Lower values allow part of the element to hang over the edge; `0` drops the fraction constraint entirely.
+- **`boundsMinVisiblePx`**: absolute pixel floor on the keep-visible slice. Default `60`; it applies when `boundsMinVisible` allows partial overhang.
 
 The effective keep-visible slice on each axis is `max(boundsMinVisible × size, boundsMinVisiblePx)`. Set both knobs to `0` to opt fully out of the keep-visible guarantee. See [`can-move` in the capabilities reference](/docs/capabilities/#can-move) for the interaction details.
 
