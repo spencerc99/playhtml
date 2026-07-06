@@ -1492,6 +1492,10 @@ function createPlayElementData<T extends TagType, TData = any>(
 
   const elementData: ElementData = {
     ...tagInfo,
+    myDefaultAwareness:
+      initialAwareness !== undefined
+        ? initialAwareness
+        : tagInfo.myDefaultAwareness,
     devMode: isDevelopmentMode,
     // Always provide a plain snapshot to render paths
     data: clonePlain(dataProxy),

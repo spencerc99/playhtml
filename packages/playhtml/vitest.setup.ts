@@ -64,6 +64,7 @@ vi.mock("y-partyserver/provider", () => {
           getLocalState: () => local.state,
           setLocalStateField: (key: string, value: any) => {
             local.state = { ...local.state, [key]: value };
+            states.set(this.clientId, local.state);
             // Emit change event with proper structure expected by cursor-client
             // When local state changes, it's considered an "update" for our own client
             this.emit("change", {

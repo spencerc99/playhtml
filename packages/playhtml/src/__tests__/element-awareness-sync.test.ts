@@ -121,5 +121,11 @@ describe("element awareness sync", () => {
       .get("seeded-presence")!;
 
     expect(handler.awareness).toEqual([{ active: true }]);
+    expect(handler.getAwarenessEventHandlerData().myAwareness).toEqual({
+      active: true,
+    });
+    expect(
+      provider.awareness.getLocalState()?.["can-play"]?.["seeded-presence"],
+    ).toEqual({ active: true });
   });
 });

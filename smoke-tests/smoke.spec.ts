@@ -187,6 +187,10 @@ async function openHomepageAwarenessClient(browser: Browser, room: string) {
   return { context, page, errors };
 }
 
+async function readHomepageAwarenessCount(page: Page) {
+  return Number(await page.locator("#site-console-count-number").innerText());
+}
+
 test("smoke: homepage element awareness syncs across two browser clients", async ({
   browser,
 }) => {
@@ -195,22 +199,19 @@ test("smoke: homepage element awareness syncs across two browser clients", async
     .slice(2)}`;
   const clientA = await openHomepageAwarenessClient(browser, room);
   const clientB = await openHomepageAwarenessClient(browser, room);
+  let clientBClosed = false;
 
   try {
     await expect
       .poll(async () => {
-        return Number(
-          await clientA.page.locator("#site-console-count-number").innerText(),
-        );
+        return readHomepageAwarenessCount(clientA.page);
       }, { timeout: 20_000 })
-      .toBeGreaterThanOrEqual(2);
+      .toBe(2);
     await expect
       .poll(async () => {
-        return Number(
-          await clientB.page.locator("#site-console-count-number").innerText(),
-        );
+        return readHomepageAwarenessCount(clientB.page);
       }, { timeout: 20_000 })
-      .toBeGreaterThanOrEqual(2);
+      .toBe(2);
 
     expect.soft(clientA.errors.pageErrors, "client A page errors").toEqual([]);
     expect.soft(clientB.errors.pageErrors, "client B page errors").toEqual([]);
@@ -226,8 +227,18 @@ test("smoke: homepage element awareness syncs across two browser clients", async
     expect
       .soft(clientB.errors.sameOriginFailures, "client B asset failures")
       .toEqual([]);
+
+    await clientB.context.close();
+    clientBClosed = true;
+    await expect
+      .poll(async () => {
+        return readHomepageAwarenessCount(clientA.page);
+      }, { timeout: 20_000 })
+      .toBe(1);
   } finally {
     await clientA.context.close();
-    await clientB.context.close();
+    if (!clientBClosed) {
+      await clientB.context.close();
+    }
   }
 });
