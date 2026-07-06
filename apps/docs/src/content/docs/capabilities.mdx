@@ -10,7 +10,7 @@ import { MoveHatCatDemo } from '@/components/react/capability-demos/MoveHatCatDe
 import { InteractiveToggleDemo } from '@/components/react/InteractiveToggleDemo';
 import { GrowBalloonDemo } from '@/components/react/capability-demos/GrowBalloonDemo';
 import { SpinWheelDemo } from '@/components/react/capability-demos/SpinWheelDemo';
-import { HoverCursorColorsDemo } from '@/components/react/capability-demos/HoverCursorColorsDemo';
+import { CanHoverDemo } from '@/components/react/capability-demos/CanHoverDemo';
 import { DuplicateRabbitDemo } from '@/components/react/capability-demos/DuplicateRabbitDemo';
 
 Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
@@ -247,7 +247,7 @@ import { TagType } from "playhtml";
 **Use it for:** "who's looking at this right now" affordances, social read-receipts, zero-latency shared hover effects.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-hover">
-  <HoverCursorColorsDemo client:only="react" />
+  <CanHoverDemo client:only="react" />
 </div>
 
 **How it works.** While *anyone* (you or another reader) is hovering the element, playhtml sets a `data-playhtml-hover` attribute on it; when nobody is hovering, the attribute is removed. Style the effect by targeting `[data-playhtml-hover]` instead of the `:hover` pseudo-class. That's the only change from a normal hover style, and it's the same attribute whether you use the vanilla capability or the React component.
