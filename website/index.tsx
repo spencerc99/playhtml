@@ -97,6 +97,11 @@ function setupHomepageAwarenessStatus() {
   };
 }
 
+const isCursorRoom = (
+  value: string | null,
+): value is "page" | "domain" | "section" =>
+  value === "page" || value === "domain" || value === "section";
+
 function getLocalPreviewInitOptions() {
   const localHostnames = new Set(["localhost", "127.0.0.1"]);
   if (!localHostnames.has(window.location.hostname)) return {};
@@ -109,7 +114,7 @@ function getLocalPreviewInitOptions() {
   return {
     ...(host ? { host } : {}),
     ...(room ? { room } : {}),
-    ...(cursorRoom ? { cursorRoom } : {}),
+    ...(isCursorRoom(cursorRoom) ? { cursorRoom } : {}),
   };
 }
 
