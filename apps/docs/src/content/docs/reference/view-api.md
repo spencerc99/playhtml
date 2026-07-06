@@ -2,7 +2,7 @@
 title: "View API (vanilla)"
 description: "Types and signatures for the vanilla custom-element API: playhtml.register, playhtml.define, the view function, the element handle, and the re-exported lit-html helpers."
 sidebar:
-  order: 5
+  order: 6
 ---
 
 The vanilla API for building custom collaborative elements. For usage with side-by-side examples, see [Custom elements](/docs/custom-elements/); for the React equivalent, see the [React API](/docs/reference/react-api/).

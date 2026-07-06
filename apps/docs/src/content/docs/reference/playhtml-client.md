@@ -351,9 +351,7 @@ Throws if called before `init()` completes sync.
 
 ## Presence
 
-Presence tracks who is in the room and what they are doing.
-
-See [Presence](/docs/data/presence/) for a full guide.
+Presence tracks who is in the room and what they are doing. See [Presence & identity](/docs/reference/presence/) for types and API details. Usage guide: [Presence](/docs/data/presence/).
 
 ### `presence`
 

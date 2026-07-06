@@ -241,7 +241,7 @@ interface ElementEventHandlerData<T, U, V> {
 | `awarenessByStableId` | Same values keyed by stable player id. |
 | `setData` | Mutator form `setData(d => { … })` is merge-friendly and preferred for lists and nested fields. Value form `setData({ … })` replaces the whole snapshot (last-write-wins). See [Data essentials](/docs/data/data-essentials/). |
 | `setLocalData` | Updates local state. Re-renders `view` elements; does not re-run `updateElement`. |
-| `setMyAwareness` | Broadcasts your awareness value. Does not persist. |
+| `setMyAwareness` | Broadcasts your awareness value. Does not persist. See [Presence & identity](/docs/reference/presence/#element-awareness). |
 | `requestUpdate` | Re-runs `view` now. No-op without a `view`. Use for clock-driven UI. |
 
 Do not call `setData`, `setLocalData`, or `setMyAwareness` during a `view` render — playhtml logs an error and ignores the write.
