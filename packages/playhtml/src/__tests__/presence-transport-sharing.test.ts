@@ -69,14 +69,20 @@ describe("presence transport sharing", () => {
   });
 
   it("publishes the same page on every join across the shared socket", async () => {
-    await playhtml.init({ cursors: { enabled: true } });
-    const socket = getPresenceSocketForRoom(playhtml.roomId);
-    const joinMessages = sentMessages(socket).filter(
-      (message) => message.type === "presence-join",
-    );
-    expect(joinMessages.length).toBeGreaterThan(0);
-    for (const message of joinMessages) {
-      expect(message.page).toBe(window.location.pathname);
+    const origPath = window.location.pathname + window.location.search;
+    try {
+      window.history.pushState({}, "", "/pages/demo.html");
+      await playhtml.init({ cursors: { enabled: true } });
+      const socket = getPresenceSocketForRoom(playhtml.roomId);
+      const joinMessages = sentMessages(socket).filter(
+        (message) => message.type === "presence-join",
+      );
+      expect(joinMessages.length).toBeGreaterThan(0);
+      for (const message of joinMessages) {
+        expect(message.page).toBe(window.location.pathname);
+      }
+    } finally {
+      window.history.replaceState(null, "", origPath);
     }
   });
 });
