@@ -1,9 +1,10 @@
 // ABOUTME: Verifies element awareness publishes stable player identity metadata.
 // ABOUTME: Keeps presence-only users keyed by public identity instead of Yjs client id.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getStableIdForAwareness } from "../awareness-utils";
 import { playhtml, resetPlayHTML } from "../index";
+import { getPresenceSocketForRoom, sentMessages } from "./presence-test-utils";
 
 function getCurrentProvider(): any {
   const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
@@ -26,9 +27,19 @@ describe("element awareness identity", () => {
   afterEach(async () => {
     document.body.innerHTML = "";
     await resetPlayHTML();
+    vi.unstubAllGlobals();
   });
 
   it("writes player identity before publishing element awareness", async () => {
+    vi.stubGlobal("WebSocket", undefined);
+    document.body.innerHTML = "";
+    (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
+    await resetPlayHTML();
+    await playhtml.init({
+      cursors: { enabled: false },
+    });
+    await new Promise((resolve) => queueMicrotask(resolve));
+
     const el = document.createElement("div");
     el.id = "presence-only";
     el.setAttribute("can-toggle", "");
@@ -46,5 +57,15 @@ describe("element awareness identity", () => {
       publicKey: playhtml.presence.getMyIdentity().publicKey,
     });
     expect(stableId).toBe(playhtml.presence.getMyIdentity().publicKey);
+  });
+
+  it("joins the page presence room with the persistent identity", async () => {
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    const join = sentMessages(socket).find(
+      (message) => message.type === "presence-join",
+    );
+    expect(join.identity.publicKey).toBe(
+      playhtml.presence.getMyIdentity().publicKey,
+    );
   });
 });
