@@ -8,7 +8,6 @@ import { deepReplaceIntoProxy } from "@playhtml/common";
 import { env } from "cloudflare:workers";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
-import * as awarenessProtocol from "y-protocols/awareness";
 import { supabase } from "./db";
 import { AdminHandler } from "./admin";
 import {
@@ -85,7 +84,6 @@ import {
 import { BridgeHealth } from "./bridgeHealth";
 import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
 import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
-import { getOrphanedAwarenessIds } from "./awarenessCleanup";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -261,24 +259,6 @@ export class PartyServer extends YServer {
 
   private getOpenConnectionCount(): number {
     return Array.from(this.getConnections()).length;
-  }
-
-  private pruneOrphanedAwarenessStates(): void {
-    const awareness = this.document.awareness;
-    const orphanedIds = getOrphanedAwarenessIds(
-      awareness.getStates().keys(),
-      this.getConnections<PartyServerConnectionState>()
-    );
-
-    if (orphanedIds.length === 0) return;
-
-    awarenessProtocol.removeAwarenessStates(awareness, orphanedIds, null);
-    for (const clientId of orphanedIds) {
-      awareness.meta.delete(clientId);
-    }
-    console.warn(
-      `[PartyServer] Pruned ${orphanedIds.length} orphaned awareness states: room=${this.name}`
-    );
   }
 
   markDocumentPersisted(documentBase64: string): void {
@@ -1359,8 +1339,6 @@ export class PartyServer extends YServer {
       // OR we should stop with all this pruning and instead enforce that these are declared globally in the client even for dynamically rendered elements (they have to be registered in init?)
       await this.setSharedPermissions(permissionsByElementId);
     }
-
-    this.pruneOrphanedAwarenessStates();
 
     await super.onConnect(connection, ctx);
   }
