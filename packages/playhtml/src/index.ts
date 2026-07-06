@@ -1183,11 +1183,9 @@ async function runHandleNavigation(): Promise<void> {
     }
   }
 
-  // Rebind awareness listener to the current provider. This is required
-  // whenever we rebuilt yprovider or cursorClient above — the old awareness
-  // object was destroyed along with its provider, orphaning any listener
-  // we had attached at init time.
-  if (mainRoomChanged || cursorRoomChanged || cursorEnabledChanged) {
+  // Element awareness lives on the page provider, so rebind only when the page
+  // room provider is rebuilt and its awareness object has been replaced.
+  if (mainRoomChanged) {
     bindAwarenessListener();
   }
 
