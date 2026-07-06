@@ -586,6 +586,44 @@ function resolveExplicitRoom(): string | undefined {
 let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
 let cursorOptionsCache: CursorOptions | undefined = undefined;
 let cachedOnError: (() => void) | undefined = undefined;
+
+type AcquiredPresenceTransport = {
+  transport: RealtimePresenceTransport;
+  refCount: number;
+};
+// One presence socket per room, shared between the cursor client and element
+// awareness when their rooms coincide. Refcounted so a cursor-room change
+// never tears down a socket element awareness still uses (and vice versa).
+const presenceTransportsByRoom = new Map<string, AcquiredPresenceTransport>();
+let cursorPresenceTransportRoom: string | null = null;
+
+function acquirePresenceTransport(
+  room: string,
+): RealtimePresenceTransport | null {
+  if (!canUseRealtimePresenceTransport()) return null;
+  const existing = presenceTransportsByRoom.get(room);
+  if (existing) {
+    existing.refCount++;
+    return existing.transport;
+  }
+  const transport = new RealtimePresenceTransport({
+    host: __currentHost,
+    room,
+  });
+  presenceTransportsByRoom.set(room, { transport, refCount: 1 });
+  return transport;
+}
+
+function releasePresenceTransport(room: string): void {
+  const entry = presenceTransportsByRoom.get(room);
+  if (!entry) return;
+  entry.refCount--;
+  if (entry.refCount > 0) return;
+  presenceTransportsByRoom.delete(room);
+  try {
+    entry.transport.destroy();
+  } catch {}
+}
 let roomResetPromise: Promise<void> | null = null;
 let pendingRoomResetEpoch: number | null = null;
 const SERVER_ROOM_RESET_SYNC_TIMEOUT_MS = 5000;
@@ -801,6 +839,10 @@ function buildMainProvider(args: {
 function teardownCursors(): void {
   try { cursorClient?.destroy?.(); } catch {}
   cursorClient = null;
+  if (cursorPresenceTransportRoom !== null) {
+    releasePresenceTransport(cursorPresenceTransportRoom);
+    cursorPresenceTransportRoom = null;
+  }
   try { cursorProvider?.disconnect?.(); } catch {}
   try { cursorProvider?.destroy?.(); } catch {}
   cursorProvider = null;
@@ -922,12 +964,11 @@ function buildCursors(args: {
     currentCursorRoomId = mainRoom;
   }
 
-  const cursorPresenceTransport = canUseRealtimePresenceTransport()
-    ? new RealtimePresenceTransport({
-        host: partykitHost,
-        room: currentCursorRoomId,
-      })
-    : undefined;
+  const cursorPresenceTransport =
+    acquirePresenceTransport(currentCursorRoomId) ?? undefined;
+  cursorPresenceTransportRoom = cursorPresenceTransport
+    ? currentCursorRoomId
+    : null;
   cursorClient = new CursorClientAwareness(
     providerForCursors,
     cursorOptions,
@@ -1938,6 +1979,14 @@ export async function resetPlayHTML(): Promise<void> {
 
     teardownCursors();
     teardownMainProvider();
+
+    for (const [, entry] of presenceTransportsByRoom) {
+      try {
+        entry.transport.destroy();
+      } catch {}
+    }
+    presenceTransportsByRoom.clear();
+    cursorPresenceTransportRoom = null;
 
     try {
       teardownDevUI();

@@ -2201,7 +2201,6 @@ export class CursorClientAwareness {
       this.presenceTransportUnsubscribe?.();
       this.presenceTransportUnsubscribe = null;
       this.presenceTransport.clear("cursor");
-      this.presenceTransport.destroy();
     } else {
       this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
     }
