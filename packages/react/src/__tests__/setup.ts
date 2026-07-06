@@ -50,6 +50,7 @@ const mockedPlayhtml = {
   rejectReady: (error: unknown) => {
     mockReadyReject(error);
   },
+  configure: vi.fn(),
   init: vi.fn().mockImplementation(() => {
     mockedPlayhtml.isInitialized = true;
     mockedPlayhtml.isLoading = false;

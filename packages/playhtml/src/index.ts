@@ -542,6 +542,7 @@ function isPromiseLike(value: unknown): value is Promise<void> {
 }
 /** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
 let lastElementAwarenessFingerprint: string | null = null;
+let trackedElementAwarenessKeys = new Set<string>();
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
 // Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
@@ -1030,6 +1031,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   teardownCursors();
   hasSynced = false;
   lastElementAwarenessFingerprint = null;
+  trackedElementAwarenessKeys.clear();
   recreateStore();
 
   buildMainProvider({
@@ -1152,6 +1154,7 @@ async function runHandleNavigation(): Promise<void> {
     teardownMainProvider();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
+    trackedElementAwarenessKeys.clear();
     // Re-init the doc for the new room: page AND element data are room-scoped,
     // and the doc is reused across rooms, so a fresh doc resets both to the new
     // room (like a page reload) without syncing a delete tombstone back to the
@@ -1699,19 +1702,34 @@ function onChangeAwareness() {
   });
 
   // Update all handlers with both array and byStableId
-  // Split only on first colon so element IDs that contain colons (valid in HTML) are preserved
   elementAwareness.forEach(({ array, byStableId }, key) => {
-    const colonIndex = key.indexOf(":");
-    const tag = key.slice(0, colonIndex);
-    const elementId = key.slice(colonIndex + 1);
-    const tagElementHandlers = elementHandlers.get(tag as TagType);
-    if (!tagElementHandlers) return;
-
-    const handler = tagElementHandlers.get(elementId);
-    if (handler) {
-      handler.updateAwareness(array, byStableId);
-    }
+    updateHandlerAwarenessForKey(key, array, byStableId);
   });
+
+  for (const key of trackedElementAwarenessKeys) {
+    if (elementAwareness.has(key)) continue;
+    updateHandlerAwarenessForKey(key, [], new Map());
+  }
+
+  trackedElementAwarenessKeys = new Set(elementAwareness.keys());
+}
+
+function updateHandlerAwarenessForKey(
+  key: string,
+  array: any[],
+  byStableId: Map<string, any>,
+) {
+  // Split only on first colon so element IDs that contain colons (valid in HTML) are preserved
+  const colonIndex = key.indexOf(":");
+  const tag = key.slice(0, colonIndex);
+  const elementId = key.slice(colonIndex + 1);
+  const tagElementHandlers = elementHandlers.get(tag as TagType);
+  if (!tagElementHandlers) return;
+
+  const handler = tagElementHandlers.get(elementId);
+  if (handler) {
+    handler.updateAwareness(array, byStableId);
+  }
 }
 
 /**
@@ -1930,6 +1948,7 @@ export async function resetPlayHTML(): Promise<void> {
 
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
+    trackedElementAwarenessKeys.clear();
     firstSetup = true;
     isLoading = true;
     initStarted = false;

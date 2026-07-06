@@ -1,5 +1,7 @@
 // ABOUTME: Configures browser API shims and provider fakes for playhtml tests.
 // ABOUTME: Keeps unit tests deterministic without opening real network providers.
+((globalThis as any).litIssuedWarnings ??= new Set<string>()).add("dev-mode");
+
 // JSDOM doesn't implement some layout APIs; mock minimal ones we use.
 Object.defineProperty(window, "outerWidth", { value: 1024, writable: true });
 Object.defineProperty(window, "innerHeight", { value: 768, writable: true });
