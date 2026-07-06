@@ -1,0 +1,37 @@
+{
+  "_readme": [
+    "Domain-bound playhtml permission rules for playhtml.fun.",
+    "Whoever controls this file controls the rules — the playhtml server",
+    "fetches it (cached ~5 min) and enforces these rules for every room on",
+    "this domain. Docs: https://playhtml.fun/docs/advanced/permissions/",
+    "",
+    "To claim an admin/shopkeeper key: open any playhtml.fun page, run",
+    "`playhtml.me.pid` in the console, and replace the placeholder below.",
+    "Invalid placeholder keys are safely ignored (the role just has no",
+    "members), so admin-gated elements deny everyone until a real key is set.",
+    "",
+    "In local dev this file is served by the Vite dev server; run",
+    "`bun dev-server` so the local partykit server can fetch and enforce it."
+  ],
+  "roles": {
+    "admin": [
+      "pk_0494b0d6b651671ea6ac0e8540b77f622ef971834e4e4a3d540ea78860b1fcd982a37c5a306070303b7869542697f06987987e51980c08b5f3237dd0fee64dfbe1"
+    ]
+  },
+  "elements": {
+    "/permissions": {
+      "locked-title": "write:admin",
+      "playground-notes": "create:verified, update:creator, delete:creator|admin"
+    },
+    "/garden": {
+      "community-garden": "create:verified, update:creator, delete:creator|admin"
+    },
+    "/shop": {
+      "shop-sign": "write:admin",
+      "shop-marquee": "write:admin"
+    },
+    "/guestbook": {
+      "village-guestbook": "create:verified, update:creator, delete:creator|admin"
+    }
+  }
+}

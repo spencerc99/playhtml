@@ -6,6 +6,11 @@ import type { QueryOptions } from '../storage/LocalEventStore'
 import { uploadEvents, syncParticipantColor } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
+import {
+  AUTH_PROTOCOL,
+  parseAuthChallengePayload,
+  signAuthPayload,
+} from '@playhtml/common'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
@@ -287,6 +292,42 @@ export default defineBackground(() => {
     return `hsl(${hue}, ${s}%, ${l}%)`;
   }
 
+  // Signs a playhtml auth challenge with the identity's private key. The page
+  // can never touch the key — it only gets a signature, and only over a
+  // structured "playhtml-auth-v1" payload whose origin field must match the
+  // requesting frame's actual origin (verified here, not trusted from the
+  // payload). The worst a malicious page can obtain is a signature valid only
+  // for a playhtml session on its own origin.
+  async function signPlayhtmlChallenge(
+    payload: unknown,
+    senderFrameUrl: string | undefined
+  ): Promise<string> {
+    if (typeof payload !== 'string') throw new Error('invalid payload')
+
+    const parsed = parseAuthChallengePayload(payload)
+    if (parsed.protocol !== AUTH_PROTOCOL) {
+      throw new Error('not a playhtml auth challenge')
+    }
+
+    if (!senderFrameUrl) throw new Error('unknown sender origin')
+    const senderOrigin = new URL(senderFrameUrl).origin
+    if (parsed.origin !== senderOrigin) {
+      throw new Error('origin mismatch')
+    }
+
+    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
+    if (!playerIdentity?.privateKey) throw new Error('no identity key')
+
+    const privateKey = await crypto.subtle.importKey(
+      'jwk',
+      playerIdentity.privateKey as JsonWebKey,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['sign']
+    )
+    return signAuthPayload(privateKey, payload)
+  }
+
   // Sync participant identity (cursor color) to server on startup
   async function syncIdentityToServer() {
     try {
@@ -320,6 +361,13 @@ export default defineBackground(() => {
 
     if (message.type === 'UPDATE_SITE_DISCOVERY') {
       updateSiteDiscovery(message.domain).then(reply)
+      return true
+    }
+
+    if (message.type === 'SIGN_PLAYHTML_CHALLENGE') {
+      signPlayhtmlChallenge(message.payload, sender?.url)
+        .then((signature) => reply({ signature }))
+        .catch((e: Error) => reply({ error: e.message }))
       return true
     }
 

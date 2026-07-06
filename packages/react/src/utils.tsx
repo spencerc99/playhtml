@@ -5,13 +5,25 @@ import {
   ElementInitializer,
   TagType,
 } from "playhtml";
+import type { PermissionAction } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import * as React from "react";
 
 export type ReactElementEventHandlerData<T, V> = Omit<
   ElementAwarenessEventHandlerData<T, any, V>,
   "localData" | "setLocalData" | "element"
-> & { ref: React.RefObject<HTMLElement | null> };
+> & {
+  ref: React.RefObject<HTMLElement | null>;
+  /**
+   * Permission check scoped to this element (UX gating — the server enforces
+   * independently). For creator-scoped entry rules pass the targeted entry:
+   * `can("update", { entry })`.
+   */
+  can: (
+    action: PermissionAction,
+    options?: { creator?: string; entry?: unknown },
+  ) => boolean;
+};
 
 export interface PlayableChildren<T = object, V = any> {
   // TODO: force this to return a single child?

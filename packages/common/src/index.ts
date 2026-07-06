@@ -387,6 +387,9 @@ export function getSharedElementId(el: HTMLElement): string | undefined {
 export * from "./objectUtils";
 export * from "./sharedElements";
 
+// Identity / auth / permissions contract (shared with the partykit server)
+export * from "./auth";
+
 // Export cursor types
 export * from "./cursor-types";
 import type { Cursor, PlayerIdentity } from "./cursor-types";

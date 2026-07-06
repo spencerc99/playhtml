@@ -1,7 +1,7 @@
 // ABOUTME: Tests playhtml's public init readiness lifecycle.
 // ABOUTME: Covers shared readiness for duplicate init callers.
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { playhtml, resetPlayHTML } from "../index";
 
 describe("playhtml init readiness", () => {
@@ -41,7 +41,11 @@ describe("playhtml init readiness", () => {
       secondResolved = true;
     });
 
-    await Promise.resolve();
+    // Provider construction happens after async identity bootstrap — wait
+    // for it rather than assuming a fixed number of microtasks.
+    await vi.waitFor(() => {
+      expect((globalThis as any).PLAYHTML_TEST_PROVIDERS.length).toBeGreaterThan(0);
+    });
 
     expect(firstResolved).toBe(false);
     expect(secondResolved).toBe(false);

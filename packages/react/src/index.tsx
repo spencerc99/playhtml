@@ -3,7 +3,8 @@
 // TODO: idk why but this is not getting registered otherwise??
 import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "playhtml";
+import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement, serializePermissionsSpec } from "playhtml";
+import type { PermissionAction, PermissionActionSpec } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -75,6 +76,12 @@ export type WithPlayOptionalProps = {
   dataSourceReadOnly?: boolean;
   standalone?: boolean;
   loading?: LoadingOptions;
+  /**
+   * Permission spec for this element — the string mini-language
+   * ("write:admin, delete:admin|creator") or the object form. Rendered as the
+   * element's `permissions` attribute; the render callback's `can()` checks it.
+   */
+  permissions?: string | PermissionActionSpec;
 };
 
 export type WithPlayProps<T, V> =
@@ -143,14 +150,35 @@ function withElementBinding(
 
 // TODO: make the mapping to for TagType -> ReactElementInitializer
 // TODO: semantically, it should not be `can-play` for all of the pre-defined ones..
+/**
+ * Re-renders consumers when identity, verification, or server permissions
+ * change, so `can()` results in render output stay current. The value itself
+ * is unused — the setState is the mechanism.
+ */
+function usePermissionsVersion(): number {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setVersion((v) => v + 1);
+    document.addEventListener("playhtml:identitychange", bump);
+    document.addEventListener("playhtml:permissionschange", bump);
+    return () => {
+      document.removeEventListener("playhtml:identitychange", bump);
+      document.removeEventListener("playhtml:permissionschange", bump);
+    };
+  }, []);
+  return version;
+}
+
 export function CanPlayElement<T extends object, V = any>({
   children,
   id,
   standalone = false,
   loading,
+  permissions,
   ...restProps
 }: CanPlayProps<T, V>) {
   const playContext = useContext(PlayContext);
+  usePermissionsVersion();
 
   if (playContext.isProviderMissing && !standalone) {
     console.error(
@@ -395,6 +423,15 @@ export function CanPlayElement<T extends object, V = any>({
     },
     myAwareness,
     ref,
+    can: (action: PermissionAction, options?: { creator?: string; entry?: unknown }) => {
+      const element = ref.current;
+      if (!element) return true;
+      try {
+        return playhtml.can(action, element as HTMLElement, options);
+      } catch {
+        return true;
+      }
+    },
   });
 
   if (isReactFragment(renderedChildren) && !id) {
@@ -462,6 +499,9 @@ export function CanPlayElement<T extends object, V = any>({
         ? typeof shared === "string"
           ? { shared: shared }
           : { shared: "" }
+        : {}),
+      ...(permissions
+        ? { permissions: serializePermissionsSpec(permissions) }
         : {}),
       ...(hasConfiguredDomId ? { id } : {}),
     },
@@ -661,6 +701,7 @@ export {
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useCan,
 } from "./hooks";
 export {
   CanMoveElement,

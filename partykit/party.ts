@@ -91,16 +91,51 @@ import {
   withTimeout,
   type PersistenceMode,
 } from "./persistenceMode";
+import {
+  AUTH_SESSION_TTL_MS,
+  AUTH_STORAGE_KEYS,
+  GATED_WRITE_ORIGIN,
+  collectChangedElementIds,
+  planGatedReverts,
+  createChallenge,
+  createSessionToken,
+  evaluateGatedWrite,
+  fetchWellKnownConfig,
+  isElementGated,
+  isWellKnownCacheFresh,
+  parseRoomName,
+  pruneSessions,
+  removeElementDataFromPlayDoc,
+  verifyChallengeResponse,
+  MAX_GATED_WRITE_BYTES,
+  type AuthSessions,
+  type GatedSnapshots,
+  type PendingChallenge,
+  type WellKnownCacheEntry,
+} from "./auth";
+import type {
+  AuthResponseMessage,
+  AuthResumeMessage,
+  GatedWriteMessage,
+  GatedWriteOp,
+  GatedWriteResultMessage,
+  PermissionsStatusMessage,
+  WellKnownPermissionsConfig,
+} from "@playhtml/common";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
 export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
 const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
+const AUTH_CHALLENGE_STATE_KEY = "__playhtmlAuthChallenge";
+const AUTH_VERIFIED_PID_STATE_KEY = "__playhtmlVerifiedPid";
 const CONNECTION_OPENED_AT_STATE_KEY = "__playhtmlConnectionOpenedAt";
 
 type PartyServerConnectionState = Record<string, unknown> & {
   [ACCEPTED_RESET_EPOCH_STATE_KEY]?: number | null;
   [MESSAGE_LIMIT_STATE_KEY]?: MessageLimitState;
+  [AUTH_CHALLENGE_STATE_KEY]?: PendingChallenge | null;
+  [AUTH_VERIFIED_PID_STATE_KEY]?: string | null;
   [CONNECTION_OPENED_AT_STATE_KEY]?: number;
 };
 
@@ -200,6 +235,15 @@ export class PartyServer extends YServer {
 
   private observersAttached = false;
   private adminHandler = new AdminHandler(this);
+
+  // Auth/permissions state. Config comes from the room domain's
+  // /.well-known/playhtml.json (domain-bound authority); absent config means
+  // no server enforcement and none of these paths run.
+  private permissionsCache: WellKnownCacheEntry | null = null;
+  private permissionsLoadPromise: Promise<WellKnownPermissionsConfig | null> | null =
+    null;
+  private gatedSnapshotsCache: GatedSnapshots | null = null;
+  private gatedBackstopAttached = false;
 
   override async onStart(): Promise<void> {
     await super.onStart();
@@ -1163,6 +1207,14 @@ export class PartyServer extends YServer {
           // Handle dynamic registration of shared source element
           // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
           await this.handleRegisterSharedElement(parsed.element, sender);
+        } else if (parsed.type === "auth_request") {
+          await this.handleAuthRequest(sender);
+        } else if (parsed.type === "auth_response") {
+          await this.handleAuthResponse(parsed as AuthResponseMessage, sender);
+        } else if (parsed.type === "auth_resume") {
+          await this.handleAuthResume(parsed as AuthResumeMessage, sender);
+        } else if (parsed.type === "gated_write") {
+          await this.handleGatedWrite(parsed as GatedWriteMessage, sender);
         } else {
           // Broadcast other messages normally
           this.broadcastCustomMessage(message);
@@ -1341,6 +1393,12 @@ export class PartyServer extends YServer {
     }
 
     await super.onConnect(connection, ctx);
+
+    // Kick off the auth handshake when this room's domain published
+    // enforceable rules. Runs after Yjs setup and never blocks sync.
+    void this.initAuthForConnection(connection).catch((error) => {
+      console.error("[Auth] initAuthForConnection failed:", error);
+    });
   }
 
   override async onMessage(
@@ -2370,6 +2428,421 @@ export class PartyServer extends YServer {
     } finally {
       await this.scheduleNextAlarm();
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Auth handshake + permissions enforcement
+  // -------------------------------------------------------------------------
+
+  /**
+   * Loads the domain-bound permissions config for this room, caching in
+   * memory and DO storage with a short TTL. Returns null when the domain
+   * publishes no (valid) /.well-known/playhtml.json — i.e. no enforcement.
+   */
+  private async getPermissionsConfig(): Promise<WellKnownPermissionsConfig | null> {
+    const now = Date.now();
+    if (isWellKnownCacheFresh(this.permissionsCache, now)) {
+      const config = this.permissionsCache!.config;
+      if (config) await this.armGatedEnforcement(config);
+      return config;
+    }
+    if (this.permissionsLoadPromise) {
+      return this.permissionsLoadPromise;
+    }
+
+    this.permissionsLoadPromise = (async () => {
+      try {
+        const stored = (await this.ctx.storage.get(
+          AUTH_STORAGE_KEYS.wellKnownPermissions
+        )) as WellKnownCacheEntry | undefined;
+        if (isWellKnownCacheFresh(stored, now)) {
+          this.permissionsCache = stored!;
+          const config = stored!.config;
+          if (config) await this.armGatedEnforcement(config);
+          return config;
+        }
+
+        const { domain } = parseRoomName(this.name);
+        const config = await fetchWellKnownConfig(domain);
+        const entry: WellKnownCacheEntry = { config, fetchedAt: Date.now() };
+        this.permissionsCache = entry;
+        await this.ctx.storage.put(AUTH_STORAGE_KEYS.wellKnownPermissions, entry);
+        if (config) {
+          await this.armGatedEnforcement(config);
+        }
+        return config;
+      } catch (error) {
+        console.error(`[Auth] Failed to load permissions config:`, error);
+        const config = this.permissionsCache?.config ?? null;
+        if (config) await this.armGatedEnforcement(config);
+        return config;
+      } finally {
+        this.permissionsLoadPromise = null;
+      }
+    })();
+
+    return this.permissionsLoadPromise;
+  }
+
+  private getRoomPath(): string | undefined {
+    return parseRoomName(this.name).path;
+  }
+
+  private async initAuthForConnection(connection: Party.Connection): Promise<void> {
+    const config = await this.getPermissionsConfig();
+
+    const status: PermissionsStatusMessage = {
+      type: "permissions_status",
+      enforced: config !== null,
+      roles: config?.roles ?? {},
+      rules: config?.rules ?? [],
+      roomPath: this.getRoomPath(),
+    };
+    this.sendCustomMessage(connection, JSON.stringify(status));
+    if (!config) return;
+    this.issueChallenge(connection);
+  }
+
+  private issueChallenge(connection: Party.Connection): void {
+    const challenge = createChallenge(this.name);
+    this.setConnectionAuthState(connection, {
+      challenge: { nonce: challenge.nonce, ts: challenge.ts },
+      // A fresh challenge invalidates any previous verification.
+      verifiedPid: null,
+    });
+    this.sendCustomMessage(connection, JSON.stringify(challenge));
+  }
+
+  private setConnectionAuthState(
+    connection: Party.Connection,
+    updates: {
+      challenge?: PendingChallenge | null;
+      verifiedPid?: string | null;
+    }
+  ): void {
+    const authConnection =
+      connection as Party.Connection<PartyServerConnectionState>;
+    authConnection.setState((previousState) => {
+      const state =
+        previousState && typeof previousState === "object" ? previousState : {};
+      const next: Record<string, unknown> = { ...(state as Record<string, unknown>) };
+      if ("challenge" in updates) next[AUTH_CHALLENGE_STATE_KEY] = updates.challenge;
+      if ("verifiedPid" in updates)
+        next[AUTH_VERIFIED_PID_STATE_KEY] = updates.verifiedPid;
+      return next;
+    });
+  }
+
+  /** The cryptographically verified pid for a connection, or null. */
+  getConnectionVerifiedPid(connection: Party.Connection): string | null {
+    const state = (connection as Party.Connection<PartyServerConnectionState>)
+      .state;
+    const value = state?.[AUTH_VERIFIED_PID_STATE_KEY];
+    return typeof value === "string" ? value : null;
+  }
+
+  private async handleAuthRequest(sender: Party.Connection): Promise<void> {
+    // Explicit verification request — honored even without a permissions
+    // config so pages can attest identities for their own purposes.
+    this.issueChallenge(sender);
+  }
+
+  private async handleAuthResponse(
+    message: AuthResponseMessage,
+    sender: Party.Connection
+  ): Promise<void> {
+    const state = (sender as Party.Connection<PartyServerConnectionState>).state;
+    const challenge = state?.[AUTH_CHALLENGE_STATE_KEY];
+    if (!challenge) {
+      this.sendCustomMessage(
+        sender,
+        JSON.stringify({ type: "auth_error", reason: "no_pending_challenge" })
+      );
+      return;
+    }
+
+    const { domain } = parseRoomName(this.name);
+    const verdict = await verifyChallengeResponse({
+      challenge,
+      response: message,
+      roomId: this.name,
+      roomDomain: domain,
+    });
+
+    if (!verdict.ok) {
+      this.sendCustomMessage(
+        sender,
+        JSON.stringify({ type: "auth_error", reason: verdict.reason })
+      );
+      return;
+    }
+
+    const token = createSessionToken();
+    const expiresAt = Date.now() + AUTH_SESSION_TTL_MS;
+    const sessions = pruneSessions(await this.getAuthSessions());
+    sessions[token] = { pid: message.pid, expiresAt };
+    await this.setAuthSessions(sessions);
+
+    this.setConnectionAuthState(sender, {
+      challenge: null,
+      verifiedPid: message.pid,
+    });
+    this.sendCustomMessage(
+      sender,
+      JSON.stringify({
+        type: "auth_ok",
+        pid: message.pid,
+        token,
+        expiresAt,
+      })
+    );
+  }
+
+  private async handleAuthResume(
+    message: AuthResumeMessage,
+    sender: Party.Connection
+  ): Promise<void> {
+    const sessions = await this.getAuthSessions();
+    const record =
+      typeof message.token === "string" ? sessions[message.token] : undefined;
+
+    if (!record || record.expiresAt <= Date.now()) {
+      this.sendCustomMessage(
+        sender,
+        JSON.stringify({ type: "auth_error", reason: "invalid_token" })
+      );
+      // Follow up with a fresh challenge so the client can sign instead.
+      this.issueChallenge(sender);
+      return;
+    }
+
+    this.setConnectionAuthState(sender, {
+      challenge: null,
+      verifiedPid: record.pid,
+    });
+    this.sendCustomMessage(
+      sender,
+      JSON.stringify({
+        type: "auth_ok",
+        pid: record.pid,
+        token: message.token,
+        expiresAt: record.expiresAt,
+      })
+    );
+  }
+
+  private async getAuthSessions(): Promise<AuthSessions> {
+    return (
+      ((await this.ctx.storage.get(AUTH_STORAGE_KEYS.sessions)) as
+        | AuthSessions
+        | undefined) ?? {}
+    );
+  }
+
+  private async setAuthSessions(sessions: AuthSessions): Promise<void> {
+    await this.ctx.storage.put(AUTH_STORAGE_KEYS.sessions, sessions);
+  }
+
+  /** Reads the current plain value of play[tag][elementId], or undefined. */
+  private readElementData(tag: string, elementId: string): unknown {
+    const play = this.document.getMap("play") as Y.Map<any>;
+    const tagMap = play.get(tag);
+    if (!(tagMap instanceof Y.Map)) return undefined;
+    const value = tagMap.get(elementId);
+    return typeof value?.toJSON === "function" ? value.toJSON() : value;
+  }
+
+  /** Server-authoritative write into play[tag][elementId], marked with the gated origin. */
+  private applyGatedData(tag: string, elementId: string, data: unknown): void {
+    const yDoc = this.document;
+    yDoc.transact(
+      () => this.assignPlaySubtrees(yDoc, { [tag]: { [elementId]: data } }),
+      GATED_WRITE_ORIGIN
+    );
+  }
+
+  /** Server-authoritative op replay into play[tag][elementId]. */
+  private applyGatedOps(
+    tag: string,
+    elementId: string,
+    ops: GatedWriteOp[]
+  ): void {
+    const yDoc = this.document;
+    yDoc.transact(() => {
+      if (ops.length === 1 && ops[0].op === "replace") {
+        this.assignPlaySubtrees(yDoc, { [tag]: { [elementId]: ops[0].value } });
+        return;
+      }
+
+      const store = syncedStore<{ play: Record<string, any> }>({ play: {} }, yDoc);
+      // @ts-ignore
+      store.play[tag] ??= {};
+      const tagObj = store.play[tag];
+      if (
+        tagObj[elementId] === undefined ||
+        tagObj[elementId] === null ||
+        typeof tagObj[elementId] !== "object" ||
+        Array.isArray(tagObj[elementId])
+      ) {
+        tagObj[elementId] = {};
+      }
+
+      const elementProxy = tagObj[elementId] as Record<string, unknown>;
+      for (const op of ops) {
+        if (op.op === "delete") {
+          delete elementProxy[op.key];
+        } else {
+          elementProxy[op.key] = op.value;
+        }
+      }
+    }, GATED_WRITE_ORIGIN);
+  }
+
+  private async handleGatedWrite(
+    message: GatedWriteMessage,
+    sender: Party.Connection
+  ): Promise<void> {
+    const reply = (result: GatedWriteResultMessage) =>
+      this.sendCustomMessage(sender, JSON.stringify(result));
+    const opId = typeof message.opId === "string" ? message.opId : "";
+
+    if (
+      typeof message.tag !== "string" ||
+      typeof message.elementId !== "string" ||
+      !Array.isArray(message.ops) ||
+      JSON.stringify(message.ops ?? null).length > MAX_GATED_WRITE_BYTES
+    ) {
+      reply({ type: "gated_write_result", opId, ok: false, reason: "invalid request" });
+      return;
+    }
+
+    const config = await this.getPermissionsConfig();
+    const roomPath = this.getRoomPath();
+    if (!config || !isElementGated(config.rules ?? [], message.elementId, roomPath)) {
+      // Not actually gated — the client should have written via normal sync.
+      reply({
+        type: "gated_write_result",
+        opId,
+        ok: false,
+        reason: "element is not gated",
+      });
+      return;
+    }
+
+    const pid = this.getConnectionVerifiedPid(sender);
+    const verdict = evaluateGatedWrite({
+      rules: config.rules ?? [],
+      roles: config.roles ?? {},
+      roomPath,
+      elementId: message.elementId,
+      pid: pid ?? undefined,
+      currentData: this.readElementData(message.tag, message.elementId),
+      ops: message.ops,
+    });
+
+    if (!verdict.ok) {
+      reply({ type: "gated_write_result", opId, ok: false, reason: verdict.reason });
+      return;
+    }
+
+    this.applyGatedOps(message.tag, message.elementId, verdict.ops);
+    const data = this.readElementData(message.tag, message.elementId);
+    await this.storeGatedSnapshot(message.elementId, {
+      tag: message.tag,
+      data,
+    });
+    reply({ type: "gated_write_result", opId, ok: true });
+  }
+
+  private async getGatedSnapshots(): Promise<GatedSnapshots> {
+    if (this.gatedSnapshotsCache) return this.gatedSnapshotsCache;
+    const stored =
+      ((await this.ctx.storage.get(AUTH_STORAGE_KEYS.gatedSnapshots)) as
+        | GatedSnapshots
+        | undefined) ?? {};
+    this.gatedSnapshotsCache = stored;
+    return stored;
+  }
+
+  private async storeGatedSnapshot(
+    elementId: string,
+    snapshot: { tag: string; data: unknown }
+  ): Promise<void> {
+    const snapshots = await this.getGatedSnapshots();
+    snapshots[elementId] = snapshot;
+    this.gatedSnapshotsCache = snapshots;
+    await this.ctx.storage.put(AUTH_STORAGE_KEYS.gatedSnapshots, snapshots);
+  }
+
+  /**
+   * Backstop for clients that bypass the library and write gated keys via
+   * raw Yjs updates: any transaction touching a gated element that did not
+   * originate from the server's gated-write path gets overwritten with the
+   * authoritative snapshot. Cost is one Set intersection per transaction.
+   */
+  private async armGatedEnforcement(
+    config: WellKnownPermissionsConfig
+  ): Promise<void> {
+    if (this.gatedBackstopAttached) return;
+    this.gatedBackstopAttached = true;
+
+    const rules = config.rules ?? [];
+    const roomPath = this.getRoomPath();
+    await this.getGatedSnapshots(); // warm the cache for the sync observer
+
+    const play = this.document.getMap("play") as Y.Map<any>;
+    play.observeDeep((events, transaction) => {
+      if (transaction.origin === GATED_WRITE_ORIGIN) return;
+
+      const changed = collectChangedElementIds(events as Array<Y.YEvent<any>>);
+      const reverts = planGatedReverts(
+        changed,
+        rules,
+        roomPath,
+        this.gatedSnapshotsCache ?? {}
+      );
+
+      for (const revert of reverts) {
+        // Defer the corrective write out of the observer callback.
+        if (revert.action === "remove") {
+          // The server cannot know a client's defaultData here, so no stored
+          // snapshot means the only authoritative baseline is absence.
+          queueMicrotask(() => {
+            this.restoreMissingGatedSnapshot(revert.elementId);
+          });
+        } else {
+          queueMicrotask(() => {
+            this.restoreGatedSnapshot(revert.elementId, revert.snapshot!);
+          });
+        }
+      }
+    });
+  }
+
+  private restoreMissingGatedSnapshot(elementId: string): void {
+    let removed = false;
+    this.document.transact(() => {
+      removed = removeElementDataFromPlayDoc(this.document, elementId);
+    }, GATED_WRITE_ORIGIN);
+    if (removed) {
+      console.warn(
+        `[Auth] Reverting unauthorized direct write to gated element ${elementId} in room ${this.name}`
+      );
+    }
+  }
+
+  private restoreGatedSnapshot(
+    elementId: string,
+    snapshot: { tag: string; data: unknown }
+  ): void {
+    const current = this.readElementData(snapshot.tag, elementId);
+    if (JSON.stringify(current ?? null) === JSON.stringify(snapshot.data ?? null)) {
+      return;
+    }
+    console.warn(
+      `[Auth] Reverting unauthorized direct write to gated element ${elementId} in room ${this.name}`
+    );
+    this.applyGatedData(snapshot.tag, elementId, snapshot.data);
   }
 
   // Flush batched bridge updates to subscribers and source rooms

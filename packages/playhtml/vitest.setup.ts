@@ -78,7 +78,18 @@ vi.mock("y-partyserver/provider", () => {
         };
         ((globalThis as any).PLAYHTML_TEST_PROVIDERS ??= []).push(this);
         if (!(globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC) {
-          queueMicrotask(() => this.emit("sync", true));
+          queueMicrotask(() => {
+            this.emit("sync", true);
+            this.emit(
+              "custom-message",
+              JSON.stringify({
+                type: "permissions_status",
+                enforced: false,
+                roles: {},
+                rules: [],
+              }),
+            );
+          });
         }
       }
       on(t: string, cb: any) {

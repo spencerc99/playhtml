@@ -14,3 +14,5 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Sign playhtml auth challenges with your identity key so playhtml sites can verify it's really you (permission-gated elements, ownership). The key never leaves the extension; only structured, origin-bound challenges are signed.

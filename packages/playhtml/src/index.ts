@@ -52,10 +52,37 @@ import {
   refreshPageDataChannels,
 } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
+import { ensureLocalIdentity } from "./auth/identity";
+import {
+  configurePermissions,
+  can,
+  getMe,
+  setIdentity,
+  isLocallyGated,
+  isServerGated,
+  usesKeyedGatedWrites,
+  isServerEnforced,
+  isPermissionsStatusPending,
+  dispatchPermissionDenied,
+  __resetPermissionsForTests,
+  IDENTITY_CHANGE_EVENT,
+  PERMISSIONS_CHANGE_EVENT,
+  type PermissionsConfig,
+  type MeState,
+} from "./auth/permissions";
+import {
+  bindHandshake,
+  unbindHandshake,
+  handleAuthMessage,
+  requestVerification,
+  sendGatedWrite,
+  buildGatedWriteOps,
+} from "./auth/handshake";
 import {
   canUseRealtimePresenceTransport,
   RealtimePresenceTransport,
 } from "./presence-transport";
+import { normalizePathname } from "./room";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -111,13 +138,6 @@ function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   return includeSearch
     ? transformedPathname + window.location.search
     : transformedPathname;
-}
-
-/**
- * Normalizes a pathname by stripping filename extensions, consistent with getDefaultRoom
- */
-function normalizePathname(pathname: string): string {
-  return pathname.replace(/\.[^/.]+$/, "");
 }
 
 /**
@@ -449,6 +469,14 @@ export interface InitOptions<T = unknown> {
    * Cursor tracking and proximity detection configuration
    */
   cursors?: CursorOptions;
+
+  /**
+   * Permission roles and rules for gating element writes. Client-side this is
+   * UX gating (affordances, local write blocks); pair it with a
+   * `/.well-known/playhtml.json` on your domain to make the same rules
+   * server-enforced. See the permissions docs for details.
+   */
+  permissions?: PermissionsConfig;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -467,6 +495,11 @@ function onMessage(data: string) {
   try {
     message = JSON.parse(data);
   } catch (err) {
+    return;
+  }
+
+  // Auth handshake / permissions / gated-write protocol messages
+  if (handleAuthMessage(message)) {
     return;
   }
 
@@ -797,6 +830,24 @@ function buildMainProvider(args: {
   return { sharedReferences };
 }
 
+/**
+ * Binds the auth handshake to the current main provider/room. Must be called
+ * after (re)building yprovider — verification is per connection.
+ */
+function bindHandshakeToCurrentProvider(): void {
+  bindHandshake({
+    send: (message) => {
+      try {
+        yprovider.sendMessage(message);
+      } catch {}
+    },
+    getPid: () =>
+      cursorClient?.getMyPlayerIdentity()?.publicKey ??
+      generatePersistentPlayerIdentity().publicKey,
+    roomId: __currentRoomId,
+  });
+}
+
 /** Disconnect and destroy the cursor client + cursor provider. */
 function teardownCursors(): void {
   try { cursorClient?.destroy?.(); } catch {}
@@ -1077,6 +1128,14 @@ async function resetCurrentRoomFromServer(): Promise<void> {
 function setupExtensionIdentityListener(): void {
   if (configureIdentityListener) return;
 
+  // Listen for identity injection from the browser extension. The extension
+  // runs in Chrome's isolated world and can't call cursorClient.configure()
+  // directly, so it dispatches a CustomEvent on the shared DOM instead.
+  //
+  // The extension only provides publicKey and playerStyle (the canonical
+  // stable identity + chosen color). All other fields on the page's current
+  // identity are preserved — the page may have arbitrary fields the extension
+  // doesn't know about.
   // TODO: The extension should also be able to set `name` — currently
   // there's no UI for it in the extension, so we preserve the page's
   // value. Once the extension has a name field, include it in the merge.
@@ -1085,13 +1144,19 @@ function setupExtensionIdentityListener(): void {
     if (!incoming || !cursorClient) return;
 
     const current = cursorClient.getMyPlayerIdentity();
-    const merged = {
+    const merged: PlayerIdentity = {
       ...current,
       publicKey: incoming.publicKey,
       playerStyle: incoming.playerStyle,
+      source: "extension" as const,
     };
 
     cursorClient.configure({ playerIdentity: merged });
+    setIdentity(merged);
+    // The verified state (if any) belonged to the previous pid — re-run the
+    // handshake under the extension identity. No-op for the server unless
+    // the room has enforceable rules.
+    void requestVerification();
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1167,6 +1232,7 @@ async function runHandleNavigation(): Promise<void> {
       onMessage,
     });
     __currentRoomId = newMainRoom;
+    bindHandshakeToCurrentProvider();
   }
 
   if (cursorEnabledChanged || (cursorRoomChanged && cursorOptionsCache)) {
@@ -1282,6 +1348,19 @@ async function initPlayHTMLOnce() {
   const inputRoom =
     resolveExplicitRoom() ?? getDefaultRoom(cachedDefaultRoomOptions);
   const onError = cachedOnError;
+
+  if (configuredOptions?.permissions) {
+    configurePermissions(configuredOptions.permissions);
+  }
+
+  // Ensure the local keypair exists and the persisted identity carries its
+  // real public key before any provider/cursor identity is built. Bounded so
+  // a hung IndexedDB (rare, but possible in exotic privacy modes) can never
+  // stall init — identity just stays unverifiable for the session.
+  await Promise.race([
+    ensureLocalIdentity(),
+    new Promise((resolve) => setTimeout(resolve, 2000)),
+  ]);
   // @ts-ignore
   window.playhtml = playhtml;
   // DOM marker visible to browser extension content scripts (which run in an
@@ -1320,6 +1399,11 @@ async function initPlayHTMLOnce() {
     partykitHost,
     onError,
   });
+
+  bindHandshakeToCurrentProvider();
+  setIdentity(
+    cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+  );
 
   if (cursors.enabled) {
     setupExtensionIdentityListener();
@@ -1509,6 +1593,52 @@ function createPlayElementData<T extends TagType, TData = any>(
       const elementIdFromAttr = getIdForElement(element);
       if (isSharedReadOnly(element, elementIdFromAttr)) {
         return;
+      }
+      if (isPermissionsStatusPending()) {
+        const queuedData =
+          typeof newData === "function" ? newData : clonePlain(newData);
+        const retry = () => {
+          elementData.onChange(queuedData as TData);
+        };
+        document.addEventListener(PERMISSIONS_CHANGE_EVENT, retry, {
+          once: true,
+        });
+        return;
+      }
+      // Permission gating — synchronous cache lookups; elements with no
+      // matching rules skip all of this (isLocallyGated is a cheap check).
+      if (isLocallyGated(element, elementId)) {
+        if (!can("write", element)) {
+          dispatchPermissionDenied(element, {
+            action: "write",
+            elementId,
+            reason: "missing required role",
+          });
+          return;
+        }
+        if (isServerGated(elementId)) {
+          // Server-mediated write path (wait-for-server): materialize the
+          // intended mutation, send explicit ops, and let the authoritative
+          // value come back via normal Yjs sync. Never write gated keys locally.
+          const before = clonePlain(dataProxy);
+          let after: unknown;
+          if (typeof newData === "function") {
+            const draft = clonePlain(before);
+            (newData as (d: unknown) => void)(draft);
+            after = draft;
+          } else {
+            after = clonePlain(newData);
+          }
+          const ops = buildGatedWriteOps({
+            before,
+            after,
+            keyed: usesKeyedGatedWrites(elementId),
+          });
+          if (ops.length > 0) {
+            sendGatedWrite({ target: element, tag, elementId, ops });
+          }
+          return;
+        }
       }
       if (typeof newData === "function") {
         // Mutator form support: onChange can accept function(draft)
@@ -1872,6 +2002,16 @@ export interface PlayHTMLComponents {
   presence: PresenceAPI;
   createPageData: typeof createPageData;
   createPresenceRoom: typeof createPresenceRoom;
+  /** The local player: stable pid, verification state, resolved roles. */
+  me: MeState;
+  /** Synchronous permission check against resolved rules (UX gating). */
+  can: typeof can;
+  /** True when this room's domain published enforceable rules (well-known file). */
+  permissionsEnforced: boolean;
+  /** Explicitly (re)run the key handshake; resolves with the outcome. */
+  verify: () => Promise<boolean>;
+  /** Subscribe to identity/verification/permissions changes; returns unsubscribe. */
+  onIdentityChange: (callback: (me: MeState) => void) => () => void;
   // Debug / Dev helpers
   roomId: string;
   host: string;
@@ -1936,6 +2076,8 @@ export async function resetPlayHTML(): Promise<void> {
     pageDataListeners.clear();
     mainProviderSyncWaiters.clear();
 
+    unbindHandshake();
+    __resetPermissionsForTests();
     teardownCursors();
     teardownMainProvider();
 
@@ -2026,6 +2168,23 @@ export const playhtml: PlayHTMLComponents = {
   },
   createPageData,
   createPresenceRoom,
+  get me() {
+    return getMe();
+  },
+  can,
+  get permissionsEnforced() {
+    return isServerEnforced();
+  },
+  verify: requestVerification,
+  onIdentityChange: (callback: (me: MeState) => void) => {
+    const handler = () => callback(getMe());
+    document.addEventListener(IDENTITY_CHANGE_EVENT, handler);
+    document.addEventListener(PERMISSIONS_CHANGE_EVENT, handler);
+    return () => {
+      document.removeEventListener(IDENTITY_CHANGE_EVENT, handler);
+      document.removeEventListener(PERMISSIONS_CHANGE_EVENT, handler);
+    };
+  },
   listSharedElements: devListSharedElements,
 };
 
@@ -2896,7 +3055,22 @@ export type {
   CursorPresenceView,
   PresenceRoom,
   PresenceView,
+  PermissionAction,
+  PermissionActionSpec,
+  PermissionRule,
 } from "@playhtml/common";
+export { serializePermissionsSpec } from "@playhtml/common";
+export type {
+  PermissionsConfig,
+  MeState,
+  RoleCondition,
+  CanOptions,
+} from "./auth/permissions";
+export {
+  IDENTITY_CHANGE_EVENT,
+  PERMISSIONS_CHANGE_EVENT,
+  PERMISSION_DENIED_EVENT,
+} from "./auth/permissions";
 
 // Re-export a curated subset of lit-html for `view` authoring, so
 // script-tag and module users can `import { html, repeat } from "playhtml"`.
