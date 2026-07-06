@@ -591,7 +591,7 @@ function constructInitialState(element: HTMLElement | Text): ElementState {
 
   // @ts-ignore
   const context = getMirrorContextFromElement(element);
-  for (const attr of element.attributes) {
+  for (const attr of Array.from(element.attributes)) {
     const mirroredValue = getMirroredAttributeValue(
       attr.name,
       attr.value,
