@@ -74,4 +74,18 @@ describe("extension release workflow", () => {
     assert.ok(releaseStepIndex < announceStepIndex);
     assert.ok(releaseCommandIndex < announceStepIndex);
   });
+
+  it("uses the extension release Discord webhook", () => {
+    const workflowPath = fileURLToPath(
+      new URL("../workflows/extension-release.yml", import.meta.url),
+    );
+    const workflow = readFileSync(workflowPath, "utf8");
+    const announceStepIndex = workflow.indexOf("- name: Announce release on Discord");
+    const nextStepIndex = workflow.indexOf("\n      - name:", announceStepIndex + 1);
+    const announceStep = workflow.slice(announceStepIndex, nextStepIndex);
+
+    assert.notEqual(announceStepIndex, -1);
+    assert.match(announceStep, /secrets\.DISCORD_EXTENSION_RELEASE_WEBHOOK/);
+    assert.doesNotMatch(announceStep, /secrets\.DISCORD_RELEASE_WEBHOOK/);
+  });
 });
