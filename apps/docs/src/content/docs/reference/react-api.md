@@ -254,7 +254,6 @@ Access the playhtml context from any descendant of `PlayProvider`.
 ```tsx
 interface PlayContextValue {
   isLoading: boolean;
-  hasSynced: boolean; // deprecated alias of !isLoading
   cursors: CursorEvents;
   cursorPresences: Map<string, CursorPresenceView>;
   configureCursors: (opts: Partial<CursorOptions>) => void;
@@ -286,8 +285,6 @@ useEffect(() => {
 ```
 
 Use a ref guard plus the mutator form for this kind of write, and don't include the field you write in the dependency list.
-
-`hasSynced` is a deprecated alias for `!isLoading`. Prefer `isLoading` in new code.
 
 ### `cursors`
 

@@ -120,7 +120,9 @@ If a mirrored child also has its own playhtml capability, keep giving it a stabl
 
 ### can-play
 
-You give the element a `defaultData`, handlers like `onClick`, and an `updateElement` callback that writes the DOM from the current `data`. Set those properties on the element **before `playhtml.init()` runs**. playhtml syncs the data and calls `updateElement` whenever it changes — locally or from another tab. See the [Element API reference](/docs/reference/element-api/) for every property.
+You give the element a `defaultData`, handlers like `onClick`, and an `updateElement` callback that writes the DOM from the current `data`. Set those properties on the element **before `playhtml.init()` runs**. playhtml syncs the data and calls `updateElement` whenever it changes — locally or from another tab.
+
+The [Element API reference](/docs/reference/element-api/#initializer) has the full annotated property list — **`ctx`** is defined once at the top.
 
 Most capability tags can share the same element. Each tag keeps its own data and behavior, so an element can be both custom and draggable with `<img can-play can-move id="candle">`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate automatically.
 

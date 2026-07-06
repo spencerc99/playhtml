@@ -11,41 +11,115 @@ The `ElementInitializer` is the config object for a custom collaborative element
 2. **`playhtml.register(id, init)`** / **`playhtml.define(name, init)`** — see [View API](/docs/reference/view-api/)
 3. **`extraCapabilities`** in `playhtml.init()` — see [init options](/docs/reference/init-options/#extracapabilities)
 
-The three type parameters are **`T`** (shared `data`), **`U`** (`localData`), and **`V`** (awareness value).
+The initializer has three state buckets: shared **`data`**, per-user **`localData`**, and ephemeral **`awareness`**.
 
 For usage examples, see [Custom elements](/docs/custom-elements/).
 
-```ts
-interface ElementInitializer<T = any, U = any, V = any> {
-  defaultData: T | ((element: HTMLElement) => T);
-  defaultLocalData?: U | ((element: HTMLElement) => U);
-  myDefaultAwareness?: V | ((element: HTMLElement) => V);
+## Full shape
 
-  view?: (ctx: ElementEventHandlerData<T, U, V>) => unknown;
-  updateElement?: (ctx: ElementEventHandlerData<T, U, V>) => void;
-  updateElementAwareness?: (ctx: ElementAwarenessEventHandlerData<T, U, V>) => void;
+### Callback context (`ctx`)
 
-  onClick?: (e: MouseEvent, ctx: ElementEventHandlerData<T, U, V>) => void;
-  onDrag?: (e: MouseEvent | TouchEvent, ctx: ElementEventHandlerData<T, U, V>) => void;
-  onDragStart?: (e: MouseEvent | TouchEvent, ctx: ElementEventHandlerData<T, U, V>) => void;
-  onMount?: (ctx: ElementSetupData<T, U, V>) => void | (() => void);
+Passed to `updateElement`, `view`, `onClick`, `onDrag`, and `onDragStart`:
 
-  resetShortcut?: ModifierKey;
-  debounceMs?: number;
-  isValidElementForTag?: (element: HTMLElement) => boolean;
+```js
+{
+  data,                // shared synced state (read-only snapshot)
+  localData,           // per-user, per-tab; not synced
+  awareness,           // array of every user's awareness value for this element
+  awarenessByStableId, // Map<stableId, awareness value>
+  element,             // the HTMLElement
+
+  setData,             // (next) mutator fn or replacement object
+  setLocalData,        // (next) mutator fn or replacement; re-renders view
+  setMyAwareness,      // (next) your ephemeral awareness value
+  requestUpdate,       // () re-run view now; no-op without view
 }
+```
 
-type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
+`updateElementAwareness` receives the same fields, plus **`myAwareness`** (your own awareness value).
+
+Do not call `setData`, `setLocalData`, or `setMyAwareness` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [Data essentials](/docs/data/data-essentials/).
+
+### `onMount` context
+
+`onMount` uses getters instead of live values (the callback outlives individual renders):
+
+```js
+{
+  getData,             // () => current shared data
+  getLocalData,        // () => current local data
+  getAwareness,        // () => awareness array
+  getElement,          // () => the HTMLElement
+
+  setData,             // same setters as ctx
+  setLocalData,
+  setMyAwareness,
+  requestUpdate,
+}
+```
+
+### Initializer
+
+Everything you can set on `can-play` (same object for `register`, `define`, and `extraCapabilities`):
+
+```js
+{
+  // Required. Starting shared state. Must be an object (or a function that
+  // returns one) — not a bare number or string. Synced across the room.
+  defaultData: { count: 0 },
+  // defaultData: (element) => ({ color: element.dataset.color }),
+
+  // Per-user, per-tab state. Never synced. Drag anchors, drafts, UI flags.
+  defaultLocalData: undefined,
+
+  // Your starting awareness value for this element. Ephemeral — clears on disconnect.
+  myDefaultAwareness: undefined,
+
+  // --- update path: provide updateElement OR view, not both ---
+
+  updateElement(ctx) {
+    // ctx — see Callback context above. Write the DOM from ctx.data.
+    // Do not call ctx.setData here — it loops.
+  },
+
+  view(ctx) {
+    // ctx — see Callback context above. Return a lit-html template.
+    // Mutually exclusive with updateElement, onClick, onDrag, onDragStart.
+    // Drive ctx.setData from @click handlers, not during render.
+  },
+
+  updateElementAwareness(ctx) {
+    // ctx — Callback context + myAwareness
+  },
+
+  // --- event handlers (ignored when using view) ---
+
+  onClick(e, ctx) {},       // e: MouseEvent; ctx — Callback context
+  onDragStart(e, ctx) {},   // e: MouseEvent | TouchEvent, once at drag start
+  onDrag(e, ctx) {},         // e: MouseEvent | TouchEvent, each move until release
+
+  onMount(ctx) {
+    // ctx — see onMount context above (getters, not live values).
+    // May fire before the room's first sync. For presence or page data:
+    //   playhtml.ready.then(() => { ... });
+    return () => {}; // cleanup on unmount
+  },
+
+  // Modifier + click resets to defaultData for everyone. Built-ins use "shiftKey".
+  resetShortcut: "shiftKey", // "ctrlKey" | "altKey" | "shiftKey" | "metaKey"
+
+  debounceMs: undefined,    // optional debounce on sync writes; rarely needed
+
+  // For define / extraCapabilities: return false to skip this element.
+  isValidElementForTag(element) { return true; },
+}
 ```
 
 ---
 
 ## `defaultData`
 
-**Type:** `T | ((element: HTMLElement) => T)`  
-**Required:** yes
-
-Starting shared state for new elements. Must be an **object** (or a function that returns one), not a bare primitive like `0` or `""`. An object shape lets you add fields later without breaking rooms that already have data.
+**Required.** Starting shared state for new elements. Must be an **object** (or a function that returns one), not a bare primitive like `0` or `""`.
 
 ```js
 el.defaultData = { count: 0 };
@@ -58,9 +132,6 @@ el.defaultData = (element) => ({ color: element.dataset.color ?? "yellow" });
 
 ## `defaultLocalData`
 
-**Type:** `U | ((element: HTMLElement) => U)`  
-**Default:** `undefined`
-
 Per-user, per-tab state that is **not** synced. Use for drag anchors, hover flags, or UI that only the local client needs.
 
 ```js
@@ -71,9 +142,6 @@ el.defaultLocalData = { draft: "" };
 
 ## `myDefaultAwareness`
 
-**Type:** `V | ((element: HTMLElement) => V)`  
-**Default:** `undefined`
-
 Your starting awareness value for this element. Awareness is ephemeral — it clears when you disconnect. Other clients read it through the `awareness` array in callbacks.
 
 ```js
@@ -83,9 +151,6 @@ el.myDefaultAwareness = "#2563eb";
 ---
 
 ## `updateElement`
-
-**Type:** `(ctx: ElementEventHandlerData) => void`  
-**Default:** `undefined`
 
 Imperative update path. playhtml calls it on mount and whenever shared `data`, `localData`, or awareness changes (locally or from another tab). Write the DOM from `ctx.data`.
 
@@ -101,11 +166,7 @@ el.updateElement = ({ element, data }) => {
 
 ## `view`
 
-**Type:** `(ctx: ElementEventHandlerData) => TemplateResult`  
-**Default:** `undefined`  
-**Status:** experimental
-
-Declarative update path. Return a [lit-html](https://lit.dev/) template; playhtml patches the DOM when state changes.
+**Experimental.** Declarative update path. Return a [lit-html](https://lit.dev/) template; playhtml patches the DOM when state changes.
 
 Mutually exclusive with `updateElement`, `onClick`, `onDrag`, and `onDragStart` — put events in the template (`@click`, etc.).
 
@@ -114,9 +175,6 @@ See [View API](/docs/reference/view-api/) for `register`, `define`, helpers, and
 ---
 
 ## `updateElementAwareness`
-
-**Type:** `(ctx: ElementAwarenessEventHandlerData) => void`  
-**Default:** `undefined`
 
 Called when element awareness changes. Same context as `updateElement`, plus `myAwareness` (your own value).
 
@@ -132,9 +190,6 @@ If the element also has a `view`, awareness changes re-render the view automatic
 
 ## `onClick`
 
-**Type:** `(e: MouseEvent, ctx: ElementEventHandlerData) => void`  
-**Default:** `undefined`
-
 Fired on click. Ignored when the element uses `view`.
 
 ```js
@@ -147,9 +202,6 @@ el.onClick = (_e, { setData }) => {
 
 ## `onDrag` and `onDragStart`
 
-**Type:** `(e: MouseEvent | TouchEvent, ctx: ElementEventHandlerData) => void`  
-**Default:** `undefined`
-
 Drag handlers for mouse and touch. `onDragStart` runs once when the drag begins; `onDrag` runs on each move until release. Ignored when the element uses `view`.
 
 Built-in capabilities like `can-move` and `can-spin` use these internally.
@@ -158,12 +210,28 @@ Built-in capabilities like `can-move` and `can-spin` use these internally.
 
 ## `onMount`
 
-**Type:** `(ctx: ElementSetupData) => void | (() => void)`  
-**Default:** `undefined`
+Runs once when the element is wired up. Use for listeners, timers, or `requestAnimationFrame` loops tied to this element.
 
-Runs once when the element is wired up. Use for extra listeners, timers, or `requestAnimationFrame` loops.
+Return a cleanup function when the element is removed.
 
-Return a cleanup function to cancel listeners or loops when the element is removed.
+**`onMount` vs `playhtml.ready`:** `onMount` fires when this element's handler attaches — that can happen before the room's first sync finishes. `data` may still be `defaultData` until sync lands. Use `onMount` alone for element-scoped setup (listeners, animation loops). Wait on `playhtml.ready` inside `onMount` when you need room-wide state that only exists after sync (presence, `createPageData`, reading final server data):
+
+```js
+el.onMount = ({ getData, setData }) => {
+  let cancelled = false;
+
+  playhtml.ready.then(() => {
+    if (cancelled) return;
+    // Safe to read presence, page data, or fully-hydrated shared state here
+    const presences = playhtml.presence.getPresences();
+    setData((d) => { d.viewerCount = presences.size; });
+  });
+
+  return () => { cancelled = true; };
+};
+```
+
+For a clock-driven `view`, `requestAnimationFrame` in `onMount` is enough — you do not need `playhtml.ready`:
 
 ```js
 el.onMount = ({ getData, requestUpdate }) => {
@@ -177,14 +245,9 @@ el.onMount = ({ getData, requestUpdate }) => {
 };
 ```
 
-`additionalSetup` is a deprecated alias for `onMount`.
-
 ---
 
 ## `resetShortcut`
-
-**Type:** `ModifierKey`  
-**Default:** `undefined`
 
 When set, a click with that modifier held resets the element to `defaultData` for everyone in the room.
 
@@ -198,88 +261,13 @@ el.resetShortcut = "shiftKey";
 
 ## `debounceMs`
 
-**Type:** `number`  
-**Default:** `undefined`
-
 Optional debounce window for the handler's internal sync callback. Most custom elements call `setData` from event handlers, which syncs immediately. You rarely need this.
 
 ---
 
 ## `isValidElementForTag`
 
-**Type:** `(element: HTMLElement) => boolean`  
-**Default:** `undefined`
-
 Gate which DOM elements a reusable capability (`define` / `extraCapabilities`) applies to. Return `false` to skip an element that carries the attribute but should not bind (for example, when a referenced template is missing).
-
----
-
-## Event-handler context
-
-Passed to `updateElement`, `view`, `onClick`, `onDrag`, and `onDragStart`:
-
-```ts
-interface ElementEventHandlerData<T, U, V> {
-  data: T;
-  localData: U;
-  awareness: V[];
-  awarenessByStableId: Map<string, V>;
-  element: HTMLElement;
-
-  setData(next: T | ((draft: T) => void)): void;
-  setLocalData(next: U | ((draft: U) => void)): void;
-  setMyAwareness(next: V): void;
-  requestUpdate(): void;
-}
-```
-
-| Field | Notes |
-| --- | --- |
-| `data` | Shared, synced state (read-only snapshot in callbacks). |
-| `localData` | Per-user, not synced. |
-| `awareness` | Every connected user's awareness value for this element. |
-| `awarenessByStableId` | Same values keyed by stable player id. |
-| `setData` | Mutator form `setData(d => { … })` is merge-friendly and preferred for lists and nested fields. Value form `setData({ … })` replaces the whole snapshot (last-write-wins). See [Data essentials](/docs/data/data-essentials/). |
-| `setLocalData` | Updates local state. Re-renders `view` elements; does not re-run `updateElement`. |
-| `setMyAwareness` | Broadcasts your awareness value. Does not persist. See [Presence & identity](/docs/reference/presence/#element-awareness). |
-| `requestUpdate` | Re-runs `view` now. No-op without a `view`. Use for clock-driven UI. |
-
-Do not call `setData`, `setLocalData`, or `setMyAwareness` during a `view` render — playhtml logs an error and ignores the write.
-
----
-
-## Awareness context
-
-Same as the event-handler context, plus:
-
-```ts
-interface ElementAwarenessEventHandlerData<T, U, V>
-  extends ElementEventHandlerData<T, U, V> {
-  myAwareness?: V;
-}
-```
-
-Used by `updateElementAwareness`.
-
----
-
-## Setup context (`onMount`)
-
-Same write methods as above, but reads use getters because `onMount` outlives individual renders:
-
-```ts
-interface ElementSetupData<T, U, V> {
-  getData(): T;
-  getLocalData(): U;
-  getAwareness(): V[];
-  getElement(): HTMLElement;
-
-  setData(next: T | ((draft: T) => void)): void;
-  setLocalData(next: U | ((draft: U) => void)): void;
-  setMyAwareness(next: V): void;
-  requestUpdate(): void;
-}
-```
 
 ---
 

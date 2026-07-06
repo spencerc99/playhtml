@@ -160,13 +160,9 @@ Turns click into a shared boolean switch. State persists and syncs.
 **Type:** `{ on: boolean }`  
 **Default:** `{ on: false }`
 
-:::note[Legacy shape]
-Earlier versions stored a plain `boolean` rather than `{ on: boolean }`. The initializer reads both shapes for migration compatibility — if the stored value is a raw boolean, it is used directly as the `on` state. New elements always write the object shape.
-:::
-
 ### DOM effect
 
-Toggles the `toggled` CSS class on the element. The legacy `clicked` class is also toggled for backward compatibility with existing stylesheets.
+Toggles the `toggled` CSS class on the element.
 
 ```css
 /* Style the on state */
@@ -183,7 +179,7 @@ Click the element to flip `on` between `true` and `false`.
 ### Reset
 
 **Shortcut:** shift-click  
-Resets to `{ on: false }` (removes `toggled` and `clicked`) for all visitors in the room.
+Resets to `{ on: false }` for all visitors in the room.
 
 ---
 

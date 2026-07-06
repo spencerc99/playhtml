@@ -159,15 +159,15 @@ import { CanMoveElement } from "@playhtml/react";
 </style>
 ```
 
-`can-toggle` adds the `toggled` class when the element is on. The older `clicked` class is still applied for existing styles.
+`can-toggle` adds the `toggled` class when the element is on.
   </TabItem>
   <TabItem label="React">
 ```tsx
 import { CanToggleElement } from "@playhtml/react";
 
 <CanToggleElement>
-  {({ data }) => {
-    const on = typeof data === "object" ? data.on : !!data;
+  {({ data, setData }) => {
+    const on = data.on;
     return (
       <button
         id="my-switch"
