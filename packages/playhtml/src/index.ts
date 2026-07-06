@@ -542,6 +542,7 @@ function isPromiseLike(value: unknown): value is Promise<void> {
 }
 /** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
 let lastElementAwarenessFingerprint: string | null = null;
+let trackedElementAwarenessKeys = new Set<string>();
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
 // Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
@@ -561,8 +562,8 @@ let navigationController: ReturnType<typeof createNavigationController> | null =
 let detachNavListeners: (() => void) | null = null;
 let configureIdentityListener: EventListener | null = null;
 
-// Awareness change listener — must be rebound whenever the awareness provider
-// (cursor provider or main yprovider) is rebuilt during navigation.
+// Awareness change listener — must be rebound whenever the element awareness
+// provider is rebuilt during navigation.
 let awarenessChangeHandler: (() => void) | null = null;
 let awarenessChangeTarget: {
   awareness: { off: (event: string, cb: () => void) => void };
@@ -851,8 +852,7 @@ function recreateStore(): void {
 
 /**
  * Detach the current awareness "change" listener (if any) and attach a fresh
- * one to whichever provider currently holds awareness (cursor provider if
- * cursors enabled, otherwise main yprovider). Safe to call multiple times.
+ * one to the provider that holds element awareness. Safe to call multiple times.
  */
 function bindAwarenessListener(): void {
   if (awarenessChangeTarget && awarenessChangeHandler) {
@@ -863,7 +863,7 @@ function bindAwarenessListener(): void {
   awarenessChangeTarget = null;
   awarenessChangeHandler = null;
 
-  const provider = cursorClient?.getProvider() ?? yprovider;
+  const provider = getElementAwarenessProvider();
   if (!provider) return;
   const handler = () => onChangeAwareness();
   provider.awareness.on("change", handler);
@@ -1030,6 +1030,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   teardownCursors();
   hasSynced = false;
   lastElementAwarenessFingerprint = null;
+  trackedElementAwarenessKeys.clear();
   recreateStore();
 
   buildMainProvider({
@@ -1152,6 +1153,7 @@ async function runHandleNavigation(): Promise<void> {
     teardownMainProvider();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
+    trackedElementAwarenessKeys.clear();
     // Re-init the doc for the new room: page AND element data are room-scoped,
     // and the doc is reused across rooms, so a fresh doc resets both to the new
     // room (like a page reload) without syncing a delete tombstone back to the
@@ -1181,11 +1183,9 @@ async function runHandleNavigation(): Promise<void> {
     }
   }
 
-  // Rebind awareness listener to the current provider. This is required
-  // whenever we rebuilt yprovider or cursorClient above — the old awareness
-  // object was destroyed along with its provider, orphaning any listener
-  // we had attached at init time.
-  if (mainRoomChanged || cursorRoomChanged || cursorEnabledChanged) {
+  // Element awareness lives on the page provider, so rebind only when the page
+  // room provider is rebuilt and its awareness object has been replaced.
+  if (mainRoomChanged) {
     bindAwarenessListener();
   }
 
@@ -1381,11 +1381,14 @@ async function initPlayHTMLOnce() {
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
-  // Use cursor provider for awareness (matches cursor scope)
-  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  const awarenessProvider = getElementAwarenessProvider();
   const awareness = awarenessProvider.awareness.getLocalState();
   const elementAwareness = awareness?.[tagType] ?? {};
   return elementAwareness[elementId];
+}
+
+function getElementAwarenessProvider(): YProvider {
+  return yprovider;
 }
 
 function isHTMLElement(ele: any): ele is HTMLElement {
@@ -1483,17 +1486,23 @@ function createPlayElementData<T extends TagType, TData = any>(
     elementId,
     initialData as TData,
   );
+  const initialAwareness = getElementAwareness(tag, elementId);
 
   const elementData: ElementData = {
     ...tagInfo,
+    myDefaultAwareness:
+      initialAwareness !== undefined
+        ? initialAwareness
+        : tagInfo.myDefaultAwareness,
     devMode: isDevelopmentMode,
     // Always provide a plain snapshot to render paths
     data: clonePlain(dataProxy),
     awareness:
-      getElementAwareness(tag, elementId) ??
-      tagInfo.myDefaultAwareness !== undefined
-        ? [tagInfo.myDefaultAwareness]
-        : undefined,
+      initialAwareness !== undefined
+        ? [initialAwareness]
+        : tagInfo.myDefaultAwareness !== undefined
+          ? [tagInfo.myDefaultAwareness]
+          : undefined,
     element,
     onChange: (newData: TData) => {
       // Prevent writes for read-only shared consumer elements
@@ -1530,9 +1539,7 @@ function createPlayElementData<T extends TagType, TData = any>(
       }
     },
     onAwarenessChange: (elementAwarenessData) => {
-      // Use cursor provider for awareness (matches cursor scope)
-      // Fall back to doc provider if cursors are disabled
-      const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+      const awarenessProvider = getElementAwarenessProvider();
       ensureAwarenessIdentity(
         awarenessProvider.awareness,
         cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
@@ -1650,8 +1657,7 @@ function getElementInitializerInfoForElement(
 }
 
 function onChangeAwareness() {
-  // Since awareness is on cursor provider, read from there
-  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  const awarenessProvider = getElementAwarenessProvider();
   const states = awarenessProvider.awareness.getStates();
 
   // Only run when element-awareness data changed. Cursor client writes __playhtml_cursors__
@@ -1699,19 +1705,34 @@ function onChangeAwareness() {
   });
 
   // Update all handlers with both array and byStableId
-  // Split only on first colon so element IDs that contain colons (valid in HTML) are preserved
   elementAwareness.forEach(({ array, byStableId }, key) => {
-    const colonIndex = key.indexOf(":");
-    const tag = key.slice(0, colonIndex);
-    const elementId = key.slice(colonIndex + 1);
-    const tagElementHandlers = elementHandlers.get(tag as TagType);
-    if (!tagElementHandlers) return;
-
-    const handler = tagElementHandlers.get(elementId);
-    if (handler) {
-      handler.updateAwareness(array, byStableId);
-    }
+    updateHandlerAwarenessForKey(key, array, byStableId);
   });
+
+  for (const key of trackedElementAwarenessKeys) {
+    if (elementAwareness.has(key)) continue;
+    updateHandlerAwarenessForKey(key, [], new Map());
+  }
+
+  trackedElementAwarenessKeys = new Set(elementAwareness.keys());
+}
+
+function updateHandlerAwarenessForKey(
+  key: string,
+  array: any[],
+  byStableId: Map<string, any>,
+) {
+  // Split only on first colon so element IDs that contain colons (valid in HTML) are preserved
+  const colonIndex = key.indexOf(":");
+  const tag = key.slice(0, colonIndex);
+  const elementId = key.slice(colonIndex + 1);
+  const tagElementHandlers = elementHandlers.get(tag as TagType);
+  if (!tagElementHandlers) return;
+
+  const handler = tagElementHandlers.get(elementId);
+  if (handler) {
+    handler.updateAwareness(array, byStableId);
+  }
 }
 
 /**
@@ -1755,9 +1776,8 @@ function setupElements(): void {
     return;
   }
 
-  // Listen to awareness changes on the cursor provider (where element awareness
-  // is stored). Re-bound on provider rebuild via bindAwarenessListener so
-  // nav-time provider swaps don't leave an orphaned listener.
+  // Re-bound on provider rebuild via bindAwarenessListener so nav-time provider
+  // swaps don't leave an orphaned listener.
   bindAwarenessListener();
 
   // Trigger initial awareness sync to populate existing states
@@ -1930,6 +1950,7 @@ export async function resetPlayHTML(): Promise<void> {
 
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
+    trackedElementAwarenessKeys.clear();
     firstSetup = true;
     isLoading = true;
     initStarted = false;
