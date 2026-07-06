@@ -66,4 +66,60 @@ describe("element awareness sync", () => {
     expect(awarenessSnapshots.at(-1)).toEqual([]);
     expect(byStableIdSnapshots.at(-1)?.size).toBe(0);
   });
+
+  it("publishes element awareness through the page room when cursors use another room", async () => {
+    document.body.innerHTML = "";
+    (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
+    await resetPlayHTML();
+    await playhtml.init({
+      cursors: { enabled: true, room: "domain" },
+    });
+
+    const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
+    expect(providers.length).toBeGreaterThanOrEqual(2);
+    const mainProvider = providers[0];
+    const cursorProvider = providers[1];
+    expect(mainProvider.roomname).toBe(playhtml.roomId);
+    expect(cursorProvider.roomname).not.toBe(playhtml.roomId);
+
+    const el = document.createElement("div");
+    el.id = "room-scoped-presence";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).updateElement = vi.fn();
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    const handler = playhtml
+      .elementHandlers.get("can-play")!
+      .get("room-scoped-presence")!;
+    handler.setMyAwareness({ active: true } as any);
+
+    expect(mainProvider.awareness.getLocalState()?.["can-play"]).toEqual({
+      "room-scoped-presence": { active: true },
+    });
+    expect(cursorProvider.awareness.getLocalState()?.["can-play"]).toBeUndefined();
+  });
+
+  it("keeps existing local awareness when a handler is created", async () => {
+    const provider = getCurrentProvider();
+    provider.awareness.setLocalStateField("can-play", {
+      "seeded-presence": { active: true },
+    });
+
+    const el = document.createElement("div");
+    el.id = "seeded-presence";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).myDefaultAwareness = { active: false };
+    (el as any).updateElement = vi.fn();
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    const handler = playhtml
+      .elementHandlers.get("can-play")!
+      .get("seeded-presence")!;
+
+    expect(handler.awareness).toEqual([{ active: true }]);
+  });
 });

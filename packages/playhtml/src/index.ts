@@ -562,8 +562,8 @@ let navigationController: ReturnType<typeof createNavigationController> | null =
 let detachNavListeners: (() => void) | null = null;
 let configureIdentityListener: EventListener | null = null;
 
-// Awareness change listener — must be rebound whenever the awareness provider
-// (cursor provider or main yprovider) is rebuilt during navigation.
+// Awareness change listener — must be rebound whenever the element awareness
+// provider is rebuilt during navigation.
 let awarenessChangeHandler: (() => void) | null = null;
 let awarenessChangeTarget: {
   awareness: { off: (event: string, cb: () => void) => void };
@@ -852,8 +852,7 @@ function recreateStore(): void {
 
 /**
  * Detach the current awareness "change" listener (if any) and attach a fresh
- * one to whichever provider currently holds awareness (cursor provider if
- * cursors enabled, otherwise main yprovider). Safe to call multiple times.
+ * one to the provider that holds element awareness. Safe to call multiple times.
  */
 function bindAwarenessListener(): void {
   if (awarenessChangeTarget && awarenessChangeHandler) {
@@ -864,7 +863,7 @@ function bindAwarenessListener(): void {
   awarenessChangeTarget = null;
   awarenessChangeHandler = null;
 
-  const provider = cursorClient?.getProvider() ?? yprovider;
+  const provider = getElementAwarenessProvider();
   if (!provider) return;
   const handler = () => onChangeAwareness();
   provider.awareness.on("change", handler);
@@ -1384,11 +1383,14 @@ async function initPlayHTMLOnce() {
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
-  // Use cursor provider for awareness (matches cursor scope)
-  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  const awarenessProvider = getElementAwarenessProvider();
   const awareness = awarenessProvider.awareness.getLocalState();
   const elementAwareness = awareness?.[tagType] ?? {};
   return elementAwareness[elementId];
+}
+
+function getElementAwarenessProvider(): YProvider {
+  return yprovider;
 }
 
 function isHTMLElement(ele: any): ele is HTMLElement {
@@ -1486,6 +1488,7 @@ function createPlayElementData<T extends TagType, TData = any>(
     elementId,
     initialData as TData,
   );
+  const initialAwareness = getElementAwareness(tag, elementId);
 
   const elementData: ElementData = {
     ...tagInfo,
@@ -1493,10 +1496,11 @@ function createPlayElementData<T extends TagType, TData = any>(
     // Always provide a plain snapshot to render paths
     data: clonePlain(dataProxy),
     awareness:
-      getElementAwareness(tag, elementId) ??
-      tagInfo.myDefaultAwareness !== undefined
-        ? [tagInfo.myDefaultAwareness]
-        : undefined,
+      initialAwareness !== undefined
+        ? [initialAwareness]
+        : tagInfo.myDefaultAwareness !== undefined
+          ? [tagInfo.myDefaultAwareness]
+          : undefined,
     element,
     onChange: (newData: TData) => {
       // Prevent writes for read-only shared consumer elements
@@ -1533,9 +1537,7 @@ function createPlayElementData<T extends TagType, TData = any>(
       }
     },
     onAwarenessChange: (elementAwarenessData) => {
-      // Use cursor provider for awareness (matches cursor scope)
-      // Fall back to doc provider if cursors are disabled
-      const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+      const awarenessProvider = getElementAwarenessProvider();
       ensureAwarenessIdentity(
         awarenessProvider.awareness,
         cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
@@ -1653,8 +1655,7 @@ function getElementInitializerInfoForElement(
 }
 
 function onChangeAwareness() {
-  // Since awareness is on cursor provider, read from there
-  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  const awarenessProvider = getElementAwarenessProvider();
   const states = awarenessProvider.awareness.getStates();
 
   // Only run when element-awareness data changed. Cursor client writes __playhtml_cursors__
@@ -1773,9 +1774,8 @@ function setupElements(): void {
     return;
   }
 
-  // Listen to awareness changes on the cursor provider (where element awareness
-  // is stored). Re-bound on provider rebuild via bindAwarenessListener so
-  // nav-time provider swaps don't leave an orphaned listener.
+  // Re-bound on provider rebuild via bindAwarenessListener so nav-time provider
+  // swaps don't leave an orphaned listener.
   bindAwarenessListener();
 
   // Trigger initial awareness sync to populate existing states

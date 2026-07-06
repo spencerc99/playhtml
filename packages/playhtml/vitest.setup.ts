@@ -47,10 +47,12 @@ vi.mock("y-partyserver/provider", () => {
       awareness: any;
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
-      constructor() {
+      roomname: string;
+      constructor(_host: string, room: string) {
         if ((globalThis as any).PLAYHTML_TEST_PROVIDER_THROW) {
           throw new Error("test provider init failure");
         }
+        this.roomname = room;
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),
