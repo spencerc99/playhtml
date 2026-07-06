@@ -1667,7 +1667,10 @@ function createPlayElementData<T extends TagType, TData = any>(
     },
     triggerAwarenessUpdate: () => {
       if (elementAwarenessClient) {
-        elementAwarenessClient.refresh();
+        // setLocalAwareness (called by onAwarenessChange, which always runs
+        // immediately before this in setMyAwareness) already emitted the
+        // handler sweep synchronously. Refreshing here would fire
+        // updateElementAwareness a second time for the same local write.
         return;
       }
       onChangeAwareness();

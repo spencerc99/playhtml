@@ -155,6 +155,31 @@ describe("element awareness sync", () => {
     expect(provider.awareness.getLocalState()?.["can-play"]).not.toBe(beforeSub);
   });
 
+  it("invokes updateElementAwareness once per local setMyAwareness", async () => {
+    const calls: unknown[] = [];
+
+    const el = document.createElement("div");
+    el.id = "single-fire-presence";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).updateElement = vi.fn();
+    (el as any).updateElementAwareness = (data: any) => {
+      calls.push(data);
+    };
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    const handler = playhtml
+      .elementHandlers.get("can-play")!
+      .get("single-fire-presence")!;
+
+    calls.length = 0;
+    handler.setMyAwareness({ active: true } as any);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ myAwareness: { active: true } });
+  });
+
   it("keeps existing local awareness when a handler is recreated", async () => {
     const el = document.createElement("div");
     el.id = "seeded-presence";
