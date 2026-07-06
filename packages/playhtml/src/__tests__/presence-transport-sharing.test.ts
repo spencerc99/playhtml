@@ -3,7 +3,11 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { playhtml, resetPlayHTML } from "../index";
-import { getPresenceSockets } from "./presence-test-utils";
+import {
+  getPresenceSocketForRoom,
+  getPresenceSockets,
+  sentMessages,
+} from "./presence-test-utils";
 
 describe("presence transport sharing", () => {
   beforeEach(async () => {
@@ -62,5 +66,17 @@ describe("presence transport sharing", () => {
       .filter((socket) => !socket.closed)
       .map((socket) => socket.options.room);
     expect(openRooms).toEqual([playhtml.roomId]);
+  });
+
+  it("publishes the same page on every join across the shared socket", async () => {
+    await playhtml.init({ cursors: { enabled: true } });
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    const joinMessages = sentMessages(socket).filter(
+      (message) => message.type === "presence-join",
+    );
+    expect(joinMessages.length).toBeGreaterThan(0);
+    for (const message of joinMessages) {
+      expect(message.page).toBe(window.location.pathname);
+    }
   });
 });

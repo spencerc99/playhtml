@@ -36,7 +36,10 @@ import {
   getStableIdForAwareness,
   getElementAwarenessFingerprint,
 } from "./awareness-utils";
-import { CursorClientAwareness } from "./cursors/cursor-client";
+import {
+  CursorClientAwareness,
+  getPresencePage,
+} from "./cursors/cursor-client";
 import { createPresenceAPI, ensureAwarenessIdentity } from "./presence";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import {
@@ -918,7 +921,7 @@ function buildElementAwarenessClient(): void {
   elementAwarenessClient = new ElementAwarenessClient({
     transport,
     getIdentity: getElementAwarenessIdentity,
-    getPage: () => normalizePathname(window.location.pathname) || undefined,
+    getPage: getPresencePage,
     onAwareness: applyElementAwareness,
   });
 }

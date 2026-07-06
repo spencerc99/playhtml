@@ -384,7 +384,7 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
   return cursorStyle.slice(5, closeQuote);
 }
 
-function getPresencePage(): string | undefined {
+export function getPresencePage(): string | undefined {
   const page = window.location.pathname;
   return page.length <= MAX_PRESENCE_PAGE_LENGTH ? page : undefined;
 }
