@@ -104,10 +104,12 @@ function getLocalPreviewInitOptions() {
   const params = new URLSearchParams(window.location.search);
   const host = params.get("playhtmlHost");
   const room = params.get("playhtmlRoom");
+  const cursorRoom = params.get("playhtmlCursorRoom");
 
   return {
     ...(host ? { host } : {}),
     ...(room ? { room } : {}),
+    ...(cursorRoom ? { cursorRoom } : {}),
   };
 }
 
@@ -116,14 +118,16 @@ setupHomepageAwarenessStatus();
 // Render React components
 const reactContentElement = document.getElementById("reactContent");
 if (reactContentElement) {
+  const { cursorRoom, ...localPreviewOptions } = getLocalPreviewInitOptions();
   const root = createRoot(reactContentElement);
   root.render(
     <PlayProvider
       initOptions={{
-        ...getLocalPreviewInitOptions(),
+        ...localPreviewOptions,
         cursors: {
           enableChat: true,
           enabled: true,
+          ...(cursorRoom ? { room: cursorRoom } : {}),
         },
         // an event when someone opens the website?
         extraCapabilities: {
