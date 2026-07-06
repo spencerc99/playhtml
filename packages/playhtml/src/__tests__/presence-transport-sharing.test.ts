@@ -30,4 +30,37 @@ describe("presence transport sharing", () => {
     await resetPlayHTML();
     expect(getPresenceSockets().every((socket) => socket.closed)).toBe(true);
   });
+
+  it("shares one socket between cursors and element awareness on the page room", async () => {
+    await playhtml.init({ cursors: { enabled: true } });
+    const el = document.createElement("div");
+    el.id = "shared-socket-card";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).updateElement = () => {};
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    const openSockets = getPresenceSockets().filter((socket) => !socket.closed);
+    expect(openSockets.map((socket) => socket.options.room)).toEqual([
+      playhtml.roomId,
+    ]);
+  });
+
+  it("opens a separate page-room socket when cursors use a domain room", async () => {
+    await playhtml.init({ cursors: { enabled: true, room: "domain" } });
+    const openRooms = getPresenceSockets()
+      .filter((socket) => !socket.closed)
+      .map((socket) => socket.options.room);
+    expect(openRooms).toContain(playhtml.roomId);
+    expect(openRooms).toHaveLength(2);
+  });
+
+  it("opens the page-room socket even when cursors are disabled", async () => {
+    await playhtml.init({ cursors: { enabled: false } });
+    const openRooms = getPresenceSockets()
+      .filter((socket) => !socket.closed)
+      .map((socket) => socket.options.room);
+    expect(openRooms).toEqual([playhtml.roomId]);
+  });
 });
