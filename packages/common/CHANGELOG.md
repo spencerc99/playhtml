@@ -1,5 +1,13 @@
 # @playhtml/common
 
+## 0.8.1
+
+### Patch Changes
+
+- f8bc35d: Keep can-grow hover handling from adding duplicate leave and keyboard listeners during repeated hover events.
+- e76abb7: Keep PlayHTML-managed local DOM state out of `can-mirror` persistence, including inspector highlights, devtools labels, loading markers, and hover/focus attributes, so mirrored elements can still be inspected and reset without saving tool UI state.
+- 44e599d: Make `can-move-bounds` clamp the full element inside its bounds by default, account for the element's starting position within the bounds container, normalize persisted out-of-bounds positions on mount, and keep fast edge drags pinned while synced position updates catch up. Explicit `min-visible` settings can still allow partial overhang when that behavior is wanted.
+
 ## 0.8.0
 
 ### Minor Changes
