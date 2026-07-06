@@ -15,6 +15,8 @@ import { DuplicateRabbitDemo } from '@/components/react/capability-demos/Duplica
 
 Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
 
+This page has live demos and both framework forms. For attribute names, data shapes, and options, see the [capabilities reference](/docs/reference/capabilities/).
+
 :::tip[Every playhtml element needs a stable id]
 The `id` is the key an element's synced data is stored under, so it must be **stable across reloads and browsers**. That's how two visitors agree on which element is which. A hand-written `id="my-lamp"` is ideal. If you omit it, playhtml falls back to hashing the element's HTML, which can differ across browsers and break sync.
 
@@ -386,7 +388,7 @@ Full treatment with live demos lives on **[Custom elements → can-mirror](/docs
 
 Build your own capability: you define a shared `data` shape and how the element renders from it (an imperative `updateElement`, or the newer reactive `view`). You control how the data drives the element and which parts persist. Use it for custom counters, guestbooks, chat, games, reactions, per-user state, and event broadcasts — anything the built-ins don't cover.
 
-Full guide, with the imperative and reactive `view` forms (vanilla) and `withSharedState` (React) side by side — plus live demos: **[Custom elements](/docs/custom-elements/)**.
+Full guide with live demos: **[Custom elements](/docs/custom-elements/)**. Property reference: **[Element API](/docs/reference/element-api/)**.
 
 ---
 

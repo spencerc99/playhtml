@@ -2,7 +2,7 @@
 title: usePlayerIdentity
 description: Read the local player's cursor color, participant id, and name.
 sidebar:
-  order: 3
+  order: 7
 ---
 
 `usePlayerIdentity()` returns the local player's identity from the playhtml

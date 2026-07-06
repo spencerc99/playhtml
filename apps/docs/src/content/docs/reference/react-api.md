@@ -2,7 +2,7 @@
 title: "React API"
 description: "Types and signatures for @playhtml/react: PlayProvider, withSharedState, capability components, hooks, and usePlayContext."
 sidebar:
-  order: 2
+  order: 6
 ---
 
 The full type surface of `@playhtml/react`. For a gentler introduction, see [Using React](/docs/using-react/). For concept-by-concept usage, each page under _Data_ and _Capabilities_ has a React tab alongside the vanilla form.

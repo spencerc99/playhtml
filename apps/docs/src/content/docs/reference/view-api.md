@@ -2,7 +2,7 @@
 title: "View API (vanilla)"
 description: "Types and signatures for the vanilla custom-element API: playhtml.register, playhtml.define, the view function, the element handle, and the re-exported lit-html helpers."
 sidebar:
-  order: 3
+  order: 5
 ---
 
 The vanilla API for building custom collaborative elements. For usage with side-by-side examples, see [Custom elements](/docs/custom-elements/); for the React equivalent, see the [React API](/docs/reference/react-api/).
@@ -69,6 +69,8 @@ interface ElementInitializer<T, U, V> {
   debounceMs?: number;
 }
 ```
+
+This shows the view-relevant subset. See [Element API](/docs/reference/element-api/) for the full list, including `onClick`, `onDrag`, `updateElementAwareness`, and validation rules.
 
 `defaultData` must be an object (or a function that returns one), not a bare value like `0` or `""`. An object shape lets you add fields later without migrating old data. Use `{ count: 0 }`, not `0`.
 
