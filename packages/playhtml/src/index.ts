@@ -1544,15 +1544,20 @@ function createPlayElementData<T extends TagType, TData = any>(
         awarenessProvider.awareness,
         cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
       );
-      const localAwareness =
+      const existingAwareness =
         awarenessProvider.awareness.getLocalState()?.[tag] || {};
 
-      if (localAwareness[elementId] === elementAwarenessData) {
+      if (existingAwareness[elementId] === elementAwarenessData) {
         return;
       }
 
-      localAwareness[elementId] = elementAwarenessData;
-      awarenessProvider.awareness.setLocalStateField(tag, localAwareness);
+      // Build a fresh object rather than mutating the existing one in place.
+      // y-protocols' setLocalState detects changes via deep equality against the
+      // previous state; mutating the current state object in place makes that
+      // comparison see no change, which suppresses the "change" event the
+      // provider listens on to broadcast awareness — so peers never receive it.
+      const nextAwareness = { ...existingAwareness, [elementId]: elementAwarenessData };
+      awarenessProvider.awareness.setLocalStateField(tag, nextAwareness);
     },
     triggerAwarenessUpdate: () => {
       onChangeAwareness();

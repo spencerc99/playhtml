@@ -101,6 +101,43 @@ describe("element awareness sync", () => {
     expect(cursorProvider.awareness.getLocalState()?.["can-play"]).toBeUndefined();
   });
 
+  it("does not mutate the previous awareness state object when updating", async () => {
+    const provider = getCurrentProvider();
+
+    const el = document.createElement("div");
+    el.id = "toggle-presence";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).myDefaultAwareness = { hovering: false };
+    (el as any).updateElement = vi.fn();
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    const handler = playhtml
+      .elementHandlers.get("can-play")!
+      .get("toggle-presence")!;
+
+    // The provider only broadcasts an awareness update when y-protocols'
+    // setLocalState sees a change via deep equality against the PREVIOUS state.
+    // If the update mutates the previous state object in place, that comparison
+    // sees no change and the broadcast is dropped — peers never see the update.
+    // Capture the sub-object the handler will read, then update, and assert the
+    // captured snapshot was left untouched (i.e. a fresh object was written).
+    const beforeSub = provider.awareness.getLocalState()?.["can-play"] as Record<
+      string,
+      unknown
+    >;
+    const beforeSnapshot = JSON.stringify(beforeSub);
+
+    handler.setMyAwareness({ hovering: true } as any);
+
+    expect(JSON.stringify(beforeSub)).toBe(beforeSnapshot);
+    expect(
+      provider.awareness.getLocalState()?.["can-play"]?.["toggle-presence"],
+    ).toEqual({ hovering: true });
+    expect(provider.awareness.getLocalState()?.["can-play"]).not.toBe(beforeSub);
+  });
+
   it("keeps existing local awareness when a handler is created", async () => {
     const provider = getCurrentProvider();
     provider.awareness.setLocalStateField("can-play", {
