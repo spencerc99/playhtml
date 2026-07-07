@@ -384,3 +384,187 @@ $slotY: $moundTopGap + $visibleH;
     opacity: 0;
   }
 }
+
+// ============================
+// Letter scroll segments — each letter is one fixed-size segment of the
+// perforated scroll; the author's preset styles ground, ink, and the
+// segment's BOTTOM perforation (the tear line to the next sheet).
+// ============================
+.mbs-segment {
+  position: relative;
+  box-sizing: border-box;
+  width: min(560px, 92vw);
+  min-height: min(520px, 72vh);
+  padding: 36px 40px 28px;
+  display: flex;
+  flex-direction: column;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  font-size: 16px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mbs-letterText {
+  flex: 1;
+}
+
+// The one sign-off row: signed name + cursor fingerprint + date stamp imprint.
+.mbs-signoff {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+.mbs-signName {
+  font-style: italic;
+  font-size: 15px;
+}
+.mbs-fingerprint {
+  width: 14px;
+  height: 18px;
+  opacity: 0.75;
+  filter: blur(0.3px);
+}
+.mbs-dateImprint {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  opacity: 0.65;
+  transform: rotate(-3deg);
+  mix-blend-mode: multiply;
+}
+
+// --- grounds ---
+.seg-linen {
+  background: #faf7f2;
+  color: #3d3833;
+}
+
+.seg-web1 {
+  background: #ffffff;
+  color: #1a1a8c;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  border-width: 7px;
+  border-style: solid;
+  border-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYAAACpF6WWAAABJ0lEQVR4AaTRQU7DQBBEUfCKI3AS7r/mJByBHeiN8q125CycIH26urqmPY63r8+PP7zd/mhoZ6WjmZ4GHRsDGd8/v+/ghX4iqzen1Xp6LWWEEAxBT3iyPFVPq+Bt/mkMQOel9dDLgEY+HeumhQTQkDaL/LMqU359KCGGeg//jJkzn/26KdOTrjCX0HZU129qWWaDKv8M83B+sl7foQJXq2WdV7Fe3yJD9VXs2Zda5inqqxyWPrvM7ebZ9aGm8ayeb7k+VE9S5/DqAzq/bmpRzEVCj5AzU0Hboa6bZqoToStY6PzhQ2UaQH+G2T1yPJdYr8/QMB9hHvLlaOjN1cNNGQVoIdD80EOvyoDm7b8pYw5ogXx98FAvF/z9pkyGoKqn1YlZ5Msh/x8AAP//9W84CwAAAAZJREFUAwA7SYrgj2UwOAAAAABJRU5ErkJggg==") 7 / 7px / 0 round;
+}
+
+.seg-stationery {
+  // PLACEHOLDER texture (SVG turbulence) — swap the background-image data URI
+  // for Spencer's stationery paper asset when provided. Keep it a data URI so
+  // it loads inside the shadow root on any host page.
+  background-color: #f5f0e8;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.24 0 0 0 0 0.22 0 0 0 0 0.19 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23p)'/%3E%3C/svg%3E");
+  color: #3d3833;
+}
+
+.seg-webnative {
+  background:
+    linear-gradient(160deg, rgba(91, 141, 184, 0.18), rgba(212, 184, 92, 0.16) 55%, rgba(74, 154, 138, 0.2)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 26px, rgba(31, 41, 55, 0.08) 27px),
+    #fdfcf9;
+  color: #1f2937;
+
+  // ascii decoration in the corners
+  &::before {
+    content: "*~*~*";
+    position: absolute;
+    top: 8px;
+    right: 14px;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: 11px;
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  &::after {
+    content: "\00b7\00b7\00b7 --- \00b7\00b7\00b7";
+    position: absolute;
+    bottom: 6px;
+    left: 14px;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: 11px;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+}
+
+.seg-slab {
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, 0.06), transparent 60%),
+    linear-gradient(170deg, #4c4a47, #3a3835 70%, #33312e);
+  color: #e8e4dc;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+// --- perforations: each segment OWNS its bottom tear line, styled per preset ---
+.mbs-perf {
+  position: relative;
+  height: 14px;
+  width: min(560px, 92vw);
+  flex: none;
+}
+.perf-linen::before,
+.perf-stationery::before {
+  // ragged torn-paper edge: jagged mask on a paper-colored strip
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  background-color: #efe9df;
+  -webkit-mask-image: linear-gradient(135deg, #000 6px, transparent 6px),
+    linear-gradient(-135deg, #000 6px, transparent 6px);
+  -webkit-mask-size: 16px 14px;
+  -webkit-mask-repeat: repeat-x;
+  mask-image: linear-gradient(135deg, #000 6px, transparent 6px),
+    linear-gradient(-135deg, #000 6px, transparent 6px);
+  mask-size: 16px 14px;
+  mask-repeat: repeat-x;
+}
+.perf-web1::before {
+  // pixel-notched tear
+  content: "";
+  position: absolute;
+  inset: 3px 0;
+  background: repeating-linear-gradient(
+    to right,
+    #1a1a8c 0 8px,
+    transparent 8px 16px
+  );
+  image-rendering: pixelated;
+}
+.perf-webnative::before {
+  content: "- \00b7 - \00b7 - \00b7 - \00b7 - \00b7 - \00b7 - \00b7 - \00b7 - \00b7 -";
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  line-height: 14px;
+  color: rgba(31, 41, 55, 0.5);
+  overflow: hidden;
+}
+.perf-slab::before {
+  // chiseled crack
+  content: "";
+  position: absolute;
+  inset: 5px 0;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    #26241f 8%,
+    #26241f 46%,
+    transparent 50%,
+    #26241f 54%,
+    #26241f 92%,
+    transparent 100%
+  );
+  clip-path: polygon(0 40%, 12% 60%, 28% 30%, 47% 70%, 63% 35%, 82% 65%, 100% 45%, 100% 55%, 82% 80%, 63% 50%, 47% 90%, 28% 45%, 12% 78%, 0 55%);
+}
