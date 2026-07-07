@@ -100,7 +100,7 @@ cursors: {
 **Presence data includes:**
 - `presence.page` - The page path the cursor is on
 - `presence.cursor` - Current cursor position `{ x, y, pointer }`, or `null` when the user is present but not publishing a cursor position
-- `presence.playerIdentity` - User info `{ name, playerStyle: { colorPalette } }`
+- `presence.playerIdentity` - User info `{ name, playerStyle: { colorPalette }, custom }`
 - `presence.message` - Chat message (if chat enabled)
 - `presence.lastSeen` - Timestamp
 
@@ -273,6 +273,8 @@ window.cursors.name;  // "Alice"
 window.cursors.name = "Bob";
 ```
 
+`window.cursors.custom` and `window.cursors.setCustom(key, value, { persist })` are also available, as conveniences that delegate to `playhtml.users.me`. For the full custom-properties API (persistence semantics, the 1KB cap, and how properties reach cursor render hooks), see [Users](/docs/data/presence/users/).
+
 ### Events
 
 Listen for changes to cursor state:
@@ -333,6 +335,8 @@ The `cursors` object from `usePlayContext()` provides:
 - `cursors.name` - Your current name
 
 These values automatically update when users join/leave or change their settings.
+
+For custom properties and a reactive roster of everyone in the room, use `useUsers()` and `usePlayerIdentity()` instead — see [Users](/docs/data/presence/users/).
 
 ### Configuring Cursors Dynamically
 
@@ -466,6 +470,75 @@ playhtml.init({
   }
 });
 ```
+
+### Status-Aware Cursors
+
+Set a status on your own cursor and dim other users' cursors when they've gone away:
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```javascript
+playhtml.init({
+  cursors: {
+    enabled: true,
+    getCursorStyle: (presence) => {
+      if (presence.playerIdentity.custom?.status === "away") {
+        return { opacity: '0.3' };
+      }
+      return {};
+    }
+  }
+});
+
+// Mark yourself away, e.g. on window blur. Session-only so a stale
+// "away" status doesn't stick around on your next visit.
+window.addEventListener('blur', () => {
+  playhtml.users.me.setCustom('status', 'away', { persist: false });
+});
+
+window.addEventListener('focus', () => {
+  playhtml.users.me.setCustom('status', 'active', { persist: false });
+});
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+<PlayProvider
+  initOptions={{
+    cursors: {
+      enabled: true,
+      getCursorStyle: (presence) =>
+        presence.playerIdentity.custom?.status === "away"
+          ? { opacity: '0.3' }
+          : {}
+    }
+  }}
+>
+  <App />
+</PlayProvider>
+```
+
+```tsx
+function AwayTracker() {
+  useEffect(() => {
+    const setAway = () =>
+      playhtml.users.me.setCustom('status', 'away', { persist: false });
+    const setActive = () =>
+      playhtml.users.me.setCustom('status', 'active', { persist: false });
+
+    window.addEventListener('blur', setAway);
+    window.addEventListener('focus', setActive);
+    return () => {
+      window.removeEventListener('blur', setAway);
+      window.removeEventListener('focus', setActive);
+    };
+  }, []);
+
+  return null;
+}
+```
+  </TabItem>
+</Tabs>
 
 ### Workspace Rooms
 

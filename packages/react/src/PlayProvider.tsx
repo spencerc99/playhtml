@@ -129,6 +129,7 @@ export const PlayContext = createContext<PlayContextInfo>({
     allColors: [],
     color: "",
     name: undefined,
+    custom: {},
   },
   cursorPresences: new Map(),
 });
@@ -245,6 +246,7 @@ export function PlayProvider({
     allColors: [] as string[],
     color: "",
     name: undefined,
+    custom: {},
   });
 
   const [cursorPresences, setCursorPresences] = useState<
@@ -270,6 +272,7 @@ export function PlayProvider({
       allColors: snap.allColors || [],
       color: snap.color || "",
       name: snap.name || "",
+      custom: snap.custom || {},
     });
     const handleAllColors = (allColors: string[]) => {
       setCursorsState((prev) => ({ ...prev, allColors }));
@@ -280,14 +283,19 @@ export function PlayProvider({
     const handleName = (myName?: string) => {
       setCursorsState((prev) => ({ ...prev, name: myName }));
     };
+    const handleCustom = (myCustom: Record<string, unknown>) => {
+      setCursorsState((prev) => ({ ...prev, custom: myCustom }));
+    };
     client.on("allColors", handleAllColors);
     client.on("color", handleColor);
     client.on("name", handleName);
+    client.on("custom", handleCustom);
 
     return () => {
       client.off("allColors", handleAllColors);
       client.off("color", handleColor);
       client.off("name", handleName);
+      client.off("custom", handleCustom);
       unsubPresences();
     };
   }, [hasSynced]);

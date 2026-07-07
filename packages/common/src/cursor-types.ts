@@ -10,6 +10,7 @@ export type Cursor = {
 export type PlayerIdentity = {
   publicKey: string;
   name?: string;
+  custom?: Record<string, unknown>;
   playerStyle: {
     colorPalette: string[];
     cursorStyle?: string;
@@ -19,6 +20,7 @@ export type PlayerIdentity = {
 
 export const MAX_PLAYER_IDENTITY_COLORS = 16;
 export const MAX_PLAYER_IDENTITY_STRING_LENGTH = 512;
+export const MAX_PLAYER_IDENTITY_CUSTOM_BYTES = 1024;
 
 const PLAYER_IDENTITY_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
@@ -54,7 +56,20 @@ export interface CursorEvents {
   allColors: string[];
   color: string;
   name: string | undefined;
+  custom: Record<string, unknown>;
 }
+
+// Flat view of a participant's durable identity, as returned by
+// playhtml.users.getAll() / playhtml.users.onChange(). `pid` is the stable
+// publicKey; `color` is playerStyle.colorPalette[0]; `custom` defaults to {}
+// when unset.
+export type User = {
+  pid: string;
+  name?: string;
+  color: string;
+  custom: Record<string, unknown>;
+  isMe: boolean;
+};
 
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
@@ -101,7 +116,34 @@ export function toPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
     identity.createdAt = Number(value.createdAt);
   }
 
+  const custom = toPublicIdentityCustom(value.custom);
+  if (custom !== undefined) {
+    identity.custom = custom;
+  }
+
   return identity;
+}
+
+// Custom properties are public presence data set by the site via
+// playhtml.users.me — carried through the public identity boundary when they
+// are a well-formed JSON object within the size cap, dropped otherwise.
+function toPublicIdentityCustom(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  let json: string;
+  try {
+    json = JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+  if (
+    json === undefined ||
+    new TextEncoder().encode(json).byteLength > MAX_PLAYER_IDENTITY_CUSTOM_BYTES
+  ) {
+    return undefined;
+  }
+  return value;
 }
 
 function isValidPlayerIdentityString(value: unknown): value is string {

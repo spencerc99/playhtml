@@ -11,12 +11,12 @@ import {
   generatePersistentPlayerIdentity,
   MAX_PRESENCE_PAGE_LENGTH,
   PROXIMITY_THRESHOLD,
-  PLAYER_IDENTITY_STORAGE_KEY,
   CursorEvents,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions, CursorZoneOptions } from "..";
 import { getStableIdForAwareness } from "../awareness-utils";
+import { createUsersAPI, type UsersAPI } from "../users";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
 import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
@@ -284,6 +284,11 @@ declare global {
     cursors?: CursorEvents & {
       on: CursorEventEmitter["on"];
       off: CursorEventEmitter["off"];
+      setCustom: (
+        key: string,
+        value: unknown,
+        options?: { persist?: boolean },
+      ) => void;
     };
   }
 }
@@ -433,7 +438,9 @@ export class CursorClientAwareness {
   private spatialGrid: SpatialGrid<CursorPresence> = new SpatialGrid(300); // 300px cell size
   private proximityUsers: Set<string> = new Set();
   private currentCursor: Cursor | null = null;
-  private playerIdentity: PlayerIdentity;
+  private users: UsersAPI;
+  private ownsUsers: boolean = false;
+  private unsubscribeSelfChange: (() => void) | null = null;
   private awarenessUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastUpdate: number = 0;
   private pointerFrame: number | null = null;
@@ -554,13 +561,35 @@ export class CursorClientAwareness {
   // tab disconnects but another tab of the same user is still active).
   private pendingRemovals: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
+  // Cursor client no longer owns identity mutation/persistence — it reads the
+  // live reference from the users module, which is the sole mutator.
+  private get playerIdentity(): PlayerIdentity {
+    return this.users.getIdentity();
+  }
+
   constructor(
     private provider: YProvider,
     private options: CursorOptions = {},
     private presenceTransport?: CursorPresenceTransport,
+    users?: UsersAPI,
   ) {
-    this.playerIdentity =
-      options.playerIdentity || generatePersistentPlayerIdentity();
+    // Callers that construct playhtml via init() always pass the shared users
+    // module (created once, before the cursor client). Standalone callers
+    // (tests, or embedding CursorClientAwareness outside playhtml's own
+    // bootstrap) get a private users module wired to this provider's awareness,
+    // owned and destroyed by this client.
+    if (users) {
+      this.users = users;
+      if (options.playerIdentity) {
+        this.users.adoptIdentity(options.playerIdentity);
+      }
+    } else {
+      this.users = createUsersAPI(
+        options.playerIdentity ?? generatePersistentPlayerIdentity(),
+        { getAwareness: () => this.provider.awareness },
+      );
+      this.ownsUsers = true;
+    }
     assertValidPlayerIdentity(this.playerIdentity);
     this.visibilityThreshold = options.visibilityThreshold || undefined;
     this.coordinateMode = options.coordinateMode || "absolute";
@@ -574,8 +603,51 @@ export class CursorClientAwareness {
       });
     }
 
+    this.lastKnownColor = getPrimaryColor(this.playerIdentity);
+    this.lastKnownName = this.playerIdentity.name;
+    this.lastKnownCustomJson = JSON.stringify(this.playerIdentity.custom ?? {});
+    this.unsubscribeSelfChange = this.users.onSelfChange(() => {
+      this.handleSelfIdentityChange();
+    });
+
     this.initialize();
     this.setupGlobalAPI();
+  }
+
+  // Tracks the previously observed color/name/custom so handleSelfIdentityChange
+  // can emit CursorEvents only for fields that actually changed (mirroring what
+  // the pre-refactor window.cursors setters and configure() did).
+  private lastKnownColor: string = "";
+  private lastKnownName: string | undefined;
+  private lastKnownCustomJson: string = "{}";
+
+  // React to any users.me mutation (color/name/custom/whole-identity adopt):
+  // invalidate the cached own-cursor SVG, refresh the document cursor style,
+  // republish to both transports, and emit the CursorEvents subscribers
+  // (window.cursors.on) already rely on, only for fields that changed.
+  private handleSelfIdentityChange(): void {
+    this.ownCursorSvgCache = null;
+    const nextColor = getPrimaryColor(this.playerIdentity);
+    document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
+    this.publishPlayerIdentity();
+    this.updateCursorAwareness();
+    this.refreshPresenceTransportColors();
+
+    const nextName = this.playerIdentity.name;
+    const nextCustomJson = JSON.stringify(this.playerIdentity.custom ?? {});
+
+    if (nextColor !== this.lastKnownColor) {
+      this.lastKnownColor = nextColor;
+      this.emitGlobalEvent("color", nextColor);
+    }
+    if (nextName !== this.lastKnownName) {
+      this.lastKnownName = nextName;
+      this.emitGlobalEvent("name", nextName);
+    }
+    if (nextCustomJson !== this.lastKnownCustomJson) {
+      this.lastKnownCustomJson = nextCustomJson;
+      this.emitGlobalEvent("custom", { ...(this.playerIdentity.custom ?? {}) });
+    }
   }
 
   private initialize(): void {
@@ -1791,22 +1863,13 @@ export class CursorClientAwareness {
     this.cursorStyleKeys.delete(stableId);
   }
 
-  private savePlayerIdentityToStorage(): void {
-    try {
-      localStorage.setItem(
-        PLAYER_IDENTITY_STORAGE_KEY,
-        JSON.stringify(this.playerIdentity),
-      );
-    } catch (e) {
-      console.warn("Failed to save player identity to localStorage:", e);
-    }
-  }
-
   private setupGlobalAPI(): void {
     // Capture 'this' context for use in getters/setters
     const self = this;
 
-    // Set the global API with direct getter/setter syntax
+    // Set the global API with direct getter/setter syntax. Identity fields
+    // (color/name/custom/setCustom) delegate to the users module, which owns
+    // mutation and persistence; this client only reacts via onSelfChange.
     window.cursors = {
       get allColors() {
         return Array.from(self.allPlayerColors);
@@ -1816,36 +1879,29 @@ export class CursorClientAwareness {
         self.emitGlobalEvent("allColors", newColors);
       },
       get color() {
-        return getPrimaryColor(self.playerIdentity);
+        return self.users.me.color;
       },
       set color(newColor: string) {
-        if (newColor == null || newColor === "") {
-          throw new Error(
-            "[playhtml] cursor.color cannot be set to empty; player identity must have a primary color.",
-          );
-        }
-        const oldColor = self.playerIdentity.playerStyle.colorPalette[0];
-        self.playerIdentity.playerStyle.colorPalette[0] = newColor;
-        self.ownCursorSvgCache = null;
-        self.savePlayerIdentityToStorage();
-        document.documentElement.style.cursor = getCursorStyleForUser(newColor);
-        self.publishPlayerIdentity();
-        self.refreshPresenceTransportColors();
-        if (oldColor !== newColor) {
-          self.emitGlobalEvent("color", newColor);
-        }
+        self.users.me.color = newColor;
       },
       get name() {
-        return self.playerIdentity.name;
+        return self.users.me.name;
       },
       set name(newName: string | undefined) {
-        const oldName = self.playerIdentity.name;
-        self.playerIdentity.name = newName;
-        self.savePlayerIdentityToStorage();
-        self.publishPlayerIdentity();
-        if (oldName !== newName) {
-          self.emitGlobalEvent("name", newName);
-        }
+        self.users.me.name = newName;
+      },
+      get custom() {
+        return self.users.me.custom;
+      },
+      set custom(newCustom: Record<string, unknown>) {
+        self.users.me.custom = newCustom;
+      },
+      setCustom: (
+        key: string,
+        value: unknown,
+        options?: { persist?: boolean },
+      ) => {
+        self.users.me.setCustom(key, value, options);
       },
       on: (event: keyof CursorEvents, callback: Function) => {
         if (!self.globalApiListeners.has(event)) {
@@ -2098,30 +2154,13 @@ export class CursorClientAwareness {
       this.updateAllCursorVisibility();
     }
 
-    // Update player identity if provided (must have publicKey and primary color)
+    // Update player identity if provided (must have publicKey and primary
+    // color). Adoption goes through the users module, which is the sole
+    // mutator; this client's reaction (SVG cache, cursor style, publish,
+    // CursorEvents) runs via the onSelfChange subscription from the
+    // constructor — mirroring what the window.cursors setters trigger.
     if (options.playerIdentity !== undefined) {
-      assertValidPlayerIdentity(options.playerIdentity);
-      const prevColor = getPrimaryColor(this.playerIdentity);
-      const prevName = this.playerIdentity?.name;
-      this.playerIdentity = options.playerIdentity;
-      this.ownCursorSvgCache = null;
-      this.savePlayerIdentityToStorage();
-      // Publish identity and update local cursor style.
-      const nextColor = getPrimaryColor(this.playerIdentity);
-      document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
-      this.publishPlayerIdentity();
-      this.refreshPresenceTransportColors();
-      this.updateCursorAwareness();
-      // Emit color/name events so subscribers (e.g. the React context behind
-      // usePlayerIdentity) react to identity injected through configure() —
-      // mirroring what the window.cursors color/name setters already do.
-      if (nextColor !== prevColor) {
-        this.emitGlobalEvent("color", nextColor);
-      }
-      const nextName = this.playerIdentity?.name;
-      if (nextName !== prevName) {
-        this.emitGlobalEvent("name", nextName);
-      }
+      this.users.adoptIdentity(options.playerIdentity);
     }
   }
 
@@ -2155,6 +2194,12 @@ export class CursorClientAwareness {
   }
 
   destroy(): void {
+    this.unsubscribeSelfChange?.();
+    this.unsubscribeSelfChange = null;
+    if (this.ownsUsers) {
+      this.users.destroy();
+    }
+
     this.cursorEventCleanups.forEach((cleanup) => cleanup());
     this.cursorEventCleanups = [];
 
@@ -2249,6 +2294,7 @@ export class CursorClientAwareness {
       allColors: Array.from(this.allPlayerColors),
       color: getPrimaryColor(this.playerIdentity),
       name: this.playerIdentity.name ?? undefined,
+      custom: { ...(this.playerIdentity.custom ?? {}) },
     };
   }
 
