@@ -92,20 +92,72 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(el.style.transform).toBe("translate(0px, 0px)");
   });
 
-  it("reports missing can-play initializer properties", () => {
+  it("sets up can-play elements that only render awareness", async () => {
     const el = document.createElement("div");
-    el.id = "incomplete-widget";
+    el.id = "presence-only-widget";
     el.setAttribute("can-play", "");
+    (el as any).myDefaultAwareness = { seated: false };
+    (el as any).updateElementAwareness = vi.fn(({ element, myAwareness }) => {
+      element.setAttribute("data-seated", String(myAwareness?.seated));
+    });
     document.body.appendChild(el);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    playhtml.setupPlayElement(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Missing or invalid initializer properties: defaultData, updateElement or view.",
-      ),
+    expect(errorSpy).not.toHaveBeenCalled();
+    const handler = playhtml
+      .elementHandlers!.get("can-play")!
+      .get("presence-only-widget");
+    expect(handler).toBeTruthy();
+
+    (el as any).updateElementAwareness.mockClear();
+    handler!.setMyAwareness({ seated: true });
+
+    expect((el as any).updateElementAwareness).toHaveBeenCalledWith(
+      expect.objectContaining({
+        myAwareness: { seated: true },
+      }),
     );
+  });
+
+  it("reports incomplete can-play initializer pairs", () => {
+    const cases: Array<{
+      id: string;
+      props: Record<string, unknown>;
+      message: string;
+    }> = [
+      {
+        id: "empty-widget",
+        props: {},
+        message: "updateElement, view, or updateElementAwareness",
+      },
+      {
+        id: "data-without-render",
+        props: { defaultData: {} },
+        message: "defaultData requires updateElement or view",
+      },
+      {
+        id: "awareness-without-render",
+        props: { myDefaultAwareness: { seated: false } },
+        message: "myDefaultAwareness requires updateElementAwareness",
+      },
+    ];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    for (const { id, props, message } of cases) {
+      const el = document.createElement("div");
+      el.id = id;
+      el.setAttribute("can-play", "");
+      Object.assign(el, props);
+      document.body.appendChild(el);
+
+      playhtml.setupPlayElement(el);
+
+      expect(errorSpy).toHaveBeenLastCalledWith(
+        expect.stringContaining(message),
+      );
+    }
   });
 
   it("handles awareness changes per element (no updateElementAwareness)", async () => {
