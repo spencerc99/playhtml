@@ -17,6 +17,79 @@ afterEach(() => {
 const presenceListeners = new Map<string, Set<(presences: Map<string, unknown>) => void>>();
 const mockPresences = new Map<string, unknown>();
 
+// Mock users module: a minimal in-memory identity + getAll/onChange, enough
+// to drive usePlayerIdentity/useUsers tests without a real Yjs/PartyKit stack.
+const usersChangeListeners = new Set<(users: Map<string, unknown>) => void>();
+const mockSelfIdentity = {
+  pid: "mock-pid",
+  name: undefined as string | undefined,
+  color: "#123456",
+  custom: {} as Record<string, unknown>,
+};
+
+function notifyUsersChange() {
+  const snapshot = mockGetAllUsers();
+  for (const cb of usersChangeListeners) cb(snapshot);
+}
+
+function mockGetAllUsers(): Map<string, unknown> {
+  return new Map([
+    [
+      mockSelfIdentity.pid,
+      {
+        pid: mockSelfIdentity.pid,
+        name: mockSelfIdentity.name,
+        color: mockSelfIdentity.color,
+        custom: mockSelfIdentity.custom,
+        isMe: true,
+      },
+    ],
+  ]);
+}
+
+const mockUsers = {
+  me: {
+    get pid() {
+      return mockSelfIdentity.pid;
+    },
+    get name() {
+      return mockSelfIdentity.name;
+    },
+    set name(value: string | undefined) {
+      mockSelfIdentity.name = value;
+      notifyUsersChange();
+    },
+    get color() {
+      return mockSelfIdentity.color;
+    },
+    set color(value: string) {
+      mockSelfIdentity.color = value;
+      notifyUsersChange();
+    },
+    get custom() {
+      return { ...mockSelfIdentity.custom };
+    },
+    set custom(value: Record<string, unknown>) {
+      mockSelfIdentity.custom = { ...value };
+      notifyUsersChange();
+    },
+    setCustom: vi.fn((key: string, value: unknown) => {
+      if (value === undefined) {
+        delete mockSelfIdentity.custom[key];
+      } else {
+        mockSelfIdentity.custom[key] = value;
+      }
+      notifyUsersChange();
+    }),
+  },
+  getAll: vi.fn(() => mockGetAllUsers()),
+  onChange: vi.fn((callback: (users: Map<string, unknown>) => void) => {
+    usersChangeListeners.add(callback);
+    callback(mockGetAllUsers());
+    return () => usersChangeListeners.delete(callback);
+  }),
+};
+
 let mockReadyResolve: () => void = () => {};
 let mockReadyReject: (error: unknown) => void = () => {};
 let mockReady: Promise<void>;
@@ -87,6 +160,7 @@ const mockedPlayhtml = {
     ),
     getMyIdentity: vi.fn(() => ({ stableId: "me", name: "Me", color: "#fff" })),
   },
+  users: mockUsers,
   createPageData: vi.fn((_name: string, defaultValue: unknown) => {
     let data = defaultValue;
     const listeners = new Set<(d: unknown) => void>();

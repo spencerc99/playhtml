@@ -661,6 +661,7 @@ export {
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useUsers,
 } from "./hooks";
 export {
   CanMoveElement,

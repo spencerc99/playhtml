@@ -11,6 +11,7 @@ import {
   PlayerIdentity,
   PresenceRoom,
   PresenceView,
+  User,
 } from "playhtml";
 import type { CursorZoneOptions } from "playhtml";
 
@@ -166,26 +167,61 @@ export function usePresenceRoom(name: string): PresenceRoom | null {
   return room;
 }
 
+const EMPTY_PLAYER_IDENTITY = {
+  color: "",
+  pid: undefined as string | undefined,
+  name: undefined as string | undefined,
+  custom: {} as Record<string, unknown>,
+};
+
 /**
- * Read the local player's identity — cursor color, participant id (PID), and
- * name — from the playhtml context. Values update reactively: the cursor
- * client emits a `color` event when identity changes (including when the
+ * Read the local player's identity — color, participant id (PID), name, and
+ * custom properties — from `playhtml.users`. Values update reactively:
+ * `playhtml.users` notifies on any self identity change, including when the
  * "we were online" extension injects its identity via the
- * `playhtml:configure-identity` event), which re-renders consumers, at which
- * point the freshly-read `getMyPlayerIdentity()` reflects the new PID.
+ * `playhtml:configure-identity` event.
  *
- * `pid` is undefined until cursors have synced. Requires a `PlayProvider`
- * with `cursors: { enabled: true }`.
+ * Backed by the users module, so it works without `cursors: { enabled: true }`.
+ * Returns empty/undefined values until playhtml has synced.
  */
 export function usePlayerIdentity(): {
   color: string;
   pid: string | undefined;
   name: string | undefined;
+  custom: Record<string, unknown>;
 } {
-  const { cursors, getMyPlayerIdentity } = useContext(PlayContext);
-  return {
-    color: cursors.color,
-    pid: getMyPlayerIdentity()?.publicKey,
-    name: cursors.name,
-  };
+  const { isLoading } = useContext(PlayContext);
+  const [identity, setIdentity] = useState(EMPTY_PLAYER_IDENTITY);
+
+  useEffect(() => {
+    if (isLoading) {
+      setIdentity(EMPTY_PLAYER_IDENTITY);
+      return;
+    }
+    const readIdentity = () => {
+      const me = playhtml.users.me;
+      setIdentity({ color: me.color, pid: me.pid, name: me.name, custom: me.custom });
+    };
+    readIdentity();
+    return playhtml.users.onChange(readIdentity);
+  }, [isLoading]);
+
+  return identity;
+}
+
+/**
+ * Subscribe to all known users — the union of main-room awareness identities
+ * and (when cursors are enabled) cursor-room identities, keyed by pid. Self is
+ * always present. Returns an empty map until playhtml has synced.
+ */
+export function useUsers(): Map<string, User> {
+  const { isLoading } = useContext(PlayContext);
+  const [users, setUsers] = useState<Map<string, User>>(() => new Map());
+
+  useEffect(() => {
+    if (isLoading) return;
+    return playhtml.users.onChange((next) => setUsers(new Map(next)));
+  }, [isLoading]);
+
+  return users;
 }

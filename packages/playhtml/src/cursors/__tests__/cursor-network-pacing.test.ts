@@ -188,7 +188,11 @@ describe("cursor network pacing", () => {
     const callCountAfterIdentityChange =
       provider.awareness.setLocalStateField.mock.calls.length;
 
-    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 1);
+    // Identity change writes two awareness fields: `__playhtml_identity__`
+    // (published by the users module on every identity change) and
+    // `__playhtml_cursors__` (cursor awareness, refreshed by the cursor client's
+    // reaction to that change).
+    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 2);
 
     vi.advanceTimersByTime(Math.ceil(getCursorNetworkIntervalMs(20)));
 
