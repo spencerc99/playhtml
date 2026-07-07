@@ -103,8 +103,8 @@ export function Satchel({ inventory, openSignal }: Props) {
               <div
                 key={item.id}
                 className={`wwo-slot${isArmed ? " armed" : ""}`}
-                title={item.label}
-                onClick={() => { inventory.arm(item.id); closeKit(); }}
+                title={isArmed ? `${item.label} — click to put away` : item.label}
+                onClick={() => { isArmed ? inventory.disarm() : inventory.arm(item.id); closeKit(); }}
               >
                 <span className="key">{i + 1}</span>
                 <div className="ic" style={{ backgroundImage: `url("${item.icon}")` }} />

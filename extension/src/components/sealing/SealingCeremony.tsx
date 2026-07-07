@@ -13,6 +13,7 @@ import {
   attachDragGesture,
   computeCardFit,
   createSlotFissure,
+  drawTextareaToCanvas,
   playFinale,
   setupScene,
   type SealingProps,
@@ -39,8 +40,11 @@ export function SealingCeremony({
     // centered. Camera dollies out as the paper rolls + shrinks.
     // ============================
     const aspect = TEX_W / TEX_H;
-    const paperH = vh * 0.72;
-    const paperW = Math.min(vw * 0.55, paperH * aspect);
+    // Clamp width first, then derive height from the texture aspect so the
+    // plane always matches the canvas texture's proportions — otherwise a
+    // width-bound clamp (narrow viewports) stretches the text vertically.
+    const paperW = Math.min(vw * 0.55, vh * 0.72 * aspect);
+    const paperH = paperW / aspect;
 
     const SEG_X = 4;
     const SEG_Y = 80;
@@ -273,6 +277,12 @@ export function SealingCeremony({
         band.style.opacity = "1";
         band.style.transform = "translate(-50%,-50%) scaleX(1)";
       });
+      // The belt wrapping the card is the moment the card is "bound" — redraw
+      // the texture with the author-color trim + tiny-text overlay so it
+      // persists on the card (as the on-page card's stripe) after the belt
+      // itself fades away in startFinale.
+      drawTextareaToCanvas(ctx.texCanvas, text, authorColor, { sealed: true });
+      ctx.texture.needsUpdate = true;
     }
 
     function startFinale() {

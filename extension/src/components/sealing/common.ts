@@ -77,10 +77,51 @@ export function computeCardFit(mesh: THREE.Object3D): {
 export const TEX_W = 1024;
 export const TEX_H = 1280;
 
+export interface DrawTextareaOptions {
+  // The seal beat marks the moment the card is bound — the trim and tiny
+  // letter overlay only appear once that's happened, not on the paper before.
+  sealed?: boolean;
+}
+
+// Lorem-ipsum-derived filler for the "tiny writing" overlay, matching the
+// on-page filled bottle's TinyTextVerticalArt columns (see MessageBottle.tsx).
+const TINY_TEXT_COLUMNS = [
+  "loremipsumdolorsitametconsec",
+  "teturadipiscingelitseddoeius",
+  "modtemporincididuntutlabore",
+  "etdoloremagnaaliquautenima",
+  "dminimveniamquisnostrudexer",
+];
+
+// Draws faint tiny apparent-letters into the canvas band that ends up as the
+// landed card's visible face (see the sealed branch in drawTextareaToCanvas).
+// The card compresses the canvas ~16:1 along x and ~8:1 along y, so glyphs are
+// drawn large here to land at the on-page art's ~3px scale; each canvas row
+// becomes one downward-reading column on the card.
+function drawTinyTextColumns(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const bandTop = h * 0.64;
+  const bandBottom = h * 0.86;
+  const fontPx = 42;
+  const rowStep = 48;
+  const charStep = 56;
+  ctx.font = `${fontPx}px ui-monospace, "SFMono-Regular", Menlo, monospace`;
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "rgba(42,42,42,0.55)";
+  let row = 0;
+  for (let y = bandTop; y + fontPx <= bandBottom; y += rowStep, row++) {
+    const src = TINY_TEXT_COLUMNS[row % TINY_TEXT_COLUMNS.length];
+    let i = 0;
+    for (let x = 20; x < w - 20; x += charStep, i++) {
+      ctx.fillText(src[i % src.length], x, y);
+    }
+  }
+}
+
 export function drawTextareaToCanvas(
   canvas: HTMLCanvasElement,
   text: string,
   authorColor: string,
+  opts: DrawTextareaOptions = {},
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -105,9 +146,20 @@ export function drawTextareaToCanvas(
   ctx.fillStyle = "rgba(0,0,0,0.06)";
   ctx.fillRect(6, 6, w - 12, 6);
 
-  // Author stripe
-  ctx.fillStyle = authorColor;
-  ctx.fillRect(0, 0, 12, h);
+  if (opts.sealed) {
+    // The roll winds canvas rows around a horizontal spool axis (see
+    // morphAccordion), and computeCardFit then stands the coil upright, so
+    // the landed card's face shows the canvas band y ≈ 0.65h–0.85h (measured
+    // against the landed card): y ≈ 0.85h sits on the card's LEFT edge and
+    // lower rows wrap toward the right edge. Rows outside that band face away
+    // from the camera. The sealed face is painted into that band — tiny
+    // apparent-letters, then the author trim on the left-edge slice — so the
+    // landed card reads like the on-page filled bottle (.mb-authorStripe +
+    // TinyTextVerticalArt in MessageBottle).
+    drawTinyTextColumns(ctx, w, h);
+    ctx.fillStyle = authorColor;
+    ctx.fillRect(0, h * 0.822, w, h * 0.036);
+  }
 
   // Text
   ctx.fillStyle = "#111";
@@ -146,6 +198,7 @@ export interface SceneContext {
   scene: THREE.Scene;
   camera: THREE.OrthographicCamera;
   texture: THREE.CanvasTexture;
+  texCanvas: HTMLCanvasElement;
   clipPlane: THREE.Plane;
   dispose: () => void;
 }
@@ -184,6 +237,9 @@ export function setupScene(
   const texCanvas = document.createElement("canvas");
   texCanvas.width = TEX_W;
   texCanvas.height = TEX_H;
+  // No stripe yet — the trim only appears once the seal band beat fires
+  // (see playSealBand in SealingCeremony.tsx), so the plain paper and roll
+  // carry no color trim.
   drawTextareaToCanvas(texCanvas, text, authorColor);
   const texture = new THREE.CanvasTexture(texCanvas);
   texture.minFilter = THREE.LinearFilter;
@@ -200,6 +256,7 @@ export function setupScene(
     scene,
     camera,
     texture,
+    texCanvas,
     clipPlane,
     dispose() {
       renderer.dispose();
