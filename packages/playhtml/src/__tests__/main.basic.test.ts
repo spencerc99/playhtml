@@ -138,6 +138,11 @@ describe("playhtml basic setup with SyncedStore", () => {
         message: "defaultData requires updateElement or view",
       },
       {
+        id: "render-without-data",
+        props: { updateElement: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
         id: "awareness-without-render",
         props: { myDefaultAwareness: { seated: false } },
         message: "myDefaultAwareness requires updateElementAwareness",

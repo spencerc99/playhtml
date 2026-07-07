@@ -24,7 +24,8 @@ export interface ElementInitializer<T = any, U = any, V = any> {
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
   /**
    * Imperative update path: receives the current state and mutates the DOM
-   * directly. Required with `defaultData` unless `view` is provided.
+   * directly. Pair with `defaultData`; use `view` instead for declarative
+   * rendering.
    * `view` and `updateElement` are mutually exclusive — providing both is a
    * registration-time error.
    */

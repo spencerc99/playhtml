@@ -66,7 +66,7 @@ Everything you can set on `can-play` (same object for `register`, `define`, and 
 {
   // Starting shared state for elements that render from shared data. Must be
   // an object (or a function that returns one) — not a bare number or string.
-  // Synced across the room. Pair with updateElement or view.
+  // Synced across the room. Must be paired with updateElement or view.
   defaultData: { count: 0 },
   // defaultData: (element) => ({ color: element.dataset.color }),
 
@@ -304,7 +304,7 @@ When an element has both `can-play` and a built-in capability (e.g. `can-move`),
 
 At registration time, playhtml checks:
 
-- `defaultData`, when present, is an object or a function and is paired with `updateElement` **or** `view`
+- `defaultData` and `updateElement` / `view` are provided together
 - `myDefaultAwareness`, when present, is paired with `updateElementAwareness`
 - At least one update function exists: `updateElement`, `view`, or `updateElementAwareness`
 - `register` / `define` throw if both `view` and `updateElement` are set, or if `view` is combined with `onClick` / `onDrag` / `onDragStart`

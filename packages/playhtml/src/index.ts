@@ -1605,6 +1605,8 @@ function getElementInitializerValidationIssues(
 
   if (hasDefaultData && !hasDataUpdate) {
     issues.push("defaultData requires updateElement or view");
+  } else if (!hasDefaultData && hasDataUpdate) {
+    issues.push("updateElement or view requires defaultData");
   }
 
   if (hasMyDefaultAwareness && !hasUpdateElementAwareness) {
