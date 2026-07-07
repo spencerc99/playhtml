@@ -1589,6 +1589,7 @@ function getElementInitializerValidationIssues(
   const hasDefaultData = tagInfo.defaultData !== undefined;
   const hasValidDefaultData =
     hasDefaultData &&
+    tagInfo.defaultData !== null &&
     (typeof tagInfo.defaultData === "object" ||
       typeof tagInfo.defaultData === "function");
   const hasUpdateElement = typeof tagInfo.updateElement === "function";

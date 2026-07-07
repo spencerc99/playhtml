@@ -121,6 +121,31 @@ describe("playhtml basic setup with SyncedStore", () => {
     );
   });
 
+  it("sets up can-play elements with awareness updates and no default awareness", async () => {
+    const el = document.createElement("div");
+    el.id = "external-presence-widget";
+    el.setAttribute("can-play", "");
+    (el as any).updateElementAwareness = vi.fn();
+    document.body.appendChild(el);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    const handler = playhtml
+      .elementHandlers!.get("can-play")!
+      .get("external-presence-widget");
+    expect(handler).toBeTruthy();
+
+    handler!.setMyAwareness({ active: true });
+
+    expect((el as any).updateElementAwareness).toHaveBeenCalledWith(
+      expect.objectContaining({
+        myAwareness: { active: true },
+      }),
+    );
+  });
+
   it("reports incomplete can-play initializer pairs", () => {
     const cases: Array<{
       id: string;
@@ -138,8 +163,23 @@ describe("playhtml basic setup with SyncedStore", () => {
         message: "defaultData requires updateElement or view",
       },
       {
+        id: "data-with-awareness-render-only",
+        props: { defaultData: {}, updateElementAwareness: vi.fn() },
+        message: "defaultData requires updateElement or view",
+      },
+      {
         id: "render-without-data",
         props: { updateElement: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
+        id: "view-without-data",
+        props: { view: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
+        id: "render-with-awareness-render-without-data",
+        props: { updateElement: vi.fn(), updateElementAwareness: vi.fn() },
         message: "updateElement or view requires defaultData",
       },
       {
@@ -147,10 +187,30 @@ describe("playhtml basic setup with SyncedStore", () => {
         props: { myDefaultAwareness: { seated: false } },
         message: "myDefaultAwareness requires updateElementAwareness",
       },
+      {
+        id: "awareness-with-data-render-only",
+        props: {
+          defaultData: {},
+          updateElement: vi.fn(),
+          myDefaultAwareness: { seated: false },
+        },
+        message: "myDefaultAwareness requires updateElementAwareness",
+      },
+      {
+        id: "primitive-default-data",
+        props: { defaultData: 0, updateElement: vi.fn() },
+        message: "defaultData must be an object or function",
+      },
+      {
+        id: "null-default-data",
+        props: { defaultData: null, updateElement: vi.fn() },
+        message: "defaultData must be an object or function",
+      },
     ];
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     for (const { id, props, message } of cases) {
+      const callCount = errorSpy.mock.calls.length;
       const el = document.createElement("div");
       el.id = id;
       el.setAttribute("can-play", "");
@@ -159,6 +219,7 @@ describe("playhtml basic setup with SyncedStore", () => {
 
       playhtml.setupPlayElement(el);
 
+      expect(errorSpy).toHaveBeenCalledTimes(callCount + 1);
       expect(errorSpy).toHaveBeenLastCalledWith(
         expect.stringContaining(message),
       );
