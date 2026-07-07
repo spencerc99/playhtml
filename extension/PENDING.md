@@ -14,3 +14,5 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Sealing a message bottle got a nicer send-off: the rolled-up message keeps its text and your color on the outside, a color band snaps around it to seal it like an envelope, and it now drops exactly into the slot in the page.
