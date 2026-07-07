@@ -65,13 +65,15 @@ export function SealingCeremony({
     scene.add(mesh);
     mesh.position.y = 0;
 
-    // Back face: same white as the paper/input so the curl's underside is
-    // the same color as the sheet (no visible strip). Vertex colors add a
-    // gentle depth shading based on how far each point curls away from the
-    // camera (computed each frame in the morph). Shares the morphing geometry
-    // and is a CHILD of the front mesh so it inherits every transform.
+    // Back face: carries the SAME message texture as the front so the wound-up
+    // outer wrap shows the faint message + the author-color stripe — matching
+    // the on-page capsule's "sticking out" look (text + color visible). A gentle
+    // grey tint keeps it reading as the paper's underside; per-frame vertex
+    // colors add depth shading as it curls. Shares the morphing geometry and is
+    // a CHILD of the front mesh so it inherits every transform.
     const backMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      map: texture,
+      color: 0xdedad2,
       side: THREE.BackSide,
       transparent: true,
       vertexColors: true,
@@ -217,12 +219,72 @@ export function SealingCeremony({
         );
       }, 1200));
 
-      // 4. Then start the finale
-      pendingTimers.push(setTimeout(startFinale, 2000));
+      // 4. Envelope seal: an author-color band snaps around the middle of the
+      //    formed roll (like a wax-seal belt) — a distinct "sealing" beat before
+      //    it's tucked away. Fires once the card has formed (~1.9s).
+      pendingTimers.push(setTimeout(playSealBand, 1900));
+
+      // 5. Then start the finale (after the seal beat reads).
+      pendingTimers.push(setTimeout(startFinale, 2650));
+    }
+
+    // The seal band — a thin author-color belt that sweeps across the formed
+    // roll's middle. DOM overlay (fixed) aligned by projecting the coil's
+    // actual world bounding box to screen (the coil is NOT at the mesh origin —
+    // the roll winds around the paper's top edge). Holds while the seal reads,
+    // then fades as the finale lifts the bottle.
+    let sealBand: HTMLDivElement | null = null;
+    function playSealBand() {
+      const host = containerRef.current;
+      if (disposed || !host) return;
+      // Project the coil's world bbox center to screen: with the orthographic
+      // camera, screen = viewportCenter + world * camera.zoom (y flipped).
+      mesh.updateWorldMatrix(true, true);
+      const coilBox = new THREE.Box3().setFromObject(mesh);
+      const c = coilBox.getCenter(new THREE.Vector3());
+      const size = coilBox.getSize(new THREE.Vector3());
+      const z = camera.zoom;
+      const screenX = vw / 2 + c.x * z;
+      const screenY = vh / 2 - c.y * z;
+      const beltW = Math.max(size.x * z * 1.5, 26);
+      const beltH = Math.max(size.y * z * 0.2, 7);
+      const band = document.createElement("div");
+      band.style.cssText = [
+        "position:fixed",
+        `left:${screenX}px`,
+        `top:${screenY}px`,
+        `width:${beltW}px`,
+        `height:${beltH}px`,
+        `background:${authorColor}`,
+        "border-radius:1.5px",
+        "box-shadow:0 1px 3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+        // start collapsed at center, then sweep open across the card
+        "transform:translate(-50%,-50%) scaleX(0)",
+        "transform-origin:center center",
+        "opacity:0",
+        "pointer-events:none",
+        "z-index:6",
+        "transition:transform 280ms cubic-bezier(0.34,1.56,0.64,1), opacity 180ms ease-out",
+      ].join(";");
+      host.appendChild(band);
+      sealBand = band;
+      // next frame → animate the belt snapping into place
+      requestAnimationFrame(() => {
+        band.style.opacity = "1";
+        band.style.transform = "translate(-50%,-50%) scaleX(1)";
+      });
     }
 
     function startFinale() {
       if (disposed) return;
+      // The seal is set — let the band fade as the bottle lifts to travel.
+      if (sealBand) {
+        sealBand.style.transition = "opacity 300ms ease-out";
+        sealBand.style.opacity = "0";
+        const band = sealBand;
+        pendingTimers.push(setTimeout(() => band.remove(), 320));
+        sealBand = null;
+      }
       finaleHandle = playFinale({
         mesh,
         materialsToClip: [material, backMaterial],
@@ -277,6 +339,7 @@ export function SealingCeremony({
       material.dispose();
       backMaterial.dispose();
       if (hint.parentNode) hint.parentNode.removeChild(hint);
+      sealBand?.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
