@@ -20,8 +20,12 @@ Worker backend (in `worker/`):
 The extension ships independently of the core packages, mirroring the
 changesets release-PR flow but on a separate cadence.
 
-**Day-to-day:** when a PR touches `extension/**`, add a bullet to
-`extension/PENDING.md` describing the user-facing change. If the change should
+**Day-to-day:** when a PR changes the extension itself — `extension/src/**`,
+`extension/wxt.config.ts`, `extension/public/**`, or anything else that ships
+in the extension zip — add a bullet to `extension/PENDING.md` describing the
+user-facing change. Changes under `extension/website/**` (wewere.online pages
+and visualizations) and `extension/worker/**` deploy on their own and do NOT
+get PENDING bullets or extension releases. If the change should
 show public media in release notes, add the finished image or video under
 `extension/website/public/changelog/media/` and reference it from
 `PENDING.md`. Use normal Markdown images for photos/screenshots and the
