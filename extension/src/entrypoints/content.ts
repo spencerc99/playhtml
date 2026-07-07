@@ -2,6 +2,7 @@
 // ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
 import "./content/style.css";
 import browser from "webextension-polyfill";
+import type { PlayerIdentity } from "@playhtml/common";
 import {
   MILESTONE_DURATION_MS,
   MILESTONE_TOAST_CSS,
@@ -21,6 +22,7 @@ import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
 import { shouldStartExtensionPresence } from "./content/presencePolicy";
+import { toPresencePlayerIdentity } from "../utils/presenceIdentity";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -40,6 +42,7 @@ export default defineContentScript({
     // Initialize PlayHTML extension on page
     class PlayHTMLExtension {
       private playerIdentity: any = null;
+      private presencePlayerIdentity: PlayerIdentity | undefined;
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
@@ -54,6 +57,9 @@ export default defineContentScript({
           this.playerIdentity = await browser.runtime.sendMessage({
             type: "GET_PLAYER_IDENTITY",
           });
+          this.presencePlayerIdentity = toPresencePlayerIdentity(
+            this.playerIdentity,
+          );
 
           // Notify background about site discovery
           await browser.runtime.sendMessage({
@@ -950,12 +956,12 @@ export default defineContentScript({
       // Actions taken under the old anonymous identity are intentionally
       // orphaned — anonymous interactions have no continuity expectation.
       private injectIdentityIntoMainWorld() {
-        if (!this.playerIdentity) return;
+        if (!this.presencePlayerIdentity) return;
 
         const dispatch = () => {
           document.dispatchEvent(
             new CustomEvent("playhtml:configure-identity", {
-              detail: { playerIdentity: this.playerIdentity },
+              detail: { playerIdentity: this.presencePlayerIdentity },
             }),
           );
         };
@@ -1016,8 +1022,8 @@ export default defineContentScript({
         }
 
         const color =
-          this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-        const pid = this.playerIdentity?.publicKey ?? "anon";
+          this.presencePlayerIdentity?.playerStyle.colorPalette[0] ?? "#4a9a8a";
+        const pid = this.presencePlayerIdentity?.publicKey ?? "anon";
 
         try {
           this.globalCleanup = await initGlobalFeatures({
@@ -1092,7 +1098,7 @@ export default defineContentScript({
           defaultRoomOptions: customSiteSettings?.defaultRoomOptions,
           cursors: {
             enabled: enableCursors,
-            playerIdentity: this.playerIdentity,
+            playerIdentity: this.presencePlayerIdentity,
             coordinateMode: "absolute",
           },
         });
@@ -1109,7 +1115,8 @@ export default defineContentScript({
               presence: playhtml.presence,
               cursorClient: playhtml.cursorClient,
               playerColor:
-                this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a",
+                this.presencePlayerIdentity?.playerStyle.colorPalette[0] ??
+                "#4a9a8a",
             });
           } catch (err) {
             console.error("[we-were-online] initCustomSite failed:", err);
