@@ -216,7 +216,7 @@ $slotY: $moundTopGap + $visibleH;
 .mb-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(20, 16, 12, 0.55);
+  background: rgba(20, 16, 12, 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -234,11 +234,11 @@ $slotY: $moundTopGap + $visibleH;
 
 @keyframes overlayFadeIn {
   from { background: rgba(20, 16, 12, 0); }
-  to   { background: rgba(20, 16, 12, 0.55); }
+  to   { background: rgba(20, 16, 12, 0.72); }
 }
 
 @keyframes overlayFadeOut {
-  from { background: rgba(20, 16, 12, 0.55); }
+  from { background: rgba(20, 16, 12, 0.72); }
   to   { background: rgba(20, 16, 12, 0); }
 }
 
@@ -572,16 +572,25 @@ $slotY: $moundTopGap + $visibleH;
   // and perforations show above and below the centered one
   padding: 3vh 0;
 }
+// The wound-up ends of the roll: a paper tube seen edge-on, hinting the
+// scroll continues past what's unrolled.
 .mbs-rollEnd {
   flex: none;
-  height: 10vh;
+  height: 30px;
   width: min(560px, 92vw);
-  border-radius: 0 0 60% 60% / 0 0 24px 24px;
-  background: linear-gradient(to bottom, rgba(250, 247, 242, 0.9), rgba(200, 192, 180, 0.4));
+  border-radius: 16px;
+  background: linear-gradient(
+    to bottom,
+    #cfc7ba 0%,
+    #faf7f2 38%,
+    #efe9df 62%,
+    #a89e8e 100%
+  );
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  margin: 4vh 0 10px;
 
   &:last-child {
-    border-radius: 60% 60% 0 0 / 24px 24px 0 0;
-    background: linear-gradient(to top, rgba(250, 247, 242, 0.9), rgba(200, 192, 180, 0.4));
+    margin: 10px 0 4vh;
   }
 }
 .mbs-lastWord {
@@ -616,9 +625,8 @@ $slotY: $moundTopGap + $visibleH;
 }
 .mbs-leave {
   position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
+  right: 18px;
+  top: 16px;
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 13px;
   padding: 6px 16px;

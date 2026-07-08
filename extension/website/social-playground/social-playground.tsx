@@ -91,14 +91,23 @@ function BottlePreview() {
       if (emptyEl?.checked) {
         setNotes([]);
       } else {
-        setNotes([
-          {
-            text: textEl?.value || "",
-            createdAt: Date.now(),
-            createdBy: "anon",
-            authorColor: c,
-          },
-        ]);
+        // "---" on its own line splits the textarea into separate letters, so
+        // the multi-letter scroll (tick rail, snap, land-on-latest) is testable.
+        const styleIds = ["web1", "stationery", "webnative", "slab"];
+        const colors = ["#c4724e", "#4a9a8a", "#5b8db8", "#8b6b7f"];
+        const parts = (textEl?.value || "")
+          .split(/\n---\n/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+        setNotes(
+          (parts.length ? parts : [""]).map((text, i) => ({
+            text,
+            createdAt: Date.now() - (parts.length - 1 - i) * 86400000,
+            createdBy: i === parts.length - 1 ? "anon" : `other-${i}`,
+            authorColor: i === 0 ? c : colors[i % colors.length],
+            ...(i > 0 ? { styleId: styleIds[i % styleIds.length], authorName: `writer ${i + 1}` } : {}),
+          })),
+        );
       }
       setCanReply(canReplyEl?.checked ?? true);
       setKey((k) => k + 1);
