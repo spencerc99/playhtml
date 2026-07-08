@@ -694,6 +694,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                 `${vb.x} ${vb.y} ${vb.w} ${vb.h}`,
               );
             }
+            // Surface the camera's current subject for dev/test tooling (used to
+            // verify multi-window coordination picks distinct cursors). Harmless
+            // no-op read for normal usage — just a number on window.
+            (
+              window as unknown as { __cameraSubjectIndex?: number | null }
+            ).__cameraSubjectIndex = camera.getCurrentSubjectIndex();
           }
         }
 

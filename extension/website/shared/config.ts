@@ -219,6 +219,19 @@ export function parseInstallationRoleFromUrl(): "master" | "follower" | null {
   return null;
 }
 
+/** `?follower=<id>` is the stable id a follower window uses to claim cursors in
+ * the coordinated auto-follow protocol (so no two follower screens ride the same
+ * cursor). Any non-empty string works (e.g. `a`, `b`, `1`, `2`). Returns null
+ * when absent — the coordination hook then falls back to a per-window random id
+ * so it still participates without a URL-set id. */
+export function parseFollowerIdFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("follower");
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 /** `?cinematic=1`/`follow` enables cursor-follow; `?cinematic=reveal` runs the
  * one-shot scripted pull-back (tight close-up → full canvas). Optional tuning:
  *   ?cinemaZoom=0.25        follow: fraction of screen width visible
