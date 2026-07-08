@@ -1049,56 +1049,82 @@ $letterHand: "Lora", Georgia, serif;
   inset: 0;
   z-index: 2147483647;
   pointer-events: none;
-  // Depth for the creases — the panels rotate about their bottom hinge and this
+  // Depth for the creases — the notes rotate about their bottom hinge and this
   // perspective lets the folds read as coming up toward the viewer, not as flat
   // silhouettes collapsing.
   perspective: 1400px;
-  perspective-origin: 50% 46%;
+  perspective-origin: 50% 50%;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-// The strip is the stack of note panels. Absolutely-stacked children (each at a
-// fixed top offset) so folding one panel never reflows its neighbors — the fold
-// geometry stays fully deterministic.
-.mbf-strip {
+// The chain root IS the face card — the freshly stamped letter. It is the fixed
+// base of the fold: it never transforms while the notes above it fold down onto
+// it. The older notes nest inside it as descendants (each note is the parent of
+// the note directly below it), so folding an upper note carries its whole folded
+// tail down as one contiguous sheet. The whole packet later flips and tucks; the
+// flip/tuck transform is applied to this element.
+.mbf-root {
   position: relative;
   transform-style: preserve-3d;
+  transform-origin: center center;
   // one drop shadow for the whole packet so it reads as a single physical
   // object, matching the on-scroll strip's shadow.
   filter: drop-shadow(0 10px 28px rgba(20, 15, 10, 0.5));
   will-change: transform;
 }
 
-// One folded note. The perforation it shares with the sheet below is its hinge
-// (transform-origin set inline to center bottom); a fold rotates the panel about
-// that seam so the note pivots down onto its neighbor.
-.mbf-panel {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
-  // Each panel shows the head of its sheet (the letter's opening + the perf
-  // seam) within the compact fold window; the rest is clipped since the reader
-  // already read the full letter on the scroll.
-  overflow: hidden;
-  will-change: transform;
-}
-
-// The face panel — the freshly stamped letter — is the packet's bottom sheet and
-// stays flat as the earlier notes fold down onto it. A hair more shadow reads it
-// as the sheet the others land against.
-.mbf-panelFace {
-  box-shadow: 0 2px 8px rgba(20, 15, 10, 0.28);
-}
-
-// The real segment is taller than the fold window; anchor it to the panel top so
-// the sheet's opening + its sign-off imprint band show as the note folds.
-.mbf-panelInner {
+// The face sheet — occupies the root's own footprint (top-left). It is a plain
+// segment window; it carries no hinge and is never rotated.
+.mbf-face {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
+  transform-style: preserve-3d;
+  box-shadow: 0 2px 8px rgba(20, 15, 10, 0.28);
+}
+
+// One foldable note above the face. It sits directly above its parent (the note
+// or face it will fold onto), bottom edge flush against the parent's top edge —
+// that shared edge is the perforation seam and the fold hinge. It hinges at its
+// own bottom (transform-origin set inline to center bottom) and rotates
+// rotateX(-180deg) to lie flat down onto the sheet below.
+.mbf-seg {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 100%;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+// The readable face of a sheet — the real letter segment clipped to the fold
+// window. Shows the letter's opening + the perforation seam; the rest is clipped
+// since the reader already read the full letter on the scroll.
+.mbf-segFront {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+}
+
+.mbf-segInner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+// The underside shown once a note folds past 90deg — a paper-toned blank so the
+// viewer sees the back of the sheet, not mirror-flipped letter text.
+.mbf-segBack {
+  position: absolute;
+  inset: 0;
+  transform: rotateX(180deg);
+  backface-visibility: hidden;
+  background: #efe9df;
+  box-shadow: inset 0 0 20px rgba(90, 70, 45, 0.12);
 }
