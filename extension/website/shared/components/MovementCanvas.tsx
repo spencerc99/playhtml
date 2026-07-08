@@ -376,6 +376,12 @@ interface MovementCanvasProps {
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
+  /** Multi-screen installation clock. When provided, a follower reads the
+   * master's pushed animation time each frame via `getOverrideElapsedMs`, and a
+   * master broadcasts its time via `onBroadcastElapsed`. Both optional so pages
+   * that don't run the installation are completely unaffected. */
+  getOverrideElapsedMs?: () => number | null;
+  onBroadcastElapsed?: (scaledElapsed: number) => void;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -395,6 +401,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   defaultSoundEnabled = false,
   live = false,
   connected = false,
+  getOverrideElapsedMs,
+  onBroadcastElapsed,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -1543,6 +1551,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               frozen={paused}
               cinematic={cinematic}
               cinematicNextSignal={cinematicNextSignal}
+              getOverrideElapsedMs={getOverrideElapsedMs}
+              onBroadcastElapsed={onBroadcastElapsed}
             />
           ))}
 

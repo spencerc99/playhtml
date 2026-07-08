@@ -207,6 +207,18 @@ export function parseTimeOfDayFromUrl(): TimeOfDayFilter | undefined {
   return { centerMinutes, radiusMinutes };
 }
 
+/** `?role=master`/`follower` selects this window's part in the multi-screen
+ * installation clock. `master` broadcasts its animation time each frame;
+ * `follower` renders the master's pushed time instead of its own. Returns
+ * null when the param is absent (a standalone window drives its own clock). */
+export function parseInstallationRoleFromUrl(): "master" | "follower" | null {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("role");
+  if (raw === "master") return "master";
+  if (raw === "follower") return "follower";
+  return null;
+}
+
 /** `?cinematic=1`/`follow` enables cursor-follow; `?cinematic=reveal` runs the
  * one-shot scripted pull-back (tight close-up → full canvas). Optional tuning:
  *   ?cinemaZoom=0.25        follow: fraction of screen width visible

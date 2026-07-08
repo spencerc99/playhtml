@@ -48,6 +48,15 @@ interface AnimatedTrailsProps {
   cinematic?: CinematicConfig | null;
   // Increment to ask the cinematic camera to jump to a new subject now.
   cinematicNextSignal?: number;
+  // Multi-screen installation clock. When provided and it returns a non-null
+  // number, that value is used as the RAW scaled-elapsed for this frame and the
+  // local accumulation is skipped — so a follower window renders the master's
+  // pushed time. Read each frame through this accessor (never as a raw value)
+  // so incoming messages don't re-run the animation-loop effect.
+  getOverrideElapsedMs?: () => number | null;
+  // Called each frame with the RAW pre-modulo scaled-elapsed when this window
+  // is NOT following an override, so a master can broadcast it.
+  onBroadcastElapsed?: (scaledElapsed: number) => void;
   soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
@@ -78,6 +87,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     documentSpace = false,
     cinematic = null,
     cinematicNextSignal = 0,
+    getOverrideElapsedMs,
+    onBroadcastElapsed,
     soundEngine = null,
     settings,
   }) => {
@@ -174,6 +185,16 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     useEffect(() => {
       cinematicRef.current = cinematic;
     }, [cinematic]);
+
+    // Installation-clock accessors read by the rAF loop. Kept current via a
+    // separate effect so the loop reads xxxRef.current and its dep array does
+    // NOT include per-frame-changing values (which would restart the clock).
+    const getOverrideElapsedMsRef = useRef(getOverrideElapsedMs);
+    const onBroadcastElapsedRef = useRef(onBroadcastElapsed);
+    useEffect(() => {
+      getOverrideElapsedMsRef.current = getOverrideElapsedMs;
+      onBroadcastElapsedRef.current = onBroadcastElapsed;
+    }, [getOverrideElapsedMs, onBroadcastElapsed]);
 
     const cameraRef = useRef<CinematicCamera | null>(null);
     if (cinematic && cameraRef.current === null) {
@@ -374,8 +395,20 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // pause) doesn't accumulate a huge jump when the loop resumes.
         const frameDelta = Math.min(250, timestamp - lastTimestamp);
         lastTimestamp = timestamp;
-        accumulatedScaled += frameDelta * animationSpeedRef.current;
-        const scaledElapsed = accumulatedScaled;
+
+        // Multi-screen installation: a follower renders the RAW scaled-elapsed
+        // pushed by the master this frame instead of accumulating its own, so a
+        // stutter self-corrects rather than drifting. A master (or standalone
+        // window) accumulates locally and broadcasts its value for followers.
+        const override = getOverrideElapsedMsRef.current?.() ?? null;
+        let scaledElapsed: number;
+        if (override !== null) {
+          scaledElapsed = override;
+        } else {
+          accumulatedScaled += frameDelta * animationSpeedRef.current;
+          scaledElapsed = accumulatedScaled;
+          onBroadcastElapsedRef.current?.(scaledElapsed);
+        }
         const loopedElapsed = scaledElapsed % timeRange.duration;
 
         // Detect loop wrap
