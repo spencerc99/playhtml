@@ -627,3 +627,59 @@ $slotY: $moundTopGap + $visibleH;
   60% { transform: rotate(-3deg) scale(0.94); opacity: 1; }
   100% { transform: rotate(-3deg) scale(1); opacity: 1; }
 }
+
+// ============================
+// The blank writing segment
+// ============================
+.mbs-writeSegment {
+  gap: 10px;
+}
+.mbs-swatchRow {
+  display: flex;
+  gap: 8px;
+  align-self: flex-end;
+}
+.mbs-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+
+  &.selected {
+    outline: 2px solid #4a9a8a;
+    outline-offset: 2px;
+  }
+}
+.swatch-web1 { background: #fff; border: 3px solid #1a1a8c; image-rendering: pixelated; }
+.swatch-stationery { background: #f5f0e8; }
+.swatch-webnative { background: linear-gradient(140deg, #5b8db8, #d4b85c, #4a9a8a); }
+.swatch-slab { background: linear-gradient(170deg, #4c4a47, #33312e); }
+
+.mbs-writeField {
+  flex: 1;
+  min-height: 220px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  resize: none;
+  font: inherit;
+  line-height: inherit;
+  box-sizing: border-box;
+
+  &:focus { outline: none; }
+  &::placeholder { color: currentColor; opacity: 0.4; }
+}
+.mbs-signInput {
+  border: none;
+  border-bottom: 1px dashed currentColor;
+  background: transparent;
+  font-style: italic;
+  font-size: 15px;
+  font-family: inherit;
+  width: 180px;
+
+  &:focus { outline: none; }
+  &::placeholder { color: currentColor; opacity: 0.4; }
+}
