@@ -74,4 +74,36 @@ export const EMOTES_CSS = `
   from { opacity: 0; transform: scale(0); }
   to { opacity: 1; transform: scale(1); }
 }
+
+/* Once-per-session proximity hint (ReactHint) — teaches the shortcut near the cursor. */
+.emote-react-hint {
+  position: fixed;
+  z-index: 2147483646;
+  pointer-events: none;
+  font-family: "Martian Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: #3d3833;
+  background: #f5f0e8;
+  border: 1px solid rgba(61, 56, 51, 0.15);
+  border-radius: 8px;
+  padding: 5px 10px;
+  box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  white-space: nowrap;
+}
+.emote-react-hint.visible {
+  opacity: 0.95;
+  transform: translateY(0);
+}
+.emote-react-hint kbd {
+  font-family: inherit;
+  font-size: 10px;
+  border: 1px solid rgba(61, 56, 51, 0.3);
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.5);
+}
 `;

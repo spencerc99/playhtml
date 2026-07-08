@@ -11,6 +11,7 @@ import { EmoteWheel } from "./EmoteWheel";
 import { EmoteBroadcaster } from "./EmoteBroadcaster";
 import { EmoteGhostRenderer } from "./EmoteGhostRenderer";
 import { playInteraction } from "./InteractionRenderer";
+import { ReactHint } from "./ReactHint";
 import { EMOTES, getEmote } from "./emotes";
 import {
   nearestPeer,
@@ -101,6 +102,28 @@ export function initEmotes(deps: {
     return peer?.playerIdentity?.playerStyle?.colorPalette?.[0] ?? DEFAULT_SELF_COLOR;
   };
   const renderer = new EmoteGhostRenderer(() => lastCursor, selfColor);
+
+  const isMac = navigator.platform.toUpperCase().includes("MAC");
+
+  // Teach the shortcut once per session, the first time another cursor comes
+  // within the interaction range. Mirrors spencers-website's "press E" hint.
+  const reactHint = new ReactHint(shadow, isMac);
+  let hintShownThisSession = false;
+  const proximityInterval = setInterval(() => {
+    if (hintShownThisSession) return;
+    const myPid = deps.presence.getMyIdentity().publicKey;
+    let nearby = false;
+    deps.cursorClient.getCursorPresences().forEach((v, pid) => {
+      if (pid === myPid || !v.cursor) return;
+      const dx = v.cursor.x - lastCursor.x;
+      const dy = v.cursor.y - lastCursor.y;
+      if (Math.sqrt(dx * dx + dy * dy) < DEFAULT_TARGET_RADIUS_PX) nearby = true;
+    });
+    if (nearby) {
+      hintShownThisSession = true;
+      reactHint.showAt(lastCursor);
+    }
+  }, 500);
 
   const broadcaster = new EmoteBroadcaster(deps.presence, (pid, e, isMe) => {
     const def = getEmote(e.emoteId);
@@ -201,7 +224,6 @@ export function initEmotes(deps: {
     broadcaster.emote(emoteId, targetPid);
   }
 
-  const isMac = navigator.platform.toUpperCase().includes("MAC");
   function onKeyDown(e: KeyboardEvent) {
     if (isTypingTarget(e.target)) return;
     const mod = isMac ? e.metaKey : e.ctrlKey;
@@ -231,6 +253,8 @@ export function initEmotes(deps: {
   return () => {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("pointermove", trackCursor);
+    clearInterval(proximityInterval);
+    reactHint.destroy();
     broadcaster.destroy();
     renderer.destroy();
     root.unmount();
