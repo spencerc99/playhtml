@@ -102,9 +102,12 @@ export function MessageBottle({
       // Defer the actual onSeal + close to the ceremony onComplete so the
       // shadow DOM doesn't tear down the ceremony mid-flight.
       setPendingLetter(letter);
+      // Clear any pending open-stage timers; otherwise a stale timer fires and
+      // snaps the stage back mid-ceremony.
+      clearTimers();
       setStage("sealing");
     },
-    [close],
+    [close, clearTimers],
   );
 
   const finishCeremony = useCallback(() => {
