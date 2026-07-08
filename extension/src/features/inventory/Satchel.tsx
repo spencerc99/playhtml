@@ -35,15 +35,22 @@ export function Satchel({ inventory, openSignal }: Props) {
     const kit = kitRef.current;
     if (!kit) return;
     kit.classList.add("show");
-    const kw = 320, kh = 200;
+    // Measure the kit's real rendered size (its width grew past the old 320px
+    // guess, so a hardcoded clamp let it run off the right edge). Fall back to
+    // sensible defaults if layout hasn't produced a box yet.
+    const kitRect = kit.getBoundingClientRect();
+    const kw = kitRect.width || 320;
+    const kh = kitRect.height || 200;
+    const maxX = window.innerWidth - kw - 12;
+    const maxY = window.innerHeight - kh - 12;
     let x: number, y: number;
     if (at) {
-      x = Math.min(at.x, window.innerWidth - kw - 12);
-      y = Math.min(at.y, window.innerHeight - kh - 12);
+      x = Math.min(at.x, maxX);
+      y = Math.min(at.y, maxY);
     } else {
       const r = nubRef.current!.getBoundingClientRect();
-      x = Math.min(r.left - kw + r.width, window.innerWidth - kw - 12);
-      y = Math.min(r.top, window.innerHeight - kh - 12);
+      x = Math.min(r.left - kw + r.width, maxX);
+      y = Math.min(r.top, maxY);
     }
     kit.style.left = `${Math.max(12, x)}px`;
     kit.style.top = `${Math.max(12, y)}px`;
