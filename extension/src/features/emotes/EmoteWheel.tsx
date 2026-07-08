@@ -2,7 +2,7 @@
 // ABOUTME: Generalized from spencers-website EmoteMenu; click or number key to fire.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EMOTES } from "./emotes";
+import { ACTIVE_EMOTES } from "./emotes";
 import { emoteIconSvg } from "./icons";
 
 const MENU_RADIUS = 74;
@@ -52,7 +52,7 @@ export function EmoteWheel({
     }
   }, []);
 
-  const n = EMOTES.length;
+  const n = ACTIVE_EMOTES.length;
   return (
     <div
       className="emote-wheel"
@@ -62,7 +62,7 @@ export function EmoteWheel({
         left: `${x}px`,
         top: `${y}px`,
         animation: fadingOut ? undefined : "emote-wheel-open 0.15s ease-out",
-        opacity: fadingOut ? 0 : 0.7,
+        opacity: fadingOut ? 0 : 0.85,
         transition: "opacity 0.3s ease-out",
       }}
     >
@@ -75,7 +75,7 @@ export function EmoteWheel({
           top: `${-(MENU_RADIUS + 20)}px`,
         }}
       />
-      {EMOTES.map((emote, i) => {
+      {ACTIVE_EMOTES.map((emote, i) => {
         const angle = ((-90 + i * (360 / n)) * Math.PI) / 180;
         const ix = Math.cos(angle) * MENU_RADIUS;
         const iy = Math.sin(angle) * MENU_RADIUS;

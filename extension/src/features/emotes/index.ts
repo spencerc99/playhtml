@@ -12,7 +12,7 @@ import { EmoteBroadcaster } from "./EmoteBroadcaster";
 import { EmoteGhostRenderer } from "./EmoteGhostRenderer";
 import { playInteraction } from "./InteractionRenderer";
 import { ReactHint } from "./ReactHint";
-import { EMOTES, getEmote } from "./emotes";
+import { ACTIVE_EMOTES, getEmote } from "./emotes";
 import {
   nearestPeer,
   detectMutualHighFive,
@@ -255,9 +255,9 @@ export function initEmotes(deps: {
     // Bare number keys fire directly (no modifier), matching the site.
     if (!e.metaKey && !e.ctrlKey && !e.altKey) {
       const idx = keyToIndex(e.key);
-      if (idx !== null && idx < EMOTES.length) {
+      if (idx !== null && idx < ACTIVE_EMOTES.length) {
         closeWheel();
-        fire(EMOTES[idx].id);
+        fire(ACTIVE_EMOTES[idx].id);
       }
     }
   }
