@@ -1,6 +1,6 @@
 # Unreleased
 
-- Cursor emotes: press Cmd/Ctrl+Shift+E on cursor-enabled pages to open a radial wheel of 10 emotes (wave, dance, spin, heart, sparkle, sleepy, note, high five, nuzzle, poke) that play on your cursor and broadcast to others on the page; three of them react to a nearby cursor. Number keys 1–0 fire emotes directly. The inventory shortcut moved to Ctrl+Shift+B on Windows/Linux.
+- The inventory shortcut moved to Ctrl+Shift+B on Windows/Linux (Cmd+Shift+I on Mac is unchanged), freeing Ctrl+Shift+E for an in-progress emote wheel.
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**
