@@ -62,7 +62,7 @@ export function EmoteWheel({
         left: `${x}px`,
         top: `${y}px`,
         animation: fadingOut ? undefined : "emote-wheel-open 0.15s ease-out",
-        opacity: fadingOut ? 0 : 1,
+        opacity: fadingOut ? 0 : 0.7,
         transition: "opacity 0.3s ease-out",
       }}
     >
