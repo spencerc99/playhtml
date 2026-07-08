@@ -9,7 +9,12 @@ import type { RenderedBottle } from "../features/BottleManager";
 
 interface BottleOverlayProps {
   bottles: RenderedBottle[];
-  onSeal: (bottleId: string, text: string, anchor: BottleAnchor) => void;
+  onSeal: (
+    bottleId: string,
+    text: string,
+    anchor: BottleAnchor,
+    meta: { authorName?: string; styleId?: string },
+  ) => void;
   onOpened: (bottleId: string) => void;
   onClosed: (bottleId: string) => void;
   /** A bottle's anchor stopped resolving (layout shift) — lets the manager
@@ -120,7 +125,8 @@ export function BottleOverlay({
           <MessageBottle
             notes={slot.isEmpty ? [] : slot.notes ?? []}
             authorColor={slot.authorColor}
-            onSeal={(text) => onSeal(slot.id, text, slot.anchor)}
+            canReply={slot.canReply}
+            onSeal={(text, meta) => onSeal(slot.id, text, slot.anchor, meta)}
             onOpened={() => onOpened(slot.id)}
             onClosed={() => onClosed(slot.id)}
             rotateDeg={slot.rotate}

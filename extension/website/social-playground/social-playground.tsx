@@ -76,12 +76,14 @@ function BottlePreview() {
       authorColor: "#c4724e",
     },
   ]);
+  const [canReply, setCanReply] = useState(true);
   const [key, setKey] = useState(0); // remount to reset the bottle to its sealed state
 
   useEffect(() => {
     const colorEl = document.getElementById("bp-color") as HTMLInputElement | null;
     const textEl = document.getElementById("bp-text") as HTMLTextAreaElement | null;
     const emptyEl = document.getElementById("bp-empty") as HTMLInputElement | null;
+    const canReplyEl = document.getElementById("bp-canreply") as HTMLInputElement | null;
     const resetBtn = document.getElementById("bp-reset") as HTMLButtonElement | null;
     const sync = () => {
       const c = colorEl?.value || "#c4724e";
@@ -98,16 +100,19 @@ function BottlePreview() {
           },
         ]);
       }
+      setCanReply(canReplyEl?.checked ?? true);
       setKey((k) => k + 1);
     };
     colorEl?.addEventListener("input", sync);
     textEl?.addEventListener("input", sync);
     emptyEl?.addEventListener("change", sync);
+    canReplyEl?.addEventListener("change", sync);
     resetBtn?.addEventListener("click", () => setKey((k) => k + 1));
     return () => {
       colorEl?.removeEventListener("input", sync);
       textEl?.removeEventListener("input", sync);
       emptyEl?.removeEventListener("change", sync);
+      canReplyEl?.removeEventListener("change", sync);
     };
   }, []);
 
@@ -116,8 +121,9 @@ function BottlePreview() {
       key={key}
       notes={notes}
       authorColor={color}
+      canReply={canReply}
       pageBg="#faf7f2"
-      onSeal={() => {}}
+      onSeal={(_text, _meta) => {}}
     />
   );
 }

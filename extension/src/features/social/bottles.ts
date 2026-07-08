@@ -58,8 +58,13 @@ export const bottlesExperiment: SocialExperiment = {
     manager.init((req: BottleRenderRequest) => {
       ui.render({
         bottles: req.bottles,
-        onSeal: (id: string, text: string, anchor: BottleAnchor) => {
-          if (manager.seal(text, { id, anchor })) {
+        onSeal: (
+          id: string,
+          text: string,
+          anchor: BottleAnchor,
+          meta: { authorName?: string; styleId?: string },
+        ) => {
+          if (manager.seal(text, { id, anchor }, meta)) {
             dropped.delete(id);
           } else {
             dropped.add(id);
