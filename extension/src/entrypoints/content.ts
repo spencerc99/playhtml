@@ -1116,9 +1116,11 @@ export default defineContentScript({
             console.error("[we-were-online] initCustomSite failed:", err);
           }
           // Emote wheel rides the same cursor layer; peers are only present
-          // where cursors are enabled, so it lives inside this block.
+          // where cursors are enabled, so it lives inside this block. Gated
+          // behind internal-dev mode (Cmd+Shift+. in the popup) while it's still
+          // in progress — not shipped to all users yet.
           const cursorClient = playhtml.cursorClient;
-          if (cursorClient) {
+          if (cursorClient && (await this.areInternalDevFeaturesEnabled())) {
             try {
               const { initEmotes } = await import("../features/emotes");
               this.emoteCleanup = initEmotes({
