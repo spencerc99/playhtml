@@ -28,6 +28,18 @@ describe("nearestPeer", () => {
     expect(nearestPeer(me, new Map([["x", null]]), 400)).toBeNull();
     expect(nearestPeer(me, new Map(), 400)).toBeNull();
   });
+
+  it("has no self-awareness — the caller MUST exclude their own entry", () => {
+    // nearestPeer measures distance from `me` to every entry, so if the caller's
+    // own position is in the map it is the nearest (distance 0) and gets picked.
+    // fire() in index.ts filters out the caller's pid for exactly this reason;
+    // this test documents why that filter is load-bearing.
+    const peersIncludingMe = new Map([
+      ["me", { x: 100, y: 100 }], // same as `me` → distance 0
+      ["other", { x: 130, y: 100 }],
+    ]);
+    expect(nearestPeer(me, peersIncludingMe, DEFAULT_TARGET_RADIUS_PX)).toBe("me");
+  });
 });
 
 describe("detectMutualHighFive", () => {

@@ -187,11 +187,13 @@ export function initEmotes(deps: {
     if (!def) return;
     let targetPid: string | undefined;
     if (def.kind === "interact") {
+      const myPid = deps.presence.getMyIdentity().publicKey;
       const peers = new Map(
-        Array.from(deps.cursorClient.getCursorPresences()).map(([pid, v]) => [
-          pid,
-          v.cursor,
-        ]),
+        Array.from(deps.cursorClient.getCursorPresences())
+          // Exclude ourselves — otherwise we're the nearest "peer" (distance ~0)
+          // and the interaction targets our own cursor instead of someone else's.
+          .filter(([pid]) => pid !== myPid)
+          .map(([pid, v]) => [pid, v.cursor]),
       );
       targetPid =
         nearestPeer(lastCursor, peers, DEFAULT_TARGET_RADIUS_PX) ?? undefined;
