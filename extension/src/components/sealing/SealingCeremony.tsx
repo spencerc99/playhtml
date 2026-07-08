@@ -13,7 +13,6 @@ import {
   attachDragGesture,
   computeCardFit,
   createSlotFissure,
-  drawTextareaToCanvas,
   playFinale,
   setupScene,
   type SealingProps,
@@ -25,6 +24,8 @@ export function SealingCeremony({
   slotX,
   slotY,
   styleId,
+  notes,
+  newNote,
   onComplete,
 }: SealingProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,7 +34,10 @@ export function SealingCeremony({
     const container = containerRef.current;
     if (!container) return;
 
-    const ctx = setupScene(container, text, authorColor, slotY, styleId);
+    const ctx = setupScene(container, text, authorColor, slotY, styleId, {
+      notes,
+      newNote,
+    });
     const { vw, vh, renderer, scene, camera, texture } = ctx;
 
     // ============================
@@ -278,22 +282,13 @@ export function SealingCeremony({
         band.style.opacity = "1";
         band.style.transform = "translate(-50%,-50%) scaleX(1)";
       });
-      // The belt wrapping the card is the moment the card is "bound" — redraw
-      // the texture with the author-color trim + tiny-text overlay so it
-      // persists on the card (as the on-page card's stripe) after the belt
-      // itself fades away in startFinale.
-      const sealPromise = drawTextareaToCanvas(ctx.texCanvas, text, authorColor, {
-        sealed: true,
-        styleId,
-      });
-      ctx.texture.needsUpdate = true;
-      // The web1 ground repaints its broider border asynchronously; flag the
-      // texture again once that late art lands so the sealed redraw keeps it.
-      if (sealPromise) {
-        void sealPromise.then(() => {
-          if (!disposed) ctx.texture.needsUpdate = true;
-        });
-      }
+      // The belt wrapping the card is the moment the card is "bound" —
+      // composite the author-color trim + tiny-text overlay onto whatever
+      // ground the texture holds (painter approximation OR the rasterized real
+      // strip) so it persists on the card (as the on-page card's stripe) after
+      // the belt itself fades away in startFinale. redrawSealed re-applies
+      // itself when a late ground/raster resolves, so no extra plumbing here.
+      ctx.redrawSealed();
     }
 
     function startFinale() {

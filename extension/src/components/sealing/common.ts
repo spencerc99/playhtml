@@ -3,6 +3,8 @@
 
 import * as THREE from "three";
 import { segmentStyle } from "../bottle/segmentStyles";
+import type { BottleNote } from "../../features/BottleManager";
+import { rasterizeStrip } from "./rasterizeStrip";
 
 export interface SealingProps {
   text: string;
@@ -11,6 +13,13 @@ export interface SealingProps {
   slotY: number;
   /** Segment style preset id — selects the ceremony paper's painter. */
   styleId?: string;
+  /** The bottle's existing notes (oldest first). When present alongside
+   * `newNote`, the ceremony rasterizes the real letter-scroll DOM onto the
+   * rolled paper instead of the painter-approximated look. */
+  notes?: BottleNote[];
+  /** The newly stamped letter as a note. Rendered at the bottom of the raster
+   * strip so the seal beat shows the letter you just wrote, complete. */
+  newNote?: BottleNote;
   onComplete: () => void;
 }
 
@@ -122,6 +131,49 @@ function drawTinyTextColumns(ctx: CanvasRenderingContext2D, w: number, h: number
   }
 }
 
+// Draws the sealed marks — the tiny apparent-letters band and the author-color
+// trim slice — onto whatever ground the canvas already holds. Split out from
+// drawTextareaToCanvas so the seal beat can composite these ON TOP of a cached
+// ground (painter OR raster) rather than re-running the painter path.
+export function drawSealedMarks(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  authorColor: string,
+): void {
+  // The roll winds canvas rows around a horizontal spool axis (see
+  // morphAccordion), and computeCardFit then stands the coil upright, so the
+  // landed card's face shows the canvas band y ≈ 0.65h–0.85h. The sealed face
+  // is painted into that band — tiny apparent-letters, then the author trim on
+  // the left-edge slice — so the landed card reads like the on-page filled
+  // bottle (.mb-authorStripe + TinyTextVerticalArt in MessageBottle).
+  drawTinyTextColumns(ctx, w, h);
+  ctx.fillStyle = authorColor;
+  ctx.fillRect(0, h * 0.822, w, h * 0.036);
+}
+
+// Composites a rasterized letter-strip canvas onto the fixed-size texture
+// canvas, bottom-aligned: the raster's BOTTOM (the new letter's sign-off +
+// imprint) always lands at the canvas bottom, and as much of the scroll above
+// it as fits shows above. Taller rasters crop from the top; shorter ones sit
+// on a painted ground already present above them. The raster fills the canvas
+// width. Returns after drawing (synchronous).
+export function drawRasterToCanvas(
+  canvas: HTMLCanvasElement,
+  raster: HTMLCanvasElement,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  // Scale the raster to the canvas width, then bottom-align. If the scaled
+  // raster is taller than the canvas, the excess is cropped off the TOP
+  // (drawn at a negative y) so the new letter's bottom stays visible.
+  const drawH = raster.height * (w / raster.width);
+  const destY = h - drawH;
+  ctx.drawImage(raster, 0, destY, w, drawH);
+}
+
 // Paints the full ceremony texture (ground + optional seal trim + message
 // text) onto the canvas. The ground painter may need an async asset (e.g. the
 // web1 broider border), in which case it returns a Promise; the returned
@@ -143,18 +195,7 @@ export function drawTextareaToCanvas(
   const groundPromise = style.ceremony.paintGround(ctx, w, h);
 
   if (opts.sealed) {
-    // The roll winds canvas rows around a horizontal spool axis (see
-    // morphAccordion), and computeCardFit then stands the coil upright, so
-    // the landed card's face shows the canvas band y ≈ 0.65h–0.85h (measured
-    // against the landed card): y ≈ 0.85h sits on the card's LEFT edge and
-    // lower rows wrap toward the right edge. Rows outside that band face away
-    // from the camera. The sealed face is painted into that band — tiny
-    // apparent-letters, then the author trim on the left-edge slice — so the
-    // landed card reads like the on-page filled bottle (.mb-authorStripe +
-    // TinyTextVerticalArt in MessageBottle).
-    drawTinyTextColumns(ctx, w, h);
-    ctx.fillStyle = authorColor;
-    ctx.fillRect(0, h * 0.822, w, h * 0.036);
+    drawSealedMarks(ctx, w, h, authorColor);
   }
 
   // Text
@@ -198,7 +239,20 @@ export interface SceneContext {
   texture: THREE.CanvasTexture;
   texCanvas: HTMLCanvasElement;
   clipPlane: THREE.Plane;
+  /** Composites the sealed marks (author trim + tiny-text band) over the
+   * CURRENT ground — painter or raster, whichever the canvas holds — and flags
+   * the texture. The ground is cached so this can be called after the raster
+   * has replaced the painted content. */
+  redrawSealed: () => void;
   dispose: () => void;
+}
+
+// Options carrying the raster inputs — when both notes and newNote are present,
+// the scene rasterizes the real letter-scroll DOM and swaps it onto the texture
+// once ready, replacing the painter ground.
+export interface SetupSceneRasterOptions {
+  notes?: BottleNote[];
+  newNote?: BottleNote;
 }
 
 export function setupScene(
@@ -207,6 +261,7 @@ export function setupScene(
   authorColor: string,
   slotY: number,
   styleId?: string,
+  rasterOpts: SetupSceneRasterOptions = {},
 ): SceneContext {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -248,10 +303,68 @@ export function setupScene(
   const texture = new THREE.CanvasTexture(texCanvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
+
+  // Offscreen mirror of the current GROUND (painter output or, once ready, the
+  // rasterized strip) with no sealed marks. The seal beat composites its marks
+  // over a fresh copy of this, so redrawing sealed doesn't have to re-run the
+  // painter path — which would erase the raster.
+  const groundCanvas = document.createElement("canvas");
+  groundCanvas.width = TEX_W;
+  groundCanvas.height = TEX_H;
+  const groundCtx = groundCanvas.getContext("2d");
+  const texCtx = texCanvas.getContext("2d");
+  // Seed the ground mirror from the painter output already on the texture.
+  groundCtx?.drawImage(texCanvas, 0, 0);
+
+  // Track whether the seal beat has fired so a late ground/raster swap can
+  // re-apply the sealed marks (the belt may snap before the raster resolves).
+  let sealed = false;
+  // Blits the current GROUND onto the texture, then composites the sealed marks
+  // if the seal beat has fired. The ground never carries marks, so this is
+  // idempotent and safe to call after the raster has replaced the painter art.
+  const paintTextureFromGround = () => {
+    if (texCtx && groundCtx) {
+      texCtx.clearRect(0, 0, TEX_W, TEX_H);
+      texCtx.drawImage(groundCanvas, 0, 0);
+      if (sealed) drawSealedMarks(texCtx, TEX_W, TEX_H, authorColor);
+    }
+    if (!disposed) texture.needsUpdate = true;
+  };
+  const redrawSealed = () => {
+    sealed = true;
+    paintTextureFromGround();
+  };
+
+  // Once the rasterized real strip lands it owns the ground; a late painter
+  // repaint (web1 border) must not clobber it.
+  let rasterLanded = false;
+
   if (groundPromise) {
     void groundPromise.then(() => {
-      if (!disposed) texture.needsUpdate = true;
+      if (disposed) return;
+      // The late painter art (web1 border) is only the ground when the raster
+      // hasn't already replaced it. If the raster landed first, its ground wins
+      // — don't overwrite it with the stale painter art.
+      if (!rasterLanded) {
+        groundCtx?.clearRect(0, 0, TEX_W, TEX_H);
+        groundCtx?.drawImage(texCanvas, 0, 0);
+        paintTextureFromGround();
+      }
     });
+  }
+
+  // Kick off rasterizing the real letter-scroll DOM. When it resolves, draw it
+  // onto the GROUND (replacing the painter art) and repaint the texture,
+  // re-applying sealed marks if the seal beat already fired.
+  if (rasterOpts.notes && rasterOpts.newNote) {
+    void rasterizeStrip(rasterOpts.notes, rasterOpts.newNote, TEX_W, TEX_H).then(
+      (raster) => {
+        if (disposed || !raster) return;
+        rasterLanded = true;
+        drawRasterToCanvas(groundCanvas, raster);
+        paintTextureFromGround();
+      },
+    );
   }
 
   // Slot clipping plane (used during plunge to cut off below the slot line)
@@ -267,6 +380,7 @@ export function setupScene(
     texture,
     texCanvas,
     clipPlane,
+    redrawSealed,
     dispose() {
       disposed = true;
       renderer.dispose();

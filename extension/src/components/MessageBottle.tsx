@@ -215,6 +215,17 @@ export function MessageBottle({
             slotX={origin.x}
             slotY={origin.y}
             styleId={pendingLetter.styleId}
+            notes={notes}
+            newNote={{
+              text: pendingLetter.text,
+              createdAt: Date.now(),
+              createdBy: "",
+              authorColor: authorColor ?? "#4a9a8a",
+              ...(pendingLetter.authorName
+                ? { authorName: pendingLetter.authorName }
+                : {}),
+              styleId: pendingLetter.styleId,
+            }}
             onComplete={finishCeremony}
           />,
           portalContainer ?? document.body,
