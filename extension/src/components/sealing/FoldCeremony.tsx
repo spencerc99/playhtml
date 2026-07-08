@@ -4,6 +4,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BottleNote } from "../../features/BottleManager";
 import { LetterSegment } from "../bottle/LetterSegment";
+import { segmentStyle } from "../bottle/segmentStyles";
 import {
   CARD_H_PX,
   CARD_W_PX,
@@ -73,8 +74,10 @@ export function FoldCeremony({
 
   useEffect(() => {
     const container = containerRef.current;
-    const root = rootRef.current;
-    if (!container || !root) return;
+    const rootEl = rootRef.current;
+    if (!container || !rootEl) return;
+    // Bound non-null so the deferred fold closure keeps the narrowing.
+    const root: HTMLDivElement = rootEl;
 
     const fissure = createSlotFissure(container, slotX, slotY);
 
@@ -97,10 +100,40 @@ export function FoldCeremony({
     // sheet closing crease by crease. The face never transforms.
     const foldSegs = [...segRefs.current].reverse();
 
+    // The older notes stack UPWARD from the fixed face, so the top of the scroll
+    // (where folding begins) starts above the viewport — it would look like
+    // nothing is happening. Pan the whole chain: start with the TOP of the stack
+    // centered, then translate down over the fold so the view follows the crease
+    // travelling down to the face. Pan distance = the stack's height above the
+    // face. The face lands back at its resting (centered) spot as the fold ends.
+    const panBy = above.length * SEG_H_PX;
+    const foldWindow =
+      foldSegs.length > 0 ? (foldSegs.length - 1) * STAGGER_MS + FOLD_MS : 0;
+
     later(startFold, HOLD_MS);
 
     function startFold() {
       if (disposed) return;
+      // Pan the chain down from "top centered" to "face centered", tracking the
+      // crease as it travels down. The face is flex-centered by .mbf-ceremony,
+      // so the pan is a plain translateY: start shifted DOWN by the stack height
+      // (bringing the top of the scroll to center), end at 0 (face centered).
+      // Runs across the whole fold window.
+      if (panBy > 0) {
+        track(
+          root.animate(
+            [
+              { transform: `translateY(${panBy}px)` },
+              { transform: "translateY(0px)" },
+            ],
+            {
+              duration: foldWindow,
+              easing: FOLD_EASE,
+              fill: "forwards",
+            },
+          ),
+        );
+      }
       let lastEnd = 0;
       foldSegs.forEach((seg, order) => {
         if (!seg) return;
@@ -234,7 +267,14 @@ export function FoldCeremony({
             <LetterSegment note={note} />
           </div>
         </div>
-        <div className="mbf-segBack" aria-hidden="true" />
+        {/* The underside carries this note's own paper style (same ground class
+            as the front's segment) so when it folds past 90deg you see its
+            paper — matching how a real letter's back is the same sheet — not a
+            generic blank. Comeau's fold shows the reverse of the same surface. */}
+        <div
+          className={`mbf-segBack ${segmentStyle(note.styleId).className}`}
+          aria-hidden="true"
+        />
         {buildAbove(depth + 1)}
       </div>
     );
@@ -247,7 +287,15 @@ export function FoldCeremony({
       <div
         ref={rootRef}
         className="mbf-root"
-        style={{ width: `${SEG_W_PX}px`, height: `${SEG_H_PX}px` }}
+        style={{
+          width: `${SEG_W_PX}px`,
+          height: `${SEG_H_PX}px`,
+          // Start panned DOWN by the stack height so the TOP of the scroll is
+          // centered at the opening — the fold begins in view. The pan animates
+          // back to 0 as the crease travels down (see startFold). Without notes
+          // above the face, no pan is needed.
+          transform: above.length > 0 ? `translateY(${above.length * SEG_H_PX}px)` : undefined,
+        }}
       >
         {/* The face — the freshly stamped letter. It is the fixed base; it never
             transforms during the fold. The older notes nest above it and fold

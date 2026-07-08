@@ -1118,13 +1118,29 @@ $letterHand: "Lora", Georgia, serif;
   width: 100%;
 }
 
-// The underside shown once a note folds past 90deg — a paper-toned blank so the
-// viewer sees the back of the sheet, not mirror-flipped letter text.
+// The underside shown once a note folds past 90deg. It carries the note's own
+// paper style (a .seg-* ground class applied in FoldCeremony) so you see the
+// back of THAT letter's sheet — its paper, not a generic blank. A soft inner
+// shadow + a translucent overlay dim it so it reads as the shaded underside
+// (Comeau's fold shows the reverse of the same surface).
 .mbf-segBack {
   position: absolute;
   inset: 0;
   transform: rotateX(180deg);
   backface-visibility: hidden;
+  // fallback ground if the note has no style (linen default still sets one)
   background: #efe9df;
   box-shadow: inset 0 0 20px rgba(90, 70, 45, 0.12);
+  overflow: hidden;
+
+  // the underside is the paper seen from behind — mute the ground a touch and
+  // hide the front-face decorations (ascii ornaments, margin rules) which would
+  // read backwards. The .seg-* class supplies the background; this overlay dims.
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(240, 236, 226, 0.5);
+    box-shadow: inset 0 0 24px rgba(90, 70, 45, 0.16);
+  }
 }
