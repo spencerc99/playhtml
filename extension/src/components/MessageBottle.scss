@@ -687,6 +687,9 @@ $letterHand: "Lora", Georgia, serif;
   bottom: 4px;
   transform: translateX(-50%) rotate(-3deg);
   margin: 0;
+  // the stage is only as wide as the stamp — without this the date wraps into
+  // a tall vertical column instead of matching the landed imprint's one line
+  white-space: nowrap;
   pointer-events: none;
   // start barely visible; .inking drives it up to full ink over the hold
   opacity: 0.06;
