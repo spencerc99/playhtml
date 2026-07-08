@@ -134,13 +134,12 @@ const InstallationPanel: React.FC<{ sourceUrl: string }> = ({ sourceUrl }) => {
     );
   };
 
-  // Opening many windows at once is a popup-blocker magnet, so open followers
-  // one click at a time (each open() is its own user gesture).
+  // Opening many windows at once is a popup-blocker magnet — the browser may
+  // block all but the first. Each screen also has its own open button below for
+  // that case (each click is its own user gesture).
   const openWindow = (url: string) => {
     window.open(url, "_blank", "noopener");
   };
-
-  const followerUrls = screens.filter((s) => s.role === "follower");
 
   return (
     <div
@@ -206,16 +205,14 @@ const InstallationPanel: React.FC<{ sourceUrl: string }> = ({ sourceUrl }) => {
           1 master + {followerCount} zoomed{" "}
           {followerCount === 1 ? "follower" : "followers"}
         </span>
-        {followerUrls.length > 0 && (
-          <button
-            type="button"
-            onClick={() => followerUrls.forEach((s) => openWindow(s.url))}
-            style={{ ...pillBtnStyle, marginLeft: "auto" }}
-            title="Open every follower window (allow popups if blocked)"
-          >
-            open all followers
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => screens.forEach((s) => openWindow(s.url))}
+          style={{ ...pillBtnStyle, marginLeft: "auto" }}
+          title="Open the master + every follower window (allow popups if blocked)"
+        >
+          open all screens
+        </button>
       </div>
 
       <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
