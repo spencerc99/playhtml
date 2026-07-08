@@ -122,19 +122,25 @@ function drawTinyTextColumns(ctx: CanvasRenderingContext2D, w: number, h: number
   }
 }
 
+// Paints the full ceremony texture (ground + optional seal trim + message
+// text) onto the canvas. The ground painter may need an async asset (e.g. the
+// web1 broider border), in which case it returns a Promise; the returned
+// Promise resolves once that late ground art has been drawn, so callers know
+// to flag the Three.js texture for re-upload. Returns undefined for the common
+// synchronous case.
 export function drawTextareaToCanvas(
   canvas: HTMLCanvasElement,
   text: string,
   authorColor: string,
   opts: DrawTextareaOptions = {},
-): void {
+): Promise<void> | void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const w = canvas.width;
   const h = canvas.height;
 
   const style = segmentStyle(opts.styleId);
-  style.ceremony.paintGround(ctx, w, h);
+  const groundPromise = style.ceremony.paintGround(ctx, w, h);
 
   if (opts.sealed) {
     // The roll winds canvas rows around a horizontal spool axis (see
@@ -176,6 +182,8 @@ export function drawTextareaToCanvas(
     }
   }
   if (y + lineHeight <= h - padY) ctx.fillText(line, padX, y);
+
+  return groundPromise ?? undefined;
 }
 
 // ============================
@@ -228,13 +236,23 @@ export function setupScene(
   const texCanvas = document.createElement("canvas");
   texCanvas.width = TEX_W;
   texCanvas.height = TEX_H;
+  // Guards the async ground repaint: if the scene is torn down (Escape mid-
+  // ceremony) before a late border image resolves, we must not touch the
+  // disposed texture.
+  let disposed = false;
   // No stripe yet — the trim only appears once the seal band beat fires
   // (see playSealBand in SealingCeremony.tsx), so the plain paper and roll
-  // carry no color trim.
-  drawTextareaToCanvas(texCanvas, text, authorColor, { styleId });
+  // carry no color trim. The ground may finish asynchronously (web1's broider
+  // border); when it does, flag the texture so the late art pops onto the roll.
+  const groundPromise = drawTextareaToCanvas(texCanvas, text, authorColor, { styleId });
   const texture = new THREE.CanvasTexture(texCanvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
+  if (groundPromise) {
+    void groundPromise.then(() => {
+      if (!disposed) texture.needsUpdate = true;
+    });
+  }
 
   // Slot clipping plane (used during plunge to cut off below the slot line)
   const slotSceneY = vh / 2 - slotY;
@@ -250,6 +268,7 @@ export function setupScene(
     texCanvas,
     clipPlane,
     dispose() {
+      disposed = true;
       renderer.dispose();
       texture.dispose();
       if (renderer.domElement.parentNode) {

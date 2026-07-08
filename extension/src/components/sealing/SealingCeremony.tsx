@@ -282,8 +282,18 @@ export function SealingCeremony({
       // the texture with the author-color trim + tiny-text overlay so it
       // persists on the card (as the on-page card's stripe) after the belt
       // itself fades away in startFinale.
-      drawTextareaToCanvas(ctx.texCanvas, text, authorColor, { sealed: true, styleId });
+      const sealPromise = drawTextareaToCanvas(ctx.texCanvas, text, authorColor, {
+        sealed: true,
+        styleId,
+      });
       ctx.texture.needsUpdate = true;
+      // The web1 ground repaints its broider border asynchronously; flag the
+      // texture again once that late art lands so the sealed redraw keeps it.
+      if (sealPromise) {
+        void sealPromise.then(() => {
+          if (!disposed) ctx.texture.needsUpdate = true;
+        });
+      }
     }
 
     function startFinale() {
