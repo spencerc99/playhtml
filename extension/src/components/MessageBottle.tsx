@@ -173,7 +173,7 @@ export function MessageBottle({
 
   const capsuleClass = [
     "mb-capsule",
-    "mb-variant-tinytextV",
+    "mb-variant-foldedLetter",
     stage === "unrolling" ? "mb-capsuleUnrolling" : "",
     stage === "expanding" || stage === "scroll" || stage === "sealing"
       ? "mb-capsuleOpen"
@@ -197,7 +197,6 @@ export function MessageBottle({
     .filter(Boolean)
     .join(" ");
 
-  // The card shows the latest note's author color as a left-edge stripe.
   const isEmpty = notes.length === 0;
 
   return (
@@ -213,14 +212,7 @@ export function MessageBottle({
             aria-label="open message bottle"
             title="something tucked into the page"
           >
-            {authorColor && (
-              <span
-                className="mb-authorStripe"
-                style={{ background: authorColor }}
-                aria-hidden="true"
-              />
-            )}
-            {!isEmpty && <TinyTextVerticalArt />}
+            {!isEmpty && <FoldedLetterArt />}
           </button>
         </div>
         <span className="mb-slotCrack" aria-hidden="true" />
@@ -271,25 +263,14 @@ export function MessageBottle({
   );
 }
 
-/** The card's surface: vertical columns of tiny apparent-letters — "writing
- *  exists here" without being legible. */
-function TinyTextVerticalArt() {
-  const columns = [
-    "loremipsumdolorsitametconsec",
-    "teturadipiscingelitseddoeius",
-    "modtemporincididuntutlabore",
-    "etdoloremagnaaliquautenima",
-    "dminimveniamquisnostrudexer",
-  ];
+/** The card's surface: a small paper card creased by two faint horizontal fold
+ *  lines — a letter folded in thirds, seen small. Reads as "something folded
+ *  tucked into the page" without any legible text. */
+function FoldedLetterArt() {
   return (
-    <div className="mb-tinyTextVWrap" aria-hidden="true">
-      {columns.map((col, i) => (
-        <div key={i} className="mb-tinyTextVCol">
-          {col.split("").map((ch, j) => (
-            <span key={j}>{ch}</span>
-          ))}
-        </div>
-      ))}
+    <div className="mb-foldedLetterWrap" aria-hidden="true">
+      <span className="mb-foldCrease mb-foldCrease1" />
+      <span className="mb-foldCrease mb-foldCrease2" />
     </div>
   );
 }

@@ -128,59 +128,49 @@ $slotY: $moundTopGap + $visibleH;
 }
 
 
-// thin colored bar along the left edge — author identity surface
-.mb-authorStripe {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  pointer-events: none;
-  z-index: 4;
-  border-radius: 2px 0 0 2px;
-}
-
 // ============================
-// The card surface — vertical columns of tiny apparent-letters
+// The card surface — a folded-letter card. A clean paper rectangle with two
+// faint horizontal fold-crease lines across it, so it reads as a note folded in
+// thirds, seen small.
 // ============================
-.mb-variant-tinytextV {
+.mb-variant-foldedLetter {
   width: 32px;
-  background: #ffffff;
-  border: 1px solid #767676;
+  background: #fbf9f4;
+  border: 1px solid #b8ad9a;
   border-radius: 2px;
   box-shadow:
-    inset 0 1px 1px rgba(0, 0, 0, 0.06),
+    inset 0 1px 1px rgba(0, 0, 0, 0.05),
     inset 0 -1px 0 rgba(255, 255, 255, 0.6);
   overflow: hidden;
 }
-.mb-tinyTextVWrap {
+.mb-foldedLetterWrap {
   position: absolute;
-  inset: 4px 3px;
+  inset: 0;
   pointer-events: none;
-  display: flex;
-  flex-direction: row;
-  gap: 1.5px;
-  overflow: hidden;
 }
-.mb-tinyTextVCol {
-  display: flex;
-  flex-direction: column;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  font-size: 3.5px;
-  line-height: 4px;
-  color: #2a2a2a;
-  letter-spacing: 0;
-
-  // rotate each character 90deg so individual letters stand upright while reading down
-  span {
-    display: block;
-    transform: rotate(90deg);
-    transform-origin: center;
-    width: 4px;
-    height: 4px;
-    text-align: center;
-    line-height: 4px;
-  }
+// A single crease: a hairline shadow above a hairline highlight, so the paper
+// reads as pinched along that line rather than printed with a stripe.
+.mb-foldCrease {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  height: 2px;
+  background: linear-gradient(
+    to bottom,
+    rgba(120, 104, 84, 0.28) 0%,
+    rgba(120, 104, 84, 0.28) 50%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 255, 255, 0.7) 100%
+  );
+}
+// Two creases split the visible face (the ~64px poking above the slot line)
+// into rough thirds. Positioned in px from the card's top, not percent, because
+// the card element is taller than its visible region (the rest is buried).
+.mb-foldCrease1 {
+  top: 22px;
+}
+.mb-foldCrease2 {
+  top: 44px;
 }
 
 
@@ -794,36 +784,6 @@ $letterHand: "Lora", Georgia, serif;
     box-shadow: 0 10px 30px rgba(74, 154, 138, 0.26);
   }
 }
-// The whisper at the sheet's head, riding just under the perforation seam.
-.mbs-writeInvite {
-  margin: 0 auto 2px;
-  max-width: 46ch;
-  width: 100%;
-  font-family: $letterData;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: lowercase;
-  color: currentColor;
-  opacity: 0.5;
-}
-// The first-ever letter is a small gift — the invite reads a touch warmer and
-// steadier, and the whole sheet lifts a hair.
-.mbs-writeFirst {
-  .mbs-writeInvite {
-    opacity: 0.66;
-    color: #4a9a8a;
-  }
-}
-// The quiet cue that the name + fingerprint are how you sign the page.
-.mbs-markHint {
-  margin-left: 10px;
-  font-family: $letterData;
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
-  color: currentColor;
-  opacity: 0.4;
-  white-space: nowrap;
-}
 .mbs-swatchRow {
   display: flex;
   gap: 8px;
@@ -1077,7 +1037,7 @@ $letterHand: "Lora", Georgia, serif;
 
 // The face sheet — occupies the root's own footprint (top-left). It is a plain
 // segment window; it carries no hinge and is never rotated. Pushed FORWARD in Z
-// (toward the viewer) so that when the notes fold flat down onto it they land
+// (toward the viewer) so that as the notes fold AWAY from the viewer they land
 // BEHIND it — the newest letter stays the visible top face of the sealed packet
 // instead of being covered by the folded oldest note.
 .mbf-face {
@@ -1085,7 +1045,7 @@ $letterHand: "Lora", Georgia, serif;
   top: 0;
   left: 0;
   width: 100%;
-  transform: translateZ(20px);
+  transform: translateZ(60px);
   transform-style: preserve-3d;
   box-shadow: 0 2px 8px rgba(20, 15, 10, 0.28);
 }
@@ -1094,7 +1054,7 @@ $letterHand: "Lora", Georgia, serif;
 // or face it will fold onto), bottom edge flush against the parent's top edge —
 // that shared edge is the perforation seam and the fold hinge. It hinges at its
 // own bottom (transform-origin set inline to center bottom) and rotates
-// rotateX(-180deg) to lie flat down onto the sheet below.
+// rotateX(180deg) away from the viewer to lie flat behind the sheet below.
 .mbf-seg {
   position: absolute;
   bottom: 100%;
@@ -1120,6 +1080,51 @@ $letterHand: "Lora", Georgia, serif;
   top: 0;
   left: 0;
   width: 100%;
+}
+
+// The folded-letter-card skin over the packet face. Sits on top of the face in
+// the packet's own footprint, faded in as the flip lands. It matches the
+// resting on-page capsule: a clean paper card with two faint horizontal fold
+// creases, no readable text — so opening -> folding -> sealing -> the tucked
+// capsule reads as one coherent folded-note object.
+.mbf-cardSkin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  // In front of the face (which is at translateZ(60px)) so the skin wins.
+  transform: translateZ(80px);
+  opacity: 0;
+  background: #fbf9f4;
+  border: 1px solid #b8ad9a;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.05),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.6),
+    0 2px 10px rgba(20, 15, 10, 0.3);
+  overflow: hidden;
+  pointer-events: none;
+}
+// A crease: a hairline shadow above a hairline highlight — the paper pinched
+// along that line. Splits the card face into rough thirds.
+.mbf-cardSkinCrease {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  height: 3px;
+  background: linear-gradient(
+    to bottom,
+    rgba(120, 104, 84, 0.28) 0%,
+    rgba(120, 104, 84, 0.28) 50%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 255, 255, 0.7) 100%
+  );
+}
+.mbf-cardSkinCrease1 {
+  top: 33%;
+}
+.mbf-cardSkinCrease2 {
+  top: 66%;
 }
 
 // The underside shown once a note folds past 90deg. It carries the note's own

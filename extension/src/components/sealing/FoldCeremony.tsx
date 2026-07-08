@@ -10,6 +10,7 @@ import {
   CARD_W_PX,
   T_FISSURE_CLOSE,
   createSlotFissure,
+  createSlotCover,
   type SealingProps,
 } from "./common";
 
@@ -45,6 +46,10 @@ export function FoldCeremony({
 }: SealingProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // The folded-letter-card skin overlaid on the packet's face. It fades in as
+  // the flip lands so the object that plunges into the slot matches the resting
+  // on-page capsule (a folded note), with no pop from readable-letter to card.
+  const cardSkinRef = useRef<HTMLDivElement>(null);
   // Refs to the foldable segments, ordered face-adjacent first (index 0 is the
   // note directly above the face) up to the oldest (highest on screen). The face
   // is not foldable and is not in this list.
@@ -79,10 +84,15 @@ export function FoldCeremony({
     const container = containerRef.current;
     const rootEl = rootRef.current;
     if (!container || !rootEl) return;
-    // Bound non-null so the deferred fold closure keeps the narrowing.
+    // Bound non-null so the deferred fold closures keep the narrowing.
     const root: HTMLDivElement = rootEl;
+    const containerEl: HTMLDivElement = container;
 
-    const fissure = createSlotFissure(container, slotX, slotY);
+    const fissure = createSlotFissure(containerEl, slotX, slotY);
+    // The below-slot cover is created lazily at plunge time (it would otherwise
+    // hide the fold/flip that plays centered on screen). Tracked here so cleanup
+    // can always remove it.
+    let slotCover: { dispose: () => void } | null = null;
 
     let disposed = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -97,10 +107,13 @@ export function FoldCeremony({
 
     // segRefs is ordered face-adjacent first; folding must go top-down (oldest
     // first), so we walk it in reverse. Each note folds 180deg about its own
-    // bottom seam, laying it flat down onto the note beneath it. Because the
-    // chain is nested (each note is the PARENT of the note below), a note's fold
-    // carries its whole folded tail down with it — it reads as one contiguous
-    // sheet closing crease by crease. The face never transforms.
+    // bottom seam, laying it flat down onto the note beneath it. The fold goes
+    // AWAY from the viewer (rotateX +180) so folded notes stack BEHIND the face
+    // plane: the newest letter (the face) stays the visible top surface of the
+    // sealed packet, older notes tuck under/behind it. Because the chain is
+    // nested (each note is the PARENT of the note below), a note's fold carries
+    // its whole folded tail with it — it reads as one contiguous sheet closing
+    // crease by crease. The face never transforms.
     const foldSegs = [...segRefs.current].reverse();
 
     // The older notes stack UPWARD from the fixed face, so the top of the scroll
@@ -145,7 +158,7 @@ export function FoldCeremony({
           seg.animate(
             [
               { transform: "rotateX(0deg)" },
-              { transform: "rotateX(-180deg)" },
+              { transform: "rotateX(180deg)" },
             ],
             {
               duration: FOLD_MS,
@@ -207,6 +220,21 @@ export function FoldCeremony({
         ),
       );
 
+      // Cross-fade the readable packet face into the folded-letter-card skin
+      // over the back half of the flip, so by the time it lands upright over the
+      // slot it reads as the same folded note the resting capsule shows. The
+      // skin then plunges with the packet.
+      const skin = cardSkinRef.current;
+      if (skin) {
+        track(
+          skin.animate([{ opacity: 0 }, { opacity: 0 }, { opacity: 1 }], {
+            duration: FLIP_MS,
+            easing: "ease-in",
+            fill: "forwards",
+          }),
+        );
+      }
+
       flip.finished
         .catch(() => {})
         .finally(() => {
@@ -216,8 +244,10 @@ export function FoldCeremony({
     }
 
     // BEAT 4: the upright bottle card sinks into the page through the slot,
-    // bottom edge first. It descends by its full height (so it disappears below
-    // the slot line) while fading; the fissure closes behind it, then complete.
+    // bottom edge first. It descends straight DOWN in world space; the part that
+    // crosses below the slot line is hidden by a cover pinned along the slot, so
+    // it reads as sinking THROUGH the hole rather than sliding past it. The
+    // fissure closes behind it, then complete.
     function plunge(
       dx: number,
       dyLand: number,
@@ -226,17 +256,23 @@ export function FoldCeremony({
     ) {
       const face = rootRef.current;
       if (!face) return;
-      const base = `translate(${dx}px, ${dyLand}px) rotateZ(90deg) scale(${flipScale})`;
-      // Descend in WORLD px: the card is scaled by flipScale, so to move it down
-      // by cardH on screen we translate by cardH/flipScale in its local space,
-      // applied BEFORE the scale in the transform list.
-      const sinkLocal = (cardH + 8) / flipScale;
-      const sunk = `translate(${dx}px, ${dyLand}px) rotateZ(90deg) scale(${flipScale}) translateY(${sinkLocal}px)`;
+      // Pin the below-slot cover now, along the slot line, so the descending
+      // card is swallowed as its bottom crosses through.
+      slotCover = createSlotCover(containerEl, slotX, slotY, cardH);
+      const rotatedCard = `rotateZ(90deg) scale(${flipScale})`;
+      const base = `translate(${dx}px, ${dyLand}px) ${rotatedCard}`;
+      // Descend in WORLD space: put the downward translate FIRST (before the
+      // rotateZ), so it moves the card straight down on screen. A translateY
+      // applied AFTER rotateZ(90) would move along the card's rotated local axis
+      // — i.e. sideways in the world — which slid the card left instead of down.
+      const sink = cardH + 8; // full card height past the slot line, in world px
+      const sunk = `translate(${dx}px, ${dyLand + sink}px) ${rotatedCard}`;
       track(
         face.animate(
           [
             { transform: base, opacity: 1, offset: 0 },
-            { transform: sunk, opacity: 0.1, offset: 1 },
+            { transform: sunk, opacity: 0.9, offset: 0.85 },
+            { transform: sunk, opacity: 0.4, offset: 1 },
           ],
           {
             duration: PLUNGE_MS,
@@ -260,6 +296,7 @@ export function FoldCeremony({
       for (const t of timers) clearTimeout(t);
       for (const a of runningAnimations) a.cancel();
       fissure.dispose();
+      slotCover?.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -337,6 +374,19 @@ export function FoldCeremony({
           </div>
         </div>
         {buildAbove(0)}
+        {/* The folded-letter-card skin — covers the packet's face, faded in as
+            the flip lands so the sealed object reads as the same folded note the
+            resting on-page capsule shows. It travels + plunges with the packet
+            (a child of the root). */}
+        <div
+          ref={cardSkinRef}
+          className="mbf-cardSkin"
+          style={{ height: `${SEG_H_PX}px` }}
+          aria-hidden="true"
+        >
+          <span className="mbf-cardSkinCrease mbf-cardSkinCrease1" />
+          <span className="mbf-cardSkinCrease mbf-cardSkinCrease2" />
+        </div>
       </div>
     </div>
   );

@@ -84,6 +84,49 @@ export function createSlotFissure(
 }
 
 // ============================
+// Slot cover — a fixed pane pinned along the slot line, covering everything
+// BELOW it. Painted above the plunging card (appended after it) but tinted to
+// match the overlay scrim, so as the card descends the part that crosses the
+// slot line is swallowed — it reads as sinking THROUGH the hole, bottom first,
+// instead of just travelling down past the slot on top of the backdrop.
+// ============================
+export function createSlotCover(
+  container: HTMLElement,
+  slotX: number,
+  slotY: number,
+  cardH: number,
+): { dispose: () => void } {
+  // A small pocket at the slot, only as wide as the card's sink path and only
+  // as tall as the card's descent (plus margin) — not a slab across the page.
+  // Its sides and bottom fade out so it reads as a soft shadowed pocket the card
+  // sinks into rather than a hard box, and its top edge sits on the slot line.
+  const coverW = Math.max(CARD_W_PX * 3, 120);
+  const coverH = Math.round(cardH * 1.5 + 24);
+  const cover = document.createElement("div");
+  cover.style.cssText = [
+    "position:fixed",
+    `left:${slotX}px`,
+    `top:${slotY}px`,
+    "transform:translateX(-50%)",
+    `width:${coverW}px`,
+    `height:${coverH}px`,
+    // Match the .mb-overlay backdrop tint so, over the ceremony scrim, the pocket
+    // reads as the same ground the card sinks into and the card vanishes as it
+    // crosses in. Radial fade keeps the edges soft (no boxy seam).
+    "background:radial-gradient(ellipse 60% 90% at 50% 0%,rgba(20,16,12,0.72) 0%,rgba(20,16,12,0.55) 45%,transparent 78%)",
+    "pointer-events:none",
+    // Above the plunging card within the ceremony container.
+    "z-index:6",
+  ].join(";");
+  container.appendChild(cover);
+  return {
+    dispose() {
+      if (cover.parentNode) cover.parentNode.removeChild(cover);
+    },
+  };
+}
+
+// ============================
 // Eases
 // ============================
 export function clamp(v: number, lo: number, hi: number): number {
