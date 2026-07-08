@@ -17,6 +17,7 @@ export function DateStamp({ disabled, onStamped }: DateStampProps) {
   const [phase, setPhase] = useState<Phase>("resting");
   const holdStart = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const firedRef = useRef(false);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
@@ -24,12 +25,21 @@ export function DateStamp({ disabled, onStamped }: DateStampProps) {
     if (disabled || phase === "stamped") return;
     (e.target as Element).setPointerCapture(e.pointerId);
     holdStart.current = performance.now();
+    firedRef.current = false;
     setPhase("pressing");
   }
 
   function onPointerUp() {
     if (phase !== "pressing") return;
+    // If disabled changed mid-hold, spring back instead of stamping.
+    if (disabled) {
+      setPhase("resting");
+      return;
+    }
+    // Prevent double-fire if pointerup and pointercancel both fire before state flushes.
+    if (firedRef.current) return;
     if (performance.now() - holdStart.current >= HOLD_MS) {
+      firedRef.current = true;
       setPhase("stamped");
       timers.current.push(setTimeout(onStamped, 250));
     } else {
