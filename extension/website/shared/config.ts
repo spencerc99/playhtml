@@ -227,6 +227,8 @@ export function parseInstallationRoleFromUrl(): "master" | "follower" | null {
  *   ?cinemaVelZoom=0        follow: velocity-aware zoom-out (0 = off)
  *   ?cinemaReveal=10        reveal: seconds to pull back to full canvas
  *   ?cinemaStartZoom=0.18   reveal: fraction of screen width at the tightest
+ *   ?follow=5               follow: lock onto trail index 5 (only takes effect
+ *                           in follow mode; ignored by reveal)
  * Returns null when cinematic mode is not requested. */
 export function parseCinematicFromUrl(): CinematicConfig | null {
   if (typeof window === "undefined") return null;
@@ -242,6 +244,11 @@ export function parseCinematicFromUrl(): CinematicConfig | null {
   const velZoom = parseNumber(params.get("cinemaVelZoom"));
   const revealS = parseNumber(params.get("cinemaReveal"));
   const startZoom = parseNumber(params.get("cinemaStartZoom"));
+  const followRaw = parseNumber(params.get("follow"));
+  const forcedSubjectIndex =
+    followRaw !== undefined && Number.isInteger(followRaw) && followRaw >= 0
+      ? followRaw
+      : null;
 
   return {
     ...DEFAULT_CINEMATIC_CONFIG,
@@ -267,5 +274,6 @@ export function parseCinematicFromUrl(): CinematicConfig | null {
       startZoom !== undefined && startZoom > 0
         ? startZoom
         : DEFAULT_CINEMATIC_CONFIG.revealStartZoom,
+    forcedSubjectIndex,
   };
 }

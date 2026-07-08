@@ -24,6 +24,11 @@ export interface CinematicConfig {
   revealMs: number;
   /** reveal mode: fraction of screen width visible at the start (tightest). */
   revealStartZoom: number;
+  /** follow mode: lock onto this trail index instead of auto-picking. When set,
+   * the camera pins to that one cursor and never advances to other subjects;
+   * if the trail isn't active it holds its last known spot. null/undefined =
+   * default auto-pick behavior. */
+  forcedSubjectIndex?: number | null;
 }
 
 export interface CameraFrame {
@@ -101,6 +106,9 @@ export class CinematicCamera {
   // Last known position of the reveal subject, so the camera keeps a sensible
   // center even after that cursor finishes and drops out of activeTrails.
   private revealSubjectLast: Point | null = null;
+  // Last known position of the forced follow subject, so a locked camera holds
+  // a sensible center while that cursor is inactive (not yet started/finished).
+  private forcedSubjectLast: Point | null = null;
 
   constructor(config: CinematicConfig) {
     this.config = config;
@@ -122,6 +130,7 @@ export class CinematicCamera {
     this.revealStartMs = 0;
     this.revealSubjectIndex = null;
     this.revealSubjectLast = null;
+    this.forcedSubjectLast = null;
   }
 
   /** Request an immediate fly-through to a new subject on the next frame,
@@ -206,6 +215,25 @@ export class CinematicCamera {
     }
 
     const byIndex = new Map(activeTrails.map((t) => [t.index, t]));
+
+    // FORCED FOLLOW: pin to one trail index and never advance to other
+    // subjects. Track its live position while active; hold its last known spot
+    // (or canvas center if never seen) while inactive. Deterministic so a
+    // master and follower agree on which cursor index N refers to.
+    if (
+      this.config.mode === "follow" &&
+      this.config.forcedSubjectIndex !== null &&
+      this.config.forcedSubjectIndex !== undefined
+    ) {
+      const live = byIndex.get(this.config.forcedSubjectIndex);
+      if (live) this.forcedSubjectLast = { x: live.x, y: live.y };
+      const center =
+        this.forcedSubjectLast ?? { x: screenW / 2, y: screenH / 2 };
+      const box = boxAround(center, this.config.zoom, screenW, screenH);
+      this.lastViewBox = box;
+      this.currentCenter = center;
+      return box;
+    }
 
     // FLYING: tween regardless of subject availability; resolve on arrival.
     if (this.state === "flying" && this.flyFrom && this.flyTo) {
