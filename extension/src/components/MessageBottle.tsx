@@ -118,8 +118,14 @@ export function MessageBottle({
       });
     }
     setPendingLetter(null);
-    close();
-  }, [pendingLetter, onSeal, close]);
+    // The bottle has already plunged into the page — reset straight to sealed.
+    // Routing through close() would remount the overlay for its closing
+    // animation, flashing the scroll after the ceremony ends.
+    clearTimers();
+    setStage("sealed");
+    setOrigin(null);
+    if (onClosed) onClosed();
+  }, [pendingLetter, onSeal, clearTimers, onClosed]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

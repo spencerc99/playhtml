@@ -594,6 +594,11 @@ $letterHand: "Lora", Georgia, serif;
   width: 56px;
   height: 60px;
   border: none;
+  // PLACEHOLDER stamp art — the handle/base/ink spans draw the stamp in CSS.
+  // When a cut-out stamp image lands, set it as this button's background
+  // (data URI, background-size: contain), hide .mbs-stampHandle /
+  // .mbs-stampBase / .mbs-stampInk, and move the .pressing sink onto the
+  // whole button (translateY) so the press still reads.
   background: transparent;
   cursor: pointer;
   padding: 0;
