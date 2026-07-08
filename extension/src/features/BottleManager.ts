@@ -15,6 +15,13 @@ export interface BottleNote {
   createdAt: number;
   createdBy: string;
   authorColor: string;
+  /** Signed display name — the one place the author's name appears. */
+  authorName?: string;
+  /** Segment style preset id (see components/bottle/segmentStyles.ts). */
+  styleId?: string;
+  /** Page this note was written on. Same for all notes while bottles are
+   * stationary; carried from the start so travel needs no migration. */
+  pageUrl?: string;
 }
 
 /** A bottle anchored to a spot on the page, holding a thread of notes. */
@@ -35,6 +42,7 @@ export interface RenderedBottle {
   authorColor?: string; // the latest note's author color (left-edge stripe)
   anchor: BottleAnchor;
   isEmpty: boolean;
+  canReply: boolean;
 }
 
 export interface BottleRenderRequest {
@@ -47,6 +55,12 @@ const ALWAYS_VISIBLE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const AUTHOR_RATE_LIMIT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days per domain
 const MAX_VISIBLE_BOTTLES = 3;
 const EMPTY_BOTTLE_PROBABILITY = 0.3;
+
+/** Optional metadata attached to a sealed note beyond its text. */
+export interface SealMeta {
+  authorName?: string;
+  styleId?: string;
+}
 
 type RenderCallback = (req: BottleRenderRequest) => void;
 
@@ -122,11 +136,27 @@ export class BottleManager {
   /** Returns true if the note was persisted, false if dropped (no channel,
    * empty text, or rate-limited) so the caller can avoid marking the bottle
    * seen and losing the user's reply. */
-  seal(text: string, target: { id: string; anchor: BottleAnchor }): boolean {
+  seal(
+    text: string,
+    target: { id: string; anchor: BottleAnchor },
+    meta?: SealMeta,
+  ): boolean {
     if (!this.channel) return false;
     if (!text.trim()) return false;
     if (this.isRateLimited()) {
       debug("[bottles] rate limited — skipping author");
+      return false;
+    }
+
+    const existing = this.data.bottles[target.id];
+    // You can't leave the last word twice: replying to a bottle whose latest
+    // note is your own is rejected until someone else passes through.
+    if (
+      existing &&
+      existing.notes.length > 0 &&
+      existing.notes[existing.notes.length - 1].createdBy === this.playerPid
+    ) {
+      debug("[bottles] latest note is ours — self-reply blocked");
       return false;
     }
 
@@ -135,9 +165,11 @@ export class BottleManager {
       createdAt: Date.now(),
       createdBy: this.playerPid,
       authorColor: this.playerColor,
+      pageUrl: window.location.href,
+      ...(meta?.authorName ? { authorName: meta.authorName } : {}),
+      ...(meta?.styleId ? { styleId: meta.styleId } : {}),
     };
 
-    const existing = this.data.bottles[target.id];
     const bottleId = existing
       ? target.id
       : (typeof crypto !== "undefined" && crypto.randomUUID
@@ -248,6 +280,7 @@ export class BottleManager {
         authorColor: latest.authorColor,
         anchor: b.anchor,
         isEmpty: false,
+        canReply: latest.createdBy !== this.playerPid,
       });
       if (out.length >= MAX_VISIBLE_BOTTLES) break;
     }
@@ -299,7 +332,7 @@ export class BottleManager {
     const id = (typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
       : `b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    this.emptyBottle = { id: `empty-${id}`, anchor, isEmpty: true };
+    this.emptyBottle = { id: `empty-${id}`, anchor, isEmpty: true, canReply: true };
     return this.emptyBottle;
   }
 
