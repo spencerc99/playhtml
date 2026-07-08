@@ -37,57 +37,43 @@ export function SealingCeremony({
     const container = containerRef.current;
     if (!container) return;
 
-    const ctx = setupScene(container, text, authorColor, slotY, styleId, {
-      notes,
-      newNote,
-    });
-    const { vw, vh, renderer, scene, camera, texture } = ctx;
-
     // ============================
-    // Initial view: mount the WebGL paper PIXEL-ALIGNED over the on-screen
-    // letter-scroll strip the reader was just looking at, so "pull down to
-    // seal" rolls that same scroll in place. The ortho camera is screen-mapped
-    // (world = (screen - viewportCenter) / zoom) and zoom starts at 1.0, so
-    // world units are CSS pixels here.
-    //
-    // The texture canvas (TEX_W×TEX_H) holds the rasterized strip bottom-
-    // anchored (see drawRasterToCanvas): the new letter sits at the canvas
-    // bottom and fills the canvas width. So we size the plane's WIDTH to the
-    // strip's on-screen width (1:1 horizontally) and derive its height from the
-    // fixed texture aspect. The raster was rendered at the strip width then
-    // scaled to fill the canvas width, so mapping the canvas back onto a strip-
-    // width plane restores ~1:1 vertical scale too — the new letter lands at
-    // its on-screen size.
+    // Paper size + framing. WIDTH matches the on-screen strip width so the
+    // letter is the same width it was on the scroll (1:1 horizontally). HEIGHT
+    // is a fixed viewport-friendly value — the ceremony frames the new letter
+    // plus a peek of the scroll above it (NOT the whole tall thread), so the
+    // coil and roll stay on screen. The texture shows the bottom slice of the
+    // rasterized real strip at exactly this aspect (see setupScene's raster
+    // block), so there's no distortion. The paper is centered in the viewport.
     // ============================
-    // Paper WIDTH is fixed to the strip's on-screen width (1:1 horizontally);
-    // only the aspect (and thus height) changes when the real raster lands. The
-    // paper's BOTTOM edge — the new letter — is anchored to the write segment's
-    // on-screen bottom so the letter you just wrote stays put; content above
-    // extends upward (possibly offscreen), matching the real scroll above.
-    const initialAspect = TEX_W / TEX_H;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     const handoff = measureStripHandoff(portalContainer);
-    // Fallback (strip already gone / not found): the viewport-centered sizing
-    // used before the in-place handoff.
+    const initialAspect = TEX_W / TEX_H;
     const fallbackW = Math.min(vw * 0.55, vh * 0.72 * initialAspect);
     const paperW = handoff ? handoff.stripWidth : fallbackW;
-    // Screen-world Y of the paper's fixed bottom edge (the new letter). The
-    // plane's center rides above it by half the (aspect-dependent) height.
-    const bottomWorldY = handoff
-      ? vh / 2 - handoff.writeBottom
-      : -(fallbackW / initialAspect) / 2;
+    const paperH = vh * 0.82;
+    const paperAspect = paperW / paperH;
     const paperCenterX = handoff
       ? handoff.stripLeft + handoff.stripWidth / 2 - vw / 2
       : 0;
 
+    const ctx = setupScene(
+      container,
+      text,
+      authorColor,
+      slotY,
+      styleId,
+      { notes, newNote },
+      paperAspect,
+    );
+    const { renderer, scene, camera, texture } = ctx;
+
     const SEG_X = 4;
     const SEG_Y = 80;
 
-    // The plane geometry + its flat vertex snapshot are rebuilt if the raster
-    // lands with a different aspect than the painter fallback. `paperH` is the
-    // live height the roll morph reads; keep the bottom edge pinned.
-    let paperH = paperW / initialAspect;
-    let geometry = new THREE.PlaneGeometry(paperW, paperH, SEG_X, SEG_Y);
-    let flatPositions = new Float32Array(geometry.attributes.position.array);
+    const geometry = new THREE.PlaneGeometry(paperW, paperH, SEG_X, SEG_Y);
+    const flatPositions = new Float32Array(geometry.attributes.position.array);
     seedVertexColors(geometry);
 
     // Front face: the message texture, multiplied by the vertex-color shading
@@ -101,7 +87,7 @@ export function SealingCeremony({
     });
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
-    mesh.position.set(paperCenterX, bottomWorldY + paperH / 2, 0);
+    mesh.position.set(paperCenterX, 0, 0);
 
     // Back face: carries the SAME message texture as the front so the wound-up
     // outer wrap shows the faint message + the author-color stripe — matching
@@ -186,28 +172,6 @@ export function SealingCeremony({
       animations.push(a);
       return a;
     };
-
-    // When the rasterized real strip lands (usually a few ms in, still flat),
-    // rebuild the plane to its true aspect so rolling winds up the WHOLE visible
-    // scroll — the new letter plus the previous letters that were peeking above
-    // — not just the fixed-box fallback. Only acts while the paper is still flat
-    // (before the drag/auto-roll starts); a later arrival is ignored (rare, and
-    // rebuilding mid-roll would jump). The bottom edge stays pinned to the write
-    // segment so nothing shifts at the swap.
-    ctx.onRasterAspect((rasterAspect) => {
-      if (disposed || committed || state.rollAmount > 0) return;
-      const newH = paperW / rasterAspect;
-      if (Math.abs(newH - paperH) < 1) return;
-      paperH = newH;
-      const rebuilt = new THREE.PlaneGeometry(paperW, paperH, SEG_X, SEG_Y);
-      seedVertexColors(rebuilt);
-      mesh.geometry = rebuilt;
-      backMesh.geometry = rebuilt;
-      geometry.dispose();
-      geometry = rebuilt;
-      flatPositions = new Float32Array(rebuilt.attributes.position.array);
-      mesh.position.set(paperCenterX, bottomWorldY + paperH / 2, 0);
-    });
 
     function autoRoll() {
       hint.style.opacity = "0";

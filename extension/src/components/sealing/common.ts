@@ -216,17 +216,30 @@ export function drawSealedMarks(
   ctx.fillRect(0, trimTop, w, trimH);
 }
 
-// Copies a rasterized letter-strip canvas onto the ground canvas, which has
-// already been resized to the raster's exact dimensions (see the raster-landing
-// block in setupScene). The raster IS the ground now — a 1:1 blit — so the
-// ceremony paper is as tall as the real scroll it shows, no crop, no letterbox.
+// Draws the BOTTOM slice of the rasterized letter-strip onto the fixed-size
+// ground canvas: the new letter (raster bottom) fills the canvas bottom, and as
+// much of the scroll above it as the target aspect allows shows above. The
+// texture canvas is NOT resized (resizing the canvas backing a three.js
+// CanvasTexture doesn't reliably re-upload to the GPU) — instead we keep the
+// fixed canvas and choose which slice of the raster to show via `visibleFrac`
+// (0..1 of the raster height, measured from the bottom). Returns the actual
+// fraction shown so the sealed marks + plane sizing can match.
 export function drawRasterToCanvas(
   canvas: HTMLCanvasElement,
   raster: HTMLCanvasElement,
+  visibleFrac: number,
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.drawImage(raster, 0, 0, canvas.width, canvas.height);
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  // Source slice: the bottom `visibleFrac` of the raster, scaled to fill the
+  // canvas. The canvas aspect is chosen (by the caller) to match this slice, so
+  // there's no distortion.
+  const srcH = raster.height * visibleFrac;
+  const srcY = raster.height - srcH;
+  ctx.drawImage(raster, 0, srcY, raster.width, srcH, 0, 0, w, h);
 }
 
 // Paints the full ceremony texture (ground + optional seal trim + message
@@ -299,17 +312,13 @@ export interface SceneContext {
    * the texture. The ground is cached so this can be called after the raster
    * has replaced the painted content. */
   redrawSealed: () => void;
-  /** Registers a callback fired when the rasterized real strip lands and the
-   * texture canvas is resized to its aspect. The ceremony rebuilds the flat
-   * paper plane to this aspect so the roll winds up the whole visible scroll,
-   * not just the fixed-box crop. Called at most once, with height/width. */
-  onRasterAspect: (cb: (aspect: number) => void) => void;
   dispose: () => void;
 }
 
 // Options carrying the raster inputs — when both notes and newNote are present,
-// the scene rasterizes the real letter-scroll DOM and swaps it onto the texture
-// once ready, replacing the painter ground.
+// the scene rasterizes the real letter-scroll DOM and shows its bottom slice
+// (the new letter + a peek of the scroll above) on the texture once ready,
+// replacing the painter ground.
 export interface SetupSceneRasterOptions {
   notes?: BottleNote[];
   newNote?: BottleNote;
@@ -322,6 +331,11 @@ export function setupScene(
   slotY: number,
   styleId?: string,
   rasterOpts: SetupSceneRasterOptions = {},
+  // The paper's aspect (width / height). The texture canvas matches it so the
+  // raster's bottom slice maps onto the paper without distortion. The texture
+  // canvas is FIXED at this size — it is never resized, because resizing the
+  // canvas backing a three.js CanvasTexture doesn't reliably re-upload.
+  paperAspect: number = TEX_W / TEX_H,
 ): SceneContext {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -350,7 +364,7 @@ export function setupScene(
 
   const texCanvas = document.createElement("canvas");
   texCanvas.width = TEX_W;
-  texCanvas.height = TEX_H;
+  texCanvas.height = Math.round(TEX_W / paperAspect);
   // Guards the async ground repaint: if the scene is torn down (Escape mid-
   // ceremony) before a late border image resolves, we must not touch the
   // disposed texture.
@@ -369,8 +383,8 @@ export function setupScene(
   // over a fresh copy of this, so redrawing sealed doesn't have to re-run the
   // painter path — which would erase the raster.
   const groundCanvas = document.createElement("canvas");
-  groundCanvas.width = TEX_W;
-  groundCanvas.height = TEX_H;
+  groundCanvas.width = texCanvas.width;
+  groundCanvas.height = texCanvas.height;
   const groundCtx = groundCanvas.getContext("2d");
   const texCtx = texCanvas.getContext("2d");
   // Seed the ground mirror from the painter output already on the texture.
@@ -402,16 +416,6 @@ export function setupScene(
   // repaint (web1 border) must not clobber it.
   let rasterLanded = false;
 
-  // The ceremony rebuilds its plane to the raster's aspect when it lands; hold
-  // the callback (fired at most once, after resize).
-  let rasterAspectCb: ((aspect: number) => void) | null = null;
-  let pendingRasterAspect: number | null = null;
-  const onRasterAspect = (cb: (aspect: number) => void) => {
-    rasterAspectCb = cb;
-    // If the raster already landed before the ceremony registered, replay it.
-    if (pendingRasterAspect !== null) cb(pendingRasterAspect);
-  };
-
   if (groundPromise) {
     void groundPromise.then(() => {
       if (disposed) return;
@@ -426,26 +430,25 @@ export function setupScene(
     });
   }
 
-  // Kick off rasterizing the real letter-scroll DOM. When it resolves, the
-  // raster IS the ground: resize the texture + ground canvases to the raster's
-  // own dimensions (its full height, so the ceremony paper is as tall as the
-  // real scroll), blit the raster in, and tell the ceremony the new aspect so
-  // it rebuilds the flat plane. Then repaint, re-applying sealed marks if the
-  // seal beat already fired.
+  // Kick off rasterizing the real letter-scroll DOM. When it resolves, draw its
+  // BOTTOM slice onto the FIXED-size ground canvas (aspect matches the paper),
+  // so the new letter fills the bottom and a peek of the scroll above shows.
+  // The texture canvas is never resized (that breaks the GPU upload), so this
+  // is a plain composite. Then repaint, re-applying sealed marks if the seal
+  // beat already fired.
   if (rasterOpts.notes && rasterOpts.newNote) {
     void rasterizeStrip(rasterOpts.notes, rasterOpts.newNote, TEX_W).then(
       (raster) => {
         if (disposed || !raster || !groundCtx || !texCtx) return;
         rasterLanded = true;
-        texCanvas.width = raster.width;
-        texCanvas.height = raster.height;
-        groundCanvas.width = raster.width;
-        groundCanvas.height = raster.height;
-        drawRasterToCanvas(groundCanvas, raster);
+        // Show the bottom slice whose height matches the ground canvas aspect:
+        // ground is TEX_W × groundH; the slice is (groundH/TEX_W)·raster.width
+        // tall in raster px = groundH · (raster.width/TEX_W) — but raster.width
+        // IS TEX_W, so the slice height in raster px = groundCanvas.height, and
+        // the visible fraction of the (taller) raster is groundH / raster.height.
+        const visibleFrac = Math.min(1, groundCanvas.height / raster.height);
+        drawRasterToCanvas(groundCanvas, raster, visibleFrac);
         paintTextureFromGround();
-        const aspect = raster.width / raster.height;
-        pendingRasterAspect = aspect;
-        rasterAspectCb?.(aspect);
       },
     );
   }
@@ -464,7 +467,6 @@ export function setupScene(
     texCanvas,
     clipPlane,
     redrawSealed,
-    onRasterAspect,
     dispose() {
       disposed = true;
       renderer.dispose();
