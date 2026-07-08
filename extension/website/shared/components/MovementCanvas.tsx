@@ -377,12 +377,11 @@ interface MovementCanvasProps {
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
-  /** Multi-screen installation clock. When provided, a follower reads the
-   * master's pushed animation time each frame via `getOverrideElapsedMs`, and a
-   * master broadcasts its time via `onBroadcastElapsed`. Both optional so pages
-   * that don't run the installation are completely unaffected. */
-  getOverrideElapsedMs?: () => number | null;
-  onBroadcastElapsed?: (scaledElapsed: number) => void;
+  /** Multi-screen installation clock. When provided and it returns a non-null
+   * number, that value is used as the scaled-elapsed for the frame — every
+   * window computes the same time from a shared wall-clock epoch. Optional so
+   * pages that don't run the installation are completely unaffected. */
+  getInstallationElapsedMs?: (animationSpeed: number) => number | null;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -402,8 +401,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   defaultSoundEnabled = false,
   live = false,
   connected = false,
-  getOverrideElapsedMs,
-  onBroadcastElapsed,
+  getInstallationElapsedMs,
 }) => {
   const [settings, setSettings] = useState(loadSettings());
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -1569,8 +1567,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               frozen={paused}
               cinematic={cinematicConfig}
               cinematicNextSignal={cinematicNextSignal}
-              getOverrideElapsedMs={getOverrideElapsedMs}
-              onBroadcastElapsed={onBroadcastElapsed}
+              getInstallationElapsedMs={getInstallationElapsedMs}
             />
           ))}
 

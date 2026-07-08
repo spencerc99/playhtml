@@ -50,13 +50,11 @@ interface AnimatedTrailsProps {
   cinematicNextSignal?: number;
   // Multi-screen installation clock. When provided and it returns a non-null
   // number, that value is used as the RAW scaled-elapsed for this frame and the
-  // local accumulation is skipped — so a follower window renders the master's
-  // pushed time. Read each frame through this accessor (never as a raw value)
-  // so incoming messages don't re-run the animation-loop effect.
-  getOverrideElapsedMs?: () => number | null;
-  // Called each frame with the RAW pre-modulo scaled-elapsed when this window
-  // is NOT following an override, so a master can broadcast it.
-  onBroadcastElapsed?: (scaledElapsed: number) => void;
+  // local accumulation is skipped — every window computes the same time from a
+  // shared wall-clock epoch, so no window depends on another's rAF. Read each
+  // frame through this accessor (never as a raw value) so the clock's internal
+  // state changes don't re-run the animation-loop effect.
+  getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
@@ -87,8 +85,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     documentSpace = false,
     cinematic = null,
     cinematicNextSignal = 0,
-    getOverrideElapsedMs,
-    onBroadcastElapsed,
+    getInstallationElapsedMs,
     soundEngine = null,
     settings,
   }) => {
@@ -189,12 +186,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     // Installation-clock accessors read by the rAF loop. Kept current via a
     // separate effect so the loop reads xxxRef.current and its dep array does
     // NOT include per-frame-changing values (which would restart the clock).
-    const getOverrideElapsedMsRef = useRef(getOverrideElapsedMs);
-    const onBroadcastElapsedRef = useRef(onBroadcastElapsed);
+    const getInstallationElapsedMsRef = useRef(getInstallationElapsedMs);
     useEffect(() => {
-      getOverrideElapsedMsRef.current = getOverrideElapsedMs;
-      onBroadcastElapsedRef.current = onBroadcastElapsed;
-    }, [getOverrideElapsedMs, onBroadcastElapsed]);
+      getInstallationElapsedMsRef.current = getInstallationElapsedMs;
+    }, [getInstallationElapsedMs]);
 
     const cameraRef = useRef<CinematicCamera | null>(null);
     if (cinematic && cameraRef.current === null) {
@@ -396,18 +391,20 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         const frameDelta = Math.min(250, timestamp - lastTimestamp);
         lastTimestamp = timestamp;
 
-        // Multi-screen installation: a follower renders the RAW scaled-elapsed
-        // pushed by the master this frame instead of accumulating its own, so a
-        // stutter self-corrects rather than drifting. A master (or standalone
-        // window) accumulates locally and broadcasts its value for followers.
-        const override = getOverrideElapsedMsRef.current?.() ?? null;
+        // Multi-screen installation: every window computes its OWN scaled-
+        // elapsed from a shared wall-clock epoch, so a throttled/backgrounded
+        // window just renders fewer FRAMES rather than falling behind — it
+        // jumps to the correct current time when refocused. Standalone windows
+        // (and the brief moment before an epoch is known) accumulate locally.
+        const inst =
+          getInstallationElapsedMsRef.current?.(animationSpeedRef.current) ??
+          null;
         let scaledElapsed: number;
-        if (override !== null) {
-          scaledElapsed = override;
+        if (inst !== null) {
+          scaledElapsed = inst;
         } else {
           accumulatedScaled += frameDelta * animationSpeedRef.current;
           scaledElapsed = accumulatedScaled;
-          onBroadcastElapsedRef.current?.(scaledElapsed);
         }
         const loopedElapsed = scaledElapsed % timeRange.duration;
 
@@ -694,12 +691,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                 `${vb.x} ${vb.y} ${vb.w} ${vb.h}`,
               );
             }
-            // Surface the camera's current subject for dev/test tooling (used to
-            // verify multi-window coordination picks distinct cursors). Harmless
-            // no-op read for normal usage — just a number on window.
-            (
-              window as unknown as { __cameraSubjectIndex?: number | null }
-            ).__cameraSubjectIndex = camera.getCurrentSubjectIndex();
           }
         }
 

@@ -1,5 +1,5 @@
-// ABOUTME: Multi-screen installation view — one master window drives the animation
-// ABOUTME: clock; follower windows render zoomed (?cinematic=follow&follow=N) in sync.
+// ABOUTME: Multi-screen installation view — every window computes animation time from a
+// ABOUTME: shared wall-clock epoch; follower windows render zoomed (?cinematic=follow&follow=N) in sync.
 import "../shared/portrait-styles.scss";
 import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -17,8 +17,8 @@ import { useInstallationClock } from "../shared/hooks/useInstallationClock";
 
 /** A single installation screen. Every screen loads this page with the SAME
  * archive params (day/tod/viz/settings) so they render identical trail data;
- * they differ only by `?role=` (master drives the clock, followers render it)
- * and, on follower zoom screens, `?cinematic=follow&follow=N` to lock onto a
+ * they differ only by `?role=` (marks follower windows for cinematic follow
+ * coordination) and, on follower zoom screens, `?cinematic=follow&follow=N` to lock onto a
  * specific cursor. Fetch + viz components are shared with the archive page — no
  * forked logic. */
 const Installation = () => {
@@ -37,7 +37,7 @@ const Installation = () => {
     activeVisualizations,
   });
 
-  const { getOverrideElapsedMs, broadcastElapsed } = useInstallationClock();
+  const { getScaledElapsedMs } = useInstallationClock();
 
   return (
     <MovementCanvas
@@ -47,8 +47,7 @@ const Installation = () => {
       fetchEvents={refresh}
       activeVisualizations={activeVisualizations}
       onSetActiveVisualizations={() => {}}
-      getOverrideElapsedMs={getOverrideElapsedMs}
-      onBroadcastElapsed={broadcastElapsed}
+      getInstallationElapsedMs={getScaledElapsedMs}
     />
   );
 };
