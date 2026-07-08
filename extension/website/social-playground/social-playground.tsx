@@ -122,16 +122,54 @@ function BottlePreview() {
       setCanReply(canReplyEl?.checked ?? true);
       setKey((k) => k + 1);
     };
+    // Seed a long thread of random-styled letters to preview the scroll at
+    // volume (styles include undefined = the linen legacy default).
+    const seedBtn = document.getElementById("bp-seed") as HTMLButtonElement | null;
+    const seed = () => {
+      const styleIds = ["web1", "stationery", "webnative", undefined];
+      const colors = ["#c4724e", "#4a9a8a", "#5b8db8", "#d4b85c", "#8b6b7f"];
+      const lines = [
+        "passing through, leaving a pebble on the pile.",
+        "found this while looking for something else entirely — staying a minute.",
+        "the wind is good today. keep going.",
+        "someone told me pages remember. testing that.",
+        "hello from a train, somewhere between two tunnels.",
+        "i read every letter above this one. you're all very kind.",
+        "left my coffee to write this. worth it.",
+        "the internet feels small and warm right here.",
+        "if you find this, the chain is still alive. add yours.",
+        "quiet week. this helped.",
+        "drawing a little sun in the margin for you.",
+        "we were online at the same time, probably.",
+      ];
+      const n = 12;
+      setNotes(
+        Array.from({ length: n }, (_, i) => {
+          const styleId = styleIds[Math.floor(Math.random() * styleIds.length)];
+          return {
+            text: lines[i % lines.length],
+            createdAt: Date.now() - (n - 1 - i) * 43200000,
+            createdBy: i === n - 1 ? "anon" : `other-${i}`,
+            authorColor: colors[Math.floor(Math.random() * colors.length)],
+            ...(styleId ? { styleId } : {}),
+            ...(Math.random() < 0.7 ? { authorName: `writer ${i + 1}` } : {}),
+          };
+        }),
+      );
+      setKey((k) => k + 1);
+    };
     colorEl?.addEventListener("input", sync);
     textEl?.addEventListener("input", sync);
     emptyEl?.addEventListener("change", sync);
     canReplyEl?.addEventListener("change", sync);
     resetBtn?.addEventListener("click", () => setKey((k) => k + 1));
+    seedBtn?.addEventListener("click", seed);
     return () => {
       colorEl?.removeEventListener("input", sync);
       textEl?.removeEventListener("input", sync);
       emptyEl?.removeEventListener("change", sync);
       canReplyEl?.removeEventListener("change", sync);
+      seedBtn?.removeEventListener("click", seed);
     };
   }, []);
 

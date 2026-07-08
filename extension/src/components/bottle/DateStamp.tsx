@@ -80,13 +80,7 @@ export function DateStamp({ disabled, onStamped }: DateStampProps) {
             onPointerCancel={onPointerUp}
             title="press and hold to stamp today's date"
             aria-label="press and hold to stamp today's date"
-          >
-            <span className="mbs-stampHandle" />
-            <span className="mbs-stampBase" />
-            <span className="mbs-stampInk" aria-hidden="true">
-              {formatStampDate(Date.now())}
-            </span>
-          </button>
+          />
         </>
       )}
     </div>
