@@ -6,6 +6,14 @@ import type { QueryOptions } from '../storage/LocalEventStore'
 import { uploadEvents, syncParticipantColor } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
+import {
+  getPlayerProfile,
+  getPublicPlayerIdentity,
+  getStoredPlayerIdentity,
+  PLAYER_IDENTITY_STORAGE_KEY,
+  recordDiscoveredSite,
+  type StoredPlayerIdentity,
+} from '../storage/playerIdentity'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
@@ -249,28 +257,29 @@ export default defineBackground(() => {
   // Initialize player identity with ECDSA keypair, auto-upgrading old-format keys
   async function initializePlayerIdentity() {
     try {
-      const existing = await browser.storage.local.get(['playerIdentity'])
+      const existing = await getStoredPlayerIdentity()
 
-      if (existing.playerIdentity && !isOldFormatKey(existing.playerIdentity.publicKey)) {
+      if (existing && !isOldFormatKey(existing.public.publicKey)) {
         return; // Valid ECDSA key, nothing to do
       }
 
       // Generate new ECDSA keypair (fresh install or upgrading old key)
       const { publicKey, privateKey } = await generateEcdsaKeypair();
+      const colorPalette = existing?.public.playerStyle.colorPalette ?? [randomHslColor()]
 
       const identity = {
-        publicKey,
-        privateKey,
-        playerStyle: existing.playerIdentity?.playerStyle ?? {
-          colorPalette: [randomHslColor()],
-          animationStyle: 'gentle' as const,
-          interactionPatterns: []
+        public: {
+          publicKey,
+          playerStyle: {
+            ...existing?.public.playerStyle,
+            colorPalette,
+          },
+          ...(existing?.public.name !== undefined ? { name: existing.public.name } : {}),
         },
-        createdAt: existing.playerIdentity?.createdAt ?? Date.now(),
-        discoveredSites: existing.playerIdentity?.discoveredSites ?? []
-      }
+        privateKey,
+      } satisfies StoredPlayerIdentity
 
-      await browser.storage.local.set({ playerIdentity: identity })
+      await browser.storage.local.set({ [PLAYER_IDENTITY_STORAGE_KEY]: identity })
       if (VERBOSE) console.log('[Identity] Generated new ECDSA keypair, public key:', publicKey)
 
       // Clear legacy participant ID key so getParticipantId() reads from playerIdentity
@@ -290,7 +299,7 @@ export default defineBackground(() => {
   // Sync participant identity (cursor color) to server on startup
   async function syncIdentityToServer() {
     try {
-      const { playerIdentity } = await browser.storage.local.get(['playerIdentity']);
+      const playerIdentity = await getPublicPlayerIdentity();
       if (!playerIdentity?.publicKey || !playerIdentity.playerStyle?.colorPalette?.[0]) return;
       syncParticipantColor(playerIdentity.publicKey, playerIdentity.playerStyle.colorPalette[0]);
     } catch {}
@@ -301,7 +310,7 @@ export default defineBackground(() => {
   // pids due to identity migration), so we apply the color unconditionally.
   async function hydrateCursorColor(events: CollectionEvent[]): Promise<CollectionEvent[]> {
     if (events.length === 0) return events
-    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
+    const playerIdentity = await getPublicPlayerIdentity()
     const cursorColor = playerIdentity?.playerStyle?.colorPalette?.[0]
     if (!cursorColor) return events
     for (const evt of events) {
@@ -313,8 +322,13 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void;
-    if (message.type === 'GET_PLAYER_IDENTITY') {
-      getPlayerIdentity().then(reply)
+    if (message.type === 'GET_PUBLIC_PLAYER_IDENTITY') {
+      getPublicPlayerIdentity().then(reply)
+      return true // Will respond asynchronously
+    }
+
+    if (message.type === 'GET_PLAYER_PROFILE') {
+      getPlayerProfile().then(reply)
       return true // Will respond asynchronously
     }
 
@@ -623,7 +637,7 @@ export default defineBackground(() => {
       ;(async () => {
         try {
           const events = await store.getAllEvents()
-          const identity = await getPlayerIdentity()
+          const identity = await getPublicPlayerIdentity()
           const payload = JSON.stringify({ version: 1, exportedAt: Date.now(), events, identity })
           const compressed = await gzipString(payload)
           reply({ success: true, data: Array.from(compressed) })
@@ -655,7 +669,7 @@ export default defineBackground(() => {
     if (message.type === 'RESTORE_FROM_SERVER') {
       ;(async () => {
         try {
-          const identity = await getPlayerIdentity()
+          const identity = await getPublicPlayerIdentity()
           const pid = identity?.publicKey
           if (!pid) {
             reply({ success: false, error: 'No player identity found' })
@@ -681,18 +695,8 @@ export default defineBackground(() => {
     }
   })
 
-  async function getPlayerIdentity() {
-    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
-    return playerIdentity
-  }
-
   async function updateSiteDiscovery(domain: string) {
-    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
-
-    if (playerIdentity && !playerIdentity.discoveredSites.includes(domain)) {
-      playerIdentity.discoveredSites.push(domain)
-      await browser.storage.local.set({ playerIdentity })
-    }
+    await recordDiscoveredSite(domain)
   }
 
   async function runMilestoneCheck() {

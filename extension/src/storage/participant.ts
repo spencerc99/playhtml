@@ -2,6 +2,7 @@
 // ABOUTME: Participant ID is the ECDSA public key from playerIdentity; session ID resets per browser session
 
 import browser from 'webextension-polyfill';
+import { getPublicPlayerIdentity } from './playerIdentity';
 
 let fallbackSessionId: string | null = null;
 let warnedAboutMissingSessionStorage = false;
@@ -34,9 +35,9 @@ function createPrefixedId(prefix: string): string {
  */
 export async function getParticipantId(): Promise<string> {
   try {
-    const result = await browser.storage.local.get(['playerIdentity']);
-    if (result.playerIdentity?.publicKey) {
-      return result.playerIdentity.publicKey;
+    const identity = await getPublicPlayerIdentity();
+    if (identity?.publicKey) {
+      return identity.publicKey;
     }
 
     // Identity not yet initialized — generate temporary ID.
@@ -56,7 +57,9 @@ const SESSION_ID_KEY = 'collection_session_id';
  * Uses browser.storage.session so it resets when the browser closes.
  */
 export async function getSessionId(): Promise<string> {
-  const sessionStorage = (browser.storage as { session?: typeof browser.storage.local }).session;
+  const sessionStorage = (
+    browser.storage as unknown as { session?: typeof browser.storage.local }
+  ).session;
   const supportsSessionStorage =
     typeof sessionStorage?.get === 'function' && typeof sessionStorage?.set === 'function';
 

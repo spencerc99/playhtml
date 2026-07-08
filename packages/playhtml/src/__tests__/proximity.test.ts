@@ -115,8 +115,6 @@ describe("Proximity Detection", () => {
   const createPlayerIdentity = (id: string): PlayerIdentity => ({
     publicKey: id,
     playerStyle: { colorPalette: ["#ff0000"] },
-    discoveredSites: [],
-    createdAt: Date.now(),
   });
 
   const createCursorPresence = (

@@ -14,8 +14,6 @@ export type PlayerIdentity = {
     colorPalette: string[];
     cursorStyle?: string;
   };
-  discoveredSites?: string[];
-  createdAt?: number;
 };
 
 export type CursorZonePosition = {
@@ -61,6 +59,39 @@ function randomPrimaryColor(): string {
   return `hsl(${hue}, 70%, 60%)`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.publicKey !== "string" || value.publicKey.length === 0) {
+    return null;
+  }
+
+  const sourceStyle = isRecord(value.playerStyle) ? value.playerStyle : {};
+  const colorPalette = Array.isArray(sourceStyle.colorPalette)
+    ? sourceStyle.colorPalette.filter(
+        (color): color is string => typeof color === "string",
+      )
+    : [];
+
+  const identity: PlayerIdentity = {
+    publicKey: value.publicKey,
+    playerStyle: { colorPalette },
+  };
+
+  if (typeof value.name === "string") {
+    identity.name = value.name;
+  }
+
+  if (typeof sourceStyle.cursorStyle === "string") {
+    identity.playerStyle.cursorStyle = sourceStyle.cursorStyle;
+  }
+
+  return identity;
+}
+
 export function generatePlayerIdentity(): PlayerIdentity {
   const publicKey = crypto
     .getRandomValues(new Uint8Array(16))
@@ -78,8 +109,6 @@ export function generatePlayerIdentity(): PlayerIdentity {
     playerStyle: {
       colorPalette,
     },
-    discoveredSites: [],
-    createdAt: Date.now(),
   };
 }
 
@@ -89,23 +118,28 @@ function hasValidPrimaryColor(identity: PlayerIdentity): boolean {
   return typeof color === "string" && color.length > 0;
 }
 
-/** Ensures identity has a primary color (assigns random if missing), then saves to localStorage. */
-function ensurePrimaryColorAndSave(identity: PlayerIdentity): void {
+function savePlayerIdentityToStorage(identity: PlayerIdentity): void {
+  try {
+    localStorage.setItem(
+      PLAYER_IDENTITY_STORAGE_KEY,
+      JSON.stringify(identity),
+    );
+  } catch (e) {
+    console.warn("Failed to save player identity to localStorage:", e);
+  }
+}
+
+/** Ensures identity has a primary color, assigning one when missing. */
+function ensurePrimaryColor(identity: PlayerIdentity): boolean {
   if (!hasValidPrimaryColor(identity)) {
     if (!identity.playerStyle) identity.playerStyle = { colorPalette: [] };
     if (!Array.isArray(identity.playerStyle.colorPalette)) {
       identity.playerStyle.colorPalette = [];
     }
     identity.playerStyle.colorPalette[0] = randomPrimaryColor();
-    try {
-      localStorage.setItem(
-        PLAYER_IDENTITY_STORAGE_KEY,
-        JSON.stringify(identity),
-      );
-    } catch (e) {
-      console.warn("Failed to save player identity to localStorage:", e);
-    }
+    return true;
   }
+  return false;
 }
 
 export const PLAYER_IDENTITY_STORAGE_KEY = "playhtml_player_identity";
@@ -130,12 +164,13 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
   const stored = localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY);
   if (stored) {
     try {
-      const identity = JSON.parse(stored) as PlayerIdentity;
-      if (identity.publicKey) {
-        // If stored identity has no valid primary color, assign random and persist
-        if (!hasValidPrimaryColor(identity)) {
-          ensurePrimaryColorAndSave(identity);
-        }
+      const parsed = JSON.parse(stored);
+      const identity = readPublicPlayerIdentity(parsed);
+      if (identity) {
+        const shouldSave =
+          ensurePrimaryColor(identity) ||
+          JSON.stringify(identity) !== JSON.stringify(parsed);
+        if (shouldSave) savePlayerIdentityToStorage(identity);
         cachedPlayerIdentity = identity;
         return identity;
       }
@@ -148,11 +183,7 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
 
   // No valid stored identity: generate new one (includes random primary color) and save
   const identity = generatePlayerIdentity();
-  try {
-    localStorage.setItem(PLAYER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
-  } catch (e) {
-    console.warn("Failed to save player identity to localStorage:", e);
-  }
+  savePlayerIdentityToStorage(identity);
   cachedPlayerIdentity = identity;
   return identity;
 }

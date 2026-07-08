@@ -2,6 +2,7 @@
 // ABOUTME: Covers channel cadence selection and runtime message validation.
 
 import { describe, expect, it } from "vitest";
+import { generatePlayerIdentity } from "../cursor-types";
 import {
   getPresenceChannelCadence,
   isCursor,
@@ -84,6 +85,44 @@ describe("presence protocol", () => {
         },
       }),
     ).toThrow("identity.playerStyle.colorPalette[0] must be a non-empty string");
+  });
+
+  it("rejects identity payloads with private or profile fields", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          privateKey: { kty: "EC", d: "private" },
+          playerStyle: { colorPalette: ["red"] },
+          discoveredSites: ["example.com"],
+          createdAt: 123,
+        },
+      }),
+    ).toThrow("identity must only include public presence fields");
+  });
+
+  it("rejects nested identity fields outside the public style contract", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: {
+            colorPalette: ["red"],
+            privateKey: { kty: "EC", d: "private" },
+          },
+        },
+      }),
+    ).toThrow("identity.playerStyle must only include public presence fields");
+  });
+
+  it("generates public-only player identities", () => {
+    const identity = generatePlayerIdentity();
+
+    expect("discoveredSites" in identity).toBe(false);
+    expect("createdAt" in identity).toBe(false);
+    expect("privateKey" in identity).toBe(false);
   });
 
   it("rejects oversized join pages", () => {

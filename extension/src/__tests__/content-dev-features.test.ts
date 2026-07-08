@@ -97,11 +97,10 @@ describe("content internal development features", () => {
 
     runtimeSendMessage.mockReset();
     runtimeSendMessage.mockImplementation((message: { type?: string }) => {
-      if (message.type === "GET_PLAYER_IDENTITY") {
+      if (message.type === "GET_PUBLIC_PLAYER_IDENTITY") {
         return Promise.resolve({
           publicKey: "pk_test",
           playerStyle: { colorPalette: ["#4a9a8a"] },
-          discoveredSites: [],
         });
       }
       return Promise.resolve({});

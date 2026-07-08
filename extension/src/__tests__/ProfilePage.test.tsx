@@ -19,7 +19,6 @@ const identity: PlayerIdentity = {
   playerStyle: {
     colorPalette: ["#4a9a8a"],
   },
-  discoveredSites: [],
 };
 
 async function renderProfilePage() {
@@ -32,6 +31,7 @@ async function renderProfilePage() {
     root.render(
       <ProfilePage
         playerIdentity={identity}
+        discoveredSites={[]}
         onBack={vi.fn()}
         onIdentityUpdated={vi.fn()}
       />,

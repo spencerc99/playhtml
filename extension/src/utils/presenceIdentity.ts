@@ -20,15 +20,30 @@ export function toPresencePlayerIdentity(
   if (!isRecord(playerStyle)) return undefined;
 
   const colorPalette = playerStyle.colorPalette;
-  const primaryColor = Array.isArray(colorPalette) ? colorPalette[0] : undefined;
-  if (typeof primaryColor !== "string" || primaryColor.length === 0) {
+  const publicPalette = Array.isArray(colorPalette)
+    ? colorPalette.filter(
+        (color): color is string =>
+          typeof color === "string" && color.length > 0,
+      )
+    : [];
+  if (publicPalette.length === 0) {
     return undefined;
   }
 
-  return {
+  const publicIdentity: PlayerIdentity = {
     publicKey,
     playerStyle: {
-      colorPalette: [primaryColor],
+      colorPalette: publicPalette,
     },
   };
+
+  if (typeof identity.name === "string") {
+    publicIdentity.name = identity.name;
+  }
+
+  if (typeof playerStyle.cursorStyle === "string") {
+    publicIdentity.playerStyle.cursorStyle = playerStyle.cursorStyle;
+  }
+
+  return publicIdentity;
 }

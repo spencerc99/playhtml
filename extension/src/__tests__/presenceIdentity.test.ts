@@ -18,9 +18,11 @@ describe("toPresencePlayerIdentity", () => {
       },
       playerStyle: {
         colorPalette: ["#4a9a8a", "#c4724e"],
+        cursorStyle: "default",
         animationStyle: "gentle",
         interactionPatterns: ["hover", "click"],
       },
+      name: "Test player",
       discoveredSites: Array.from(
         { length: 300 },
         (_, index) => `example-${index}.com`,
@@ -40,8 +42,10 @@ describe("toPresencePlayerIdentity", () => {
 
     expect(identity).toEqual({
       publicKey: rawIdentity.publicKey,
+      name: "Test player",
       playerStyle: {
-        colorPalette: ["#4a9a8a"],
+        colorPalette: ["#4a9a8a", "#c4724e"],
+        cursorStyle: "default",
       },
     });
     expect(JSON.stringify(identity)).not.toContain("privateKey");

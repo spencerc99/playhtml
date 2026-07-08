@@ -4,29 +4,35 @@
 import browser from "webextension-polyfill";
 import type { PlayerIdentity } from "../types";
 import { syncParticipantColor } from "./sync";
+import {
+  getStoredPlayerIdentity,
+  PLAYER_IDENTITY_STORAGE_KEY,
+} from "./playerIdentity";
 
 export async function savePlayerColor(color: string): Promise<PlayerIdentity | null> {
-  const { playerIdentity: stored } = await browser.storage.local.get([
-    "playerIdentity",
-  ]);
+  const stored = await getStoredPlayerIdentity();
 
   if (!stored) return null;
 
-  const identity = stored as PlayerIdentity;
-  const colorPalette = Array.isArray(identity.playerStyle?.colorPalette)
-    ? [...identity.playerStyle.colorPalette]
+  const colorPalette = Array.isArray(stored.public.playerStyle?.colorPalette)
+    ? [...stored.public.playerStyle.colorPalette]
     : [];
   colorPalette[0] = color;
 
   const updated: PlayerIdentity = {
-    ...identity,
+    ...stored.public,
     playerStyle: {
-      ...identity.playerStyle,
+      ...stored.public.playerStyle,
       colorPalette,
     },
   };
 
-  await browser.storage.local.set({ playerIdentity: updated });
+  await browser.storage.local.set({
+    [PLAYER_IDENTITY_STORAGE_KEY]: {
+      ...stored,
+      public: updated,
+    },
+  });
 
   if (updated.publicKey) {
     try {

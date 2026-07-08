@@ -167,6 +167,7 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
   if (!isPresenceRecord(value)) {
     throw new Error("identity must be an object");
   }
+  assertPublicPresenceFields(value, ["publicKey", "name", "playerStyle"], "identity");
   validateRequiredBoundedString(
     value.publicKey,
     "identity.publicKey",
@@ -175,6 +176,11 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
   if (!isPresenceRecord(value.playerStyle)) {
     throw new Error("identity.playerStyle must be an object");
   }
+  assertPublicPresenceFields(
+    value.playerStyle,
+    ["colorPalette", "cursorStyle"],
+    "identity.playerStyle",
+  );
   const colorPalette = value.playerStyle.colorPalette;
   if (!Array.isArray(colorPalette)) {
     throw new Error("identity.playerStyle.colorPalette must be an array");
@@ -184,6 +190,13 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
     "identity.playerStyle.colorPalette[0]",
     MAX_PRESENCE_IDENTITY_STRING_LENGTH,
   );
+  for (let i = 1; i < colorPalette.length; i++) {
+    validateRequiredBoundedString(
+      colorPalette[i],
+      `identity.playerStyle.colorPalette[${i}]`,
+      MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+    );
+  }
   validateOptionalBoundedString(
     value.name,
     "identity.name",
@@ -194,6 +207,18 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
     "identity.playerStyle.cursorStyle",
     MAX_PRESENCE_IDENTITY_STRING_LENGTH,
   );
+}
+
+function assertPublicPresenceFields(
+  value: Record<string, unknown>,
+  allowedFields: string[],
+  name: string,
+): void {
+  for (const key of Object.keys(value)) {
+    if (!allowedFields.includes(key)) {
+      throw new Error(`${name} must only include public presence fields`);
+    }
+  }
 }
 
 export function isCursor(value: unknown): value is Cursor {

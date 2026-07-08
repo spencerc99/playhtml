@@ -41,7 +41,6 @@ export default defineContentScript({
 
     // Initialize PlayHTML extension on page
     class PlayHTMLExtension {
-      private playerIdentity: any = null;
       private presencePlayerIdentity: PlayerIdentity | undefined;
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
@@ -53,12 +52,12 @@ export default defineContentScript({
         if (this.isInitialized) return;
 
         try {
-          // Get player identity from background script
-          this.playerIdentity = await browser.runtime.sendMessage({
-            type: "GET_PLAYER_IDENTITY",
+          // Get public player identity from background script
+          const publicPlayerIdentity = await browser.runtime.sendMessage({
+            type: "GET_PUBLIC_PLAYER_IDENTITY",
           });
           this.presencePlayerIdentity = toPresencePlayerIdentity(
-            this.playerIdentity,
+            publicPlayerIdentity,
           );
 
           // Notify background about site discovery

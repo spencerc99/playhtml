@@ -19,3 +19,4 @@ extension/website/public/changelog/media/ and reference them here:
 -->
 
 - Fix Wikipedia presence startup for larger local profiles.
+- Keep private identity keys out of page-facing identity payloads.
