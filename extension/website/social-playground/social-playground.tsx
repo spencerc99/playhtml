@@ -33,7 +33,7 @@ if (!document.getElementById("message-bottle-fonts")) {
   fontLink.id = "message-bottle-fonts";
   fontLink.rel = "stylesheet";
   fontLink.href =
-    "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Caveat:wght@400;600&family=Lora:ital,wght@0,500;0,600;1,500&family=Martian+Mono:wght@400;600&display=swap";
+    "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,500;0,600;1,500&family=Martian+Mono:wght@400;600&display=swap";
   document.head.appendChild(fontLink);
 }
 
@@ -103,7 +103,7 @@ function BottlePreview() {
       } else {
         // "---" on its own line splits the textarea into separate letters, so
         // the multi-letter scroll (tick rail, snap, land-on-latest) is testable.
-        const styleIds = ["web1", "stationery", "webnative", "slab"];
+        const styleIds = ["web1", "stationery", "webnative"];
         const colors = ["#c4724e", "#4a9a8a", "#5b8db8", "#8b6b7f"];
         const parts = (textEl?.value || "")
           .split(/\n---\n/)

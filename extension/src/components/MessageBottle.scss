@@ -256,7 +256,7 @@ $slotY: $moundTopGap + $visibleH;
 $letterBody: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
 $letterHead: "Lora", Georgia, "Times New Roman", serif;
 $letterData: "Martian Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-$letterHand: "Caveat", "Segoe Script", cursive;
+$letterHand: "Lora", Georgia, serif;
 
 .mbs-strip {
   display: flex;
@@ -364,23 +364,13 @@ $letterHand: "Caveat", "Segoe Script", cursive;
 }
 
 // Web 1.0: crisp white ground, pixel border (KEEP the broider data URI exactly),
-// monospace ink, a faint repeating-pixel wallpaper.
+// Web 1.0 bordered: the native input — a clean white field wearing the
+// broider pixel border. The border IS the styling; the sheet stays plain.
 .seg-web1 {
   color: #1a1a8c;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   line-height: 1.6;
   background-color: #ffffff;
-  background-image: repeating-linear-gradient(
-      45deg,
-      rgba(26, 26, 140, 0.05) 0 2px,
-      transparent 2px 8px
-    ),
-    repeating-linear-gradient(
-      -45deg,
-      rgba(26, 26, 140, 0.05) 0 2px,
-      transparent 2px 8px
-    );
-  background-size: 8px 8px;
   border-width: 7px;
   border-style: solid;
   border-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYAAACpF6WWAAABJ0lEQVR4AaTRQU7DQBBEUfCKI3AS7r/mJByBHeiN8q125CycIH26urqmPY63r8+PP7zd/mhoZ6WjmZ4GHRsDGd8/v+/ghX4iqzen1Xp6LWWEEAxBT3iyPFVPq+Bt/mkMQOel9dDLgEY+HeumhQTQkDaL/LMqU359KCGGeg//jJkzn/26KdOTrjCX0HZU129qWWaDKv8M83B+sl7foQJXq2WdV7Fe3yJD9VXs2Zda5inqqxyWPrvM7ebZ9aGm8ayeb7k+VE9S5/DqAzq/bmpRzEVCj5AzU0Hboa6bZqoToStY6PzhQ2UaQH+G2T1yPJdYr8/QMB9hHvLlaOjN1cNNGQVoIdD80EOvyoDm7b8pYw5ogXx98FAvF/z9pkyGoKqn1YlZ5Msh/x8AAP//9W84CwAAAAZJREFUAwA7SYrgj2UwOAAAAABJRU5ErkJggg==") 7 / 7px / 0 round;
@@ -423,72 +413,61 @@ $letterHand: "Caveat", "Segoe Script", cursive;
 }
 
 // Web-native: committed screen paper — confident palette gradients, crisp ruled
-// lines, deliberately placed ASCII ornaments.
+// Web-native collage: an uneven homepage — soft splotches of gradient color,
+// a few bright shapes and lines, ascii ornaments scattered asymmetrically
+// around the edges so the writing stays legible in the middle.
 .seg-webnative {
   color: #223142;
   font-family: $letterBody;
-  background-color: #fbfdff;
+  background-color: #fdfdfb;
   background-image:
-    // ruled writing lines
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0 30px,
-      rgba(91, 141, 184, 0.16) 30px 31px
-    ),
-    // corner-to-corner accent wash from the palette
-    linear-gradient(
-      152deg,
-      rgba(91, 141, 184, 0.22),
-      rgba(74, 154, 138, 0.16) 46%,
-      rgba(212, 184, 92, 0.24)
-    );
-  box-shadow: inset 0 0 0 1.5px rgba(91, 141, 184, 0.35);
+    radial-gradient(ellipse 130px 90px at 10% 6%, rgba(255, 94, 196, 0.28), transparent 68%),
+    radial-gradient(ellipse 90px 140px at 94% 24%, rgba(34, 204, 255, 0.3), transparent 70%),
+    radial-gradient(ellipse 150px 90px at 20% 92%, rgba(255, 212, 0, 0.34), transparent 66%),
+    radial-gradient(ellipse 80px 80px at 76% 74%, rgba(0, 236, 120, 0.2), transparent 70%),
+    radial-gradient(ellipse 60px 46px at 55% 3%, rgba(151, 71, 255, 0.24), transparent 72%),
+    linear-gradient(#ff5ec4, #ff5ec4),
+    linear-gradient(#22ccff, #22ccff),
+    linear-gradient(45deg, #ffd400, #ff8a00),
+    linear-gradient(#9747ff, #9747ff);
+  background-repeat: no-repeat;
+  background-size:
+    auto, auto, auto, auto, auto,
+    88px 5px,
+    4px 64px,
+    26px 26px,
+    52px 4px;
+  background-position:
+    0 0, 0 0, 0 0, 0 0, 0 0,
+    82% 10%,
+    6% 60%,
+    58% 96%,
+    12% 30%;
 
-  // a placed ASCII ornament at the head of the sheet
+  // scattered ascii ornaments, placed like a hand-decorated homepage
   &::before {
-    content: "\00b7\2500\2500\2500\2510  \25c7  \250c\2500\2500\2500\00b7";
+    content: "*~ \00b7 :-) \00b7 ~*";
     position: absolute;
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 10px;
+    right: 18px;
     font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
     font-size: 12px;
     letter-spacing: 1px;
-    color: rgba(74, 154, 138, 0.7);
+    color: rgba(74, 154, 138, 0.75);
     pointer-events: none;
   }
-}
-
-// Slab: carved stone — layered radial lighting, chiselled edge highlights,
-// light engraved ink.
-.seg-slab {
-  color: #e8e4dc;
-  font-family: $letterHead;
-  font-weight: 600;
-  letter-spacing: 0.015em;
-  background-color: #423f3b;
-  background-image:
-    radial-gradient(
-      120% 70% at 32% 12%,
-      rgba(255, 255, 255, 0.14),
-      transparent 55%
-    ),
-    radial-gradient(
-      100% 80% at 80% 100%,
-      rgba(0, 0, 0, 0.4),
-      transparent 60%
-    ),
-    linear-gradient(168deg, #4e4b47, #3b3935 68%, #322f2b),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23s)'/%3E%3C/svg%3E");
-  // chiselled edges: bright top/left, dark bottom/right
-  box-shadow:
-    inset 2px 2px 0 rgba(255, 255, 255, 0.1),
-    inset -2px -3px 0 rgba(0, 0, 0, 0.45),
-    inset 0 0 50px rgba(0, 0, 0, 0.35);
-  // engraved letterforms
-  text-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.65),
-    0 -1px 0 rgba(255, 255, 255, 0.08);
+  &::after {
+    content: "~ <3 ~";
+    position: absolute;
+    bottom: 12px;
+    left: 20px;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: rgba(232, 62, 140, 0.6);
+    transform: rotate(-4deg);
+    pointer-events: none;
+  }
 }
 
 // --- perforations: each sheet OWNS its bottom tear line ------------------
@@ -590,27 +569,6 @@ $letterHand: "Caveat", "Segoe Script", cursive;
   white-space: nowrap;
 }
 
-// slab: a chiselled crack across the stone
-.perf-slab {
-  background-color: #3b3935;
-  background-image: linear-gradient(168deg, #322f2b, #3b3935);
-}
-.perf-slab::before {
-  background: linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.06),
-    rgba(0, 0, 0, 0.5)
-  );
-  -webkit-mask-image: linear-gradient(#000 0 0);
-  -webkit-mask-size: 100% 100%;
-  mask-image: linear-gradient(#000 0 0);
-  mask-size: 100% 100%;
-  clip-path: polygon(
-    0 42%, 10% 58%, 24% 34%, 40% 66%, 54% 38%, 70% 62%, 86% 40%, 100% 56%,
-    100% 62%, 86% 50%, 70% 74%, 54% 50%, 40% 80%, 24% 46%, 10% 72%, 0 54%
-  );
-}
-
 // ============================
 // The rubber date stamp — press and hold to ink, release to imprint.
 // ============================
@@ -621,10 +579,20 @@ $letterHand: "Caveat", "Segoe Script", cursive;
   min-height: 56px;
   margin-top: 4px;
 }
+// the quiet affordance next to the stamp
+.mbs-stampHint {
+  align-self: center;
+  margin-right: 12px;
+  font-family: $letterData;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: currentColor;
+  opacity: 0.45;
+}
 .mbs-stamp {
   position: relative;
-  width: 46px;
-  height: 54px;
+  width: 56px;
+  height: 60px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -636,43 +604,68 @@ $letterHand: "Caveat", "Segoe Script", cursive;
     cursor: not-allowed;
   }
 }
+// The press keeps sinking the whole hold — a long transition means a longer
+// hold visibly presses harder, matching the imprint's pressure mapping.
 .mbs-stampHandle {
   position: absolute;
   left: 50%;
   top: 0;
-  width: 15px;
+  width: 16px;
   height: 28px;
   transform: translateX(-50%);
   background: linear-gradient(to bottom, #9a7a5a, #6d5238);
   border-radius: 8px 8px 3px 3px;
   box-shadow: inset -1px 0 2px rgba(0, 0, 0, 0.3),
     inset 1px 0 1px rgba(255, 255, 255, 0.2);
-  transition: transform 550ms cubic-bezier(0.3, 0, 0.7, 1);
+  transition: transform 1400ms cubic-bezier(0.25, 0, 0.55, 1);
 }
 .mbs-stampBase {
   position: absolute;
   left: 0;
-  bottom: 4px;
-  width: 46px;
-  height: 17px;
+  bottom: 10px;
+  width: 56px;
+  height: 18px;
   background: linear-gradient(to bottom, #4c4238, #332c24);
   border-radius: 3px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  transition: transform 550ms cubic-bezier(0.3, 0, 0.7, 1);
+  transition: transform 1400ms cubic-bezier(0.25, 0, 0.55, 1),
+    filter 1400ms ease-out;
+}
+// the rubber face: today's date mirrored on the die, so the stamp reads as a
+// date stamp before you ever press it
+.mbs-stampInk {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%) scaleX(-1);
+  font-family: $letterData;
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: rgba(60, 44, 32, 0.75);
+  transition: transform 1400ms cubic-bezier(0.25, 0, 0.55, 1);
 }
 .mbs-stamp.pressing {
-  .mbs-stampHandle { transform: translateX(-50%) translateY(9px); }
-  .mbs-stampBase { transform: translateY(4px) scaleY(0.72); }
+  .mbs-stampHandle { transform: translateX(-50%) translateY(12px); }
+  .mbs-stampBase {
+    transform: translateY(7px) scaleY(0.6);
+    filter: brightness(0.8);
+  }
+  .mbs-stampInk { transform: translateX(-50%) scaleX(-1) translateY(-2px); }
 }
+// The fresh imprint carries the press: --ink (opacity) and --tilt (rotation)
+// are set from how long the stamp was held.
 .mbs-imprintFresh {
   display: inline-block;
-  animation: stampThunk 240ms cubic-bezier(0.2, 1.4, 0.4, 1);
+  opacity: var(--ink, 1);
+  transform: rotate(var(--tilt, -3deg));
+  animation: stampThunk 260ms cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 @keyframes stampThunk {
-  0% { transform: rotate(-3deg) scale(1.6); opacity: 0; }
-  60% { transform: rotate(-3deg) scale(0.94); opacity: 1; }
-  100% { transform: rotate(-3deg) scale(1); opacity: 1; }
+  0% { transform: rotate(var(--tilt, -3deg)) scale(1.6); opacity: 0; }
+  60% { transform: rotate(var(--tilt, -3deg)) scale(0.94); opacity: var(--ink, 1); }
+  100% { transform: rotate(var(--tilt, -3deg)) scale(1); opacity: var(--ink, 1); }
 }
 
 // ============================
@@ -719,12 +712,6 @@ $letterHand: "Caveat", "Segoe Script", cursive;
 .swatch-webnative {
   background: linear-gradient(140deg, #5b8db8, #4a9a8a 55%, #d4b85c);
 }
-.swatch-slab {
-  background:
-    radial-gradient(80% 60% at 30% 20%, rgba(255, 255, 255, 0.2), transparent 60%),
-    linear-gradient(168deg, #4e4b47, #322f2b);
-}
-
 .mbs-writeField {
   flex: 1;
   min-height: 220px;
@@ -771,6 +758,10 @@ $letterHand: "Caveat", "Segoe Script", cursive;
 }
 .mbs-scroller {
   height: 100vh;
+  // border-box so the breathing-room padding stays inside the viewport-sized
+  // box — content-box would grow the scroller past the viewport and push the
+  // write sheet's lower half (signature, stamp) permanently below the fold.
+  box-sizing: border-box;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
@@ -779,7 +770,7 @@ $letterHand: "Caveat", "Segoe Script", cursive;
   align-items: center;
   // breathing room above the top roll-end and below the bottom one, so the
   // first/last sheets can still centre in the viewport
-  padding: 30vh 0;
+  padding: 18vh 0;
 
   &::-webkit-scrollbar { display: none; }
 }

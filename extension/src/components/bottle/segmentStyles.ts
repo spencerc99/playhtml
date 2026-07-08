@@ -25,7 +25,6 @@ export const SEGMENT_STYLES: SegmentStyle[] = [
   { id: "web1", label: "bordered", className: "seg-web1", ink: "#1a1a8c" },
   { id: "stationery", label: "stationery", className: "seg-stationery", ink: "#3d3833" },
   { id: "webnative", label: "gradient", className: "seg-webnative", ink: "#1f2937" },
-  { id: "slab", label: "slab", className: "seg-slab", ink: "#e8e4dc" },
 ];
 
 export function segmentStyle(id?: string): SegmentStyle {
