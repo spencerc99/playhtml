@@ -1066,10 +1066,8 @@ async function resetCurrentRoomFromServer(): Promise<void> {
  * cursorClient.configure() directly, so it dispatches a CustomEvent on the
  * shared DOM instead.
  *
- * The extension only provides publicKey and playerStyle (the canonical stable
- * identity + chosen color). All other fields on the page's current identity are
- * preserved — the page may have arbitrary fields the extension doesn't know
- * about.
+ * The extension owns the canonical public key and style. The page owns its
+ * display name.
  *
  * Idempotent: only attaches once. Safe to call from both the initial
  * cursor-enabled path and the late-enable path.
@@ -1077,19 +1075,12 @@ async function resetCurrentRoomFromServer(): Promise<void> {
 function setupExtensionIdentityListener(): void {
   if (configureIdentityListener) return;
 
-  // TODO: The extension should also be able to set `name` — currently
-  // there's no UI for it in the extension, so we preserve the page's
-  // value. Once the extension has a name field, include it in the merge.
   configureIdentityListener = ((e: CustomEvent) => {
     const incoming = e.detail?.playerIdentity;
     if (!incoming || !cursorClient) return;
 
     const current = cursorClient.getMyPlayerIdentity();
-    const merged = {
-      ...current,
-      publicKey: incoming.publicKey,
-      playerStyle: incoming.playerStyle,
-    };
+    const merged = mergeExtensionPlayerIdentity(current, incoming);
 
     cursorClient.configure({ playerIdentity: merged });
     console.log("[playhtml] Merged extension identity via CustomEvent");
@@ -1101,6 +1092,28 @@ function setupExtensionIdentityListener(): void {
 
   // Signal that we're ready to receive identity injection events
   document.dispatchEvent(new CustomEvent("playhtml:ready"));
+}
+
+function mergeExtensionPlayerIdentity(
+  current: PlayerIdentity,
+  incoming: PlayerIdentity,
+): PlayerIdentity {
+  const identity: PlayerIdentity = {
+    publicKey: incoming.publicKey,
+    playerStyle: {
+      colorPalette: incoming.playerStyle.colorPalette,
+    },
+  };
+
+  if (typeof current.name === "string") {
+    identity.name = current.name;
+  }
+
+  if (typeof incoming.playerStyle.cursorStyle === "string") {
+    identity.playerStyle.cursorStyle = incoming.playerStyle.cursorStyle;
+  }
+
+  return identity;
 }
 
 async function runHandleNavigation(): Promise<void> {
