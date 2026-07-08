@@ -1,47 +1,52 @@
 // ABOUTME: CSS injected into the light DOM (document.head) for cursor-native emote gestures.
-// ABOUTME: Classes apply directly to cursor <svg> nodes and the self-cursor ghost via CursorClientAwareness.triggerCursorAnimation.
+// ABOUTME: Classes apply to the emote ghost (EmoteGhostRenderer) — a cursor-shaped node rendered for self and peers.
 
 export const CURSOR_GESTURE_CSS = `
+.emote-ghost {
+  opacity: 0.85;
+  transform-origin: center;
+}
+
 .cursor-gesture-wave {
   animation: gesture-wave 1500ms ease-out;
 }
 @keyframes gesture-wave {
-  0% { transform: rotate(0deg); }
-  25% { transform: rotate(20deg); }
-  50% { transform: rotate(-15deg); }
-  75% { transform: rotate(10deg); }
-  100% { transform: rotate(0deg); }
+  0% { transform: scale(2) rotate(0deg); }
+  25% { transform: scale(2) rotate(20deg); }
+  50% { transform: scale(2) rotate(-15deg); }
+  75% { transform: scale(2) rotate(10deg); }
+  100% { transform: scale(1) rotate(0deg); }
 }
 
 .cursor-gesture-dance {
   animation: gesture-dance 2000ms ease-out;
 }
 @keyframes gesture-dance {
-  0% { transform: translateX(0) rotate(0deg); }
-  10% { transform: translateX(-15px) rotate(-15deg); }
-  20% { transform: translateX(-15px) rotate(-10deg); }
-  30% { transform: translateX(-15px) rotate(-15deg); }
-  40% { transform: translateX(0) rotate(0deg); }
-  50% { transform: translateX(15px) rotate(15deg); }
-  60% { transform: translateX(15px) rotate(10deg); }
-  70% { transform: translateX(15px) rotate(15deg); }
-  80% { transform: translateX(5px) rotate(5deg); }
-  90% { transform: translateX(0) rotate(0deg); }
-  100% { transform: translateX(0) rotate(0deg); }
+  0% { transform: scale(2) translateX(0) rotate(0deg); }
+  10% { transform: scale(2) translateX(-15px) rotate(-15deg); }
+  20% { transform: scale(2) translateX(-15px) rotate(-10deg); }
+  30% { transform: scale(2) translateX(-15px) rotate(-15deg); }
+  40% { transform: scale(2) translateX(0) rotate(0deg); }
+  50% { transform: scale(2) translateX(15px) rotate(15deg); }
+  60% { transform: scale(2) translateX(15px) rotate(10deg); }
+  70% { transform: scale(2) translateX(15px) rotate(15deg); }
+  80% { transform: scale(2) translateX(5px) rotate(5deg); }
+  90% { transform: scale(1.3) translateX(0) rotate(0deg); }
+  100% { transform: scale(1) translateX(0) rotate(0deg); }
 }
 
 .cursor-gesture-spin {
   animation: gesture-spin 1000ms ease-out;
 }
 @keyframes gesture-spin {
-  0% { transform: translateY(0) rotate(0deg); }
-  20% { transform: translateY(-12px) rotate(80deg); }
-  35% { transform: translateY(-16px) rotate(200deg); }
-  50% { transform: translateY(-4px) rotate(280deg); }
-  65% { transform: translateY(0) rotate(360deg); }
-  80% { transform: translateY(0) rotate(360deg); }
-  90% { transform: translateY(0) rotate(360deg); }
-  100% { transform: translateY(0) rotate(360deg); }
+  0% { transform: scale(2) translateY(0) rotate(0deg); }
+  20% { transform: scale(2) translateY(-12px) rotate(80deg); }
+  35% { transform: scale(2) translateY(-16px) rotate(200deg); }
+  50% { transform: scale(2) translateY(-4px) rotate(280deg); }
+  65% { transform: scale(2) translateY(0) rotate(360deg); }
+  80% { transform: scale(1.6) translateY(0) rotate(360deg); }
+  90% { transform: scale(1.2) translateY(0) rotate(360deg); }
+  100% { transform: scale(1) translateY(0) rotate(360deg); }
 }
 
 .cursor-gesture-heart {
@@ -54,14 +59,14 @@ export const CURSOR_GESTURE_CSS = `
   left: 50%;
   top: 0;
   color: #c4724e;
-  font-size: 16px;
+  font-size: 20px;
   pointer-events: none;
   animation: gesture-heart-particle 1500ms ease-out;
 }
 @keyframes gesture-heart-pulse {
-  0% { transform: scale(1); }
-  30% { transform: scale(1.25); }
-  60% { transform: scale(1.1); }
+  0% { transform: scale(1.6); }
+  30% { transform: scale(2); }
+  60% { transform: scale(1.7); }
   100% { transform: scale(1); }
 }
 @keyframes gesture-heart-particle {
@@ -78,13 +83,13 @@ export const CURSOR_GESTURE_CSS = `
   left: 50%;
   top: 0;
   color: #d4b85c;
-  font-size: 14px;
+  font-size: 20px;
   pointer-events: none;
   animation: gesture-sparkle-particle 1200ms ease-out;
 }
 @keyframes gesture-sparkle-pop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.2); }
+  0% { transform: scale(1.6); }
+  50% { transform: scale(2); }
   100% { transform: scale(1); }
 }
 @keyframes gesture-sparkle-particle {
@@ -103,14 +108,14 @@ export const CURSOR_GESTURE_CSS = `
   left: 100%;
   top: 0;
   color: #8a8279;
-  font-size: 14px;
+  font-size: 20px;
   pointer-events: none;
   animation: gesture-sleepy-particle 2000ms ease-out;
 }
 @keyframes gesture-sleepy-droop {
-  0% { transform: rotate(0deg) translateY(0); opacity: 1; }
-  40% { transform: rotate(12deg) translateY(4px); }
-  100% { transform: rotate(20deg) translateY(10px); opacity: 0.4; }
+  0% { transform: scale(1.6) rotate(0deg) translateY(0); opacity: 1; }
+  40% { transform: scale(1.8) rotate(12deg) translateY(4px); }
+  100% { transform: scale(1) rotate(20deg) translateY(10px); opacity: 0.4; }
 }
 @keyframes gesture-sleepy-particle {
   0% { transform: translate(0, 0); opacity: 1; }
@@ -127,16 +132,16 @@ export const CURSOR_GESTURE_CSS = `
   left: 50%;
   top: 0;
   color: #5b8db8;
-  font-size: 15px;
+  font-size: 20px;
   pointer-events: none;
   animation: gesture-note-particle 1500ms ease-out;
 }
 @keyframes gesture-note-sway {
-  0% { transform: rotate(0deg); }
-  25% { transform: rotate(-8deg); }
-  50% { transform: rotate(0deg); }
-  75% { transform: rotate(8deg); }
-  100% { transform: rotate(0deg); }
+  0% { transform: scale(1.6) rotate(0deg); }
+  25% { transform: scale(2) rotate(-8deg); }
+  50% { transform: scale(1.8) rotate(0deg); }
+  75% { transform: scale(2) rotate(8deg); }
+  100% { transform: scale(1) rotate(0deg); }
 }
 @keyframes gesture-note-particle {
   0% { transform: translate(-50%, 0) rotate(0deg); opacity: 1; }
@@ -149,8 +154,8 @@ export const CURSOR_GESTURE_CSS = `
 }
 @keyframes gesture-highfive-reach {
   0% { transform: scale(1) rotate(0deg); }
-  40% { transform: scale(1.4) rotate(-20deg); }
-  60% { transform: scale(1.5) rotate(10deg); }
+  40% { transform: scale(2) rotate(-20deg); }
+  60% { transform: scale(2) rotate(10deg); }
   100% { transform: scale(1) rotate(0deg); }
 }
 
@@ -158,19 +163,19 @@ export const CURSOR_GESTURE_CSS = `
   animation: gesture-nuzzle-drift 1500ms ease-out;
 }
 @keyframes gesture-nuzzle-drift {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  33% { transform: translate(8px, -4px) rotate(-12deg); }
-  66% { transform: translate(-8px, -4px) rotate(12deg); }
-  100% { transform: translate(0, 0) rotate(0deg); }
+  0% { transform: scale(1) translate(0, 0) rotate(0deg); }
+  33% { transform: scale(1.6) translate(8px, -4px) rotate(-12deg); }
+  66% { transform: scale(1.6) translate(-8px, -4px) rotate(12deg); }
+  100% { transform: scale(1) translate(0, 0) rotate(0deg); }
 }
 
 .cursor-gesture-poke {
   animation: gesture-poke-jab 1000ms ease-out;
 }
 @keyframes gesture-poke-jab {
-  0% { transform: translateX(0); }
-  30% { transform: translateX(14px); }
-  60% { transform: translateX(-4px); }
-  100% { transform: translateX(0); }
+  0% { transform: scale(1) translateX(0); }
+  30% { transform: scale(1.6) translateX(14px); }
+  60% { transform: scale(1.6) translateX(-4px); }
+  100% { transform: scale(1) translateX(0); }
 }
 `;

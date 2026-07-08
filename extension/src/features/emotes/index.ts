@@ -9,6 +9,7 @@ import { EMOTES_CSS } from "./emotes.styles";
 import { CURSOR_GESTURE_CSS } from "./cursor-gestures.styles";
 import { EmoteWheel } from "./EmoteWheel";
 import { EmoteBroadcaster } from "./EmoteBroadcaster";
+import { EmoteGhostRenderer } from "./EmoteGhostRenderer";
 import { EMOTES, getEmote } from "./emotes";
 import { nearestPeer, DEFAULT_TARGET_RADIUS_PX } from "./interactions";
 
@@ -16,9 +17,18 @@ const FONT_URL =
   "https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;600&display=swap";
 
 const CURSOR_GESTURE_STYLE_ID = "wwo-emote-cursor-styles";
+const DEFAULT_SELF_COLOR = "#4a9a8a";
 
 interface EmoteCursorClient {
-  getCursorPresences(): Map<string, { cursor: { x: number; y: number } | null }>;
+  getCursorPresences(): Map<
+    string,
+    {
+      cursor: { x: number; y: number } | null;
+      playerIdentity?: { playerStyle?: { colorPalette?: string[] } };
+    }
+  >;
+  // Animates a peer's real cursor node in place (adds the gesture class to their
+  // live cursor svg). Returns false if that peer has no rendered cursor node.
   triggerCursorAnimation(
     stableId: string,
     animationClass: string,
@@ -75,14 +85,28 @@ export function initEmotes(deps: {
   };
   window.addEventListener("pointermove", trackCursor);
 
-  const broadcaster = new EmoteBroadcaster(deps.presence, (pid, e) => {
+  const selfColor = () => {
+    const myPid = deps.presence.getMyIdentity().publicKey;
+    const mine = deps.cursorClient.getCursorPresences().get(myPid);
+    return mine?.playerIdentity?.playerStyle?.colorPalette?.[0] ?? DEFAULT_SELF_COLOR;
+  };
+  const renderer = new EmoteGhostRenderer(() => lastCursor, selfColor);
+
+  const broadcaster = new EmoteBroadcaster(deps.presence, (pid, e, isMe) => {
     const def = getEmote(e.emoteId);
     if (!def) return;
-    deps.cursorClient.triggerCursorAnimation(
-      pid,
-      `cursor-gesture-${e.emoteId}`,
-      def.durationMs,
-    );
+    if (isMe) {
+      // We have no cursor DOM node of our own (playhtml renders ours as the OS
+      // cursor), so animate a ghost copy and hide the OS cursor while it plays.
+      renderer.play(e.emoteId);
+    } else {
+      // Animate the peer's single real cursor node in place — no second cursor.
+      deps.cursorClient.triggerCursorAnimation(
+        pid,
+        `cursor-gesture-${e.emoteId}`,
+        def.durationMs,
+      );
+    }
   });
 
   const wheel = { open: false, x: 0, y: 0 };
@@ -164,6 +188,7 @@ export function initEmotes(deps: {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("pointermove", trackCursor);
     broadcaster.destroy();
+    renderer.destroy();
     root.unmount();
     host.remove();
     removeCursorGestureStyles();
