@@ -213,9 +213,10 @@ export class BottleManager {
   }
 
   /**
-   * The overlay couldn't resolve this bottle's anchor at render time (layout
-   * shifted after placement). If it's the cached empty bottle, drop the cache
-   * and re-render so it re-places at a now-valid anchor instead of vanishing.
+   * The overlay found this bottle's anchor element genuinely gone from the
+   * DOM (not merely scrolled off-screen — see resolveBottlePosition). If
+   * it's the cached empty bottle, drop the cache and re-render so it
+   * re-places at a fresh anchor instead of vanishing for good.
    */
   notifyAnchorLost(bottleId: string): void {
     if (this.emptyBottle && this.emptyBottle.id === bottleId) {
@@ -268,8 +269,10 @@ export class BottleManager {
     // Sort by recency of the latest note, prefer fresh
     visible.sort((a, b) => latestNoteAt(b) - latestNoteAt(a));
 
-    // Resolve anchors BEFORE capping, so newest bottles with broken/offscreen
-    // anchors don't consume the visible slots and hide older renderable ones.
+    // Resolve anchors BEFORE capping, so newest bottles whose anchor element
+    // was actually removed from the DOM don't consume the visible slots and
+    // hide older renderable ones. A bottle merely scrolled off-screen still
+    // resolves here — it keeps its slot and stays anchored to its page spot.
     const out: RenderedBottle[] = [];
     for (const b of visible) {
       if (resolveBottlePosition(b.anchor) === null) continue;
@@ -300,8 +303,8 @@ export class BottleManager {
    */
   private resolveEmptyBottle(): RenderedBottle | null {
     if (this.emptyBottle) {
-      // Re-validate the cached anchor: if it no longer resolves (layout shifted
-      // after we placed it), drop the cache so we re-place below rather than
+      // Re-validate the cached anchor: if its element was actually removed
+      // from the DOM, drop the cache so we re-place below rather than
       // returning a bottle the overlay will silently hide forever. showEmpty
       // stays true, so the probability roll isn't repeated — only placement.
       if (resolveBottlePosition(this.emptyBottle.anchor) !== null) {
@@ -326,7 +329,7 @@ export class BottleManager {
       return null;
     }
     if (resolveBottlePosition(anchor) === null) {
-      debug("[bottles] anchor offscreen/overlapping — will retry next render");
+      debug("[bottles] freshly-picked anchor already gone — will retry next render");
       return null;
     }
     const id = (typeof crypto !== "undefined" && crypto.randomUUID
