@@ -1,5 +1,8 @@
 // ABOUTME: CSS injected into the light DOM (document.head) for cursor-native emote gestures.
-// ABOUTME: Classes apply to the emote ghost (EmoteGhostRenderer) — a cursor-shaped node rendered for self and peers.
+// ABOUTME: Solo emotes apply these classes to self ghosts (EmoteGhostRenderer) and peers' real
+// ABOUTME: cursor nodes (triggerCursorAnimation). Interaction emotes normally animate via
+// ABOUTME: InteractionRenderer's WAAPI transforms instead — the heart/highfive/nuzzle/poke
+// ABOUTME: blocks below are the no-target fallback when no peer was in range to interact with.
 
 export const CURSOR_GESTURE_CSS = `
 .emote-ghost {

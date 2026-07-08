@@ -6,7 +6,7 @@ import { getEmote } from "./emotes";
 const GHOST_SIZE = 32;
 const GHOST_OFFSET = GHOST_SIZE / 2;
 
-function cursorSvg(fill: string): string {
+export function cursorSvg(fill: string): string {
   return `<svg height="32" viewBox="0 0 32 32" width="32" xmlns="http://www.w3.org/2000/svg" style="pointer-events:none;display:block;">
   <g fill="none" fill-rule="evenodd" transform="translate(10 7)">
     <path d="m6.148 18.473 1.863-1.003 1.615-.839-2.568-4.816h4.332l-11.379-11.408v16.015l3.316-3.221z" fill="#fff"/>
