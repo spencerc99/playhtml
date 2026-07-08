@@ -216,7 +216,7 @@ $slotY: $moundTopGap + $visibleH;
 .mb-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(20, 16, 12, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -232,157 +232,14 @@ $slotY: $moundTopGap + $visibleH;
   animation: overlayFadeOut 360ms ease-out forwards;
 }
 
-.mb-paper {
-  width: min(560px, 92vw);
-  max-height: 86vh;
-  background: #ffffff;
-  border: 1px solid #b0b0b0;
-  border-radius: 4px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  --dx: var(--origin-dx, 0px);
-  --dy: var(--origin-dy, 0px);
-  animation: expandFromOrigin 480ms cubic-bezier(0.2, 0.7, 0.2, 1);
-
-  .mb-overlayClosing & {
-    animation: collapseToOrigin 360ms cubic-bezier(0.6, 0, 0.8, 0.4) forwards;
-  }
-}
-
-.mb-label {
-  font-size: 13px;
-  color: #555;
-}
-
-// The bottle's thread of notes — oldest first, newest at the bottom.
-.mb-thread {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.mb-note {
-  padding: 8px 10px;
-  border: 1px solid #e2e2e2;
-  border-left: 3px solid #bbb;
-  border-radius: 2px;
-  background: #fafafa;
-  font-family: system-ui, -apple-system, sans-serif;
-  font-size: 14px;
-  line-height: 1.45;
-  color: #111;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.mb-messageField {
-  width: 100%;
-  min-height: 200px;
-  padding: 8px 10px;
-  border: 1px solid #767676;
-  border-radius: 2px;
-  background: #ffffff;
-  resize: vertical;
-  font-family: system-ui, -apple-system, sans-serif;
-  font-size: 14px;
-  line-height: 1.45;
-  color: #111;
-  box-sizing: border-box;
-
-  &:focus {
-    outline: 2px solid #4a90e2;
-    outline-offset: -1px;
-  }
-
-  &[readonly] {
-    background: #f6f6f6;
-    cursor: default;
-  }
-}
-
-.mb-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-
-  button {
-    font-family: system-ui, -apple-system, sans-serif;
-    font-size: 14px;
-    padding: 6px 14px;
-    border: 1px solid #767676;
-    background: #f0f0f0;
-    color: #111;
-    border-radius: 2px;
-    cursor: pointer;
-
-    &:hover:not(:disabled) {
-      background: #e4e4e4;
-    }
-
-    &:active:not(:disabled) {
-      background: #d4d4d4;
-    }
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
-
-  .mb-primary {
-    background: #4a90e2;
-    color: #fff;
-    border-color: #3a7bc8;
-
-    &:hover:not(:disabled) {
-      background: #3a7bc8;
-    }
-  }
-}
-
-.mb-readPane,
-.mb-writePane {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 @keyframes overlayFadeIn {
-  from { background: rgba(0, 0, 0, 0); }
-  to   { background: rgba(0, 0, 0, 0.45); }
+  from { background: rgba(20, 16, 12, 0); }
+  to   { background: rgba(20, 16, 12, 0.55); }
 }
 
 @keyframes overlayFadeOut {
-  from { background: rgba(0, 0, 0, 0.45); }
-  to   { background: rgba(0, 0, 0, 0); }
-}
-
-@keyframes expandFromOrigin {
-  0% {
-    transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(0.04);
-    opacity: 0;
-  }
-  30% { opacity: 1; }
-  100% {
-    transform: translate(0, 0) scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes collapseToOrigin {
-  0% {
-    transform: translate(0, 0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(0.04);
-    opacity: 0;
-  }
+  from { background: rgba(20, 16, 12, 0.55); }
+  to   { background: rgba(20, 16, 12, 0); }
 }
 
 // ============================
