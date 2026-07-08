@@ -121,6 +121,38 @@ describe("presence protocol", () => {
     ).toThrow("identity.playerStyle must only include public presence fields");
   });
 
+  it("rejects identity updates with private or profile fields", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-update",
+        channel: "identity",
+        value: {
+          publicKey: "pk_1",
+          privateKey: { kty: "EC", d: "private" },
+          playerStyle: { colorPalette: ["red"] },
+          discoveredSites: ["example.com"],
+          createdAt: 123,
+        },
+      }),
+    ).toThrow("identity must only include public presence fields");
+  });
+
+  it("rejects nested identity update fields outside the public style contract", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-update",
+        channel: "identity",
+        value: {
+          publicKey: "pk_1",
+          playerStyle: {
+            colorPalette: ["red"],
+            privateKey: { kty: "EC", d: "private" },
+          },
+        },
+      }),
+    ).toThrow("identity.playerStyle must only include public presence fields");
+  });
+
   it("generates public-only player identities", () => {
     const identity = generatePlayerIdentity();
 

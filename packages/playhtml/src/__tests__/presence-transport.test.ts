@@ -124,6 +124,26 @@ describe("RealtimePresenceTransport", () => {
     ]);
   });
 
+  it("rejects private fields on identity updates", () => {
+    const socket = new FakeSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+
+    socket.open();
+
+    expect(() =>
+      transport.update("identity", {
+        publicKey: "pk_1",
+        privateKey: { kty: "EC", d: "private" },
+        playerStyle: { colorPalette: ["red"] },
+      }),
+    ).toThrow("identity must only include public presence fields");
+    expect(socket.sent).toEqual([]);
+  });
+
   it("coalesces state while closed and flushes the latest values on open", () => {
     const socket = new FakeSocket();
     const transport = new RealtimePresenceTransport({

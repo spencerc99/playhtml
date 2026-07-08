@@ -124,6 +124,10 @@ function validatePresenceValue(channel: unknown, value: unknown): void {
   if (channel === "cursor") {
     validateCursorPresenceValue(value);
   }
+
+  if (channel === "identity") {
+    validatePlayerIdentity(value);
+  }
 }
 
 function validateCursorPresenceValue(value: unknown): void {
