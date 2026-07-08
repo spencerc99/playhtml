@@ -10,7 +10,7 @@ import {
   anyGlobalFeatureActive,
 } from "@extension/features/global";
 import browser from "webextension-polyfill";
-import { SealingCeremony } from "@extension/components/sealing/SealingCeremony";
+import { FoldCeremony } from "@extension/components/sealing/FoldCeremony";
 import {
   MessageBottle,
   MESSAGE_BOTTLE_CSS,
@@ -253,11 +253,18 @@ function CeremonyTester() {
 
   if (!playing) return null;
   return (
-    <SealingCeremony
+    <FoldCeremony
       text={text}
       authorColor={color}
       slotX={slot.x}
       slotY={slot.y}
+      newNote={{
+        text,
+        createdAt: Date.now(),
+        createdBy: "",
+        authorColor: color,
+        authorName: "you",
+      }}
       onComplete={() => setPlaying(false)}
     />
   );
