@@ -41,6 +41,11 @@ interface EmoteCursorClient {
     animationClass: string,
     durationMs?: number,
   ): boolean;
+  // Hide/show a peer's real cursor node (by pid). Used during interactions so
+  // we don't see both the real cursor and the animating ghost (double cursor).
+  // No-op when that pid has no rendered cursor node (self, or an idle peer).
+  hideCursor(connectionId: string): void;
+  showCursor(connectionId: string): void;
 }
 
 function injectCursorGestureStyles(): void {
@@ -143,6 +148,13 @@ export function initEmotes(deps: {
         const mutual =
           e.emoteId === "highfive" &&
           detectMutualHighFive(e.ts, broadcaster.peerHighFiveTs(pid), HIGHFIVE_WINDOW_MS);
+        // Hide the real cursor nodes of both participants while their ghosts
+        // animate, so we don't see the real cursor + the ghost (double cursor).
+        // No-op for self / idle peers (no node). Restore after the animation.
+        const involved = [pid, e.targetPid].filter(
+          (p): p is string => !!p,
+        );
+        involved.forEach((p) => deps.cursorClient.hideCursor(p));
         playInteraction(
           e.emoteId,
           {
@@ -154,6 +166,9 @@ export function initEmotes(deps: {
           },
           def.durationMs,
         );
+        setTimeout(() => {
+          involved.forEach((p) => deps.cursorClient.showCursor(p));
+        }, def.durationMs);
         return;
       }
       // No target was in range at fire time (or their position is unknown) —

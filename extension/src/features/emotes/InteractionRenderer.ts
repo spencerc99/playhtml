@@ -1,9 +1,10 @@
 // ABOUTME: Renders the four two-cursor interaction emotes (heart, highfive, nuzzle, poke) with WAAPI.
 // ABOUTME: Always draws its own ghost cursors for sender and target — sidesteps "peer has no
 // ABOUTME: node" (target may be self) and "self has no node" (sender may be self) uniformly.
-// ABOUTME: Tradeoff: a peer's real cursor keeps rendering underneath its ghost for the animation's
-// ABOUTME: duration, so bystanders briefly see two cursors at that peer's position. Simpler than
-// ABOUTME: hiding playhtml's own cursor node, and short-lived (<=1.5s); revisit if it looks bad.
+// ABOUTME: The caller (index.ts) hides both participants' real cursor nodes via cursorClient
+// ABOUTME: hideCursor/showCursor around the animation so we don't see real cursor + ghost. Caveat:
+// ABOUTME: playhtml re-shows a hidden cursor on the next position update, so a participant who
+// ABOUTME: actively moves mid-interaction may briefly flash their real cursor.
 
 import { cursorSvg } from "./EmoteGhostRenderer";
 import { angleDeg, distance, travelToward, midpoint, type Point } from "./interaction-geometry";
