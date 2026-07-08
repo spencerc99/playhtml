@@ -1,7 +1,7 @@
 // ABOUTME: The blank trailing segment of the scroll — a textarea sheet the writer
 // ABOUTME: styles, signs (name + fingerprint), then commits with the date stamp.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import browser from "webextension-polyfill";
 import { SEGMENT_STYLES, segmentStyle } from "./segmentStyles";
 import { Fingerprint } from "./LetterSegment";
@@ -24,14 +24,18 @@ export function WriteSegment({ authorColor, onStamped }: WriteSegmentProps) {
   const [text, setText] = useState("");
   const [name, setName] = useState("");
   const [styleId, setStyleId] = useState(SEGMENT_STYLES[0].id);
-  const textRef = useRef<HTMLTextAreaElement>(null);
   const style = segmentStyle(styleId);
 
   useEffect(() => {
+    let cancelled = false;
     browser.storage.local.get(SIGNATURE_KEY).then((res) => {
+      if (cancelled) return;
       const saved = res[SIGNATURE_KEY];
       if (typeof saved === "string") setName(saved);
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function handleStamped() {
@@ -59,7 +63,6 @@ export function WriteSegment({ authorColor, onStamped }: WriteSegmentProps) {
         ))}
       </div>
       <textarea
-        ref={textRef}
         className="mbs-writeField"
         value={text}
         onChange={(e) => setText(e.target.value)}

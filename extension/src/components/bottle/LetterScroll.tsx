@@ -32,7 +32,7 @@ export function LetterScroll({
     const target = scroller.querySelector<HTMLElement>(
       notes.length > 0 ? `[data-seg="${notes.length - 1}"]` : '[data-seg="write"]',
     );
-    target?.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+    target?.scrollIntoView({ block: "center", behavior: "instant" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

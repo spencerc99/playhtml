@@ -149,13 +149,6 @@ export function MessageBottle({
     ["--page-bg" as string]: pageBg,
   };
 
-  const overlayStyle: CSSProperties = origin
-    ? ({
-        "--origin-dx": `${origin.x - window.innerWidth / 2}px`,
-        "--origin-dy": `${origin.y - window.innerHeight / 2}px`,
-      } as CSSProperties)
-    : {};
-
   const overlayClass = [
     "mb-overlay",
     stage === "closing" ? "mb-overlayClosing" : "",
@@ -194,7 +187,7 @@ export function MessageBottle({
 
       {overlayVisible &&
         createPortal(
-          <div className={overlayClass} style={overlayStyle}>
+          <div className={overlayClass}>
             <LetterScroll
               notes={notes}
               canReply={canReply}
