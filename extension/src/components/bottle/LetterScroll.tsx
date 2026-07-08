@@ -54,12 +54,17 @@ export function LetterScroll({
           ))}
           {canReply ? (
             <div data-seg="write" className="mbs-segSlot">
-              <WriteSegment authorColor={authorColor} onStamped={onStamped} />
+              <WriteSegment
+                authorColor={authorColor}
+                isFirst={notes.length === 0}
+                onStamped={onStamped}
+              />
             </div>
           ) : (
             <div className="mbs-segSlot mbs-lastWordSlot">
               <div className="mbs-lastWord">
-                you left the last word — someone else passes through next
+                your words rest here for now — the next person who passes through
+                will find them, and may leave a reply beneath
               </div>
             </div>
           )}

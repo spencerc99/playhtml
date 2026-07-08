@@ -11,22 +11,34 @@ export function formatStampDate(ts: number): string {
     .toUpperCase();
 }
 
-/** An inked imprint of a cursor — the author's thumbprint. */
+/** The author's cursor pressed into the sheet — an inked, embossed thumbprint.
+ *  The silhouette is filled softly in the author color, with fine ridge lines
+ *  and stipple inside; CSS drop-shadows and multiply blend read it as pressed. */
 export function Fingerprint({ color }: { color: string }) {
   return (
     <svg className="mbs-fingerprint" viewBox="0 0 14 18" aria-hidden="true">
+      {/* the cursor silhouette, filled low so the paper shows through the ink */}
       <path
         d="M1 1 L1 13.5 L4.4 10.6 L6.6 16 L9 15 L6.9 9.8 L11.4 9.6 Z"
         fill={color}
-        opacity="0.8"
+        opacity="0.55"
       />
+      {/* fine ridge lines following the shape — the thumbprint's whorls */}
       <path
-        d="M2.5 3.5 L2.5 10 L4.8 8.2 L6.4 12.4"
+        d="M2.4 3.1 L2.4 11.2 M3.6 3.6 L3.6 10.2 M4.8 4.2 L4.8 9.3"
         fill="none"
         stroke={color}
-        strokeWidth="0.6"
-        opacity="0.35"
+        strokeWidth="0.4"
+        opacity="0.4"
       />
+      {/* stipple — where the press caught more ink */}
+      <g fill={color} opacity="0.5">
+        <circle cx="3" cy="5.2" r="0.35" />
+        <circle cx="4.3" cy="7" r="0.35" />
+        <circle cx="3.5" cy="8.8" r="0.3" />
+        <circle cx="5.6" cy="6.2" r="0.3" />
+        <circle cx="6.4" cy="10.4" r="0.3" />
+      </g>
     </svg>
   );
 }

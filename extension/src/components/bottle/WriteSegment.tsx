@@ -17,10 +17,13 @@ export interface StampedLetter {
 
 interface WriteSegmentProps {
   authorColor: string;
+  /** True when no letters exist yet — the writer is starting the thread, so the
+   * sheet greets them as a first letter rather than a reply. */
+  isFirst?: boolean;
   onStamped: (letter: StampedLetter) => void;
 }
 
-export function WriteSegment({ authorColor, onStamped }: WriteSegmentProps) {
+export function WriteSegment({ authorColor, isFirst = false, onStamped }: WriteSegmentProps) {
   const [text, setText] = useState("");
   const [name, setName] = useState("");
   const [styleId, setStyleId] = useState(SEGMENT_STYLES[0].id);
@@ -49,7 +52,15 @@ export function WriteSegment({ authorColor, onStamped }: WriteSegmentProps) {
   }
 
   return (
-    <div className={`mbs-segment mbs-writeSegment ${style.className}`} style={{ color: style.ink }}>
+    <div
+      className={`mbs-segment mbs-writeSegment ${style.className}${
+        isFirst ? " mbs-writeFirst" : ""
+      }`}
+      style={{ color: style.ink }}
+    >
+      <p className="mbs-writeInvite">
+        {isFirst ? "this page keeps a bottle. write the first letter." : "the next sheet is yours."}
+      </p>
       <div className="mbs-swatchRow">
         {SEGMENT_STYLES.map((s) => (
           <button
@@ -66,7 +77,11 @@ export function WriteSegment({ authorColor, onStamped }: WriteSegmentProps) {
         className="mbs-writeField"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="write something for the next person who finds this place..."
+        placeholder={
+          isFirst
+            ? "leave the first note for whoever finds this place next..."
+            : "write something for the next person who finds this place..."
+        }
         maxLength={500}
         style={{ color: style.ink }}
       />
@@ -80,6 +95,7 @@ export function WriteSegment({ authorColor, onStamped }: WriteSegmentProps) {
           style={{ color: authorColor }}
         />
         <Fingerprint color={authorColor} />
+        <span className="mbs-markHint">your name + print become your mark</span>
       </div>
       <DateStamp disabled={!text.trim()} onStamped={handleStamped} />
     </div>

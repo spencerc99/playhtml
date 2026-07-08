@@ -230,6 +230,23 @@ $slotY: $moundTopGap + $visibleH;
 
 .mb-overlayClosing {
   animation: overlayFadeOut 360ms ease-out forwards;
+
+  // The paper strip leaves WITH the fade — eases down and rolls slightly away
+  // instead of vanishing, timed to the 360ms overlay fade so nothing pops.
+  .mbs-scrollFrame {
+    animation: scrollLeave 360ms cubic-bezier(0.4, 0, 0.7, 1) forwards;
+  }
+}
+
+@keyframes scrollLeave {
+  from {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(46px) scale(0.97);
+    opacity: 0;
+  }
 }
 
 @keyframes overlayFadeIn {
@@ -319,11 +336,17 @@ $letterHand: "Lora", Georgia, serif;
   font-size: 24px;
   line-height: 1;
 }
+// The cursor pressed into the paper: a light highlight below-right and a dark
+// shade above-left fake the debossed rim, and multiply lets the ink sink into
+// the sheet grain rather than sitting on top as a flat icon.
 .mbs-fingerprint {
-  width: 14px;
-  height: 18px;
-  opacity: 0.7;
-  filter: blur(0.3px);
+  width: 15px;
+  height: 19px;
+  opacity: 0.85;
+  mix-blend-mode: multiply;
+  filter: blur(0.2px)
+    drop-shadow(-0.5px -0.5px 0 rgba(40, 30, 20, 0.35))
+    drop-shadow(0.5px 0.5px 0 rgba(255, 255, 255, 0.55));
 }
 .mbs-dateImprint {
   margin-left: auto;
@@ -648,6 +671,37 @@ $letterHand: "Lora", Georgia, serif;
   color: currentColor;
   opacity: 0.45;
 }
+// Holds the stamp and, while pressing, the darkening ghost imprint under its
+// foot — so the date materialises exactly where the stamp will thunk it down.
+.mbs-stampStage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+// The ghost date preview: barely-there at press-start, inking darker over the
+// hold on the same curve as the stamp sink. Sits at the stamp's foot.
+.mbs-dateGhost {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%) rotate(-3deg);
+  margin: 0;
+  pointer-events: none;
+  // start barely visible; .inking drives it up to full ink over the hold
+  opacity: 0.06;
+  // match the stamp's sink window + curve so ink and press deepen together
+  transition: opacity 1400ms cubic-bezier(0.25, 0, 0.55, 1);
+
+  &.inking {
+    opacity: 0.85;
+  }
+  // an early release drops the half-inked ghost out quickly
+  &.fading {
+    opacity: 0;
+    transition: opacity 260ms ease-out;
+  }
+}
 .mbs-stamp {
   position: relative;
   width: 64px;
@@ -695,6 +749,49 @@ $letterHand: "Lora", Georgia, serif;
 // ============================
 .mbs-writeSegment {
   gap: 10px;
+  // The blank sheet beckons: a soft breathing shadow so it reads as "come
+  // write here" when it peeks below the last letter, plus a slightly lifted
+  // top corner curl.
+  animation: writeBreathe 3.6s ease-in-out infinite;
+}
+@keyframes writeBreathe {
+  0%,
+  100% {
+    box-shadow: 0 6px 22px rgba(74, 154, 138, 0.14);
+  }
+  50% {
+    box-shadow: 0 10px 30px rgba(74, 154, 138, 0.26);
+  }
+}
+// The whisper at the sheet's head, riding just under the perforation seam.
+.mbs-writeInvite {
+  margin: 0 auto 2px;
+  max-width: 46ch;
+  width: 100%;
+  font-family: $letterData;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: currentColor;
+  opacity: 0.5;
+}
+// The first-ever letter is a small gift — the invite reads a touch warmer and
+// steadier, and the whole sheet lifts a hair.
+.mbs-writeFirst {
+  .mbs-writeInvite {
+    opacity: 0.66;
+    color: #4a9a8a;
+  }
+}
+// The quiet cue that the name + fingerprint are how you sign the page.
+.mbs-markHint {
+  margin-left: 10px;
+  font-family: $letterData;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: currentColor;
+  opacity: 0.4;
+  white-space: nowrap;
 }
 .mbs-swatchRow {
   display: flex;
@@ -848,13 +945,25 @@ $letterHand: "Lora", Georgia, serif;
   font-style: italic;
   font-size: 15px;
   line-height: 1.7;
-  color: #6b5f4e;
-  background-color: #efe9df;
+  color: #5c5142;
+  background-color: #f3ede1;
+  // a warm glow from the top so the sheet feels held rather than closed
   background-image: radial-gradient(
     130% 100% at 50% 0%,
-    rgba(255, 255, 255, 0.4),
-    transparent 60%
+    rgba(212, 184, 92, 0.16),
+    transparent 62%
   );
+
+  // a small warm mark under the words — a quiet full stop, not a wall
+  &::after {
+    content: "";
+    display: block;
+    width: 34px;
+    height: 2px;
+    margin: 18px auto 0;
+    border-radius: 1px;
+    background: rgba(74, 154, 138, 0.5);
+  }
 }
 .mbs-tickRail {
   position: fixed;
