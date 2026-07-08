@@ -14,6 +14,7 @@ import {
   EventMessage,
   RegisteredPlayEvent,
   generatePersistentPlayerIdentity,
+  toPublicPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
 } from "@playhtml/common";
@@ -1076,13 +1077,16 @@ function setupExtensionIdentityListener(): void {
   if (configureIdentityListener) return;
 
   configureIdentityListener = ((e: CustomEvent) => {
-    const incoming = e.detail?.playerIdentity;
-    if (!incoming || !cursorClient) return;
+    const incoming = toPublicPlayerIdentity(e.detail?.playerIdentity);
+    if (!incoming?.playerStyle.colorPalette[0] || !cursorClient) return;
 
     const current = cursorClient.getMyPlayerIdentity();
-    const merged = mergeExtensionPlayerIdentity(current, incoming);
-
-    cursorClient.configure({ playerIdentity: merged });
+    cursorClient.configure({
+      playerIdentity: {
+        ...incoming,
+        ...(typeof current.name === "string" ? { name: current.name } : {}),
+      },
+    });
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1092,28 +1096,6 @@ function setupExtensionIdentityListener(): void {
 
   // Signal that we're ready to receive identity injection events
   document.dispatchEvent(new CustomEvent("playhtml:ready"));
-}
-
-function mergeExtensionPlayerIdentity(
-  current: PlayerIdentity,
-  incoming: PlayerIdentity,
-): PlayerIdentity {
-  const identity: PlayerIdentity = {
-    publicKey: incoming.publicKey,
-    playerStyle: {
-      colorPalette: incoming.playerStyle.colorPalette,
-    },
-  };
-
-  if (typeof current.name === "string") {
-    identity.name = current.name;
-  }
-
-  if (typeof incoming.playerStyle.cursorStyle === "string") {
-    identity.playerStyle.cursorStyle = incoming.playerStyle.cursorStyle;
-  }
-
-  return identity;
 }
 
 async function runHandleNavigation(): Promise<void> {

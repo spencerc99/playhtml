@@ -14,6 +14,7 @@ export type PlayerIdentity = {
     colorPalette: string[];
     cursorStyle?: string;
   };
+  createdAt?: number;
 };
 
 export type CursorZonePosition = {
@@ -63,7 +64,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function readPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
+export function toPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
   if (!isRecord(value)) return null;
   if (typeof value.publicKey !== "string" || value.publicKey.length === 0) {
     return null;
@@ -90,6 +91,10 @@ function readPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
     identity.playerStyle.cursorStyle = sourceStyle.cursorStyle;
   }
 
+  if (Number.isFinite(value.createdAt)) {
+    identity.createdAt = Number(value.createdAt);
+  }
+
   return identity;
 }
 
@@ -110,6 +115,7 @@ export function generatePlayerIdentity(): PlayerIdentity {
     playerStyle: {
       colorPalette,
     },
+    createdAt: Date.now(),
   };
 }
 
@@ -166,7 +172,7 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      const identity = readPublicPlayerIdentity(parsed);
+      const identity = toPublicPlayerIdentity(parsed);
       if (identity) {
         const shouldSave =
           ensurePrimaryColor(identity) ||

@@ -100,10 +100,22 @@ describe("presence protocol", () => {
           privateKey: { kty: "EC", d: "private" },
           playerStyle: { colorPalette: ["red"] },
           discoveredSites: ["example.com"],
-          createdAt: 123,
         },
       }),
     ).toThrow("identity must only include public presence fields");
+  });
+
+  it("accepts public identity creation metadata", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+          createdAt: 123,
+        },
+      }),
+    ).not.toThrow();
   });
 
   it("rejects nested identity fields outside the public style contract", () => {
@@ -131,7 +143,6 @@ describe("presence protocol", () => {
           privateKey: { kty: "EC", d: "private" },
           playerStyle: { colorPalette: ["red"] },
           discoveredSites: ["example.com"],
-          createdAt: 123,
         },
       }),
     ).toThrow("identity must only include public presence fields");
@@ -157,7 +168,7 @@ describe("presence protocol", () => {
     const identity = generatePlayerIdentity();
 
     expect("discoveredSites" in identity).toBe(false);
-    expect("createdAt" in identity).toBe(false);
+    expect(typeof identity.createdAt).toBe("number");
     expect("privateKey" in identity).toBe(false);
   });
 

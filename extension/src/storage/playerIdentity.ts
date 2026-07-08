@@ -2,7 +2,11 @@
 // ABOUTME: Separates private signing keys from public identity and browsing profile state.
 
 import browser from "webextension-polyfill";
-import type { PlayerIdentity } from "@playhtml/common";
+import {
+  isPresenceRecord,
+  toPublicPlayerIdentity,
+  type PlayerIdentity,
+} from "@playhtml/common";
 
 export const PLAYER_IDENTITY_STORAGE_KEY = "playerIdentity";
 export const DISCOVERED_SITES_STORAGE_KEY = "playerDiscoveredSites";
@@ -17,78 +21,29 @@ export type PlayerProfile = {
   discoveredSites: string[];
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
-}
-
 function toDiscoveredSites(value: unknown): string[] {
-  return toStringArray(value).filter((site) => site.length > 0);
-}
-
-function toPrivateKey(value: unknown): JsonWebKey | null {
-  if (!isRecord(value)) return null;
-  return value as JsonWebKey;
-}
-
-function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
-  return Object.keys(value).every((key) => keys.includes(key));
-}
-
-export function toPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
-  if (!isRecord(value)) return null;
-
-  const publicKey = value.publicKey;
-  if (typeof publicKey !== "string" || publicKey.length === 0) return null;
-
-  const sourceStyle = isRecord(value.playerStyle) ? value.playerStyle : {};
-  const colorPalette = toStringArray(sourceStyle.colorPalette).filter(
-    (color) => color.length > 0,
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (site): site is string => typeof site === "string" && site.length > 0,
   );
-  if (colorPalette.length === 0) return null;
-
-  const publicIdentity: PlayerIdentity = {
-    publicKey,
-    playerStyle: {
-      colorPalette,
-    },
-  };
-
-  if (typeof value.name === "string") {
-    publicIdentity.name = value.name;
-  }
-
-  if (typeof sourceStyle.cursorStyle === "string") {
-    publicIdentity.playerStyle.cursorStyle = sourceStyle.cursorStyle;
-  }
-
-  return publicIdentity;
 }
 
 function readStoredPlayerIdentity(value: unknown): StoredPlayerIdentity | null {
-  if (!isRecord(value)) return null;
+  if (!isPresenceRecord(value)) return null;
 
-  const publicSource = isRecord(value.public) ? value.public : value;
-  const privateSource = value.privateKey;
+  const publicSource = isPresenceRecord(value.public) ? value.public : value;
+  const privateKey = isPresenceRecord(value.privateKey)
+    ? (value.privateKey as JsonWebKey)
+    : null;
 
   const publicIdentity = toPublicPlayerIdentity(publicSource);
-  const privateKey = toPrivateKey(privateSource);
 
-  if (!publicIdentity || !privateKey) return null;
+  if (!publicIdentity?.playerStyle.colorPalette[0] || !privateKey) return null;
 
   return {
     public: publicIdentity,
     privateKey,
   };
-}
-
-function readLegacyDiscoveredSites(value: unknown): string[] {
-  if (!isRecord(value)) return [];
-  return toDiscoveredSites(value.discoveredSites);
 }
 
 async function readIdentityStorage() {
@@ -105,11 +60,16 @@ export async function getStoredPlayerIdentity(): Promise<StoredPlayerIdentity | 
   if (!storedIdentity) return null;
 
   const updates: Record<string, unknown> = {};
-  const rawPublic = isRecord(rawIdentity) ? rawIdentity.public : undefined;
-  const hasStoredShape = isRecord(rawIdentity) && isRecord(rawPublic);
+  const rawIdentityRecord = isPresenceRecord(rawIdentity) ? rawIdentity : {};
+  const rawPublic = isPresenceRecord(rawIdentityRecord.public)
+    ? rawIdentityRecord.public
+    : undefined;
+  const hasStoredShape = rawPublic !== undefined;
   const needsIdentityWrite =
     !hasStoredShape ||
-    !hasOnlyKeys(rawIdentity, ["public", "privateKey"]) ||
+    Object.keys(rawIdentityRecord).some(
+      (key) => key !== "public" && key !== "privateKey",
+    ) ||
     JSON.stringify(rawPublic) !== JSON.stringify(storedIdentity.public);
 
   if (needsIdentityWrite) {
@@ -117,7 +77,7 @@ export async function getStoredPlayerIdentity(): Promise<StoredPlayerIdentity | 
   }
 
   if (!Array.isArray(result[DISCOVERED_SITES_STORAGE_KEY])) {
-    const discoveredSites = readLegacyDiscoveredSites(rawIdentity);
+    const discoveredSites = toDiscoveredSites(rawIdentityRecord.discoveredSites);
     if (discoveredSites.length > 0) {
       updates[DISCOVERED_SITES_STORAGE_KEY] = discoveredSites;
     }

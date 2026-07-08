@@ -171,7 +171,11 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
   if (!isPresenceRecord(value)) {
     throw new Error("identity must be an object");
   }
-  assertPublicPresenceFields(value, ["publicKey", "name", "playerStyle"], "identity");
+  assertPublicPresenceFields(
+    value,
+    ["publicKey", "name", "playerStyle", "createdAt"],
+    "identity",
+  );
   validateRequiredBoundedString(
     value.publicKey,
     "identity.publicKey",
@@ -211,6 +215,9 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
     "identity.playerStyle.cursorStyle",
     MAX_PRESENCE_IDENTITY_STRING_LENGTH,
   );
+  if (value.createdAt !== undefined && !Number.isFinite(value.createdAt)) {
+    throw new Error("identity.createdAt must be a finite number");
+  }
 }
 
 function assertPublicPresenceFields(

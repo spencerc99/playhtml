@@ -2,7 +2,10 @@
 // ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
 import "./content/style.css";
 import browser from "webextension-polyfill";
-import type { PlayerIdentity } from "@playhtml/common";
+import {
+  toPublicPlayerIdentity,
+  type PlayerIdentity,
+} from "@playhtml/common";
 import {
   MILESTONE_DURATION_MS,
   MILESTONE_TOAST_CSS,
@@ -22,7 +25,6 @@ import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
 import { shouldStartExtensionPresence } from "./content/presencePolicy";
-import { toPresencePlayerIdentity } from "../utils/presenceIdentity";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -56,9 +58,11 @@ export default defineContentScript({
           const publicPlayerIdentity = await browser.runtime.sendMessage({
             type: "GET_PUBLIC_PLAYER_IDENTITY",
           });
-          this.presencePlayerIdentity = toPresencePlayerIdentity(
-            publicPlayerIdentity,
-          );
+          const presenceIdentity = toPublicPlayerIdentity(publicPlayerIdentity);
+          this.presencePlayerIdentity =
+            presenceIdentity?.playerStyle.colorPalette[0]
+              ? presenceIdentity
+              : undefined;
 
           // Notify background about site discovery
           await browser.runtime.sendMessage({

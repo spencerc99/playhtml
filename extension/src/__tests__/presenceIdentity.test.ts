@@ -4,11 +4,11 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_PRESENCE_VALUE_BYTES,
+  toPublicPlayerIdentity,
   validatePresenceClientMessage,
 } from "@playhtml/common";
-import { toPresencePlayerIdentity } from "../utils/presenceIdentity";
 
-describe("toPresencePlayerIdentity", () => {
+describe("toPublicPlayerIdentity", () => {
   it("keeps oversized extension identity fields out of presence payloads", () => {
     const rawIdentity = {
       publicKey: "pk_" + "a".repeat(130),
@@ -38,11 +38,12 @@ describe("toPresencePlayerIdentity", () => {
       }),
     ).toThrow("Presence value must be 4096 bytes or less");
 
-    const identity = toPresencePlayerIdentity(rawIdentity);
+    const identity = toPublicPlayerIdentity(rawIdentity);
 
     expect(identity).toEqual({
       publicKey: rawIdentity.publicKey,
       name: "Test player",
+      createdAt: rawIdentity.createdAt,
       playerStyle: {
         colorPalette: ["#4a9a8a", "#c4724e"],
         cursorStyle: "default",

@@ -61,6 +61,7 @@ describe("player identity storage", () => {
     expect(stored).toEqual({
       public: {
         publicKey: "pk_test",
+        createdAt: 123,
         playerStyle: {
           colorPalette: ["#4a9a8a", "#c4724e"],
         },

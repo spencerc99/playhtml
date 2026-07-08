@@ -270,6 +270,7 @@ export default defineBackground(() => {
       const identity = {
         public: {
           publicKey,
+          createdAt: existing?.public.createdAt ?? Date.now(),
           playerStyle: {
             ...existing?.public.playerStyle,
             colorPalette,
