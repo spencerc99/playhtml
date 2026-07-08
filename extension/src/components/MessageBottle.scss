@@ -1076,12 +1076,16 @@ $letterHand: "Lora", Georgia, serif;
 }
 
 // The face sheet — occupies the root's own footprint (top-left). It is a plain
-// segment window; it carries no hinge and is never rotated.
+// segment window; it carries no hinge and is never rotated. Pushed FORWARD in Z
+// (toward the viewer) so that when the notes fold flat down onto it they land
+// BEHIND it — the newest letter stays the visible top face of the sealed packet
+// instead of being covered by the folded oldest note.
 .mbf-face {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
+  transform: translateZ(20px);
   transform-style: preserve-3d;
   box-shadow: 0 2px 8px rgba(20, 15, 10, 0.28);
 }

@@ -25,11 +25,14 @@ const SEG_W_PX = 320;
 // each note below it in sequence. Each fold is FOLD_MS; note i+1 starts
 // STAGGER_MS after note i, so the crease travels down the stack toward the face.
 // A short hold first lets the fresh stamp register before the paper moves.
-const HOLD_MS = 320;
-const FOLD_MS = 520;
-const STAGGER_MS = 200;
-const SETTLE_MS = 240;
-const FLIP_MS = 1400;
+const HOLD_MS = 420;
+const FOLD_MS = 720;
+const STAGGER_MS = 320;
+const SETTLE_MS = 320;
+const FLIP_MS = 1100;
+// The final plunge: the sealed bottle sinks into the page through the slot,
+// bottom edge first, after the flip lands it upright over the hole.
+const PLUNGE_MS = 900;
 const FOLD_EASE = "cubic-bezier(0.5, 0, 0.2, 1)";
 
 export function FoldCeremony({
@@ -158,9 +161,10 @@ export function FoldCeremony({
     }
 
     // BEAT 3: the folded packet — now a compact wide card where the face sits —
-    // flips 90deg (rotateZ) into the portrait bottle card, then travels to the
-    // slot, shrinking + fading through the fissure. The flip pivots on the face
-    // center so the packet stays put as it rotates.
+    // flips 90deg (rotateZ) into the portrait bottle card and lands upright with
+    // its BOTTOM edge resting on the slot line. BEAT 4 then plunges it down
+    // through the fissure, bottom-first, into the page. Two moves so the final
+    // sink into the hole reads clearly instead of just fading away.
     function flipAndTuck() {
       if (disposed) return;
       const face = rootRef.current;
@@ -168,62 +172,87 @@ export function FoldCeremony({
       const faceRect = face.getBoundingClientRect();
       const faceCx = faceRect.left + faceRect.width / 2;
       const faceCy = faceRect.top + faceRect.height / 2;
-      const dx = slotX - faceCx;
-      const dy = slotY - faceCy;
 
       // The folded packet is a wide card (SEG_W wide, SEG_H tall). Rotating it
       // 90deg makes it tall+narrow; scale so its footprint reads as the portrait
-      // bottle card (CARD_W x CARD_H, a tall ~1:2). Scale to fit within that
-      // footprint after the quarter turn (width maps to CARD_H, height to
-      // CARD_W).
+      // bottle card (CARD_W x CARD_H, a tall ~1:2). After the quarter turn the
+      // packet's on-screen width is SEG_H*scale and its height is SEG_W*scale.
       const flipScale = Math.min(CARD_H_PX / SEG_W_PX, CARD_W_PX / SEG_H_PX);
+      const cardH = SEG_W_PX * flipScale; // upright card height after the flip
+
+      // Land the card so its BOTTOM edge sits on the slot line: the card center
+      // ends half its height ABOVE the slot. dx/dy carry the (still-centered)
+      // packet there.
+      const dx = slotX - faceCx;
+      const dyLand = slotY - cardH / 2 - faceCy;
 
       fissure.open();
 
+      // Beat 3: flip in place, then travel to land upright above the slot.
       const flip = track(
         face.animate(
           [
+            { transform: "rotateZ(0deg) scale(1)", offset: 0 },
+            { transform: "rotateZ(90deg) scale(0.9)", offset: 0.45 },
             {
-              transform: "rotateZ(0deg) scale(1)",
-              opacity: 1,
-              offset: 0,
-            },
-            {
-              transform: "rotateZ(90deg) scale(0.86)",
-              opacity: 1,
-              offset: 0.4,
-            },
-            {
-              transform: "rotateZ(90deg) scale(0.86)",
-              opacity: 1,
-              offset: 0.54,
-            },
-            {
-              transform: `translate(${dx}px, ${dy}px) rotateZ(90deg) scale(${flipScale})`,
-              opacity: 0.16,
+              transform: `translate(${dx}px, ${dyLand}px) rotateZ(90deg) scale(${flipScale})`,
               offset: 1,
             },
           ],
           {
             duration: FLIP_MS,
-            easing: "cubic-bezier(0.5, 0, 0.7, 0.4)",
+            easing: "cubic-bezier(0.4, 0, 0.3, 1)",
             fill: "forwards",
           },
         ),
       );
 
-      // Close the fissure as the packet finishes sinking, then complete.
-      later(() => {
-        if (disposed) return;
-        fissure.close();
-      }, Math.round(FLIP_MS * 0.82));
-
       flip.finished
         .catch(() => {})
         .finally(() => {
           if (disposed) return;
-          later(onComplete, T_FISSURE_CLOSE + 60);
+          plunge(dx, dyLand, flipScale, cardH);
         });
+    }
+
+    // BEAT 4: the upright bottle card sinks into the page through the slot,
+    // bottom edge first. It descends by its full height (so it disappears below
+    // the slot line) while fading; the fissure closes behind it, then complete.
+    function plunge(
+      dx: number,
+      dyLand: number,
+      flipScale: number,
+      cardH: number,
+    ) {
+      const face = rootRef.current;
+      if (!face) return;
+      const base = `translate(${dx}px, ${dyLand}px) rotateZ(90deg) scale(${flipScale})`;
+      // Descend in WORLD px: the card is scaled by flipScale, so to move it down
+      // by cardH on screen we translate by cardH/flipScale in its local space,
+      // applied BEFORE the scale in the transform list.
+      const sinkLocal = (cardH + 8) / flipScale;
+      const sunk = `translate(${dx}px, ${dyLand}px) rotateZ(90deg) scale(${flipScale}) translateY(${sinkLocal}px)`;
+      track(
+        face.animate(
+          [
+            { transform: base, opacity: 1, offset: 0 },
+            { transform: sunk, opacity: 0.1, offset: 1 },
+          ],
+          {
+            duration: PLUNGE_MS,
+            easing: "cubic-bezier(0.5, 0, 0.8, 0.5)",
+            fill: "forwards",
+          },
+        ),
+      );
+
+      // Close the fissure as the card finishes sinking, then complete.
+      later(() => {
+        if (disposed) return;
+        fissure.close();
+      }, Math.round(PLUNGE_MS * 0.7));
+
+      later(onComplete, PLUNGE_MS + T_FISSURE_CLOSE + 60);
     }
 
     return () => {
