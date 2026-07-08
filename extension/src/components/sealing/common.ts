@@ -220,32 +220,6 @@ export function drawSealedMarks(
   ctx.fillRect(0, trimTop, w, trimH);
 }
 
-// Draws the BOTTOM slice of the rasterized letter-strip onto the fixed-size
-// ground canvas: the new letter (raster bottom) fills the canvas bottom, and as
-// much of the scroll above it as the target aspect allows shows above. The
-// texture canvas is NOT resized (resizing the canvas backing a three.js
-// CanvasTexture doesn't reliably re-upload to the GPU) — instead we keep the
-// fixed canvas and choose which slice of the raster to show via `visibleFrac`
-// (0..1 of the raster height, measured from the bottom). Returns the actual
-// fraction shown so the sealed marks + plane sizing can match.
-export function drawRasterToCanvas(
-  canvas: HTMLCanvasElement,
-  raster: HTMLCanvasElement,
-  visibleFrac: number,
-): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  // Source slice: the bottom `visibleFrac` of the raster, scaled to fill the
-  // canvas. The canvas aspect is chosen (by the caller) to match this slice, so
-  // there's no distortion.
-  const srcH = raster.height * visibleFrac;
-  const srcY = raster.height - srcH;
-  ctx.drawImage(raster, 0, srcY, raster.width, srcH, 0, 0, w, h);
-}
-
 // Paints the full ceremony texture (ground + optional seal trim + message
 // text) onto the canvas. The ground painter may need an async asset (e.g. the
 // web1 broider border), in which case it returns a Promise; the returned
@@ -316,6 +290,12 @@ export interface SceneContext {
    * the texture. The ground is cached so this can be called after the raster
    * has replaced the painted content. */
   redrawSealed: () => void;
+  /** Registers a callback fired once the rasterized real strip lands, carrying
+   * its true aspect (width / height). The texture is rebuilt to the raster's
+   * exact dimensions (a fresh CanvasTexture, which uploads cleanly — unlike
+   * resizing the existing one), so the ceremony can resize its plane to match
+   * with no horizontal/vertical stretch. */
+  onRasterReady: (cb: (aspect: number, texture: THREE.CanvasTexture) => void) => void;
   dispose: () => void;
 }
 
@@ -378,7 +358,7 @@ export function setupScene(
   // carry no color trim. The ground may finish asynchronously (web1's broider
   // border); when it does, flag the texture so the late art pops onto the roll.
   const groundPromise = drawTextareaToCanvas(texCanvas, text, authorColor, { styleId });
-  const texture = new THREE.CanvasTexture(texCanvas);
+  let texture = new THREE.CanvasTexture(texCanvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
 
@@ -420,6 +400,18 @@ export function setupScene(
   // repaint (web1 border) must not clobber it.
   let rasterLanded = false;
 
+  // The ceremony resizes its plane to the raster's true aspect once it lands.
+  let rasterReadyCb:
+    | ((aspect: number, texture: THREE.CanvasTexture) => void)
+    | null = null;
+  let pendingRaster: { aspect: number; texture: THREE.CanvasTexture } | null = null;
+  const onRasterReady = (
+    cb: (aspect: number, texture: THREE.CanvasTexture) => void,
+  ) => {
+    rasterReadyCb = cb;
+    if (pendingRaster) cb(pendingRaster.aspect, pendingRaster.texture);
+  };
+
   if (groundPromise) {
     void groundPromise.then(() => {
       if (disposed) return;
@@ -434,25 +426,33 @@ export function setupScene(
     });
   }
 
-  // Kick off rasterizing the real letter-scroll DOM. When it resolves, draw its
-  // BOTTOM slice onto the FIXED-size ground canvas (aspect matches the paper),
-  // so the new letter fills the bottom and a peek of the scroll above shows.
-  // The texture canvas is never resized (that breaks the GPU upload), so this
-  // is a plain composite. Then repaint, re-applying sealed marks if the seal
-  // beat already fired.
+  // Kick off rasterizing the real letter-scroll DOM. When it resolves, size the
+  // ground + texture canvases to the raster's EXACT dimensions (no stretch),
+  // blit the raster in 1:1, and rebuild the CanvasTexture fresh (a new texture
+  // uploads cleanly; resizing an existing one does not). Then hand the true
+  // aspect + new texture to the ceremony so it resizes its plane to match.
   if (rasterOpts.notes && rasterOpts.newNote) {
     void rasterizeStrip(rasterOpts.notes, rasterOpts.newNote, TEX_W).then(
       (raster) => {
-        if (disposed || !raster || !groundCtx || !texCtx) return;
+        if (disposed || !raster) return;
         rasterLanded = true;
-        // Show the bottom slice whose height matches the ground canvas aspect:
-        // ground is TEX_W × groundH; the slice is (groundH/TEX_W)·raster.width
-        // tall in raster px = groundH · (raster.width/TEX_W) — but raster.width
-        // IS TEX_W, so the slice height in raster px = groundCanvas.height, and
-        // the visible fraction of the (taller) raster is groundH / raster.height.
-        const visibleFrac = Math.min(1, groundCanvas.height / raster.height);
-        drawRasterToCanvas(groundCanvas, raster, visibleFrac);
+        texCanvas.width = raster.width;
+        texCanvas.height = raster.height;
+        groundCanvas.width = raster.width;
+        groundCanvas.height = raster.height;
+        const gctx = groundCanvas.getContext("2d");
+        gctx?.drawImage(raster, 0, 0);
+        // Fresh texture from the resized canvas — the old one is replaced on the
+        // materials by the ceremony via the callback.
+        const newTexture = new THREE.CanvasTexture(texCanvas);
+        newTexture.minFilter = THREE.LinearFilter;
+        newTexture.magFilter = THREE.LinearFilter;
+        texture.dispose();
+        texture = newTexture;
         paintTextureFromGround();
+        const aspect = raster.width / raster.height;
+        pendingRaster = { aspect, texture: newTexture };
+        rasterReadyCb?.(aspect, newTexture);
       },
     );
   }
@@ -471,6 +471,7 @@ export function setupScene(
     texCanvas,
     clipPlane,
     redrawSealed,
+    onRasterReady,
     dispose() {
       disposed = true;
       renderer.dispose();

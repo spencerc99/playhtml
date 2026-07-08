@@ -59,18 +59,18 @@ export function SealingCeremony({
     // paper extends upward; the roll coils from the far (top) end, off-screen,
     // which is physically how you'd roll up a long scroll from the far end.
     const GPU_MAX_H = 4096;
-    const paperH = handoff
-      ? Math.min(handoff.stripHeight, GPU_MAX_H)
-      : vh * 0.72;
+    // Initial height is a close guess from the DOM strip; the real raster's
+    // aspect (measured, not guessed) arrives via onRasterReady and resizes the
+    // plane exactly, so there's no stretch. The bottom (new letter) is anchored
+    // near the viewport bottom; the paper rises up off the top edge.
+    let paperH = handoff ? Math.min(handoff.stripHeight, GPU_MAX_H) : vh * 0.72;
     const paperAspect = paperW / paperH;
     const paperCenterX = handoff
       ? handoff.stripLeft + handoff.stripWidth / 2 - vw / 2
       : 0;
-    // World Y of the paper's center: place the bottom edge a little above the
-    // viewport bottom so the new letter reads, then the paper rises from there.
     const bottomMarginPx = vh * 0.12;
     const bottomWorldY = -(vh / 2) + bottomMarginPx;
-    const paperCenterY = bottomWorldY + paperH / 2;
+    let paperCenterY = bottomWorldY + paperH / 2;
 
     const ctx = setupScene(
       container,
@@ -81,19 +81,19 @@ export function SealingCeremony({
       { notes, newNote },
       paperAspect,
     );
-    const { renderer, scene, camera, texture } = ctx;
+    const { renderer, scene, camera } = ctx;
 
     const SEG_X = 4;
     const SEG_Y = 80;
 
-    const geometry = new THREE.PlaneGeometry(paperW, paperH, SEG_X, SEG_Y);
-    const flatPositions = new Float32Array(geometry.attributes.position.array);
+    let geometry = new THREE.PlaneGeometry(paperW, paperH, SEG_X, SEG_Y);
+    let flatPositions = new Float32Array(geometry.attributes.position.array);
     seedVertexColors(geometry);
 
     // Front face: the message texture, multiplied by the vertex-color shading
     // so the curled part picks up subtle depth darkening too.
     const material = new THREE.MeshBasicMaterial({
-      map: texture,
+      map: ctx.texture,
       side: THREE.FrontSide,
       transparent: true,
       vertexColors: true,
@@ -110,7 +110,7 @@ export function SealingCeremony({
     // colors add depth shading as it curls. Shares the morphing geometry and is
     // a CHILD of the front mesh so it inherits every transform.
     const backMaterial = new THREE.MeshBasicMaterial({
-      map: texture,
+      map: ctx.texture,
       color: 0xdedad2,
       side: THREE.BackSide,
       transparent: true,
@@ -186,6 +186,32 @@ export function SealingCeremony({
       animations.push(a);
       return a;
     };
+
+    // The rasterized real strip lands a few ms in (still flat). It carries its
+    // TRUE aspect + a fresh texture; resize the plane to that exact aspect so
+    // the letter isn't stretched, swap the texture onto both faces, and keep the
+    // paper's bottom pinned near the viewport bottom (rest rises off the top).
+    // Only acts while still flat; a late arrival mid-roll is ignored (rare).
+    ctx.onRasterReady((rasterAspect, newTexture) => {
+      if (disposed || committed || state.rollAmount > 0) return;
+      material.map = newTexture;
+      backMaterial.map = newTexture;
+      material.needsUpdate = true;
+      backMaterial.needsUpdate = true;
+      const newH = Math.min(paperW / rasterAspect, GPU_MAX_H);
+      if (Math.abs(newH - paperH) >= 1) {
+        paperH = newH;
+        paperCenterY = bottomWorldY + paperH / 2;
+        const rebuilt = new THREE.PlaneGeometry(paperW, paperH, SEG_X, SEG_Y);
+        seedVertexColors(rebuilt);
+        mesh.geometry = rebuilt;
+        backMesh.geometry = rebuilt;
+        geometry.dispose();
+        geometry = rebuilt;
+        flatPositions = new Float32Array(rebuilt.attributes.position.array);
+        mesh.position.set(paperCenterX, paperCenterY, 0);
+      }
+    });
 
     function autoRoll() {
       hint.style.opacity = "0";
