@@ -3,7 +3,7 @@
 import browser from 'webextension-polyfill'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import type { QueryOptions } from '../storage/LocalEventStore'
-import { uploadEvents, syncParticipantColor } from '../storage/sync'
+import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import {
@@ -12,6 +12,7 @@ import {
   getPublicPlayerIdentity,
   recordDiscoveredSite,
 } from '../storage/playerIdentity'
+import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
@@ -239,12 +240,10 @@ export default defineBackground(() => {
     }
   }
 
-  // Sync participant identity (cursor color) to server on startup
+  // Sync participant identity color to server on startup.
   async function syncIdentityToServer() {
     try {
-      const playerIdentity = await getPublicPlayerIdentity();
-      if (!playerIdentity?.publicKey || !playerIdentity.playerStyle?.colorPalette?.[0]) return;
-      syncParticipantColor(playerIdentity.publicKey, playerIdentity.playerStyle.colorPalette[0]);
+      await syncStoredPlayerColor()
     } catch {}
   }
 

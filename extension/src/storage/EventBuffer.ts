@@ -1,7 +1,9 @@
 // ABOUTME: Collects browser events, buffers them in memory, and delegates storage and
 // ABOUTME: upload to the background service worker via browser.runtime.sendMessage
 import type { CollectionEvent, CollectionEventType } from '../collectors/types';
-import { getParticipantId, getSessionId, getTimezone } from './participant';
+import { createPrefixedId } from './ids';
+import { getPublicPlayerIdentity } from './playerIdentity';
+import { getSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
 import browser from 'webextension-polyfill';
 
@@ -22,6 +24,19 @@ function shouldStoreWithoutDelay(event: CollectionEvent): boolean {
     event.data !== null &&
     (event.data as { event?: unknown }).event === 'click'
   );
+}
+
+async function getEventParticipantPublicKey(): Promise<string> {
+  try {
+    const identity = await getPublicPlayerIdentity();
+    if (identity?.publicKey) return identity.publicKey;
+
+    console.warn('[EventBuffer] playerIdentity not found, using temporary ID');
+    return createPrefixedId('pk_temp_');
+  } catch (error) {
+    console.error('Failed to get public player identity:', error);
+    return createPrefixedId('pk_temp_');
+  }
 }
 
 /**
@@ -132,7 +147,7 @@ export class EventBuffer {
   private async getMetadataBase(): Promise<EventMetadataBase> {
     if (!this.metadataBasePromise) {
       this.metadataBasePromise = Promise.all([
-        getParticipantId(),
+        getEventParticipantPublicKey(),
         getSessionId(),
       ]).then(([pid, sid]) => ({
         pid,

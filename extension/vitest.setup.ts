@@ -101,7 +101,6 @@ vi.mock("../config", () => ({
 
 // Mock participant storage
 vi.mock("../storage/participant", () => ({
-  getParticipantId: vi.fn().mockResolvedValue("test-participant-id"),
   getSessionId: vi.fn().mockResolvedValue("test-session-id"),
   getTimezone: vi.fn().mockReturnValue("America/New_York"),
 }));

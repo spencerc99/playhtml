@@ -44,7 +44,6 @@ describe("background identity messages", () => {
     }));
     vi.doMock("../storage/sync", () => ({
       uploadEvents: vi.fn(),
-      syncParticipantColor: vi.fn(),
     }));
     vi.doMock("../storage/restore", () => ({
       fetchEventsByPid: vi.fn(),

@@ -58,7 +58,6 @@ vi.mock("../storage/LocalEventStore", () => ({
 
 vi.mock("../storage/sync", () => ({
   uploadEvents: vi.fn().mockResolvedValue(undefined),
-  syncParticipantColor: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../storage/restore", () => ({
