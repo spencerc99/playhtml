@@ -13,6 +13,7 @@ import {
   attachDragGesture,
   computeCardFit,
   createSlotFissure,
+  measureStripHandoff,
   playFinale,
   setupScene,
   type SealingProps,
@@ -26,6 +27,8 @@ export function SealingCeremony({
   styleId,
   notes,
   newNote,
+  portalContainer,
+  onFirstFrame,
   onComplete,
 }: SealingProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -41,15 +44,42 @@ export function SealingCeremony({
     const { vw, vh, renderer, scene, camera, texture } = ctx;
 
     // ============================
-    // Initial view: paper fits inside the viewport at a reasonable size,
-    // centered. Camera dollies out as the paper rolls + shrinks.
+    // Initial view: mount the WebGL paper PIXEL-ALIGNED over the on-screen
+    // letter-scroll strip the reader was just looking at, so "pull down to
+    // seal" rolls that same scroll in place. The ortho camera is screen-mapped
+    // (world = (screen - viewportCenter) / zoom) and zoom starts at 1.0, so
+    // world units are CSS pixels here.
+    //
+    // The texture canvas (TEX_W×TEX_H) holds the rasterized strip bottom-
+    // anchored (see drawRasterToCanvas): the new letter sits at the canvas
+    // bottom and fills the canvas width. So we size the plane's WIDTH to the
+    // strip's on-screen width (1:1 horizontally) and derive its height from the
+    // fixed texture aspect. The raster was rendered at the strip width then
+    // scaled to fill the canvas width, so mapping the canvas back onto a strip-
+    // width plane restores ~1:1 vertical scale too — the new letter lands at
+    // its on-screen size.
     // ============================
     const aspect = TEX_W / TEX_H;
-    // Clamp width first, then derive height from the texture aspect so the
-    // plane always matches the canvas texture's proportions — otherwise a
-    // width-bound clamp (narrow viewports) stretches the text vertically.
-    const paperW = Math.min(vw * 0.55, vh * 0.72 * aspect);
+    const handoff = measureStripHandoff(portalContainer);
+    // Fallback (strip already gone / not found): the viewport-centered sizing
+    // used before the in-place handoff.
+    const fallbackW = Math.min(vw * 0.55, vh * 0.72 * aspect);
+    const paperW = handoff ? handoff.stripWidth : fallbackW;
     const paperH = paperW / aspect;
+
+    // Center the plane over the strip. Bottom edge of the plane maps to the
+    // raster's bottom (the new letter), which we anchor to the write segment's
+    // on-screen bottom so the letter you just wrote stays put. Content above
+    // extends upward (possibly offscreen) — matching the real scroll above.
+    let paperCenterX = 0;
+    let paperCenterY = 0;
+    if (handoff) {
+      const stripCenterX = handoff.stripLeft + handoff.stripWidth / 2;
+      paperCenterX = stripCenterX - vw / 2;
+      const bottomScreenY = handoff.writeBottom;
+      const bottomWorldY = vh / 2 - bottomScreenY;
+      paperCenterY = bottomWorldY + paperH / 2;
+    }
 
     const SEG_X = 4;
     const SEG_Y = 80;
@@ -72,7 +102,7 @@ export function SealingCeremony({
     });
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
-    mesh.position.y = 0;
+    mesh.position.set(paperCenterX, paperCenterY, 0);
 
     // Back face: carries the SAME message texture as the front so the wound-up
     // outer wrap shows the faint message + the author-color stripe — matching
@@ -316,6 +346,10 @@ export function SealingCeremony({
     // Per-frame: re-morph geometry, render
     // ============================
     let frameId = 0;
+    // Fire onFirstFrame once the aligned paper has actually been rendered, so
+    // the parent hides the DOM scroll only after the WebGL paper is on screen
+    // in its place (no blank gap, no jump).
+    let firstFrameFired = false;
 
     function renderTick() {
       if (!finaleHandle) {
@@ -337,6 +371,10 @@ export function SealingCeremony({
         const tilt = Math.sin(Math.min(state.rollAmount, 1) * Math.PI) * 0.5;
         mesh.rotation.x = -tilt; // negative = top tips toward camera
         renderer.render(scene, camera);
+      }
+      if (!firstFrameFired) {
+        firstFrameFired = true;
+        onFirstFrame?.();
       }
       frameId = requestAnimationFrame(renderTick);
     }
@@ -369,7 +407,10 @@ export function SealingCeremony({
         pointerEvents: "auto",
         zIndex: 2147483647,
         cursor: "grab",
-        background: "rgba(0, 0, 0, 0.4)",
+        // Transparent: the letter-scroll overlay stays mounted beneath the
+        // ceremony as the single backdrop, so the in-place handoff doesn't jump
+        // between two different dark scrims.
+        background: "transparent",
       }}
     />
   );

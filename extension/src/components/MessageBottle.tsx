@@ -57,6 +57,11 @@ export function MessageBottle({
   const [stage, setStage] = useState<Stage>("sealed");
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const [pendingLetter, setPendingLetter] = useState<StampedLetter | null>(null);
+  // During the in-place sealing handoff the scroll overlay stays MOUNTED (its
+  // backdrop is the ceremony's single backdrop) but the DOM scroll content is
+  // hidden once the WebGL paper has rendered aligned over it. Until then the
+  // real scroll shows through, so the ceremony mounts with no blank gap / jump.
+  const [scrollHidden, setScrollHidden] = useState(false);
   const capsuleRef = useRef<HTMLButtonElement>(null);
   // Stage-transition timers, tracked so they can be cleared on unmount and at
   // the start of each new transition (otherwise an unmount mid-open/close runs
@@ -106,9 +111,18 @@ export function MessageBottle({
       // snaps the stage back mid-ceremony.
       clearTimers();
       setStage("sealing");
+      // The scroll stays visible until the ceremony's aligned first frame lands
+      // (handleCeremonyFirstFrame). Fallback: if readiness doesn't arrive in
+      // ~500ms, hide anyway so a slow raster can't strand the reader on the DOM
+      // scroll with the ceremony invisibly on top.
+      timersRef.current.push(setTimeout(() => setScrollHidden(true), 500));
     },
     [close, clearTimers],
   );
+
+  const handleCeremonyFirstFrame = useCallback(() => {
+    setScrollHidden(true);
+  }, []);
 
   const finishCeremony = useCallback(() => {
     if (pendingLetter) {
@@ -118,6 +132,7 @@ export function MessageBottle({
       });
     }
     setPendingLetter(null);
+    setScrollHidden(false);
     // The bottle has already plunged into the page — reset straight to sealed.
     // Routing through close() would remount the overlay for its closing
     // animation, flashing the scroll after the ceremony ends.
@@ -127,17 +142,34 @@ export function MessageBottle({
     if (onClosed) onClosed();
   }, [pendingLetter, onSeal, clearTimers, onClosed]);
 
+  // Escape mid-ceremony discards the stamped letter and tears down cleanly:
+  // unmount the ceremony (pendingLetter cleared), un-hide the scroll state, and
+  // route through the overlay's closing animation.
+  const abortSealing = useCallback(() => {
+    setPendingLetter(null);
+    setScrollHidden(false);
+    close();
+  }, [close]);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (stage === "sealed" || stage === "closing") return;
-      if (e.key === "Escape") close();
+      if (e.key !== "Escape") return;
+      if (stage === "sealing") abortSealing();
+      else close();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [stage, close]);
+  }, [stage, close, abortSealing]);
 
+  // The overlay stays mounted THROUGH sealing so its backdrop is the ceremony's
+  // single backdrop (the ceremony container is transparent). The scroll content
+  // inside is hidden once the aligned WebGL paper has rendered over it.
   const overlayVisible =
-    stage === "expanding" || stage === "scroll" || stage === "closing";
+    stage === "expanding" ||
+    stage === "scroll" ||
+    stage === "sealing" ||
+    stage === "closing";
 
   const capsuleClass = [
     "mb-capsule",
@@ -158,6 +190,9 @@ export function MessageBottle({
   const overlayClass = [
     "mb-overlay",
     stage === "closing" ? "mb-overlayClosing" : "",
+    // Hide the scroll frame (but keep the backdrop) once the ceremony's WebGL
+    // paper has taken over in place.
+    scrollHidden ? "mb-overlayScrollHidden" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -226,6 +261,8 @@ export function MessageBottle({
                 : {}),
               styleId: pendingLetter.styleId,
             }}
+            portalContainer={portalContainer ?? document.body}
+            onFirstFrame={handleCeremonyFirstFrame}
             onComplete={finishCeremony}
           />,
           portalContainer ?? document.body,

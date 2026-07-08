@@ -228,6 +228,16 @@ $slotY: $moundTopGap + $visibleH;
   pointer-events: auto;
 }
 
+// During the in-place sealing handoff the overlay stays mounted as the single
+// backdrop, but its scroll content (strip, tick rail, seal & leave button) is
+// hidden once the ceremony's aligned WebGL paper has rendered over it. Kept in
+// the DOM (not unmounted) so the backdrop doesn't flicker at the handoff.
+.mb-overlayScrollHidden {
+  .mbs-scrollFrame {
+    visibility: hidden;
+  }
+}
+
 .mb-overlayClosing {
   animation: overlayFadeOut 360ms ease-out forwards;
 

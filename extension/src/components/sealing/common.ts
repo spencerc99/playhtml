@@ -20,7 +20,57 @@ export interface SealingProps {
   /** The newly stamped letter as a note. Rendered at the bottom of the raster
    * strip so the seal beat shows the letter you just wrote, complete. */
   newNote?: BottleNote;
+  /** The container the overlay + ceremony portal into. The ceremony measures
+   * the on-screen letter-scroll strip within this container so its WebGL paper
+   * mounts pixel-aligned over the strip the reader was just looking at. */
+  portalContainer?: Element | null;
+  /** Fires once the ceremony has measured, built, and rendered its first
+   * aligned frame. The parent hides the DOM scroll on this signal so the WebGL
+   * paper takes over in place with no jump. */
+  onFirstFrame?: () => void;
   onComplete: () => void;
+}
+
+// ============================
+// On-screen rect of the letter-scroll strip we're taking over from.
+// Measured in CSS pixels, scoped to the portal container so the ceremony can
+// mount its WebGL paper exactly over the strip the reader was looking at.
+// ============================
+export interface StripHandoffRect {
+  /** The whole strip's on-screen bounding rect (may extend above the viewport
+   * — content above the landed letter scrolls up offscreen, as it does on the
+   * real scroll). */
+  stripLeft: number;
+  stripWidth: number;
+  /** The landed (new) letter's on-screen segment rect — the raster's bottom
+   * anchors here so the letter you just wrote stays put at handoff. */
+  writeLeft: number;
+  writeWidth: number;
+  writeTop: number;
+  writeBottom: number;
+}
+
+// Measures the visible letter-scroll strip and the landed letter's write
+// segment within the portal container. Returns null if either isn't present
+// (the ceremony then falls back to viewport-centered sizing).
+export function measureStripHandoff(
+  container: Element | null | undefined,
+): StripHandoffRect | null {
+  const root = container ?? document;
+  const strip = root.querySelector<HTMLElement>(".mbs-strip");
+  const write = root.querySelector<HTMLElement>('[data-seg="write"]');
+  if (!strip || !write) return null;
+  const s = strip.getBoundingClientRect();
+  const w = write.getBoundingClientRect();
+  if (s.width <= 0 || w.height <= 0) return null;
+  return {
+    stripLeft: s.left,
+    stripWidth: s.width,
+    writeLeft: w.left,
+    writeWidth: w.width,
+    writeTop: w.top,
+    writeBottom: w.bottom,
+  };
 }
 
 // Card target dimensions (matches the on-page mb-capsule visible portion)
@@ -562,6 +612,12 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
   // whole bottle hovers visibly above the fissure right before plunge.
   const travelEndY = slotWorldY + coilH / 2 - corrY;
 
+  // The card may have formed away from the scene origin — the in-place handoff
+  // starts the paper over the on-screen strip, not centered. Travel lerps from
+  // wherever the card currently sits so it doesn't snap to origin first.
+  const startX = mesh.position.x;
+  const startY = mesh.position.y;
+
   // Keep the slot clipping plane on the zoom-corrected slot line (it was set
   // at scene setup assuming zoom = 1).
   clipPlane.constant = -slotWorldY;
@@ -583,8 +639,8 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
     if (phase === "travel") {
       const t = clamp((now - startTime) / T_TRAVEL, 0, 1);
       const e = easeInOutCubic(t);
-      const baseTx = THREE.MathUtils.lerp(0, targetX, e);
-      const baseTy = THREE.MathUtils.lerp(0, travelEndY, e);
+      const baseTx = THREE.MathUtils.lerp(startX, targetX, e);
+      const baseTy = THREE.MathUtils.lerp(startY, travelEndY, e);
       const arc = Math.sin(e * Math.PI) * Math.min(160, vh * 0.18);
       mesh.position.set(baseTx, baseTy + arc, 0);
       // Gentle wobble added on top of the portrait base rotation
