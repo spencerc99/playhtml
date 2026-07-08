@@ -5,17 +5,31 @@ export const INVENTORY_CSS = `
 :host { all: initial; }
 .wwo-inv { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; }
 
-/* collapsed edge nub */
-.wwo-nub { position: fixed; z-index: 2147483646; width: 34px; height: 48px;
+/* collapsed edge nub — anchored past the viewport edge so the visible tab
+   never sits flush against it (avoids scrollbar clipping) and hover growth
+   never pulls the tab away from the page edge (the offscreen overhang
+   absorbs the hover translate, so the far end always reads as attached) */
+.wwo-nub { position: fixed; z-index: 2147483646; width: 42px; height: 48px;
   background: linear-gradient(165deg,#fbf2df,#f0e2c6); border: 2px solid #b98a4e;
   border-radius: 12px; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 3px 10px rgba(120,85,40,.32), inset 0 1px 0 rgba(255,255,255,.6);
   cursor: grab; transition: width .12s, transform .12s; pointer-events: auto; }
-.wwo-nub:hover { width: 40px; transform: translateX(-3px); }
-.wwo-nub.edge-r { border-radius: 12px 0 0 12px; border-right: none; }
-.wwo-nub.edge-l { border-radius: 0 12px 12px 0; border-left: none; }
+.wwo-nub:hover { width: 48px; }
+.wwo-nub.edge-r { right: -8px; border-radius: 12px 0 0 12px; border-right: none; }
+.wwo-nub.edge-r:hover { transform: translateX(-3px); }
+.wwo-nub.edge-r .bp { transform: translateX(-4px); }
+.wwo-nub.edge-l { left: -8px; border-radius: 0 12px 12px 0; border-left: none; }
+.wwo-nub.edge-l:hover { transform: translateX(3px); }
+.wwo-nub.edge-l .bp { transform: translateX(4px); }
 .wwo-nub .bp { width: 24px; height: 24px; background-size: contain; background-repeat: no-repeat;
   background-position: center; filter: drop-shadow(0 1px 1px rgba(90,60,20,.3)); }
+
+/* dismiss control — a small circle above the nub, shown only on nub hover */
+.wwo-nub-dismiss { position: fixed; z-index: 2147483646; width: 18px; height: 18px; border-radius: 50%;
+  background: linear-gradient(165deg,#fbf2df,#f0e2c6); border: 2px solid #b98a4e;
+  color: #8a5a2e; font-size: 11px; line-height: 1; display: none; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: 0 2px 6px rgba(120,85,40,.3); pointer-events: auto; }
+.wwo-nub-dismiss.show { display: flex; }
 
 /* the cozy kit (open) — carved warm frame + worn texture */
 .wwo-kit { position: fixed; z-index: 2147483647; width: 320px; border-radius: 18px; padding: 14px;

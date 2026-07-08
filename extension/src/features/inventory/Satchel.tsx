@@ -15,9 +15,12 @@ interface Props {
 
 export function Satchel({ inventory, openSignal }: Props) {
   const [armed, setArmed] = useState<ArmedTool | null>(inventory.getArmed());
+  const [hidden, setHidden] = useState(false);
+  const [dismissHover, setDismissHover] = useState(false);
   const nubRef = useRef<HTMLDivElement>(null);
   const kitRef = useRef<HTMLDivElement>(null);
   const pos = useRef({ top: Math.round(window.innerHeight / 2) - 24 });
+  const edge = useRef<"edge-r" | "edge-l">("edge-r");
 
   useEffect(() => inventory.onArmedChange(setArmed), [inventory]);
 
@@ -68,27 +71,53 @@ export function Satchel({ inventory, openSignal }: Props) {
     drag.current.active = false;
     const nub = nubRef.current!;
     const toRight = e.clientX > window.innerWidth / 2;
+    edge.current = toRight ? "edge-r" : "edge-l";
     nub.classList.toggle("edge-r", toRight);
     nub.classList.toggle("edge-l", !toRight);
-    nub.style.left = toRight ? "auto" : "0px";
-    nub.style.right = toRight ? "0px" : "auto";
+    // -8px docks the nub's outer edge past the viewport edge (see .wwo-nub in
+    // inventory.styles.ts) so the visible tab never sits flush against it.
+    nub.style.left = toRight ? "auto" : "-8px";
+    nub.style.right = toRight ? "-8px" : "auto";
+    pos.current.top = parseFloat(nub.style.top);
     if (!drag.current.moved) openKit(null); // a click opens at the nub
+  }
+
+  // Dismiss control sits just above the nub, hugging whichever edge it's docked to.
+  function dismissStyle(): React.CSSProperties {
+    const top = pos.current.top - 24;
+    return edge.current === "edge-r" ? { right: 6, top } : { left: 6, top };
   }
 
   const items = inventory.list();
 
   return (
     <div className="wwo-inv">
-      <div
-        ref={nubRef}
-        className="wwo-nub edge-r"
-        style={{ right: 0, top: pos.current.top }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      >
-        <div className="bp" style={{ backgroundImage: `url("${BACKPACK}")` }} />
-      </div>
+      {!hidden && (
+        <>
+          <div
+            ref={nubRef}
+            className="wwo-nub edge-r"
+            style={{ right: -8, top: pos.current.top }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onMouseEnter={() => setDismissHover(true)}
+            onMouseLeave={() => setDismissHover(false)}
+          >
+            <div className="bp" style={{ backgroundImage: `url("${BACKPACK}")` }} />
+          </div>
+          <div
+            className={`wwo-nub-dismiss${dismissHover ? " show" : ""}`}
+            style={dismissStyle()}
+            title="hide satchel"
+            onClick={() => setHidden(true)}
+            onMouseEnter={() => setDismissHover(true)}
+            onMouseLeave={() => setDismissHover(false)}
+          >
+            &times;
+          </div>
+        </>
+      )}
 
       <div ref={kitRef} className="wwo-kit">
         <div className="wwo-kit-head">
