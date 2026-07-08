@@ -6,14 +6,37 @@ import { createElement } from "react";
 import type { PresenceAPI } from "@playhtml/common";
 import { injectShadow } from "../../entrypoints/content/inject-ui";
 import { EMOTES_CSS } from "./emotes.styles";
+import { CURSOR_GESTURE_CSS } from "./cursor-gestures.styles";
 import { EmoteWheel } from "./EmoteWheel";
 import { EmoteBroadcaster } from "./EmoteBroadcaster";
-import { EmoteRenderer, type CursorSource } from "./EmoteRenderer";
 import { EMOTES, getEmote } from "./emotes";
 import { nearestPeer, DEFAULT_TARGET_RADIUS_PX } from "./interactions";
 
 const FONT_URL =
   "https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;600&display=swap";
+
+const CURSOR_GESTURE_STYLE_ID = "wwo-emote-cursor-styles";
+
+interface EmoteCursorClient {
+  getCursorPresences(): Map<string, { cursor: { x: number; y: number } | null }>;
+  triggerCursorAnimation(
+    stableId: string,
+    animationClass: string,
+    durationMs?: number,
+  ): boolean;
+}
+
+function injectCursorGestureStyles(): void {
+  if (document.getElementById(CURSOR_GESTURE_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = CURSOR_GESTURE_STYLE_ID;
+  style.textContent = CURSOR_GESTURE_CSS;
+  document.head.appendChild(style);
+}
+
+function removeCursorGestureStyles(): void {
+  document.getElementById(CURSOR_GESTURE_STYLE_ID)?.remove();
+}
 
 function isTypingTarget(t: EventTarget | null): boolean {
   return (
@@ -31,8 +54,10 @@ function keyToIndex(key: string): number | null {
 
 export function initEmotes(deps: {
   presence: PresenceAPI;
-  cursorClient: CursorSource;
+  cursorClient: EmoteCursorClient;
 }): () => void {
+  injectCursorGestureStyles();
+
   const { host, shadow } = injectShadow({
     hostStyle: "position:fixed;inset:0;pointer-events:none;z-index:2147483645;",
     css: EMOTES_CSS,
@@ -50,9 +75,14 @@ export function initEmotes(deps: {
   };
   window.addEventListener("pointermove", trackCursor);
 
-  const renderer = new EmoteRenderer(shadow, deps.cursorClient, () => lastCursor);
-  const broadcaster = new EmoteBroadcaster(deps.presence, (pid, e, isMe) => {
-    renderer.play(pid, e.emoteId, isMe);
+  const broadcaster = new EmoteBroadcaster(deps.presence, (pid, e) => {
+    const def = getEmote(e.emoteId);
+    if (!def) return;
+    deps.cursorClient.triggerCursorAnimation(
+      pid,
+      `cursor-gesture-${e.emoteId}`,
+      def.durationMs,
+    );
   });
 
   const wheel = { open: false, x: 0, y: 0 };
@@ -134,8 +164,8 @@ export function initEmotes(deps: {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("pointermove", trackCursor);
     broadcaster.destroy();
-    renderer.destroy();
     root.unmount();
     host.remove();
+    removeCursorGestureStyles();
   };
 }
