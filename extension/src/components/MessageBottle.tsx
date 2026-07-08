@@ -214,6 +214,7 @@ export function MessageBottle({
             authorColor={authorColor ?? "#4a9a8a"}
             slotX={origin.x}
             slotY={origin.y}
+            styleId={pendingLetter.styleId}
             onComplete={finishCeremony}
           />,
           portalContainer ?? document.body,

@@ -24,6 +24,7 @@ export function SealingCeremony({
   authorColor,
   slotX,
   slotY,
+  styleId,
   onComplete,
 }: SealingProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -32,7 +33,7 @@ export function SealingCeremony({
     const container = containerRef.current;
     if (!container) return;
 
-    const ctx = setupScene(container, text, authorColor, slotY);
+    const ctx = setupScene(container, text, authorColor, slotY, styleId);
     const { vw, vh, renderer, scene, camera, texture } = ctx;
 
     // ============================
@@ -281,7 +282,7 @@ export function SealingCeremony({
       // the texture with the author-color trim + tiny-text overlay so it
       // persists on the card (as the on-page card's stripe) after the belt
       // itself fades away in startFinale.
-      drawTextareaToCanvas(ctx.texCanvas, text, authorColor, { sealed: true });
+      drawTextareaToCanvas(ctx.texCanvas, text, authorColor, { sealed: true, styleId });
       ctx.texture.needsUpdate = true;
     }
 

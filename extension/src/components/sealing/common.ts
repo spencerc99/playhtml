@@ -2,12 +2,15 @@
 // ABOUTME: drag-to-commit gesture, slot fissure DOM, and the post-fold finale (travel arc, plunge, fissure close).
 
 import * as THREE from "three";
+import { segmentStyle } from "../bottle/segmentStyles";
 
 export interface SealingProps {
   text: string;
   authorColor: string;
   slotX: number;
   slotY: number;
+  /** Segment style preset id — selects the ceremony paper's painter. */
+  styleId?: string;
   onComplete: () => void;
 }
 
@@ -81,6 +84,8 @@ export interface DrawTextareaOptions {
   // The seal beat marks the moment the card is bound — the trim and tiny
   // letter overlay only appear once that's happened, not on the paper before.
   sealed?: boolean;
+  /** Segment style preset id — selects the ceremony paper's painter. */
+  styleId?: string;
 }
 
 // Lorem-ipsum-derived filler for the "tiny writing" overlay, matching the
@@ -128,23 +133,8 @@ export function drawTextareaToCanvas(
   const w = canvas.width;
   const h = canvas.height;
 
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, w, h);
-
-  // Paper grain
-  ctx.fillStyle = "rgba(0,0,0,0.012)";
-  for (let i = 0; i < 800; i++) {
-    ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1);
-  }
-
-  // Border
-  ctx.strokeStyle = "#767676";
-  ctx.lineWidth = 6;
-  ctx.strokeRect(3, 3, w - 6, h - 6);
-
-  // Top inset
-  ctx.fillStyle = "rgba(0,0,0,0.06)";
-  ctx.fillRect(6, 6, w - 12, 6);
+  const style = segmentStyle(opts.styleId);
+  style.ceremony.paintGround(ctx, w, h);
 
   if (opts.sealed) {
     // The roll winds canvas rows around a horizontal spool axis (see
@@ -162,7 +152,7 @@ export function drawTextareaToCanvas(
   }
 
   // Text
-  ctx.fillStyle = "#111";
+  ctx.fillStyle = style.ceremony.ink;
   const padX = 60;
   const padY = 60;
   const fontPx = 42;
@@ -208,6 +198,7 @@ export function setupScene(
   text: string,
   authorColor: string,
   slotY: number,
+  styleId?: string,
 ): SceneContext {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -240,7 +231,7 @@ export function setupScene(
   // No stripe yet — the trim only appears once the seal band beat fires
   // (see playSealBand in SealingCeremony.tsx), so the plain paper and roll
   // carry no color trim.
-  drawTextareaToCanvas(texCanvas, text, authorColor);
+  drawTextareaToCanvas(texCanvas, text, authorColor, { styleId });
   const texture = new THREE.CanvasTexture(texCanvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
