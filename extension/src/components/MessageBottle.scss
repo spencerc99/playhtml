@@ -568,3 +568,62 @@ $slotY: $moundTopGap + $visibleH;
   );
   clip-path: polygon(0 40%, 12% 60%, 28% 30%, 47% 70%, 63% 35%, 82% 65%, 100% 45%, 100% 55%, 82% 80%, 63% 50%, 47% 90%, 28% 45%, 12% 78%, 0 55%);
 }
+
+// ============================
+// The rubber date stamp — press and hold to ink, release to imprint.
+// ============================
+.mbs-stampWell {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  min-height: 56px;
+}
+.mbs-stamp {
+  position: relative;
+  width: 44px;
+  height: 52px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  touch-action: none;
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+.mbs-stampHandle {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 14px;
+  height: 26px;
+  transform: translateX(-50%);
+  background: linear-gradient(to bottom, #8a6b4f, #6d5238);
+  border-radius: 7px 7px 3px 3px;
+  transition: transform 550ms cubic-bezier(0.3, 0, 0.7, 1);
+}
+.mbs-stampBase {
+  position: absolute;
+  left: 0;
+  bottom: 4px;
+  width: 44px;
+  height: 16px;
+  background: linear-gradient(to bottom, #4c4238, #332c24);
+  border-radius: 3px;
+  transition: transform 550ms cubic-bezier(0.3, 0, 0.7, 1);
+}
+.mbs-stamp.pressing {
+  .mbs-stampHandle { transform: translateX(-50%) translateY(9px); }
+  .mbs-stampBase { transform: translateY(4px) scaleY(0.72); }
+}
+.mbs-imprintFresh {
+  display: inline-block;
+  animation: stampThunk 240ms cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes stampThunk {
+  0% { transform: rotate(-3deg) scale(1.6); opacity: 0; }
+  60% { transform: rotate(-3deg) scale(0.94); opacity: 1; }
+  100% { transform: rotate(-3deg) scale(1); opacity: 1; }
+}
