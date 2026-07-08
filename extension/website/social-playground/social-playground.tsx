@@ -42,6 +42,42 @@ function randomColor() {
   return PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)];
 }
 
+// Shared seed data for both the bottle preview's "seed" button and the
+// standalone ceremony tester, so both show the same realistic multi-letter
+// thread (varied styleId/authorColor/authorName) rather than one-off fixtures.
+const SEED_STYLE_IDS = ["linen", "web1", "stationery", "webnative"];
+const SEED_COLORS = ["#c4724e", "#4a9a8a", "#5b8db8", "#d4b85c", "#8b6b7f"];
+const SEED_LINES = [
+  "passing through, leaving a pebble on the pile.",
+  "found this while looking for something else entirely — staying a minute.",
+  "the wind is good today. keep going.",
+  "someone told me pages remember. testing that.",
+  "hello from a train, somewhere between two tunnels.",
+  "i read every letter above this one. you're all very kind.",
+  "left my coffee to write this. worth it.",
+  "the internet feels small and warm right here.",
+  "if you find this, the chain is still alive. add yours.",
+  "quiet week. this helped.",
+  "drawing a little sun in the margin for you.",
+  "we were online at the same time, probably.",
+];
+
+/** Build `n` random-styled previous letters (oldest first), covering all four
+ * pickable styles and the palette colors. */
+function buildSeededNotes(n: number): BottleNote[] {
+  return Array.from({ length: n }, (_, i) => {
+    const styleId = SEED_STYLE_IDS[Math.floor(Math.random() * SEED_STYLE_IDS.length)];
+    return {
+      text: SEED_LINES[i % SEED_LINES.length],
+      createdAt: Date.now() - (n - 1 - i) * 43200000,
+      createdBy: i === n - 1 ? "anon" : `other-${i}`,
+      authorColor: SEED_COLORS[Math.floor(Math.random() * SEED_COLORS.length)],
+      ...(styleId ? { styleId } : {}),
+      ...(Math.random() < 0.7 ? { authorName: `writer ${i + 1}` } : {}),
+    };
+  });
+}
+
 /**
  * Boot the live social stack exactly as the extension content script does:
  * a headless playhtml instance (cursors off) → initGlobalFeatures(deps).
@@ -126,36 +162,7 @@ function BottlePreview() {
     // volume, covering all four pickable styles.
     const seedBtn = document.getElementById("bp-seed") as HTMLButtonElement | null;
     const seed = () => {
-      const styleIds = ["linen", "web1", "stationery", "webnative"];
-      const colors = ["#c4724e", "#4a9a8a", "#5b8db8", "#d4b85c", "#8b6b7f"];
-      const lines = [
-        "passing through, leaving a pebble on the pile.",
-        "found this while looking for something else entirely — staying a minute.",
-        "the wind is good today. keep going.",
-        "someone told me pages remember. testing that.",
-        "hello from a train, somewhere between two tunnels.",
-        "i read every letter above this one. you're all very kind.",
-        "left my coffee to write this. worth it.",
-        "the internet feels small and warm right here.",
-        "if you find this, the chain is still alive. add yours.",
-        "quiet week. this helped.",
-        "drawing a little sun in the margin for you.",
-        "we were online at the same time, probably.",
-      ];
-      const n = 12;
-      setNotes(
-        Array.from({ length: n }, (_, i) => {
-          const styleId = styleIds[Math.floor(Math.random() * styleIds.length)];
-          return {
-            text: lines[i % lines.length],
-            createdAt: Date.now() - (n - 1 - i) * 43200000,
-            createdBy: i === n - 1 ? "anon" : `other-${i}`,
-            authorColor: colors[Math.floor(Math.random() * colors.length)],
-            ...(styleId ? { styleId } : {}),
-            ...(Math.random() < 0.7 ? { authorName: `writer ${i + 1}` } : {}),
-          };
-        }),
-      );
+      setNotes(buildSeededNotes(12));
       setKey((k) => k + 1);
     };
     colorEl?.addEventListener("input", sync);
@@ -193,6 +200,10 @@ function CeremonyTester() {
   const [color, setColor] = useState("#c4724e");
   const [slot, setSlot] = useState({ x: 0, y: 0 });
   const draggingRef = useRef(false);
+  // A fixed seeded thread of previous letters (oldest first) so "play ceremony"
+  // folds the same realistic multi-letter stack the real bottle does, not just
+  // one lone sheet. Built once per mount — the new note (below) is the face.
+  const [prevNotes] = useState<BottleNote[]>(() => buildSeededNotes(4));
 
   useEffect(() => {
     const el = document.getElementById("slot");
@@ -258,6 +269,7 @@ function CeremonyTester() {
       authorColor={color}
       slotX={slot.x}
       slotY={slot.y}
+      notes={prevNotes}
       newNote={{
         text,
         createdAt: Date.now(),
