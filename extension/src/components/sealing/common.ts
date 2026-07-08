@@ -157,14 +157,26 @@ const TINY_TEXT_COLUMNS = [
   "dminimveniamquisnostrudexer",
 ];
 
+// The visible face of the fully-rolled card is a fixed band measured from the
+// paper's BOTTOM edge — because the coil's radius depends only on paper WIDTH
+// (rOuter = paperW/10 in morphAccordion), the outer wrap that ends up facing
+// the camera sits a fixed distance from the bottom in WIDTH units, independent
+// of how tall the paper is. These fractions-of-width were derived from the
+// original 0.8-aspect tuning (band y 0.64–0.86 and trim 0.822–0.858 of a canvas
+// whose H = 1.25·W): distance-from-bottom d = (1 − yFrac)·1.25 in width units.
+const TINY_BAND_TOP_D = 0.45; // (1 − 0.64)·1.25 — farthest wrap still visible
+const TINY_BAND_BOTTOM_D = 0.175; // (1 − 0.86)·1.25 — nearest wrap
+const TRIM_TOP_D = 0.2225; // (1 − 0.822)·1.25
+const TRIM_BOTTOM_D = 0.1775; // (1 − 0.858)·1.25
+
 // Draws faint tiny apparent-letters into the canvas band that ends up as the
-// landed card's visible face (see the sealed branch in drawTextareaToCanvas).
-// The card compresses the canvas ~16:1 along x and ~8:1 along y, so glyphs are
-// drawn large here to land at the on-page art's ~3px scale; each canvas row
-// becomes one downward-reading column on the card.
+// landed card's visible face (see drawSealedMarks). The band is positioned by
+// distance from the canvas BOTTOM in WIDTH units so it lands correctly at any
+// paper aspect. Glyphs are drawn large so they land at the on-page art's ~3px
+// scale after the card compresses the canvas.
 function drawTinyTextColumns(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  const bandTop = h * 0.64;
-  const bandBottom = h * 0.86;
+  const bandTop = h - TINY_BAND_TOP_D * w;
+  const bandBottom = h - TINY_BAND_BOTTOM_D * w;
   const fontPx = 42;
   const rowStep = 48;
   const charStep = 56;
@@ -172,7 +184,7 @@ function drawTinyTextColumns(ctx: CanvasRenderingContext2D, w: number, h: number
   ctx.textBaseline = "top";
   ctx.fillStyle = "rgba(42,42,42,0.55)";
   let row = 0;
-  for (let y = bandTop; y + fontPx <= bandBottom; y += rowStep, row++) {
+  for (let y = Math.max(0, bandTop); y + fontPx <= bandBottom; y += rowStep, row++) {
     const src = TINY_TEXT_COLUMNS[row % TINY_TEXT_COLUMNS.length];
     let i = 0;
     for (let x = 20; x < w - 20; x += charStep, i++) {
@@ -185,43 +197,36 @@ function drawTinyTextColumns(ctx: CanvasRenderingContext2D, w: number, h: number
 // trim slice — onto whatever ground the canvas already holds. Split out from
 // drawTextareaToCanvas so the seal beat can composite these ON TOP of a cached
 // ground (painter OR raster) rather than re-running the painter path.
+//
+// The marks land on the card's visible outer-wrap face, positioned by distance
+// from the canvas BOTTOM in WIDTH units so they stay correct at any paper aspect
+// (the raster strip is much taller than the old fixed 0.8 texture). The landed
+// card then reads like the on-page filled bottle (.mb-authorStripe +
+// TinyTextVerticalArt in MessageBottle).
 export function drawSealedMarks(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
   authorColor: string,
 ): void {
-  // The roll winds canvas rows around a horizontal spool axis (see
-  // morphAccordion), and computeCardFit then stands the coil upright, so the
-  // landed card's face shows the canvas band y ≈ 0.65h–0.85h. The sealed face
-  // is painted into that band — tiny apparent-letters, then the author trim on
-  // the left-edge slice — so the landed card reads like the on-page filled
-  // bottle (.mb-authorStripe + TinyTextVerticalArt in MessageBottle).
   drawTinyTextColumns(ctx, w, h);
+  const trimTop = h - TRIM_TOP_D * w;
+  const trimH = (TRIM_TOP_D - TRIM_BOTTOM_D) * w;
   ctx.fillStyle = authorColor;
-  ctx.fillRect(0, h * 0.822, w, h * 0.036);
+  ctx.fillRect(0, trimTop, w, trimH);
 }
 
-// Composites a rasterized letter-strip canvas onto the fixed-size texture
-// canvas, bottom-aligned: the raster's BOTTOM (the new letter's sign-off +
-// imprint) always lands at the canvas bottom, and as much of the scroll above
-// it as fits shows above. Taller rasters crop from the top; shorter ones sit
-// on a painted ground already present above them. The raster fills the canvas
-// width. Returns after drawing (synchronous).
+// Copies a rasterized letter-strip canvas onto the ground canvas, which has
+// already been resized to the raster's exact dimensions (see the raster-landing
+// block in setupScene). The raster IS the ground now — a 1:1 blit — so the
+// ceremony paper is as tall as the real scroll it shows, no crop, no letterbox.
 export function drawRasterToCanvas(
   canvas: HTMLCanvasElement,
   raster: HTMLCanvasElement,
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  const w = canvas.width;
-  const h = canvas.height;
-  // Scale the raster to the canvas width, then bottom-align. If the scaled
-  // raster is taller than the canvas, the excess is cropped off the TOP
-  // (drawn at a negative y) so the new letter's bottom stays visible.
-  const drawH = raster.height * (w / raster.width);
-  const destY = h - drawH;
-  ctx.drawImage(raster, 0, destY, w, drawH);
+  ctx.drawImage(raster, 0, 0, canvas.width, canvas.height);
 }
 
 // Paints the full ceremony texture (ground + optional seal trim + message
@@ -294,6 +299,11 @@ export interface SceneContext {
    * the texture. The ground is cached so this can be called after the raster
    * has replaced the painted content. */
   redrawSealed: () => void;
+  /** Registers a callback fired when the rasterized real strip lands and the
+   * texture canvas is resized to its aspect. The ceremony rebuilds the flat
+   * paper plane to this aspect so the roll winds up the whole visible scroll,
+   * not just the fixed-box crop. Called at most once, with height/width. */
+  onRasterAspect: (cb: (aspect: number) => void) => void;
   dispose: () => void;
 }
 
@@ -369,14 +379,17 @@ export function setupScene(
   // Track whether the seal beat has fired so a late ground/raster swap can
   // re-apply the sealed marks (the belt may snap before the raster resolves).
   let sealed = false;
-  // Blits the current GROUND onto the texture, then composites the sealed marks
-  // if the seal beat has fired. The ground never carries marks, so this is
-  // idempotent and safe to call after the raster has replaced the painter art.
+  // Blits the current GROUND onto the texture (matching its current size), then
+  // composites the sealed marks if the seal beat has fired. The ground never
+  // carries marks, so this is idempotent and safe to call after the raster has
+  // replaced the painter art or resized the canvas.
   const paintTextureFromGround = () => {
     if (texCtx && groundCtx) {
-      texCtx.clearRect(0, 0, TEX_W, TEX_H);
+      const cw = texCanvas.width;
+      const ch = texCanvas.height;
+      texCtx.clearRect(0, 0, cw, ch);
       texCtx.drawImage(groundCanvas, 0, 0);
-      if (sealed) drawSealedMarks(texCtx, TEX_W, TEX_H, authorColor);
+      if (sealed) drawSealedMarks(texCtx, cw, ch, authorColor);
     }
     if (!disposed) texture.needsUpdate = true;
   };
@@ -389,6 +402,16 @@ export function setupScene(
   // repaint (web1 border) must not clobber it.
   let rasterLanded = false;
 
+  // The ceremony rebuilds its plane to the raster's aspect when it lands; hold
+  // the callback (fired at most once, after resize).
+  let rasterAspectCb: ((aspect: number) => void) | null = null;
+  let pendingRasterAspect: number | null = null;
+  const onRasterAspect = (cb: (aspect: number) => void) => {
+    rasterAspectCb = cb;
+    // If the raster already landed before the ceremony registered, replay it.
+    if (pendingRasterAspect !== null) cb(pendingRasterAspect);
+  };
+
   if (groundPromise) {
     void groundPromise.then(() => {
       if (disposed) return;
@@ -396,35 +419,33 @@ export function setupScene(
       // hasn't already replaced it. If the raster landed first, its ground wins
       // — don't overwrite it with the stale painter art.
       if (!rasterLanded) {
-        groundCtx?.clearRect(0, 0, TEX_W, TEX_H);
+        groundCtx?.clearRect(0, 0, texCanvas.width, texCanvas.height);
         groundCtx?.drawImage(texCanvas, 0, 0);
         paintTextureFromGround();
       }
     });
   }
 
-  // Kick off rasterizing the real letter-scroll DOM. When it resolves, rebuild
-  // the GROUND from scratch: the style's paper ground WITHOUT the painter's
-  // text layer (the raster carries the real text), then the raster bottom-
-  // anchored on top. A raster shorter than the canvas thus sits on clean
-  // continuation paper instead of the old painted letter; a taller one covers
-  // it entirely. Then repaint the texture, re-applying sealed marks if the
+  // Kick off rasterizing the real letter-scroll DOM. When it resolves, the
+  // raster IS the ground: resize the texture + ground canvases to the raster's
+  // own dimensions (its full height, so the ceremony paper is as tall as the
+  // real scroll), blit the raster in, and tell the ceremony the new aspect so
+  // it rebuilds the flat plane. Then repaint, re-applying sealed marks if the
   // seal beat already fired.
   if (rasterOpts.notes && rasterOpts.newNote) {
-    void rasterizeStrip(rasterOpts.notes, rasterOpts.newNote, TEX_W, TEX_H).then(
-      async (raster) => {
-        if (disposed || !raster || !groundCtx) return;
+    void rasterizeStrip(rasterOpts.notes, rasterOpts.newNote, TEX_W).then(
+      (raster) => {
+        if (disposed || !raster || !groundCtx || !texCtx) return;
         rasterLanded = true;
-        groundCtx.clearRect(0, 0, TEX_W, TEX_H);
-        const groundOnly = segmentStyle(styleId).ceremony.paintGround(
-          groundCtx,
-          TEX_W,
-          TEX_H,
-        );
-        if (groundOnly) await groundOnly;
-        if (disposed) return;
+        texCanvas.width = raster.width;
+        texCanvas.height = raster.height;
+        groundCanvas.width = raster.width;
+        groundCanvas.height = raster.height;
         drawRasterToCanvas(groundCanvas, raster);
         paintTextureFromGround();
+        const aspect = raster.width / raster.height;
+        pendingRasterAspect = aspect;
+        rasterAspectCb?.(aspect);
       },
     );
   }
@@ -443,6 +464,7 @@ export function setupScene(
     texCanvas,
     clipPlane,
     redrawSealed,
+    onRasterAspect,
     dispose() {
       disposed = true;
       renderer.dispose();

@@ -32,6 +32,13 @@ function selectNotes(
   return [...tail, newNote];
 }
 
+// The rasterized strip's height is bounded so a very long thread can't allocate
+// an enormous canvas (WebGL max-texture and memory limits). This covers the new
+// letter plus roughly a viewport-and-a-half of previous letters above it — so
+// the ceremony shows the same letters that were peeking above on the real
+// scroll — while staying well under GPU limits.
+const MAX_STRIP_CONTENT_PX = 2400;
+
 // Serializes a rendered element subtree into an SVG-wrapped foreignObject image,
 // which the browser rasterizes without tainting the canvas (all CSS assets here
 // are data URIs). Webfonts do not load inside the SVG image — system fallbacks
@@ -54,21 +61,19 @@ function serializeToSvgImage(
 
 /**
  * Renders the real letter-scroll strip (previous letters' tail + the new letter)
- * offscreen and rasterizes it onto a canvas of `canvasWidth` × the raster's
- * scaled height. Returns null on any failure so callers can fall back to the
- * painter-based texture.
+ * offscreen and rasterizes it onto a canvas of `canvasWidth` × the raster's own
+ * scaled height (aspect follows the strip, NOT a fixed texture box — so the
+ * ceremony paper is as tall as the real scroll it's standing in for). Returns
+ * null on any failure so callers can fall back to the painter-based texture.
  */
 export async function rasterizeStrip(
   notes: BottleNote[],
   newNote: BottleNote,
   canvasWidth: number,
-  maxCanvasHeight: number,
 ): Promise<HTMLCanvasElement | null> {
   if (typeof document === "undefined") return null;
 
-  const scale = canvasWidth / STRIP_WIDTH_PX;
-  const maxContentHeight = maxCanvasHeight / scale;
-  const selected = selectNotes(notes, newNote, maxContentHeight);
+  const selected = selectNotes(notes, newNote, MAX_STRIP_CONTENT_PX);
 
   // Offscreen host: fixed and far off-screen so it never flashes, sized to the
   // real strip width so the segment's internal layout matches the on-page scroll.
@@ -132,13 +137,26 @@ export async function rasterizeStrip(
     if (!img) return null;
 
     // Scale from the MEASURED strip width (usually 560, narrower on small
-    // viewports via 92vw) so the raster fills the canvas width exactly.
+    // viewports via 92vw) so the raster fills the canvas width exactly. The
+    // output canvas takes the strip's OWN aspect (width:height preserved), so
+    // the ceremony paper is as tall as the letters it shows. If the strip is
+    // taller than the content budget, keep the BOTTOM of it (the new letter +
+    // the most recent previous letters) by sampling the source from its lower
+    // region — the same "most recent letters win" bias as selectNotes.
+    const scale = canvasWidth / stripWidth;
+    const budgetHeight = MAX_STRIP_CONTENT_PX * scale;
+    const fullHeight = Math.ceil(stripHeight * scale);
+    const outHeight = Math.min(fullHeight, Math.ceil(budgetHeight));
     const out = document.createElement("canvas");
     out.width = canvasWidth;
-    out.height = Math.ceil(stripHeight * (canvasWidth / stripWidth));
+    out.height = outHeight;
     const ctx = out.getContext("2d");
     if (!ctx) return null;
-    ctx.drawImage(img, 0, 0, out.width, out.height);
+    // Source region: bottom-aligned slice of the strip image that maps to the
+    // output height (the whole strip when it fits the budget).
+    const srcH = outHeight / scale;
+    const srcY = stripHeight - srcH;
+    ctx.drawImage(img, 0, srcY, stripWidth, srcH, 0, 0, out.width, out.height);
     return out;
   } catch {
     return null;
