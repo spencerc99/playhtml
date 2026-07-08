@@ -1,8 +1,12 @@
 // ABOUTME: Verifies the generic realtime presence wire-message contract.
 // ABOUTME: Covers channel cadence selection and runtime message validation.
 
-import { describe, expect, it } from "vitest";
-import { generatePlayerIdentity } from "../cursor-types";
+import { describe, expect, it, vi } from "vitest";
+import {
+  generatePersistentPlayerIdentity,
+  generatePlayerIdentity,
+  PLAYER_IDENTITY_STORAGE_KEY,
+} from "../cursor-types";
 import {
   getPresenceChannelCadence,
   isCursor,
@@ -123,6 +127,36 @@ describe("presence protocol", () => {
     expect("discoveredSites" in identity).toBe(false);
     expect("createdAt" in identity).toBe(false);
     expect("privateKey" in identity).toBe(false);
+  });
+
+  it("removes empty colors from persisted player identities", () => {
+    const storage = new Map<string, string>([
+      [
+        PLAYER_IDENTITY_STORAGE_KEY,
+        JSON.stringify({
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red", ""] },
+        }),
+      ],
+    ]);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+    });
+
+    try {
+      const identity = generatePersistentPlayerIdentity();
+
+      expect(identity.playerStyle.colorPalette).toEqual(["red"]);
+      expect(
+        JSON.parse(storage.get(PLAYER_IDENTITY_STORAGE_KEY) ?? "{}").playerStyle
+          .colorPalette,
+      ).toEqual(["red"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rejects oversized join pages", () => {

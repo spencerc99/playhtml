@@ -72,7 +72,8 @@ function readPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
   const sourceStyle = isRecord(value.playerStyle) ? value.playerStyle : {};
   const colorPalette = Array.isArray(sourceStyle.colorPalette)
     ? sourceStyle.colorPalette.filter(
-        (color): color is string => typeof color === "string",
+        (color): color is string =>
+          typeof color === "string" && color.length > 0,
       )
     : [];
 
