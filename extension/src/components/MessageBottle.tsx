@@ -3,7 +3,7 @@
 
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { SealingCeremony } from "./sealing/SealingCeremony";
+import { FoldCeremony } from "./sealing/FoldCeremony";
 import { LetterScroll } from "./bottle/LetterScroll";
 import type { StampedLetter } from "./bottle/WriteSegment";
 import type { BottleNote } from "../features/BottleManager";
@@ -59,8 +59,8 @@ export function MessageBottle({
   const [pendingLetter, setPendingLetter] = useState<StampedLetter | null>(null);
   // During the in-place sealing handoff the scroll overlay stays MOUNTED (its
   // backdrop is the ceremony's single backdrop) but the DOM scroll content is
-  // hidden once the WebGL paper has rendered aligned over it. Until then the
-  // real scroll shows through, so the ceremony mounts with no blank gap / jump.
+  // hidden once the fold strip has rendered over it. Until then the real scroll
+  // shows through, so the ceremony mounts with no blank gap / jump.
   const [scrollHidden, setScrollHidden] = useState(false);
   const capsuleRef = useRef<HTMLButtonElement>(null);
   // Stage-transition timers, tracked so they can be cleared on unmount and at
@@ -111,9 +111,9 @@ export function MessageBottle({
       // snaps the stage back mid-ceremony.
       clearTimers();
       setStage("sealing");
-      // The scroll stays visible until the ceremony's aligned first frame lands
-      // (handleCeremonyFirstFrame). Fallback: if readiness doesn't arrive in
-      // ~500ms, hide anyway so a slow raster can't strand the reader on the DOM
+      // The scroll stays visible until the ceremony's first frame lands
+      // (handleCeremonyFirstFrame). Fallback: if that signal doesn't arrive in
+      // ~500ms, hide anyway so a slow mount can't strand the reader on the DOM
       // scroll with the ceremony invisibly on top.
       timersRef.current.push(setTimeout(() => setScrollHidden(true), 500));
     },
@@ -164,7 +164,7 @@ export function MessageBottle({
 
   // The overlay stays mounted THROUGH sealing so its backdrop is the ceremony's
   // single backdrop (the ceremony container is transparent). The scroll content
-  // inside is hidden once the aligned WebGL paper has rendered over it.
+  // inside is hidden once the fold strip has rendered over it.
   const overlayVisible =
     stage === "expanding" ||
     stage === "scroll" ||
@@ -190,8 +190,8 @@ export function MessageBottle({
   const overlayClass = [
     "mb-overlay",
     stage === "closing" ? "mb-overlayClosing" : "",
-    // Hide the scroll frame (but keep the backdrop) once the ceremony's WebGL
-    // paper has taken over in place.
+    // Hide the scroll frame (but keep the backdrop) once the ceremony's fold
+    // strip has taken over in place.
     scrollHidden ? "mb-overlayScrollHidden" : "",
   ]
     .filter(Boolean)
@@ -244,7 +244,7 @@ export function MessageBottle({
         pendingLetter &&
         origin &&
         createPortal(
-          <SealingCeremony
+          <FoldCeremony
             text={pendingLetter.text}
             authorColor={authorColor ?? "#4a9a8a"}
             slotX={origin.x}
