@@ -52,11 +52,25 @@ export function SealingCeremony({
     const initialAspect = TEX_W / TEX_H;
     const fallbackW = Math.min(vw * 0.55, vh * 0.72 * initialAspect);
     const paperW = handoff ? handoff.stripWidth : fallbackW;
-    const paperH = vh * 0.82;
+    // The paper is as TALL as the whole on-screen scroll (all letters + the new
+    // one), so the rest of the thread continues up off the top edge just like
+    // the real scroll — not cropped to a viewport square. Capped for GPU safety.
+    // The bottom (the new letter) is anchored near the viewport bottom and the
+    // paper extends upward; the roll coils from the far (top) end, off-screen,
+    // which is physically how you'd roll up a long scroll from the far end.
+    const GPU_MAX_H = 4096;
+    const paperH = handoff
+      ? Math.min(handoff.stripHeight, GPU_MAX_H)
+      : vh * 0.72;
     const paperAspect = paperW / paperH;
     const paperCenterX = handoff
       ? handoff.stripLeft + handoff.stripWidth / 2 - vw / 2
       : 0;
+    // World Y of the paper's center: place the bottom edge a little above the
+    // viewport bottom so the new letter reads, then the paper rises from there.
+    const bottomMarginPx = vh * 0.12;
+    const bottomWorldY = -(vh / 2) + bottomMarginPx;
+    const paperCenterY = bottomWorldY + paperH / 2;
 
     const ctx = setupScene(
       container,
@@ -87,7 +101,7 @@ export function SealingCeremony({
     });
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
-    mesh.position.set(paperCenterX, 0, 0);
+    mesh.position.set(paperCenterX, paperCenterY, 0);
 
     // Back face: carries the SAME message texture as the front so the wound-up
     // outer wrap shows the faint message + the author-color stripe — matching

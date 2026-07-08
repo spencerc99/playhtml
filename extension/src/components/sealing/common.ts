@@ -42,6 +42,9 @@ export interface StripHandoffRect {
    * real scroll). */
   stripLeft: number;
   stripWidth: number;
+  /** The strip's full height (all letters + the write segment). Used to size
+   * the rolled paper to the whole scroll so the rest continues up off-screen. */
+  stripHeight: number;
   /** The landed (new) letter's on-screen segment rect — the raster's bottom
    * anchors here so the letter you just wrote stays put at handoff. */
   writeLeft: number;
@@ -66,6 +69,7 @@ export function measureStripHandoff(
   return {
     stripLeft: s.left,
     stripWidth: s.width,
+    stripHeight: s.height,
     writeLeft: w.left,
     writeWidth: w.width,
     writeTop: w.top,
