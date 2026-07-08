@@ -243,187 +243,372 @@ $slotY: $moundTopGap + $visibleH;
 }
 
 // ============================
-// Letter scroll segments — each letter is one fixed-size segment of the
-// perforated scroll; the author's preset styles ground, ink, and the
-// segment's BOTTOM perforation (the tear line to the next sheet).
+// Letter scroll — one continuous strip of paper torn into fixed-size sheets.
+// The strip is a single unbroken column: rollEnd / sheet / perforation / sheet
+// / perforation / … / rollEnd, every edge flush. A perforation is the SEAM
+// between two sheets — the upper sheet's paper tears away so the lower sheet
+// shows through the notches. Mismatched grounds still read as one grown object
+// because the tear carries the transition.
 // ============================
+
+// Shared humanist letter type. Falls back cleanly when the injected webfonts
+// haven't loaded (extension shadow root / site both inject the same link).
+$letterBody: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+$letterHead: "Lora", Georgia, "Times New Roman", serif;
+$letterData: "Martian Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+$letterHand: "Caveat", "Segoe Script", cursive;
+
+.mbs-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: min(560px, 92vw);
+  // one drop shadow for the whole strip so it reads as a single physical object
+  filter: drop-shadow(0 8px 26px rgba(20, 15, 10, 0.45));
+}
+
 .mbs-segment {
   position: relative;
   box-sizing: border-box;
-  width: min(560px, 92vw);
-  min-height: min(520px, 72vh);
-  padding: 36px 40px 28px;
+  width: 100%;
+  // shorter than the viewport so the neighbouring sheets peek at the top and
+  // bottom edges — through the perforation, that peeking paper is the actual
+  // next/previous sheet, not a gap.
+  min-height: min(480px, 66vh);
+  padding: 44px 46px 30px;
   display: flex;
   flex-direction: column;
-  scroll-snap-align: center;
-  scroll-snap-stop: always;
+  font-family: $letterBody;
   font-size: 16px;
-  line-height: 1.55;
+  line-height: 1.72;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .mbs-letterText {
   flex: 1;
+  max-width: 46ch;
+  // a comfortable letter measure, centred in the sheet
+  margin: 0 auto;
+  width: 100%;
 }
 
 // The one sign-off row: signed name + cursor fingerprint + date stamp imprint.
 .mbs-signoff {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 18px;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 14px;
+  max-width: 46ch;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  // a faint hand-drawn rule separating body from signature
+  border-top: 1px solid;
+  border-image: repeating-linear-gradient(
+      to right,
+      currentColor 0 5px,
+      transparent 5px 10px
+    ) 1;
+  opacity: 0.95;
 }
 .mbs-signName {
-  font-style: italic;
-  font-size: 15px;
+  font-family: $letterHand;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
 }
 .mbs-fingerprint {
   width: 14px;
   height: 18px;
-  opacity: 0.75;
+  opacity: 0.7;
   filter: blur(0.3px);
 }
 .mbs-dateImprint {
   margin-left: auto;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border: 1.5px solid currentColor;
   border-radius: 2px;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  font-size: 11px;
+  font-family: $letterData;
+  font-size: 10.5px;
   letter-spacing: 0.08em;
-  opacity: 0.65;
+  opacity: 0.6;
   transform: rotate(-3deg);
   mix-blend-mode: multiply;
 }
 
-// --- grounds ---
+// --- grounds ------------------------------------------------------------
+// Each ground fills its sheet edge-to-edge; its perforation (below) carries the
+// same paper color, so the tear reads as the same sheet coming apart.
+
+// Legacy default: warm linen with a soft grain and gentle edge shading.
 .seg-linen {
-  background: #faf7f2;
   color: #3d3833;
+  background-color: #faf7f2;
+  background-image:
+    radial-gradient(
+      120% 80% at 50% 0%,
+      rgba(255, 255, 255, 0.5),
+      transparent 60%
+    ),
+    radial-gradient(
+      140% 90% at 50% 100%,
+      rgba(120, 104, 84, 0.14),
+      transparent 55%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.32 0 0 0 0 0.29 0 0 0 0 0.24 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 0 40px rgba(120, 104, 84, 0.1);
 }
 
+// Web 1.0: crisp white ground, pixel border (KEEP the broider data URI exactly),
+// monospace ink, a faint repeating-pixel wallpaper.
 .seg-web1 {
-  background: #ffffff;
   color: #1a1a8c;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  line-height: 1.6;
+  background-color: #ffffff;
+  background-image: repeating-linear-gradient(
+      45deg,
+      rgba(26, 26, 140, 0.05) 0 2px,
+      transparent 2px 8px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(26, 26, 140, 0.05) 0 2px,
+      transparent 2px 8px
+    );
+  background-size: 8px 8px;
   border-width: 7px;
   border-style: solid;
   border-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYAAACpF6WWAAABJ0lEQVR4AaTRQU7DQBBEUfCKI3AS7r/mJByBHeiN8q125CycIH26urqmPY63r8+PP7zd/mhoZ6WjmZ4GHRsDGd8/v+/ghX4iqzen1Xp6LWWEEAxBT3iyPFVPq+Bt/mkMQOel9dDLgEY+HeumhQTQkDaL/LMqU359KCGGeg//jJkzn/26KdOTrjCX0HZU129qWWaDKv8M83B+sl7foQJXq2WdV7Fe3yJD9VXs2Zda5inqqxyWPrvM7ebZ9aGm8ayeb7k+VE9S5/DqAzq/bmpRzEVCj5AzU0Hboa6bZqoToStY6PzhQ2UaQH+G2T1yPJdYr8/QMB9hHvLlaOjN1cNNGQVoIdD80EOvyoDm7b8pYw5ogXx98FAvF/z9pkyGoKqn1YlZ5Msh/x8AAP//9W84CwAAAAZJREFUAwA7SYrgj2UwOAAAAABJRU5ErkJggg==") 7 / 7px / 0 round;
 }
 
+// Stationery: layered real-paper feel — base tint, grain, faint fibre flecks,
+// a gentle vignette, and a faint margin rule. Keep the texture a swappable
+// data URI.
 .seg-stationery {
-  // PLACEHOLDER texture (SVG turbulence) — swap the background-image data URI
-  // for Spencer's stationery paper asset when provided. Keep it a data URI so
-  // it loads inside the shadow root on any host page.
-  background-color: #f5f0e8;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.24 0 0 0 0 0.22 0 0 0 0 0.19 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23p)'/%3E%3C/svg%3E");
   color: #3d3833;
+  font-family: $letterHead;
+  font-weight: 500;
+  background-color: #f5efe4;
+  background-image:
+    // faint left margin rule
+    linear-gradient(
+      to right,
+      transparent 0 54px,
+      rgba(196, 114, 78, 0.28) 54px 55px,
+      transparent 55px
+    ),
+    // gentle vignette
+    radial-gradient(
+      130% 100% at 50% 42%,
+      transparent 58%,
+      rgba(120, 96, 66, 0.14)
+    ),
+    // fibre flecks
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.014 0.34' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.36 0 0 0 0 0.28 0 0 0 0.5 0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 0 0 0 0 0 0 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23f)'/%3E%3C/svg%3E"),
+    // PLACEHOLDER paper grain (SVG turbulence) — swap this data URI for
+    // Spencer's stationery photo asset when it lands. Keep it a data URI so
+    // it loads inside the shadow root on any host page.
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.28 0 0 0 0 0.24 0 0 0 0 0.19 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23p)'/%3E%3C/svg%3E");
+  box-shadow: inset 0 0 60px rgba(120, 96, 66, 0.12);
+}
+// give the stationery text room past the margin rule
+.seg-stationery .mbs-letterText,
+.seg-stationery .mbs-signoff {
+  padding-left: 22px;
 }
 
+// Web-native: committed screen paper — confident palette gradients, crisp ruled
+// lines, deliberately placed ASCII ornaments.
 .seg-webnative {
-  background:
-    linear-gradient(160deg, rgba(91, 141, 184, 0.18), rgba(212, 184, 92, 0.16) 55%, rgba(74, 154, 138, 0.2)),
-    repeating-linear-gradient(to bottom, transparent 0, transparent 26px, rgba(31, 41, 55, 0.08) 27px),
-    #fdfcf9;
-  color: #1f2937;
+  color: #223142;
+  font-family: $letterBody;
+  background-color: #fbfdff;
+  background-image:
+    // ruled writing lines
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 30px,
+      rgba(91, 141, 184, 0.16) 30px 31px
+    ),
+    // corner-to-corner accent wash from the palette
+    linear-gradient(
+      152deg,
+      rgba(91, 141, 184, 0.22),
+      rgba(74, 154, 138, 0.16) 46%,
+      rgba(212, 184, 92, 0.24)
+    );
+  box-shadow: inset 0 0 0 1.5px rgba(91, 141, 184, 0.35);
 
-  // ascii decoration in the corners
+  // a placed ASCII ornament at the head of the sheet
   &::before {
-    content: "*~*~*";
+    content: "\00b7\2500\2500\2500\2510  \25c7  \250c\2500\2500\2500\00b7";
     position: absolute;
-    top: 8px;
-    right: 14px;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
     font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-    font-size: 11px;
-    opacity: 0.45;
-    pointer-events: none;
-  }
-  &::after {
-    content: "\00b7\00b7\00b7 --- \00b7\00b7\00b7";
-    position: absolute;
-    bottom: 6px;
-    left: 14px;
-    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-    font-size: 11px;
-    opacity: 0.35;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: rgba(74, 154, 138, 0.7);
     pointer-events: none;
   }
 }
 
+// Slab: carved stone — layered radial lighting, chiselled edge highlights,
+// light engraved ink.
 .seg-slab {
-  background:
-    radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, 0.06), transparent 60%),
-    linear-gradient(170deg, #4c4a47, #3a3835 70%, #33312e);
   color: #e8e4dc;
+  font-family: $letterHead;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+  letter-spacing: 0.015em;
+  background-color: #423f3b;
+  background-image:
+    radial-gradient(
+      120% 70% at 32% 12%,
+      rgba(255, 255, 255, 0.14),
+      transparent 55%
+    ),
+    radial-gradient(
+      100% 80% at 80% 100%,
+      rgba(0, 0, 0, 0.4),
+      transparent 60%
+    ),
+    linear-gradient(168deg, #4e4b47, #3b3935 68%, #322f2b),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23s)'/%3E%3C/svg%3E");
+  // chiselled edges: bright top/left, dark bottom/right
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.1),
+    inset -2px -3px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 50px rgba(0, 0, 0, 0.35);
+  // engraved letterforms
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.65),
+    0 -1px 0 rgba(255, 255, 255, 0.08);
 }
 
-// --- perforations: each segment OWNS its bottom tear line, styled per preset ---
+// --- perforations: each sheet OWNS its bottom tear line ------------------
+// The perf carries the upper sheet's paper color and is masked to a torn
+// silhouette, so the paper tears away and the sheet flush below shows through
+// the notches. This is the visible seam between two sheets.
 .mbs-perf {
   position: relative;
-  height: 14px;
-  width: min(560px, 92vw);
+  height: 18px;
+  width: 100%;
   flex: none;
+  margin-top: -1px; // kill any sub-pixel seam against the sheet above
+  z-index: 1;
+}
+.mbs-perf::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+// ragged torn-paper edge (linen + stationery): triangular tears along the base
+.perf-linen::before {
+  background: #faf7f2;
+}
+.perf-stationery::before {
+  background: #f5efe4;
 }
 .perf-linen::before,
 .perf-stationery::before {
-  // ragged torn-paper edge: jagged mask on a paper-colored strip
+  -webkit-mask-image: linear-gradient(#000 0 0),
+    linear-gradient(135deg, transparent 5px, #000 5px),
+    linear-gradient(-135deg, transparent 5px, #000 5px);
+  -webkit-mask-size: 100% 9px, 14px 9px, 14px 9px;
+  -webkit-mask-position: top, bottom left, bottom right;
+  -webkit-mask-repeat: no-repeat, repeat-x, repeat-x;
+  mask-image: linear-gradient(#000 0 0),
+    linear-gradient(135deg, transparent 5px, #000 5px),
+    linear-gradient(-135deg, transparent 5px, #000 5px);
+  mask-size: 100% 9px, 14px 9px, 14px 9px;
+  mask-position: top, bottom left, bottom right;
+  mask-repeat: no-repeat, repeat-x, repeat-x;
+}
+// a faint shadow the torn upper paper casts onto the sheet revealed below
+.perf-linen::after,
+.perf-stationery::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: inherit;
-  background-color: #efe9df;
-  -webkit-mask-image: linear-gradient(135deg, #000 6px, transparent 6px),
-    linear-gradient(-135deg, #000 6px, transparent 6px);
-  -webkit-mask-size: 16px 14px;
-  -webkit-mask-repeat: repeat-x;
-  mask-image: linear-gradient(135deg, #000 6px, transparent 6px),
-    linear-gradient(-135deg, #000 6px, transparent 6px);
-  mask-size: 16px 14px;
-  mask-repeat: repeat-x;
+  background: linear-gradient(
+    to bottom,
+    rgba(60, 48, 34, 0.16),
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+// web-1.0: white seam between two white sheets, pixel-notched blue tear ink
+.perf-web1 {
+  background: #ffffff;
 }
 .perf-web1::before {
-  // pixel-notched tear
+  display: none;
+}
+.perf-web1::after {
   content: "";
   position: absolute;
-  inset: 3px 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 10px;
   background: repeating-linear-gradient(
     to right,
-    #1a1a8c 0 8px,
-    transparent 8px 16px
+    #1a1a8c 0 6px,
+    transparent 6px 12px
   );
   image-rendering: pixelated;
+  pointer-events: none;
 }
-.perf-webnative::before {
-  content: "- \00b7 - \00b7 - \00b7 - \00b7 - \00b7 - \00b7 - \00b7 - \00b7 - \00b7 -";
-  position: absolute;
-  inset: 0;
-  text-align: center;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  font-size: 11px;
-  line-height: 14px;
-  color: rgba(31, 41, 55, 0.5);
+
+// web-native: a dashed ASCII rule sitting on the seam
+.perf-webnative {
+  background: #fbfdff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
 }
+.perf-webnative::before {
+  content: "\00b7\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\00b7";
+  position: static;
+  inset: auto;
+  background: none;
+  -webkit-mask: none;
+  mask: none;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: rgba(91, 141, 184, 0.75);
+  white-space: nowrap;
+}
+
+// slab: a chiselled crack across the stone
+.perf-slab {
+  background-color: #3b3935;
+  background-image: linear-gradient(168deg, #322f2b, #3b3935);
+}
 .perf-slab::before {
-  // chiseled crack
-  content: "";
-  position: absolute;
-  inset: 5px 0;
   background: linear-gradient(
-    to right,
-    transparent 0%,
-    #26241f 8%,
-    #26241f 46%,
-    transparent 50%,
-    #26241f 54%,
-    #26241f 92%,
-    transparent 100%
+    to bottom,
+    rgba(255, 255, 255, 0.06),
+    rgba(0, 0, 0, 0.5)
   );
-  clip-path: polygon(0 40%, 12% 60%, 28% 30%, 47% 70%, 63% 35%, 82% 65%, 100% 45%, 100% 55%, 82% 80%, 63% 50%, 47% 90%, 28% 45%, 12% 78%, 0 55%);
+  -webkit-mask-image: linear-gradient(#000 0 0);
+  -webkit-mask-size: 100% 100%;
+  mask-image: linear-gradient(#000 0 0);
+  mask-size: 100% 100%;
+  clip-path: polygon(
+    0 42%, 10% 58%, 24% 34%, 40% 66%, 54% 38%, 70% 62%, 86% 40%, 100% 56%,
+    100% 62%, 86% 50%, 70% 74%, 54% 50%, 40% 80%, 24% 46%, 10% 72%, 0 54%
+  );
 }
 
 // ============================
@@ -434,11 +619,12 @@ $slotY: $moundTopGap + $visibleH;
   align-items: flex-end;
   justify-content: flex-end;
   min-height: 56px;
+  margin-top: 4px;
 }
 .mbs-stamp {
   position: relative;
-  width: 44px;
-  height: 52px;
+  width: 46px;
+  height: 54px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -454,21 +640,25 @@ $slotY: $moundTopGap + $visibleH;
   position: absolute;
   left: 50%;
   top: 0;
-  width: 14px;
-  height: 26px;
+  width: 15px;
+  height: 28px;
   transform: translateX(-50%);
-  background: linear-gradient(to bottom, #8a6b4f, #6d5238);
-  border-radius: 7px 7px 3px 3px;
+  background: linear-gradient(to bottom, #9a7a5a, #6d5238);
+  border-radius: 8px 8px 3px 3px;
+  box-shadow: inset -1px 0 2px rgba(0, 0, 0, 0.3),
+    inset 1px 0 1px rgba(255, 255, 255, 0.2);
   transition: transform 550ms cubic-bezier(0.3, 0, 0.7, 1);
 }
 .mbs-stampBase {
   position: absolute;
   left: 0;
   bottom: 4px;
-  width: 44px;
-  height: 16px;
+  width: 46px;
+  height: 17px;
   background: linear-gradient(to bottom, #4c4238, #332c24);
   border-radius: 3px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
   transition: transform 550ms cubic-bezier(0.3, 0, 0.7, 1);
 }
 .mbs-stamp.pressing {
@@ -486,7 +676,7 @@ $slotY: $moundTopGap + $visibleH;
 }
 
 // ============================
-// The blank writing segment
+// The blank writing sheet — same sheet geometry, now a textarea.
 // ============================
 .mbs-writeSegment {
   gap: 10px;
@@ -494,30 +684,53 @@ $slotY: $moundTopGap + $visibleH;
 .mbs-swatchRow {
   display: flex;
   gap: 8px;
-  align-self: flex-end;
+  align-self: center;
+  max-width: 46ch;
+  width: 100%;
+  justify-content: flex-end;
+  margin: 0 auto;
 }
 .mbs-swatch {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   border: 1px solid rgba(0, 0, 0, 0.25);
   cursor: pointer;
   padding: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 120ms ease;
 
+  &:hover { transform: translateY(-1px); }
   &.selected {
     outline: 2px solid #4a9a8a;
     outline-offset: 2px;
   }
 }
-.swatch-web1 { background: #fff; border: 3px solid #1a1a8c; image-rendering: pixelated; }
-.swatch-stationery { background: #f5f0e8; }
-.swatch-webnative { background: linear-gradient(140deg, #5b8db8, #d4b85c, #4a9a8a); }
-.swatch-slab { background: linear-gradient(170deg, #4c4a47, #33312e); }
+.swatch-web1 {
+  background: #fff;
+  border: 3px solid #1a1a8c;
+  image-rendering: pixelated;
+}
+.swatch-stationery {
+  background:
+    radial-gradient(120% 100% at 50% 40%, transparent 60%, rgba(120, 96, 66, 0.2)),
+    #f5efe4;
+}
+.swatch-webnative {
+  background: linear-gradient(140deg, #5b8db8, #4a9a8a 55%, #d4b85c);
+}
+.swatch-slab {
+  background:
+    radial-gradient(80% 60% at 30% 20%, rgba(255, 255, 255, 0.2), transparent 60%),
+    linear-gradient(168deg, #4e4b47, #322f2b);
+}
 
 .mbs-writeField {
   flex: 1;
   min-height: 220px;
   width: 100%;
+  max-width: 46ch;
+  margin: 0 auto;
   border: none;
   background: transparent;
   resize: none;
@@ -532,13 +745,18 @@ $slotY: $moundTopGap + $visibleH;
   border: none;
   border-bottom: 1px dashed currentColor;
   background: transparent;
-  font-style: italic;
-  font-size: 15px;
-  font-family: inherit;
-  width: 180px;
+  font-family: $letterHand;
+  font-size: 24px;
+  line-height: 1.1;
+  width: 200px;
 
   &:focus { outline: none; }
-  &::placeholder { color: currentColor; opacity: 0.4; }
+  &::placeholder {
+    color: currentColor;
+    opacity: 0.4;
+    font-family: $letterBody;
+    font-size: 14px;
+  }
 }
 
 // ============================
@@ -559,49 +777,66 @@ $slotY: $moundTopGap + $visibleH;
   display: flex;
   flex-direction: column;
   align-items: center;
+  // breathing room above the top roll-end and below the bottom one, so the
+  // first/last sheets can still centre in the viewport
+  padding: 30vh 0;
 
   &::-webkit-scrollbar { display: none; }
 }
+// Each slot is the snap target and carries [data-seg] for jump/land. Zero
+// padding — the sheet + its perforation touch the next sheet with no void.
 .mbs-segSlot {
   scroll-snap-align: center;
   scroll-snap-stop: always;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  // peeking: segments are shorter than the viewport, so the neighbors' edges
-  // and perforations show above and below the centered one
-  padding: 3vh 0;
+  align-items: stretch;
+  width: 100%;
 }
-// The wound-up ends of the roll: a paper tube seen edge-on, hinting the
-// scroll continues past what's unrolled.
+// The wound-up ends of the roll: a paper tube seen edge-on, attached flush to
+// the strip's ends — the scroll continues into them.
 .mbs-rollEnd {
   flex: none;
-  height: 30px;
-  width: min(560px, 92vw);
-  border-radius: 16px;
-  background: linear-gradient(
-    to bottom,
-    #cfc7ba 0%,
-    #faf7f2 38%,
-    #efe9df 62%,
-    #a89e8e 100%
-  );
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
-  margin: 4vh 0 10px;
-
-  &:last-child {
-    margin: 10px 0 4vh;
-  }
+  height: 34px;
+  width: 100%;
+  background:
+    linear-gradient(
+      to bottom,
+      #b8ad9c 0%,
+      #efe9df 30%,
+      #faf7f2 46%,
+      #e4ddd0 66%,
+      #9a8f7d 100%
+    );
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.2);
+}
+.mbs-rollEnd--top {
+  border-radius: 18px 18px 4px 4px;
+  box-shadow: inset 0 6px 10px rgba(0, 0, 0, 0.28);
+}
+.mbs-rollEnd--bottom {
+  border-radius: 4px 4px 18px 18px;
+  box-shadow: inset 0 -6px 10px rgba(0, 0, 0, 0.28);
+}
+.mbs-lastWordSlot {
+  align-items: stretch;
 }
 .mbs-lastWord {
-  scroll-snap-align: center;
-  width: min(560px, 92vw);
-  padding: 40px;
+  width: 100%;
   box-sizing: border-box;
+  padding: 56px 46px;
   text-align: center;
+  font-family: $letterHead;
   font-style: italic;
-  font-size: 14px;
-  color: rgba(250, 247, 242, 0.85);
+  font-size: 15px;
+  line-height: 1.7;
+  color: #6b5f4e;
+  background-color: #efe9df;
+  background-image: radial-gradient(
+    130% 100% at 50% 0%,
+    rgba(255, 255, 255, 0.4),
+    transparent 60%
+  );
 }
 .mbs-tickRail {
   position: fixed;
@@ -611,30 +846,35 @@ $slotY: $moundTopGap + $visibleH;
   display: flex;
   flex-direction: column;
   gap: 7px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  background: rgba(20, 15, 10, 0.28);
 }
 .mbs-tick {
-  width: 14px;
+  width: 16px;
   height: 4px;
   border-radius: 2px;
   border: 1px solid transparent;
   padding: 0;
   cursor: pointer;
   opacity: 0.8;
+  transition: transform 120ms ease, opacity 120ms ease;
 
-  &:hover { opacity: 1; transform: scaleX(1.3); }
+  &:hover { opacity: 1; transform: scaleX(1.35); }
 }
 .mbs-leave {
   position: fixed;
   right: 18px;
   top: 16px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: $letterBody;
   font-size: 13px;
   padding: 6px 16px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.4);
-  background: rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.9);
+  background: rgba(20, 15, 10, 0.4);
+  color: rgba(255, 255, 255, 0.92);
   cursor: pointer;
+  backdrop-filter: blur(2px);
 
-  &:hover { background: rgba(0, 0, 0, 0.5); }
+  &:hover { background: rgba(20, 15, 10, 0.6); }
 }

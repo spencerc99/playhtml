@@ -45,22 +45,26 @@ export function LetterScroll({
   return (
     <div className="mbs-scrollFrame">
       <div ref={scrollerRef} className="mbs-scroller">
-        <div className="mbs-rollEnd" aria-hidden="true" />
-        {notes.map((n, i) => (
-          <div key={i} data-seg={i} className="mbs-segSlot">
-            <LetterSegment note={n} />
-          </div>
-        ))}
-        {canReply ? (
-          <div data-seg="write" className="mbs-segSlot">
-            <WriteSegment authorColor={authorColor} onStamped={onStamped} />
-          </div>
-        ) : (
-          <div className="mbs-lastWord">
-            you left the last word — someone else passes through next
-          </div>
-        )}
-        <div className="mbs-rollEnd" aria-hidden="true" />
+        <div className="mbs-strip">
+          <div className="mbs-rollEnd mbs-rollEnd--top" aria-hidden="true" />
+          {notes.map((n, i) => (
+            <div key={i} data-seg={i} className="mbs-segSlot">
+              <LetterSegment note={n} />
+            </div>
+          ))}
+          {canReply ? (
+            <div data-seg="write" className="mbs-segSlot">
+              <WriteSegment authorColor={authorColor} onStamped={onStamped} />
+            </div>
+          ) : (
+            <div className="mbs-segSlot mbs-lastWordSlot">
+              <div className="mbs-lastWord">
+                you left the last word — someone else passes through next
+              </div>
+            </div>
+          )}
+          <div className="mbs-rollEnd mbs-rollEnd--bottom" aria-hidden="true" />
+        </div>
       </div>
 
       {notes.length > 1 && (

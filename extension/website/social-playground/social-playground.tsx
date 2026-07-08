@@ -26,6 +26,16 @@ if (!document.getElementById("message-bottle-css")) {
   styleEl.textContent = MESSAGE_BOTTLE_CSS;
   document.head.appendChild(styleEl);
 }
+// Match the fonts the extension injects into its shadow root so the letter
+// scroll reads the same on the site.
+if (!document.getElementById("message-bottle-fonts")) {
+  const fontLink = document.createElement("link");
+  fontLink.id = "message-bottle-fonts";
+  fontLink.rel = "stylesheet";
+  fontLink.href =
+    "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Caveat:wght@400;600&family=Lora:ital,wght@0,500;0,600;1,500&family=Martian+Mono:wght@400;600&display=swap";
+  document.head.appendChild(fontLink);
+}
 
 const PLAYER_COLORS = ["#4a9a8a", "#c4724e", "#5b8db8", "#d4b85c", "#8b6b7f"];
 function randomColor() {
