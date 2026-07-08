@@ -471,9 +471,10 @@ $letterHand: "Lora", Georgia, serif;
 }
 
 // --- perforations: each sheet OWNS its bottom tear line ------------------
-// The perf carries the upper sheet's paper color and is masked to a torn
-// silhouette, so the paper tears away and the sheet flush below shows through
-// the notches. This is the visible seam between two sheets.
+// The perf is the visible seam between two sheets, and each style makes it its
+// own signature: linen and stationery cut the paper away (a mask reveals the
+// sheet flush below through the notches), web-1.0 and web-native lay a loud
+// colored divider over the seam. Heights vary per style so each reads clearly.
 .mbs-perf {
   position: relative;
   height: 18px;
@@ -488,44 +489,86 @@ $letterHand: "Lora", Georgia, serif;
   inset: 0;
 }
 
-// ragged torn-paper edge (linen + stationery): triangular tears along the base
+// linen: a deep, irregular torn-paper edge. Two overlaid triangle masks at
+// different scales chew the base into big and small teeth so the tear looks
+// hand-ripped, not machine-cut. The sheet below shows through the notches.
+.perf-linen {
+  height: 22px;
+}
 .perf-linen::before {
   background: #faf7f2;
-}
-.perf-stationery::before {
-  background: #f5efe4;
-}
-.perf-linen::before,
-.perf-stationery::before {
   -webkit-mask-image: linear-gradient(#000 0 0),
-    linear-gradient(135deg, transparent 5px, #000 5px),
-    linear-gradient(-135deg, transparent 5px, #000 5px);
-  -webkit-mask-size: 100% 9px, 14px 9px, 14px 9px;
-  -webkit-mask-position: top, bottom left, bottom right;
-  -webkit-mask-repeat: no-repeat, repeat-x, repeat-x;
+    linear-gradient(135deg, transparent 11px, #000 11px),
+    linear-gradient(-135deg, transparent 11px, #000 11px),
+    linear-gradient(135deg, transparent 6px, #000 6px),
+    linear-gradient(-135deg, transparent 6px, #000 6px);
+  -webkit-mask-size: 100% 12px, 34px 12px, 34px 12px, 17px 8px, 17px 8px;
+  -webkit-mask-position: top, bottom left, bottom right, bottom 0 left 8px,
+    bottom 0 right 8px;
+  -webkit-mask-repeat: no-repeat, repeat-x, repeat-x, repeat-x, repeat-x;
   mask-image: linear-gradient(#000 0 0),
-    linear-gradient(135deg, transparent 5px, #000 5px),
-    linear-gradient(-135deg, transparent 5px, #000 5px);
-  mask-size: 100% 9px, 14px 9px, 14px 9px;
-  mask-position: top, bottom left, bottom right;
-  mask-repeat: no-repeat, repeat-x, repeat-x;
+    linear-gradient(135deg, transparent 11px, #000 11px),
+    linear-gradient(-135deg, transparent 11px, #000 11px),
+    linear-gradient(135deg, transparent 6px, #000 6px),
+    linear-gradient(-135deg, transparent 6px, #000 6px);
+  mask-size: 100% 12px, 34px 12px, 34px 12px, 17px 8px, 17px 8px;
+  mask-position: top, bottom left, bottom right, bottom 0 left 8px,
+    bottom 0 right 8px;
+  mask-repeat: no-repeat, repeat-x, repeat-x, repeat-x, repeat-x;
 }
-// a faint shadow the torn upper paper casts onto the sheet revealed below
-.perf-linen::after,
-.perf-stationery::after {
+// the shadow the deep torn upper paper casts onto the sheet revealed below
+.perf-linen::after {
   content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(60, 48, 34, 0.16),
-    transparent 70%
+    rgba(60, 48, 34, 0.22),
+    transparent 75%
   );
   pointer-events: none;
 }
 
-// web-1.0: white seam between two white sheets, pixel-notched blue tear ink
+// stationery: a real postal deckle — a row of punched semicircle holes cut out
+// of the paper (radial-gradient circles masked away) so it reads as classic
+// stamp perforation, finished with a thin rust edge line above the holes.
+.perf-stationery {
+  height: 20px;
+}
+.perf-stationery::before {
+  background: #f5efe4;
+  -webkit-mask-image: radial-gradient(
+    circle 7px at 9px bottom,
+    transparent 6px,
+    #000 6.5px
+  );
+  -webkit-mask-size: 18px 100%;
+  -webkit-mask-repeat: repeat-x;
+  -webkit-mask-position: bottom left;
+  mask-image: radial-gradient(
+    circle 7px at 9px bottom,
+    transparent 6px,
+    #000 6.5px
+  );
+  mask-size: 18px 100%;
+  mask-repeat: repeat-x;
+  mask-position: bottom left;
+}
+.perf-stationery::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 2px;
+  background: #c4724e;
+  pointer-events: none;
+}
+
+// web-1.0: a chunky pixel zigzag divider. A row of navy pixel teeth over a
+// second, offset row in a bright web pink so it pops like an old-site gif.
 .perf-web1 {
+  height: 20px;
   background: #ffffff;
 }
 .perf-web1::before {
@@ -537,23 +580,39 @@ $letterHand: "Lora", Georgia, serif;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 10px;
-  background: repeating-linear-gradient(
-    to right,
-    #1a1a8c 0 6px,
-    transparent 6px 12px
-  );
+  height: 14px;
+  background:
+    repeating-linear-gradient(
+      to right,
+      #1a1a8c 0 12px,
+      transparent 12px 24px
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0 12px,
+      #ff5ec4 12px 24px
+    );
+  background-size: 100% 8px, 100% 8px;
+  background-position: left top, left bottom;
+  background-repeat: repeat-x;
   image-rendering: pixelated;
   pointer-events: none;
 }
 
-// web-native: a dashed ASCII rule sitting on the seam
+// web-native: a bright hard-stop gradient bar (hot pink → cyan → yellow) with
+// the ascii dashes riding on top — an unmistakable colorful divider.
 .perf-webnative {
-  background: #fbfdff;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: linear-gradient(
+    to right,
+    #ff5ec4 0 33.33%,
+    #22ccff 33.33% 66.66%,
+    #ffd400 66.66% 100%
+  );
 }
 .perf-webnative::before {
   content: "\00b7\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\2508\00b7";
@@ -565,7 +624,7 @@ $letterHand: "Lora", Georgia, serif;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 12px;
   letter-spacing: 2px;
-  color: rgba(91, 141, 184, 0.75);
+  color: rgba(31, 41, 55, 0.85);
   white-space: nowrap;
 }
 
@@ -661,6 +720,11 @@ $letterHand: "Lora", Georgia, serif;
     outline: 2px solid #4a9a8a;
     outline-offset: 2px;
   }
+}
+.swatch-linen {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.32 0 0 0 0 0.29 0 0 0 0 0.24 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='40' height='40' filter='url(%23g)'/%3E%3C/svg%3E"),
+    #faf7f2;
 }
 .swatch-web1 {
   background: #fff;

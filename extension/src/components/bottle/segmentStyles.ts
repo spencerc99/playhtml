@@ -145,7 +145,7 @@ function paintWebnativeGround(ctx: CanvasRenderingContext2D, w: number, h: numbe
   ctx.strokeRect(3, 3, w - 6, h - 6);
 }
 
-/** Default ground for legacy notes (no styleId) — not in the picker. */
+/** Warm linen — the default preset, and the fallback for unknown/missing ids. */
 export const LINEN: SegmentStyle = {
   id: "linen",
   label: "linen",
@@ -156,6 +156,7 @@ export const LINEN: SegmentStyle = {
 
 /** The pickable presets, deliberately spanning physical → digital. */
 export const SEGMENT_STYLES: SegmentStyle[] = [
+  LINEN,
   {
     id: "web1",
     label: "bordered",

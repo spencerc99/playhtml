@@ -123,10 +123,10 @@ function BottlePreview() {
       setKey((k) => k + 1);
     };
     // Seed a long thread of random-styled letters to preview the scroll at
-    // volume (styles include undefined = the linen legacy default).
+    // volume, covering all four pickable styles.
     const seedBtn = document.getElementById("bp-seed") as HTMLButtonElement | null;
     const seed = () => {
-      const styleIds = ["web1", "stationery", "webnative", undefined];
+      const styleIds = ["linen", "web1", "stationery", "webnative"];
       const colors = ["#c4724e", "#4a9a8a", "#5b8db8", "#d4b85c", "#8b6b7f"];
       const lines = [
         "passing through, leaving a pebble on the pile.",
