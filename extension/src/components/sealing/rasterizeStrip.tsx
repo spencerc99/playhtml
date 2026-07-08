@@ -99,10 +99,29 @@ export async function rasterizeStrip(
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
 
-    const stripHeight = strip.getBoundingClientRect().height;
-    if (stripHeight <= 0) return null;
+    const stripRect = strip.getBoundingClientRect();
+    const stripWidth = stripRect.width;
+    const stripHeight = stripRect.height;
+    if (stripWidth <= 0 || stripHeight <= 0) return null;
 
-    const dataUrl = serializeToSvgImage(strip, STRIP_WIDTH_PX, Math.ceil(stripHeight));
+    // Freeze viewport-unit-derived sizes to their measured pixel values before
+    // serializing: inside the SVG image, vw/vh re-resolve against the SVG's OWN
+    // viewport (stripWidth × stripHeight), so .mbs-strip's min(560px, 92vw)
+    // width shrinks to 92% and .mbs-segment's min(480px, 66vh) min-height
+    // collapses — rendering the strip inset and shorter than measured. Inline
+    // pixel values pin the SVG layout to the page layout.
+    strip.style.width = `${stripWidth}px`;
+    for (const seg of Array.from(
+      strip.querySelectorAll<HTMLElement>(".mbs-segment"),
+    )) {
+      seg.style.minHeight = `${seg.getBoundingClientRect().height}px`;
+    }
+
+    const dataUrl = serializeToSvgImage(
+      strip,
+      Math.ceil(stripWidth),
+      Math.ceil(stripHeight),
+    );
 
     const img = await new Promise<HTMLImageElement | null>((resolve) => {
       const image = new Image();
@@ -112,9 +131,11 @@ export async function rasterizeStrip(
     });
     if (!img) return null;
 
+    // Scale from the MEASURED strip width (usually 560, narrower on small
+    // viewports via 92vw) so the raster fills the canvas width exactly.
     const out = document.createElement("canvas");
     out.width = canvasWidth;
-    out.height = Math.ceil(stripHeight * scale);
+    out.height = Math.ceil(stripHeight * (canvasWidth / stripWidth));
     const ctx = out.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(img, 0, 0, out.width, out.height);

@@ -353,14 +353,26 @@ export function setupScene(
     });
   }
 
-  // Kick off rasterizing the real letter-scroll DOM. When it resolves, draw it
-  // onto the GROUND (replacing the painter art) and repaint the texture,
-  // re-applying sealed marks if the seal beat already fired.
+  // Kick off rasterizing the real letter-scroll DOM. When it resolves, rebuild
+  // the GROUND from scratch: the style's paper ground WITHOUT the painter's
+  // text layer (the raster carries the real text), then the raster bottom-
+  // anchored on top. A raster shorter than the canvas thus sits on clean
+  // continuation paper instead of the old painted letter; a taller one covers
+  // it entirely. Then repaint the texture, re-applying sealed marks if the
+  // seal beat already fired.
   if (rasterOpts.notes && rasterOpts.newNote) {
     void rasterizeStrip(rasterOpts.notes, rasterOpts.newNote, TEX_W, TEX_H).then(
-      (raster) => {
-        if (disposed || !raster) return;
+      async (raster) => {
+        if (disposed || !raster || !groundCtx) return;
         rasterLanded = true;
+        groundCtx.clearRect(0, 0, TEX_W, TEX_H);
+        const groundOnly = segmentStyle(styleId).ceremony.paintGround(
+          groundCtx,
+          TEX_W,
+          TEX_H,
+        );
+        if (groundOnly) await groundOnly;
+        if (disposed) return;
         drawRasterToCanvas(groundCanvas, raster);
         paintTextureFromGround();
       },
