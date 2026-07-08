@@ -21,6 +21,40 @@ export type PlayerProfile = {
   discoveredSites: string[];
 };
 
+// Verifiable identities use ECDSA P-256 raw public keys: 130 hex chars plus "pk_".
+function needsVerifiableKey(publicKey: string): boolean {
+  return !publicKey.startsWith("pk_") || publicKey.length < 100;
+}
+
+function randomHslColor(): string {
+  const hue = Math.floor(Math.random() * 360);
+  const s = 65 + Math.floor(Math.random() * 15); // 65-80%
+  const l = 55 + Math.floor(Math.random() * 15); // 55-70%
+  return `hsl(${hue}, ${s}%, ${l}%)`;
+}
+
+async function generateEcdsaKeypair(): Promise<{
+  publicKey: string;
+  privateKey: JsonWebKey;
+}> {
+  const keypair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+
+  const pubRaw = await crypto.subtle.exportKey("raw", keypair.publicKey);
+  const pubHex =
+    "pk_" +
+    Array.from(new Uint8Array(pubRaw))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+  const privateKey = await crypto.subtle.exportKey("jwk", keypair.privateKey);
+
+  return { publicKey: pubHex, privateKey };
+}
+
 function toDiscoveredSites(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
@@ -51,6 +85,14 @@ async function readIdentityStorage() {
     PLAYER_IDENTITY_STORAGE_KEY,
     DISCOVERED_SITES_STORAGE_KEY,
   ]);
+}
+
+export async function saveStoredPlayerIdentity(
+  identity: StoredPlayerIdentity,
+): Promise<void> {
+  await browser.storage.local.set({
+    [PLAYER_IDENTITY_STORAGE_KEY]: identity,
+  });
 }
 
 export async function getStoredPlayerIdentity(): Promise<StoredPlayerIdentity | null> {
@@ -88,6 +130,37 @@ export async function getStoredPlayerIdentity(): Promise<StoredPlayerIdentity | 
   }
 
   return storedIdentity;
+}
+
+export async function ensurePlayerIdentity(): Promise<StoredPlayerIdentity | null> {
+  const existing = await getStoredPlayerIdentity();
+
+  if (existing && !needsVerifiableKey(existing.public.publicKey)) {
+    return existing;
+  }
+
+  const { publicKey, privateKey } = await generateEcdsaKeypair();
+  const colorPalette = existing?.public.playerStyle.colorPalette ?? [
+    randomHslColor(),
+  ];
+  const identity = {
+    public: {
+      publicKey,
+      createdAt: existing?.public.createdAt ?? Date.now(),
+      playerStyle: {
+        ...existing?.public.playerStyle,
+        colorPalette,
+      },
+      ...(existing?.public.name !== undefined
+        ? { name: existing.public.name }
+        : {}),
+    },
+    privateKey,
+  } satisfies StoredPlayerIdentity;
+
+  await saveStoredPlayerIdentity(identity);
+  await browser.storage.local.remove("collection_participant_id");
+  return identity;
 }
 
 export async function getPublicPlayerIdentity(): Promise<PlayerIdentity | null> {

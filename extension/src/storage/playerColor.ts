@@ -1,12 +1,11 @@
 // ABOUTME: Persists the participant's primary cursor color for extension UI.
 // ABOUTME: Updates local identity storage and best-effort server color sync.
 
-import browser from "webextension-polyfill";
 import type { PlayerIdentity } from "../types";
 import { syncParticipantColor } from "./sync";
 import {
   getStoredPlayerIdentity,
-  PLAYER_IDENTITY_STORAGE_KEY,
+  saveStoredPlayerIdentity,
 } from "./playerIdentity";
 
 export async function savePlayerColor(color: string): Promise<PlayerIdentity | null> {
@@ -27,11 +26,9 @@ export async function savePlayerColor(color: string): Promise<PlayerIdentity | n
     },
   };
 
-  await browser.storage.local.set({
-    [PLAYER_IDENTITY_STORAGE_KEY]: {
-      ...stored,
-      public: updated,
-    },
+  await saveStoredPlayerIdentity({
+    ...stored,
+    public: updated,
   });
 
   if (updated.publicKey) {

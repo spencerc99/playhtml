@@ -1,10 +1,11 @@
 // ABOUTME: Verifies extension identity storage keeps private keys background-only.
-// ABOUTME: Covers legacy migration and public profile reads from browser storage.
+// ABOUTME: Covers stored-shape normalization and public profile reads from browser storage.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import {
   DISCOVERED_SITES_STORAGE_KEY,
+  ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
   getStoredPlayerIdentity,
@@ -19,6 +20,15 @@ const privateKey = {
 
 function setupStorage(initial: Record<string, unknown>) {
   const data = { ...initial };
+  const localStorage = browser.storage.local as typeof browser.storage.local & {
+    remove: ReturnType<typeof vi.fn>;
+  };
+  localStorage.remove = vi.fn((keys: string | string[]) => {
+    for (const key of Array.isArray(keys) ? keys : [keys]) {
+      delete data[key];
+    }
+    return Promise.resolve();
+  });
   vi.mocked(browser.storage.local.get).mockImplementation((keys?: any) => {
     if (Array.isArray(keys)) {
       return Promise.resolve(
@@ -42,7 +52,11 @@ describe("player identity storage", () => {
     vi.clearAllMocks();
   });
 
-  it("migrates legacy identity into explicit public and private fields", async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("normalizes identity into explicit public and private fields", async () => {
     const data = setupStorage({
       playerIdentity: {
         publicKey: "pk_test",
@@ -103,5 +117,55 @@ describe("player identity storage", () => {
       "wikipedia.org",
     ]);
     expect(JSON.stringify(data.playerIdentity)).not.toContain("wikipedia.org");
+  });
+
+  it("replaces unverifiable identities through storage owner", async () => {
+    const rawPublicKey = new Uint8Array(65);
+    rawPublicKey[0] = 4;
+    rawPublicKey[64] = 1;
+    vi.stubGlobal("crypto", {
+      subtle: {
+        generateKey: vi.fn().mockResolvedValue({
+          publicKey: {},
+          privateKey: {},
+        }),
+        exportKey: vi.fn((format: string) =>
+          Promise.resolve(format === "raw" ? rawPublicKey.buffer : privateKey),
+        ),
+      },
+    });
+    const data = setupStorage({
+      playerIdentity: {
+        publicKey: "pk_unverifiable",
+        privateKey: { kty: "EC", d: "stored-private" },
+        name: "Test player",
+        playerStyle: {
+          colorPalette: ["#4a9a8a"],
+        },
+        createdAt: 123,
+      },
+      collection_participant_id: "stored-participant",
+    });
+
+    const identity = await ensurePlayerIdentity();
+
+    expect(identity).toEqual({
+      public: {
+        publicKey: `pk_${Array.from(rawPublicKey)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")}`,
+        name: "Test player",
+        createdAt: 123,
+        playerStyle: {
+          colorPalette: ["#4a9a8a"],
+        },
+      },
+      privateKey,
+    });
+    expect(data.playerIdentity).toEqual(identity);
+    expect(data.collection_participant_id).toBeUndefined();
+    expect(browser.storage.local.remove).toHaveBeenCalledWith(
+      "collection_participant_id",
+    );
   });
 });

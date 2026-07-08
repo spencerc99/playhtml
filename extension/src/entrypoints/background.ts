@@ -7,12 +7,10 @@ import { uploadEvents, syncParticipantColor } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import {
+  ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
-  getStoredPlayerIdentity,
-  PLAYER_IDENTITY_STORAGE_KEY,
   recordDiscoveredSite,
-  type StoredPlayerIdentity,
 } from '../storage/playerIdentity'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
@@ -232,69 +230,13 @@ export default defineBackground(() => {
     }, 1000);
   }
 
-  // ECDSA P-256 raw public key = 65 bytes uncompressed = 130 hex chars + 'pk_' = 133 chars.
-  // Old keys are 'pk_' + ~13 random chars from Math.random.
-  function isOldFormatKey(publicKey: string): boolean {
-    return !publicKey.startsWith('pk_') || publicKey.length < 100;
-  }
-
-  async function generateEcdsaKeypair(): Promise<{ publicKey: string; privateKey: JsonWebKey }> {
-    const keypair = await crypto.subtle.generateKey(
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      true,
-      ['sign', 'verify']
-    );
-
-    const pubRaw = await crypto.subtle.exportKey('raw', keypair.publicKey);
-    const pubHex = 'pk_' + Array.from(new Uint8Array(pubRaw))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const privJwk = await crypto.subtle.exportKey('jwk', keypair.privateKey);
-
-    return { publicKey: pubHex, privateKey: privJwk };
-  }
-
-  // Initialize player identity with ECDSA keypair, auto-upgrading old-format keys
+  // Ensure player identity has an ECDSA keypair.
   async function initializePlayerIdentity() {
     try {
-      const existing = await getStoredPlayerIdentity()
-
-      if (existing && !isOldFormatKey(existing.public.publicKey)) {
-        return; // Valid ECDSA key, nothing to do
-      }
-
-      // Generate new ECDSA keypair (fresh install or upgrading old key)
-      const { publicKey, privateKey } = await generateEcdsaKeypair();
-      const colorPalette = existing?.public.playerStyle.colorPalette ?? [randomHslColor()]
-
-      const identity = {
-        public: {
-          publicKey,
-          createdAt: existing?.public.createdAt ?? Date.now(),
-          playerStyle: {
-            ...existing?.public.playerStyle,
-            colorPalette,
-          },
-          ...(existing?.public.name !== undefined ? { name: existing.public.name } : {}),
-        },
-        privateKey,
-      } satisfies StoredPlayerIdentity
-
-      await browser.storage.local.set({ [PLAYER_IDENTITY_STORAGE_KEY]: identity })
-      if (VERBOSE) console.log('[Identity] Generated new ECDSA keypair, public key:', publicKey)
-
-      // Clear legacy participant ID key so getParticipantId() reads from playerIdentity
-      await browser.storage.local.remove('collection_participant_id')
+      await ensurePlayerIdentity()
     } catch (error) {
       console.error('Failed to initialize player identity:', error)
     }
-  }
-
-  function randomHslColor(): string {
-    const hue = Math.floor(Math.random() * 360);
-    const s = 65 + Math.floor(Math.random() * 15); // 65-80%
-    const l = 55 + Math.floor(Math.random() * 15); // 55-70%
-    return `hsl(${hue}, ${s}%, ${l}%)`;
   }
 
   // Sync participant identity (cursor color) to server on startup
@@ -334,7 +276,7 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'UPDATE_SITE_DISCOVERY') {
-      updateSiteDiscovery(message.domain).then(reply)
+      recordDiscoveredSite(message.domain).then(reply)
       return true
     }
 
@@ -695,10 +637,6 @@ export default defineBackground(() => {
       return true
     }
   })
-
-  async function updateSiteDiscovery(domain: string) {
-    await recordDiscoveredSite(domain)
-  }
 
   async function runMilestoneCheck() {
     let state = await loadState();
