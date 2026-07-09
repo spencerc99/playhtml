@@ -10,7 +10,8 @@ import {
   CARD_W_PX,
   T_FISSURE_CLOSE,
   createSlotFissure,
-  createSlotCover,
+  clipBelowSlot,
+  clearSlotClip,
   type SealingProps,
 } from "./common";
 
@@ -89,10 +90,6 @@ export function FoldCeremony({
     const containerEl: HTMLDivElement = container;
 
     const fissure = createSlotFissure(containerEl, slotX, slotY);
-    // The below-slot cover is created lazily at plunge time (it would otherwise
-    // hide the fold/flip that plays centered on screen). Tracked here so cleanup
-    // can always remove it.
-    let slotCover: { dispose: () => void } | null = null;
 
     let disposed = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -244,10 +241,10 @@ export function FoldCeremony({
     }
 
     // BEAT 4: the upright bottle card sinks into the page through the slot,
-    // bottom edge first. It descends straight DOWN in world space; the part that
-    // crosses below the slot line is hidden by a cover pinned along the slot, so
-    // it reads as sinking THROUGH the hole rather than sliding past it. The
-    // fissure closes behind it, then complete.
+    // bottom edge first. It descends straight DOWN in world space; everything
+    // below the slot line is clipped away, so the card disappears THROUGH the
+    // existing thin slot (the fissure/crack) with no added surface. The fissure
+    // closes behind it, then complete.
     function plunge(
       dx: number,
       dyLand: number,
@@ -256,9 +253,9 @@ export function FoldCeremony({
     ) {
       const face = rootRef.current;
       if (!face) return;
-      // Pin the below-slot cover now, along the slot line, so the descending
-      // card is swallowed as its bottom crosses through.
-      slotCover = createSlotCover(containerEl, slotX, slotY, cardH);
+      // Clip the ceremony box at the slot line now, so the descending card is
+      // cut off as its bottom crosses through the existing slot.
+      clipBelowSlot(containerEl, slotY);
       const rotatedCard = `rotateZ(90deg) scale(${flipScale})`;
       const base = `translate(${dx}px, ${dyLand}px) ${rotatedCard}`;
       // Descend in WORLD space: put the downward translate FIRST (before the
@@ -271,8 +268,7 @@ export function FoldCeremony({
         face.animate(
           [
             { transform: base, opacity: 1, offset: 0 },
-            { transform: sunk, opacity: 0.9, offset: 0.85 },
-            { transform: sunk, opacity: 0.4, offset: 1 },
+            { transform: sunk, opacity: 1, offset: 1 },
           ],
           {
             duration: PLUNGE_MS,
@@ -296,7 +292,7 @@ export function FoldCeremony({
       for (const t of timers) clearTimeout(t);
       for (const a of runningAnimations) a.cancel();
       fissure.dispose();
-      slotCover?.dispose();
+      clearSlotClip(containerEl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

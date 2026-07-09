@@ -84,46 +84,19 @@ export function createSlotFissure(
 }
 
 // ============================
-// Slot cover — a fixed pane pinned along the slot line, covering everything
-// BELOW it. Painted above the plunging card (appended after it) but tinted to
-// match the overlay scrim, so as the card descends the part that crosses the
-// slot line is swallowed — it reads as sinking THROUGH the hole, bottom first,
-// instead of just travelling down past the slot on top of the backdrop.
+// Slot clip — clips the ceremony's fixed, world-aligned box so nothing below the
+// slot line paints. As the card plunges, the part that crosses the slot line is
+// cut off, so it disappears THROUGH the existing thin slot (the fissure/crack)
+// with no added pocket or surface — the same effect the old clip-plane gave.
 // ============================
-export function createSlotCover(
-  container: HTMLElement,
-  slotX: number,
-  slotY: number,
-  cardH: number,
-): { dispose: () => void } {
-  // A small pocket at the slot, only as wide as the card's sink path and only
-  // as tall as the card's descent (plus margin) — not a slab across the page.
-  // Its sides and bottom fade out so it reads as a soft shadowed pocket the card
-  // sinks into rather than a hard box, and its top edge sits on the slot line.
-  const coverW = Math.max(CARD_W_PX * 3, 120);
-  const coverH = Math.round(cardH * 1.5 + 24);
-  const cover = document.createElement("div");
-  cover.style.cssText = [
-    "position:fixed",
-    `left:${slotX}px`,
-    `top:${slotY}px`,
-    "transform:translateX(-50%)",
-    `width:${coverW}px`,
-    `height:${coverH}px`,
-    // Match the .mb-overlay backdrop tint so, over the ceremony scrim, the pocket
-    // reads as the same ground the card sinks into and the card vanishes as it
-    // crosses in. Radial fade keeps the edges soft (no boxy seam).
-    "background:radial-gradient(ellipse 60% 90% at 50% 0%,rgba(20,16,12,0.72) 0%,rgba(20,16,12,0.55) 45%,transparent 78%)",
-    "pointer-events:none",
-    // Above the plunging card within the ceremony container.
-    "z-index:6",
-  ].join(";");
-  container.appendChild(cover);
-  return {
-    dispose() {
-      if (cover.parentNode) cover.parentNode.removeChild(cover);
-    },
-  };
+export function clipBelowSlot(container: HTMLElement, slotY: number): void {
+  // The container is position:fixed; inset:0, so its box is the viewport and the
+  // inset's bottom value is measured from the viewport bottom up to the slot.
+  container.style.clipPath = `inset(0 0 calc(100% - ${slotY}px) 0)`;
+}
+
+export function clearSlotClip(container: HTMLElement): void {
+  container.style.clipPath = "";
 }
 
 // ============================
