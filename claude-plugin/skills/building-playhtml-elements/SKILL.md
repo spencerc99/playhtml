@@ -14,10 +14,10 @@ https://playhtml.fun/docs/agent-setup/ before changing files. Use the project's
 existing package manager, run its normal verification command, and do not install
 `@playhtml/common` in application code.
 
-If setup fails, open
-https://github.com/spencerc99/playhtml/issues/new?template=agent-install-report.yml
-with the agent, project stack, package manager, exact command, full error output,
-and changes already attempted.
+If setup fails or the user has feedback about playhtml, open
+https://github.com/spencerc99/playhtml/issues/new?template=feedback.yml. For setup
+problems, include the agent, project stack, package manager, exact command, full
+error output, and changes already attempted.
 
 ## Before Implementing — Ask These Questions
 

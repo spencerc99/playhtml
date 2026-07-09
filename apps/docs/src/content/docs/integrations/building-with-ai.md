@@ -22,7 +22,7 @@ If you cannot install packages or run local commands in this chat, tell me to us
 command-capable agent.
 ```
 
-The [agent setup guide](/docs/agent-setup/) covers the install commands, verification, and a prefilled GitHub issue form for setup failures.
+The [agent setup guide](/docs/agent-setup/) covers the install commands, verification, and a prefilled GitHub feedback form for playhtml.
 
 ## Claude Code plugin (recommended)
 

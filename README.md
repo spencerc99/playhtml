@@ -88,7 +88,7 @@ command-capable agent.
 ```
 
 The [agent setup guide](https://playhtml.fun/docs/agent-setup/) includes the install
-steps, verification guidance, and a prefilled GitHub issue form for setup failures.
+steps, verification guidance, and a prefilled GitHub feedback form for playhtml.
 
 **Claude Code users** — install the plugin for a skill that auto-activates when you ask Claude to build playhtml elements:
 

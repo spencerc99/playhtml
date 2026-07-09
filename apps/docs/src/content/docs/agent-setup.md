@@ -20,9 +20,10 @@ If you cannot install packages or run local commands in this chat, tell me to us
 command-capable agent such as Claude Code, Codex, Cursor, or another local coding
 agent.
 
-If setup fails, open https://github.com/spencerc99/playhtml/issues/new?template=agent-install-report.yml.
-Include the agent, project stack, package manager, exact command, full error output,
-and the changes you tried.
+If setup fails or you have feedback about playhtml, open
+https://github.com/spencerc99/playhtml/issues/new?template=feedback.yml. For setup
+problems, include the agent, project stack, package manager, exact command, full
+error output, and the changes you tried.
 ```
 
 ## Agent instructions
@@ -68,6 +69,6 @@ to use shared data, presence, events, or local storage.
 Use a local, command-capable coding agent. It needs permission to edit the project,
 install packages, and run the project's verification command.
 
-## Report an install problem
+## Share feedback
 
-Open the [agent install report form](https://github.com/spencerc99/playhtml/issues/new?template=agent-install-report.yml) when setup fails. It asks for the details needed to reproduce the problem: the agent and project stack, package manager, exact command, raw error output, and changes already attempted.
+Open the [playhtml feedback form](https://github.com/spencerc99/playhtml/issues/new?template=feedback.yml) to report a problem, suggest a feature, or share general feedback. For setup problems, include the agent and project stack, package manager, exact command, raw error output, and changes already attempted.
