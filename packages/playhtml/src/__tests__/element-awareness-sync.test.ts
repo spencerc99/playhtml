@@ -110,6 +110,7 @@ describe("element awareness sync", () => {
     (el as any).defaultData = {};
     (el as any).myDefaultAwareness = { hovering: false };
     (el as any).updateElement = vi.fn();
+    (el as any).updateElementAwareness = vi.fn();
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
@@ -150,6 +151,7 @@ describe("element awareness sync", () => {
     (el as any).defaultData = {};
     (el as any).myDefaultAwareness = { active: false };
     (el as any).updateElement = vi.fn();
+    (el as any).updateElementAwareness = vi.fn();
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 

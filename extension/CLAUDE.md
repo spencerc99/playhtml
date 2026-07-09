@@ -106,6 +106,17 @@ The `extension/website/` Vite app serves both the marketing/landing pages
   manager (`saved.html`)
 - `extension/website/rabbithole/`, `conversations/`, `keypresses/`,
   `sounds/`, `components-preview/` — individual experiments
+- `extension/website/social-playground/` — **the place to develop and test
+  new on-page social features** (satchel/inventory, bottles, emote wheel, …)
+  without installing the extension. It boots the REAL extension code on the
+  site: a live `playhtml.init` (cursors on) → `initGlobalFeatures` (satchel +
+  bottles) + `initEmotes` (emote wheel), all imported from `@extension/*`, so
+  the playground stays in sync with what ships. When you add a new social
+  feature, wire its `init*` into `social-playground.tsx`'s `bootSocial()` and
+  document it in `social-playground/index.html` so it's testable here.
+  Direct-render testers (e.g. `MessageBottle`, `SealingCeremony`) also live
+  here for reliable, network-free screenshots. Runs via `bunx vite
+  extension/website`, served at `/social-playground/`.
 
 Shared visualization code lives at `extension/website/shared/` and is reached
 via the `@movement` path alias from both `extension/website/src/**` and
@@ -166,6 +177,11 @@ Domain-specific collaborative features:
 - **FollowManager**: Follow another user's cursor, scroll tethering, cross-page navigation via presence API. `F` to follow nearest, `Q` to unfollow.
 - **PresenceCountPill**: Ambient people-count indicator with colored dots.
 - **OffscreenIndicator**: Directional arrow at screen edge when followed user is off-screen.
+- **inventory/**: The shared satchel — armable items registered by social experiments (see `features/social/`).
+- **emotes/**: Radial emote wheel (`Cmd/Ctrl+Shift+E`) — 10 cursor-native emotes that broadcast to page peers over a presence channel. Runs on cursor-enabled sites (wired into the cursor-site path in `content.ts`). Three emotes (heart, high five, nuzzle, poke) target the nearest cursor.
+
+Test social features live (no extension install) in
+`extension/website/social-playground/` — see the Website & experiments section.
 
 ### Custom Sites (`src/custom-sites/`)
 
