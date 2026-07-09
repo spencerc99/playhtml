@@ -167,6 +167,26 @@ export function FoldCeremony({
         );
         lastEnd = delay + FOLD_MS;
       });
+
+      // Fade the folded-letter-card skin in over the LAST crease of the fold so
+      // the moment folding completes, the packet reads as one clean folded card
+      // — covering the stack of real letters underneath. This also sidesteps the
+      // 3D paint-order of the nested folds (which note ends up visually on top):
+      // once the skin is opaque, the packet is the card regardless. The skin
+      // then rides through the flip + plunge.
+      const skin = cardSkinRef.current;
+      if (skin) {
+        const skinFade = Math.min(FOLD_MS, 420);
+        track(
+          skin.animate([{ opacity: 0 }, { opacity: 1 }], {
+            duration: skinFade,
+            delay: Math.max(0, lastEnd - skinFade),
+            easing: "ease-in",
+            fill: "forwards",
+          }),
+        );
+      }
+
       later(flipAndTuck, lastEnd + SETTLE_MS);
     }
 
@@ -217,20 +237,8 @@ export function FoldCeremony({
         ),
       );
 
-      // Cross-fade the readable packet face into the folded-letter-card skin
-      // over the back half of the flip, so by the time it lands upright over the
-      // slot it reads as the same folded note the resting capsule shows. The
-      // skin then plunges with the packet.
-      const skin = cardSkinRef.current;
-      if (skin) {
-        track(
-          skin.animate([{ opacity: 0 }, { opacity: 0 }, { opacity: 1 }], {
-            duration: FLIP_MS,
-            easing: "ease-in",
-            fill: "forwards",
-          }),
-        );
-      }
+      // The folded-letter-card skin already faded in as the fold completed (see
+      // startFold), so the packet is the clean card through the flip + plunge.
 
       flip.finished
         .catch(() => {})
