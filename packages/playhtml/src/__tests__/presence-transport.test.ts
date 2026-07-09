@@ -144,6 +144,69 @@ describe("RealtimePresenceTransport", () => {
     expect(socket.sent).toEqual([]);
   });
 
+  it("does not retain rejected state while the socket is closed", () => {
+    const socket = new FakeSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+
+    expect(() =>
+      transport.update("identity", {
+        publicKey: "pk_1",
+        privateKey: { kty: "EC", d: "private" },
+        playerStyle: { colorPalette: ["red"] },
+      }),
+    ).toThrow("identity must only include public presence fields");
+
+    expect(() => socket.open()).not.toThrow();
+    expect(socket.sent).toEqual([]);
+  });
+
+  it("replays snapshots instead of caller-owned presence objects", () => {
+    const socket = new FakeSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+    const identity = {
+      publicKey: "pk_1",
+      playerStyle: { colorPalette: ["red"] },
+    };
+    const cursor = {
+      cursor: { x: 1, y: 2, pointer: "mouse" },
+      at: 100,
+    };
+
+    transport.join({ identity, page: "/week/1" });
+    transport.update("cursor", cursor);
+
+    Object.assign(identity, { privateKey: { kty: "EC", d: "private" } });
+    cursor.cursor.x = 999;
+
+    expect(() => socket.open()).not.toThrow();
+    expect(socket.sent.map((message) => JSON.parse(message))).toEqual([
+      {
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+        },
+        page: "/week/1",
+      },
+      {
+        type: "presence-update",
+        channel: "cursor",
+        value: {
+          cursor: { x: 1, y: 2, pointer: "mouse" },
+          at: 100,
+        },
+      },
+    ]);
+  });
+
   it("coalesces state while closed and flushes the latest values on open", () => {
     const socket = new FakeSocket();
     const transport = new RealtimePresenceTransport({

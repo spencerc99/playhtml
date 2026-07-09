@@ -5,6 +5,7 @@ import browser from "webextension-polyfill";
 import {
   toPublicPlayerIdentity,
   type PlayerIdentity,
+  validatePresenceClientMessage,
 } from "@playhtml/common";
 import {
   MILESTONE_DURATION_MS,
@@ -59,10 +60,18 @@ export default defineContentScript({
             type: "GET_PUBLIC_PLAYER_IDENTITY",
           });
           const presenceIdentity = toPublicPlayerIdentity(publicPlayerIdentity);
-          this.presencePlayerIdentity =
-            presenceIdentity?.playerStyle.colorPalette[0]
-              ? presenceIdentity
-              : undefined;
+          if (presenceIdentity?.playerStyle.colorPalette[0]) {
+            try {
+              validatePresenceClientMessage({
+                type: "presence-join",
+                identity: presenceIdentity,
+                page: window.location.pathname,
+              });
+              this.presencePlayerIdentity = presenceIdentity;
+            } catch {
+              this.presencePlayerIdentity = undefined;
+            }
+          }
 
           // Notify background about site discovery
           await browser.runtime.sendMessage({
