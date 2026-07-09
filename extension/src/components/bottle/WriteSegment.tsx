@@ -23,7 +23,11 @@ interface WriteSegmentProps {
   onStamped: (letter: StampedLetter) => void;
 }
 
-export function WriteSegment({ authorColor, isFirst = false, onStamped }: WriteSegmentProps) {
+export function WriteSegment({
+  authorColor,
+  isFirst = false,
+  onStamped,
+}: WriteSegmentProps) {
   const [text, setText] = useState("");
   const [name, setName] = useState("");
   const [styleId, setStyleId] = useState(SEGMENT_STYLES[0].id);
@@ -58,9 +62,6 @@ export function WriteSegment({ authorColor, isFirst = false, onStamped }: WriteS
       }`}
       style={{ color: style.ink }}
     >
-      <p className="mbs-writeInvite">
-        {isFirst ? "this page keeps a bottle. write the first letter." : "the next sheet is yours."}
-      </p>
       <div className="mbs-swatchRow">
         {SEGMENT_STYLES.map((s) => (
           <button
@@ -95,7 +96,6 @@ export function WriteSegment({ authorColor, isFirst = false, onStamped }: WriteS
           style={{ color: authorColor }}
         />
         <Fingerprint color={authorColor} />
-        <span className="mbs-markHint">your name + print become your mark</span>
       </div>
       <DateStamp disabled={!text.trim()} onStamped={handleStamped} />
     </div>
