@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "lib": ["ESNext", "es2019", "dom", "DOM.Iterable"],
     "types": ["@cloudflare/workers-types", "node"]
   },
   "include": ["."]

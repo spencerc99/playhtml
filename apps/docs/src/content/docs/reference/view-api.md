@@ -1,8 +1,8 @@
 ---
 title: "View API (vanilla)"
-description: "Types and signatures for the vanilla custom-element API: playhtml.register, playhtml.define, the view function, the element handle, and the re-exported lit-html helpers."
+description: "playhtml.register, playhtml.define, the view function, the element handle, and lit-html helpers."
 sidebar:
-  order: 3
+  order: 6
 ---
 
 The vanilla API for building custom collaborative elements. For usage with side-by-side examples, see [Custom elements](/docs/custom-elements/); for the React equivalent, see the [React API](/docs/reference/react-api/).
@@ -11,7 +11,7 @@ The vanilla API for building custom collaborative elements. For usage with side-
 This API (`register` / `define` / `view`) is new and **experimental** — signatures may change in a future minor release. The imperative `can-play` path (`updateElement`) is unaffected. Feedback welcome on [#95](https://github.com/spencerc99/playhtml/issues/95).
 :::
 
-```ts
+```js
 import { playhtml, html, svg, repeat, classMap, styleMap, nothing } from "playhtml";
 ```
 
@@ -19,11 +19,8 @@ import { playhtml, html, svg, repeat, classMap, styleMap, nothing } from "playht
 
 Binds an initializer to one element by `id` and returns a [handle](#playelementhandle). Callable before or after `playhtml.init()` and before or after the element exists in the DOM — binding happens once both are present (like `customElements.define`).
 
-```ts
-playhtml.register<T, U, V>(
-  elementId: string,
-  init: ElementInitializer<T, U, V>,
-): PlayElementHandle<T, U, V>;
+```js
+const handle = playhtml.register("my-counter", init);
 ```
 
 - The element needs a stable, unique `id` (it _is_ the `elementId`). The `can-play` attribute is optional — `register` implies it.
@@ -33,8 +30,8 @@ playhtml.register<T, U, V>(
 
 Registers a reusable capability under an attribute name. Every element carrying `[capabilityName]` binds — including ones added later, or rendered by a [view](#composition). The imperative counterpart of `init({ extraCapabilities })`.
 
-```ts
-playhtml.define<T, U, V>(capabilityName: string, init: ElementInitializer<T, U, V>): void;
+```js
+playhtml.define("can-note", init);
 ```
 
 Defining a name that collides with a built-in capability throws. Each bound element still needs a unique `id`.
@@ -43,74 +40,38 @@ Defining a name that collides with a built-in capability throws. Each bound elem
 
 Returns a [handle](#playelementhandle) for any bound element. Because data is keyed by capability **and** id, pass the capability name when one element carries more than one.
 
-```ts
-playhtml.getHandle(elementId: string, capability?: string): PlayElementHandle;
+```js
+const handle = playhtml.getHandle("card-1", "can-move");
 ```
 
-## The `init` object (`ElementInitializer`)
+## The `init` object
 
-```ts
-interface ElementInitializer<T, U, V> {
-  defaultData: T | ((element: HTMLElement) => T);
-  defaultLocalData?: U | ((element: HTMLElement) => U);
-  myDefaultAwareness?: V | ((element: HTMLElement) => V);
+The full annotated property list is on [Element API](/docs/reference/element-api/#initializer). The `view` argument is **`ctx`** — see [Callback context](/docs/reference/element-api/#callback-context-ctx).
 
-  // Declarative render path — returns a lit-html template. Mutually exclusive
-  // with updateElement / onClick / onDrag (put events in the template).
-  view?: (ctx: ViewContext<T, U, V>) => unknown;
+`defaultData` must be an object (or a function that returns one), not a bare value like `0` or `""`. Use `{ count: 0 }`, not `0`.
 
-  // Imperative alternative — mutate the DOM yourself on each change.
-  updateElement?: (ctx: ViewContext<T, U, V>) => void;
-
-  // Lifecycle. May return a cleanup, run on removal / unregister().
-  onMount?: (ctx: SetupContext<T, U, V>) => void | (() => void);
-
-  resetShortcut?: ModifierKey;
-  debounceMs?: number;
-}
-```
-
-`defaultData` must be an object (or a function that returns one), not a bare value like `0` or `""`. An object shape lets you add fields later without migrating old data. Use `{ count: 0 }`, not `0`.
-
-A valid initializer provides exactly one update path — `view` **or** `updateElement`. `view` is purely additive; existing `updateElement` capabilities are unchanged.
+A valid initializer provides exactly one update path — `view` **or** `updateElement`.
 
 ## The view context
 
-`view` (and `updateElement`) receive:
+`view` receives **`ctx`** ([Callback context](/docs/reference/element-api/#callback-context-ctx)). Drive `ctx.setData` from `@click` handlers, not during render.
 
-```ts
-interface ViewContext<T, U, V> {
-  data: T;                         // shared, synced state (read-only snapshot)
-  localData: U;                    // per-user, per-tab, un-synced state
-  awareness: V[];                  // every connected user's awareness value
-  awarenessByStableId: Map<string, V>;
-  element: HTMLElement;            // the mount-point element
-
-  setData(next: T | ((draft: T) => void)): void;
-  setLocalData(next: U | ((draft: U) => void)): void;   // re-renders in view mode
-  setMyAwareness(next: V): void;
-  requestUpdate(): void;           // re-run the view now (clock-driven views)
-}
-```
-
-`setData`/`setLocalData`/`setMyAwareness` must **not** be called synchronously during a render — playhtml rejects it with a console error (it's a re-render loop). Drive writes from `@event` handlers in the template or from `onMount`.
-
-The `onMount` context is the same minus the live values, plus getters: `getData()`, `getLocalData()`, `getAwareness()`, `getElement()`, and the same `setData` / `setLocalData` / `setMyAwareness` / `requestUpdate`.
+`onMount` gets getters (`getData()`, `getElement()`, …) instead of live values. See [Element API → onMount](/docs/reference/element-api/#onmount) for the `playhtml.ready` pattern.
 
 ## `PlayElementHandle`
 
-Returned by `register` and `getHandle`; reads/writes resolve the live handler lazily, so a handle obtained before binding works once it binds.
+Returned by `register` and `getHandle`. Reads and writes resolve the live handler lazily — a handle obtained before binding works once the element exists.
 
-```ts
-interface PlayElementHandle<T, U, V> {
-  id: string;
-  getElement(): HTMLElement | null;        // null until bound
-  getData(): T | undefined;                // read-only snapshot
-  setData(next: T | ((draft: T) => void)): void;
-  setLocalData(next: U | ((draft: U) => void)): void;
-  setMyAwareness(next: V): void;
-  requestUpdate(): void;                   // no-op without a view
-  unregister(): void;                      // detach + run onMount cleanup; data is kept
+```js
+{
+  id,
+  getElement(),      // null until bound
+  getData(),         // undefined until bound
+  setData(next),
+  setLocalData(next),
+  setMyAwareness(next),
+  requestUpdate(),   // no-op without a view
+  unregister(),      // detach + run onMount cleanup; shared data is kept
 }
 ```
 

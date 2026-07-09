@@ -10,6 +10,8 @@ import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicat
 
 Presence is used for anything that is real-time and ephemeral (meaning it doesn't stick around after you leave). For example, cursors only matter when you are actually on the page. When you leave, they are gone and there's no record of them.
 
+For the full API surface (`PlayerIdentity`, `PresenceAPI`, element awareness, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
+
 When you want things to stay after refreshing, use [persistent data](/docs/data/data-essentials/) and use [events](/docs/data/events/) for real-time events that don't rely on updating data. 
 
 Element APIs use the word **awareness** for presence scoped to one element. `myDefaultAwareness`, `awareness`, and `setMyAwareness` are still ephemeral per-user state; they just belong to a specific element instead of the page-level `playhtml.presence` object.
@@ -124,9 +126,7 @@ In vanilla `can-play`, element awareness appears on the element handler data:
 
 <script>
   const element = document.getElementById("presence-count");
-  element.defaultData = {};
   element.myDefaultAwareness = { color: "#3b82f6" };
-  element.updateElement = () => {};
   element.onClick = (_event, { setMyAwareness }) => {
     setMyAwareness({ color: "#f97316" });
   };

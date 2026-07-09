@@ -228,7 +228,7 @@ jobs:
       - name: Announce release on Discord
         if: env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_EXTENSION_RELEASE_WEBHOOK }}
           VERSION: ${{ env.VERSION }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           CHANGELOG_URL: https://wewere.online/changelog/

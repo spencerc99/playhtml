@@ -1,5 +1,5 @@
-// ABOUTME: Verifies the capabilities page renders finished live vignette markup.
-// ABOUTME: Guards against placeholder demos replacing the can-mirror examples.
+// ABOUTME: Verifies the capabilities page renders finished live capability demos.
+// ABOUTME: Guards against placeholder demos and mismatched capability examples.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -11,19 +11,29 @@ const vignetteScript = readFileSync(
 );
 
 describe("capabilities can-mirror vignettes", () => {
-  test("renders an emoji-only textarea live preview", () => {
+  test("links can-mirror to the dedicated examples", () => {
     expect(capabilitiesPage).not.toContain("TODO-DEMO");
-    expect(capabilitiesPage).toContain('<textarea can-mirror id="emoji-pad"');
-    expect(capabilitiesPage).toContain('data-can-mirror-vignette="emoji"');
-    expect(capabilitiesPage).toContain('src="/docs/can-mirror-vignettes.js"');
+    expect(capabilitiesPage).toContain(
+      "Full treatment with live demos lives on **[Custom elements → can-mirror]",
+    );
+    expect(capabilitiesPage).toContain(
+      "the [mirror playground](/docs/advanced/mirror-playground/)",
+    );
     expect(vignetteScript).toContain('emojiOnly = /\\p{Extended_Pictographic}/gu');
     expect(vignetteScript).toContain('emojiPad.addEventListener("input"');
   });
 
-  test("renders a shared guestbook live preview", () => {
-    expect(capabilitiesPage).toContain('<ul can-mirror id="guestbook"');
-    expect(capabilitiesPage).toContain('data-can-mirror-vignette="guestbook"');
+  test("keeps can-mirror vignette support available for linked examples", () => {
     expect(vignetteScript).toContain("appendChild(");
     expect(vignetteScript).toContain("new Date().toLocaleTimeString()");
+  });
+});
+
+describe("capabilities can-hover demo", () => {
+  test("renders the built-in can-hover React component", () => {
+    expect(capabilitiesPage).toContain(
+      "import { CanHoverDemo } from '@/components/react/capability-demos/CanHoverDemo';",
+    );
+    expect(capabilitiesPage).toContain("<CanHoverDemo client:only=\"react\" />");
   });
 });

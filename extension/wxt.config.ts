@@ -17,7 +17,7 @@ export default defineConfig({
     commands: {
       "open-inventory": {
         suggested_key: {
-          default: "Ctrl+Shift+E", // Windows/Linux (Ctrl+Shift+I is DevTools there)
+          default: "Ctrl+Shift+B", // Windows/Linux — B for bag (E is the emote wheel; Ctrl+Shift+I is DevTools)
           mac: "Command+Shift+I", // free on mac Chrome/Edge/Firefox (DevTools = Cmd+Option+I)
         },
         description: "Open the we-were-online inventory at the cursor",

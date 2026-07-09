@@ -1,5 +1,7 @@
 // ABOUTME: Configures browser API shims and provider fakes for playhtml tests.
 // ABOUTME: Keeps unit tests deterministic without opening real network providers.
+((globalThis as any).litIssuedWarnings ??= new Set<string>()).add("dev-mode");
+
 // JSDOM doesn't implement some layout APIs; mock minimal ones we use.
 Object.defineProperty(window, "outerWidth", { value: 1024, writable: true });
 Object.defineProperty(window, "innerHeight", { value: 768, writable: true });
@@ -45,10 +47,12 @@ vi.mock("y-partyserver/provider", () => {
       awareness: any;
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
-      constructor() {
+      roomname: string;
+      constructor(_host: string, room: string) {
         if ((globalThis as any).PLAYHTML_TEST_PROVIDER_THROW) {
           throw new Error("test provider init failure");
         }
+        this.roomname = room;
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),
@@ -60,6 +64,7 @@ vi.mock("y-partyserver/provider", () => {
           getLocalState: () => local.state,
           setLocalStateField: (key: string, value: any) => {
             local.state = { ...local.state, [key]: value };
+            states.set(this.clientId, local.state);
             // Emit change event with proper structure expected by cursor-client
             // When local state changes, it's considered an "update" for our own client
             this.emit("change", {

@@ -1,5 +1,30 @@
 # Change Log
 
+## 2.13.1
+
+### Patch Changes
+
+- 77bb3cc: Fix element awareness (`updateElementAwareness` / `setMyAwareness`) not syncing updates to other clients. The awareness write mutated the current local state object in place, which defeated the y-protocols deep-equality check that decides whether to emit the `change` event — so after the initial value, subsequent updates were applied locally but never broadcast. Element awareness now writes a fresh state object on each update so peers receive every change.
+
+## 2.13.0
+
+### Minor Changes
+
+- ca1ebee: Add `playhtml.configure(options)` to declare init options separately from connecting, and make config first-declaration-wins uniformly across all options.
+
+  Previously `init(options)` both declared config and connected, first-call-wins — so on a page with no single top-level init (Astro islands, multi-page apps, multiple React roots), an option-less `init()` from one place could win the race and silently drop the config another place intended (e.g. cursors never turning on). Now you can call `configure({ cursors: { enabled: true }, ... })` once, up front, from wherever owns the config; later `init()` / component mounts just ensure playhtml is running and pick up the declared config regardless of order. `init(options)` still works exactly as before when you only have one call site. A later call that passes genuinely conflicting options warns and is ignored (config is locked to the first declaration); passing the same options again, or none, is quiet.
+
+### Patch Changes
+
+- f8bc35d: Keep can-grow hover handling from adding duplicate leave and keyboard listeners during repeated hover events.
+- e76abb7: Keep PlayHTML-managed local DOM state out of `can-mirror` persistence, including inspector highlights, devtools labels, loading markers, and hover/focus attributes, so mirrored elements can still be inspected and reset without saving tool UI state.
+- b3568ab: Keep element awareness scoped to the page room, preserve existing local awareness when handlers bind, and clear element awareness snapshots when peers leave so callbacks and views stop seeing stale ephemeral user state. Keep the React package test harness aligned with the configured initialization path.
+- 44e599d: Make `can-move-bounds` clamp the full element inside its bounds by default, account for the element's starting position within the bounds container, normalize persisted out-of-bounds positions on mount, and keep fast edge drags pinned while synced position updates catch up. Explicit `min-visible` settings can still allow partial overhang when that behavior is wanted.
+- Updated dependencies [f8bc35d]
+- Updated dependencies [e76abb7]
+- Updated dependencies [44e599d]
+  - @playhtml/common@0.8.1
+
 ## 2.12.0
 
 ### Minor Changes

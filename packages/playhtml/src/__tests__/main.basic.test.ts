@@ -92,20 +92,138 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(el.style.transform).toBe("translate(0px, 0px)");
   });
 
-  it("reports missing can-play initializer properties", () => {
+  it("sets up can-play elements that only render awareness", async () => {
     const el = document.createElement("div");
-    el.id = "incomplete-widget";
+    el.id = "presence-only-widget";
     el.setAttribute("can-play", "");
+    (el as any).myDefaultAwareness = { seated: false };
+    (el as any).updateElementAwareness = vi.fn(({ element, myAwareness }) => {
+      element.setAttribute("data-seated", String(myAwareness?.seated));
+    });
     document.body.appendChild(el);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    playhtml.setupPlayElement(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Missing or invalid initializer properties: defaultData, updateElement or view.",
-      ),
+    expect(errorSpy).not.toHaveBeenCalled();
+    const handler = playhtml
+      .elementHandlers!.get("can-play")!
+      .get("presence-only-widget");
+    expect(handler).toBeTruthy();
+
+    (el as any).updateElementAwareness.mockClear();
+    handler!.setMyAwareness({ seated: true });
+
+    expect((el as any).updateElementAwareness).toHaveBeenCalledWith(
+      expect.objectContaining({
+        myAwareness: { seated: true },
+      }),
     );
+  });
+
+  it("sets up can-play elements with awareness updates and no default awareness", async () => {
+    const el = document.createElement("div");
+    el.id = "external-presence-widget";
+    el.setAttribute("can-play", "");
+    (el as any).updateElementAwareness = vi.fn();
+    document.body.appendChild(el);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    const handler = playhtml
+      .elementHandlers!.get("can-play")!
+      .get("external-presence-widget");
+    expect(handler).toBeTruthy();
+
+    handler!.setMyAwareness({ active: true });
+
+    expect((el as any).updateElementAwareness).toHaveBeenCalledWith(
+      expect.objectContaining({
+        myAwareness: { active: true },
+      }),
+    );
+  });
+
+  it("reports incomplete can-play initializer pairs", () => {
+    const cases: Array<{
+      id: string;
+      props: Record<string, unknown>;
+      message: string;
+    }> = [
+      {
+        id: "empty-widget",
+        props: {},
+        message: "updateElement, view, or updateElementAwareness",
+      },
+      {
+        id: "data-without-render",
+        props: { defaultData: {} },
+        message: "defaultData requires updateElement or view",
+      },
+      {
+        id: "data-with-awareness-render-only",
+        props: { defaultData: {}, updateElementAwareness: vi.fn() },
+        message: "defaultData requires updateElement or view",
+      },
+      {
+        id: "render-without-data",
+        props: { updateElement: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
+        id: "view-without-data",
+        props: { view: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
+        id: "render-with-awareness-render-without-data",
+        props: { updateElement: vi.fn(), updateElementAwareness: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
+        id: "awareness-without-render",
+        props: { myDefaultAwareness: { seated: false } },
+        message: "myDefaultAwareness requires updateElementAwareness",
+      },
+      {
+        id: "awareness-with-data-render-only",
+        props: {
+          defaultData: {},
+          updateElement: vi.fn(),
+          myDefaultAwareness: { seated: false },
+        },
+        message: "myDefaultAwareness requires updateElementAwareness",
+      },
+      {
+        id: "primitive-default-data",
+        props: { defaultData: 0, updateElement: vi.fn() },
+        message: "defaultData must be an object or function",
+      },
+      {
+        id: "null-default-data",
+        props: { defaultData: null, updateElement: vi.fn() },
+        message: "defaultData must be an object or function",
+      },
+    ];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    for (const { id, props, message } of cases) {
+      const callCount = errorSpy.mock.calls.length;
+      const el = document.createElement("div");
+      el.id = id;
+      el.setAttribute("can-play", "");
+      Object.assign(el, props);
+      document.body.appendChild(el);
+
+      playhtml.setupPlayElement(el);
+
+      expect(errorSpy).toHaveBeenCalledTimes(callCount + 1);
+      expect(errorSpy).toHaveBeenLastCalledWith(
+        expect.stringContaining(message),
+      );
+    }
   });
 
   it("handles awareness changes per element (no updateElementAwareness)", async () => {
@@ -239,6 +357,23 @@ describe("playhtml basic setup with SyncedStore", () => {
 
     // Verify data is removed from SyncedStore
     expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toBeUndefined();
+  });
+
+  it("does not add a mouseleave listener on every can-grow hover", async () => {
+    const el = document.createElement("div");
+    el.id = "grow-hover-listeners";
+    el.setAttribute("can-grow", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-grow");
+
+    const addEventListener = vi.spyOn(el, "addEventListener");
+
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+    expect(
+      addEventListener.mock.calls.filter(([type]) => type === "mouseleave"),
+    ).toHaveLength(0);
   });
 
   it("sets up mirrored chair descendants with playhtml capabilities", async () => {

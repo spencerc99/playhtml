@@ -542,6 +542,7 @@ function isPromiseLike(value: unknown): value is Promise<void> {
 }
 /** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
 let lastElementAwarenessFingerprint: string | null = null;
+let trackedElementAwarenessKeys = new Set<string>();
 // NOTE: Potential optimization: allowlist/blocklist collaborative paths
 // In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
 // Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
@@ -561,8 +562,8 @@ let navigationController: ReturnType<typeof createNavigationController> | null =
 let detachNavListeners: (() => void) | null = null;
 let configureIdentityListener: EventListener | null = null;
 
-// Awareness change listener — must be rebound whenever the awareness provider
-// (cursor provider or main yprovider) is rebuilt during navigation.
+// Awareness change listener — must be rebound whenever the element awareness
+// provider is rebuilt during navigation.
 let awarenessChangeHandler: (() => void) | null = null;
 let awarenessChangeTarget: {
   awareness: { off: (event: string, cb: () => void) => void };
@@ -851,8 +852,7 @@ function recreateStore(): void {
 
 /**
  * Detach the current awareness "change" listener (if any) and attach a fresh
- * one to whichever provider currently holds awareness (cursor provider if
- * cursors enabled, otherwise main yprovider). Safe to call multiple times.
+ * one to the provider that holds element awareness. Safe to call multiple times.
  */
 function bindAwarenessListener(): void {
   if (awarenessChangeTarget && awarenessChangeHandler) {
@@ -863,7 +863,7 @@ function bindAwarenessListener(): void {
   awarenessChangeTarget = null;
   awarenessChangeHandler = null;
 
-  const provider = cursorClient?.getProvider() ?? yprovider;
+  const provider = getElementAwarenessProvider();
   if (!provider) return;
   const handler = () => onChangeAwareness();
   provider.awareness.on("change", handler);
@@ -1030,6 +1030,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   teardownCursors();
   hasSynced = false;
   lastElementAwarenessFingerprint = null;
+  trackedElementAwarenessKeys.clear();
   recreateStore();
 
   buildMainProvider({
@@ -1152,6 +1153,7 @@ async function runHandleNavigation(): Promise<void> {
     teardownMainProvider();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
+    trackedElementAwarenessKeys.clear();
     // Re-init the doc for the new room: page AND element data are room-scoped,
     // and the doc is reused across rooms, so a fresh doc resets both to the new
     // room (like a page reload) without syncing a delete tombstone back to the
@@ -1181,11 +1183,9 @@ async function runHandleNavigation(): Promise<void> {
     }
   }
 
-  // Rebind awareness listener to the current provider. This is required
-  // whenever we rebuilt yprovider or cursorClient above — the old awareness
-  // object was destroyed along with its provider, orphaning any listener
-  // we had attached at init time.
-  if (mainRoomChanged || cursorRoomChanged || cursorEnabledChanged) {
+  // Element awareness lives on the page provider, so rebind only when the page
+  // room provider is rebuilt and its awareness object has been replaced.
+  if (mainRoomChanged) {
     bindAwarenessListener();
   }
 
@@ -1381,11 +1381,14 @@ async function initPlayHTMLOnce() {
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
-  // Use cursor provider for awareness (matches cursor scope)
-  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  const awarenessProvider = getElementAwarenessProvider();
   const awareness = awarenessProvider.awareness.getLocalState();
   const elementAwareness = awareness?.[tagType] ?? {};
   return elementAwareness[elementId];
+}
+
+function getElementAwarenessProvider(): YProvider {
+  return yprovider;
 }
 
 function isHTMLElement(ele: any): ele is HTMLElement {
@@ -1477,25 +1480,35 @@ function createPlayElementData<T extends TagType, TData = any>(
       ? tagInfo.defaultData(element)
       : tagInfo.defaultData;
 
-  // Always use SyncedStore proxy
-  const dataProxy = ensureElementProxy<TData>(
-    tag,
-    elementId,
-    initialData as TData,
-  );
+  const dataProxy =
+    tagInfo.defaultData === undefined
+      ? undefined
+      : ensureElementProxy<TData>(tag, elementId, initialData as TData);
+  const initialAwareness = getElementAwareness(tag, elementId);
 
   const elementData: ElementData = {
     ...tagInfo,
+    myDefaultAwareness:
+      initialAwareness !== undefined
+        ? initialAwareness
+        : tagInfo.myDefaultAwareness,
     devMode: isDevelopmentMode,
     // Always provide a plain snapshot to render paths
     data: clonePlain(dataProxy),
     awareness:
-      getElementAwareness(tag, elementId) ??
-      tagInfo.myDefaultAwareness !== undefined
-        ? [tagInfo.myDefaultAwareness]
-        : undefined,
+      initialAwareness !== undefined
+        ? [initialAwareness]
+        : tagInfo.myDefaultAwareness !== undefined
+          ? [tagInfo.myDefaultAwareness]
+          : undefined,
     element,
     onChange: (newData: TData) => {
+      if (dataProxy === undefined) {
+        console.error(
+          `[playhtml] setData() was called for "${elementId}", but its initializer does not define \`defaultData\`.`,
+        );
+        return;
+      }
       // Prevent writes for read-only shared consumer elements
       const elementIdFromAttr = getIdForElement(element);
       if (isSharedReadOnly(element, elementIdFromAttr)) {
@@ -1530,22 +1543,25 @@ function createPlayElementData<T extends TagType, TData = any>(
       }
     },
     onAwarenessChange: (elementAwarenessData) => {
-      // Use cursor provider for awareness (matches cursor scope)
-      // Fall back to doc provider if cursors are disabled
-      const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+      const awarenessProvider = getElementAwarenessProvider();
       ensureAwarenessIdentity(
         awarenessProvider.awareness,
         cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
       );
-      const localAwareness =
+      const existingAwareness =
         awarenessProvider.awareness.getLocalState()?.[tag] || {};
 
-      if (localAwareness[elementId] === elementAwarenessData) {
+      if (existingAwareness[elementId] === elementAwarenessData) {
         return;
       }
 
-      localAwareness[elementId] = elementAwarenessData;
-      awarenessProvider.awareness.setLocalStateField(tag, localAwareness);
+      // Build a fresh object rather than mutating the existing one in place.
+      // y-protocols' setLocalState detects changes via deep equality against the
+      // previous state; mutating the current state object in place makes that
+      // comparison see no change, which suppresses the "change" event the
+      // provider listens on to broadcast awareness — so peers never receive it.
+      const nextAwareness = { ...existingAwareness, [elementId]: elementAwarenessData };
+      awarenessProvider.awareness.setLocalStateField(tag, nextAwareness);
     },
     triggerAwarenessUpdate: () => {
       onChangeAwareness();
@@ -1569,21 +1585,37 @@ function getElementInitializerValidationIssues(
   }
 
   const issues: string[] = [];
-  if (
-    tagInfo.defaultData === undefined ||
-    (typeof tagInfo.defaultData !== "object" &&
-      typeof tagInfo.defaultData !== "function")
-  ) {
-    issues.push("defaultData");
+
+  const hasDefaultData = tagInfo.defaultData !== undefined;
+  const hasValidDefaultData =
+    hasDefaultData &&
+    tagInfo.defaultData !== null &&
+    (typeof tagInfo.defaultData === "object" ||
+      typeof tagInfo.defaultData === "function");
+  const hasUpdateElement = typeof tagInfo.updateElement === "function";
+  const hasView = typeof tagInfo.view === "function";
+  const hasDataUpdate = hasUpdateElement || hasView;
+  const hasMyDefaultAwareness = tagInfo.myDefaultAwareness !== undefined;
+  const hasUpdateElementAwareness =
+    typeof tagInfo.updateElementAwareness === "function";
+  const hasUpdateFunction = hasDataUpdate || hasUpdateElementAwareness;
+
+  if (hasDefaultData && !hasValidDefaultData) {
+    issues.push("defaultData must be an object or function");
   }
 
-  // A valid initializer needs an update path: the imperative `updateElement`
-  // or the declarative `view`.
-  if (
-    typeof tagInfo.updateElement !== "function" &&
-    typeof tagInfo.view !== "function"
-  ) {
-    issues.push("updateElement or view");
+  if (hasDefaultData && !hasDataUpdate) {
+    issues.push("defaultData requires updateElement or view");
+  } else if (!hasDefaultData && hasDataUpdate) {
+    issues.push("updateElement or view requires defaultData");
+  }
+
+  if (hasMyDefaultAwareness && !hasUpdateElementAwareness) {
+    issues.push("myDefaultAwareness requires updateElementAwareness");
+  }
+
+  if (issues.length === 0 && !hasUpdateFunction) {
+    issues.push("updateElement, view, or updateElementAwareness");
   }
 
   return issues;
@@ -1650,8 +1682,7 @@ function getElementInitializerInfoForElement(
 }
 
 function onChangeAwareness() {
-  // Since awareness is on cursor provider, read from there
-  const awarenessProvider = cursorClient?.getProvider() ?? yprovider;
+  const awarenessProvider = getElementAwarenessProvider();
   const states = awarenessProvider.awareness.getStates();
 
   // Only run when element-awareness data changed. Cursor client writes __playhtml_cursors__
@@ -1699,19 +1730,34 @@ function onChangeAwareness() {
   });
 
   // Update all handlers with both array and byStableId
-  // Split only on first colon so element IDs that contain colons (valid in HTML) are preserved
   elementAwareness.forEach(({ array, byStableId }, key) => {
-    const colonIndex = key.indexOf(":");
-    const tag = key.slice(0, colonIndex);
-    const elementId = key.slice(colonIndex + 1);
-    const tagElementHandlers = elementHandlers.get(tag as TagType);
-    if (!tagElementHandlers) return;
-
-    const handler = tagElementHandlers.get(elementId);
-    if (handler) {
-      handler.updateAwareness(array, byStableId);
-    }
+    updateHandlerAwarenessForKey(key, array, byStableId);
   });
+
+  for (const key of trackedElementAwarenessKeys) {
+    if (elementAwareness.has(key)) continue;
+    updateHandlerAwarenessForKey(key, [], new Map());
+  }
+
+  trackedElementAwarenessKeys = new Set(elementAwareness.keys());
+}
+
+function updateHandlerAwarenessForKey(
+  key: string,
+  array: any[],
+  byStableId: Map<string, any>,
+) {
+  // Split only on first colon so element IDs that contain colons (valid in HTML) are preserved
+  const colonIndex = key.indexOf(":");
+  const tag = key.slice(0, colonIndex);
+  const elementId = key.slice(colonIndex + 1);
+  const tagElementHandlers = elementHandlers.get(tag as TagType);
+  if (!tagElementHandlers) return;
+
+  const handler = tagElementHandlers.get(elementId);
+  if (handler) {
+    handler.updateAwareness(array, byStableId);
+  }
 }
 
 /**
@@ -1755,9 +1801,8 @@ function setupElements(): void {
     return;
   }
 
-  // Listen to awareness changes on the cursor provider (where element awareness
-  // is stored). Re-bound on provider rebuild via bindAwarenessListener so
-  // nav-time provider swaps don't leave an orphaned listener.
+  // Re-bound on provider rebuild via bindAwarenessListener so nav-time provider
+  // swaps don't leave an orphaned listener.
   bindAwarenessListener();
 
   // Trigger initial awareness sync to populate existing states
@@ -1930,6 +1975,7 @@ export async function resetPlayHTML(): Promise<void> {
 
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
+    trackedElementAwarenessKeys.clear();
     firstSetup = true;
     isLoading = true;
     initStarted = false;
@@ -2444,11 +2490,12 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
 const pendingRegistrations = new Map<string, ElementInitializer>();
 
 /**
- * Enforces the `view` invariants: a `view` cannot coexist with the imperative
- * `updateElement` or with element-level event handlers, and an initializer
- * must provide at least one update path.
+ * Enforces initializer invariants before register/define stores a capability.
  */
-function validateViewInitializer(name: string, init: ElementInitializer): void {
+function validateRegisteredInitializer(
+  name: string,
+  init: ElementInitializer,
+): void {
   if (init.view && init.updateElement) {
     throw new Error(
       `[playhtml] "${name}" defines both \`view\` and \`updateElement\`. They are mutually exclusive — pick one.`,
@@ -2458,11 +2505,6 @@ function validateViewInitializer(name: string, init: ElementInitializer): void {
     throw new Error(
       `[playhtml] "${name}" defines \`view\` alongside an element event handler (onClick/onDrag/onDragStart). ` +
         `In view mode, attach events inside the template (e.g. \`@click=\${...}\`) instead.`,
-    );
-  }
-  if (!init.view && !init.updateElement) {
-    throw new Error(
-      `[playhtml] "${name}" must define either \`view\` or \`updateElement\`.`,
     );
   }
   // Shared data must be an object (or a factory returning one), never a bare
@@ -2476,6 +2518,12 @@ function validateViewInitializer(name: string, init: ElementInitializer): void {
     throw new Error(
       `[playhtml] "${name}" has a non-object \`defaultData\`. Use an object ` +
         `(e.g. \`{ count: 0 }\`) so the shape can grow without a data migration.`,
+    );
+  }
+  const issues = getElementInitializerValidationIssues(init);
+  if (issues.length > 0) {
+    throw new Error(
+      `[playhtml] "${name}" has an invalid initializer: ${issues.join(", ")}.`,
     );
   }
 }
@@ -2585,7 +2633,7 @@ function registerPlayElement<T = any, U = any, V = any>(
   elementId: string,
   init: ElementInitializer<T, U, V>,
 ): PlayElementHandle<T, U, V> {
-  validateViewInitializer(elementId, init as ElementInitializer);
+  validateRegisteredInitializer(elementId, init as ElementInitializer);
   pendingRegistrations.set(elementId, init as ElementInitializer);
   applyPendingRegistration(elementId);
   if (isDevelopmentMode && hasSynced && !document.getElementById(elementId)) {
@@ -2628,7 +2676,7 @@ function definePlayCapability<T = any, U = any, V = any>(
       `[playhtml] "${capabilityName}" is a built-in capability and cannot be redefined.`,
     );
   }
-  validateViewInitializer(capabilityName, init as ElementInitializer);
+  validateRegisteredInitializer(capabilityName, init as ElementInitializer);
   capabilitiesToInitializer[capabilityName] = init as ElementInitializer;
   // Upgrade any elements already on the page (no-op before init()).
   if (hasSynced) {

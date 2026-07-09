@@ -1,3 +1,5 @@
+// ABOUTME: Manages per-element playhtml handlers, state updates, rendering, and events.
+// ABOUTME: Bridges shared data, local data, awareness, and DOM capability callbacks.
 /// <reference lib="dom"/>
 import { render } from "lit-html";
 import {
@@ -21,7 +23,7 @@ const debounce = (fn: Function, ms = 300) => {
 // TODO: turn this into just an extension of HTMLElement and initialize all the methods / do all the state tracking
 // on the element itself??
 export class ElementHandler<T = any, U = any, V = any> {
-  defaultData: T;
+  defaultData: T | undefined;
   localData: U;
   awareness: V[] = [];
   awarenessByStableId: Map<string, V> = new Map();
@@ -115,8 +117,8 @@ export class ElementHandler<T = any, U = any, V = any> {
       this.setMyAwareness(myInitialAwareness);
     }
     // Needed to get around the typescript error even though it is assigned in __data.
-    this._data = initialData;
-    this.__data = initialData;
+    this._data = initialData as T;
+    this.__data = initialData as T;
 
     this.reinitializeElementData(elementData);
 
@@ -484,8 +486,10 @@ export class ElementHandler<T = any, U = any, V = any> {
 
     this.selfAwareness = data;
     this.onAwarenessChange(data);
-    // For some reason unless it's the first time, the localState changing is not called in the `change` observer callback for awareness. So we have to manually update
-    // the element's awareness rendering here.
+    // Render our own awareness change locally right away. The awareness "change"
+    // observer also fires (onAwarenessChange writes a fresh state object, so
+    // y-protocols detects the change and broadcasts it), but that path reflects
+    // the write back asynchronously; updating here keeps the local view immediate.
     this.triggerAwarenessUpdate?.();
   }
 
@@ -497,6 +501,7 @@ export class ElementHandler<T = any, U = any, V = any> {
    * Resets the element to its default state.
    */
   reset() {
+    if (this.defaultData === undefined) return;
     this.setData(this.defaultData);
   }
 }
