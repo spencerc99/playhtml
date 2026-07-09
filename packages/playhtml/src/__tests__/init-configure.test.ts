@@ -2,6 +2,7 @@
 // ABOUTME: front and survives option-less "ensure running" calls (e.g. islands).
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PlayerIdentity } from "@playhtml/common";
 import { playhtml, resetPlayHTML } from "../index";
 
 describe("playhtml configure() + init()", () => {
@@ -240,6 +241,44 @@ describe("playhtml configure() + init()", () => {
       expect(JSON.stringify(identity)).not.toContain("profile");
     } finally {
       (globalThis as any).WebSocket = originalWebSocket;
+    }
+  });
+
+  it("adopts extension identity when cursors are disabled", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const pageIdentity: PlayerIdentity = {
+      publicKey: "page-key",
+      name: "page name",
+      custom: { mood: "curious" },
+      playerStyle: { colorPalette: ["#111111"] },
+    };
+    const extensionIdentity: PlayerIdentity = {
+      publicKey: "extension-key",
+      playerStyle: { colorPalette: ["#abcdef"] },
+    };
+
+    try {
+      await playhtml.init({
+        playerIdentity: pageIdentity,
+        cursors: { enabled: false },
+      });
+
+      document.dispatchEvent(
+        new CustomEvent("playhtml:configure-identity", {
+          detail: { playerIdentity: extensionIdentity },
+        }),
+      );
+
+      expect(playhtml.cursorClient).toBeNull();
+      expect(playhtml.users.me.pid).toBe("extension-key");
+      expect(playhtml.users.me.color).toBe("#abcdef");
+      expect(playhtml.users.me.name).toBe("page name");
+      expect(playhtml.users.me.custom).toEqual({ mood: "curious" });
+      expect(log).toHaveBeenCalledWith(
+        "[playhtml] Merged extension identity via CustomEvent",
+      );
+    } finally {
+      log.mockRestore();
     }
   });
 });

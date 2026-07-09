@@ -1081,25 +1081,32 @@ async function resetCurrentRoomFromServer(): Promise<void> {
  * shared DOM instead.
  *
  * The extension owns the canonical public key and style. The page owns its
- * display name.
+ * display name and custom properties.
  *
- * Idempotent: only attaches once. Safe to call from both the initial
- * cursor-enabled path and the late-enable path.
+ * Idempotent: only attaches once. Safe to call once users exist, regardless
+ * of whether cursor rendering is enabled.
  */
 function setupExtensionIdentityListener(): void {
   if (configureIdentityListener) return;
 
   configureIdentityListener = ((e: CustomEvent) => {
     const incoming = toPublicPlayerIdentity(e.detail?.playerIdentity);
-    if (!incoming?.playerStyle.colorPalette[0] || !cursorClient) return;
+    if (!incoming?.playerStyle.colorPalette[0] || !usersAPI) return;
 
-    const current = cursorClient.getMyPlayerIdentity();
-    cursorClient.configure({
-      playerIdentity: {
-        ...incoming,
-        ...(typeof current.name === "string" ? { name: current.name } : {}),
-      },
-    });
+    const current = usersAPI.getIdentity();
+    // Start from the sanitized extension identity so page-side non-public
+    // fields die at the boundary; carry over only the page-owned fields.
+    const merged: PlayerIdentity = {
+      ...incoming,
+      ...(typeof current.name === "string" ? { name: current.name } : {}),
+      ...(current.custom !== undefined ? { custom: current.custom } : {}),
+    };
+
+    if (cursorClient) {
+      cursorClient.configure({ playerIdentity: merged });
+    } else {
+      usersAPI.adoptIdentity(merged);
+    }
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1347,9 +1354,7 @@ async function initPlayHTMLOnce() {
     onError,
   });
 
-  if (cursors.enabled) {
-    setupExtensionIdentityListener();
-  }
+  setupExtensionIdentityListener();
 
   // Create presence API — always available, wraps whichever awareness provider exists
   presenceAPI = createPresenceAPI({
