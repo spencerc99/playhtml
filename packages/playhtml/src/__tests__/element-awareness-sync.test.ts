@@ -97,10 +97,12 @@ describe("element awareness sync", () => {
       (socket) => socket.options.room !== playhtml.roomId && !socket.closed,
     )!;
     expect(cursorSocket).toBeDefined();
-    expect(sentChannelUpdates(pageSocket, "element:can-play").at(-1)).toEqual({
-      "room-scoped-presence": { active: true },
+    expect(sentChannelUpdates(pageSocket, "element:shard:0").at(-1)).toEqual({
+      v: 1,
+      entries: [["can-play", "room-scoped-presence", { active: true }]],
     });
     expect(sentChannelUpdates(cursorSocket, "element:can-play")).toEqual([]);
+    expect(sentChannelUpdates(cursorSocket, "element:shard:0")).toEqual([]);
   });
 
   it("does not mutate the previous awareness state object when updating", async () => {

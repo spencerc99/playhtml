@@ -1,16 +1,25 @@
 // ABOUTME: Publishes and consumes element awareness over the realtime presence transport.
 // ABOUTME: Rebuilds per-element awareness maps from page-scoped presence peers.
 
-import type {
-  PlayerIdentity,
-  PresenceChangesMessage,
-  PresenceServerMessage,
-  PresenceSnapshot,
+import {
+  MAX_PRESENCE_VALUE_BYTES,
+  type PlayerIdentity,
+  type PresenceChangesMessage,
+  type PresenceServerMessage,
+  type PresenceSnapshot,
 } from "@playhtml/common";
 import type { RealtimePresenceTransport } from "./presence-transport";
 import { isPresenceRecord } from "./presence-utils";
 
 export const ELEMENT_PRESENCE_CHANNEL_PREFIX = "element:";
+const ELEMENT_PRESENCE_SHARD_CHANNEL_PREFIX = `${ELEMENT_PRESENCE_CHANNEL_PREFIX}shard:`;
+const ELEMENT_PRESENCE_SHARD_VERSION = 1;
+
+type ElementPresenceEntry = [tag: string, elementId: string, value: unknown];
+type ElementPresenceShard = {
+  v: typeof ELEMENT_PRESENCE_SHARD_VERSION;
+  entries: ElementPresenceEntry[];
+};
 
 export type ElementAwarenessEntry = {
   array: any[];
@@ -40,6 +49,7 @@ export class ElementAwarenessClient {
   private getPage: () => string | undefined;
   private onAwareness: (awareness: ElementAwarenessMap) => void;
   private localTags = new Map<string, Record<string, unknown>>();
+  private publishedChannels = new Set<string>();
   private peers = new Map<string, Record<string, unknown>>();
   private unsubscribe: () => void;
 
@@ -59,7 +69,7 @@ export class ElementAwarenessClient {
     if (tagMap[elementId] === value) return;
     const next = { ...tagMap, [elementId]: value };
     this.localTags.set(tag, next);
-    this.publishTag(tag, next);
+    this.publishLocalAwareness();
     this.emit();
   }
 
@@ -70,11 +80,10 @@ export class ElementAwarenessClient {
     delete next[elementId];
     if (Object.keys(next).length === 0) {
       this.localTags.delete(tag);
-      this.clearTag(tag);
     } else {
       this.localTags.set(tag, next);
-      this.publishTag(tag, next);
     }
+    this.publishLocalAwareness();
     this.emit();
   }
 
@@ -108,17 +117,47 @@ export class ElementAwarenessClient {
     }
   }
 
-  private publishTag(tag: string, tagMap: Record<string, unknown>): void {
+  private publishLocalAwareness(): void {
+    const nextChannels = new Set<string>();
+    const shards = buildElementPresenceShards(this.localTags);
+
+    for (let i = 0; i < shards.length; i += 1) {
+      const channel = `${ELEMENT_PRESENCE_SHARD_CHANNEL_PREFIX}${i}`;
+      if (this.publishChannel(channel, shards[i])) {
+        nextChannels.add(channel);
+      }
+    }
+
+    for (const channel of this.publishedChannels) {
+      if (!nextChannels.has(channel)) this.clearChannel(channel);
+    }
+
+    this.publishedChannels = nextChannels;
+  }
+
+  private publishChannel(channel: string, value: unknown): boolean {
+    if (jsonByteLength(value) > MAX_PRESENCE_VALUE_BYTES) {
+      console.warn(
+        "[playhtml] Failed to publish element awareness:",
+        new Error(
+          `Presence value must be ${MAX_PRESENCE_VALUE_BYTES} bytes or less`,
+        ),
+      );
+      return false;
+    }
+
     try {
-      this.transport.update(`${ELEMENT_PRESENCE_CHANNEL_PREFIX}${tag}`, tagMap);
+      this.transport.update(channel, value);
+      return true;
     } catch (error) {
       console.warn("[playhtml] Failed to publish element awareness:", error);
+      return false;
     }
   }
 
-  private clearTag(tag: string): void {
+  private clearChannel(channel: string): void {
     try {
-      this.transport.clear(`${ELEMENT_PRESENCE_CHANNEL_PREFIX}${tag}`);
+      this.transport.clear(channel);
     } catch (error) {
       console.warn("[playhtml] Failed to clear element awareness:", error);
     }
@@ -207,10 +246,13 @@ export class ElementAwarenessClient {
 
       for (const [channel, value] of Object.entries(channels)) {
         if (!channel.startsWith(ELEMENT_PRESENCE_CHANNEL_PREFIX)) continue;
-        if (!isPresenceRecord(value)) continue;
-        const tag = channel.slice(ELEMENT_PRESENCE_CHANNEL_PREFIX.length);
-        for (const [elementId, awarenessValue] of Object.entries(value)) {
-          addEntry(result, tag, elementId, awarenessValue, stableId);
+        if (channel.startsWith(ELEMENT_PRESENCE_SHARD_CHANNEL_PREFIX)) {
+          addShardEntries(result, value, stableId);
+        } else if (isPresenceRecord(value)) {
+          const tag = channel.slice(ELEMENT_PRESENCE_CHANNEL_PREFIX.length);
+          for (const [elementId, awarenessValue] of Object.entries(value)) {
+            addEntry(result, tag, elementId, awarenessValue, stableId);
+          }
         }
       }
     }
@@ -234,4 +276,88 @@ function addEntry(
   }
   entry.array.push(value);
   entry.byStableId.set(stableId, value);
+}
+
+function buildElementPresenceShards(
+  localTags: Map<string, Record<string, unknown>>,
+): ElementPresenceShard[] {
+  const shards: ElementPresenceShard[] = [];
+  let entries: ElementPresenceEntry[] = [];
+
+  for (const entry of getSortedElementPresenceEntries(localTags)) {
+    const candidate = [...entries, entry];
+    if (
+      entries.length > 0 &&
+      jsonByteLength(createElementPresenceShard(candidate)) >
+        MAX_PRESENCE_VALUE_BYTES
+    ) {
+      shards.push(createElementPresenceShard(entries));
+      entries = [entry];
+    } else {
+      entries = candidate;
+    }
+  }
+
+  if (entries.length > 0) {
+    shards.push(createElementPresenceShard(entries));
+  }
+
+  return shards;
+}
+
+function getSortedElementPresenceEntries(
+  localTags: Map<string, Record<string, unknown>>,
+): ElementPresenceEntry[] {
+  const entries: ElementPresenceEntry[] = [];
+  for (const tag of Array.from(localTags.keys()).sort()) {
+    const tagMap = localTags.get(tag)!;
+    for (const elementId of Object.keys(tagMap).sort()) {
+      entries.push([tag, elementId, tagMap[elementId]]);
+    }
+  }
+  return entries;
+}
+
+function createElementPresenceShard(
+  entries: ElementPresenceEntry[],
+): ElementPresenceShard {
+  return {
+    v: ELEMENT_PRESENCE_SHARD_VERSION,
+    entries,
+  };
+}
+
+function addShardEntries(
+  result: ElementAwarenessMap,
+  value: unknown,
+  stableId: string,
+): void {
+  if (!isElementPresenceShard(value)) return;
+  for (const entry of value.entries) {
+    const [tag, elementId, awarenessValue] = entry;
+    addEntry(result, tag, elementId, awarenessValue, stableId);
+  }
+}
+
+function isElementPresenceShard(value: unknown): value is ElementPresenceShard {
+  if (!isPresenceRecord(value)) return false;
+  if (value.v !== ELEMENT_PRESENCE_SHARD_VERSION) return false;
+  if (!Array.isArray(value.entries)) return false;
+  return value.entries.every(
+    (entry) =>
+      Array.isArray(entry) &&
+      entry.length === 3 &&
+      typeof entry[0] === "string" &&
+      typeof entry[1] === "string",
+  );
+}
+
+function jsonByteLength(value: unknown): number {
+  try {
+    const json = JSON.stringify(value);
+    if (json === undefined) return Infinity;
+    return new TextEncoder().encode(json).byteLength;
+  } catch {
+    return Infinity;
+  }
 }

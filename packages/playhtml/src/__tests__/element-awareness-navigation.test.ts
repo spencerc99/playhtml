@@ -53,10 +53,12 @@ describe("element awareness across navigation", () => {
     await playhtml.setupPlayElementForTag(el, "can-play");
     playhtml.elementHandlers.get("can-play")!.get("nav-card")!
       .setMyAwareness({ here: true } as any);
-    expect(sentChannelUpdates(socketB, "element:can-play").at(-1)).toEqual({
-      "nav-card": { here: true },
+    expect(sentChannelUpdates(socketB, "element:shard:0").at(-1)).toEqual({
+      v: 1,
+      entries: [["can-play", "nav-card", { here: true }]],
     });
     expect(sentChannelUpdates(socketA, "element:can-play")).toEqual([]);
+    expect(sentChannelUpdates(socketA, "element:shard:0")).toEqual([]);
   });
 
   it("keeps the page-room transport when only the cursor room changes across navigation", async () => {

@@ -1,7 +1,8 @@
-// ABOUTME: Verifies ElementAwarenessClient publishes tag channels and rebuilds
-// ABOUTME: per-element awareness maps from page-scoped presence peers.
+// ABOUTME: Verifies ElementAwarenessClient publishes bounded channels and
+// ABOUTME: rebuilds per-element awareness maps from page-scoped presence peers.
 
 import { describe, expect, it, vi } from "vitest";
+import { MAX_PRESENCE_VALUE_BYTES } from "@playhtml/common";
 import { RealtimePresenceTransport } from "../presence-transport";
 import {
   ElementAwarenessClient,
@@ -40,6 +41,12 @@ const IDENTITY = {
   playerStyle: { colorPalette: ["red"] },
 };
 
+function jsonByteLength(value: unknown): number {
+  const json = JSON.stringify(value);
+  if (json === undefined) return Infinity;
+  return new TextEncoder().encode(json).byteLength;
+}
+
 function createClient() {
   const socket = new FakeSocket();
   const transport = new RealtimePresenceTransport({
@@ -68,13 +75,13 @@ describe("ElementAwarenessClient", () => {
     });
   });
 
-  it("publishes the whole tag map on element:<tag> and emits locally", () => {
+  it("publishes element awareness in a bounded shard and emits locally", () => {
     const { client, parsedSent, emitted } = createClient();
     client.setLocalAwareness("can-play", "card", { active: true });
     expect(parsedSent().at(-1)).toEqual({
       type: "presence-update",
-      channel: "element:can-play",
-      value: { card: { active: true } },
+      channel: "element:shard:0",
+      value: { v: 1, entries: [["can-play", "card", { active: true }]] },
     });
     const entry = emitted.at(-1)!.get("can-play:card")!;
     expect(entry.array).toEqual([{ active: true }]);
@@ -98,17 +105,36 @@ describe("ElementAwarenessClient", () => {
     client.removeLocalAwareness("can-play", "a");
     expect(parsedSent().at(-1)).toEqual({
       type: "presence-update",
-      channel: "element:can-play",
-      value: { b: { n: 2 } },
+      channel: "element:shard:0",
+      value: { v: 1, entries: [["can-play", "b", { n: 2 }]] },
     });
     client.removeLocalAwareness("can-play", "b");
     expect(parsedSent().at(-1)).toEqual({
       type: "presence-clear",
-      channel: "element:can-play",
+      channel: "element:shard:0",
     });
   });
 
-  it("rebuilds remote awareness keyed by identity publicKey", () => {
+  it("rebuilds remote shard awareness keyed by identity publicKey", () => {
+    const { socket, emitted } = createClient();
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        "conn-2": {
+          identity: { publicKey: "pk_remote", playerStyle: { colorPalette: ["blue"] } },
+          "element:shard:0": {
+            v: 1,
+            entries: [["can-play", "card", { active: true }]],
+          },
+        },
+      },
+    });
+    const entry = emitted.at(-1)!.get("can-play:card")!;
+    expect(entry.array).toEqual([{ active: true }]);
+    expect(entry.byStableId.get("pk_remote")).toEqual({ active: true });
+  });
+
+  it("rebuilds remote legacy tag-map awareness", () => {
     const { socket, emitted } = createClient();
     socket.receive({
       type: "presence-sync",
@@ -145,7 +171,10 @@ describe("ElementAwarenessClient", () => {
       updates: {
         "conn-self": {
           identity: IDENTITY,
-          "element:can-play": { card: { active: true } },
+          "element:shard:0": {
+            v: 1,
+            entries: [["can-play", "card", { active: true }]],
+          },
         },
       },
       removes: {},
@@ -162,14 +191,17 @@ describe("ElementAwarenessClient", () => {
       peers: {
         "conn-2": {
           identity: { publicKey: "pk_remote", playerStyle: { colorPalette: ["blue"] } },
-          "element:can-play": { card: { active: true } },
+          "element:shard:0": {
+            v: 1,
+            entries: [["can-play", "card", { active: true }]],
+          },
         },
       },
     });
     socket.receive({
       type: "presence-changes",
       updates: {},
-      removes: { "conn-2": ["identity", "element:can-play"] },
+      removes: { "conn-2": ["identity", "element:shard:0"] },
     });
     expect(emitted.at(-1)!.has("can-play:card")).toBe(false);
   });
@@ -193,6 +225,48 @@ describe("ElementAwarenessClient", () => {
     const huge = { blob: "x".repeat(5000) };
     expect(() => client.setLocalAwareness("can-play", "card", huge)).not.toThrow();
     expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("clears a previously published shard when the replacement value is oversized", () => {
+    const { client, parsedSent } = createClient();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    client.setLocalAwareness("can-play", "card", { active: true });
+    client.setLocalAwareness("can-play", "card", { blob: "x".repeat(5000) });
+
+    expect(warn).toHaveBeenCalled();
+    expect(parsedSent().at(-1)).toEqual({
+      type: "presence-clear",
+      channel: "element:shard:0",
+    });
+    warn.mockRestore();
+  });
+
+  it("keeps high-count element awareness publishes below the presence value limit", () => {
+    const { client, parsedSent } = createClient();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    for (let i = 0; i < 300; i += 1) {
+      client.setLocalAwareness("can-mirror", `tile-${i}`, {
+        hover: false,
+        focus: false,
+      });
+    }
+
+    const updates = parsedSent().filter(
+      (message) =>
+        message.type === "presence-update" &&
+        message.channel.startsWith("element:"),
+    );
+    expect(updates.length).toBeGreaterThan(0);
+    for (const update of updates) {
+      expect(jsonByteLength(update.value)).toBeLessThanOrEqual(
+        MAX_PRESENCE_VALUE_BYTES,
+      );
+    }
+    expect(JSON.stringify(updates)).toContain("tile-299");
+    expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 
