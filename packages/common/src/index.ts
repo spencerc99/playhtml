@@ -19,13 +19,15 @@ export * from "./presence-protocol";
 export type ViewTemplate = unknown;
 
 export interface ElementInitializer<T = any, U = any, V = any> {
-  defaultData: T | ((element: HTMLElement) => T);
+  defaultData?: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
   /**
    * Imperative update path: receives the current state and mutates the DOM
-   * directly. Required unless `view` is provided. `view` and `updateElement`
-   * are mutually exclusive — providing both is a registration-time error.
+   * directly. Pair with `defaultData`; use `view` instead for declarative
+   * rendering.
+   * `view` and `updateElement` are mutually exclusive — providing both is a
+   * registration-time error.
    */
   updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
   /**
@@ -41,6 +43,9 @@ export interface ElementInitializer<T = any, U = any, V = any> {
    * @experimental New and subject to change in a future minor release.
    */
   view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
+  /**
+   * Imperative awareness update path. Required with `myDefaultAwareness`.
+   */
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>,
   ) => void;
