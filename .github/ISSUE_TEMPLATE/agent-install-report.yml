@@ -1,0 +1,64 @@
+name: Agent install report
+description: Report a problem an agent hit while installing playhtml.
+title: "[Agent install]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include the exact command and complete error output. Do not include secrets.
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Coding agent
+      description: Which agent attempted the install?
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - GitHub Copilot
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: project-stack
+    attributes:
+      label: Project stack
+      description: For example, Vite with React 19, Next.js, or static HTML.
+      placeholder: Vite with React 19
+    validations:
+      required: true
+  - type: dropdown
+    id: package-manager
+    attributes:
+      label: Package manager
+      options:
+        - npm
+        - pnpm
+        - yarn
+        - bun
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands run
+      description: Paste the exact install and verification commands.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: error-output
+    attributes:
+      label: Error output
+      description: Paste the complete error output with secrets removed.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: changes-tried
+    attributes:
+      label: Changes already tried
+      description: List package, configuration, or source changes the agent made before reporting.
+    validations:
+      required: true

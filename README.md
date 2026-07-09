@@ -31,7 +31,7 @@ playhtml is in beta and actively developed. Join the [Discord](https://discord.c
 **React:**
 
 ```bash
-npm install @playhtml/react @playhtml/common
+npm install playhtml @playhtml/react
 ```
 
 ```tsx
@@ -77,6 +77,19 @@ Each has a live demo and full docs in the [capabilities reference](https://playh
 
 playhtml works well with coding assistants.
 
+**Ask an agent to install playhtml** — give a command-capable agent this prompt:
+
+```text
+Install playhtml for me.
+
+Read https://playhtml.fun/docs/agent-setup/ and install playhtml in this project.
+If you cannot install packages or run local commands, tell me to use a
+command-capable agent.
+```
+
+The [agent setup guide](https://playhtml.fun/docs/agent-setup/) includes the install
+steps, verification guidance, and a prefilled GitHub issue form for setup failures.
+
 **Claude Code users** — install the plugin for a skill that auto-activates when you ask Claude to build playhtml elements:
 
 ```bash
@@ -84,7 +97,7 @@ claude plugin marketplace add spencerc99/playhtml
 claude plugin install playhtml@playhtml
 ```
 
-**Any other LLM (ChatGPT, Copilot, Cursor, ...)** — copy the prompt template from the [building with AI](https://playhtml.fun/docs/integrations/building-with-ai/) guide into your conversation.
+**Any other LLM (ChatGPT, Copilot, Cursor, ...)** — start with the [agent setup guide](https://playhtml.fun/docs/agent-setup/), then use the prompt template from the [building with AI](https://playhtml.fun/docs/integrations/building-with-ai/) guide when you are ready to build an element.
 
 ## Examples
 

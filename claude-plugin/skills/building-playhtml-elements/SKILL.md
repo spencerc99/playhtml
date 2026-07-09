@@ -7,6 +7,18 @@ description: Use when building, creating, or implementing a playhtml element or 
 
 playhtml makes HTML elements collaborative and real-time via Yjs CRDTs.
 
+## Install playhtml
+
+When the user asks you to install playhtml in their project, read
+https://playhtml.fun/docs/agent-setup/ before changing files. Use the project's
+existing package manager, run its normal verification command, and do not install
+`@playhtml/common` in application code.
+
+If setup fails, open
+https://github.com/spencerc99/playhtml/issues/new?template=agent-install-report.yml
+with the agent, project stack, package manager, exact command, full error output,
+and changes already attempted.
+
 ## Before Implementing — Ask These Questions
 
 If the user's request is ambiguous on ANY of these, **stop and ask**:
