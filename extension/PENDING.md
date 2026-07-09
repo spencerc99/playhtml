@@ -1,5 +1,7 @@
 # Unreleased
 
+- The inventory shortcut moved to Ctrl+Shift+B on Windows/Linux (Cmd+Shift+I on Mac is unchanged), freeing Ctrl+Shift+E for an in-progress emote wheel.
+
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**
 and anything else that ships in the zip). Website (extension/website/**) and
