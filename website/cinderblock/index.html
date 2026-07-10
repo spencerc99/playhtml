@@ -1,0 +1,74 @@
+<!-- ABOUTME: Hosts the collaborative cinder-block construction yard at /cinderblock. -->
+<!-- ABOUTME: Provides the accessible toolbar and fixed-size physics stage for the vanilla app. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Build, topple, and rebuild a shared cinder-block structure."
+    />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <title>Cinderblock Yard · playhtml</title>
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="title-row">
+        <div>
+          <p class="eyebrow">a shared material study by playhtml</p>
+          <h1>Cinderblock Yard</h1>
+        </div>
+        <p class="instructions">
+          Drag a block to build or knock things down. Select one, then press
+          <kbd>R</kbd> to turn it.
+        </p>
+      </header>
+
+      <nav class="toolbar" aria-label="Cinder block tools">
+        <div class="add-tools">
+          <span class="tool-label">add</span>
+          <button type="button" data-action="add-css">
+            <span class="css-swatch" aria-hidden="true"></span>
+            drawn block
+          </button>
+          <button type="button" data-action="add-photo">
+            <img src="/cinderblock-realistic.png" alt="" />
+            real block
+          </button>
+        </div>
+        <div class="selection-tools">
+          <span class="tool-label">selected</span>
+          <button type="button" data-action="rotate" disabled>
+            rotate 90°
+          </button>
+          <button class="danger" type="button" data-action="remove" disabled>
+            remove
+          </button>
+        </div>
+        <p id="yard-status" role="status">joining the yard…</p>
+      </nav>
+
+      <section
+        id="stage-frame"
+        class="stage-frame"
+        aria-label="Shared cinder-block construction area"
+      >
+        <div id="cinderblock-yard" can-play>
+          <div id="block-layer"></div>
+          <div class="ground" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <footer>
+        <p>
+          Every moving block is synced while the physics runs. This is the
+          deliberately naive prototype.
+        </p>
+        <a href="/">playhtml.fun</a>
+      </footer>
+    </main>
+
+    <script type="module" src="./cinderblock.js"></script>
+  </body>
+</html>
