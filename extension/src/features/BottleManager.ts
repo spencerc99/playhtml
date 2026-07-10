@@ -106,11 +106,13 @@ export class BottleManager {
   init(onRender: RenderCallback): void {
     this.renderCallback = onRender;
 
-    // The room is already extension-owned and per-page (set when the WWO
-    // playhtml instance inits), so the channel key only needs to name the
-    // feature within that room — no `wwo:` prefix, no URL. `bottles` stays
-    // distinct from sibling keys (e.g. link-glows) on the custom-cursor-site
-    // pages where bottles share the site's room.
+    // The room is extension-owned and domain-scoped (set when the WWO
+    // playhtml instance inits), so this channel holds the whole domain's
+    // guestbook and the key only needs to name the feature within that room —
+    // no `wwo:` prefix, no URL. Page scoping happens at render via each
+    // record's pageUrl. `bottles` stays distinct from sibling keys (e.g.
+    // link-glows) on the custom-cursor-site pages where bottles share the
+    // site's room.
     this.channel = this.createPageData<BottlePageData>("bottles", {
       bottles: {},
     });
