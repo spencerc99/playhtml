@@ -1,5 +1,7 @@
 # Unreleased
 
+- Message bottles (dev-flagged): letters are now addressed to the website — every letter opens "dear <page>,", writing spends from a small letter pouch that regrows over time, and untouched pages always invite a first letter.
+
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**
 and anything else that ships in the zip). Website (extension/website/**) and
