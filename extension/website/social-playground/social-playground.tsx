@@ -46,10 +46,7 @@ function randomColor() {
 // Shared seed data for both the bottle preview's "seed" button and the
 // standalone ceremony tester, so both show the same realistic multi-letter
 // thread (varied styleId/authorColor/authorName) rather than one-off fixtures.
-// "web1" is a legacy alias of "linen" (see RETIRED_STYLE_ALIASES in
-// segmentStyles.ts) — kept here so the seed data keeps exercising that alias
-// path alongside the pickable styles.
-const SEED_STYLE_IDS = ["linen", "web1", "stationery", "webnative"];
+const SEED_STYLE_IDS = ["linen", "stationery", "webnative"];
 const SEED_COLORS = ["#c4724e", "#4a9a8a", "#5b8db8", "#d4b85c", "#8b6b7f"];
 const SEED_LINES = [
   "passing through, leaving a pebble on the pile.",
@@ -165,7 +162,7 @@ function BottlePreview() {
       } else {
         // "---" on its own line splits the textarea into separate letters, so
         // the multi-letter scroll (tick rail, snap, land-on-latest) is testable.
-        const styleIds = ["web1", "stationery", "webnative"];
+        const styleIds = ["linen", "stationery", "webnative"];
         const colors = ["#c4724e", "#4a9a8a", "#5b8db8", "#8b6b7f"];
         const parts = (textEl?.value || "")
           .split(/\n---\n/)

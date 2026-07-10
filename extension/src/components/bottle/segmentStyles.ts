@@ -208,12 +208,6 @@ export const LINEN: SegmentStyle = {
   ceremony: { ink: "#3d3833", paintGround: paintLinenGround },
 };
 
-// Ids of styles retired from the pickable set but still persisted on old
-// notes. Resolved through this alias map so existing notes keep rendering
-// the look they were saved with instead of falling through to a wrong style.
-const RETIRED_STYLE_ALIASES: Record<string, SegmentStyle> = {
-  web1: LINEN,
-};
 
 /** The pickable presets, deliberately spanning physical → digital. */
 export const SEGMENT_STYLES: SegmentStyle[] = [
@@ -235,9 +229,5 @@ export const SEGMENT_STYLES: SegmentStyle[] = [
 ];
 
 export function segmentStyle(id?: string): SegmentStyle {
-  return (
-    SEGMENT_STYLES.find((s) => s.id === id) ??
-    (id ? RETIRED_STYLE_ALIASES[id] : undefined) ??
-    LINEN
-  );
+  return SEGMENT_STYLES.find((s) => s.id === id) ?? LINEN;
 }

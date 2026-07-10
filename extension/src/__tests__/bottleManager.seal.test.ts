@@ -83,12 +83,12 @@ describe("BottleManager.seal", () => {
     const ok = mgr.seal(
       "hello",
       { id: "b1", anchor },
-      { authorName: "Spencer", styleId: "web1" },
+      { authorName: "Spencer", styleId: "stationery" },
     );
     expect(ok).toBe(true);
     const bottle = Object.values(channel.read().bottles)[0];
     expect(bottle.notes[0].authorName).toBe("Spencer");
-    expect(bottle.notes[0].styleId).toBe("web1");
+    expect(bottle.notes[0].styleId).toBe("stationery");
     expect(bottle.notes[0].pageUrl).toBe(window.location.href);
   });
 
