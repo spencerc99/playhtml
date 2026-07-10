@@ -17,6 +17,11 @@ export type PlayerIdentity = {
   createdAt?: number;
 };
 
+export const MAX_PLAYER_IDENTITY_COLORS = 16;
+export const MAX_PLAYER_IDENTITY_STRING_LENGTH = 512;
+
+const PLAYER_IDENTITY_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
 export type CursorZonePosition = {
   zoneId: string;       // matches element.id of the zone element
   relX: number;         // 0-1, percentage within zone element's bounding box
@@ -66,16 +71,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function toPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
   if (!isRecord(value)) return null;
-  if (typeof value.publicKey !== "string" || value.publicKey.length === 0) {
+  if (!isValidPlayerIdentityString(value.publicKey)) {
     return null;
   }
 
   const sourceStyle = isRecord(value.playerStyle) ? value.playerStyle : {};
   const colorPalette = Array.isArray(sourceStyle.colorPalette)
-    ? sourceStyle.colorPalette.filter(
-        (color): color is string =>
-          typeof color === "string" && color.length > 0,
-      )
+    ? sourceStyle.colorPalette
+        .filter(isValidPlayerIdentityString)
+        .slice(0, MAX_PLAYER_IDENTITY_COLORS)
     : [];
 
   const identity: PlayerIdentity = {
@@ -83,12 +87,14 @@ export function toPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
     playerStyle: { colorPalette },
   };
 
-  if (typeof value.name === "string") {
-    identity.name = value.name;
+  const name = toOptionalPlayerIdentityString(value.name);
+  if (name !== undefined) {
+    identity.name = name;
   }
 
-  if (typeof sourceStyle.cursorStyle === "string") {
-    identity.playerStyle.cursorStyle = sourceStyle.cursorStyle;
+  const cursorStyle = toOptionalPlayerIdentityString(sourceStyle.cursorStyle);
+  if (cursorStyle !== undefined) {
+    identity.playerStyle.cursorStyle = cursorStyle;
   }
 
   if (Number.isFinite(value.createdAt)) {
@@ -96,6 +102,21 @@ export function toPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
   }
 
   return identity;
+}
+
+function isValidPlayerIdentityString(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_PLAYER_IDENTITY_STRING_LENGTH &&
+    !PLAYER_IDENTITY_CONTROL_CHARACTERS.test(value)
+  );
+}
+
+function toOptionalPlayerIdentityString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  if (PLAYER_IDENTITY_CONTROL_CHARACTERS.test(value)) return undefined;
+  return value.slice(0, MAX_PLAYER_IDENTITY_STRING_LENGTH);
 }
 
 export function generatePlayerIdentity(): PlayerIdentity {

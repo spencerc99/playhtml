@@ -26,12 +26,10 @@ vi.mock("../storage/participant", () => ({
   getTimezone: vi.fn().mockReturnValue("America/New_York"),
 }));
 
-vi.mock("../storage/playerIdentity", () => ({
-  getPublicPlayerIdentity: vi.fn().mockResolvedValue({
-    publicKey: "test-pid",
-    playerStyle: { colorPalette: ["#4a9a8a"] },
-  }),
-}));
+const publicIdentity = {
+  publicKey: "test-pid",
+  playerStyle: { colorPalette: ["#4a9a8a"] },
+};
 
 describe("Collector Integration", () => {
   let manager: CollectorManager;
@@ -59,6 +57,13 @@ describe("Collector Integration", () => {
     vi.mocked(browser.storage.local.set).mockImplementation((items) => {
       Object.assign(storageData, items);
       return Promise.resolve();
+    });
+
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
+        return Promise.resolve(publicIdentity);
+      }
+      return Promise.resolve({});
     });
 
     manager = new CollectorManager();
@@ -295,7 +300,12 @@ describe("Collector Integration", () => {
     it("stores cursor clicks when collectors stop", async () => {
       const cursorCollector = new CursorCollector();
       manager.registerCollector(cursorCollector);
-      vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ success: true });
+      vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+        if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
+          return Promise.resolve(publicIdentity);
+        }
+        return Promise.resolve({ success: true });
+      });
 
       await manager.enableCollector("cursor");
 

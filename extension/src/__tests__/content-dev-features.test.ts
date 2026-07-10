@@ -141,7 +141,7 @@ describe("content internal development features", () => {
     expect(mutationObserver).not.toHaveBeenCalled();
   });
 
-  it("does not inject a public identity that exceeds the presence limit", async () => {
+  it("bounds public identity fields before injecting them", async () => {
     publicIdentityResponse.value = {
       publicKey: "pk_test",
       name: "x".repeat(5000),
@@ -164,7 +164,15 @@ describe("content internal development features", () => {
       });
       await Promise.resolve();
 
-      expect(injected).not.toHaveBeenCalled();
+      expect(injected).toHaveBeenCalledOnce();
+      const event = injected.mock.calls[0][0] as CustomEvent;
+      expect(event.detail).toEqual({
+        playerIdentity: {
+          publicKey: "pk_test",
+          name: "x".repeat(512),
+          playerStyle: { colorPalette: ["#4a9a8a"] },
+        },
+      });
     } finally {
       document.removeEventListener("playhtml:configure-identity", injected);
     }

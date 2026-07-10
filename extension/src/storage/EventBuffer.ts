@@ -1,11 +1,11 @@
 // ABOUTME: Collects browser events, buffers them in memory, and delegates storage and
 // ABOUTME: upload to the background service worker via browser.runtime.sendMessage
 import type { CollectionEvent, CollectionEventType } from '../collectors/types';
+import { toPublicPlayerIdentity } from '@playhtml/common';
+import browser from 'webextension-polyfill';
 import { createPrefixedId } from './ids';
-import { getPublicPlayerIdentity } from './playerIdentity';
 import { getSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
-import browser from 'webextension-polyfill';
 
 const BATCH_INTERVAL_MS = 3000; // 3 seconds
 const STORE_BATCH_INTERVAL_MS = 250;
@@ -28,7 +28,11 @@ function shouldStoreWithoutDelay(event: CollectionEvent): boolean {
 
 async function getEventParticipantPublicKey(): Promise<string> {
   try {
-    const identity = await getPublicPlayerIdentity();
+    const identity = toPublicPlayerIdentity(
+      await browser.runtime.sendMessage({
+        type: 'GET_PUBLIC_PLAYER_IDENTITY',
+      }),
+    );
     if (identity?.publicKey) return identity.publicKey;
 
     console.warn('[EventBuffer] playerIdentity not found, using temporary ID');

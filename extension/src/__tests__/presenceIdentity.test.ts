@@ -3,13 +3,16 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  MAX_PRESENCE_VALUE_BYTES,
   toPublicPlayerIdentity,
   validatePresenceClientMessage,
 } from "@playhtml/common";
 
 describe("toPublicPlayerIdentity", () => {
-  it("keeps oversized extension identity fields out of presence payloads", () => {
+  it("keeps private and profile fields out of presence payloads", () => {
+    const colorPalette = Array.from(
+      { length: 20 },
+      (_, index) => `hsl(${index}, 70%, 60%)`,
+    );
     const rawIdentity = {
       publicKey: "pk_" + "a".repeat(130),
       privateKey: {
@@ -17,7 +20,7 @@ describe("toPublicPlayerIdentity", () => {
         kty: "EC",
       },
       playerStyle: {
-        colorPalette: ["#4a9a8a", "#c4724e"],
+        colorPalette,
         cursorStyle: "default",
         animationStyle: "gentle",
         interactionPatterns: ["hover", "click"],
@@ -30,14 +33,6 @@ describe("toPublicPlayerIdentity", () => {
       createdAt: Date.now(),
     };
 
-    expect(() =>
-      validatePresenceClientMessage({
-        type: "presence-join",
-        identity: rawIdentity,
-        page: "/wiki/Octopus",
-      }),
-    ).toThrow("Presence value must be 4096 bytes or less");
-
     const identity = toPublicPlayerIdentity(rawIdentity);
 
     expect(identity).toEqual({
@@ -45,7 +40,7 @@ describe("toPublicPlayerIdentity", () => {
       name: "Test player",
       createdAt: rawIdentity.createdAt,
       playerStyle: {
-        colorPalette: ["#4a9a8a", "#c4724e"],
+        colorPalette: colorPalette.slice(0, 16),
         cursorStyle: "default",
       },
     });
@@ -58,14 +53,5 @@ describe("toPublicPlayerIdentity", () => {
         page: "/wiki/Octopus",
       }),
     ).not.toThrow();
-    expect(
-      new TextEncoder().encode(
-        JSON.stringify({
-          type: "presence-join",
-          identity,
-          page: "/wiki/Octopus",
-        }),
-      ).byteLength,
-    ).toBeLessThanOrEqual(MAX_PRESENCE_VALUE_BYTES);
   });
 });

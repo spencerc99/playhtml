@@ -58,14 +58,27 @@ describe("presence protocol", () => {
     ).toThrow("cursor.x must be a finite number");
   });
 
-  it("rejects oversized presence values", () => {
+  it("accepts custom presence values larger than 4 KiB", () => {
     expect(() =>
       validatePresenceClientMessage({
         type: "presence-update",
         channel: "status",
         value: "x".repeat(4097),
       }),
-    ).toThrow("Presence value must be 4096 bytes or less");
+    ).not.toThrow();
+  });
+
+  it("rejects presence values that are not JSON-serializable", () => {
+    const value: Record<string, unknown> = {};
+    value.self = value;
+
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-update",
+        channel: "status",
+        value,
+      }),
+    ).toThrow("Presence value must be JSON-serializable");
   });
 
   it("rejects joins without a stable identity key", () => {
@@ -89,6 +102,18 @@ describe("presence protocol", () => {
         },
       }),
     ).toThrow("identity.playerStyle.colorPalette[0] must be a non-empty string");
+  });
+
+  it("rejects identity palettes with more than 16 colors", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: Array(17).fill("red") },
+        },
+      }),
+    ).toThrow("identity.playerStyle.colorPalette must have 16 colors or less");
   });
 
   it("rejects identity payloads with private or profile fields", () => {

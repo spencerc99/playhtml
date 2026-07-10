@@ -20,5 +20,4 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- Fix Wikipedia presence startup for larger local profiles.
-- Keep private identity keys out of page-facing identity payloads.
+- Fix Wikipedia presence startup while keeping private identity keys out of page-facing payloads.

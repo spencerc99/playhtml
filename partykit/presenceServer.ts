@@ -14,8 +14,8 @@ import {
   validatePresenceClientMessage,
 } from "@playhtml/common";
 import {
-  applyPresenceClientMessage,
   clearPresenceMessageBudget,
+  commitPresenceClientMessage,
   consumePresenceMessageBudget,
   createPresenceMessageBudgetState,
   createPresenceRoomState,
@@ -24,11 +24,14 @@ import {
   takePresenceChanges,
 } from "./presencePolicy";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
+import {
+  assertPresenceMessageSize,
+  persistPresenceConnectionState,
+} from "./presenceMessage";
 
 const PRESENCE_CHANNELS_STATE_KEY = "__playhtmlPresenceChannels";
 const PRESENCE_OPENED_AT_STATE_KEY = "__playhtmlPresenceOpenedAt";
 const PRESENCE_BROADCAST_INTERVAL_MS = 1000 / 60;
-const MAX_PRESENCE_RAW_MESSAGE_BYTES = 8192;
 const PRESENCE_INVALID_MESSAGE_WINDOW_MS = 1000;
 const PRESENCE_INVALID_MESSAGE_LIMIT = 10;
 
@@ -72,16 +75,9 @@ export class PresenceServer extends Server<Env> {
       return;
     }
 
-    if (new TextEncoder().encode(message).byteLength > MAX_PRESENCE_RAW_MESSAGE_BYTES) {
-      this.sendError(
-        connection,
-        `Presence messages must be ${MAX_PRESENCE_RAW_MESSAGE_BYTES} bytes or less`,
-      );
-      return;
-    }
-
     let parsed: PresenceClientMessage;
     try {
+      assertPresenceMessageSize(message);
       parsed = validatePresenceClientMessage(JSON.parse(message));
     } catch (error) {
       this.sendError(connection, getErrorMessage(error));
@@ -102,13 +98,16 @@ export class PresenceServer extends Server<Env> {
     }
 
     try {
-      this.restorePeerFromConnection(presenceConnection);
-      applyPresenceClientMessage(
+      const storedChannels =
+        presenceConnection.state?.[PRESENCE_CHANNELS_STATE_KEY] ?? {};
+      commitPresenceClientMessage(
         this.presenceState,
         presenceConnection.id,
+        storedChannels,
         parsed,
+        (channels) =>
+          this.storeConnectionChannels(presenceConnection, channels),
       );
-      this.storeConnectionChannels(presenceConnection);
     } catch (error) {
       this.sendError(connection, getErrorMessage(error));
       return;
@@ -189,14 +188,16 @@ export class PresenceServer extends Server<Env> {
 
   private storeConnectionChannels(
     connection: Connection<PresenceConnectionState>,
+    channels: Record<string, unknown>,
   ): void {
-    const channels = this.presenceState.peers.get(connection.id);
-    connection.setState((previous) => ({
+    const previous = connection.state as PresenceConnectionState | null;
+    const next: PresenceConnectionState = {
       ...(previous ?? {}),
-      [PRESENCE_CHANNELS_STATE_KEY]: channels
-        ? Object.fromEntries(channels)
-        : {},
-    }));
+      [PRESENCE_CHANNELS_STATE_KEY]: channels,
+    };
+    persistPresenceConnectionState(previous, next, (state) => {
+      connection.setState(state);
+    });
   }
 
   private restorePeerFromConnection(
