@@ -2,10 +2,9 @@
 // ABOUTME: Runs in a real extension window so Firefox does not close toolbar popup state.
 
 import React, { useEffect, useState } from "react";
-import browser from "webextension-polyfill";
 import { CursorSvg } from "./icons";
 import { savePlayerColor } from "../storage/playerColor";
-import type { PlayerIdentity } from "../types";
+import { getPublicPlayerIdentity } from "../storage/playerIdentity";
 import "./ColorPickerPage.scss";
 
 export function ColorPickerPage() {
@@ -17,10 +16,7 @@ export function ColorPickerPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { playerIdentity } = await browser.storage.local.get([
-          "playerIdentity",
-        ]);
-        const identity = playerIdentity as PlayerIdentity | undefined;
+        const identity = await getPublicPlayerIdentity();
         const storedColor = identity?.playerStyle?.colorPalette?.[0];
         if (storedColor) setColor(storedColor);
         setHasIdentity(Boolean(identity));

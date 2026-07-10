@@ -70,6 +70,10 @@ export async function validateExtensionBuild(buildDir) {
   const missingResources = [];
   let buildFiles;
 
+  if (manifest.options_ui?.open_in_tab !== true) {
+    throw new Error("Extension manifest options_ui.open_in_tab must be true");
+  }
+
   for (const resource of resources) {
     if (hasResourcePattern(resource)) {
       buildFiles ??= await collectBuildFiles(buildDir);

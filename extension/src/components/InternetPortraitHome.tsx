@@ -14,6 +14,7 @@ import { PostcardStack } from "../announcements/PostcardStack";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
+  discoveredSites: string[];
   onViewCollections: () => void;
   onViewHistory: () => void;
   onViewProfile?: () => void;
@@ -33,6 +34,7 @@ interface PortraitStats {
 
 export function InternetPortraitHome({
   playerIdentity,
+  discoveredSites,
   onViewCollections,
   onViewHistory,
   onViewProfile,
@@ -122,7 +124,12 @@ export function InternetPortraitHome({
         <div className="portrait-home__header-row">
           <h1 className="portrait-home__wordmark">we were online</h1>
           {playerIdentity && (
-            <PlayerIdentityCard playerIdentity={playerIdentity} compact onClick={onViewProfile} />
+            <PlayerIdentityCard
+              playerIdentity={playerIdentity}
+              discoveredSites={discoveredSites}
+              compact
+              onClick={onViewProfile}
+            />
           )}
         </div>
         <div className="portrait-home__subtitle-row">

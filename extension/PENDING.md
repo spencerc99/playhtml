@@ -1,6 +1,8 @@
 # Unreleased
 
 - Message bottles (dev-flagged): letters are now addressed to the website — every letter opens "dear <page>,", writing spends from a small letter pouch that regrows over time, and untouched pages always invite a first letter.
+- The inventory shortcut moved to Ctrl+Shift+B on Windows/Linux (Cmd+Shift+I on Mac is unchanged), freeing Ctrl+Shift+E for an in-progress emote wheel.
+- Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**
@@ -19,3 +21,5 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Fix Wikipedia presence startup while keeping private identity keys out of page-facing payloads.

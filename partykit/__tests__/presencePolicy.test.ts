@@ -3,6 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   applyPresenceClientMessage,
+  commitPresenceClientMessage,
   consumePresenceMessageBudget,
   createPresenceMessageBudgetState,
   createPresenceSyncMessage,
@@ -183,6 +184,52 @@ describe("presence room policy", () => {
         "conn-1": ["cursor"],
       },
     });
+  });
+
+  it("persists candidate channels before recording their changes", () => {
+    const state = createPresenceRoomState();
+    const stored = { status: "away" };
+    let persisted: Record<string, unknown> | undefined;
+
+    commitPresenceClientMessage(
+      state,
+      "conn-1",
+      stored,
+      { type: "presence-update", channel: "status", value: "here" },
+      (channels) => {
+        expect(takePresenceChanges(state)).toBe(null);
+        persisted = channels;
+      },
+    );
+
+    expect(persisted).toEqual({ status: "here" });
+    expect(takePresenceChanges(state)).toEqual({
+      type: "presence-changes",
+      updates: { "conn-1": { status: "here" } },
+      removes: {},
+    });
+  });
+
+  it("does not mutate room state when candidate persistence fails", () => {
+    const state = createPresenceRoomState();
+    restorePresenceConnectionChannels(state, "conn-1", { status: "away" });
+
+    expect(() =>
+      commitPresenceClientMessage(
+        state,
+        "conn-1",
+        { status: "away" },
+        { type: "presence-update", channel: "status", value: "here" },
+        () => {
+          throw new Error("attachment too large");
+        },
+      ),
+    ).toThrow("attachment too large");
+
+    expect(getPresenceSyncSnapshot(state)).toEqual({
+      "conn-1": { status: "away" },
+    });
+    expect(takePresenceChanges(state)).toBe(null);
   });
 
   it("accepts cursor messages at the frame budget", () => {

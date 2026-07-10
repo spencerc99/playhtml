@@ -55,7 +55,6 @@ describe("background upload flushing", () => {
     }));
     vi.doMock("../storage/sync", () => ({
       uploadEvents,
-      syncParticipantColor: vi.fn(),
     }));
     vi.doMock("../storage/restore", () => ({
       fetchEventsByPid: vi.fn(),
@@ -67,9 +66,6 @@ describe("background upload flushing", () => {
             get: vi.fn().mockResolvedValue({ collection_mode_navigation: "shared" }),
             set: vi.fn().mockResolvedValue(undefined),
             remove: vi.fn().mockResolvedValue(undefined),
-          },
-          session: {
-            setAccessLevel: vi.fn().mockResolvedValue(undefined),
           },
         },
         runtime: {

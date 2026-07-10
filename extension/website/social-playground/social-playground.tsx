@@ -1,5 +1,5 @@
-// ABOUTME: Live preview of the extension's social mechanics (inventory satchel + bottles) on the site.
-// ABOUTME: Runs the REAL initGlobalFeatures (imported from @extension) so this stays in sync with the extension.
+// ABOUTME: Live preview of the extension's social mechanics (inventory satchel + bottles + emotes) on the site.
+// ABOUTME: Runs the REAL initGlobalFeatures + initEmotes (imported from @extension) so this stays in sync with the extension.
 
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -9,6 +9,7 @@ import {
   initGlobalFeatures,
   anyGlobalFeatureActive,
 } from "@extension/features/global";
+import { initEmotes } from "@extension/features/emotes";
 import browser from "webextension-polyfill";
 import { FoldCeremony } from "@extension/components/sealing/FoldCeremony";
 import {
@@ -82,7 +83,10 @@ function buildSeededNotes(n: number): BottleNote[] {
 
 /**
  * Boot the live social stack exactly as the extension content script does:
- * a headless playhtml instance (cursors off) → initGlobalFeatures(deps).
+ * a playhtml instance → initGlobalFeatures(deps) for the satchel + bottles, and
+ * initEmotes(deps) for the emote wheel. Cursors are enabled here (unlike the
+ * extension's headless every-page path) so the emote wheel has a cursorClient
+ * and peer positions to render on — matching the extension's cursor-site path.
  * The dev override is forced on so flag-off experiments still run here.
  */
 async function bootSocial(): Promise<() => void> {
@@ -90,23 +94,40 @@ async function bootSocial(): Promise<() => void> {
   // run on the site even though their committed FLAGS are off.
   await browser.storage.local.set({ internalDevFeaturesEnabled: true });
 
-  if (!(await anyGlobalFeatureActive())) {
-    console.warn("[social-playground] no social experiment active");
-    return () => {};
-  }
-
   await playhtml.init({
-    cursors: { enabled: false },
+    cursors: { enabled: true, coordinateMode: "absolute" },
     room: "wwo-playground",
   });
 
-  const cleanup = await initGlobalFeatures({
-    createPageData: playhtml.createPageData,
-    presence: playhtml.presence,
-    playerColor: randomColor(),
-    playerPid: "playground-" + Math.random().toString(36).slice(2, 8),
-  });
-  return cleanup;
+  const cleanups: Array<() => void> = [];
+
+  // The emote wheel rides the cursor layer (Cmd/Ctrl+Shift+E). It only needs the
+  // cursorClient from playhtml.init above, so mount it first — it shouldn't wait
+  // on the satchel/bottles setup. In the extension it's wired into the
+  // cursor-site path for the same reason.
+  if (playhtml.cursorClient) {
+    cleanups.push(
+      initEmotes({
+        presence: playhtml.presence,
+        cursorClient: playhtml.cursorClient,
+      }),
+    );
+  }
+
+  if (await anyGlobalFeatureActive()) {
+    cleanups.push(
+      await initGlobalFeatures({
+        createPageData: playhtml.createPageData,
+        presence: playhtml.presence,
+        playerColor: randomColor(),
+        playerPid: "playground-" + Math.random().toString(36).slice(2, 8),
+      }),
+    );
+  } else {
+    console.warn("[social-playground] no global social experiment active");
+  }
+
+  return () => cleanups.forEach((c) => c());
 }
 
 /**
@@ -299,7 +320,7 @@ bootSocial()
   .then(() => {
     if (statusEl)
       statusEl.textContent =
-        "live — satchel bottom-right; synced bottles place on this page";
+        "live — satchel bottom-right; synced bottles on this page; emote wheel on Cmd/Ctrl+Shift+E";
   })
   .catch((err) => {
     console.error("[social-playground] live boot failed:", err);

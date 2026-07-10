@@ -1,9 +1,11 @@
 // ABOUTME: Collects browser events, buffers them in memory, and delegates storage and
 // ABOUTME: upload to the background service worker via browser.runtime.sendMessage
 import type { CollectionEvent, CollectionEventType } from '../collectors/types';
-import { getParticipantId, getSessionId, getTimezone } from './participant';
-import { VERBOSE } from '../config';
+import { toPublicPlayerIdentity } from '@playhtml/common';
 import browser from 'webextension-polyfill';
+import { createPrefixedId } from './ids';
+import { requestSessionId, getTimezone } from './participant';
+import { VERBOSE } from '../config';
 
 const BATCH_INTERVAL_MS = 3000; // 3 seconds
 const STORE_BATCH_INTERVAL_MS = 250;
@@ -22,6 +24,23 @@ function shouldStoreWithoutDelay(event: CollectionEvent): boolean {
     event.data !== null &&
     (event.data as { event?: unknown }).event === 'click'
   );
+}
+
+async function getEventParticipantPublicKey(): Promise<string> {
+  try {
+    const identity = toPublicPlayerIdentity(
+      await browser.runtime.sendMessage({
+        type: 'GET_PUBLIC_PLAYER_IDENTITY',
+      }),
+    );
+    if (identity?.publicKey) return identity.publicKey;
+
+    console.warn('[EventBuffer] playerIdentity not found, using temporary ID');
+    return createPrefixedId('pk_temp_');
+  } catch (error) {
+    console.error('Failed to get public player identity:', error);
+    return createPrefixedId('pk_temp_');
+  }
 }
 
 /**
@@ -132,8 +151,8 @@ export class EventBuffer {
   private async getMetadataBase(): Promise<EventMetadataBase> {
     if (!this.metadataBasePromise) {
       this.metadataBasePromise = Promise.all([
-        getParticipantId(),
-        getSessionId(),
+        getEventParticipantPublicKey(),
+        requestSessionId(),
       ]).then(([pid, sid]) => ({
         pid,
         sid,

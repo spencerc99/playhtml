@@ -211,6 +211,28 @@ export function applyPresenceClientMessage(
   }
 }
 
+export function commitPresenceClientMessage(
+  state: PresenceRoomState,
+  connectionId: string,
+  storedChannels: Record<string, unknown>,
+  message: PresenceClientMessage,
+  persist: (channels: Record<string, unknown>) => void,
+): void {
+  const candidateState = createPresenceRoomState();
+  restorePresenceConnectionChannels(
+    candidateState,
+    connectionId,
+    storedChannels,
+  );
+  applyPresenceClientMessage(candidateState, connectionId, message);
+
+  const candidate = candidateState.peers.get(connectionId);
+  persist(candidate ? Object.fromEntries(candidate) : {});
+
+  restorePresenceConnectionChannels(state, connectionId, storedChannels);
+  applyPresenceClientMessage(state, connectionId, message);
+}
+
 function getPresenceMessageBudgetTarget(
   message: PresenceClientMessage,
 ): { bucket: PresenceMessageBudgetBucket; channel: string } {

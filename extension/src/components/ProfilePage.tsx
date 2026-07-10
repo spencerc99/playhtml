@@ -10,6 +10,7 @@ import { hslToHex } from "../utils/color";
 
 interface Props {
   playerIdentity: PlayerIdentity;
+  discoveredSites: string[];
   onBack: () => void;
   onIdentityUpdated: (identity: PlayerIdentity) => void;
 }
@@ -19,12 +20,19 @@ function randomPrimaryColor(): string {
   return hslToHex(hue, 70, 60);
 }
 
-export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props) {
+export function ProfilePage({
+  playerIdentity,
+  discoveredSites,
+  onBack,
+  onIdentityUpdated,
+}: Props) {
   const savedColor = playerIdentity.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
   const [color, setColor] = useState(savedColor);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const colorInputRef = useRef<HTMLInputElement>(null);
+  // Firefox closes extension toolbar panels when an OS-level color picker opens.
+  // https://bugzilla.mozilla.org/show_bug.cgi?id=1378527
   const opensNativePickerInPopup = !import.meta.env.FIREFOX;
 
   const hasColorChanged = color !== savedColor;
@@ -61,7 +69,7 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
     } catch {}
   };
 
-  const siteCount = playerIdentity.discoveredSites?.length ?? 0;
+  const siteCount = discoveredSites.length;
   const truncatedKey = playerIdentity.publicKey.length > 20
     ? playerIdentity.publicKey.slice(0, 6) + "..." + playerIdentity.publicKey.slice(-6)
     : playerIdentity.publicKey;
