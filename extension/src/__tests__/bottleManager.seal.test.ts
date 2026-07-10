@@ -5,6 +5,8 @@ import type { PageDataChannel } from "@playhtml/common";
 import { beforeEach, describe, expect, it } from "vitest";
 import { BottleManager, type BottlePageData } from "../features/BottleManager";
 import type { BottleAnchor } from "../features/bottle-anchor";
+import { __resetPouchForTests, POUCH_MAX } from "../features/letter-pouch";
+import { normalizeUrl } from "../utils/urlNormalization";
 
 const anchor: BottleAnchor = {
   selector: "body",
@@ -68,6 +70,7 @@ function makeManager(
 describe("BottleManager.seal", () => {
   beforeEach(() => {
     localStorage.clear();
+    __resetPouchForTests();
   });
 
   it("persists authorName, styleId, and pageUrl on the note", () => {
@@ -128,5 +131,72 @@ describe("BottleManager.seal", () => {
     const ok = mgr.seal("reply", { id: "b1", anchor });
     expect(ok).toBe(true);
     expect(channel.read().bottles.b1.notes).toHaveLength(2);
+  });
+
+  it("captures pageTitle and pageUrl on new bottles", () => {
+    document.title = "The Tomato Failures | Susan's Garden";
+    const channel = new MemoryPageDataChannel<BottlePageData>({ bottles: {} });
+    const mgr = makeManager(channel);
+    mgr.seal("hello", { id: "b1", anchor });
+    const bottle = Object.values(channel.read().bottles)[0];
+    expect(bottle.pageUrl).toBeDefined();
+    expect(bottle.notes[0].pageTitle).toBe("The Tomato Failures | Susan's Garden");
+  });
+
+  it("stops authoring when the pouch is spent", () => {
+    const channel = new MemoryPageDataChannel<BottlePageData>({ bottles: {} });
+    const mgr = makeManager(channel);
+    for (let i = 0; i < POUCH_MAX; i++) {
+      expect(mgr.seal(`note ${i}`, { id: `b${i}`, anchor })).toBe(true);
+    }
+    expect(mgr.seal("one too many", { id: "b-extra", anchor })).toBe(false);
+    expect(Object.keys(channel.read().bottles)).toHaveLength(POUCH_MAX);
+  });
+
+  it("renders only bottles on the current page", () => {
+    // jsdom gives every element a zero-size rect, which makes anchor
+    // resolution hard-reject all bottles (see bottle-anchor.ts). Stub body's
+    // rect to fill the mocked 1024x768 viewport so "here" resolves.
+    document.body.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 1024,
+        bottom: 768,
+        width: 1024,
+        height: 768,
+        toJSON() {},
+      }) as DOMRect;
+    // jsdom doesn't implement elementsFromPoint; the anchor scorer uses it to
+    // check the sample area is empty background. Report body at every point.
+    document.elementsFromPoint = () => [document.body];
+
+    const channel = new MemoryPageDataChannel<BottlePageData>({
+      bottles: {
+        here: {
+          id: "here",
+          anchor,
+          pageUrl: normalizeUrl(window.location.href),
+          notes: [{ text: "here", createdAt: 1, createdBy: "them", authorColor: "#000" }],
+        },
+        elsewhere: {
+          id: "elsewhere",
+          anchor,
+          pageUrl: "https://example.com/other-page",
+          notes: [{ text: "away", createdAt: 2, createdBy: "them", authorColor: "#000" }],
+        },
+      },
+    });
+    let rendered: string[] = [];
+    const createPageData = <T,>(_n: string, _d: T) =>
+      channel as unknown as PageDataChannel<T>;
+    const mgr = new BottleManager("#4a9a8a", "me", createPageData);
+    mgr.init((req) => {
+      rendered = req.bottles.filter((b) => !b.isEmpty).map((b) => b.id);
+    });
+    if (rendered.length === 0) mgr.markSeen("__none__");
+    expect(rendered).toEqual(["here"]);
   });
 });

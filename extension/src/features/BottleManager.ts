@@ -8,6 +8,9 @@ import {
   resolveBottlePosition,
   type BottleAnchor,
 } from "./bottle-anchor";
+import { normalizeUrl } from "../utils/urlNormalization";
+import { pouchCount, spendLetter } from "./letter-pouch";
+import { currentFaviconUrl } from "../components/bottle/salutation";
 
 /** A single note in a bottle's thread. Replies append, never replace. */
 export interface BottleNote {
@@ -22,12 +25,21 @@ export interface BottleNote {
   /** Page this note was written on. Same for all notes while bottles are
    * stationary; carried from the start so travel needs no migration. */
   pageUrl?: string;
+  /** Title of the page this note was written on, captured at write time —
+   * renders the salutation ("dear <title>,") and future chapter dividers. */
+  pageTitle?: string;
+  /** Favicon of the page at write time, for the salutation mark. Carried
+   * from the start (like pageUrl) so travel needs no migration. */
+  faviconUrl?: string;
 }
 
 /** A bottle anchored to a spot on the page, holding a thread of notes. */
 export interface BottleRecord {
   id: string;
   anchor: BottleAnchor;
+  /** Normalized URL of the page this bottle was placed on. Render is
+   * page-filtered against this; storage is domain-scoped. */
+  pageUrl?: string;
   notes: BottleNote[];
   hidden?: boolean;
 }
@@ -50,9 +62,7 @@ export interface BottleRenderRequest {
 }
 
 const STORAGE_LAST_SEEN = "bottle:lastSeen:v1";
-const STORAGE_LAST_AUTHORED = "bottle:lastAuthored:v1";
 const ALWAYS_VISIBLE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
-const AUTHOR_RATE_LIMIT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days per domain
 const MAX_VISIBLE_BOTTLES = 3;
 const EMPTY_BOTTLE_PROBABILITY = 0.3;
 
@@ -68,18 +78,11 @@ interface SeenMap {
   [messageId: string]: number; // ms timestamp when first read
 }
 
-interface AuthoredMap {
-  [domain: string]: number; // ms timestamp of last authored message on this domain
-}
-
 export class BottleManager {
   private data: BottlePageData = { bottles: {} };
   private channel: PageDataChannel<BottlePageData> | null = null;
   private renderCallback: RenderCallback | null = null;
   private cleanups: (() => void)[] = [];
-  // Session-local backup of the author cooldown, in case the localStorage write
-  // in markAuthored() fails. 0 = never authored this session.
-  private lastAuthoredAt = 0;
 
   // Whether to show an empty bottle at all. The probability roll is made once
   // per page load and kept sticky: re-rolling each render (fires on channel
@@ -134,7 +137,7 @@ export class BottleManager {
    * at the target anchor (e.g. sealing into an empty prompt or a fresh spot).
    */
   /** Returns true if the note was persisted, false if dropped (no channel,
-   * empty text, or rate-limited) so the caller can avoid marking the bottle
+   * empty text, or pouch empty) so the caller can avoid marking the bottle
    * seen and losing the user's reply. */
   seal(
     text: string,
@@ -143,8 +146,8 @@ export class BottleManager {
   ): boolean {
     if (!this.channel) return false;
     if (!text.trim()) return false;
-    if (this.isRateLimited()) {
-      debug("[bottles] rate limited — skipping author");
+    if (pouchCount() < 1) {
+      debug("[bottles] pouch empty — skipping author");
       return false;
     }
 
@@ -166,6 +169,8 @@ export class BottleManager {
       createdBy: this.playerPid,
       authorColor: this.playerColor,
       pageUrl: window.location.href,
+      ...(document.title ? { pageTitle: document.title } : {}),
+      ...(currentFaviconUrl() ? { faviconUrl: currentFaviconUrl()! } : {}),
       ...(meta?.authorName ? { authorName: meta.authorName } : {}),
       ...(meta?.styleId ? { styleId: meta.styleId } : {}),
     };
@@ -185,6 +190,7 @@ export class BottleManager {
         draft.bottles[bottleId] = {
           id: bottleId,
           anchor: target.anchor,
+          pageUrl: normalizeUrl(window.location.href),
           notes: [note],
         };
       }
@@ -195,7 +201,7 @@ export class BottleManager {
     this.showEmpty = false;
     this.emptyBottle = null;
 
-    this.markAuthored();
+    spendLetter();
     // Mark our own bottle seen so we don't see it again ourselves
     this.markSeen(bottleId);
     return true;
@@ -252,12 +258,14 @@ export class BottleManager {
 
   private computeRenderList(): RenderedBottle[] {
     const seen = this.loadSeen();
+    const here = normalizeUrl(window.location.href);
 
     // Filter visible bottles.
     const visible: BottleRecord[] = [];
     for (const id of Object.keys(this.data.bottles)) {
       const b = this.data.bottles[id];
       if (b.hidden || b.notes.length === 0) continue;
+      if (this.recordPageUrl(b) !== here) continue; // domain book, page view
       const userHasRead = seen[id] !== undefined;
       // Per Spencer: never re-show what you've read. Fresh window does NOT
       // override personal read state — once you've read it, it's gone.
@@ -296,6 +304,21 @@ export class BottleManager {
     return empty ? [empty] : [];
   }
 
+  /** The page a bottle record lives on. Falls back to its first note, then to
+   * the current page (safe: stationary bottles never moved). */
+  private recordPageUrl(b: BottleRecord): string {
+    const raw = b.pageUrl ?? b.notes[0]?.pageUrl ?? window.location.href;
+    return normalizeUrl(raw);
+  }
+
+  /** Whether any filled bottle in the domain book lives on the current page. */
+  private anyBottleOnThisPage(): boolean {
+    const here = normalizeUrl(window.location.href);
+    return Object.values(this.data.bottles).some(
+      (b) => !b.hidden && b.notes.length > 0 && this.recordPageUrl(b) === here,
+    );
+  }
+
   /**
    * Whether to show an empty bottle and, if so, where. The probability roll is
    * sticky (cached in showEmpty); the placement retries each render until an
@@ -317,7 +340,7 @@ export class BottleManager {
       this.showEmpty = this.shouldShowEmpty();
       if (!this.showEmpty) {
         debug(
-          "[bottles] skipping empty bottle this load (rate-limited or rolled below threshold)",
+          "[bottles] skipping empty bottle this load (pouch empty or rolled below threshold)",
         );
       }
     }
@@ -340,34 +363,10 @@ export class BottleManager {
   }
 
   private shouldShowEmpty(): boolean {
-    if (this.isRateLimited()) return false; // can't author anyway, don't tease
+    if (pouchCount() < 1) return false; // can't author anyway, don't tease
+    // Frontier: nobody has written on this page — always invite the first letter.
+    if (!this.anyBottleOnThisPage()) return true;
     return Math.random() < EMPTY_BOTTLE_PROBABILITY;
-  }
-
-  private isRateLimited(): boolean {
-    const domain = location.hostname;
-    // The in-memory timestamp backs up the persisted one: if a previous
-    // markAuthored() failed to write to localStorage, the cooldown still holds
-    // for this session instead of letting the user author repeatedly.
-    const last = Math.max(
-      this.loadAuthored()[domain] ?? 0,
-      this.lastAuthoredAt,
-    );
-    if (!last) return false;
-    return Date.now() - last < AUTHOR_RATE_LIMIT_MS;
-  }
-
-  private markAuthored(): void {
-    const now = Date.now();
-    this.lastAuthoredAt = now;
-    const map = this.loadAuthored();
-    map[location.hostname] = now;
-    try {
-      localStorage.setItem(STORAGE_LAST_AUTHORED, JSON.stringify(map));
-    } catch {
-      // Persisted write failed (quota/unavailable); lastAuthoredAt still gates
-      // this session.
-    }
   }
 
   private loadSeen(): SeenMap {
@@ -380,10 +379,6 @@ export class BottleManager {
     } catch {
       // ignore
     }
-  }
-
-  private loadAuthored(): AuthoredMap {
-    return parseTimestampMap(localStorage.getItem(STORAGE_LAST_AUTHORED));
   }
 }
 
