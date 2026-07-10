@@ -1063,6 +1063,12 @@ $letterHand: "Lora", Georgia, serif;
   transform-style: preserve-3d;
   backface-visibility: hidden;
   will-change: transform;
+
+  // Stacked notes are cropped preview bands — the salutation would dominate
+  // the visible window, so only the face (the letter being sealed) shows it.
+  .mbs-salutation {
+    display: none;
+  }
 }
 
 // The readable face of a sheet — the real letter segment clipped to the fold
@@ -1177,4 +1183,21 @@ $letterHand: "Lora", Georgia, serif;
   padding-bottom: 1px;
   color: inherit;
   text-decoration: none;
+}
+
+// In the scroll, only the centered/current segment shows its salutation —
+// neighboring segments peeking at the top/bottom tease the letter text
+// instead of all reading "dear xxx". The write segment is the writing prompt
+// and stays visible always, scoped out here rather than via JS.
+.mbs-segSlot .mbs-segment:not(.mbs-writeSegment) .mbs-salutation {
+  opacity: 0;
+}
+
+.mbs-segSlot.mbs-segCurrent .mbs-segment:not(.mbs-writeSegment) .mbs-salutation {
+  opacity: 1;
+  transition: opacity 0.35s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
