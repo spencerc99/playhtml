@@ -1,5 +1,5 @@
 // ABOUTME: Picks DOM-anchored positions for bottles so two visitors see them at the same content offsets.
-// ABOUTME: Stores a CSS selector + relative offset; resolves to a viewport position at render time.
+// ABOUTME: Stores a CSS selector + relative offset; the anchor is page-stable and its viewport position moves with scroll.
 
 import { bottleDebug as debug } from "./bottle-debug";
 

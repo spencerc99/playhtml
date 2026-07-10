@@ -15,17 +15,72 @@
     <rect x="41" y="17" width="38" height="6" rx="3" fill="#000000" opacity="0.06"/>
     <!-- author color stripe down the left edge (the "seal" color) -->
     <rect x="38" y="14" width="9" height="92" rx="4" fill="#c4724e"/>
-    <!-- faint tiny-text lines, evoking the message showing through -->
-    <g stroke="#3a352f" stroke-width="2.4" stroke-linecap="round" opacity="0.5">
-      <line x1="53" y1="26" x2="74" y2="26"/>
-      <line x1="53" y1="34" x2="71" y2="34"/>
-      <line x1="53" y1="42" x2="75" y2="42"/>
-      <line x1="53" y1="50" x2="68" y2="50"/>
-      <line x1="53" y1="58" x2="74" y2="58"/>
-      <line x1="53" y1="66" x2="70" y2="66"/>
-      <line x1="53" y1="74" x2="73" y2="74"/>
-      <line x1="53" y1="82" x2="66" y2="82"/>
-      <line x1="53" y1="90" x2="72" y2="90"/>
+    <!-- faint tiny-letter columns, evoking the message showing through (each letter rotated upright, column reading downward) -->
+    <g fill="#3a352f" opacity="0.55" font-family="ui-monospace, Menlo, monospace" font-size="6.5" text-anchor="middle">
+      <text x="55.0" y="27.0" transform="rotate(90 55.0 27.0)">l</text>
+      <text x="55.0" y="31.6" transform="rotate(90 55.0 31.6)">o</text>
+      <text x="55.0" y="36.2" transform="rotate(90 55.0 36.2)">r</text>
+      <text x="55.0" y="40.8" transform="rotate(90 55.0 40.8)">e</text>
+      <text x="55.0" y="45.4" transform="rotate(90 55.0 45.4)">m</text>
+      <text x="55.0" y="50.0" transform="rotate(90 55.0 50.0)">i</text>
+      <text x="55.0" y="54.6" transform="rotate(90 55.0 54.6)">p</text>
+      <text x="55.0" y="59.2" transform="rotate(90 55.0 59.2)">s</text>
+      <text x="55.0" y="63.8" transform="rotate(90 55.0 63.8)">u</text>
+      <text x="55.0" y="68.4" transform="rotate(90 55.0 68.4)">m</text>
+      <text x="55.0" y="73.0" transform="rotate(90 55.0 73.0)">d</text>
+      <text x="55.0" y="77.6" transform="rotate(90 55.0 77.6)">o</text>
+      <text x="55.0" y="82.2" transform="rotate(90 55.0 82.2)">l</text>
+      <text x="55.0" y="86.8" transform="rotate(90 55.0 86.8)">o</text>
+      <text x="55.0" y="91.4" transform="rotate(90 55.0 91.4)">r</text>
+      <text x="55.0" y="96.0" transform="rotate(90 55.0 96.0)">s</text>
+      <text x="61.0" y="27.0" transform="rotate(90 61.0 27.0)">t</text>
+      <text x="61.0" y="31.6" transform="rotate(90 61.0 31.6)">e</text>
+      <text x="61.0" y="36.2" transform="rotate(90 61.0 36.2)">t</text>
+      <text x="61.0" y="40.8" transform="rotate(90 61.0 40.8)">u</text>
+      <text x="61.0" y="45.4" transform="rotate(90 61.0 45.4)">r</text>
+      <text x="61.0" y="50.0" transform="rotate(90 61.0 50.0)">a</text>
+      <text x="61.0" y="54.6" transform="rotate(90 61.0 54.6)">d</text>
+      <text x="61.0" y="59.2" transform="rotate(90 61.0 59.2)">i</text>
+      <text x="61.0" y="63.8" transform="rotate(90 61.0 63.8)">p</text>
+      <text x="61.0" y="68.4" transform="rotate(90 61.0 68.4)">i</text>
+      <text x="61.0" y="73.0" transform="rotate(90 61.0 73.0)">s</text>
+      <text x="61.0" y="77.6" transform="rotate(90 61.0 77.6)">c</text>
+      <text x="61.0" y="82.2" transform="rotate(90 61.0 82.2)">i</text>
+      <text x="61.0" y="86.8" transform="rotate(90 61.0 86.8)">n</text>
+      <text x="61.0" y="91.4" transform="rotate(90 61.0 91.4)">g</text>
+      <text x="61.0" y="96.0" transform="rotate(90 61.0 96.0)">e</text>
+      <text x="67.0" y="27.0" transform="rotate(90 67.0 27.0)">m</text>
+      <text x="67.0" y="31.6" transform="rotate(90 67.0 31.6)">o</text>
+      <text x="67.0" y="36.2" transform="rotate(90 67.0 36.2)">d</text>
+      <text x="67.0" y="40.8" transform="rotate(90 67.0 40.8)">t</text>
+      <text x="67.0" y="45.4" transform="rotate(90 67.0 45.4)">e</text>
+      <text x="67.0" y="50.0" transform="rotate(90 67.0 50.0)">m</text>
+      <text x="67.0" y="54.6" transform="rotate(90 67.0 54.6)">p</text>
+      <text x="67.0" y="59.2" transform="rotate(90 67.0 59.2)">o</text>
+      <text x="67.0" y="63.8" transform="rotate(90 67.0 63.8)">r</text>
+      <text x="67.0" y="68.4" transform="rotate(90 67.0 68.4)">i</text>
+      <text x="67.0" y="73.0" transform="rotate(90 67.0 73.0)">n</text>
+      <text x="67.0" y="77.6" transform="rotate(90 67.0 77.6)">c</text>
+      <text x="67.0" y="82.2" transform="rotate(90 67.0 82.2)">i</text>
+      <text x="67.0" y="86.8" transform="rotate(90 67.0 86.8)">d</text>
+      <text x="67.0" y="91.4" transform="rotate(90 67.0 91.4)">i</text>
+      <text x="67.0" y="96.0" transform="rotate(90 67.0 96.0)">d</text>
+      <text x="73.0" y="27.0" transform="rotate(90 73.0 27.0)">e</text>
+      <text x="73.0" y="31.6" transform="rotate(90 73.0 31.6)">t</text>
+      <text x="73.0" y="36.2" transform="rotate(90 73.0 36.2)">d</text>
+      <text x="73.0" y="40.8" transform="rotate(90 73.0 40.8)">o</text>
+      <text x="73.0" y="45.4" transform="rotate(90 73.0 45.4)">l</text>
+      <text x="73.0" y="50.0" transform="rotate(90 73.0 50.0)">o</text>
+      <text x="73.0" y="54.6" transform="rotate(90 73.0 54.6)">r</text>
+      <text x="73.0" y="59.2" transform="rotate(90 73.0 59.2)">e</text>
+      <text x="73.0" y="63.8" transform="rotate(90 73.0 63.8)">m</text>
+      <text x="73.0" y="68.4" transform="rotate(90 73.0 68.4)">a</text>
+      <text x="73.0" y="73.0" transform="rotate(90 73.0 73.0)">g</text>
+      <text x="73.0" y="77.6" transform="rotate(90 73.0 77.6)">n</text>
+      <text x="73.0" y="82.2" transform="rotate(90 73.0 82.2)">a</text>
+      <text x="73.0" y="86.8" transform="rotate(90 73.0 86.8)">a</text>
+      <text x="73.0" y="91.4" transform="rotate(90 73.0 91.4)">l</text>
+      <text x="73.0" y="96.0" transform="rotate(90 73.0 96.0)">i</text>
     </g>
   </g>
 </svg>
