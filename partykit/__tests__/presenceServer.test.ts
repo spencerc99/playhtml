@@ -2,24 +2,7 @@
 // ABOUTME: Keeps expected WebSocket closes from polluting Worker logs.
 import { describe, expect, it } from "bun:test";
 import { getConnectionCloseDiagnostic } from "../connectionDiagnostics";
-import {
-  assertPresenceMessageSize,
-  persistPresenceConnectionState,
-} from "../presenceMessage";
-
-describe("presence server message size", () => {
-  it("accepts a 1 MiB message", () => {
-    expect(() =>
-      assertPresenceMessageSize("x".repeat(1024 * 1024)),
-    ).not.toThrow();
-  });
-
-  it("rejects a message larger than 1 MiB", () => {
-    expect(() => assertPresenceMessageSize("x".repeat(1024 * 1024 + 1))).toThrow(
-      "Presence messages must be 1 MiB or less",
-    );
-  });
-});
+import { persistPresenceConnectionState } from "../presenceMessage";
 
 describe("presence connection state persistence", () => {
   it("restores the previous state after a rejected attachment write", () => {

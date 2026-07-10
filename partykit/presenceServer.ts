@@ -24,10 +24,7 @@ import {
   takePresenceChanges,
 } from "./presencePolicy";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
-import {
-  assertPresenceMessageSize,
-  persistPresenceConnectionState,
-} from "./presenceMessage";
+import { persistPresenceConnectionState } from "./presenceMessage";
 
 const PRESENCE_CHANNELS_STATE_KEY = "__playhtmlPresenceChannels";
 const PRESENCE_OPENED_AT_STATE_KEY = "__playhtmlPresenceOpenedAt";
@@ -77,7 +74,6 @@ export class PresenceServer extends Server<Env> {
 
     let parsed: PresenceClientMessage;
     try {
-      assertPresenceMessageSize(message);
       parsed = validatePresenceClientMessage(JSON.parse(message));
     } catch (error) {
       this.sendError(connection, getErrorMessage(error));
