@@ -15,8 +15,7 @@ bun run db:new -- partykit_add_room_redirects
 ```
 
 Do not add migrations under `extension/db/migrations/`. Those files record extension database
-changes that predate the native Supabase project and must be reconciled against the production
-schema before production deployment is enabled.
+changes outside the native Supabase migration history.
 
 ## Local development
 
@@ -35,22 +34,22 @@ bun run db:stop
 Use the values printed by `bun run db:status` for local Worker configuration. Keep secret keys in
 ignored local environment files.
 
-## Production baseline
+## Production project
 
-Before enabling automatic production deployment, pull the complete production schema into this
-directory and reconcile its migration history:
+The production project uses PostgreSQL 15 and is linked locally by project reference:
 
 ```sh
 bunx supabase login
-bunx supabase link --project-ref <project-ref>
-bunx supabase db pull
+bunx supabase link --project-ref ptirehwbzcdbzomsxmji
 bunx supabase migration list
-bun run db:verify
 ```
 
-Review the generated baseline against the SQL under `extension/db/migrations/` and every table
-used by PartyKit. If the production schema is already present but its migration history is empty,
-mark the baseline as applied with `supabase migration repair` instead of applying the schema again.
+The migration history includes the production schema baseline and the earlier recorded extension
+index removal. `migration list` must show the same timestamps locally and remotely before enabling
+production deployment or running `db push`.
+
+Create and test every schema change locally. Do not change production through the Dashboard SQL or
+Table editors because those changes bypass the repository migration history.
 
 ## Pull request previews
 
