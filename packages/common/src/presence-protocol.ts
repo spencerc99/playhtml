@@ -1,11 +1,15 @@
 // ABOUTME: Defines generic realtime presence messages shared by clients and servers.
 // ABOUTME: Validates ephemeral channel updates before they enter PlayHTML rooms.
 
-import type { Cursor, CursorZonePosition, PlayerIdentity } from "./cursor-types";
+import {
+  MAX_PLAYER_IDENTITY_COLORS,
+  MAX_PLAYER_IDENTITY_STRING_LENGTH,
+  type Cursor,
+  type CursorZonePosition,
+  type PlayerIdentity,
+} from "./cursor-types";
 
-export const MAX_PRESENCE_VALUE_BYTES = 4096;
 export const MAX_PRESENCE_PAGE_LENGTH = 512;
-export const MAX_PRESENCE_IDENTITY_STRING_LENGTH = 512;
 
 export type PresenceChannelCadence = "frame" | "interactive" | "event";
 
@@ -107,7 +111,7 @@ export function validatePresenceClientMessage(
 }
 
 function validatePresenceJoinMessage(value: Record<string, unknown>): void {
-  assertJsonSize(value);
+  assertJsonSerializable(value);
   validateOptionalBoundedString(value.page, "page", MAX_PRESENCE_PAGE_LENGTH);
   if (value.identity !== undefined) {
     validatePlayerIdentity(value.identity);
@@ -119,10 +123,14 @@ function validatePresenceValue(channel: unknown, value: unknown): void {
     throw new Error("Presence value must not be undefined");
   }
 
-  assertJsonSize(value);
+  assertJsonSerializable(value);
 
   if (channel === "cursor") {
     validateCursorPresenceValue(value);
+  }
+
+  if (channel === "identity") {
+    validatePlayerIdentity(value);
   }
 }
 
@@ -167,33 +175,70 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
   if (!isPresenceRecord(value)) {
     throw new Error("identity must be an object");
   }
+  assertPublicPresenceFields(
+    value,
+    ["publicKey", "name", "playerStyle", "createdAt"],
+    "identity",
+  );
   validateRequiredBoundedString(
     value.publicKey,
     "identity.publicKey",
-    MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+    MAX_PLAYER_IDENTITY_STRING_LENGTH,
   );
   if (!isPresenceRecord(value.playerStyle)) {
     throw new Error("identity.playerStyle must be an object");
   }
+  assertPublicPresenceFields(
+    value.playerStyle,
+    ["colorPalette", "cursorStyle"],
+    "identity.playerStyle",
+  );
   const colorPalette = value.playerStyle.colorPalette;
   if (!Array.isArray(colorPalette)) {
     throw new Error("identity.playerStyle.colorPalette must be an array");
   }
+  if (colorPalette.length > MAX_PLAYER_IDENTITY_COLORS) {
+    throw new Error(
+      `identity.playerStyle.colorPalette must have ${MAX_PLAYER_IDENTITY_COLORS} colors or less`,
+    );
+  }
   validateRequiredBoundedString(
     colorPalette[0],
     "identity.playerStyle.colorPalette[0]",
-    MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+    MAX_PLAYER_IDENTITY_STRING_LENGTH,
   );
+  for (let i = 1; i < colorPalette.length; i++) {
+    validateRequiredBoundedString(
+      colorPalette[i],
+      `identity.playerStyle.colorPalette[${i}]`,
+      MAX_PLAYER_IDENTITY_STRING_LENGTH,
+    );
+  }
   validateOptionalBoundedString(
     value.name,
     "identity.name",
-    MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+    MAX_PLAYER_IDENTITY_STRING_LENGTH,
   );
   validateOptionalBoundedString(
     value.playerStyle.cursorStyle,
     "identity.playerStyle.cursorStyle",
-    MAX_PRESENCE_IDENTITY_STRING_LENGTH,
+    MAX_PLAYER_IDENTITY_STRING_LENGTH,
   );
+  if (value.createdAt !== undefined && !Number.isFinite(value.createdAt)) {
+    throw new Error("identity.createdAt must be a finite number");
+  }
+}
+
+function assertPublicPresenceFields(
+  value: Record<string, unknown>,
+  allowedFields: string[],
+  name: string,
+): void {
+  for (const key of Object.keys(value)) {
+    if (!allowedFields.includes(key)) {
+      throw new Error(`${name} must only include public presence fields`);
+    }
+  }
 }
 
 export function isCursor(value: unknown): value is Cursor {
@@ -282,22 +327,13 @@ function validateStringBounds(
   }
 }
 
-function assertJsonSize(value: unknown): void {
-  let json: string;
+function assertJsonSerializable(value: unknown): void {
   try {
-    json = JSON.stringify(value);
+    if (JSON.stringify(value) === undefined) {
+      throw new Error("Presence value must be JSON-serializable");
+    }
   } catch {
     throw new Error("Presence value must be JSON-serializable");
-  }
-
-  if (json === undefined) {
-    throw new Error("Presence value must be JSON-serializable");
-  }
-
-  if (new TextEncoder().encode(json).byteLength > MAX_PRESENCE_VALUE_BYTES) {
-    throw new Error(
-      `Presence value must be ${MAX_PRESENCE_VALUE_BYTES} bytes or less`,
-    );
   }
 }
 

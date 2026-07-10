@@ -341,8 +341,38 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
     handles;
   const { vw, vh, renderer, scene: threeScene, camera, clipPlane } = scene;
 
-  const slotSceneX = slotX - vw / 2;
-  const slotSceneY = vh / 2 - slotY;
+  // Slot position in WORLD units. The orthographic camera maps world → screen
+  // as screen = viewportCenter + world * camera.zoom, so converting the slot's
+  // CSS-pixel position into world space must divide by the CURRENT zoom (the
+  // camera has dollied out to ~0.65 by finale time — ignoring it made the card
+  // travel only 65% of the way to the fissure).
+  const zoom = camera.zoom;
+  const slotWorldX = (slotX - vw / 2) / zoom;
+  const slotWorldY = (vh / 2 - slotY) / zoom;
+
+  // The visible coil is NOT centered on the mesh origin (the roll winds around
+  // the paper's top edge, and the card-fit scale/rotation preserves that
+  // offset). Measure the coil's world bounding box and correct every target by
+  // the offset so the BOTTLE — not the mesh origin — lands on the slot.
+  mesh.updateWorldMatrix(true, true);
+  mesh.traverse((o) => {
+    (o as THREE.Mesh).geometry?.computeBoundingBox?.();
+  });
+  const coilBox = new THREE.Box3().setFromObject(mesh);
+  const coilCenter = coilBox.getCenter(new THREE.Vector3());
+  const coilH = Math.max(coilBox.max.y - coilBox.min.y, 1);
+  const corrX = coilCenter.x - mesh.position.x;
+  const corrY = coilCenter.y - mesh.position.y;
+
+  const targetX = slotWorldX - corrX;
+  // Travel ends with the coil's BOTTOM edge sitting at the slot line, so the
+  // whole bottle hovers visibly above the fissure right before plunge.
+  const travelEndY = slotWorldY + coilH / 2 - corrY;
+
+  // Keep the slot clipping plane on the zoom-corrected slot line (it was set
+  // at scene setup assuming zoom = 1).
+  clipPlane.constant = -slotWorldY;
+
   const startTime = performance.now();
   let phase: "travel" | "plunge" | "done" = "travel";
   let plungeStart = 0;
@@ -350,10 +380,6 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
   let fissureOpened = false;
   let completed = false;
   let completeTimer: ReturnType<typeof setTimeout> | null = null;
-
-  // Travel ends with the bottle's BOTTOM edge sitting at the slot line, so
-  // the whole bottle hovers visibly above the fissure right before plunge.
-  const travelEndY = slotSceneY + CARD_H_PX / 2;
 
   // Preserve the mesh's existing rotation (computeCardFit may have rotated it
   // to portrait). The travel wobble is ADDED to this base, never overwrites it.
@@ -364,12 +390,12 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
     if (phase === "travel") {
       const t = clamp((now - startTime) / T_TRAVEL, 0, 1);
       const e = easeInOutCubic(t);
-      const baseTx = THREE.MathUtils.lerp(0, slotSceneX, e);
+      const baseTx = THREE.MathUtils.lerp(0, targetX, e);
       const baseTy = THREE.MathUtils.lerp(0, travelEndY, e);
       const arc = Math.sin(e * Math.PI) * Math.min(160, vh * 0.18);
       mesh.position.set(baseTx, baseTy + arc, 0);
       // Gentle wobble added on top of the portrait base rotation
-      mesh.rotation.z = baseRotZ + Math.sin(e * Math.PI) * 0.1 * Math.sign(slotSceneX);
+      mesh.rotation.z = baseRotZ + Math.sin(e * Math.PI) * 0.1 * Math.sign(targetX);
       if (t >= 1) {
         phase = "plunge";
         plungeStart = now;
@@ -386,10 +412,10 @@ export function playFinale(handles: FinaleHandles): { dispose: () => void } {
     } else if (phase === "plunge") {
       const t = clamp((now - plungeStart) / T_PLUNGE, 0, 1);
       const e = easeInQuad(t);
-      // Descend so the bottle's bottom (currently at slot) sinks to
-      // CARD_H_PX + 20 below the slot — fully under the page.
-      const plungeDy = e * (CARD_H_PX + 20);
-      mesh.position.set(slotSceneX, travelEndY - plungeDy, 0);
+      // Descend so the bottle's bottom (currently at slot) sinks fully under
+      // the page (coil height + a screen-space margin, converted to world).
+      const plungeDy = e * (coilH + 24 / zoom);
+      mesh.position.set(targetX, travelEndY - plungeDy, 0);
       if (t >= 1) {
         phase = "done";
         fissure.close();

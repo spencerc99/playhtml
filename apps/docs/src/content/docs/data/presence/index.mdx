@@ -126,9 +126,7 @@ In vanilla `can-play`, element awareness appears on the element handler data:
 
 <script>
   const element = document.getElementById("presence-count");
-  element.defaultData = {};
   element.myDefaultAwareness = { color: "#3b82f6" };
-  element.updateElement = () => {};
   element.onClick = (_event, { setMyAwareness }) => {
     setMyAwareness({ color: "#f97316" });
   };

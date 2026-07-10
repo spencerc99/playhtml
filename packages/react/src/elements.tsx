@@ -101,7 +101,7 @@ export function CanToggleElement({
     readOnly?: boolean;
   }) {
   return (
-    <CanPlayElement
+    <CanPlayElement<any>
       // @ts-ignore
       tagInfo={[TagType.CanToggle]}
       {...TagTypeToElement[TagType.CanToggle]}

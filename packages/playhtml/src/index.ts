@@ -14,6 +14,7 @@ import {
   EventMessage,
   RegisteredPlayEvent,
   generatePersistentPlayerIdentity,
+  toPublicPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
 } from "@playhtml/common";
@@ -1069,10 +1070,8 @@ async function resetCurrentRoomFromServer(): Promise<void> {
  * cursorClient.configure() directly, so it dispatches a CustomEvent on the
  * shared DOM instead.
  *
- * The extension only provides publicKey and playerStyle (the canonical stable
- * identity + chosen color). All other fields on the page's current identity are
- * preserved — the page may have arbitrary fields the extension doesn't know
- * about.
+ * The extension owns the canonical public key and style. The page owns its
+ * display name.
  *
  * Idempotent: only attaches once. Safe to call from both the initial
  * cursor-enabled path and the late-enable path.
@@ -1080,21 +1079,17 @@ async function resetCurrentRoomFromServer(): Promise<void> {
 function setupExtensionIdentityListener(): void {
   if (configureIdentityListener) return;
 
-  // TODO: The extension should also be able to set `name` — currently
-  // there's no UI for it in the extension, so we preserve the page's
-  // value. Once the extension has a name field, include it in the merge.
   configureIdentityListener = ((e: CustomEvent) => {
-    const incoming = e.detail?.playerIdentity;
-    if (!incoming || !cursorClient) return;
+    const incoming = toPublicPlayerIdentity(e.detail?.playerIdentity);
+    if (!incoming?.playerStyle.colorPalette[0] || !cursorClient) return;
 
     const current = cursorClient.getMyPlayerIdentity();
-    const merged = {
-      ...current,
-      publicKey: incoming.publicKey,
-      playerStyle: incoming.playerStyle,
-    };
-
-    cursorClient.configure({ playerIdentity: merged });
+    cursorClient.configure({
+      playerIdentity: {
+        ...incoming,
+        ...(typeof current.name === "string" ? { name: current.name } : {}),
+      },
+    });
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1516,12 +1511,10 @@ function createPlayElementData<T extends TagType, TData = any>(
       ? tagInfo.defaultData(element)
       : tagInfo.defaultData;
 
-  // Always use SyncedStore proxy
-  const dataProxy = ensureElementProxy<TData>(
-    tag,
-    elementId,
-    initialData as TData,
-  );
+  const dataProxy =
+    tagInfo.defaultData === undefined
+      ? undefined
+      : ensureElementProxy<TData>(tag, elementId, initialData as TData);
   const initialAwareness = getElementAwareness(tag, elementId);
 
   const elementData: ElementData = {
@@ -1541,6 +1534,12 @@ function createPlayElementData<T extends TagType, TData = any>(
           : undefined,
     element,
     onChange: (newData: TData) => {
+      if (dataProxy === undefined) {
+        console.error(
+          `[playhtml] setData() was called for "${elementId}", but its initializer does not define \`defaultData\`.`,
+        );
+        return;
+      }
       // Prevent writes for read-only shared consumer elements
       if (!canWriteElementData(element)) {
         return;
@@ -1593,21 +1592,37 @@ function getElementInitializerValidationIssues(
   }
 
   const issues: string[] = [];
-  if (
-    tagInfo.defaultData === undefined ||
-    (typeof tagInfo.defaultData !== "object" &&
-      typeof tagInfo.defaultData !== "function")
-  ) {
-    issues.push("defaultData");
+
+  const hasDefaultData = tagInfo.defaultData !== undefined;
+  const hasValidDefaultData =
+    hasDefaultData &&
+    tagInfo.defaultData !== null &&
+    (typeof tagInfo.defaultData === "object" ||
+      typeof tagInfo.defaultData === "function");
+  const hasUpdateElement = typeof tagInfo.updateElement === "function";
+  const hasView = typeof tagInfo.view === "function";
+  const hasDataUpdate = hasUpdateElement || hasView;
+  const hasMyDefaultAwareness = tagInfo.myDefaultAwareness !== undefined;
+  const hasUpdateElementAwareness =
+    typeof tagInfo.updateElementAwareness === "function";
+  const hasUpdateFunction = hasDataUpdate || hasUpdateElementAwareness;
+
+  if (hasDefaultData && !hasValidDefaultData) {
+    issues.push("defaultData must be an object or function");
   }
 
-  // A valid initializer needs an update path: the imperative `updateElement`
-  // or the declarative `view`.
-  if (
-    typeof tagInfo.updateElement !== "function" &&
-    typeof tagInfo.view !== "function"
-  ) {
-    issues.push("updateElement or view");
+  if (hasDefaultData && !hasDataUpdate) {
+    issues.push("defaultData requires updateElement or view");
+  } else if (!hasDefaultData && hasDataUpdate) {
+    issues.push("updateElement or view requires defaultData");
+  }
+
+  if (hasMyDefaultAwareness && !hasUpdateElementAwareness) {
+    issues.push("myDefaultAwareness requires updateElementAwareness");
+  }
+
+  if (issues.length === 0 && !hasUpdateFunction) {
+    issues.push("updateElement, view, or updateElementAwareness");
   }
 
   return issues;
@@ -2488,11 +2503,12 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
 const pendingRegistrations = new Map<string, ElementInitializer>();
 
 /**
- * Enforces the `view` invariants: a `view` cannot coexist with the imperative
- * `updateElement` or with element-level event handlers, and an initializer
- * must provide at least one update path.
+ * Enforces initializer invariants before register/define stores a capability.
  */
-function validateViewInitializer(name: string, init: ElementInitializer): void {
+function validateRegisteredInitializer(
+  name: string,
+  init: ElementInitializer,
+): void {
   if (init.view && init.updateElement) {
     throw new Error(
       `[playhtml] "${name}" defines both \`view\` and \`updateElement\`. They are mutually exclusive — pick one.`,
@@ -2502,11 +2518,6 @@ function validateViewInitializer(name: string, init: ElementInitializer): void {
     throw new Error(
       `[playhtml] "${name}" defines \`view\` alongside an element event handler (onClick/onDrag/onDragStart). ` +
         `In view mode, attach events inside the template (e.g. \`@click=\${...}\`) instead.`,
-    );
-  }
-  if (!init.view && !init.updateElement) {
-    throw new Error(
-      `[playhtml] "${name}" must define either \`view\` or \`updateElement\`.`,
     );
   }
   // Shared data must be an object (or a factory returning one), never a bare
@@ -2520,6 +2531,12 @@ function validateViewInitializer(name: string, init: ElementInitializer): void {
     throw new Error(
       `[playhtml] "${name}" has a non-object \`defaultData\`. Use an object ` +
         `(e.g. \`{ count: 0 }\`) so the shape can grow without a data migration.`,
+    );
+  }
+  const issues = getElementInitializerValidationIssues(init);
+  if (issues.length > 0) {
+    throw new Error(
+      `[playhtml] "${name}" has an invalid initializer: ${issues.join(", ")}.`,
     );
   }
 }
@@ -2629,7 +2646,7 @@ function registerPlayElement<T = any, U = any, V = any>(
   elementId: string,
   init: ElementInitializer<T, U, V>,
 ): PlayElementHandle<T, U, V> {
-  validateViewInitializer(elementId, init as ElementInitializer);
+  validateRegisteredInitializer(elementId, init as ElementInitializer);
   pendingRegistrations.set(elementId, init as ElementInitializer);
   applyPendingRegistration(elementId);
   if (isDevelopmentMode && hasSynced && !document.getElementById(elementId)) {
@@ -2672,7 +2689,7 @@ function definePlayCapability<T = any, U = any, V = any>(
       `[playhtml] "${capabilityName}" is a built-in capability and cannot be redefined.`,
     );
   }
-  validateViewInitializer(capabilityName, init as ElementInitializer);
+  validateRegisteredInitializer(capabilityName, init as ElementInitializer);
   capabilitiesToInitializer[capabilityName] = init as ElementInitializer;
   // Upgrade any elements already on the page (no-op before init()).
   if (hasSynced) {

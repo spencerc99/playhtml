@@ -7,15 +7,21 @@ import "./PlayerIdentityCard.scss";
 
 interface PlayerIdentityCardProps {
   playerIdentity: PlayerIdentity;
+  discoveredSites?: string[];
   /** Compact inline mode: cursor icon only in bordered box, for header row */
   compact?: boolean;
   onClick?: () => void;
 }
 
-export function PlayerIdentityCard({ playerIdentity, compact = false, onClick }: PlayerIdentityCardProps) {
+export function PlayerIdentityCard({
+  playerIdentity,
+  discoveredSites = [],
+  compact = false,
+  onClick,
+}: PlayerIdentityCardProps) {
   const primaryColor = playerIdentity.playerStyle.colorPalette[0] ?? "#4a9a8a";
   const displayName = playerIdentity.name?.trim() || "Anonymous";
-  const siteCount = playerIdentity.discoveredSites?.length ?? 0;
+  const siteCount = discoveredSites.length;
 
   if (compact) {
     return (

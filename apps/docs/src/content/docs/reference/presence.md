@@ -24,7 +24,6 @@ interface PlayerIdentity {
     colorPalette: string[];
     cursorStyle?: string;
   };
-  discoveredSites?: string[];
   createdAt?: number;
 }
 ```
@@ -35,6 +34,9 @@ interface PlayerIdentity {
 | `name` | Display name, if set. |
 | `playerStyle.colorPalette` | Cursor colors. Index `0` is the primary color. |
 | `playerStyle.cursorStyle` | Optional custom cursor CSS. |
+| `createdAt` | Local identity creation time as a Unix timestamp in milliseconds. |
+
+`PlayerIdentity` is the public identity shared through presence. Keep private keys, local profile data, and browsing history in your own app storage instead of adding them to this object.
 
 Read your identity with `playhtml.presence.getMyIdentity()` (vanilla) or `usePlayContext().getMyPlayerIdentity()` / `usePlayerIdentity()` (React).
 
