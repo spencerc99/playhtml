@@ -3,6 +3,7 @@
 - Message bottles (dev-flagged): letters are now addressed to the website — every letter opens "dear <page>,", writing spends from a small letter pouch that regrows over time, and untouched pages always invite a first letter.
 - The inventory shortcut moved to Ctrl+Shift+B on Windows/Linux (Cmd+Shift+I on Mac is unchanged), freeing Ctrl+Shift+E for an in-progress emote wheel.
 - Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
+- Message bottle letter styles: the default and bordered looks merged into one linen sheet wearing the pixel border, and the stationery style is now a crumpled pink paper with handwritten text.
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**
