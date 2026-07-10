@@ -57,6 +57,7 @@ import {
   canUseRealtimePresenceTransport,
   RealtimePresenceTransport,
 } from "./presence-transport";
+import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -333,6 +334,7 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
 // Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
 // Allows us to distinguish programmatic remote-applied changes from local user writes.
 const remoteApplyingKeys: Set<string> = new Set();
+const canMirrorDataQueue = new CanMirrorDataQueue(() => doc);
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
 export type CursorRoom =
@@ -826,6 +828,7 @@ function teardownMainProvider(): void {
  * through their ensureProxy/attachObserver re-acquire path.
  */
 function recreateStore(): void {
+  canMirrorDataQueue.clear();
   const oldDoc = doc;
 
   store = syncedStore<StoreShape>({ play: {} });
@@ -1460,6 +1463,39 @@ function markAllElementsAsReady(): void {
   }
 }
 
+function applyElementDataChange<TData>(
+  elementId: string,
+  dataProxy: TData,
+  newData: TData | ((draft: TData) => void),
+): void {
+  if (typeof newData === "function") {
+    const returned = (newData as (draft: unknown) => unknown)(dataProxy);
+    // Only warn when the return looks like an intended *replacement*
+    // snapshot (an object/array). Terse arrows like `d => d.count++` or
+    // `d => (d.x = 1)` return a number/boolean as a side effect of a
+    // valid in-place mutation — warning on those is just noise.
+    if (
+      isDevelopmentMode &&
+      returned !== undefined &&
+      typeof returned === "object"
+    ) {
+      console.warn(
+        `[playhtml] A setData() mutator for "${elementId}" returned an object. ` +
+          `Mutators must mutate the draft in place (e.g. \`d => { d.count++ }\`); ` +
+          `the return value is ignored. To replace the whole snapshot, pass a value instead of a function.`,
+      );
+    }
+    return;
+  }
+
+  deepReplaceIntoProxy(dataProxy, newData);
+}
+
+function canWriteElementData(element: HTMLElement): boolean {
+  const elementIdFromAttr = getIdForElement(element);
+  return !isSharedReadOnly(element, elementIdFromAttr);
+}
+
 function createPlayElementData<T extends TagType, TData = any>(
   element: HTMLElement,
   tag: T,
@@ -1505,37 +1541,13 @@ function createPlayElementData<T extends TagType, TData = any>(
         return;
       }
       // Prevent writes for read-only shared consumer elements
-      const elementIdFromAttr = getIdForElement(element);
-      if (isSharedReadOnly(element, elementIdFromAttr)) {
+      if (!canWriteElementData(element)) {
         return;
       }
-      if (typeof newData === "function") {
-        // Mutator form support: onChange can accept function(draft)
-        // Batch all nested mutations into a single Yjs transaction to coalesce events
-        doc.transact(() => {
-          const returned = (newData as (draft: unknown) => unknown)(dataProxy);
-          // Only warn when the return looks like an intended *replacement*
-          // snapshot (an object/array). Terse arrows like `d => d.count++` or
-          // `d => (d.x = 1)` return a number/boolean as a side effect of a
-          // valid in-place mutation — warning on those is just noise.
-          if (
-            isDevelopmentMode &&
-            returned !== undefined &&
-            typeof returned === "object"
-          ) {
-            console.warn(
-              `[playhtml] A setData() mutator for "${elementId}" returned an object. ` +
-                `Mutators must mutate the draft in place (e.g. \`d => { d.count++ }\`); ` +
-                `the return value is ignored. To replace the whole snapshot, pass a value instead of a function.`,
-            );
-          }
-        });
-      } else {
-        // Value form: replace snapshot semantics
-        doc.transact(() => {
-          deepReplaceIntoProxy(dataProxy, newData);
-        });
-      }
+
+      doc.transact(() => {
+        applyElementDataChange(elementId, dataProxy, newData);
+      });
     },
     onAwarenessChange: (elementAwarenessData) => {
       const awarenessProvider = getElementAwarenessProvider();
@@ -1910,6 +1922,7 @@ export async function resetPlayHTML(): Promise<void> {
   if (firstSetup && !initStarted) return;
 
   try {
+    canMirrorDataQueue.clear();
     if (navigationController) {
       navigationController.destroy();
       navigationController = null;
@@ -2206,7 +2219,12 @@ async function setupPlayElementForTag<T extends TagType | string>(
     attachSyncedStoreObserver(tag as string, elementId);
     return;
   } else {
-    const handler = new ElementHandler(elementData);
+    const handler = new ElementHandler(
+      elementData,
+      tag === TagType.CanMirror
+        ? { scheduleSetupDataWrite: (write) => canMirrorDataQueue.queue(write) }
+        : undefined,
+    );
     tagElementHandlers.set(elementId, handler);
     // View handlers can emit capability descendants (mount points for
     // `define`d capabilities / `register`ed ids). Bind the current children and

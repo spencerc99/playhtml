@@ -196,6 +196,7 @@ describe("playhtml configure() + init()", () => {
   it("keeps extension-injected identity on the public identity shape", async () => {
     const originalWebSocket = (globalThis as any).WebSocket;
     (globalThis as any).WebSocket = undefined;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     try {
       await playhtml.init({
@@ -238,7 +239,11 @@ describe("playhtml configure() + init()", () => {
       });
       expect(JSON.stringify(identity)).not.toContain("privateKey");
       expect(JSON.stringify(identity)).not.toContain("profile");
+      expect(log).toHaveBeenCalledWith(
+        "[playhtml] Merged extension identity via CustomEvent",
+      );
     } finally {
+      log.mockRestore();
       (globalThis as any).WebSocket = originalWebSocket;
     }
   });
