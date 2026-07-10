@@ -1023,6 +1023,11 @@ $letterHand: "Lora", Georgia, serif;
   transform: translateZ(60px);
   transform-style: preserve-3d;
   box-shadow: 0 2px 8px rgba(20, 15, 10, 0.28);
+
+  // The face is a mid-animation crop too — no salutation during the ceremony.
+  .mbs-salutation {
+    display: none;
+  }
 }
 
 // One foldable note above the face. It sits directly above its parent (the note
