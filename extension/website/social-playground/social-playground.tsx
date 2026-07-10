@@ -95,7 +95,7 @@ async function bootSocial(): Promise<() => void> {
 
   await playhtml.init({
     cursors: { enabled: false },
-    room: () => `wwo-playground${window.location.pathname}`,
+    room: "wwo-playground",
   });
 
   const cleanup = await initGlobalFeatures({

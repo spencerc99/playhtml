@@ -998,8 +998,8 @@ export default defineContentScript({
           // No instance yet (normal or native-playhtml page): stand up our own,
           // in an extension-owned room isolated from any site's playhtml room so
           // WWO data can't be read/written by the host site. The room is
-          // auto-prefixed with the page host; we add a `wwo` segment + the path
-          // so it stays per-page but never collides with the site's own room.
+          // auto-prefixed with the page host; we add a `wwo` segment; the room
+          // is domain-scoped (one guestbook per site).
           //
           // NOTE: on custom cursor-sites we instead REUSE the cursor instance
           // (set in setupPresence), whose room is the SITE's room — so bottles
@@ -1008,9 +1008,11 @@ export default defineContentScript({
           const { playhtml } = await import("playhtml");
           await playhtml.init({
             cursors: { enabled: false },
-            // Function form so the room recomputes on SPA navigation — bottles
-            // follow the URL instead of staying pinned to the initial path.
-            room: () => `wwo${window.location.pathname}`,
+            // Domain-scoped: one room per site (auto-prefixed with the host).
+            // Bottles form one guestbook per domain; page scoping happens at
+            // render (records carry pageUrl). A future per-page experiment
+            // should namespace its channel key by path instead.
+            room: "wwo",
           });
           this.playhtmlInstance = playhtml;
         }
