@@ -63,8 +63,8 @@ export function LetterScroll({
           ) : (
             <div className="mbs-segSlot mbs-lastWordSlot">
               <div className="mbs-lastWord">
-                your words rest here for now — the next person who passes through
-                will find them, and may leave a reply beneath
+                you&rsquo;ve signed this book — your letter rests here for the
+                next visitor to find
               </div>
             </div>
           )}

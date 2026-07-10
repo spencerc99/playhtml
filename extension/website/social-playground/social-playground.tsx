@@ -72,6 +72,8 @@ function buildSeededNotes(n: number): BottleNote[] {
       createdAt: Date.now() - (n - 1 - i) * 43200000,
       createdBy: i === n - 1 ? "anon" : `other-${i}`,
       authorColor: SEED_COLORS[Math.floor(Math.random() * SEED_COLORS.length)],
+      pageUrl: window.location.href,
+      pageTitle: document.title,
       ...(styleId ? { styleId } : {}),
       ...(Math.random() < 0.7 ? { authorName: `writer ${i + 1}` } : {}),
     };
