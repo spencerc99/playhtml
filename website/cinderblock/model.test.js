@@ -6,6 +6,7 @@ import {
   createBlock,
   createDefaultYard,
   getChangedTransforms,
+  interpolateTransform,
   roundTransform,
 } from "./model";
 
@@ -60,5 +61,24 @@ describe("cinder-block yard model", () => {
       moved: current.moved,
       added: current.added,
     });
+  });
+
+  it("interpolates position and takes the shortest path around an angle wrap", () => {
+    const current = { x: 100, y: 200, angle: Math.PI - 0.1 };
+    const target = { x: 200, y: 100, angle: -Math.PI + 0.1 };
+
+    expect(interpolateTransform(current, target, 0.5)).toEqual({
+      x: 150,
+      y: 150,
+      angle: Math.PI,
+    });
+  });
+
+  it("clamps interpolation so delayed frames cannot overshoot", () => {
+    const current = { x: 0, y: 0, angle: 0 };
+    const target = { x: 20, y: 40, angle: Math.PI / 2 };
+
+    expect(interpolateTransform(current, target, 2)).toEqual(target);
+    expect(interpolateTransform(current, target, -1)).toEqual(current);
   });
 });

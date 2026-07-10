@@ -12,6 +12,7 @@ import {
   createBlock,
   createDefaultYard,
   getChangedTransforms,
+  interpolateTransform,
   roundTransform,
 } from "./model";
 
@@ -32,6 +33,9 @@ const MOVING_SPEED = 0.05;
 const MOVING_ANGULAR_SPEED = 0.002;
 const MAX_LINEAR_SPEED = 24;
 const MAX_ANGULAR_SPEED = 0.24;
+const REMOTE_INTERPOLATION_SPEED = 36;
+const REMOTE_POSITION_SNAP_DISTANCE = 0.1;
+const REMOTE_ANGLE_SNAP_DISTANCE = 0.001;
 
 function requireElement(id) {
   const element = document.getElementById(id);
@@ -56,6 +60,7 @@ class CinderblockYard {
     this.bodies = new Map();
     this.elements = new Map();
     this.sharedStyles = new Map();
+    this.remoteTargets = new Map();
     this.selectedId = null;
     this.pendingSelectionId = null;
     this.dragConstraint = null;
@@ -156,11 +161,14 @@ class CinderblockYard {
     for (const [id, block] of Object.entries(data.blocks)) {
       if (!this.bodies.has(id)) this.addLocalBlock(id, block);
       this.sharedStyles.set(id, block.style);
+      this.remoteTargets.set(id, {
+        x: block.x,
+        y: block.y,
+        angle: block.angle,
+      });
 
       if (!this.localMotionActive) {
         const body = this.bodies.get(id);
-        Body.setPosition(body, { x: block.x, y: block.y });
-        Body.setAngle(body, block.angle);
         Body.setVelocity(body, { x: 0, y: 0 });
         Body.setAngularVelocity(body, 0);
         Sleeping.set(body, true);
@@ -209,6 +217,7 @@ class CinderblockYard {
     if (body) Composite.remove(this.engine.world, body);
     this.bodies.delete(id);
     this.sharedStyles.delete(id);
+    this.remoteTargets.delete(id);
     this.elements.get(id)?.remove();
     this.elements.delete(id);
 
@@ -362,6 +371,37 @@ class CinderblockYard {
     }
   }
 
+  interpolateRemoteTransforms(frameDeltaMs) {
+    if (this.localMotionActive) return;
+    const amount = 1 - Math.exp(-REMOTE_INTERPOLATION_SPEED * frameDeltaMs / 1000);
+
+    for (const [id, target] of this.remoteTargets) {
+      const body = this.bodies.get(id);
+      if (!body) continue;
+      const current = {
+        x: body.position.x,
+        y: body.position.y,
+        angle: body.angle,
+      };
+      const next = interpolateTransform(current, target, amount);
+      const positionDistance = Math.hypot(target.x - next.x, target.y - next.y);
+      const angleDistance = Math.abs(
+        Math.atan2(Math.sin(target.angle - next.angle), Math.cos(target.angle - next.angle)),
+      );
+
+      Body.setPosition(
+        body,
+        positionDistance < REMOTE_POSITION_SNAP_DISTANCE
+          ? { x: target.x, y: target.y }
+          : { x: next.x, y: next.y },
+      );
+      Body.setAngle(
+        body,
+        angleDistance < REMOTE_ANGLE_SNAP_DISTANCE ? target.angle : next.angle,
+      );
+    }
+  }
+
   getCurrentTransforms() {
     return Object.fromEntries(
       [...this.bodies.entries()].map(([id, body]) => [id, roundTransform(body)]),
@@ -410,9 +450,11 @@ class CinderblockYard {
   }
 
   animate(now) {
-    if (!this.previousFrameAt) this.previousFrameAt = now;
-    this.accumulator += Math.min(now - this.previousFrameAt, 50);
+    const frameDeltaMs = this.previousFrameAt
+      ? Math.min(now - this.previousFrameAt, 50)
+      : FIXED_TIMESTEP_MS;
     this.previousFrameAt = now;
+    this.accumulator += frameDeltaMs;
 
     while (this.accumulator >= FIXED_TIMESTEP_MS) {
       Engine.update(this.engine, FIXED_TIMESTEP_MS);
@@ -420,6 +462,7 @@ class CinderblockYard {
       this.accumulator -= FIXED_TIMESTEP_MS;
     }
 
+    this.interpolateRemoteTransforms(frameDeltaMs);
     this.render();
     this.updateLocalSync(now);
     this.animationFrame = requestAnimationFrame(this.animate);

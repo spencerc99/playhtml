@@ -69,3 +69,17 @@ export function getChangedTransforms(current, previous) {
     }),
   );
 }
+
+export function interpolateTransform(current, target, amount) {
+  const boundedAmount = Math.max(0, Math.min(1, amount));
+  const angleDelta = Math.atan2(
+    Math.sin(target.angle - current.angle),
+    Math.cos(target.angle - current.angle),
+  );
+
+  return {
+    x: current.x + (target.x - current.x) * boundedAmount,
+    y: current.y + (target.y - current.y) * boundedAmount,
+    angle: current.angle + angleDelta * boundedAmount,
+  };
+}
