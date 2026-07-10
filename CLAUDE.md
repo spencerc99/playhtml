@@ -59,6 +59,14 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun deploy-server`: Deploy PartyKit to production
 - `bun deploy-server:staging`: Deploy PartyKit to staging
 
+## Papercuts
+
+When you hit a small friction while working — a tool call that missed and had to be retried, a confusing or undocumented setup step, a flaky command, a stale cache, a misleading error, a non-obvious gotcha — log it via `papercut -m <model> "message"` (a global CLI on the machine, not a repo script). One or two sentences: what you were doing → what got in the way (a guess at the cause/fix is a bonus). Do this proactively, in the moment, even though none of these are blocking — logged together they show where the repo needs sanding down. This is distinct from what you accomplished (that goes in your work summary / commit) and from real bugs or tracked work (those are issues).
+
+To mine a whole session for papercuts at once, `papercut review` feeds the current session transcript to a cheap model and appends what it finds; it auto-detects the latest transcript for this project. This is user-triggered — don't run the review yourself unprompted.
+
+Papercuts are stored centrally per repo on the machine (keyed by git remote), outside the repo, so nothing here is committed. If the `papercut` command isn't installed, skip logging rather than creating files in the repo.
+
 ## Architecture
 
 ### Core Library (packages/playhtml)
