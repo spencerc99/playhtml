@@ -353,6 +353,26 @@ Throws if called before `init()` completes sync.
 
 Presence tracks who is in the room and what they are doing. See [Presence & identity](/docs/reference/presence/) for types and API details. Usage guide: [Presence](/docs/data/presence/).
 
+### `users`
+
+**Type:** `{ me, getAll(), onChange(cb) }`
+
+Durable user identity — name, color, and custom properties — for everyone in the room, whether or not cursors are enabled. Throws if accessed before `init()` completes. Usage guide: [Users](/docs/data/presence/users/).
+
+```js
+await playhtml.ready;
+
+playhtml.users.me.name = "Alice";
+playhtml.users.me.setCustom("status", "away", { persist: false });
+
+const everyone = playhtml.users.getAll(); // Map<pid, { pid, name, color, custom, isMe }>
+const unsubscribe = playhtml.users.onChange((users) => {
+  console.log(`${users.size} people here`);
+});
+```
+
+---
+
 ### `presence`
 
 **Type:** `PresenceAPI`
