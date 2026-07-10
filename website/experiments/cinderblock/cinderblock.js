@@ -1,4 +1,4 @@
-// ABOUTME: Runs the collaborative cinder-block yard with Matter.js physics and PlayHTML state.
+// ABOUTME: Runs the cinder-block experiment with Matter.js physics and PlayHTML state.
 // ABOUTME: Publishes locally triggered motion at a throttled rate while rendering both block styles.
 
 import Matter from "matter-js";

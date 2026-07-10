@@ -1,4 +1,4 @@
-// ABOUTME: Verifies the shared cinder-block state shape and physics sync thresholds.
+// ABOUTME: Verifies the cinder-block experiment state and physics sync thresholds.
 // ABOUTME: Covers initial construction, spawn placement, and transform filtering.
 
 import { describe, expect, it } from "vitest";

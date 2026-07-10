@@ -1,4 +1,4 @@
-// ABOUTME: Defines the shared cinder-block yard state and transform comparison helpers.
+// ABOUTME: Defines the cinder-block experiment state and transform comparison helpers.
 // ABOUTME: Keeps persistent block records flat, keyed, and compact for PlayHTML syncing.
 
 export const WORLD_WIDTH = 1200;
