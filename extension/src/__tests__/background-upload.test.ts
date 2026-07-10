@@ -68,9 +68,6 @@ describe("background upload flushing", () => {
             set: vi.fn().mockResolvedValue(undefined),
             remove: vi.fn().mockResolvedValue(undefined),
           },
-          session: {
-            setAccessLevel: vi.fn().mockResolvedValue(undefined),
-          },
         },
         runtime: {
           onInstalled: { addListener: vi.fn() },

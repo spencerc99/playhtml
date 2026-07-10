@@ -11,7 +11,8 @@ const browserMock = vi.hoisted(() => ({
         getBytesInUse: vi.fn().mockResolvedValue(1024),
       },
     session: {
-      setAccessLevel: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn().mockResolvedValue({ collection_session_id: "sid_background" }),
+      set: vi.fn().mockResolvedValue(undefined),
     },
   },
   runtime: {
@@ -131,5 +132,22 @@ describe("background local retention", () => {
         countsByType: { cursor: 1, keyboard: 1 },
       },
     });
+  });
+
+  it("returns the background-owned browser session id", async () => {
+    const background = await import("../entrypoints/background");
+
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    const messageListener =
+      browserMock.runtime.onMessage.addListener.mock.calls[0]?.[0];
+    const reply = vi.fn();
+
+    const keepAlive = messageListener?.({ type: "GET_SESSION_ID" }, {}, reply);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(keepAlive).toBe(true);
+    expect(reply).toHaveBeenCalledWith("sid_background");
   });
 });

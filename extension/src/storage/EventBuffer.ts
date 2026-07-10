@@ -1,7 +1,7 @@
 // ABOUTME: Collects browser events, buffers them in memory, and delegates storage and
 // ABOUTME: upload to the background service worker via browser.runtime.sendMessage
 import type { CollectionEvent, CollectionEventType } from '../collectors/types';
-import { getParticipantId, getSessionId, getTimezone } from './participant';
+import { getParticipantId, requestSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
 import browser from 'webextension-polyfill';
 
@@ -133,7 +133,7 @@ export class EventBuffer {
     if (!this.metadataBasePromise) {
       this.metadataBasePromise = Promise.all([
         getParticipantId(),
-        getSessionId(),
+        requestSessionId(),
       ]).then(([pid, sid]) => ({
         pid,
         sid,

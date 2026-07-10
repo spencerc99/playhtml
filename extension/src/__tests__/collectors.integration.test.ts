@@ -23,7 +23,7 @@ vi.mock("../storage/sync", () => ({
 
 vi.mock("../storage/participant", () => ({
   getParticipantId: vi.fn().mockResolvedValue("test-pid"),
-  getSessionId: vi.fn().mockResolvedValue("test-sid"),
+  requestSessionId: vi.fn().mockResolvedValue("test-sid"),
   getTimezone: vi.fn().mockReturnValue("America/New_York"),
 }));
 

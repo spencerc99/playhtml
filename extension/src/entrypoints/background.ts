@@ -18,6 +18,7 @@ import {
   recordToastShown,
 } from '../milestones/state'
 import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
+import { getSessionId } from '../storage/participant'
 
 const store = new LocalEventStore()
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
@@ -126,11 +127,6 @@ async function runLocalRetention(options: { force?: boolean } = {}): Promise<voi
 }
 
 export default defineBackground(() => {
-  // Allow content scripts to access storage.session (needed for session IDs)
-  (browser.storage.session as any).setAccessLevel?.({
-    accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
-  }).catch(() => {});
-
   // Storage durability is provided by the `unlimitedStorage` permission
   // declared in wxt.config.ts — Chromium's quota manager exempts extensions
   // with this permission from both quota caps and automatic eviction.
@@ -313,6 +309,11 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void;
+    if (message.type === 'GET_SESSION_ID') {
+      getSessionId().then(reply)
+      return true
+    }
+
     if (message.type === 'GET_PLAYER_IDENTITY') {
       getPlayerIdentity().then(reply)
       return true // Will respond asynchronously
