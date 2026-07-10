@@ -1,3 +1,5 @@
+// ABOUTME: Covers ElementHandler state, awareness, event data, and setup behavior.
+// ABOUTME: Verifies handler-level write semantics used by playhtml capabilities.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ElementHandler } from "../elements";
 import type {
@@ -59,6 +61,38 @@ describe("ElementHandler", () => {
     expect(onChange).toHaveBeenCalledWith({ a: 2 });
     // Internal state only updates via __data setter (i.e., from sync layer)
     expect(handler.data).toEqual({ a: 1 });
+  });
+
+  it("can schedule setup setData writes without delaying public setData", () => {
+    const updateElement = vi.fn();
+    const onChange = vi.fn();
+    const onAwarenessChange = vi.fn();
+    const pendingWrites: Array<() => void> = [];
+
+    const handler = new ElementHandler({
+      element,
+      defaultData: { a: 1 },
+      updateElement,
+      onChange,
+      onAwarenessChange,
+      triggerAwarenessUpdate: () => {},
+      onMount: ({ setData }) => {
+        setData({ a: 2 });
+      },
+    } as unknown as ElementData, {
+      scheduleSetupDataWrite: (write) => {
+        pendingWrites.push(write);
+      },
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(pendingWrites).toHaveLength(1);
+
+    pendingWrites[0]();
+    expect(onChange).toHaveBeenCalledWith({ a: 2 });
+
+    handler.setData({ a: 3 });
+    expect(onChange).toHaveBeenLastCalledWith({ a: 3 });
   });
 
   it("notifies data update listeners when internal data changes", () => {

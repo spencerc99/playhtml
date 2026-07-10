@@ -14,9 +14,13 @@ export type PlayerIdentity = {
     colorPalette: string[];
     cursorStyle?: string;
   };
-  discoveredSites?: string[];
   createdAt?: number;
 };
+
+export const MAX_PLAYER_IDENTITY_COLORS = 16;
+export const MAX_PLAYER_IDENTITY_STRING_LENGTH = 512;
+
+const PLAYER_IDENTITY_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
 export type CursorZonePosition = {
   zoneId: string;       // matches element.id of the zone element
@@ -61,6 +65,60 @@ function randomPrimaryColor(): string {
   return `hsl(${hue}, 70%, 60%)`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function toPublicPlayerIdentity(value: unknown): PlayerIdentity | null {
+  if (!isRecord(value)) return null;
+  if (!isValidPlayerIdentityString(value.publicKey)) {
+    return null;
+  }
+
+  const sourceStyle = isRecord(value.playerStyle) ? value.playerStyle : {};
+  const colorPalette = Array.isArray(sourceStyle.colorPalette)
+    ? sourceStyle.colorPalette
+        .filter(isValidPlayerIdentityString)
+        .slice(0, MAX_PLAYER_IDENTITY_COLORS)
+    : [];
+
+  const identity: PlayerIdentity = {
+    publicKey: value.publicKey,
+    playerStyle: { colorPalette },
+  };
+
+  const name = toOptionalPlayerIdentityString(value.name);
+  if (name !== undefined) {
+    identity.name = name;
+  }
+
+  const cursorStyle = toOptionalPlayerIdentityString(sourceStyle.cursorStyle);
+  if (cursorStyle !== undefined) {
+    identity.playerStyle.cursorStyle = cursorStyle;
+  }
+
+  if (Number.isFinite(value.createdAt)) {
+    identity.createdAt = Number(value.createdAt);
+  }
+
+  return identity;
+}
+
+function isValidPlayerIdentityString(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_PLAYER_IDENTITY_STRING_LENGTH &&
+    !PLAYER_IDENTITY_CONTROL_CHARACTERS.test(value)
+  );
+}
+
+function toOptionalPlayerIdentityString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  if (PLAYER_IDENTITY_CONTROL_CHARACTERS.test(value)) return undefined;
+  return value.slice(0, MAX_PLAYER_IDENTITY_STRING_LENGTH);
+}
+
 export function generatePlayerIdentity(): PlayerIdentity {
   const publicKey = crypto
     .getRandomValues(new Uint8Array(16))
@@ -78,7 +136,6 @@ export function generatePlayerIdentity(): PlayerIdentity {
     playerStyle: {
       colorPalette,
     },
-    discoveredSites: [],
     createdAt: Date.now(),
   };
 }
@@ -89,23 +146,28 @@ function hasValidPrimaryColor(identity: PlayerIdentity): boolean {
   return typeof color === "string" && color.length > 0;
 }
 
-/** Ensures identity has a primary color (assigns random if missing), then saves to localStorage. */
-function ensurePrimaryColorAndSave(identity: PlayerIdentity): void {
+function savePlayerIdentityToStorage(identity: PlayerIdentity): void {
+  try {
+    localStorage.setItem(
+      PLAYER_IDENTITY_STORAGE_KEY,
+      JSON.stringify(identity),
+    );
+  } catch (e) {
+    console.warn("Failed to save player identity to localStorage:", e);
+  }
+}
+
+/** Ensures identity has a primary color, assigning one when missing. */
+function ensurePrimaryColor(identity: PlayerIdentity): boolean {
   if (!hasValidPrimaryColor(identity)) {
     if (!identity.playerStyle) identity.playerStyle = { colorPalette: [] };
     if (!Array.isArray(identity.playerStyle.colorPalette)) {
       identity.playerStyle.colorPalette = [];
     }
     identity.playerStyle.colorPalette[0] = randomPrimaryColor();
-    try {
-      localStorage.setItem(
-        PLAYER_IDENTITY_STORAGE_KEY,
-        JSON.stringify(identity),
-      );
-    } catch (e) {
-      console.warn("Failed to save player identity to localStorage:", e);
-    }
+    return true;
   }
+  return false;
 }
 
 export const PLAYER_IDENTITY_STORAGE_KEY = "playhtml_player_identity";
@@ -130,12 +192,13 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
   const stored = localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY);
   if (stored) {
     try {
-      const identity = JSON.parse(stored) as PlayerIdentity;
-      if (identity.publicKey) {
-        // If stored identity has no valid primary color, assign random and persist
-        if (!hasValidPrimaryColor(identity)) {
-          ensurePrimaryColorAndSave(identity);
-        }
+      const parsed = JSON.parse(stored);
+      const identity = toPublicPlayerIdentity(parsed);
+      if (identity) {
+        const shouldSave =
+          ensurePrimaryColor(identity) ||
+          JSON.stringify(identity) !== JSON.stringify(parsed);
+        if (shouldSave) savePlayerIdentityToStorage(identity);
         cachedPlayerIdentity = identity;
         return identity;
       }
@@ -148,11 +211,7 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
 
   // No valid stored identity: generate new one (includes random primary color) and save
   const identity = generatePlayerIdentity();
-  try {
-    localStorage.setItem(PLAYER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
-  } catch (e) {
-    console.warn("Failed to save player identity to localStorage:", e);
-  }
+  savePlayerIdentityToStorage(identity);
   cachedPlayerIdentity = identity;
   return identity;
 }

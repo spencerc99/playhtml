@@ -1,82 +1,27 @@
-// ABOUTME: Provides participant and session identity for event collection
-// ABOUTME: Participant ID is the ECDSA public key from playerIdentity; session ID resets per browser session
+// ABOUTME: Provides the background-owned browser session ID for event collection.
+// ABOUTME: Coordinates content scripts through messaging with an in-memory fallback.
 
 import browser from 'webextension-polyfill';
+import { createPrefixedId } from './ids';
 
 let fallbackSessionId: string | null = null;
-let warnedAboutMissingSessionStorage = false;
-
-function createUuidLikeId(): string {
-  if (typeof crypto?.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  if (typeof crypto?.getRandomValues === 'function') {
-    // RFC4122 v4-compatible fallback for browsers missing crypto.randomUUID.
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-  }
-
-  // Last-resort fallback for unusual runtimes without Web Crypto.
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function createPrefixedId(prefix: string): string {
-  return `${prefix}${createUuidLikeId()}`;
-}
-
-/**
- * Get participant ID (the ECDSA public key from playerIdentity).
- * Falls back to generating a temporary random ID if identity isn't initialized yet.
- */
-export async function getParticipantId(): Promise<string> {
-  try {
-    const result = await browser.storage.local.get(['playerIdentity']);
-    if (result.playerIdentity?.publicKey) {
-      return result.playerIdentity.publicKey;
-    }
-
-    // Identity not yet initialized — generate temporary ID.
-    // This should only happen in a race condition before background.ts runs.
-    console.warn('[Participant] playerIdentity not found, using temporary ID');
-    return createPrefixedId('pk_temp_');
-  } catch (error) {
-    console.error('Failed to get participant ID:', error);
-    return createPrefixedId('pk_temp_');
-  }
-}
+let sessionIdPromise: Promise<string> | null = null;
 
 const SESSION_ID_KEY = 'collection_session_id';
 
-/**
- * Get or create session ID.
- * Uses browser.storage.session so it resets when the browser closes.
- */
-export async function getSessionId(): Promise<string> {
-  const sessionStorage = (browser.storage as { session?: typeof browser.storage.local }).session;
-  const supportsSessionStorage =
-    typeof sessionStorage?.get === 'function' && typeof sessionStorage?.set === 'function';
-
-  if (!supportsSessionStorage) {
-    // Firefox can omit storage.session in content scripts. Keep one in-memory
-    // fallback ID so event creation keeps working instead of failing per emit.
-    if (!fallbackSessionId) {
-      fallbackSessionId = createPrefixedId('sid_');
-    }
-    if (!warnedAboutMissingSessionStorage) {
-      warnedAboutMissingSessionStorage = true;
-      console.warn('[Participant] browser.storage.session unavailable; using in-memory session id');
-    }
-    return fallbackSessionId;
-  }
+async function readOrCreateSessionId(): Promise<string> {
+  const sessionStorage = (browser.storage as unknown as {
+    session?: Pick<typeof browser.storage.local, 'get' | 'set'>;
+  }).session;
 
   try {
+    if (!sessionStorage) {
+      throw new Error('browser.storage.session unavailable');
+    }
+
     const result = await sessionStorage.get([SESSION_ID_KEY]);
 
-    if (result[SESSION_ID_KEY]) {
+    if (typeof result[SESSION_ID_KEY] === 'string') {
       return result[SESSION_ID_KEY];
     }
 
@@ -84,12 +29,34 @@ export async function getSessionId(): Promise<string> {
     await sessionStorage.set({ [SESSION_ID_KEY]: sessionId });
     return sessionId;
   } catch (error) {
-    console.error('Failed to get session ID:', error);
+    console.error('[Participant] Failed to access browser session storage:', error);
     if (!fallbackSessionId) {
       fallbackSessionId = createPrefixedId('sid_');
     }
     return fallbackSessionId;
   }
+}
+
+/**
+ * Get or create the background-owned browser session ID.
+ * Uses browser.storage.session so it resets when the browser closes.
+ */
+export function getSessionId(): Promise<string> {
+  if (!sessionIdPromise) {
+    sessionIdPromise = readOrCreateSessionId();
+  }
+  return sessionIdPromise;
+}
+
+/**
+ * Request the browser session ID from the background context.
+ */
+export async function requestSessionId(): Promise<string> {
+  const sessionId = await browser.runtime.sendMessage({ type: 'GET_SESSION_ID' });
+  if (typeof sessionId !== 'string' || !sessionId.startsWith('sid_')) {
+    throw new Error('Background returned an invalid session ID');
+  }
+  return sessionId;
 }
 
 /**

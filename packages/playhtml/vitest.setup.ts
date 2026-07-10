@@ -47,16 +47,25 @@ vi.mock("y-partyserver/provider", () => {
       awareness: any;
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
+      private doc: any;
+      private docUpdateListener?: (update: Uint8Array) => void;
       roomname: string;
-      constructor(_host: string, room: string) {
+      constructor(_host: string, room: string, doc?: any) {
         if ((globalThis as any).PLAYHTML_TEST_PROVIDER_THROW) {
           throw new Error("test provider init failure");
         }
         this.roomname = room;
+        this.doc = doc;
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),
         } as any;
+        if (this.doc && typeof this.doc.on === "function") {
+          this.docUpdateListener = (update: Uint8Array) => {
+            this.ws?.send(update as any);
+          };
+          this.doc.on("update", this.docUpdateListener);
+        }
         const states = new Map<number, any>();
         const local = { state: {} as any };
         this.awareness = {
@@ -89,6 +98,13 @@ vi.mock("y-partyserver/provider", () => {
         (this.listeners[t] || []).forEach((cb) => cb(...args));
       }
       destroy() {
+        if (
+          this.doc &&
+          this.docUpdateListener &&
+          typeof this.doc.off === "function"
+        ) {
+          this.doc.off("update", this.docUpdateListener);
+        }
         this.listeners = {};
       }
     },

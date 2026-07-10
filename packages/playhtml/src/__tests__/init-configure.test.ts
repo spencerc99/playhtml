@@ -192,4 +192,59 @@ describe("playhtml configure() + init()", () => {
     await playhtml.init();
     expect(playhtml.cursorClient).not.toBeNull();
   });
+
+  it("keeps extension-injected identity on the public identity shape", async () => {
+    const originalWebSocket = (globalThis as any).WebSocket;
+    (globalThis as any).WebSocket = undefined;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      await playhtml.init({
+        cursors: {
+          enabled: true,
+          playerIdentity: {
+            publicKey: "page-key",
+            name: "Page user",
+            playerStyle: { colorPalette: ["#111111"] },
+            privateKey: { kty: "EC", d: "private" },
+            profile: { discoveredSites: ["example.com"] },
+          } as any,
+        },
+      });
+
+      document.dispatchEvent(
+        new CustomEvent("playhtml:configure-identity", {
+          detail: {
+            playerIdentity: {
+              publicKey: "extension-key",
+              playerStyle: {
+                colorPalette: ["#ffae00"],
+                cursorStyle: "pointer",
+                animationStyle: "gentle",
+              },
+            },
+          },
+        }),
+      );
+
+      const identity = playhtml.cursorClient!.getMyPlayerIdentity();
+
+      expect(identity).toEqual({
+        publicKey: "extension-key",
+        name: "Page user",
+        playerStyle: {
+          colorPalette: ["#ffae00"],
+          cursorStyle: "pointer",
+        },
+      });
+      expect(JSON.stringify(identity)).not.toContain("privateKey");
+      expect(JSON.stringify(identity)).not.toContain("profile");
+      expect(log).toHaveBeenCalledWith(
+        "[playhtml] Merged extension identity via CustomEvent",
+      );
+    } finally {
+      log.mockRestore();
+      (globalThis as any).WebSocket = originalWebSocket;
+    }
+  });
 });

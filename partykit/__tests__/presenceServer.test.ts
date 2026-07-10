@@ -2,6 +2,24 @@
 // ABOUTME: Keeps expected WebSocket closes from polluting Worker logs.
 import { describe, expect, it } from "bun:test";
 import { getConnectionCloseDiagnostic } from "../connectionDiagnostics";
+import { persistPresenceConnectionState } from "../presenceMessage";
+
+describe("presence connection state persistence", () => {
+  it("restores the previous state after a rejected attachment write", () => {
+    const previous = { channels: { status: "away" } };
+    const next = { channels: { status: "x".repeat(20_000) } };
+    let stored = previous;
+
+    expect(() =>
+      persistPresenceConnectionState(previous, next, (state) => {
+        stored = state;
+        if (state === next) throw new Error("attachment too large");
+      }),
+    ).toThrow("Presence state exceeds server storage limit");
+
+    expect(stored).toBe(previous);
+  });
+});
 
 describe("presence server diagnostics", () => {
   it("treats normal and clean no-code closes as expected", () => {
