@@ -187,7 +187,7 @@
         "typescript": "^5.0.2",
         "vite": "^7.1.2",
         "vite-plugin-dts": "^4.5.4",
-        "vitest": "^3.1.1",
+        "vitest": "3.2.4",
       },
     },
     "packages/react": {
