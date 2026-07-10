@@ -1148,6 +1148,17 @@ $letterHand: "Lora", Georgia, serif;
   font-style: italic;
   font-size: 0.98rem;
   margin-bottom: 12px;
+  min-width: 0;
+
+  // The text portion fills the row so the title's percentage cap below
+  // resolves against a real width; anything past it clips with an ellipsis.
+  > span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .mbs-salutationFavicon {
@@ -1163,10 +1174,19 @@ $letterHand: "Lora", Georgia, serif;
   padding-bottom: 1px;
   color: inherit;
   text-decoration: none;
+  // Long titles ellipsize rather than pushing the domain off the line;
+  // the reserved 16ch keeps "dear" + the parenthetical domain visible.
+  display: inline-block;
+  max-width: calc(100% - 16ch);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .mbs-salutationDomain {
   font-size: 0.82em;
   opacity: 0.6;
   font-style: normal;
+  margin-left: 0.45em;
 }
