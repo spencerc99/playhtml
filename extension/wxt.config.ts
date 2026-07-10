@@ -29,11 +29,6 @@ export default defineConfig({
         matches: ["<all_urls>"],
       },
     ],
-    // Add options page to host first-time setup
-    options_ui: {
-      page: "options.html",
-      open_in_tab: true,
-    },
     browser_specific_settings: {
       gecko: {
         id: "we-were-online@spencerchang.com",

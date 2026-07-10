@@ -52,7 +52,9 @@ export async function getParticipantId(): Promise<string> {
 const SESSION_ID_KEY = 'collection_session_id';
 
 async function readOrCreateSessionId(): Promise<string> {
-  const sessionStorage = (browser.storage as { session?: typeof browser.storage.local }).session;
+  const sessionStorage = (browser.storage as unknown as {
+    session?: Pick<typeof browser.storage.local, 'get' | 'set'>;
+  }).session;
 
   try {
     if (!sessionStorage) {

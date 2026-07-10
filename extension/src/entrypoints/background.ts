@@ -32,6 +32,8 @@ const LOCAL_RETENTION_LAST_RUN_KEY = 'localRetentionLastRun'
 let localRetentionRunning = false
 
 async function getBrowserStorageUsageBytes(): Promise<number | null> {
+  // Firefox ESR 140 omits storage.local.getBytesInUse, so this remains optional.
+  // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/StorageArea/getBytesInUse
   const storageArea = browser.storage.local as typeof browser.storage.local & {
     getBytesInUse?: (keys?: string | string[] | null) => Promise<number>
   }
