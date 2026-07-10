@@ -234,7 +234,7 @@ function playDissonance(
 
 const SoundPlayground = () => {
   const ctxRef = useRef<AudioContext | null>(null);
-  const masterGainRef = useRef<GainNode | null>(null);
+  const driverGainRef = useRef<GainNode | null>(null);
   const engineRef = useRef<SoundEngine | null>(null);
   const [selectedCursor, setSelectedCursor] = useState<string>("default");
   const [chordVoicing, setChordVoicing] = useState(false);
@@ -249,12 +249,12 @@ const SoundPlayground = () => {
       gain.gain.value = 0.7;
       gain.connect(ctx.destination);
       ctxRef.current = ctx;
-      masterGainRef.current = gain;
+      driverGainRef.current = gain;
     }
     if (ctxRef.current.state === "suspended") {
       ctxRef.current.resume();
     }
-    return { ctx: ctxRef.current, dest: masterGainRef.current! };
+    return { ctx: ctxRef.current, dest: driverGainRef.current! };
   }, []);
 
   const handlePlayNote = useCallback(

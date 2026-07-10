@@ -26,7 +26,7 @@ const CROSSING_DISTANCE_THRESHOLD = 15;
 /** Minimum time between crossing triggers for the same pair (ms) */
 const CROSSING_COOLDOWN_MS = 500;
 /** Default user-facing volume when sound is enabled. */
-const DEFAULT_MASTER_VOLUME = 0.5;
+const DEFAULT_DRIVER_VOLUME = 0.5;
 /**
  * Lower bound for overlap normalization so dense scenes stay audible while
  * preventing clipping/crackle when many trails stack at once.
@@ -69,14 +69,14 @@ interface Voice {
 
 export class SoundEngine {
   private ctx: AudioContext | null = null;
-  private masterGain: GainNode | null = null;
+  private driverGain: GainNode | null = null;
   private reverbGain: GainNode | null = null;
   private convolver: ConvolverNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private voices: Map<number, Voice> = new Map();
   private canvasWidth: number = 0;
   private enabled: boolean = false;
-  private baseVolume: number = DEFAULT_MASTER_VOLUME;
+  private baseVolume: number = DEFAULT_DRIVER_VOLUME;
   private lastActiveTrailCount: number = 0;
   private prevPositions: Map<number, { x: number; y: number }> = new Map();
   /** Accumulated path history per trail for crossing detection */
@@ -90,8 +90,8 @@ export class SoundEngine {
 
     this.ctx = new AudioContext();
 
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = this.baseVolume;
+    this.driverGain = this.ctx.createGain();
+    this.driverGain.gain.value = this.baseVolume;
 
     this.convolver = this.ctx.createConvolver();
     this.convolver.buffer = this.createReverbImpulse(this.ctx, 3.0, 2.0);
@@ -106,8 +106,8 @@ export class SoundEngine {
     this.compressor.attack.value = 0.003;
     this.compressor.release.value = 0.2;
 
-    this.masterGain.connect(this.compressor);
-    this.masterGain.connect(this.reverbGain);
+    this.driverGain.connect(this.compressor);
+    this.driverGain.connect(this.reverbGain);
     this.reverbGain.connect(this.convolver);
     this.convolver.connect(this.compressor);
     this.compressor.connect(this.ctx.destination);
@@ -171,7 +171,7 @@ export class SoundEngine {
   }
 
   tick(elapsedMs: number, activeTrails: TrailSoundFrame[]): void {
-    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    if (!this.enabled || !this.ctx || !this.driverGain) return;
 
     if (this.ctx.state === "suspended") {
       this.ctx.resume();
@@ -179,7 +179,7 @@ export class SoundEngine {
 
     const activeIndices = new Set(activeTrails.map((t) => t.trailIndex));
     this.lastActiveTrailCount = activeTrails.length;
-    this.updateMasterGainForPolyphony(activeTrails.length);
+    this.updateDriverGainForPolyphony(activeTrails.length);
 
     for (const [idx, voice] of this.voices) {
       if (!activeIndices.has(idx) && voice.active) {
@@ -292,7 +292,7 @@ export class SoundEngine {
     elapsedMs: number,
     activeTrails: TrailSoundFrame[],
   ): void {
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.ctx || !this.driverGain) return;
 
     // For each active trail, check if its cursor is near any point in another trail's path
     for (const frame of activeTrails) {
@@ -335,7 +335,7 @@ export class SoundEngine {
     b: TrailSoundFrame,
     distance: number,
   ): void {
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.ctx || !this.driverGain) return;
 
     const now = this.ctx.currentTime;
     const midX = (a.x + b.x) / 2;
@@ -369,7 +369,7 @@ export class SoundEngine {
     osc1.connect(gain);
     osc2.connect(gain);
     gain.connect(pan);
-    pan.connect(this.masterGain);
+    pan.connect(this.driverGain);
 
     osc1.start(now);
     osc2.start(now);
@@ -378,7 +378,7 @@ export class SoundEngine {
   }
 
   triggerClick(click: ClickSoundEvent): void {
-    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    if (!this.enabled || !this.ctx || !this.driverGain) return;
 
     const instrument = CLICK_BELL;
     // Delay the bell ~one frame so it lines up with the React paint that
@@ -443,7 +443,7 @@ export class SoundEngine {
     osc2.connect(gain2);
     gain.connect(pan);
     gain2.connect(pan);
-    pan.connect(this.masterGain);
+    pan.connect(this.driverGain);
 
     osc.start(now);
     osc2.start(now);
@@ -473,7 +473,7 @@ export class SoundEngine {
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(pan);
-    pan.connect(this.masterGain!);
+    pan.connect(this.driverGain!);
 
     osc.start(now);
 
@@ -611,18 +611,18 @@ export class SoundEngine {
 
   setVolume(volume: number): void {
     this.baseVolume = Math.max(0, Math.min(1, volume));
-    this.updateMasterGainForPolyphony(this.lastActiveTrailCount);
+    this.updateDriverGainForPolyphony(this.lastActiveTrailCount);
   }
 
-  private updateMasterGainForPolyphony(activeTrailCount: number): void {
-    if (!this.masterGain || !this.ctx) return;
+  private updateDriverGainForPolyphony(activeTrailCount: number): void {
+    if (!this.driverGain || !this.ctx) return;
     // When many trails overlap, reduce total output energy to avoid clipping artifacts.
     const polyphonyScale = Math.max(
       MIN_POLYPHONY_GAIN_SCALE,
       1 / Math.sqrt(Math.max(1, activeTrailCount / 3)),
     );
     this.rampParam(
-      this.masterGain.gain,
+      this.driverGain.gain,
       this.baseVolume * polyphonyScale,
       0.08,
     );
