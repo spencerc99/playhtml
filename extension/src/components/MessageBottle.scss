@@ -1170,20 +1170,3 @@ $letterHand: "Lora", Georgia, serif;
   opacity: 0.6;
   font-style: normal;
 }
-
-// In the scroll, only the centered/current segment shows its salutation —
-// neighboring segments peeking at the top/bottom tease the letter text
-// instead of all reading "dear xxx". The write segment is the writing prompt
-// and stays visible always, scoped out here rather than via JS.
-.mbs-segSlot .mbs-segment:not(.mbs-writeSegment) .mbs-salutation {
-  opacity: 0;
-}
-
-.mbs-segSlot.mbs-segCurrent .mbs-segment:not(.mbs-writeSegment) .mbs-salutation {
-  opacity: 1;
-  transition: opacity 0.35s ease;
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
-}

@@ -32,31 +32,9 @@ export function LetterScroll({
     const target = scroller.querySelector<HTMLElement>(
       notes.length > 0 ? `[data-seg="${notes.length - 1}"]` : '[data-seg="write"]',
     );
-    // Mark the landing segment current immediately so its salutation is
-    // visible on the very first paint, before the observer has a chance to run.
-    target?.classList.add("mbs-segCurrent");
     target?.scrollIntoView({ block: "center", behavior: "instant" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Track which segment is centered in the viewport and mark it current, so
-  // only the letter being read shows its salutation — neighboring segments
-  // peeking at the top/bottom stay teasers of the letter text.
-  useEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-    const slots = scroller.querySelectorAll<HTMLElement>(".mbs-segSlot");
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          entry.target.classList.toggle("mbs-segCurrent", entry.isIntersecting);
-        }
-      },
-      { root: scroller, threshold: 0.6 },
-    );
-    slots.forEach((slot) => observer.observe(slot));
-    return () => observer.disconnect();
-  }, [notes, canReply]);
 
   function jumpTo(i: number) {
     scrollerRef.current
