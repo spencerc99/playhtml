@@ -36,7 +36,10 @@ import {
   getStableIdForAwareness,
   getElementAwarenessFingerprint,
 } from "./awareness-utils";
-import { CursorClientAwareness } from "./cursors/cursor-client";
+import {
+  CursorClientAwareness,
+  getPresencePage,
+} from "./cursors/cursor-client";
 import { createPresenceAPI, ensureAwarenessIdentity } from "./presence";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import {
@@ -56,6 +59,10 @@ import {
   canUseRealtimePresenceTransport,
   RealtimePresenceTransport,
 } from "./presence-transport";
+import {
+  ElementAwarenessClient,
+  type ElementAwarenessMap,
+} from "./element-awareness";
 
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
@@ -586,6 +593,46 @@ function resolveExplicitRoom(): string | undefined {
 let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
 let cursorOptionsCache: CursorOptions | undefined = undefined;
 let cachedOnError: (() => void) | undefined = undefined;
+
+type AcquiredPresenceTransport = {
+  transport: RealtimePresenceTransport;
+  refCount: number;
+};
+// One presence socket per room, shared between the cursor client and element
+// awareness when their rooms coincide. Refcounted so a cursor-room change
+// never tears down a socket element awareness still uses (and vice versa).
+const presenceTransportsByRoom = new Map<string, AcquiredPresenceTransport>();
+let cursorPresenceTransportRoom: string | null = null;
+let elementAwarenessClient: ElementAwarenessClient | null = null;
+let elementAwarenessRoom: string | null = null;
+
+function acquirePresenceTransport(
+  room: string,
+): RealtimePresenceTransport | null {
+  if (!canUseRealtimePresenceTransport()) return null;
+  const existing = presenceTransportsByRoom.get(room);
+  if (existing) {
+    existing.refCount++;
+    return existing.transport;
+  }
+  const transport = new RealtimePresenceTransport({
+    host: __currentHost,
+    room,
+  });
+  presenceTransportsByRoom.set(room, { transport, refCount: 1 });
+  return transport;
+}
+
+function releasePresenceTransport(room: string): void {
+  const entry = presenceTransportsByRoom.get(room);
+  if (!entry) return;
+  entry.refCount--;
+  if (entry.refCount > 0) return;
+  presenceTransportsByRoom.delete(room);
+  try {
+    entry.transport.destroy();
+  } catch {}
+}
 let roomResetPromise: Promise<void> | null = null;
 let pendingRoomResetEpoch: number | null = null;
 const SERVER_ROOM_RESET_SYNC_TIMEOUT_MS = 5000;
@@ -801,6 +848,10 @@ function buildMainProvider(args: {
 function teardownCursors(): void {
   try { cursorClient?.destroy?.(); } catch {}
   cursorClient = null;
+  if (cursorPresenceTransportRoom !== null) {
+    releasePresenceTransport(cursorPresenceTransportRoom);
+    cursorPresenceTransportRoom = null;
+  }
   try { cursorProvider?.disconnect?.(); } catch {}
   try { cursorProvider?.destroy?.(); } catch {}
   cursorProvider = null;
@@ -850,11 +901,51 @@ function recreateStore(): void {
   }
 }
 
+function getElementAwarenessIdentity(): PlayerIdentity {
+  return (
+    cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity()
+  );
+}
+
+/**
+ * Connects element awareness to the normalized page room over the generic
+ * presence transport. Reuses the cursor presence socket when the cursor room
+ * IS the page room (via the refcounted registry); otherwise opens a separate
+ * page-scoped socket. Falls back to the Yjs-awareness path (bindAwarenessListener)
+ * when the transport is unavailable.
+ */
+function buildElementAwarenessClient(): void {
+  const transport = acquirePresenceTransport(__currentRoomId);
+  if (!transport) return;
+  elementAwarenessRoom = __currentRoomId;
+  elementAwarenessClient = new ElementAwarenessClient({
+    transport,
+    getIdentity: getElementAwarenessIdentity,
+    getPage: getPresencePage,
+    onAwareness: applyElementAwareness,
+  });
+}
+
+function teardownElementAwarenessClient(): void {
+  if (!elementAwarenessClient) return;
+  try {
+    elementAwarenessClient.destroy();
+  } catch {}
+  elementAwarenessClient = null;
+  if (elementAwarenessRoom !== null) {
+    releasePresenceTransport(elementAwarenessRoom);
+    elementAwarenessRoom = null;
+  }
+}
+
 /**
  * Detach the current awareness "change" listener (if any) and attach a fresh
  * one to the provider that holds element awareness. Safe to call multiple times.
  */
 function bindAwarenessListener(): void {
+  // Transport mode: element awareness flows through elementAwarenessClient,
+  // not Yjs awareness — nothing to bind.
+  if (elementAwarenessClient) return;
   if (awarenessChangeTarget && awarenessChangeHandler) {
     try {
       awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
@@ -922,12 +1013,11 @@ function buildCursors(args: {
     currentCursorRoomId = mainRoom;
   }
 
-  const cursorPresenceTransport = canUseRealtimePresenceTransport()
-    ? new RealtimePresenceTransport({
-        host: partykitHost,
-        room: currentCursorRoomId,
-      })
-    : undefined;
+  const cursorPresenceTransport =
+    acquirePresenceTransport(currentCursorRoomId) ?? undefined;
+  cursorPresenceTransportRoom = cursorPresenceTransport
+    ? currentCursorRoomId
+    : null;
   cursorClient = new CursorClientAwareness(
     providerForCursors,
     cursorOptions,
@@ -1092,6 +1182,7 @@ function setupExtensionIdentityListener(): void {
     };
 
     cursorClient.configure({ playerIdentity: merged });
+    elementAwarenessClient?.refreshIdentity();
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1151,6 +1242,7 @@ async function runHandleNavigation(): Promise<void> {
 
   if (mainRoomChanged) {
     teardownMainProvider();
+    teardownElementAwarenessClient();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
     trackedElementAwarenessKeys.clear();
@@ -1167,6 +1259,7 @@ async function runHandleNavigation(): Promise<void> {
       onMessage,
     });
     __currentRoomId = newMainRoom;
+    buildElementAwarenessClient();
   }
 
   if (cursorEnabledChanged || (cursorRoomChanged && cursorOptionsCache)) {
@@ -1321,6 +1414,8 @@ async function initPlayHTMLOnce() {
     onError,
   });
 
+  buildElementAwarenessClient();
+
   if (cursors.enabled) {
     setupExtensionIdentityListener();
   }
@@ -1381,6 +1476,9 @@ async function initPlayHTMLOnce() {
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
+  if (elementAwarenessClient) {
+    return elementAwarenessClient.getLocalAwareness(tagType, elementId);
+  }
   const awarenessProvider = getElementAwarenessProvider();
   const awareness = awarenessProvider.awareness.getLocalState();
   const elementAwareness = awareness?.[tagType] ?? {};
@@ -1543,6 +1641,14 @@ function createPlayElementData<T extends TagType, TData = any>(
       }
     },
     onAwarenessChange: (elementAwarenessData) => {
+      if (elementAwarenessClient) {
+        elementAwarenessClient.setLocalAwareness(
+          tag,
+          elementId,
+          elementAwarenessData,
+        );
+        return;
+      }
       const awarenessProvider = getElementAwarenessProvider();
       ensureAwarenessIdentity(
         awarenessProvider.awareness,
@@ -1564,6 +1670,13 @@ function createPlayElementData<T extends TagType, TData = any>(
       awarenessProvider.awareness.setLocalStateField(tag, nextAwareness);
     },
     triggerAwarenessUpdate: () => {
+      if (elementAwarenessClient) {
+        // setLocalAwareness (called by onAwarenessChange, which always runs
+        // immediately before this in setMyAwareness) already emitted the
+        // handler sweep synchronously. Refreshing here would fire
+        // updateElementAwareness a second time for the same local write.
+        return;
+      }
       onChangeAwareness();
     },
   };
@@ -1729,7 +1842,10 @@ function onChangeAwareness() {
     });
   });
 
-  // Update all handlers with both array and byStableId
+  applyElementAwareness(elementAwareness);
+}
+
+function applyElementAwareness(elementAwareness: ElementAwarenessMap): void {
   elementAwareness.forEach(({ array, byStableId }, key) => {
     updateHandlerAwarenessForKey(key, array, byStableId);
   });
@@ -1801,12 +1917,16 @@ function setupElements(): void {
     return;
   }
 
-  // Re-bound on provider rebuild via bindAwarenessListener so nav-time provider
-  // swaps don't leave an orphaned listener.
-  bindAwarenessListener();
-
-  // Trigger initial awareness sync to populate existing states
-  onChangeAwareness();
+  if (elementAwarenessClient) {
+    // Seed handlers from any peer state that arrived before elements bound.
+    elementAwarenessClient.refresh();
+  } else {
+    // Re-bound on provider rebuild via bindAwarenessListener so nav-time provider
+    // swaps don't leave an orphaned listener.
+    bindAwarenessListener();
+    // Trigger initial awareness sync to populate existing states
+    onChangeAwareness();
+  }
 
   navigationController = createNavigationController(async () => {
     await runHandleNavigation();
@@ -1956,8 +2076,17 @@ export async function resetPlayHTML(): Promise<void> {
     pageDataListeners.clear();
     mainProviderSyncWaiters.clear();
 
+    teardownElementAwarenessClient();
     teardownCursors();
     teardownMainProvider();
+
+    for (const [, entry] of presenceTransportsByRoom) {
+      try {
+        entry.transport.destroy();
+      } catch {}
+    }
+    presenceTransportsByRoom.clear();
+    cursorPresenceTransportRoom = null;
 
     try {
       teardownDevUI();
@@ -2455,6 +2584,7 @@ function removePlayElement(element: Element | null) {
     // Run onMount cleanup (rAF loops, timers, event listeners) and disconnect
     // the descendant observer so view elements don't leak after removal.
     handler.destroy?.();
+    elementAwarenessClient?.removeLocalAwareness(tag, elementId);
     tagElementHandler.delete(elementId);
   }
 }
