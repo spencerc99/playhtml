@@ -10,29 +10,29 @@ const POSITION_SYNC_THRESHOLD = 0.35;
 const ANGLE_SYNC_THRESHOLD = 0.004;
 
 const INITIAL_BLOCKS = [
-  ["block-1", 180, 642, "photo"],
-  ["block-2", 390, 642, "css"],
-  ["block-3", 600, 642, "photo"],
-  ["block-4", 810, 642, "css"],
-  ["block-5", 1020, 642, "photo"],
-  ["block-6", 285, 546, "css"],
-  ["block-7", 495, 546, "photo"],
-  ["block-8", 705, 546, "css"],
-  ["block-9", 915, 546, "photo"],
+  ["block-1", 180, 642],
+  ["block-2", 390, 642],
+  ["block-3", 600, 642],
+  ["block-4", 810, 642],
+  ["block-5", 1020, 642],
+  ["block-6", 285, 546],
+  ["block-7", 495, 546],
+  ["block-8", 705, 546],
+  ["block-9", 915, 546],
 ];
 
 export function createDefaultYard() {
   return {
     blocks: Object.fromEntries(
-      INITIAL_BLOCKS.map(([id, x, y, style]) => [
+      INITIAL_BLOCKS.map(([id, x, y]) => [
         id,
-        { x, y, angle: 0, style },
+        { x, y, angle: 0, style: "photo" },
       ]),
     ),
   };
 }
 
-export function createBlock(id, style, blockCount) {
+export function createBlock(id, blockCount) {
   const columns = 5;
   const column = blockCount % columns;
 
@@ -42,7 +42,7 @@ export function createBlock(id, style, blockCount) {
       x: 180 + column * 210,
       y: 100 + Math.floor(blockCount / columns) % 2 * 28,
       angle: 0,
-      style,
+      style: "photo",
     },
   };
 }

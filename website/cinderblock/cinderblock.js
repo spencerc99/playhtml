@@ -20,7 +20,6 @@ const {
   Bodies,
   Body,
   Composite,
-  Constraint,
   Engine,
   Sleeping,
   Vector,
@@ -31,8 +30,8 @@ const SYNC_INTERVAL_MS = 80;
 const STILLNESS_WINDOW_MS = 500;
 const MOVING_SPEED = 0.05;
 const MOVING_ANGULAR_SPEED = 0.002;
-const MAX_LINEAR_SPEED = 24;
-const MAX_ANGULAR_SPEED = 0.24;
+const MAX_LINEAR_SPEED = 12;
+const MAX_ANGULAR_SPEED = 0.12;
 const REMOTE_INTERPOLATION_SPEED = 36;
 const REMOTE_POSITION_SNAP_DISTANCE = 0.1;
 const REMOTE_ANGLE_SNAP_DISTANCE = 0.001;
@@ -59,11 +58,11 @@ class CinderblockYard {
     this.engine.gravity.y = 1.08;
     this.bodies = new Map();
     this.elements = new Map();
-    this.sharedStyles = new Map();
     this.remoteTargets = new Map();
     this.selectedId = null;
     this.pendingSelectionId = null;
-    this.dragConstraint = null;
+    this.draggedBody = null;
+    this.dragOffset = null;
     this.dragPointerId = null;
     this.getData = null;
     this.setData = null;
@@ -114,11 +113,8 @@ class CinderblockYard {
     this.board.addEventListener("pointercancel", this.handlePointerUp);
     window.addEventListener("keydown", this.handleKeyDown);
 
-    document.querySelector('[data-action="add-css"]').addEventListener("click", () => {
-      this.addSharedBlock("css");
-    });
-    document.querySelector('[data-action="add-photo"]').addEventListener("click", () => {
-      this.addSharedBlock("photo");
+    document.querySelector('[data-action="add-block"]').addEventListener("click", () => {
+      this.addSharedBlock();
     });
     document.querySelector('[data-action="rotate"]').addEventListener("click", () => {
       this.rotateSelected();
@@ -160,7 +156,6 @@ class CinderblockYard {
 
     for (const [id, block] of Object.entries(data.blocks)) {
       if (!this.bodies.has(id)) this.addLocalBlock(id, block);
-      this.sharedStyles.set(id, block.style);
       this.remoteTargets.set(id, {
         x: block.x,
         y: block.y,
@@ -187,24 +182,22 @@ class CinderblockYard {
     const body = Bodies.rectangle(block.x, block.y, BLOCK_WIDTH, BLOCK_HEIGHT, {
       angle: block.angle,
       density: 0.0024,
-      friction: 0.82,
-      frictionAir: 0.014,
-      frictionStatic: 1,
-      restitution: 0.06,
-      sleepThreshold: 45,
+      friction: 0.95,
+      frictionAir: 0.035,
+      frictionStatic: 1.4,
+      restitution: 0.01,
+      sleepThreshold: 30,
       label: id,
     });
+    Body.setInertia(body, body.inertia * 1.4);
     const element = document.createElement("button");
     element.type = "button";
     element.id = `yard-${id}`;
-    element.className = `cinderblock ${block.style}-block`;
+    element.className = "cinderblock real-block";
     element.dataset.blockId = id;
-    element.setAttribute("aria-label", `${block.style} cinder block`);
+    element.setAttribute("aria-label", "cinder block");
     element.setAttribute("aria-pressed", "false");
-    element.innerHTML =
-      block.style === "photo"
-        ? '<img src="/cinderblock-realistic.png" alt="" draggable="false" />'
-        : '<span class="hole"></span><span class="hole"></span>';
+    element.innerHTML = '<img src="/cinderblock-realistic.png" alt="" draggable="false" />';
 
     this.bodies.set(id, body);
     this.elements.set(id, element);
@@ -216,7 +209,6 @@ class CinderblockYard {
     const body = this.bodies.get(id);
     if (body) Composite.remove(this.engine.world, body);
     this.bodies.delete(id);
-    this.sharedStyles.delete(id);
     this.remoteTargets.delete(id);
     this.elements.get(id)?.remove();
     this.elements.delete(id);
@@ -224,11 +216,11 @@ class CinderblockYard {
     if (this.selectedId === id) this.selectBlock(null);
   }
 
-  addSharedBlock(style) {
+  addSharedBlock() {
     const data = this.getData();
     validateYardData(data);
     const id = `block-${crypto.randomUUID()}`;
-    const block = createBlock(id, style, Object.keys(data.blocks).length);
+    const block = createBlock(id, Object.keys(data.blocks).length);
     this.pendingSelectionId = id;
     this.beginLocalMotion();
     this.setData((draft) => {
@@ -295,33 +287,34 @@ class CinderblockYard {
     const id = blockElement.dataset.blockId;
     const body = this.bodies.get(id);
     const point = this.pointInYard(event);
-    const localPoint = Vector.rotate(Vector.sub(point, body.position), -body.angle);
-    this.dragConstraint = Constraint.create({
-      pointA: point,
-      bodyB: body,
-      pointB: localPoint,
-      length: 0,
-      stiffness: 0.2,
-      damping: 0.12,
-    });
+    this.draggedBody = body;
+    this.dragOffset = Vector.sub(body.position, point);
     this.dragPointerId = event.pointerId;
     this.board.setPointerCapture(event.pointerId);
-    Composite.add(this.engine.world, this.dragConstraint);
-    Sleeping.set(body, false);
+    Body.setVelocity(body, { x: 0, y: 0 });
+    Body.setAngularVelocity(body, 0);
+    Body.setStatic(body, true);
     this.selectBlock(id);
     this.beginLocalMotion();
   }
 
   handlePointerMove(event) {
-    if (!this.dragConstraint || event.pointerId !== this.dragPointerId) return;
-    this.dragConstraint.pointA = this.pointInYard(event);
+    if (!this.draggedBody || event.pointerId !== this.dragPointerId) return;
+    Body.setPosition(
+      this.draggedBody,
+      Vector.add(this.pointInYard(event), this.dragOffset),
+    );
     this.lastMotionAt = performance.now();
   }
 
   handlePointerUp(event) {
-    if (!this.dragConstraint || event.pointerId !== this.dragPointerId) return;
-    Composite.remove(this.engine.world, this.dragConstraint);
-    this.dragConstraint = null;
+    if (!this.draggedBody || event.pointerId !== this.dragPointerId) return;
+    Body.setStatic(this.draggedBody, false);
+    Body.setVelocity(this.draggedBody, { x: 0, y: 0 });
+    Body.setAngularVelocity(this.draggedBody, 0);
+    Sleeping.set(this.draggedBody, false);
+    this.draggedBody = null;
+    this.dragOffset = null;
     this.dragPointerId = null;
     this.lastMotionAt = performance.now();
     if (this.board.hasPointerCapture(event.pointerId)) {
@@ -429,10 +422,10 @@ class CinderblockYard {
 
   updateLocalSync(now) {
     if (!this.localMotionActive) return;
-    if (this.hasMovingBodies() || this.dragConstraint) this.lastMotionAt = now;
+    if (this.hasMovingBodies() || this.draggedBody) this.lastMotionAt = now;
     this.publishTransforms(now);
 
-    if (!this.dragConstraint && now - this.lastMotionAt >= STILLNESS_WINDOW_MS) {
+    if (!this.draggedBody && now - this.lastMotionAt >= STILLNESS_WINDOW_MS) {
       this.publishTransforms(now, true);
       this.localMotionActive = false;
       this.lastPublished = {};

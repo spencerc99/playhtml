@@ -11,7 +11,7 @@ import {
 } from "./model";
 
 describe("cinder-block yard model", () => {
-  it("creates a mixed nine-block wall keyed by stable ids", () => {
+  it("creates a realistic nine-block wall keyed by stable ids", () => {
     const yard = createDefaultYard();
 
     expect(Object.keys(yard.blocks)).toHaveLength(9);
@@ -23,15 +23,15 @@ describe("cinder-block yard model", () => {
     });
     expect(
       new Set(Object.values(yard.blocks).map((block) => block.style)),
-    ).toEqual(new Set(["css", "photo"]));
+    ).toEqual(new Set(["photo"]));
   });
 
   it("spawns added blocks across the top of the yard", () => {
-    expect(createBlock("one", "css", 0)).toEqual({
+    expect(createBlock("one", 0)).toEqual({
       id: "one",
-      transform: { x: 180, y: 100, angle: 0, style: "css" },
+      transform: { x: 180, y: 100, angle: 0, style: "photo" },
     });
-    expect(createBlock("six", "photo", 5)).toEqual({
+    expect(createBlock("six", 5)).toEqual({
       id: "six",
       transform: { x: 180, y: 128, angle: 0, style: "photo" },
     });
