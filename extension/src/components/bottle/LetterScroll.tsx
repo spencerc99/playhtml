@@ -68,7 +68,6 @@ export function LetterScroll({
     <div className="mbs-scrollFrame">
       <div ref={scrollerRef} className="mbs-scroller">
         <div className="mbs-strip">
-          <div className="mbs-rollEnd mbs-rollEnd--top" aria-hidden="true" />
           {notes.map((n, i) => (
             <div key={i} data-seg={i} className="mbs-segSlot">
               <LetterSegment note={n} />
@@ -90,7 +89,6 @@ export function LetterScroll({
               </div>
             </div>
           )}
-          <div className="mbs-rollEnd mbs-rollEnd--bottom" aria-hidden="true" />
         </div>
       </div>
 

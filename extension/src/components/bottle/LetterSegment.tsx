@@ -3,7 +3,7 @@
 
 import type { BottleNote } from "../../features/BottleManager";
 import { segmentStyle } from "./segmentStyles";
-import { salutationAddress, currentFaviconUrl } from "./salutation";
+import { salutationParts, currentFaviconUrl } from "./salutation";
 
 /** The date as the rubber stamp pressed it, e.g. "MAR 3, 2026". */
 export function formatStampDate(ts: number): string {
@@ -44,29 +44,43 @@ export function Fingerprint({ color }: { color: string }) {
   );
 }
 
-export function LetterSegment({ note }: { note: BottleNote }) {
+export function LetterSegment({
+  note,
+  hideSalutation = false,
+}: {
+  note: BottleNote;
+  /** Suppress the "dear [site]," greeting. The sealing ceremony folds the
+   * segments into a small packet where the salutation would just be clutter —
+   * the reader already saw it on the open scroll. */
+  hideSalutation?: boolean;
+}) {
   const style = segmentStyle(note.styleId);
   const pageUrl = note.pageUrl ?? window.location.href;
-  const address = salutationAddress(pageUrl, note.pageTitle);
+  const parts = salutationParts(pageUrl, note.pageTitle);
   const favicon = note.faviconUrl ?? currentFaviconUrl();
   return (
     <>
       <div className={`mbs-segment ${style.className}`} style={{ color: style.ink }}>
-        <div className="mbs-salutation">
-          {favicon && <img className="mbs-salutationFavicon" src={favicon} alt="" />}
-          <span>
-            dear{" "}
-            <a
-              className="mbs-salutationSite"
-              href={pageUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {address}
-            </a>
-            ,
-          </span>
-        </div>
+        {!hideSalutation && (
+          <div className="mbs-salutation">
+            {favicon && <img className="mbs-salutationFavicon" src={favicon} alt="" />}
+            <span>
+              dear{" "}
+              <a
+                className="mbs-salutationSite"
+                href={pageUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {parts.label}
+              </a>
+              {parts.domain && (
+                <span className="mbs-salutationDomain">({parts.domain})</span>
+              )}
+              ,
+            </span>
+          </div>
+        )}
         <div className="mbs-letterText">{note.text}</div>
         <div className="mbs-signoff" style={{ color: note.authorColor }}>
           {note.authorName && <span className="mbs-signName">{note.authorName}</span>}

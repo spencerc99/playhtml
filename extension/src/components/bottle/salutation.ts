@@ -19,23 +19,31 @@ function truncate(text: string): string {
   return `${head.trimEnd()}…`;
 }
 
+export interface SalutationParts {
+  label: string;
+  domain?: string;
+}
+
 /**
  * The addressee for a letter's salutation. Root pages address the site itself
- * (bare domain); other pages address the page by its cleaned title, falling
- * back to hostname + path when no title was captured.
+ * (bare domain); other pages address the page by its cleaned title, paired
+ * with the domain so the salutation carries the URL's texture, falling back
+ * to hostname + path when no title was captured.
  */
-export function salutationAddress(pageUrl: string, pageTitle?: string): string {
+export function salutationParts(pageUrl: string, pageTitle?: string): SalutationParts {
   let url: URL;
   try {
     url = new URL(pageUrl);
   } catch {
-    return pageTitle ? truncate(stripSiteSuffix(pageTitle)) : pageUrl;
+    return { label: pageTitle ? truncate(stripSiteSuffix(pageTitle)) : pageUrl };
   }
   const hostname = url.hostname.replace(/^www\./, "");
   const isRoot = url.pathname === "/" || /^\/index\.html?$/.test(url.pathname);
-  if (isRoot) return hostname;
-  if (pageTitle && pageTitle.trim()) return truncate(stripSiteSuffix(pageTitle));
-  return truncate(`${hostname}${url.pathname.replace(/\/$/, "")}`);
+  if (isRoot) return { label: hostname };
+  if (pageTitle && pageTitle.trim()) {
+    return { label: truncate(stripSiteSuffix(pageTitle)), domain: hostname };
+  }
+  return { label: truncate(`${hostname}${url.pathname.replace(/\/$/, "")}`) };
 }
 
 /** The current page's favicon URL, if it declares one. */

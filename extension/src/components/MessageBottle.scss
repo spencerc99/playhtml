@@ -899,31 +899,6 @@ $letterHand: "Lora", Georgia, serif;
   align-items: stretch;
   width: 100%;
 }
-// The wound-up ends of the roll: a paper tube seen edge-on, attached flush to
-// the strip's ends — the scroll continues into them.
-.mbs-rollEnd {
-  flex: none;
-  height: 34px;
-  width: 100%;
-  background:
-    linear-gradient(
-      to bottom,
-      #b8ad9c 0%,
-      #efe9df 30%,
-      #faf7f2 46%,
-      #e4ddd0 66%,
-      #9a8f7d 100%
-    );
-  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.2);
-}
-.mbs-rollEnd--top {
-  border-radius: 18px 18px 4px 4px;
-  box-shadow: inset 0 6px 10px rgba(0, 0, 0, 0.28);
-}
-.mbs-rollEnd--bottom {
-  border-radius: 4px 4px 18px 18px;
-  box-shadow: inset 0 -6px 10px rgba(0, 0, 0, 0.28);
-}
 .mbs-lastWordSlot {
   align-items: stretch;
 }
@@ -1183,6 +1158,12 @@ $letterHand: "Lora", Georgia, serif;
   padding-bottom: 1px;
   color: inherit;
   text-decoration: none;
+}
+
+.mbs-salutationDomain {
+  font-size: 0.82em;
+  opacity: 0.6;
+  font-style: normal;
 }
 
 // In the scroll, only the centered/current segment shows its salutation —

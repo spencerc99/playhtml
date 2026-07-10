@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import browser from "webextension-polyfill";
-import { salutationAddress, currentFaviconUrl } from "./salutation";
+import { salutationParts, currentFaviconUrl } from "./salutation";
 import { SEGMENT_STYLES, segmentStyle } from "./segmentStyles";
 import { Fingerprint } from "./LetterSegment";
 import { DateStamp } from "./DateStamp";
@@ -33,7 +33,7 @@ export function WriteSegment({
   const [name, setName] = useState("");
   const [styleId, setStyleId] = useState(SEGMENT_STYLES[0].id);
   const style = segmentStyle(styleId);
-  const address = salutationAddress(window.location.href, document.title);
+  const parts = salutationParts(window.location.href, document.title);
   const favicon = currentFaviconUrl();
 
   useEffect(() => {
@@ -59,54 +59,59 @@ export function WriteSegment({
   }
 
   return (
-    <div
-      className={`mbs-segment mbs-writeSegment ${style.className}${
-        isFirst ? " mbs-writeFirst" : ""
-      }`}
-      style={{ color: style.ink }}
-    >
-      <div className="mbs-swatchRow">
-        {SEGMENT_STYLES.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className={`mbs-swatch swatch-${s.id}${s.id === styleId ? " selected" : ""}`}
-            title={s.label}
-            aria-label={`paper style: ${s.label}`}
-            onClick={() => setStyleId(s.id)}
-          />
-        ))}
-      </div>
-      <div className="mbs-salutation">
-        {favicon && <img className="mbs-salutationFavicon" src={favicon} alt="" />}
-        <span>
-          dear <span className="mbs-salutationSite">{address}</span>,
-        </span>
-      </div>
-      <textarea
-        className="mbs-writeField"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={
-          isFirst
-            ? "no one has written here yet — yours would be the first letter..."
-            : "what brought you here? what do you want this place to know?"
-        }
-        maxLength={500}
+    <>
+      <div
+        className={`mbs-segment mbs-writeSegment ${style.className}${
+          isFirst ? " mbs-writeFirst" : ""
+        }`}
         style={{ color: style.ink }}
-      />
-      <div className="mbs-signoff" style={{ color: authorColor }}>
-        <input
-          className="mbs-signInput"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="sign your name (optional)"
-          maxLength={40}
-          style={{ color: authorColor }}
+      >
+        <div className="mbs-swatchRow">
+          {SEGMENT_STYLES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`mbs-swatch swatch-${s.id}${s.id === styleId ? " selected" : ""}`}
+              title={s.label}
+              aria-label={`paper style: ${s.label}`}
+              onClick={() => setStyleId(s.id)}
+            />
+          ))}
+        </div>
+        <div className="mbs-salutation">
+          {favicon && <img className="mbs-salutationFavicon" src={favicon} alt="" />}
+          <span>
+            dear <span className="mbs-salutationSite">{parts.label}</span>
+            {parts.domain && <span className="mbs-salutationDomain">({parts.domain})</span>}
+            ,
+          </span>
+        </div>
+        <textarea
+          className="mbs-writeField"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={
+            isFirst
+              ? "no one has written here yet — yours would be the first letter..."
+              : "what brought you here? what do you want this place to know?"
+          }
+          maxLength={500}
+          style={{ color: style.ink }}
         />
-        <Fingerprint color={authorColor} />
+        <div className="mbs-signoff" style={{ color: authorColor }}>
+          <input
+            className="mbs-signInput"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="sign your name (optional)"
+            maxLength={40}
+            style={{ color: authorColor }}
+          />
+          <Fingerprint color={authorColor} />
+        </div>
+        <DateStamp disabled={!text.trim()} onStamped={handleStamped} />
       </div>
-      <DateStamp disabled={!text.trim()} onStamped={handleStamped} />
-    </div>
+      <div className={`mbs-perf perf-${style.id}`} aria-hidden="true" />
+    </>
   );
 }
