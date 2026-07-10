@@ -2,7 +2,7 @@
 // ABOUTME: latest-author self-reply guard.
 
 import type { PageDataChannel } from "@playhtml/common";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BottleManager, type BottlePageData } from "../features/BottleManager";
 import type { BottleAnchor } from "../features/bottle-anchor";
 import { __resetPouchForTests, POUCH_MAX } from "../features/letter-pouch";
@@ -71,6 +71,10 @@ describe("BottleManager.seal", () => {
   beforeEach(() => {
     localStorage.clear();
     __resetPouchForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("persists authorName, styleId, and pageUrl on the note", () => {
@@ -157,7 +161,7 @@ describe("BottleManager.seal", () => {
     // jsdom gives every element a zero-size rect, which makes anchor
     // resolution hard-reject all bottles (see bottle-anchor.ts). Stub body's
     // rect to fill the mocked 1024x768 viewport so "here" resolves.
-    document.body.getBoundingClientRect = () =>
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(
       ({
         x: 0,
         y: 0,
@@ -168,35 +172,46 @@ describe("BottleManager.seal", () => {
         width: 1024,
         height: 768,
         toJSON() {},
-      }) as DOMRect;
+      }) as DOMRect,
+    );
     // jsdom doesn't implement elementsFromPoint; the anchor scorer uses it to
     // check the sample area is empty background. Report body at every point.
+    const originalElementsFromPoint = document.elementsFromPoint;
     document.elementsFromPoint = () => [document.body];
+    try {
 
-    const channel = new MemoryPageDataChannel<BottlePageData>({
-      bottles: {
-        here: {
-          id: "here",
-          anchor,
-          pageUrl: normalizeUrl(window.location.href),
-          notes: [{ text: "here", createdAt: 1, createdBy: "them", authorColor: "#000" }],
+      const channel = new MemoryPageDataChannel<BottlePageData>({
+        bottles: {
+          here: {
+            id: "here",
+            anchor,
+            pageUrl: normalizeUrl(window.location.href),
+            notes: [{ text: "here", createdAt: 1, createdBy: "them", authorColor: "#000" }],
+          },
+          elsewhere: {
+            id: "elsewhere",
+            anchor,
+            pageUrl: "https://example.com/other-page",
+            notes: [{ text: "away", createdAt: 2, createdBy: "them", authorColor: "#000" }],
+          },
         },
-        elsewhere: {
-          id: "elsewhere",
-          anchor,
-          pageUrl: "https://example.com/other-page",
-          notes: [{ text: "away", createdAt: 2, createdBy: "them", authorColor: "#000" }],
-        },
-      },
-    });
-    let rendered: string[] = [];
-    const createPageData = <T,>(_n: string, _d: T) =>
-      channel as unknown as PageDataChannel<T>;
-    const mgr = new BottleManager("#4a9a8a", "me", createPageData);
-    mgr.init((req) => {
-      rendered = req.bottles.filter((b) => !b.isEmpty).map((b) => b.id);
-    });
-    if (rendered.length === 0) mgr.markSeen("__none__");
-    expect(rendered).toEqual(["here"]);
+      });
+      let rendered: string[] = [];
+      const createPageData = <T,>(_n: string, _d: T) =>
+        channel as unknown as PageDataChannel<T>;
+      const mgr = new BottleManager("#4a9a8a", "me", createPageData);
+      mgr.init((req) => {
+        rendered = req.bottles.filter((b) => !b.isEmpty).map((b) => b.id);
+      });
+      if (rendered.length === 0) mgr.markSeen("__none__");
+      expect(rendered).toEqual(["here"]);
+    } finally {
+      // Restore elementsFromPoint to its original value or delete if it didn't exist
+      if (originalElementsFromPoint !== undefined) {
+        document.elementsFromPoint = originalElementsFromPoint;
+      } else {
+        delete (document as any).elementsFromPoint;
+      }
+    }
   });
 });
