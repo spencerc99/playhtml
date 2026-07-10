@@ -1,5 +1,5 @@
-// ABOUTME: Verifies participant identity fallbacks and browser-session coordination.
-// ABOUTME: Covers shared session IDs, background requests, and Web Crypto gaps.
+// ABOUTME: Verifies background-owned browser-session coordination and fallbacks.
+// ABOUTME: Covers shared session IDs, runtime requests, and Web Crypto gaps.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -130,25 +130,4 @@ describe("participant storage fallbacks", () => {
     );
   });
 
-  it("falls back to generated participant id without crypto.randomUUID", async () => {
-    installCryptoWithoutRandomUuid();
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    vi.doMock("webextension-polyfill", () => ({
-      default: {
-        storage: {
-          local: {
-            get: vi.fn().mockRejectedValue(new Error("storage unavailable")),
-          },
-        },
-      },
-    }));
-
-    const { getParticipantId } = await import("../storage/participant");
-    const pid = await getParticipantId();
-
-    expect(pid.startsWith("pk_temp_")).toBe(true);
-    expect(pid.length).toBeGreaterThan("pk_temp_".length + 8);
-    expect(error).toHaveBeenCalledOnce();
-    expect(error).toHaveBeenCalledWith("Failed to get participant ID:", expect.any(Error));
-  });
 });

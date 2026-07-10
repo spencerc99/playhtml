@@ -55,7 +55,6 @@ describe("background upload flushing", () => {
     }));
     vi.doMock("../storage/sync", () => ({
       uploadEvents,
-      syncParticipantColor: vi.fn(),
     }));
     vi.doMock("../storage/restore", () => ({
       fetchEventsByPid: vi.fn(),

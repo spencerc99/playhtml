@@ -4,11 +4,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { EventBuffer } from "../storage/EventBuffer";
-import { getParticipantId, requestSessionId } from "../storage/participant";
+import { requestSessionId } from "../storage/participant";
 import type { CollectionEvent } from "../collectors/types";
 
 const participantMocks = vi.hoisted(() => ({
-  getParticipantId: vi.fn().mockResolvedValue("test-participant-id"),
   requestSessionId: vi.fn().mockResolvedValue("test-session-id"),
   getTimezone: vi.fn().mockReturnValue("America/New_York"),
 }));
@@ -42,8 +41,15 @@ function clickEvent(id: string): CollectionEvent {
 describe("EventBuffer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({});
-    vi.mocked(getParticipantId).mockResolvedValue("test-participant-id");
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
+        return Promise.resolve({
+          publicKey: "test-participant-id",
+          playerStyle: { colorPalette: ["#4a9a8a"] },
+        });
+      }
+      return Promise.resolve({});
+    });
     vi.mocked(requestSessionId).mockResolvedValue("test-session-id");
   });
 
@@ -138,24 +144,46 @@ describe("EventBuffer", () => {
   it("reuses participant and session lookups for event metadata", async () => {
     const buffer = new EventBuffer();
 
-    await buffer.createEvent("cursor", { event: "move", x: 0.1, y: 0.2 });
+    const first = await buffer.createEvent("cursor", {
+      event: "move",
+      x: 0.1,
+      y: 0.2,
+    });
     await buffer.createEvent("viewport", { event: "scroll", scrollY: 0.3 });
 
-    expect(getParticipantId).toHaveBeenCalledTimes(1);
+    expect(first.meta.pid).toBe("test-participant-id");
+    expect(browser.runtime.sendMessage).toHaveBeenCalledOnce();
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "GET_PUBLIC_PLAYER_IDENTITY",
+    });
     expect(requestSessionId).toHaveBeenCalledTimes(1);
   });
 
   it("does not cache temporary participant IDs", async () => {
-    vi.mocked(getParticipantId)
-      .mockResolvedValueOnce("pk_temp_race")
-      .mockResolvedValueOnce("pk_real");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const identities = [
+      null,
+      {
+        publicKey: "pk_real",
+        playerStyle: { colorPalette: ["#4a9a8a"] },
+      },
+    ];
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
+        return Promise.resolve(identities.shift());
+      }
+      return Promise.resolve({});
+    });
     const buffer = new EventBuffer();
 
     const first = await buffer.createEvent("cursor", { event: "move" });
     const second = await buffer.createEvent("cursor", { event: "move" });
 
-    expect(first.meta.pid).toBe("pk_temp_race");
+    expect(first.meta.pid.startsWith("pk_temp_")).toBe(true);
     expect(second.meta.pid).toBe("pk_real");
-    expect(getParticipantId).toHaveBeenCalledTimes(2);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      "[EventBuffer] playerIdentity not found, using temporary ID",
+    );
   });
 });
