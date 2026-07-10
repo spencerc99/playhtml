@@ -4,12 +4,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { EventBuffer } from "../storage/EventBuffer";
-import { getParticipantId, getSessionId } from "../storage/participant";
+import { getParticipantId, requestSessionId } from "../storage/participant";
 import type { CollectionEvent } from "../collectors/types";
 
 const participantMocks = vi.hoisted(() => ({
   getParticipantId: vi.fn().mockResolvedValue("test-participant-id"),
-  getSessionId: vi.fn().mockResolvedValue("test-session-id"),
+  requestSessionId: vi.fn().mockResolvedValue("test-session-id"),
   getTimezone: vi.fn().mockReturnValue("America/New_York"),
 }));
 
@@ -44,7 +44,7 @@ describe("EventBuffer", () => {
     vi.useFakeTimers();
     vi.mocked(browser.runtime.sendMessage).mockResolvedValue({});
     vi.mocked(getParticipantId).mockResolvedValue("test-participant-id");
-    vi.mocked(getSessionId).mockResolvedValue("test-session-id");
+    vi.mocked(requestSessionId).mockResolvedValue("test-session-id");
   });
 
   afterEach(() => {
@@ -142,7 +142,7 @@ describe("EventBuffer", () => {
     await buffer.createEvent("viewport", { event: "scroll", scrollY: 0.3 });
 
     expect(getParticipantId).toHaveBeenCalledTimes(1);
-    expect(getSessionId).toHaveBeenCalledTimes(1);
+    expect(requestSessionId).toHaveBeenCalledTimes(1);
   });
 
   it("does not cache temporary participant IDs", async () => {

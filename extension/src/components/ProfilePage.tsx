@@ -25,6 +25,8 @@ export function ProfilePage({ playerIdentity, onBack, onIdentityUpdated }: Props
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const colorInputRef = useRef<HTMLInputElement>(null);
+  // Firefox closes extension toolbar panels when an OS-level color picker opens.
+  // https://bugzilla.mozilla.org/show_bug.cgi?id=1378527
   const opensNativePickerInPopup = !import.meta.env.FIREFOX;
 
   const hasColorChanged = color !== savedColor;
