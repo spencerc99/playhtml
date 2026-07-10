@@ -12,7 +12,7 @@ import {
   parseDayFromUrl,
   parseTimeOfDayFromUrl,
 } from "../shared/config";
-import { useArchiveEvents } from "../shared/hooks/useArchiveEvents";
+import { useInstallationEvents } from "../shared/hooks/useInstallationEvents";
 import { useInstallationClock } from "../shared/hooks/useInstallationClock";
 
 /** A single installation screen. Every screen loads this page with the SAME
@@ -30,7 +30,7 @@ const Installation = () => {
     () => parseVizFromUrl() ?? DEFAULT_ACTIVE_VISUALIZATIONS,
   );
 
-  const { events, loading, error, refresh } = useArchiveEvents({
+  const { events, loading, error, refresh } = useInstallationEvents({
     selectedDay,
     timeOfDay,
     serverDomain: "",

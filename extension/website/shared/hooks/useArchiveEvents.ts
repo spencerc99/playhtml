@@ -131,15 +131,40 @@ export function useArchiveEvents(params: {
           return `${EVENTS_URL}?${params}`;
         };
 
-        const fetchOne = (
+        // Retry with exponential backoff so a transient network hiccup or a 5xx
+        // doesn't leave a window permanently blank. Only network errors and 5xx
+        // responses retry (a 4xx is a real request problem — fail fast); the
+        // error surfaces only after every attempt is exhausted.
+        const RETRY_BACKOFFS_MS = [400, 1200];
+        // A 4xx is a real request problem — throwing this tag skips the retry.
+        class NonRetryableFetchError extends Error {}
+        const fetchOne = async (
           extraParams: Record<string, string>,
           type: string,
-        ): Promise<CollectionEvent[]> =>
-          fetch(buildUrl(extraParams, type)).then((r) => {
-            if (!r.ok)
-              throw new Error(`Failed to fetch ${type} events: ${r.status}`);
-            return r.json();
-          });
+        ): Promise<CollectionEvent[]> => {
+          const url = buildUrl(extraParams, type);
+          let lastError: unknown;
+          for (let attempt = 0; attempt <= RETRY_BACKOFFS_MS.length; attempt++) {
+            if (attempt > 0) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, RETRY_BACKOFFS_MS[attempt - 1]),
+              );
+            }
+            try {
+              const r = await fetch(url);
+              if (r.ok) return r.json();
+              const message = `Failed to fetch ${type} events: ${r.status}`;
+              // Retry only on server errors; a 4xx fails fast.
+              throw r.status >= 500
+                ? new Error(message)
+                : new NonRetryableFetchError(message);
+            } catch (err) {
+              if (err instanceof NonRetryableFetchError) throw err;
+              lastError = err;
+            }
+          }
+          throw lastError;
+        };
 
         let fetched: CollectionEvent[] = [];
         if (day && tod) {
