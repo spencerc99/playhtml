@@ -4,11 +4,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { EventBuffer } from "../storage/EventBuffer";
-import { getSessionId } from "../storage/participant";
+import { requestSessionId } from "../storage/participant";
 import type { CollectionEvent } from "../collectors/types";
 
 const participantMocks = vi.hoisted(() => ({
-  getSessionId: vi.fn().mockResolvedValue("test-session-id"),
+  requestSessionId: vi.fn().mockResolvedValue("test-session-id"),
   getTimezone: vi.fn().mockReturnValue("America/New_York"),
 }));
 
@@ -50,7 +50,7 @@ describe("EventBuffer", () => {
       }
       return Promise.resolve({});
     });
-    vi.mocked(getSessionId).mockResolvedValue("test-session-id");
+    vi.mocked(requestSessionId).mockResolvedValue("test-session-id");
   });
 
   afterEach(() => {
@@ -156,7 +156,7 @@ describe("EventBuffer", () => {
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
       type: "GET_PUBLIC_PLAYER_IDENTITY",
     });
-    expect(getSessionId).toHaveBeenCalledTimes(1);
+    expect(requestSessionId).toHaveBeenCalledTimes(1);
   });
 
   it("does not cache temporary participant IDs", async () => {

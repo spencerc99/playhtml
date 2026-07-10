@@ -21,7 +21,16 @@ async function makeBuildDir(manifest) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "extension-build-"));
   tempDirs.push(dir);
   await mkdir(path.join(dir, "content-scripts"), { recursive: true });
-  await writeFile(path.join(dir, "manifest.json"), JSON.stringify(manifest));
+  await writeFile(
+    path.join(dir, "manifest.json"),
+    JSON.stringify({
+      options_ui: {
+        page: "options.html",
+        open_in_tab: true,
+      },
+      ...manifest,
+    }),
+  );
   return dir;
 }
 
@@ -77,4 +86,28 @@ test("passes when web accessible resource patterns match build files", async () 
   await writeFile(path.join(dir, "inventory/bottle.svg"), "");
 
   await expect(validateExtensionBuild(dir)).resolves.toBeUndefined();
+});
+
+test("throws when the options page is not configured to open in a tab", async () => {
+  const dir = await makeBuildDir({
+    manifest_version: 2,
+    options_ui: {
+      page: "options.html",
+    },
+  });
+
+  await expect(validateExtensionBuild(dir)).rejects.toThrow(
+    /options_ui\.open_in_tab must be true/,
+  );
+});
+
+test("throws when the options page is missing from the manifest", async () => {
+  const dir = await makeBuildDir({
+    manifest_version: 2,
+    options_ui: undefined,
+  });
+
+  await expect(validateExtensionBuild(dir)).rejects.toThrow(
+    /options_ui\.open_in_tab must be true/,
+  );
 });

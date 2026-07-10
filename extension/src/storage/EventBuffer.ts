@@ -4,7 +4,7 @@ import type { CollectionEvent, CollectionEventType } from '../collectors/types';
 import { toPublicPlayerIdentity } from '@playhtml/common';
 import browser from 'webextension-polyfill';
 import { createPrefixedId } from './ids';
-import { getSessionId, getTimezone } from './participant';
+import { requestSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
 
 const BATCH_INTERVAL_MS = 3000; // 3 seconds
@@ -152,7 +152,7 @@ export class EventBuffer {
     if (!this.metadataBasePromise) {
       this.metadataBasePromise = Promise.all([
         getEventParticipantPublicKey(),
-        getSessionId(),
+        requestSessionId(),
       ]).then(([pid, sid]) => ({
         pid,
         sid,
