@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import browser from "webextension-polyfill";
+import { salutationAddress, currentFaviconUrl } from "./salutation";
 import { SEGMENT_STYLES, segmentStyle } from "./segmentStyles";
 import { Fingerprint } from "./LetterSegment";
 import { DateStamp } from "./DateStamp";
@@ -32,6 +33,8 @@ export function WriteSegment({
   const [name, setName] = useState("");
   const [styleId, setStyleId] = useState(SEGMENT_STYLES[0].id);
   const style = segmentStyle(styleId);
+  const address = salutationAddress(window.location.href, document.title);
+  const favicon = currentFaviconUrl();
 
   useEffect(() => {
     let cancelled = false;
@@ -74,14 +77,20 @@ export function WriteSegment({
           />
         ))}
       </div>
+      <div className="mbs-salutation">
+        {favicon && <img className="mbs-salutationFavicon" src={favicon} alt="" />}
+        <span>
+          dear <span className="mbs-salutationSite">{address}</span>,
+        </span>
+      </div>
       <textarea
         className="mbs-writeField"
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={
           isFirst
-            ? "leave the first note for whoever finds this place next..."
-            : "write something for the next person who finds this place..."
+            ? "no one has written here yet — yours would be the first letter..."
+            : "what brought you here? what do you want this place to know?"
         }
         maxLength={500}
         style={{ color: style.ink }}

@@ -1153,3 +1153,28 @@ $letterHand: "Lora", Georgia, serif;
     box-shadow: inset 0 0 24px rgba(90, 70, 45, 0.16);
   }
 }
+
+// The pre-printed salutation — every letter opens addressed to its page.
+.mbs-salutation {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-style: italic;
+  font-size: 0.98rem;
+  margin-bottom: 12px;
+}
+
+.mbs-salutationFavicon {
+  width: 13px;
+  height: 13px;
+  align-self: center;
+  flex: none;
+  border-radius: 3px;
+}
+
+.mbs-salutationSite {
+  border-bottom: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  padding-bottom: 1px;
+  color: inherit;
+  text-decoration: none;
+}
