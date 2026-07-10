@@ -59,8 +59,8 @@ import {
 } from "./presence-transport";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 
-const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
-const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
+const DefaultPartykitHost = "api.playhtml.fun";
+const StagingPartykitHost = "api-staging.playhtml.fun";
 const DevPartykitHost = "localhost:1999";
 
 // Environment-specific host resolution

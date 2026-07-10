@@ -66,7 +66,7 @@ SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:soak
 # presence transport. Tunables: PARTYKIT_PRESENCE_SOAK_CLIENTS,
 # PARTYKIT_PRESENCE_SOAK_CURSOR_HZ, PARTYKIT_PRESENCE_SOAK_DURATION_MS,
 # PARTYKIT_PRESENCE_SOAK_SETTLE_MS, PARTYKIT_PRESENCE_SOAK_CONNECT_TIMEOUT_MS.
-PARTYKIT_HOST=playhtml-staging.spencerc99.workers.dev \
+PARTYKIT_HOST=api-staging.playhtml.fun \
   bun smoke:partykit:presence-cursor
 
 # Runs the standard PartyKit checks.
@@ -96,7 +96,7 @@ bunx wrangler deploy --config partykit/wrangler.jsonc --env staging
 
 Config:
 
-- `PARTYKIT_HOST`: Worker host. Defaults to `playhtml-staging.spencerc99.workers.dev`.
+- `PARTYKIT_HOST`: Worker host. Defaults to `api-staging.playhtml.fun`.
 - `PARTYKIT_SMOKE_MAX_REQUEST_BYTES`: expected server request-body limit for the limits smoke. Defaults to `16777216`.
 - `PARTYKIT_SMOKE_MESSAGE_RATE_LIMIT`: expected server per-window message limit for the limits smoke. Defaults to `1000`.
 - `PARTYKIT_SMOKE_NORMAL_MESSAGES`: normal Yjs updates sent quickly before the abusive raw-client cases. Defaults to `420`.
