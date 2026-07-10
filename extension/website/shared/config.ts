@@ -207,6 +207,32 @@ export function parseTimeOfDayFromUrl(): TimeOfDayFilter | undefined {
   return { centerMinutes, radiusMinutes };
 }
 
+/** `?role=master`/`follower` marks this window as part of the multi-screen
+ * installation. Both roles compute animation time from a shared wall-clock
+ * epoch; `follower` additionally participates in cinematic follow coordination.
+ * Returns null when the param is absent (a standalone window drives its own
+ * clock). */
+export function parseInstallationRoleFromUrl(): "master" | "follower" | null {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("role");
+  if (raw === "master") return "master";
+  if (raw === "follower") return "follower";
+  return null;
+}
+
+/** `?follower=<id>` is the stable id a follower window uses to claim cursors in
+ * the coordinated auto-follow protocol (so no two follower screens ride the same
+ * cursor). Any non-empty string works (e.g. `a`, `b`, `1`, `2`). Returns null
+ * when absent — the coordination hook then falls back to a per-window random id
+ * so it still participates without a URL-set id. */
+export function parseFollowerIdFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("follower");
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 /** `?cinematic=1`/`follow` enables cursor-follow; `?cinematic=reveal` runs the
  * one-shot scripted pull-back (tight close-up → full canvas). Optional tuning:
  *   ?cinemaZoom=0.25        follow: fraction of screen width visible
@@ -215,6 +241,8 @@ export function parseTimeOfDayFromUrl(): TimeOfDayFilter | undefined {
  *   ?cinemaVelZoom=0        follow: velocity-aware zoom-out (0 = off)
  *   ?cinemaReveal=10        reveal: seconds to pull back to full canvas
  *   ?cinemaStartZoom=0.18   reveal: fraction of screen width at the tightest
+ *   ?follow=5               follow: lock onto trail index 5 (only takes effect
+ *                           in follow mode; ignored by reveal)
  * Returns null when cinematic mode is not requested. */
 export function parseCinematicFromUrl(): CinematicConfig | null {
   if (typeof window === "undefined") return null;
@@ -230,6 +258,11 @@ export function parseCinematicFromUrl(): CinematicConfig | null {
   const velZoom = parseNumber(params.get("cinemaVelZoom"));
   const revealS = parseNumber(params.get("cinemaReveal"));
   const startZoom = parseNumber(params.get("cinemaStartZoom"));
+  const followRaw = parseNumber(params.get("follow"));
+  const forcedSubjectIndex =
+    followRaw !== undefined && Number.isInteger(followRaw) && followRaw >= 0
+      ? followRaw
+      : null;
 
   return {
     ...DEFAULT_CINEMATIC_CONFIG,
@@ -255,5 +288,6 @@ export function parseCinematicFromUrl(): CinematicConfig | null {
       startZoom !== undefined && startZoom > 0
         ? startZoom
         : DEFAULT_CINEMATIC_CONFIG.revealStartZoom,
+    forcedSubjectIndex,
   };
 }
