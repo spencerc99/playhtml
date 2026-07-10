@@ -47,6 +47,18 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 
 **Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. CI never hits this because `pr-validation.yml` runs `bun build-packages` before every test job (and does not run the extension suite at all).
 
+### Supabase
+
+- `bun run db:start`: Start the local Supabase stack
+- `bun run db:reset`: Recreate the local database from migrations and seed data
+- `bun run db:new -- extension_describe_change`: Create an extension-owned migration
+- `bun run db:new -- partykit_describe_change`: Create a PartyKit-owned migration
+- `bun run db:verify`: Reset and lint the local database
+- `bun run db:stop`: Stop the local Supabase stack
+
+The extension and PartyKit use one Supabase project with different tables. All new migrations live
+in `supabase/migrations/`; the name prefix records which application owns the affected tables.
+
 ### Extension Performance
 
 - `bun run perf:extension:trace -- --extension local:extension/dist/chrome-mv3`: Trace a built extension locally. Build packages and the extension first.

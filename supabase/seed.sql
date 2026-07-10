@@ -1,0 +1,2 @@
+-- ABOUTME: Seeds deterministic sample data for local and preview Supabase databases.
+-- ABOUTME: Remains empty until the production schema baseline defines the shared tables.
