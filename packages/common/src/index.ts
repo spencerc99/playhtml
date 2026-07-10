@@ -300,7 +300,6 @@ export function getSharedElementId(el: HTMLElement): string | undefined {
 
 // Re-export helpers from split files
 export * from "./objectUtils";
-export * from "./leafEditor";
 export * from "./sharedElements";
 
 // Export cursor types

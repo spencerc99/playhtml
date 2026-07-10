@@ -1,4 +1,4 @@
-// ABOUTME: Tests shared inline state editing helpers.
+// ABOUTME: Tests inline state editing helpers used by playhtml tools.
 // ABOUTME: Covers primitive parsing and immutable leaf replacement by path.
 import { describe, expect, test } from "vitest";
 import {

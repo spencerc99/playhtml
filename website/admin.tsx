@@ -11,13 +11,15 @@ import {
 } from "./utils/adminComparison";
 import {
   deriveRoomId,
+} from "@playhtml/common";
+import {
   formatStateLeafValue,
   isEditableStateLeaf,
   parseStateLeafValue,
   replaceStateLeafValue,
   type EditableStateLeafValue,
   type StatePathSegment,
-} from "@playhtml/common";
+} from "playhtml";
 import { extractRecords, type ModerationRecord } from "@moderation";
 import {
   formatAdminResetSuccess,

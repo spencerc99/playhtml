@@ -1,4 +1,4 @@
-// ABOUTME: Provides shared helpers for inline editing primitive state values.
+// ABOUTME: Provides helpers for inline editing primitive state values in playhtml tools.
 // ABOUTME: Parses editor input and replaces existing leaves without mutating state trees.
 export type StatePathSegment = string | number;
 export type EditableStateLeafValue = string | number | boolean | null;

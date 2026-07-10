@@ -5,12 +5,12 @@ import type { PlayHTMLComponents } from "./index";
 import {
   formatStateLeafValue,
   isEditableStateLeaf,
-  normalizePath,
   parseStateLeafValue,
   replaceStateLeafValue,
   type EditableStateLeafValue,
   type StatePathSegment,
-} from "@playhtml/common";
+} from "./leafEditor";
+import { normalizePath } from "@playhtml/common";
 
 let activeElementObserver: MutationObserver | null = null;
 let activeDevRoot: HTMLElement | null = null;

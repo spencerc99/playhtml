@@ -57,6 +57,15 @@ import {
   RealtimePresenceTransport,
 } from "./presence-transport";
 
+export {
+  formatStateLeafValue,
+  isEditableStateLeaf,
+  parseStateLeafValue,
+  replaceStateLeafValue,
+  type EditableStateLeafValue,
+  type StatePathSegment,
+} from "./leafEditor";
+
 const DefaultPartykitHost = "playhtml.spencerc99.workers.dev";
 const StagingPartykitHost = "playhtml-staging.spencerc99.workers.dev";
 const DevPartykitHost = "localhost:1999";
