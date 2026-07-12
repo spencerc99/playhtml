@@ -190,6 +190,10 @@
         <!-- Empty mount point — the reaction button below is rendered by its
              `view` (registered in the script). -->
         <div id="reactionBtn" can-play></div>
+        <div>
+          <p>Here's a page-level visit counter!</p>
+          <button id="visitCounter">0 visits</button>
+        </div>
     </div>
 
         <!-- Option 1 (simplest, no customization) -->
@@ -232,6 +236,18 @@
             </button>
           `;
         },
+      });
+
+      await playhtml.ready;
+      const visitCounter = playhtml.createPageData("visit-count", 0);
+      const visitButton = document.getElementById("visitCounter");
+      const renderVisitCount = (value) => {
+        visitButton.textContent = `${value} visits`;
+      };
+      renderVisitCount(visitCounter.getData());
+      visitCounter.onUpdate(renderVisitCount);
+      visitButton.addEventListener("click", () => {
+        visitCounter.setData((value) => value + 1);
       });
 
       // Make playhtml available globally for script.js

@@ -28,6 +28,29 @@ describe("playhtml.createPageData", () => {
     expect(channel.getData()).toEqual({ count: 10 });
   });
 
+  it("ignores terse object mutator returns", async () => {
+    const channel = playhtml.createPageData("test-terse-mutator", { count: 0 });
+
+    channel.setData((draft) => draft.count++);
+    await new Promise((r) => queueMicrotask(r));
+
+    expect(channel.getData()).toEqual({ count: 1 });
+  });
+
+  it("replaces primitive roots with values and functional updates", async () => {
+    const channel = playhtml.createPageData("test-primitive-root", 0);
+    const updates: number[] = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData(1);
+    await new Promise((r) => queueMicrotask(r));
+    channel.setData((value) => value + 1);
+    await new Promise((r) => queueMicrotask(r));
+
+    expect(channel.getData()).toBe(2);
+    expect(updates).toEqual([1, 2]);
+  });
+
   it("onUpdate fires on local changes", async () => {
     const channel = playhtml.createPageData("test-onupdate", { count: 0 });
     const updates: any[] = [];

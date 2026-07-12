@@ -139,6 +139,29 @@ describe("usePageData", () => {
 
     await waitFor(() => expect(getByText("42")).toBeDefined());
   });
+
+  it("supports functional updates for primitive page data", async () => {
+    let captured: ReturnType<typeof usePageData<number>> | null = null;
+
+    function TestComponent() {
+      captured = usePageData("view-count", 0);
+      return <div>{captured[0]}</div>;
+    }
+
+    const { getByText } = render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => expect(getByText("0")).toBeDefined());
+
+    act(() => {
+      captured![1]((value) => value + 1);
+    });
+
+    await waitFor(() => expect(getByText("1")).toBeDefined());
+  });
 });
 
 describe("usePresenceRoom", () => {

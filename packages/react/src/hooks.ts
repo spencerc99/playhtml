@@ -8,6 +8,7 @@ import playhtml from "./playhtml-singleton";
 import {
   CursorPresenceView,
   PageDataChannel,
+  PageDataSetter,
   PlayerIdentity,
   PresenceRoom,
   PresenceView,
@@ -109,7 +110,7 @@ export function usePresence<T extends Record<string, unknown> = Record<string, u
 export function usePageData<T>(
   name: string,
   defaultValue: T,
-): [T, (data: T | ((draft: T) => void)) => void] {
+): [T, (data: PageDataSetter<T>) => void] {
   const { isLoading } = useContext(PlayContext);
   const [data, setDataState] = useState<T>(defaultValue);
   const channelRef = useRef<PageDataChannel<T> | null>(null);
@@ -130,7 +131,7 @@ export function usePageData<T>(
   }, [isLoading, name]);
 
   const setData = useCallback(
-    (next: T | ((draft: T) => void)) => {
+    (next: PageDataSetter<T>) => {
       const channel = channelRef.current;
       if (isLoading || !channel) {
         warnPreInit(`usePageData("${name}").setData`);

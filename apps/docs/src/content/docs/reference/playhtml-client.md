@@ -341,7 +341,7 @@ views.onUpdate((n) => {
 | Method | Description |
 |---|---|
 | `getData(): T` | Returns the current value. |
-| `setData(data: T \| ((draft: T) => void)): void` | Updates the value. Pass a mutator function for nested objects. |
+| `setData(data: T \| updater): void` | Updates the value. Mutate object/array drafts in place; an updater for a primitive returns its next value. |
 | `onUpdate(callback: (data: T) => void): () => void` | Subscribes to changes. Returns an unsubscribe function. |
 | `destroy(): void` | Tears down the channel and removes all subscriptions. |
 
