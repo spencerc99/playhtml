@@ -2,6 +2,7 @@
 
 - The inventory shortcut moved to Ctrl+Shift+B on Windows/Linux (Cmd+Shift+I on Mac is unchanged), freeing Ctrl+Shift+E for an in-progress emote wheel.
 - Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
+- Restored and imported history now preserves its sync state and accurate activity totals.
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**

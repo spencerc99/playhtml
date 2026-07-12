@@ -225,6 +225,39 @@ describe("LocalEventStore aggregates", () => {
     expect(agg.pendingFocusTs).toBe(1_000);
     expect(agg.pendingFocusUrl).toBe("https://example.com/page");
   });
+
+  it("rebuilds aggregates from unique events in chronological order after a bulk import", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("focus-event", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("blur-event", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    await store.addImportedEvents([blur, focus]);
+    await store.addImportedEvents([blur, focus]);
+
+    const [domainStats, pageStats, globalStats] = await Promise.all([
+      store.getSessionStats("example.com"),
+      store.getSessionStats("example.com", "https://example.com/page"),
+      store.getGlobalStats(),
+    ]);
+
+    for (const stats of [domainStats, pageStats, globalStats]) {
+      expect(stats).toMatchObject({
+        totalTimeMs: 6_000,
+        sessionCount: 1,
+        eventsByType: { navigation: 2 },
+        firstVisit: 1_000,
+        lastVisit: 7_000,
+      });
+    }
+  });
 });
 
 describe("LocalEventStore aggregate migrations", () => {
@@ -491,6 +524,20 @@ describe("LocalEventStore pending uploads", () => {
     expect((sourceEvent as StoredTestEvent).uploadState).toBeUndefined();
     expect((events[0] as StoredTestEvent).uploaded).toBeUndefined();
     expect((events[0] as StoredTestEvent).uploadState).toBeUndefined();
+  });
+
+  it("does not return trusted imported history as pending", async () => {
+    const store = createStore();
+
+    await store.addEvents([event("new-cursor", "cursor")]);
+    await store.addImportedEvents([
+      event("imported-cursor", "cursor"),
+      event("imported-navigation", "navigation"),
+    ]);
+
+    await expect(store.getPendingEvents(100)).resolves.toEqual([
+      expect.objectContaining({ id: "new-cursor" }),
+    ]);
   });
 
   it("backfills existing events with missing uploaded flags as pending", async () => {

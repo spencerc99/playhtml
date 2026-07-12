@@ -601,7 +601,7 @@ export default defineBackground(() => {
           const parsed = JSON.parse(json)
           if (parsed.version !== 1) throw new Error('Unsupported export version')
           const events = parsed.events as CollectionEvent[]
-          await store.addEvents(events)
+          await store.addImportedEvents(events)
           reply({ success: true, imported: events.length })
         } catch (e) {
           console.error('[Background] IMPORT_EVENTS error:', e)
@@ -624,7 +624,7 @@ export default defineBackground(() => {
             'fetching all server events')
           const { events, countsByType } = await fetchEventsByPid(pid)
           console.log('[Background] Fetched', events.length, 'events, writing to IDB...')
-          await store.addEvents(events)
+          await store.addImportedEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')
           reply({
             success: true,
