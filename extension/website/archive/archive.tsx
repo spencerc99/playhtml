@@ -44,7 +44,7 @@ function midnightWindowBounds(
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-const InternetMovement = () => {
+export const InternetMovement = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +103,8 @@ const InternetMovement = () => {
   const fetchedTypesRef = useRef<Set<string>>(new Set());
   // Track the last domain+day combo we fetched for so we know when to force refresh
   const lastFetchKeyRef = useRef<string>("");
+  // Ignore any request that completed after a newer filter request started.
+  const requestGenerationRef = useRef(0);
 
   // Fetch daily counts for the heatmap calendar
   useEffect(() => {
@@ -131,6 +133,7 @@ const InternetMovement = () => {
       forceRefresh = false,
       tod: ReturnType<typeof parseTimeOfDayFromUrl> | null = null,
     ) => {
+      const requestGeneration = ++requestGenerationRef.current;
       const requiredTypes = deriveRequiredEventTypes(vizIds);
 
       if (requiredTypes.size === 0) {
@@ -232,6 +235,8 @@ const InternetMovement = () => {
           fetched = results.flat();
         }
 
+        if (requestGeneration !== requestGenerationRef.current) return;
+
         // Track what we've fetched
         for (const t of typesToFetch) {
           fetchedTypesRef.current.add(t);
@@ -243,9 +248,11 @@ const InternetMovement = () => {
           setEvents((prev) => [...prev, ...fetched]);
         }
       } catch (err) {
+        if (requestGeneration !== requestGenerationRef.current) return;
         setError(err instanceof Error ? err.message : "Failed to fetch events");
         console.error("Error fetching events:", err);
       } finally {
+        if (requestGeneration !== requestGenerationRef.current) return;
         setLoading(false);
       }
     },
@@ -307,6 +314,7 @@ const InternetMovement = () => {
   );
 };
 
-ReactDOM.createRoot(
-  document.getElementById("reactContent") as HTMLElement,
-).render(<InternetMovement />);
+const root = document.getElementById("reactContent");
+if (root) {
+  ReactDOM.createRoot(root).render(<InternetMovement />);
+}
