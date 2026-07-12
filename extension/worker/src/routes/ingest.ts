@@ -42,6 +42,7 @@ interface CurrentMetadataRow {
   id: string;
   page_ref: string;
   metadata_hash: string;
+  valid_from_ts: string;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -101,7 +102,7 @@ async function persistPageMetadataHistory(
 
   const { data: currentRows, error: currentError } = await supabase
     .from('page_metadata_history')
-    .select('id, page_ref, metadata_hash')
+    .select('id, page_ref, metadata_hash, valid_from_ts')
     .in('page_ref', refs)
     .is('valid_to_ts', null);
 
@@ -117,6 +118,10 @@ async function persistPageMetadataHistory(
 
   for (const snapshot of sortedSnapshots) {
     const current = currentByRef.get(snapshot.page_ref);
+    if (current && snapshot.observed_at_ts <= new Date(current.valid_from_ts).getTime()) {
+      continue;
+    }
+
     if (current && current.metadata_hash === snapshot.metadata_hash) {
       continue;
     }
@@ -142,7 +147,7 @@ async function persistPageMetadataHistory(
         valid_from_ts: new Date(snapshot.observed_at_ts).toISOString(),
         valid_to_ts: null,
       })
-      .select('id, page_ref, metadata_hash')
+      .select('id, page_ref, metadata_hash, valid_from_ts')
       .single();
 
     if (insertError) {

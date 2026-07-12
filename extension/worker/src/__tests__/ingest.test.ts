@@ -54,18 +54,25 @@ function makeRequest(events: unknown[]): Request {
   });
 }
 
-function makeNavigationEvent(id: string) {
+function makeNavigationEvent(
+  id: string,
+  {
+    ts = 1_700_000_000_000,
+    title = 'Example',
+    metadataHash = 'hash-1',
+  }: { ts?: number; title?: string; metadataHash?: string } = {},
+) {
   return {
     id,
     type: 'navigation',
-    ts: 1_700_000_000_000,
+    ts,
     data: {
       event: 'focus',
       page_ref: 'page-1',
       canonical_url: 'https://example.com/',
-      title: 'Example',
+      title,
       favicon_url: 'https://example.com/favicon.ico',
-      metadata_hash: 'hash-1',
+      metadata_hash: metadataHash,
     },
     meta: {
       pid: 'pid',
@@ -102,11 +109,14 @@ describe('handleIngest', () => {
     pageMetadataHistory.in.mockReturnValue(pageMetadataHistory);
     pageMetadataHistory.is.mockResolvedValue({ data: [], error: null });
     pageMetadataHistory.insert.mockReturnValue(pageMetadataHistory);
+    pageMetadataHistory.update.mockReturnValue(pageMetadataHistory);
+    pageMetadataHistory.eq.mockResolvedValue({ error: null });
     pageMetadataHistory.single.mockResolvedValue({
       data: {
         id: 'metadata-1',
         page_ref: 'page-1',
         metadata_hash: 'hash-1',
+        valid_from_ts: new Date(1_700_000_000_000).toISOString(),
       },
       error: null,
     });
@@ -138,5 +148,77 @@ describe('handleIngest', () => {
       duplicates: 0,
       page_metadata_inserted: 1,
     });
+  });
+
+  it('ignores an older retry that would overwrite the current metadata', async () => {
+    pageMetadataHistory.is.mockResolvedValue({
+      data: [
+        {
+          id: 'metadata-current',
+          page_ref: 'page-1',
+          metadata_hash: 'hash-current',
+          valid_from_ts: new Date(1_700_000_000_100).toISOString(),
+        },
+      ],
+      error: null,
+    });
+
+    const res = await handleIngest(
+      makeRequest([
+        makeNavigationEvent('retried-event', {
+          metadataHash: 'hash-retried',
+        }),
+      ]),
+      ENV,
+      CTX,
+    );
+
+    expect(res.status).toBe(200);
+    expect(pageMetadataHistory.update).not.toHaveBeenCalled();
+    expect(pageMetadataHistory.insert).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toMatchObject({ page_metadata_inserted: 0 });
+  });
+
+  it('keeps metadata snapshots in observation order within one request', async () => {
+    const res = await handleIngest(
+      makeRequest([
+        makeNavigationEvent('newest-event', {
+          ts: 1_700_000_000_200,
+          title: 'Newest title',
+          metadataHash: 'hash-newest',
+        }),
+        makeNavigationEvent('older-event', {
+          ts: 1_700_000_000_100,
+          title: 'Older title',
+          metadataHash: 'hash-older',
+        }),
+      ]),
+      ENV,
+      CTX,
+    );
+
+    expect(res.status).toBe(200);
+    expect(pageMetadataHistory.insert).toHaveBeenCalledTimes(2);
+    expect(pageMetadataHistory.insert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ metadata_hash: 'hash-older' }),
+    );
+    expect(pageMetadataHistory.insert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ metadata_hash: 'hash-newest' }),
+    );
+    expect(pageMetadataHistory.update).toHaveBeenCalledWith({
+      valid_to_ts: new Date(1_700_000_000_200).toISOString(),
+    });
+  });
+
+  it('does not duplicate history when a navigation event id is retried', async () => {
+    const event = makeNavigationEvent('duplicate-event');
+
+    const res = await handleIngest(makeRequest([event, event]), ENV, CTX);
+
+    expect(res.status).toBe(200);
+    expect(pageMetadataHistory.insert).toHaveBeenCalledTimes(1);
+    await expect(res.json()).resolves.toMatchObject({ page_metadata_inserted: 1 });
   });
 });
