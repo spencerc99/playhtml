@@ -2,4 +2,4 @@
 "@playhtml/react": patch
 ---
 
-Make `CanToggleElement` apply its `readOnly` prop so read-only shared toggles cannot write data.
+Make `CanToggleElement` apply its `readOnly` prop so read-only shared toggles cannot write data, and keep React event callbacks current after rerenders.
