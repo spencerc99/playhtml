@@ -552,7 +552,7 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
 // of the paper (radial-gradient circles masked away) so it reads as classic
 // stamp perforation, finished with a thin rust edge line above the holes.
 .perf-stationery {
-  height: 20px;
+  height: 22px;
 }
 .perf-stationery::before {
   background: #f5efe4;
@@ -713,7 +713,12 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
 // The blank writing sheet — same sheet geometry, now a textarea.
 // ============================
 .mbs-writeSegment {
-  gap: 10px;
+  height: min(560px, 76vh);
+  min-height: min(520px, 76vh);
+  border-width: 7px;
+  border-style: solid;
+  border-color: transparent;
+  gap: 0;
   // The blank sheet beckons: a soft breathing shadow so it reads as "come
   // write here" when it peeks below the last letter, plus a slightly lifted
   // top corner curl.
@@ -728,31 +733,82 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
     box-shadow: 0 10px 30px rgba(74, 154, 138, 0.26);
   }
 }
+// Two stacked rows: the salutation owns the full first line (a letter's
+// greeting, allowed to wrap), the paper picker sits quietly beneath it.
+.mbs-writeHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 46ch;
+  margin: 0 auto 16px;
+
+  .mbs-salutation {
+    margin: 0;
+  }
+}
+// The write sheet's greeting is set larger, in the letter head face, and wraps
+// instead of ellipsizing — it's the opening of the letter, not a status line.
+.mbs-writeSegment .mbs-salutation {
+  font-family: $letterHead;
+  font-size: 1.28rem;
+  line-height: 1.5;
+
+  > span {
+    white-space: normal;
+    overflow: visible;
+  }
+  .mbs-salutationSite {
+    display: inline;
+    max-width: none;
+    white-space: normal;
+  }
+  .mbs-salutationFavicon {
+    width: 16px;
+    height: 16px;
+    vertical-align: -2px;
+  }
+}
+.mbs-stylePicker {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+.mbs-styleLabel {
+  font-family: $letterData;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.45;
+}
 .mbs-swatchRow {
   display: flex;
-  gap: 8px;
-  align-self: center;
-  max-width: 46ch;
-  width: 100%;
-  justify-content: flex-end;
-  margin: 0 auto;
+  gap: 9px;
 }
+// Paper samples, not form chips: each swatch rests at its own slight tilt,
+// like squares of stationery laid out by hand.
 .mbs-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
   border: 1px solid rgba(0, 0, 0, 0.25);
   cursor: pointer;
   padding: 0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   transition: transform 120ms ease;
+  transform: rotate(var(--tilt, 0deg));
 
-  &:hover { transform: translateY(-1px); }
+  &:hover { transform: translateY(-1px) rotate(var(--tilt, 0deg)); }
   &.selected {
     outline: 2px solid #4a9a8a;
     outline-offset: 2px;
   }
 }
+.mbs-swatchRow .mbs-swatch:nth-child(1) { --tilt: -3deg; }
+.mbs-swatchRow .mbs-swatch:nth-child(2) { --tilt: 2deg; }
+.mbs-swatchRow .mbs-swatch:nth-child(3) { --tilt: -1.5deg; }
 .swatch-linen {
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.32 0 0 0 0 0.29 0 0 0 0 0.24 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='40' height='40' filter='url(%23g)'/%3E%3C/svg%3E"),
@@ -767,21 +823,46 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
 .swatch-webnative {
   background: linear-gradient(140deg, #5b8db8, #4a9a8a 55%, #d4b85c);
 }
+// Bare paper, no form rules — the blank sheet should look like the finished
+// letter will: ink straight on the ground. The placeholder and the sheet's
+// breathing shadow carry the "write here" invitation.
 .mbs-writeField {
   flex: 1;
-  min-height: 220px;
+  min-height: 0;
   width: 100%;
   max-width: 46ch;
-  margin: 0 auto;
+  margin: 0 auto 20px;
+  padding: 14px 2px;
   border: none;
   background: transparent;
   resize: none;
   font: inherit;
   line-height: inherit;
   box-sizing: border-box;
+  border-radius: 0;
+  opacity: 0.94;
 
   &:focus { outline: none; }
   &::placeholder { color: currentColor; opacity: 0.4; }
+}
+.mbs-writeFooter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 24px;
+  width: 100%;
+  max-width: 46ch;
+  min-height: 82px;
+  margin: 0 auto;
+
+  .mbs-signoff {
+    min-width: 0;
+    margin: 0 0 8px;
+  }
+
+  .mbs-stampWell {
+    margin: 0;
+  }
 }
 .mbs-signInput {
   border: none;
@@ -798,6 +879,28 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
     opacity: 0.4;
     font-family: $letterBody;
     font-size: 14px;
+  }
+}
+.mbs-writeSegment .mbs-writeField {
+  font-size: 17px;
+}
+.mbs-writeSegment .mbs-signInput {
+  font-size: 22px;
+}
+
+@media (max-width: 560px) {
+  .mbs-writeSegment {
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+  .mbs-writeHeader {
+    gap: 12px;
+  }
+  .mbs-writeFooter {
+    gap: 12px;
+  }
+  .mbs-signInput {
+    width: 150px;
   }
 }
 
@@ -1101,11 +1204,12 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
   }
 }
 
+// Sits inline within the greeting, right beside the addressee's name.
 .mbs-salutationFavicon {
   width: 13px;
   height: 13px;
-  align-self: center;
-  flex: none;
+  display: inline-block;
+  vertical-align: -2px;
   border-radius: 3px;
 }
 

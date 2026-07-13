@@ -3,9 +3,8 @@
 - Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
 - Send bugs, ideas, and other feedback directly from the extension popup.
-
-![Feedback button in the extension popup](/changelog/media/feedback-popup-button.png)
-![Feedback submission confirmation](/changelog/media/feedback-popup-success.png)
+  ![Feedback button in the extension popup](/changelog/media/feedback-popup-button.png)
+  ![Feedback submission confirmation](/changelog/media/feedback-popup-success.png)
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**

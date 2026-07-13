@@ -55,7 +55,6 @@ export function LetterScroll({
             <div data-seg="write" className="mbs-segSlot">
               <WriteSegment
                 authorColor={authorColor}
-                isFirst={notes.length === 0}
                 onStamped={onStamped}
               />
             </div>
