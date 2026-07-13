@@ -1,3 +1,6 @@
+-- ABOUTME: Serializes page metadata history transitions in PostgreSQL.
+-- ABOUTME: Enforces one current row and tracks the latest observation timestamp.
+
 do $$
 begin
   if exists (
@@ -18,6 +21,16 @@ create unique index idx_page_metadata_history_current
   on public.page_metadata_history (page_ref)
   where valid_to_ts is null;
 
+alter table public.page_metadata_history
+  add column if not exists latest_observed_at_ts timestamptz;
+
+update public.page_metadata_history
+set latest_observed_at_ts = valid_from_ts
+where latest_observed_at_ts is null;
+
+alter table public.page_metadata_history
+  alter column latest_observed_at_ts set not null;
+
 create or replace function public.record_page_metadata_snapshot(
   p_page_ref text,
   p_canonical_url text,
@@ -32,22 +45,26 @@ set search_path = public
 as $$
 declare
   current_metadata_hash text;
-  current_valid_from_ts timestamptz;
+  current_latest_observed_at_ts timestamptz;
 begin
   perform pg_advisory_xact_lock(hashtextextended(p_page_ref, 0));
 
-  select metadata_hash, valid_from_ts
-  into current_metadata_hash, current_valid_from_ts
+  select metadata_hash, latest_observed_at_ts
+  into current_metadata_hash, current_latest_observed_at_ts
   from public.page_metadata_history
   where page_ref = p_page_ref
     and valid_to_ts is null
   for update;
 
-  if found and p_observed_at_ts <= current_valid_from_ts then
+  if found and p_observed_at_ts <= current_latest_observed_at_ts then
     return false;
   end if;
 
   if found and current_metadata_hash = p_metadata_hash then
+    update public.page_metadata_history
+    set latest_observed_at_ts = p_observed_at_ts
+    where page_ref = p_page_ref
+      and valid_to_ts is null;
     return false;
   end if;
 
@@ -65,6 +82,7 @@ begin
     favicon_url,
     metadata_hash,
     valid_from_ts,
+    latest_observed_at_ts,
     valid_to_ts
   ) values (
     p_page_ref,
@@ -72,6 +90,7 @@ begin
     p_title,
     p_favicon_url,
     p_metadata_hash,
+    p_observed_at_ts,
     p_observed_at_ts,
     null
   );

@@ -9,7 +9,8 @@
     "tail": "wrangler tail --config wrangler.toml",
     "secret": "wrangler --config wrangler.toml secret",
     "secrets": "wrangler --config wrangler.toml secret list",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:db": "../db/tests/page_metadata_history_atomic.test.sh"
   },
   "dependencies": {
     "@playhtml/extension-types": "workspace:*",

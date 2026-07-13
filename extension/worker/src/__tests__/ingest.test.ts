@@ -186,21 +186,8 @@ describe('handleIngest', () => {
     await expect(res.json()).resolves.toMatchObject({ page_metadata_inserted: 1 });
   });
 
-  it('serializes concurrent snapshots for the same page through the metadata RPC', async () => {
-    let current: { metadataHash: string; observedAtTs: string } | undefined;
-    metadataHistoryRpc.mockImplementation(async (_functionName, params) => {
-      if (current && params.p_observed_at_ts <= current.observedAtTs) {
-        return { data: false, error: null };
-      }
-
-      current = {
-        metadataHash: params.p_metadata_hash,
-        observedAtTs: params.p_observed_at_ts,
-      };
-      return { data: true, error: null };
-    });
-
-    const [first, second] = await Promise.all([
+  it('sends concurrent snapshots through the metadata RPC', async () => {
+    await Promise.all([
       handleIngest(
         makeRequest([
           makeNavigationEvent('concurrent-first', { metadataHash: 'hash-first' }),
@@ -218,11 +205,5 @@ describe('handleIngest', () => {
     ]);
 
     expect(metadataHistoryRpc).toHaveBeenCalledTimes(2);
-    await expect(first.json()).resolves.toMatchObject({ page_metadata_inserted: 1 });
-    await expect(second.json()).resolves.toMatchObject({ page_metadata_inserted: 0 });
-    expect(current).toEqual({
-      metadataHash: 'hash-first',
-      observedAtTs: new Date(1_700_000_000_000).toISOString(),
-    });
   });
 });
