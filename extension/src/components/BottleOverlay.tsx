@@ -4,10 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageBottle } from "./MessageBottle";
 import type { BottleAnchor } from "../features/bottle-anchor";
-import {
-  isBottleOccluded,
-  resolveBottlePosition,
-} from "../features/bottle-anchor";
+import { resolveBottlePosition } from "../features/bottle-anchor";
 import type { RenderedBottle } from "../features/BottleManager";
 
 interface BottleOverlayProps {
@@ -99,9 +96,6 @@ export function BottleOverlay({
       lost.push(b.id);
       continue;
     }
-    // The extension host must sit above arbitrary pages, so temporarily hide
-    // bottles when fixed or sticky page chrome should visually cover them.
-    if (isBottleOccluded(pos)) continue;
     resolved.push({ ...b, x: pos.x, y: pos.y, rotate: pos.rotate });
   }
 

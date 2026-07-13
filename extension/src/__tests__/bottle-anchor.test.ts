@@ -2,11 +2,7 @@
 // ABOUTME: Distinguishes offscreen anchors from elements that were removed from the document.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  isBottleOccluded,
-  resolveBottlePosition,
-  type BottleAnchor,
-} from "../features/bottle-anchor";
+import { resolveBottlePosition, type BottleAnchor } from "../features/bottle-anchor";
 
 const anchor: BottleAnchor = {
   selector: "#anchor",
@@ -41,45 +37,5 @@ describe("resolveBottlePosition", () => {
 
   it("returns null when the anchor element is gone", () => {
     expect(resolveBottlePosition(anchor)).toBeNull();
-  });
-});
-
-describe("isBottleOccluded", () => {
-  const originalElementsFromPoint = document.elementsFromPoint;
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    document.body.innerHTML = "";
-    if (originalElementsFromPoint) {
-      document.elementsFromPoint = originalElementsFromPoint;
-    } else {
-      delete (document as Partial<Document>).elementsFromPoint;
-    }
-  });
-
-  it.each(["fixed", "sticky"])(
-    "detects %s page chrome covering part of the bottle footprint",
-    (position) => {
-      const extensionHost = document.createElement("div");
-      extensionHost.id = "we-were-online-bottles";
-      const header = document.createElement("header");
-      header.style.position = position;
-      document.body.append(extensionHost, header);
-      document.elementsFromPoint = (_x, y) =>
-        y < 150 ? [extensionHost, header, document.body] : [document.body];
-
-      expect(isBottleOccluded({ x: 300, y: 180 })).toBe(true);
-    },
-  );
-
-  it("keeps the bottle visible over normal page content", () => {
-    const extensionHost = document.createElement("div");
-    extensionHost.id = "we-were-online-bottles";
-    extensionHost.style.position = "fixed";
-    const main = document.createElement("main");
-    document.body.append(extensionHost, main);
-    document.elementsFromPoint = () => [extensionHost, main, document.body];
-
-    expect(isBottleOccluded({ x: 300, y: 400 })).toBe(false);
   });
 });

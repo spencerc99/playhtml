@@ -25,7 +25,7 @@ export const INVENTORY_CSS = `
   background-position: center; filter: drop-shadow(0 1px 1px rgba(90,60,20,.3)); }
 
 /* the cozy kit (open) — carved warm frame + worn texture */
-.wwo-kit { position: fixed; z-index: 2147483647; width: 216px; border-radius: 18px; padding: 14px;
+.wwo-kit { position: fixed; z-index: 2147483647; width: 166px; border-radius: 18px; padding: 14px;
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.43 0 0 0 0 0.31 0 0 0 0 0.14 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23w)'/%3E%3C/svg%3E"),
     repeating-linear-gradient(48deg,rgba(120,85,40,.035) 0 1px,transparent 1px 4px),
@@ -41,7 +41,7 @@ export const INVENTORY_CSS = `
 .wwo-kit-actions button { appearance: none; border: 0; padding: 2px 0; background: none; cursor: pointer;
   font-family: 'Martian Mono', monospace; font-size: 9px; color: #a98d5c; }
 .wwo-kit-actions button:hover, .wwo-kit-actions button:focus-visible { color: #7a5a2e; text-decoration: underline; text-underline-offset: 3px; }
-.wwo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; border-radius: 12px;
+.wwo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; padding: 10px; border-radius: 12px;
   background: radial-gradient(circle at 6px 6px, rgba(150,110,55,.10) 1.3px, transparent 1.4px) 0 0/15px 15px,
     linear-gradient(180deg, rgba(120,85,40,.10), rgba(120,85,40,.04));
   box-shadow: inset 0 2px 6px rgba(110,80,40,.28); }

@@ -67,8 +67,8 @@ export function Satchel({ inventory, openSignal }: Props) {
     // Measure the rendered kit so cursor summons stay inside the viewport.
     // Fall back to sensible dimensions if layout has not produced a box yet.
     const kitRect = kit.getBoundingClientRect();
-    const kw = kitRect.width || 320;
-    const kh = kitRect.height || 200;
+    const kw = kitRect.width || 200;
+    const kh = kitRect.height || 300;
     const maxX = window.innerWidth - kw - 12;
     const maxY = window.innerHeight - kh - 12;
     let x: number, y: number;
