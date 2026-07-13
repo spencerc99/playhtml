@@ -63,6 +63,20 @@ describe("cinder-block yard model", () => {
     });
   });
 
+  it("publishes only blocks controlled by this client", () => {
+    const previous = {};
+    const current = {
+      locallyDragged: { x: 120, y: 100, angle: 0 },
+      remotelyDragged: { x: 420, y: 100, angle: 0 },
+    };
+
+    expect(
+      getChangedTransforms(current, previous, new Set(["locallyDragged"])),
+    ).toEqual({
+      locallyDragged: current.locallyDragged,
+    });
+  });
+
   it("interpolates position and takes the shortest path around an angle wrap", () => {
     const current = { x: 100, y: 200, angle: Math.PI - 0.1 };
     const target = { x: 200, y: 100, angle: -Math.PI + 0.1 };

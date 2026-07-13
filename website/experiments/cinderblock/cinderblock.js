@@ -1,5 +1,5 @@
 // ABOUTME: Runs the cinder-block experiment with Matter.js physics and PlayHTML state.
-// ABOUTME: Publishes locally triggered motion at a throttled rate while rendering both block styles.
+// ABOUTME: Publishes locally controlled blocks at a throttled rate while interpolating remote motion.
 
 import Matter from "matter-js";
 import { playhtml } from "playhtml";
@@ -67,7 +67,7 @@ class CinderblockYard {
     this.getData = null;
     this.setData = null;
     this.lastPublished = {};
-    this.localMotionActive = false;
+    this.locallyControlledIds = new Set();
     this.lastMotionAt = 0;
     this.lastSyncAt = 0;
     this.previousFrameAt = 0;
@@ -162,7 +162,7 @@ class CinderblockYard {
         angle: block.angle,
       });
 
-      if (!this.localMotionActive) {
+      if (!this.locallyControlledIds.has(id)) {
         const body = this.bodies.get(id);
         Body.setVelocity(body, { x: 0, y: 0 });
         Body.setAngularVelocity(body, 0);
@@ -210,6 +210,7 @@ class CinderblockYard {
     if (body) Composite.remove(this.engine.world, body);
     this.bodies.delete(id);
     this.remoteTargets.delete(id);
+    this.locallyControlledIds.delete(id);
     this.elements.get(id)?.remove();
     this.elements.delete(id);
 
@@ -222,7 +223,7 @@ class CinderblockYard {
     const id = `block-${crypto.randomUUID()}`;
     const block = createBlock(id, Object.keys(data.blocks).length);
     this.pendingSelectionId = id;
-    this.beginLocalMotion();
+    this.beginLocalMotion(id);
     this.setData((draft) => {
       draft.blocks[block.id] = block.transform;
     });
@@ -245,7 +246,7 @@ class CinderblockYard {
     Body.setAngle(body, targetAngle);
     Body.setAngularVelocity(body, 0);
     Sleeping.set(body, false);
-    this.beginLocalMotion();
+    this.beginLocalMotion(this.selectedId);
     this.publishTransforms(performance.now(), true);
   }
 
@@ -295,7 +296,7 @@ class CinderblockYard {
     Body.setAngularVelocity(body, 0);
     Body.setStatic(body, true);
     this.selectBlock(id);
-    this.beginLocalMotion();
+    this.beginLocalMotion(id);
   }
 
   handlePointerMove(event) {
@@ -333,18 +334,21 @@ class CinderblockYard {
     }
   }
 
-  beginLocalMotion() {
-    this.localMotionActive = true;
+  beginLocalMotion(id) {
+    this.locallyControlledIds.add(id);
     this.lastMotionAt = performance.now();
   }
 
   hasMovingBodies() {
-    return [...this.bodies.values()].some(
-      (body) =>
+    return [...this.locallyControlledIds].some((id) => {
+      const body = this.bodies.get(id);
+      return (
+        body &&
         !body.isSleeping &&
         (body.speed > MOVING_SPEED ||
-          Math.abs(body.angularSpeed) > MOVING_ANGULAR_SPEED),
-    );
+          Math.abs(body.angularSpeed) > MOVING_ANGULAR_SPEED)
+      );
+    });
   }
 
   limitBodySpeeds() {
@@ -365,10 +369,10 @@ class CinderblockYard {
   }
 
   interpolateRemoteTransforms(frameDeltaMs) {
-    if (this.localMotionActive) return;
     const amount = 1 - Math.exp(-REMOTE_INTERPOLATION_SPEED * frameDeltaMs / 1000);
 
     for (const [id, target] of this.remoteTargets) {
+      if (this.locallyControlledIds.has(id)) continue;
       const body = this.bodies.get(id);
       if (!body) continue;
       const current = {
@@ -395,16 +399,23 @@ class CinderblockYard {
     }
   }
 
-  getCurrentTransforms() {
+  getCurrentTransforms(ids = this.bodies.keys()) {
     return Object.fromEntries(
-      [...this.bodies.entries()].map(([id, body]) => [id, roundTransform(body)]),
+      [...ids].flatMap((id) => {
+        const body = this.bodies.get(id);
+        return body ? [[id, roundTransform(body)]] : [];
+      }),
     );
   }
 
   publishTransforms(now, force = false) {
     if (!this.setData || (!force && now - this.lastSyncAt < SYNC_INTERVAL_MS)) return;
-    const current = this.getCurrentTransforms();
-    const changed = getChangedTransforms(current, this.lastPublished);
+    const current = this.getCurrentTransforms(this.locallyControlledIds);
+    const changed = getChangedTransforms(
+      current,
+      this.lastPublished,
+      this.locallyControlledIds,
+    );
     if (Object.keys(changed).length === 0) return;
 
     this.setData((draft) => {
@@ -421,13 +432,13 @@ class CinderblockYard {
   }
 
   updateLocalSync(now) {
-    if (!this.localMotionActive) return;
+    if (this.locallyControlledIds.size === 0) return;
     if (this.hasMovingBodies() || this.draggedBody) this.lastMotionAt = now;
     this.publishTransforms(now);
 
     if (!this.draggedBody && now - this.lastMotionAt >= STILLNESS_WINDOW_MS) {
       this.publishTransforms(now, true);
-      this.localMotionActive = false;
+      this.locallyControlledIds.clear();
       this.lastPublished = {};
       this.applySharedState(this.getData());
     }

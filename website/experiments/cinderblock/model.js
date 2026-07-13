@@ -55,9 +55,10 @@ export function roundTransform(body) {
   };
 }
 
-export function getChangedTransforms(current, previous) {
+export function getChangedTransforms(current, previous, controlledIds = null) {
   return Object.fromEntries(
     Object.entries(current).filter(([id, transform]) => {
+      if (controlledIds && !controlledIds.has(id)) return false;
       const lastTransform = previous[id];
       if (!lastTransform) return true;
 
