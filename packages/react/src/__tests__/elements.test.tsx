@@ -227,9 +227,9 @@ describe("CanPlayElement with built-in capabilities", () => {
     const secondDragStart = vi.fn();
     const secondDrag = vi.fn();
     const renderElement = (props: {
-      onClick: () => void;
-      onDragStart: () => void;
-      onDrag: () => void;
+      onClick?: () => void;
+      onDragStart?: () => void;
+      onDrag?: () => void;
     }) => (
       <CanPlayElement
         id="rerender-handler"
@@ -243,11 +243,7 @@ describe("CanPlayElement with built-in capabilities", () => {
     );
 
     const { container, rerender, unmount } = render(
-      renderElement({
-        onClick: firstClick,
-        onDragStart: firstDragStart,
-        onDrag: firstDrag,
-      }),
+      renderElement({}),
     );
     const element = container.querySelector("[can-play]") as HTMLElement;
     handlers.get(TagType.CanPlay)!.set(
@@ -264,6 +260,13 @@ describe("CanPlayElement with built-in capabilities", () => {
       } as any),
     );
 
+    rerender(
+      renderElement({
+        onClick: firstClick,
+        onDragStart: firstDragStart,
+        onDrag: firstDrag,
+      }),
+    );
     element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));

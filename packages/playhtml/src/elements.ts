@@ -234,14 +234,65 @@ export class ElementHandler<T = any, U = any, V = any> {
       onDragStart = undefined;
     }
 
-    // Handle all the event handlers
+    this.setEventHandlers({ onClick, onDrag, onDragStart });
+
+    // Handle advanced settings
+    if (resetShortcut && !this.resetShortcutListener) {
+      // @ts-ignore
+      element.reset = this.reset;
+
+      this.resetShortcutListener = (e) => {
+        switch (this.resetShortcut) {
+          case "ctrlKey":
+            if (!e.ctrlKey) {
+              return;
+            }
+            break;
+          case "altKey":
+            if (!e.altKey) {
+              return;
+            }
+            break;
+          case "shiftKey":
+            if (!e.shiftKey) {
+              return;
+            }
+            break;
+          case "metaKey":
+            if (!e.metaKey) {
+              return;
+            }
+            break;
+          default:
+            return;
+        }
+        this.reset();
+        e.preventDefault();
+        e.stopPropagation();
+      };
+      element.addEventListener("click", this.resetShortcutListener);
+    }
+    this.resetShortcut = resetShortcut;
+  }
+
+  setEventHandlers({
+    onClick,
+    onDrag,
+    onDragStart,
+  }: Pick<ElementData<T>, "onClick" | "onDrag" | "onDragStart">): void {
+    const element = this.element;
+    if (this.view) {
+      this.onClick = undefined;
+      this.onDrag = undefined;
+      this.onDragStart = undefined;
+      return;
+    }
     if (onClick && !this.clickListener) {
       this.clickListener = (e) => {
         this.onClick?.(e, this.getEventHandlerData());
       };
       element.addEventListener("click", this.clickListener);
     }
-    this.onClick = onClick;
     if (onDrag && !this.touchStartListener) {
       this.touchStartListener = (e) => {
         // To prevent scrolling the page while dragging
@@ -297,46 +348,9 @@ export class ElementHandler<T = any, U = any, V = any> {
       };
       element.addEventListener("mousedown", this.mouseDownListener);
     }
+    this.onClick = onClick;
     this.onDrag = onDrag;
     this.onDragStart = onDragStart;
-
-    // Handle advanced settings
-    if (resetShortcut && !this.resetShortcutListener) {
-      // @ts-ignore
-      element.reset = this.reset;
-
-      this.resetShortcutListener = (e) => {
-        switch (this.resetShortcut) {
-          case "ctrlKey":
-            if (!e.ctrlKey) {
-              return;
-            }
-            break;
-          case "altKey":
-            if (!e.altKey) {
-              return;
-            }
-            break;
-          case "shiftKey":
-            if (!e.shiftKey) {
-              return;
-            }
-            break;
-          case "metaKey":
-            if (!e.metaKey) {
-              return;
-            }
-            break;
-          default:
-            return;
-        }
-        this.reset();
-        e.preventDefault();
-        e.stopPropagation();
-      };
-      element.addEventListener("click", this.resetShortcutListener);
-    }
-    this.resetShortcut = resetShortcut;
   }
 
   private removeActiveDragListeners(): void {

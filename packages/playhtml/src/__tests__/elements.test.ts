@@ -150,6 +150,47 @@ describe("ElementHandler", () => {
     expect(reset).toHaveBeenCalledTimes(1);
   });
 
+  it("installs callbacks added after setup without duplicate listeners", () => {
+    const onClick = vi.fn();
+    const onDragStart = vi.fn();
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    handler.setEventHandlers({ onClick, onDragStart, onDrag });
+    handler.setEventHandlers({ onClick, onDragStart, onDrag });
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps imperative callbacks disabled for views", () => {
+    const onClick = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      view: () => "" as any,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    handler.setEventHandlers({ onClick });
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
   it("setData calls onChange and does not directly mutate internal state", () => {
     const updateElement = vi.fn();
     const onChange = vi.fn();

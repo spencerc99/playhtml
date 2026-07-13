@@ -319,9 +319,11 @@ export function CanPlayElement<T extends object, V = any>({
         for (const tag of Object.keys(computedTagInfo) as TagType[]) {
           const handler = handlers.get(tag)?.get(elementId);
           if (!handler || handler.element !== element) continue;
-          handler.onClick = elementProps.onClick;
-          handler.onDrag = elementProps.onDrag;
-          handler.onDragStart = elementProps.onDragStart;
+          handler.setEventHandlers({
+            onClick: elementProps.onClick,
+            onDrag: elementProps.onDrag,
+            onDragStart: elementProps.onDragStart,
+          });
         }
       }
 
