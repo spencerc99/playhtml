@@ -72,6 +72,7 @@
     "@supabase/supabase-js": "^2.57.4",
     "canvas-confetti": "^1.9.2",
     "html2canvas": "^1.4.1",
+    "matter-js": "^0.20.0",
     "partyserver": "^0.5.5",
     "profane-words": "^1.5.11",
     "randomcolor": "^0.6.2",

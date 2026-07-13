@@ -1,0 +1,67 @@
+<!-- ABOUTME: Hosts the collaborative cinder-block construction yard experiment. -->
+<!-- ABOUTME: Provides the accessible toolbar and fixed-size physics stage for the vanilla app. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Build, topple, and rebuild a shared cinder-block structure."
+    />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <title>Cinderblock Yard · playhtml</title>
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="title-row">
+        <div>
+          <p class="eyebrow">PLAYHTML / SHARED ROOM / LIVE</p>
+          <h1>Cinderblock Yard</h1>
+        </div>
+        <p class="instructions">
+          01. DRAG TO BUILD OR DEMOLISH<br />
+          02. SELECT + <kbd>R</kbd> TO ROTATE 90°
+        </p>
+      </header>
+
+      <nav class="toolbar" aria-label="Cinder block tools">
+        <div class="add-tools">
+          <span class="tool-label">add</span>
+          <button type="button" data-action="add-block">
+            <img src="/cinderblock-realistic.png" alt="" />
+            ADD BLOCK
+          </button>
+        </div>
+        <div class="selection-tools">
+          <span class="tool-label">selected</span>
+          <button type="button" data-action="rotate" disabled>
+            ROTATE 90°
+          </button>
+          <button class="danger" type="button" data-action="remove" disabled>
+            REMOVE
+          </button>
+        </div>
+        <p id="yard-status" role="status">joining the yard…</p>
+      </nav>
+
+      <section
+        id="stage-frame"
+        class="stage-frame"
+        aria-label="Shared cinder-block construction area"
+      >
+        <div id="cinderblock-yard" can-play>
+          <div id="block-layer"></div>
+          <div class="ground" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <footer>
+        <p>SHARED CONSTRUCTION ROOM / POSITIONS PERSIST</p>
+        <a href="/experiments/">&larr; ALL EXPERIMENTS</a>
+      </footer>
+    </main>
+
+    <script type="module" src="./cinderblock.js"></script>
+  </body>
+</html>
