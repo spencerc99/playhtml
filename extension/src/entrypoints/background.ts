@@ -624,7 +624,7 @@ export default defineBackground(() => {
             'fetching all server events')
           const { events, countsByType } = await fetchEventsByPid(pid)
           console.log('[Background] Fetched', events.length, 'events, writing to IDB...')
-          await store.addImportedEvents(events)
+          await store.addRestoredEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')
           reply({
             success: true,

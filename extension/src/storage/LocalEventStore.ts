@@ -1257,16 +1257,20 @@ export class LocalEventStore {
     }
   }
 
-  /**
-   * Store imported history as already uploaded and rebuild aggregates from the
-   * unique stored events in chronological order.
-   */
+  /** Rebuild aggregates after importing event history from a file. */
   async addImportedEvents(events: CollectionEvent[]): Promise<void> {
     await this.ensureSessionStatsBackfilled();
-    await this.addEvents(events.map((event) => ({ ...event, uploaded: true })));
+    await this.addEvents(events);
     await this.rebuildSessionStats();
     await this.writeStatsBackfillState("complete");
     this.statsBackfillComplete = true;
+  }
+
+  /** Store server-restored history as uploaded before rebuilding aggregates. */
+  async addRestoredEvents(events: CollectionEvent[]): Promise<void> {
+    await this.addImportedEvents(
+      events.map((event) => ({ ...event, uploaded: true })),
+    );
   }
 
   private static emptyAggregate(key: string, domain: string): DomainStatsAggregate {

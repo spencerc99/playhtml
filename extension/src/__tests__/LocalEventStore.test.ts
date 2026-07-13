@@ -239,8 +239,8 @@ describe("LocalEventStore aggregates", () => {
       data: { event: "blur" },
     };
 
-    await store.addImportedEvents([blur, focus]);
-    await store.addImportedEvents([blur, focus]);
+    await store.addRestoredEvents([blur, focus]);
+    await store.addRestoredEvents([blur, focus]);
 
     const [domainStats, pageStats, globalStats] = await Promise.all([
       store.getSessionStats("example.com"),
@@ -526,17 +526,26 @@ describe("LocalEventStore pending uploads", () => {
     expect((events[0] as StoredTestEvent).uploadState).toBeUndefined();
   });
 
-  it("does not return trusted imported history as pending", async () => {
+  it("keeps a pending event pending when it is exported and imported", async () => {
     const store = createStore();
 
-    await store.addEvents([event("new-cursor", "cursor")]);
-    await store.addImportedEvents([
-      event("imported-cursor", "cursor"),
-      event("imported-navigation", "navigation"),
-    ]);
+    await store.addEvents([event("offline-cursor", "cursor")]);
+    const [exportedEvent] = await store.getAllEvents();
+    await store.addImportedEvents([exportedEvent]);
 
     await expect(store.getPendingEvents(100)).resolves.toEqual([
-      expect.objectContaining({ id: "new-cursor" }),
+      expect.objectContaining({ id: "offline-cursor" }),
+    ]);
+  });
+
+  it("does not return trusted restored history as pending", async () => {
+    const store = createStore();
+
+    await store.addRestoredEvents([event("restored-cursor", "cursor")]);
+
+    await expect(store.getPendingEvents(100)).resolves.toEqual([]);
+    await expect(store.getAllEvents()).resolves.toEqual([
+      expect.objectContaining({ id: "restored-cursor" }),
     ]);
   });
 
