@@ -1,5 +1,36 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import { getYjsDoc, syncedStore } from "@syncedstore/core";
+import * as Y from "yjs";
 import { playhtml } from "../index";
+import { createPageDataChannel, PAGE_TAG } from "../page-data";
+
+function createPageDataTestDeps(
+  store: ReturnType<typeof syncedStore<{ play: Record<string, Record<string, unknown>> }>>,
+) {
+  const doc = getYjsDoc(store);
+  const proxyByTagAndId = new Map<string, Map<string, unknown>>();
+  const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
+
+  return {
+    ensureProxy<T>(tag: string, id: string, defaultData: T): T {
+      if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+      const proxies = proxyByTagAndId.get(tag)!;
+      if (!proxies.has(id)) {
+        store.play[tag] ??= {};
+        store.play[tag][id] ??= defaultData;
+        proxies.set(id, store.play[tag][id]);
+      }
+      return proxies.get(id) as T;
+    },
+    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
+    getDoc: () => doc,
+    getStorePlay: () => store.play,
+    proxyByTagAndId,
+    yObserverByKey,
+    channelRefCounts: new Map<string, number>(),
+    channelListeners: new Map<string, Set<(data: unknown) => void>>(),
+  };
+}
 
 beforeAll(async () => {
   await playhtml.init({});
@@ -49,6 +80,32 @@ describe("playhtml.createPageData", () => {
 
     expect(channel.getData()).toBe(2);
     expect(updates).toEqual([1, 2]);
+  });
+
+  it("uses a remotely updated primitive value for functional updates", () => {
+    const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const secondStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const firstDoc = getYjsDoc(firstStore);
+    const secondDoc = getYjsDoc(secondStore);
+    const secondChannel = createPageDataChannel(
+      "view-count",
+      0,
+      createPageDataTestDeps(secondStore),
+    );
+
+    Y.applyUpdate(firstDoc, Y.encodeStateAsUpdate(secondDoc));
+    firstStore.play[PAGE_TAG]!["view-count"] = 1;
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+
+    expect(secondChannel.getData()).toBe(1);
+
+    secondChannel.setData((value) => value + 1);
+
+    expect(secondChannel.getData()).toBe(2);
   });
 
   it("onUpdate fires on local changes", async () => {

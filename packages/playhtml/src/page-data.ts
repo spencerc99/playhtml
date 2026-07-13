@@ -190,6 +190,9 @@ export function createPageDataChannel<T>(
       }
       const proxy = currentProxy;
       const isObjectRoot = proxy !== null && typeof proxy === "object";
+      const currentValue = isObjectRoot
+        ? proxy
+        : storePlay()[PAGE_TAG]?.[name] as T;
       if (typeof data === "function" && isObjectRoot) {
         doc().transact(() => {
           applyPageDataUpdate(data as PageDataSetter<T>, proxy);
@@ -197,7 +200,7 @@ export function createPageDataChannel<T>(
         return;
       }
 
-      const nextValue = applyPageDataUpdate(data, proxy);
+      const nextValue = applyPageDataUpdate(data, currentValue);
 
       if (isObjectRoot) {
         doc().transact(() => {
