@@ -51,8 +51,8 @@ withSharedState<T, V, P>(
 
 ```tsx
 interface WithSharedStateConfig<T, V> {
-  defaultData: T | ((element: HTMLElement) => T);
-  myDefaultAwareness?: V | ((element: HTMLElement) => V);
+  defaultData: T;
+  myDefaultAwareness?: V;
   id?: string;
   tagInfo?: TagType[];
 }
@@ -60,7 +60,6 @@ interface WithSharedStateConfig<T, V> {
 
 - **`defaultData`**: required. The initial value of `data`. Survives reload.
 - **`myDefaultAwareness`**: optional. Initial value for this user's element awareness. This is ephemeral per-user presence scoped to the element. Does _not_ persist.
-- Either default can be a callback when it needs the rendered element. The callback receives the mounted `HTMLElement` once during initialization, so it can read attributes or `dataset` values; later renders do not recompute the default.
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
 - **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
 
@@ -99,8 +98,8 @@ Component form of `withSharedState`. Useful when you want JSX children (render-p
 ```tsx
 interface CanPlayElementProps<T, V> {
   id?: string;
-  defaultData: T | ((element: HTMLElement) => T);
-  myDefaultAwareness?: V | ((element: HTMLElement) => V);
+  defaultData: T;
+  myDefaultAwareness?: V;
   tagInfo?: TagType[];
   standalone?: boolean;
   loading?: LoadingOptions;

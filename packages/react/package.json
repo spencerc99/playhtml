@@ -41,7 +41,7 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "test": "vitest run --no-typecheck && vitest run --config vitest.integration.config.ts --no-typecheck",
+    "test": "vitest run --no-typecheck",
     "test:watch": "vitest --no-typecheck"
   },
   "publishConfig": {

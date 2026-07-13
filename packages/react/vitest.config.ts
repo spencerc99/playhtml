@@ -10,11 +10,7 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/__tests__/setup.ts"],
-    exclude: [
-      "node_modules/**",
-      "dist/**",
-      "src/__tests__/function-defaults.integration.test.tsx",
-    ],
+    exclude: ["node_modules/**", "dist/**"],
   },
   resolve: {
     alias: {
