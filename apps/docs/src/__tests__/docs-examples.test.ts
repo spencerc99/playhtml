@@ -12,6 +12,7 @@ import {
 } from "./docs-snippets";
 
 const CAPABILITIES = "capabilities.mdx";
+const SHARED_ELEMENTS = "advanced/shared-elements.md";
 
 function findSnippet(
   file: string,
@@ -50,6 +51,20 @@ describe("docs snippet extractor", () => {
 
     const toggleBlock = htmlBlocks.find((s) => s.nearestHeading === "can-toggle");
     expect(toggleBlock?.code).toContain("can-toggle");
+  });
+
+  it("keeps the shared-state React consumer example self-contained", () => {
+    const snippet = extractSnippets(SHARED_ELEMENTS).find(
+      (s) => s.lang === "tsx" && s.code.includes("withSharedState"),
+    );
+    if (!snippet) {
+      throw new Error(`No withSharedState snippet found in ${SHARED_ELEMENTS}`);
+    }
+
+    expect(snippet.code).toContain("withSharedState,");
+    expect(snippet.code).toContain("dataSourceReadOnly: true");
+    expect(snippet.code).toContain("({ data }) =>");
+    expect(snippet.code).not.toMatch(/\bProps\b/);
   });
 
   it("honors the ignore-test opt-out and partial-snippet placeholder", () => {
