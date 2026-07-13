@@ -552,7 +552,7 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
 // of the paper (radial-gradient circles masked away) so it reads as classic
 // stamp perforation, finished with a thin rust edge line above the holes.
 .perf-stationery {
-  height: 20px;
+  height: 22px;
 }
 .perf-stationery::before {
   background: #f5efe4;
@@ -713,7 +713,12 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
 // The blank writing sheet — same sheet geometry, now a textarea.
 // ============================
 .mbs-writeSegment {
-  gap: 10px;
+  height: min(560px, 76vh);
+  min-height: min(520px, 76vh);
+  border-width: 7px;
+  border-style: solid;
+  border-color: transparent;
+  gap: 0;
   // The blank sheet beckons: a soft breathing shadow so it reads as "come
   // write here" when it peeks below the last letter, plus a slightly lifted
   // top corner curl.
@@ -728,14 +733,39 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
     box-shadow: 0 10px 30px rgba(74, 154, 138, 0.26);
   }
 }
+.mbs-writeHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  max-width: 46ch;
+  min-height: 48px;
+  margin: 0 auto 20px;
+
+  .mbs-salutation {
+    flex: 1;
+    margin: 4px 0 0;
+  }
+}
+.mbs-stylePicker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex: none;
+}
+.mbs-styleLabel {
+  font-family: $letterData;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.45;
+}
 .mbs-swatchRow {
   display: flex;
   gap: 8px;
-  align-self: center;
-  max-width: 46ch;
-  width: 100%;
-  justify-content: flex-end;
-  margin: 0 auto;
 }
 .mbs-swatch {
   width: 24px;
@@ -769,19 +799,42 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
 }
 .mbs-writeField {
   flex: 1;
-  min-height: 220px;
+  min-height: 0;
   width: 100%;
   max-width: 46ch;
-  margin: 0 auto;
-  border: none;
-  background: transparent;
+  margin: 0 auto 20px;
+  padding: 16px 2px;
+  border: solid currentColor;
+  border-width: 1px 0;
+  background: color-mix(in srgb, currentColor 3%, transparent);
   resize: none;
   font: inherit;
   line-height: inherit;
   box-sizing: border-box;
+  border-radius: 0;
+  opacity: 0.94;
 
   &:focus { outline: none; }
   &::placeholder { color: currentColor; opacity: 0.4; }
+}
+.mbs-writeFooter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 24px;
+  width: 100%;
+  max-width: 46ch;
+  min-height: 82px;
+  margin: 0 auto;
+
+  .mbs-signoff {
+    min-width: 0;
+    margin: 0 0 8px;
+  }
+
+  .mbs-stampWell {
+    margin: 0;
+  }
 }
 .mbs-signInput {
   border: none;
@@ -798,6 +851,28 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
     opacity: 0.4;
     font-family: $letterBody;
     font-size: 14px;
+  }
+}
+.mbs-writeSegment .mbs-writeField {
+  font-size: 17px;
+}
+.mbs-writeSegment .mbs-signInput {
+  font-size: 22px;
+}
+
+@media (max-width: 560px) {
+  .mbs-writeSegment {
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+  .mbs-writeHeader {
+    gap: 12px;
+  }
+  .mbs-writeFooter {
+    gap: 12px;
+  }
+  .mbs-signInput {
+    width: 150px;
   }
 }
 

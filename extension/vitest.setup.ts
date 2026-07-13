@@ -58,6 +58,7 @@ vi.mock("webextension-polyfill", () => ({
       sendMessage: vi.fn().mockResolvedValue({}),
       onMessage: {
         addListener: vi.fn(),
+        removeListener: vi.fn(),
       },
     },
     tabs: {
