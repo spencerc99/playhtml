@@ -2471,7 +2471,7 @@ export class PartyServer extends YServer {
     }
     if (this.bridgeHealth.recordResult(peerRoomId, direction, applied)) {
       console.warn(
-        `[Bridge] Circuit opened for ${this.name} -> ${peerRoomId} (${direction}): peer keeps rejecting applies; pausing sends until it recovers or resubscribes`
+        `[Bridge] Circuit opened for ${this.name} -> ${peerRoomId} (${direction}): peer keeps rejecting applies; pausing sends until a cooldown probe recovers or it resubscribes`
       );
     }
   }
