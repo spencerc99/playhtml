@@ -2,6 +2,7 @@
 
 - Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
+- Added a locally persistent scissors prototype that cuts page elements into displaced collage pieces.
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**

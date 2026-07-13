@@ -1,3 +1,5 @@
+<!-- ABOUTME: Browser test surface for the extension's real social and inventory features. -->
+<!-- ABOUTME: Includes durable cut targets and direct-render bottle controls for visual iteration. -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -61,6 +63,23 @@
         content: attr(data-label); position: absolute; top: 22px; left: 50%;
         transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap;
       }
+      .cut-stage {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+        margin: 18px 0 28px;
+      }
+      .cut-card {
+        min-height: 112px; padding: 16px; border: 2px solid #3d3833;
+        background: #fffaf1; box-shadow: 5px 5px 0 #d9c6a5;
+        display: flex; flex-direction: column; justify-content: space-between;
+      }
+      .cut-card:nth-child(2) { background: #dceae4; transform: rotate(-1.5deg); }
+      .cut-card:nth-child(3) { background: #f0d9cf; transform: rotate(1.2deg); }
+      .cut-card strong { font-family: Lora, Georgia, serif; }
+      .cut-card button {
+        align-self: flex-start; border: 1px solid #3d3833; background: #f3c768;
+        padding: 5px 9px; font: inherit; cursor: pointer;
+      }
+      @media (max-width: 640px) { .cut-stage { grid-template-columns: 1fr; } }
     </style>
     <link
       rel="stylesheet"
@@ -92,6 +111,12 @@
           this page (it's a real synced experiment — open it, read/add, seal).
         </li>
         <li>
+          <strong>Scissors</strong> — open the satchel and arm the scissors, then
+          drag a line across an element to split it and leave a gap. Cuts persist
+          locally across refreshes. Press <code>Delete</code>, <code>Backspace</code>,
+          or <code>Cmd/Ctrl+Z</code> while armed to undo the latest cut.
+        </li>
+        <li>
           <strong>Emote wheel</strong> — press <code>Cmd/Ctrl+Shift+E</code> to
           open a radial wheel of emotes at your cursor. Click one or press its
           number key (<code>1</code>–<code>0</code>) to play it on your cursor;
@@ -100,6 +125,31 @@
           nearest cursor.
         </li>
       </ul>
+
+      <h2>Scissors test surface</h2>
+      <p>
+        These cards deliberately mix text, borders, transforms, and a real button.
+        Cut each one at a different angle, refresh the page to confirm the cuts
+        return, then undo them while the scissors are armed.
+      </p>
+      <div class="controls">
+        <button id="open-satchel" type="button">open satchel here</button>
+        <button id="arm-scissors" type="button">arm scissors directly</button>
+      </div>
+      <div class="cut-stage">
+        <article class="cut-card" id="cut-paper-note">
+          <strong>paper note</strong>
+          <span>drag through this card like a sheet on a worktable.</span>
+        </article>
+        <article class="cut-card" id="cut-ticket">
+          <strong>admit one</strong>
+          <span>try a steep diagonal cut.</span>
+        </article>
+        <article class="cut-card" id="cut-button-card">
+          <strong>working controls</strong>
+          <button type="button">a real button</button>
+        </article>
+      </div>
 
       <h2>Message bottle (direct render — for photos)</h2>
       <p>

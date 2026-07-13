@@ -2,6 +2,7 @@
 // ABOUTME: Stores a CSS selector + relative offset; the anchor is page-stable and its viewport position moves with scroll.
 
 import { bottleDebug as debug } from "./bottle-debug";
+import { buildStructuralSelector } from "./dom-anchor";
 
 export interface BottleAnchor {
   selector: string;
@@ -415,33 +416,6 @@ function collectAnchorCandidates(): string[] {
   }
 
   return out;
-}
-
-function buildStructuralSelector(el: Element): string | null {
-  const parts: string[] = [];
-  let cur: Element | null = el;
-  while (cur && cur !== document.body && cur !== document.documentElement) {
-    if (cur.id && /^[a-z][\w-]+$/i.test(cur.id)) {
-      parts.unshift(`#${CSS.escape(cur.id)}`);
-      return parts.join(" > ");
-    }
-    const parent: Element | null = cur.parentElement;
-    if (!parent) return null;
-    const tag = cur.tagName.toLowerCase();
-    let n = 0;
-    let myIndex = -1;
-    for (const sib of Array.from(parent.children)) {
-      if (sib.tagName.toLowerCase() === tag) {
-        n++;
-        if (sib === cur) myIndex = n;
-      }
-    }
-    if (myIndex === -1) return null;
-    parts.unshift(`${tag}:nth-of-type(${myIndex})`);
-    cur = parent;
-  }
-  parts.unshift("body");
-  return parts.join(" > ");
 }
 
 // Hosts the extension injects into the page. Anchoring a bottle to one of

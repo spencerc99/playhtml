@@ -7,7 +7,7 @@ import { injectShadow } from "../../entrypoints/content/inject-ui";
 import { INVENTORY_CSS } from "./inventory.styles";
 import { Satchel } from "./Satchel";
 import { WieldCursor } from "./WieldCursor";
-import { registerKeyboardSummon } from "./keyboard";
+import { registerInventoryMessages } from "./keyboard";
 import type { GlobalFeatureDeps } from "../social/types";
 
 const FONT_URL =
@@ -35,10 +35,13 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
   }
   render();
 
-  const offKeyboard = registerKeyboardSummon(() => {
-    openSignal.at = { ...lastCursor };
-    openSignal.seq += 1;
-    render();
+  const offKeyboard = registerInventoryMessages({
+    onOpen: () => {
+      openSignal.at = { ...lastCursor };
+      openSignal.seq += 1;
+      render();
+    },
+    onArm: (itemId) => deps.inventory.arm(itemId),
   });
 
   const wield = new WieldCursor(shadow);

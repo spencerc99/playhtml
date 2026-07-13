@@ -12,6 +12,7 @@ export const FLAGS = {
   // every experiment regardless of these flags. Flip one to `true` only when
   // it's ready to ship to everyone (with its own safety layers).
   BOTTLES: false,
+  SCISSORS: false,
   QUARANTINE_TAPE: false,
 
   // Inventory surface (the satchel) + the InventoryAPI. Gates the on-page UI.
