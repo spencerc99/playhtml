@@ -14,6 +14,7 @@ export const DISCOVERED_SITES_STORAGE_KEY = "playerDiscoveredSites";
 export type StoredPlayerIdentity = {
   public: PlayerIdentity;
   privateKey: JsonWebKey;
+  colorSyncVersion?: number;
 };
 
 export type PlayerProfile = {
@@ -77,6 +78,11 @@ function readStoredPlayerIdentity(value: unknown): StoredPlayerIdentity | null {
   return {
     public: publicIdentity,
     privateKey,
+    ...(typeof value.colorSyncVersion === "number" &&
+    Number.isSafeInteger(value.colorSyncVersion) &&
+    value.colorSyncVersion >= 0
+      ? { colorSyncVersion: value.colorSyncVersion }
+      : {}),
   };
 }
 
@@ -110,7 +116,10 @@ export async function getStoredPlayerIdentity(): Promise<StoredPlayerIdentity | 
   const needsIdentityWrite =
     !hasStoredShape ||
     Object.keys(rawIdentityRecord).some(
-      (key) => key !== "public" && key !== "privateKey",
+      (key) =>
+        key !== "public" &&
+        key !== "privateKey" &&
+        key !== "colorSyncVersion",
     ) ||
     JSON.stringify(rawPublic) !== JSON.stringify(storedIdentity.public);
 
@@ -166,6 +175,26 @@ export async function ensurePlayerIdentity(): Promise<StoredPlayerIdentity | nul
 export async function getPublicPlayerIdentity(): Promise<PlayerIdentity | null> {
   const storedIdentity = await getStoredPlayerIdentity();
   return storedIdentity?.public ?? null;
+}
+
+export async function signPlayerIdentityPayload(
+  privateKey: JsonWebKey,
+  payload: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    privateKey,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    new TextEncoder().encode(payload),
+  );
+
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
 }
 
 export async function getPlayerProfile(): Promise<PlayerProfile> {

@@ -119,6 +119,29 @@ describe("player identity storage", () => {
     expect(JSON.stringify(data.playerIdentity)).not.toContain("wikipedia.org");
   });
 
+  it("keeps the participant color sync version in stored identity", async () => {
+    setupStorage({
+      playerIdentity: {
+        public: {
+          publicKey: "pk_test",
+          playerStyle: { colorPalette: ["#4a9a8a"] },
+        },
+        privateKey,
+        colorSyncVersion: 42,
+      },
+    });
+
+    await expect(getStoredPlayerIdentity()).resolves.toEqual({
+      public: {
+        publicKey: "pk_test",
+        playerStyle: { colorPalette: ["#4a9a8a"] },
+      },
+      privateKey,
+      colorSyncVersion: 42,
+    });
+    expect(browser.storage.local.set).not.toHaveBeenCalled();
+  });
+
   it("replaces unverifiable identities through storage owner", async () => {
     const rawPublicKey = new Uint8Array(65);
     rawPublicKey[0] = 4;
