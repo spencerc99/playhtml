@@ -9,15 +9,7 @@ const collectionEvents = {
   select: vi.fn(),
 };
 
-const pageMetadataHistory = {
-  select: vi.fn(),
-  in: vi.fn(),
-  is: vi.fn(),
-  update: vi.fn(),
-  eq: vi.fn(),
-  insert: vi.fn(),
-  single: vi.fn(),
-};
+const metadataHistoryRpc = vi.fn();
 
 vi.mock('../lib/supabase', () => ({
   createSupabaseClient: vi.fn(() => ({
@@ -25,11 +17,9 @@ vi.mock('../lib/supabase', () => ({
       if (table === 'collection_events') {
         return collectionEvents;
       }
-      if (table === 'page_metadata_history') {
-        return pageMetadataHistory;
-      }
       throw new Error(`Unexpected table: ${table}`);
     }),
+    rpc: metadataHistoryRpc,
   })),
 }));
 
@@ -89,13 +79,7 @@ describe('handleIngest', () => {
   beforeEach(() => {
     collectionEvents.upsert.mockReset();
     collectionEvents.select.mockReset();
-    pageMetadataHistory.select.mockReset();
-    pageMetadataHistory.in.mockReset();
-    pageMetadataHistory.is.mockReset();
-    pageMetadataHistory.update.mockReset();
-    pageMetadataHistory.eq.mockReset();
-    pageMetadataHistory.insert.mockReset();
-    pageMetadataHistory.single.mockReset();
+    metadataHistoryRpc.mockReset();
     waitUntil.mockReset();
 
     collectionEvents.upsert.mockReturnValue({
@@ -105,21 +89,7 @@ describe('handleIngest', () => {
     });
     collectionEvents.select.mockResolvedValue({ data: [{ id: 'event-1' }], error: null });
 
-    pageMetadataHistory.select.mockReturnValue(pageMetadataHistory);
-    pageMetadataHistory.in.mockReturnValue(pageMetadataHistory);
-    pageMetadataHistory.is.mockResolvedValue({ data: [], error: null });
-    pageMetadataHistory.insert.mockReturnValue(pageMetadataHistory);
-    pageMetadataHistory.update.mockReturnValue(pageMetadataHistory);
-    pageMetadataHistory.eq.mockResolvedValue({ error: null });
-    pageMetadataHistory.single.mockResolvedValue({
-      data: {
-        id: 'metadata-1',
-        page_ref: 'page-1',
-        metadata_hash: 'hash-1',
-        valid_from_ts: new Date(1_700_000_000_000).toISOString(),
-      },
-      error: null,
-    });
+    metadataHistoryRpc.mockResolvedValue({ data: true, error: null });
   });
 
   it('accepts event upserts without selecting inserted row ids', async () => {
@@ -151,17 +121,7 @@ describe('handleIngest', () => {
   });
 
   it('ignores an older retry that would overwrite the current metadata', async () => {
-    pageMetadataHistory.is.mockResolvedValue({
-      data: [
-        {
-          id: 'metadata-current',
-          page_ref: 'page-1',
-          metadata_hash: 'hash-current',
-          valid_from_ts: new Date(1_700_000_000_100).toISOString(),
-        },
-      ],
-      error: null,
-    });
+    metadataHistoryRpc.mockResolvedValue({ data: false, error: null });
 
     const res = await handleIngest(
       makeRequest([
@@ -174,8 +134,10 @@ describe('handleIngest', () => {
     );
 
     expect(res.status).toBe(200);
-    expect(pageMetadataHistory.update).not.toHaveBeenCalled();
-    expect(pageMetadataHistory.insert).not.toHaveBeenCalled();
+    expect(metadataHistoryRpc).toHaveBeenCalledWith(
+      'record_page_metadata_snapshot',
+      expect.objectContaining({ p_metadata_hash: 'hash-retried' }),
+    );
     await expect(res.json()).resolves.toMatchObject({ page_metadata_inserted: 0 });
   });
 
@@ -198,27 +160,69 @@ describe('handleIngest', () => {
     );
 
     expect(res.status).toBe(200);
-    expect(pageMetadataHistory.insert).toHaveBeenCalledTimes(2);
-    expect(pageMetadataHistory.insert).toHaveBeenNthCalledWith(
+    expect(metadataHistoryRpc).toHaveBeenCalledTimes(2);
+    expect(metadataHistoryRpc).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ metadata_hash: 'hash-older' }),
+      'record_page_metadata_snapshot',
+      expect.objectContaining({ p_metadata_hash: 'hash-older' }),
     );
-    expect(pageMetadataHistory.insert).toHaveBeenNthCalledWith(
+    expect(metadataHistoryRpc).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ metadata_hash: 'hash-newest' }),
+      'record_page_metadata_snapshot',
+      expect.objectContaining({ p_metadata_hash: 'hash-newest' }),
     );
-    expect(pageMetadataHistory.update).toHaveBeenCalledWith({
-      valid_to_ts: new Date(1_700_000_000_200).toISOString(),
-    });
   });
 
   it('does not duplicate history when a navigation event id is retried', async () => {
     const event = makeNavigationEvent('duplicate-event');
+    metadataHistoryRpc
+      .mockResolvedValueOnce({ data: true, error: null })
+      .mockResolvedValueOnce({ data: false, error: null });
 
     const res = await handleIngest(makeRequest([event, event]), ENV, CTX);
 
     expect(res.status).toBe(200);
-    expect(pageMetadataHistory.insert).toHaveBeenCalledTimes(1);
+    expect(metadataHistoryRpc).toHaveBeenCalledTimes(2);
     await expect(res.json()).resolves.toMatchObject({ page_metadata_inserted: 1 });
+  });
+
+  it('serializes concurrent snapshots for the same page through the metadata RPC', async () => {
+    let current: { metadataHash: string; observedAtTs: string } | undefined;
+    metadataHistoryRpc.mockImplementation(async (_functionName, params) => {
+      if (current && params.p_observed_at_ts <= current.observedAtTs) {
+        return { data: false, error: null };
+      }
+
+      current = {
+        metadataHash: params.p_metadata_hash,
+        observedAtTs: params.p_observed_at_ts,
+      };
+      return { data: true, error: null };
+    });
+
+    const [first, second] = await Promise.all([
+      handleIngest(
+        makeRequest([
+          makeNavigationEvent('concurrent-first', { metadataHash: 'hash-first' }),
+        ]),
+        ENV,
+        CTX,
+      ),
+      handleIngest(
+        makeRequest([
+          makeNavigationEvent('concurrent-second', { metadataHash: 'hash-second' }),
+        ]),
+        ENV,
+        CTX,
+      ),
+    ]);
+
+    expect(metadataHistoryRpc).toHaveBeenCalledTimes(2);
+    await expect(first.json()).resolves.toMatchObject({ page_metadata_inserted: 1 });
+    await expect(second.json()).resolves.toMatchObject({ page_metadata_inserted: 0 });
+    expect(current).toEqual({
+      metadataHash: 'hash-first',
+      observedAtTs: new Date(1_700_000_000_000).toISOString(),
+    });
   });
 });
