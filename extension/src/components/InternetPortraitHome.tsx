@@ -11,6 +11,7 @@ import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
 import { FLAGS } from "../flags";
 import { PostcardStack } from "../announcements/PostcardStack";
+import { FeedbackForm } from "./FeedbackForm";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -262,14 +263,7 @@ export function InternetPortraitHome({
 
       <footer className="portrait-home__footer">
         <span>Beta</span>
-        <a
-          className="portrait-home__feedback"
-          href="mailto:hi@spencer.place?subject=we%20were%20online%20feedback"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          feedback → hi@spencer.place
-        </a>
+        <FeedbackForm />
       </footer>
     </div>
   );

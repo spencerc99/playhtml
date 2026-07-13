@@ -88,21 +88,106 @@
     font-size: 10px;
     color: $text-faint;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
   }
 
   &__feedback {
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-family: $font-mono;
     font-size: 10px;
     color: $text-muted;
-    text-decoration: none;
+    cursor: pointer;
 
     &:hover {
       color: $accent-teal;
     }
   }
 
+}
+
+.feedback-form {
+  flex-basis: 100%;
+  margin-top: 4px;
+
+  &__header,
+  &__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  &__header {
+    margin-bottom: 6px;
+    color: $text-muted;
+  }
+
+  &__close {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: $text-faint;
+    cursor: pointer;
+
+    &:hover {
+      color: $accent-rust;
+    }
+  }
+
+  &__input {
+    @include input-field;
+    display: block;
+    width: 100%;
+    min-height: 68px;
+    resize: vertical;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  &__actions {
+    margin-top: 6px;
+  }
+
+  &__context {
+    color: $text-faint;
+    font-size: 9px;
+  }
+
+  &__submit {
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 5px;
+    background: $accent-teal;
+    color: white;
+    font-family: $font-mono;
+    font-size: 9px;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__success,
+  &__error {
+    margin: 0;
+  }
+
+  &__success {
+    color: $accent-teal;
+  }
+
+  &__error {
+    margin-top: 5px;
+    color: $error-text;
+  }
 }
 
 // Collection status section
