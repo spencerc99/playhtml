@@ -8,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 
 vi.mock("../components/ColorPickerPage.scss", () => ({}));
+const savePlayerColor = vi.hoisted(() => vi.fn());
+
+vi.mock("../storage/playerColor", () => ({ savePlayerColor }));
 
 const storedIdentity = {
   public: {
@@ -42,16 +45,14 @@ function cleanupRoot(root: Root, container: HTMLDivElement) {
 describe("ColorPickerPage", () => {
   beforeEach(() => {
     vi.resetModules();
+    savePlayerColor.mockReset();
+    savePlayerColor.mockResolvedValue(null);
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
       true;
     vi.mocked(browser.storage.local.get).mockResolvedValue({
       playerIdentity: structuredClone(storedIdentity),
     });
     vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true }),
-    );
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
@@ -87,25 +88,7 @@ describe("ColorPickerPage", () => {
         );
       });
 
-      expect(browser.storage.local.set).toHaveBeenCalledWith({
-        playerIdentity: {
-          ...storedIdentity,
-          public: {
-            ...storedIdentity.public,
-            playerStyle: {
-              colorPalette: ["#123456"],
-            },
-          },
-        },
-      });
-      expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:8787/participants/pk_test",
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cursor_color: "#123456" }),
-        },
-      );
+      expect(savePlayerColor).toHaveBeenCalledWith("#123456");
     } finally {
       cleanupRoot(root, container);
     }
