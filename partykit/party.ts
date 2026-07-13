@@ -82,6 +82,7 @@ import {
 import { BridgeHealth } from "./bridgeHealth";
 import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
 import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
+import { createBridgeRequest, getBridgeAuthFailure } from "./bridgeAuth";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -169,11 +170,7 @@ type UsefulCompactedDocumentOptions = {
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
 // The URL is synthetic — the target server's onRequest reads the body, not the path.
 function internalRequest(path: string, body: unknown): Request {
-  return new Request(`http://internal${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return createBridgeRequest(path, body, env.PARTYKIT_BRIDGE_SECRET);
 }
 
 function readPositiveNumberEnv(name: string, fallback: number): number {
@@ -1880,6 +1877,14 @@ export class PartyServer extends YServer {
 
       if (request.method !== "POST") {
         return new Response("Method Not Allowed", { status: 405 });
+      }
+
+      const bridgeAuthFailure = getBridgeAuthFailure(
+        request,
+        env.PARTYKIT_BRIDGE_SECRET
+      );
+      if (bridgeAuthFailure) {
+        return bridgeAuthFailure;
       }
 
       const body = await this.readLimitedJson(request);

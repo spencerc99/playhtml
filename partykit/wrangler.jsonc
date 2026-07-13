@@ -13,7 +13,12 @@
     }
   },
   "secrets": {
-    "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
+    "required": [
+      "SUPABASE_URL",
+      "SUPABASE_KEY",
+      "ADMIN_TOKEN",
+      "PARTYKIT_BRIDGE_SECRET"
+    ]
   },
   "durable_objects": {
     "bindings": [
@@ -49,7 +54,12 @@
         }
       },
       "secrets": {
-        "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
+        "required": [
+          "SUPABASE_URL",
+          "SUPABASE_KEY",
+          "ADMIN_TOKEN",
+          "PARTYKIT_BRIDGE_SECRET"
+        ]
       },
       "durable_objects": {
         "bindings": [

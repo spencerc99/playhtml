@@ -142,9 +142,9 @@ async function verifyClient(client, origin, { fresh = false } = {}) {
   return okPromise;
 }
 
-async function gatedWrite(client, tag, elementId, data) {
+async function gatedWrite(client, tag, elementId, ops) {
   const opId = crypto.randomUUID();
-  client.send({ type: "gated_write", opId, tag, elementId, data });
+  client.send({ type: "gated_write", opId, tag, elementId, ops });
   return client.waitFor("gated_write_result", (m) => m.opId === opId);
 }
 
@@ -217,7 +217,7 @@ async function main() {
       visitorClient,
       "can-play",
       "site-title",
-      { text: "hacked" }
+      [{ op: "replace", key: "", value: { text: "hacked" } }]
     );
     check("rejected", unverifiedResult.ok === false, unverifiedResult.reason);
 
@@ -231,9 +231,13 @@ async function main() {
 
     // --- 6. admin can write the gated title; visitor still can't
     console.log("\n[4] write-gated element");
-    const adminWrite = await gatedWrite(adminClient, "can-play", "site-title", {
-      text: "spencer's site",
-    });
+    const adminWrite = await gatedWrite(adminClient, "can-play", "site-title", [
+      {
+        op: "replace",
+        key: "",
+        value: { text: "spencer's site" },
+      },
+    ]);
     check("admin write accepted", adminWrite.ok === true, adminWrite.reason);
     await sleep(1500);
     check(
@@ -245,15 +249,19 @@ async function main() {
       visitorClient,
       "can-play",
       "site-title",
-      { text: "visitor takeover" }
+      [{ op: "replace", key: "", value: { text: "visitor takeover" } }]
     );
     check("verified visitor still rejected (not admin)", visitorWrite.ok === false);
 
     // --- 7. entry-level rules on the guestbook
     console.log("\n[5] entry rules (create/update/delete + createdBy)");
-    const created = await gatedWrite(visitorClient, "can-play", "guestbook", {
-      note1: { text: "hello", createdBy: "pk_forged" },
-    });
+    const created = await gatedWrite(visitorClient, "can-play", "guestbook", [
+      {
+        op: "create",
+        key: "note1",
+        value: { text: "hello", createdBy: "pk_forged" },
+      },
+    ]);
     check("verified visitor can create entry", created.ok === true, created.reason);
     await sleep(1500);
     const entry = readElement(visitorDoc, "can-play", "guestbook")?.note1;
@@ -263,22 +271,37 @@ async function main() {
       JSON.stringify(entry)
     );
 
-    const updateOwn = await gatedWrite(visitorClient, "can-play", "guestbook", {
-      note1: { text: "hello (edited)", createdBy: visitor.pid },
-    });
+    const updateOwn = await gatedWrite(visitorClient, "can-play", "guestbook", [
+      {
+        op: "update",
+        key: "note1",
+        value: { text: "hello (edited)", createdBy: visitor.pid },
+      },
+    ]);
     check("creator can update own entry", updateOwn.ok === true, updateOwn.reason);
 
     // A second verified identity must NOT be able to edit the visitor's entry.
-    const intruderUpdate = await gatedWrite(adminClient, "can-play", "guestbook", {
-      note1: { text: "vandalized", createdBy: visitor.pid },
-    });
+    const intruderUpdate = await gatedWrite(
+      adminClient,
+      "can-play",
+      "guestbook",
+      [
+        {
+          op: "update",
+          key: "note1",
+          value: { text: "vandalized", createdBy: visitor.pid },
+        },
+      ]
+    );
     check(
       "non-creator can't update entry (admin role only covers delete)",
       intruderUpdate.ok === false,
       intruderUpdate.reason
     );
 
-    const adminDelete = await gatedWrite(adminClient, "can-play", "guestbook", {});
+    const adminDelete = await gatedWrite(adminClient, "can-play", "guestbook", [
+      { op: "delete", key: "note1" },
+    ]);
     check("admin can delete via delete:creator|admin", adminDelete.ok === true, adminDelete.reason);
 
     // --- 8. backstop: direct CRDT write to a gated key gets reverted
