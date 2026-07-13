@@ -1,4 +1,5 @@
--- Signed participant color updates use a monotonic client version to reject replays.
+-- ABOUTME: Stores replay-safe versions for signed participant color updates.
+-- ABOUTME: Rejects older participant color updates after newer ones are saved.
 
 ALTER TABLE participants
   ADD COLUMN IF NOT EXISTS color_version BIGINT NOT NULL DEFAULT 0;
