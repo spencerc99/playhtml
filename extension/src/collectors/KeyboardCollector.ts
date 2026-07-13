@@ -446,7 +446,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     }
 
     this.debounceTimer = window.setTimeout(() => {
-      if (this.sequence.length > 0 && this.focusedInput) {
+      if (this.sequence.length > 0) {
         this.flushTypingEvent();
       }
       this.debounceTimer = null;
@@ -509,7 +509,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
    * Flush pending typing event
    */
   private flushTypingEvent(): void {
-    if (!this.focusedInput || !this.cachedPosition || !this.cachedSelector) {
+    if (!this.cachedPosition || !this.cachedSelector) {
       return;
     }
 

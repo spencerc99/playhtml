@@ -12,35 +12,7 @@ describe("KeyboardCollector", () => {
     removeListener: ReturnType<typeof vi.fn>;
   };
 
-  beforeEach(() => {
-    vi.useFakeTimers();
-    storageChangeListener = {
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-    };
-    (browser.storage as any).onChanged = storageChangeListener;
-    document.body.innerHTML = "";
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-    document.body.innerHTML = "";
-  });
-
-  it("emits typing data without posting it to the page window", async () => {
-    const collector = new KeyboardCollector();
-    const emitted: KeyboardEventData[] = [];
-    collector.setEmitCallback((event) => {
-      emitted.push(event);
-    });
-    const postMessageSpy = vi.spyOn(window, "postMessage");
-    vi.spyOn(window, "getComputedStyle").mockReturnValue({
-      backgroundColor: "rgb(255, 255, 255)",
-      borderStyle: "solid",
-      borderTopLeftRadius: "4px",
-    } as CSSStyleDeclaration);
-
+  function appendInput(): HTMLInputElement {
     const input = document.createElement("input");
     input.id = "message";
     input.getBoundingClientRect = () =>
@@ -56,22 +28,108 @@ describe("KeyboardCollector", () => {
         toJSON: () => ({}),
       }) as DOMRect;
     document.body.appendChild(input);
+    return input;
+  }
 
-    collector.enable();
-    input.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
-    input.value = "h";
+  function insertText(input: HTMLInputElement, value: string, data: string): void {
+    input.value = value;
     input.dispatchEvent(
       new InputEvent("input", {
         bubbles: true,
         inputType: "insertText",
-        data: "h",
+        data,
       }),
     );
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    storageChangeListener = {
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    };
+    (browser.storage as any).onChanged = storageChangeListener;
+    document.body.innerHTML = "";
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      backgroundColor: "rgb(255, 255, 255)",
+      borderStyle: "solid",
+      borderTopLeftRadius: "4px",
+    } as CSSStyleDeclaration);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("emits typing data without posting it to the page window", async () => {
+    const collector = new KeyboardCollector();
+    const emitted: KeyboardEventData[] = [];
+    collector.setEmitCallback((event) => {
+      emitted.push(event);
+    });
+    const postMessageSpy = vi.spyOn(window, "postMessage");
+    const input = appendInput();
+
+    collector.enable();
+    input.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+    insertText(input, "h", "h");
 
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(emitted).toHaveLength(1);
     expect(postMessageSpy).not.toHaveBeenCalled();
+
+    collector.disable();
+  });
+
+  it("emits a pending typing sequence after the input blurs", async () => {
+    const collector = new KeyboardCollector();
+    const emitted: KeyboardEventData[] = [];
+    collector.setEmitCallback((event) => {
+      emitted.push(event);
+    });
+    const input = appendInput();
+
+    collector.enable();
+    input.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+    insertText(input, "h", "h");
+    input.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(emitted).toHaveLength(1);
+
+    collector.disable();
+  });
+
+  it("accumulates typing when the same input regains focus before debouncing", async () => {
+    const collector = new KeyboardCollector();
+    const emitted: KeyboardEventData[] = [];
+    collector.setEmitCallback((event) => {
+      emitted.push(event);
+    });
+    const input = appendInput();
+
+    collector.enable();
+    input.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+    insertText(input, "h", "h");
+    input.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
+
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    input.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+    insertText(input, "hi", "i");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(emitted).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].sequence).toHaveLength(1);
+    expect(emitted[0].sequence?.[0].action).toBe("type");
+    expect(emitted[0].sequence?.[0].text).toHaveLength(2);
 
     collector.disable();
   });
