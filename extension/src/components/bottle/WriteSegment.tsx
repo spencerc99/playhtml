@@ -62,9 +62,12 @@ export function WriteSegment({
       >
         <div className="mbs-writeHeader">
           <div className="mbs-salutation">
-            {favicon && <img className="mbs-salutationFavicon" src={favicon} alt="" />}
             <span>
-              dear <span className="mbs-salutationSite">{parts.label}</span>
+              dear{" "}
+              {favicon && (
+                <img className="mbs-salutationFavicon" src={favicon} alt="" />
+              )}{" "}
+              <span className="mbs-salutationSite">{parts.label}</span>
               {parts.domain && <span className="mbs-salutationDomain">({parts.domain})</span>}
               ,
             </span>

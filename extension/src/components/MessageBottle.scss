@@ -733,27 +733,47 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
     box-shadow: 0 10px 30px rgba(74, 154, 138, 0.26);
   }
 }
+// Two stacked rows: the salutation owns the full first line (a letter's
+// greeting, allowed to wrap), the paper picker sits quietly beneath it.
 .mbs-writeHeader {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
+  flex-direction: column;
+  gap: 10px;
   width: 100%;
   max-width: 46ch;
-  min-height: 48px;
-  margin: 0 auto 20px;
+  margin: 0 auto 16px;
 
   .mbs-salutation {
-    flex: 1;
-    margin: 4px 0 0;
+    margin: 0;
+  }
+}
+// The write sheet's greeting is set larger, in the letter head face, and wraps
+// instead of ellipsizing — it's the opening of the letter, not a status line.
+.mbs-writeSegment .mbs-salutation {
+  font-family: $letterHead;
+  font-size: 1.28rem;
+  line-height: 1.5;
+
+  > span {
+    white-space: normal;
+    overflow: visible;
+  }
+  .mbs-salutationSite {
+    display: inline;
+    max-width: none;
+    white-space: normal;
+  }
+  .mbs-salutationFavicon {
+    width: 16px;
+    height: 16px;
+    vertical-align: -2px;
   }
 }
 .mbs-stylePicker {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
-  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
 }
 .mbs-styleLabel {
   font-family: $letterData;
@@ -765,24 +785,30 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
 }
 .mbs-swatchRow {
   display: flex;
-  gap: 8px;
+  gap: 9px;
 }
+// Paper samples, not form chips: each swatch rests at its own slight tilt,
+// like squares of stationery laid out by hand.
 .mbs-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
   border: 1px solid rgba(0, 0, 0, 0.25);
   cursor: pointer;
   padding: 0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   transition: transform 120ms ease;
+  transform: rotate(var(--tilt, 0deg));
 
-  &:hover { transform: translateY(-1px); }
+  &:hover { transform: translateY(-1px) rotate(var(--tilt, 0deg)); }
   &.selected {
     outline: 2px solid #4a9a8a;
     outline-offset: 2px;
   }
 }
+.mbs-swatchRow .mbs-swatch:nth-child(1) { --tilt: -3deg; }
+.mbs-swatchRow .mbs-swatch:nth-child(2) { --tilt: 2deg; }
+.mbs-swatchRow .mbs-swatch:nth-child(3) { --tilt: -1.5deg; }
 .swatch-linen {
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.32 0 0 0 0 0.29 0 0 0 0 0.24 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='40' height='40' filter='url(%23g)'/%3E%3C/svg%3E"),
@@ -797,16 +823,18 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
 .swatch-webnative {
   background: linear-gradient(140deg, #5b8db8, #4a9a8a 55%, #d4b85c);
 }
+// Bare paper, no form rules — the blank sheet should look like the finished
+// letter will: ink straight on the ground. The placeholder and the sheet's
+// breathing shadow carry the "write here" invitation.
 .mbs-writeField {
   flex: 1;
   min-height: 0;
   width: 100%;
   max-width: 46ch;
   margin: 0 auto 20px;
-  padding: 16px 2px;
-  border: solid currentColor;
-  border-width: 1px 0;
-  background: color-mix(in srgb, currentColor 3%, transparent);
+  padding: 14px 2px;
+  border: none;
+  background: transparent;
   resize: none;
   font: inherit;
   line-height: inherit;
@@ -1176,11 +1204,12 @@ $stationery-paper: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQACWAJYAAD/4QCMRXhpZ
   }
 }
 
+// Sits inline within the greeting, right beside the addressee's name.
 .mbs-salutationFavicon {
   width: 13px;
   height: 13px;
-  align-self: center;
-  flex: none;
+  display: inline-block;
+  vertical-align: -2px;
   border-radius: 3px;
 }
 
