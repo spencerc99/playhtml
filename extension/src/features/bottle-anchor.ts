@@ -24,6 +24,13 @@ const SAMPLE_HALF_W = 22;
 const SAMPLE_HALF_H = 38;
 const SAFE_TOP_PX = 80;
 const SAFE_EDGE_PX = 24;
+const OCCLUSION_SAMPLE_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [-BOTTLE_W / 2, -BOTTLE_H / 2],
+  [BOTTLE_W / 2, -BOTTLE_H / 2],
+  [0, 0],
+  [-BOTTLE_W / 2, BOTTLE_H / 2],
+  [BOTTLE_W / 2, BOTTLE_H / 2],
+];
 
 const MAX_PICK_ATTEMPTS = 80;
 // First-match threshold — stop searching once we find a position this clear.
@@ -127,6 +134,29 @@ function pickOffsetX(): number {
  * still valid; null means the anchor element itself no longer exists. */
 export function resolveBottlePosition(anchor: BottleAnchor): ResolvedPosition | null {
   return resolveAnchorPosition(anchor).position;
+}
+
+/** Whether fixed or sticky page chrome currently covers the bottle's footprint. */
+export function isBottleOccluded(position: { x: number; y: number }): boolean {
+  if (typeof document.elementsFromPoint !== "function") return false;
+
+  return OCCLUSION_SAMPLE_OFFSETS.some(([offsetX, offsetY]) => {
+    const topPageElement = document
+      .elementsFromPoint(position.x + offsetX, position.y + offsetY)
+      .find((element) => !element.closest(EXTENSION_HOST_SELECTOR));
+    return topPageElement ? belongsToPageChrome(topPageElement) : false;
+  });
+}
+
+function belongsToPageChrome(element: Element): boolean {
+  let current: Element | null = element;
+  while (current && current !== document.documentElement) {
+    const style = window.getComputedStyle(current);
+    const position = style.position || style.getPropertyValue("position");
+    if (position === "fixed" || position === "sticky") return true;
+    current = current.parentElement;
+  }
+  return false;
 }
 
 interface ScoreResult {
