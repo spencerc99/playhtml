@@ -2,7 +2,7 @@
 // ABOUTME: Registers can-play elements and shared-state helpers for React apps.
 // TODO: idk why but this is not getting registered otherwise??
 import * as React from "react";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
@@ -95,6 +95,11 @@ type ElementBinding = {
   effectiveId: string;
   domId: string;
   dataSource: string | null;
+};
+
+type ResolvedInitialValues<T, V> = {
+  defaultData: T | undefined;
+  myDefaultAwareness: V | undefined;
 };
 
 function getDataSourceElementId(dataSource?: string): string | undefined {
@@ -219,28 +224,21 @@ export function CanPlayElement<T extends object, V = any>({
   const ref = useRef<HTMLElement>(null);
   const registeredBindingRef = useRef<ElementBinding | undefined>(undefined);
   const warningKeysRef = useRef<Set<string>>(new Set());
+  const resolvedInitialValuesRef = useRef<ResolvedInitialValues<T, V> | null>(
+    null,
+  );
   const { defaultData, myDefaultAwareness } = elementProps;
-  const resolveDefaultData = (fnOrValue: T | ((el: HTMLElement) => T)) =>
-    typeof fnOrValue === "function"
-      ? // @ts-ignore
-        (fnOrValue as (el: HTMLElement) => T)(ref.current as HTMLElement)
-      : (fnOrValue as T);
-  const resolveDefaultAwareness = (
-    fnOrValue?: V | ((el: HTMLElement) => V),
-  ): V | undefined =>
-    typeof fnOrValue === "function"
-      ? // @ts-ignore
-        (fnOrValue as (el: HTMLElement) => V)(ref.current as HTMLElement)
-      : fnOrValue;
+  const defaultDataIsFunction = typeof defaultData === "function";
+  const defaultAwarenessIsFunction = typeof myDefaultAwareness === "function";
+  const [initialValuesReady, setInitialValuesReady] = useState(
+    !defaultDataIsFunction && !defaultAwarenessIsFunction,
+  );
+  const initialData = defaultDataIsFunction ? undefined : (defaultData as T);
+  const initialAwareness = defaultAwarenessIsFunction
+    ? undefined
+    : (myDefaultAwareness as V | undefined);
 
-  const [data, setData] = useState<T | undefined>(
-    defaultData !== undefined
-      ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
-      : undefined,
-  );
-  const initialAwareness = resolveDefaultAwareness(
-    myDefaultAwareness as V | ((el: HTMLElement) => V) | undefined,
-  );
+  const [data, setData] = useState<T | undefined>(initialData);
   const [awareness, setAwareness] = useState<V[]>(
     initialAwareness ? [initialAwareness] : [],
   );
@@ -250,6 +248,32 @@ export function CanPlayElement<T extends object, V = any>({
   const [myAwareness, setMyAwareness] = useState<V | undefined>(
     initialAwareness,
   );
+
+  useLayoutEffect(() => {
+    if (resolvedInitialValuesRef.current || !ref.current) return;
+
+    const element = ref.current;
+    const resolvedInitialValues = {
+      defaultData: defaultDataIsFunction
+        ? (defaultData as (element: HTMLElement) => T)(element)
+        : (defaultData as T | undefined),
+      myDefaultAwareness: defaultAwarenessIsFunction
+        ? (myDefaultAwareness as (element: HTMLElement) => V)(element)
+        : (myDefaultAwareness as V | undefined),
+    };
+    resolvedInitialValuesRef.current = resolvedInitialValues;
+
+    if (defaultDataIsFunction || defaultAwarenessIsFunction) {
+      setData(resolvedInitialValues.defaultData);
+      setAwareness(
+        resolvedInitialValues.myDefaultAwareness
+          ? [resolvedInitialValues.myDefaultAwareness]
+          : [],
+      );
+      setMyAwareness(resolvedInitialValues.myDefaultAwareness);
+      setInitialValuesReady(true);
+    }
+  }, []);
 
   // Capture the capability's original updateElement/updateElementAwareness so we can
   // compose them with the React state updater below. These come from the built-in
@@ -299,15 +323,31 @@ export function CanPlayElement<T extends object, V = any>({
   };
 
   useEffect(() => {
-    if (ref.current) {
+    if (initialValuesReady && ref.current) {
       const element = ref.current;
       for (const [key, value] of Object.entries(elementProps)) {
         // Skip updateElement/updateElementAwareness — they are set below as
         // composed versions that include both React state updates and DOM updates.
-        if (key === "updateElement" || key === "updateElementAwareness") continue;
+        if (
+          key === "defaultData" ||
+          key === "myDefaultAwareness" ||
+          key === "updateElement" ||
+          key === "updateElementAwareness"
+        ) {
+          continue;
+        }
         // @ts-ignore
         element[key] = value;
       }
+      const resolvedInitialValues = resolvedInitialValuesRef.current;
+      // @ts-ignore
+      element.defaultData = defaultDataIsFunction
+        ? resolvedInitialValues!.defaultData
+        : defaultData;
+      // @ts-ignore
+      element.myDefaultAwareness = defaultAwarenessIsFunction
+        ? resolvedInitialValues!.myDefaultAwareness
+        : myDefaultAwareness;
       // @ts-ignore
       element.updateElement = updateElement;
       // @ts-ignore
