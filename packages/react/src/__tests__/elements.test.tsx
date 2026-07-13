@@ -6,7 +6,7 @@ import { act, render } from "@testing-library/react";
 import { fireEvent } from "@testing-library/dom";
 import "@testing-library/dom";
 import { CanPlayElement, withSharedState } from "../index";
-import { CanMoveElement } from "../elements";
+import { CanMoveElement, CanToggleElement } from "../elements";
 import playhtml from "../playhtml-singleton";
 import { TagType } from "playhtml";
 import type { ElementAwarenessEventHandlerData } from "playhtml";
@@ -285,6 +285,18 @@ describe("CanPlayElement with built-in capabilities", () => {
       "#selector-bounded-child",
     ) as HTMLElement;
     expect(element.getAttribute("can-move-bounds")).toBe("#fridge");
+  });
+
+  it("CanToggleElement stamps read-only consumers", () => {
+    const { container } = render(
+      <CanToggleElement dataSource="/room#toggle" readOnly standalone>
+        <button id="read-only-toggle">toggle</button>
+      </CanToggleElement>,
+    );
+    const element = container.querySelector("#read-only-toggle") as HTMLElement;
+
+    expect(element).toHaveAttribute("data-source", "/room#toggle");
+    expect(element).toHaveAttribute("data-source-read-only");
   });
 
   it("does not re-render when synced data is a fresh reference but equal in value", () => {

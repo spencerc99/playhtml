@@ -43,6 +43,113 @@ describe("ElementHandler", () => {
     expect(updateElement).toHaveBeenCalledTimes(1);
   });
 
+  it("removes built-in click, drag, and reset listeners on destroy", () => {
+    const onClick = vi.fn();
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onClick,
+      onDrag,
+      resetShortcut: "shiftKey",
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+    const reset = vi.spyOn(handler, "reset");
+
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(2);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+
+    handler.destroy();
+    handler.destroy();
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(2);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes an active drag's document listeners on destroy", () => {
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onDrag,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(element.classList.contains("cursordown")).toBe(true);
+
+    handler.destroy();
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(element.classList.contains("cursordown")).toBe(false);
+  });
+
+  it("removes an active touch drag's document listeners on destroy", () => {
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onDrag,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }));
+    expect(element.classList.contains("cursordown")).toBe(true);
+
+    handler.destroy();
+    document.dispatchEvent(new Event("touchmove", { bubbles: true, cancelable: true }));
+    document.dispatchEvent(new Event("touchend", { bubbles: true }));
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(element.classList.contains("cursordown")).toBe(false);
+  });
+
+  it("reinstalls built-in listeners once after destroy and reinitialize", () => {
+    const onClick = vi.fn();
+    const onDrag = vi.fn();
+    const elementData = {
+      element,
+      defaultData: {},
+      onClick,
+      onDrag,
+      resetShortcut: "shiftKey" as const,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData;
+    const handler = new ElementHandler(elementData);
+    const reset = vi.spyOn(handler, "reset");
+
+    handler.destroy();
+    handler.reinitializeElementData(elementData);
+    handler.reinitializeElementData(elementData);
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
   it("setData calls onChange and does not directly mutate internal state", () => {
     const updateElement = vi.fn();
     const onChange = vi.fn();

@@ -62,6 +62,11 @@ export class ElementHandler<T = any, U = any, V = any> {
   private descendantObserver?: MutationObserver;
   private dataUpdateListeners = new Set<() => void>();
   private scheduleSetupDataWrite?: (write: () => void) => void;
+  private clickListener?: (e: MouseEvent) => void;
+  private touchStartListener?: (e: TouchEvent) => void;
+  private mouseDownListener?: (e: MouseEvent) => void;
+  private resetShortcutListener?: (e: MouseEvent) => void;
+  private activeDragCleanup?: () => void;
 
   // event handlers
   onClick?: (
@@ -148,6 +153,27 @@ export class ElementHandler<T = any, U = any, V = any> {
   destroy(): void {
     this.descendantObserver?.disconnect();
     this.descendantObserver = undefined;
+    if (this.clickListener) {
+      this.element.removeEventListener("click", this.clickListener);
+      this.clickListener = undefined;
+    }
+    if (this.touchStartListener) {
+      this.element.removeEventListener("touchstart", this.touchStartListener);
+      this.touchStartListener = undefined;
+    }
+    if (this.mouseDownListener) {
+      this.element.removeEventListener("mousedown", this.mouseDownListener);
+      this.mouseDownListener = undefined;
+    }
+    if (this.resetShortcutListener) {
+      this.element.removeEventListener("click", this.resetShortcutListener);
+      this.resetShortcutListener = undefined;
+    }
+    this.removeActiveDragListeners();
+    this.onClick = undefined;
+    this.onDrag = undefined;
+    this.onDragStart = undefined;
+    this.resetShortcut = undefined;
     const cleanup = this.onUnmount;
     this.onUnmount = undefined;
     if (cleanup) {
@@ -209,16 +235,18 @@ export class ElementHandler<T = any, U = any, V = any> {
     }
 
     // Handle all the event handlers
-    if (onClick && !this.onClick) {
-      element.addEventListener("click", (e) => {
+    if (onClick && !this.clickListener) {
+      this.clickListener = (e) => {
         this.onClick?.(e, this.getEventHandlerData());
-      });
+      };
+      element.addEventListener("click", this.clickListener);
     }
     this.onClick = onClick;
-    if (onDrag && !this.onDrag) {
-      element.addEventListener("touchstart", (e) => {
+    if (onDrag && !this.touchStartListener) {
+      this.touchStartListener = (e) => {
         // To prevent scrolling the page while dragging
         e.preventDefault();
+        this.removeActiveDragListeners();
         element.classList.add("cursordown");
 
         // Need to be able to not persist everything in the data, causing some lag.
@@ -228,17 +256,25 @@ export class ElementHandler<T = any, U = any, V = any> {
           e.preventDefault();
           this.onDrag?.(e, this.getEventHandlerData());
         };
-        const onDragStop = (e: TouchEvent) => {
+        const onDragStop = () => {
           element.classList.remove("cursordown");
           document.removeEventListener("touchmove", onMove);
           document.removeEventListener("touchend", onDragStop);
+          if (this.activeDragCleanup === onDragStop) {
+            this.activeDragCleanup = undefined;
+          }
         };
+        this.activeDragCleanup = onDragStop;
         document.addEventListener("touchmove", onMove);
         document.addEventListener("touchend", onDragStop);
-      });
-      element.addEventListener("mousedown", (e) => {
+      };
+      element.addEventListener("touchstart", this.touchStartListener);
+    }
+    if (onDrag && !this.mouseDownListener) {
+      this.mouseDownListener = (e) => {
         // To prevent dragging images behavior conflicting.
         e.preventDefault();
+        this.removeActiveDragListeners();
         // Need to be able to not persist everything in the data, causing some lag.
         this.onDragStart?.(e, this.getEventHandlerData());
         element.classList.add("cursordown");
@@ -247,24 +283,29 @@ export class ElementHandler<T = any, U = any, V = any> {
           e.preventDefault();
           this.onDrag?.(e, this.getEventHandlerData());
         };
-        const onMouseUp = (e: MouseEvent) => {
+        const onMouseUp = () => {
           element.classList.remove("cursordown");
           document.removeEventListener("mousemove", onMouseMove);
           document.removeEventListener("mouseup", onMouseUp);
+          if (this.activeDragCleanup === onMouseUp) {
+            this.activeDragCleanup = undefined;
+          }
         };
+        this.activeDragCleanup = onMouseUp;
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
-      });
+      };
+      element.addEventListener("mousedown", this.mouseDownListener);
     }
     this.onDrag = onDrag;
     this.onDragStart = onDragStart;
 
     // Handle advanced settings
-    if (resetShortcut && !this.resetShortcut) {
+    if (resetShortcut && !this.resetShortcutListener) {
       // @ts-ignore
       element.reset = this.reset;
 
-      element.addEventListener("click", (e) => {
+      this.resetShortcutListener = (e) => {
         switch (this.resetShortcut) {
           case "ctrlKey":
             if (!e.ctrlKey) {
@@ -292,9 +333,16 @@ export class ElementHandler<T = any, U = any, V = any> {
         this.reset();
         e.preventDefault();
         e.stopPropagation();
-      });
+      };
+      element.addEventListener("click", this.resetShortcutListener);
     }
     this.resetShortcut = resetShortcut;
+  }
+
+  private removeActiveDragListeners(): void {
+    this.activeDragCleanup?.();
+    this.activeDragCleanup = undefined;
+    this.element.classList.remove("cursordown");
   }
 
   get data(): T {
