@@ -1,5 +1,5 @@
-// ABOUTME: Live preview of the extension's social mechanics (inventory satchel + bottles + emotes) on the site.
-// ABOUTME: Runs the REAL initGlobalFeatures + initEmotes (imported from @extension) so this stays in sync with the extension.
+// ABOUTME: Live preview of the extension's social mechanics (inventory, scissors, bottles, and emotes) on the site.
+// ABOUTME: Boots real extension features and mounts direct-render testers so the playground stays representative.
 
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -312,6 +312,22 @@ if (bottleRoot) createRoot(bottleRoot).render(<BottlePreview />);
 const ceremonyRoot = document.getElementById("ceremony-root");
 if (ceremonyRoot) createRoot(ceremonyRoot).render(<CeremonyTester />);
 
+document.getElementById("open-satchel")?.addEventListener("click", () => {
+  void browser.runtime.sendMessage({ type: "wwo:open-inventory" });
+});
+document.getElementById("arm-scissors")?.addEventListener("click", () => {
+  void browser.runtime.sendMessage({
+    type: "wwo:arm-inventory",
+    itemId: "scissors",
+  });
+});
+document.getElementById("arm-hammer")?.addEventListener("click", () => {
+  void browser.runtime.sendMessage({
+    type: "wwo:arm-inventory",
+    itemId: "hammer",
+  });
+});
+
 // --- boot the live synced social stack in the background (non-blocking) ---
 // The page is fully usable for previewing/photographing the bottle without this;
 // the live satchel + synced bottles are a bonus that needs a PartyKit connection.
@@ -320,7 +336,7 @@ bootSocial()
   .then(() => {
     if (statusEl)
       statusEl.textContent =
-        "live — satchel bottom-right; synced bottles on this page; emote wheel on Cmd/Ctrl+Shift+E";
+        "live — satchel bottom-right; scissors tear; hammer dents; synced bottles; emotes on Cmd/Ctrl+Shift+E";
   })
   .catch((err) => {
     console.error("[social-playground] live boot failed:", err);

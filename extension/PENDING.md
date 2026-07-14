@@ -2,6 +2,11 @@
 
 - Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
+- Added locally persistent scissors and hammer prototypes for tearing page layers into animated collage pieces or denting and cracking live elements.
+
+![video: Comparing paper, cloth, and pixel tears](/changelog/media/scissors-cut-and-persist.mp4)
+![video: Revealing page layers and undoing tears](/changelog/media/scissors-persist-and-undo.mp4)
+![video: Denting and cracking live elements with the hammer](/changelog/media/hammer-damage-and-persist.mp4)
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**

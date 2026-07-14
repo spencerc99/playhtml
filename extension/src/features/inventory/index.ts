@@ -7,7 +7,7 @@ import { injectShadow } from "../../entrypoints/content/inject-ui";
 import { INVENTORY_CSS } from "./inventory.styles";
 import { Satchel } from "./Satchel";
 import { WieldCursor } from "./WieldCursor";
-import { registerKeyboardSummon } from "./keyboard";
+import { registerInventoryMessages } from "./keyboard";
 import type { GlobalFeatureDeps } from "../social/types";
 
 const FONT_URL =
@@ -35,10 +35,13 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
   }
   render();
 
-  const offKeyboard = registerKeyboardSummon(() => {
-    openSignal.at = { ...lastCursor };
-    openSignal.seq += 1;
-    render();
+  const offKeyboard = registerInventoryMessages({
+    onOpen: () => {
+      openSignal.at = { ...lastCursor };
+      openSignal.seq += 1;
+      render();
+    },
+    onArm: (itemId) => deps.inventory.arm(itemId),
   });
 
   const wield = new WieldCursor(shadow);
@@ -52,6 +55,16 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
       wield.hide();
     }
   });
+  const onStrike = (event: Event) => {
+    const detail = (event as CustomEvent<{ itemId?: string; motion?: string }>).detail;
+    if (
+      detail?.itemId === deps.inventory.getArmed()?.itemId &&
+      (detail.motion === "snip" || detail.motion === "swing")
+    ) {
+      wield.strike(detail.motion);
+    }
+  };
+  window.addEventListener("wwo:inventory-strike", onStrike);
 
   const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") deps.inventory.disarm(); };
   window.addEventListener("keydown", onEsc);
@@ -61,6 +74,7 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
     offArmed();
     window.removeEventListener("keydown", onEsc);
     window.removeEventListener("pointermove", trackCursor);
+    window.removeEventListener("wwo:inventory-strike", onStrike);
     wield.destroy();
     root.unmount();
     host.remove();
