@@ -67,19 +67,59 @@
         display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
         margin: 18px 0 28px;
       }
+      .cut-cell { position: relative; min-height: 166px; }
+      .under-card {
+        position: absolute; inset: 5px -1px -5px 5px; padding: 16px;
+        border: 2px solid #27221f; color: #fff8e7;
+        display: flex; align-items: center; justify-content: center;
+        text-align: center; font: 700 17px Lora, Georgia, serif;
+      }
+      .under-card.collage {
+        background:
+          radial-gradient(circle at 25% 30%, #f3c768 0 14%, transparent 15%),
+          linear-gradient(135deg, transparent 0 42%, #e4604f 43% 61%, transparent 62%),
+          #3f6090;
+      }
+      .under-card.garden {
+        background:
+          repeating-radial-gradient(circle at 12% 86%, #d9e5a7 0 7px, transparent 8px 20px),
+          #4f785d;
+      }
       .cut-card {
-        min-height: 112px; padding: 16px; border: 2px solid #3d3833;
+        position: relative; min-height: 132px; height: 100%; padding: 16px;
+        border: 2px solid #3d3833;
         background: #fffaf1; box-shadow: 5px 5px 0 #d9c6a5;
         display: flex; flex-direction: column; justify-content: space-between;
       }
-      .cut-card:nth-child(2) { background: #dceae4; transform: rotate(-1.5deg); }
-      .cut-card:nth-child(3) { background: #f0d9cf; transform: rotate(1.2deg); }
+      .cut-card[data-wwo-scissors-style="cloth"] { background: #dceae4; transform: rotate(-1.5deg); }
+      .cut-card[data-wwo-scissors-style="pixel"] { background: #f0d9cf; transform: rotate(1.2deg); }
       .cut-card strong { font-family: Lora, Georgia, serif; }
       .cut-card button {
         align-self: flex-start; border: 1px solid #3d3833; background: #f3c768;
         padding: 5px 9px; font: inherit; cursor: pointer;
       }
+      .effect-label {
+        align-self: flex-start; font: 10px/1.2 ui-monospace, "Martian Mono", monospace;
+        text-transform: uppercase; letter-spacing: .08em; color: #6f675f;
+        border: 1px solid currentColor; border-radius: 999px; padding: 3px 7px;
+      }
+      .hammer-stage {
+        display: grid; grid-template-columns: 1.15fr .85fr; gap: 16px;
+        margin: 18px 0 30px; align-items: stretch;
+      }
+      .hammer-panel {
+        min-height: 145px; padding: 18px; border: 2px solid #49413a;
+        background: #d8e3ea; box-shadow: 7px 7px 0 #a9bac5;
+        display: flex; flex-direction: column; justify-content: space-between;
+      }
+      .hammer-panel strong { font: 700 19px Lora, Georgia, serif; }
+      .hammer-button {
+        min-height: 145px; border: 3px outset #9a6c35; background: #d99a4d;
+        color: #2e2118; font: 700 18px Lora, Georgia, serif; cursor: pointer;
+        box-shadow: 5px 5px 0 #7b4d24;
+      }
       @media (max-width: 640px) { .cut-stage { grid-template-columns: 1fr; } }
+      @media (max-width: 640px) { .hammer-stage { grid-template-columns: 1fr; } }
     </style>
     <link
       rel="stylesheet"
@@ -112,9 +152,14 @@
         </li>
         <li>
           <strong>Scissors</strong> — open the satchel and arm the scissors, then
-          drag a line across an element to split it and leave a gap. Cuts persist
-          locally across refreshes. Press <code>Delete</code>, <code>Backspace</code>,
-          or <code>Cmd/Ctrl+Z</code> while armed to undo the latest cut.
+          drag a line across an element to tear it open. Cuts persist locally
+          across refreshes. Press <code>Delete</code>, <code>Backspace</code>, or
+          <code>Cmd/Ctrl+Z</code> while armed to undo the latest cut.
+        </li>
+        <li>
+          <strong>Hammer</strong> — arm it and click an element repeatedly to dent,
+          displace, and crack it. Impacts persist locally; the same undo shortcuts
+          remove the latest hit while the hammer is armed.
         </li>
         <li>
           <strong>Emote wheel</strong> — press <code>Cmd/Ctrl+Shift+E</code> to
@@ -128,27 +173,58 @@
 
       <h2>Scissors test surface</h2>
       <p>
-        These cards deliberately mix text, borders, transforms, and a real button.
-        Cut each one at a different angle, refresh the page to confirm the cuts
-        return, then undo them while the scissors are armed.
+        These compare three DOM-native treatments. Each tear reveals the real page
+        layer behind it; when no layer remains, the gap becomes a black hole. Cut
+        each one, refresh to confirm persistence, then undo while armed.
       </p>
       <div class="controls">
         <button id="open-satchel" type="button">open satchel here</button>
         <button id="arm-scissors" type="button">arm scissors directly</button>
       </div>
       <div class="cut-stage">
-        <article class="cut-card" id="cut-paper-note">
-          <strong>paper note</strong>
-          <span>drag through this card like a sheet on a worktable.</span>
+        <div class="cut-cell">
+          <div class="under-card collage">a second collage was hiding here</div>
+          <article class="cut-card" id="cut-paper-note" data-wwo-cut-target data-wwo-scissors-style="paper">
+            <span class="effect-label">organic paper</span>
+            <strong>paper tear</strong>
+            <span>jagged fibers, a wider opening, and a quick settling snap.</span>
+          </article>
+        </div>
+        <div class="cut-cell">
+          <div class="under-card garden">something softer underneath</div>
+          <article class="cut-card" id="cut-ticket" data-wwo-cut-target data-wwo-scissors-style="cloth">
+            <span class="effect-label">cloth flap</span>
+            <strong>soft banner</strong>
+            <span>the torn halves keep fluttering after the cut.</span>
+          </article>
+        </div>
+        <div class="cut-cell">
+          <article class="cut-card" id="cut-button-card" data-wwo-cut-target data-wwo-scissors-style="pixel">
+            <span class="effect-label">pixel rip</span>
+            <strong>digital tile</strong>
+            <button type="button">stepped edge into black</button>
+          </article>
+        </div>
+      </div>
+
+      <h2>Hammer test surface</h2>
+      <p>
+        Arm the hammer, then hit these repeatedly at different points. Damage
+        accumulates up to six impacts per element, but the live DOM controls remain
+        real underneath the pointer-transparent cracks.
+      </p>
+      <div class="controls">
+        <button id="arm-hammer" type="button">arm hammer directly</button>
+      </div>
+      <div class="hammer-stage">
+        <article class="hammer-panel" id="hammer-panel" data-wwo-hammer-target>
+          <span class="effect-label">bend + fracture</span>
+          <strong>sturdy interface panel</strong>
+          <span>hit opposite corners and watch the whole panel buckle.</span>
         </article>
-        <article class="cut-card" id="cut-ticket">
-          <strong>admit one</strong>
-          <span>try a steep diagonal cut.</span>
-        </article>
-        <article class="cut-card" id="cut-button-card">
-          <strong>working controls</strong>
-          <button type="button">a real button</button>
-        </article>
+        <button class="hammer-button" id="hammer-button" type="button" data-wwo-hammer-target>
+          hammer this button
+        </button>
       </div>
 
       <h2>Message bottle (direct render — for photos)</h2>

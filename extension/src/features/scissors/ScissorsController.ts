@@ -6,7 +6,7 @@ import type { InventoryAPI } from "../inventory/types";
 import { buildStructuralSelector } from "../dom-anchor";
 import { CutRenderer, isScissorsEffect } from "./CutRenderer";
 import { CutStore, type CutRecord } from "./CutStore";
-import { cutRectangle, type Point } from "./geometry";
+import { cutRectangle, type CutStyle, type Point } from "./geometry";
 
 export const SCISSORS_ITEM_ID = "scissors";
 
@@ -14,7 +14,11 @@ const MIN_GESTURE_LENGTH = 24;
 const MIN_TARGET_WIDTH = 56;
 const MIN_TARGET_HEIGHT = 24;
 const MAX_TARGET_DESCENDANTS = 200;
-const CUT_GAP = 20;
+const CUT_GAPS: Record<CutStyle, number> = {
+  paper: 30,
+  cloth: 26,
+  pixel: 24,
+};
 const EXTENSION_HOST_SELECTOR =
   '[id^="we-were-online"], [id^="wewere-"], [id^="playhtml-historical-overlay"]';
 
@@ -47,6 +51,8 @@ function hasUsableSize(element: HTMLElement): boolean {
 
 export function findCutTarget(start: EventTarget | null): HTMLElement | null {
   let current = start instanceof Element ? start : null;
+  const explicitTarget = current?.closest<HTMLElement>("[data-wwo-cut-target]");
+  if (explicitTarget && hasUsableSize(explicitTarget)) return explicitTarget;
 
   while (current && current !== document.body && current !== document.documentElement) {
     if (
@@ -62,6 +68,13 @@ export function findCutTarget(start: EventTarget | null): HTMLElement | null {
   }
 
   return null;
+}
+
+function cutStyleForTarget(target: HTMLElement): CutStyle {
+  const style = target.closest<HTMLElement>("[data-wwo-scissors-style]")?.dataset
+    .wwoScissorsStyle;
+  if (style === "cloth" || style === "pixel") return style;
+  return "paper";
 }
 
 function createCutId(): string {
@@ -251,6 +264,7 @@ export class ScissorsController {
       return;
     }
 
+    const style = cutStyleForTarget(gesture.target);
     const record: CutRecord = {
       id: createCutId(),
       selector: gesture.selector,
@@ -262,9 +276,16 @@ export class ScissorsController {
         x: localEnd.x / gesture.rect.width,
         y: localEnd.y / gesture.rect.height,
       },
-      gap: CUT_GAP,
+      style,
+      seed: crypto.getRandomValues(new Uint32Array(1))[0],
+      gap: CUT_GAPS[style],
       createdAt: Date.now(),
     };
+    window.dispatchEvent(
+      new CustomEvent("wwo:inventory-strike", {
+        detail: { itemId: SCISSORS_ITEM_ID, motion: "snip" },
+      }),
+    );
     const cuts = await this.store.put(record);
     this.renderer.render(cuts);
   }

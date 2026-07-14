@@ -321,6 +321,12 @@ document.getElementById("arm-scissors")?.addEventListener("click", () => {
     itemId: "scissors",
   });
 });
+document.getElementById("arm-hammer")?.addEventListener("click", () => {
+  void browser.runtime.sendMessage({
+    type: "wwo:arm-inventory",
+    itemId: "hammer",
+  });
+});
 
 // --- boot the live synced social stack in the background (non-blocking) ---
 // The page is fully usable for previewing/photographing the bottle without this;
@@ -330,7 +336,7 @@ bootSocial()
   .then(() => {
     if (statusEl)
       statusEl.textContent =
-        "live — satchel bottom-right; scissors cut page elements; synced bottles; emotes on Cmd/Ctrl+Shift+E";
+        "live — satchel bottom-right; scissors tear; hammer dents; synced bottles; emotes on Cmd/Ctrl+Shift+E";
   })
   .catch((err) => {
     console.error("[social-playground] live boot failed:", err);

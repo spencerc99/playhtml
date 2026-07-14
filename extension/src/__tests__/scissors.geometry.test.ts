@@ -2,7 +2,11 @@
 // ABOUTME: Covers horizontal, diagonal, degenerate, and non-intersecting cut geometry.
 
 import { describe, expect, it } from "vitest";
-import { cutRectangle, polygonClipPath } from "../features/scissors/geometry";
+import {
+  cutRectangle,
+  polygonClipPath,
+  tearRectangle,
+} from "../features/scissors/geometry";
 
 function area(points: Array<{ x: number; y: number }>): number {
   return Math.abs(
@@ -54,5 +58,54 @@ describe("scissors geometry", () => {
         50,
       ),
     ).toBe("polygon(0% 0%, 100% 0%, 100% 100%)");
+  });
+
+  it("builds a deterministic organic tear that still covers the rectangle", () => {
+    const first = tearRectangle(
+      160,
+      100,
+      { x: 10, y: 30 },
+      { x: 150, y: 70 },
+      "paper",
+      42,
+    );
+    const second = tearRectangle(
+      160,
+      100,
+      { x: 10, y: 30 },
+      { x: 150, y: 70 },
+      "paper",
+      42,
+    );
+
+    expect(first).toEqual(second);
+    expect(first).not.toBeNull();
+    expect(first!.tear.length).toBeGreaterThan(6);
+    expect(area(first!.first) + area(first!.second)).toBeCloseTo(16000);
+    expect(
+      first!.tear.slice(1, -1).some((point) => {
+        const side = 140 * (point.y - 30) - 40 * (point.x - 10);
+        return Math.abs(side) > 1;
+      }),
+    ).toBe(true);
+  });
+
+  it("builds a stepped pixel tear", () => {
+    const tear = tearRectangle(
+      160,
+      100,
+      { x: 10, y: 20 },
+      { x: 150, y: 80 },
+      "pixel",
+      7,
+    );
+
+    expect(tear).not.toBeNull();
+    expect(
+      tear!.tear.slice(1).every((point, index) => {
+        const previous = tear!.tear[index];
+        return point.x === previous.x || point.y === previous.y;
+      }),
+    ).toBe(true);
   });
 });

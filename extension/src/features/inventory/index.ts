@@ -55,6 +55,16 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
       wield.hide();
     }
   });
+  const onStrike = (event: Event) => {
+    const detail = (event as CustomEvent<{ itemId?: string; motion?: string }>).detail;
+    if (
+      detail?.itemId === deps.inventory.getArmed()?.itemId &&
+      (detail.motion === "snip" || detail.motion === "swing")
+    ) {
+      wield.strike(detail.motion);
+    }
+  };
+  window.addEventListener("wwo:inventory-strike", onStrike);
 
   const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") deps.inventory.disarm(); };
   window.addEventListener("keydown", onEsc);
@@ -64,6 +74,7 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
     offArmed();
     window.removeEventListener("keydown", onEsc);
     window.removeEventListener("pointermove", trackCursor);
+    window.removeEventListener("wwo:inventory-strike", onStrike);
     wield.destroy();
     root.unmount();
     host.remove();

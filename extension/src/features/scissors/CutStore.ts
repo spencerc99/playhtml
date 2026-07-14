@@ -2,7 +2,7 @@
 // ABOUTME: Keeps the storage boundary separate from rendering so shared persistence can replace it later.
 
 import browser from "webextension-polyfill";
-import type { Point } from "./geometry";
+import type { CutStyle, Point } from "./geometry";
 
 export interface CutRecord {
   id: string;
@@ -10,6 +10,8 @@ export interface CutRecord {
   start: Point;
   end: Point;
   gap: number;
+  style: CutStyle;
+  seed: number;
   createdAt: number;
 }
 
@@ -18,7 +20,7 @@ interface StorageArea {
   set(items: Record<string, unknown>): Promise<void>;
 }
 
-const STORAGE_PREFIX = "inventory:scissors:cuts:v1:";
+const STORAGE_PREFIX = "inventory:scissors:cuts:v2:";
 
 export function pageCutStorageKey(url: string): string {
   const parsed = new URL(url);
@@ -41,6 +43,8 @@ function isCutRecord(value: unknown): value is CutRecord {
     isPoint(cut.start) &&
     isPoint(cut.end) &&
     typeof cut.gap === "number" &&
+    (cut.style === "paper" || cut.style === "cloth" || cut.style === "pixel") &&
+    typeof cut.seed === "number" &&
     typeof cut.createdAt === "number"
   );
 }

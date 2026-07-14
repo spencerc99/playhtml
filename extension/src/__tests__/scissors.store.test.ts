@@ -19,6 +19,8 @@ function cut(
     start: { x: 0, y: 0.5 },
     end: { x: 1, y: 0.5 },
     gap: 20,
+    style: "paper",
+    seed: 42,
     createdAt,
   };
 }
