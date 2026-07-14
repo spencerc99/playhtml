@@ -6,7 +6,7 @@ import { act, render } from "@testing-library/react";
 import { fireEvent } from "@testing-library/dom";
 import "@testing-library/dom";
 import { CanPlayElement, withSharedState } from "../index";
-import { CanMoveElement } from "../elements";
+import { CanMoveElement, CanToggleElement } from "../elements";
 import playhtml from "../playhtml-singleton";
 import { TagType } from "playhtml";
 import type { ElementAwarenessEventHandlerData } from "playhtml";
@@ -213,6 +213,94 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(removeSpy).not.toHaveBeenCalled();
   });
 
+  it("refreshes built-in event handlers after a React rerender", async () => {
+    const { ElementHandler } = await import("../../../playhtml/src/elements");
+    const handlers = new Map([[TagType.CanPlay, new Map()]]);
+    const originalHandlers = playhtml.elementHandlers;
+    playhtml.elementHandlers = handlers as any;
+    vi.mocked(playhtml.setupPlayElement).mockReset();
+
+    const firstClick = vi.fn();
+    const firstDragStart = vi.fn();
+    const secondClick = vi.fn();
+    const secondDragStart = vi.fn();
+    const secondDrag = vi.fn();
+    const renderElement = (props: {
+      onClick?: () => void;
+      onDragStart?: () => void;
+      onDrag?: () => void;
+    }) => (
+      <CanPlayElement
+        id="rerender-handler"
+        defaultData={{}}
+        onClick={props.onClick}
+        onDragStart={props.onDragStart}
+        onDrag={props.onDrag}
+      >
+        {() => <div>play</div>}
+      </CanPlayElement>
+    );
+
+    const { container, rerender, unmount } = render(
+      renderElement({}),
+    );
+    const element = container.querySelector("[can-play]") as HTMLElement;
+    handlers.get(TagType.CanPlay)!.set(
+      element.id,
+      new ElementHandler({
+        element,
+        defaultData: {},
+        onClick: (element as any).onClick,
+        onDrag: (element as any).onDrag,
+        onDragStart: (element as any).onDragStart,
+        onChange: vi.fn(),
+        onAwarenessChange: vi.fn(),
+        triggerAwarenessUpdate: vi.fn(),
+      } as any),
+    );
+
+    rerender(
+      renderElement({
+        onClick: firstClick,
+        onDragStart: firstDragStart,
+      }),
+    );
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    rerender(
+      renderElement({
+        onClick: secondClick,
+        onDragStart: secondDragStart,
+        onDrag: secondDrag,
+      }),
+    );
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    rerender(renderElement({}));
+    const mouseDownAfterRemoval = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(mouseDownAfterRemoval);
+
+    expect(firstClick).toHaveBeenCalledTimes(1);
+    expect(firstDragStart).toHaveBeenCalledTimes(1);
+    expect(secondClick).toHaveBeenCalledTimes(1);
+    expect(secondDragStart).toHaveBeenCalledTimes(1);
+    expect(secondDrag).toHaveBeenCalledTimes(1);
+    expect(mouseDownAfterRemoval.defaultPrevented).toBe(false);
+    expect(element.classList.contains("cursordown")).toBe(false);
+
+    unmount();
+    playhtml.elementHandlers = originalHandlers;
+  });
+
   it("removes the mounted element on unmount", () => {
     const setupSpy = vi
       .spyOn(playhtml, "setupPlayElement")
@@ -285,6 +373,18 @@ describe("CanPlayElement with built-in capabilities", () => {
       "#selector-bounded-child",
     ) as HTMLElement;
     expect(element.getAttribute("can-move-bounds")).toBe("#fridge");
+  });
+
+  it("CanToggleElement stamps read-only consumers", () => {
+    const { container } = render(
+      <CanToggleElement dataSource="/room#toggle" readOnly standalone>
+        <button id="read-only-toggle">toggle</button>
+      </CanToggleElement>,
+    );
+    const element = container.querySelector("#read-only-toggle") as HTMLElement;
+
+    expect(element).toHaveAttribute("data-source", "/room#toggle");
+    expect(element).toHaveAttribute("data-source-read-only");
   });
 
   it("does not re-render when synced data is a fresh reference but equal in value", () => {

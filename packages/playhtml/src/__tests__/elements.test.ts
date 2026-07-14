@@ -43,6 +43,208 @@ describe("ElementHandler", () => {
     expect(updateElement).toHaveBeenCalledTimes(1);
   });
 
+  it("removes built-in click, drag, and reset listeners on destroy", () => {
+    const onClick = vi.fn();
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onClick,
+      onDrag,
+      resetShortcut: "shiftKey",
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+    const reset = vi.spyOn(handler, "reset");
+
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(2);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+
+    handler.destroy();
+    handler.destroy();
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(2);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes an active drag's document listeners on destroy", () => {
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onDrag,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(element.classList.contains("cursordown")).toBe(true);
+
+    handler.destroy();
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(element.classList.contains("cursordown")).toBe(false);
+  });
+
+  it("removes an active touch drag's document listeners on destroy", () => {
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onDrag,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }));
+    expect(element.classList.contains("cursordown")).toBe(true);
+
+    handler.destroy();
+    document.dispatchEvent(new Event("touchmove", { bubbles: true, cancelable: true }));
+    document.dispatchEvent(new Event("touchend", { bubbles: true }));
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(element.classList.contains("cursordown")).toBe(false);
+  });
+
+  it("reinstalls built-in listeners once after destroy and reinitialize", () => {
+    const onClick = vi.fn();
+    const onDrag = vi.fn();
+    const elementData = {
+      element,
+      defaultData: {},
+      onClick,
+      onDrag,
+      resetShortcut: "shiftKey" as const,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData;
+    const handler = new ElementHandler(elementData);
+    const reset = vi.spyOn(handler, "reset");
+
+    handler.destroy();
+    handler.reinitializeElementData(elementData);
+    handler.reinitializeElementData(elementData);
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs callbacks added after setup without duplicate listeners", () => {
+    const onClick = vi.fn();
+    const onDragStart = vi.fn();
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    handler.setEventHandlers({ onClick, onDragStart, onDrag });
+    handler.setEventHandlers({ onClick, onDragStart, onDrag });
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs onDragStart added after setup without onDrag", () => {
+    const onDragStart = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    handler.setEventHandlers({ onDragStart });
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    element.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }));
+    document.dispatchEvent(new Event("touchend", { bubbles: true }));
+
+    expect(onDragStart).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops drag behavior when callbacks are removed", () => {
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onDrag,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(element.classList.contains("cursordown")).toBe(true);
+
+    handler.setEventHandlers({});
+    expect(element.classList.contains("cursordown")).toBe(false);
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    const mouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    const touchStart = new Event("touchstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(mouseDown);
+    element.dispatchEvent(touchStart);
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(mouseDown.defaultPrevented).toBe(false);
+    expect(touchStart.defaultPrevented).toBe(false);
+    expect(element.classList.contains("cursordown")).toBe(false);
+  });
+
+  it("keeps imperative callbacks disabled for views", () => {
+    const onClick = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      view: () => "" as any,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    handler.setEventHandlers({ onClick });
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
   it("setData calls onChange and does not directly mutate internal state", () => {
     const updateElement = vi.fn();
     const onChange = vi.fn();
