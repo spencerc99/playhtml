@@ -281,11 +281,19 @@ export class ElementHandler<T = any, U = any, V = any> {
     onDragStart,
   }: Pick<ElementData<T>, "onClick" | "onDrag" | "onDragStart">): void {
     const element = this.element;
+    const hadDragHandler = Boolean(this.onDrag || this.onDragStart);
     if (this.view) {
+      if (hadDragHandler) {
+        this.removeActiveDragListeners();
+      }
       this.onClick = undefined;
       this.onDrag = undefined;
       this.onDragStart = undefined;
       return;
+    }
+    const hasDragHandler = Boolean(onDrag || onDragStart);
+    if (hadDragHandler && !hasDragHandler) {
+      this.removeActiveDragListeners();
     }
     if (onClick && !this.clickListener) {
       this.clickListener = (e) => {
@@ -293,8 +301,9 @@ export class ElementHandler<T = any, U = any, V = any> {
       };
       element.addEventListener("click", this.clickListener);
     }
-    if (onDrag && !this.touchStartListener) {
+    if (hasDragHandler && !this.touchStartListener) {
       this.touchStartListener = (e) => {
+        if (!this.onDrag && !this.onDragStart) return;
         // To prevent scrolling the page while dragging
         e.preventDefault();
         this.removeActiveDragListeners();
@@ -321,8 +330,9 @@ export class ElementHandler<T = any, U = any, V = any> {
       };
       element.addEventListener("touchstart", this.touchStartListener);
     }
-    if (onDrag && !this.mouseDownListener) {
+    if (hasDragHandler && !this.mouseDownListener) {
       this.mouseDownListener = (e) => {
+        if (!this.onDrag && !this.onDragStart) return;
         // To prevent dragging images behavior conflicting.
         e.preventDefault();
         this.removeActiveDragListeners();

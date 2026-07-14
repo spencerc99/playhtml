@@ -222,7 +222,6 @@ describe("CanPlayElement with built-in capabilities", () => {
 
     const firstClick = vi.fn();
     const firstDragStart = vi.fn();
-    const firstDrag = vi.fn();
     const secondClick = vi.fn();
     const secondDragStart = vi.fn();
     const secondDrag = vi.fn();
@@ -264,7 +263,6 @@ describe("CanPlayElement with built-in capabilities", () => {
       renderElement({
         onClick: firstClick,
         onDragStart: firstDragStart,
-        onDrag: firstDrag,
       }),
     );
     element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -284,12 +282,20 @@ describe("CanPlayElement with built-in capabilities", () => {
     document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 
+    rerender(renderElement({}));
+    const mouseDownAfterRemoval = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(mouseDownAfterRemoval);
+
     expect(firstClick).toHaveBeenCalledTimes(1);
     expect(firstDragStart).toHaveBeenCalledTimes(1);
-    expect(firstDrag).toHaveBeenCalledTimes(1);
     expect(secondClick).toHaveBeenCalledTimes(1);
     expect(secondDragStart).toHaveBeenCalledTimes(1);
     expect(secondDrag).toHaveBeenCalledTimes(1);
+    expect(mouseDownAfterRemoval.defaultPrevented).toBe(false);
+    expect(element.classList.contains("cursordown")).toBe(false);
 
     unmount();
     playhtml.elementHandlers = originalHandlers;
