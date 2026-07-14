@@ -4,6 +4,9 @@
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
 - Added a locally persistent scissors prototype that cuts page elements into displaced collage pieces.
 
+![video: Cutting page cards with the scissors](/changelog/media/scissors-cut-and-persist.mp4)
+![video: Restoring persisted cuts and undoing them](/changelog/media/scissors-persist-and-undo.mp4)
+
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**
 and anything else that ships in the zip). Website (extension/website/**) and
