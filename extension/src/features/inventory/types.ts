@@ -13,6 +13,9 @@ export interface Item {
   icon: string;
   /** Author/player color carried for experiments to use (e.g. an armed edge glow); inventory itself doesn't render it yet. */
   accent?: string;
+  /** This item renders its own armed cursor (e.g. a placement ghost), so the
+   * inventory suppresses the generic wield icon beside the cursor for it. */
+  ownsArmedCursor?: boolean;
 }
 
 export interface ArmedTool {

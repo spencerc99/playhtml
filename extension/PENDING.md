@@ -25,3 +25,4 @@ extension/website/public/changelog/media/ and reference them here:
 -->
 
 - Fix Wikipedia presence startup while keeping private identity keys out of page-facing payloads.
+- Equip the message bottle from your satchel to place it yourself: a faded bottle follows your cursor, and clicking a spot drops it there and opens the letter to write. Back out with "take it back" to remove it.

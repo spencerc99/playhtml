@@ -45,9 +45,11 @@ export function initInventorySurface(deps: GlobalFeatureDeps): () => void {
   const offArmed = deps.inventory.onArmedChange((armed) => {
     if (armed) {
       // Keep the page's normal cursor visible; the wield icon rides beside it so it
-      // reads as the cursor "holding" the tool.
+      // reads as the cursor "holding" the tool. Items that draw their own armed
+      // cursor (e.g. the bottle's placement ghost) suppress this generic icon.
       const item = deps.inventory.list().find((i) => i.id === armed.itemId);
-      if (item) wield.show(item.icon, lastCursor);
+      if (item && !item.ownsArmedCursor) wield.show(item.icon, lastCursor);
+      else wield.hide();
     } else {
       wield.hide();
     }
