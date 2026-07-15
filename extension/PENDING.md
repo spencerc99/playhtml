@@ -4,6 +4,9 @@
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
 - Send bugs, ideas, and other feedback directly from the extension popup.
 
+![Feedback button in the extension popup](/changelog/media/feedback-popup-button.png)
+![Feedback submission confirmation](/changelog/media/feedback-popup-success.png)
+
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**
 and anything else that ships in the zip). Website (extension/website/**) and
