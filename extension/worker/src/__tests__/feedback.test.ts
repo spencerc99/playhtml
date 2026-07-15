@@ -94,6 +94,14 @@ describe('handleFeedback', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a null JSON body', async () => {
+    const response = await handleFeedback(makeRequest(null), ENV);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Invalid JSON body' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects feedback over 4000 characters', async () => {
     const response = await handleFeedback(
       makeRequest({ message: 'x'.repeat(4001) }),

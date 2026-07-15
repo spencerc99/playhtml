@@ -46,14 +46,21 @@ export async function handleFeedback(request: Request, env: Env): Promise<Respon
     return jsonResponse(429, { error: 'Too many requests. Try again in a minute.' });
   }
 
-  let body: FeedbackBody;
+  let body: unknown;
   try {
-    body = (await request.json()) as FeedbackBody;
+    body = await request.json();
   } catch {
     return jsonResponse(400, { error: 'Invalid JSON body' });
   }
 
-  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return jsonResponse(400, { error: 'Invalid JSON body' });
+  }
+
+  const feedbackBody = body as FeedbackBody;
+
+  const message =
+    typeof feedbackBody.message === 'string' ? feedbackBody.message.trim() : '';
   if (!message) {
     return jsonResponse(400, { error: 'Feedback is required' });
   }
@@ -61,8 +68,11 @@ export async function handleFeedback(request: Request, env: Env): Promise<Respon
     return jsonResponse(400, { error: 'Feedback is too long' });
   }
 
-  const extensionVersion = optionalString(body.extensionVersion, MAX_VERSION_LENGTH);
-  const browser = optionalString(body.browser, MAX_BROWSER_LENGTH);
+  const extensionVersion = optionalString(
+    feedbackBody.extensionVersion,
+    MAX_VERSION_LENGTH,
+  );
+  const browser = optionalString(feedbackBody.browser, MAX_BROWSER_LENGTH);
   const codaBody = {
     rows: [
       {
