@@ -96,16 +96,24 @@
 
   &__feedback {
     margin-left: auto;
-    padding: 0;
-    border: 0;
-    background: none;
+    padding: 5px 9px;
+    border: 1px solid $accent-teal;
+    border-radius: 6px;
+    background: $accent-teal;
     font-family: $font-mono;
     font-size: 10px;
-    color: $text-muted;
+    font-weight: 700;
+    color: white;
     cursor: pointer;
+    transition: filter 0.12s;
 
     &:hover {
-      color: $accent-teal;
+      filter: brightness(0.92);
+    }
+
+    &:focus-visible {
+      outline: 2px solid $accent-teal;
+      outline-offset: 2px;
     }
   }
 

@@ -51,7 +51,7 @@ export function FeedbackForm() {
         type="button"
         onClick={() => setIsOpen(true)}
       >
-        feedback
+        send feedback
       </button>
     );
   }

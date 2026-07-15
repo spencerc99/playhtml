@@ -72,7 +72,7 @@ describe("FeedbackForm", () => {
 
     try {
       const openButton = Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent === "feedback",
+        (button) => button.textContent === "send feedback",
       );
 
       await act(async () => {
@@ -112,7 +112,7 @@ describe("FeedbackForm", () => {
 
     try {
       const openButton = Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent === "feedback",
+        (button) => button.textContent === "send feedback",
       );
       await act(async () => openButton?.click());
 
