@@ -166,6 +166,12 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 - **React tests:** PlayProvider integration
 - **Extension tests:** Collector unit tests, integration tests
 - Run relevant package tests locally before PRs
+- **Screenshots for user-facing changes:** Every user-facing change MUST be
+  verified on the real affected surface and accompanied by screenshots of the
+  finished result. For interactive changes, capture the key states of the flow
+  (for example, closed, open, and success states), not only the initial screen.
+  Include the screenshots in the handoff and PR. If the surface cannot be
+  captured, stop and tell Spencer what blocks it rather than omitting them.
 
 ## Commit & PR Guidelines
 
