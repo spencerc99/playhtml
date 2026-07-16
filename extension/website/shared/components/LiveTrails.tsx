@@ -1,10 +1,15 @@
-// ABOUTME: Live cursor-trail animator. Renders the current trail set directly
-// ABOUTME: (id-keyed, React owns add/remove/grow); the rAF loop draws each trail
-// ABOUTME: by its own progress since first seen. No snapshot/eviction state.
+// ABOUTME: Animates id-keyed live cursor trails and their click ripples.
+// ABOUTME: React owns trail lifetimes while one frame loop draws current progress.
 
 import React, { useEffect, useRef, useState, memo } from "react";
-import { TrailState } from "../types";
+import type { TrailState } from "../types";
 import { getTrailRenderer } from "../styles/trailRenderers";
+import { RippleEffect, type RippleSettings } from "./ClickRipple";
+import {
+  collectDueClickEffects,
+  retainClickEffectsForActiveTrails,
+  type LiveClickEffect,
+} from "./liveClickEffects";
 import {
   TrailPath,
   TrailCursor,
@@ -63,10 +68,11 @@ interface KeptTrail {
 interface LiveTrailsProps {
   trailStates: TrailState[];
   frozen?: boolean;
+  showClickRipples?: boolean;
   /** Called with trail ids once they have fully faded out and been removed, so
    * the owner can free their accumulated events. */
   onTrailsRemoved?: (ids: string[]) => void;
-  settings: {
+  settings: RippleSettings & {
     strokeWidth: number;
     trailOpacity: number;
     animationSpeed: number;
@@ -75,7 +81,16 @@ interface LiveTrailsProps {
 }
 
 export const LiveTrails: React.FC<LiveTrailsProps> = memo(
-  ({ trailStates, frozen = false, onTrailsRemoved, settings }) => {
+  ({
+    trailStates,
+    frozen = false,
+    showClickRipples = false,
+    onTrailsRemoved,
+    settings,
+  }) => {
+    const [activeClickEffects, setActiveClickEffects] = useState<
+      LiveClickEffect[]
+    >([]);
     const svgRef = useRef<SVGSVGElement>(null);
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
@@ -83,6 +98,10 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const consecutiveErrorsRef = useRef(0);
 
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
+    const rendererRef = useRef(renderer);
+    useEffect(() => {
+      rendererRef.current = renderer;
+    }, [renderer]);
 
     // Settings via refs so the loop reads latest without restarting.
     const strokeWidthRef = useRef(settings.strokeWidth);
@@ -96,6 +115,16 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     useEffect(() => {
       frozenRef.current = frozen;
     }, [frozen]);
+
+    const showClickRipplesRef = useRef(showClickRipples);
+    useEffect(() => {
+      showClickRipplesRef.current = showClickRipples;
+      if (!showClickRipples) setActiveClickEffects([]);
+    }, [showClickRipples]);
+
+    const spawnedClickKeysByTrailRef = useRef<Map<string, Set<string>>>(
+      new Map(),
+    );
 
     // Per-trail draw state. `seenAt` is the clock time the trail began drawing;
     // progress = (clock - seenAt) / drawDuration, so it traces over its real
@@ -140,6 +169,10 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       if (removedIdsRef.current.length > 0) {
         const ids = removedIdsRef.current;
         removedIdsRef.current = [];
+        const removed = new Set(ids);
+        setActiveClickEffects((effects) =>
+          retainClickEffectsForActiveTrails(effects, removed),
+        );
         onRemovedRef.current?.(ids);
       }
     }, [kept]);
@@ -178,6 +211,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           } else {
             // Fully faded — drop, and report so its events can be freed.
             removedIdsRef.current.push(id);
+            spawnedClickKeysByTrailRef.current.delete(id);
           }
         }
         // Brand-new live trails not already in `kept`.
@@ -224,6 +258,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               // Fully faded — drop, and report so its events can be freed.
               changed = true;
               removedIdsRef.current.push(tid);
+              spawnedClickKeysByTrailRef.current.delete(tid);
             }
           }
           return changed ? next : prev;
@@ -395,6 +430,25 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             progress,
           );
 
+          if (result && showClickRipplesRef.current) {
+            let spawnedClickKeys = spawnedClickKeysByTrailRef.current.get(key);
+            if (!spawnedClickKeys) {
+              spawnedClickKeys = new Set();
+              spawnedClickKeysByTrailRef.current.set(key, spawnedClickKeys);
+            }
+            const effects = collectDueClickEffects(
+              ts,
+              result.trailProgress,
+              spawnedClickKeys,
+              result.cursorPosition,
+              rendererRef.current.getClickColor(ts.trail.color),
+              Date.now(),
+            );
+            if (effects.length > 0) {
+              setActiveClickEffects((active) => [...active, ...effects]);
+            }
+          }
+
           // Show the cursor at the moving draw-head while the trail is still
           // actively tracing (not caught up, not settled, not departing).
           const cursorHandle = cursorHandles.current.get(key);
@@ -438,7 +492,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         document.removeEventListener("visibilitychange", onVisibility);
         clearScheduled();
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (
@@ -450,6 +503,14 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         preserveAspectRatio="none"
         style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
       >
+        {showClickRipples &&
+          activeClickEffects.map((effect) => (
+            <RippleEffect
+              key={effect.id}
+              effect={effect}
+              settings={settings}
+            />
+          ))}
         <g ref={pathLayerRef}>
           {kept.map((entry) => {
             const ts = entry.trail;

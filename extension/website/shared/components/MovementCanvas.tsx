@@ -1552,6 +1552,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
               frozen={paused}
+              showClickRipples={!showClicks}
               onTrailsRemoved={handleTrailsRemoved}
               settings={trailAnimationSettings}
             />
