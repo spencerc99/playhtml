@@ -117,7 +117,7 @@ const ANIMATION_SETTINGS = {
   trailOpacity: 0.5,
   animationSpeed: 1.0,
   clickMinRadius: 10,
-  clickMaxRadius: 30,
+  clickMaxRadius: 50,
   clickCoreRadius: 3,
   clickMinDuration: 600,
   clickMaxDuration: 1200,
@@ -179,6 +179,7 @@ export default function App() {
         {trailStates.length > 0 && (
           <LiveTrails
             trailStates={trailStates}
+            showClickRipples
             onTrailsRemoved={handleTrailsRemoved}
             settings={ANIMATION_SETTINGS}
           />
