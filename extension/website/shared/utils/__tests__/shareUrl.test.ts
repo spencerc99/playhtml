@@ -8,7 +8,7 @@ import { buildShareUrl } from "../shareUrl";
 
 describe("buildShareUrl", () => {
   it("omits settings that match route-specific defaults", () => {
-    const settingsDefaults = { ...DEFAULT_SETTINGS, clickMaxRadius: 50 };
+    const settingsDefaults = { ...DEFAULT_SETTINGS, clickMaxRadius: 30 };
 
     expect(
       buildShareUrl({
@@ -22,7 +22,7 @@ describe("buildShareUrl", () => {
   });
 
   it("serializes an override of the route-specific default", () => {
-    const settingsDefaults = { ...DEFAULT_SETTINGS, clickMaxRadius: 50 };
+    const settingsDefaults = { ...DEFAULT_SETTINGS, clickMaxRadius: 30 };
     const url = buildShareUrl({
       settings: { ...settingsDefaults, clickMaxRadius: 40 },
       settingsDefaults,

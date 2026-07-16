@@ -15,7 +15,7 @@ import type { FilterChip } from "../shared/utils/eventUtils";
 // Module-scoped so its reference stays stable across the frequent re-renders
 // the live stream triggers (otherwise MovementCanvas reattaches listeners each frame).
 const noOpFetch = () => {};
-const LIVE_SETTINGS_DEFAULTS = { clickMaxRadius: 50 };
+const LIVE_SETTINGS_DEFAULTS = { clickMaxRadius: 30 };
 
 const LivePortrait = () => {
   const { events, connected } = useLiveEvents({ maxEvents: 500 });
