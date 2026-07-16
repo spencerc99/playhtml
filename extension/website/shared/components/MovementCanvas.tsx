@@ -323,8 +323,10 @@ function playShutterSound() {
 // only persist when the user explicitly modifies a control.
 const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
 
-const loadSettings = () => {
-  const defaults = DEFAULT_SETTINGS;
+type MovementSettings = typeof DEFAULT_SETTINGS;
+
+const loadSettings = (defaultSettings: Partial<MovementSettings> = {}) => {
+  const defaults = { ...DEFAULT_SETTINGS, ...defaultSettings };
   const urlOverrides = parseSettingsFromUrl();
 
   try {
@@ -374,6 +376,8 @@ interface MovementCanvasProps {
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
+  /** Route-specific defaults applied before stored settings and URL overrides. */
+  defaultSettings?: Partial<MovementSettings>;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
@@ -399,11 +403,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   activeVisualizations,
   onSetActiveVisualizations,
   defaultSoundEnabled = false,
+  defaultSettings,
   live = false,
   connected = false,
   getInstallationElapsedMs,
 }) => {
-  const [settings, setSettings] = useState(loadSettings());
+  const settingsDefaults = useMemo(
+    () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
+    [defaultSettings],
+  );
+  const [settings, setSettings] = useState(() => loadSettings(defaultSettings));
   const [controlsVisible, setControlsVisible] = useState(false);
   const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
     parseCinematicFromUrl(),
@@ -641,6 +650,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       try {
         const next = buildShareUrl({
           settings,
+          settingsDefaults,
           activeVisualizations,
           selectedTimeRange,
           clean: parseCleanFromUrl(),
@@ -656,7 +666,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       }
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [settings, activeVisualizations, selectedTimeRange]);
+  }, [settings, settingsDefaults, activeVisualizations, selectedTimeRange]);
 
   // Keyboard shortcuts:
   //   double-tap D — toggle controls panel
@@ -1287,6 +1297,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       <Controls
         visible={controlsVisible}
         settings={settings}
+        settingsDefaults={settingsDefaults}
         setSettings={setSettingsFromControls}
         loading={loading}
         error={error}
