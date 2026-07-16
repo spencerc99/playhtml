@@ -5,8 +5,16 @@ import { describe, expect, it } from "vitest";
 import {
   buildFreehandPathSegment,
   buildStraightPathSegment,
+  didPlaybackCycleWrap,
   getFinishedTrailRenderRange,
 } from "../trailAnimation";
+
+describe("didPlaybackCycleWrap", () => {
+  it("detects the transition from the end of one batch to its beginning", () => {
+    expect(didPlaybackCycleWrap(999, 0)).toBe(true);
+    expect(didPlaybackCycleWrap(500, 600)).toBe(false);
+  });
+});
 
 describe("buildStraightPathSegment", () => {
   it("builds the same straight path shape with an interpolated head point", () => {

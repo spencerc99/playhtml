@@ -32,6 +32,7 @@ import { usePageMetaFallback } from "../hooks/usePageMetaFallback";
 import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import { useFollowerCoordination } from "../hooks/useFollowerCoordination";
+import { usePlaybackCycle } from "../hooks/usePlaybackCycle";
 import {
   extractDomain,
   formatFilterChip,
@@ -386,6 +387,10 @@ interface MovementCanvasProps {
    * window computes the same time from a shared wall-clock epoch. Optional so
    * pages that don't run the installation are completely unaffected. */
   getInstallationElapsedMs?: (animationSpeed: number) => number | null;
+  /** Restarts finite archive playback when the parent swaps event batches. */
+  playbackKey?: string;
+  /** Called when finite archive playback reaches the end of its batch. */
+  onPlaybackCycleComplete?: () => boolean;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -407,6 +412,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   live = false,
   connected = false,
   getInstallationElapsedMs,
+  playbackKey = "fixed",
+  onPlaybackCycleComplete,
 }) => {
   const settingsDefaults = useMemo(
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
@@ -1035,6 +1042,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     keyboardCycleDuration,
   ]);
 
+  usePlaybackCycle({
+    enabled: !live && onPlaybackCycleComplete !== undefined,
+    cycleKey: playbackKey,
+    durationMs: timeRange.duration,
+    animationSpeed: settings.animationSpeed,
+    frozen: paused,
+    onComplete: onPlaybackCycleComplete,
+  });
+
   const { scheduledClicks, clickCycleDuration } = useMemo(() => {
     if (!showClicks) {
       return { scheduledClicks: [], clickCycleDuration: 0 };
@@ -1569,7 +1585,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           ) : (
             <AnimatedTrails
-              key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              key={`trails-${playbackKey}-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
               timeRange={timeRange}
               showClickRipples={!showClicks}
