@@ -10,11 +10,42 @@ export * from "./presence-protocol";
 // TODO: should be able to accept arbitrary input? (like max/min)
 // TODO: should be able to add permission conditions?
 // TODO: add new method for preventing updates while someone else is moving it?
+/**
+ * The value a `view` function returns. This is a lit-html `TemplateResult`
+ * (from the `html` tagged template), but we type it as `unknown` here so the
+ * shared types package stays free of a lit-html dependency — the `playhtml`
+ * runtime is what imports lit-html's `render` and patches it into the element.
+ */
+export type ViewTemplate = unknown;
+
 export interface ElementInitializer<T = any, U = any, V = any> {
-  defaultData: T | ((element: HTMLElement) => T);
+  defaultData?: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
-  updateElement: (data: ElementEventHandlerData<T, U, V>) => void;
+  /**
+   * Imperative update path: receives the current state and mutates the DOM
+   * directly. Pair with `defaultData`; use `view` instead for declarative
+   * rendering.
+   * `view` and `updateElement` are mutually exclusive — providing both is a
+   * registration-time error.
+   */
+  updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
+  /**
+   * Declarative render path: a pure function from state to a lit-html
+   * template. playhtml patches the returned template into the element whenever
+   * data, localData, or awareness changes (and on explicit `requestUpdate()`).
+   *
+   * Must be pure — do NOT call `setData`/`setLocalData` synchronously during
+   * render (it loops, and is a dev-mode error). Drive writes from `@event`
+   * handlers in the template instead. Mutually exclusive with `updateElement`,
+   * `onClick`, and `onDrag` (use `@click` etc. in the template).
+   *
+   * @experimental New and subject to change in a future minor release.
+   */
+  view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
+  /**
+   * Imperative awareness update path. Required with `myDefaultAwareness`.
+   */
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>,
   ) => void;
@@ -36,8 +67,10 @@ export interface ElementInitializer<T = any, U = any, V = any> {
   ) => void;
   // @deprecated use onMount instead
   additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
-  // Used to set up any additional event handlers
-  onMount?: (eventData: ElementSetupData<T, U, V>) => void;
+  // Used to set up any additional event handlers. May return a cleanup
+  // function (to cancel rAF loops, timers, listeners) that runs when the
+  // element is removed/unregistered.
+  onMount?: (eventData: ElementSetupData<T, U, V>) => void | (() => void);
 
   // Advanced settings
   resetShortcut?: ModifierKey;
@@ -55,6 +88,9 @@ export interface ElementData<T = any, U = any, V = any>
   onAwarenessChange: (data: V) => void;
   // Gets the current set of awareness data for the element.
   triggerAwarenessUpdate: () => void;
+  // When true, the handler emits dev-only warnings (e.g. writing during a
+  // view render, or returning a value from a setData mutator).
+  devMode?: boolean;
 }
 
 export interface ElementEventHandlerData<T = any, U = any, V = any> {
@@ -80,8 +116,15 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
    */
   setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
-  setLocalData: (data: U) => void;
+  setLocalData: (data: U | ((draft: U) => void)) => void;
   setMyAwareness: (data: V) => void;
+  /**
+   * Re-runs the element's `view` and patches the result into the DOM, even
+   * when no state has changed. Use for views that render from state *plus* an
+   * external source — the wall clock (timers, "5 minutes ago" labels),
+   * animation frames, etc. No-op for elements without a `view`.
+   */
+  requestUpdate: () => void;
 }
 
 export interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
@@ -95,8 +138,14 @@ export interface ElementSetupData<T = any, U = any, V = any> {
   getAwareness: () => V[];
   getElement: () => HTMLElement;
   setData: (data: T | ((draft: T) => void)) => void;
-  setLocalData: (data: U) => void;
+  setLocalData: (data: U | ((draft: U) => void)) => void;
   setMyAwareness: (data: V) => void;
+  /**
+   * Re-runs the element's `view` and patches the result into the DOM. See
+   * `ElementEventHandlerData.requestUpdate`. Available in `onMount` so a
+   * `requestAnimationFrame` loop can drive clock-based views.
+   */
+  requestUpdate: () => void;
 }
 
 interface EventData<T = any> {
@@ -144,11 +193,10 @@ function getMoveBoundsRoot(element: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Fraction of the element that must stay inside the bounds container so a
- * reader can still grab it. Clamped to [0, 1]. Default 0.25 = a quarter of
- * the element remains visible / draggable on every edge.
+ * Fraction of the element that must stay inside the bounds container.
+ * Clamped to [0, 1]. Default 1 = the whole element remains inside.
  */
-const DEFAULT_MIN_VISIBLE_FRACTION = 0.25;
+const DEFAULT_MIN_VISIBLE_FRACTION = 1;
 
 /**
  * Absolute pixel floor on the keep-visible slice. This handles the case
@@ -183,6 +231,49 @@ function keepVisibleSlice(
   return Math.min(size, Math.max(size * fraction, pxFloor));
 }
 
+function getMoveBoundsBasePosition(
+  element: HTMLElement,
+  boundsRoot: HTMLElement,
+  data: MoveData,
+): { x: number; y: number } {
+  const elementRect = element.getBoundingClientRect();
+  const boundsRect = boundsRoot.getBoundingClientRect();
+  return {
+    x: elementRect.left - boundsRect.left - boundsRoot.clientLeft - data.x,
+    y: elementRect.top - boundsRect.top - boundsRoot.clientTop - data.y,
+  };
+}
+
+function getMoveBoundsClamp(
+  element: HTMLElement,
+  boundsRoot: HTMLElement,
+  currentData: MoveData,
+  nextData: MoveData,
+  basePosition = getMoveBoundsBasePosition(element, boundsRoot, currentData),
+): MoveData {
+  const minVisible = getMinVisibleFraction(element);
+  const minVisiblePx = getMinVisiblePx(element);
+  const w = element.offsetWidth;
+  const h = element.offsetHeight;
+  const keepX = keepVisibleSlice(w, minVisible, minVisiblePx);
+  const keepY = keepVisibleSlice(h, minVisible, minVisiblePx);
+  const minX = keepX - w - basePosition.x;
+  const maxX = boundsRoot.clientWidth - keepX - basePosition.x;
+  const minY = keepY - h - basePosition.y;
+  const maxY = boundsRoot.clientHeight - keepY - basePosition.y;
+  return {
+    x: maxX < minX ? 0 : Math.min(maxX, Math.max(minX, nextData.x)),
+    y: maxY < minY ? 0 : Math.min(maxY, Math.max(minY, nextData.y)),
+  };
+}
+
+function roundMoveData(data: MoveData): MoveData {
+  return {
+    x: roundToFirstDecimal(data.x),
+    y: roundToFirstDecimal(data.y),
+  };
+}
+
 /**
  * Custom Capabilities data types
  */
@@ -205,23 +296,22 @@ export type GrowData = {
 export const CanDuplicateTo = "can-duplicate-to";
 /**
  * Optional id (`my-arena`, `#my-arena`) or selector (`.arena`) of a container;
- * `can-move` clamps the element's position so at least some of it stays inside.
- * The cursor itself is unconstrained — you can drag past the edge — the
- * element just stops when it would slip too far out to be grabbable.
+ * `can-move` clamps the element's position inside it. The cursor itself is
+ * unconstrained — you can drag past the edge — the element just stops at the
+ * bounds.
  */
 export const CanMoveBounds = "can-move-bounds";
 /**
  * Fraction (0–1) of the element that must remain inside `can-move-bounds`.
- * Defaults to 0.25 (quarter of the element stays visible on every edge).
- * Use 0 to let the element slip fully out of view, 1 to keep it entirely
- * inside the container (the original clamp behavior).
+ * Defaults to 1 (the whole element stays inside on every edge). Lower values
+ * allow explicit partial overhang; use 0 to let the element slip fully out of
+ * view when the pixel floor is also 0.
  */
 export const CanMoveBoundsMinVisible = "can-move-bounds-min-visible";
 /**
- * Absolute pixel floor on the keep-visible slice. Defaults to 60px. Useful
- * when an image has transparent padding around its paint — a pure fraction
- * of the layout bbox would let the visible pixels slip out of bounds. The
- * effective slice is `max(minVisible × size, minVisiblePx)`.
+ * Absolute pixel floor on the keep-visible slice. Defaults to 60px and applies
+ * when `can-move-bounds-min-visible` allows partial overhang. The effective
+ * slice is `max(minVisible × size, minVisiblePx)`, capped at the element size.
  */
 export const CanMoveBoundsMinVisiblePx = "can-move-bounds-min-visible-px";
 
@@ -376,7 +466,14 @@ function getClientCoordinates(e: MouseEvent | TouchEvent): {
 }
 
 // @ts-ignore
-type MoveLocalData = { startMouseX: number; startMouseY: number };
+type MoveLocalData = {
+  startMouseX: number;
+  startMouseY: number;
+  dragX?: number;
+  dragY?: number;
+  boundsBaseX?: number;
+  boundsBaseY?: number;
+};
 type SpinLocalData = { startMouseX: number };
 type GrowLocalData = { maxScale: number; isHovering: boolean };
 
@@ -402,11 +499,34 @@ export const TagTypeToElement: DefaultTagInitializers = {
     updateElement: ({ element, data }) => {
       element.style.transform = `translate(${data.x}px, ${data.y}px)`;
     },
-    onDragStart: (e: MouseEvent | TouchEvent, { setLocalData }) => {
+    onMount: ({ getData, getElement, setData }) => {
+      const element = getElement();
+      const boundsRoot = getMoveBoundsRoot(element);
+      if (!boundsRoot) return;
+      const data = getData();
+      const clampedData = roundMoveData(
+        getMoveBoundsClamp(element, boundsRoot, data, data),
+      );
+      if (clampedData.x !== data.x || clampedData.y !== data.y) {
+        setData(clampedData);
+      }
+    },
+    onDragStart: (
+      e: MouseEvent | TouchEvent,
+      { data, element, setLocalData },
+    ) => {
       const { clientX, clientY } = getClientCoordinates(e);
+      const boundsRoot = getMoveBoundsRoot(element);
+      const boundsBasePosition = boundsRoot
+        ? getMoveBoundsBasePosition(element, boundsRoot, data)
+        : undefined;
       setLocalData({
         startMouseX: clientX,
         startMouseY: clientY,
+        dragX: data.x,
+        dragY: data.y,
+        boundsBaseX: boundsBasePosition?.x,
+        boundsBaseY: boundsBasePosition?.y,
       });
     },
     onDrag: (
@@ -419,32 +539,32 @@ export const TagTypeToElement: DefaultTagInitializers = {
 
       const boundsRoot = getMoveBoundsRoot(element);
       if (boundsRoot) {
-        // Allow the element to hang off the container's edges as long as
-        // enough of it is still inside — a reader needs something to grab
-        // to drag it back. The keep-visible slice is
-        // max(minVisible × size, minVisiblePx) so an image with
-        // transparent padding doesn't end up with its visible paint
-        // outside the bounds. The cursor itself is not clamped; only the
-        // element's persisted translate is.
-        const minVisible = getMinVisibleFraction(element);
-        const minVisiblePx = getMinVisiblePx(element);
-        const w = element.offsetWidth;
-        const h = element.offsetHeight;
-        const keepX = keepVisibleSlice(w, minVisible, minVisiblePx);
-        const keepY = keepVisibleSlice(h, minVisible, minVisiblePx);
-        const minX = -(w - keepX);
-        const maxX = boundsRoot.clientWidth - keepX;
-        const minY = -(h - keepY);
-        const maxY = boundsRoot.clientHeight - keepY;
-        // If the container is narrower than the keep-visible slice, the
-        // min/max can invert. Fall back to pinning at 0 in that case so the
-        // element doesn't shoot off into negative space.
-        const clampedX = maxX < minX ? 0 : Math.min(maxX, Math.max(minX, newX));
-        const clampedY = maxY < minY ? 0 : Math.min(maxY, Math.max(minY, newY));
-        setData({
-          x: roundToFirstDecimal(clampedX),
-          y: roundToFirstDecimal(clampedY),
-        });
+        const dragData = {
+          x: localData.dragX ?? data.x,
+          y: localData.dragY ?? data.y,
+        };
+        const dragX = dragData.x + clientX - localData.startMouseX;
+        const dragY = dragData.y + clientY - localData.startMouseY;
+        const boundsBasePosition =
+          localData.boundsBaseX !== undefined &&
+          localData.boundsBaseY !== undefined
+            ? { x: localData.boundsBaseX, y: localData.boundsBaseY }
+            : getMoveBoundsBasePosition(element, boundsRoot, dragData);
+        // The cursor itself is not clamped; only the element's persisted
+        // translate is. Lower min-visible values can opt into partial
+        // overhang while keeping a visible slice inside the bounds.
+        const clampedData = getMoveBoundsClamp(
+          element,
+          boundsRoot,
+          dragData,
+          {
+            x: dragX,
+            y: dragY,
+          },
+          boundsBasePosition,
+        );
+        const roundedData = roundMoveData(clampedData);
+        setData(roundedData);
         // Only advance the cursor anchor by the portion of the delta that
         // actually translated the element. If the clamp ate some of the
         // delta (cursor went past the bound), hold that "debt" in the
@@ -452,11 +572,15 @@ export const TagTypeToElement: DefaultTagInitializers = {
         // before the element starts moving again. Without this, a fast
         // drag past one edge lets the return drag fling the element to
         // the opposite edge (apparent dt vs. clamped dt mismatch).
-        const usedDx = clampedX - data.x;
-        const usedDy = clampedY - data.y;
+        const usedDx = clampedData.x - dragData.x;
+        const usedDy = clampedData.y - dragData.y;
         setLocalData({
           startMouseX: localData.startMouseX + usedDx,
           startMouseY: localData.startMouseY + usedDy,
+          dragX: roundedData.x,
+          dragY: roundedData.y,
+          boundsBaseX: boundsBasePosition.x,
+          boundsBaseY: boundsBasePosition.y,
         });
         return;
       }
@@ -557,18 +681,32 @@ export const TagTypeToElement: DefaultTagInitializers = {
       setData({ ...data, scale });
     },
     onMount: (eventData) => {
-      eventData.getElement().addEventListener("mouseenter", (e) => {
+      const element = eventData.getElement();
+      let isListeningForKeys = false;
+      const onKeyDownUp = (e: KeyboardEvent) =>
         canGrowCursorHandler(e, eventData);
-        const onKeyDownUp = (e: KeyboardEvent) =>
-          canGrowCursorHandler(e, eventData);
+      const onMouseEnter = (e: MouseEvent) => {
+        canGrowCursorHandler(e, eventData);
+        if (isListeningForKeys) {
+          return;
+        }
+
+        isListeningForKeys = true;
         document.addEventListener("keydown", onKeyDownUp);
         document.addEventListener("keyup", onKeyDownUp);
+      };
+      const onMouseLeave = () => {
+        if (!isListeningForKeys) {
+          return;
+        }
 
-        eventData.getElement().addEventListener("mouseleave", (e) => {
-          document.removeEventListener("keydown", onKeyDownUp);
-          document.removeEventListener("keyup", onKeyDownUp);
-        });
-      });
+        isListeningForKeys = false;
+        document.removeEventListener("keydown", onKeyDownUp);
+        document.removeEventListener("keyup", onKeyDownUp);
+      };
+
+      element.addEventListener("mouseenter", onMouseEnter);
+      element.addEventListener("mouseleave", onMouseLeave);
     },
     resetShortcut: "shiftKey",
   },

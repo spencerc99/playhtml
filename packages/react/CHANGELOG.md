@@ -1,5 +1,31 @@
 # Change Log
 
+## 2.0.1
+
+### Patch Changes
+
+- b3568ab: Keep element awareness scoped to the page room, preserve existing local awareness when handlers bind, and clear element awareness snapshots when peers leave so callbacks and views stop seeing stale ephemeral user state. Keep the React package test harness aligned with the configured initialization path.
+- 44e599d: Make `can-move-bounds` clamp the full element inside its bounds by default, account for the element's starting position within the bounds container, normalize persisted out-of-bounds positions on mount, and keep fast edge drags pinned while synced position updates catch up. Explicit `min-visible` settings can still allow partial overhang when that behavior is wanted.
+- Updated dependencies [f8bc35d]
+- Updated dependencies [e76abb7]
+- Updated dependencies [b3568ab]
+- Updated dependencies [ca1ebee]
+- Updated dependencies [44e599d]
+  - playhtml@2.13.0
+
+## 2.0.0
+
+### Patch Changes
+
+- d5b2df3: Fix `useCursorZone` so cleanup unregisters the originally registered zone id and option changes re-register the zone.
+- 94ce0f3: Make `withSharedState` use its configured `id` when a rendered child also provides a different DOM id, clean up changed id bindings, and report id conflicts without repeated or misleading warnings.
+- Updated dependencies [081cc95]
+- Updated dependencies [d0a0bbc]
+- Updated dependencies [c42588c]
+- Updated dependencies [b56ebd7]
+- Updated dependencies [fb2b6d5]
+  - playhtml@2.12.0
+
 ## 1.0.1
 
 ### Patch Changes

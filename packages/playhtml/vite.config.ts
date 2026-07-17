@@ -23,7 +23,7 @@ export default defineConfig({
   ],
   build: {
     rollupOptions: {
-      input: ["src/init.ts", "src/index.ts"],
+      input: ["src/init.ts", "src/index.ts", "src/leafEditor.ts"],
       output: {
         inlineDynamicImports: false,
       },
@@ -35,6 +35,7 @@ export default defineConfig({
       cssFileName: "style",
       fileName: (format, entryName) => {
         if (entryName === "init") return `init.${format}.js`;
+        if (entryName === "leafEditor") return `leafEditor.${format}.js`;
 
         return `playhtml.${format}.js`;
       },

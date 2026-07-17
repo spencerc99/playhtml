@@ -26,6 +26,7 @@ import {
   type ImperativeTrailHandle,
   type ImperativeTrailCursorHandle,
 } from "./trailPrimitives";
+import { CinematicCamera, type CinematicConfig } from "../utils/cinematicCamera";
 
 // Hidden tabs heavily throttle rAF; 100ms (~10fps) keeps audio/time progression
 // alive without spending too much background CPU.
@@ -42,6 +43,18 @@ interface AnimatedTrailsProps {
   // appear glued to the page rather than to the fixed viewport. The overlay
   // container must be position: fixed when using this mode.
   documentSpace?: boolean;
+  // When set, a cursor-follow camera drives the SVG viewBox each frame.
+  // Mutually exclusive with documentSpace; cinematic wins.
+  cinematic?: CinematicConfig | null;
+  // Increment to ask the cinematic camera to jump to a new subject now.
+  cinematicNextSignal?: number;
+  // Multi-screen installation clock. When provided and it returns a non-null
+  // number, that value is used as the RAW scaled-elapsed for this frame and the
+  // local accumulation is skipped — every window computes the same time from a
+  // shared wall-clock epoch, so no window depends on another's rAF. Read each
+  // frame through this accessor (never as a raw value) so the clock's internal
+  // state changes don't re-run the animation-loop effect.
+  getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
@@ -70,6 +83,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     frozen = false,
     windowSize = 50,
     documentSpace = false,
+    cinematic = null,
+    cinematicNextSignal = 0,
+    getInstallationElapsedMs,
     soundEngine = null,
     settings,
   }) => {
@@ -161,6 +177,47 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const showClickRipplesRef = useRef(showClickRipples);
     const documentSpaceRef = useRef(documentSpace);
     const soundEngineRef = useRef(soundEngine);
+
+    const cinematicRef = useRef(cinematic);
+    useEffect(() => {
+      cinematicRef.current = cinematic;
+    }, [cinematic]);
+
+    // Installation-clock accessors read by the rAF loop. Kept current via a
+    // separate effect so the loop reads xxxRef.current and its dep array does
+    // NOT include per-frame-changing values (which would restart the clock).
+    const getInstallationElapsedMsRef = useRef(getInstallationElapsedMs);
+    useEffect(() => {
+      getInstallationElapsedMsRef.current = getInstallationElapsedMs;
+    }, [getInstallationElapsedMs]);
+
+    const cameraRef = useRef<CinematicCamera | null>(null);
+    if (cinematic && cameraRef.current === null) {
+      cameraRef.current = new CinematicCamera(cinematic);
+    }
+    useEffect(() => {
+      if (cinematic && cameraRef.current) cameraRef.current.setConfig(cinematic);
+    }, [cinematic]);
+
+    // When the parent bumps the signal (N key), jump to a new subject now.
+    // Skip the initial 0 so we don't fire a spurious jump on mount.
+    useEffect(() => {
+      if (cinematicNextSignal > 0) cameraRef.current?.requestNext();
+    }, [cinematicNextSignal]);
+
+    // Scratch array reused each frame to avoid per-frame allocation.
+    const cameraActiveScratchRef = useRef<
+      Array<{ index: number; x: number; y: number; progress: number }>
+    >([]);
+
+    // Clear the viewBox when cinematic turns off so the view returns to the
+    // full-screen default (no viewBox attribute = 0 0 W H).
+    useEffect(() => {
+      if (!cinematic && svgRef.current) {
+        svgRef.current.removeAttribute("viewBox");
+        cameraRef.current?.reset();
+      }
+    }, [cinematic]);
 
     useEffect(() => {
       soundEngineRef.current = soundEngine;
@@ -265,6 +322,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       soundEngineRef.current?.reset();
 
       let startTime: number | null = null;
+      // Accumulate scaled time per-frame (delta * currentSpeed) instead of
+      // realElapsed * currentSpeed, so animationSpeed can change mid-playback
+      // (e.g. a slow→fast ramp during a cinematic reveal) without teleporting
+      // the replay. At a constant speed this is identical to the old formula.
+      let lastTimestamp: number | null = null;
+      let accumulatedScaled = 0;
 
       const resetPlaybackTrackers = () => {
         activeTrailIndicesRef.current = [];
@@ -297,11 +360,18 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
       const animate = (timestamp: number) => {
         if (startTime === null) startTime = timestamp;
+        if (lastTimestamp === null) lastTimestamp = timestamp;
 
         // In document space mode, shift the SVG viewBox to match the current
         // scroll position so trails appear glued to the page rather than to
         // the fixed viewport. Done imperatively here to avoid re-renders.
-        if (documentSpaceRef.current && svgRef.current) {
+        // Cinematic mode owns the viewBox when active (applied after the trail
+        // loop, since it needs the per-frame cursor positions computed below).
+        if (
+          !cinematicRef.current &&
+          documentSpaceRef.current &&
+          svgRef.current
+        ) {
           const scrollX = window.scrollX;
           const scrollY = window.scrollY;
           const vw = window.innerWidth;
@@ -312,8 +382,30 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           );
         }
 
-        const realElapsed = timestamp - startTime;
-        const scaledElapsed = realElapsed * animationSpeedRef.current;
+        if (cinematicRef.current) {
+          cameraActiveScratchRef.current.length = 0;
+        }
+
+        // Clamp the per-frame delta so a long hidden-tab gap (or a debugger
+        // pause) doesn't accumulate a huge jump when the loop resumes.
+        const frameDelta = Math.min(250, timestamp - lastTimestamp);
+        lastTimestamp = timestamp;
+
+        // Multi-screen installation: every window computes its OWN scaled-
+        // elapsed from a shared wall-clock epoch, so a throttled/backgrounded
+        // window just renders fewer FRAMES rather than falling behind — it
+        // jumps to the correct current time when refocused. Standalone windows
+        // (and the brief moment before an epoch is known) accumulate locally.
+        const inst =
+          getInstallationElapsedMsRef.current?.(animationSpeedRef.current) ??
+          null;
+        let scaledElapsed: number;
+        if (inst !== null) {
+          scaledElapsed = inst;
+        } else {
+          accumulatedScaled += frameDelta * animationSpeedRef.current;
+          scaledElapsed = accumulatedScaled;
+        }
         const loopedElapsed = scaledElapsed % timeRange.duration;
 
         // Detect loop wrap
@@ -321,6 +413,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           resetPlaybackTrackers();
           setActiveClickEffects([]);
           soundEngineRef.current?.reset();
+          cameraRef.current?.reset();
         }
         prevElapsedRef.current = loopedElapsed;
 
@@ -426,6 +519,17 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
           if (result && fade > 0 && result.trailProgress < 1) {
             activePaintOrderIndices.push(idx);
+          }
+
+          if (cinematicRef.current && result && fade > 0) {
+            if (result.trailProgress > 0 && result.trailProgress < 1) {
+              cameraActiveScratchRef.current.push({
+                index: idx,
+                x: result.cursorPosition.x,
+                y: result.cursorPosition.y,
+                progress: result.trailProgress,
+              });
+            }
           }
 
           // Update cursor icon in the separate cursor layer
@@ -567,6 +671,27 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Prune ripples for trails that became invisible
         if (visibilityChanged) {
           scheduleRipplePrune();
+        }
+
+        // Cinematic camera: drive the SVG viewBox from the live cursor
+        // positions collected above. Done here (after the trail loop) so the
+        // camera sees this frame's positions, not the previous frame's.
+        if (cinematicRef.current && svgRef.current) {
+          const camera = cameraRef.current;
+          if (camera) {
+            const vb = camera.tick({
+              screenW: window.innerWidth,
+              screenH: window.innerHeight,
+              nowMs: timestamp,
+              activeTrails: cameraActiveScratchRef.current,
+            });
+            if (vb) {
+              svgRef.current.setAttribute(
+                "viewBox",
+                `${vb.x} ${vb.y} ${vb.w} ${vb.h}`,
+              );
+            }
+          }
         }
 
         scheduleNextFrame();
@@ -727,6 +852,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.frozen === nextProps.frozen &&
       prevProps.windowSize === nextProps.windowSize &&
       prevProps.documentSpace === nextProps.documentSpace &&
+      prevProps.cinematic === nextProps.cinematic &&
+      prevProps.cinematicNextSignal === nextProps.cinematicNextSignal &&
       prevProps.soundEngine === nextProps.soundEngine &&
       prevProps.settings.strokeWidth === nextProps.settings.strokeWidth &&
       prevProps.settings.trailOpacity === nextProps.settings.trailOpacity &&

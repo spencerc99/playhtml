@@ -51,21 +51,31 @@ playhtml makes HTML elements collaborative and real-time. Here's what you need t
 
 CRITICAL REQUIREMENTS:
 - All elements MUST have a unique `id` attribute
-- Vanilla HTML: Configure element properties BEFORE calling playhtml.init()
+- Vanilla HTML: register a custom element with playhtml.register(id, { defaultData, view })
 - React: Components must be wrapped in <PlayProvider>
 
-SETUP — Vanilla HTML (can-play with custom logic):
-The ordering rule is strict: assign all the custom properties BEFORE you call playhtml.init().
+SETUP — Vanilla HTML (custom element with register + view):
+Put an empty mount point in the HTML, then register a `view` that renders it from
+state. `register` can be called before OR after `playhtml.init()` — there is no
+ordering rule. Drive writes from `@event` handlers in the template; the view
+re-renders automatically when data changes.
 
-  import { playhtml } from "https://unpkg.com/playhtml";
+  <div id="myElement" can-play></div>
 
-  const element = document.getElementById("myElement");
+  <script type="module">
+    import { playhtml, html } from "https://unpkg.com/playhtml";
 
-  element.defaultData = { /* ... */ };
-  element.onClick = (e, { data, setData }) => { /* ... */ };
-  element.updateElement = ({ data }) => { /* ... */ };
+    playhtml.register("myElement", {
+      defaultData: { count: 0 },
+      view: ({ data, setData }) => html`
+        <button @click=${() => setData((d) => { d.count += 1; })}>
+          ${data.count}
+        </button>
+      `,
+    });
 
-  playhtml.init();
+    playhtml.init();
+  </script>
 
 SETUP — React:
 
@@ -87,13 +97,17 @@ DATA TYPES (choose the right one):
 
 KEY APIs:
 
-Vanilla HTML (can-play):
-- element.defaultData = { ... }                                 // Initial state (REQUIRED)
-- element.onClick = (e, { data, setData }) => { ... }           // Handle clicks
-- element.onDrag = (e, { data, setData }) => { ... }            // Handle drag
-- element.onMount = ({ getData, setData, element }) => { ... }  // Setup logic
-- element.updateElement = ({ element, data }) => { ... }        // Update DOM when data changes (REQUIRED)
-- element.resetShortcut = "shiftKey"                            // Keyboard reset
+Vanilla HTML (register + view):
+- playhtml.register(id, init) → handle                         // Bind one element by id
+- playhtml.define(name, init)                                  // Reusable capability for every [name] element
+- init.defaultData = { ... }                                   // Initial state (REQUIRED)
+- init.view = ({ data, setData }) => html`...`                 // Render from state; events via @click (REQUIRED)
+- init.onMount = (ctx) => { ...; return cleanup }              // Setup loops/listeners; return a cleanup
+- init.resetShortcut = "shiftKey"                              // Keyboard reset
+- ctx.setData(value | (draft) => { ... })                     // Write shared state
+- ctx.localData / ctx.setLocalData(...)                        // Per-user, un-synced UI state
+- ctx.awareness / ctx.setMyAwareness(...)                      // Presence
+- ctx.requestUpdate()                                          // Repaint clock-driven views (timers)
 
 React (withSharedState):
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)
@@ -140,7 +154,7 @@ CURSOR CONFIGURATION (optional):
 
 DATA PERFORMANCE TIPS:
 - Keep data shapes simple and flat (avoid deep nesting)
-- Don't store computed/derived values — calculate them in render/updateElement
+- Don't store computed/derived values — calculate them in the view / render function
 - Use events for ephemeral actions (confetti, notifications), not persistent data
 - Use presence or element awareness for temporary per-user state, not defaultData
 - Don't update data on high-frequency events (mousemove, scroll) — debounce

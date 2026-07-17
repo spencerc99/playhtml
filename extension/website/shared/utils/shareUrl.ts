@@ -16,6 +16,8 @@ function sameVizSet(a: string[], b: string[]): boolean {
 
 export interface BuildShareUrlInput {
   settings: Record<string, unknown>;
+  /** Effective defaults for this route. */
+  settingsDefaults?: Record<string, unknown>;
   activeVisualizations: string[];
   selectedTimeRange: { startMs: number; endMs: number } | null;
   /** Optional override; defaults to current `window.location.origin + pathname`. */
@@ -40,6 +42,7 @@ export interface BuildShareUrlInput {
  */
 export function buildShareUrl({
   settings,
+  settingsDefaults,
   activeVisualizations,
   selectedTimeRange,
   baseUrl,
@@ -63,7 +66,7 @@ export function buildShareUrl({
   // viz mode, etc.) get their own readable URL keys; everything else
   // diverging from defaults rides in a single base64 blob (`?s=...`) so
   // URLs stay bounded as the settings tree grows.
-  const { headline, blob } = serializeSpec(settings, vizSet);
+  const { headline, blob } = serializeSpec(settings, vizSet, settingsDefaults);
   for (const [param, value] of Object.entries(headline)) {
     url.searchParams.set(param, value);
   }
@@ -79,6 +82,32 @@ export function buildShareUrl({
   const cleanLevel =
     clean === true ? 1 : typeof clean === "number" ? clean : 0;
   if (cleanLevel > 0) url.searchParams.set("clean", String(cleanLevel));
+
+  // Preserve capture/scope params that aren't settings-shaped, so the URL
+  // rewrite (which reconstructs from settings) doesn't drop them. These are
+  // the day selection, the recurring time-of-day window, and the cinematic
+  // camera family — all of which a capture link needs to survive reload.
+  if (typeof window !== "undefined") {
+    const current = new URLSearchParams(window.location.search);
+    const PRESERVE = [
+      "day",
+      "tod",
+      "todRadius",
+      "cinematic",
+      "cinemaZoom",
+      "cinemaTransition",
+      "cinemaLerp",
+      "cinemaVelZoom",
+      "cinemaReveal",
+      "cinemaStartZoom",
+      "role",
+      "follower",
+    ];
+    for (const key of PRESERVE) {
+      const val = current.get(key);
+      if (val !== null) url.searchParams.set(key, val);
+    }
+  }
 
   // When `baseUrl` was a placeholder (no window), strip the scheme so the
   // caller can't accidentally surface "http://placeholder/" — return just

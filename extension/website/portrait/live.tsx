@@ -15,6 +15,7 @@ import type { FilterChip } from "../shared/utils/eventUtils";
 // Module-scoped so its reference stays stable across the frequent re-renders
 // the live stream triggers (otherwise MovementCanvas reattaches listeners each frame).
 const noOpFetch = () => {};
+const LIVE_SETTINGS_DEFAULTS = { clickMaxRadius: 30 };
 
 const LivePortrait = () => {
   const { events, connected } = useLiveEvents({ maxEvents: 500 });
@@ -60,6 +61,7 @@ const LivePortrait = () => {
   return (
     <>
       <span
+        className="wordmark-signature"
         style={{
           position: "absolute",
           top: 14,
@@ -84,6 +86,7 @@ const LivePortrait = () => {
         onSetFilters={setFilters}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
+        defaultSettings={LIVE_SETTINGS_DEFAULTS}
         live
         connected={connected}
       />

@@ -1,5 +1,7 @@
 // ABOUTME: Configures browser API shims and provider fakes for playhtml tests.
 // ABOUTME: Keeps unit tests deterministic without opening real network providers.
+((globalThis as any).litIssuedWarnings ??= new Set<string>()).add("dev-mode");
+
 // JSDOM doesn't implement some layout APIs; mock minimal ones we use.
 Object.defineProperty(window, "outerWidth", { value: 1024, writable: true });
 Object.defineProperty(window, "innerHeight", { value: 768, writable: true });
@@ -45,14 +47,25 @@ vi.mock("y-partyserver/provider", () => {
       awareness: any;
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
-      constructor() {
+      private doc: any;
+      private docUpdateListener?: (update: Uint8Array) => void;
+      roomname: string;
+      constructor(_host: string, room: string, doc?: any) {
         if ((globalThis as any).PLAYHTML_TEST_PROVIDER_THROW) {
           throw new Error("test provider init failure");
         }
+        this.roomname = room;
+        this.doc = doc;
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),
         } as any;
+        if (this.doc && typeof this.doc.on === "function") {
+          this.docUpdateListener = (update: Uint8Array) => {
+            this.ws?.send(update as any);
+          };
+          this.doc.on("update", this.docUpdateListener);
+        }
         const states = new Map<number, any>();
         const local = { state: {} as any };
         this.awareness = {
@@ -60,6 +73,7 @@ vi.mock("y-partyserver/provider", () => {
           getLocalState: () => local.state,
           setLocalStateField: (key: string, value: any) => {
             local.state = { ...local.state, [key]: value };
+            states.set(this.clientId, local.state);
             // Emit change event with proper structure expected by cursor-client
             // When local state changes, it's considered an "update" for our own client
             this.emit("change", {
@@ -84,6 +98,13 @@ vi.mock("y-partyserver/provider", () => {
         (this.listeners[t] || []).forEach((cb) => cb(...args));
       }
       destroy() {
+        if (
+          this.doc &&
+          this.docUpdateListener &&
+          typeof this.doc.off === "function"
+        ) {
+          this.doc.off("update", this.docUpdateListener);
+        }
         this.listeners = {};
       }
     },

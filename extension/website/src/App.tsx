@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { LiveIndicator } from "@movement/components/LiveIndicator";
 import { WordmarkClock } from "@movement/components/WordmarkClock";
+import { CLICK_DEFAULTS } from "@movement/components/clickDefaults";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { summarizeActiveLocations } from "@movement/utils/eventUtils";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
@@ -116,17 +117,8 @@ const ANIMATION_SETTINGS = {
   pointSize: 4,
   trailOpacity: 0.5,
   animationSpeed: 1.0,
-  clickMinRadius: 10,
+  ...CLICK_DEFAULTS,
   clickMaxRadius: 30,
-  clickCoreRadius: 3,
-  clickMinDuration: 600,
-  clickMaxDuration: 1200,
-  clickExpansionDuration: 400,
-  clickStrokeWidth: 1,
-  clickOpacity: 0.4,
-  clickNumRings: 2,
-  clickRingDelayMs: 80,
-  clickAnimationStopPoint: 0.8,
 };
 
 export default function App() {
@@ -179,6 +171,7 @@ export default function App() {
         {trailStates.length > 0 && (
           <LiveTrails
             trailStates={trailStates}
+            showClickRipples
             onTrailsRemoved={handleTrailsRemoved}
             settings={ANIMATION_SETTINGS}
           />

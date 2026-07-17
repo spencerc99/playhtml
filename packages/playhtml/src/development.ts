@@ -35,11 +35,42 @@ let originalConsoleMethods: Record<ConsoleMethod, (...args: unknown[]) => void> 
 let activeWindowErrorListener: ((ev: ErrorEvent) => void) | null = null;
 let activeWindowRejectionListener: ((ev: PromiseRejectionEvent) => void) | null = null;
 
+// Inspect mode installs document-level listeners that outlive the dev root node.
+let activeInspectModeTeardown: (() => void) | null = null;
+
+const INSPECT_STATE_SELECTOR =
+  ".ph-inspect-highlight, .ph-inspect-highlight-hover, .ph-inspect-selected";
+const INSPECT_CLASS_NAMES = [
+  "ph-inspect-highlight",
+  "ph-inspect-highlight-hover",
+  "ph-inspect-selected",
+];
+
 function clearDataUpdateSubscriptions(): void {
   for (const subscription of activeDataUpdateSubscriptions.values()) {
     subscription.unsubscribe();
   }
   activeDataUpdateSubscriptions.clear();
+}
+
+function clearInspectState(): void {
+  document.querySelectorAll(INSPECT_STATE_SELECTOR).forEach((domEl) => {
+    domEl.classList.remove(...INSPECT_CLASS_NAMES);
+  });
+  document.querySelectorAll(".ph-inspect-label").forEach((label) => {
+    label.remove();
+  });
+}
+
+function clearRowHoverState(preserveHighlights: boolean): void {
+  document.querySelectorAll(".ph-inspect-highlight-hover").forEach((domEl) => {
+    domEl.classList.remove("ph-inspect-highlight-hover");
+  });
+  if (!preserveHighlights) {
+    document.querySelectorAll(".ph-inspect-highlight").forEach((domEl) => {
+      domEl.classList.remove("ph-inspect-highlight");
+    });
+  }
 }
 
 // ─── Logo (base64 PNG, 48x48 — self-contained, no external deps) ─────
@@ -732,17 +763,19 @@ export function listSharedElements() {
     });
   });
 
-  try {
-    console.table(
-      out.map((e) => ({
-        type: e.type,
-        elementId: e.elementId,
-        dataSource: e.dataSource,
-        normalized: e.normalized,
-        permissions: e.permissions || "",
-      }))
-    );
-  } catch {}
+  if (out.length > 0) {
+    try {
+      console.table(
+        out.map((e) => ({
+          type: e.type,
+          elementId: e.elementId,
+          dataSource: e.dataSource,
+          normalized: e.normalized,
+          permissions: e.permissions || "",
+        }))
+      );
+    } catch {}
+  }
   return out;
 }
 
@@ -791,6 +824,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 // ─── Main Setup ────────────────────────────────────────────────────────
 export function setupDevUI(playhtml: PlayHTMLComponents) {
   // Guard against duplicate setup (e.g. HMR)
+  teardownDevUI();
   const existing = document.getElementById("playhtml-dev-root");
   if (existing) existing.remove();
   clearDataUpdateSubscriptions();
@@ -1508,6 +1542,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   let tagFilter = "";
 
   function renderDataWalker() {
+    clearRowHoverState(inspectMode);
     dataArea.innerHTML = "";
 
     // Search + filter + actions bar (single row)
@@ -1978,22 +2013,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   }
 
   function deactivateInspect() {
-    // Remove highlight classes from all elements
-    document
-      .querySelectorAll(
-        ".ph-inspect-highlight, .ph-inspect-highlight-hover, .ph-inspect-selected"
-      )
-      .forEach((domEl) => {
-        domEl.classList.remove(
-          "ph-inspect-highlight",
-          "ph-inspect-highlight-hover",
-          "ph-inspect-selected"
-        );
-      });
-    // Remove injected labels
-    for (const label of inspectLabels) {
-      label.remove();
-    }
+    clearInspectState();
     inspectLabels.length = 0;
     hoveredElement = null;
   }
@@ -2016,7 +2036,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   // just duplicates what the tree row hover already does.
 
   // ── Mousemove handler: hover highlight on page elements ──
-  document.addEventListener("mousemove", (event) => {
+  const handleInspectMouseMove = (event: MouseEvent) => {
     if (!inspectMode) return;
 
     const target = (event.target as HTMLElement).closest(
@@ -2035,56 +2055,68 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
         hoveredElement = null;
       }
     }
-  });
+  };
+  document.addEventListener("mousemove", handleInspectMouseMove);
 
   // ── Click handler (capture): select element in inspect mode ──
-  document.addEventListener(
-    "click",
-    (event) => {
-      if (!inspectMode) return;
+  const handleInspectClick = (event: MouseEvent) => {
+    if (!inspectMode) return;
 
-      // Let dev UI clicks through
-      const devRoot = document.getElementById("playhtml-dev-root");
-      if (devRoot && devRoot.contains(event.target as Node)) return;
+    // Let dev UI clicks through
+    const devRoot = document.getElementById("playhtml-dev-root");
+    if (devRoot && devRoot.contains(event.target as Node)) return;
 
-      const target = (event.target as HTMLElement).closest(
-        "[class*='__playhtml-']"
-      ) as HTMLElement | null;
+    const target = (event.target as HTMLElement).closest(
+      "[class*='__playhtml-']"
+    ) as HTMLElement | null;
 
-      if (target) {
-        event.preventDefault();
-        event.stopPropagation();
+    if (target) {
+      event.preventDefault();
+      event.stopPropagation();
 
-        // Remove previous selection
-        document
-          .querySelectorAll(".ph-inspect-selected")
-          .forEach((domEl) => domEl.classList.remove("ph-inspect-selected"));
+      // Remove previous selection
+      document
+        .querySelectorAll(".ph-inspect-selected")
+        .forEach((domEl) => domEl.classList.remove("ph-inspect-selected"));
 
-        // Apply selection
-        target.classList.add("ph-inspect-selected");
-        const elId = target.id;
-        selectedElementId = elId || null;
+      // Apply selection
+      target.classList.add("ph-inspect-selected");
+      const elId = target.id;
+      selectedElementId = elId || null;
 
-        // Log handler data
-        const info = elId ? lookupHandler(elId) : null;
-        if (info) {
-          console.log(
-            `[playhtml inspect] ${info.tagType} #${selectedElementId}`,
-            info.handler.data
-          );
-        }
-
-        // Auto-scroll tree
-        if (elId) {
-          scrollTreeToElement(elId);
-        }
+      // Log handler data
+      const info = elId ? lookupHandler(elId) : null;
+      if (info) {
+        console.log(
+          `[playhtml inspect] ${info.tagType} #${selectedElementId}`,
+          info.handler.data
+        );
       }
-    },
-    true
-  );
+
+      // Auto-scroll tree
+      if (elId) {
+        scrollTreeToElement(elId);
+      }
+    }
+  };
+  document.addEventListener("click", handleInspectClick, true);
+
+  activeInspectModeTeardown = () => {
+    inspectMode = false;
+    inspectBtn.classList.remove("ph-active");
+    document.removeEventListener("mousemove", handleInspectMouseMove);
+    document.removeEventListener("click", handleInspectClick, true);
+    deactivateInspect();
+  };
 }
 
 export function teardownDevUI(): void {
+  if (activeInspectModeTeardown) {
+    activeInspectModeTeardown();
+    activeInspectModeTeardown = null;
+  } else {
+    clearInspectState();
+  }
   // Restore patched console methods
   if (originalConsoleMethods) {
     console.log = originalConsoleMethods.log;

@@ -91,6 +91,14 @@
           <strong>Bottles</strong> — a message bottle places itself somewhere on
           this page (it's a real synced experiment — open it, read/add, seal).
         </li>
+        <li>
+          <strong>Emote wheel</strong> — press <code>Cmd/Ctrl+Shift+E</code> to
+          open a radial wheel of emotes at your cursor. Click one or press its
+          number key (<code>1</code>–<code>0</code>) to play it on your cursor;
+          it broadcasts to anyone else on this page. <code>Esc</code> closes the
+          wheel. Interaction emotes (heart, high five, nuzzle, poke) aim at the
+          nearest cursor.
+        </li>
       </ul>
 
       <h2>Message bottle (direct render — for photos)</h2>
@@ -108,7 +116,13 @@
         <label style="display: flex; align-items: center; gap: 6px; color: #5c554d">
           <input type="checkbox" id="bp-empty" /> empty prompt bottle
         </label>
+        <label style="display: flex; align-items: center; gap: 6px; color: #5c554d">
+          <input type="checkbox" id="bp-canreply" checked /> can reply
+        </label>
         <button id="bp-reset">reset bottle</button>
+        <button id="bp-seed" title="fill the bottle with a long thread of random-styled letters">
+          seed 12 letters
+        </button>
       </div>
       <div
         id="bottle-stage"

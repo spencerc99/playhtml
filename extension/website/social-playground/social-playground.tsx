@@ -1,5 +1,5 @@
-// ABOUTME: Live preview of the extension's social mechanics (inventory satchel + bottles) on the site.
-// ABOUTME: Runs the REAL initGlobalFeatures (imported from @extension) so this stays in sync with the extension.
+// ABOUTME: Live preview of the extension's social mechanics (inventory satchel + bottles + emotes) on the site.
+// ABOUTME: Runs the REAL initGlobalFeatures + initEmotes (imported from @extension) so this stays in sync with the extension.
 
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -9,8 +9,9 @@ import {
   initGlobalFeatures,
   anyGlobalFeatureActive,
 } from "@extension/features/global";
+import { initEmotes } from "@extension/features/emotes";
 import browser from "webextension-polyfill";
-import { SealingCeremony } from "@extension/components/sealing/SealingCeremony";
+import { FoldCeremony } from "@extension/components/sealing/FoldCeremony";
 import {
   MessageBottle,
   MESSAGE_BOTTLE_CSS,
@@ -26,15 +27,66 @@ if (!document.getElementById("message-bottle-css")) {
   styleEl.textContent = MESSAGE_BOTTLE_CSS;
   document.head.appendChild(styleEl);
 }
+// Match the fonts the extension injects into its shadow root so the letter
+// scroll reads the same on the site.
+if (!document.getElementById("message-bottle-fonts")) {
+  const fontLink = document.createElement("link");
+  fontLink.id = "message-bottle-fonts";
+  fontLink.rel = "stylesheet";
+  fontLink.href =
+    "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Caveat:wght@500;600&family=Lora:ital,wght@0,500;0,600;1,500&family=Martian+Mono:wght@400;600&display=swap";
+  document.head.appendChild(fontLink);
+}
 
 const PLAYER_COLORS = ["#4a9a8a", "#c4724e", "#5b8db8", "#d4b85c", "#8b6b7f"];
 function randomColor() {
   return PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)];
 }
 
+// Shared seed data for both the bottle preview's "seed" button and the
+// standalone ceremony tester, so both show the same realistic multi-letter
+// thread (varied styleId/authorColor/authorName) rather than one-off fixtures.
+const SEED_STYLE_IDS = ["linen", "stationery", "webnative"];
+const SEED_COLORS = ["#c4724e", "#4a9a8a", "#5b8db8", "#d4b85c", "#8b6b7f"];
+const SEED_LINES = [
+  "passing through, leaving a pebble on the pile.",
+  "found this while looking for something else entirely — staying a minute.",
+  "the wind is good today. keep going.",
+  "someone told me pages remember. testing that.",
+  "hello from a train, somewhere between two tunnels.",
+  "i read every letter above this one. you're all very kind.",
+  "left my coffee to write this. worth it.",
+  "the internet feels small and warm right here.",
+  "if you find this, the chain is still alive. add yours.",
+  "quiet week. this helped.",
+  "drawing a little sun in the margin for you.",
+  "we were online at the same time, probably.",
+];
+
+/** Build `n` random-styled previous letters (oldest first), covering all four
+ * pickable styles and the palette colors. */
+function buildSeededNotes(n: number): BottleNote[] {
+  return Array.from({ length: n }, (_, i) => {
+    const styleId = SEED_STYLE_IDS[Math.floor(Math.random() * SEED_STYLE_IDS.length)];
+    return {
+      text: SEED_LINES[i % SEED_LINES.length],
+      createdAt: Date.now() - (n - 1 - i) * 43200000,
+      createdBy: i === n - 1 ? "anon" : `other-${i}`,
+      authorColor: SEED_COLORS[Math.floor(Math.random() * SEED_COLORS.length)],
+      pageUrl: window.location.href,
+      pageTitle: document.title,
+      ...(styleId ? { styleId } : {}),
+      ...(Math.random() < 0.7 ? { authorName: `writer ${i + 1}` } : {}),
+    };
+  });
+}
+
 /**
  * Boot the live social stack exactly as the extension content script does:
- * a headless playhtml instance (cursors off) → initGlobalFeatures(deps).
+ * a playhtml instance → initGlobalFeatures(deps) for the satchel + bottles, and
+ * initEmotes(deps) for the emote wheel. Cursors are enabled here (unlike the
+ * extension's headless every-page path) so the emote wheel has a cursorClient
+ * and peer positions to render on — matching the extension's cursor-site path.
  * The dev override is forced on so flag-off experiments still run here.
  */
 async function bootSocial(): Promise<() => void> {
@@ -42,23 +94,40 @@ async function bootSocial(): Promise<() => void> {
   // run on the site even though their committed FLAGS are off.
   await browser.storage.local.set({ internalDevFeaturesEnabled: true });
 
-  if (!(await anyGlobalFeatureActive())) {
-    console.warn("[social-playground] no social experiment active");
-    return () => {};
+  await playhtml.init({
+    cursors: { enabled: true, coordinateMode: "absolute" },
+    room: "wwo-playground",
+  });
+
+  const cleanups: Array<() => void> = [];
+
+  // The emote wheel rides the cursor layer (Cmd/Ctrl+Shift+E). It only needs the
+  // cursorClient from playhtml.init above, so mount it first — it shouldn't wait
+  // on the satchel/bottles setup. In the extension it's wired into the
+  // cursor-site path for the same reason.
+  if (playhtml.cursorClient) {
+    cleanups.push(
+      initEmotes({
+        presence: playhtml.presence,
+        cursorClient: playhtml.cursorClient,
+      }),
+    );
   }
 
-  await playhtml.init({
-    cursors: { enabled: false },
-    room: () => `wwo-playground${window.location.pathname}`,
-  });
+  if (await anyGlobalFeatureActive()) {
+    cleanups.push(
+      await initGlobalFeatures({
+        createPageData: playhtml.createPageData,
+        presence: playhtml.presence,
+        playerColor: randomColor(),
+        playerPid: "playground-" + Math.random().toString(36).slice(2, 8),
+      }),
+    );
+  } else {
+    console.warn("[social-playground] no global social experiment active");
+  }
 
-  const cleanup = await initGlobalFeatures({
-    createPageData: playhtml.createPageData,
-    presence: playhtml.presence,
-    playerColor: randomColor(),
-    playerPid: "playground-" + Math.random().toString(36).slice(2, 8),
-  });
-  return cleanup;
+  return () => cleanups.forEach((c) => c());
 }
 
 /**
@@ -76,12 +145,14 @@ function BottlePreview() {
       authorColor: "#c4724e",
     },
   ]);
+  const [canReply, setCanReply] = useState(true);
   const [key, setKey] = useState(0); // remount to reset the bottle to its sealed state
 
   useEffect(() => {
     const colorEl = document.getElementById("bp-color") as HTMLInputElement | null;
     const textEl = document.getElementById("bp-text") as HTMLTextAreaElement | null;
     const emptyEl = document.getElementById("bp-empty") as HTMLInputElement | null;
+    const canReplyEl = document.getElementById("bp-canreply") as HTMLInputElement | null;
     const resetBtn = document.getElementById("bp-reset") as HTMLButtonElement | null;
     const sync = () => {
       const c = colorEl?.value || "#c4724e";
@@ -89,25 +160,46 @@ function BottlePreview() {
       if (emptyEl?.checked) {
         setNotes([]);
       } else {
-        setNotes([
-          {
-            text: textEl?.value || "",
-            createdAt: Date.now(),
-            createdBy: "anon",
-            authorColor: c,
-          },
-        ]);
+        // "---" on its own line splits the textarea into separate letters, so
+        // the multi-letter scroll (tick rail, snap, land-on-latest) is testable.
+        const styleIds = ["linen", "stationery", "webnative"];
+        const colors = ["#c4724e", "#4a9a8a", "#5b8db8", "#8b6b7f"];
+        const parts = (textEl?.value || "")
+          .split(/\n---\n/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+        setNotes(
+          (parts.length ? parts : [""]).map((text, i) => ({
+            text,
+            createdAt: Date.now() - (parts.length - 1 - i) * 86400000,
+            createdBy: i === parts.length - 1 ? "anon" : `other-${i}`,
+            authorColor: i === 0 ? c : colors[i % colors.length],
+            ...(i > 0 ? { styleId: styleIds[i % styleIds.length], authorName: `writer ${i + 1}` } : {}),
+          })),
+        );
       }
+      setCanReply(canReplyEl?.checked ?? true);
+      setKey((k) => k + 1);
+    };
+    // Seed a long thread of random-styled letters to preview the scroll at
+    // volume, covering all four pickable styles.
+    const seedBtn = document.getElementById("bp-seed") as HTMLButtonElement | null;
+    const seed = () => {
+      setNotes(buildSeededNotes(12));
       setKey((k) => k + 1);
     };
     colorEl?.addEventListener("input", sync);
     textEl?.addEventListener("input", sync);
     emptyEl?.addEventListener("change", sync);
+    canReplyEl?.addEventListener("change", sync);
     resetBtn?.addEventListener("click", () => setKey((k) => k + 1));
+    seedBtn?.addEventListener("click", seed);
     return () => {
       colorEl?.removeEventListener("input", sync);
       textEl?.removeEventListener("input", sync);
       emptyEl?.removeEventListener("change", sync);
+      canReplyEl?.removeEventListener("change", sync);
+      seedBtn?.removeEventListener("click", seed);
     };
   }, []);
 
@@ -116,8 +208,9 @@ function BottlePreview() {
       key={key}
       notes={notes}
       authorColor={color}
+      canReply={canReply}
       pageBg="#faf7f2"
-      onSeal={() => {}}
+      onSeal={(_text, _meta) => {}}
     />
   );
 }
@@ -130,6 +223,10 @@ function CeremonyTester() {
   const [color, setColor] = useState("#c4724e");
   const [slot, setSlot] = useState({ x: 0, y: 0 });
   const draggingRef = useRef(false);
+  // A fixed seeded thread of previous letters (oldest first) so "play ceremony"
+  // folds the same realistic multi-letter stack the real bottle does, not just
+  // one lone sheet. Built once per mount — the new note (below) is the face.
+  const [prevNotes] = useState<BottleNote[]>(() => buildSeededNotes(4));
 
   useEffect(() => {
     const el = document.getElementById("slot");
@@ -190,11 +287,19 @@ function CeremonyTester() {
 
   if (!playing) return null;
   return (
-    <SealingCeremony
+    <FoldCeremony
       text={text}
       authorColor={color}
       slotX={slot.x}
       slotY={slot.y}
+      notes={prevNotes}
+      newNote={{
+        text,
+        createdAt: Date.now(),
+        createdBy: "",
+        authorColor: color,
+        authorName: "you",
+      }}
       onComplete={() => setPlaying(false)}
     />
   );
@@ -215,7 +320,7 @@ bootSocial()
   .then(() => {
     if (statusEl)
       statusEl.textContent =
-        "live — satchel bottom-right; synced bottles place on this page";
+        "live — satchel bottom-right; synced bottles on this page; emote wheel on Cmd/Ctrl+Shift+E";
   })
   .catch((err) => {
     console.error("[social-playground] live boot failed:", err);

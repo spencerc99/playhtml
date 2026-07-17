@@ -26,11 +26,11 @@ import {
   subscribeSavedConfigs,
   type SavedConfig,
 } from "../utils/savedConfigs";
-import { DEFAULT_SETTINGS } from "./settingsDefaults";
 
 interface ControlsProps {
   visible: boolean;
   settings: any;
+  settingsDefaults: Record<string, unknown>;
   setSettings: React.Dispatch<React.SetStateAction<any>>;
   loading: boolean;
   error: string | null;
@@ -76,9 +76,15 @@ const WINDOW_LENGTH_OPTIONS: Array<{ label: string; ms: number }> = [
  * `CollapsibleSection` and `PathFilterInput`). */
 const ShareConfigSection: React.FC<{
   settings: Record<string, unknown>;
+  settingsDefaults: Record<string, unknown>;
   activeVisualizations: string[];
   selectedTimeRange: { startMs: number; endMs: number } | null;
-}> = ({ settings, activeVisualizations, selectedTimeRange }) => {
+}> = ({
+  settings,
+  settingsDefaults,
+  activeVisualizations,
+  selectedTimeRange,
+}) => {
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "ok" | "err">(
     "idle",
   );
@@ -91,6 +97,7 @@ const ShareConfigSection: React.FC<{
   const buildCurrentUrl = () =>
     buildShareUrl({
       settings,
+      settingsDefaults,
       activeVisualizations,
       selectedTimeRange,
       // Preserve whichever clean tier the page is currently in (set via
@@ -136,7 +143,7 @@ const ShareConfigSection: React.FC<{
       trailStyle: settings.trailStyle as string | undefined,
       trailStyleIsDefault:
         (settings.trailStyle as string | undefined) ===
-        DEFAULT_SETTINGS.trailStyle,
+        settingsDefaults.trailStyle,
       selectedTimeRange,
     });
     const name = title || autoName;
@@ -701,6 +708,7 @@ export const Controls: React.FC<ControlsProps> = memo(
   ({
     visible,
     settings,
+    settingsDefaults,
     setSettings,
     loading,
     error,
@@ -715,6 +723,13 @@ export const Controls: React.FC<ControlsProps> = memo(
     selectedTimeRange,
     onSelectTimeRange,
   }) => {
+    const clickSettingsDefaults = useMemo(
+      () =>
+        Object.fromEntries(
+          Object.keys(CLICK_DEFAULTS).map((key) => [key, settingsDefaults[key]]),
+        ),
+      [settingsDefaults],
+    );
     // Membership check for viz-specific Controls sections. Each viz-tagged
     // section (Cursor / Click / Keyboard / Scroll / Navigation Settings)
     // only renders when its viz id is in the active list — surfaces stay
@@ -824,9 +839,32 @@ export const Controls: React.FC<ControlsProps> = memo(
       >
         <ShareConfigSection
           settings={settings}
+          settingsDefaults={settingsDefaults}
           activeVisualizations={activeVisualizations}
           selectedTimeRange={selectedTimeRange ?? null}
         />
+
+        {/* Visual Style (color vs monochrome) — top-level since it drives the
+            cursors AND the window/typing visualizations, not just trails. */}
+        <div className="control-group" style={{ marginBottom: "12px" }}>
+          <label htmlFor="trail-visual-style">Visual Style</label>
+          <select
+            id="trail-visual-style"
+            value={settings.trailVisualStyle ?? "color"}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                trailVisualStyle: e.target.value,
+              }))
+            }
+          >
+            {TRAIL_RENDERERS.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Randomize Colors at the very top */}
         <div className="control-group" style={{ marginBottom: "12px" }}>
@@ -1042,23 +1080,6 @@ export const Controls: React.FC<ControlsProps> = memo(
           expanded={!!expandedSections["cursorSettings"]}
           onToggle={() => toggleSection("cursorSettings")}
         >
-          <div className="control-group">
-            <label htmlFor="trail-visual-style">Visual Style</label>
-            <select
-              id="trail-visual-style"
-              value={settings.trailVisualStyle ?? "color"}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  trailVisualStyle: e.target.value,
-                }))
-              }
-            >
-              {TRAIL_RENDERERS.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </div>
           {/* Appearance settings */}
           <div className="control-group">
             <label htmlFor="trail-opacity">Trail Opacity</label>
@@ -1255,7 +1276,7 @@ export const Controls: React.FC<ControlsProps> = memo(
             <button
               type="button"
               onClick={() =>
-                setSettings((s: any) => ({ ...s, ...CLICK_DEFAULTS }))
+                setSettings((s: any) => ({ ...s, ...clickSettingsDefaults }))
               }
               style={{
                 fontSize: "11px",
@@ -1572,7 +1593,7 @@ export const Controls: React.FC<ControlsProps> = memo(
               id="keyboard-max-concurrent"
               type="range"
               min="1"
-              max="40"
+              max="50"
               step="1"
               value={settings.maxConcurrentTyping}
               onChange={(e) =>
@@ -1624,12 +1645,31 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label htmlFor="keyboard-max-aspect">Max Tallness</label>
+            <input
+              id="keyboard-max-aspect"
+              type="range"
+              min="1.2"
+              max="5"
+              step="0.1"
+              value={settings.keyboardMaxAspect ?? 2.2}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  keyboardMaxAspect: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{(settings.keyboardMaxAspect ?? 2.2).toFixed(1)}×</span>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="textbox-opacity">Textbox Opacity</label>
             <input
               id="textbox-opacity"
               type="range"
-              min="0.05"
-              max="0.5"
+              min="0.5"
+              max="1"
               step="0.05"
               value={settings.textboxOpacity}
               onChange={(e) =>

@@ -1,5 +1,5 @@
 // ABOUTME: Shadow-DOM React root that positions and renders bottles for the extension.
-// ABOUTME: Re-resolves anchor positions on scroll/resize; forwards seal events to the manager.
+// ABOUTME: Tracks each bottle's page anchor across scroll/resize; forwards seal events to the manager.
 
 import { useEffect, useRef, useState } from "react";
 import { MessageBottle } from "./MessageBottle";
@@ -9,11 +9,17 @@ import type { RenderedBottle } from "../features/BottleManager";
 
 interface BottleOverlayProps {
   bottles: RenderedBottle[];
-  onSeal: (bottleId: string, text: string, anchor: BottleAnchor) => void;
+  onSeal: (
+    bottleId: string,
+    text: string,
+    anchor: BottleAnchor,
+    meta: { authorName?: string; styleId?: string },
+  ) => void;
   onOpened: (bottleId: string) => void;
   onClosed: (bottleId: string) => void;
-  /** A bottle's anchor stopped resolving (layout shift) — lets the manager
-   *  re-place a cached empty bottle rather than letting it silently vanish. */
+  /** A bottle's anchor element is genuinely gone from the DOM (not merely
+   *  scrolled off-screen) — lets the manager re-place a cached empty bottle
+   *  rather than letting it silently vanish. */
   onAnchorLost: (bottleId: string) => void;
   /** Shadow root used as the portal target for the open dialog. */
   portalContainer: Element | null;
@@ -77,6 +83,11 @@ export function BottleOverlay({
     };
   }, []);
 
+  // Each bottle is pinned to a page spot (its anchor), so its viewport
+  // position is recomputed every tick to follow that spot as the page
+  // scrolls — this is the bottle "staying put on the page," not a re-pick.
+  // resolveBottlePosition only returns null when the anchor element itself
+  // is gone (not merely off-screen), so scrolling never drops a bottle here.
   const resolved: ResolvedBottleSlot[] = [];
   const lost: string[] = [];
   for (const b of bottles) {
@@ -88,8 +99,9 @@ export function BottleOverlay({
     resolved.push({ ...b, x: pos.x, y: pos.y, rotate: pos.rotate });
   }
 
-  // Notify the manager of bottles whose anchor no longer resolves (after the
-  // commit, not during render) so it can re-place a cached empty bottle.
+  // Notify the manager of bottles whose anchor element was actually removed
+  // from the DOM (after the commit, not during render) so it can re-place a
+  // cached empty bottle.
   const lostKey = lost.join(",");
   useEffect(() => {
     for (const id of lost) onAnchorLost(id);
@@ -120,7 +132,8 @@ export function BottleOverlay({
           <MessageBottle
             notes={slot.isEmpty ? [] : slot.notes ?? []}
             authorColor={slot.authorColor}
-            onSeal={(text) => onSeal(slot.id, text, slot.anchor)}
+            canReply={slot.canReply}
+            onSeal={(text, meta) => onSeal(slot.id, text, slot.anchor, meta)}
             onOpened={() => onOpened(slot.id)}
             onClosed={() => onClosed(slot.id)}
             rotateDeg={slot.rotate}

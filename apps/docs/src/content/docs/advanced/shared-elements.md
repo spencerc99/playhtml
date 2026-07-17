@@ -72,7 +72,11 @@ Best practice: keep consumer-only capabilities orthogonal to the shared data sha
 #### React usage
 
 ```tsx
-import { CanMoveElement, CanToggleElement } from "@playhtml/react";
+import {
+  CanMoveElement,
+  CanToggleElement,
+  withSharedState,
+} from "@playhtml/react";
 
 // Source
 <CanMoveElement id="couch" shared>
@@ -89,12 +93,14 @@ import { CanMoveElement, CanToggleElement } from "@playhtml/react";
   <div>🔒</div>
 </CanToggleElement>
 
-// Use with `withSharedState`
+// Read shared state with `withSharedState`
 export const Status = withSharedState(
-  { defaultData: { on: false }, dataSource: "thissite.com#status" },
-  ({ data, setData }, props: Props) => {
-    return <div>{data.on ? "🔒" : "🔓"}</div>;
-  }
+  {
+    defaultData: { on: false },
+    dataSource: "thissite.com#status",
+    dataSourceReadOnly: true,
+  },
+  ({ data }) => <div>{data.on ? "🔒" : "🔓"}</div>,
 );
 ```
 

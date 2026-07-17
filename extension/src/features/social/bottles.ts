@@ -44,6 +44,8 @@ export const bottlesExperiment: SocialExperiment = {
         hostStyle:
           "position:fixed;inset:0;pointer-events:none;z-index:2147483645;",
         css: MESSAGE_BOTTLE_CSS,
+        fontUrl:
+          "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Caveat:wght@500;600&family=Lora:ital,wght@0,500;0,600;1,500&family=Martian+Mono:wght@400;600&display=swap",
       },
     );
 
@@ -58,8 +60,13 @@ export const bottlesExperiment: SocialExperiment = {
     manager.init((req: BottleRenderRequest) => {
       ui.render({
         bottles: req.bottles,
-        onSeal: (id: string, text: string, anchor: BottleAnchor) => {
-          if (manager.seal(text, { id, anchor })) {
+        onSeal: (
+          id: string,
+          text: string,
+          anchor: BottleAnchor,
+          meta: { authorName?: string; styleId?: string },
+        ) => {
+          if (manager.seal(text, { id, anchor }, meta)) {
             dropped.delete(id);
           } else {
             dropped.add(id);

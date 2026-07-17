@@ -1,5 +1,58 @@
 # Change Log
 
+## 2.13.1
+
+### Patch Changes
+
+- 77bb3cc: Fix element awareness (`updateElementAwareness` / `setMyAwareness`) not syncing updates to other clients. The awareness write mutated the current local state object in place, which defeated the y-protocols deep-equality check that decides whether to emit the `change` event — so after the initial value, subsequent updates were applied locally but never broadcast. Element awareness now writes a fresh state object on each update so peers receive every change.
+
+## 2.13.0
+
+### Minor Changes
+
+- ca1ebee: Add `playhtml.configure(options)` to declare init options separately from connecting, and make config first-declaration-wins uniformly across all options.
+
+  Previously `init(options)` both declared config and connected, first-call-wins — so on a page with no single top-level init (Astro islands, multi-page apps, multiple React roots), an option-less `init()` from one place could win the race and silently drop the config another place intended (e.g. cursors never turning on). Now you can call `configure({ cursors: { enabled: true }, ... })` once, up front, from wherever owns the config; later `init()` / component mounts just ensure playhtml is running and pick up the declared config regardless of order. `init(options)` still works exactly as before when you only have one call site. A later call that passes genuinely conflicting options warns and is ignored (config is locked to the first declaration); passing the same options again, or none, is quiet.
+
+### Patch Changes
+
+- f8bc35d: Keep can-grow hover handling from adding duplicate leave and keyboard listeners during repeated hover events.
+- e76abb7: Keep PlayHTML-managed local DOM state out of `can-mirror` persistence, including inspector highlights, devtools labels, loading markers, and hover/focus attributes, so mirrored elements can still be inspected and reset without saving tool UI state.
+- b3568ab: Keep element awareness scoped to the page room, preserve existing local awareness when handlers bind, and clear element awareness snapshots when peers leave so callbacks and views stop seeing stale ephemeral user state. Keep the React package test harness aligned with the configured initialization path.
+- 44e599d: Make `can-move-bounds` clamp the full element inside its bounds by default, account for the element's starting position within the bounds container, normalize persisted out-of-bounds positions on mount, and keep fast edge drags pinned while synced position updates catch up. Explicit `min-visible` settings can still allow partial overhang when that behavior is wanted.
+- Updated dependencies [f8bc35d]
+- Updated dependencies [e76abb7]
+- Updated dependencies [44e599d]
+  - @playhtml/common@0.8.1
+
+## 2.12.0
+
+### Minor Changes
+
+- b56ebd7: Add a reactive `view` API for vanilla `can-play` (RFC #95). Custom capabilities can now render declaratively from state instead of hand-mutating the DOM.
+
+  **This API (`register` / `define` / `view` and the element handle) is experimental** — purely additive (the imperative `can-play`/`updateElement` path and `@playhtml/react` are unchanged), but the surface may change in a future minor based on feedback ([#95](https://github.com/spencerc99/playhtml/issues/95)).
+  - **`view`** — a new optional field on the capability definition. It's a pure function from state to a [lit-html](https://lit.dev/docs/libraries/standalone-templates/) template that playhtml patches into the element on every data/localData/awareness change. Mutually exclusive with `updateElement` (and with element-level `onClick`/`onDrag`, which move into the template as `@click` etc.).
+  - **`playhtml.register(elementId, init)`** — binds a `view`/`updateElement` initializer to a single element by id and returns a handle (`getElement`, `getData`, `setData`, `setLocalData`, `setMyAwareness`, `requestUpdate`, `unregister`) for reads/writes from outside the view. Callable before or after `init()` and before or after the element exists.
+  - **`playhtml.define(tagName, init)`** — registers a reusable capability under an attribute name; every element carrying it binds, including ones rendered later by a view. The imperative counterpart of `init({ extraCapabilities })`.
+  - **`playhtml.getHandle(elementId, capability?)`** — returns a handle for any bound element; pass the capability name to disambiguate when one element has several.
+  - **`requestUpdate()`** (handle + event/`onMount` context) re-runs a view without a data change, for clock-driven views (timers, relative-time labels). No-op for non-view elements.
+  - **`setLocalData`** now accepts a mutator function and, in view mode, re-renders — so per-user UI state lives in `localData`.
+  - **Composition** — a view can render mount points for other capabilities (e.g. a chat list rendering one `<div can-chat>` per room). They bind as they appear and tear down when removed from a keyed list (running `onMount` cleanup, preserving shared data), so churning lists don't leak handlers.
+  - **`onMount`** may return a cleanup function, run on removal/`unregister()`, so rAF loops, timers, and listeners don't leak.
+  - `html`, `svg`, `nothing`, `repeat`, `classMap`, and `styleMap` are re-exported from `playhtml` (lit-html ships in core; `unsafeHTML` is intentionally not re-exported so interpolated values stay auto-escaped).
+
+  Guardrails: `setData`/`setLocalData`/`setMyAwareness` called synchronously during a render are rejected (re-render-loop protection); a `setData` mutator that returns an object warns in development. Existing `updateElement`-based capabilities are unaffected — `view` is purely additive.
+
+### Patch Changes
+
+- 081cc95: Improve can-play setup errors so invalid element initializers report which required properties are missing or invalid.
+- d0a0bbc: Refresh the development-mode data viewer when element data changes so the open Data tab stays in sync while debugging.
+- c42588c: Fix presence subscriptions so they continue receiving awareness updates after the underlying provider is rebuilt.
+- fb2b6d5: Fix `setupPlayElement(..., { ignoreIfAlreadySetup: true })` so it actually skips elements that are already registered.
+- Updated dependencies [b56ebd7]
+  - @playhtml/common@0.8.0
+
 ## 2.11.3
 
 ### Patch Changes

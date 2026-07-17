@@ -5,9 +5,8 @@ import { ElementInitializer } from "@playhtml/common";
 import words from "profane-words";
 import "./home.scss";
 // NOTE: this pins it to the working code so we can test library changes through this home page.
-import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { PlayProvider, useCursorPresences } from "@playhtml/react";
+import { PlayProvider } from "@playhtml/react";
 import FeaturesGrid from "./components/FeaturesGrid";
 import ExperimentsArchive from "./components/ExperimentsArchive";
 import {
@@ -27,6 +26,11 @@ const GuestbookSubmissionLimit = {
   storageKey: "playhtml:guestbook-submission-timestamps",
 };
 const GuestbookNameStorageKey = "name";
+type HomepageAwareness = { online: true };
+type HomepageAwarenessElement = HTMLElement &
+  Partial<
+    ElementInitializer<Record<string, never>, undefined, HomepageAwareness>
+  >;
 
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
@@ -72,23 +76,42 @@ function setupGuestbookNameInput() {
 
 setupGuestbookNameInput();
 
-function HomepageConsoleStatus() {
-  const cursorPresences = useCursorPresences();
-  const peopleCount = Math.max(cursorPresences.size, 1);
+function setupHomepageAwarenessStatus() {
+  const statusElement = document.getElementById(
+    "site-console-count",
+  ) as HomepageAwarenessElement | null;
+  const countElement = document.getElementById("site-console-count-number");
+  const countLabel = document.querySelector(".site-console__status-label");
+  if (!statusElement || !countElement || !countLabel) return;
 
-  useEffect(() => {
-    const countElement = document.getElementById("site-console-count-number");
-    const countLabel = document.querySelector(".site-console__status-label");
-    if (!countElement || !countLabel) return;
+  statusElement.defaultData = {};
+  statusElement.myDefaultAwareness = { online: true };
+  statusElement.updateElement = () => {};
+  statusElement.updateElementAwareness = ({ awareness }) => {
+    const peopleCount = Math.max(awareness.length, 1);
 
     if (countElement.textContent === String(peopleCount)) return;
 
     countElement.textContent = String(peopleCount);
     countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
-  }, [peopleCount]);
-
-  return null;
+  };
 }
+
+function getLocalPreviewInitOptions() {
+  const localHostnames = new Set(["localhost", "127.0.0.1"]);
+  if (!localHostnames.has(window.location.hostname)) return {};
+
+  const params = new URLSearchParams(window.location.search);
+  const host = params.get("playhtmlHost");
+  const room = params.get("playhtmlRoom");
+
+  return {
+    ...(host ? { host } : {}),
+    ...(room ? { room } : {}),
+  };
+}
+
+setupHomepageAwarenessStatus();
 
 // Render React components
 const reactContentElement = document.getElementById("reactContent");
@@ -97,6 +120,7 @@ if (reactContentElement) {
   root.render(
     <PlayProvider
       initOptions={{
+        ...getLocalPreviewInitOptions(),
         cursors: {
           enableChat: true,
           enabled: true,
@@ -289,7 +313,6 @@ if (reactContentElement) {
         },
       }}
     >
-      <HomepageConsoleStatus />
       <FeaturesGrid />
       <ExperimentsArchive />
     </PlayProvider>

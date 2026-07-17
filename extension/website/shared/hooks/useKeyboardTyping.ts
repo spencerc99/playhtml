@@ -34,6 +34,9 @@ export interface KeyboardTypingSettings {
    * page-sized containers (e.g. a full Google Docs body) get clamped so
    * they don't swallow the canvas. 1.0 = no clamping (raw captured size). */
   keyboardSizeCap: number;
+  /** Max height:width ratio. Boxes taller than this get widened so a narrow
+   * input full of text doesn't render as a super-narrow column. */
+  keyboardMaxAspect: number;
 }
 
 // Keyboard schedule item for animation timing
@@ -429,33 +432,88 @@ export function useKeyboardTyping(
         height = Math.max(40, baseHeight + heightVariation);
       }
 
-      // Positional variation - offset from base x/y to reduce overlap
-      // Use exponential scaling so high values spread across entire viewport
-      const scaledRandomness = Math.pow(settings.keyboardPositionRandomness, 2);
-      const maxOffsetX = viewportSize.width / 2;
-      const maxOffsetY = viewportSize.height / 2;
-      const rawOffsetX =
-        (seededRandom(4) - 0.5) * maxOffsetX * 2 * scaledRandomness;
-      const rawOffsetY =
-        (seededRandom(5) - 0.5) * maxOffsetY * 2 * scaledRandomness;
+      // Avoid ugly super-narrow vertical columns. The visible height of a box
+      // is driven by its CONTENT (text wraps and the box grows via min-height +
+      // pre-wrap at render), not the captured/computed `height`. So estimate
+      // how tall the text will actually render at this width, and if that
+      // exceeds keyboardMaxAspect × width, WIDEN the box (re-flowing the text
+      // shorter) instead of letting it become a narrow column. Capped by the
+      // size cap so widening can't blow past the viewport budget.
+      const maxAspect = Math.max(1, settings.keyboardMaxAspect);
+      const maxBoxWidth =
+        settings.keyboardSizeCap < 1
+          ? Math.max(200, viewportSize.width * settings.keyboardSizeCap)
+          : viewportSize.width;
+      const estContentHeight = (w: number) => {
+        const avgCharWidth = fontSize * 0.6;
+        const usableW = Math.max(1, w - 24); // padding + border
+        const charsPerLine = Math.max(1, Math.floor(usableW / avgCharWidth));
+        const lines = Math.max(lineCount, Math.ceil(charCount / charsPerLine));
+        return lines * fontSize * 1.5 + 16; // line-height + vertical padding
+      };
+      if (estContentHeight(width) > width * maxAspect) {
+        // Solve for the width where content height ≈ width × maxAspect by
+        // widening in steps (cheap, deterministic) until the ratio is met or
+        // we hit the width cap.
+        let w = width;
+        for (let k = 0; k < 12 && w < maxBoxWidth; k++) {
+          if (estContentHeight(w) <= w * maxAspect) break;
+          w = Math.min(maxBoxWidth, w * 1.35);
+        }
+        width = w;
+      }
+      // Size the box to fit its content so it doesn't overflow/grow unexpectedly
+      // at render. Keep at least the captured/computed height (small inputs stay
+      // small) but never less than what the text needs at the final width.
+      height = Math.max(height, estContentHeight(width));
+      // Final guard: if the box is width-capped and STILL too tall for the
+      // aspect (a huge-text input that couldn't widen enough), cap the height
+      // to the ratio. The extra text clips/scrolls (the box has overflow:auto)
+      // rather than rendering as a tall narrow column.
+      height = Math.min(height, width * maxAspect);
 
-      // Clamp to keep within viewport bounds (with textbox size margin)
-      const PADDING_H = 20 + 4; // Padding + border
+      // Position = LERP from the input's captured location toward a fully
+      // random spot, weighted by keyboardPositionRandomness:
+      //   0   → exactly where the input was on its page
+      //   1   → fully random anywhere on the canvas (source position ignored)
+      //   0.5 → halfway between
+      // This replaces the old "source + bounded jitter" which stayed anchored
+      // to the source (so top-of-page inputs like search/nav bars all clumped
+      // along the top even at full randomness).
+      const randomness = Math.max(0, Math.min(1, settings.keyboardPositionRandomness));
+      const randTargetX = seededRandom(4) * viewportSize.width;
+      const randTargetY = seededRandom(5) * viewportSize.height;
+      const desiredX = anim.x + (randTargetX - anim.x) * randomness;
+      const desiredY = anim.y + (randTargetY - anim.y) * randomness;
+
+      // Clamp the FINAL center position so the whole box stays on-screen. The
+      // box is center-anchored (translate(-50%,-50%) in the renderer), so its
+      // center must sit at least half-box from each edge. When the box is
+      // larger than the viewport, the min/max invert — fall back to centering
+      // it rather than producing a garbage off-screen coordinate.
+      const PADDING_H = 20 + 4; // padding + border
       const PADDING_V = 16 + 4;
-      const totalWidth = width + PADDING_H;
-      const totalHeight = height + PADDING_V;
+      const halfWidth = (width + PADDING_H) / 2;
+      const halfHeight = (height + PADDING_V) / 2;
 
-      const halfWidth = totalWidth / 2;
-      const halfHeight = totalHeight / 2;
+      const clampCenter = (
+        desired: number,
+        half: number,
+        viewport: number,
+      ): number => {
+        const lo = half;
+        const hi = viewport - half;
+        if (lo > hi) return viewport / 2; // box wider/taller than viewport
+        return Math.max(lo, Math.min(hi, desired));
+      };
 
-      // Ensure textbox stays fully within viewport
-      const clampMinX = -anim.x + halfWidth;
-      const clampMaxX = viewportSize.width - anim.x - halfWidth;
-      const clampMinY = -anim.y + halfHeight;
-      const clampMaxY = viewportSize.height - anim.y - halfHeight;
+      const finalX = clampCenter(desiredX, halfWidth, viewportSize.width);
+      const finalY = clampCenter(desiredY, halfHeight, viewportSize.height);
 
-      const offsetX = Math.max(clampMinX, Math.min(clampMaxX, rawOffsetX));
-      const offsetY = Math.max(clampMinY, Math.min(clampMaxY, rawOffsetY));
+      // The renderer positions the box at anim.x/y + positionOffset, so the
+      // offset is the delta from the source position to the clamped final one.
+      const offsetX = finalX - anim.x;
+      const offsetY = finalY - anim.y;
 
       return {
         animation: anim,
@@ -476,6 +534,7 @@ export function useKeyboardTyping(
     settings.keyboardMaxFontSize,
     settings.keyboardPositionRandomness,
     settings.keyboardSizeCap,
+    settings.keyboardMaxAspect,
     viewportSize.width,
     viewportSize.height,
   ]);

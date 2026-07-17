@@ -31,6 +31,7 @@ import { useViewportScroll } from "../hooks/useViewportScroll";
 import { usePageMetaFallback } from "../hooks/usePageMetaFallback";
 import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
+import { useFollowerCoordination } from "../hooks/useFollowerCoordination";
 import {
   extractDomain,
   formatFilterChip,
@@ -43,9 +44,16 @@ import {
   parseSettingsFromUrl,
   parseTimeRangeFromUrl,
   parseCleanFromUrl,
+  parseCinematicFromUrl,
+  parseTimeOfDayFromUrl,
+  type TimeOfDayFilter,
 } from "../config";
 import type { DayCounts } from "../types";
 import { DEFAULT_SETTINGS } from "./settingsDefaults";
+import {
+  DEFAULT_CINEMATIC_CONFIG,
+  type CinematicConfig,
+} from "../utils/cinematicCamera";
 
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
@@ -315,8 +323,10 @@ function playShutterSound() {
 // only persist when the user explicitly modifies a control.
 const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
 
-const loadSettings = () => {
-  const defaults = DEFAULT_SETTINGS;
+type MovementSettings = typeof DEFAULT_SETTINGS;
+
+const loadSettings = (defaultSettings: Partial<MovementSettings> = {}) => {
+  const defaults = { ...DEFAULT_SETTINGS, ...defaultSettings };
   const urlOverrides = parseSettingsFromUrl();
 
   try {
@@ -350,6 +360,12 @@ interface MovementCanvasProps {
   dayCounts?: DayCounts;
   selectedDay?: string | null;
   onSelectDay?: (day: string | null) => void;
+  /** Recurring time-of-day filter, owned by the parent so it can drive the
+   * fetch (the archive must fetch the local-midnight window, which a
+   * client-only filter can't request). When omitted, MovementCanvas keeps its
+   * own URL-seeded local state (used by the live page, which has no day fetch). */
+  timeOfDay?: TimeOfDayFilter | null;
+  onSetTimeOfDay?: (tod: TimeOfDayFilter | null) => void;
   /** URL-scope filter chips owned by the parent. Two-way mirrored with
    * `settings.filters` so the parent can decide whether the worker fetch
    * pre-filters by domain. Empty array = no filter. */
@@ -360,9 +376,16 @@ interface MovementCanvasProps {
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
+  /** Route-specific defaults applied before stored settings and URL overrides. */
+  defaultSettings?: Partial<MovementSettings>;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
+  /** Multi-screen installation clock. When provided and it returns a non-null
+   * number, that value is used as the scaled-elapsed for the frame — every
+   * window computes the same time from a shared wall-clock epoch. Optional so
+   * pages that don't run the installation are completely unaffected. */
+  getInstallationElapsedMs?: (animationSpeed: number) => number | null;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -373,22 +396,64 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   dayCounts,
   selectedDay = null,
   onSelectDay,
+  timeOfDay: timeOfDayProp,
+  onSetTimeOfDay,
   filters: filtersProp,
   onSetFilters,
   activeVisualizations,
   onSetActiveVisualizations,
   defaultSoundEnabled = false,
+  defaultSettings,
   live = false,
   connected = false,
+  getInstallationElapsedMs,
 }) => {
-  const [settings, setSettings] = useState(loadSettings());
+  const settingsDefaults = useMemo(
+    () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
+    [defaultSettings],
+  );
+  const [settings, setSettings] = useState(() => loadSettings(defaultSettings));
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
+    parseCinematicFromUrl(),
+  );
+  // Bumped by the N key to ask the cinematic camera to swap subjects now.
+  const [cinematicNextSignal, setCinematicNextSignal] = useState(0);
+
+  // Multi-screen coordination: when this window is a follower, `pickSubject`
+  // filters out cursors other followers are riding so no two screens follow the
+  // same cursor. Inert (identity-stable lowest-progress selector, no channel)
+  // for every other window. Injected into the cinematic config below.
+  const { isFollower, pickSubject } = useFollowerCoordination();
+
+  // Merge the coordination selector into the cinematic config in FOLLOW mode
+  // only. The camera gives `forcedSubjectIndex` (the `?follow=N` escape hatch)
+  // precedence over `pickSubject`, so this stays inert when a cursor is pinned.
+  // Memoized on the stable `cinematic`/`pickSubject` identities so the camera's
+  // setConfig isn't called every render (which would restart the follow state).
+  const cinematicConfig = useMemo<CinematicConfig | null>(() => {
+    if (!cinematic) return null;
+    if (!isFollower || cinematic.mode !== "follow") return cinematic;
+    return { ...cinematic, pickSubject };
+  }, [cinematic, isFollower, pickSubject]);
+
   /** When set, only events whose timestamp falls in [start, end) are passed
    * downstream to the visualization hooks. Used by the Hotspots dev tool to
    * scope the canvas to a specific span for capturing artifacts. */
   const [selectedTimeRange, setSelectedTimeRange] = useState<
     { startMs: number; endMs: number } | null
   >(() => parseTimeRangeFromUrl() ?? null);
+  // Recurring time-of-day window (minutes from local midnight), e.g. the
+  // "midnight moment" — within 15 min of 00:00 across every day in the data.
+  // Parent-owned when `timeOfDayProp`/`onSetTimeOfDay` are provided (archive,
+  // so the filter can also drive the fetch); otherwise local URL-seeded state
+  // (live page, which has no day fetch to coordinate with).
+  const [localTimeOfDay, setLocalTimeOfDay] = useState<TimeOfDayFilter | null>(
+    () => parseTimeOfDayFromUrl() ?? null,
+  );
+  const timeOfDay =
+    timeOfDayProp !== undefined ? timeOfDayProp : localTimeOfDay;
+  const setTimeOfDay = onSetTimeOfDay ?? setLocalTimeOfDay;
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [dayPlaybackMode, setDayPlaybackMode] = useState<"cycle" | "loop">(
@@ -425,6 +490,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   ) as 0 | 1 | 2;
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
   const printMode = cleanLevel >= 2; // level 2: also hides metadata pill + DaySelector
+
+  // Mark the document so page-level chrome (the "we were online" wordmark
+  // rendered outside this component) can hide itself for a fully bare capture.
+  // Hidden whenever cinematic mode is on OR clean=2 (print) is requested.
+  // Cleared when neither applies / on unmount.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const bare = !!cinematic || printMode;
+    document.body.classList.toggle("hide-wordmark", bare);
+    return () => document.body.classList.remove("hide-wordmark");
+  }, [cinematic, printMode]);
 
   // Sync filter chip list from prop (parent controls refetching). The
   // parent only re-fetches the events array when the worker-side domain
@@ -574,6 +650,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       try {
         const next = buildShareUrl({
           settings,
+          settingsDefaults,
           activeVisualizations,
           selectedTimeRange,
           clean: parseCleanFromUrl(),
@@ -589,7 +666,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       }
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [settings, activeVisualizations, selectedTimeRange]);
+  }, [settings, settingsDefaults, activeVisualizations, selectedTimeRange]);
 
   // Keyboard shortcuts:
   //   double-tap D — toggle controls panel
@@ -623,6 +700,44 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         return;
       }
 
+      // Shift+C → toggle cinematic (cursor-follow) mode.
+      if (e.shiftKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        setCinematic((prev) =>
+          prev ? null : parseCinematicFromUrl() ?? DEFAULT_CINEMATIC_CONFIG,
+        );
+        return;
+      }
+
+      // N → swap the cinematic camera to a new cursor immediately.
+      if (e.key === "n" || e.key === "N") {
+        setCinematicNextSignal((n) => n + 1);
+        return;
+      }
+
+      // Mode switches (stubs for hand-choreographing later).
+      // 3 = cursor-follow (only one implemented). 1 = wide, 2 = activity.
+      if (e.key === "1" || e.key === "2") {
+        console.info(`[cinematic] mode ${e.key} not yet implemented`);
+        return;
+      }
+      if (e.key === "3") {
+        setCinematic(
+          (prev) => prev ?? parseCinematicFromUrl() ?? DEFAULT_CINEMATIC_CONFIG,
+        );
+        return;
+      }
+
+      // S → toggle sound. Works even when the sound button is hidden by clean
+      // mode. The keypress is a user gesture, so the AudioContext resume inside
+      // handleToggleSound satisfies the browser autoplay policy. (Cmd/Ctrl+
+      // Shift+S is handled above as screenshot and returns before reaching here.)
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        handleToggleSound();
+        return;
+      }
+
       const now = Date.now();
       if (e.key === "d" || e.key === "D") {
         if (now - lastDKeyTime < DOUBLE_TAP_THRESHOLD) {
@@ -650,7 +765,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [fetchEvents, handleCapture]);
+  }, [fetchEvents, handleCapture, handleToggleSound]);
 
   // Expose a `window.__movementReady` promise that resolves once data has
   // loaded and the first animation frame has rendered. Used by the
@@ -675,6 +790,25 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       cancelAnimationFrame(raf2);
     };
   }, [loading, events.length]);
+
+  // Capture aid (sibling to __movementReady): lets a recording script ramp the
+  // animation speed mid-clip — e.g. a slow, readable opening that then speeds up
+  // to build density during a cinematic reveal. The accumulate-elapsed loop in
+  // AnimatedTrails makes this smooth (no time-jump). No-op in normal usage.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    (
+      window as unknown as { __setAnimationSpeed?: (s: number) => void }
+    ).__setAnimationSpeed = (s: number) => {
+      if (Number.isFinite(s) && s > 0) {
+        setSettings((prev) => ({ ...prev, animationSpeed: s }));
+      }
+    };
+    return () => {
+      delete (window as unknown as { __setAnimationSpeed?: unknown })
+        .__setAnimationSpeed;
+    };
+  }, []);
 
   // Track canvas size via ResizeObserver
   useEffect(() => {
@@ -738,10 +872,31 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // important — when no range is active we just pass the events array
   // through untouched.
   const filteredEvents = useMemo(() => {
-    if (!selectedTimeRange) return events;
-    const { startMs, endMs } = selectedTimeRange;
-    return events.filter((e) => e.ts >= startMs && e.ts < endMs);
-  }, [events, selectedTimeRange]);
+    if (!selectedTimeRange && !timeOfDay) return events;
+
+    // Recurring time-of-day test: how far (in minutes, shortest way around the
+    // 24h clock) is an event's LOCAL time-of-day from the window center? Uses
+    // the viewer's local timezone via Date#getHours/getMinutes. Wraparound
+    // matters: a midnight window (center 0) must match both 23:50 and 00:10.
+    const todTest = timeOfDay
+      ? (ts: number) => {
+          const d = new Date(ts);
+          const minutesOfDay = d.getHours() * 60 + d.getMinutes();
+          let diff = Math.abs(minutesOfDay - timeOfDay.centerMinutes);
+          if (diff > 720) diff = 1440 - diff; // shortest distance around the clock
+          return diff <= timeOfDay.radiusMinutes;
+        }
+      : null;
+
+    return events.filter((e) => {
+      if (selectedTimeRange) {
+        if (e.ts < selectedTimeRange.startMs || e.ts >= selectedTimeRange.endMs)
+          return false;
+      }
+      if (todTest && !todTest(e.ts)) return false;
+      return true;
+    });
+  }, [events, selectedTimeRange, timeOfDay]);
 
   // In live mode, accumulate each trail's full point history so trails don't
   // shrink/shift/vanish as their earliest events age off the stream cap. The
@@ -822,6 +977,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       keyboardRandomizeOrder: settings.keyboardRandomizeOrder,
       maxConcurrentTyping: settings.maxConcurrentTyping,
       keyboardSizeCap: settings.keyboardSizeCap,
+      keyboardMaxAspect: settings.keyboardMaxAspect,
     }),
     [
       settings.filters,
@@ -833,6 +989,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.keyboardRandomizeOrder,
       settings.maxConcurrentTyping,
       settings.keyboardSizeCap,
+      settings.keyboardMaxAspect,
     ],
   );
 
@@ -1032,6 +1189,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       keyboardAnimationSpeed: settings.keyboardAnimationSpeed,
       keyboardLegibilityPct: settings.keyboardLegibilityPct,
       maxConcurrentTyping: settings.maxConcurrentTyping,
+      trailVisualStyle: settings.trailVisualStyle,
+      randomizeColors: settings.randomizeColors,
     }),
     [
       settings.animationSpeed,
@@ -1040,6 +1199,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.keyboardAnimationSpeed,
       settings.keyboardLegibilityPct,
       settings.maxConcurrentTyping,
+      settings.trailVisualStyle,
+      settings.randomizeColors,
     ],
   );
 
@@ -1057,6 +1218,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       windowScale: settings.windowScale,
       windowBleed: settings.windowBleed,
       showTitleBar: settings.showTitleBar,
+      trailVisualStyle: settings.trailVisualStyle,
     }),
     [
       settings.scrollSpeed,
@@ -1071,6 +1233,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.windowScale,
       settings.windowBleed,
       settings.showTitleBar,
+      settings.trailVisualStyle,
     ],
   );
 
@@ -1134,6 +1297,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       <Controls
         visible={controlsVisible}
         settings={settings}
+        settingsDefaults={settingsDefaults}
         setSettings={setSettingsFromControls}
         loading={loading}
         error={error}
@@ -1399,6 +1563,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
               frozen={paused}
+              showClickRipples={!showClicks}
               onTrailsRemoved={handleTrailsRemoved}
               settings={trailAnimationSettings}
             />
@@ -1412,6 +1577,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               soundEngine={paused || !soundEnabled ? null : soundEngineReady}
               settings={trailAnimationSettings}
               frozen={paused}
+              cinematic={cinematicConfig}
+              cinematicNextSignal={cinematicNextSignal}
+              getInstallationElapsedMs={getInstallationElapsedMs}
             />
           ))}
 
@@ -1513,6 +1681,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           onSelectDay={onSelectDay}
           selectedRange={selectedTimeRange}
           onSelectRange={setSelectedTimeRange}
+          timeOfDay={timeOfDay}
+          onSetTimeOfDay={setTimeOfDay}
           leftOffset={controlsVisible ? 360 : 16}
         />
       )}

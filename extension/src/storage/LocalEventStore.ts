@@ -508,6 +508,12 @@ export class LocalEventStore {
       return;
     }
 
+    await this.rebuildSessionStats();
+  }
+
+  private async rebuildSessionStats(): Promise<void> {
+    if (!this.db) return;
+
     await this.writeStatsBackfillState("running");
 
     if (VERBOSE) {
@@ -524,7 +530,7 @@ export class LocalEventStore {
       req.onsuccess = () => {
         const cursor = req.result;
         if (cursor) {
-          const evt = cursor.value as CollectionEvent;
+          const evt = toCollectionEvent(cursor.value as StoredCollectionEvent);
           if (!this.eventIdsPendingStatsAfterBackfill.has(evt.id)) {
             events.push(evt);
           }
@@ -1249,6 +1255,22 @@ export class LocalEventStore {
         console.error("[LocalEventStore] Failed to update domain stats:", e);
       }
     }
+  }
+
+  /** Rebuild aggregates after importing event history from a file. */
+  async addImportedEvents(events: CollectionEvent[]): Promise<void> {
+    await this.ensureSessionStatsBackfilled();
+    await this.addEvents(events);
+    await this.rebuildSessionStats();
+    await this.writeStatsBackfillState("complete");
+    this.statsBackfillComplete = true;
+  }
+
+  /** Store server-restored history as uploaded before rebuilding aggregates. */
+  async addRestoredEvents(events: CollectionEvent[]): Promise<void> {
+    await this.addImportedEvents(
+      events.map((event) => ({ ...event, uploaded: true })),
+    );
   }
 
   private static emptyAggregate(key: string, domain: string): DomainStatsAggregate {

@@ -9,6 +9,7 @@ import {
   subscribeSavedConfigs,
   type SavedConfig,
 } from "../shared/utils/savedConfigs";
+import { buildInstallationScreens } from "../shared/utils/installationUrls";
 
 interface ParsedMetadata {
   viz: string[];
@@ -105,6 +106,204 @@ const VizPill: React.FC<{ id: string }> = ({ id }) => (
   </span>
 );
 
+/** Inline multi-screen installation builder for one saved config. Turns the
+ * config's share URL into a master + N follower URLs (all same-origin so the
+ * BroadcastChannel clock/claims connect), with copy + open-in-new-window
+ * actions. The screens coordinate at runtime — no per-cursor setup here. */
+const InstallationPanel: React.FC<{ sourceUrl: string }> = ({ sourceUrl }) => {
+  const [followerCount, setFollowerCount] = useState(2);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const screens = useMemo(
+    () =>
+      buildInstallationScreens(
+        sourceUrl,
+        followerCount,
+        typeof window !== "undefined" ? window.location.origin : undefined,
+      ),
+    [sourceUrl, followerCount],
+  );
+
+  const copy = (url: string) => {
+    navigator.clipboard?.writeText(url).then(
+      () => {
+        setCopied(url);
+        window.setTimeout(() => setCopied((c) => (c === url ? null : c)), 1500);
+      },
+      () => {},
+    );
+  };
+
+  // Opening many windows at once is a popup-blocker magnet — the browser may
+  // block all but the first. Each screen also has its own open button below for
+  // that case (each click is its own user gesture).
+  const openWindow = (url: string) => {
+    window.open(url, "_blank", "noopener");
+  };
+
+  return (
+    <div
+      style={{
+        gridColumn: "1 / -1",
+        marginTop: 12,
+        padding: "14px 16px",
+        borderRadius: 6,
+        background: "#f5f0e8",
+        border: "1px solid rgba(61,56,51,0.1)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 12,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "'Martian Mono', monospace",
+            fontSize: 11,
+            letterSpacing: "0.5px",
+            textTransform: "uppercase",
+            color: "#8a8279",
+          }}
+        >
+          follower screens
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => setFollowerCount((n) => Math.max(0, n - 1))}
+            style={stepperBtnStyle}
+            title="Fewer follower screens"
+          >
+            −
+          </button>
+          <span
+            style={{
+              minWidth: 20,
+              textAlign: "center",
+              fontFamily: "'Martian Mono', monospace",
+              fontSize: 14,
+              color: "#3d3833",
+            }}
+          >
+            {followerCount}
+          </span>
+          <button
+            type="button"
+            onClick={() => setFollowerCount((n) => Math.min(8, n + 1))}
+            style={stepperBtnStyle}
+            title="More follower screens"
+          >
+            +
+          </button>
+        </div>
+        <span style={{ fontSize: 11, color: "#8a8279" }}>
+          1 master + {followerCount} zoomed{" "}
+          {followerCount === 1 ? "follower" : "followers"}
+        </span>
+        <button
+          type="button"
+          onClick={() => screens.forEach((s) => openWindow(s.url))}
+          style={{ ...pillBtnStyle, marginLeft: "auto" }}
+          title="Open the master + every follower window (allow popups if blocked)"
+        >
+          open all screens
+        </button>
+      </div>
+
+      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        {screens.map((s) => (
+          <li
+            key={s.label}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 0",
+            }}
+          >
+            <span
+              style={{
+                minWidth: 96,
+                fontFamily: "'Martian Mono', monospace",
+                fontSize: 11,
+                letterSpacing: "0.3px",
+                color: s.role === "master" ? "#c4724e" : "#4a9a8a",
+              }}
+            >
+              {s.label}
+            </span>
+            <code
+              style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: 11,
+                color: "#5b8db8",
+                background: "#fdfcf9",
+                border: "1px solid rgba(61,56,51,0.08)",
+                borderRadius: 4,
+                padding: "4px 8px",
+              }}
+              title={s.url}
+            >
+              {s.url}
+            </code>
+            <button
+              type="button"
+              onClick={() => copy(s.url)}
+              style={pillBtnStyle}
+              title="Copy URL"
+            >
+              {copied === s.url ? "copied" : "copy"}
+            </button>
+            <button
+              type="button"
+              onClick={() => openWindow(s.url)}
+              style={pillBtnStyle}
+              title="Open in a new window"
+            >
+              open
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+const stepperBtnStyle: React.CSSProperties = {
+  width: 24,
+  height: 24,
+  border: "1px solid rgba(61,56,51,0.18)",
+  borderRadius: 4,
+  background: "#fdfcf9",
+  color: "#3d3833",
+  fontSize: 16,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const pillBtnStyle: React.CSSProperties = {
+  border: "1px solid rgba(61,56,51,0.18)",
+  borderRadius: 999,
+  background: "#fdfcf9",
+  color: "#3d3833",
+  fontFamily: "'Martian Mono', monospace",
+  fontSize: 10,
+  letterSpacing: "0.3px",
+  textTransform: "uppercase",
+  padding: "4px 10px",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
 const SavedConfigsPage: React.FC = () => {
   const [configs, setConfigs] = useState<SavedConfig[]>(() =>
     loadSavedConfigs(),
@@ -112,6 +311,8 @@ const SavedConfigsPage: React.FC = () => {
   const [query, setQuery] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const confirmTimerRef = useRef<number | null>(null);
+  // Which config's multi-screen installation builder panel is expanded.
+  const [installOpenId, setInstallOpenId] = useState<string | null>(null);
 
   // Cross-tab sync: when the dev panel saves/deletes in another tab, this
   // page reflects the change without a manual reload.
@@ -387,35 +588,67 @@ const SavedConfigsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleDeleteClick(cfg.id)}
-                  title={
-                    confirming
-                      ? "Click again to confirm delete"
-                      : "Delete this saved config"
-                  }
-                  style={{
-                    background: confirming ? "#c4724e" : "transparent",
-                    color: confirming ? "#faf7f2" : "#8a8279",
-                    border: confirming
-                      ? "1px solid #c4724e"
-                      : "1px solid rgba(61,56,51,0.18)",
-                    borderRadius: 4,
-                    padding: confirming ? "4px 10px" : "2px 8px",
-                    fontSize: confirming ? 11 : 16,
-                    lineHeight: 1,
-                    fontFamily: confirming
-                      ? "'Martian Mono', monospace"
-                      : "inherit",
-                    letterSpacing: confirming ? "0.5px" : undefined,
-                    textTransform: confirming ? "uppercase" : undefined,
-                    cursor: "pointer",
-                    minWidth: confirming ? 80 : 28,
-                  }}
-                >
-                  {confirming ? "Confirm" : "×"}
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setInstallOpenId((cur) =>
+                        cur === cfg.id ? null : cfg.id,
+                      )
+                    }
+                    title="Set up a multi-screen installation from this config"
+                    style={{
+                      background:
+                        installOpenId === cfg.id ? "#4a9a8a" : "transparent",
+                      color: installOpenId === cfg.id ? "#faf7f2" : "#4a9a8a",
+                      border: "1px solid #4a9a8a",
+                      borderRadius: 999,
+                      padding: "4px 10px",
+                      fontSize: 10,
+                      lineHeight: 1,
+                      fontFamily: "'Martian Mono', monospace",
+                      letterSpacing: "0.3px",
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    ⧉ install
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteClick(cfg.id)}
+                    title={
+                      confirming
+                        ? "Click again to confirm delete"
+                        : "Delete this saved config"
+                    }
+                    style={{
+                      background: confirming ? "#c4724e" : "transparent",
+                      color: confirming ? "#faf7f2" : "#8a8279",
+                      border: confirming
+                        ? "1px solid #c4724e"
+                        : "1px solid rgba(61,56,51,0.18)",
+                      borderRadius: 4,
+                      padding: confirming ? "4px 10px" : "2px 8px",
+                      fontSize: confirming ? 11 : 16,
+                      lineHeight: 1,
+                      fontFamily: confirming
+                        ? "'Martian Mono', monospace"
+                        : "inherit",
+                      letterSpacing: confirming ? "0.5px" : undefined,
+                      textTransform: confirming ? "uppercase" : undefined,
+                      cursor: "pointer",
+                      minWidth: confirming ? 80 : 28,
+                    }}
+                  >
+                    {confirming ? "Confirm" : "×"}
+                  </button>
+                </div>
+
+                {installOpenId === cfg.id && (
+                  <InstallationPanel sourceUrl={cfg.url} />
+                )}
               </li>
             );
           })}

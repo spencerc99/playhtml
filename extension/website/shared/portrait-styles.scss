@@ -173,3 +173,10 @@ body {
 .trails-svg {
   z-index: 2;
 }
+
+// For bare video/image capture (cinematic mode, or clean=2 print level), hide
+// the page-level wordmark signature so the canvas reads as a bare moving image.
+// MovementCanvas toggles this body class.
+body.hide-wordmark .wordmark-signature {
+  display: none;
+}

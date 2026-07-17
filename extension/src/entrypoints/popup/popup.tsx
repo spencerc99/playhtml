@@ -30,6 +30,7 @@ function PlayHTMLPopup() {
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(
     null,
   );
+  const [discoveredSites, setDiscoveredSites] = useState<string[]>([]);
   const [currentTab, setCurrentTab] = useState<browser.Tabs.Tab | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [playhtmlStatus, setPlayhtmlStatus] = useState<PlayHTMLStatus>({
@@ -99,11 +100,14 @@ function PlayHTMLPopup() {
       });
       setCurrentTab(tab);
 
-      // Get player identity
-      const identity = await browser.runtime.sendMessage({
-        type: "GET_PLAYER_IDENTITY",
+      // Get public identity and profile data
+      const profile = await browser.runtime.sendMessage({
+        type: "GET_PLAYER_PROFILE",
       });
-      setPlayerIdentity(identity);
+      setPlayerIdentity(profile?.identity ?? null);
+      setDiscoveredSites(
+        Array.isArray(profile?.discoveredSites) ? profile.discoveredSites : [],
+      );
 
       // Check PlayHTML status on current page
       await checkPlayHtmlStatus(tab);
@@ -334,6 +338,7 @@ function PlayHTMLPopup() {
     return (
       <ProfilePage
         playerIdentity={playerIdentity}
+        discoveredSites={discoveredSites}
         onBack={() => setCurrentView("main")}
         onIdentityUpdated={(updated) => setPlayerIdentity(updated)}
       />
@@ -411,6 +416,7 @@ function PlayHTMLPopup() {
   return (
     <InternetPortraitHome
       playerIdentity={playerIdentity}
+      discoveredSites={discoveredSites}
       onViewCollections={() => setCurrentView("collections")}
       onViewHistory={toggleHistoricalOverlay}
       onViewProfile={() => setCurrentView("profile")}

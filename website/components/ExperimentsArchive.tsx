@@ -158,6 +158,15 @@ const experiments: ExperimentArchiveEntry[] = [
     actionLabel: "Open",
     recommended: true,
   },
+  {
+    number: "EX-10",
+    name: "cinderblock yard",
+    description: "Build heavy structures together",
+    href: "/experiments/cinderblock/",
+    image: "/experiments/index-previews/ex-10.png",
+    actionLabel: "Open",
+    recommended: true,
+  },
 ];
 
 const pastEvents: ExperimentArchiveEntry[] = [

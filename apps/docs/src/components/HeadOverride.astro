@@ -18,22 +18,16 @@ const { head } = Astro.locals.starlightRoute;
   // it initialises before playhtml.init awaits window.load.
   import '../scripts/enhance-code-blocks';
 
-  // Initialise playhtml synchronously, here, before any island hydrates.
+  // Declare playhtml's config synchronously, here, before anything connects.
   //
   // The React islands on these pages render @playhtml/react `standalone`
-  // components, which call `playhtml.init()` (with NO options) when they mount.
-  // init() is first-call-wins, so whichever call runs first decides the config.
-  // This <head> script evaluates while the page is still parsing — before the
-  // <body> islands hydrate — so initialising here (not deferred to window.load)
-  // guarantees OUR config (cursors on, domain-wide room) wins the race. When the
-  // defer was in place, an island could win and silently drop the cursor config,
-  // so cursors/presence appeared only on some loads.
-  //
-  // Eager init is safe here: these pages have no live `shared`/`data-source`
-  // elements (those appear only inside fenced code samples), so there's no
-  // initial shared-element snapshot to miss. Island `can-*` elements register
-  // themselves when they mount, independent of when init() runs.
-  void playhtml.init({
+  // components, which call `playhtml.init()` (with NO options) on mount to
+  // ensure playhtml is running. There's no single React root we can put a
+  // <PlayProvider> on, so this <head> script is the one place that owns the
+  // config. configure() is connection-free and config-only, so declaring it
+  // here means the islands' "ensure running" calls pick up OUR config no matter
+  // which runs first — no ordering race.
+  playhtml.configure({
     cursors: {
       enabled: true,
       // Domain-wide cursor room so the header presence HUD counts ALL readers
@@ -43,4 +37,6 @@ const { head } = Astro.locals.starlightRoute;
       room: "domain",
     },
   });
+  // Connect now; islands that mount later just call init() (no-op once running).
+  void playhtml.init();
 </script>

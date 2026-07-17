@@ -13,6 +13,7 @@ compatibility_date = "2024-01-01"
 #   Set secrets via: wrangler secret put SUPABASE_SECRET_KEY
 #   Set secrets via: wrangler secret put ADMIN_KEY
 #   Set secrets via: wrangler secret put RESEND_API_KEY
+#   Set secrets via: wrangler secret put CODA_API_TOKEN
 #   Optional:        wrangler secret put RESEND_SEGMENT_ID
 #
 # Required variables:
@@ -20,6 +21,7 @@ compatibility_date = "2024-01-01"
 # - SUPABASE_SECRET_KEY - Your Supabase "secret" API key (full database access)
 # - ADMIN_KEY - Required for admin endpoints (stats, export) - protects user data
 # - RESEND_API_KEY - Resend API key for sending welcome emails and adding contacts
+# - CODA_API_TOKEN - Coda API token for adding extension feedback rows
 #
 # Optional variables:
 # - RESEND_SEGMENT_ID - If set, new contacts are tagged with this Resend segment
@@ -29,6 +31,7 @@ compatibility_date = "2024-01-01"
 # - GET /events/recent: Public (for artwork rendering)
 # - GET /events/stats: ADMIN_KEY required
 # - POST /events/export: ADMIN_KEY required
+# - POST /feedback: Public (validated + rate limited)
 #
 # TODO: Consider adding CORS restrictions to admin endpoints
 

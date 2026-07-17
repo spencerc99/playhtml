@@ -11,9 +11,11 @@ import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
 import { FLAGS } from "../flags";
 import { PostcardStack } from "../announcements/PostcardStack";
+import { FeedbackForm } from "./FeedbackForm";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
+  discoveredSites: string[];
   onViewCollections: () => void;
   onViewHistory: () => void;
   onViewProfile?: () => void;
@@ -33,6 +35,7 @@ interface PortraitStats {
 
 export function InternetPortraitHome({
   playerIdentity,
+  discoveredSites,
   onViewCollections,
   onViewHistory,
   onViewProfile,
@@ -122,7 +125,12 @@ export function InternetPortraitHome({
         <div className="portrait-home__header-row">
           <h1 className="portrait-home__wordmark">we were online</h1>
           {playerIdentity && (
-            <PlayerIdentityCard playerIdentity={playerIdentity} compact onClick={onViewProfile} />
+            <PlayerIdentityCard
+              playerIdentity={playerIdentity}
+              discoveredSites={discoveredSites}
+              compact
+              onClick={onViewProfile}
+            />
           )}
         </div>
         <div className="portrait-home__subtitle-row">
@@ -255,14 +263,7 @@ export function InternetPortraitHome({
 
       <footer className="portrait-home__footer">
         <span>Beta</span>
-        <a
-          className="portrait-home__feedback"
-          href="mailto:hi@spencer.place?subject=we%20were%20online%20feedback"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          feedback → hi@spencer.place
-        </a>
+        <FeedbackForm />
       </footer>
     </div>
   );

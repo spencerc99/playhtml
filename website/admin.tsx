@@ -19,12 +19,13 @@ import {
   replaceStateLeafValue,
   type EditableStateLeafValue,
   type StatePathSegment,
-} from "playhtml";
+} from "playhtml/leafEditor";
 import { extractRecords, type ModerationRecord } from "@moderation";
 import {
   formatAdminResetSuccess,
   formatAdminResetWarning,
 } from "./adminMessages";
+import { HOSTS, type EnvName } from "./adminHosts";
 
 // Types from the original admin.ts
 interface RoomData {
@@ -50,14 +51,6 @@ interface DebugLog {
   message: string;
   data?: any;
 }
-
-type EnvName = "production" | "staging" | "development";
-
-const HOSTS: Record<EnvName, string> = {
-  production: "https://playhtml.spencerc99.workers.dev",
-  staging: "https://playhtml-staging.spencerc99.workers.dev",
-  development: "http://localhost:1999",
-};
 
 // Auto-detect environment based on current hostname
 function detectEnvironment(): EnvName {

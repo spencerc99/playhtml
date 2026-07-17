@@ -1,6 +1,6 @@
 {
   "name": "@playhtml/extension",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,15 +21,12 @@
     "@playhtml/common": "workspace:*",
     "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",
-    "@types/three": "^0.184.1",
     "html2canvas": "^1.4.1",
-    "motion": "^12.40.0",
     "perfect-freehand": "^1.2.3",
     "playhtml": "workspace:*",
     "profane-words": "^1.5.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "three": "^0.184.0",
     "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
