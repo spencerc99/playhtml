@@ -59,6 +59,15 @@ import {
 } from "./presence-transport";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 
+export {
+  formatStateLeafValue,
+  isEditableStateLeaf,
+  parseStateLeafValue,
+  replaceStateLeafValue,
+  type EditableStateLeafValue,
+  type StatePathSegment,
+} from "./leafEditor";
+
 const DefaultPartykitHost = "api.playhtml.fun";
 const StagingPartykitHost = "api-staging.playhtml.fun";
 const DevPartykitHost = "localhost:1999";

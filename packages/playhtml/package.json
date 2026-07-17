@@ -34,12 +34,17 @@
   "module": "./dist/playhtml.es.js",
   "homepage": "https://playhtml.fun",
   "files": [
-    "dist"
+    "dist",
+    "leafEditor.d.ts"
   ],
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",
       "import": "./dist/playhtml.es.js"
+    },
+    "./leafEditor": {
+      "types": "./leafEditor.d.ts",
+      "import": "./dist/leafEditor.es.js"
     },
     "./dist/style.css": {
       "import": "./dist/style.css",
