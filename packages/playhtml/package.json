@@ -34,13 +34,15 @@
   "module": "./dist/playhtml.es.js",
   "homepage": "https://playhtml.fun",
   "files": [
-    "dist"
+    "dist",
+    "init.js"
   ],
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",
       "import": "./dist/playhtml.es.js"
     },
+    "./init.js": "./init.js",
     "./dist/style.css": {
       "import": "./dist/style.css",
       "require": "./dist/style.css"
