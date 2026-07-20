@@ -181,7 +181,7 @@ async function openHomepageAwarenessClient(browser: Browser, room: string) {
   expect(response, "homepage awareness smoke response").not.toBeNull();
   expect(response!.status()).toBeLessThan(400);
 
-  const count = page.locator("#site-console-count[can-play]");
+  const count = page.locator("#site-console-count");
   await expect(count).toHaveCount(1);
 
   return { context, page, errors };

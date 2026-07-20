@@ -26,11 +26,6 @@ const GuestbookSubmissionLimit = {
   storageKey: "playhtml:guestbook-submission-timestamps",
 };
 const GuestbookNameStorageKey = "name";
-type HomepageAwareness = { online: true };
-type HomepageAwarenessElement = HTMLElement &
-  Partial<
-    ElementInitializer<Record<string, never>, undefined, HomepageAwareness>
-  >;
 
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
@@ -76,27 +71,6 @@ function setupGuestbookNameInput() {
 
 setupGuestbookNameInput();
 
-function setupHomepageAwarenessStatus() {
-  const statusElement = document.getElementById(
-    "site-console-count",
-  ) as HomepageAwarenessElement | null;
-  const countElement = document.getElementById("site-console-count-number");
-  const countLabel = document.querySelector(".site-console__status-label");
-  if (!statusElement || !countElement || !countLabel) return;
-
-  statusElement.defaultData = {};
-  statusElement.myDefaultAwareness = { online: true };
-  statusElement.updateElement = () => {};
-  statusElement.updateElementAwareness = ({ awareness }) => {
-    const peopleCount = Math.max(awareness.length, 1);
-
-    if (countElement.textContent === String(peopleCount)) return;
-
-    countElement.textContent = String(peopleCount);
-    countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
-  };
-}
-
 function getLocalPreviewInitOptions() {
   const localHostnames = new Set(["localhost", "127.0.0.1"]);
   if (!localHostnames.has(window.location.hostname)) return {};
@@ -110,8 +84,6 @@ function getLocalPreviewInitOptions() {
     ...(room ? { room } : {}),
   };
 }
-
-setupHomepageAwarenessStatus();
 
 // Render React components
 const reactContentElement = document.getElementById("reactContent");
