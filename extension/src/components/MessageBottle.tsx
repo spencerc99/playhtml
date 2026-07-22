@@ -5,6 +5,8 @@ import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FoldCeremony } from "./sealing/FoldCeremony";
 import { LetterScroll } from "./bottle/LetterScroll";
+import { WaxSeal } from "./bottle/WaxSeal";
+import { segmentStyle } from "./bottle/segmentStyles";
 import type { StampedLetter } from "./bottle/WriteSegment";
 import type { BottleNote } from "../features/BottleManager";
 
@@ -200,9 +202,13 @@ export function MessageBottle({
     stage === "sealing" ||
     stage === "closing";
 
+  // The capsule wears the top letter's own paper; an unwritten bottle stays the
+  // plain blank card (an invitation).
+  const topNote = notes.length > 0 ? notes[notes.length - 1] : undefined;
   const capsuleClass = [
     "mb-capsule",
     "mb-variant-foldedLetter",
+    topNote ? `mb-paper-${segmentStyle(topNote.styleId).id}` : "",
     stage === "unrolling" ? "mb-capsuleUnrolling" : "",
     stage === "expanding" || stage === "scroll" || stage === "sealing"
       ? "mb-capsuleOpen"
@@ -226,8 +232,6 @@ export function MessageBottle({
     .filter(Boolean)
     .join(" ");
 
-  const isEmpty = notes.length === 0;
-
   return (
     <>
       <div className="mb-mound" style={capsuleStyle}>
@@ -241,7 +245,11 @@ export function MessageBottle({
             aria-label="open message bottle"
             title="something tucked into the page"
           >
-            {!isEmpty && <FoldedLetterArt />}
+            {topNote && (
+              <span className="mb-sealMark" aria-hidden="true">
+                <WaxSeal color={topNote.authorColor} />
+              </span>
+            )}
           </button>
         </div>
         <span className="mb-slotCrack" aria-hidden="true" />
@@ -290,18 +298,6 @@ export function MessageBottle({
           portalContainer ?? document.body,
         )}
     </>
-  );
-}
-
-/** The card's surface: a small paper card creased by two faint horizontal fold
- *  lines — a letter folded in thirds, seen small. Reads as "something folded
- *  tucked into the page" without any legible text. */
-function FoldedLetterArt() {
-  return (
-    <div className="mb-foldedLetterWrap" aria-hidden="true">
-      <span className="mb-foldCrease mb-foldCrease1" />
-      <span className="mb-foldCrease mb-foldCrease2" />
-    </div>
   );
 }
 
