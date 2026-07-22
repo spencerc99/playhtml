@@ -19,6 +19,20 @@ interface Strip {
   ripsRequired: number | null; // snapshotted at first rip (1 provisional, SET_THRESHOLD set)
 }
 
+/**
+ * A quarantine on a specific image, keyed by its src URL (the artifact), not by
+ * position. Renders as an X of tape across the element's current bounds, so it
+ * tracks the element as the page scrolls / reflows.
+ */
+interface ElementMark {
+  id: string;
+  type: TapeType;
+  src: string; // the artifact URL — what the verdict is actually about
+  seed: number;
+  rips: number[];
+  ripsRequired: number | null;
+}
+
 interface TapeStyle {
   label: string; // the repeated text printed down the tape
   base: string; // clean plastic band the text sits on
@@ -45,6 +59,8 @@ let equipped: TapeType | null = null;
 let pending: EdgePoint | null = null; // first anchor placed, waiting for second
 let cursor = { x: 0, y: 0 };
 const strips: Strip[] = [];
+const elementMarks: ElementMark[] = [];
+let hoverTarget: HTMLImageElement | null = null; // image under an armed cursor
 
 // ----- DOM / SVG scaffold -----
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -61,8 +77,9 @@ buildSharedDefs();
 
 const gEdges = document.createElementNS(SVGNS, "g");
 const gStrips = document.createElementNS(SVGNS, "g");
+const gElements = document.createElementNS(SVGNS, "g"); // tape over specific images
 const gPreview = document.createElementNS(SVGNS, "g");
-overlay.append(gEdges, gStrips, gPreview);
+overlay.append(gEdges, gStrips, gElements, gPreview);
 
 const hintEl = document.getElementById("hint")!;
 const countEl = document.getElementById("count")!;
@@ -403,13 +420,79 @@ function renderStrips() {
     );
   }
 
-  const word = standing.length === 1 ? "strip" : "strips";
-  const status = standing.length === 0 ? "" : provisional ? " · provisional" : " · cordoned";
-  countEl.textContent = `${standing.length} ${word}${status}`;
+  updateCount(standing.length, provisional);
 }
 
-function isFullyTorn(s: Strip): boolean {
+function updateCount(standing: number, provisional: boolean) {
+  const word = standing === 1 ? "strip" : "strips";
+  const status = standing === 0 ? "" : provisional ? " · provisional" : " · cordoned";
+  const tapedImages = new Set(
+    elementMarks.filter((m) => !isFullyTorn(m)).map((m) => m.src),
+  ).size;
+  const imgPart = tapedImages ? ` · ${tapedImages} image${tapedImages === 1 ? "" : "s"}` : "";
+  countEl.textContent = `${standing} ${word}${status}${imgPart}`;
+}
+
+function isFullyTorn(s: Strip | ElementMark): boolean {
   return s.ripsRequired !== null && s.rips.length >= s.ripsRequired;
+}
+
+function makeElementMark(src: string, type: TapeType): ElementMark {
+  return {
+    id: `e-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type,
+    src,
+    seed: (Math.random() * 1e9) | 0,
+    rips: [],
+    ripsRequired: null,
+  };
+}
+
+/** Every image on the page that could be taped. */
+function tapeableImages(): HTMLImageElement[] {
+  return Array.from(document.querySelectorAll<HTMLImageElement>("img")).filter((img) => {
+    const r = img.getBoundingClientRect();
+    return r.width >= 40 && r.height >= 40;
+  });
+}
+
+/** Find the live element(s) currently showing a given artifact src. */
+function elementsForSrc(src: string): HTMLImageElement[] {
+  return tapeableImages().filter((img) => img.src === src);
+}
+
+/**
+ * Element marks render as an X of two strips across the image's CURRENT bounds,
+ * re-measured every render — so the tape tracks the element through scroll and
+ * reflow. The verdict itself is keyed by src, not by position.
+ */
+function renderElementMarks() {
+  gElements.replaceChildren();
+  const standingStrips = strips.filter((s) => !isFullyTorn(s));
+  updateCount(standingStrips.length, standingStrips.length < SET_THRESHOLD);
+  const setness = Math.min(1, elementMarks.length / (SET_THRESHOLD + 2));
+  for (const m of elementMarks) {
+    const torn = isFullyTorn(m);
+    // one verdict can paint every copy of that image on the page
+    for (const el of elementsForSrc(m.src)) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 10 || r.height < 10) continue;
+      // skip if entirely off-screen (cheap cull)
+      if (r.bottom < -200 || r.top > vh() + 200) continue;
+      const opacity = torn ? 0.3 : 0.75 + setness * 0.25;
+      const inset = 2;
+      // an X: TL→BR and TR→BL across the element box
+      const diagonals: Array<[number, number, number, number]> = [
+        [r.left + inset, r.top + inset, r.right - inset, r.bottom - inset],
+        [r.right - inset, r.top + inset, r.left + inset, r.bottom - inset],
+      ];
+      diagonals.forEach(([x1, y1, x2, y2], i) => {
+        gElements.appendChild(
+          buildTapeGroup(x1, y1, x2, y2, m.type, m.seed + i * 7717, opacity, false, m.rips, torn),
+        );
+      });
+    }
+  }
 }
 
 function renderEdges() {
@@ -460,7 +543,12 @@ function setHint() {
       : "Pick a tape roll to equip the gun.";
     return;
   }
-  if (!pending) { hintEl.textContent = `${TYPE_STYLE[equipped].label} armed — click a glowing edge to anchor.`; return; }
+  if (!pending) {
+    hintEl.textContent = hoverTarget
+      ? "Drag across this image to tape it as slop."
+      : `${TYPE_STYLE[equipped].label} armed — click an edge to anchor, or hover an image.`;
+    return;
+  }
   hintEl.textContent = "Pull to another edge and click to lay the tape.";
 }
 
@@ -473,6 +561,7 @@ document.querySelectorAll<HTMLElement>(".roll").forEach((el) => {
     document.querySelectorAll<HTMLElement>(".roll").forEach((r) =>
       r.setAttribute("data-armed", String(r.dataset.type === equipped)));
     document.body.classList.toggle("armed", !!equipped);
+    if (!equipped) clearHoverTarget();
     renderEdges(); gPreview.replaceChildren(); setHint();
   });
 });
@@ -480,7 +569,32 @@ document.querySelectorAll<HTMLElement>(".roll").forEach((el) => {
 window.addEventListener("mousemove", (e) => {
   cursor = { x: e.clientX, y: e.clientY };
   if (equipped && pending) renderPreview();
+  if (equipped && !pending) updateHoverTarget(e);
 });
+
+/**
+ * While armed and not mid-pull, highlight the image under the cursor as a tape
+ * target. Dragging across a highlighted image tapes that element instead of
+ * stringing a wall-to-wall strip.
+ */
+function updateHoverTarget(e: MouseEvent) {
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const img =
+    el instanceof HTMLImageElement && el.getBoundingClientRect().width >= 40 ? el : null;
+  if (img === hoverTarget) return;
+  hoverTarget?.classList.remove("qt-target-hover");
+  hoverTarget = img;
+  if (hoverTarget && equipped) {
+    hoverTarget.style.setProperty("--qt-target-color", TYPE_STYLE[equipped].base);
+    hoverTarget.classList.add("qt-target-hover");
+  }
+  setHint();
+}
+
+function clearHoverTarget() {
+  hoverTarget?.classList.remove("qt-target-hover");
+  hoverTarget = null;
+}
 
 window.addEventListener("click", (e) => {
   if (!equipped) return;
@@ -511,6 +625,7 @@ window.addEventListener("keydown", (e) => {
     equipped = null;
     document.querySelectorAll<HTMLElement>(".roll").forEach((r) => r.setAttribute("data-armed", "false"));
     document.body.classList.remove("armed");
+    clearHoverTarget();
     renderEdges();
   }
   setHint();
@@ -525,9 +640,27 @@ let slashStart: { x: number; y: number } | null = null;
 const gSlash = document.createElementNS(SVGNS, "g");
 overlay.appendChild(gSlash);
 
+// While armed, a drag that starts on a highlighted image is an element-tape
+// gesture (drag across the image to tape it), not a wall anchor.
+let elementDragStart: { x: number; y: number; img: HTMLImageElement } | null = null;
+
+// Images are natively draggable: without this the browser hijacks the gesture
+// with an HTML5 drag (dragstart fires, mouseup never does) and taping an image
+// silently does nothing.
+window.addEventListener("dragstart", (e) => {
+  if (equipped || slashStart) e.preventDefault();
+});
+
 window.addEventListener("mousedown", (e) => {
-  if (equipped) return; // armed → laying tape, not ripping
   if ((e.target as HTMLElement).closest(".toolbar")) return;
+  if (equipped) {
+    if (hoverTarget) {
+      e.preventDefault(); // belt-and-braces against the native image drag
+      elementDragStart = { x: e.clientX, y: e.clientY, img: hoverTarget };
+      document.body.style.userSelect = "none";
+    }
+    return; // armed → laying tape, not ripping
+  }
   slashStart = { x: e.clientX, y: e.clientY };
   document.body.style.userSelect = "none"; // don't select page text mid-slash
 });
@@ -547,6 +680,23 @@ window.addEventListener("mousemove", (e) => {
 });
 
 window.addEventListener("mouseup", (e) => {
+  // --- armed: drag across an image tapes that element ---
+  const elDrag = elementDragStart;
+  elementDragStart = null;
+  if (elDrag && equipped) {
+    document.body.style.userSelect = "";
+    const dist = Math.hypot(e.clientX - elDrag.x, e.clientY - elDrag.y);
+    if (dist >= SLASH_MIN_LEN) {
+      // First tape on this image creates the verdict; taping an already-taped
+      // image adds another layer of corroboration. Same act either way.
+      elementMarks.push(makeElementMark(elDrag.img.src, equipped));
+      clearHoverTarget();
+      renderElementMarks();
+      setHint();
+    }
+    return;
+  }
+
   const start = slashStart;
   slashStart = null;
   gSlash.replaceChildren();
@@ -570,7 +720,26 @@ window.addEventListener("mouseup", (e) => {
     s.rips.push(hit.tOnStrip);
     ripped = true;
   }
+
+  // slashing across a taped image rips that element's verdict
+  let elementRipped = false;
+  for (const m of elementMarks) {
+    if (isFullyTorn(m)) continue;
+    const crossed = elementsForSrc(m.src).some((el) => {
+      const r = el.getBoundingClientRect();
+      return segmentCrossesRect(start, end, r);
+    });
+    if (!crossed) continue;
+    if (m.ripsRequired === null) {
+      const layers = elementMarks.filter((x) => x.src === m.src && !isFullyTorn(x)).length;
+      m.ripsRequired = layers >= SET_THRESHOLD ? SET_THRESHOLD : 1;
+    }
+    m.rips.push(0.5);
+    elementRipped = true;
+  }
+
   if (ripped) { renderStrips(); setHint(); }
+  if (elementRipped) { renderElementMarks(); setHint(); }
 });
 
 /**
@@ -592,7 +761,37 @@ function segmentCross(
   return { tOnStrip: u };
 }
 
-window.addEventListener("resize", () => { renderEdges(); renderStrips(); });
+/** Does segment p1→p2 cross (or start inside) the rect? */
+function segmentCrossesRect(
+  p1: { x: number; y: number }, p2: { x: number; y: number }, r: DOMRect,
+): boolean {
+  const inside = (p: { x: number; y: number }) =>
+    p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+  if (inside(p1) || inside(p2)) return true;
+  const corners = [
+    { x: r.left, y: r.top }, { x: r.right, y: r.top },
+    { x: r.right, y: r.bottom }, { x: r.left, y: r.bottom },
+  ];
+  for (let i = 0; i < 4; i++) {
+    if (segmentCross(p1, p2, corners[i], corners[(i + 1) % 4])) return true;
+  }
+  return false;
+}
+
+// Element tape is bound to content, so it must follow the page as it scrolls.
+let scrollRaf = 0;
+window.addEventListener("scroll", () => {
+  if (scrollRaf) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0;
+    renderElementMarks();
+  });
+}, { passive: true });
+
+window.addEventListener("resize", () => {
+  renderEdges(); renderStrips(); renderElementMarks();
+});
 
 setHint();
 renderStrips();
+renderElementMarks();
