@@ -52,6 +52,19 @@
         padding: 10px 18px; border-radius: 5px; text-decoration: none;
         font-weight: 600; margin: 8px 0;
       }
+      .slop .thumbs {
+        display: grid; grid-template-columns: repeat(3, 1fr);
+        gap: 12px; margin: 20px 0;
+      }
+      .slop .thumb {
+        width: 100%; height: auto; display: block; border-radius: 4px;
+      }
+
+      /* an image the armed tape gun is hovering — outlined as a target */
+      .qt-target-hover {
+        outline: 3px dashed var(--qt-target-color, #f0a92b) !important;
+        outline-offset: 3px;
+      }
 
       /* --- toolbar / inventory --- */
       .toolbar {
@@ -110,8 +123,13 @@
     <article class="slop">
       <h1>10 Unbelievable Productivity Hacks That Will Change Your Life Forever</h1>
       <p class="byline">By Content Team · 14 min read · Updated just now</p>
-      <img class="hero" alt="" />
+      <img class="hero" alt="" src="data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='760' height='220'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23cdb6a0'/%3E%3Cstop offset='1' stop-color='%23a89274'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='760' height='220' fill='url(%23g)'/%3E%3Ctext x='380' y='115' font-family='sans-serif' font-size='15' fill='%23fff' fill-opacity='.75' text-anchor='middle'%3EAI-generated hero image%3C/text%3E%3C/svg%3E" />
       <p>In today's fast-paced digital landscape, productivity is more important than ever. Whether you're a busy professional, a student, or a stay-at-home parent, these revolutionary tips will transform the way you work and live. Let's dive right in!</p>
+      <div class="thumbs">
+        <img class="thumb" alt="" src="data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='150'%3E%3Crect width='240' height='150' fill='%23b9a68f'/%3E%3Ctext x='120' y='80' font-family='sans-serif' font-size='12' fill='%23fff' fill-opacity='.8' text-anchor='middle'%3Estock photo 1%3C/text%3E%3C/svg%3E" />
+        <img class="thumb" alt="" src="data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='150'%3E%3Crect width='240' height='150' fill='%23a8b39a'/%3E%3Ctext x='120' y='80' font-family='sans-serif' font-size='12' fill='%23fff' fill-opacity='.8' text-anchor='middle'%3Estock photo 2%3C/text%3E%3C/svg%3E" />
+        <img class="thumb" alt="" src="data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='150'%3E%3Crect width='240' height='150' fill='%23c0a5a5'/%3E%3Ctext x='120' y='80' font-family='sans-serif' font-size='12' fill='%23fff' fill-opacity='.8' text-anchor='middle'%3Estock photo 3%3C/text%3E%3C/svg%3E" />
+      </div>
       <div class="ad">Advertisement — You won't believe #7</div>
       <h2>1. Wake Up Earlier (But Not Too Early)</h2>
       <p>Studies have shown that waking up earlier can dramatically improve your focus and energy levels throughout the day. By adjusting your sleep schedule, you can unlock a whole new level of performance. Many successful people swear by this simple yet effective technique.</p>
