@@ -27,3 +27,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Fix Wikipedia presence startup while keeping private identity keys out of page-facing payloads.
 - Equip the message bottle from your satchel to place it yourself: a faded bottle follows your cursor, and clicking a spot drops it there and opens the letter to write. Back out with "take it back" to remove it.
 - A resting bottle now wears its latest letter's paper, closed with a wax seal pressed in the writer's cursor color — and the sealing ceremony stamps that seal on before the letter sinks into the page. An unwritten bottle stays a blank folded card.
+- Return to a site you haven't visited in over a month and a toast welcomes you back, showing how long it's been and a few of your past visit dates.

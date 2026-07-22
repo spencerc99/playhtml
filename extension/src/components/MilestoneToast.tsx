@@ -4,6 +4,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 export type MilestoneToastType =
+  | "longGapReturn"
   | "cursorDistance"
   | "screenTime"
   | "sitesExplored"
@@ -21,6 +22,15 @@ export interface MilestoneToastData {
   domain?: string;
   faviconUrl?: string;
   sparkline?: number[];
+  /** For long-gap returns — previous visit timestamps to show as dates */
+  previousVisits?: number[];
+}
+
+/** Format a timestamp as a short lowercase date, e.g. "mar 23" */
+function formatShortDate(ts: number): string {
+  return new Date(ts)
+    .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    .toLowerCase();
 }
 
 interface Props {
@@ -179,6 +189,9 @@ function DomainAccent({ milestone }: { milestone: MilestoneToastData }) {
       <div className="wwo-toast-stat" style={{ marginTop: 5 }}>
         {milestone.displayValue}
       </div>
+      {milestone.type === "longGapReturn" && (
+        <div className="wwo-toast-unit">ago</div>
+      )}
     </>
   );
 }
@@ -258,6 +271,11 @@ export function MilestoneToast({
         <div className="wwo-toast-text">
           <div className={`wwo-toast-badge ${badgeClass}`}>{badgeLabel}</div>
           <p className="wwo-toast-headline">{milestone.copy}</p>
+          {milestone.previousVisits && milestone.previousVisits.length > 0 && (
+            <p className="wwo-toast-prev-visits">
+              before: {milestone.previousVisits.map(formatShortDate).join(" · ")}
+            </p>
+          )}
           <button className="wwo-toast-cta" onClick={handleCta}>
             {milestone.ctaLabel}
           </button>

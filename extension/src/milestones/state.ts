@@ -19,6 +19,8 @@ export interface MilestoneState {
     sitesExplored: number[];
     /** domain → visit count thresholds shown ever */
     domainVisits: Record<string, number[]>;
+    /** domain → previousVisitTs of the last long-gap return shown for it */
+    longGapReturn: Record<string, number>;
   };
   /** Unix ms timestamp of last toast shown — for global 10-min cooldown */
   lastToastTs: number;
@@ -34,7 +36,7 @@ export function buildEmptyState(): MilestoneState {
     lastShownDate: "",
     dailyShown: { cursorDistance: [], screenTime: [] },
     dailyScreenTimeMs: 0,
-    allTimeShown: { sitesExplored: [], domainVisits: {} },
+    allTimeShown: { sitesExplored: [], domainVisits: {}, longGapReturn: {} },
     lastToastTs: 0,
     lastCopyIndex: {},
   };
@@ -42,10 +44,17 @@ export function buildEmptyState(): MilestoneState {
 
 export async function loadState(): Promise<MilestoneState> {
   const result = await browser.storage.local.get(STORAGE_KEY);
-  const stored = result[STORAGE_KEY];
+  const stored = result[STORAGE_KEY] as Partial<MilestoneState> | undefined;
   if (!stored) return buildEmptyState();
-  // Merge with empty state to handle new fields added in future
-  return { ...buildEmptyState(), ...stored };
+  // Merge with empty state to handle new fields added in future. Nested
+  // objects are merged one level deep so newly-added keys (e.g. longGapReturn)
+  // are present even for states persisted before the field existed.
+  const empty = buildEmptyState();
+  return {
+    ...empty,
+    ...stored,
+    allTimeShown: { ...empty.allTimeShown, ...stored.allTimeShown },
+  };
 }
 
 export async function saveState(state: MilestoneState): Promise<void> {

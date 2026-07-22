@@ -170,6 +170,16 @@ export const MILESTONE_TOAST_CSS = `
   margin: 0;
 }
 
+.wwo-toast-prev-visits {
+  font-family: 'Martian Mono', monospace;
+  font-size: 8px;
+  font-weight: 300;
+  color: rgba(61, 56, 51, 0.5);
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  margin: 0;
+}
+
 .wwo-toast-cta {
   font-family: 'Atkinson Hyperlegible', -apple-system, sans-serif;
   font-size: 10px;

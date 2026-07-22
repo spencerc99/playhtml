@@ -11,6 +11,22 @@ import { MILESTONE_COPY } from "../milestones/copy";
 
 const SAMPLES: MilestoneToastData[] = [
   {
+    type: "longGapReturn",
+    displayValue: "15mo",
+    copy: MILESTONE_COPY.longGapReturn[0],
+    ctaLabel: "see your history there",
+    ctaAction: "TOGGLE_HISTORICAL_OVERLAY",
+    period: "alltime",
+    domain: "dearkellyfilm.com",
+    faviconUrl:
+      "https://www.google.com/s2/favicons?domain=dearkellyfilm.com&sz=64",
+    previousVisits: [
+      new Date("2025-04-04T12:00:00").getTime(),
+      new Date("2025-03-18T12:00:00").getTime(),
+      new Date("2025-03-11T12:00:00").getTime(),
+    ],
+  },
+  {
     type: "cursorDistance",
     displayValue: "2.4 mi",
     copy: MILESTONE_COPY.cursorDistance[0],
