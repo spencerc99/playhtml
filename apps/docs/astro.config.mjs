@@ -87,15 +87,16 @@ export default defineConfig({
       //
       //   Start        → getting-started, concepts, using-react
       //   Capabilities → capabilities (single page)
+      //   Examples     → examples (single page)
       //   Data         → autogenerate (data/)
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
       //   Reference    → autogenerate (reference/)
       //
-      // Why hybrid: the top groups ("Start", "Capabilities") don't have a
-      // matching directory on disk, and we want them as named groups for IA
-      // reasons — so they have to be hand-rolled. Everything below is in a
-      // real subdirectory, so we let Starlight autogenerate from the
+      // Why hybrid: the top groups ("Start", "Capabilities", "Examples") are
+      // deliberately named groups for IA reasons, so they have to be
+      // hand-rolled. Everything below is in a real subdirectory, so we let
+      // Starlight autogenerate from the
       // `sidebar.order` frontmatter on each page. New pages added to
       // data/ / advanced/ / integrations/ / reference/ show up in the
       // sidebar automatically — set `sidebar.order` in the page frontmatter
@@ -131,6 +132,10 @@ export default defineConfig({
             { label: "All capabilities", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
           ],
+        },
+        {
+          label: "Examples",
+          items: [{ label: "Example index", slug: "examples" }],
         },
         { label: "Data", autogenerate: { directory: "data" } },
         { label: "Advanced", autogenerate: { directory: "advanced" } },
