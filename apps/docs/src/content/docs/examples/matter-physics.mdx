@@ -23,7 +23,7 @@ The last person to interact becomes the simulation controller. Only that browser
 
 This is intentionally a small ownership rule. It makes the core synchronization pattern easy to inspect, but it does not support two people dragging separate bodies at the same time.
 
-## Why writes are bounded
+## Limit shared physics updates
 
 Physics engines render at about 60 frames per second. Writing shared data on every frame creates more updates than remote readers need.
 
@@ -46,6 +46,6 @@ All shared writes start from a user action or from the one browser currently con
 
 If the windows do not match, confirm that both address bars contain the exact same example-page URL. A copied playground remix or a different path can use a different room.
 
-## Larger reference
+## Compare with Cinderblock Yard
 
 [Cinderblock Yard](/experiments/cinderblock/) extends the same idea into a larger working project with more bodies, selection tools, rotation and removal, sleeping, responsive scaling, and a more detailed ownership handoff. Start with this recipe before reading that implementation.

@@ -82,7 +82,7 @@ export function RecipeExample({ recipe }: RecipeExampleProps) {
       <div className="ph-recipe-example__frame" ref={iframeHostRef} />
       <div className="ph-recipe-example__actions">
         <a className="ph-recipe-example__button" href={playgroundHref} target="_blank" rel="noreferrer">
-          Open code in playground
+          Remix
         </a>
         <button className="ph-recipe-example__button ph-recipe-example__button--quiet" type="button" onClick={copyTestLink}>
           {copied ? "Copied test link" : "Copy private-window link"}

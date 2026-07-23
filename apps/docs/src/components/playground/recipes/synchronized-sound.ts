@@ -7,7 +7,7 @@ export const synchronizedSoundRecipe: ExampleRecipe = {
   id: "synchronized-sound",
   title: "Synchronized sound",
   description:
-    "Play one-shot sound cues for everyone, then share a play/pause timeline that catches up late joiners.",
+    "Send a one-shot cue to everyone currently connected, or share a loop that late joiners can join.",
   tags: ["audio", "events", "timeline", "late joiners", "Web Audio"],
   capabilities: ["can-play", "events"],
   difficulty: "advanced",
@@ -220,7 +220,7 @@ export const synchronizedSoundRecipe: ExampleRecipe = {
       progress.style.width = String((positionMs / LOOP_MS) * 100) + "%";
       track.setAttribute("aria-valuenow", String(Math.round(positionMs)));
       element.querySelector("[data-position]").textContent = (positionMs / 1000).toFixed(1) + " / 2.0s";
-      element.querySelector("[data-transport-state]").textContent = data.isPlaying ? "Playing for everyone" : "Paused for everyone";
+      element.querySelector("[data-transport-state]").textContent = data.isPlaying ? "Playing" : "Paused";
       element.querySelector("[data-action='toggle-transport']").textContent = data.isPlaying ? "Pause loop" : "Play loop";
       for (const marker of element.querySelectorAll("[data-step]")) {
         marker.dataset.active = String(Number(marker.dataset.step) === step);

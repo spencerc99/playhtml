@@ -150,7 +150,7 @@ export const sharedAudioFileRecipe: ExampleRecipe = {
       element.querySelector("[data-position]").textContent =
         (positionMs / 1000).toFixed(1) + "s";
       element.querySelector("[data-playback-state]").textContent =
-        data.isPlaying ? "Playing for everyone" : "Paused for everyone";
+        data.isPlaying ? "Playing" : "Paused";
       element.querySelector("[data-action='toggle']").textContent =
         data.isPlaying ? "Pause for everyone" : "Play for everyone";
     }

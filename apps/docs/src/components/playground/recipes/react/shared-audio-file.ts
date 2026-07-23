@@ -155,7 +155,7 @@ const SharedAudioPlayer = withSharedState<TransportData>(
         <div className="timeline">
           <div className="timeline-head">
             <strong>
-              {data.isPlaying ? "Playing for everyone" : "Paused for everyone"}
+              {data.isPlaying ? "Playing" : "Paused"}
             </strong>
             <span>{(positionMs / 1000).toFixed(1)}s</span>
           </div>
