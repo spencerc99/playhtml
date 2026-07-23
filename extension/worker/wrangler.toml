@@ -1,17 +1,8 @@
 # ABOUTME: Configures the extension API Worker and its local development bindings.
-# ABOUTME: Declares the secrets and Durable Object required by the Worker.
+# ABOUTME: Defines the Worker entrypoint and Durable Object migration.
 name = "playhtml-game-api"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
-
-[secrets]
-required = [
-  "SUPABASE_URL",
-  "SUPABASE_SECRET_KEY",
-  "ADMIN_KEY",
-  "RESEND_API_KEY",
-  "CODA_API_TOKEN",
-]
 
 # Environment variables
 # 
