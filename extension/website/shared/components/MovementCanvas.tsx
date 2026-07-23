@@ -1564,7 +1564,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               trailStates={trailStates}
               frozen={paused}
               showClickRipples={!showClicks}
-              soundEngine={paused || !soundEnabled ? null : soundEngineReady}
+              soundEngine={!soundEnabled ? null : soundEngineReady}
               onTrailsRemoved={handleTrailsRemoved}
               settings={trailAnimationSettings}
             />

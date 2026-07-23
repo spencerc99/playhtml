@@ -56,6 +56,7 @@ class TestOscillatorNode extends TestAudioNode {
   frequency = new TestAudioParam();
   startTimes: number[] = [];
   stopTimes: Array<number | undefined> = [];
+  onended: (() => void) | null = null;
 
   start(time = 0): void {
     this.startTimes.push(time);
@@ -276,5 +277,61 @@ describe("SoundEngine cursor instruments", () => {
     expect(context.oscillators).toHaveLength(4);
     expect(context.oscillators[2].startTimes).toEqual([context.currentTime]);
     expect(context.oscillators[3].startTimes).toEqual([context.currentTime]);
+  });
+
+  it("retires all state for a finished live trail", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+    engine.setConfig({ crossingDissonance: true });
+
+    engine.tick(0, [
+      {
+        trailIndex: 7,
+        x: 0,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0,
+        color: "#000",
+        isNewlyActive: true,
+      },
+    ]);
+    engine.tick(100, [
+      {
+        trailIndex: 7,
+        x: 10,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0.5,
+        color: "#000",
+        isNewlyActive: false,
+      },
+    ]);
+
+    const primaryLevel = context.oscillators[0].connections[0];
+    const state = engine as unknown as {
+      voices: Map<number, unknown>;
+      prevPositions: Map<number, unknown>;
+      trailPaths: Map<number, unknown>;
+      crossingCooldowns: Map<string, number>;
+    };
+    state.crossingCooldowns.set("7-path-2", 100);
+    state.crossingCooldowns.set("2-path-7", 100);
+
+    engine.retireTrail(7);
+
+    expect(state.voices.has(7)).toBe(false);
+    expect(state.prevPositions.has(7)).toBe(false);
+    expect(state.trailPaths.has(7)).toBe(false);
+    expect(state.crossingCooldowns).toEqual(new Map());
+    expect(primaryLevel.connections).not.toEqual([]);
+
+    context.oscillators[0].onended?.();
+
+    expect(primaryLevel.connections).toEqual([]);
   });
 });

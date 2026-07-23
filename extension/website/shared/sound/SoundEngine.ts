@@ -658,6 +658,59 @@ export class SoundEngine {
     }
   }
 
+  /** Permanently remove a trail's audio graph and cached motion state. */
+  retireTrail(trailIndex: number): void {
+    const voice = this.voices.get(trailIndex);
+    if (voice) {
+      const disconnect = () => this.disconnectVoice(voice);
+      let disconnectWhenStopped = false;
+      if (this.ctx && voice.oscillator) {
+        const now = this.ctx.currentTime;
+        this.holdParam(voice.gainNode.gain, now);
+        voice.gainNode.gain.linearRampToValueAtTime(0, now + 0.03);
+        voice.oscillator.onended = disconnect;
+        try {
+          voice.oscillator.stop(now + 0.04);
+          disconnectWhenStopped = true;
+        } catch { /* already stopped */ }
+      }
+      if (voice.oscillator) {
+        voice.oscillator = null;
+      }
+      if (voice.fifthOscillator) {
+        try {
+          voice.fifthOscillator.stop(
+            this.ctx ? this.ctx.currentTime + 0.04 : undefined,
+          );
+        } catch { /* already stopped */ }
+        voice.fifthOscillator = null;
+      }
+      if (!disconnectWhenStopped) {
+        disconnect();
+      }
+      this.voices.delete(trailIndex);
+    }
+    this.prevPositions.delete(trailIndex);
+    this.trailPaths.delete(trailIndex);
+    for (const key of this.crossingCooldowns.keys()) {
+      if (
+        key.startsWith(`${trailIndex}-path-`) ||
+        key.endsWith(`-path-${trailIndex}`)
+      ) {
+        this.crossingCooldowns.delete(key);
+      }
+    }
+  }
+
+  private disconnectVoice(voice: Voice): void {
+    voice.oscillatorLevel?.disconnect();
+    voice.fifthOscillatorLevel?.disconnect();
+    voice.fifthGainNode?.disconnect();
+    voice.filterNode.disconnect();
+    voice.gainNode.disconnect();
+    voice.panNode.disconnect();
+  }
+
   setVolume(volume: number): void {
     this.baseVolume = Math.max(0, Math.min(1, volume));
     this.updateMasterGainForPolyphony(this.lastActiveTrailCount);

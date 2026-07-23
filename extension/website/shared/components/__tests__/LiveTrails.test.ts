@@ -178,6 +178,7 @@ describe("LiveTrails sound", () => {
     const soundEngine = {
       tick: vi.fn(),
       triggerClick: vi.fn(),
+      retireTrail: vi.fn(),
     } as unknown as SoundEngine;
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -204,7 +205,22 @@ describe("LiveTrails sound", () => {
       }),
     ]);
 
+    await act(async () => {
+      root.render(
+        React.createElement(LiveTrails, {
+          trailStates: [state],
+          frozen: true,
+          soundEngine,
+          settings: DEFAULT_SETTINGS,
+        }),
+      );
+    });
+    act(() => scheduledFrames.shift()?.(1700));
+
+    expect(soundEngine.tick).toHaveBeenLastCalledWith(1700, []);
+
     await act(async () => root.unmount());
+    expect(soundEngine.retireTrail).toHaveBeenCalledWith(0);
     container.remove();
     vi.unstubAllGlobals();
     delete testGlobal.IS_REACT_ACT_ENVIRONMENT;

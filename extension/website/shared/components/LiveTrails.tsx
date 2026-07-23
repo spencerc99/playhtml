@@ -162,6 +162,14 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const soundFramesRef = useRef<TrailSoundFrame[]>([]);
     const soundTrailIndicesRef = useRef<Map<string, number>>(new Map());
     const nextSoundTrailIndexRef = useRef(0);
+    const retiredSoundTrailIndicesRef = useRef<number[]>([]);
+    const queueSoundTrailRetirement = (trailId: string) => {
+      const soundTrailIndex = soundTrailIndicesRef.current.get(trailId);
+      if (soundTrailIndex !== undefined) {
+        retiredSoundTrailIndicesRef.current.push(soundTrailIndex);
+      }
+      soundTrailIndicesRef.current.delete(trailId);
+    };
 
     const spawnedClickKeysByTrailRef = useRef<Map<string, Set<string>>>(
       new Map(),
@@ -207,6 +215,13 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
     useEffect(() => {
       keptRef.current = kept;
+      if (retiredSoundTrailIndicesRef.current.length > 0) {
+        const trailIndices = retiredSoundTrailIndicesRef.current;
+        retiredSoundTrailIndicesRef.current = [];
+        for (const trailIndex of trailIndices) {
+          soundEngineRef.current?.retireTrail(trailIndex);
+        }
+      }
       if (removedIdsRef.current.length > 0) {
         const ids = removedIdsRef.current;
         removedIdsRef.current = [];
@@ -253,7 +268,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             // Fully faded — drop, and report so its events can be freed.
             removedIdsRef.current.push(id);
             spawnedClickKeysByTrailRef.current.delete(id);
-            soundTrailIndicesRef.current.delete(id);
+            queueSoundTrailRetirement(id);
           }
         }
         // Brand-new live trails not already in `kept`.
@@ -301,7 +316,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               changed = true;
               removedIdsRef.current.push(tid);
               spawnedClickKeysByTrailRef.current.delete(tid);
-              soundTrailIndicesRef.current.delete(tid);
+              queueSoundTrailRetirement(tid);
             }
           }
           return changed ? next : prev;
@@ -309,6 +324,15 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       }, 1000);
       return () => window.clearInterval(id);
     }, []);
+
+    useEffect(
+      () => () => {
+        for (const trailIndex of soundTrailIndicesRef.current.values()) {
+          soundEngineRef.current?.retireTrail(trailIndex);
+        }
+      },
+      [],
+    );
 
     // Per-trail imperative handles, keyed by stable trail id.
     const trailHandles = useRef<Map<string, ImperativeTrailHandle>>(new Map());
@@ -387,6 +411,14 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       const runFrame = (perfNow: number) => {
         if (frozenRef.current) {
           pauseDrawClock(perfNow);
+          soundEngineRef.current?.tick(
+            getDrawClockTime(
+              perfNow,
+              pausedAccumMsRef.current,
+              pauseStartedAtRef.current,
+            ),
+            [],
+          );
           return;
         }
         resumeDrawClock(perfNow);
