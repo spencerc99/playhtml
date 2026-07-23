@@ -12,17 +12,18 @@
 /**
  * Event types that can be collected
  */
-export type CollectionEventType = 
-  | 'cursor' 
+export type CollectionEventType =
+  | 'cursor'
   | 'navigation'
   | 'viewport'
-  | 'keyboard';
+  | 'keyboard'
+  | 'scrap';
 
 /**
  * Get array of valid event types (for validation)
  */
 export function getValidEventTypes(): CollectionEventType[] {
-  return ['cursor', 'navigation', 'viewport', 'keyboard'];
+  return ['cursor', 'navigation', 'viewport', 'keyboard', 'scrap'];
 }
 
 /**
