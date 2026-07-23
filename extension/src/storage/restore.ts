@@ -103,7 +103,7 @@ export async function fetchEventsByPid(
     navigation: 0,
     viewport: 0,
     keyboard: 0,
-    image: 0,
+    element: 0,
   };
 
   for (const type of types) {

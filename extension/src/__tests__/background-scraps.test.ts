@@ -23,9 +23,10 @@ describe("background scrap queries", () => {
   it("returns stored scraps with the default limit and rendering shape", async () => {
     const event: CollectionEvent = {
       id: "scrap-1",
-      type: "image",
+      type: "element",
       ts: 1234,
       data: {
+        kind: "image",
         src: "https://cdn.example.com/image.jpg",
         alt: "A found image",
         naturalWidth: 1200,
@@ -90,7 +91,7 @@ describe("background scrap queries", () => {
       expect(handled).toBe(true);
     });
 
-    expect(queryByType).toHaveBeenCalledWith("image", { limit: 5000 });
+    expect(queryByType).toHaveBeenCalledWith("element", { limit: 5000 });
     expect(response).toEqual({
       scraps: [{
         id: "scrap-1",

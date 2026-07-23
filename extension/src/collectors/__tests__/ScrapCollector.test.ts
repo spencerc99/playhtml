@@ -181,6 +181,7 @@ describe("ScrapCollector", () => {
     showForCapture([image]);
 
     expect(emitCallback).toHaveBeenCalledWith({
+      kind: "image",
       src: "https://example.com/feature.jpg",
       alt: "Sunlight through a window",
       naturalWidth: 1200,

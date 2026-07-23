@@ -42,7 +42,7 @@ describe("background upload flushing", () => {
 
   it("drains up to the worker request limit per flush", async () => {
     const navigationEvent = makeEvent("event-1");
-    const scrapEvent = makeEvent("scrap-1", "image");
+    const scrapEvent = makeEvent("scrap-1", "element");
     const pendingEvents = [navigationEvent, scrapEvent];
     const store = {
       getPendingEvents: vi.fn().mockResolvedValue(pendingEvents),
@@ -70,7 +70,7 @@ describe("background upload flushing", () => {
           local: {
             get: vi.fn().mockResolvedValue({
               collection_mode_navigation: "shared",
-              collection_mode_image: "shared",
+              collection_mode_element: "shared",
             }),
             set: vi.fn().mockResolvedValue(undefined),
             remove: vi.fn().mockResolvedValue(undefined),
