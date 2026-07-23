@@ -1,5 +1,7 @@
 # Unreleased
 
+- Allow wewere.online preview deployments to load extension event data.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR

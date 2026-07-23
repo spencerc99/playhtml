@@ -7,6 +7,8 @@ const ALLOWED_ORIGINS = new Set([
   'https://www.wewere.online',
 ]);
 
+const WEBSITE_PAGES_HOST = 'we-were-online-website.pages.dev';
+
 /** Dev origins matched by host (any port). */
 const DEV_HOSTS = new Set(['localhost', '127.0.0.1']);
 
@@ -14,6 +16,13 @@ function originIsAllowed(origin: string): boolean {
   if (ALLOWED_ORIGINS.has(origin)) return true;
   try {
     const url = new URL(origin);
+    if (
+      url.protocol === 'https:' &&
+      (url.hostname === WEBSITE_PAGES_HOST ||
+        url.hostname.endsWith(`.${WEBSITE_PAGES_HOST}`))
+    ) {
+      return true;
+    }
     return DEV_HOSTS.has(url.hostname);
   } catch {
     return false;
