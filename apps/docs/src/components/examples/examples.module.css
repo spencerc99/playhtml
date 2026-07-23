@@ -2,6 +2,7 @@
 /* ABOUTME: Defines responsive cards, source filters, loading, and failure states. */
 
 .catalogue {
+  container-type: inline-size;
   margin-top: 1.75rem;
   color: var(--ph-ink);
   font-family: var(--ph-font-body);
@@ -10,6 +11,8 @@
 .controls {
   display: grid;
   gap: 1rem;
+  width: min(36rem, 100%);
+  max-width: 100%;
   padding: 1rem;
   background: var(--ph-paper-warm);
   border: 1px solid var(--ph-hairline);
@@ -90,7 +93,6 @@
 
 .filterButtons {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.45rem;
 }
 
@@ -452,13 +454,11 @@
   font-size: 0.9rem;
 }
 
-@media (min-width: 42rem) {
+@container (min-width: 48rem) {
   .controls {
     width: fit-content;
-    max-width: 100%;
     grid-template-columns: minmax(16rem, 36rem) auto;
     align-items: end;
-    justify-content: start;
   }
 }
 
