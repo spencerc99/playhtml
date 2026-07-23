@@ -14,7 +14,7 @@ export const exampleRecipes = [
 export const playableRecipes: readonly RunnableRecipe[] = [starterRecipe, ...exampleRecipes];
 
 export const exampleRecipeSummaries: ExampleRecipeSummary[] = exampleRecipes.map(
-  ({ html: _html, ...summary }) => summary,
+  ({ html: _html, react: _react, ...summary }) => summary,
 );
 
 export function getPlayableRecipe(id: string): RunnableRecipe | undefined {

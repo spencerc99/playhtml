@@ -1,6 +1,7 @@
 // ABOUTME: Defines the canonical shared audio-file recipe for docs and the playground.
 // ABOUTME: Synchronizes an HTML audio element with a small shared transport state.
 import type { ExampleRecipe } from "./types";
+import { sharedAudioFileReactSource } from "./react/shared-audio-file";
 
 export const sharedAudioFileRecipe: ExampleRecipe = {
   id: "shared-audio-file",
@@ -11,6 +12,10 @@ export const sharedAudioFileRecipe: ExampleRecipe = {
   capabilities: ["can-play"],
   difficulty: "intermediate",
   docsHref: "/docs/examples/shared-audio-file/",
+  react: {
+    install: "npm install playhtml @playhtml/react",
+    code: sharedAudioFileReactSource,
+  },
   html: `<!doctype html>
 <html lang="en">
 <head>

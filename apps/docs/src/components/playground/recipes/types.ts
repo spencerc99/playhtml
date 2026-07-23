@@ -15,6 +15,10 @@ export type ExampleRecipe = RunnableRecipe & {
   capabilities: readonly string[];
   difficulty: ExampleDifficulty;
   docsHref: `/docs/examples/${string}/`;
+  react: {
+    install: string;
+    code: string;
+  };
 };
 
-export type ExampleRecipeSummary = Omit<ExampleRecipe, "html">;
+export type ExampleRecipeSummary = Omit<ExampleRecipe, "html" | "react">;

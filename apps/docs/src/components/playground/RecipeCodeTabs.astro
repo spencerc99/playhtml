@@ -1,0 +1,106 @@
+---
+// ABOUTME: Renders complete Vanilla HTML and React implementations for a docs recipe.
+// ABOUTME: Keeps framework tabs, copyable code, setup notes, and vanilla playground links uniform.
+
+import {
+  LinkButton,
+  TabItem,
+  Tabs,
+} from "@astrojs/starlight/components";
+import { Code } from "astro:components";
+import type { ExampleRecipe } from "./recipes/types";
+
+type Props = {
+  recipe: ExampleRecipe;
+};
+
+const { recipe } = Astro.props;
+const playgroundParams = new URLSearchParams({ id: recipe.id });
+const playgroundHref = `/docs/play/#${playgroundParams}`;
+---
+
+<section class="ph-recipe-code">
+  <h2>Copy the code</h2>
+  <p>
+    Both versions use the same shared data and behavior. The live playground
+    runs the Vanilla HTML version.
+  </p>
+
+  <Tabs syncKey="framework">
+    <TabItem label="Vanilla HTML">
+      <p>
+        Save this as <code>index.html</code>, or open it in the playground to
+        test and change it.
+      </p>
+      <p class="ph-recipe-code__action">
+        <LinkButton href={playgroundHref}>Open Vanilla HTML in playground</LinkButton>
+      </p>
+      <div class="ph-recipe-code__file">
+        <span class="ph-recipe-code__filename">index.html</span>
+        <Code
+          code={recipe.html}
+          lang="html"
+          class="ph-recipe-code__block"
+        />
+      </div>
+    </TabItem>
+
+    <TabItem label="React">
+      <p>
+        Start with a React + TypeScript project, install the packages below,
+        then replace <code>src/App.tsx</code> with the component.
+      </p>
+      <div class="ph-recipe-code__file">
+        <span class="ph-recipe-code__filename">Terminal</span>
+        <Code code={recipe.react.install} lang="shell" />
+      </div>
+      <div class="ph-recipe-code__file">
+        <span class="ph-recipe-code__filename">src/App.tsx</span>
+        <Code
+          code={recipe.react.code}
+          lang="tsx"
+          class="ph-recipe-code__block"
+        />
+      </div>
+    </TabItem>
+  </Tabs>
+</section>
+
+<style>
+  .ph-recipe-code {
+    margin-block: 2rem;
+  }
+
+  .ph-recipe-code__action {
+    margin-block: 1rem;
+  }
+
+  .ph-recipe-code__file {
+    margin-block: 1rem;
+  }
+
+  .ph-recipe-code__filename {
+    display: block;
+    width: fit-content;
+    padding: 0.35rem 0.65rem;
+    color: var(--ph-ink-2);
+    background: var(--ph-paper-warm);
+    border: 1px solid var(--ph-ink);
+    border-bottom: 0;
+    border-radius: 4px 4px 0 0;
+    font-family: var(--ph-font-mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  :global(.ph-recipe-code__file .astro-code) {
+    margin-top: 0;
+  }
+
+  :global(.ph-recipe-code__block) {
+    max-height: min(70vh, 42rem);
+    overflow: auto;
+  }
+</style>

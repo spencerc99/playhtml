@@ -2,6 +2,7 @@
 // ABOUTME: Keeps one browser in control while remote browsers interpolate shared transforms.
 
 import type { ExampleRecipe } from "./types";
+import { matterPhysicsReactSource } from "./react/matter-physics";
 
 export const matterPhysicsRecipe: ExampleRecipe = {
   id: "matter-physics",
@@ -12,6 +13,12 @@ export const matterPhysicsRecipe: ExampleRecipe = {
   capabilities: ["can-play"],
   difficulty: "advanced",
   docsHref: "/docs/examples/matter-physics/",
+  react: {
+    install:
+      "npm install playhtml @playhtml/react matter-js\n" +
+      "npm install --save-dev @types/matter-js",
+    code: matterPhysicsReactSource,
+  },
   html: `<!doctype html>
 <html lang="en">
 <head>

@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
 import { synchronizedSoundRecipe } from "@/components/playground/recipes/synchronized-sound";
 
 This advanced example shows two ways to coordinate generated sound with playhtml. Use an event for a sound that should happen once, or shared data for a generated loop that people need to join, pause, and resume.
@@ -13,6 +14,8 @@ This advanced example shows two ways to coordinate generated sound with playhtml
 If you already have an MP3, WAV, or another audio file, start with [Shared audio file](/docs/examples/shared-audio-file/).
 
 <RecipeExample recipe={synchronizedSoundRecipe} client:load />
+
+<RecipeCodeTabs recipe={synchronizedSoundRecipe} />
 
 ## Choose the sound behavior
 

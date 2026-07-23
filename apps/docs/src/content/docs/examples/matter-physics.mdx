@@ -6,11 +6,14 @@ sidebar:
 ---
 
 import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
 import { matterPhysicsRecipe } from "@/components/playground/recipes/matter-physics";
 
 This example syncs a small Matter.js world across browsers. Use it when you want physics motion to persist without making every connected browser simulate and write the same bodies.
 
 <RecipeExample recipe={matterPhysicsRecipe} client:load />
+
+<RecipeCodeTabs recipe={matterPhysicsRecipe} />
 
 ## What syncs
 

@@ -1,6 +1,7 @@
 // ABOUTME: Defines the canonical synchronized-sound recipe for docs and the playground.
 // ABOUTME: Demonstrates transient audio events and a persistent shared transport.
 import type { ExampleRecipe } from "./types";
+import { synchronizedSoundReactSource } from "./react/synchronized-sound";
 
 export const synchronizedSoundRecipe: ExampleRecipe = {
   id: "synchronized-sound",
@@ -11,6 +12,10 @@ export const synchronizedSoundRecipe: ExampleRecipe = {
   capabilities: ["can-play", "events"],
   difficulty: "advanced",
   docsHref: "/docs/examples/synchronized-sound/",
+  react: {
+    install: "npm install playhtml @playhtml/react",
+    code: synchronizedSoundReactSource,
+  },
   html: `<!doctype html>
 <html lang="en">
 <head>
