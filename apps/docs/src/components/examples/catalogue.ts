@@ -125,6 +125,7 @@ function mapArenaBlock(value: unknown): SiteSummary | undefined {
   if (!destination) return undefined;
 
   const description = readNestedRecord(value, "description");
+  const metadata = readNestedRecord(value, "metadata");
   const image = readNestedRecord(value, "image");
   const smallImage = image ? readNestedRecord(image, "small") : undefined;
   const sourceTitle = source ? readString(source.title) : undefined;
@@ -133,12 +134,15 @@ function mapArenaBlock(value: unknown): SiteSummary | undefined {
     ? readString(description.plain)
     : undefined;
   const siteDescription = parseSiteDescription(descriptionText);
+  const author =
+    (metadata ? readString(metadata.author) : undefined) ??
+    siteDescription.author;
 
   return {
     id: `arena-${id}`,
     title,
     description: siteDescription.description,
-    ...(siteDescription.author ? { author: siteDescription.author } : {}),
+    ...(author ? { author } : {}),
     href: destination.href,
     hostname: destination.hostname.replace(/^www\./, ""),
     imageUrl:

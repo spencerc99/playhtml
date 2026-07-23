@@ -117,6 +117,27 @@ describe("mapArenaSites", () => {
     expect(site.description).toBe("Make a beat together.");
     expect(filterSites([site], "Casey Example")).toEqual([site]);
   });
+
+  it("maps the author field from Are.na metadata", () => {
+    const [site] = mapArenaSites({
+      data: [
+        {
+          id: 44,
+          type: "Link",
+          visibility: "public",
+          description: { plain: "A collaborative drawing surface." },
+          metadata: { author: "João Bernardo Narciso" },
+          source: {
+            url: "https://drawing.example/",
+            title: "Shared Drawing",
+          },
+        },
+      ],
+    });
+
+    expect(site.author).toBe("João Bernardo Narciso");
+    expect(filterSites([site], "João Bernardo Narciso")).toEqual([site]);
+  });
 });
 
 describe("deduplicateSitesByUrl", () => {
