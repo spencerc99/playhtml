@@ -16,6 +16,11 @@ import {
   handleQuarantineStrip,
   handleQuarantineRip,
 } from './routes/quarantine';
+import {
+  handleQuarantineElementVerdict,
+  handleQuarantineElementMark,
+  handleQuarantineElementRip,
+} from './routes/quarantineElement';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -88,6 +93,18 @@ export default {
 
     if (path === '/quarantine/rip' && request.method === 'POST') {
       return handleQuarantineRip(request, env);
+    }
+
+    if (path === '/quarantine/element-verdict' && request.method === 'GET') {
+      return handleQuarantineElementVerdict(request, env);
+    }
+
+    if (path === '/quarantine/element-mark' && request.method === 'POST') {
+      return handleQuarantineElementMark(request, env);
+    }
+
+    if (path === '/quarantine/element-rip' && request.method === 'POST') {
+      return handleQuarantineElementRip(request, env);
     }
 
     if (path === '/page-meta' && request.method === 'GET') {
