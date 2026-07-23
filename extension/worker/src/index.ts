@@ -11,6 +11,11 @@ import { handleSubscribe } from './routes/subscribe';
 import { handleFeedback } from './routes/feedback';
 import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
+import {
+  handleQuarantineVerdict,
+  handleQuarantineStrip,
+  handleQuarantineRip,
+} from './routes/quarantine';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -70,6 +75,19 @@ export default {
 
     if (path === '/feedback' && request.method === 'POST') {
       return handleFeedback(request, env);
+    }
+
+    // Quarantine tape — public (called from content scripts on arbitrary pages)
+    if (path === '/quarantine/verdict' && request.method === 'GET') {
+      return handleQuarantineVerdict(request, env);
+    }
+
+    if (path === '/quarantine/strip' && request.method === 'POST') {
+      return handleQuarantineStrip(request, env);
+    }
+
+    if (path === '/quarantine/rip' && request.method === 'POST') {
+      return handleQuarantineRip(request, env);
     }
 
     if (path === '/page-meta' && request.method === 'GET') {
