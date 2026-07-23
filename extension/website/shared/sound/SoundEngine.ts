@@ -238,7 +238,7 @@ export class SoundEngine {
 
       let voice = this.voices.get(frame.trailIndex);
 
-      if (!voice) {
+      if (!voice || !voice.oscillator) {
         voice = this.createVoice(instrument);
         this.voices.set(frame.trailIndex, voice);
       }

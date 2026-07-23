@@ -226,4 +226,55 @@ describe("SoundEngine cursor instruments", () => {
       );
     }
   });
+
+  it("recreates a released voice when a live trail resumes", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+
+    engine.tick(0, [
+      {
+        trailIndex: 0,
+        x: 0,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0,
+        color: "#000",
+        isNewlyActive: true,
+      },
+    ]);
+    engine.tick(100, [
+      {
+        trailIndex: 0,
+        x: 10,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0.5,
+        color: "#000",
+        isNewlyActive: false,
+      },
+    ]);
+    engine.tick(200, []);
+    engine.tick(300, [
+      {
+        trailIndex: 0,
+        x: 20,
+        y: 0,
+        prevX: 10,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0.6,
+        color: "#000",
+        isNewlyActive: false,
+      },
+    ]);
+
+    expect(context.oscillators).toHaveLength(4);
+    expect(context.oscillators[2].startTimes).toEqual([context.currentTime]);
+    expect(context.oscillators[3].startTimes).toEqual([context.currentTime]);
+  });
 });
