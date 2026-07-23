@@ -6,7 +6,7 @@ import { buildIframeSrcdoc } from "./iframe-template";
 // source as a string. We use it to load the workspace playhtml ESM build
 // and hand the iframe a blob: URL pointing at it. This means library
 // edits to packages/playhtml/src/* reflect in the iframe after a rebuild
-// of the playhtml package (`bun run -C packages/playhtml build`).
+// of the playhtml package (`bun run --cwd packages/playhtml build`).
 //
 // Why not unpkg: the published version doesn't have this branch's dev
 // panel changes (position attribute, console panel). Why not a Vite

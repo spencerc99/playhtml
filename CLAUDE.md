@@ -34,15 +34,15 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 
 ### Per-Package Commands
 
-- `bun run -C packages/playhtml build`: Build core library
-- `bun run -C packages/react build`: Build React bindings
-- `bun run -C packages/common build`: Build shared types
+- `bun run --cwd packages/playhtml build`: Build core library
+- `bun run --cwd packages/react build`: Build React bindings
+- `bun run --cwd packages/common build`: Build shared types
 
 ### Testing
 
-- `bun run -C packages/playhtml test`: Run core library tests (Vitest + jsdom)
-- `bun run -C packages/react test`: Run React component tests (Vitest + jsdom)
-- `bun run -C extension test`: Run extension collector/storage tests (Vitest + jsdom)
+- `bun run --cwd packages/playhtml test`: Run core library tests (Vitest + jsdom)
+- `bun run --cwd packages/react test`: Run React component tests (Vitest + jsdom)
+- `bun run --cwd extension test`: Run extension collector/storage tests (Vitest + jsdom)
 - `bun run lint`: Type-check all packages (`bunx tsc` across workspace)
 
 **Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. CI never hits this because `pr-validation.yml` runs `bun build-packages` before every test job (and does not run the extension suite at all).
