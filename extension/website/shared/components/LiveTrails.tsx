@@ -46,6 +46,14 @@ const REMOVE_AFTER_DIM_MS = 20_000;
 // archive's eviction fade (EVICTION_FADE_MS).
 const KEEP_AFTER_DEPART_MS = EVICTION_FADE_MS;
 
+export function getDrawClockTime(
+  performanceNow: number,
+  pausedAccumMs: number,
+  pauseStartedAt: number | null,
+): number {
+  return (pauseStartedAt ?? performanceNow) - pausedAccumMs;
+}
+
 /** Tiny deterministic hash of a string to a small int, for per-trail variation. */
 function hashKey(key: string): number {
   let h = 0;
@@ -278,7 +286,12 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     // The draw clock: wall-clock minus time spent paused. Depart timestamps and
     // fades MUST use this (not raw performance.now()) so a depart-fade that's in
     // progress when the canvas pauses doesn't keep accruing during the pause.
-    const drawClock = () => performance.now() - pausedAccumMsRef.current;
+    const drawClock = () =>
+      getDrawClockTime(
+        performance.now(),
+        pausedAccumMsRef.current,
+        pauseStartedAtRef.current,
+      );
 
     useEffect(() => {
       const clearScheduled = () => {
