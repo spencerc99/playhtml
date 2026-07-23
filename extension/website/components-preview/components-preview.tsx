@@ -2394,6 +2394,26 @@ function buildMilestoneSample(
       period: "alltime",
     };
   }
+  if (type === "longGapReturn") {
+    const displayValues = ["15mo", "4mo", "5wks"];
+    const domains = ["dearkellyfilm.com", "usgraphics.com", "neal.fun"];
+    const domain = domains[copyIndex % domains.length];
+    return {
+      type,
+      displayValue: displayValues[copyIndex % displayValues.length],
+      copy,
+      ctaLabel: "see your history there",
+      ctaAction: "TOGGLE_HISTORICAL_OVERLAY",
+      period: "alltime",
+      domain,
+      faviconUrl: `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
+      previousVisits: [
+        new Date("2025-04-04T12:00:00").getTime(),
+        new Date("2025-03-18T12:00:00").getTime(),
+        new Date("2025-03-11T12:00:00").getTime(),
+      ],
+    };
+  }
   // domainVisits
   const domains = [
     "en.wikipedia.org",
@@ -2424,6 +2444,12 @@ const MILESTONE_TYPES: {
   desc: string;
   id: string;
 }[] = [
+  {
+    type: "longGapReturn",
+    label: "long-gap return",
+    id: "section-ms-longgap",
+    desc: "Fires when you return to a domain after more than 30 days away. Shows how long it's been plus a few previous visit dates, and fires once per gap per domain.",
+  },
   {
     type: "cursorDistance",
     label: "cursor distance",
@@ -2485,7 +2511,7 @@ function MilestonesSection() {
           marginBottom: "28px",
         }}
       >
-        The four milestone types, shown across their full copy pool. Use this to
+        The five milestone types, shown across their full copy pool. Use this to
         pressure-test whether each headline reads clearly in context.
       </div>
 
@@ -2699,7 +2725,7 @@ function PreviewPage() {
                 {activeSection === "portrait-card"
                   ? "six layout directions · same data across all variants"
                   : activeSection === "milestones"
-                    ? "four milestone types · full copy pool for each"
+                    ? "five milestone types · full copy pool for each"
                     : "three visual treatments · links carry varied visit counts"}
               </div>
               {activeSection === "portrait-card" && (

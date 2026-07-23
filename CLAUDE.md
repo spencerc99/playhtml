@@ -34,18 +34,32 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 
 ### Per-Package Commands
 
-- `bun run -C packages/playhtml build`: Build core library
-- `bun run -C packages/react build`: Build React bindings
-- `bun run -C packages/common build`: Build shared types
+- `bun run --cwd packages/playhtml build`: Build core library
+- `bun run --cwd packages/react build`: Build React bindings
+- `bun run --cwd packages/common build`: Build shared types
 
 ### Testing
 
-- `bun run -C packages/playhtml test`: Run core library tests (Vitest + jsdom)
-- `bun run -C packages/react test`: Run React component tests (Vitest + jsdom)
-- `bun run -C extension test`: Run extension collector/storage tests (Vitest + jsdom)
+- `bun run --cwd packages/playhtml test`: Run core library tests (Vitest + jsdom)
+- `bun run --cwd packages/react test`: Run React component tests (Vitest + jsdom)
+- `bun run --cwd extension test`: Run extension collector/storage tests (Vitest + jsdom)
 - `bun run lint`: Type-check all packages (`bunx tsc` across workspace)
 
 **Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. CI never hits this because `pr-validation.yml` runs `bun build-packages` before every test job (and does not run the extension suite at all).
+
+### Supabase
+
+- `bun run db:start`: Start the local Supabase stack
+- `bun run db:reset`: Recreate the local database from migrations and seed data
+- `bun run db:new -- extension_describe_change`: Create an extension-owned migration
+- `bun run db:new -- partykit_describe_change`: Create a PartyKit-owned migration
+- `bun run db:verify`: Reset and lint the local database
+- `bun run db:stop`: Stop the local Supabase stack
+- `bun run dev-server:local-db`: Run PartyKit against the local Supabase stack
+- `bun run dev-extension-worker:local-db`: Run the extension Worker against the local Supabase stack
+
+The extension and PartyKit use one Supabase project with different tables. All new migrations live
+in `supabase/migrations/`; the name prefix records which application owns the affected tables.
 
 ### Extension Performance
 
@@ -166,6 +180,12 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 - **React tests:** PlayProvider integration
 - **Extension tests:** Collector unit tests, integration tests
 - Run relevant package tests locally before PRs
+- **Screenshots for user-facing changes:** Every user-facing change MUST be
+  verified on the real affected surface and accompanied by screenshots of the
+  finished result. For interactive changes, capture the key states of the flow
+  (for example, closed, open, and success states), not only the initial screen.
+  Include the screenshots in the handoff and PR. If the surface cannot be
+  captured, stop and tell Spencer what blocks it rather than omitting them.
 
 ## Commit & PR Guidelines
 

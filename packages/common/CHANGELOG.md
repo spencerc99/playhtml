@@ -1,5 +1,13 @@
 # @playhtml/common
 
+## 0.8.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- dca1704: Restrict presence player identities to public fields, strip profile-only fields from generated identities, and allow custom presence values larger than 4 KiB.
+- 252acd0: Apply `can-move-bounds` only while dragging so setup preserves initial CSS layout and persisted positions instead of rewriting them from pre-insertion or client-specific geometry.
+
 ## 0.8.1
 
 ### Patch Changes

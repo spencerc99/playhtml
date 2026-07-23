@@ -123,14 +123,64 @@ function pickOffsetX(): number {
   return 1.0 + Math.random() * 1.0; // right margin
 }
 
-/**
- * Resolve an anchor at render time. We re-score because layout may have
- * shifted; if the original spot is now blocked we return null.
- */
+/** Resolve the page position chosen at placement time. Offscreen positions are
+ * still valid; null means the anchor element itself no longer exists. */
 export function resolveBottlePosition(anchor: BottleAnchor): ResolvedPosition | null {
-  const result = scorePlacement(anchor);
-  if (result.score < MIN_ACCEPTABLE_SCORE) return null;
-  return result.position;
+  return resolveAnchorPosition(anchor).position;
+}
+
+/**
+ * Build a page-stable anchor for a spot the user pointed at (manual placement).
+ * Unlike pickBottleAnchor, this makes no attempt to find "clean" background —
+ * the bottle goes exactly where the cursor is. We bind it to the nearest stable
+ * content element and encode the point as an offset within that element, so the
+ * bottle follows that spot across scroll/resize and other visitors see it there.
+ *
+ * Falls back to `body` when no reasonable content anchor sits near the point
+ * (e.g. a bare page), which still gives a scroll-stable page position.
+ */
+export function anchorFromPoint(clientX: number, clientY: number): BottleAnchor {
+  const candidates = collectAnchorCandidates();
+  let best: { selector: string; rect: DOMRect } | null = null;
+  let bestDist = Infinity;
+  for (const sel of candidates) {
+    let el: Element | null;
+    try {
+      el = document.querySelector(sel);
+    } catch {
+      continue;
+    }
+    if (!el) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 8) continue;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = cx - clientX;
+    const dy = cy - clientY;
+    const d = dx * dx + dy * dy;
+    if (d < bestDist) {
+      bestDist = d;
+      best = { selector: sel, rect };
+    }
+  }
+
+  if (!best) {
+    // No content anchor near the point — bind to body. offsets are fractions of
+    // the body box, so the position still scrolls with the page.
+    const bodyRect = document.body.getBoundingClientRect();
+    return {
+      selector: "body",
+      offsetX: bodyRect.width ? (clientX - bodyRect.left) / bodyRect.width : 0.5,
+      offsetY: bodyRect.height ? (clientY - bodyRect.top) / bodyRect.height : 0.5,
+    };
+  }
+
+  const { selector, rect } = best;
+  return {
+    selector,
+    offsetX: (clientX - rect.left) / rect.width,
+    offsetY: (clientY - rect.top) / rect.height,
+  };
 }
 
 interface ScoreResult {
@@ -140,26 +190,18 @@ interface ScoreResult {
 }
 
 function scorePlacement(anchor: BottleAnchor): ScoreResult {
-  let el: Element | null = null;
-  try {
-    el = document.querySelector(anchor.selector);
-  } catch {
-    return { score: -1, position: null, reason: "selector-error" };
+  const resolved = resolveAnchorPosition(anchor);
+  if (!resolved.position) {
+    return { score: -1, position: null, reason: resolved.reason };
   }
-  if (!el) return { score: -1, position: null, reason: "no-element" };
-  const rect = el.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0)
-    return { score: -1, position: null, reason: "zero-size" };
 
-  const x = rect.left + rect.width * anchor.offsetX;
-  const y = rect.top + rect.height * anchor.offsetY;
+  const { x, y } = resolved.position;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
   // Hard reject: the bottle must be FULLY inside the current viewport
   // (with safe margins), not just partially overlapping it. Anchors below
-  // the fold or above the scroll-top are not acceptable — the user wouldn't
-  // see them.
+  // the fold or above the scroll-top are not acceptable at placement time.
   if (
     x - BOTTLE_W / 2 < SAFE_EDGE_PX ||
     x + BOTTLE_W / 2 > vw - SAFE_EDGE_PX ||
@@ -177,12 +219,36 @@ function scorePlacement(anchor: BottleAnchor): ScoreResult {
     return { score: -1, position: null, reason: "not-background" };
   }
 
+  return {
+    score: edgeScore * 0.4 + areaScore * 0.6,
+    position: resolved.position,
+    reason: "",
+  };
+}
+
+function resolveAnchorPosition(anchor: BottleAnchor): {
+  position: ResolvedPosition | null;
+  reason: string;
+} {
+  let el: Element | null = null;
+  try {
+    el = document.querySelector(anchor.selector);
+  } catch {
+    return { position: null, reason: "selector-error" };
+  }
+  if (!el) return { position: null, reason: "no-element" };
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0)
+    return { position: null, reason: "zero-size" };
+
+  const x = rect.left + rect.width * anchor.offsetX;
+  const y = rect.top + rect.height * anchor.offsetY;
+
   const rotate =
     -15 +
     (hashStr(anchor.selector + anchor.offsetX.toFixed(2) + anchor.offsetY.toFixed(2)) % 30);
 
   return {
-    score: edgeScore * 0.4 + areaScore * 0.6,
     position: { x, y, rotate },
     reason: "",
   };

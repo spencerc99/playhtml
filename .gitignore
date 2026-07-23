@@ -32,6 +32,7 @@ dist-ssr
 # secrets
 .env
 .dev.vars
+/.dev.vars.supabase
 
 .claude
 .codex/

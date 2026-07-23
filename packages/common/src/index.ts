@@ -296,9 +296,9 @@ export type GrowData = {
 export const CanDuplicateTo = "can-duplicate-to";
 /**
  * Optional id (`my-arena`, `#my-arena`) or selector (`.arena`) of a container;
- * `can-move` clamps the element's position inside it. The cursor itself is
- * unconstrained — you can drag past the edge — the element just stops at the
- * bounds.
+ * `can-move` clamps the element's position inside it while dragging. Initial
+ * layout and persisted positions are not rewritten during setup. The cursor
+ * itself is unconstrained — only the dragged element stops at the bounds.
  */
 export const CanMoveBounds = "can-move-bounds";
 /**
@@ -498,18 +498,6 @@ export const TagTypeToElement: DefaultTagInitializers = {
     defaultLocalData: { startMouseX: 0, startMouseY: 0 },
     updateElement: ({ element, data }) => {
       element.style.transform = `translate(${data.x}px, ${data.y}px)`;
-    },
-    onMount: ({ getData, getElement, setData }) => {
-      const element = getElement();
-      const boundsRoot = getMoveBoundsRoot(element);
-      if (!boundsRoot) return;
-      const data = getData();
-      const clampedData = roundMoveData(
-        getMoveBoundsClamp(element, boundsRoot, data, data),
-      );
-      if (clampedData.x !== data.x || clampedData.y !== data.y) {
-        setData(clampedData);
-      }
     },
     onDragStart: (
       e: MouseEvent | TouchEvent,

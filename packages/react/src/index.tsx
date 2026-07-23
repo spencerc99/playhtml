@@ -313,6 +313,20 @@ export function CanPlayElement<T extends object, V = any>({
       // @ts-ignore
       element.updateElementAwareness = updateElementAwareness;
 
+      const elementId = getIdForElement(element);
+      const handlers = playhtml.elementHandlers;
+      if (elementId && handlers instanceof Map) {
+        for (const tag of Object.keys(computedTagInfo) as TagType[]) {
+          const handler = handlers.get(tag)?.get(elementId);
+          if (!handler || handler.element !== element) continue;
+          handler.setEventHandlers({
+            onClick: elementProps.onClick,
+            onDrag: elementProps.onDrag,
+            onDragStart: elementProps.onDragStart,
+          });
+        }
+      }
+
       // Setup the element, which will handle data-source discovery if needed
       try {
         const currentBinding = getElementBinding(element);

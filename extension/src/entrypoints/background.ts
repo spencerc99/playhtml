@@ -25,7 +25,11 @@ import {
   isOnCooldown,
   recordToastShown,
 } from '../milestones/state'
-import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
+import {
+  checkAllMilestones,
+  detectLongGapReturn,
+  pxToMiles,
+} from '../milestones/milestones'
 import { getSessionId } from '../storage/participant'
 
 export interface ScrapRecord {
@@ -757,7 +761,33 @@ export default defineBackground(() => {
       topDomains.push({ domain, visitCount: agg.sessionCount, faviconUrl });
     }
 
-    const result = checkAllMilestones(state, globalStats, cursorDistancePx, topDomains);
+    // Long-gap return: for the active tab's domain, look at raw
+    // navigation timestamps and see if the user just came back after >90 days.
+    const [gapTab] = await browser.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+    const activeDomain = extractDomain(gapTab?.url ?? null);
+    let longGap: Parameters<typeof checkAllMilestones>[4] = null;
+    if (activeDomain) {
+      // No limit: queryByDomain resolves early when a limit is hit, before its
+      // ascending-by-time sort, so a limit would return the OLDEST events and
+      // miss the recent return. Navigation events are sparse (2s dedup), so an
+      // unbounded per-domain scan stays cheap.
+      const gapNavEvents = await store.queryByDomain(activeDomain, {
+        type: 'navigation',
+      });
+      const gap = detectLongGapReturn(
+        gapNavEvents.map((e) => e.ts),
+        Date.now(),
+      );
+      if (gap) {
+        const faviconUrl = topDomains.find((d) => d.domain === activeDomain)?.faviconUrl;
+        longGap = { domain: activeDomain, faviconUrl, return: gap };
+      }
+    }
+
+    const result = checkAllMilestones(state, globalStats, cursorDistancePx, topDomains, longGap);
     if (!result) {
       await saveState(state);
       return;
@@ -770,8 +800,8 @@ export default defineBackground(() => {
     const idleState = await browser.idle.queryState(60);
     if (idleState !== "active") return;
 
-    // Resolve the active tab. Use lastFocusedWindow rather than currentWindow so
-    // this works even when DevTools is the focused window.
+    // Resolve the active tab again because it may have changed while the raw
+    // event history was being queried.
     const tabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
     const tab = tabs[0];
     if (!tab?.id) return;

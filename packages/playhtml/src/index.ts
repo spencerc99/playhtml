@@ -18,11 +18,7 @@ import {
   deepReplaceIntoProxy,
   clonePlain,
 } from "@playhtml/common";
-import {
-  listSharedElements as devListSharedElements,
-  teardownDevUI,
-  setupDevUI,
-} from "./development";
+import { listSharedElements as devListSharedElements } from "./shared-elements";
 import {
   createNavigationController,
   attachNavigationListeners,
@@ -58,6 +54,15 @@ import {
   RealtimePresenceTransport,
 } from "./presence-transport";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
+
+export {
+  formatStateLeafValue,
+  isEditableStateLeaf,
+  parseStateLeafValue,
+  replaceStateLeafValue,
+  type EditableStateLeafValue,
+  type StatePathSegment,
+} from "./leafEditor";
 
 const DefaultPartykitHost = "api.playhtml.fun";
 const StagingPartykitHost = "api-staging.playhtml.fun";
@@ -105,6 +110,7 @@ type PlayStore = {
 let store: PlayStore = syncedStore<StoreShape>({ play: {} });
 let doc = getYjsDoc(store);
 let publicSyncedStore = createReadOnlyStore(store.play);
+let developmentModule: typeof import("./development") | null = null;
 
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   // TODO: Strip filename extension
@@ -1343,7 +1349,8 @@ async function initPlayHTMLOnce() {
   document.head.appendChild(playStyles);
 
   if (isDevelopmentMode) {
-    setupDevUI(playhtml);
+    developmentModule = await import("./development");
+    developmentModule.setupDevUI(playhtml);
   }
   // TODO: expose a way to activate the dev tools UI on any page at runtime
   // (e.g. window.playhtml.showDevTools()) so it can be triggered from the
@@ -1968,7 +1975,7 @@ export async function resetPlayHTML(): Promise<void> {
     teardownMainProvider();
 
     try {
-      teardownDevUI();
+      developmentModule?.teardownDevUI();
     } catch {}
 
     document.head

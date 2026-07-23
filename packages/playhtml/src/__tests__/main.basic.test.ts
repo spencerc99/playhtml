@@ -281,6 +281,27 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(el.classList.contains("clicked")).toBe(false);
   });
 
+  it("blocks writes from explicitly read-only data-source consumers", async () => {
+    const el = document.createElement("div");
+    el.id = "read-only-toggle";
+    el.setAttribute("can-toggle", "");
+    el.setAttribute("data-source", "/room#toggle");
+    el.setAttribute("data-source-read-only", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-toggle");
+
+    const handler = playhtml
+      .elementHandlers!.get("can-toggle")!
+      .get("toggle")!;
+    handler.setData({ on: true });
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(handler.data).toEqual({ on: false });
+    expect(playhtml.syncedStore["can-toggle"]["toggle"]).toEqual({
+      on: false,
+    });
+  });
+
   it("removes handlers for unmounted elements so replacements can register", async () => {
     const first = document.createElement("div");
     first.id = "remount-test";

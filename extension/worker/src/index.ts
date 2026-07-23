@@ -1,5 +1,5 @@
 // ABOUTME: Cloudflare Worker entry point for the event collection API.
-// ABOUTME: Routes HTTP requests to ingest, recent, stats, export, participant, and subscribe handlers.
+// ABOUTME: Routes HTTP requests to event, participant, subscribe, and feedback handlers.
 
 import { handleIngest } from './routes/ingest';
 import { handleRecent } from './routes/recent';
@@ -8,6 +8,7 @@ import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
 import { handleParticipantUpsert } from './routes/participants';
 import { handleSubscribe } from './routes/subscribe';
+import { handleFeedback } from './routes/feedback';
 import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
@@ -65,6 +66,10 @@ export default {
 
     if (path === '/subscribe' && request.method === 'POST') {
       return handleSubscribe(request, env);
+    }
+
+    if (path === '/feedback' && request.method === 'POST') {
+      return handleFeedback(request, env);
     }
 
     if (path === '/page-meta' && request.method === 'GET') {

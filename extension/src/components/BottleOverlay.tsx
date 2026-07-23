@@ -17,6 +17,9 @@ interface BottleOverlayProps {
   ) => void;
   onOpened: (bottleId: string) => void;
   onClosed: (bottleId: string) => void;
+  /** A just-placed bottle was closed without a note being sealed — the manager
+   *  drops it (the user "took it back"). */
+  onDismissPlaced: (bottleId: string) => void;
   /** A bottle's anchor element is genuinely gone from the DOM (not merely
    *  scrolled off-screen) — lets the manager re-place a cached empty bottle
    *  rather than letting it silently vanish. */
@@ -36,6 +39,7 @@ export function BottleOverlay({
   onSeal,
   onOpened,
   onClosed,
+  onDismissPlaced,
   onAnchorLost,
   portalContainer,
 }: BottleOverlayProps) {
@@ -133,9 +137,11 @@ export function BottleOverlay({
             notes={slot.isEmpty ? [] : slot.notes ?? []}
             authorColor={slot.authorColor}
             canReply={slot.canReply}
+            justPlaced={slot.justPlaced}
             onSeal={(text, meta) => onSeal(slot.id, text, slot.anchor, meta)}
             onOpened={() => onOpened(slot.id)}
             onClosed={() => onClosed(slot.id)}
+            onDismissPlaced={() => onDismissPlaced(slot.id)}
             rotateDeg={slot.rotate}
             portalContainer={portalContainer}
           />

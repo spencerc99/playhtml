@@ -63,9 +63,11 @@ export function LetterSegment({
       <div className={`mbs-segment ${style.className}`} style={{ color: style.ink }}>
         {!hideSalutation && (
           <div className="mbs-salutation">
-            {favicon && <img className="mbs-salutationFavicon" src={favicon} alt="" />}
             <span>
               dear{" "}
+              {favicon && (
+                <img className="mbs-salutationFavicon" src={favicon} alt="" />
+              )}{" "}
               <a
                 className="mbs-salutationSite"
                 href={pageUrl}

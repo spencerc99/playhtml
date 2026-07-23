@@ -61,4 +61,4 @@ Collection is paused while the overlay is open so your interaction with the over
 
 ## Feedback
 
-Report issues or share feedback at https://github.com/anthropics/playhtml/issues or email directly.
+Use the feedback form in the extension popup to report bugs, share ideas, or ask questions.

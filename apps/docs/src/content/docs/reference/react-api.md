@@ -146,9 +146,11 @@ interface CanMoveElementProps {
 }
 ```
 
-- **`bounds`**: id or CSS selector of the container to keep the element inside. `"arena"`, `"#arena"`, and `".grid"` all work.
+- **`bounds`**: id or CSS selector of the container that constrains dragging. `"arena"`, `"#arena"`, and `".grid"` all work.
 - **`boundsMinVisible`**: fraction (`0–1`) of the element that must stay inside `bounds` on every edge. Default `1`, which keeps the full element inside. Lower values allow part of the element to hang over the edge; `0` drops the fraction constraint entirely.
 - **`boundsMinVisiblePx`**: absolute pixel floor on the keep-visible slice. Default `60`; it applies when `boundsMinVisible` allows partial overhang.
+
+Bounds apply only during dragging. Setup does not rewrite the element's initial CSS layout or persisted position.
 
 The effective keep-visible slice on each axis is `max(boundsMinVisible × size, boundsMinVisiblePx)`. Set both knobs to `0` to opt fully out of the keep-visible guarantee. See [`can-move` in the capabilities reference](/docs/capabilities/#can-move) for the interaction details.
 

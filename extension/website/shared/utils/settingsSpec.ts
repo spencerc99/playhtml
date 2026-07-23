@@ -250,23 +250,23 @@ interface SerializeResult {
   blob: string | null;
 }
 
-/** Serialize the diff between `settings` and `DEFAULT_SETTINGS` into a
+/** Serialize the diff between `settings` and the route's effective defaults into a
  * `{headline, blob}` pair. The caller decides where to place each in the
  * URL. Per-viz headline params drop out when their viz isn't active —
  * sharing a trails config doesn't leak the navigation sliders.
  *
  * Everything that diverges and isn't a headline key rides in the blob,
  * including settings not declared in `HEADLINE_SPECS` at all. So the blob
- * is automatically future-proof: add a new setting to
- * `settingsDefaults.ts` and it round-trips through share URLs with no
- * other code change. */
+ * is automatically future-proof: add a new setting to the effective defaults
+ * and it round-trips through share URLs with no other code change. */
 export function serializeSpec(
   settings: Record<string, unknown>,
   activeVizIds: ReadonlySet<string>,
+  settingsDefaults: Record<string, unknown> = DEFAULT_SETTINGS,
 ): SerializeResult {
   const headline: Record<string, string> = {};
   const blob: Record<string, unknown> = {};
-  const defaults = DEFAULT_SETTINGS as unknown as Record<string, unknown>;
+  const defaults = settingsDefaults;
 
   // 1) Headline pass — only emit if it would also pass the viz gate.
   for (const spec of HEADLINE_SPECS) {

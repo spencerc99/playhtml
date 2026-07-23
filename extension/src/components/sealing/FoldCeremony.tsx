@@ -1,10 +1,11 @@
 // ABOUTME: Sealing ceremony — the real letter-scroll DOM folds accordion-style at its perforation
-// ABOUTME: seams into a small packet, which then flips to the bottle card and tucks through the slot.
+// ABOUTME: seams into a small papered card, gets a wax seal stamped on, then tucks through the slot.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BottleNote } from "../../features/BottleManager";
 import { LetterSegment } from "../bottle/LetterSegment";
 import { segmentStyle } from "../bottle/segmentStyles";
+import { WaxSeal } from "../bottle/WaxSeal";
 import {
   CARD_H_PX,
   CARD_W_PX,
@@ -32,12 +33,17 @@ const FOLD_MS = 720;
 const STAGGER_MS = 320;
 const SETTLE_MS = 320;
 const FLIP_MS = 1100;
+// The seal beat: after the flip settles, the wax seal stamps onto the card with
+// a thunk, then holds a moment before the packet plunges into the page.
+const SEAL_MS = 340;
+const SEAL_HOLD_MS = 160;
 // The final plunge: the sealed bottle sinks into the page through the slot,
 // bottom edge first, after the flip lands it upright over the hole.
 const PLUNGE_MS = 900;
 const FOLD_EASE = "cubic-bezier(0.5, 0, 0.2, 1)";
 
 export function FoldCeremony({
+  authorColor,
   slotX,
   slotY,
   notes,
@@ -47,10 +53,12 @@ export function FoldCeremony({
 }: SealingProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  // The folded-letter-card skin overlaid on the packet's face. It fades in as
-  // the flip lands so the object that plunges into the slot matches the resting
-  // on-page capsule (a folded note), with no pop from readable-letter to card.
+  // The card skin overlaid on the packet's face — the face letter's own paper.
+  // It fades in DURING the flip so the readable letter dissolves into its paper
+  // as the packet turns and shrinks, matching the resting on-page capsule.
   const cardSkinRef = useRef<HTMLDivElement>(null);
+  // The wax seal stamped onto the card skin after the flip settles.
+  const sealRef = useRef<HTMLSpanElement>(null);
   // Refs to the foldable segments, ordered face-adjacent first (index 0 is the
   // note directly above the face) up to the oldest (highest on screen). The face
   // is not foldable and is not in this list.
@@ -168,24 +176,9 @@ export function FoldCeremony({
         lastEnd = delay + FOLD_MS;
       });
 
-      // Fade the folded-letter-card skin in over the LAST crease of the fold so
-      // the moment folding completes, the packet reads as one clean folded card
-      // — covering the stack of real letters underneath. This also sidesteps the
-      // 3D paint-order of the nested folds (which note ends up visually on top):
-      // once the skin is opaque, the packet is the card regardless. The skin
-      // then rides through the flip + plunge.
-      const skin = cardSkinRef.current;
-      if (skin) {
-        const skinFade = Math.min(FOLD_MS, 420);
-        track(
-          skin.animate([{ opacity: 0 }, { opacity: 1 }], {
-            duration: skinFade,
-            delay: Math.max(0, lastEnd - skinFade),
-            easing: "ease-in",
-            fill: "forwards",
-          }),
-        );
-      }
+      // The card skin stays hidden through the fold (it starts opacity 0 in
+      // scss); it fades in during the flip (see flipAndTuck), so the readable
+      // letter dissolves into its own paper only as the packet turns.
 
       later(flipAndTuck, lastEnd + SETTLE_MS);
     }
@@ -237,15 +230,75 @@ export function FoldCeremony({
         ),
       );
 
-      // The folded-letter-card skin already faded in as the fold completed (see
-      // startFold), so the packet is the clean card through the flip + plunge.
+      // Fade the card skin in over the first ~55% of the flip, so the readable
+      // letter dissolves into its own paper as the packet turns and shrinks —
+      // not before it starts moving. Once opaque, the packet is the clean card
+      // regardless of the nested folds' 3D paint order. The skin rides through
+      // the rest of the flip, the seal beat, and the plunge.
+      const skin = cardSkinRef.current;
+      if (skin) {
+        track(
+          skin.animate([{ opacity: 0 }, { opacity: 1 }], {
+            duration: FLIP_MS * 0.55,
+            easing: "ease-in",
+            fill: "forwards",
+          }),
+        );
+      }
 
       flip.finished
         .catch(() => {})
         .finally(() => {
           if (disposed) return;
-          plunge(dx, dyLand, flipScale, cardH);
+          stampSeal(dx, dyLand, flipScale, cardH);
         });
+    }
+
+    // BEAT 3.5: after the flip settles, the wax seal stamps onto the standing
+    // card with a thunk — dropping in oversized and snapping down to size — then
+    // holds a beat before the plunge. The card skin is scaled by flipScale, so
+    // the seal is sized 1/flipScale up to land at its natural 17x16px in world
+    // space.
+    function stampSeal(
+      dx: number,
+      dyLand: number,
+      flipScale: number,
+      cardH: number,
+    ) {
+      if (disposed) return;
+      const seal = sealRef.current;
+      if (seal) {
+        seal.style.width = `${17 / flipScale}px`;
+        seal.style.height = `${16 / flipScale}px`;
+        track(
+          seal.animate(
+            [
+              {
+                opacity: 0,
+                transform: "translate(-50%,-50%) rotate(-90deg) scale(2.4)",
+              },
+              {
+                opacity: 1,
+                transform: "translate(-50%,-50%) rotate(-90deg) scale(0.96)",
+                offset: 0.6,
+              },
+              {
+                opacity: 1,
+                transform: "translate(-50%,-50%) rotate(-90deg) scale(1)",
+              },
+            ],
+            {
+              duration: SEAL_MS,
+              easing: "cubic-bezier(0.2, 1.4, 0.4, 1)",
+              fill: "forwards",
+            },
+          ),
+        );
+      }
+      later(() => {
+        if (disposed) return;
+        plunge(dx, dyLand, flipScale, cardH);
+      }, SEAL_MS + SEAL_HOLD_MS);
     }
 
     // BEAT 4: the upright bottle card sinks into the page through the slot,
@@ -378,18 +431,20 @@ export function FoldCeremony({
           </div>
         </div>
         {buildAbove(0)}
-        {/* The folded-letter-card skin — covers the packet's face, faded in as
-            the flip lands so the sealed object reads as the same folded note the
-            resting on-page capsule shows. It travels + plunges with the packet
-            (a child of the root). */}
+        {/* The card skin — covers the packet's face wearing the face letter's
+            own paper, faded in during the flip so the sealed object reads as the
+            same papered note the resting on-page capsule shows. The wax seal
+            stamps onto it after the flip settles. It travels + plunges with the
+            packet (a child of the root). */}
         <div
           ref={cardSkinRef}
-          className="mbf-cardSkin"
+          className={`mbf-cardSkin mb-paper-${segmentStyle(faceNote?.styleId).id}`}
           style={{ height: `${SEG_H_PX}px` }}
           aria-hidden="true"
         >
-          <span className="mbf-cardSkinCrease mbf-cardSkinCrease1" />
-          <span className="mbf-cardSkinCrease mbf-cardSkinCrease2" />
+          <span ref={sealRef} className="mbf-sealMark">
+            <WaxSeal color={newNote?.authorColor ?? authorColor} />
+          </span>
         </div>
       </div>
     </div>

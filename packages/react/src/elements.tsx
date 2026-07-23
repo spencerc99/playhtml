@@ -108,7 +108,7 @@ export function CanToggleElement({
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
       {...(standalone ? { standalone } : {})}
-      {...(readOnly ? { "data-source-read-only": "" } : {})}
+      {...(readOnly ? { dataSourceReadOnly: true } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,

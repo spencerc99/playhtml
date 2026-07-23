@@ -40,7 +40,7 @@ export function createBlock(id, blockCount) {
     id,
     transform: {
       x: 180 + column * 210,
-      y: 100 + Math.floor(blockCount / columns) % 2 * 28,
+      y: 100 + (Math.floor(blockCount / columns) % 2) * 28,
       angle: 0,
       style: "photo",
     },

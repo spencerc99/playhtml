@@ -2,7 +2,17 @@
 // ABOUTME: Renders a RollerCoaster Tycoon-inspired toolbar with warm colors, beveled edges, and no rounded corners.
 
 import type { PlayHTMLComponents } from "./index";
-import { normalizePath } from "@playhtml/common";
+import {
+  formatStateLeafValue,
+  isEditableStateLeaf,
+  parseStateLeafValue,
+  replaceStateLeafValue,
+  type EditableStateLeafValue,
+  type StatePathSegment,
+} from "./leafEditor";
+import { listSharedElements } from "./shared-elements";
+
+export { listSharedElements } from "./shared-elements";
 
 let activeElementObserver: MutationObserver | null = null;
 let activeDevRoot: HTMLElement | null = null;
@@ -431,6 +441,43 @@ const DEV_STYLES = `
 .ph-json-null { color: #8a8279; font-style: italic; }
 .ph-json-bracket { color: #8a8279; }
 .ph-json-count { color: #8a8279; font-size: 10px; margin: 0 2px; }
+.ph-json-leaf-value {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0 2px;
+  margin: 0;
+  font: inherit;
+  cursor: text;
+}
+.ph-json-leaf-value:hover,
+.ph-json-leaf-value:focus {
+  background: #faf7f2;
+  border-color: #d4cfc7;
+  outline: none;
+}
+.ph-json-leaf-value:disabled {
+  cursor: default;
+}
+.ph-json-edit-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ph-json-edit-input {
+  width: 12ch;
+  min-width: 6ch;
+  max-width: 24ch;
+  border: 1px solid #4a9a8a;
+  background: #faf7f2;
+  color: #3d3833;
+  font: inherit;
+  padding: 1px 3px;
+}
+.ph-json-edit-error {
+  color: #c4724e;
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-size: 10px;
+}
 .ph-json-row {
   padding: 2px 0 2px 4px;
   font-family: 'Martian Mono', 'SF Mono', monospace;
@@ -668,71 +715,6 @@ const DEV_STYLES = `
   font-size: 12px;
 }
 `;
-
-// ─── Shared Elements Listing ───────────────────────────────────────────
-export function listSharedElements() {
-  const out: Array<{
-    type: "source" | "consumer";
-    elementId: string;
-    dataSource: string;
-    normalized: string;
-    permissions?: "read-only" | "read-write";
-    element: HTMLElement;
-  }> = [];
-
-  document.querySelectorAll("[shared]").forEach((el) => {
-    const element = el as HTMLElement;
-    const id = element.id;
-    if (!id) return;
-    const ds = `${window.location.host}${normalizePath(
-      window.location.pathname
-    )}#${id}`;
-    out.push({
-      type: "source",
-      elementId: id,
-      dataSource: ds,
-      normalized: ds,
-      permissions: element.getAttribute("shared")?.includes("read-only")
-        ? "read-only"
-        : "read-write",
-      element,
-    });
-  });
-
-  document.querySelectorAll("[data-source]").forEach((el) => {
-    const element = el as HTMLElement;
-    const raw = element.getAttribute("data-source") || "";
-    const [domainAndPath, elementId] = raw.split("#");
-    if (!domainAndPath || !elementId) return;
-    const firstSlash = domainAndPath.indexOf("/");
-    const domain =
-      firstSlash === -1 ? domainAndPath : domainAndPath.slice(0, firstSlash);
-    const path = firstSlash === -1 ? "/" : domainAndPath.slice(firstSlash);
-    const normalized = `${domain}${normalizePath(path)}#${elementId}`;
-    out.push({
-      type: "consumer",
-      elementId,
-      dataSource: raw,
-      normalized,
-      element,
-    });
-  });
-
-  if (out.length > 0) {
-    try {
-      console.table(
-        out.map((e) => ({
-          type: e.type,
-          elementId: e.elementId,
-          dataSource: e.dataSource,
-          normalized: e.normalized,
-          permissions: e.permissions || "",
-        }))
-      );
-    } catch {}
-  }
-  return out;
-}
 
 export interface DuplicatePlayElement {
   tagType: string;
@@ -1182,29 +1164,144 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
   root.appendChild(bar);
   document.body.appendChild(root);
 
-  // ── JSON tree renderer ──
-  function renderJsonValue(container: HTMLElement, value: unknown, depth: number, key?: string) {
-    if (value === null) {
-      const row = el("div", "ph-json-row");
-      if (key !== undefined) {
-        const k = el("span", "ph-tree-key");
-        k.textContent = key + ": ";
-        row.appendChild(k);
-      }
-      const v = el("span", "ph-json-null");
-      v.textContent = "null";
-      row.appendChild(v);
+  type JsonLeafEditHandler = (
+    path: StatePathSegment[],
+    value: EditableStateLeafValue,
+  ) => { ok: true } | { ok: false; error: string };
+
+  function appendJsonKey(row: HTMLElement, key?: string) {
+    if (key === undefined) return;
+    const k = el("span", "ph-tree-key");
+    k.textContent = key + ": ";
+    row.appendChild(k);
+  }
+
+  function renderEditableJsonLeaf(
+    container: HTMLElement,
+    value: EditableStateLeafValue,
+    path: StatePathSegment[],
+    className: string,
+    displayText: string,
+    key?: string,
+    onEdit?: JsonLeafEditHandler,
+  ) {
+    const row = el("div", "ph-json-row");
+    appendJsonKey(row, key);
+
+    const valueEl = el("button", `${className} ph-json-leaf-value`);
+    valueEl.type = "button";
+    valueEl.textContent = displayText;
+    if (displayText.endsWith('..."')) valueEl.title = String(value);
+    row.appendChild(valueEl);
+
+    if (!onEdit) {
+      valueEl.disabled = true;
       container.appendChild(row);
+      return;
+    }
+
+    valueEl.onclick = (e) => {
+      e.stopPropagation();
+      valueEl.replaceWith(createJsonLeafEditor(value, path, className, onEdit));
+    };
+    container.appendChild(row);
+  }
+
+  function createJsonLeafEditor(
+    value: EditableStateLeafValue,
+    path: StatePathSegment[],
+    className: string,
+    onEdit: JsonLeafEditHandler,
+  ): HTMLElement {
+    const wrap = el("span", "ph-json-edit-wrap");
+    const input = el("input", "ph-json-edit-input") as HTMLInputElement;
+    const error = el("span", "ph-json-edit-error");
+
+    input.value = formatStateLeafValue(value);
+    input.setAttribute("aria-label", "Edit state value");
+    wrap.appendChild(input);
+
+    function restore() {
+      const valueEl = el("button", `${className} ph-json-leaf-value`);
+      valueEl.type = "button";
+      valueEl.textContent =
+        typeof value === "string"
+          ? value.length > 80
+            ? `"${value.substring(0, 80)}..."`
+            : `"${value}"`
+          : String(value);
+      valueEl.onclick = (e) => {
+        e.stopPropagation();
+        valueEl.replaceWith(
+          createJsonLeafEditor(value, path, className, onEdit),
+        );
+      };
+      wrap.replaceWith(valueEl);
+    }
+
+    function showError(message: string) {
+      error.textContent = message;
+      if (!error.parentElement) wrap.appendChild(error);
+    }
+
+    function save() {
+      const parsed = parseStateLeafValue(input.value);
+      if (!parsed.ok) {
+        showError(parsed.error);
+        return;
+      }
+      const result = onEdit(path, parsed.value);
+      if (!result.ok) {
+        showError(result.error);
+        return;
+      }
+      requestAnimationFrame(() => renderDataWalker());
+    }
+
+    input.onclick = (e) => e.stopPropagation();
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        save();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        restore();
+      }
+    };
+
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+
+    return wrap;
+  }
+
+  // ── JSON tree renderer ──
+  function renderJsonValue(
+    container: HTMLElement,
+    value: unknown,
+    depth: number,
+    path: StatePathSegment[],
+    key?: string,
+    onEdit?: JsonLeafEditHandler,
+  ) {
+    if (value === null) {
+      renderEditableJsonLeaf(
+        container,
+        value,
+        path,
+        "ph-json-null",
+        "null",
+        key,
+        onEdit,
+      );
       return;
     }
 
     if (value === undefined) {
       const row = el("div", "ph-json-row");
-      if (key !== undefined) {
-        const k = el("span", "ph-tree-key");
-        k.textContent = key + ": ";
-        row.appendChild(k);
-      }
+      appendJsonKey(row, key);
       const v = el("span", "ph-json-null");
       v.textContent = "undefined";
       row.appendChild(v);
@@ -1213,45 +1310,50 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
     }
 
     if (typeof value === "string") {
-      const row = el("div", "ph-json-row");
-      if (key !== undefined) {
-        const k = el("span", "ph-tree-key");
-        k.textContent = key + ": ";
-        row.appendChild(k);
-      }
-      const v = el("span", "ph-json-string");
-      v.textContent = value.length > 80 ? `"${value.substring(0, 80)}..."` : `"${value}"`;
-      if (value.length > 80) v.title = value;
-      row.appendChild(v);
-      container.appendChild(row);
+      renderEditableJsonLeaf(
+        container,
+        value,
+        path,
+        "ph-json-string",
+        value.length > 80 ? `"${value.substring(0, 80)}..."` : `"${value}"`,
+        key,
+        onEdit,
+      );
       return;
     }
 
     if (typeof value === "number") {
-      const row = el("div", "ph-json-row");
-      if (key !== undefined) {
-        const k = el("span", "ph-tree-key");
-        k.textContent = key + ": ";
-        row.appendChild(k);
+      if (!isEditableStateLeaf(value)) {
+        const row = el("div", "ph-json-row");
+        appendJsonKey(row, key);
+        const v = el("span", "ph-json-number");
+        v.textContent = String(value);
+        row.appendChild(v);
+        container.appendChild(row);
+        return;
       }
-      const v = el("span", "ph-json-number");
-      v.textContent = String(value);
-      row.appendChild(v);
-      container.appendChild(row);
+      renderEditableJsonLeaf(
+        container,
+        value,
+        path,
+        "ph-json-number",
+        String(value),
+        key,
+        onEdit,
+      );
       return;
     }
 
     if (typeof value === "boolean") {
-      const row = el("div", "ph-json-row");
-      if (key !== undefined) {
-        const k = el("span", "ph-tree-key");
-        k.textContent = key + ": ";
-        row.appendChild(k);
-      }
-      const v = el("span", "ph-json-boolean");
-      v.textContent = String(value);
-      row.appendChild(v);
-      container.appendChild(row);
+      renderEditableJsonLeaf(
+        container,
+        value,
+        path,
+        "ph-json-boolean",
+        String(value),
+        key,
+        onEdit,
+      );
       return;
     }
 
@@ -1265,9 +1367,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       if (!shouldAutoExpand) nested.classList.add("ph-collapsed");
 
       if (key !== undefined) {
-        const k = el("span", "ph-tree-key");
-        k.textContent = key + ": ";
-        row.appendChild(k);
+        appendJsonKey(row, key);
       }
       row.appendChild(toggle);
       const bracket = el("span", "ph-json-bracket");
@@ -1287,7 +1387,14 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       };
 
       for (let i = 0; i < value.length; i++) {
-        renderJsonValue(nested, value[i], depth + 1, String(i));
+        renderJsonValue(
+          nested,
+          value[i],
+          depth + 1,
+          [...path, i],
+          String(i),
+          onEdit,
+        );
       }
 
       container.appendChild(row);
@@ -1306,9 +1413,7 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       if (!shouldAutoExpand) nested.classList.add("ph-collapsed");
 
       if (key !== undefined) {
-        const k = el("span", "ph-tree-key");
-        k.textContent = key + ": ";
-        row.appendChild(k);
+        appendJsonKey(row, key);
       }
       row.appendChild(toggle);
       const bracket = el("span", "ph-json-bracket");
@@ -1328,7 +1433,14 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
       };
 
       for (const k of keys) {
-        renderJsonValue(nested, (value as Record<string, unknown>)[k], depth + 1, k);
+        renderJsonValue(
+          nested,
+          (value as Record<string, unknown>)[k],
+          depth + 1,
+          [...path, k],
+          k,
+          onEdit,
+        );
       }
 
       container.appendChild(row);
@@ -1338,26 +1450,27 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
 
     // Fallback for anything else
     const row = el("div", "ph-json-row");
-    if (key !== undefined) {
-      const k = el("span", "ph-tree-key");
-      k.textContent = key + ": ";
-      row.appendChild(k);
-    }
+    appendJsonKey(row, key);
     row.appendChild(document.createTextNode(String(value)));
     container.appendChild(row);
   }
 
-  function renderJsonTree(container: HTMLElement, data: unknown, depth: number) {
+  function renderJsonTree(
+    container: HTMLElement,
+    data: unknown,
+    depth: number,
+    onEdit?: JsonLeafEditHandler,
+  ) {
     if (data === null || data === undefined) {
       const v = el("span", "ph-json-null");
       v.textContent = String(data);
       container.appendChild(v);
     } else if (typeof data === "object" && !Array.isArray(data)) {
       for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-        renderJsonValue(container, value, depth, key);
+        renderJsonValue(container, value, depth, [key], key, onEdit);
       }
     } else {
-      renderJsonValue(container, data, depth);
+      renderJsonValue(container, data, depth, [], undefined, onEdit);
     }
   }
 
@@ -1530,10 +1643,14 @@ export function setupDevUI(playhtml: PlayHTMLComponents) {
           row.appendChild(resetBtn);
 
           // Children container (recursive JSON tree)
-          // TODO: make values editable inline (click to edit, enter to save back to store)
           // TODO: add per-key reset and per-nested-level reset (not just per-element)
           const children = el("div", "ph-tree-children");
-          renderJsonTree(children, handler.data, 0);
+          renderJsonTree(children, handler.data, 0, (path, value) => {
+            const result = replaceStateLeafValue(handler.data, path, value);
+            if (!result.ok) return result;
+            handler.setData(result.data);
+            return { ok: true };
+          });
 
           // Toggle expand/collapse
           function toggleExpand() {

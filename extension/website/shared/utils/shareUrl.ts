@@ -16,6 +16,8 @@ function sameVizSet(a: string[], b: string[]): boolean {
 
 export interface BuildShareUrlInput {
   settings: Record<string, unknown>;
+  /** Effective defaults for this route. */
+  settingsDefaults?: Record<string, unknown>;
   activeVisualizations: string[];
   selectedTimeRange: { startMs: number; endMs: number } | null;
   /** Optional override; defaults to current `window.location.origin + pathname`. */
@@ -40,6 +42,7 @@ export interface BuildShareUrlInput {
  */
 export function buildShareUrl({
   settings,
+  settingsDefaults,
   activeVisualizations,
   selectedTimeRange,
   baseUrl,
@@ -63,7 +66,7 @@ export function buildShareUrl({
   // viz mode, etc.) get their own readable URL keys; everything else
   // diverging from defaults rides in a single base64 blob (`?s=...`) so
   // URLs stay bounded as the settings tree grows.
-  const { headline, blob } = serializeSpec(settings, vizSet);
+  const { headline, blob } = serializeSpec(settings, vizSet, settingsDefaults);
   for (const [param, value] of Object.entries(headline)) {
     url.searchParams.set(param, value);
   }
