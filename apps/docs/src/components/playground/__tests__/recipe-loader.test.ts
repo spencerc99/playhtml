@@ -1,7 +1,7 @@
 // ABOUTME: Verifies canonical playground recipes and explicit shared rooms load from hashes.
 // ABOUTME: Guards fallback behavior so broken example links never produce an empty editor.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { parseHash } from "../recipe-loader";
+import { isValidRoomId, parseHash } from "../recipe-loader";
 import type { RunnableRecipe } from "../recipes/types";
 
 const starter: RunnableRecipe = { id: "_starter", html: "<p>starter</p>" };
@@ -48,5 +48,12 @@ describe("parseHash", () => {
     );
 
     expect(loaded.roomId).toMatch(/^edit-synchronized-sound-/);
+  });
+});
+
+describe("isValidRoomId", () => {
+  it("accepts generated room ids and rejects inline-script content", () => {
+    expect(isValidRoomId("example-shared-audio-file-a1b2c3d4")).toBe(true);
+    expect(isValidRoomId('</script><script>alert(1)</script>')).toBe(false);
   });
 });

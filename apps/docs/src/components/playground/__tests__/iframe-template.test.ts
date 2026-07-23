@@ -31,4 +31,15 @@ describe("buildIframeSrcdoc", () => {
     expect(result).toContain("trigger.click()");
     expect(result).toContain('root.dataset.position = "bottom"');
   });
+
+  it("escapes room ids before embedding them in an inline script", () => {
+    const result = buildIframeSrcdoc({
+      recipeHtml,
+      playhtmlUrl: "blob:test",
+      roomId: '</script><script>window.injected = true</script>',
+    });
+
+    expect(result).not.toContain('</script><script>window.injected');
+    expect(result).toContain('\\u003c/script>\\u003cscript>window.injected');
+  });
 });

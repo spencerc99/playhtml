@@ -104,6 +104,7 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
   panelStyles.textContent = "#playhtml-dev-root { display: none !important; }";
   document.head.append(panelStyles);`;
 
+  const serializedRoomId = JSON.stringify(roomId).replaceAll("<", "\\u003c");
   const bootstrap = `
 <script type="importmap">
 {
@@ -143,7 +144,7 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
   // record resolves. With a static import the patch lands BEFORE the
   // recipe's call to playhtml.init runs.
   import { playhtml } from "playhtml";
-  const FORCED_ROOM = ${JSON.stringify(roomId)};
+  const FORCED_ROOM = ${serializedRoomId};
   const originalInit = playhtml.init;
   playhtml.init = function patchedInit(opts) {
     return originalInit.call(this, { ...(opts ?? {}), room: FORCED_ROOM });

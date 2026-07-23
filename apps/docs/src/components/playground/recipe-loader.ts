@@ -108,7 +108,11 @@ export function parseHash(
 function getRequestedRoomId(params: URLSearchParams): string | null {
   const room = params.get("room");
   if (!room) return null;
-  return /^[a-zA-Z0-9:_-]{1,120}$/.test(room) ? room : null;
+  return isValidRoomId(room) ? room : null;
+}
+
+export function isValidRoomId(roomId: string): boolean {
+  return /^[a-zA-Z0-9:_-]{1,120}$/.test(roomId);
 }
 
 /**

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildIframeSrcdoc } from "./iframe-template";
 import { makePlayhtmlModuleUrl } from "./playhtml-module";
+import { isValidRoomId } from "./recipe-loader";
 import type { ExampleRecipe } from "./recipes/types";
 import "./recipe-example.css";
 
@@ -22,9 +23,12 @@ export function RecipeExample({ recipe }: RecipeExampleProps) {
   useEffect(() => {
     const url = new URL(window.location.href);
     const existingRoom = url.searchParams.get("room");
-    const nextRoom = existingRoom || makeRoomId(recipe.id);
+    const nextRoom =
+      existingRoom && isValidRoomId(existingRoom)
+        ? existingRoom
+        : makeRoomId(recipe.id);
 
-    if (!existingRoom) {
+    if (existingRoom !== nextRoom) {
       url.searchParams.set("room", nextRoom);
       history.replaceState(null, "", url);
     }
