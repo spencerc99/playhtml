@@ -32,7 +32,11 @@ export async function loadHistoricalData(
   mode: FilterMode = 'auto',
   options: LoadOptions = {},
 ): Promise<CollectionEvent[]> {
-  const { limit = 1000, types = ["cursor", "keyboard", "viewport", "navigation"], forceServerBackfill = false } = options;
+  const {
+    limit = 1000,
+    types = ["cursor", "keyboard", "viewport", "navigation", "sound"],
+    forceServerBackfill = false,
+  } = options;
 
   // Determine filter scope
   const scope = determineFilterScope(currentUrl);

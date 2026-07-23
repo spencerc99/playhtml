@@ -20,6 +20,7 @@ const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "navigation",
   "viewport",
   "keyboard",
+  "sound",
 ];
 const STORAGE_SIZE_SAMPLE_LIMIT = 200;
 

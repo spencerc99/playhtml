@@ -18,6 +18,7 @@ import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
+import { SoundCollector } from "../collectors/SoundCollector";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
@@ -1249,6 +1250,9 @@ export default defineContentScript({
 
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
+
+        const soundCollector = new SoundCollector();
+        collectorManager.registerCollector(soundCollector);
 
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();

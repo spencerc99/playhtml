@@ -9,6 +9,7 @@ import { VERBOSE } from '../config';
 import { getValidEventTypes } from '@playhtml/extension-types';
 
 const STORAGE_KEY = 'collection_enabled_collectors';
+const SOUND_MODE_KEY = 'collection_mode_sound';
 
 /**
  * CollectorManager orchestrates all collectors
@@ -51,6 +52,13 @@ export class CollectorManager {
       const types = getValidEventTypes();
       const keys = types.map((t) => `collection_mode_${t}`);
       const result = await browser.storage.local.get(keys);
+      if (
+        this.collectors.has('sound') &&
+        result[SOUND_MODE_KEY] === undefined
+      ) {
+        result[SOUND_MODE_KEY] = 'local';
+        await browser.storage.local.set({ [SOUND_MODE_KEY]: 'local' });
+      }
       for (const type of types) {
         const mode = result[`collection_mode_${type}`];
         // Only act if a mode is explicitly set; leave unset types to loadEnabledCollectors

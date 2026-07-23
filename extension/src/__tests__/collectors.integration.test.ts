@@ -6,6 +6,7 @@ import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
+import { SoundCollector } from "../collectors/SoundCollector";
 import { EventBuffer } from "../storage/EventBuffer";
 import {
   advanceTime,
@@ -106,6 +107,20 @@ describe("Collector Integration", () => {
   });
 
   describe("enable/disable collectors", () => {
+    it("defaults only the sound collector to local mode when no state exists", async () => {
+      const soundCollector = new SoundCollector();
+      const cursorCollector = new CursorCollector();
+      manager.registerCollector(soundCollector);
+      manager.registerCollector(cursorCollector);
+
+      await manager.init();
+
+      expect(soundCollector.isEnabled()).toBe(true);
+      expect(cursorCollector.isEnabled()).toBe(false);
+      expect(storageData.collection_mode_sound).toBe("local");
+      expect(storageData.collection_mode_cursor).toBeUndefined();
+    });
+
     it("enables a collector independently", async () => {
       const cursorCollector = new CursorCollector();
       const navigationCollector = new NavigationCollector();

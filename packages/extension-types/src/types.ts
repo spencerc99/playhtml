@@ -16,13 +16,14 @@ export type CollectionEventType =
   | 'cursor' 
   | 'navigation'
   | 'viewport'
-  | 'keyboard';
+  | 'keyboard'
+  | 'sound';
 
 /**
  * Get array of valid event types (for validation)
  */
 export function getValidEventTypes(): CollectionEventType[] {
-  return ['cursor', 'navigation', 'viewport', 'keyboard'];
+  return ['cursor', 'navigation', 'viewport', 'keyboard', 'sound'];
 }
 
 /**

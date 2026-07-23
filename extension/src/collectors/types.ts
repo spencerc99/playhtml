@@ -243,3 +243,14 @@ export interface KeyboardEventData {
   style?: InputStyling;   // Input box styling (optional for backwards compatibility)
   ce?: boolean;           // True if element is contenteditable (Google Docs, etc.), false/undefined for input/textarea
 }
+
+/**
+ * Sound playback metadata captured without recording audio.
+ */
+export interface SoundEventData {
+  mediaSrc?: string;
+  mediaKind: 'audio' | 'video';
+  detached: boolean;
+  mediaDurationMs?: number;
+  pageTitle?: string;
+}
