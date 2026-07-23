@@ -1,5 +1,19 @@
 # @playhtml/extension
 
+## 0.1.20 (2026-07-23)
+
+- Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
+- Preserve pending typing sequences when an input loses focus (#262)
+- Restored history no longer uploads again, while offline history in imported files stays queued to sync.
+- Send bugs, ideas, and other feedback directly from the extension popup.
+  ![Feedback button in the extension popup](/changelog/media/feedback-popup-button.png)
+  ![Feedback submission confirmation](/changelog/media/feedback-popup-success.png)
+- Fix Wikipedia presence startup while keeping private identity keys out of page-facing payloads.
+- Equip the message bottle from your satchel to place it yourself: a faded bottle follows your cursor, and clicking a spot drops it there and opens the letter to write. Back out with "take it back" to remove it.
+- A resting bottle now wears its latest letter's paper, closed with a wax seal pressed in the writer's cursor color — and the sealing ceremony stamps that seal on before the letter sinks into the page. An unwritten bottle stays a blank folded card.
+- Return to a site you haven't visited in over a month and a toast welcomes you back, showing how long it's been and a few of your past visit dates.
+
+
 ## 0.1.19 (2026-07-05)
 
 - Restore Wikipedia link patina on pages with absolute article links

@@ -67,7 +67,7 @@
     },
     "extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.19",
+      "version": "0.1.20",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/extension-types": "workspace:*",
