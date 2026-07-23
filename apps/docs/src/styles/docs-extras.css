@@ -147,6 +147,10 @@ body {
   position: relative;
   min-height: 100vh;
 }
+
+body:has(#examples-catalogue-results) {
+  --sl-content-width: min(100%, 110rem);
+}
 body::before {
   content: "";
   position: fixed;
@@ -171,6 +175,10 @@ body > * {
   z-index: 1;
 }
 
+.content-panel + .content-panel {
+  border-top: 0;
+}
+
 /* ---------------------------------------------------------------------
    4. Typography
    --------------------------------------------------------------------- */
@@ -181,47 +189,50 @@ h3,
 h4,
 h5,
 h6,
-.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+.sl-markdown-content
+  :is(h1, h2, h3, h4, h5, h6):not(:where(.not-content *)) {
   font-family: var(--ph-font-display);
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--ph-ink);
 }
 
-.sl-markdown-content h1 {
+.sl-markdown-content h1:not(:where(.not-content *)) {
   font-size: clamp(2.1rem, 1.4rem + 2.4vw, 3.1rem);
   font-weight: 800;
   letter-spacing: -0.02em;
 }
-.sl-markdown-content h2 {
+.sl-markdown-content h2:not(:where(.not-content *)) {
   font-size: clamp(1.55rem, 1.15rem + 1.4vw, 2.05rem);
   margin-top: 2.6rem;
   padding-top: 1.2rem;
   border-top: 1px solid var(--ph-hairline-soft);
 }
-.sl-markdown-content h3 {
+.sl-markdown-content h3:not(:where(.not-content *)) {
   font-size: 1.25rem;
   margin-top: 2rem;
 }
 
-.sl-markdown-content p,
-.sl-markdown-content li {
+.sl-markdown-content p:not(:where(.not-content *)),
+.sl-markdown-content li:not(:where(.not-content *)) {
   font-family: var(--ph-font-body);
   font-size: 1rem;
   line-height: 1.7;
   letter-spacing: 0.005em;
 }
-.sl-markdown-content p {
+.sl-markdown-content p:not(:where(.not-content *)) {
   max-width: 68ch;
 }
 
-.sl-markdown-content a:not(.sl-link-card, .sl-link-button) {
+.sl-markdown-content
+  a:not(.sl-link-card, .sl-link-button, :where(.not-content *)) {
   color: var(--ph-ultramarine-deep);
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
   transition: color var(--ph-motion-fast);
 }
-.sl-markdown-content a:not(.sl-link-card, .sl-link-button):hover {
+.sl-markdown-content
+  a:not(.sl-link-card, .sl-link-button, :where(.not-content *)):hover {
   color: var(--ph-ink);
   background: var(--ph-mustard-wash);
 }

@@ -1,0 +1,116 @@
+/* ABOUTME: Styles canonical recipe embeds and their multi-window testing controls. */
+/* ABOUTME: Uses the docs palette so runnable examples feel native to Starlight pages. */
+
+.ph-recipe-example {
+  margin: 1.5rem 0 2rem;
+  border: 1px solid var(--ph-ink, #1c1c1c);
+  background: var(--ph-paper, #f4efe5);
+  box-shadow: 4px 4px 0 var(--ph-ink, #1c1c1c);
+  color: var(--ph-ink, #1c1c1c);
+}
+
+.ph-recipe-example__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--ph-ink, #1c1c1c);
+  background: var(--ph-sage, #c3d1b7);
+  font-family: var(--ph-font-display, ui-sans-serif, system-ui, sans-serif);
+  font-weight: 700;
+}
+
+.ph-recipe-example__room {
+  overflow: hidden;
+  color: var(--ph-ink-3, #6a6a66);
+  font-family: var(--ph-font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ph-recipe-example__frame {
+  height: min(68vh, 34rem);
+  min-height: 24rem;
+  background: #fff;
+}
+
+.ph-recipe-example__frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.ph-recipe-example__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-top: 1px solid var(--ph-hairline, rgba(28, 28, 28, 0.18));
+  background: var(--ph-paper-warm, #ebe4d5);
+}
+
+.ph-recipe-example__button {
+  appearance: none;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--ph-ink, #1c1c1c);
+  border-radius: 0;
+  background: var(--ph-mustard, #e8a63a);
+  box-shadow: 2px 2px 0 var(--ph-ink, #1c1c1c);
+  color: var(--ph-ink, #1c1c1c) !important;
+  cursor: pointer;
+  font: 700 0.82rem/1.2 var(--ph-font-body, ui-sans-serif, system-ui, sans-serif);
+  text-decoration: none !important;
+}
+
+.ph-recipe-example__button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ph-ink, #1c1c1c);
+}
+
+.ph-recipe-example__button:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.ph-recipe-example__button--quiet {
+  background: var(--ph-paper, #f4efe5);
+}
+
+.ph-recipe-example__test {
+  padding: 0.9rem 1rem 0.75rem;
+  border-top: 1px solid var(--ph-hairline, rgba(28, 28, 28, 0.18));
+  background: var(--ph-ultramarine-wash, rgba(39, 75, 158, 0.08));
+  font-size: 0.86rem;
+}
+
+.ph-recipe-example__test strong {
+  font-family: var(--ph-font-display, ui-sans-serif, system-ui, sans-serif);
+}
+
+.ph-recipe-example__test ol {
+  margin: 0.45rem 0 0 1.15rem;
+  padding: 0;
+}
+
+.ph-recipe-example__test li + li {
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 40rem) {
+  .ph-recipe-example__bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ph-recipe-example__frame {
+    height: 34rem;
+  }
+
+  .ph-recipe-example__room {
+    max-width: 100%;
+  }
+}
