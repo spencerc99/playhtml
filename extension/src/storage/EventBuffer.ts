@@ -105,7 +105,13 @@ export class EventBuffer {
         events,
       })
       .then(
-        () => true,
+        (response) => {
+          if (response?.success === true) return true;
+
+          this.pendingEvents.unshift(...events);
+          console.error('[EventBuffer] Background failed to store events');
+          return false;
+        },
         (error) => {
           this.pendingEvents.unshift(...events);
           console.error(error);
