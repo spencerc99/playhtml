@@ -504,13 +504,13 @@ describe("LocalEventStore pending uploads", () => {
   it("queries one event type newest-first with a limit", async () => {
     const store = createStore();
     await store.addEvents([
-      { ...event("scrap-first", "scrap"), ts: 1_000 },
-      { ...event("scrap-last", "scrap"), ts: 3_000 },
-      { ...event("scrap-middle", "scrap"), ts: 2_000 },
+      { ...event("scrap-first", "image"), ts: 1_000 },
+      { ...event("scrap-last", "image"), ts: 3_000 },
+      { ...event("scrap-middle", "image"), ts: 2_000 },
       { ...event("cursor-later", "cursor"), ts: 4_000 },
     ]);
 
-    const events = await store.queryByType("scrap", { limit: 2 });
+    const events = await store.queryByType("image", { limit: 2 });
 
     expect(events.map((storedEvent) => storedEvent.id)).toEqual([
       "scrap-last",

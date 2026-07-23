@@ -34,7 +34,7 @@ async function internalDevFeaturesEnabled(): Promise<boolean> {
 }
 
 async function ensureScrapCollectionMode(): Promise<void> {
-  const key = "collection_mode_scrap";
+  const key = "collection_mode_image";
   const result = await browser.storage.local.get(key);
   if (result[key] === undefined) {
     await browser.storage.local.set({ [key]: "local" });

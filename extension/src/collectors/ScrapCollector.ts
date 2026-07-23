@@ -11,7 +11,7 @@ const VISIBILITY_DELAY_MS = 1000;
 const MAX_SCRAPS_PER_PAGE = 50;
 
 export class ScrapCollector extends BaseCollector<ScrapEventData> {
-  readonly type = "scrap" as const;
+  readonly type = "image" as const;
   readonly description = "Captures visible images as local internet scraps";
 
   private intersectionObserver?: IntersectionObserver;
@@ -144,7 +144,6 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.seenSources.add(src);
     this.captureCount++;
     this.emit({
-      kind: "image",
       src,
       ...(image.alt ? { alt: image.alt } : {}),
       naturalWidth: image.naturalWidth,

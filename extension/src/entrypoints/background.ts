@@ -103,7 +103,7 @@ async function flushPendingUploads(): Promise<void> {
     const result = await browser.storage.local.get(keys)
 
     const uploadable = pending.filter((e) => {
-      if (e.type === 'scrap') return false
+      if (e.type === 'image') return false
       const mode = result[`collection_mode_${e.type}`]
       const normalized: 'off' | 'local' | 'shared' =
         mode === 'off' || mode === 'shared' || mode === 'local' ? mode : 'local'
@@ -380,7 +380,7 @@ export default defineBackground(() => {
 
     if (message.type === 'GET_SCRAPS') {
       const limit = (message.options?.limit ?? 5000) as number
-      store.queryByType('scrap', { limit })
+      store.queryByType('image', { limit })
         .then((events) => events.map((event): ScrapRecord => {
           if (!event.domain) {
             throw new Error(`Scrap event ${event.id} is missing its domain`)

@@ -108,7 +108,6 @@ export interface ViewportEventData {
 }
 
 export interface ScrapEventData {
-  kind: "image";
   src: string;
   alt?: string;
   naturalWidth: number;
