@@ -1,3 +1,5 @@
+# ABOUTME: Configures the extension API Worker and its local development bindings.
+# ABOUTME: Defines the Worker entrypoint and Durable Object migration.
 name = "playhtml-game-api"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
