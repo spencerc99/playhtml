@@ -14,6 +14,9 @@ import { getInstrument, CLICK_BELL } from "./instruments";
 /** Minimum time between note changes for a single voice (ms) */
 const MIN_NOTE_INTERVAL_MS = 80;
 
+/** Duration of cursor-instrument timbre crossfades (seconds). */
+const OSCILLATOR_CROSSFADE_SECONDS = 0.03;
+
 /** Minimum velocity to trigger any sound (pixels per frame at ~60fps) */
 const SILENCE_VELOCITY_THRESHOLD = 0.05;
 
@@ -52,8 +55,10 @@ const PERCUSSIVE_CURSOR_TYPES = new Set(["text"]);
 /** Per-trail voice state */
 interface Voice {
   oscillator: OscillatorNode | null;
+  oscillatorLevel: GainNode | null;
   /** Fifth oscillator for chord voicing mode */
   fifthOscillator: OscillatorNode | null;
+  fifthOscillatorLevel: GainNode | null;
   gainNode: GainNode;
   /** Separate gain for the fifth so we can enable/disable it */
   fifthGainNode: GainNode | null;
@@ -470,7 +475,10 @@ export class SoundEngine {
 
     const pan = ctx.createStereoPanner();
 
-    osc.connect(filter);
+    const oscillatorLevel = ctx.createGain();
+    oscillatorLevel.gain.setValueAtTime(1, now);
+    osc.connect(oscillatorLevel);
+    oscillatorLevel.connect(filter);
     filter.connect(gain);
     gain.connect(pan);
     pan.connect(this.masterGain!);
@@ -488,19 +496,18 @@ export class SoundEngine {
       now,
     );
 
-    fifthOsc.connect(filter); // Share the same filter chain
-    fifthOsc.start(now);
-
-    // Route fifth gain separately so we can control its level
-    // Actually, the fifth goes through the same filter -> gain -> pan chain
-    // but we control its presence via fifthGain before the filter
-    fifthOsc.disconnect();
-    fifthOsc.connect(fifthGain);
+    const fifthOscillatorLevel = ctx.createGain();
+    fifthOscillatorLevel.gain.setValueAtTime(1, now);
+    fifthOsc.connect(fifthOscillatorLevel);
+    fifthOscillatorLevel.connect(fifthGain);
     fifthGain.connect(filter);
+    fifthOsc.start(now);
 
     return {
       oscillator: osc,
+      oscillatorLevel,
       fifthOscillator: fifthOsc,
+      fifthOscillatorLevel,
       gainNode: gain,
       fifthGainNode: fifthGain,
       filterNode: filter,
@@ -559,29 +566,71 @@ export class SoundEngine {
     );
     voice.filterNode.Q.linearRampToValueAtTime(instrument.filterQ, now + 0.1);
 
-    if (voice.oscillator && voice.oscillator.type !== instrument.oscillatorType) {
-      const oldOsc = voice.oscillator;
-      const newOsc = this.ctx.createOscillator();
-      newOsc.type = instrument.oscillatorType;
-      newOsc.frequency.value = voice.currentFrequency || 220;
-      newOsc.connect(voice.filterNode);
-      newOsc.start(this.ctx.currentTime);
-      oldOsc.stop(this.ctx.currentTime + 0.05);
-      voice.oscillator = newOsc;
+    if (
+      voice.oscillator &&
+      voice.oscillatorLevel &&
+      voice.oscillator.type !== instrument.oscillatorType
+    ) {
+      const primary = this.crossfadeOscillator(
+        voice.oscillator,
+        voice.oscillatorLevel,
+        voice.filterNode,
+        instrument.oscillatorType,
+        voice.currentFrequency || 220,
+      );
+      voice.oscillator = primary.oscillator;
+      voice.oscillatorLevel = primary.level;
 
-      // Also update the fifth oscillator type to match
-      if (voice.fifthOscillator && voice.fifthGainNode) {
-        const oldFifth = voice.fifthOscillator;
-        const newFifth = this.ctx.createOscillator();
-        newFifth.type = instrument.oscillatorType;
-        newFifth.frequency.value = (voice.currentFrequency || 220) * 1.5;
-        newFifth.connect(voice.fifthGainNode);
-        voice.fifthGainNode.connect(voice.filterNode);
-        newFifth.start(this.ctx.currentTime);
-        oldFifth.stop(this.ctx.currentTime + 0.05);
-        voice.fifthOscillator = newFifth;
+      if (
+        voice.fifthOscillator &&
+        voice.fifthOscillatorLevel &&
+        voice.fifthGainNode
+      ) {
+        const fifth = this.crossfadeOscillator(
+          voice.fifthOscillator,
+          voice.fifthOscillatorLevel,
+          voice.fifthGainNode,
+          instrument.oscillatorType,
+          (voice.currentFrequency || 220) * 1.5,
+        );
+        voice.fifthOscillator = fifth.oscillator;
+        voice.fifthOscillatorLevel = fifth.level;
       }
     }
+  }
+
+  private crossfadeOscillator(
+    oscillator: OscillatorNode,
+    level: GainNode,
+    destination: AudioNode,
+    oscillatorType: OscillatorType,
+    frequency: number,
+  ): { oscillator: OscillatorNode; level: GainNode } {
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    const currentOscillator = ctx.createOscillator();
+    const currentLevel = ctx.createGain();
+
+    currentOscillator.type = oscillatorType;
+    currentOscillator.frequency.value = frequency;
+    currentLevel.gain.setValueAtTime(0, now);
+    currentOscillator.connect(currentLevel);
+    currentLevel.connect(destination);
+    currentOscillator.start(now);
+
+    this.holdParam(level.gain, now);
+    level.gain.linearRampToValueAtTime(
+      0,
+      now + OSCILLATOR_CROSSFADE_SECONDS,
+    );
+    currentLevel.gain.linearRampToValueAtTime(
+      1,
+      now + OSCILLATOR_CROSSFADE_SECONDS,
+    );
+    oscillator.onended = () => level.disconnect();
+    oscillator.stop(now + OSCILLATOR_CROSSFADE_SECONDS);
+
+    return { oscillator: currentOscillator, level: currentLevel };
   }
 
   private fadeVoice(voice: Voice, duration: number): void {
