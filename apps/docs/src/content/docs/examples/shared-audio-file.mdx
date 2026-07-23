@@ -1,0 +1,78 @@
+---
+title: "Shared audio file"
+description: "Keep an HTML audio file on the same play/pause timeline across browsers."
+sidebar:
+  order: 2
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import { sharedAudioFileRecipe } from "@/components/playground/recipes/shared-audio-file";
+
+This example keeps one HTML audio file on the same play/pause timeline across
+browsers. Start here when you already have an MP3, WAV, or other
+browser-supported audio file.
+
+<RecipeExample recipe={sharedAudioFileRecipe} client:load />
+
+## How it works
+
+The page uses a normal audio element:
+
+```html
+<audio src="/sounds/song.mp3" preload="auto" loop></audio>
+```
+
+PlayHTML shares only three transport values:
+
+```js
+{
+  isPlaying: false,
+  startedAtMs: 0,
+  positionMs: 0,
+}
+```
+
+Each browser loads the audio file itself. When someone presses **Play**, every
+browser calculates the current position from the shared start time and plays
+its local audio element from there.
+
+The example corrects the local audio position when it drifts by more than 250
+milliseconds. It keeps casual shared playback close, but it is not
+sample-accurate synchronization.
+
+## Enable audio in every window
+
+Browsers require a local interaction before a page can play sound. Click
+**Enable audio** once in every browser window.
+
+That permission cannot be shared. A play command still synchronizes while
+audio is locked, but the locked window stays silent until someone enables it
+there.
+
+## Use your own file
+
+Replace the `src` URL on the audio element:
+
+```html
+<audio src="/sounds/your-file.mp3" preload="auto" loop></audio>
+```
+
+Use a URL every browser can reach. The file does not pass through PlayHTML;
+each browser downloads it normally.
+
+## Test in two windows
+
+1. Click **Enable audio** in the normal browser window.
+2. Copy the private-window link and open it in a private or incognito window.
+3. Click **Enable audio** in the private window.
+4. Press **Play for everyone**. Both windows should play the same file from
+   nearly the same position.
+5. Pause or restart from either window. Both timelines should update.
+6. Start playback, wait a moment, and reload one window. Enable audio there
+   again; it should join at the current shared position.
+
+## Synthetic sounds and one-shot cues
+
+Use [Synchronized sound](/docs/examples/synchronized-sound/) when you need
+generated tones, one-shot events, or a custom scheduler instead of a normal
+audio file.

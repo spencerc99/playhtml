@@ -1,0 +1,74 @@
+---
+title: "Synchronized sound"
+description: "Broadcast one-shot audio cues and keep a shared play/pause timeline in sync."
+sidebar:
+  order: 3
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import { synchronizedSoundRecipe } from "@/components/playground/recipes/synchronized-sound";
+
+This advanced example shows two ways to coordinate generated sound with playhtml. Use an event for a sound that should happen once, or shared data for a generated loop that people need to join, pause, and resume.
+
+If you already have an MP3, WAV, or another audio file, start with [Shared audio file](/docs/examples/shared-audio-file/).
+
+<RecipeExample recipe={synchronizedSoundRecipe} client:load />
+
+## Choose the sound behavior
+
+| Behavior | PlayHTML primitive | Late joiners | Tradeoff |
+| --- | --- | --- | --- |
+| One-shot chime | Event | Do not hear an earlier chime | Good for reactions and effects, but it does not preserve history. |
+| Four-beat loop | Shared element data | Join at the current position | Preserves transport state, but each device still generates and schedules its own audio. |
+
+The example uses the Web Audio API to generate every tone in the browser. It does not download or stream an audio file.
+
+## Enable audio in every window
+
+Browsers block sound until a person interacts with the page. **Enable audio** creates and resumes a local `AudioContext`, so every open window must click it once.
+
+The audio-enabled setting is intentionally not shared. One person cannot grant another browser permission to make sound.
+
+## Send a one-shot cue
+
+**Send chime** dispatches a `synchronized-sound-cue` event. Everyone currently connected receives the event and generates the same short tone locally.
+
+The event is not stored. A person who opens the page after the click does not hear it. See [Events](/docs/data/events/) for the complete event API and other transient-signal examples.
+
+## Share a play/pause timeline
+
+The loop keeps only the transport state in shared data:
+
+```js
+{
+  isPlaying: false,
+  startedAtMs: 0,
+  positionMs: 0,
+}
+```
+
+When someone presses **Play loop**, the example stores a wall-clock start time. Every window calculates the current position from `Date.now() - startedAtMs`. Someone who joins late therefore starts on the current beat instead of beat one.
+
+The local scheduler looks ahead by a short interval and recalculates each upcoming beat from the shared start time. This corrects ordinary JavaScript timer drift instead of letting timing errors accumulate. It is appropriate for shared music controls and playful sound effects, but it is not sample-accurate audio networking: device clock differences and network delay can still produce a small offset.
+
+Shared writes happen only when a person presses **Play**, **Pause**, or **Restart**. The animation and audio-scheduling loop reads the current data without writing it back, so a remote update cannot start a self-triggering write loop. See [Data essentials](/docs/data/data-essentials/) for the shared-data rules used here.
+
+## Test in two windows
+
+Use the live example above so both windows join the room shown in its toolbar.
+
+1. Click **Enable audio** in the normal browser window.
+2. Click **Copy private-window link**. Open a private or incognito window and paste the copied URL.
+3. Click **Enable audio** in the private window too.
+4. Click **Send chime** in either window. Both windows should play one chime. Reloading the other window should not replay it.
+5. Click **Play loop**. Both windows should show the same highlighted beat and nearly the same position.
+6. Click **Pause loop** in the other window. Both timelines should stop at that shared position.
+7. Start the loop again, wait a few beats, then reload the private window. After clicking **Enable audio** again, it should jump to the current position and join the next beat instead of restarting from zero.
+
+If the controls synchronize but one window is silent, audio is still locked in that window. Click **Enable audio** there again.
+
+## Related
+
+- [Events](/docs/data/events/): broadcast transient signals that are not replayed.
+- [Data essentials](/docs/data/data-essentials/): choose between shared data, presence, local state, and events.
+- [Custom elements](/docs/custom-elements/): build a `can-play` element with your own data and event handlers.

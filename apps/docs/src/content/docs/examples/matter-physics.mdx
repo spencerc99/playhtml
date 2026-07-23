@@ -1,0 +1,48 @@
+---
+title: "Shared Matter.js physics"
+description: "Run one small physics simulation and sync its bodies across browsers."
+sidebar:
+  order: 4
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import { matterPhysicsRecipe } from "@/components/playground/recipes/matter-physics";
+
+This example syncs a small Matter.js world across browsers. Use it when you want physics motion to persist without making every connected browser simulate and write the same bodies.
+
+<RecipeExample recipe={matterPhysicsRecipe} client:load />
+
+## What syncs
+
+Each body is stored under a stable key with three values: `x`, `y`, and `angle`. Dragging, adding, and resetting update that keyed shared data.
+
+The last person to interact becomes the simulation controller. Only that browser runs Matter.js and publishes transforms. Other browsers keep their bodies static and interpolate toward the latest shared positions.
+
+This is intentionally a small ownership rule. It makes the core synchronization pattern easy to inspect, but it does not support two people dragging separate bodies at the same time.
+
+## Why writes are bounded
+
+Physics engines render at about 60 frames per second. Writing shared data on every frame creates more updates than remote readers need.
+
+The example instead:
+
+- publishes at most once every 100 milliseconds;
+- skips position and angle changes below a small threshold;
+- clamps positions to the visible world before publishing;
+- writes body fields in place under their stable keys.
+
+All shared writes start from a user action or from the one browser currently controlling the simulation. `updateElement` only reads shared data and updates local targets.
+
+## Test it in two windows
+
+1. Open this page in a normal browser window.
+2. Click **Copy private-window link**, then open that exact URL in a private or incognito window. Keep both windows visible.
+3. Drag a body upward in the normal window and release it. The body should fall and settle in both windows.
+4. Click **Add body** in the private window. A new falling body should appear in both windows, and the private window now controls the simulation.
+5. Click **Reset** in either window. Both windows should return to the same three-body arrangement.
+
+If the windows do not match, confirm that both address bars contain the exact same example-page URL. A copied playground remix or a different path can use a different room.
+
+## Larger reference
+
+[Cinderblock Yard](/experiments/cinderblock/) extends the same idea into a larger working project with more bodies, selection tools, rotation and removal, sleeping, responsive scaling, and a more detailed ownership handoff. Start with this recipe before reading that implementation.

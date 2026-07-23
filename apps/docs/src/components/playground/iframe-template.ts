@@ -1,15 +1,15 @@
-// ABOUTME: Builds the srcdoc HTML wrapper for a playground iframe — injects
-// ABOUTME: importmap, dev panel bottom-position bootstrap, and base CSS reset.
+// ABOUTME: Builds the srcdoc wrapper used by playground and docs example iframes.
+// ABOUTME: Injects the playhtml import, shared room, and optional development panel.
 
 export type IframeTemplateArgs = {
   /** Recipe source. Must be a complete <!doctype html> document. */
   recipeHtml: string;
-  /** Resolved playhtml URL (currently always unpkg; the workspace dev shim
-      is bypassed because Astro's dev server blocks cross-origin subresource
-      requests from sandboxed iframes that lack `allow-same-origin`). */
+  /** Self-contained URL for the built PlayHTML module. */
   playhtmlUrl: string;
   /** Room id the iframe's playhtml should join. */
   roomId: string;
+  /** Whether the playground development panel should open below the recipe. */
+  showDevPanel?: boolean;
 };
 
 // Inlined dev-panel-bottom CSS. Originally lived as a separate stylesheet at
@@ -65,11 +65,10 @@ const DEV_PANEL_BOTTOM_CSS = `
  *   2. Inline <style> with dev-panel-bottom override CSS (inlined to avoid
  *      Astro dev-server cross-origin block on sandboxed iframe subresources).
  *   3. A small bootstrap script that overrides playhtml.init's room option
- *      AND sets data-position="bottom" on the dev panel root (and clicks
- *      the trigger to auto-open it) once playhtml mounts.
+ *      and configures the development panel for the current surface.
  */
 export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
-  const { recipeHtml, playhtmlUrl, roomId } = args;
+  const { recipeHtml, playhtmlUrl, roomId, showDevPanel = true } = args;
 
   // The recipe's <script type="module"> calls `playhtml.init({...})`. We
   // need to override that init's `room` option so the iframe joins the
@@ -79,36 +78,8 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
   //
   // We also run a MutationObserver to catch the dev panel root the moment
   // playhtml mounts it, set data-position, and auto-open it.
-  const bootstrap = `
-<script type="importmap">
-{
-  "imports": {
-    "playhtml": ${JSON.stringify(playhtmlUrl)}
-  }
-}
-</script>
-<style>${DEV_PANEL_BOTTOM_CSS}</style>
-<script type="module">
-  // Monkey-patch playhtml.init to inject our roomId. Static import (not
-  // dynamic) so the bootstrap's body runs before the recipe's <script
-  // type="module"> body — both modules await the same playhtml import,
-  // but document order determines which body runs first once the module
-  // record resolves. With a static import the patch lands BEFORE the
-  // recipe's call to playhtml.init runs.
-  import { playhtml } from "playhtml";
-  const FORCED_ROOM = ${JSON.stringify(roomId)};
-  const originalInit = playhtml.init;
-  playhtml.init = function patchedInit(opts) {
-    return originalInit.call(this, { ...(opts ?? {}), room: FORCED_ROOM });
-  };
-
-  // Watch for the dev panel to mount. When the root appears, set
-  // data-position="bottom" so the consumer CSS layout kicks in, then
-  // wait for the trigger button to render and click it to auto-open.
-  // The two phases need to be separate because in setupDevUI() the root
-  // is created first, then the trigger is appended, then the bar is
-  // appended — between the root mount and the trigger mount we'd miss
-  // the click target if we tried to do both in one tick.
+  const developmentPanelBootstrap = showDevPanel
+    ? `
   let positioned = false;
   let opened = false;
   const obs = new MutationObserver(() => {
@@ -127,7 +98,58 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
       }
     }
   });
-  obs.observe(document.documentElement, { childList: true, subtree: true });
+  obs.observe(document.documentElement, { childList: true, subtree: true });`
+    : `
+  const panelStyles = document.createElement("style");
+  panelStyles.textContent = "#playhtml-dev-root { display: none !important; }";
+  document.head.append(panelStyles);`;
+
+  const bootstrap = `
+<script type="importmap">
+{
+  "imports": {
+    "playhtml": ${JSON.stringify(playhtmlUrl)}
+  }
+}
+</script>
+<style>${DEV_PANEL_BOTTOM_CSS}</style>
+<script>
+  function makeMemoryStorage() {
+    const values = new Map();
+    return {
+      get length() { return values.size; },
+      clear() { values.clear(); },
+      getItem(key) { return values.has(String(key)) ? values.get(String(key)) : null; },
+      key(index) { return Array.from(values.keys())[index] ?? null; },
+      removeItem(key) { values.delete(String(key)); },
+      setItem(key, value) { values.set(String(key), String(value)); },
+    };
+  }
+
+  for (const storageName of ["localStorage", "sessionStorage"]) {
+    try {
+      window[storageName].length;
+    } catch {
+      Object.defineProperty(window, storageName, { value: makeMemoryStorage() });
+    }
+  }
+
+</script>
+<script type="module">
+  // Monkey-patch playhtml.init to inject our roomId. Static import (not
+  // dynamic) so the bootstrap's body runs before the recipe's <script
+  // type="module"> body — both modules await the same playhtml import,
+  // but document order determines which body runs first once the module
+  // record resolves. With a static import the patch lands BEFORE the
+  // recipe's call to playhtml.init runs.
+  import { playhtml } from "playhtml";
+  const FORCED_ROOM = ${JSON.stringify(roomId)};
+  const originalInit = playhtml.init;
+  playhtml.init = function patchedInit(opts) {
+    return originalInit.call(this, { ...(opts ?? {}), room: FORCED_ROOM });
+  };
+
+  ${developmentPanelBootstrap}
 </script>
 `;
 
