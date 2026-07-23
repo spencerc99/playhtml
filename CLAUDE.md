@@ -55,6 +55,8 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun run db:new -- partykit_describe_change`: Create a PartyKit-owned migration
 - `bun run db:verify`: Reset and lint the local database
 - `bun run db:stop`: Stop the local Supabase stack
+- `bun run dev-server:local-db`: Run PartyKit against the local Supabase stack
+- `bun run dev-extension-worker:local-db`: Run the extension Worker against the local Supabase stack
 
 The extension and PartyKit use one Supabase project with different tables. All new migrations live
 in `supabase/migrations/`; the name prefix records which application owns the affected tables.

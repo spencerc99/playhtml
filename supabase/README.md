@@ -28,11 +28,30 @@ bun run db:lint
 bun run db:stop
 ```
 
-`db:reset` recreates the local database from `supabase/migrations/` and then loads `seed.sql`.
+`db:start` preserves data in the local Docker volume between runs. `db:reset` recreates the
+database from `supabase/migrations/` and then loads `seed.sql`, which is empty in this repository.
 `db:verify` runs the reset and database lint together.
 
-Use the values printed by `bun run db:status` for local Worker configuration. Keep secret keys in
-ignored local environment files.
+To run PartyKit against the local database:
+
+```sh
+cp partykit/.dev.vars.example partykit/.dev.vars
+bun run dev-server:local-db
+```
+
+To run the extension Worker against the local database:
+
+```sh
+cp extension/worker/.dev.vars.example extension/worker/.dev.vars
+bun run dev-extension-worker:local-db
+```
+
+Both commands create `.dev.vars.supabase` from the running local stack. Wrangler loads that file
+after the Worker's `.dev.vars`, so the local Supabase URL and key override any hosted database
+credentials. Other Worker secrets still come from the Worker's `.dev.vars`.
+
+The generated file contains local development credentials and is ignored by Git. Existing
+`dev-server` and extension development commands keep their current database configuration.
 
 ## Production project
 
