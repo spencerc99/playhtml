@@ -122,6 +122,7 @@ export default defineConfig({
           label: "Start",
           items: [
             { label: "Getting started", slug: "getting-started" },
+            { label: "Install with an agent", slug: "agent-setup" },
             { label: "Core concepts", slug: "concepts" },
             { label: "Using React", slug: "using-react" },
           ],
