@@ -6,7 +6,6 @@ import { BaseCollector } from './BaseCollector';
 import type { CollectionEventType, CollectorStatus } from './types';
 import { EventBuffer } from '../storage/EventBuffer';
 import { VERBOSE } from '../config';
-import { getValidEventTypes } from '@playhtml/extension-types';
 
 const STORAGE_KEY = 'collection_enabled_collectors';
 
@@ -48,7 +47,7 @@ export class CollectorManager {
    */
   private async applyModesFromStorage(): Promise<void> {
     try {
-      const types = getValidEventTypes();
+      const types = Array.from(this.collectors.keys());
       const keys = types.map((t) => `collection_mode_${t}`);
       const result = await browser.storage.local.get(keys);
       for (const type of types) {

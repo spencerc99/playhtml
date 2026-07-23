@@ -107,6 +107,18 @@ export interface ViewportEventData {
   quantity?: number;      // number of events that occurred during debounce window
 }
 
+export interface ScrapEventData {
+  kind: "image";
+  src: string;
+  alt?: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  displayWidth: number;
+  displayHeight: number;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
 /**
  * Collector configuration
  */

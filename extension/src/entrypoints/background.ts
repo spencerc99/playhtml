@@ -6,6 +6,7 @@ import type { QueryOptions } from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
+import type { ScrapEventData } from '../collectors/types'
 import {
   ensurePlayerIdentity,
   getPlayerProfile,
@@ -26,6 +27,19 @@ import {
 } from '../milestones/state'
 import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
 import { getSessionId } from '../storage/participant'
+
+export interface ScrapRecord {
+  id: string
+  src: string
+  alt?: string
+  pageTitle: string
+  faviconUrl?: string
+  domain: string
+  pageUrl: string
+  ts: number
+  naturalWidth: number
+  naturalHeight: number
+}
 
 const store = new LocalEventStore()
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
@@ -85,6 +99,7 @@ async function flushPendingUploads(): Promise<void> {
     const result = await browser.storage.local.get(keys)
 
     const uploadable = pending.filter((e) => {
+      if (e.type === 'scrap') return false
       const mode = result[`collection_mode_${e.type}`]
       const normalized: 'off' | 'local' | 'shared' =
         mode === 'off' || mode === 'shared' || mode === 'local' ? mode : 'local'
@@ -355,6 +370,35 @@ export default defineBackground(() => {
         .catch((e) => {
           console.error('[Background] GET_RECENT_EVENTS error:', e)
           reply({ success: false, events: [] })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SCRAPS') {
+      const limit = (message.options?.limit ?? 5000) as number
+      store.queryByType('scrap', { limit })
+        .then((events) => events.map((event): ScrapRecord => {
+          if (!event.domain) {
+            throw new Error(`Scrap event ${event.id} is missing its domain`)
+          }
+          const data = event.data as ScrapEventData
+          return {
+            id: event.id,
+            src: data.src,
+            ...(data.alt ? { alt: data.alt } : {}),
+            pageTitle: data.pageTitle,
+            ...(data.faviconUrl ? { faviconUrl: data.faviconUrl } : {}),
+            domain: event.domain,
+            pageUrl: event.meta.url,
+            ts: event.ts,
+            naturalWidth: data.naturalWidth,
+            naturalHeight: data.naturalHeight,
+          }
+        }))
+        .then((scraps) => reply({ scraps }))
+        .catch((e) => {
+          console.error('[Background] GET_SCRAPS error:', e)
+          reply({ scraps: [] })
         })
       return true
     }

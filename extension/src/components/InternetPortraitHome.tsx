@@ -19,6 +19,7 @@ interface Props {
   onViewHistory: () => void;
   onViewProfile?: () => void;
   onViewBagSettings?: () => void;
+  onViewScraps?: () => void;
   onViewChangelog: () => void;
 }
 
@@ -39,6 +40,7 @@ export function InternetPortraitHome({
   onViewHistory,
   onViewProfile,
   onViewBagSettings,
+  onViewScraps,
   onViewChangelog,
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
@@ -239,6 +241,17 @@ export function InternetPortraitHome({
             >
               time
             </button>
+            {onViewScraps && (
+              <button
+                className="portrait-home__nav-link"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewScraps();
+                }}
+              >
+                scraps
+              </button>
+            )}
             <button
               className="portrait-home__nav-link"
               onClick={(e) => {

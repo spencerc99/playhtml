@@ -18,10 +18,28 @@ import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
+import { ScrapCollector } from "../collectors/ScrapCollector";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
 import { shouldStartExtensionPresence } from "./content/presencePolicy";
+
+async function internalDevFeaturesEnabled(): Promise<boolean> {
+  try {
+    const result = await browser.storage.local.get("internalDevFeaturesEnabled");
+    return Boolean(result.internalDevFeaturesEnabled);
+  } catch {
+    return false;
+  }
+}
+
+async function ensureScrapCollectionMode(): Promise<void> {
+  const key = "collection_mode_scrap";
+  const result = await browser.storage.local.get(key);
+  if (result[key] === undefined) {
+    await browser.storage.local.set({ [key]: "local" });
+  }
+}
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -1249,6 +1267,12 @@ export default defineContentScript({
 
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
+
+        if (FLAGS.SCRAPS || (await internalDevFeaturesEnabled())) {
+          await ensureScrapCollectionMode();
+          const scrapCollector = new ScrapCollector();
+          collectorManager.registerCollector(scrapCollector);
+        }
 
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
