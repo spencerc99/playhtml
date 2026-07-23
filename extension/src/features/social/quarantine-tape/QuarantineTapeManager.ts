@@ -77,6 +77,7 @@ export class QuarantineTapeManager {
   // element-tape gesture (drag across a hovered image)
   private hoverTarget: HTMLImageElement | null = null;
   private elementDragStart: { x: number; y: number; img: HTMLImageElement } | null = null;
+  private elementPreviewRaf = 0;
   private scrollRaf = 0;
 
   private destroyed = false;
@@ -295,6 +296,37 @@ export class QuarantineTapeManager {
   }
 
   /**
+   * Ghost of the X about to be taped over the dragged image. Opacity ramps with
+   * drag distance and stays dashed until the drag passes the commit threshold,
+   * so "not far enough yet" reads in the gesture itself.
+   */
+  private renderElementPreview(cx: number, cy: number) {
+    if (this.elementPreviewRaf) return; // one paint per frame, like the strip preview
+    this.elementPreviewRaf = requestAnimationFrame(() => {
+      this.elementPreviewRaf = 0;
+      this.gPreview.replaceChildren();
+      const drag = this.elementDragStart;
+      if (!drag || !this.equipped) return;
+      const r = drag.img.getBoundingClientRect();
+      const dist = Math.hypot(cx - drag.x, cy - drag.y);
+      const committing = dist >= SLASH_MIN_LEN;
+      const opacity = committing ? 0.62 : 0.12 + 0.4 * (dist / SLASH_MIN_LEN);
+      const inset = 2;
+      const diagonals: Array<[number, number, number, number]> = [
+        [r.left + inset, r.top + inset, r.right - inset, r.bottom - inset],
+        [r.right - inset, r.top + inset, r.left + inset, r.bottom - inset],
+      ];
+      for (const [i, [x1, y1, x2, y2]] of diagonals.entries()) {
+        this.gPreview.appendChild(
+          buildTapeGroup(
+            this.defs, x1, y1, x2, y2, this.equipped, 4242 + i * 7717, opacity, !committing,
+          ),
+        );
+      }
+    });
+  }
+
+  /**
    * While armed and not mid-pull, highlight the image under the cursor as a tape
    * target. Dragging across a highlighted image tapes that element instead of
    * stringing a wall-to-wall strip.
@@ -321,7 +353,19 @@ export class QuarantineTapeManager {
   private onMouseMove = (e: MouseEvent) => {
     this.cursor = { x: e.clientX, y: e.clientY };
     if (this.equipped && this.pending) this.renderPreview();
-    if (this.equipped && !this.pending) this.updateHoverTarget(e);
+    // Don't re-target mid-drag — the image being taped stays the target even if
+    // the cursor leaves its bounds.
+    if (this.equipped && !this.pending && !this.elementDragStart) {
+      this.updateHoverTarget(e);
+    }
+
+    // Dragging across an image: preview the X of tape that will land on it, so
+    // the gesture reads like the wall-to-wall pull — see the tape before you
+    // commit it.
+    if (this.elementDragStart && this.equipped) {
+      this.renderElementPreview(e.clientX, e.clientY);
+      return;
+    }
 
     if (this.slashStart) {
       // draw a live blade trail while dragging
@@ -383,6 +427,7 @@ export class QuarantineTapeManager {
     this.elementDragStart = null;
     if (elDrag && this.equipped) {
       document.body.style.userSelect = "";
+      this.gPreview.replaceChildren(); // drop the ghost X, committed or not
       const dist = Math.hypot(e.clientX - elDrag.x, e.clientY - elDrag.y);
       if (dist >= SLASH_MIN_LEN) {
         void this.commitElementMark(elDrag.img.src, this.equipped);
@@ -587,6 +632,7 @@ export class QuarantineTapeManager {
     this.destroyed = true;
     if (this.previewRaf) cancelAnimationFrame(this.previewRaf);
     if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
+    if (this.elementPreviewRaf) cancelAnimationFrame(this.elementPreviewRaf);
     window.removeEventListener("mousemove", this.onMouseMove);
     window.removeEventListener("mousedown", this.onMouseDown);
     window.removeEventListener("mouseup", this.onMouseUp);
