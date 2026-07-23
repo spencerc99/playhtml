@@ -1,5 +1,6 @@
 // ABOUTME: Verifies both copy-paste React sound examples keep their sync boundaries.
 // ABOUTME: Guards provider usage, stable ids, event wiring, and explicit shared writes.
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { sharedAudioFileReactSource } from "../shared-audio-file";
 import { synchronizedSoundReactSource } from "../synchronized-sound";
@@ -9,6 +10,19 @@ describe("React sound recipe sources", () => {
     ["shared audio file", sharedAudioFileReactSource],
     ["synchronized sound", synchronizedSoundReactSource],
   ])("provides a complete %s app", (_name, source) => {
+    const result = ts.transpileModule(source, {
+      compilerOptions: {
+        jsx: ts.JsxEmit.ReactJSX,
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+      reportDiagnostics: true,
+    });
+    const errors = (result.diagnostics ?? []).filter(
+      (diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error,
+    );
+
+    expect(errors).toEqual([]);
     expect(source).toContain('from "@playhtml/react"');
     expect(source).toContain("<PlayProvider");
     expect(source).toContain("withSharedState<TransportData>");
