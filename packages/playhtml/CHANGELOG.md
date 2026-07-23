@@ -1,5 +1,23 @@
 # Change Log
 
+## 2.13.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- 7c1bdda: Coalesce can-mirror DOM observer writes before syncing so many simultaneous element mutations send a single shared document update instead of one update per element.
+- 5a32af7: Clean up built-in element listeners when an element is removed so remounting and dragging do not leave stale handlers active, and install listeners when callbacks are added after setup.
+- b3f20bb: Update playhtml's default PartyKit hosts to the Cloudflare WAF-protected custom API domains so production pages connect through `api.playhtml.fun` and staging pages connect through `api-staging.playhtml.fun`.
+- 4a1711c: Defer loading the development toolbar until development mode is enabled so production runtime bundles do not include that code path.
+- dca1704: Restrict presence player identities to public fields, strip profile-only fields from generated identities, and allow custom presence values larger than 4 KiB.
+- 252acd0: Apply `can-move-bounds` only while dragging so setup preserves initial CSS layout and persisted positions instead of rewriting them from pre-insertion or client-specific geometry.
+- 1f8cf34: Add inline editing for existing primitive state leaves in the playhtml development toolbar, so developers can update string, number, boolean, and null values without replacing whole JSON blobs.
+- c5083b7: Clean up cursor chat keyboard, timer, and DOM resources when cursor presence is destroyed.
+- Updated dependencies [cd1ebf9]
+- Updated dependencies [dca1704]
+- Updated dependencies [252acd0]
+  - @playhtml/common@0.8.2
+
 ## 2.13.1
 
 ### Patch Changes
