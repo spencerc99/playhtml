@@ -19,7 +19,7 @@
     "dev-server": "bunx wrangler dev --config partykit/wrangler.jsonc --port 1999",
     "dev-server:local-db": "bun run db:local-env && bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 --env-file partykit/.dev.vars --env-file .dev.vars.supabase",
     "dev-extension": "cd extension && bun run dev",
-    "dev-extension-worker:local-db": "bun run db:local-env && bunx wrangler dev --config extension/worker/wrangler.toml --env-file extension/worker/.dev.vars --env-file .dev.vars.supabase",
+    "dev-extension-worker:local-db": "bun run db:local-env && bunx wrangler dev --config extension/worker/wrangler.toml --env-file \"$PWD/extension/worker/.dev.vars\" --env-file \"$PWD/.dev.vars.supabase\"",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:status": "supabase status",
