@@ -2,7 +2,6 @@
 // ABOUTME: Keeps malformed external blocks from breaking the examples index.
 
 import { describe, expect, it } from "vitest";
-import type { ExampleRecipeSummary } from "../../playground/recipes/types";
 import {
   deduplicateSitesByUrl,
   filterExamples,
@@ -12,8 +11,9 @@ import {
   mapArenaSites,
   type SiteSummary,
 } from "../catalogue";
+import { catalogueExamples, type CatalogueExampleSummary } from "../examples";
 
-const EXAMPLE: ExampleRecipeSummary = {
+const EXAMPLE: CatalogueExampleSummary = {
   id: "shared-transport",
   title: "Synchronized sound",
   description: "Play a cue and keep a shared audio timeline in sync.",
@@ -21,7 +21,24 @@ const EXAMPLE: ExampleRecipeSummary = {
   capabilities: ["can-play"],
   difficulty: "advanced",
   docsHref: "/docs/examples/shared-transport/",
+  kind: "recipe",
+  remixId: "shared-transport",
 };
+
+describe("catalogueExamples", () => {
+  it("includes complete recipes and inline docs demos without duplicate ids", () => {
+    expect(
+      catalogueExamples.filter((example) => example.kind === "recipe"),
+    ).toHaveLength(3);
+    expect(
+      catalogueExamples.filter((example) => example.kind === "docs-demo"),
+    ).toHaveLength(16);
+    expect(new Set(catalogueExamples.map((example) => example.id)).size).toBe(
+      catalogueExamples.length,
+    );
+    expect(filterExamples(catalogueExamples, "docs demo")).toHaveLength(16);
+  });
+});
 
 describe("mapArenaSites", () => {
   it("maps public V3 Link blocks and prefers the small image rendition", () => {
@@ -183,6 +200,7 @@ describe("catalogue filtering", () => {
   it("searches example metadata and capability names", () => {
     expect(filterExamples([EXAMPLE], "CAN-PLAY")).toEqual([EXAMPLE]);
     expect(filterExamples([EXAMPLE], "audio")).toEqual([EXAMPLE]);
+    expect(filterExamples([EXAMPLE], "recipe")).toEqual([EXAMPLE]);
     expect(filterExamples([EXAMPLE], "drawing")).toEqual([]);
   });
 

@@ -2,7 +2,6 @@
 // ABOUTME: Loads the curated Are.na channel without blocking repo-owned examples.
 
 import { useEffect, useMemo, useState } from "react";
-import type { ExampleRecipeSummary } from "../playground/recipes/types";
 import {
   ARENA_CHANNEL_URL,
   ARENA_CONTENTS_URL,
@@ -13,10 +12,11 @@ import {
   type SiteSummary,
   type SourceFilter,
 } from "./catalogue";
+import type { CatalogueExampleSummary } from "./examples";
 import styles from "./examples.module.css";
 
 type ExampleCatalogueProps = {
-  examples: readonly ExampleRecipeSummary[];
+  examples: readonly CatalogueExampleSummary[];
 };
 
 const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
@@ -51,7 +51,7 @@ function ExternalIcon() {
   );
 }
 
-function ExampleCard({ example }: { example: ExampleRecipeSummary }) {
+function ExampleCard({ example }: { example: CatalogueExampleSummary }) {
   const labels = Array.from(
     new Set([...example.capabilities, ...example.tags]),
   ).slice(0, 3);
@@ -61,7 +61,7 @@ function ExampleCard({ example }: { example: ExampleRecipeSummary }) {
       <div className={styles.cardBody}>
         <div className={styles.cardMeta}>
           <span className={`${styles.sourceBadge} ${styles.exampleBadge}`}>
-            Example
+            {example.kind === "recipe" ? "Recipe" : "Docs demo"}
           </span>
           <span className={styles.difficulty}>{example.difficulty}</span>
         </div>
@@ -81,15 +81,17 @@ function ExampleCard({ example }: { example: ExampleRecipeSummary }) {
           className={`${styles.primaryAction} sl-link-button primary`}
           href={example.docsHref}
         >
-          Open example
+          {example.kind === "recipe" ? "Open example" : "View demo"}
           <ArrowIcon />
         </a>
-        <a
-          className={`${styles.secondaryAction} sl-link-button secondary`}
-          href={`/docs/play#id=${encodeURIComponent(example.id)}`}
-        >
-          Remix
-        </a>
+        {example.remixId && (
+          <a
+            className={`${styles.secondaryAction} sl-link-button secondary`}
+            href={`/docs/play#id=${encodeURIComponent(example.remixId)}`}
+          >
+            Remix
+          </a>
+        )}
       </div>
     </article>
   );

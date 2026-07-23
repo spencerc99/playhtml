@@ -1,7 +1,7 @@
 // ABOUTME: Maps the public Are.na sites channel into catalogue entries.
 // ABOUTME: Provides URL deduplication and text filtering for the examples index.
 
-import type { ExampleRecipeSummary } from "../playground/recipes/types";
+import type { CatalogueExampleSummary } from "./examples";
 
 export const ARENA_CHANNEL_URL =
   "https://www.are.na/spencer-chang/playhtml-sites";
@@ -173,15 +173,16 @@ function includesQuery(values: Array<string | undefined>, query: string) {
 }
 
 export function filterExamples(
-  examples: readonly ExampleRecipeSummary[],
+  examples: readonly CatalogueExampleSummary[],
   query: string,
-): ExampleRecipeSummary[] {
+): CatalogueExampleSummary[] {
   return examples.filter((example) =>
     includesQuery(
       [
         example.title,
         example.description,
         example.difficulty,
+        example.kind === "recipe" ? "recipe" : "docs demo",
         ...example.tags,
         ...example.capabilities,
       ],
