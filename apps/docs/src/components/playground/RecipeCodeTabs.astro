@@ -17,6 +17,10 @@ type Props = {
 const { recipe } = Astro.props;
 const playgroundParams = new URLSearchParams({ id: recipe.id });
 const playgroundHref = `/docs/play/#${playgroundParams}`;
+const codeThemes = {
+  light: "github-light",
+  dark: "github-dark",
+} as const;
 ---
 
 <section class="ph-recipe-code">
@@ -35,14 +39,13 @@ const playgroundHref = `/docs/play/#${playgroundParams}`;
       <p class="ph-recipe-code__action">
         <LinkButton href={playgroundHref}>Open Vanilla HTML in playground</LinkButton>
       </p>
-      <div class="ph-recipe-code__file">
-        <span class="ph-recipe-code__filename">index.html</span>
-        <Code
-          code={recipe.html}
-          lang="html"
-          class="ph-recipe-code__block"
-        />
-      </div>
+      <Code
+        code={recipe.html}
+        lang="html"
+        themes={codeThemes}
+        defaultColor="light"
+        class="ph-recipe-code__block"
+      />
     </TabItem>
 
     <TabItem label="React">
@@ -50,18 +53,19 @@ const playgroundHref = `/docs/play/#${playgroundParams}`;
         Start with a React + TypeScript project, install the packages below,
         then replace <code>src/App.tsx</code> with the component.
       </p>
-      <div class="ph-recipe-code__file">
-        <span class="ph-recipe-code__filename">Terminal</span>
-        <Code code={recipe.react.install} lang="shell" />
-      </div>
-      <div class="ph-recipe-code__file">
-        <span class="ph-recipe-code__filename">src/App.tsx</span>
-        <Code
-          code={recipe.react.code}
-          lang="tsx"
-          class="ph-recipe-code__block"
-        />
-      </div>
+      <Code
+        code={recipe.react.install}
+        lang="shell"
+        themes={codeThemes}
+        defaultColor="light"
+      />
+      <Code
+        code={recipe.react.code}
+        lang="tsx"
+        themes={codeThemes}
+        defaultColor="light"
+        class="ph-recipe-code__block"
+      />
     </TabItem>
   </Tabs>
 </section>
@@ -73,30 +77,6 @@ const playgroundHref = `/docs/play/#${playgroundParams}`;
 
   .ph-recipe-code__action {
     margin-block: 1rem;
-  }
-
-  .ph-recipe-code__file {
-    margin-block: 1rem;
-  }
-
-  .ph-recipe-code__filename {
-    display: block;
-    width: fit-content;
-    padding: 0.35rem 0.65rem;
-    color: var(--ph-ink-2);
-    background: var(--ph-paper-warm);
-    border: 1px solid var(--ph-ink);
-    border-bottom: 0;
-    border-radius: 4px 4px 0 0;
-    font-family: var(--ph-font-mono);
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  :global(.ph-recipe-code__file .astro-code) {
-    margin-top: 0;
   }
 
   :global(.ph-recipe-code__block) {
