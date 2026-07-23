@@ -447,7 +447,7 @@ export default defineBackground(() => {
               dateRange,
               ...(sessions ? { sessions } : {}),
               // Only include uniquePageCount for domain-level stats (not page-level)
-              uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrls?.length ?? 0),
+              uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrlCount ?? 0),
             },
           })
         } catch (e) {
@@ -474,7 +474,7 @@ export default defineBackground(() => {
               eventsByType: agg.eventsByType,
               firstVisit: agg.firstVisit,
               lastVisit: agg.lastVisit,
-              uniqueUrlCount: agg.uniqueUrls.length,
+              uniqueUrlCount: agg.uniqueUrlCount,
             },
           })
         })

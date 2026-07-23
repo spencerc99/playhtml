@@ -48,7 +48,7 @@ describe("EventBuffer", () => {
           playerStyle: { colorPalette: ["#4a9a8a"] },
         });
       }
-      return Promise.resolve({});
+      return Promise.resolve({ success: true });
     });
     vi.mocked(requestSessionId).mockResolvedValue("test-session-id");
   });
@@ -111,10 +111,10 @@ describe("EventBuffer", () => {
     vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
       if ((message as { type?: string }).type === "STORE_EVENTS") {
         return new Promise((resolve) => {
-          resolveStoreMessage = () => resolve({});
+          resolveStoreMessage = () => resolve({ success: true });
         });
       }
-      return Promise.resolve({});
+      return Promise.resolve({ success: true });
     });
 
     for (let i = 0; i < 25; i++) {
@@ -137,6 +137,38 @@ describe("EventBuffer", () => {
     await flushPromise;
 
     expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(2, {
+      type: "FLUSH_PENDING_UPLOADS",
+    });
+  });
+
+  it("retries events when the background reports a storage failure", async () => {
+    const buffer = new EventBuffer();
+    let storeAttempts = 0;
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "STORE_EVENTS") {
+        storeAttempts++;
+        return Promise.resolve({ success: storeAttempts > 1 });
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    await buffer.addEvent(testEvent("retry"));
+    await buffer.flushBatch();
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(
+      "[EventBuffer] Background failed to store events",
+    );
+
+    await buffer.flushBatch();
+
+    expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(2, {
+      type: "STORE_EVENTS",
+      events: [expect.objectContaining({ id: "retry", uploaded: false })],
+    });
+    expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(3, {
       type: "FLUSH_PENDING_UPLOADS",
     });
   });
