@@ -543,9 +543,13 @@ function setHint() {
       : "Pick a tape roll to equip the gun.";
     return;
   }
+  if (elementDragStart) {
+    hintEl.textContent = "Keep dragging to tape this image — release to lay it.";
+    return;
+  }
   if (!pending) {
     hintEl.textContent = hoverTarget
-      ? "Drag across this image to tape it as slop."
+      ? `Drag across this image to tape it ${TYPE_STYLE[equipped].label}.`
       : `${TYPE_STYLE[equipped].label} armed — click an edge to anchor, or hover an image.`;
     return;
   }
@@ -658,6 +662,7 @@ window.addEventListener("mousedown", (e) => {
       e.preventDefault(); // belt-and-braces against the native image drag
       elementDragStart = { x: e.clientX, y: e.clientY, img: hoverTarget };
       document.body.style.userSelect = "none";
+      setHint();
     }
     return; // armed → laying tape, not ripping
   }
@@ -666,6 +671,12 @@ window.addEventListener("mousedown", (e) => {
 });
 
 window.addEventListener("mousemove", (e) => {
+  // Dragging across an image: preview the X of tape that will land on it, so the
+  // gesture reads like the wall-to-wall pull — you see the tape before you commit.
+  if (elementDragStart && equipped) {
+    renderElementPreview(e.clientX, e.clientY);
+    return;
+  }
   if (!slashStart) return;
   // draw a live blade trail while dragging
   gSlash.replaceChildren();
@@ -679,12 +690,42 @@ window.addEventListener("mousemove", (e) => {
   gSlash.appendChild(ln);
 });
 
+/**
+ * Ghost of the X about to be taped over the dragged image. Fades in with the
+ * drag so a too-short (unintentional) drag reads as clearly not-yet-committing.
+ */
+let elementPreviewRaf = 0;
+function renderElementPreview(cx: number, cy: number) {
+  if (elementPreviewRaf) return; // one paint per frame, like the strip preview
+  elementPreviewRaf = requestAnimationFrame(() => {
+    elementPreviewRaf = 0;
+    gPreview.replaceChildren();
+    if (!elementDragStart || !equipped) return;
+    const r = elementDragStart.img.getBoundingClientRect();
+    const dist = Math.hypot(cx - elementDragStart.x, cy - elementDragStart.y);
+    const committing = dist >= SLASH_MIN_LEN;
+    // ramp opacity with drag distance so the threshold is legible in the gesture
+    const opacity = committing ? 0.62 : 0.12 + 0.4 * (dist / SLASH_MIN_LEN);
+    const inset = 2;
+    const diagonals: Array<[number, number, number, number]> = [
+      [r.left + inset, r.top + inset, r.right - inset, r.bottom - inset],
+      [r.right - inset, r.top + inset, r.left + inset, r.bottom - inset],
+    ];
+    diagonals.forEach(([x1, y1, x2, y2], i) => {
+      gPreview.appendChild(
+        buildTapeGroup(x1, y1, x2, y2, equipped!, 4242 + i * 7717, opacity, !committing),
+      );
+    });
+  });
+}
+
 window.addEventListener("mouseup", (e) => {
   // --- armed: drag across an image tapes that element ---
   const elDrag = elementDragStart;
   elementDragStart = null;
   if (elDrag && equipped) {
     document.body.style.userSelect = "";
+    gPreview.replaceChildren(); // drop the ghost X, committed or not
     const dist = Math.hypot(e.clientX - elDrag.x, e.clientY - elDrag.y);
     if (dist >= SLASH_MIN_LEN) {
       // First tape on this image creates the verdict; taping an already-taped
@@ -692,8 +733,8 @@ window.addEventListener("mouseup", (e) => {
       elementMarks.push(makeElementMark(elDrag.img.src, equipped));
       clearHoverTarget();
       renderElementMarks();
-      setHint();
     }
+    setHint(); // reset the hint whether or not the drag was long enough
     return;
   }
 
