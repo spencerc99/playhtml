@@ -28,8 +28,25 @@ export interface Strip {
   ripsRequired: number | null;
 }
 
+/**
+ * A mark on a single image, keyed by its src. Same shape as a strip minus the
+ * wall geometry — an image tape is an X across the element's bounds, positioned
+ * from the live element at render time, not stored coordinates.
+ */
+export interface ElementMark {
+  id: string;
+  src: string;
+  type: TapeType;
+  seed: number;
+  createdBy: string;
+  createdAt: string;
+  rips: RipMark[];
+  ripsRequired: number | null;
+}
+
 export const SET_THRESHOLD = 3;
 
-export function isFullyTorn(s: Strip): boolean {
+/** True for a strip OR an element mark — both carry rips + ripsRequired. */
+export function isFullyTorn(s: { rips: RipMark[]; ripsRequired: number | null }): boolean {
   return s.ripsRequired !== null && s.rips.length >= s.ripsRequired;
 }

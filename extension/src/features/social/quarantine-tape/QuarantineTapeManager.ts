@@ -2,25 +2,52 @@
 // ABOUTME: The local strip array is the session source of truth; the worker (via quarantine-api) is the store.
 
 import { injectShadow } from "../../../entrypoints/content/inject-ui";
-import { getVerdict, postStrip, postRip } from "./quarantine-api";
+import {
+  getElementVerdicts,
+  getVerdict,
+  postElementMark,
+  postElementRip,
+  postRip,
+  postStrip,
+} from "./quarantine-api";
 import {
   buildSharedDefs,
   buildTapeGroup,
   edgeSegments,
   pointToXY,
   segmentCross,
+  segmentCrossesRect,
   snapToWall,
   TYPE_STYLE,
+  vh,
 } from "./tape-render";
-import { isFullyTorn, SET_THRESHOLD, type EdgePoint, type Strip, type TapeType } from "./types";
+import {
+  isFullyTorn,
+  SET_THRESHOLD,
+  type EdgePoint,
+  type ElementMark,
+  type Strip,
+  type TapeType,
+} from "./types";
 
 const SVGNS = "http://www.w3.org/2000/svg";
 const SLASH_MIN_LEN = 36; // min drag distance (px) for a rip to count — keeps it heavy/intentional
+const MIN_IMAGE = 40; // px — smallest image (either side) that counts as a tape target
+const TARGET_HOVER_CLASS = "wwo-qt-target-hover"; // host-page outline on the hovered image
 
 export const QUARANTINE_TAPE_CSS = `
 :host { pointer-events: none; }
 .qt-overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: visible; pointer-events: none; }
 .qt-overlay.armed { pointer-events: auto; cursor: crosshair; }
+`;
+
+// Injected into the HOST document (not the shadow root) so the outline can reach
+// the page's own <img> elements. The armed tape type sets --qt-target-color.
+const TARGET_HOVER_CSS = `
+.${TARGET_HOVER_CLASS} {
+  outline: 3px dashed var(--qt-target-color, #f0a92b) !important;
+  outline-offset: 3px;
+}
 `;
 
 export class QuarantineTapeManager {
@@ -31,10 +58,13 @@ export class QuarantineTapeManager {
   private defs!: SVGDefsElement;
   private gEdges!: SVGGElement;
   private gStrips!: SVGGElement;
+  private gElements!: SVGGElement;
   private gPreview!: SVGGElement;
   private gSlash!: SVGGElement;
+  private targetStyle: HTMLStyleElement | null = null;
 
   private strips: Strip[] = [];
+  private elementMarks: ElementMark[] = [];
 
   // arming
   private equipped: TapeType | null = null;
@@ -44,6 +74,10 @@ export class QuarantineTapeManager {
   private previewRaf = 0;
   // rip gesture
   private slashStart: { x: number; y: number } | null = null;
+  // element-tape gesture (drag across a hovered image)
+  private hoverTarget: HTMLImageElement | null = null;
+  private elementDragStart: { x: number; y: number; img: HTMLImageElement } | null = null;
+  private scrollRaf = 0;
 
   private destroyed = false;
 
@@ -70,9 +104,18 @@ export class QuarantineTapeManager {
 
     this.gEdges = document.createElementNS(SVGNS, "g");
     this.gStrips = document.createElementNS(SVGNS, "g");
+    this.gElements = document.createElementNS(SVGNS, "g"); // tape over specific images
     this.gPreview = document.createElementNS(SVGNS, "g");
     this.gSlash = document.createElementNS(SVGNS, "g");
-    overlay.append(this.gEdges, this.gStrips, this.gPreview, this.gSlash);
+    overlay.append(this.gEdges, this.gStrips, this.gElements, this.gPreview, this.gSlash);
+
+    // The hover outline decorates the host page's own <img> elements, so its CSS
+    // must live in the host document — the overlay's styles are trapped in the
+    // shadow root and can't reach them.
+    const targetStyle = document.createElement("style");
+    targetStyle.textContent = TARGET_HOVER_CSS;
+    document.head.appendChild(targetStyle);
+    this.targetStyle = targetStyle;
 
     window.addEventListener("mousemove", this.onMouseMove);
     window.addEventListener("mousedown", this.onMouseDown);
@@ -81,6 +124,7 @@ export class QuarantineTapeManager {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("dragstart", this.onDragStart);
     window.addEventListener("resize", this.onResize);
+    window.addEventListener("scroll", this.onScroll, { passive: true });
 
     // Seed from the worker's verdict (fetched once — the worker is the store,
     // there's no live channel; the local array is the session source of truth).
@@ -88,6 +132,14 @@ export class QuarantineTapeManager {
     if (this.destroyed) return () => {};
     this.strips = strips;
     this.renderStrips();
+
+    // Element marks are keyed by image src; ask the worker about the images
+    // present now (late-loading images aren't chased — kept deliberately simple).
+    const srcs = Array.from(new Set(this.tapeableImages().map((img) => img.src)));
+    const verdicts = await getElementVerdicts(srcs);
+    if (this.destroyed) return () => {};
+    this.elementMarks = Object.values(verdicts).flat();
+    this.renderElementMarks();
 
     return () => this.destroy();
   }
@@ -99,11 +151,25 @@ export class QuarantineTapeManager {
     this.pending = null;
     this.overlay?.classList.toggle("armed", !!type);
     this.gPreview.replaceChildren();
+    if (!type) this.clearHoverTarget();
     this.renderEdges();
   }
 
-  private ripPositions(s: Strip): number[] {
+  private ripPositions(s: { rips: { pos: number }[] }): number[] {
     return s.rips.map((r) => r.pos);
+  }
+
+  /** Every image on the page big enough to be a tape target. */
+  private tapeableImages(): HTMLImageElement[] {
+    return Array.from(document.querySelectorAll<HTMLImageElement>("img")).filter((img) => {
+      const r = img.getBoundingClientRect();
+      return r.width >= MIN_IMAGE && r.height >= MIN_IMAGE;
+    });
+  }
+
+  /** The live element(s) currently showing a given artifact src. */
+  private elementsForSrc(src: string): HTMLImageElement[] {
+    return this.tapeableImages().filter((img) => img.src === src);
   }
 
   // ----- render passes -----
@@ -139,6 +205,50 @@ export class QuarantineTapeManager {
           torn,
         ),
       );
+    }
+  }
+
+  /**
+   * Element marks render as an X of two diagonals across the image's CURRENT
+   * bounds, re-measured every render — so the tape tracks the element through
+   * scroll and reflow. The verdict itself is keyed by src, not by position.
+   */
+  private renderElementMarks() {
+    this.gElements.replaceChildren();
+    const setness = Math.min(1, this.elementMarks.length / (SET_THRESHOLD + 2));
+    for (const m of this.elementMarks) {
+      const torn = isFullyTorn(m);
+      // one verdict can paint every copy of that image on the page
+      for (const el of this.elementsForSrc(m.src)) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 10 || r.height < 10) continue;
+        // skip if entirely off-screen (cheap cull)
+        if (r.bottom < -200 || r.top > vh() + 200) continue;
+        const opacity = torn ? 0.3 : 0.75 + setness * 0.25;
+        const inset = 2;
+        // an X: TL→BR and TR→BL across the element box
+        const diagonals: Array<[number, number, number, number]> = [
+          [r.left + inset, r.top + inset, r.right - inset, r.bottom - inset],
+          [r.right - inset, r.top + inset, r.left + inset, r.bottom - inset],
+        ];
+        diagonals.forEach(([x1, y1, x2, y2], i) => {
+          this.gElements.appendChild(
+            buildTapeGroup(
+              this.defs,
+              x1,
+              y1,
+              x2,
+              y2,
+              m.type,
+              m.seed + i * 7717,
+              opacity,
+              false,
+              this.ripPositions(m),
+              torn,
+            ),
+          );
+        });
+      }
     }
   }
 
@@ -184,10 +294,34 @@ export class QuarantineTapeManager {
     });
   }
 
+  /**
+   * While armed and not mid-pull, highlight the image under the cursor as a tape
+   * target. Dragging across a highlighted image tapes that element instead of
+   * stringing a wall-to-wall strip.
+   */
+  private updateHoverTarget(e: MouseEvent) {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const img =
+      el instanceof HTMLImageElement && el.getBoundingClientRect().width >= MIN_IMAGE ? el : null;
+    if (img === this.hoverTarget) return;
+    this.hoverTarget?.classList.remove(TARGET_HOVER_CLASS);
+    this.hoverTarget = img;
+    if (this.hoverTarget && this.equipped) {
+      this.hoverTarget.style.setProperty("--qt-target-color", TYPE_STYLE[this.equipped].base);
+      this.hoverTarget.classList.add(TARGET_HOVER_CLASS);
+    }
+  }
+
+  private clearHoverTarget() {
+    this.hoverTarget?.classList.remove(TARGET_HOVER_CLASS);
+    this.hoverTarget = null;
+  }
+
   // ----- interaction -----
   private onMouseMove = (e: MouseEvent) => {
     this.cursor = { x: e.clientX, y: e.clientY };
     if (this.equipped && this.pending) this.renderPreview();
+    if (this.equipped && !this.pending) this.updateHoverTarget(e);
 
     if (this.slashStart) {
       // draw a live blade trail while dragging
@@ -206,7 +340,16 @@ export class QuarantineTapeManager {
   };
 
   private onMouseDown = (e: MouseEvent) => {
-    if (this.equipped) return; // armed → laying tape via click, not ripping
+    if (this.equipped) {
+      // Armed AND on a hovered image → the drag tapes that element. Armed but
+      // not on an image → the click-edge commit flow (onClick) still runs.
+      if (this.hoverTarget) {
+        e.preventDefault(); // belt-and-braces against the native image drag
+        this.elementDragStart = { x: e.clientX, y: e.clientY, img: this.hoverTarget };
+        document.body.style.userSelect = "none";
+      }
+      return; // armed → laying tape, not ripping
+    }
     this.slashStart = { x: e.clientX, y: e.clientY };
     document.body.style.userSelect = "none"; // don't select page text mid-slash
   };
@@ -235,6 +378,19 @@ export class QuarantineTapeManager {
   };
 
   private onMouseUp = (e: MouseEvent) => {
+    // --- armed: drag across a hovered image tapes that element ---
+    const elDrag = this.elementDragStart;
+    this.elementDragStart = null;
+    if (elDrag && this.equipped) {
+      document.body.style.userSelect = "";
+      const dist = Math.hypot(e.clientX - elDrag.x, e.clientY - elDrag.y);
+      if (dist >= SLASH_MIN_LEN) {
+        void this.commitElementMark(elDrag.img.src, this.equipped);
+        this.clearHoverTarget();
+      }
+      return;
+    }
+
     const start = this.slashStart;
     this.slashStart = null;
     this.gSlash.replaceChildren();
@@ -251,6 +407,17 @@ export class QuarantineTapeManager {
       const hit = segmentCross(start, end, a, b);
       if (!hit) continue;
       void this.ripStrip(s, hit.tOnStrip);
+    }
+
+    // the same slash stroke rips any standing element mark it crosses (tested
+    // against the live element rect, since element tape is content-bound)
+    for (const m of this.elementMarks) {
+      if (isFullyTorn(m)) continue;
+      const crossed = this.elementsForSrc(m.src).some((el) =>
+        segmentCrossesRect(start, end, el.getBoundingClientRect()),
+      );
+      if (!crossed) continue;
+      void this.ripElementMark(m);
     }
   };
 
@@ -336,15 +503,90 @@ export class QuarantineTapeManager {
     this.renderStrips();
   }
 
+  // ----- element mark commit (optimistic, reconciled) -----
+  private async commitElementMark(src: string, type: TapeType) {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const seed = (Math.random() * 1e9) | 0;
+    // First tape on an image creates the verdict; taping an already-taped image
+    // adds another layer of corroboration. Same act either way.
+    const optimistic: ElementMark = {
+      id: tempId,
+      src,
+      type,
+      seed,
+      createdBy: this.playerPid,
+      createdAt: new Date().toISOString(),
+      rips: [],
+      ripsRequired: null,
+    };
+    this.elementMarks.push(optimistic);
+    this.renderElementMarks();
+
+    const server = await postElementMark({ src, type, seed, createdBy: this.playerPid });
+    if (this.destroyed) return;
+
+    const idx = this.elementMarks.findIndex((m) => m.id === tempId);
+    if (idx === -1) return; // removed while in flight
+    if (server) {
+      this.elementMarks[idx] = server; // swap temp id for the server record
+    } else {
+      this.elementMarks.splice(idx, 1); // failure — undo the optimistic mark
+    }
+    this.renderElementMarks();
+  }
+
+  // ----- element mark rip (optimistic, reconciled) -----
+  private async ripElementMark(mark: ElementMark) {
+    // snapshot rips-required at the first rip, from the standing layers on this src
+    if (mark.ripsRequired === null) {
+      const layers = this.elementMarks.filter(
+        (m) => m.src === mark.src && !isFullyTorn(m),
+      ).length;
+      mark.ripsRequired = layers >= SET_THRESHOLD ? SET_THRESHOLD : 1;
+    }
+    const pos = 0.5;
+    mark.rips.push({ by: this.playerPid, at: Date.now(), pos });
+    this.renderElementMarks();
+
+    // Temp (not-yet-persisted) marks have no server id; the rip rides along when
+    // the mark's commit reconciles.
+    if (mark.id.startsWith("temp-")) return;
+
+    const server = await postElementRip({
+      src: mark.src,
+      markId: mark.id,
+      by: this.playerPid,
+      pos,
+    });
+    if (this.destroyed) return;
+    if (!server) return; // keep the optimistic rip; a broken fetch shouldn't undo intent
+
+    const idx = this.elementMarks.findIndex((m) => m.id === server.id);
+    if (idx === -1) return;
+    this.elementMarks[idx] = server; // reconcile with the authoritative rip set
+    this.renderElementMarks();
+  }
+
   private onResize = () => {
     this.renderEdges();
     this.renderStrips();
+    this.renderElementMarks();
+  };
+
+  // Element tape is bound to content, so it must follow the page as it scrolls.
+  private onScroll = () => {
+    if (this.scrollRaf) return;
+    this.scrollRaf = requestAnimationFrame(() => {
+      this.scrollRaf = 0;
+      this.renderElementMarks();
+    });
   };
 
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
     if (this.previewRaf) cancelAnimationFrame(this.previewRaf);
+    if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
     window.removeEventListener("mousemove", this.onMouseMove);
     window.removeEventListener("mousedown", this.onMouseDown);
     window.removeEventListener("mouseup", this.onMouseUp);
@@ -352,7 +594,11 @@ export class QuarantineTapeManager {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("dragstart", this.onDragStart);
     window.removeEventListener("resize", this.onResize);
+    window.removeEventListener("scroll", this.onScroll);
+    this.clearHoverTarget();
     document.body.style.userSelect = "";
+    this.targetStyle?.remove();
+    this.targetStyle = null;
     this.host?.remove();
     this.host = null;
     this.overlay = null;
