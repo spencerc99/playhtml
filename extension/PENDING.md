@@ -1,6 +1,7 @@
 # Unreleased
 
 - Keep newly collected activity queued when local storage temporarily fails instead of silently dropping it.
+- Keep browsing-history summaries fast as local activity grows by avoiding ever-growing aggregate records.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
