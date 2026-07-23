@@ -1,8 +1,9 @@
-// ABOUTME: Tests one-shot click spawning for the live cursor-trail renderer.
-// ABOUTME: Covers trail growth without replaying clicks already shown.
+// ABOUTME: Tests click spawning and lifecycle timing for the live cursor-trail renderer.
+// ABOUTME: Covers one-shot effects and clock pauses while the document is hidden.
 
 import { describe, expect, it, vi } from "vitest";
 import type { TrailState } from "../../types";
+import { getDrawClockTime } from "../LiveTrails";
 import {
   collectDueClickEffects,
   retainClickEffectsForActiveTrails,
@@ -112,5 +113,16 @@ describe("collectDueClickEffects", () => {
     ).toEqual([]);
 
     random.mockRestore();
+  });
+});
+
+describe("getDrawClockTime", () => {
+  it("freezes lifecycle time while a pause is active", () => {
+    expect(getDrawClockTime(15_000, 2_000, 10_000)).toBe(8_000);
+    expect(getDrawClockTime(30_000, 2_000, 10_000)).toBe(8_000);
+  });
+
+  it("resumes from the same lifecycle time after accounting for the pause", () => {
+    expect(getDrawClockTime(30_000, 22_000, null)).toBe(8_000);
   });
 });

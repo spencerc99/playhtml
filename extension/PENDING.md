@@ -1,6 +1,7 @@
 # Unreleased
 
 - Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
+- Preserve pending typing sequences when an input loses focus (#262)
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
 - Send bugs, ideas, and other feedback directly from the extension popup.
   ![Feedback button in the extension popup](/changelog/media/feedback-popup-button.png)

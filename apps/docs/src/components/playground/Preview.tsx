@@ -2,21 +2,7 @@
 // ABOUTME: Connection / presence / room id are surfaced inside the iframe via the dev panel.
 import { useEffect, useRef, useState } from "react";
 import { buildIframeSrcdoc } from "./iframe-template";
-// Vite's `?raw` import reads the file at build/dev time and inlines its
-// source as a string. We use it to load the workspace playhtml ESM build
-// and hand the iframe a blob: URL pointing at it. This means library
-// edits to packages/playhtml/src/* reflect in the iframe after a rebuild
-// of the playhtml package (`bun run --cwd packages/playhtml build`).
-//
-// Why not unpkg: the published version doesn't have this branch's dev
-// panel changes (position attribute, console panel). Why not a Vite
-// import directly: the iframe is sandboxed without allow-same-origin and
-// runs in a different document context, so the parent's already-resolved
-// module URLs aren't visible to it. Blob URLs work cross-origin.
-//
-// The relative path bypasses Vite's `playhtml` alias (which points at
-// the source, not the built dist) and reaches the dist file directly.
-import playhtmlSource from "../../../../../packages/playhtml/dist/playhtml.es.js?raw";
+import { makePlayhtmlModuleUrl } from "./playhtml-module";
 
 export type PreviewProps = {
   source: string;
@@ -28,26 +14,20 @@ export type PreviewProps = {
 export function Preview(props: PreviewProps) {
   const { source, roomId, reloadNonce } = props;
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // Blob URL pointing at the workspace playhtml ESM source. Created once
-  // per Preview lifetime; the iframe template uses it inside its
-  // importmap so `import { playhtml } from "playhtml"` resolves here.
-  const [playhtmlBlobUrl, setPlayhtmlBlobUrl] = useState<string | null>(null);
+  // The built workspace module is encoded as a self-contained data URL so
+  // the opaque sandbox can import it without reaching into the parent page.
+  const [playhtmlModuleUrl, setPlayhtmlModuleUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const blob = new Blob([playhtmlSource], { type: "application/javascript" });
-    const url = URL.createObjectURL(blob);
-    setPlayhtmlBlobUrl(url);
-    return () => {
-      URL.revokeObjectURL(url);
-    };
+    setPlayhtmlModuleUrl(makePlayhtmlModuleUrl());
   }, []);
 
   // (Re)mount the iframe whenever source, roomId, reloadNonce, or the
-  // playhtml blob URL changes. We replace the iframe element entirely so
+  // PlayHTML module URL changes. We replace the iframe element entirely so
   // the old playhtml provider tears down cleanly (per spec §4.9).
   useEffect(() => {
     if (!containerRef.current) return;
-    if (!playhtmlBlobUrl) return; // Wait for blob URL on first mount
+    if (!playhtmlModuleUrl) return;
 
     const iframe = document.createElement("iframe");
     // Sandbox: scripts + popups only, no allow-same-origin. Per spec §4.2
@@ -67,7 +47,7 @@ export function Preview(props: PreviewProps) {
 
     iframe.srcdoc = buildIframeSrcdoc({
       recipeHtml: source,
-      playhtmlUrl: playhtmlBlobUrl,
+      playhtmlUrl: playhtmlModuleUrl,
       roomId,
     });
 
@@ -79,7 +59,7 @@ export function Preview(props: PreviewProps) {
       // Remove iframe on unmount (StrictMode double-invoke or component unmount)
       iframe.remove();
     };
-  }, [source, roomId, reloadNonce, playhtmlBlobUrl]);
+  }, [source, roomId, reloadNonce, playhtmlModuleUrl]);
 
   return (
     <div className="ph-preview-pane">
