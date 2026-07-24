@@ -4,18 +4,44 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hashString, seededRandom } from "../utils/styleUtils";
 
-export interface ScrapItem {
+interface ScrapItemBase {
   id: string;
-  src: string;
-  alt?: string;
+  key: string;
   pageTitle: string;
   faviconUrl?: string;
   domain: string;
   pageUrl: string;
   ts: number;
-  naturalWidth: number;
-  naturalHeight: number;
 }
+
+export type ScrapItem = ScrapItemBase &
+  (
+    | {
+        kind: "image";
+        src: string;
+        alt?: string;
+        naturalWidth: number;
+        naturalHeight: number;
+      }
+    | {
+        kind: "button";
+        text: string;
+        styles: Record<string, string>;
+        innerSvg?: string;
+      }
+    | {
+        kind: "svg-icon";
+        markup: string;
+        width: number;
+        height: number;
+      }
+    | {
+        kind: "cursor";
+        url: string;
+        hotspotX?: number;
+        hotspotY?: number;
+      }
+  );
 
 interface CurateScrapsOptions {
   perDomainCap?: number;
@@ -45,20 +71,26 @@ interface ScrapLayout {
 const DEFAULT_PER_DOMAIN_CAP = 4;
 const DEFAULT_TARGET_COUNT = 200;
 const LONG_EDGE_BY_TIER = [96, 152, 208] as const;
+const CURSOR_TILE_SIZE = 48;
 
 function naturalArea(item: ScrapItem): number {
-  return item.naturalWidth * item.naturalHeight;
+  switch (item.kind) {
+    case "image":
+      return item.naturalWidth * item.naturalHeight;
+    case "button":
+      return estimateButtonWidth(item.text) * 40;
+    case "svg-icon":
+      return item.width * item.height;
+    case "cursor":
+      return CURSOR_TILE_SIZE * CURSOR_TILE_SIZE;
+  }
 }
 
 function itemOrder(item: ScrapItem, seed: number): number {
-  return seededRandom(seed + hashString(item.src));
+  return seededRandom(seed + hashString(item.key));
 }
 
-function compareDomainScraps(
-  a: ScrapItem,
-  b: ScrapItem,
-  seed: number,
-): number {
+function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
   const areaDifference = naturalArea(b) - naturalArea(a);
   if (areaDifference !== 0) return areaDifference;
 
@@ -68,7 +100,7 @@ function compareDomainScraps(
   const seededDifference = itemOrder(a, seed) - itemOrder(b, seed);
   if (seededDifference !== 0) return seededDifference;
 
-  return a.src.localeCompare(b.src);
+  return a.key.localeCompare(b.key);
 }
 
 export function curateScraps(
@@ -85,16 +117,16 @@ export function curateScraps(
   );
   if (perDomainCap === 0 || targetCount === 0) return [];
 
-  const newestBySrc = new Map<string, ScrapItem>();
+  const newestByKey = new Map<string, ScrapItem>();
   for (const item of items) {
-    const current = newestBySrc.get(item.src);
+    const current = newestByKey.get(item.key);
     if (!current || item.ts > current.ts) {
-      newestBySrc.set(item.src, item);
+      newestByKey.set(item.key, item);
     }
   }
 
   const scrapsByDomain = new Map<string, ScrapItem[]>();
-  for (const item of newestBySrc.values()) {
+  for (const item of newestByKey.values()) {
     const domainScraps = scrapsByDomain.get(item.domain);
     if (domainScraps) {
       domainScraps.push(item);
@@ -147,6 +179,68 @@ function formatCollectedDate(timestamp: number): string {
   }).format(timestamp);
 }
 
+function clamp(minimum: number, maximum: number, value: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function estimateButtonWidth(text: string): number {
+  return clamp(100, 240, 48 + text.trim().length * 8);
+}
+
+function imageSize(
+  item: Extract<ScrapItem, { kind: "image" }>,
+  tier: number,
+  itemSeed: number,
+): { width: number; height: number } {
+  const longEdge =
+    LONG_EDGE_BY_TIER[tier] * (0.92 + seededRandom(itemSeed, 1) * 0.16);
+  const naturalLongEdge = Math.max(item.naturalWidth, item.naturalHeight);
+  if (naturalLongEdge <= 0) return { width: 0, height: 0 };
+
+  return {
+    width: longEdge * (item.naturalWidth / naturalLongEdge),
+    height: longEdge * (item.naturalHeight / naturalLongEdge),
+  };
+}
+
+function svgIconSize(
+  item: Extract<ScrapItem, { kind: "svg-icon" }>,
+  itemSeed: number,
+): { width: number; height: number } {
+  if (item.width <= 0 || item.height <= 0) return { width: 0, height: 0 };
+
+  const longEdge = 56 + seededRandom(itemSeed, 1) * 40;
+  const aspect = item.width / item.height;
+  if (aspect >= 1) {
+    return {
+      width: longEdge,
+      height: longEdge / clamp(1, 2, aspect),
+    };
+  }
+
+  return {
+    width: longEdge * clamp(0.5, 1, aspect),
+    height: longEdge,
+  };
+}
+
+function itemSize(
+  item: ScrapItem,
+  tier: number,
+  itemSeed: number,
+): { width: number; height: number } {
+  switch (item.kind) {
+    case "image":
+      return imageSize(item, tier, itemSeed);
+    case "button":
+      return { width: estimateButtonWidth(item.text), height: 40 };
+    case "svg-icon":
+      return svgIconSize(item, itemSeed);
+    case "cursor":
+      return { width: CURSOR_TILE_SIZE, height: CURSOR_TILE_SIZE };
+  }
+}
+
 function buildLayout(
   items: ScrapItem[],
   width: number,
@@ -155,7 +249,13 @@ function buildLayout(
 ): ScrapLayout[] {
   if (items.length === 0 || width === 0 || height === 0) return [];
 
-  const sortedAreas = items.map(naturalArea).sort((a, b) => a - b);
+  const sortedAreas = items
+    .filter(
+      (item): item is Extract<ScrapItem, { kind: "image" }> =>
+        item.kind === "image",
+    )
+    .map(naturalArea)
+    .sort((a, b) => a - b);
   const lowerArea = sortedAreas[Math.floor((sortedAreas.length - 1) / 3)];
   const upperArea = sortedAreas[Math.floor(((sortedAreas.length - 1) * 2) / 3)];
   const aspectRatio = width / height;
@@ -169,28 +269,37 @@ function buildLayout(
 
   return items.map((item, index) => {
     const area = naturalArea(item);
-    const tier = area <= lowerArea ? 0 : area <= upperArea ? 1 : 2;
-    const itemSeed = seed + hashString(item.src);
-    const longEdge =
-      LONG_EDGE_BY_TIER[tier] * (0.92 + seededRandom(itemSeed, 1) * 0.16);
-    const naturalLongEdge = Math.max(item.naturalWidth, item.naturalHeight);
-    const imageWidth = longEdge * (item.naturalWidth / naturalLongEdge);
-    const imageHeight = longEdge * (item.naturalHeight / naturalLongEdge);
+    const tier =
+      item.kind !== "image" || area <= lowerArea
+        ? 0
+        : area <= upperArea
+          ? 1
+          : 2;
+    const itemSeed = seed + hashString(item.key);
+    const itemDimensions = itemSize(item, tier, itemSeed);
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
     const jitterX = (seededRandom(itemSeed, 2) - 0.5) * cellWidth * 0.6;
     const jitterY = (seededRandom(itemSeed, 3) - 0.5) * cellHeight * 0.6;
-    const unclampedX = (column + 0.5) * cellWidth + jitterX - imageWidth / 2;
-    const unclampedY = (row + 0.5) * cellHeight + jitterY - imageHeight / 2;
-    const x = Math.max(4, Math.min(width - imageWidth - 4, unclampedX));
-    const y = Math.max(4, Math.min(height - imageHeight - 4, unclampedY));
+    const unclampedX =
+      (column + 0.5) * cellWidth + jitterX - itemDimensions.width / 2;
+    const unclampedY =
+      (row + 0.5) * cellHeight + jitterY - itemDimensions.height / 2;
+    const x = Math.max(
+      4,
+      Math.min(width - itemDimensions.width - 4, unclampedX),
+    );
+    const y = Math.max(
+      4,
+      Math.min(height - itemDimensions.height - 4, unclampedY),
+    );
 
     return {
       item,
       x,
       y,
-      width: imageWidth,
-      height: imageHeight,
+      width: itemDimensions.width,
+      height: itemDimensions.height,
       rotation: seededRandom(itemSeed, 4) * 12 - 6,
       zIndex: Math.floor(seededRandom(itemSeed, 5) * 80) + 1,
       cardAbove: y > height * 0.58,
@@ -225,6 +334,56 @@ const COLLAGE_STYLES = `
     height: 100%;
     display: block;
     object-fit: contain;
+  }
+
+  .scrap-collage__button {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .scrap-collage__button-icon {
+    display: inline-flex;
+    width: 1em;
+    height: 1em;
+    flex: 0 0 auto;
+    margin-right: 0.45em;
+    pointer-events: none;
+  }
+
+  .scrap-collage__button-icon > svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .scrap-collage__svg {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .scrap-collage__svg > svg {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+  }
+
+  .scrap-collage__cursor {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 32px;
+    height: 32px;
+    display: block;
+    object-fit: contain;
+    image-rendering: pixelated;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
   }
 
   .scrap-collage__provenance {
@@ -285,6 +444,100 @@ const COLLAGE_STYLES = `
   }
 `;
 
+function scrapTitle(item: ScrapItem): string {
+  if (item.pageTitle.trim()) return item.pageTitle;
+
+  switch (item.kind) {
+    case "image":
+      return item.alt?.trim() || "image";
+    case "button":
+      return item.text.trim() || "button";
+    case "svg-icon":
+      return "icon";
+    case "cursor":
+      return "cursor";
+  }
+}
+
+function isRenderableScrap(item: ScrapItem): boolean {
+  switch (item.kind) {
+    case "image":
+      return (
+        item.src.trim().length > 0 &&
+        item.naturalWidth > 0 &&
+        item.naturalHeight > 0
+      );
+    case "button":
+      return Boolean(item.text.trim() || item.innerSvg?.trim());
+    case "svg-icon":
+      return Boolean(item.markup.trim() && item.width > 0 && item.height > 0);
+    case "cursor":
+      return item.url.trim().length > 0;
+  }
+}
+
+interface ScrapContentProps {
+  item: ScrapItem;
+  onError: () => void;
+}
+
+function ScrapContent({ item, onError }: ScrapContentProps) {
+  switch (item.kind) {
+    case "image":
+      return (
+        <img
+          className="scrap-collage__image"
+          src={item.src}
+          alt={item.alt ?? ""}
+          loading="lazy"
+          draggable={false}
+          onError={onError}
+        />
+      );
+    case "button":
+      return (
+        <span
+          className="scrap-collage__button"
+          style={{
+            ...(item.styles as React.CSSProperties),
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {item.innerSvg && (
+            <span
+              className="scrap-collage__button-icon"
+              aria-hidden="true"
+              dangerouslySetInnerHTML={{ __html: item.innerSvg }}
+            />
+          )}
+          {item.text}
+        </span>
+      );
+    case "svg-icon":
+      return (
+        <div
+          className="scrap-collage__svg"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: item.markup }}
+        />
+      );
+    case "cursor":
+      return (
+        <img
+          className="scrap-collage__cursor"
+          src={item.url}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          onError={onError}
+        />
+      );
+  }
+}
+
 export function ScrapCollage({
   items,
   seed,
@@ -305,13 +558,7 @@ export function ScrapCollage({
     [items, perDomainCap, seed, targetCount],
   );
   const layout = useMemo(
-    () =>
-      buildLayout(
-        curated,
-        containerSize.width,
-        containerSize.height,
-        seed,
-      ),
+    () => buildLayout(curated, containerSize.width, containerSize.height, seed),
     [containerSize.height, containerSize.width, curated, seed],
   );
 
@@ -330,11 +577,11 @@ export function ScrapCollage({
     return () => observer.disconnect();
   }, []);
 
-  const removeScrap = (src: string) => {
+  const removeScrap = (key: string) => {
     setFailedScraps((current) => {
-      if (current.has(src)) return current;
+      if (current.has(key)) return current;
       const next = new Set(current);
-      next.add(src);
+      next.add(key);
       return next;
     });
   };
@@ -355,7 +602,12 @@ export function ScrapCollage({
     >
       <style>{COLLAGE_STYLES}</style>
       {layout.map((scrap) => {
-        if (failedScraps.has(scrap.item.src)) return null;
+        if (
+          failedScraps.has(scrap.item.key) ||
+          !isRenderableScrap(scrap.item)
+        ) {
+          return null;
+        }
 
         const faviconFailed = failedFavicons.has(scrap.item.domain);
         const faviconSrc =
@@ -369,24 +621,21 @@ export function ScrapCollage({
           zIndex: scrap.zIndex,
           "--scrap-rotation": `${scrap.rotation}deg`,
         } as React.CSSProperties & { "--scrap-rotation": string };
+        const title = scrapTitle(scrap.item);
 
         return (
           <a
-            key={scrap.item.src}
+            key={scrap.item.key}
             className="scrap-collage__tile"
             href={scrap.item.pageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={`Open source page for ${scrap.item.pageTitle}`}
+            aria-label={`Open source page for ${title}`}
             style={tileStyle}
           >
-            <img
-              className="scrap-collage__image"
-              src={scrap.item.src}
-              alt={scrap.item.alt ?? ""}
-              loading="lazy"
-              draggable={false}
-              onError={() => removeScrap(scrap.item.src)}
+            <ScrapContent
+              item={scrap.item}
+              onError={() => removeScrap(scrap.item.key)}
             />
             <div
               className="scrap-collage__provenance"
@@ -413,11 +662,9 @@ export function ScrapCollage({
                 />
               )}
               <span className="scrap-collage__details">
-                <span className="scrap-collage__title">
-                  {scrap.item.pageTitle}
-                </span>
+                <span className="scrap-collage__title">{title}</span>
                 <span className="scrap-collage__metadata">
-                  {scrap.item.domain}
+                  {scrap.item.kind} · {scrap.item.domain}
                   <br />
                   collected {formatCollectedDate(scrap.item.ts)}
                 </span>
