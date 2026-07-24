@@ -65,11 +65,20 @@ const InternetMovement = () => {
     localStorage.setItem("movement_active_viz", JSON.stringify(activeVisualizations));
   }, [activeVisualizations]);
 
-  const { events, loading, error, dayCounts, refresh } = useArchiveEvents({
+  const {
+    events,
+    loading,
+    error,
+    dayCounts,
+    refresh,
+    advanceBatch,
+    batchKey,
+  } = useArchiveEvents({
     selectedDay,
     timeOfDay,
     serverDomain,
     activeVisualizations,
+    batchPlayback: true,
   });
 
   return (
@@ -105,6 +114,8 @@ const InternetMovement = () => {
         onSetFilters={setFilters}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
+        playbackKey={batchKey}
+        onPlaybackCycleComplete={advanceBatch}
       />
     </>
   );

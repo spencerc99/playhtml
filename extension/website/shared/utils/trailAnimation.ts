@@ -14,6 +14,13 @@ export interface FinishedTrailRenderRange {
   finishedCount: number;
 }
 
+export function didPlaybackCycleWrap(
+  previousElapsedMs: number,
+  currentElapsedMs: number,
+): boolean {
+  return currentElapsedMs < previousElapsedMs;
+}
+
 export function buildStraightPathSegment(
   points: Array<{ x: number; y: number }>,
   startIndex: number,

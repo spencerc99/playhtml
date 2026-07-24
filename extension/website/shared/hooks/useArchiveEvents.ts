@@ -1,5 +1,5 @@
-// ABOUTME: Fetches archived browsing events from /events/recent for the archive
-// ABOUTME: and installation pages, keyed by day + time-of-day + active viz.
+// ABOUTME: Fetches fixed or paginated browsing-event sets from /events/recent.
+// ABOUTME: Supports archive playback and installation day/time/viz filters.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CollectionEvent, DayCounts } from "../types";
 import { deriveRequiredEventTypes } from "../components/registry";
@@ -8,8 +8,20 @@ import {
   DAILY_COUNTS_URL,
   parseTimeOfDayFromUrl,
 } from "../config";
+import {
+  ARCHIVE_BATCH_SIZE,
+  advanceArchiveBatchQueue,
+  createArchiveEventBatch,
+  selectArchiveAnchorType,
+  storePrefetchedArchiveBatch,
+  type ArchiveBatchQueue,
+  type ArchiveEventBatch,
+} from "../utils/archiveEventBatches";
 
 const EVENTS_URL = RECENT_EVENTS_URL;
+const RETRY_BACKOFFS_MS = [400, 1200];
+
+class NonRetryableFetchError extends Error {}
 
 type TimeOfDay = ReturnType<typeof parseTimeOfDayFromUrl> | null;
 
@@ -36,6 +48,39 @@ function midnightWindowBounds(
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+async function fetchEventType(
+  extraParams: Record<string, string>,
+  type: string,
+  domain: string,
+): Promise<CollectionEvent[]> {
+  const params = new URLSearchParams(extraParams);
+  if (domain) params.set("domain", domain);
+  params.set("type", type);
+  const url = `${EVENTS_URL}?${params}`;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_BACKOFFS_MS.length; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, RETRY_BACKOFFS_MS[attempt - 1]),
+      );
+    }
+    try {
+      const response = await fetch(url);
+      if (response.ok) return response.json();
+      const message = `Failed to fetch ${type} events: ${response.status}`;
+      throw response.status >= 500
+        ? new Error(message)
+        : new NonRetryableFetchError(message);
+    } catch (err) {
+      if (err instanceof NonRetryableFetchError) throw err;
+      lastError = err;
+    }
+  }
+
+  throw lastError;
+}
+
 export interface ArchiveEventsState {
   events: CollectionEvent[];
   loading: boolean;
@@ -43,24 +88,45 @@ export interface ArchiveEventsState {
   dayCounts: DayCounts;
   /** Force a full refetch of the current day/tod/viz context. */
   refresh: () => void;
+  /** Swap to the prefetched older archive batch when one is ready. */
+  advanceBatch: () => boolean;
+  /** Stable identity for restarting finite archive playback after a swap. */
+  batchKey: string;
 }
 
-/** Owns the archive event fetch. Given the current day, time-of-day window,
- * server-side domain, and active visualizations, keeps `events` populated and
- * fetches only the event types that are missing. Extracted from the archive
- * page so the installation page shares the exact same fetch behavior. */
+/** Owns browsing-event fetches for archive surfaces. Fixed mode keeps missing
+ * event types populated for installations; batch mode prefetches the next older
+ * page and wraps to the newest matching page after history is exhausted. */
 export function useArchiveEvents(params: {
   selectedDay: string | null;
   timeOfDay: TimeOfDay;
   serverDomain: string;
   activeVisualizations: string[];
+  batchPlayback?: boolean;
 }): ArchiveEventsState {
-  const { selectedDay, timeOfDay, serverDomain, activeVisualizations } = params;
+  const {
+    selectedDay,
+    timeOfDay,
+    serverDomain,
+    activeVisualizations,
+    batchPlayback = false,
+  } = params;
 
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
+  const [batchQueue, setBatchQueue] = useState<ArchiveBatchQueue>({
+    generation: 0,
+    current: null,
+    prefetched: null,
+  });
+  const [batchKey, setBatchKey] = useState("fixed");
+  const [batchRefreshVersion, setBatchRefreshVersion] = useState(0);
+  const batchQueueRef = useRef(batchQueue);
+  const batchGenerationRef = useRef(0);
+  const batchSequenceRef = useRef(0);
+  const prefetchRequestRef = useRef("");
 
   // Track which event types we've already fetched so we only fetch missing ones
   const fetchedTypesRef = useRef<Set<string>>(new Set());
@@ -124,47 +190,15 @@ export function useArchiveEvents(params: {
       setError(null);
 
       try {
-        const buildUrl = (extraParams: Record<string, string>, type: string) => {
-          const params = new URLSearchParams(extraParams);
-          if (domain) params.set("domain", domain);
-          params.set("type", type);
-          return `${EVENTS_URL}?${params}`;
-        };
-
         // Retry with exponential backoff so a transient network hiccup or a 5xx
         // doesn't leave a window permanently blank. Only network errors and 5xx
         // responses retry (a 4xx is a real request problem — fail fast); the
         // error surfaces only after every attempt is exhausted.
-        const RETRY_BACKOFFS_MS = [400, 1200];
-        // A 4xx is a real request problem — throwing this tag skips the retry.
-        class NonRetryableFetchError extends Error {}
         const fetchOne = async (
           extraParams: Record<string, string>,
           type: string,
-        ): Promise<CollectionEvent[]> => {
-          const url = buildUrl(extraParams, type);
-          let lastError: unknown;
-          for (let attempt = 0; attempt <= RETRY_BACKOFFS_MS.length; attempt++) {
-            if (attempt > 0) {
-              await new Promise((resolve) =>
-                setTimeout(resolve, RETRY_BACKOFFS_MS[attempt - 1]),
-              );
-            }
-            try {
-              const r = await fetch(url);
-              if (r.ok) return r.json();
-              const message = `Failed to fetch ${type} events: ${r.status}`;
-              // Retry only on server errors; a 4xx fails fast.
-              throw r.status >= 500
-                ? new Error(message)
-                : new NonRetryableFetchError(message);
-            } catch (err) {
-              if (err instanceof NonRetryableFetchError) throw err;
-              lastError = err;
-            }
-          }
-          throw lastError;
-        };
+        ): Promise<CollectionEvent[]> =>
+          fetchEventType(extraParams, type, domain);
 
         let fetched: CollectionEvent[] = [];
         if (day && tod) {
@@ -240,6 +274,81 @@ export function useArchiveEvents(params: {
     [],
   );
 
+  const fetchArchiveBatch = useCallback(
+    async (
+      beforeMs: number | null,
+      day: string | null,
+      tod: TimeOfDay,
+      domain: string,
+      vizIds: string[],
+    ): Promise<ArchiveEventBatch> => {
+      const requiredTypes = deriveRequiredEventTypes(vizIds);
+      if (requiredTypes.size === 0) {
+        return createArchiveEventBatch([], [], ARCHIVE_BATCH_SIZE, null);
+      }
+      const anchorType = selectArchiveAnchorType(requiredTypes);
+      const timeOfDayBounds =
+        day && tod
+          ? midnightWindowBounds(day, tod.centerMinutes, tod.radiusMinutes)
+          : null;
+      const lowerBound = timeOfDayBounds?.from ?? day;
+      const upperBound =
+        timeOfDayBounds?.to ?? (day ? `${day}T23:59:59Z` : null);
+      const anchorParams: Record<string, string> = {
+        limit: String(ARCHIVE_BATCH_SIZE),
+      };
+      if (lowerBound) anchorParams.from = lowerBound;
+      if (beforeMs !== null) {
+        anchorParams.to = new Date(beforeMs).toISOString();
+      } else if (upperBound) {
+        anchorParams.to = upperBound;
+      }
+
+      const anchorEvents = await fetchEventType(
+        anchorParams,
+        anchorType,
+        domain,
+      );
+      if (anchorEvents.length === 0) {
+        return createArchiveEventBatch(
+          [],
+          [],
+          ARCHIVE_BATCH_SIZE,
+          lowerBound ? new Date(lowerBound).getTime() : null,
+        );
+      }
+
+      const oldestAnchorMs = Math.min(...anchorEvents.map((event) => event.ts));
+      const companionParams: Record<string, string> = {
+        limit: "20000",
+        from: new Date(oldestAnchorMs).toISOString(),
+      };
+      if (beforeMs !== null) {
+        companionParams.to = new Date(beforeMs).toISOString();
+      } else if (upperBound) {
+        companionParams.to = upperBound;
+      }
+      const companionTypes = [...requiredTypes].filter(
+        (type) => type !== anchorType,
+      );
+      const companionEvents = (
+        await Promise.all(
+          companionTypes.map((type) =>
+            fetchEventType(companionParams, type, domain),
+          ),
+        )
+      ).flat();
+
+      return createArchiveEventBatch(
+        anchorEvents,
+        companionEvents,
+        ARCHIVE_BATCH_SIZE,
+        lowerBound ? new Date(lowerBound).getTime() : null,
+      );
+    },
+    [],
+  );
+
   // Refetch when the day, server-side domain, time-of-day window, or active
   // visualizations change. time-of-day must refetch because the midnight window
   // is fetched server-side (a tight from/to bracket), not just filtered
@@ -248,14 +357,159 @@ export function useArchiveEvents(params: {
   // two effects both ran on the first render, and the duplicate fetch's late
   // resolution rebuilt the trail set and restarted the animation mid-reveal.
   useEffect(() => {
+    if (batchPlayback) return;
     fetchEvents(selectedDay, activeVisualizations, serverDomain, false, timeOfDay);
-  }, [selectedDay, serverDomain, timeOfDay, activeVisualizations, fetchEvents]);
+  }, [
+    selectedDay,
+    serverDomain,
+    timeOfDay,
+    activeVisualizations,
+    fetchEvents,
+    batchPlayback,
+  ]);
+
+  useEffect(() => {
+    if (!batchPlayback) return;
+
+    const generation = ++batchGenerationRef.current;
+    const emptyQueue: ArchiveBatchQueue = {
+      generation,
+      current: null,
+      prefetched: null,
+    };
+    batchQueueRef.current = emptyQueue;
+    batchSequenceRef.current = 0;
+    setBatchQueue(emptyQueue);
+    prefetchRequestRef.current = "";
+    setLoading(true);
+    setError(null);
+
+    fetchArchiveBatch(
+      null,
+      selectedDay,
+      timeOfDay,
+      serverDomain,
+      activeVisualizations,
+    )
+      .then((batch) => {
+        if (generation !== batchGenerationRef.current) return;
+        const queue = { ...emptyQueue, current: batch };
+        batchQueueRef.current = queue;
+        setBatchQueue(queue);
+        setEvents(batch.events);
+        setBatchKey(`${generation}:0:${batch.key}`);
+      })
+      .catch((err) => {
+        if (generation !== batchGenerationRef.current) return;
+        setError(err instanceof Error ? err.message : "Failed to fetch events");
+        console.error("Error fetching archive batch:", err);
+      })
+      .finally(() => {
+        if (generation === batchGenerationRef.current) setLoading(false);
+      });
+  }, [
+    batchPlayback,
+    selectedDay,
+    timeOfDay,
+    serverDomain,
+    activeVisualizations,
+    batchRefreshVersion,
+    fetchArchiveBatch,
+  ]);
+
+  useEffect(() => {
+    if (!batchPlayback || !batchQueue.current || batchQueue.prefetched) return;
+
+    const { current, generation } = batchQueue;
+    const requestKey = `${generation}:${current.key}:${current.nextBeforeMs ?? "newest"}`;
+    if (prefetchRequestRef.current === requestKey) return;
+    prefetchRequestRef.current = requestKey;
+
+    const prefetch = async () => {
+      let next = await fetchArchiveBatch(
+        current.nextBeforeMs,
+        selectedDay,
+        timeOfDay,
+        serverDomain,
+        activeVisualizations,
+      );
+      if (next.events.length === 0 && current.nextBeforeMs !== null) {
+        next = await fetchArchiveBatch(
+          null,
+          selectedDay,
+          timeOfDay,
+          serverDomain,
+          activeVisualizations,
+        );
+      }
+      if (
+        generation !== batchGenerationRef.current ||
+        batchQueueRef.current.current?.key !== current.key
+      ) {
+        return;
+      }
+      const queue = storePrefetchedArchiveBatch(
+        batchQueueRef.current,
+        generation,
+        next,
+      );
+      batchQueueRef.current = queue;
+      setBatchQueue(queue);
+    };
+
+    prefetch().catch((err) => {
+      if (generation !== batchGenerationRef.current) return;
+      console.warn("Failed to prefetch archive batch:", err);
+      prefetchRequestRef.current = "";
+    });
+  }, [
+    batchPlayback,
+    batchQueue,
+    selectedDay,
+    timeOfDay,
+    serverDomain,
+    activeVisualizations,
+    fetchArchiveBatch,
+  ]);
+
+  const advanceBatch = useCallback(() => {
+    const advanced = advanceArchiveBatchQueue(batchQueueRef.current);
+    if (advanced === batchQueueRef.current || !advanced.current) return false;
+    batchQueueRef.current = advanced;
+    prefetchRequestRef.current = "";
+    setBatchQueue(advanced);
+    setEvents(advanced.current.events);
+    batchSequenceRef.current++;
+    setBatchKey(
+      `${advanced.generation}:${batchSequenceRef.current}:${advanced.current.key}`,
+    );
+    return true;
+  }, []);
 
   const refresh = useCallback(() => {
+    if (batchPlayback) {
+      setBatchRefreshVersion((version) => version + 1);
+      return;
+    }
     fetchedTypesRef.current = new Set();
     lastFetchKeyRef.current = "";
     fetchEvents(selectedDay, activeVisualizations, serverDomain, true, timeOfDay);
-  }, [selectedDay, serverDomain, activeVisualizations, timeOfDay, fetchEvents]);
+  }, [
+    batchPlayback,
+    selectedDay,
+    serverDomain,
+    activeVisualizations,
+    timeOfDay,
+    fetchEvents,
+  ]);
 
-  return { events, loading, error, dayCounts, refresh };
+  return {
+    events,
+    loading,
+    error,
+    dayCounts,
+    refresh,
+    advanceBatch,
+    batchKey,
+  };
 }

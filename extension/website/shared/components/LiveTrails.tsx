@@ -11,7 +11,7 @@ import {
   collectDueClickEffects,
   retainClickEffectsForActiveTrails,
   type LiveClickEffect,
-} from "./liveClickEffects";
+} from "./clickEffects";
 import {
   TrailPath,
   TrailCursor,
