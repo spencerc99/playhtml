@@ -20,6 +20,7 @@ const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "navigation",
   "viewport",
   "keyboard",
+  "element",
 ];
 const STORAGE_SIZE_SAMPLE_LIMIT = 200;
 
@@ -660,6 +661,49 @@ export class LocalEventStore {
         console.error("[LocalEventStore] Query error:", request.error);
         reject(request.error);
       };
+    });
+  }
+
+  async queryByType(
+    type: CollectionEventType,
+    options: Pick<QueryOptions, "limit" | "startTs" | "endTs"> = {},
+  ): Promise<CollectionEvent[]> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const typeIndex = store.index("type");
+      const request = typeIndex.openCursor(IDBKeyRange.only(type));
+      const events: CollectionEvent[] = [];
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+        if (!cursor) {
+          events.sort((a, b) => b.ts - a.ts);
+          resolve(
+            options.limit === undefined ? events : events.slice(0, options.limit),
+          );
+          return;
+        }
+
+        const storedEvent = cursor.value as StoredCollectionEvent;
+        const afterStart =
+          options.startTs === undefined || storedEvent.ts >= options.startTs;
+        const beforeEnd =
+          options.endTs === undefined || storedEvent.ts <= options.endTs;
+        if (afterStart && beforeEnd) {
+          events.push(toCollectionEvent(storedEvent));
+        }
+        cursor.continue();
+      };
+
+      request.onerror = () => reject(request.error);
     });
   }
 

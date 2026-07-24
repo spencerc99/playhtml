@@ -6,10 +6,13 @@ import type { CollectionEvent } from "@playhtml/extension-types";
 
 const originalDefineBackground = (globalThis as any).defineBackground;
 
-function makeEvent(id: string): CollectionEvent {
+function makeEvent(
+  id: string,
+  type: CollectionEvent["type"] = "navigation",
+): CollectionEvent {
   return {
     id,
-    type: "navigation",
+    type,
     ts: 1,
     data: { event: "focus" },
     meta: {
@@ -38,7 +41,9 @@ describe("background upload flushing", () => {
   });
 
   it("drains up to the worker request limit per flush", async () => {
-    const pendingEvents = [makeEvent("event-1")];
+    const navigationEvent = makeEvent("event-1");
+    const scrapEvent = makeEvent("scrap-1", "element");
+    const pendingEvents = [navigationEvent, scrapEvent];
     const store = {
       getPendingEvents: vi.fn().mockResolvedValue(pendingEvents),
       markEventsAsUploaded: vi.fn().mockResolvedValue(undefined),
@@ -63,7 +68,10 @@ describe("background upload flushing", () => {
       default: {
         storage: {
           local: {
-            get: vi.fn().mockResolvedValue({ collection_mode_navigation: "shared" }),
+            get: vi.fn().mockResolvedValue({
+              collection_mode_navigation: "shared",
+              collection_mode_element: "shared",
+            }),
             set: vi.fn().mockResolvedValue(undefined),
             remove: vi.fn().mockResolvedValue(undefined),
           },
@@ -99,7 +107,7 @@ describe("background upload flushing", () => {
 
     expect(response).toEqual({ success: true });
     expect(store.getPendingEvents).toHaveBeenCalledWith(500);
-    expect(uploadEvents).toHaveBeenCalledWith(pendingEvents);
-    expect(store.markEventsAsUploaded).toHaveBeenCalledWith(["event-1"]);
+    expect(uploadEvents).toHaveBeenCalledWith([navigationEvent]);
+    expect(store.markEventsAsUploaded).toHaveBeenCalledWith(["event-1", "scrap-1"]);
   });
 });
