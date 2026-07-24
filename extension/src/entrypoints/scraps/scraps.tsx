@@ -9,36 +9,97 @@ import {
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 
-interface ScrapRecord {
+interface ScrapRecordBase {
   id: string;
-  src: string;
-  alt?: string;
+  key: string;
   pageTitle: string;
   faviconUrl?: string;
   domain: string;
   pageUrl: string;
   ts: number;
-  naturalWidth: number;
-  naturalHeight: number;
 }
+
+type ScrapRecord = ScrapRecordBase &
+  (
+    | {
+        kind: "image";
+        src: string;
+        alt?: string;
+        naturalWidth: number;
+        naturalHeight: number;
+      }
+    | {
+        kind: "button";
+        text: string;
+        styles: Record<string, string>;
+        innerSvg?: string;
+      }
+    | {
+        kind: "svg-icon";
+        markup: string;
+        width: number;
+        height: number;
+      }
+    | {
+        kind: "cursor";
+        url: string;
+        hotspotX?: number;
+        hotspotY?: number;
+      }
+  );
 
 interface ScrapsResponse {
   scraps: ScrapRecord[];
 }
 
 function toScrapItem(record: ScrapRecord): ScrapItem {
-  return {
+  const base = {
     id: record.id,
-    src: record.src,
-    ...(record.alt ? { alt: record.alt } : {}),
+    key: record.key,
     pageTitle: record.pageTitle,
-    ...(record.faviconUrl ? { faviconUrl: record.faviconUrl } : {}),
+    ...(record.faviconUrl !== undefined
+      ? { faviconUrl: record.faviconUrl }
+      : {}),
     domain: record.domain,
     pageUrl: record.pageUrl,
     ts: record.ts,
-    naturalWidth: record.naturalWidth,
-    naturalHeight: record.naturalHeight,
   };
+
+  switch (record.kind) {
+    case "image":
+      return {
+        ...base,
+        kind: record.kind,
+        src: record.src,
+        ...(record.alt !== undefined ? { alt: record.alt } : {}),
+        naturalWidth: record.naturalWidth,
+        naturalHeight: record.naturalHeight,
+      };
+    case "button":
+      return {
+        ...base,
+        kind: record.kind,
+        text: record.text,
+        styles: record.styles,
+        ...(record.innerSvg !== undefined ? { innerSvg: record.innerSvg } : {}),
+      };
+    case "svg-icon":
+      return {
+        ...base,
+        kind: record.kind,
+        markup: record.markup,
+        width: record.width,
+        height: record.height,
+      };
+    case "cursor":
+      return {
+        ...base,
+        kind: record.kind,
+        url: record.url,
+        ...(record.hotspotX !== undefined ? { hotspotX: record.hotspotX } : {}),
+        ...(record.hotspotY !== undefined ? { hotspotY: record.hotspotY } : {}),
+      };
+  }
 }
 
 const centeredMessageStyle: React.CSSProperties = {
