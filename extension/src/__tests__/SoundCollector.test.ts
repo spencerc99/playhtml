@@ -30,6 +30,7 @@ function validSoundMessage(overrides: Record<string, unknown> = {}) {
     detached: true,
     duration: 1.234,
     timestamp: Date.now(),
+    captureId: "capture-1",
     ...overrides,
   };
 }
@@ -37,6 +38,11 @@ function validSoundMessage(overrides: Record<string, unknown> = {}) {
 describe("SoundCollector", () => {
   let collector: SoundCollector;
   let emitCallback: ReturnType<typeof vi.fn>;
+  let acquisition: {
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+    acquire: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -52,7 +58,12 @@ describe("SoundCollector", () => {
     document.title = "Example sounds";
 
     emitCallback = vi.fn();
-    collector = new SoundCollector();
+    acquisition = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      acquire: vi.fn().mockResolvedValue({ acquisition: "none" }),
+    };
+    collector = new SoundCollector(acquisition);
     collector.setEmitCallback(emitCallback);
     collector.enable();
   });
@@ -62,8 +73,9 @@ describe("SoundCollector", () => {
     vi.useRealTimers();
   });
 
-  it("emits normalized metadata from a valid MAIN-world message", () => {
+  it("emits normalized metadata after acquisition completes", async () => {
     dispatchSoundMessage(validSoundMessage());
+    await collector.waitForPendingEvents();
 
     expect(emitCallback).toHaveBeenCalledOnce();
     expect(emitCallback).toHaveBeenCalledWith({
@@ -72,16 +84,25 @@ describe("SoundCollector", () => {
       detached: true,
       mediaDurationMs: 1234,
       pageTitle: "Example sounds",
+      playedAtMs: expect.any(Number),
+      acquisition: "none",
     } satisfies SoundEventData);
+    expect(acquisition.acquire).toHaveBeenCalledWith({
+      sourceUrl:
+        "https://cdn.example.com/sounds/chime.mp3?token=secret#start",
+      captureId: "capture-1",
+      mediaDurationMs: 1234,
+    });
   });
 
-  it("caps stored source and page title strings", () => {
+  it("caps stored source and page title strings", async () => {
     document.title = "t".repeat(600);
     dispatchSoundMessage(
       validSoundMessage({
         src: `https://cdn.example.com/${"a".repeat(3000)}.mp3?token=secret`,
       }),
     );
+    await collector.waitForPendingEvents();
 
     const data = emitCallback.mock.calls[0][0] as SoundEventData;
     expect(data.mediaSrc).toHaveLength(2048);
@@ -102,20 +123,45 @@ describe("SoundCollector", () => {
     expect(emitCallback).not.toHaveBeenCalled();
   });
 
-  it("deduplicates the same normalized source within the collection window", () => {
+  it("deduplicates the same normalized source within the collection window", async () => {
     dispatchSoundMessage(validSoundMessage());
     dispatchSoundMessage(
       validSoundMessage({
         src: "https://cdn.example.com/sounds/chime.mp3?token=different#later",
       }),
     );
+    await collector.waitForPendingEvents();
 
     expect(emitCallback).toHaveBeenCalledOnce();
 
     vi.advanceTimersByTime(SOUND_DEDUP_WINDOW_MS);
     dispatchSoundMessage(validSoundMessage());
+    await collector.waitForPendingEvents();
 
     expect(emitCallback).toHaveBeenCalledTimes(2);
+  });
+
+  it("attaches acquired clip metadata to the emitted event", async () => {
+    acquisition.acquire.mockResolvedValue({
+      acquisition: "refetch",
+      clipId: "sound_clip_1",
+      mimeType: "audio/mpeg",
+      clipDurationMs: 1234,
+      sizeBytes: 4096,
+    });
+
+    dispatchSoundMessage(validSoundMessage());
+    await collector.waitForPendingEvents();
+
+    expect(emitCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        acquisition: "refetch",
+        clipId: "sound_clip_1",
+        mimeType: "audio/mpeg",
+        clipDurationMs: 1234,
+        sizeBytes: 4096,
+      }),
+    );
   });
 
   it("removes its message listener when disabled", () => {
@@ -146,7 +192,12 @@ describe("sound conferencing denylist", () => {
       writable: true,
       configurable: true,
     });
-    const collector = new SoundCollector();
+    const acquisition = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      acquire: vi.fn().mockResolvedValue({ acquisition: "none" as const }),
+    };
+    const collector = new SoundCollector(acquisition);
     const emitCallback = vi.fn();
     collector.setEmitCallback(emitCallback);
     collector.enable();
@@ -154,6 +205,8 @@ describe("sound conferencing denylist", () => {
     dispatchSoundMessage(validSoundMessage());
 
     expect(emitCallback).not.toHaveBeenCalled();
+    expect(acquisition.start).not.toHaveBeenCalled();
+    expect(acquisition.acquire).not.toHaveBeenCalled();
     collector.disable();
   });
 });

@@ -7,11 +7,13 @@ import {
   normalizeUrl,
   extractDomain as extractDomainUtil,
 } from "../utils/urlNormalization";
+import { createPrefixedId } from "./ids";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
+const SOUND_CLIP_STORE_NAME = "sound_clips";
 const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
 const UPLOAD_STATE_PENDING = "pending";
 const UPLOAD_STATE_UPLOADED = "uploaded";
@@ -23,6 +25,9 @@ const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "sound",
 ];
 const STORAGE_SIZE_SAMPLE_LIMIT = 200;
+export const SOUND_CLIP_HASH_BYTES = 4096;
+export const SOUND_CLIP_MAX_PER_DOMAIN_PER_DAY = 50;
+export const SOUND_CLIP_GLOBAL_MAX_BYTES = 500 * 1024 * 1024;
 
 type UploadState = typeof UPLOAD_STATE_PENDING | typeof UPLOAD_STATE_UPLOADED;
 type StatsBackfillState = "running" | "complete";
@@ -58,6 +63,36 @@ export interface StorageStats {
   oldestEvent: number;
   newestEvent: number;
   countsByType: Record<string, number>;
+  soundClipCount: number;
+  soundClipBytes: number;
+}
+
+export interface SoundClipRecord {
+  id: string;
+  blob: Blob;
+  hash: string;
+  createdAt: number;
+  domain: string;
+}
+
+export interface SoundClipMetadata {
+  id: string;
+  hash: string;
+  createdAt: number;
+  domain: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface StoreSoundClipResult {
+  stored: boolean;
+  clip?: SoundClipMetadata;
+  reason?: "domain-daily-limit" | "global-size-limit";
+}
+
+export interface SoundClipStoreLimits {
+  maxPerDomainPerDay: number;
+  globalMaxBytes: number;
 }
 
 export interface ScreenTimeSession {
@@ -152,8 +187,14 @@ export class LocalEventStore {
   private statsBackfillComplete = false;
   private eventsPendingStatsAfterBackfill: CollectionEvent[] = [];
   private eventIdsPendingStatsAfterBackfill = new Set<string>();
+  private soundClipWriteQueue: Promise<void> = Promise.resolve();
 
-  constructor() {
+  constructor(
+    private readonly soundClipLimits: SoundClipStoreLimits = {
+      maxPerDomainPerDay: SOUND_CLIP_MAX_PER_DOMAIN_PER_DAY,
+      globalMaxBytes: SOUND_CLIP_GLOBAL_MAX_BYTES,
+    },
+  ) {
     this.init().catch(console.error);
   }
 
@@ -313,6 +354,17 @@ export class LocalEventStore {
               cursor.continue();
             }
           };
+        }
+
+        if (!db.objectStoreNames.contains(SOUND_CLIP_STORE_NAME)) {
+          const clipStore = db.createObjectStore(SOUND_CLIP_STORE_NAME, {
+            keyPath: "id",
+          });
+          clipStore.createIndex("createdAt", "createdAt", { unique: false });
+          clipStore.createIndex("domain", "domain", { unique: false });
+          clipStore.createIndex("domainHash", ["domain", "hash"], {
+            unique: false,
+          });
         }
       };
     });
@@ -942,8 +994,12 @@ export class LocalEventStore {
         return;
       }
 
-      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const transaction = this.db.transaction(
+        [STORE_NAME, SOUND_CLIP_STORE_NAME],
+        "readonly",
+      );
       const store = transaction.objectStore(STORE_NAME);
+      const clipStore = transaction.objectStore(SOUND_CLIP_STORE_NAME);
       const tsIndex = store.index("ts");
       const typeIndex = store.index("type");
       const countsByType: Record<string, number> = {};
@@ -952,7 +1008,9 @@ export class LocalEventStore {
       let newestEvent = 0;
       let sampleCount = 0;
       let sampleSizeBytes = 0;
-      let pendingRequests = 4 + COLLECTION_EVENT_TYPES.length;
+      let soundClipCount = 0;
+      let soundClipBytes = 0;
+      let pendingRequests = 6 + COLLECTION_EVENT_TYPES.length;
       let settled = false;
 
       const fail = (error: unknown) => {
@@ -975,6 +1033,8 @@ export class LocalEventStore {
           oldestEvent,
           newestEvent,
           countsByType,
+          soundClipCount,
+          soundClipBytes,
         });
       };
 
@@ -1015,6 +1075,26 @@ export class LocalEventStore {
       };
       sampleRequest.onerror = () => fail(sampleRequest.error);
 
+      const clipCountRequest = clipStore.count();
+      clipCountRequest.onsuccess = () => {
+        soundClipCount = clipCountRequest.result;
+        complete();
+      };
+      clipCountRequest.onerror = () => fail(clipCountRequest.error);
+
+      const clipSizeRequest = clipStore.openCursor();
+      clipSizeRequest.onsuccess = () => {
+        const cursor = clipSizeRequest.result;
+        if (cursor) {
+          const clip = cursor.value as SoundClipRecord;
+          soundClipBytes += clip.blob.size;
+          cursor.continue();
+          return;
+        }
+        complete();
+      };
+      clipSizeRequest.onerror = () => fail(clipSizeRequest.error);
+
       for (const eventType of COLLECTION_EVENT_TYPES) {
         const typeCountRequest = typeIndex.count(IDBKeyRange.only(eventType));
         typeCountRequest.onsuccess = () => {
@@ -1028,6 +1108,199 @@ export class LocalEventStore {
 
       transaction.onerror = () => fail(transaction.error);
     });
+  }
+
+  async storeSoundClip(input: {
+    blob: Blob;
+    domain: string;
+    createdAt?: number;
+  }): Promise<StoreSoundClipResult> {
+    const operation = this.soundClipWriteQueue.then(() =>
+      this.storeSoundClipNow({
+        ...input,
+        createdAt: input.createdAt ?? Date.now(),
+      }),
+    );
+    this.soundClipWriteQueue = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation;
+  }
+
+  async getSoundClip(id: string): Promise<SoundClipRecord | undefined> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(
+        [SOUND_CLIP_STORE_NAME],
+        "readonly",
+      );
+      const request = transaction.objectStore(SOUND_CLIP_STORE_NAME).get(id);
+      request.onsuccess = () =>
+        resolve(request.result as SoundClipRecord | undefined);
+      request.onerror = () => reject(request.error);
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  async listSoundClipMetadata(
+    domain?: string,
+  ): Promise<SoundClipMetadata[]> {
+    const records = await this.listSoundClipRecords();
+    return records
+      .filter((record) => domain === undefined || record.domain === domain)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map(LocalEventStore.toSoundClipMetadata);
+  }
+
+  private async storeSoundClipNow(input: {
+    blob: Blob;
+    domain: string;
+    createdAt: number;
+  }): Promise<StoreSoundClipResult> {
+    await this.ensureInitialized();
+
+    const hash = await LocalEventStore.hashSoundClip(input.blob);
+    const records = await this.listSoundClipRecords();
+    const duplicate = records.find(
+      (record) => record.domain === input.domain && record.hash === hash,
+    );
+    if (duplicate) {
+      return {
+        stored: false,
+        clip: LocalEventStore.toSoundClipMetadata(duplicate),
+      };
+    }
+
+    const dayStart = new Date(input.createdAt);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = dayStart.getTime() + 24 * 60 * 60 * 1000;
+    const domainClipCount = records.filter(
+      (record) =>
+        record.domain === input.domain &&
+        record.createdAt >= dayStart.getTime() &&
+        record.createdAt < dayEnd,
+    ).length;
+    if (domainClipCount >= this.soundClipLimits.maxPerDomainPerDay) {
+      return { stored: false, reason: "domain-daily-limit" };
+    }
+
+    if (input.blob.size > this.soundClipLimits.globalMaxBytes) {
+      return { stored: false, reason: "global-size-limit" };
+    }
+
+    const recordsByAge = [...records].sort(
+      (a, b) => a.createdAt - b.createdAt,
+    );
+    let totalBytes = recordsByAge.reduce(
+      (sum, record) => sum + record.blob.size,
+      0,
+    );
+    const idsToEvict: string[] = [];
+    for (const record of recordsByAge) {
+      if (
+        totalBytes + input.blob.size <=
+        this.soundClipLimits.globalMaxBytes
+      ) {
+        break;
+      }
+      idsToEvict.push(record.id);
+      totalBytes -= record.blob.size;
+    }
+
+    const clip: SoundClipRecord = {
+      id: createPrefixedId("sound_clip_"),
+      blob: input.blob,
+      hash,
+      createdAt: input.createdAt,
+      domain: input.domain,
+    };
+    await new Promise<void>((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(
+        [SOUND_CLIP_STORE_NAME],
+        "readwrite",
+      );
+      const clipStore = transaction.objectStore(SOUND_CLIP_STORE_NAME);
+      for (const id of idsToEvict) {
+        clipStore.delete(id);
+      }
+      clipStore.put(clip);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+
+    return {
+      stored: true,
+      clip: LocalEventStore.toSoundClipMetadata(clip),
+    };
+  }
+
+  private async listSoundClipRecords(): Promise<SoundClipRecord[]> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(
+        [SOUND_CLIP_STORE_NAME],
+        "readonly",
+      );
+      const clipStore = transaction.objectStore(SOUND_CLIP_STORE_NAME);
+      const records: SoundClipRecord[] = [];
+      const request = clipStore.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          records.push(cursor.value as SoundClipRecord);
+          cursor.continue();
+          return;
+        }
+        resolve(records);
+      };
+      request.onerror = () => reject(request.error);
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  private static toSoundClipMetadata(
+    record: SoundClipRecord,
+  ): SoundClipMetadata {
+    return {
+      id: record.id,
+      hash: record.hash,
+      createdAt: record.createdAt,
+      domain: record.domain,
+      mimeType: record.blob.type,
+      sizeBytes: record.blob.size,
+    };
+  }
+
+  private static async hashSoundClip(blob: Blob): Promise<string> {
+    const slice = blob.slice(0, SOUND_CLIP_HASH_BYTES);
+    const bytes =
+      typeof slice.arrayBuffer === "function"
+        ? await slice.arrayBuffer()
+        : await new Promise<ArrayBuffer>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as ArrayBuffer);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsArrayBuffer(slice);
+          });
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
   }
 
   /**
@@ -1515,13 +1788,15 @@ export class LocalEventStore {
       }
 
       const transaction = this.db.transaction(
-        [STORE_NAME, STATS_STORE_NAME],
+        [STORE_NAME, STATS_STORE_NAME, SOUND_CLIP_STORE_NAME],
         "readwrite",
       );
       const evtStore = transaction.objectStore(STORE_NAME);
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const clipStore = transaction.objectStore(SOUND_CLIP_STORE_NAME);
       evtStore.clear();
       statsStore.clear();
+      clipStore.clear();
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
     });

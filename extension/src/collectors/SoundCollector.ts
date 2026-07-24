@@ -2,6 +2,11 @@
 // ABOUTME: Validates MAIN-world bridge messages and stores deduplicated local events.
 
 import { BaseCollector } from './BaseCollector';
+import {
+  SoundAcquisition,
+  type SoundAcquisitionResult,
+  type SoundPlaybackForAcquisition,
+} from './SoundAcquisition';
 import type { SoundEventData } from './types';
 
 export const SOUND_PLAY_MESSAGE_TYPE = 'wewe:sound-play';
@@ -19,6 +24,7 @@ const MAX_MEDIA_SRC_LENGTH = 2048;
 const MAX_BRIDGE_SRC_LENGTH = 16384;
 const MAX_PAGE_TITLE_LENGTH = 512;
 const MAX_DURATION_SECONDS = Number.MAX_SAFE_INTEGER / 1000;
+const MAX_CAPTURE_ID_LENGTH = 128;
 const MESSAGE_KEYS = new Set([
   'type',
   'src',
@@ -26,6 +32,7 @@ const MESSAGE_KEYS = new Set([
   'detached',
   'duration',
   'timestamp',
+  'captureId',
 ]);
 
 interface SoundPlayMessage {
@@ -35,6 +42,15 @@ interface SoundPlayMessage {
   detached: boolean;
   duration?: number;
   timestamp: number;
+  captureId: string;
+}
+
+interface SoundClipAcquirer {
+  start(): void;
+  stop(): void;
+  acquire(
+    playback: SoundPlaybackForAcquisition,
+  ): Promise<SoundAcquisitionResult>;
 }
 
 export function isSoundCollectionDenied(hostname: string): boolean {
@@ -74,7 +90,10 @@ function parseSoundPlayMessage(data: unknown): SoundPlayMessage | undefined {
     (record.mediaKind !== 'audio' && record.mediaKind !== 'video') ||
     typeof record.detached !== 'boolean' ||
     !Number.isSafeInteger(record.timestamp) ||
-    (record.timestamp as number) < 0
+    (record.timestamp as number) < 0 ||
+    typeof record.captureId !== 'string' ||
+    record.captureId.length === 0 ||
+    record.captureId.length > MAX_CAPTURE_ID_LENGTH
   ) {
     return undefined;
   }
@@ -97,6 +116,7 @@ function parseSoundPlayMessage(data: unknown): SoundPlayMessage | undefined {
     detached: record.detached,
     duration,
     timestamp: record.timestamp as number,
+    captureId: record.captureId,
   };
 }
 
@@ -106,9 +126,17 @@ export class SoundCollector extends BaseCollector<SoundEventData> {
 
   private lastEmittedBySrc = new Map<string, number>();
   private messageHandler?: (event: MessageEvent<unknown>) => void;
+  private pendingSoundEvents = new Set<Promise<void>>();
+
+  constructor(
+    private readonly acquisition: SoundClipAcquirer = new SoundAcquisition(),
+  ) {
+    super();
+  }
 
   start(): void {
     if (isSoundCollectionDenied(window.location.hostname)) return;
+    this.acquisition.start();
 
     this.messageHandler = (event: MessageEvent<unknown>) => {
       try {
@@ -139,6 +167,7 @@ export class SoundCollector extends BaseCollector<SoundEventData> {
         const data: SoundEventData = {
           mediaKind: message.mediaKind,
           detached: message.detached,
+          playedAtMs: now,
         };
 
         if (mediaSrc) {
@@ -151,7 +180,21 @@ export class SoundCollector extends BaseCollector<SoundEventData> {
           data.pageTitle = pageTitle;
         }
 
-        this.emit(data);
+        let sourceUrl = message.src;
+        try {
+          sourceUrl = new URL(message.src, window.location.href).href;
+        } catch {
+          // captureStream can still acquire media backed by srcObject.
+        }
+
+        const pending = this.acquireAndEmit(data, {
+          sourceUrl,
+          captureId: message.captureId,
+          mediaDurationMs: data.mediaDurationMs,
+        }).finally(() => {
+          this.pendingSoundEvents.delete(pending);
+        });
+        this.pendingSoundEvents.add(pending);
       } catch {
         // The page controls this message channel, so malformed values are ignored.
       }
@@ -165,6 +208,33 @@ export class SoundCollector extends BaseCollector<SoundEventData> {
       window.removeEventListener('message', this.messageHandler);
       this.messageHandler = undefined;
     }
+    this.acquisition.stop();
     this.lastEmittedBySrc.clear();
+  }
+
+  async waitForPendingEvents(): Promise<void> {
+    await Promise.all(Array.from(this.pendingSoundEvents));
+    await super.waitForPendingEvents();
+  }
+
+  private async acquireAndEmit(
+    data: SoundEventData,
+    playback: SoundPlaybackForAcquisition,
+  ): Promise<void> {
+    let result: SoundAcquisitionResult;
+    try {
+      result = await this.acquisition.acquire(playback);
+    } catch {
+      result = { acquisition: 'none' };
+    }
+
+    data.acquisition = result.acquisition;
+    if (result.clipId) data.clipId = result.clipId;
+    if (result.mimeType) data.mimeType = result.mimeType;
+    if (result.clipDurationMs !== undefined) {
+      data.clipDurationMs = result.clipDurationMs;
+    }
+    if (result.sizeBytes !== undefined) data.sizeBytes = result.sizeBytes;
+    this.emit(data);
   }
 }

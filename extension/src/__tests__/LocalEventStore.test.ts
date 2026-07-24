@@ -2,11 +2,16 @@
 // ABOUTME: Guards hot paths, storage stats, and upload metadata handling in IndexedDB.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Blob as NodeBlob } from "node:buffer";
 import {
   IDBKeyRange as fakeIDBKeyRange,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
-import { LocalEventStore, type DomainStatsAggregate } from "../storage/LocalEventStore";
+import {
+  LocalEventStore,
+  type DomainStatsAggregate,
+  type SoundClipStoreLimits,
+} from "../storage/LocalEventStore";
 import type { CollectionEvent } from "../collectors/types";
 
 const DB_NAME = "collection_events_db";
@@ -16,6 +21,7 @@ const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
 
 const originalIndexedDB = globalThis.indexedDB;
 const originalIDBKeyRange = globalThis.IDBKeyRange;
+const originalBlob = globalThis.Blob;
 let stores: LocalEventStore[] = [];
 
 type StoredTestEvent = CollectionEvent & {
@@ -35,6 +41,14 @@ function setIndexedDBGlobals(): void {
     value: fakeIDBKeyRange,
     configurable: true,
   });
+  Object.defineProperty(globalThis, "Blob", {
+    value: NodeBlob,
+    configurable: true,
+  });
+  Object.defineProperty(window, "Blob", {
+    value: NodeBlob,
+    configurable: true,
+  });
 }
 
 function restoreIndexedDBGlobals(): void {
@@ -47,6 +61,14 @@ function restoreIndexedDBGlobals(): void {
   window.indexedDB = originalIndexedDB;
   Object.defineProperty(window, "IDBKeyRange", {
     value: originalIDBKeyRange,
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "Blob", {
+    value: originalBlob,
+    configurable: true,
+  });
+  Object.defineProperty(window, "Blob", {
+    value: originalBlob,
     configurable: true,
   });
 }
@@ -62,6 +84,18 @@ async function deleteEventDatabase(): Promise<void> {
 
 async function waitForBackgroundDatabaseWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function readBlob(blob: Blob): Promise<ArrayBuffer> {
+  if (typeof blob.arrayBuffer === "function") {
+    return blob.arrayBuffer();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob);
+  });
 }
 
 async function openVersion8Database(
@@ -128,8 +162,8 @@ async function putStatsRows(db: IDBDatabase, rows: unknown[]): Promise<void> {
   });
 }
 
-function createStore(): LocalEventStore {
-  const store = new LocalEventStore();
+function createStore(soundClipLimits?: SoundClipStoreLimits): LocalEventStore {
+  const store = new LocalEventStore(soundClipLimits);
   stores.push(store);
   return store;
 }
@@ -408,6 +442,147 @@ describe("LocalEventStore storage stats", () => {
       countsByType: { cursor: 2, keyboard: 1 },
     });
     expect(stats.estimatedSizeBytes).toBeGreaterThan(0);
+  });
+});
+
+describe("LocalEventStore sound clips", () => {
+  it("stores, reads, lists, and clears clip blobs outside event JSON", async () => {
+    const store = createStore();
+    const blob = new Blob([new Uint8Array([1, 2, 3])], {
+      type: "audio/webm",
+    });
+
+    const result = await store.storeSoundClip({
+      blob,
+      domain: "example.com",
+      createdAt: 1_000,
+    });
+
+    expect(result.stored).toBe(true);
+    expect(result.clip).toMatchObject({
+      domain: "example.com",
+      mimeType: "audio/webm",
+      sizeBytes: 3,
+    });
+    const stored = await store.getSoundClip(result.clip!.id);
+    expect(stored?.blob).toBeInstanceOf(Blob);
+    expect(Array.from(new Uint8Array(await readBlob(stored!.blob)))).toEqual([
+      1,
+      2,
+      3,
+    ]);
+    await expect(store.listSoundClipMetadata()).resolves.toEqual([
+      expect.objectContaining({ id: result.clip!.id, sizeBytes: 3 }),
+    ]);
+    await expect(store.getStorageStats()).resolves.toMatchObject({
+      soundClipCount: 1,
+      soundClipBytes: 3,
+    });
+
+    await store.clearAll();
+
+    await expect(store.getSoundClip(result.clip!.id)).resolves.toBeUndefined();
+    await expect(store.getStorageStats()).resolves.toMatchObject({
+      soundClipCount: 0,
+      soundClipBytes: 0,
+    });
+  });
+
+  it("deduplicates the first 4096 bytes within a domain only", async () => {
+    const store = createStore();
+    const firstBytes = new Uint8Array(4097).fill(7);
+    const secondBytes = new Uint8Array(firstBytes);
+    firstBytes[4096] = 1;
+    secondBytes[4096] = 2;
+
+    const first = await store.storeSoundClip({
+      blob: new Blob([firstBytes], { type: "audio/mpeg" }),
+      domain: "example.com",
+      createdAt: 1_000,
+    });
+    const duplicate = await store.storeSoundClip({
+      blob: new Blob([secondBytes], { type: "audio/mpeg" }),
+      domain: "example.com",
+      createdAt: 2_000,
+    });
+    const otherDomain = await store.storeSoundClip({
+      blob: new Blob([secondBytes], { type: "audio/mpeg" }),
+      domain: "other.example",
+      createdAt: 3_000,
+    });
+
+    expect(duplicate).toMatchObject({
+      stored: false,
+      clip: { id: first.clip!.id },
+    });
+    expect(otherDomain.stored).toBe(true);
+    await expect(store.listSoundClipMetadata()).resolves.toHaveLength(2);
+  });
+
+  it("enforces the per-domain daily clip budget after dedupe", async () => {
+    const store = createStore({
+      maxPerDomainPerDay: 2,
+      globalMaxBytes: 100,
+    });
+    const day = new Date("2026-07-23T12:00:00").getTime();
+
+    await store.storeSoundClip({
+      blob: new Blob([new Uint8Array([1])]),
+      domain: "example.com",
+      createdAt: day,
+    });
+    await store.storeSoundClip({
+      blob: new Blob([new Uint8Array([2])]),
+      domain: "example.com",
+      createdAt: day + 1,
+    });
+    const rejected = await store.storeSoundClip({
+      blob: new Blob([new Uint8Array([3])]),
+      domain: "example.com",
+      createdAt: day + 2,
+    });
+
+    expect(rejected).toEqual({
+      stored: false,
+      reason: "domain-daily-limit",
+    });
+    await expect(store.listSoundClipMetadata("example.com")).resolves.toHaveLength(
+      2,
+    );
+  });
+
+  it("evicts oldest clips before exceeding the global byte budget", async () => {
+    const store = createStore({
+      maxPerDomainPerDay: 50,
+      globalMaxBytes: 6,
+    });
+    const first = await store.storeSoundClip({
+      blob: new Blob([new Uint8Array([1, 1, 1])]),
+      domain: "one.example",
+      createdAt: 1_000,
+    });
+    const second = await store.storeSoundClip({
+      blob: new Blob([new Uint8Array([2, 2, 2])]),
+      domain: "two.example",
+      createdAt: 2_000,
+    });
+    const third = await store.storeSoundClip({
+      blob: new Blob([new Uint8Array([3, 3, 3])]),
+      domain: "three.example",
+      createdAt: 3_000,
+    });
+
+    expect(second.stored).toBe(true);
+    expect(third.stored).toBe(true);
+    await expect(store.getSoundClip(first.clip!.id)).resolves.toBeUndefined();
+    await expect(store.listSoundClipMetadata()).resolves.toEqual([
+      expect.objectContaining({ id: third.clip!.id }),
+      expect.objectContaining({ id: second.clip!.id }),
+    ]);
+    await expect(store.getStorageStats()).resolves.toMatchObject({
+      soundClipCount: 2,
+      soundClipBytes: 6,
+    });
   });
 });
 

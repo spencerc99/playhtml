@@ -3,6 +3,7 @@
 - Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
 - Sound playback metadata is now collected locally for the future internet sounds portrait.
+- Short sound clips are now acquired and stored locally for the future internet sounds portrait.
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**

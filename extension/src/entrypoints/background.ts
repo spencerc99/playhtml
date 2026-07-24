@@ -26,6 +26,12 @@ import {
 } from '../milestones/state'
 import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
 import { getSessionId } from '../storage/participant'
+import {
+  SOUND_BRIDGE_MAX_BYTES,
+  SOUND_CAPTURE_MAX_DURATION_MS,
+  isSupportedSoundMimeType,
+  refetchSoundClip,
+} from '../collectors/SoundAcquisition'
 
 const store = new LocalEventStore()
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
@@ -37,6 +43,119 @@ const LOCAL_RETENTION_ALARM = 'pruneLocalEvents'
 const LOCAL_RETENTION_LAST_RUN_KEY = 'localRetentionLastRun'
 
 let localRetentionRunning = false
+
+const MAX_SOUND_SOURCE_URL_LENGTH = 16_384
+const MAX_SOUND_BASE64_LENGTH = Math.ceil(SOUND_BRIDGE_MAX_BYTES / 3) * 4 + 4
+const ACQUIRE_SOUND_CLIP_KEYS = new Set([
+  'type',
+  'sourceUrl',
+  'mediaDurationMs',
+])
+const STORE_SOUND_CLIP_KEYS = new Set([
+  'type',
+  'dataBase64',
+  'mimeType',
+  'clipDurationMs',
+])
+
+function getSoundSenderDomain(sender: {
+  tab?: { url?: string }
+}): string | undefined {
+  if (typeof sender.tab?.url !== 'string') return undefined
+  const domain = extractDomain(sender.tab.url)
+  return domain || undefined
+}
+
+function parseAcquireSoundClipMessage(message: unknown): {
+  sourceUrl: string
+  mediaDurationMs?: number
+} | undefined {
+  if (typeof message !== 'object' || message === null || Array.isArray(message)) {
+    return undefined
+  }
+  const record = message as Record<string, unknown>
+  if (
+    Object.keys(record).some((key) => !ACQUIRE_SOUND_CLIP_KEYS.has(key)) ||
+    record.type !== 'ACQUIRE_SOUND_CLIP' ||
+    typeof record.sourceUrl !== 'string' ||
+    record.sourceUrl.length === 0 ||
+    record.sourceUrl.length > MAX_SOUND_SOURCE_URL_LENGTH ||
+    (record.mediaDurationMs !== undefined &&
+      (typeof record.mediaDurationMs !== 'number' ||
+        !Number.isSafeInteger(record.mediaDurationMs) ||
+        record.mediaDurationMs < 0))
+  ) {
+    return undefined
+  }
+  return {
+    sourceUrl: record.sourceUrl,
+    mediaDurationMs: record.mediaDurationMs as number | undefined,
+  }
+}
+
+function parseStoredSoundClipMessage(message: unknown): {
+  bytes: Uint8Array
+  mimeType: string
+  clipDurationMs: number
+} | undefined {
+  if (typeof message !== 'object' || message === null || Array.isArray(message)) {
+    return undefined
+  }
+  const record = message as Record<string, unknown>
+  if (
+    Object.keys(record).some((key) => !STORE_SOUND_CLIP_KEYS.has(key)) ||
+    record.type !== 'STORE_SOUND_CLIP' ||
+    typeof record.dataBase64 !== 'string' ||
+    record.dataBase64.length === 0 ||
+    record.dataBase64.length > MAX_SOUND_BASE64_LENGTH ||
+    record.dataBase64.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(record.dataBase64) ||
+    typeof record.mimeType !== 'string' ||
+    !isSupportedSoundMimeType(record.mimeType) ||
+    typeof record.clipDurationMs !== 'number' ||
+    !Number.isSafeInteger(record.clipDurationMs) ||
+    record.clipDurationMs < 0 ||
+    record.clipDurationMs > SOUND_CAPTURE_MAX_DURATION_MS
+  ) {
+    return undefined
+  }
+
+  try {
+    const binary = atob(record.dataBase64)
+    if (binary.length === 0 || binary.length > SOUND_BRIDGE_MAX_BYTES) {
+      return undefined
+    }
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index++) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+    return {
+      bytes,
+      mimeType: record.mimeType,
+      clipDurationMs: record.clipDurationMs,
+    }
+  } catch {
+    return undefined
+  }
+}
+
+async function storeAcquiredSoundClip(
+  blob: Blob,
+  domain: string,
+  clipDurationMs?: number,
+) {
+  const result = await store.storeSoundClip({ blob, domain })
+  if (!result.clip) {
+    return { success: false, reason: result.reason }
+  }
+  return {
+    success: true,
+    clipId: result.clip.id,
+    mimeType: result.clip.mimeType,
+    clipDurationMs,
+    sizeBytes: result.clip.sizeBytes,
+  }
+}
 
 async function getBrowserStorageUsageBytes(): Promise<number | null> {
   // Firefox ESR 140 omits storage.local.getBytesInUse, so this remains optional.
@@ -324,6 +443,97 @@ export default defineBackground(() => {
           console.error('[Background] STORE_EVENTS error:', e)
           reply({ success: false })
         })
+      return true
+    }
+
+    if (message.type === 'ACQUIRE_SOUND_CLIP') {
+      const request = parseAcquireSoundClipMessage(message)
+      const domain = getSoundSenderDomain(sender)
+      if (!request || !domain) {
+        reply({ success: false })
+        return true
+      }
+
+      refetchSoundClip(request.sourceUrl)
+        .then((clip) =>
+          storeAcquiredSoundClip(
+            clip.blob,
+            domain,
+            request.mediaDurationMs,
+          ),
+        )
+        .then(reply)
+        .catch(() => reply({ success: false }))
+      return true
+    }
+
+    if (message.type === 'STORE_SOUND_CLIP') {
+      const request = parseStoredSoundClipMessage(message)
+      const domain = getSoundSenderDomain(sender)
+      if (!request || !domain) {
+        reply({ success: false })
+        return true
+      }
+
+      const clipBuffer = new ArrayBuffer(request.bytes.byteLength)
+      new Uint8Array(clipBuffer).set(request.bytes)
+      storeAcquiredSoundClip(
+        new Blob([clipBuffer], { type: request.mimeType }),
+        domain,
+        request.clipDurationMs,
+      )
+        .then(reply)
+        .catch(() => reply({ success: false }))
+      return true
+    }
+
+    if (message.type === 'GET_SOUND_CLIP') {
+      if (typeof message.id !== 'string' || message.id.length === 0) {
+        reply({ success: false })
+        return true
+      }
+      store.getSoundClip(message.id)
+        .then(async (clip) => {
+          if (!clip) {
+            reply({ success: false })
+            return
+          }
+          const bytes = new Uint8Array(await clip.blob.arrayBuffer())
+          let binary = ''
+          const chunkSize = 0x8000
+          for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+            binary += String.fromCharCode(
+              ...bytes.subarray(offset, offset + chunkSize),
+            )
+          }
+          reply({
+            success: true,
+            clip: {
+              id: clip.id,
+              hash: clip.hash,
+              createdAt: clip.createdAt,
+              domain: clip.domain,
+              mimeType: clip.blob.type,
+              sizeBytes: clip.blob.size,
+              dataBase64: btoa(binary),
+            },
+          })
+        })
+        .catch(() => reply({ success: false }))
+      return true
+    }
+
+    if (message.type === 'QUERY_SOUND_CLIPS') {
+      if (
+        message.domain !== undefined &&
+        typeof message.domain !== 'string'
+      ) {
+        reply({ success: false, clips: [] })
+        return true
+      }
+      store.listSoundClipMetadata(message.domain)
+        .then((clips) => reply({ success: true, clips }))
+        .catch(() => reply({ success: false, clips: [] }))
       return true
     }
 

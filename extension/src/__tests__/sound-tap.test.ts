@@ -5,7 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 interface SoundTapModule {
   SOUND_PLAY_MESSAGE_TYPE: string;
+  SOUND_CAPTURE_REQUEST_MESSAGE_TYPE: string;
+  SOUND_CLIP_MESSAGE_TYPE: string;
   installSoundTap: () => () => void;
+  recordSoundElement: (
+    element: HTMLMediaElement,
+    maxDurationMs: number,
+    dependencies: any,
+  ) => Promise<
+    | { buffer: ArrayBuffer; mimeType: string; durationMs: number }
+    | undefined
+  >;
   default: {
     matches: string[];
     runAt: string;
@@ -84,6 +94,7 @@ describe("MAIN-world sound tap", () => {
         detached: true,
         duration: 2.5,
         timestamp: expect.any(Number),
+        captureId: expect.any(String),
       },
       "*",
     );
@@ -117,9 +128,31 @@ describe("MAIN-world sound tap", () => {
         detached: false,
         duration: 12.25,
         timestamp: expect.any(Number),
+        captureId: expect.any(String),
       },
       "*",
     );
+  });
+
+  it("bounds data URL metadata while keeping it eligible for capture", () => {
+    const originalPlay = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      value: originalPlay,
+      writable: true,
+      configurable: true,
+    });
+    const postMessage = vi
+      .spyOn(window, "postMessage")
+      .mockImplementation(() => undefined);
+    cleanup = soundTap.installSoundTap();
+    const audio = document.createElement("audio");
+    audio.src = `data:audio/wav;base64,${"A".repeat(20_000)}`;
+
+    audio.play();
+
+    const message = postMessage.mock.calls[0][0] as { src: string };
+    expect(message.src.startsWith("data:audio/wav;base64,")).toBe(true);
+    expect(message.src).toHaveLength(16_384);
   });
 
   it("does not overwrite a page patch installed after the tap", () => {
@@ -137,5 +170,101 @@ describe("MAIN-world sound tap", () => {
     cleanup = undefined;
 
     expect(HTMLMediaElement.prototype.play).toBe(pagePlay);
+  });
+
+  it("records through injected browser API boundaries and stops on pause", async () => {
+    class FakeRecorder extends EventTarget {
+      readonly mimeType = "audio/webm;codecs=opus";
+      state = "inactive";
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        this.state = "inactive";
+        const dataEvent = new Event("dataavailable") as Event & {
+          data?: Blob;
+        };
+        dataEvent.data = new Blob([new Uint8Array([1, 2, 3])], {
+          type: this.mimeType,
+        });
+        this.dispatchEvent(dataEvent);
+        this.dispatchEvent(new Event("stop"));
+      }
+    }
+
+    const recorder = new FakeRecorder();
+    const audio = document.createElement("audio");
+    const now = vi.fn()
+      .mockReturnValueOnce(1_000)
+      .mockReturnValue(1_250);
+    const recordingPromise = soundTap.recordSoundElement(audio, 12_000, {
+      captureStream: () => ({
+        getAudioTracks: () => [{}],
+      }),
+      createAudioStream: () => ({}),
+      createRecorder: () => recorder,
+      createSignalProbe: async () => ({
+        hasSignal: () => true,
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+      now,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await Promise.resolve();
+    audio.dispatchEvent(new Event("pause"));
+    const recording = await recordingPromise;
+
+    expect(recording).toMatchObject({
+      mimeType: "audio/webm;codecs=opus",
+      durationMs: 250,
+    });
+    expect(Array.from(new Uint8Array(recording!.buffer))).toEqual([1, 2, 3]);
+  });
+
+  it("discards a recording when the signal probe remains all-zero", async () => {
+    class FakeRecorder extends EventTarget {
+      readonly mimeType = "audio/webm;codecs=opus";
+      state = "inactive";
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        this.state = "inactive";
+        const dataEvent = new Event("dataavailable") as Event & {
+          data?: Blob;
+        };
+        dataEvent.data = new Blob([new Uint8Array([1])]);
+        this.dispatchEvent(dataEvent);
+        this.dispatchEvent(new Event("stop"));
+      }
+    }
+
+    const recorder = new FakeRecorder();
+    const audio = document.createElement("audio");
+    const recordingPromise = soundTap.recordSoundElement(audio, 12_000, {
+      captureStream: () => ({
+        getAudioTracks: () => [{}],
+      }),
+      createAudioStream: () => ({}),
+      createRecorder: () => recorder,
+      createSignalProbe: async () => ({
+        hasSignal: () => false,
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+      now: () => 1_000,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await Promise.resolve();
+    audio.dispatchEvent(new Event("ended"));
+
+    await expect(recordingPromise).resolves.toBeUndefined();
   });
 });

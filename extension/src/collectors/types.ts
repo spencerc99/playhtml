@@ -253,4 +253,10 @@ export interface SoundEventData {
   detached: boolean;
   mediaDurationMs?: number;
   pageTitle?: string;
+  playedAtMs?: number;
+  clipId?: string;
+  acquisition?: 'refetch' | 'capture-stream' | 'none';
+  mimeType?: string;
+  clipDurationMs?: number;
+  sizeBytes?: number;
 }
