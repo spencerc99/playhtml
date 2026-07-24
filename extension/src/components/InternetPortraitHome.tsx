@@ -241,6 +241,17 @@ export function InternetPortraitHome({
             </button>
             <button
               className="portrait-home__nav-link"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const url = browser.runtime.getURL("sounds.html");
+                await browser.tabs.create({ url });
+                window.close();
+              }}
+            >
+              sounds
+            </button>
+            <button
+              className="portrait-home__nav-link"
               onClick={(e) => {
                 e.stopPropagation();
                 onViewChangelog();

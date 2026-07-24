@@ -60,10 +60,16 @@ const STORE_SOUND_CLIP_KEYS = new Set([
 
 function getSoundSenderDomain(sender: {
   tab?: { url?: string }
+  url?: string
 }): string | undefined {
-  if (typeof sender.tab?.url !== 'string') return undefined
-  const domain = extractDomain(sender.tab.url)
-  return domain || undefined
+  const senderUrl = sender.tab?.url ?? sender.url
+  if (typeof senderUrl !== 'string') return undefined
+  try {
+    return new URL(senderUrl).hostname.replace(/^www\./, '') || undefined
+  } catch {
+    const domain = extractDomain(senderUrl)
+    return domain || undefined
+  }
 }
 
 function parseAcquireSoundClipMessage(message: unknown): {
@@ -534,6 +540,48 @@ export default defineBackground(() => {
       store.listSoundClipMetadata(message.domain)
         .then((clips) => reply({ success: true, clips }))
         .catch(() => reply({ success: false, clips: [] }))
+      return true
+    }
+
+    if (message.type === 'QUERY_SOUND_EVENTS') {
+      const startTs =
+        typeof message.startTs === 'number' &&
+        Number.isSafeInteger(message.startTs)
+          ? message.startTs
+          : undefined
+      const endTs =
+        typeof message.endTs === 'number' &&
+        Number.isSafeInteger(message.endTs)
+          ? message.endTs
+          : undefined
+      if (
+        (message.startTs !== undefined && startTs === undefined) ||
+        (message.endTs !== undefined && endTs === undefined) ||
+        (startTs !== undefined && endTs !== undefined && startTs > endTs)
+      ) {
+        reply({ success: false, events: [] })
+        return true
+      }
+
+      store.getAllEvents({ type: 'sound' })
+        .then((events) =>
+          events.filter((event) => {
+            const data = event.data as { playedAtMs?: unknown }
+            const playTime =
+              typeof data.playedAtMs === 'number' &&
+              Number.isFinite(data.playedAtMs)
+                ? data.playedAtMs
+                : event.ts
+            if (startTs !== undefined && playTime < startTs) return false
+            if (endTs !== undefined && playTime >= endTs) return false
+            return true
+          }),
+        )
+        .then((events) => reply({ success: true, events }))
+        .catch((e) => {
+          console.error('[Background] QUERY_SOUND_EVENTS error:', e)
+          reply({ success: false, events: [] })
+        })
       return true
     }
 

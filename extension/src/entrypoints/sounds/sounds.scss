@@ -1,0 +1,496 @@
+// ABOUTME: Styles the warm extension-internal internet sounds portrait.
+// ABOUTME: Defines the timeline, playback controls, sound marks, and collection grid.
+
+@use '../../styles/variables' as *;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: $bg;
+  color: $text;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.sounds-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(212, 184, 92, 0.07), transparent 28%),
+    radial-gradient(circle at 82% 22%, rgba(74, 154, 138, 0.06), transparent 30%),
+    $bg;
+  color: $text;
+  font-family: $font-body;
+
+  &__header {
+    border-bottom: 1px solid $border;
+    padding: 42px 0 30px;
+  }
+
+  &__header-inner,
+  &__main {
+    width: min(1120px, calc(100% - 64px));
+    margin: 0 auto;
+  }
+
+  &__wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 12px;
+    font-family: $font-wordmark;
+    font-size: 13px;
+    font-style: italic;
+    color: $text-muted;
+
+    a {
+      font-family: $font-body;
+      font-size: 10px;
+      font-style: normal;
+      color: $text-faint;
+      text-decoration: none;
+
+      &:hover {
+        color: $accent-teal;
+      }
+    }
+  }
+
+  h1 {
+    margin: 0 0 7px;
+    font-family: $font-heading;
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+
+  &__header p {
+    max-width: 560px;
+    margin: 0;
+    color: $text-muted;
+    font-size: 14px;
+  }
+
+  &__main {
+    padding: 34px 0 80px;
+  }
+
+  &__error {
+    margin-bottom: 18px;
+    padding: 10px 13px;
+    border: 1px solid rgba(196, 114, 78, 0.24);
+    border-radius: 7px;
+    background: $error-bg;
+    color: $error-text;
+    font-size: 13px;
+  }
+
+  &__state {
+    padding: 80px 24px;
+    text-align: center;
+    color: $text-muted;
+    font-style: italic;
+
+    h2 {
+      margin: 0 0 8px;
+      font-family: $font-heading;
+      font-size: 26px;
+      color: $text;
+      font-style: normal;
+    }
+
+    p {
+      margin: 0 auto;
+      max-width: 400px;
+      font-style: normal;
+    }
+  }
+
+  &__seed-button {
+    @include btn-secondary;
+    margin-top: 22px;
+  }
+}
+
+.day-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+
+  button {
+    border: 0;
+    background: none;
+    color: $text-muted;
+    cursor: pointer;
+    font-size: 12px;
+
+    &:hover:not(:disabled) {
+      color: $accent-teal;
+    }
+
+    &:disabled {
+      opacity: 0.28;
+      cursor: default;
+    }
+  }
+
+  &__date {
+    display: grid;
+    grid-template-columns: 64px minmax(210px, auto) 64px;
+    align-items: center;
+    gap: 12px;
+
+    strong {
+      font-family: $font-heading;
+      font-size: 18px;
+      font-weight: 600;
+      text-align: center;
+    }
+  }
+
+  &__playback {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  &__play {
+    min-width: 58px;
+    padding: 7px 14px;
+    border: 1px solid $text !important;
+    border-radius: 999px;
+    background: $text !important;
+    color: $bg !important;
+    font-weight: 700;
+  }
+
+  label {
+    display: grid;
+    grid-template-columns: auto 58px 52px;
+    align-items: center;
+    gap: 8px;
+    color: $text-faint;
+    font-family: $font-body;
+    font-size: 8px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+
+    select {
+      padding: 4px 5px;
+      border: 1px solid $border-strong;
+      border-radius: 5px;
+      background: $bg;
+      color: $text;
+      font-family: $font-body;
+      outline: none;
+    }
+
+    output {
+      color: $text-muted;
+      font-family: $font-mono;
+    }
+  }
+
+  &__readout {
+    min-width: 62px;
+    color: $accent-rust;
+    font-family: $font-mono;
+    font-size: 10px;
+    text-align: right;
+  }
+}
+
+.sound-score {
+  padding: 20px 22px 14px;
+  border: 1px solid $border-strong;
+  border-radius: 14px;
+  background: rgba(245, 240, 232, 0.7);
+  box-shadow: 0 18px 50px $shadow;
+
+  &__track {
+    position: relative;
+    height: 270px;
+    border-right: 1px solid $border;
+    border-left: 1px solid $border;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+
+  &__staff {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    pointer-events: none;
+
+    span {
+      width: 100%;
+      border-top: 1px solid rgba(90, 78, 65, 0.1);
+    }
+  }
+
+  &__playhead {
+    position: absolute;
+    z-index: 6;
+    top: -5px;
+    bottom: -5px;
+    left: 0;
+    width: 1px;
+    background: $accent-rust;
+    pointer-events: none;
+
+    span {
+      position: absolute;
+      top: -3px;
+      left: -4px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: $accent-rust;
+    }
+  }
+
+  &__axis,
+  &__summary {
+    display: flex;
+    justify-content: space-between;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 8px;
+  }
+
+  &__axis {
+    padding-top: 9px;
+  }
+
+  &__summary {
+    justify-content: flex-start;
+    gap: 18px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid $border;
+    color: $text-muted;
+  }
+}
+
+.sound-mark {
+  position: absolute;
+  z-index: 2;
+  width: 3px;
+  min-height: 18px;
+  border-radius: 2px;
+  background: $accent-teal;
+  box-shadow: 0 0 0 1px rgba(74, 154, 138, 0.08);
+  cursor: help;
+  opacity: 0.82;
+  transform: translateX(-50%);
+  transition: width 0.12s, opacity 0.12s;
+
+  &:nth-of-type(4n + 1) {
+    background: $accent-rust;
+  }
+
+  &:nth-of-type(4n + 2) {
+    background: $accent-blue;
+  }
+
+  &:nth-of-type(4n + 3) {
+    background: $accent-gold;
+  }
+
+  &:hover,
+  &:focus {
+    z-index: 8;
+    width: 7px;
+    opacity: 1;
+    outline: none;
+  }
+
+  &--detached {
+    border-radius: 999px;
+  }
+
+  &--silent {
+    width: 1px;
+    background: $text-faint !important;
+    box-shadow: none;
+    opacity: 0.34;
+  }
+
+  &__detail {
+    position: absolute;
+    z-index: 10;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    display: none;
+    width: 210px;
+    padding: 11px 12px;
+    border: 1px solid $border-strong;
+    border-radius: 8px;
+    background: $bg;
+    box-shadow: 0 12px 28px rgba(61, 56, 51, 0.12);
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 8px;
+    line-height: 1.55;
+    transform: translateX(-50%);
+
+    strong,
+    span,
+    b {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      color: $text;
+      font-size: 9px;
+    }
+
+    b {
+      color: $accent-rust;
+      font-weight: 400;
+      text-transform: uppercase;
+    }
+  }
+
+  &:hover &__detail,
+  &:focus &__detail {
+    display: block;
+  }
+}
+
+.sound-collection {
+  margin-top: 42px;
+
+  &__heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 14px;
+
+    h2 {
+      margin: 0;
+      font-family: $font-heading;
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    span {
+      color: $text-faint;
+      font-family: $font-mono;
+      font-size: 9px;
+    }
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+.domain-sounds {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 14px 15px;
+  border: 1px solid $border;
+  border-radius: 9px;
+  background: rgba(245, 240, 232, 0.54);
+
+  h3 {
+    max-width: 260px;
+    margin: 0 0 3px;
+    overflow: hidden;
+    color: $text;
+    font-size: 13px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  p {
+    margin: 0;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 8px;
+  }
+
+  &__clips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-left: 16px;
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 4px 6px;
+      border: 1px solid $border-strong;
+      border-radius: 5px;
+      background: $bg;
+      color: $text-muted;
+      cursor: pointer;
+      font-family: $font-mono;
+      font-size: 7px;
+
+      &:hover {
+        border-color: $accent-teal;
+        color: $accent-teal;
+      }
+
+      svg {
+        width: 8px;
+        height: 8px;
+        fill: currentColor;
+      }
+    }
+  }
+
+  &__none {
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 8px;
+  }
+}
+
+@media (max-width: 760px) {
+  .sounds-page {
+    &__header-inner,
+    &__main {
+      width: min(100% - 32px, 1120px);
+    }
+  }
+
+  .day-controls {
+    align-items: stretch;
+    flex-direction: column;
+
+    &__date {
+      grid-template-columns: 58px minmax(160px, 1fr) 58px;
+    }
+
+    &__playback {
+      justify-content: space-between;
+    }
+  }
+
+  .sound-collection__grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -4,6 +4,7 @@
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
 - Sound playback metadata is now collected locally for the future internet sounds portrait.
 - Short sound clips are now acquired and stored locally for the future internet sounds portrait.
+- Collected sound clips can now be played as a compressed day-long score in the local internet sounds portrait.
 
 <!--
 Add a bullet here in any PR that changes the extension itself (extension/src/**
