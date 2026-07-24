@@ -7,6 +7,7 @@ import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData } from '../collectors/types'
+import { getScrapKey } from '../collectors/scrapUtils'
 import {
   ensurePlayerIdentity,
   getPlayerProfile,
@@ -32,17 +33,104 @@ import {
 } from '../milestones/milestones'
 import { getSessionId } from '../storage/participant'
 
-export interface ScrapRecord {
+interface ScrapRecordBase {
   id: string
-  src: string
-  alt?: string
-  pageTitle: string
-  faviconUrl?: string
+  key: string
   domain: string
   pageUrl: string
   ts: number
-  naturalWidth: number
-  naturalHeight: number
+  pageTitle: string
+  faviconUrl?: string
+}
+
+export type ScrapRecord = ScrapRecordBase & (
+  | {
+      kind: "image"
+      src: string
+      alt?: string
+      naturalWidth: number
+      naturalHeight: number
+    }
+  | {
+      kind: "button"
+      text: string
+      styles: Record<string, string>
+      innerSvg?: string
+    }
+  | {
+      kind: "svg-icon"
+      markup: string
+      width: number
+      height: number
+    }
+  | {
+      kind: "cursor"
+      url: string
+      hotspotX?: number
+      hotspotY?: number
+    }
+)
+
+function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
+  const kind = (event.data as { kind?: unknown } | null)?.kind
+  if (
+    kind !== "image" &&
+    kind !== "button" &&
+    kind !== "svg-icon" &&
+    kind !== "cursor"
+  ) {
+    return undefined
+  }
+  if (!event.domain) {
+    throw new Error(`Scrap event ${event.id} is missing its domain`)
+  }
+
+  const data = event.data as ScrapEventData
+  const base: ScrapRecordBase = {
+    id: event.id,
+    key: getScrapKey(data),
+    domain: event.domain,
+    pageUrl: event.meta.url,
+    ts: event.ts,
+    pageTitle: data.pageTitle,
+    ...(data.faviconUrl ? { faviconUrl: data.faviconUrl } : {}),
+  }
+
+  switch (data.kind) {
+    case "image":
+      return {
+        ...base,
+        kind: data.kind,
+        src: data.src,
+        ...(data.alt ? { alt: data.alt } : {}),
+        naturalWidth: data.naturalWidth,
+        naturalHeight: data.naturalHeight,
+      }
+    case "button":
+      return {
+        ...base,
+        kind: data.kind,
+        text: data.text,
+        styles: data.styles,
+        ...(data.innerSvg ? { innerSvg: data.innerSvg } : {}),
+      }
+    case "svg-icon":
+      return {
+        ...base,
+        kind: data.kind,
+        markup: data.markup,
+        width: data.width,
+        height: data.height,
+      }
+    case "cursor":
+      return {
+        ...base,
+        kind: data.kind,
+        url: data.url,
+        ...(data.hotspotX !== undefined ? { hotspotX: data.hotspotX } : {}),
+        ...(data.hotspotY !== undefined ? { hotspotY: data.hotspotY } : {}),
+      }
+  }
 }
 
 const store = new LocalEventStore()
@@ -381,25 +469,12 @@ export default defineBackground(() => {
     if (message.type === 'GET_SCRAPS') {
       const limit = (message.options?.limit ?? 5000) as number
       store.queryByType('element', { limit })
-        .then((events) => events.flatMap((event): ScrapRecord[] => {
-          if (!event.domain) {
-            throw new Error(`Scrap event ${event.id} is missing its domain`)
-          }
-          const data = event.data as ScrapEventData
-          if (data.kind !== 'image') return []
-          return [{
-            id: event.id,
-            src: data.src,
-            ...(data.alt ? { alt: data.alt } : {}),
-            pageTitle: data.pageTitle,
-            ...(data.faviconUrl ? { faviconUrl: data.faviconUrl } : {}),
-            domain: event.domain,
-            pageUrl: event.meta.url,
-            ts: event.ts,
-            naturalWidth: data.naturalWidth,
-            naturalHeight: data.naturalHeight,
-          }]
-        }))
+        .then((events) => events
+          .sort((first, second) => second.ts - first.ts)
+          .flatMap((event): ScrapRecord[] => {
+            const scrap = toScrapRecord(event)
+            return scrap ? [scrap] : []
+          }))
         .then((scraps) => reply({ scraps }))
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)

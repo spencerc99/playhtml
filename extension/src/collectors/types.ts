@@ -119,10 +119,38 @@ export interface ImageScrapData {
   faviconUrl?: string;
 }
 
-// Discriminated union over the object kinds the scrap collector captures
-// (future kinds: button, input, svg-icon, ...). Sound is a separate event
-// type with its own collection pipeline, not a scrap kind.
-export type ScrapEventData = ImageScrapData;
+export interface ButtonScrapData {
+  kind: "button";
+  text: string;
+  styles: Record<string, string>;
+  innerSvg?: string;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
+export interface SvgIconScrapData {
+  kind: "svg-icon";
+  markup: string;
+  width: number;
+  height: number;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
+export interface CursorScrapData {
+  kind: "cursor";
+  url: string;
+  hotspotX?: number;
+  hotspotY?: number;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
+export type ScrapEventData =
+  | ImageScrapData
+  | ButtonScrapData
+  | SvgIconScrapData
+  | CursorScrapData;
 
 /**
  * Collector configuration
