@@ -105,7 +105,7 @@ const CursorPasture = withSharedState(
             createdAt: Date.now(),
           };
           if (existingIdx >= 0) {
-            draft.cursors[existingIdx] = newDrawing;
+            draft.cursors.splice(existingIdx, 1, newDrawing);
           } else {
             draft.cursors.push(newDrawing);
           }
