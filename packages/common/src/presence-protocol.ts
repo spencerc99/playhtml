@@ -3,6 +3,7 @@
 
 import {
   MAX_PLAYER_IDENTITY_COLORS,
+  MAX_PLAYER_IDENTITY_CUSTOM_BYTES,
   MAX_PLAYER_IDENTITY_STRING_LENGTH,
   type Cursor,
   type CursorZonePosition,
@@ -177,7 +178,7 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
   }
   assertPublicPresenceFields(
     value,
-    ["publicKey", "name", "playerStyle", "createdAt"],
+    ["publicKey", "name", "playerStyle", "createdAt", "custom"],
     "identity",
   );
   validateRequiredBoundedString(
@@ -226,6 +227,34 @@ function assertPlayerIdentity(value: unknown): asserts value is PlayerIdentity {
   );
   if (value.createdAt !== undefined && !Number.isFinite(value.createdAt)) {
     throw new Error("identity.createdAt must be a finite number");
+  }
+  if (value.custom !== undefined) {
+    validateIdentityCustom(value.custom);
+  }
+}
+
+export function validateIdentityCustom(value: unknown): void {
+  if (!isPresenceRecord(value)) {
+    throw new Error("identity.custom must be an object");
+  }
+
+  let json: string;
+  try {
+    json = JSON.stringify(value);
+  } catch {
+    throw new Error("identity.custom must be JSON-serializable");
+  }
+
+  if (json === undefined) {
+    throw new Error("identity.custom must be JSON-serializable");
+  }
+
+  if (
+    new TextEncoder().encode(json).byteLength > MAX_PLAYER_IDENTITY_CUSTOM_BYTES
+  ) {
+    throw new Error(
+      `identity.custom must be ${MAX_PLAYER_IDENTITY_CUSTOM_BYTES} bytes or less`,
+    );
   }
 }
 

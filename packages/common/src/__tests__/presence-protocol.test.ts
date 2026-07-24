@@ -12,6 +12,7 @@ import {
   isCursor,
   isPlayerIdentity,
   isPresenceRecord,
+  validateIdentityCustom,
   validatePresenceClientMessage,
 } from "../presence-protocol";
 
@@ -259,5 +260,76 @@ describe("presence protocol", () => {
         playerStyle: { colorPalette: ["red"], cursorStyle: "\u0000" },
       }),
     ).toBe(false);
+  });
+
+  it("accepts a join with a valid identity.custom bag", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+          custom: { mood: "curious", streak: 3 },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects identity.custom that is an array", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+          custom: ["mood", "curious"],
+        },
+      }),
+    ).toThrow("identity.custom must be an object");
+  });
+
+  it("rejects identity.custom that is a string", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+          custom: "curious",
+        },
+      }),
+    ).toThrow("identity.custom must be an object");
+  });
+
+  it("rejects identity.custom that is a number", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+          custom: 42,
+        },
+      }),
+    ).toThrow("identity.custom must be an object");
+  });
+
+  it("rejects identity.custom exceeding 1024 bytes", () => {
+    expect(() =>
+      validatePresenceClientMessage({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+          custom: { blob: "x".repeat(1024) },
+        },
+      }),
+    ).toThrow("identity.custom must be 1024 bytes or less");
+  });
+
+  it("validateIdentityCustom accepts a small object", () => {
+    expect(() =>
+      validateIdentityCustom({ mood: "curious", streak: 3 }),
+    ).not.toThrow();
   });
 });

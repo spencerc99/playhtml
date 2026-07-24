@@ -1,0 +1,154 @@
+---
+title: "Users"
+description: "Durable user identity: name, color, and custom properties for everyone in the room."
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+`playhtml.users` is where you read and set who someone is: their name, color, and any custom properties your app cares about. It works whether or not cursors are enabled.
+
+It helps to keep three things apart. **Users** is who people are — durable identity that persists across visits. [**Presence**](/docs/data/presence/) is what they're doing right now — live, ephemeral channels that disappear when they leave. **Cursors** are the rendered layer on top of both — the little pointer and label you see moving around the page.
+
+## `users.me`
+
+Your own identity. Reading it gives you a flat object; writing to its fields persists the change and publishes it to everyone else in the room.
+
+```js
+playhtml.users.me.name;    // "Alice"
+playhtml.users.me.color;   // "#3b82f6"
+playhtml.users.me.pid;     // a stable per-user id
+playhtml.users.me.custom;  // { mood: "curious" }
+
+// Persist and publish a new name
+playhtml.users.me.name = "Bob";
+
+// Persist and publish a new color (also updates your cursor, if cursors are enabled)
+playhtml.users.me.color = "#ff0000";
+```
+
+### Custom properties
+
+`custom` is a bag for whatever your app needs — a mood, a status, a team id — as long as it's JSON-serializable. It syncs to everyone else in the room and, when cursors are enabled, arrives on other clients as `presence.playerIdentity.custom` wherever presence data is already available: `shouldRenderCursor`, `getCursorStyle`, `onCustomCursorRender`, and `getCursorPresences()`. See [Cursors](/docs/data/presence/cursors/) for those hooks.
+
+Assigning `users.me.custom` replaces the entire bag and persists it, the same way `name` and `color` persist across visits:
+
+```js
+playhtml.users.me.custom = { mood: "curious", team: "blue" };
+```
+
+Use `setCustom` to merge a single key without touching the rest of the bag:
+
+```js
+// Persists across visits (default)
+playhtml.users.me.setCustom("team", "blue");
+
+// Session-only: syncs to everyone now, but won't survive a reload
+playhtml.users.me.setCustom("typing", true, { persist: false });
+
+// Delete a key
+playhtml.users.me.setCustom("mood", undefined);
+```
+
+The whole bag is capped at 1KB once serialized, so keep it to small values, not large blobs.
+
+## `getAll()` and `onChange()`
+
+`getAll()` returns everyone currently in the room, keyed by participant id — including yourself, flagged with `isMe`. This works without cursors enabled.
+
+```js
+const users = playhtml.users.getAll();
+for (const [pid, user] of users) {
+  user.name;    // string | undefined
+  user.color;   // string
+  user.custom;  // Record<string, unknown>
+  user.isMe;    // boolean
+}
+```
+
+`onChange(callback)` subscribes to join/leave/identity changes (yours or anyone else's) and returns an unsubscribe function:
+
+```js
+const unsubscribe = playhtml.users.onChange((users) => {
+  console.log(`${users.size} people here`);
+});
+
+// Later
+unsubscribe();
+```
+
+### Example: a live roster
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+function renderRoster(users) {
+  const list = document.querySelector("#roster");
+  list.innerHTML = "";
+  for (const [, user] of users) {
+    const item = document.createElement("li");
+    item.textContent = user.name ?? "anonymous";
+    item.style.color = user.color;
+    list.appendChild(item);
+  }
+}
+
+playhtml.users.onChange(renderRoster);
+renderRoster(playhtml.users.getAll());
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { useUsers } from "@playhtml/react";
+
+function Roster() {
+  const users = useUsers();
+
+  return (
+    <ul>
+      {[...users.values()].map((user) => (
+        <li key={user.pid} style={{ color: user.color }}>
+          {user.name ?? "anonymous"}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+  </TabItem>
+</Tabs>
+
+## React
+
+### `useUsers()`
+
+Reactive version of `getAll()`. Re-renders your component whenever someone joins, leaves, or changes their identity.
+
+```tsx
+import { useUsers } from "@playhtml/react";
+
+function OnlineCount() {
+  const users = useUsers();
+  return <div>{users.size} online</div>;
+}
+```
+
+### `usePlayerIdentity()`
+
+Reads your own identity reactively, including `custom`. It does not require cursors to be enabled.
+
+```tsx
+import { usePlayerIdentity } from "@playhtml/react";
+
+function Profile() {
+  const { color, pid, name, custom } = usePlayerIdentity();
+  return (
+    <div style={{ color }}>
+      {name ?? "anonymous"} {custom.status === "away" ? "(away)" : ""}
+    </div>
+  );
+}
+```
+
+See the [React API reference](/docs/reference/react-api/#useusers) for full signatures.
