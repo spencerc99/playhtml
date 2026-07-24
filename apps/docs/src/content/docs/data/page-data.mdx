@@ -37,10 +37,22 @@ function VisitCounter() {
   </TabItem>
 </Tabs>
 
+Channels can also hold a primitive value. Pass the next value directly or return
+the next value from a functional update:
+
+```js
+const viewCount = playhtml.createPageData("viewCount", 0);
+viewCount.setData((value) => value + 1);
+```
+
+For object and array channels, function updates are mutators: edit the draft in
+place and ignore its return value. For primitive channels, the function's return
+value becomes the next stored value.
+
 The vanilla channel handle exposes four methods (`usePageData` wraps these for you):
 
 - **`getData()`**: read the current value synchronously.
-- **`setData(value | (draft) => void)`**: write. Accepts a replacement value or a mutator function, with the same merge semantics as element `setData`; see [data essentials](/docs/data/data-essentials/).
+- **`setData(value | updater)`**: write. Pass a replacement value, mutate an object/array draft in place, or return the next primitive value from an updater; see [data essentials](/docs/data/data-essentials/).
 - **`onUpdate(cb)`**: subscribe to changes. Returns an unsubscribe function.
 - **`destroy()`**: detach the channel and its observers. Call this when the channel is no longer needed (e.g. on teardown) to avoid leaking the subscription.
 

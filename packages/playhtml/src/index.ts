@@ -2931,6 +2931,7 @@ export type {
   ElementAwarenessEventHandlerData,
   ElementInitializer,
   PageDataChannel,
+  PageDataSetter,
   PlayerIdentity,
   Cursor,
   CursorPresence,

@@ -396,9 +396,13 @@ export * from "./sharedElements";
 export * from "./cursor-types";
 import type { Cursor, PlayerIdentity } from "./cursor-types";
 
+export type PageDataSetter<T> = T extends object
+  ? T | ((draft: T) => void)
+  : T | ((value: T) => T);
+
 export interface PageDataChannel<T> {
   getData(): T;
-  setData(data: T | ((draft: T) => void)): void;
+  setData(data: PageDataSetter<T>): void;
   onUpdate(callback: (data: T) => void): () => void;
   destroy(): void;
 }

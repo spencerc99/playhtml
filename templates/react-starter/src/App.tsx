@@ -11,6 +11,7 @@ import {
   CanGrowElement,
   CanHoverElement,
   CanDuplicateElement,
+  usePageData,
   withSharedState,
 } from "@playhtml/react";
 
@@ -107,6 +108,16 @@ const ReactionButton = withSharedState(
     );
   }
 );
+
+function VisitCounter() {
+  const [count, setCount] = usePageData("visit-count", 0);
+
+  return (
+    <button onClick={() => setCount((value) => value + 1)}>
+      {count} visits
+    </button>
+  );
+}
 
 function App() {
   const [highlightedCapability, setHighlightedCapability] = useState<string | null>(null);
@@ -260,6 +271,11 @@ function App() {
           <div style={{ marginTop: "2rem" }}>
             <p>Here's a reaction button! Everyone can see how many people have reacted</p>
             <ReactionButton />
+          </div>
+
+          <div style={{ marginTop: "2rem" }}>
+            <p>Here's a page-level visit counter!</p>
+            <VisitCounter />
           </div>
 
           <hr style={{ margin: "3rem 0", border: "none", borderTop: "4px solid #fff" }} />
