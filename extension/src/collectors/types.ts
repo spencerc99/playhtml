@@ -107,6 +107,23 @@ export interface ViewportEventData {
   quantity?: number;      // number of events that occurred during debounce window
 }
 
+export interface ImageScrapData {
+  kind: "image";
+  src: string;
+  alt?: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  displayWidth: number;
+  displayHeight: number;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
+// Discriminated union over the object kinds the scrap collector captures
+// (future kinds: button, input, svg-icon, ...). Sound is a separate event
+// type with its own collection pipeline, not a scrap kind.
+export type ScrapEventData = ImageScrapData;
+
 /**
  * Collector configuration
  */

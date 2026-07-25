@@ -20,11 +20,16 @@ Worker backend (in `worker/`):
 The extension ships independently of the core packages, mirroring the
 changesets release-PR flow but on a separate cadence.
 
-**Day-to-day:** when a PR changes the extension itself — `extension/src/**`,
-`extension/wxt.config.ts`, `extension/public/**`, or anything else that ships
-in the extension zip — add a bullet to `extension/PENDING.md` for each
-meaningful user-facing change. Write each bullet as final release-note copy for
-people who use the extension:
+**Day-to-day:** when a PR changes what regular users see or get in the
+released extension — `extension/src/**`, `extension/wxt.config.ts`,
+`extension/public/**`, or anything else that ships in the extension zip — add
+a bullet to `extension/PENDING.md` for each meaningful user-facing change.
+Changes that ship dark — behind a `FLAGS.*` feature flag or the
+`internalDevFeaturesEnabled` dev toggle — do NOT get a bullet; the public
+changelog should never describe a feature users can't reach. Add the bullet in
+the PR that enables the feature for everyone.
+
+Write each bullet as final release-note copy for people who use the extension:
 
 - Lead with what they can now do, what works better, or what problem no longer
   affects them.

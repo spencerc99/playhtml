@@ -423,6 +423,15 @@ function PlayHTMLPopup() {
       onViewBagSettings={
         bagEnabled ? () => setCurrentView("bag-settings") : undefined
       }
+      onViewScraps={
+        FLAGS.SCRAPS || internalDevFeaturesEnabled
+          ? async () => {
+              const url = browser.runtime.getURL("scraps.html");
+              await browser.tabs.create({ url });
+              window.close();
+            }
+          : undefined
+      }
       onViewChangelog={async () => {
         await browser.tabs.create({ url: PUBLIC_CHANGELOG_URL });
         window.close();
