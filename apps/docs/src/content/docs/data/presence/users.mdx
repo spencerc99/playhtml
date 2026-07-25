@@ -27,6 +27,8 @@ playhtml.users.me.name = "Bob";
 playhtml.users.me.color = "#ff0000";
 ```
 
+When cursors are enabled, `window.cursors.color` and `window.cursors.name` are aliases for these same fields — see the [Cursors](/docs/data/presence/cursors/#global-cursor-api) page. `playhtml.users` is the primary API; it does not require cursors.
+
 ## `getAll()` and `onChange()`
 
 `getAll()` returns an array of everyone currently in the room, including yourself, flagged with `isMe`. This works without cursors enabled.
