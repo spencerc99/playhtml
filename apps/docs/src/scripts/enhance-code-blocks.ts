@@ -309,7 +309,7 @@ function enhanceBlock(pre: HTMLPreElement): EnhancedBlock | null {
     // Bump shared wear. The updateElement callback registered below will
     // run on this client as well as every other reader's, so we don't need
     // to update the DOM optimistically.
-    const handle = playhtml.getHandle<WearData>(elementId, "can-play");
+    const handle = playhtml.getHandle(elementId, "can-play");
     if (!handle.getData()) {
       // playhtml hasn't finished syncing yet — rare, because the button
       // only mounts after DOMContentLoaded and sync usually lands in tens
