@@ -54,6 +54,7 @@ interface ScrapCollageProps {
   seed: number;
   targetCount?: number;
   perDomainCap?: number;
+  showKindFilter?: boolean;
 }
 
 interface ScrapLayout {
@@ -72,6 +73,15 @@ const DEFAULT_PER_DOMAIN_CAP = 4;
 const DEFAULT_TARGET_COUNT = 200;
 const LONG_EDGE_BY_TIER = [96, 152, 208] as const;
 const CURSOR_TILE_SIZE = 48;
+const SCRAP_KIND_OPTIONS = [
+  { kind: "image", label: "images" },
+  { kind: "button", label: "buttons" },
+  { kind: "svg-icon", label: "icons" },
+  { kind: "cursor", label: "cursors" },
+] as const;
+
+type ScrapKind = ScrapItem["kind"];
+type ScrapKindFilter = "all" | ScrapKind;
 
 function naturalArea(item: ScrapItem): number {
   switch (item.kind) {
@@ -309,6 +319,66 @@ function buildLayout(
 }
 
 const COLLAGE_STYLES = `
+  .scrap-collage__filters {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    max-width: calc(100% - 24px);
+    pointer-events: auto;
+    transform: translateX(-50%);
+  }
+
+  .scrap-collage__filter {
+    appearance: none;
+    padding: 4px 10px;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 999px;
+    background: #f5f0e8;
+    color: #3d3833;
+    cursor: pointer;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    line-height: 1.4;
+    white-space: nowrap;
+    transition:
+      transform 140ms ease,
+      box-shadow 140ms ease,
+      border-color 140ms ease,
+      background-color 140ms ease,
+      color 140ms ease;
+  }
+
+  .scrap-collage__filter-count {
+    color: #8a8279;
+  }
+
+  .scrap-collage__filter[aria-pressed="true"] {
+    border-color: #4a9a8a;
+    background: rgba(74, 154, 138, 0.1);
+    color: #4a9a8a;
+  }
+
+  .scrap-collage__filter[aria-pressed="true"] .scrap-collage__filter-count {
+    color: #4a9a8a;
+  }
+
+  .scrap-collage__filter:hover,
+  .scrap-collage__filter:focus-visible {
+    border-color: #4a9a8a;
+    box-shadow: 0 5px 10px rgba(61, 56, 51, 0.14);
+    transform: translateY(-2px);
+  }
+
+  .scrap-collage__filter:focus-visible {
+    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline-offset: 2px;
+  }
+
   .scrap-collage__tile {
     position: absolute;
     display: block;
@@ -543,9 +613,12 @@ export function ScrapCollage({
   seed,
   targetCount,
   perDomainCap,
+  showKindFilter = false,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [selectedKind, setSelectedKind] =
+    useState<ScrapKindFilter>("all");
   const [failedScraps, setFailedScraps] = useState<Set<string>>(
     () => new Set(),
   );
@@ -553,14 +626,39 @@ export function ScrapCollage({
     () => new Set(),
   );
 
+  const kindCounts = useMemo(() => {
+    const counts: Record<ScrapKind, number> = {
+      image: 0,
+      button: 0,
+      "svg-icon": 0,
+      cursor: 0,
+    };
+    for (const item of items) {
+      counts[item.kind] += 1;
+    }
+    return counts;
+  }, [items]);
+  const filteredItems = useMemo(
+    () =>
+      selectedKind === "all"
+        ? items
+        : items.filter((item) => item.kind === selectedKind),
+    [items, selectedKind],
+  );
   const curated = useMemo(
-    () => curateScraps(items, { seed, targetCount, perDomainCap }),
-    [items, perDomainCap, seed, targetCount],
+    () => curateScraps(filteredItems, { seed, targetCount, perDomainCap }),
+    [filteredItems, perDomainCap, seed, targetCount],
   );
   const layout = useMemo(
     () => buildLayout(curated, containerSize.width, containerSize.height, seed),
     [containerSize.height, containerSize.width, curated, seed],
   );
+
+  useEffect(() => {
+    if (selectedKind !== "all" && kindCounts[selectedKind] === 0) {
+      setSelectedKind("all");
+    }
+  }, [kindCounts, selectedKind]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -601,6 +699,35 @@ export function ScrapCollage({
       style={{ position: "relative", width: "100%", height: "100%" }}
     >
       <style>{COLLAGE_STYLES}</style>
+      {showKindFilter && (
+        <div className="scrap-collage__filters" aria-label="Filter scraps">
+          <button
+            type="button"
+            className="scrap-collage__filter"
+            aria-pressed={selectedKind === "all"}
+            onClick={() => setSelectedKind("all")}
+          >
+            all{" "}
+            <span className="scrap-collage__filter-count">{items.length}</span>
+          </button>
+          {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
+            kindCounts[kind] > 0 ? (
+              <button
+                key={kind}
+                type="button"
+                className="scrap-collage__filter"
+                aria-pressed={selectedKind === kind}
+                onClick={() => setSelectedKind(kind)}
+              >
+                {label}{" "}
+                <span className="scrap-collage__filter-count">
+                  {kindCounts[kind]}
+                </span>
+              </button>
+            ) : null,
+          )}
+        </div>
+      )}
       {layout.map((scrap) => {
         if (
           failedScraps.has(scrap.item.key) ||

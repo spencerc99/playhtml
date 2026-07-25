@@ -268,7 +268,7 @@ export function ScrapsPage() {
             zIndex: 2,
           }}
         >
-          <ScrapCollage items={items} seed={seed} />
+          <ScrapCollage items={items} seed={seed} showKindFilter={true} />
         </div>
       )}
 
