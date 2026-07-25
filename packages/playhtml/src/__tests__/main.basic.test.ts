@@ -285,8 +285,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-toggle");
 
-    const handler = playhtml
-      .elementHandlers!.get("can-toggle")!
+    const handler = elementHandlers.get("can-toggle")!
       .get("toggle")!;
     handler.setData({ on: true });
     await new Promise((resolve) => queueMicrotask(resolve));

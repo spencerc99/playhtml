@@ -215,9 +215,10 @@ describe("CanPlayElement with built-in capabilities", () => {
 
   it("refreshes built-in event handlers after a React rerender", async () => {
     const { ElementHandler } = await import("../../../playhtml/src/elements");
-    const handlers = new Map([[TagType.CanPlay, new Map()]]);
-    const originalHandlers = playhtml.elementHandlers;
-    playhtml.elementHandlers = handlers as any;
+    // The component reads the module-level registry exported by playhtml (the
+    // mock spreads the real module, so this is the same Map the component sees).
+    const { elementHandlers: handlers } = await import("playhtml");
+    handlers.set(TagType.CanPlay, new Map());
     vi.mocked(playhtml.setupPlayElement).mockReset();
 
     const firstClick = vi.fn();
@@ -298,7 +299,7 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(element.classList.contains("cursordown")).toBe(false);
 
     unmount();
-    playhtml.elementHandlers = originalHandlers;
+    handlers.delete(TagType.CanPlay);
   });
 
   it("removes the mounted element on unmount", () => {

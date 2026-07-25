@@ -229,7 +229,7 @@ describe("duplicate playhtml element IDs", () => {
     element.setAttribute("can-play", "");
     document.body.append(element);
 
-    setupDevUI({
+    setupDevUIWithHandlers({
       elementHandlers: new Map([
         [
           "can-play",

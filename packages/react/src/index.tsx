@@ -3,7 +3,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "playhtml";
+import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, elementHandlers, getIdForElement } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -371,7 +371,7 @@ export function CanPlayElement<T extends object, V = any>({
       element.updateElementAwareness = updateElementAwareness;
 
       const elementId = getIdForElement(element);
-      const handlers = playhtml.elementHandlers;
+      const handlers = elementHandlers;
       if (elementId && handlers instanceof Map) {
         for (const tag of Object.keys(computedTagInfo) as TagType[]) {
           const handler = handlers.get(tag)?.get(elementId);
