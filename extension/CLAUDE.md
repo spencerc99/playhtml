@@ -23,15 +23,28 @@ changesets release-PR flow but on a separate cadence.
 **Day-to-day:** when a PR changes what regular users see or get in the
 released extension — `extension/src/**`, `extension/wxt.config.ts`,
 `extension/public/**`, or anything else that ships in the extension zip — add
-a bullet to `extension/PENDING.md` describing the user-facing change. Changes
-that ship dark — behind a `FLAGS.*` feature flag or the
+a bullet to `extension/PENDING.md` for each meaningful user-facing change.
+Changes that ship dark — behind a `FLAGS.*` feature flag or the
 `internalDevFeaturesEnabled` dev toggle — do NOT get a bullet; the public
 changelog should never describe a feature users can't reach. Add the bullet in
-the PR that enables the feature for everyone. Changes under
-`extension/website/**` (wewere.online pages and visualizations) and
-`extension/worker/**` deploy on their own and do NOT
-get PENDING bullets or extension releases. If the change should
-show public media in release notes, add the finished image or video under
+the PR that enables the feature for everyone.
+
+Write each bullet as final release-note copy for people who use the extension:
+
+- Lead with what they can now do, what works better, or what problem no longer
+  affects them.
+- Use one short sentence in plain language.
+- Include only details that help someone understand the change or use it.
+- Do not mention filenames, functions, storage engines, schemas, migrations,
+  message passing, retries, build systems, deployment, tests, PRs, or other
+  implementation and maintainer details.
+- Do not describe internal-only maintenance. If a change has no meaningful
+  user-facing effect, it does not need a bullet.
+
+Changes under `extension/website/**` (wewere.online pages and visualizations)
+and `extension/worker/**` deploy on their own and do NOT get PENDING bullets or
+extension releases. If the change should show public media in release notes,
+add the finished image or video under
 `extension/website/public/changelog/media/` and reference it from
 `PENDING.md`. Use normal Markdown images for photos/screenshots and the
 `![video: Title](/changelog/media/file.mp4)` convention for videos. The public
@@ -164,7 +177,7 @@ Individual collectors:
 ### Storage (`src/storage/`)
 
 - **EventBuffer**: Creates CollectionEvents with metadata in content-script context, batches for 3s flush, sends to background via `browser.runtime.sendMessage`.
-- **LocalEventStore**: IndexedDB v8 with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrls). Screen time from focus/blur session pairing.
+- **LocalEventStore**: IndexedDB v10 with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrlCount), with exact URL membership stored separately in `aggregate_urls`. Screen time from focus/blur session pairing.
 - **sync.ts**: Upload to Cloudflare Worker (`POST /events`), retry on failure, participant color sync.
 
 ### Identity (`src/storage/participant.ts`)
