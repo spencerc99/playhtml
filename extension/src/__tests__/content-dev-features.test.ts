@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const storageGet = vi.hoisted(() => vi.fn());
 const storageSet = vi.hoisted(() => vi.fn());
 const runtimeSendMessage = vi.hoisted(() => vi.fn());
+const publicIdentityResponse = vi.hoisted(() => ({
+  value: {
+    publicKey: "pk_test",
+    playerStyle: { colorPalette: ["#4a9a8a"] },
+  } as Record<string, unknown>,
+}));
 
 vi.mock("webextension-polyfill", () => ({
   default: {
@@ -97,15 +103,15 @@ describe("content internal development features", () => {
 
     runtimeSendMessage.mockReset();
     runtimeSendMessage.mockImplementation((message: { type?: string }) => {
-      if (message.type === "GET_PLAYER_IDENTITY") {
-        return Promise.resolve({
-          publicKey: "pk_test",
-          playerStyle: { colorPalette: ["#4a9a8a"] },
-          discoveredSites: [],
-        });
+      if (message.type === "GET_PUBLIC_PLAYER_IDENTITY") {
+        return Promise.resolve(publicIdentityResponse.value);
       }
       return Promise.resolve({});
     });
+    publicIdentityResponse.value = {
+      publicKey: "pk_test",
+      playerStyle: { colorPalette: ["#4a9a8a"] },
+    };
   });
 
   it("does not initialize inventory discovery or collection observers when internal dev features are off", async () => {
@@ -133,5 +139,42 @@ describe("content internal development features", () => {
     expect(storageGet).toHaveBeenCalledWith(["internalDevFeaturesEnabled"]);
     expect(storageGet).not.toHaveBeenCalledWith(["gameInventory"]);
     expect(mutationObserver).not.toHaveBeenCalled();
+  });
+
+  it("bounds public identity fields before injecting them", async () => {
+    publicIdentityResponse.value = {
+      publicKey: "pk_test",
+      name: "x".repeat(5000),
+      playerStyle: { colorPalette: ["#4a9a8a"] },
+    };
+    const injected = vi.fn();
+    document.addEventListener("playhtml:configure-identity", injected);
+
+    try {
+      const contentScript = (await import("../entrypoints/content")).default as {
+        main: () => void;
+      };
+
+      contentScript.main();
+
+      await vi.waitFor(() => {
+        expect(storageGet).toHaveBeenCalledWith([
+          "internalDevFeaturesEnabled",
+        ]);
+      });
+      await Promise.resolve();
+
+      expect(injected).toHaveBeenCalledOnce();
+      const event = injected.mock.calls[0][0] as CustomEvent;
+      expect(event.detail).toEqual({
+        playerIdentity: {
+          publicKey: "pk_test",
+          name: "x".repeat(512),
+          playerStyle: { colorPalette: ["#4a9a8a"] },
+        },
+      });
+    } finally {
+      document.removeEventListener("playhtml:configure-identity", injected);
+    }
   });
 });

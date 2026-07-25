@@ -6,13 +6,20 @@
 // epoch) gets every apply rejected. Without a breaker the sender re-fans-out on
 // every document update, producing a retry storm against every peer. After this
 // many consecutive rejected applies to the same (peer, direction), the sender
-// stops sending on that link until the streak is reset.
+// pauses sends on that link until a cooldown probe can confirm recovery.
 export const BRIDGE_CIRCUIT_OPEN_THRESHOLD = 5;
+export const BRIDGE_CIRCUIT_COOLDOWN_MS = 10_000;
 
 // A room can be both a source and a consumer to the same peer (bidirectional
 // share), so health is tracked per direction as well as per peer — otherwise a
 // success in one direction would clear the other direction's reject streak.
 export type BridgeDirection = "source" | "consumer";
+
+type CircuitState = {
+  consecutiveRejects: number;
+  openedAt: number | null;
+  probeInFlight: boolean;
+};
 
 function linkKey(peerRoomId: string, direction: BridgeDirection): string {
   return `${direction} ${peerRoomId}`;
@@ -24,13 +31,21 @@ function linkKey(peerRoomId: string, direction: BridgeDirection): string {
 // reopens a peer early when it resubscribes (a new page load on the consumer
 // side).
 export class BridgeHealth {
-  private consecutiveRejectsByLink = new Map<string, number>();
+  private circuitsByLink = new Map<string, CircuitState>();
+
+  constructor(private readonly now: () => number = Date.now) {}
 
   // Whether the sender should attempt a send on this link right now.
   shouldSend(peerRoomId: string, direction: BridgeDirection): boolean {
     const key = linkKey(peerRoomId, direction);
-    const rejects = this.consecutiveRejectsByLink.get(key) ?? 0;
-    return rejects < BRIDGE_CIRCUIT_OPEN_THRESHOLD;
+    const circuit = this.circuitsByLink.get(key);
+    if (!circuit || circuit.openedAt === null) return true;
+    if (this.now() - circuit.openedAt < BRIDGE_CIRCUIT_COOLDOWN_MS) {
+      return false;
+    }
+    if (circuit.probeInFlight) return false;
+    circuit.probeInFlight = true;
+    return true;
   }
 
   // Record the outcome of an apply on this link. `applied === true` clears the
@@ -44,15 +59,24 @@ export class BridgeHealth {
   ): boolean {
     const key = linkKey(peerRoomId, direction);
     if (applied) {
-      this.consecutiveRejectsByLink.delete(key);
+      this.circuitsByLink.delete(key);
       return false;
     }
-    const before = this.consecutiveRejectsByLink.get(key) ?? 0;
-    const after = before + 1;
-    this.consecutiveRejectsByLink.set(key, after);
+    const circuit = this.circuitsByLink.get(key) ?? {
+      consecutiveRejects: 0,
+      openedAt: null,
+      probeInFlight: false,
+    };
+    const before = circuit.consecutiveRejects;
+    circuit.consecutiveRejects += 1;
+    circuit.probeInFlight = false;
+    if (circuit.consecutiveRejects >= BRIDGE_CIRCUIT_OPEN_THRESHOLD) {
+      circuit.openedAt = this.now();
+    }
+    this.circuitsByLink.set(key, circuit);
     return (
       before < BRIDGE_CIRCUIT_OPEN_THRESHOLD &&
-      after >= BRIDGE_CIRCUIT_OPEN_THRESHOLD
+      circuit.consecutiveRejects >= BRIDGE_CIRCUIT_OPEN_THRESHOLD
     );
   }
 
@@ -60,7 +84,7 @@ export class BridgeHealth {
   // resubscribes (a fresh page load), so a genuine new client always gets a
   // clean attempt even if the link had previously tripped.
   reset(peerRoomId: string): void {
-    this.consecutiveRejectsByLink.delete(linkKey(peerRoomId, "source"));
-    this.consecutiveRejectsByLink.delete(linkKey(peerRoomId, "consumer"));
+    this.circuitsByLink.delete(linkKey(peerRoomId, "source"));
+    this.circuitsByLink.delete(linkKey(peerRoomId, "consumer"));
   }
 }

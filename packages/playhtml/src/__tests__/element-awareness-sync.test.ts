@@ -2,7 +2,7 @@
 // ABOUTME: Covers removal paths so ephemeral user state does not linger.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { playhtml, resetPlayHTML } from "../index";
+import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 import {
   getPresenceSocketForRoom,
   getPresenceSockets,
@@ -87,8 +87,7 @@ describe("element awareness sync", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
+    const handler = elementHandlers.get("can-play")!
       .get("room-scoped-presence")!;
     handler.setMyAwareness({ active: true } as any);
 
@@ -129,11 +128,11 @@ describe("element awareness sync", () => {
     (el as any).defaultData = {};
     (el as any).myDefaultAwareness = { hovering: false };
     (el as any).updateElement = vi.fn();
+    (el as any).updateElementAwareness = vi.fn();
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
+    const handler = elementHandlers.get("can-play")!
       .get("toggle-presence")!;
 
     // The provider only broadcasts an awareness update when y-protocols'
@@ -171,8 +170,7 @@ describe("element awareness sync", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
+    const handler = elementHandlers.get("can-play")!
       .get("single-fire-presence")!;
 
     calls.length = 0;
@@ -189,16 +187,17 @@ describe("element awareness sync", () => {
     (el as any).defaultData = {};
     (el as any).myDefaultAwareness = { active: false };
     (el as any).updateElement = vi.fn();
+    (el as any).updateElementAwareness = vi.fn();
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    playhtml.elementHandlers.get("can-play")!.get("seeded-presence")!
+    elementHandlers.get("can-play")!.get("seeded-presence")!
       .setMyAwareness({ active: true } as any);
 
     // Re-binding the same element (e.g. a framework remount) must seed the new
     // handler from the published local awareness, not myDefaultAwareness.
     await playhtml.setupPlayElementForTag(el, "can-play");
-    const handler = playhtml.elementHandlers.get("can-play")!.get("seeded-presence")!;
+    const handler = elementHandlers.get("can-play")!.get("seeded-presence")!;
     expect(handler.awareness).toEqual([{ active: true }]);
     expect(handler.getAwarenessEventHandlerData().myAwareness).toEqual({
       active: true,

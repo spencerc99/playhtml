@@ -2,7 +2,7 @@
 title: "React API"
 description: "Types and signatures for @playhtml/react: PlayProvider, withSharedState, capability components, hooks, and usePlayContext."
 sidebar:
-  order: 2
+  order: 7
 ---
 
 The full type surface of `@playhtml/react`. For a gentler introduction, see [Using React](/docs/using-react/). For concept-by-concept usage, each page under _Data_ and _Capabilities_ has a React tab alongside the vanilla form.
@@ -146,9 +146,11 @@ interface CanMoveElementProps {
 }
 ```
 
-- **`bounds`**: id or CSS selector of the container to keep the element inside. `"arena"`, `"#arena"`, and `".grid"` all work.
+- **`bounds`**: id or CSS selector of the container that constrains dragging. `"arena"`, `"#arena"`, and `".grid"` all work.
 - **`boundsMinVisible`**: fraction (`0–1`) of the element that must stay inside `bounds` on every edge. Default `1`, which keeps the full element inside. Lower values allow part of the element to hang over the edge; `0` drops the fraction constraint entirely.
 - **`boundsMinVisiblePx`**: absolute pixel floor on the keep-visible slice. Default `60`; it applies when `boundsMinVisible` allows partial overhang.
+
+Bounds apply only during dragging. Setup does not rewrite the element's initial CSS layout or persisted position.
 
 The effective keep-visible slice on each axis is `max(boundsMinVisible × size, boundsMinVisiblePx)`. Set both knobs to `0` to opt fully out of the keep-visible guarantee. See [`can-move` in the capabilities reference](/docs/capabilities/#can-move) for the interaction details.
 
@@ -254,7 +256,6 @@ Access the playhtml context from any descendant of `PlayProvider`.
 ```tsx
 interface PlayContextValue {
   isLoading: boolean;
-  hasSynced: boolean; // deprecated alias of !isLoading
   cursors: CursorEvents;
   cursorPresences: Map<string, CursorPresenceView>;
   configureCursors: (opts: Partial<CursorOptions>) => void;
@@ -265,7 +266,7 @@ interface PlayContextValue {
 }
 ```
 
-Most consumers don't read the raw context. Prefer the dedicated hooks ([`usePresence`](#usepresence), [`usePageData`](#usepagedata), [`useCursorPresences`](#usecursorpresences), [`usePlayerIdentity`](/docs/reference/use-player-identity/)) which subscribe and re-render for you.
+Most consumers don't read the raw context. Prefer the dedicated hooks ([`usePresence`](#usepresence), [`usePageData`](#usepagedata), [`useCursorPresences`](#usecursorpresences), [`usePlayerIdentity`](#useplayeridentity)) which subscribe and re-render for you.
 
 ### `isLoading`
 
@@ -286,8 +287,6 @@ useEffect(() => {
 ```
 
 Use a ref guard plus the mutator form for this kind of write, and don't include the field you write in the dependency list.
-
-`hasSynced` is a deprecated alias for `!isLoading`. Prefer `isLoading` in new code.
 
 ### `cursors`
 
@@ -401,9 +400,64 @@ useCursorZone(ref);
 return <div ref={ref} id="shared-canvas" />; // the element needs a stable id
 ```
 
+### `useUsers`
+
+Reactive version of `playhtml.users.getAll()`. Returns the live array of everyone in the room and re-renders your component on join/leave/identity changes. Works without `cursors: { enabled: true }`.
+
+```tsx
+function useUsers(): User[];
+```
+
+```tsx
+interface User {
+  pid: string;
+  name?: string;
+  color: string;
+  isMe: boolean;
+}
+```
+
+```tsx
+import { useUsers } from "@playhtml/react";
+
+function OnlineCount() {
+  const users = useUsers();
+  return <div>{users.length} online</div>;
+}
+```
+
+See [Users](/docs/data/presence/users/) for the full identity API.
+
 ### `usePlayerIdentity`
 
-Read the local player's cursor color, participant id, and name. Documented on its own page: [usePlayerIdentity](/docs/reference/use-player-identity/).
+Read the local player's color, participant id, and name. Backed by `playhtml.users`, so it works without `cursors: { enabled: true }`.
+
+```tsx
+function usePlayerIdentity(): {
+  color: string;
+  pid: string | undefined;
+  name: string | undefined;
+};
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `color` | `string` | Primary color. |
+| `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until sync. |
+| `name` | `string \| undefined` | Display name, if set. |
+
+```tsx
+import { usePlayerIdentity } from "@playhtml/react";
+
+function Profile() {
+  const { color, pid, name } = usePlayerIdentity();
+  return <div style={{ color }}>{name ?? "anonymous"}</div>;
+}
+```
+
+Values update reactively. With the "we were online" extension installed, color and `pid` reflect the extension's injected identity.
+
+To set these values or read other players, see [Users](/docs/data/presence/users/). See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
 
 ## `TagType`
 

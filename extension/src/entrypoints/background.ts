@@ -3,9 +3,17 @@
 import browser from 'webextension-polyfill'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import type { QueryOptions } from '../storage/LocalEventStore'
-import { uploadEvents, syncParticipantColor } from '../storage/sync'
+import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
+import type { ScrapEventData } from '../collectors/types'
+import {
+  ensurePlayerIdentity,
+  getPlayerProfile,
+  getPublicPlayerIdentity,
+  recordDiscoveredSite,
+} from '../storage/playerIdentity'
+import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
 import { gzipString, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
@@ -17,7 +25,25 @@ import {
   isOnCooldown,
   recordToastShown,
 } from '../milestones/state'
-import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
+import {
+  checkAllMilestones,
+  detectLongGapReturn,
+  pxToMiles,
+} from '../milestones/milestones'
+import { getSessionId } from '../storage/participant'
+
+export interface ScrapRecord {
+  id: string
+  src: string
+  alt?: string
+  pageTitle: string
+  faviconUrl?: string
+  domain: string
+  pageUrl: string
+  ts: number
+  naturalWidth: number
+  naturalHeight: number
+}
 
 const store = new LocalEventStore()
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
@@ -31,6 +57,8 @@ const LOCAL_RETENTION_LAST_RUN_KEY = 'localRetentionLastRun'
 let localRetentionRunning = false
 
 async function getBrowserStorageUsageBytes(): Promise<number | null> {
+  // Firefox ESR 140 omits storage.local.getBytesInUse, so this remains optional.
+  // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/StorageArea/getBytesInUse
   const storageArea = browser.storage.local as typeof browser.storage.local & {
     getBytesInUse?: (keys?: string | string[] | null) => Promise<number>
   }
@@ -75,6 +103,7 @@ async function flushPendingUploads(): Promise<void> {
     const result = await browser.storage.local.get(keys)
 
     const uploadable = pending.filter((e) => {
+      if (e.type === 'element') return false
       const mode = result[`collection_mode_${e.type}`]
       const normalized: 'off' | 'local' | 'shared' =
         mode === 'off' || mode === 'shared' || mode === 'local' ? mode : 'local'
@@ -126,11 +155,6 @@ async function runLocalRetention(options: { force?: boolean } = {}): Promise<voi
 }
 
 export default defineBackground(() => {
-  // Allow content scripts to access storage.session (needed for session IDs)
-  (browser.storage.session as any).setAccessLevel?.({
-    accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
-  }).catch(() => {});
-
   // Storage durability is provided by the `unlimitedStorage` permission
   // declared in wxt.config.ts — Chromium's quota manager exempts extensions
   // with this permission from both quota caps and automatic eviction.
@@ -224,75 +248,19 @@ export default defineBackground(() => {
     }, 1000);
   }
 
-  // ECDSA P-256 raw public key = 65 bytes uncompressed = 130 hex chars + 'pk_' = 133 chars.
-  // Old keys are 'pk_' + ~13 random chars from Math.random.
-  function isOldFormatKey(publicKey: string): boolean {
-    return !publicKey.startsWith('pk_') || publicKey.length < 100;
-  }
-
-  async function generateEcdsaKeypair(): Promise<{ publicKey: string; privateKey: JsonWebKey }> {
-    const keypair = await crypto.subtle.generateKey(
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      true,
-      ['sign', 'verify']
-    );
-
-    const pubRaw = await crypto.subtle.exportKey('raw', keypair.publicKey);
-    const pubHex = 'pk_' + Array.from(new Uint8Array(pubRaw))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const privJwk = await crypto.subtle.exportKey('jwk', keypair.privateKey);
-
-    return { publicKey: pubHex, privateKey: privJwk };
-  }
-
-  // Initialize player identity with ECDSA keypair, auto-upgrading old-format keys
+  // Ensure player identity has an ECDSA keypair.
   async function initializePlayerIdentity() {
     try {
-      const existing = await browser.storage.local.get(['playerIdentity'])
-
-      if (existing.playerIdentity && !isOldFormatKey(existing.playerIdentity.publicKey)) {
-        return; // Valid ECDSA key, nothing to do
-      }
-
-      // Generate new ECDSA keypair (fresh install or upgrading old key)
-      const { publicKey, privateKey } = await generateEcdsaKeypair();
-
-      const identity = {
-        publicKey,
-        privateKey,
-        playerStyle: existing.playerIdentity?.playerStyle ?? {
-          colorPalette: [randomHslColor()],
-          animationStyle: 'gentle' as const,
-          interactionPatterns: []
-        },
-        createdAt: existing.playerIdentity?.createdAt ?? Date.now(),
-        discoveredSites: existing.playerIdentity?.discoveredSites ?? []
-      }
-
-      await browser.storage.local.set({ playerIdentity: identity })
-      if (VERBOSE) console.log('[Identity] Generated new ECDSA keypair, public key:', publicKey)
-
-      // Clear legacy participant ID key so getParticipantId() reads from playerIdentity
-      await browser.storage.local.remove('collection_participant_id')
+      await ensurePlayerIdentity()
     } catch (error) {
       console.error('Failed to initialize player identity:', error)
     }
   }
 
-  function randomHslColor(): string {
-    const hue = Math.floor(Math.random() * 360);
-    const s = 65 + Math.floor(Math.random() * 15); // 65-80%
-    const l = 55 + Math.floor(Math.random() * 15); // 55-70%
-    return `hsl(${hue}, ${s}%, ${l}%)`;
-  }
-
-  // Sync participant identity (cursor color) to server on startup
+  // Sync participant identity color to server on startup.
   async function syncIdentityToServer() {
     try {
-      const { playerIdentity } = await browser.storage.local.get(['playerIdentity']);
-      if (!playerIdentity?.publicKey || !playerIdentity.playerStyle?.colorPalette?.[0]) return;
-      syncParticipantColor(playerIdentity.publicKey, playerIdentity.playerStyle.colorPalette[0]);
+      await syncStoredPlayerColor()
     } catch {}
   }
 
@@ -301,7 +269,7 @@ export default defineBackground(() => {
   // pids due to identity migration), so we apply the color unconditionally.
   async function hydrateCursorColor(events: CollectionEvent[]): Promise<CollectionEvent[]> {
     if (events.length === 0) return events
-    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
+    const playerIdentity = await getPublicPlayerIdentity()
     const cursorColor = playerIdentity?.playerStyle?.colorPalette?.[0]
     if (!cursorColor) return events
     for (const evt of events) {
@@ -313,13 +281,23 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void;
-    if (message.type === 'GET_PLAYER_IDENTITY') {
-      getPlayerIdentity().then(reply)
+    if (message.type === 'GET_SESSION_ID') {
+      getSessionId().then(reply)
+      return true
+    }
+
+    if (message.type === 'GET_PUBLIC_PLAYER_IDENTITY') {
+      getPublicPlayerIdentity().then(reply)
+      return true // Will respond asynchronously
+    }
+
+    if (message.type === 'GET_PLAYER_PROFILE') {
+      getPlayerProfile().then(reply)
       return true // Will respond asynchronously
     }
 
     if (message.type === 'UPDATE_SITE_DISCOVERY') {
-      updateSiteDiscovery(message.domain).then(reply)
+      recordDiscoveredSite(message.domain).then(reply)
       return true
     }
 
@@ -396,6 +374,36 @@ export default defineBackground(() => {
         .catch((e) => {
           console.error('[Background] GET_RECENT_EVENTS error:', e)
           reply({ success: false, events: [] })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SCRAPS') {
+      const limit = (message.options?.limit ?? 5000) as number
+      store.queryByType('element', { limit })
+        .then((events) => events.flatMap((event): ScrapRecord[] => {
+          if (!event.domain) {
+            throw new Error(`Scrap event ${event.id} is missing its domain`)
+          }
+          const data = event.data as ScrapEventData
+          if (data.kind !== 'image') return []
+          return [{
+            id: event.id,
+            src: data.src,
+            ...(data.alt ? { alt: data.alt } : {}),
+            pageTitle: data.pageTitle,
+            ...(data.faviconUrl ? { faviconUrl: data.faviconUrl } : {}),
+            domain: event.domain,
+            pageUrl: event.meta.url,
+            ts: event.ts,
+            naturalWidth: data.naturalWidth,
+            naturalHeight: data.naturalHeight,
+          }]
+        }))
+        .then((scraps) => reply({ scraps }))
+        .catch((e) => {
+          console.error('[Background] GET_SCRAPS error:', e)
+          reply({ scraps: [] })
         })
       return true
     }
@@ -484,7 +492,7 @@ export default defineBackground(() => {
               dateRange,
               ...(sessions ? { sessions } : {}),
               // Only include uniquePageCount for domain-level stats (not page-level)
-              uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrls?.length ?? 0),
+              uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrlCount ?? 0),
             },
           })
         } catch (e) {
@@ -511,7 +519,7 @@ export default defineBackground(() => {
               eventsByType: agg.eventsByType,
               firstVisit: agg.firstVisit,
               lastVisit: agg.lastVisit,
-              uniqueUrlCount: agg.uniqueUrls.length,
+              uniqueUrlCount: agg.uniqueUrlCount,
             },
           })
         })
@@ -623,7 +631,7 @@ export default defineBackground(() => {
       ;(async () => {
         try {
           const events = await store.getAllEvents()
-          const identity = await getPlayerIdentity()
+          const identity = await getPublicPlayerIdentity()
           const payload = JSON.stringify({ version: 1, exportedAt: Date.now(), events, identity })
           const compressed = await gzipString(payload)
           reply({ success: true, data: Array.from(compressed) })
@@ -642,7 +650,7 @@ export default defineBackground(() => {
           const parsed = JSON.parse(json)
           if (parsed.version !== 1) throw new Error('Unsupported export version')
           const events = parsed.events as CollectionEvent[]
-          await store.addEvents(events)
+          await store.addImportedEvents(events)
           reply({ success: true, imported: events.length })
         } catch (e) {
           console.error('[Background] IMPORT_EVENTS error:', e)
@@ -655,7 +663,7 @@ export default defineBackground(() => {
     if (message.type === 'RESTORE_FROM_SERVER') {
       ;(async () => {
         try {
-          const identity = await getPlayerIdentity()
+          const identity = await getPublicPlayerIdentity()
           const pid = identity?.publicKey
           if (!pid) {
             reply({ success: false, error: 'No player identity found' })
@@ -665,7 +673,7 @@ export default defineBackground(() => {
             'fetching all server events')
           const { events, countsByType } = await fetchEventsByPid(pid)
           console.log('[Background] Fetched', events.length, 'events, writing to IDB...')
-          await store.addEvents(events)
+          await store.addRestoredEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')
           reply({
             success: true,
@@ -680,20 +688,6 @@ export default defineBackground(() => {
       return true
     }
   })
-
-  async function getPlayerIdentity() {
-    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
-    return playerIdentity
-  }
-
-  async function updateSiteDiscovery(domain: string) {
-    const { playerIdentity } = await browser.storage.local.get(['playerIdentity'])
-
-    if (playerIdentity && !playerIdentity.discoveredSites.includes(domain)) {
-      playerIdentity.discoveredSites.push(domain)
-      await browser.storage.local.set({ playerIdentity })
-    }
-  }
 
   async function runMilestoneCheck() {
     let state = await loadState();
@@ -768,7 +762,33 @@ export default defineBackground(() => {
       topDomains.push({ domain, visitCount: agg.sessionCount, faviconUrl });
     }
 
-    const result = checkAllMilestones(state, globalStats, cursorDistancePx, topDomains);
+    // Long-gap return: for the active tab's domain, look at raw
+    // navigation timestamps and see if the user just came back after >90 days.
+    const [gapTab] = await browser.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+    const activeDomain = extractDomain(gapTab?.url ?? null);
+    let longGap: Parameters<typeof checkAllMilestones>[4] = null;
+    if (activeDomain) {
+      // No limit: queryByDomain resolves early when a limit is hit, before its
+      // ascending-by-time sort, so a limit would return the OLDEST events and
+      // miss the recent return. Navigation events are sparse (2s dedup), so an
+      // unbounded per-domain scan stays cheap.
+      const gapNavEvents = await store.queryByDomain(activeDomain, {
+        type: 'navigation',
+      });
+      const gap = detectLongGapReturn(
+        gapNavEvents.map((e) => e.ts),
+        Date.now(),
+      );
+      if (gap) {
+        const faviconUrl = topDomains.find((d) => d.domain === activeDomain)?.faviconUrl;
+        longGap = { domain: activeDomain, faviconUrl, return: gap };
+      }
+    }
+
+    const result = checkAllMilestones(state, globalStats, cursorDistancePx, topDomains, longGap);
     if (!result) {
       await saveState(state);
       return;
@@ -781,8 +801,8 @@ export default defineBackground(() => {
     const idleState = await browser.idle.queryState(60);
     if (idleState !== "active") return;
 
-    // Resolve the active tab. Use lastFocusedWindow rather than currentWindow so
-    // this works even when DevTools is the focused window.
+    // Resolve the active tab again because it may have changed while the raw
+    // event history was being queried.
     const tabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
     const tab = tabs[0];
     if (!tab?.id) return;

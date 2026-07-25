@@ -16,4 +16,8 @@ export const FLAGS = {
 
   // Inventory surface (the satchel) + the InventoryAPI. Gates the on-page UI.
   INVENTORY: true,
+
+  // Internet scraps: passive collection of distinctive images seen while
+  // browsing, rendered as a scatter-collage (scraps.html). Local-only data.
+  SCRAPS: false,
 } as const;

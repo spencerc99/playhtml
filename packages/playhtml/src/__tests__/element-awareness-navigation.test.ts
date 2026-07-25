@@ -2,7 +2,7 @@
 // ABOUTME: navigation and ignores cursor-room-only changes.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { playhtml, resetPlayHTML } from "../index";
+import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 import {
   getPresenceSocketForRoom,
   getPresenceSockets,
@@ -51,7 +51,7 @@ describe("element awareness across navigation", () => {
 
     const el = addCanPlayElement("nav-card");
     await playhtml.setupPlayElementForTag(el, "can-play");
-    playhtml.elementHandlers.get("can-play")!.get("nav-card")!
+    elementHandlers.get("can-play")!.get("nav-card")!
       .setMyAwareness({ here: true } as any);
     expect(sentChannelUpdates(socketB, "element:shard:0").at(-1)).toEqual({
       v: 1,

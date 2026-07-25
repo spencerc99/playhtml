@@ -58,6 +58,7 @@ vi.mock("webextension-polyfill", () => ({
       sendMessage: vi.fn().mockResolvedValue({}),
       onMessage: {
         addListener: vi.fn(),
+        removeListener: vi.fn(),
       },
     },
     tabs: {
@@ -101,7 +102,7 @@ vi.mock("../config", () => ({
 
 // Mock participant storage
 vi.mock("../storage/participant", () => ({
-  getParticipantId: vi.fn().mockResolvedValue("test-participant-id"),
   getSessionId: vi.fn().mockResolvedValue("test-session-id"),
+  requestSessionId: vi.fn().mockResolvedValue("test-session-id"),
   getTimezone: vi.fn().mockReturnValue("America/New_York"),
 }));

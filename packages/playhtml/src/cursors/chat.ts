@@ -1,4 +1,5 @@
-// Chat functionality for cursor presence, based on cursor-party
+// ABOUTME: Provides the keyboard-driven chat input for cursor presence.
+// ABOUTME: Manages the chat's owned document listener and DOM resources.
 
 export interface ChatOptions {
   onMessageUpdate?: (message: string | null) => void;
@@ -8,6 +9,8 @@ export class CursorChat {
   private listening: boolean = false;
   private message: string = "";
   private chatElement: HTMLElement | null = null;
+  private styleElement: HTMLStyleElement | null = null;
+  private keydownHandler: ((event: KeyboardEvent) => void) | null = null;
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private options: ChatOptions;
 
@@ -22,7 +25,7 @@ export class CursorChat {
   }
 
   private setupKeyboardHandlers(): void {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    this.keydownHandler = (event: KeyboardEvent) => {
       // Reset any timeouts
       if (this.timeout) {
         clearTimeout(this.timeout);
@@ -63,7 +66,7 @@ export class CursorChat {
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", this.keydownHandler);
   }
 
   private setListening(listening: boolean): void {
@@ -80,10 +83,10 @@ export class CursorChat {
   private createChatElement(): void {
     if (this.chatElement) return;
 
-    const style = document.createElement("style");
+    this.styleElement = document.createElement("style");
     // TODO: make background color themed based on your cursor color
     // TODO: allow customization from developers/users
-    style.textContent = `
+    this.styleElement.textContent = `
       .playhtml-chat-container {
         box-sizing: border-box;
         position: fixed;
@@ -135,7 +138,7 @@ export class CursorChat {
         background-color: transparent;
       }
     `;
-    document.head.appendChild(style);
+    document.head.appendChild(this.styleElement);
 
     this.chatElement = document.createElement("div");
     this.chatElement.className = "playhtml-chat-container";
@@ -188,13 +191,24 @@ export class CursorChat {
   }
 
   public destroy(): void {
-    if (this.timeout) {
+    if (this.keydownHandler) {
+      document.removeEventListener("keydown", this.keydownHandler);
+      this.keydownHandler = null;
+    }
+
+    if (this.timeout !== null) {
       clearTimeout(this.timeout);
+      this.timeout = null;
     }
 
     if (this.chatElement) {
       this.chatElement.remove();
       this.chatElement = null;
+    }
+
+    if (this.styleElement) {
+      this.styleElement.remove();
+      this.styleElement = null;
     }
   }
 }

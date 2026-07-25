@@ -2,6 +2,7 @@
 // ABOUTME: storming a misconfigured bridge link after repeated rejected applies.
 import { describe, expect, it } from "bun:test";
 import {
+  BRIDGE_CIRCUIT_COOLDOWN_MS,
   BRIDGE_CIRCUIT_OPEN_THRESHOLD,
   BridgeHealth,
 } from "../bridgeHealth";
@@ -29,6 +30,44 @@ describe("BridgeHealth circuit breaker", () => {
       health.recordResult("c", "source", false);
     }
     expect(health.shouldSend("c", "source")).toBe(false);
+  });
+
+  it("allows one recovery probe after the cooldown", () => {
+    let now = 0;
+    const health = new BridgeHealth(() => now);
+    tripLink(health, "c", "source");
+
+    now = BRIDGE_CIRCUIT_COOLDOWN_MS - 1;
+    expect(health.shouldSend("c", "source")).toBe(false);
+
+    now += 1;
+    expect(health.shouldSend("c", "source")).toBe(true);
+    expect(health.shouldSend("c", "source")).toBe(false);
+  });
+
+  it("returns to the cooldown after a recovery probe is rejected", () => {
+    let now = 0;
+    const health = new BridgeHealth(() => now);
+    tripLink(health, "c", "source");
+
+    now += BRIDGE_CIRCUIT_COOLDOWN_MS;
+    expect(health.shouldSend("c", "source")).toBe(true);
+    health.recordResult("c", "source", false);
+    expect(health.shouldSend("c", "source")).toBe(false);
+
+    now += BRIDGE_CIRCUIT_COOLDOWN_MS;
+    expect(health.shouldSend("c", "source")).toBe(true);
+  });
+
+  it("closes the circuit after a successful recovery probe", () => {
+    let now = 0;
+    const health = new BridgeHealth(() => now);
+    tripLink(health, "c", "source");
+
+    now += BRIDGE_CIRCUIT_COOLDOWN_MS;
+    expect(health.shouldSend("c", "source")).toBe(true);
+    health.recordResult("c", "source", true);
+    expect(health.shouldSend("c", "source")).toBe(true);
   });
 
   it("returns justOpened exactly on the threshold-crossing result", () => {

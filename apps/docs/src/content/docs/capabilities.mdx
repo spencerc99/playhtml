@@ -15,6 +15,8 @@ import { DuplicateRabbitDemo } from '@/components/react/capability-demos/Duplica
 
 Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
 
+This page has live demos and both framework forms. For attribute names, data shapes, and options, see the [capabilities reference](/docs/reference/capabilities/).
+
 :::tip[Every playhtml element needs a stable id]
 The `id` is the key an element's synced data is stored under, so it must be **stable across reloads and browsers**. That's how two visitors agree on which element is which. A hand-written `id="my-lamp"` is ideal. If you omit it, playhtml falls back to hashing the element's HTML, which can differ across browsers and break sync.
 
@@ -68,7 +70,9 @@ import { CanMoveElement } from "@playhtml/react";
 
 ### Constraining the drag area
 
-Use `can-move-bounds` (vanilla) or the `bounds` prop (React) to keep the element inside a container. The value is an element id (with or without the leading `#`) or any valid CSS selector.
+Use `can-move-bounds` (vanilla) or the `bounds` prop (React) to constrain an element while it is dragged.
+The value is an element id (with or without the leading `#`) or any valid CSS selector.
+Bounds apply only during dragging. They do not rewrite the element's initial CSS layout or persisted position during setup.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
@@ -95,7 +99,9 @@ import { CanMoveElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-The **cursor** can go past the container edge; only the element's position is clamped. By default, the whole element stays inside the container. Two knobs let you opt into partial overhang while keeping a visible slice inside:
+The **cursor** can go past the container edge.
+During a drag, only the element's position is clamped. By default, the whole element stays inside the container.
+Two knobs let you opt into partial overhang while keeping a visible slice inside:
 
 - `can-move-bounds-min-visible` / `boundsMinVisible`: fraction `(0–1)` of the element to keep inside. Default `1` pins fully inside; lower values allow part of the element to hang over the edge. `0` drops the fraction constraint entirely.
 - `can-move-bounds-min-visible-px` / `boundsMinVisiblePx`: absolute pixel floor. Default `60`; it applies when `min-visible` allows partial overhang.
@@ -113,7 +119,7 @@ The effective slice on each axis is `max(fraction × size, pxFloor)`. Set both t
   🧲
 </div>
 
-<!-- Default bounds keep the whole magnet visible. -->
+<!-- Default bounds keep the whole magnet visible while dragging. -->
 <div can-move can-move-bounds="fridge" id="tiny-magnet" style="width: 40px;">
   🌶️
 </div>
@@ -157,15 +163,15 @@ import { CanMoveElement } from "@playhtml/react";
 </style>
 ```
 
-`can-toggle` adds the `toggled` class when the element is on. The older `clicked` class is still applied for existing styles.
+`can-toggle` adds the `toggled` class when the element is on.
   </TabItem>
   <TabItem label="React">
 ```tsx
 import { CanToggleElement } from "@playhtml/react";
 
 <CanToggleElement>
-  {({ data }) => {
-    const on = typeof data === "object" ? data.on : !!data;
+  {({ data, setData }) => {
+    const on = data.on;
     return (
       <button
         id="my-switch"
@@ -386,7 +392,7 @@ Full treatment with live demos lives on **[Custom elements → can-mirror](/docs
 
 Build your own capability: you define a shared `data` shape and how the element renders from it (an imperative `updateElement`, or the newer reactive `view`). You control how the data drives the element and which parts persist. Use it for custom counters, guestbooks, chat, games, reactions, per-user state, and event broadcasts — anything the built-ins don't cover.
 
-Full guide, with the imperative and reactive `view` forms (vanilla) and `withSharedState` (React) side by side — plus live demos: **[Custom elements](/docs/custom-elements/)**.
+Full guide with live demos: **[Custom elements](/docs/custom-elements/)**. Property reference: **[Element API](/docs/reference/element-api/)**.
 
 ---
 

@@ -7,7 +7,7 @@ import type {
   PresenceClientMessage,
   PresenceServerMessage,
 } from "@playhtml/common";
-import { validatePresenceClientMessage } from "@playhtml/common";
+import { clonePlain, validatePresenceClientMessage } from "@playhtml/common";
 import {
   isPresenceRecord,
   isPresenceRemoves,
@@ -67,21 +67,27 @@ export class RealtimePresenceTransport {
   }
 
   join(input: PresenceJoinInput): void {
-    this.latestJoin = input;
-    this.sendIfOpen({
+    const snapshot = clonePlain(input);
+    const message = {
       type: "presence-join",
-      identity: input.identity,
-      page: input.page,
-    });
+      identity: snapshot.identity,
+      page: snapshot.page,
+    } satisfies PresenceClientMessage;
+    validatePresenceClientMessage(message);
+    this.latestJoin = snapshot;
+    this.sendIfOpen(message);
   }
 
   update(channel: string, value: unknown): void {
-    this.channelValues.set(channel, value);
-    this.sendIfOpen({
+    const snapshot = clonePlain(value);
+    const message = {
       type: "presence-update",
       channel,
-      value,
-    });
+      value: snapshot,
+    } satisfies PresenceClientMessage;
+    validatePresenceClientMessage(message);
+    this.channelValues.set(channel, snapshot);
+    this.sendIfOpen(message);
   }
 
   clear(channel: string): void {

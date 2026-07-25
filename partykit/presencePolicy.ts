@@ -8,7 +8,6 @@ import type {
   PresenceSnapshot,
   PresenceSyncMessage,
 } from "@playhtml/common";
-import { getPresenceChannelCadence } from "@playhtml/common";
 
 const PRESENCE_RATE_WINDOW_MS = 1000;
 const MAX_PRESENCE_CHANNELS_PER_CONNECTION = 32;
@@ -206,9 +205,29 @@ export function applyPresenceClientMessage(
     case "presence-clear":
       recordPresenceClear(state, connectionId, message.channel);
       return;
-    case "presence-ping":
-      return;
   }
+}
+
+export function commitPresenceClientMessage(
+  state: PresenceRoomState,
+  connectionId: string,
+  storedChannels: Record<string, unknown>,
+  message: PresenceClientMessage,
+  persist: (channels: Record<string, unknown>) => void,
+): void {
+  const candidateState = createPresenceRoomState();
+  restorePresenceConnectionChannels(
+    candidateState,
+    connectionId,
+    storedChannels,
+  );
+  applyPresenceClientMessage(candidateState, connectionId, message);
+
+  const candidate = candidateState.peers.get(connectionId);
+  persist(candidate ? Object.fromEntries(candidate) : {});
+
+  restorePresenceConnectionChannels(state, connectionId, storedChannels);
+  applyPresenceClientMessage(state, connectionId, message);
 }
 
 function getPresenceMessageBudgetTarget(
@@ -216,11 +235,19 @@ function getPresenceMessageBudgetTarget(
 ): { bucket: PresenceMessageBudgetBucket; channel: string } {
   if (message.type === "presence-update" || message.type === "presence-clear") {
     return {
-      bucket: getPresenceChannelCadence(message.channel),
+      bucket: getPresenceMessageBudgetBucket(message.channel),
       channel: message.channel,
     };
   }
   return { bucket: "control", channel: "control" };
+}
+
+function getPresenceMessageBudgetBucket(
+  channel: string,
+): PresenceChannelCadence {
+  if (channel === "cursor") return "frame";
+  if (channel.startsWith("element:")) return "interactive";
+  return "event";
 }
 
 function getOrCreate<K, V>(

@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/react",
   "description": "Create interactive, collaborative html elements in React",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -41,7 +41,7 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "test": "vitest run --no-typecheck",
+    "test": "vitest run --no-typecheck && vitest run --no-typecheck --config vitest.integration.config.ts",
     "test:watch": "vitest --no-typecheck"
   },
   "publishConfig": {

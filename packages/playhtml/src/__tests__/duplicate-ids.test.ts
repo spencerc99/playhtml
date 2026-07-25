@@ -8,7 +8,17 @@ import {
   teardownDevUI,
 } from "../development";
 import { ElementHandler } from "../elements";
-import { playhtml, resetPlayHTML } from "../index";
+import { elementHandlers, playhtml, resetPlayHTML } from "../index";
+
+// setupDevUI takes the handler registry as its own argument; these tests
+// build a stub playhtml object with the registry inline, so split it out.
+function setupDevUIWithHandlers(stub: Record<string, unknown>) {
+  const { elementHandlers: handlers, ...playhtmlStub } = stub;
+  setupDevUI(
+    playhtmlStub as any,
+    handlers as Map<string, Map<string, ElementHandler>>,
+  );
+}
 
 describe("duplicate playhtml element IDs", () => {
   beforeEach(async () => {
@@ -34,7 +44,7 @@ describe("duplicate playhtml element IDs", () => {
     element: HTMLElement,
     data: unknown = {},
   ) {
-    setupDevUI({
+    setupDevUIWithHandlers({
       elementHandlers: new Map([
         [
           tagType,
@@ -75,7 +85,7 @@ describe("duplicate playhtml element IDs", () => {
 
     await playhtml.setupPlayElementForTag(second, "can-toggle");
 
-    const handler = playhtml.elementHandlers
+    const handler = elementHandlers
       .get("can-toggle")!
       .get("duplicate-card")!;
     expect(handler.element).toBe(first);
@@ -105,7 +115,7 @@ describe("duplicate playhtml element IDs", () => {
 
     playhtml.removePlayElement(second);
 
-    const handler = playhtml.elementHandlers
+    const handler = elementHandlers
       .get("can-move")!
       .get("duplicate-removal")!;
     expect(handler.element).toBe(first);
@@ -115,6 +125,7 @@ describe("duplicate playhtml element IDs", () => {
     await playhtml.init({ developmentMode: true });
     vi.useFakeTimers();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "table").mockImplementation(() => {});
 
     const element = document.createElement("div");
     element.id = "shared-consumer";
@@ -179,7 +190,7 @@ describe("duplicate playhtml element IDs", () => {
 
     document.body.append(firstToggle, secondToggle);
 
-    setupDevUI({
+    setupDevUIWithHandlers({
       elementHandlers: new Map([
         [
           "can-toggle",
@@ -210,6 +221,63 @@ describe("duplicate playhtml element IDs", () => {
     expect(warning!.textContent).toContain("can-toggle");
   });
 
+  it("edits primitive leaf values through the handler setData path", async () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+    const setData = vi.fn();
+    const element = document.createElement("div");
+    element.id = "editable-card";
+    element.setAttribute("can-play", "");
+    document.body.append(element);
+
+    setupDevUIWithHandlers({
+      elementHandlers: new Map([
+        [
+          "can-play",
+          new Map([
+            [
+              "editable-card",
+              {
+                element,
+                data: {
+                  title: "hello",
+                  stats: { count: 1, active: false },
+                },
+                defaultData: {
+                  title: "hello",
+                  stats: { count: 0, active: false },
+                },
+                setData,
+              },
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    const countValue = Array.from(
+      document.querySelectorAll<HTMLElement>(".ph-json-leaf-value"),
+    ).find((node) => node.textContent === "1");
+
+    countValue!.click();
+    const input = document.querySelector<HTMLInputElement>(
+      ".ph-json-edit-input",
+    )!;
+    input.value = "7";
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+
+    expect(setData).toHaveBeenCalledWith({
+      title: "hello",
+      stats: { count: 7, active: false },
+    });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+
   it("updates the dev tools data tree when handler data changes", async () => {
     vi.spyOn(console, "table").mockImplementation(() => {});
 
@@ -229,7 +297,7 @@ describe("duplicate playhtml element IDs", () => {
       triggerAwarenessUpdate: () => {},
     } as any);
 
-    setupDevUI({
+    setupDevUIWithHandlers({
       elementHandlers: new Map([
         [
           "can-play",
@@ -278,7 +346,7 @@ describe("duplicate playhtml element IDs", () => {
       triggerAwarenessUpdate: () => {},
     } as any);
 
-    setupDevUI({
+    setupDevUIWithHandlers({
       elementHandlers: new Map([
         [
           "can-play",

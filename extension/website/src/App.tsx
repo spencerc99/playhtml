@@ -1,16 +1,25 @@
 // ABOUTME: Homepage for wewere.online
 // ABOUTME: Single-page landing — hero with downloads, three pull-quote beats with living elements, guestbook
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import {
+  Suspense,
+  lazy,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { LiveIndicator } from "@movement/components/LiveIndicator";
 import { WordmarkClock } from "@movement/components/WordmarkClock";
+import { CLICK_DEFAULTS } from "@movement/components/clickDefaults";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { summarizeActiveLocations } from "@movement/utils/eventUtils";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
 import { useAccumulatedEvents } from "@movement/hooks/useAccumulatedEvents";
 import { PresenceIndicator } from "./components/PresenceIndicator";
-import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
 import { CoffeeMachine } from "./components/CoffeeMachine";
 import { DownloadGate } from "./components/DownloadGate";
@@ -20,6 +29,12 @@ import {
   LIVE_PORTRAIT_URL,
 } from "./navigation";
 import styles from "./App.module.scss";
+
+const LazyAuraGuestbook = lazy(() =>
+  import("./components/AuraGuestbook").then(({ AuraGuestbook }) => ({
+    default: AuraGuestbook,
+  })),
+);
 
 const ALIVE_INTERNET_ESSAY_URL =
   "https://news.spencer.place/p/alive-internet-theory";
@@ -83,6 +98,42 @@ function RisoTexture() {
   );
 }
 
+function LazyOnVisible({
+  children,
+  fallback,
+  rootMargin = "600px",
+}: {
+  children: ReactNode;
+  fallback?: ReactNode;
+  rootMargin?: string;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (isVisible) return;
+    const root = rootRef.current;
+    if (!root) return;
+    if (!("IntersectionObserver" in window)) {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setIsVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin },
+    );
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [isVisible, rootMargin]);
+
+  return <div ref={rootRef}>{isVisible ? children : fallback}</div>;
+}
+
 // Deep enough that trails stay on screen for minutes (don't age off the window
 // while you're watching). A live trail leaves only when its events finally fall
 // out of this rolling buffer.
@@ -116,17 +167,8 @@ const ANIMATION_SETTINGS = {
   pointSize: 4,
   trailOpacity: 0.5,
   animationSpeed: 1.0,
-  clickMinRadius: 10,
+  ...CLICK_DEFAULTS,
   clickMaxRadius: 30,
-  clickCoreRadius: 3,
-  clickMinDuration: 600,
-  clickMaxDuration: 1200,
-  clickExpansionDuration: 400,
-  clickStrokeWidth: 1,
-  clickOpacity: 0.4,
-  clickNumRings: 2,
-  clickRingDelayMs: 80,
-  clickAnimationStopPoint: 0.8,
 };
 
 export default function App() {
@@ -179,6 +221,7 @@ export default function App() {
         {trailStates.length > 0 && (
           <LiveTrails
             trailStates={trailStates}
+            showClickRipples
             onTrailsRemoved={handleTrailsRemoved}
             settings={ANIMATION_SETTINGS}
           />
@@ -423,7 +466,15 @@ export default function App() {
 
         <section className={styles.section}>
           <h2 className={styles.sectionHeading}>leave a mark</h2>
-          <AuraGuestbook id="wewere-online-guestbook" />
+          <LazyOnVisible
+            fallback={<div style={{ minHeight: 720 }} aria-hidden="true" />}
+          >
+            <Suspense
+              fallback={<div style={{ minHeight: 720 }} aria-hidden="true" />}
+            >
+              <LazyAuraGuestbook id="wewere-online-guestbook" />
+            </Suspense>
+          </LazyOnVisible>
         </section>
 
         <section className={`${styles.section} ${styles.helpBuild}`}>

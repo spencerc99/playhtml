@@ -1,3 +1,5 @@
+// ABOUTME: Manages per-element playhtml handlers, state updates, rendering, and events.
+// ABOUTME: Bridges shared data, local data, awareness, and DOM capability callbacks.
 /// <reference lib="dom"/>
 import { render } from "lit-html";
 import {
@@ -18,10 +20,16 @@ const debounce = (fn: Function, ms = 300) => {
   };
 };
 
+type ElementDataWrite<T> = T | ((draft: T) => void);
+
+interface ElementHandlerOptions {
+  scheduleSetupDataWrite?: (write: () => void) => void;
+}
+
 // TODO: turn this into just an extension of HTMLElement and initialize all the methods / do all the state tracking
 // on the element itself??
 export class ElementHandler<T = any, U = any, V = any> {
-  defaultData: T;
+  defaultData: T | undefined;
   localData: U;
   awareness: V[] = [];
   awarenessByStableId: Map<string, V> = new Map();
@@ -53,6 +61,12 @@ export class ElementHandler<T = any, U = any, V = any> {
   onAfterRender?: (element: HTMLElement) => void;
   private descendantObserver?: MutationObserver;
   private dataUpdateListeners = new Set<() => void>();
+  private scheduleSetupDataWrite?: (write: () => void) => void;
+  private clickListener?: (e: MouseEvent) => void;
+  private touchStartListener?: (e: TouchEvent) => void;
+  private mouseDownListener?: (e: MouseEvent) => void;
+  private resetShortcutListener?: (e: MouseEvent) => void;
+  private activeDragCleanup?: () => void;
 
   // event handlers
   onClick?: (
@@ -68,7 +82,10 @@ export class ElementHandler<T = any, U = any, V = any> {
     eventData: ElementEventHandlerData<T, U, V>
   ) => void;
 
-  constructor(elementData: ElementData<T>) {
+  constructor(
+    elementData: ElementData<T>,
+    options: ElementHandlerOptions = {},
+  ) {
     const {
       element,
       onChange,
@@ -87,6 +104,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       devMode,
     } = elementData;
     // console.log("🔨 constructing ", element.id);
+    this.scheduleSetupDataWrite = options.scheduleSetupDataWrite;
     this.element = element;
     this.view = view;
     this.devMode = devMode;
@@ -115,8 +133,8 @@ export class ElementHandler<T = any, U = any, V = any> {
       this.setMyAwareness(myInitialAwareness);
     }
     // Needed to get around the typescript error even though it is assigned in __data.
-    this._data = initialData;
-    this.__data = initialData;
+    this._data = initialData as T;
+    this.__data = initialData as T;
 
     this.reinitializeElementData(elementData);
 
@@ -135,6 +153,27 @@ export class ElementHandler<T = any, U = any, V = any> {
   destroy(): void {
     this.descendantObserver?.disconnect();
     this.descendantObserver = undefined;
+    if (this.clickListener) {
+      this.element.removeEventListener("click", this.clickListener);
+      this.clickListener = undefined;
+    }
+    if (this.touchStartListener) {
+      this.element.removeEventListener("touchstart", this.touchStartListener);
+      this.touchStartListener = undefined;
+    }
+    if (this.mouseDownListener) {
+      this.element.removeEventListener("mousedown", this.mouseDownListener);
+      this.mouseDownListener = undefined;
+    }
+    if (this.resetShortcutListener) {
+      this.element.removeEventListener("click", this.resetShortcutListener);
+      this.resetShortcutListener = undefined;
+    }
+    this.removeActiveDragListeners();
+    this.onClick = undefined;
+    this.onDrag = undefined;
+    this.onDragStart = undefined;
+    this.resetShortcut = undefined;
     const cleanup = this.onUnmount;
     this.onUnmount = undefined;
     if (cleanup) {
@@ -195,63 +234,14 @@ export class ElementHandler<T = any, U = any, V = any> {
       onDragStart = undefined;
     }
 
-    // Handle all the event handlers
-    if (onClick && !this.onClick) {
-      element.addEventListener("click", (e) => {
-        this.onClick?.(e, this.getEventHandlerData());
-      });
-    }
-    this.onClick = onClick;
-    if (onDrag && !this.onDrag) {
-      element.addEventListener("touchstart", (e) => {
-        // To prevent scrolling the page while dragging
-        e.preventDefault();
-        element.classList.add("cursordown");
-
-        // Need to be able to not persist everything in the data, causing some lag.
-        this.onDragStart?.(e, this.getEventHandlerData());
-
-        const onMove = (e: TouchEvent) => {
-          e.preventDefault();
-          this.onDrag?.(e, this.getEventHandlerData());
-        };
-        const onDragStop = (e: TouchEvent) => {
-          element.classList.remove("cursordown");
-          document.removeEventListener("touchmove", onMove);
-          document.removeEventListener("touchend", onDragStop);
-        };
-        document.addEventListener("touchmove", onMove);
-        document.addEventListener("touchend", onDragStop);
-      });
-      element.addEventListener("mousedown", (e) => {
-        // To prevent dragging images behavior conflicting.
-        e.preventDefault();
-        // Need to be able to not persist everything in the data, causing some lag.
-        this.onDragStart?.(e, this.getEventHandlerData());
-        element.classList.add("cursordown");
-
-        const onMouseMove = (e: MouseEvent) => {
-          e.preventDefault();
-          this.onDrag?.(e, this.getEventHandlerData());
-        };
-        const onMouseUp = (e: MouseEvent) => {
-          element.classList.remove("cursordown");
-          document.removeEventListener("mousemove", onMouseMove);
-          document.removeEventListener("mouseup", onMouseUp);
-        };
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
-      });
-    }
-    this.onDrag = onDrag;
-    this.onDragStart = onDragStart;
+    this.setEventHandlers({ onClick, onDrag, onDragStart });
 
     // Handle advanced settings
-    if (resetShortcut && !this.resetShortcut) {
+    if (resetShortcut && !this.resetShortcutListener) {
       // @ts-ignore
       element.reset = this.reset;
 
-      element.addEventListener("click", (e) => {
+      this.resetShortcutListener = (e) => {
         switch (this.resetShortcut) {
           case "ctrlKey":
             if (!e.ctrlKey) {
@@ -279,9 +269,104 @@ export class ElementHandler<T = any, U = any, V = any> {
         this.reset();
         e.preventDefault();
         e.stopPropagation();
-      });
+      };
+      element.addEventListener("click", this.resetShortcutListener);
     }
     this.resetShortcut = resetShortcut;
+  }
+
+  setEventHandlers({
+    onClick,
+    onDrag,
+    onDragStart,
+  }: Pick<ElementData<T>, "onClick" | "onDrag" | "onDragStart">): void {
+    const element = this.element;
+    const hadDragHandler = Boolean(this.onDrag || this.onDragStart);
+    if (this.view) {
+      if (hadDragHandler) {
+        this.removeActiveDragListeners();
+      }
+      this.onClick = undefined;
+      this.onDrag = undefined;
+      this.onDragStart = undefined;
+      return;
+    }
+    const hasDragHandler = Boolean(onDrag || onDragStart);
+    if (hadDragHandler && !hasDragHandler) {
+      this.removeActiveDragListeners();
+    }
+    if (onClick && !this.clickListener) {
+      this.clickListener = (e) => {
+        this.onClick?.(e, this.getEventHandlerData());
+      };
+      element.addEventListener("click", this.clickListener);
+    }
+    if (hasDragHandler && !this.touchStartListener) {
+      this.touchStartListener = (e) => {
+        if (!this.onDrag && !this.onDragStart) return;
+        // To prevent scrolling the page while dragging
+        e.preventDefault();
+        this.removeActiveDragListeners();
+        element.classList.add("cursordown");
+
+        // Need to be able to not persist everything in the data, causing some lag.
+        this.onDragStart?.(e, this.getEventHandlerData());
+
+        const onMove = (e: TouchEvent) => {
+          e.preventDefault();
+          this.onDrag?.(e, this.getEventHandlerData());
+        };
+        const onDragStop = () => {
+          element.classList.remove("cursordown");
+          document.removeEventListener("touchmove", onMove);
+          document.removeEventListener("touchend", onDragStop);
+          if (this.activeDragCleanup === onDragStop) {
+            this.activeDragCleanup = undefined;
+          }
+        };
+        this.activeDragCleanup = onDragStop;
+        document.addEventListener("touchmove", onMove);
+        document.addEventListener("touchend", onDragStop);
+      };
+      element.addEventListener("touchstart", this.touchStartListener);
+    }
+    if (hasDragHandler && !this.mouseDownListener) {
+      this.mouseDownListener = (e) => {
+        if (!this.onDrag && !this.onDragStart) return;
+        // To prevent dragging images behavior conflicting.
+        e.preventDefault();
+        this.removeActiveDragListeners();
+        // Need to be able to not persist everything in the data, causing some lag.
+        this.onDragStart?.(e, this.getEventHandlerData());
+        element.classList.add("cursordown");
+
+        const onMouseMove = (e: MouseEvent) => {
+          e.preventDefault();
+          this.onDrag?.(e, this.getEventHandlerData());
+        };
+        const onMouseUp = () => {
+          element.classList.remove("cursordown");
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+          if (this.activeDragCleanup === onMouseUp) {
+            this.activeDragCleanup = undefined;
+          }
+        };
+        this.activeDragCleanup = onMouseUp;
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      };
+      element.addEventListener("mousedown", this.mouseDownListener);
+    }
+    this.onClick = onClick;
+    this.onDrag = onDrag;
+    this.onDragStart = onDragStart;
+  }
+
+  private removeActiveDragListeners(): void {
+    this.activeDragCleanup?.();
+    this.activeDragCleanup = undefined;
+    this.element.classList.remove("cursordown");
   }
 
   get data(): T {
@@ -433,11 +518,22 @@ export class ElementHandler<T = any, U = any, V = any> {
       getData: () => this.data,
       getLocalData: () => this.localData,
       getAwareness: () => this.awareness,
-      setData: (newData) => this.setData(newData),
+      setData: (newData) => this.setSetupData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
       setMyAwareness: (newData) => this.setMyAwareness(newData),
       requestUpdate: () => this.requestUpdate(),
     };
+  }
+
+  private setSetupData(data: ElementDataWrite<T>): void {
+    if (!this.scheduleSetupDataWrite) {
+      this.setData(data);
+      return;
+    }
+    if (this.rejectWriteDuringRender("setData")) return;
+    this.scheduleSetupDataWrite(() => {
+      this.onChange(data as unknown as T);
+    });
   }
 
   /**
@@ -463,7 +559,7 @@ export class ElementHandler<T = any, U = any, V = any> {
    * - Directly mutating eventData.data may work in SyncedStore mode, but the
    *   recommended portable pattern is setData(draft => { ... }).
    */
-  setData(data: T | ((draft: T) => void)): void {
+  setData(data: ElementDataWrite<T>): void {
     // Writing shared data from inside a view render is a re-render loop:
     // the write triggers another render, which writes again. Reject it.
     if (this.rejectWriteDuringRender("setData")) return;
@@ -499,6 +595,7 @@ export class ElementHandler<T = any, U = any, V = any> {
    * Resets the element to its default state.
    */
   reset() {
+    if (this.defaultData === undefined) return;
     this.setData(this.defaultData);
   }
 }

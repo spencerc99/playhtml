@@ -101,14 +101,14 @@ export function CanToggleElement({
     readOnly?: boolean;
   }) {
   return (
-    <CanPlayElement
+    <CanPlayElement<any>
       // @ts-ignore
       tagInfo={[TagType.CanToggle]}
       {...TagTypeToElement[TagType.CanToggle]}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
       {...(standalone ? { standalone } : {})}
-      {...(readOnly ? { "data-source-read-only": "" } : {})}
+      {...(readOnly ? { dataSourceReadOnly: true } : {})}
       children={(renderData) => {
         const renderedChildren = renderSingleChildOrPlayable(
           children,

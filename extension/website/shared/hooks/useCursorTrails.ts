@@ -70,6 +70,18 @@ interface TrailScheduleItem {
   }>;
 }
 
+export function buildTrailSchedulePositionLookup(
+  orderedIndices: number[],
+  trailCount: number,
+): Int32Array {
+  const positions = new Int32Array(trailCount);
+  positions.fill(-1);
+  for (let position = 0; position < orderedIndices.length; position++) {
+    positions[orderedIndices[position]] = position;
+  }
+  return positions;
+}
+
 export interface UseCursorTrailsResult {
   trails: Trail[];
   trailStates: TrailState[];
@@ -410,6 +422,10 @@ export function useCursorTrails(
         }
       }
     }
+    const schedulePositions = buildTrailSchedulePositionLookup(
+      orderedIndices,
+      trails.length,
+    );
 
     // Create schedule for each trail
     const schedule = trails.map((trail, originalIndex) => {
@@ -424,7 +440,7 @@ export function useCursorTrails(
       } else {
         // Stagger mode - choreograph trail timing
         const trailDuration = trail.endTime - trail.startTime;
-        const scheduledPosition = orderedIndices.indexOf(originalIndex);
+        const scheduledPosition = schedulePositions[originalIndex];
         const startOffset = (scheduledPosition * actualSpacing) % cycleDuration;
         const timeOffset = min + startOffset - trail.startTime;
 

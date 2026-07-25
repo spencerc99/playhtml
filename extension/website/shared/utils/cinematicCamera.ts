@@ -24,6 +24,23 @@ export interface CinematicConfig {
   revealMs: number;
   /** reveal mode: fraction of screen width visible at the start (tightest). */
   revealStartZoom: number;
+  /** follow mode: lock onto this trail index instead of auto-picking. When set,
+   * the camera pins to that one cursor and never advances to other subjects;
+   * if the trail isn't active it holds its last known spot. null/undefined =
+   * default auto-pick behavior. */
+  forcedSubjectIndex?: number | null;
+  /** follow mode: choose which active cursor to ride next. Called both for the
+   * initial pick and each time the current subject finishes. Receives every
+   * active candidate this frame and the index the camera is currently on (null
+   * when idle); returns the index to follow, or null to hold. Coordination logic
+   * (e.g. cross-window claims so no two screens follow the same cursor) lives in
+   * the caller — the camera stays pure. Ignored by `forcedSubjectIndex` (which
+   * takes precedence) and by reveal mode. When undefined, the camera uses its
+   * built-in lowest-progress pick (default single-window behavior). */
+  pickSubject?: (
+    candidates: Array<{ index: number; x: number; y: number; progress: number }>,
+    currentIndex: number | null,
+  ) => number | null;
 }
 
 export interface CameraFrame {
@@ -101,6 +118,9 @@ export class CinematicCamera {
   // Last known position of the reveal subject, so the camera keeps a sensible
   // center even after that cursor finishes and drops out of activeTrails.
   private revealSubjectLast: Point | null = null;
+  // Last known position of the forced follow subject, so a locked camera holds
+  // a sensible center while that cursor is inactive (not yet started/finished).
+  private forcedSubjectLast: Point | null = null;
 
   constructor(config: CinematicConfig) {
     this.config = config;
@@ -122,12 +142,30 @@ export class CinematicCamera {
     this.revealStartMs = 0;
     this.revealSubjectIndex = null;
     this.revealSubjectLast = null;
+    this.forcedSubjectLast = null;
   }
 
   /** Request an immediate fly-through to a new subject on the next frame,
    * without waiting for the current trail to finish. */
   requestNext(): void {
     this.forceNext = true;
+  }
+
+  /** The trail index the camera is currently riding in follow mode, or null.
+   * Reflects the forced/reveal subject when those modes are active. Read by
+   * dev/test tooling to verify multi-window coordination (distinct subjects). */
+  getCurrentSubjectIndex(): number | null {
+    if (this.config.mode === "reveal") return this.revealSubjectIndex;
+    if (
+      this.config.forcedSubjectIndex !== null &&
+      this.config.forcedSubjectIndex !== undefined
+    ) {
+      return this.config.forcedSubjectIndex;
+    }
+    // While flying to a new subject, report the target so the reported index
+    // switches at the moment the camera commits to the next cursor.
+    if (this.state === "flying") return this.flyTargetIndex;
+    return this.subjectIndex;
   }
 
   /** Prefer a trail early in its draw so the camera rides most of it.
@@ -149,6 +187,22 @@ export class CinematicCamera {
     // than stalling.
     if (best === null && activeTrails.length > 0) best = activeTrails[0].index;
     return best;
+  }
+
+  /** Follow-mode subject selection. Delegates to an injected `pickSubject`
+   * (e.g. claims-aware cross-window coordination) when the config provides one;
+   * otherwise falls back to the built-in lowest-progress pick. `exclude` is the
+   * current subject when advancing after it finishes, and doubles as the
+   * `currentIndex` passed to an injected selector so it can keep its current
+   * subject when still valid. */
+  private pickFollowSubject(
+    activeTrails: CameraFrame["activeTrails"],
+    exclude: number | null,
+  ): number | null {
+    if (this.config.pickSubject) {
+      return this.config.pickSubject(activeTrails, exclude);
+    }
+    return this.selectNextSubject(activeTrails, exclude);
   }
 
   tick(frame: CameraFrame): ViewBox | null {
@@ -207,6 +261,25 @@ export class CinematicCamera {
 
     const byIndex = new Map(activeTrails.map((t) => [t.index, t]));
 
+    // FORCED FOLLOW: pin to one trail index and never advance to other
+    // subjects. Track its live position while active; hold its last known spot
+    // (or canvas center if never seen) while inactive. Deterministic so a
+    // master and follower agree on which cursor index N refers to.
+    if (
+      this.config.mode === "follow" &&
+      this.config.forcedSubjectIndex !== null &&
+      this.config.forcedSubjectIndex !== undefined
+    ) {
+      const live = byIndex.get(this.config.forcedSubjectIndex);
+      if (live) this.forcedSubjectLast = { x: live.x, y: live.y };
+      const center =
+        this.forcedSubjectLast ?? { x: screenW / 2, y: screenH / 2 };
+      const box = boxAround(center, this.config.zoom, screenW, screenH);
+      this.lastViewBox = box;
+      this.currentCenter = center;
+      return box;
+    }
+
     // FLYING: tween regardless of subject availability; resolve on arrival.
     if (this.state === "flying" && this.flyFrom && this.flyTo) {
       // The target keeps drawing during the flight. Re-aim flyTo at its LIVE
@@ -242,7 +315,7 @@ export class CinematicCamera {
 
     // IDLE: wait for a subject; leave viewBox untouched until one appears.
     if (this.state === "idle") {
-      const next = this.selectNextSubject(activeTrails, null);
+      const next = this.pickFollowSubject(activeTrails, this.subjectIndex);
       if (next === null) return this.lastViewBox; // null on very first frames
       this.subjectIndex = next;
       this.state = "following";
@@ -264,9 +337,46 @@ export class CinematicCamera {
     const finishedOrGone =
       subject === undefined || subject.progress >= 1 || this.forceNext;
 
-    if (finishedOrGone) {
+    // Coordination yield: with an injected selector, re-consult it each frame
+    // even mid-draw so the camera can hop off a cursor another window has taken
+    // (the selector returns a DIFFERENT index only when this window must yield;
+    // otherwise it returns the current index and we keep following). Skipped for
+    // the default lowest-progress path, which only advances on finish. Resolved
+    // as a normal fly-through below via `yieldTarget`.
+    let yieldTarget: number | null = null;
+    if (
+      !finishedOrGone &&
+      subject !== undefined &&
+      this.config.pickSubject &&
+      this.subjectIndex !== null
+    ) {
+      const preferred = this.config.pickSubject(activeTrails, this.subjectIndex);
+      if (
+        preferred !== null &&
+        preferred !== this.subjectIndex &&
+        byIndex.has(preferred)
+      ) {
+        yieldTarget = preferred;
+      }
+    }
+
+    if (finishedOrGone || yieldTarget !== null) {
       // Begin a fly-through to a fresh subject (or hold if none available).
-      const next = this.selectNextSubject(activeTrails, this.subjectIndex);
+      // On a forceNext (N key / next signal) the current subject may still be
+      // active — drop it from the candidate set so even a "keep current when
+      // valid" selector is forced to move to a different cursor. A coordination
+      // yield already carries its resolved target.
+      let next: number | null;
+      if (yieldTarget !== null) {
+        next = yieldTarget;
+      } else {
+        const forced = this.forceNext;
+        const candidates =
+          forced && this.subjectIndex !== null
+            ? activeTrails.filter((t) => t.index !== this.subjectIndex)
+            : activeTrails;
+        next = this.pickFollowSubject(candidates, this.subjectIndex);
+      }
       if (next === null) {
         // Nothing to fly to; keep following the current subject (don't strand
         // the camera) and clear the request so it isn't stuck pending.

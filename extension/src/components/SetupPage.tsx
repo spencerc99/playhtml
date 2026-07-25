@@ -6,8 +6,8 @@ import { getValidEventTypes } from "@playhtml/extension-types";
 import { CursorSvg } from "./icons";
 import { CollectorList } from "./Collections";
 import { TrailsHero } from "./TrailsHero";
-import { syncParticipantColor } from "../storage/sync";
-import { getParticipantId } from "../storage/participant";
+import { savePlayerColor } from "../storage/playerColor";
+import { getPublicPlayerIdentity } from "../storage/playerIdentity";
 import { LEGIBILITY_KEY } from "../utils/keyboardRedaction";
 import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
@@ -105,11 +105,9 @@ export default function SetupPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { playerIdentity } = await browser.storage.local.get([
-          "playerIdentity",
-        ]);
+        const playerIdentity = await getPublicPlayerIdentity();
         if (playerIdentity) {
-          const existing = playerIdentity.playerStyle?.colorPalette?.[0];
+          const existing = playerIdentity.playerStyle.colorPalette[0];
           if (existing && typeof existing === "string") setColor(existing);
           else setColor(randomPrimaryColor());
         } else {
@@ -163,31 +161,7 @@ export default function SetupPage() {
 
       await browser.storage.local.set(toSet);
 
-      try {
-        const { playerIdentity } = await browser.storage.local.get([
-          "playerIdentity",
-        ]);
-        if (playerIdentity) {
-          if (!playerIdentity.playerStyle)
-            playerIdentity.playerStyle = { colorPalette: [color] } as any;
-          else {
-            const palette = Array.isArray(
-              playerIdentity.playerStyle.colorPalette,
-            )
-              ? playerIdentity.playerStyle.colorPalette
-              : [];
-            palette[0] = color;
-            playerIdentity.playerStyle.colorPalette = palette;
-          }
-          await browser.storage.local.set({ playerIdentity });
-
-          // Sync cursor color to server (fire-and-forget)
-          try {
-            const pid = await getParticipantId();
-            syncParticipantColor(pid, color);
-          } catch {}
-        }
-      } catch {}
+      await savePlayerColor(color);
 
       setStep("done");
     } finally {

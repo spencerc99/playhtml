@@ -6,16 +6,20 @@ import { act, render } from "@testing-library/react";
 import { fireEvent } from "@testing-library/dom";
 import "@testing-library/dom";
 import { CanPlayElement, withSharedState } from "../index";
-import { CanMoveElement } from "../elements";
+import { CanMoveElement, CanToggleElement } from "../elements";
 import playhtml from "../playhtml-singleton";
 import { TagType } from "playhtml";
 import type { ElementAwarenessEventHandlerData } from "playhtml";
 import { ReactiveOrb } from "../../examples/ReactiveOrb";
 
 describe("CanPlayElement with built-in capabilities", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Tests seed the module-level handler registry; clear it so seeds don't
+    // leak between tests.
+    const { elementHandlers } = await import("playhtml");
+    elementHandlers.clear();
   });
 
   it("composes capability updateElement with React state updates for CanMove", () => {
@@ -213,6 +217,95 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(removeSpy).not.toHaveBeenCalled();
   });
 
+  it("refreshes built-in event handlers after a React rerender", async () => {
+    const { ElementHandler } = await import("../../../playhtml/src/elements");
+    // The component reads the module-level registry exported by playhtml (the
+    // mock spreads the real module, so this is the same Map the component sees).
+    const { elementHandlers: handlers } = await import("playhtml");
+    handlers.set(TagType.CanPlay, new Map());
+    vi.mocked(playhtml.setupPlayElement).mockReset();
+
+    const firstClick = vi.fn();
+    const firstDragStart = vi.fn();
+    const secondClick = vi.fn();
+    const secondDragStart = vi.fn();
+    const secondDrag = vi.fn();
+    const renderElement = (props: {
+      onClick?: () => void;
+      onDragStart?: () => void;
+      onDrag?: () => void;
+    }) => (
+      <CanPlayElement
+        id="rerender-handler"
+        defaultData={{}}
+        onClick={props.onClick}
+        onDragStart={props.onDragStart}
+        onDrag={props.onDrag}
+      >
+        {() => <div>play</div>}
+      </CanPlayElement>
+    );
+
+    const { container, rerender, unmount } = render(
+      renderElement({}),
+    );
+    const element = container.querySelector("[can-play]") as HTMLElement;
+    handlers.get(TagType.CanPlay)!.set(
+      element.id,
+      new ElementHandler({
+        element,
+        defaultData: {},
+        onClick: (element as any).onClick,
+        onDrag: (element as any).onDrag,
+        onDragStart: (element as any).onDragStart,
+        onChange: vi.fn(),
+        onAwarenessChange: vi.fn(),
+        triggerAwarenessUpdate: vi.fn(),
+      } as any),
+    );
+
+    rerender(
+      renderElement({
+        onClick: firstClick,
+        onDragStart: firstDragStart,
+      }),
+    );
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    rerender(
+      renderElement({
+        onClick: secondClick,
+        onDragStart: secondDragStart,
+        onDrag: secondDrag,
+      }),
+    );
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    rerender(renderElement({}));
+    const mouseDownAfterRemoval = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(mouseDownAfterRemoval);
+
+    expect(firstClick).toHaveBeenCalledTimes(1);
+    expect(firstDragStart).toHaveBeenCalledTimes(1);
+    expect(secondClick).toHaveBeenCalledTimes(1);
+    expect(secondDragStart).toHaveBeenCalledTimes(1);
+    expect(secondDrag).toHaveBeenCalledTimes(1);
+    expect(mouseDownAfterRemoval.defaultPrevented).toBe(false);
+    expect(element.classList.contains("cursordown")).toBe(false);
+
+    unmount();
+    handlers.delete(TagType.CanPlay);
+  });
+
   it("removes the mounted element on unmount", () => {
     const setupSpy = vi
       .spyOn(playhtml, "setupPlayElement")
@@ -285,6 +378,18 @@ describe("CanPlayElement with built-in capabilities", () => {
       "#selector-bounded-child",
     ) as HTMLElement;
     expect(element.getAttribute("can-move-bounds")).toBe("#fridge");
+  });
+
+  it("CanToggleElement stamps read-only consumers", () => {
+    const { container } = render(
+      <CanToggleElement dataSource="/room#toggle" readOnly standalone>
+        <button id="read-only-toggle">toggle</button>
+      </CanToggleElement>,
+    );
+    const element = container.querySelector("#read-only-toggle") as HTMLElement;
+
+    expect(element).toHaveAttribute("data-source", "/room#toggle");
+    expect(element).toHaveAttribute("data-source-read-only");
   });
 
   it("does not re-render when synced data is a fresh reference but equal in value", () => {
@@ -492,6 +597,131 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(removeIds).toEqual(["first-id"]);
   });
 
+  it("removes the previous binding when dataSource changes but its element id does not", () => {
+    const setupSources: Array<string | null> = [];
+    const removeSources: Array<string | null> = [];
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation((element) => {
+      setupSources.push((element as HTMLElement).getAttribute("data-source"));
+    });
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation((element) => {
+      removeSources.push(
+        (element as HTMLElement).getAttribute("data-source"),
+      );
+    });
+
+    const SharedElement = withSharedState(
+      ({ dataSource }: { dataSource: string }) => ({
+        dataSource,
+        defaultData: { count: 0 },
+      }),
+      ({ data }) => <div>{data.count}</div>,
+    );
+
+    const { rerender } = render(
+      <SharedElement dataSource="/first#source-id" />,
+    );
+
+    rerender(<SharedElement dataSource="/second#source-id" />);
+
+    expect(setupSources).toEqual([
+      "/first#source-id",
+      "/second#source-id",
+    ]);
+    expect(removeSources).toEqual(["/first#source-id"]);
+  });
+
+  it("rebinds the element when its shared permission changes", () => {
+    const setupPermissions: Array<string | null> = [];
+    const removePermissions: Array<string | null> = [];
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation((element) => {
+      setupPermissions.push((element as HTMLElement).getAttribute("shared"));
+    });
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation((element) => {
+      removePermissions.push(
+        (element as HTMLElement).getAttribute("shared"),
+      );
+    });
+
+    const SharedElement = withSharedState(
+      ({ permission }: { permission: string }) => ({
+        id: "shared-source",
+        shared: permission,
+        defaultData: { count: 0 },
+      }),
+      ({ data }) => <div>{data.count}</div>,
+    );
+
+    const { rerender } = render(
+      <SharedElement permission="read-write" />,
+    );
+
+    rerender(<SharedElement permission="read-only" />);
+
+    expect(setupPermissions).toEqual(["read-write", "read-only"]);
+    expect(removePermissions).toEqual(["read-write"]);
+  });
+
+  it("does not write through a handler owned by another element", async () => {
+    const otherElement = document.createElement("div");
+    const otherSetData = vi.fn();
+    const { elementHandlers } = await import("playhtml");
+    elementHandlers.set(
+      TagType.CanPlay,
+      new Map([
+        [
+          "duplicate-id",
+          { element: otherElement, setData: otherSetData } as any,
+        ],
+      ]),
+    );
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+
+    const SharedElement = withSharedState(
+      { id: "duplicate-id", defaultData: { count: 0 } },
+      ({ setData }) => (
+        <button onClick={() => setData({ count: 1 })}>update</button>
+      ),
+    );
+
+    const { getByRole } = render(<SharedElement />);
+    fireEvent.click(getByRole("button"));
+
+    expect(otherSetData).not.toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "No handler registered for this element duplicate-id",
+      ),
+    );
+  });
+
+  it("binds writes after core assigns an element id", async () => {
+    const setData = vi.fn();
+    const { elementHandlers } = await import("playhtml");
+    elementHandlers.set(TagType.CanPlay, new Map());
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+
+    const SharedElement = withSharedState(
+      { defaultData: { count: 0 } },
+      ({ setData: updateData }) => (
+        <button onClick={() => updateData({ count: 1 })}>update</button>
+      ),
+    );
+
+    const { getByRole } = render(<SharedElement />);
+    const element = getByRole("button");
+    element.id = "generated-id";
+    elementHandlers.get(TagType.CanPlay)!.set("generated-id", {
+      element,
+      setData,
+    });
+
+    fireEvent.click(element);
+
+    expect(setData).toHaveBeenCalledWith({ count: 1 });
+  });
+
   it("reports the data-source binding id when id conflict uses dataSource", () => {
     const SharedElement = withSharedState(
       {
@@ -560,22 +790,23 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(conflictWarnings).toHaveLength(1);
   });
 
-  it("increments ReactiveOrb clicks through the current shared data", () => {
+  it("increments ReactiveOrb clicks through the current shared data", async () => {
     const setData = vi.fn();
-    const elementHandlers = new Map([
-      [TagType.CanPlay, new Map([["orb-test", { setData }]])],
-    ]);
+    const { elementHandlers } = await import("playhtml");
+    elementHandlers.set(TagType.CanPlay, new Map());
     vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
     vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
-    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
-      elementHandlers as typeof playhtml.elementHandlers,
-    );
 
     const { container } = render(
       <ReactiveOrb id="orb-test" className="orb-test" />,
     );
+    const element = container.querySelector("#orb-test") as HTMLElement;
+    elementHandlers.get(TagType.CanPlay)!.set("orb-test", {
+      element,
+      setData,
+    });
 
-    fireEvent.click(container.querySelector("#orb-test") as HTMLElement);
+    fireEvent.click(element);
 
     expect(setData).toHaveBeenCalledTimes(1);
     const update = setData.mock.calls[0][0];

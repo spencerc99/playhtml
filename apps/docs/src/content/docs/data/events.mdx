@@ -111,13 +111,13 @@ Keep the payload small and JSON-serializable. Events aren't a replacement for sh
 
 Click the hydrant. It dispatches a `"rain"` event, and clouds drift across the top of the page for anyone reading this page right now. Try it in two tabs.
 
-<div className="ph-demo-slot" data-label="EVENTS — rain">
+<div id="rain-event-demo" className="ph-demo-slot" data-label="EVENTS — rain">
   <RainSprinklerDemo client:only="react" />
 </div>
 
 Same primitive, different shape: each click below sends a short-lived emoji burst. No state, no persistence: exactly the "live reactions" pattern from video calls.
 
-<div className="ph-demo-slot" data-label="EVENTS — live reactions">
+<div id="live-reactions-demo" className="ph-demo-slot" data-label="EVENTS — live reactions">
   <LiveReactionsDemo client:only="react" />
 </div>
 

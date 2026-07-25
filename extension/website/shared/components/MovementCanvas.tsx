@@ -31,6 +31,7 @@ import { useViewportScroll } from "../hooks/useViewportScroll";
 import { usePageMetaFallback } from "../hooks/usePageMetaFallback";
 import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
+import { useFollowerCoordination } from "../hooks/useFollowerCoordination";
 import {
   extractDomain,
   formatFilterChip,
@@ -322,8 +323,10 @@ function playShutterSound() {
 // only persist when the user explicitly modifies a control.
 const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
 
-const loadSettings = () => {
-  const defaults = DEFAULT_SETTINGS;
+type MovementSettings = typeof DEFAULT_SETTINGS;
+
+const loadSettings = (defaultSettings: Partial<MovementSettings> = {}) => {
+  const defaults = { ...DEFAULT_SETTINGS, ...defaultSettings };
   const urlOverrides = parseSettingsFromUrl();
 
   try {
@@ -373,9 +376,16 @@ interface MovementCanvasProps {
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
+  /** Route-specific defaults applied before stored settings and URL overrides. */
+  defaultSettings?: Partial<MovementSettings>;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
+  /** Multi-screen installation clock. When provided and it returns a non-null
+   * number, that value is used as the scaled-elapsed for the frame — every
+   * window computes the same time from a shared wall-clock epoch. Optional so
+   * pages that don't run the installation are completely unaffected. */
+  getInstallationElapsedMs?: (animationSpeed: number) => number | null;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -393,16 +403,39 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   activeVisualizations,
   onSetActiveVisualizations,
   defaultSoundEnabled = false,
+  defaultSettings,
   live = false,
   connected = false,
+  getInstallationElapsedMs,
 }) => {
-  const [settings, setSettings] = useState(loadSettings());
+  const settingsDefaults = useMemo(
+    () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
+    [defaultSettings],
+  );
+  const [settings, setSettings] = useState(() => loadSettings(defaultSettings));
   const [controlsVisible, setControlsVisible] = useState(false);
   const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
     parseCinematicFromUrl(),
   );
   // Bumped by the N key to ask the cinematic camera to swap subjects now.
   const [cinematicNextSignal, setCinematicNextSignal] = useState(0);
+
+  // Multi-screen coordination: when this window is a follower, `pickSubject`
+  // filters out cursors other followers are riding so no two screens follow the
+  // same cursor. Inert (identity-stable lowest-progress selector, no channel)
+  // for every other window. Injected into the cinematic config below.
+  const { isFollower, pickSubject } = useFollowerCoordination();
+
+  // Merge the coordination selector into the cinematic config in FOLLOW mode
+  // only. The camera gives `forcedSubjectIndex` (the `?follow=N` escape hatch)
+  // precedence over `pickSubject`, so this stays inert when a cursor is pinned.
+  // Memoized on the stable `cinematic`/`pickSubject` identities so the camera's
+  // setConfig isn't called every render (which would restart the follow state).
+  const cinematicConfig = useMemo<CinematicConfig | null>(() => {
+    if (!cinematic) return null;
+    if (!isFollower || cinematic.mode !== "follow") return cinematic;
+    return { ...cinematic, pickSubject };
+  }, [cinematic, isFollower, pickSubject]);
 
   /** When set, only events whose timestamp falls in [start, end) are passed
    * downstream to the visualization hooks. Used by the Hotspots dev tool to
@@ -617,6 +650,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       try {
         const next = buildShareUrl({
           settings,
+          settingsDefaults,
           activeVisualizations,
           selectedTimeRange,
           clean: parseCleanFromUrl(),
@@ -632,7 +666,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       }
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [settings, activeVisualizations, selectedTimeRange]);
+  }, [settings, settingsDefaults, activeVisualizations, selectedTimeRange]);
 
   // Keyboard shortcuts:
   //   double-tap D — toggle controls panel
@@ -1263,6 +1297,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       <Controls
         visible={controlsVisible}
         settings={settings}
+        settingsDefaults={settingsDefaults}
         setSettings={setSettingsFromControls}
         loading={loading}
         error={error}
@@ -1528,6 +1563,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
               frozen={paused}
+              showClickRipples={!showClicks}
+              soundEngine={!soundEnabled ? null : soundEngineReady}
               onTrailsRemoved={handleTrailsRemoved}
               settings={trailAnimationSettings}
             />
@@ -1541,8 +1578,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               soundEngine={paused || !soundEnabled ? null : soundEngineReady}
               settings={trailAnimationSettings}
               frozen={paused}
-              cinematic={cinematic}
+              cinematic={cinematicConfig}
               cinematicNextSignal={cinematicNextSignal}
+              getInstallationElapsedMs={getInstallationElapsedMs}
             />
           ))}
 

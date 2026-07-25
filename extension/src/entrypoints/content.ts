@@ -2,6 +2,7 @@
 // ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
 import "./content/style.css";
 import browser from "webextension-polyfill";
+import { toPublicPlayerIdentity, type PlayerIdentity } from "@playhtml/common";
 import {
   MILESTONE_DURATION_MS,
   MILESTONE_TOAST_CSS,
@@ -17,10 +18,28 @@ import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
+import { ScrapCollector } from "../collectors/ScrapCollector";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
 import { shouldStartExtensionPresence } from "./content/presencePolicy";
+
+async function internalDevFeaturesEnabled(): Promise<boolean> {
+  try {
+    const result = await browser.storage.local.get("internalDevFeaturesEnabled");
+    return Boolean(result.internalDevFeaturesEnabled);
+  } catch {
+    return false;
+  }
+}
+
+async function ensureScrapCollectionMode(): Promise<void> {
+  const key = "collection_mode_element";
+  const result = await browser.storage.local.get(key);
+  if (result[key] === undefined) {
+    await browser.storage.local.set({ [key]: "local" });
+  }
+}
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -39,9 +58,10 @@ export default defineContentScript({
 
     // Initialize PlayHTML extension on page
     class PlayHTMLExtension {
-      private playerIdentity: any = null;
+      private presencePlayerIdentity: PlayerIdentity | undefined;
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
+      private emoteCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
       private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
@@ -50,10 +70,15 @@ export default defineContentScript({
         if (this.isInitialized) return;
 
         try {
-          // Get player identity from background script
-          this.playerIdentity = await browser.runtime.sendMessage({
-            type: "GET_PLAYER_IDENTITY",
+          // Get public player identity from background script
+          const publicPlayerIdentity = await browser.runtime.sendMessage({
+            type: "GET_PUBLIC_PLAYER_IDENTITY",
           });
+          const presenceIdentity = toPublicPlayerIdentity(publicPlayerIdentity);
+          this.presencePlayerIdentity = presenceIdentity?.playerStyle
+            .colorPalette[0]
+            ? presenceIdentity
+            : undefined;
 
           // Notify background about site discovery
           await browser.runtime.sendMessage({
@@ -950,12 +975,12 @@ export default defineContentScript({
       // Actions taken under the old anonymous identity are intentionally
       // orphaned — anonymous interactions have no continuity expectation.
       private injectIdentityIntoMainWorld() {
-        if (!this.playerIdentity) return;
+        if (!this.presencePlayerIdentity) return;
 
         const dispatch = () => {
           document.dispatchEvent(
             new CustomEvent("playhtml:configure-identity", {
-              detail: { playerIdentity: this.playerIdentity },
+              detail: { playerIdentity: this.presencePlayerIdentity },
             }),
           );
         };
@@ -998,8 +1023,8 @@ export default defineContentScript({
           // No instance yet (normal or native-playhtml page): stand up our own,
           // in an extension-owned room isolated from any site's playhtml room so
           // WWO data can't be read/written by the host site. The room is
-          // auto-prefixed with the page host; we add a `wwo` segment + the path
-          // so it stays per-page but never collides with the site's own room.
+          // auto-prefixed with the page host; we add a `wwo` segment; the room
+          // is domain-scoped (one guestbook per site).
           //
           // NOTE: on custom cursor-sites we instead REUSE the cursor instance
           // (set in setupPresence), whose room is the SITE's room — so bottles
@@ -1008,16 +1033,18 @@ export default defineContentScript({
           const { playhtml } = await import("playhtml");
           await playhtml.init({
             cursors: { enabled: false },
-            // Function form so the room recomputes on SPA navigation — bottles
-            // follow the URL instead of staying pinned to the initial path.
-            room: () => `wwo${window.location.pathname}`,
+            // Domain-scoped: one room per site (auto-prefixed with the host).
+            // Bottles form one guestbook per domain; page scoping happens at
+            // render (records carry pageUrl). A future per-page experiment
+            // should namespace its channel key by path instead.
+            room: "wwo",
           });
           this.playhtmlInstance = playhtml;
         }
 
         const color =
-          this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-        const pid = this.playerIdentity?.publicKey ?? "anon";
+          this.presencePlayerIdentity?.playerStyle.colorPalette[0] ?? "#4a9a8a";
+        const pid = this.presencePlayerIdentity?.publicKey ?? "anon";
 
         try {
           this.globalCleanup = await initGlobalFeatures({
@@ -1092,7 +1119,7 @@ export default defineContentScript({
           defaultRoomOptions: customSiteSettings?.defaultRoomOptions,
           cursors: {
             enabled: enableCursors,
-            playerIdentity: this.playerIdentity,
+            playerIdentity: this.presencePlayerIdentity,
             coordinateMode: "absolute",
           },
         });
@@ -1109,10 +1136,27 @@ export default defineContentScript({
               presence: playhtml.presence,
               cursorClient: playhtml.cursorClient,
               playerColor:
-                this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a",
+                this.presencePlayerIdentity?.playerStyle.colorPalette[0] ??
+                "#4a9a8a",
             });
           } catch (err) {
             console.error("[we-were-online] initCustomSite failed:", err);
+          }
+          // Emote wheel rides the same cursor layer; peers are only present
+          // where cursors are enabled, so it lives inside this block. Gated
+          // behind internal-dev mode (Cmd+Shift+. in the popup) while it's still
+          // in progress — not shipped to all users yet.
+          const cursorClient = playhtml.cursorClient;
+          if (cursorClient && (await this.areInternalDevFeaturesEnabled())) {
+            try {
+              const { initEmotes } = await import("../features/emotes");
+              this.emoteCleanup = initEmotes({
+                presence: playhtml.presence,
+                cursorClient,
+              });
+            } catch (err) {
+              console.error("[we-were-online] initEmotes failed:", err);
+            }
           }
         }
       }
@@ -1223,6 +1267,12 @@ export default defineContentScript({
 
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
+
+        if (FLAGS.SCRAPS || (await internalDevFeaturesEnabled())) {
+          await ensureScrapCollectionMode();
+          const scrapCollector = new ScrapCollector();
+          collectorManager.registerCollector(scrapCollector);
+        }
 
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();

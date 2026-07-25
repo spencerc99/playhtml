@@ -213,14 +213,21 @@
                   lastDate.toLocaleDateString();
               }
 
-              storyContent.innerHTML = data
-                .map(
-                  ({ word, color }) =>
-                    `<span class="word" style="--word-color:${getColorVar(
-                      color
-                    )}">${word}</span>`
-                )
-                .join("\n");
+              storyContent.replaceChildren(
+                ...data.flatMap(({ word, color }, index) => {
+                  const wordElement = document.createElement("span");
+                  wordElement.className = "word";
+                  wordElement.style.setProperty(
+                    "--word-color",
+                    getColorVar(color)
+                  );
+                  wordElement.textContent = String(word);
+
+                  return index === 0
+                    ? [wordElement]
+                    : [document.createTextNode("\n"), wordElement];
+                })
+              );
             };
           </script>
         </p>

@@ -65,7 +65,7 @@ async function waitForBackgroundDatabaseWork(): Promise<void> {
 }
 
 async function openVersion8Database(
-  seedAggregate: Partial<DomainStatsAggregate> = aggregate(),
+  seedAggregate: Record<string, unknown> = { ...aggregate() },
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = fakeIndexedDB.open(DB_NAME, 8);
@@ -154,8 +154,7 @@ function aggregate(): DomainStatsAggregate {
     storageSizeBytes: 0,
     firstVisit: 0,
     lastVisit: 0,
-    uniqueUrls: ["https://example.com/"],
-    processedNavIds: ["nav-1"],
+    uniqueUrlCount: 1,
   };
 }
 
@@ -196,52 +195,144 @@ afterEach(async () => {
 });
 
 describe("LocalEventStore aggregates", () => {
-  it("preserves URL and navigation ID arrays for non-navigation events", () => {
+  it("updates bounded aggregate fields for non-navigation events", () => {
     const agg = aggregate();
-    const uniqueUrls = agg.uniqueUrls;
-    const processedNavIds = agg.processedNavIds;
 
     (LocalEventStore as any).applyEventsToAggregate(agg, [
       event("cursor-1", "cursor"),
     ]);
 
-    expect(agg.uniqueUrls).toBe(uniqueUrls);
-    expect(agg.processedNavIds).toBe(processedNavIds);
+    expect(agg.uniqueUrlCount).toBe(1);
+    expect(agg).not.toHaveProperty("uniqueUrls");
+    expect(agg).not.toHaveProperty("processedNavIds");
     expect(agg.eventsByType.cursor).toBe(1);
     expect(agg.storageSizeBytes).toBeGreaterThan(0);
     expect(agg.firstVisit).toBe(1_000);
     expect(agg.lastVisit).toBe(1_000);
   });
 
-  it("tracks URLs and navigation IDs for navigation events", () => {
-    const agg = aggregate();
+  it("tracks exact URL counts without growing aggregate records", async () => {
+    const store = createStore();
+    const secondUrlEvent = {
+      ...event("nav-2", "navigation"),
+      meta: {
+        ...event("nav-2", "navigation").meta,
+        url: "https://example.com/other",
+      },
+      normalizedUrl: "https://example.com/other",
+    };
 
-    (LocalEventStore as any).applyEventsToAggregate(agg, [
-      event("nav-2", "navigation"),
+    await store.addEvents([
+      event("nav-1", "navigation"),
+      secondUrlEvent,
+      event("nav-3", "navigation"),
     ]);
 
-    expect(agg.uniqueUrls).toContain("https://example.com/page");
-    expect(agg.processedNavIds).toContain("nav-2");
-    expect(agg.pendingFocusTs).toBe(1_000);
-    expect(agg.pendingFocusUrl).toBe("https://example.com/page");
+    const [domainStats, globalStats] = await Promise.all([
+      store.getSessionStats("example.com"),
+      store.getGlobalStats(),
+    ]);
+
+    for (const stats of [domainStats, globalStats]) {
+      expect(stats?.uniqueUrlCount).toBe(2);
+      expect(stats).not.toHaveProperty("uniqueUrls");
+      expect(stats).not.toHaveProperty("processedNavIds");
+    }
+  });
+
+  it("does not count an upserted event twice in aggregates", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("focus-event", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("blur-event", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    await store.addEvents([focus, blur]);
+    await store.addEvents([focus, blur]);
+
+    const stats = await store.getSessionStats("example.com");
+
+    expect(stats).toMatchObject({
+      totalTimeMs: 6_000,
+      sessionCount: 1,
+      eventsByType: { navigation: 2 },
+      uniqueUrlCount: 1,
+    });
+  });
+
+  it("rebuilds aggregates from unique events in chronological order after a bulk import", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("focus-event", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("blur-event", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    await store.addRestoredEvents([blur, focus]);
+    await store.addRestoredEvents([blur, focus]);
+
+    const [domainStats, pageStats, globalStats] = await Promise.all([
+      store.getSessionStats("example.com"),
+      store.getSessionStats("example.com", "https://example.com/page"),
+      store.getGlobalStats(),
+    ]);
+
+    for (const stats of [domainStats, pageStats, globalStats]) {
+      expect(stats).toMatchObject({
+        totalTimeMs: 6_000,
+        sessionCount: 1,
+        eventsByType: { navigation: 2 },
+        firstVisit: 1_000,
+        lastVisit: 7_000,
+      });
+    }
   });
 });
 
 describe("LocalEventStore aggregate migrations", () => {
-  it("preserves version 8 stats aggregates when opening version 9", async () => {
+  it("migrates version 8 aggregates without losing retained history", async () => {
     const db = await openVersion8Database({
       ...aggregate(),
       totalTimeMs: 12_345,
       sessionCount: 7,
-      storageSizeBytes: undefined,
+      uniqueUrlCount: undefined,
+      uniqueUrls: ["https://example.com/stale"],
+      processedNavIds: ["nav-stale"],
     });
     db.close();
 
     const store = createStore();
+    await store.getSessionStats("example.com");
+    await store.addEvents([
+      {
+        ...event("nav-after-upgrade", "navigation"),
+        meta: {
+          ...event("nav-after-upgrade", "navigation").meta,
+          url: "https://example.com/stale",
+        },
+        normalizedUrl: "https://example.com/stale",
+      },
+    ]);
     const stats = await store.getSessionStats("example.com");
 
-    expect(stats?.totalTimeMs).toBe(12_345);
-    expect(stats?.sessionCount).toBe(7);
+    expect(stats).toMatchObject({
+      totalTimeMs: 12_345,
+      sessionCount: 7,
+      uniqueUrlCount: 1,
+    });
+    expect(stats).not.toHaveProperty("uniqueUrls");
+    expect(stats).not.toHaveProperty("processedNavIds");
   });
 
   it("reports local raw storage stats when preserved version 8 aggregates do not have size data", async () => {
@@ -468,6 +559,23 @@ describe("LocalEventStore pending uploads", () => {
     ]);
   });
 
+  it("queries one event type newest-first with a limit", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...event("scrap-first", "element"), ts: 1_000 },
+      { ...event("scrap-last", "element"), ts: 3_000 },
+      { ...event("scrap-middle", "element"), ts: 2_000 },
+      { ...event("cursor-later", "cursor"), ts: 4_000 },
+    ]);
+
+    const events = await store.queryByType("element", { limit: 2 });
+
+    expect(events.map((storedEvent) => storedEvent.id)).toEqual([
+      "scrap-last",
+      "scrap-middle",
+    ]);
+  });
+
   it("derives query indexes when storing content script events", async () => {
     const store = createStore();
     await store.addEvents([contentScriptEvent("cursor-indexed", "cursor")]);
@@ -491,6 +599,29 @@ describe("LocalEventStore pending uploads", () => {
     expect((sourceEvent as StoredTestEvent).uploadState).toBeUndefined();
     expect((events[0] as StoredTestEvent).uploaded).toBeUndefined();
     expect((events[0] as StoredTestEvent).uploadState).toBeUndefined();
+  });
+
+  it("keeps a pending event pending when it is exported and imported", async () => {
+    const store = createStore();
+
+    await store.addEvents([event("offline-cursor", "cursor")]);
+    const [exportedEvent] = await store.getAllEvents();
+    await store.addImportedEvents([exportedEvent]);
+
+    await expect(store.getPendingEvents(100)).resolves.toEqual([
+      expect.objectContaining({ id: "offline-cursor" }),
+    ]);
+  });
+
+  it("does not return trusted restored history as pending", async () => {
+    const store = createStore();
+
+    await store.addRestoredEvents([event("restored-cursor", "cursor")]);
+
+    await expect(store.getPendingEvents(100)).resolves.toEqual([]);
+    await expect(store.getAllEvents()).resolves.toEqual([
+      expect.objectContaining({ id: "restored-cursor" }),
+    ]);
   });
 
   it("backfills existing events with missing uploaded flags as pending", async () => {

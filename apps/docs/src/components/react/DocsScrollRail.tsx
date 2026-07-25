@@ -1,3 +1,6 @@
+// ABOUTME: Renders collaborative reader positions on a document scroll rail.
+// ABOUTME: Marks article section headings without indexing interactive component content.
+
 import React, { useEffect, useRef, useState } from 'react';
 import { withSharedState } from '@playhtml/react';
 
@@ -27,7 +30,10 @@ function readCursorColor(): string {
 function computeSectionTicks(): SectionTick[] {
   if (typeof document === 'undefined') return [];
   const headings = document.querySelectorAll<HTMLElement>(
-    'main h2, main h3, article h2, article h3'
+    [
+      'main :is(h2, h3):not(:where(.not-content *))',
+      'article :is(h2, h3):not(:where(.not-content *))',
+    ].join(', ')
   );
   const docHeight = Math.max(1, document.documentElement.scrollHeight);
   const ticks: SectionTick[] = [];

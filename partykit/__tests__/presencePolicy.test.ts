@@ -3,6 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   applyPresenceClientMessage,
+  commitPresenceClientMessage,
   consumePresenceMessageBudget,
   createPresenceMessageBudgetState,
   createPresenceSyncMessage,
@@ -185,6 +186,52 @@ describe("presence room policy", () => {
     });
   });
 
+  it("persists candidate channels before recording their changes", () => {
+    const state = createPresenceRoomState();
+    const stored = { status: "away" };
+    let persisted: Record<string, unknown> | undefined;
+
+    commitPresenceClientMessage(
+      state,
+      "conn-1",
+      stored,
+      { type: "presence-update", channel: "status", value: "here" },
+      (channels) => {
+        expect(takePresenceChanges(state)).toBe(null);
+        persisted = channels;
+      },
+    );
+
+    expect(persisted).toEqual({ status: "here" });
+    expect(takePresenceChanges(state)).toEqual({
+      type: "presence-changes",
+      updates: { "conn-1": { status: "here" } },
+      removes: {},
+    });
+  });
+
+  it("does not mutate room state when candidate persistence fails", () => {
+    const state = createPresenceRoomState();
+    restorePresenceConnectionChannels(state, "conn-1", { status: "away" });
+
+    expect(() =>
+      commitPresenceClientMessage(
+        state,
+        "conn-1",
+        { status: "away" },
+        { type: "presence-update", channel: "status", value: "here" },
+        () => {
+          throw new Error("attachment too large");
+        },
+      ),
+    ).toThrow("attachment too large");
+
+    expect(getPresenceSyncSnapshot(state)).toEqual({
+      "conn-1": { status: "away" },
+    });
+    expect(takePresenceChanges(state)).toBe(null);
+  });
+
   it("accepts cursor messages at the frame budget", () => {
     const state = createPresenceMessageBudgetState();
     for (let i = 0; i < 90; i++) {
@@ -245,13 +292,48 @@ describe("presence room policy", () => {
     ).toEqual({ accepted: true });
   });
 
+  it("applies the interactive budget to element channels", () => {
+    const state = createPresenceMessageBudgetState();
+    for (let i = 0; i < 45; i++) {
+      expect(
+        consumePresenceMessageBudget(
+          state,
+          "conn-1",
+          {
+            type: "presence-update",
+            channel: "element:can-play",
+            value: { card: { active: true } },
+          },
+          1000,
+        ),
+      ).toEqual({ accepted: true });
+    }
+
+    expect(
+      consumePresenceMessageBudget(
+        state,
+        "conn-1",
+        {
+          type: "presence-update",
+          channel: "element:can-play",
+          value: { card: { active: true } },
+        },
+        1000,
+      ),
+    ).toEqual({
+      accepted: false,
+      channel: "element:can-play",
+      hz: 45,
+    });
+  });
+
   it("resets message budgets after the window elapses", () => {
     const state = createPresenceMessageBudgetState();
     for (let i = 0; i < 10; i++) {
       consumePresenceMessageBudget(
         state,
         "conn-1",
-        { type: "presence-ping" },
+        { type: "presence-join" },
         1000,
       );
     }
@@ -260,7 +342,7 @@ describe("presence room policy", () => {
       consumePresenceMessageBudget(
         state,
         "conn-1",
-        { type: "presence-ping" },
+        { type: "presence-join" },
         1000,
       ),
     ).toEqual({ accepted: false, channel: "control", hz: 10 });
@@ -269,7 +351,7 @@ describe("presence room policy", () => {
       consumePresenceMessageBudget(
         state,
         "conn-1",
-        { type: "presence-ping" },
+        { type: "presence-join" },
         2000,
       ),
     ).toEqual({ accepted: true });
