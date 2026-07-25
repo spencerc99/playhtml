@@ -109,9 +109,7 @@ export class PresenceServer extends Server<Env> {
       return;
     }
 
-    if (parsed.type !== "presence-ping") {
-      this.scheduleBroadcast();
-    }
+    this.scheduleBroadcast();
   }
 
   override onClose(

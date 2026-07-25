@@ -99,7 +99,7 @@ The library revolves around "capabilities" -- interactive behaviors added to HTM
 
 2. **State Management**: Yjs for real-time collaborative state sync
 
-   - Global shared state: `globalData` (Y.Map)
+   - Shared element state: SyncedStore records keyed by capability and element id
    - Element handlers: `elementHandlers` (Map of ElementHandler instances)
    - Awareness (user presence): `yprovider.awareness`
 

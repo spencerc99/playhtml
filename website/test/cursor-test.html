@@ -1,3 +1,5 @@
+<!-- ABOUTME: Exercises the cursor API, proximity callbacks, and simulated peers. -->
+<!-- ABOUTME: Displays live cursor identity and presence state for manual testing. -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -262,7 +264,7 @@
           cursorInfoElement.innerHTML = `
                     Color: <span style="color: ${window.cursors.color}">●</span> ${window.cursors.color}<br>
                     Name: ${window.cursors.name}<br>
-                    Active Users: ${window.cursors.count}<br>
+                    Active Users: ${window.cursors.allColors.length}<br>
                     All Colors: ${window.cursors.allColors.length}
                 `;
         }
@@ -503,7 +505,7 @@
 
       // Global functions for buttons
       window.changeColor = function () {
-        if (window.cursors && window.cursors.setColor) {
+        if (window.cursors) {
           const colors = [
             "#ff6b6b",
             "#4ecdc4",
@@ -515,13 +517,14 @@
             "#f7dc6f",
           ];
           const randomColor = colors[Math.floor(Math.random() * colors.length)];
-          window.cursors.setColor(randomColor);
+          // Cursor identity is exposed through settable properties, not methods.
+          window.cursors.color = randomColor;
           // updateCursorInfo will be called via the event listener
         }
       };
 
       window.changeName = function () {
-        if (window.cursors && window.cursors.setName) {
+        if (window.cursors) {
           const names = [
             "Luna",
             "Nova",
@@ -533,7 +536,7 @@
             "Echo",
           ];
           const randomName = names[Math.floor(Math.random() * names.length)];
-          window.cursors.setName(randomName);
+          window.cursors.name = randomName;
           // updateCursorInfo will be called via the event listener
         }
       };
@@ -574,11 +577,6 @@
           console.log("Current cursor name:", window.cursors.name);
 
           // Listen to changes
-          window.cursors.on("count", (count) => {
-            console.log("User count changed:", count);
-            updateCursorInfo();
-          });
-
           window.cursors.on("allColors", (colors) => {
             updateCursorInfo();
           });

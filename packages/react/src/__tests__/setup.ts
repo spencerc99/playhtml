@@ -62,7 +62,6 @@ const mockedPlayhtml = {
   removePlayElement: vi.fn(),
   deleteElementData: vi.fn(),
   elementHandlers: {},
-  globalData: new Map(),
   dispatchPlayEvent: vi.fn(),
   registerPlayEventListener: vi.fn().mockReturnValue("mock-id"),
   removePlayEventListener: vi.fn(),
