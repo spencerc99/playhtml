@@ -1,3 +1,5 @@
+// ABOUTME: Covers programmatic element registration, declarative views, and handles.
+// ABOUTME: Verifies lifecycle, validation, composition, and imperative setup behavior.
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { elementHandlers, playhtml, html, svg, repeat } from "../index";
 
@@ -205,6 +207,47 @@ describe("rail 2: lifecycle & guards", () => {
     expect(updateElement.mock.calls.length).toBe(callsAfterMount);
   });
 
+  it("binds imperative registrations without copying initializer fields onto the element", async () => {
+    const el = document.createElement("div");
+    el.id = "direct-imperative";
+    document.body.appendChild(el);
+
+    const updateElement = vi.fn(({ element, data }) => {
+      element.textContent = String(data.count);
+    });
+    playhtml.register("direct-imperative", {
+      defaultData: { count: 3 },
+      updateElement,
+    });
+    await tick();
+
+    expect(updateElement).toHaveBeenCalled();
+    expect(el.textContent).toBe("3");
+    expect(el.hasAttribute("can-play")).toBe(false);
+    expect((el as any).defaultData).toBeUndefined();
+    expect((el as any).updateElement).toBeUndefined();
+  });
+
+  it("uses a registered initializer's element validator without stamping it", async () => {
+    const el = document.createElement("div");
+    el.id = "direct-validator";
+    document.body.appendChild(el);
+
+    const updateElement = vi.fn();
+    const isValidElementForTag = vi.fn(() => false);
+    playhtml.register("direct-validator", {
+      defaultData: { count: 0 },
+      updateElement,
+      isValidElementForTag,
+    });
+    await tick();
+
+    expect(isValidElementForTag).toHaveBeenCalledWith(el);
+    expect(updateElement).not.toHaveBeenCalled();
+    expect(playhtml.getHandle("direct-validator").getData()).toBeUndefined();
+    expect((el as any).isValidElementForTag).toBeUndefined();
+  });
+
   it("does not wire onClick when a view is present (React/props path)", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const el = document.createElement("div");
@@ -350,6 +393,33 @@ describe("rail 2: define + composition", () => {
     expect(
       document.getElementById("chip-1")!.querySelector(".chip")!.textContent,
     ).toBe("chip");
+  });
+
+  it("binds registered view descendants without a can-play attribute", async () => {
+    playhtml.register<{ label: string }>("registered-child", {
+      defaultData: { label: "ready" },
+      updateElement: ({ element, data }) => {
+        element.textContent = data.label;
+      },
+    });
+
+    const root = document.createElement("div");
+    root.id = "registered-child-root";
+    document.body.appendChild(root);
+
+    playhtml.register("registered-child-root", {
+      defaultData: {},
+      view: () => html`<div id="registered-child"></div>`,
+    });
+    await tick();
+    await tick();
+
+    const child = document.getElementById("registered-child")!;
+    expect(child.textContent).toBe("ready");
+    expect(child.hasAttribute("can-play")).toBe(false);
+    expect(playhtml.getHandle("registered-child").getData()).toEqual({
+      label: "ready",
+    });
   });
 
   it("tears down capability children removed from a keyed list (no leak)", async () => {
