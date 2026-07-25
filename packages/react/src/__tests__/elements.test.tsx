@@ -592,6 +592,139 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(removeIds).toEqual(["first-id"]);
   });
 
+  it("removes the previous binding when dataSource changes but its element id does not", () => {
+    const setupSources: Array<string | null> = [];
+    const removeSources: Array<string | null> = [];
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation((element) => {
+      setupSources.push((element as HTMLElement).getAttribute("data-source"));
+    });
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation((element) => {
+      removeSources.push(
+        (element as HTMLElement).getAttribute("data-source"),
+      );
+    });
+
+    const SharedElement = withSharedState(
+      ({ dataSource }: { dataSource: string }) => ({
+        dataSource,
+        defaultData: { count: 0 },
+      }),
+      ({ data }) => <div>{data.count}</div>,
+    );
+
+    const { rerender } = render(
+      <SharedElement dataSource="/first#source-id" />,
+    );
+
+    rerender(<SharedElement dataSource="/second#source-id" />);
+
+    expect(setupSources).toEqual([
+      "/first#source-id",
+      "/second#source-id",
+    ]);
+    expect(removeSources).toEqual(["/first#source-id"]);
+  });
+
+  it("rebinds the element when its shared permission changes", () => {
+    const setupPermissions: Array<string | null> = [];
+    const removePermissions: Array<string | null> = [];
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation((element) => {
+      setupPermissions.push((element as HTMLElement).getAttribute("shared"));
+    });
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation((element) => {
+      removePermissions.push(
+        (element as HTMLElement).getAttribute("shared"),
+      );
+    });
+
+    const SharedElement = withSharedState(
+      ({ permission }: { permission: string }) => ({
+        id: "shared-source",
+        shared: permission,
+        defaultData: { count: 0 },
+      }),
+      ({ data }) => <div>{data.count}</div>,
+    );
+
+    const { rerender } = render(
+      <SharedElement permission="read-write" />,
+    );
+
+    rerender(<SharedElement permission="read-only" />);
+
+    expect(setupPermissions).toEqual(["read-write", "read-only"]);
+    expect(removePermissions).toEqual(["read-write"]);
+  });
+
+  it("does not write through a handler owned by another element", () => {
+    const otherElement = document.createElement("div");
+    const otherSetData = vi.fn();
+    const elementHandlers = new Map([
+      [
+        TagType.CanPlay,
+        new Map([
+          [
+            "duplicate-id",
+            { element: otherElement, setData: otherSetData },
+          ],
+        ]),
+      ],
+    ]);
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
+      elementHandlers as typeof playhtml.elementHandlers,
+    );
+
+    const SharedElement = withSharedState(
+      { id: "duplicate-id", defaultData: { count: 0 } },
+      ({ setData }) => (
+        <button onClick={() => setData({ count: 1 })}>update</button>
+      ),
+    );
+
+    const { getByRole } = render(<SharedElement />);
+    fireEvent.click(getByRole("button"));
+
+    expect(otherSetData).not.toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "No handler registered for this element duplicate-id",
+      ),
+    );
+  });
+
+  it("binds writes after core assigns an element id", () => {
+    const setData = vi.fn();
+    const elementHandlers = new Map([
+      [TagType.CanPlay, new Map()],
+    ]);
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
+      elementHandlers as typeof playhtml.elementHandlers,
+    );
+
+    const SharedElement = withSharedState(
+      { defaultData: { count: 0 } },
+      ({ setData: updateData }) => (
+        <button onClick={() => updateData({ count: 1 })}>update</button>
+      ),
+    );
+
+    const { getByRole } = render(<SharedElement />);
+    const element = getByRole("button");
+    element.id = "generated-id";
+    elementHandlers.get(TagType.CanPlay)!.set("generated-id", {
+      element,
+      setData,
+    });
+
+    fireEvent.click(element);
+
+    expect(setData).toHaveBeenCalledWith({ count: 1 });
+  });
+
   it("reports the data-source binding id when id conflict uses dataSource", () => {
     const SharedElement = withSharedState(
       {
@@ -663,7 +796,7 @@ describe("CanPlayElement with built-in capabilities", () => {
   it("increments ReactiveOrb clicks through the current shared data", () => {
     const setData = vi.fn();
     const elementHandlers = new Map([
-      [TagType.CanPlay, new Map([["orb-test", { setData }]])],
+      [TagType.CanPlay, new Map()],
     ]);
     vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
     vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
@@ -674,8 +807,13 @@ describe("CanPlayElement with built-in capabilities", () => {
     const { container } = render(
       <ReactiveOrb id="orb-test" className="orb-test" />,
     );
+    const element = container.querySelector("#orb-test") as HTMLElement;
+    elementHandlers.get(TagType.CanPlay)!.set("orb-test", {
+      element,
+      setData,
+    });
 
-    fireEvent.click(container.querySelector("#orb-test") as HTMLElement);
+    fireEvent.click(element);
 
     expect(setData).toHaveBeenCalledTimes(1);
     const update = setData.mock.calls[0][0];
