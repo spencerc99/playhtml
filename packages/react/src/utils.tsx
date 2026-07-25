@@ -4,8 +4,8 @@ import {
   ElementAwarenessEventHandlerData,
   ElementInitializer,
   TagType,
+  elementHandlers,
 } from "playhtml";
-import playhtml from "./playhtml-singleton";
 import * as React from "react";
 
 export type ReactElementEventHandlerData<T, V> = Omit<
@@ -33,14 +33,11 @@ export type ReactElementInitializer<T = object, V = any> = Omit<
   id?: string;
 } & PlayableChildren<T, V>;
 
+// Reads the real handler from the module-level registry rather than the public
+// getHandle facade: the binding layer needs handler identity (handler.element)
+// to enforce element ownership, which the facade deliberately does not expose.
 export function getCurrentElementHandler(tag: TagType | string, id: string) {
-<<<<<<< HEAD
-  const handlers = playhtml.elementHandlers;
-  if (!(handlers instanceof Map)) return undefined;
-  return handlers.get(tag)?.get(id);
-=======
-  return playhtml.getHandle(id, tag);
->>>>>>> 124520fc (Strip custom properties pre-launch; consolidate identity ownership)
+  return elementHandlers.get(tag)?.get(id);
 }
 
 function isDOMElement(element: React.ReactElement): boolean {

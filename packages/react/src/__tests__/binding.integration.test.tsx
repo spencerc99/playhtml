@@ -3,7 +3,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
-import { playhtml, resetPlayHTML, TagType } from "playhtml";
+import { elementHandlers, playhtml, resetPlayHTML, TagType } from "playhtml";
 import { withSharedState } from "../index";
 
 describe("CanPlayElement binding lifecycle", () => {
@@ -39,7 +39,7 @@ describe("CanPlayElement binding lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        playhtml.elementHandlers.get(TagType.CanPlay)?.get("first-source")
+        elementHandlers.get(TagType.CanPlay)?.get("first-source")
           ?.element,
       ).toBe(element);
     });
@@ -49,12 +49,12 @@ describe("CanPlayElement binding lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        playhtml.elementHandlers.get(TagType.CanPlay)?.get("second-source")
+        elementHandlers.get(TagType.CanPlay)?.get("second-source")
           ?.element,
       ).toBe(element);
     });
     expect(
-      playhtml.elementHandlers.get(TagType.CanPlay)?.has("first-source"),
+      elementHandlers.get(TagType.CanPlay)?.has("first-source"),
     ).toBe(false);
 
     unmount();
