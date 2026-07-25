@@ -251,6 +251,70 @@ function itemSize(
   }
 }
 
+function tierBounds(items: ScrapItem[]): { lowerArea: number; upperArea: number } {
+  const sortedAreas = items
+    .filter(
+      (item): item is Extract<ScrapItem, { kind: "image" }> =>
+        item.kind === "image",
+    )
+    .map(naturalArea)
+    .sort((a, b) => a - b);
+  return {
+    lowerArea: sortedAreas[Math.floor((sortedAreas.length - 1) / 3)],
+    upperArea: sortedAreas[Math.floor(((sortedAreas.length - 1) * 2) / 3)],
+  };
+}
+
+function tierForItem(
+  item: ScrapItem,
+  lowerArea: number,
+  upperArea: number,
+): number {
+  const area = naturalArea(item);
+  return item.kind !== "image" || area <= lowerArea
+    ? 0
+    : area <= upperArea
+      ? 1
+      : 2;
+}
+
+/**
+ * Field height for "everything" mode: the container's fixed width is kept,
+ * but there's no fixed height to fit into, so rows are derived from the tile
+ * count instead of the field being clamped to the container. Column count
+ * uses the same sqrt-of-area formula as the fit-to-container layout,
+ * treating the container's own (measured) height as the reference aspect
+ * ratio so column width stays visually consistent between the two modes.
+ * Row height is the actual average tile height (via the same size-tier
+ * logic buildLayout uses), not a placeholder square cell, so the estimate
+ * tracks the real mix of image/button/icon/cursor tile sizes.
+ */
+function computeEverythingFieldHeight(
+  items: ScrapItem[],
+  width: number,
+  referenceHeight: number,
+  seed: number,
+): number {
+  if (items.length === 0 || width === 0 || referenceHeight === 0) return 0;
+
+  const aspectRatio = width / referenceHeight;
+  const columnCount = Math.max(
+    1,
+    Math.ceil(Math.sqrt(items.length * aspectRatio)),
+  );
+  const rowCount = Math.ceil(items.length / columnCount);
+
+  const { lowerArea, upperArea } = tierBounds(items);
+  const averageCellHeight =
+    items.reduce((sum, item) => {
+      const tier = tierForItem(item, lowerArea, upperArea);
+      const itemSeed = seed + hashString(item.key);
+      return sum + itemSize(item, tier, itemSeed).height;
+    }, 0) / items.length;
+
+  return rowCount * averageCellHeight;
+}
+
 function buildLayout(
   items: ScrapItem[],
   width: number,
@@ -259,15 +323,7 @@ function buildLayout(
 ): ScrapLayout[] {
   if (items.length === 0 || width === 0 || height === 0) return [];
 
-  const sortedAreas = items
-    .filter(
-      (item): item is Extract<ScrapItem, { kind: "image" }> =>
-        item.kind === "image",
-    )
-    .map(naturalArea)
-    .sort((a, b) => a - b);
-  const lowerArea = sortedAreas[Math.floor((sortedAreas.length - 1) / 3)];
-  const upperArea = sortedAreas[Math.floor(((sortedAreas.length - 1) * 2) / 3)];
+  const { lowerArea, upperArea } = tierBounds(items);
   const aspectRatio = width / height;
   const columnCount = Math.max(
     1,
@@ -278,13 +334,7 @@ function buildLayout(
   const cellHeight = height / rowCount;
 
   return items.map((item, index) => {
-    const area = naturalArea(item);
-    const tier =
-      item.kind !== "image" || area <= lowerArea
-        ? 0
-        : area <= upperArea
-          ? 1
-          : 2;
+    const tier = tierForItem(item, lowerArea, upperArea);
     const itemSeed = seed + hashString(item.key);
     const itemDimensions = itemSize(item, tier, itemSeed);
     const column = index % columnCount;
@@ -377,6 +427,38 @@ const COLLAGE_STYLES = `
   .scrap-collage__filter:focus-visible {
     outline: 2px solid rgba(74, 154, 138, 0.45);
     outline-offset: 2px;
+  }
+
+  .scrap-collage__filter--everything[aria-pressed="true"] {
+    border-color: #c4724e;
+    background: rgba(196, 114, 78, 0.1);
+    color: #c4724e;
+  }
+
+  .scrap-collage__filter--everything[aria-pressed="true"] .scrap-collage__filter-count {
+    color: #c4724e;
+  }
+
+  .scrap-collage__filter--everything:hover,
+  .scrap-collage__filter--everything:focus-visible {
+    border-color: #c4724e;
+  }
+
+  .scrap-collage__filter--everything:focus-visible {
+    outline-color: rgba(196, 114, 78, 0.45);
+  }
+
+  .scrap-collage__scroll {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    height: 100%;
+  }
+
+  .scrap-collage__field {
+    position: relative;
+    width: 100%;
   }
 
   .scrap-collage__tile {
@@ -619,6 +701,7 @@ export function ScrapCollage({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [selectedKind, setSelectedKind] =
     useState<ScrapKindFilter>("all");
+  const [everythingMode, setEverythingMode] = useState(false);
   const [failedScraps, setFailedScraps] = useState<Set<string>>(
     () => new Set(),
   );
@@ -645,13 +728,40 @@ export function ScrapCollage({
         : items.filter((item) => item.kind === selectedKind),
     [items, selectedKind],
   );
+  const everythingScraps = useMemo(
+    () =>
+      curateScraps(filteredItems, {
+        seed,
+        perDomainCap: Infinity,
+        targetCount: Infinity,
+      }),
+    [filteredItems, seed],
+  );
   const curated = useMemo(
-    () => curateScraps(filteredItems, { seed, targetCount, perDomainCap }),
-    [filteredItems, perDomainCap, seed, targetCount],
+    () =>
+      everythingMode
+        ? everythingScraps
+        : curateScraps(filteredItems, { seed, targetCount, perDomainCap }),
+    [everythingMode, everythingScraps, filteredItems, perDomainCap, seed, targetCount],
+  );
+  const fieldHeight = useMemo(
+    () =>
+      everythingMode
+        ? Math.max(
+            containerSize.height,
+            computeEverythingFieldHeight(
+              curated,
+              containerSize.width,
+              containerSize.height,
+              seed,
+            ),
+          )
+        : containerSize.height,
+    [containerSize.height, containerSize.width, curated, everythingMode, seed],
   );
   const layout = useMemo(
-    () => buildLayout(curated, containerSize.width, containerSize.height, seed),
-    [containerSize.height, containerSize.width, curated, seed],
+    () => buildLayout(curated, containerSize.width, fieldHeight, seed),
+    [containerSize.width, curated, fieldHeight, seed],
   );
 
   useEffect(() => {
@@ -693,6 +803,76 @@ export function ScrapCollage({
     });
   };
 
+  const tiles = layout.map((scrap) => {
+    if (failedScraps.has(scrap.item.key) || !isRenderableScrap(scrap.item)) {
+      return null;
+    }
+
+    const faviconFailed = failedFavicons.has(scrap.item.domain);
+    const faviconSrc =
+      scrap.item.faviconUrl ||
+      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(scrap.item.domain)}&sz=32`;
+    const tileStyle = {
+      left: scrap.x,
+      top: scrap.y,
+      width: scrap.width,
+      height: scrap.height,
+      zIndex: scrap.zIndex,
+      "--scrap-rotation": `${scrap.rotation}deg`,
+    } as React.CSSProperties & { "--scrap-rotation": string };
+    const title = scrapTitle(scrap.item);
+
+    return (
+      <a
+        key={scrap.item.key}
+        className="scrap-collage__tile"
+        href={scrap.item.pageUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`Open source page for ${title}`}
+        style={tileStyle}
+      >
+        <ScrapContent
+          item={scrap.item}
+          onError={() => removeScrap(scrap.item.key)}
+        />
+        <div
+          className="scrap-collage__provenance"
+          style={{
+            ...(scrap.cardAbove
+              ? { bottom: "calc(100% + 10px)" }
+              : { top: "calc(100% + 10px)" }),
+            ...(scrap.cardRightAligned ? { right: 0 } : { left: 0 }),
+          }}
+        >
+          {faviconFailed ? (
+            <span
+              className="scrap-collage__favicon"
+              style={{
+                backgroundColor: placeholderColor(scrap.item.domain),
+              }}
+            />
+          ) : (
+            <img
+              className="scrap-collage__favicon"
+              src={faviconSrc}
+              alt=""
+              onError={() => markFaviconFailed(scrap.item.domain)}
+            />
+          )}
+          <span className="scrap-collage__details">
+            <span className="scrap-collage__title">{title}</span>
+            <span className="scrap-collage__metadata">
+              {scrap.item.kind} · {scrap.item.domain}
+              <br />
+              collected {formatCollectedDate(scrap.item.ts)}
+            </span>
+          </span>
+        </div>
+      </a>
+    );
+  });
+
   return (
     <div
       ref={containerRef}
@@ -726,80 +906,31 @@ export function ScrapCollage({
               </button>
             ) : null,
           )}
+          <button
+            type="button"
+            className="scrap-collage__filter scrap-collage__filter--everything"
+            aria-pressed={everythingMode}
+            onClick={() => setEverythingMode((current) => !current)}
+          >
+            everything{" "}
+            <span className="scrap-collage__filter-count">
+              {everythingScraps.length}
+            </span>
+          </button>
         </div>
       )}
-      {layout.map((scrap) => {
-        if (
-          failedScraps.has(scrap.item.key) ||
-          !isRenderableScrap(scrap.item)
-        ) {
-          return null;
-        }
-
-        const faviconFailed = failedFavicons.has(scrap.item.domain);
-        const faviconSrc =
-          scrap.item.faviconUrl ||
-          `https://www.google.com/s2/favicons?domain=${encodeURIComponent(scrap.item.domain)}&sz=32`;
-        const tileStyle = {
-          left: scrap.x,
-          top: scrap.y,
-          width: scrap.width,
-          height: scrap.height,
-          zIndex: scrap.zIndex,
-          "--scrap-rotation": `${scrap.rotation}deg`,
-        } as React.CSSProperties & { "--scrap-rotation": string };
-        const title = scrapTitle(scrap.item);
-
-        return (
-          <a
-            key={scrap.item.key}
-            className="scrap-collage__tile"
-            href={scrap.item.pageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Open source page for ${title}`}
-            style={tileStyle}
+      {everythingMode ? (
+        <div className="scrap-collage__scroll">
+          <div
+            className="scrap-collage__field"
+            style={{ height: fieldHeight }}
           >
-            <ScrapContent
-              item={scrap.item}
-              onError={() => removeScrap(scrap.item.key)}
-            />
-            <div
-              className="scrap-collage__provenance"
-              style={{
-                ...(scrap.cardAbove
-                  ? { bottom: "calc(100% + 10px)" }
-                  : { top: "calc(100% + 10px)" }),
-                ...(scrap.cardRightAligned ? { right: 0 } : { left: 0 }),
-              }}
-            >
-              {faviconFailed ? (
-                <span
-                  className="scrap-collage__favicon"
-                  style={{
-                    backgroundColor: placeholderColor(scrap.item.domain),
-                  }}
-                />
-              ) : (
-                <img
-                  className="scrap-collage__favicon"
-                  src={faviconSrc}
-                  alt=""
-                  onError={() => markFaviconFailed(scrap.item.domain)}
-                />
-              )}
-              <span className="scrap-collage__details">
-                <span className="scrap-collage__title">{title}</span>
-                <span className="scrap-collage__metadata">
-                  {scrap.item.kind} · {scrap.item.domain}
-                  <br />
-                  collected {formatCollectedDate(scrap.item.ts)}
-                </span>
-              </span>
-            </div>
-          </a>
-        );
-      })}
+            {tiles}
+          </div>
+        </div>
+      ) : (
+        tiles
+      )}
     </div>
   );
 }
