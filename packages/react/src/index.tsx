@@ -142,7 +142,8 @@ function withElementBinding(
   const currentDataSource = element.getAttribute("data-source");
   const currentShared = element.getAttribute("shared");
 
-  element.id = binding.domId;
+  // Core can assign the DOM ID after React captures the binding.
+  element.id = binding.domId || currentId;
   if (binding.dataSource === null) {
     element.removeAttribute("data-source");
   } else {
