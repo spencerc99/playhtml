@@ -5,6 +5,8 @@ sidebar:
   order: 3
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 `playhtml.init()` walks the DOM once at startup and wires up every element it finds. Two situations fall outside that single pass:
 
 1. You **create new playhtml elements after init**: a new row in a list, a cloned template, a client-rendered component. The library doesn't know they exist yet.
@@ -14,6 +16,8 @@ This page covers both.
 
 ## Registering nodes created after init
 
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
 When you add a playhtml element to the DOM yourself, call `setupPlayElement` to register it:
 
 ```js
@@ -50,12 +54,16 @@ playhtml.deleteElementData("can-move", "note-42");
 
 See [Development & data cleanup](/docs/advanced/development/) for inspecting and resetting stored state from the devtools panel.
 
-### React
-
+  </TabItem>
+  <TabItem label="React">
 In React you rarely call these directly: mounting a `<CanMoveElement>` (or any capability component) registers the node, and unmounting it calls `removePlayElement` for you. The one place it surfaces is `can-duplicate`, where clones are created imperatively: `CanDuplicateElement` calls `setupPlayElement` on each new clone under the hood. See the [React API reference](/docs/reference/react-api/#other-capability-components).
+  </TabItem>
+</Tabs>
 
 ## Many-of-a-kind elements with `selector-id`
 
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
 Every playhtml element needs a [stable id](/docs/capabilities/) so collaborators agree on which element owns which state. For a list of structurally identical elements (fridge magnets, reaction buttons, a grid of cells), inventing a unique id for each is tedious and error-prone.
 
 `selector-id` solves this. Give every element in the group the **same** `selector-id` value (a CSS selector that matches all of them), and playhtml assigns each one a stable id based on **its position among the selector's matches**. The 1st `.magnet` always gets the 1st slot of state, the 2nd gets the 2nd, and so on, consistently for every visitor.
@@ -74,8 +82,8 @@ All three magnets share the selector `#fridge .magnet`. playhtml indexes them `0
 Because the id is derived from order-of-appearance, `selector-id` fits **fixed, ordered** groups. If you reorder, insert, or remove items in the middle of the group, the positions shift and elements will adopt each other's stored state. For collections that change shape at runtime, give each item a real stable `id` (e.g. derived from a record id) instead.
 :::
 
-### React
-
+  </TabItem>
+  <TabItem label="React">
 Pass `selector-id` straight through to the rendered element. This pattern powers the fridge-magnets demo, where each `FridgeWord` is the same component rendered many times:
 
 ```tsx
@@ -93,3 +101,5 @@ export const FridgeWord = withSharedState(
 ```
 
 Render a `<FridgeWord>` for each word inside `#fridge` and every one gets its own draggable, synced position, with no per-word id required.
+  </TabItem>
+</Tabs>
