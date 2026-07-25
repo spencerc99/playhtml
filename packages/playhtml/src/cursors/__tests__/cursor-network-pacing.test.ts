@@ -275,7 +275,6 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
-
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -312,7 +311,6 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
-
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -670,6 +668,8 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
+    const allColorEvents: string[][] = [];
+    client.on("allColors", (colors) => allColorEvents.push(colors));
 
     transport.emit({
       type: "presence-sync",
@@ -688,6 +688,10 @@ describe("cursor network pacing", () => {
 
     expect(client.getSnapshot().allColors).toEqual(["#ff0000", "#00ff00"]);
     expect(window.cursors.allColors).toEqual(["#ff0000", "#00ff00"]);
+    expect(allColorEvents).toContainEqual(["#ff0000", "#00ff00"]);
+    expect(
+      Object.getOwnPropertyDescriptor(window.cursors, "allColors")?.set,
+    ).toBeUndefined();
 
     client.destroy();
   });

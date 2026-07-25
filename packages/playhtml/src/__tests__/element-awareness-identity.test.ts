@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getStableIdForAwareness } from "../awareness-utils";
-import { playhtml, resetPlayHTML } from "../index";
+import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 
 function getCurrentProvider(): any {
   const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
@@ -35,7 +35,7 @@ describe("element awareness identity", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-toggle");
 
-    const handler = playhtml.elementHandlers.get("can-toggle")!.get("presence-only")!;
+    const handler = elementHandlers.get("can-toggle")!.get("presence-only")!;
     handler.setMyAwareness({ active: true } as any);
 
     const awareness = getCurrentProvider().awareness;

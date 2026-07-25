@@ -1,8 +1,12 @@
 // ABOUTME: Verifies playhtml.users.me persistence, mutation, and change notification.
-// ABOUTME: Covers replace-all/merge/delete semantics, ephemeral keys, the size cap, getAll, and onChange.
+// ABOUTME: Covers identity publication, array snapshots, color selection, and subscriptions.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { createUsersAPI, type UsersAwarenessLike } from "../users";
+import {
+  createUsersAPI,
+  selectAllColors,
+  type UsersAwarenessLike,
+} from "../users";
 import { PLAYER_IDENTITY_STORAGE_KEY, type PlayerIdentity } from "@playhtml/common";
 
 function makeIdentity(publicKey: string, color = "#111111"): PlayerIdentity {
@@ -42,91 +46,33 @@ describe("playhtml.users.me", () => {
     localStorage.clear();
   });
 
-  it("replaces the whole custom bag and persists it", () => {
+  it("persists color and name mutations", () => {
     const awareness = makeAwareness();
     const users = createUsersAPI(makeIdentity("local-key"), {
       getAwareness: () => awareness,
     });
 
-    users.me.custom = { mood: "curious" };
-    expect(users.me.custom).toEqual({ mood: "curious" });
-
-    users.me.custom = { mood: "sleepy", streak: 3 };
-    expect(users.me.custom).toEqual({ mood: "sleepy", streak: 3 });
-  });
-
-  it("setCustom merges a single key without touching others", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
-
-    users.me.custom = { mood: "curious", streak: 3 };
-    users.me.setCustom("mood", "sleepy");
-
-    expect(users.me.custom).toEqual({ mood: "sleepy", streak: 3 });
-  });
-
-  it("setCustom deletes the key when value is undefined", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
-
-    users.me.custom = { mood: "curious", streak: 3 };
-    users.me.setCustom("mood", undefined);
-
-    expect(users.me.custom).toEqual({ streak: 3 });
-  });
-
-  it("keeps persist:false keys in the published identity but strips them from localStorage", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
-
-    users.me.setCustom("streak", 3);
-    users.me.setCustom("typing", true, { persist: false });
-
-    expect(users.me.custom).toEqual({ streak: 3, typing: true });
+    users.me.color = "#222222";
+    users.me.name = "Ada";
 
     const stored = JSON.parse(localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY)!);
-    expect(stored.custom).toEqual({ streak: 3 });
-  });
-
-  it("clears ephemeral marks when the whole bag is replaced", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
+    expect(stored).toMatchObject({
+      publicKey: "local-key",
+      name: "Ada",
+      playerStyle: { colorPalette: ["#222222"] },
     });
-
-    users.me.setCustom("typing", true, { persist: false });
-    users.me.custom = { typing: true };
-
-    const stored = JSON.parse(localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY)!);
-    expect(stored.custom).toEqual({ typing: true });
   });
 
-  it("throws when the custom bag exceeds 1024 bytes", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
-
-    expect(() => {
-      users.me.custom = { blob: "x".repeat(1024) };
-    }).toThrow("identity.custom must be 1024 bytes or less");
-
-    expect(() => {
-      users.me.setCustom("blob", "x".repeat(1024));
-    }).toThrow("identity.custom must be 1024 bytes or less");
-  });
-
-  it("republishes __playhtml_identity__ to main-room awareness on every change", () => {
+  it("publishes __playhtml_identity__ at init and on every change", () => {
     const awareness = makeAwareness();
     const users = createUsersAPI(makeIdentity("local-key", "#111111"), {
       getAwareness: () => awareness,
     });
+
+    expect(
+      (awareness.getLocalState()?.["__playhtml_identity__"] as PlayerIdentity)
+        .publicKey,
+    ).toBe("local-key");
 
     users.me.color = "#222222";
     expect(
@@ -151,8 +97,12 @@ describe("playhtml.users.me", () => {
     });
 
     const all = users.getAll();
-    expect(all.get("local-key")).toMatchObject({ pid: "local-key", isMe: true });
-    expect(all.get("remote-key")).toMatchObject({
+    expect(all).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ pid: "local-key", isMe: true }),
+      ]),
+    );
+    expect(all.find((user) => user.pid === "remote-key")).toMatchObject({
       pid: "remote-key",
       color: "#abcdef",
       isMe: false,
@@ -170,7 +120,7 @@ describe("playhtml.users.me", () => {
     });
 
     const all = users.getAll();
-    expect(all.get("remote-cursor-key")).toMatchObject({
+    expect(all.find((user) => user.pid === "remote-cursor-key")).toMatchObject({
       pid: "remote-cursor-key",
       color: "#00ff00",
       isMe: false,
@@ -183,7 +133,7 @@ describe("playhtml.users.me", () => {
       getAwareness: () => awareness,
     });
 
-    const seen: Array<Map<string, unknown>> = [];
+    const seen: Array<Array<{ pid: string }>> = [];
     const unsub = users.onChange((all) => seen.push(all));
     const callsAfterSubscribe = seen.length;
 
@@ -193,7 +143,7 @@ describe("playhtml.users.me", () => {
     awareness.emitChange();
 
     expect(seen.length).toBeGreaterThan(callsAfterSubscribe);
-    expect(seen.at(-1)?.get("remote-key")).toBeDefined();
+    expect(seen.at(-1)?.some((user) => user.pid === "remote-key")).toBe(true);
 
     unsub();
   });
@@ -204,13 +154,25 @@ describe("playhtml.users.me", () => {
       getAwareness: () => awareness,
     });
 
-    const seen: Array<Map<string, unknown>> = [];
+    const seen: Array<Array<{ pid: string; name?: string }>> = [];
     users.onChange((all) => seen.push(all));
     const before = seen.length;
 
     users.me.name = "spencer";
 
     expect(seen.length).toBeGreaterThan(before);
-    expect((seen.at(-1)!.get("local-key") as any)?.name).toBe("spencer");
+    expect(seen.at(-1)!.find((user) => user.pid === "local-key")?.name).toBe(
+      "spencer",
+    );
+  });
+
+  it("selects unique primary colors in user order", () => {
+    expect(
+      selectAllColors([
+        { pid: "a", color: "#111111", isMe: true },
+        { pid: "b", color: "#222222", isMe: false },
+        { pid: "c", color: "#111111", isMe: false },
+      ]),
+    ).toEqual(["#111111", "#222222"]);
   });
 });

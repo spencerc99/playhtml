@@ -254,7 +254,6 @@ describe("playhtml configure() + init()", () => {
     const pageIdentity: PlayerIdentity = {
       publicKey: "page-key",
       name: "page name",
-      custom: { mood: "curious" },
       playerStyle: { colorPalette: ["#111111"] },
     };
     const extensionIdentity: PlayerIdentity = {
@@ -278,7 +277,6 @@ describe("playhtml configure() + init()", () => {
       expect(playhtml.users.me.pid).toBe("extension-key");
       expect(playhtml.users.me.color).toBe("#abcdef");
       expect(playhtml.users.me.name).toBe("page name");
-      expect(playhtml.users.me.custom).toEqual({ mood: "curious" });
       expect(log).toHaveBeenCalledWith(
         "[playhtml] Merged extension identity via CustomEvent",
       );

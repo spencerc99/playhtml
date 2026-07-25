@@ -1,11 +1,10 @@
-// ABOUTME: Owns durable user identity (name/color/custom) independent of cursors.
+// ABOUTME: Owns durable user identity (name/color) independent of cursors.
 // ABOUTME: Persists to localStorage, publishes to main-room awareness, and notifies subscribers.
 
 import {
   generatePersistentPlayerIdentity,
-  PLAYER_IDENTITY_STORAGE_KEY,
+  savePlayerIdentityToStorage,
   User,
-  validateIdentityCustom,
   type CursorPresenceView,
   type PlayerIdentity,
 } from "@playhtml/common";
@@ -28,7 +27,7 @@ interface UsersDeps {
   getCursorPresences?: () => Map<string, CursorPresenceView>;
   onCursorPresencesChange?: (
     callback: (presences: Map<string, CursorPresenceView>) => void,
-  ) => () => void;
+  ) => (() => void) | undefined;
 }
 
 /** Returns primary color from player identity; throws if missing (no default). */
@@ -55,7 +54,6 @@ function toUser(identity: PlayerIdentity, isMe: boolean): User {
     pid: identity.publicKey,
     name: identity.name,
     color: getPrimaryColor(identity),
-    custom: identity.custom ?? {},
     isMe,
   };
 }
@@ -64,30 +62,28 @@ export interface UsersSelfIdentity {
   readonly pid: string;
   name: string | undefined;
   color: string;
-  custom: Record<string, unknown>;
-  setCustom(key: string, value: unknown, options?: { persist?: boolean }): void;
 }
 
 export interface UsersAPI {
   readonly me: UsersSelfIdentity;
-  getAll(): Map<string, User>;
-  onChange(callback: (users: Map<string, User>) => void): () => void;
+  getAll(): User[];
+  onChange(callback: (users: User[]) => void): () => void;
   /** Adopts a whole new identity object (init option / configure() injection). */
   adoptIdentity(identity: PlayerIdentity): void;
   /** Returns the live identity reference (cursor client keeps reading this). */
   getIdentity(): PlayerIdentity;
-  /** Subscribe to any self identity mutation (color/name/custom/whole-identity). */
+  /** Subscribe to any self identity mutation (color/name/whole-identity). */
   onSelfChange(callback: (identity: PlayerIdentity) => void): () => void;
   destroy(): void;
 }
 
 /**
  * Creates the users module: the single mutator of the shared PlayerIdentity
- * object, owning localStorage persistence (including ephemeral-custom-key
- * stripping) and publication of `__playhtml_identity__` to main-room
- * awareness. `deps.getAwareness` may return a different awareness instance
- * across calls (e.g. after SPA navigation rebuilds the provider) — identity
- * is republished on every self change and re-attached lazily on read.
+ * object, owning localStorage persistence and publication of
+ * `__playhtml_identity__` to main-room awareness. `deps.getAwareness` may
+ * return a different awareness instance across calls (e.g. after SPA
+ * navigation rebuilds the provider) — identity is republished on every self
+ * change and re-attached lazily on read.
  */
 export function createUsersAPI(
   seedIdentity: PlayerIdentity,
@@ -95,9 +91,8 @@ export function createUsersAPI(
 ): UsersAPI {
   let identity = seedIdentity;
   assertValidPlayerIdentity(identity);
-  const ephemeralCustomKeys = new Set<string>();
   const selfChangeListeners = new Set<(identity: PlayerIdentity) => void>();
-  const usersChangeListeners = new Set<(users: Map<string, User>) => void>();
+  const usersChangeListeners = new Set<(users: User[]) => void>();
   const attachedAwarenessObjects = new WeakSet<UsersAwarenessLike>();
   let currentAwareness: UsersAwarenessLike | null = null;
   let cursorPresencesUnsubscribe: (() => void) | null = null;
@@ -115,37 +110,6 @@ export function createUsersAPI(
     const awareness = deps.getAwareness();
     if (awareness.getLocalState()?.[IDENTITY_FIELD]) return;
     publishIdentity();
-  }
-
-  function savePlayerIdentityToStorage(): void {
-    try {
-      localStorage.setItem(
-        PLAYER_IDENTITY_STORAGE_KEY,
-        JSON.stringify(getPersistableIdentity()),
-      );
-    } catch (e) {
-      console.warn("Failed to save player identity to localStorage:", e);
-    }
-  }
-
-  // Returns the identity to persist to localStorage: a copy with ephemeral
-  // custom keys (persist: false) omitted, without mutating the live identity.
-  function getPersistableIdentity(): PlayerIdentity {
-    if (!identity.custom || ephemeralCustomKeys.size === 0) {
-      return identity;
-    }
-
-    const persistableCustom: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(identity.custom)) {
-      if (!ephemeralCustomKeys.has(key)) {
-        persistableCustom[key] = value;
-      }
-    }
-
-    const { custom, ...rest } = identity;
-    return Object.keys(persistableCustom).length > 0
-      ? { ...rest, custom: persistableCustom }
-      : rest;
   }
 
   function notifySelfChange(): void {
@@ -204,9 +168,12 @@ export function createUsersAPI(
     ensureIdentityWritten();
     attachAwarenessListener();
     if (!cursorPresencesUnsubscribe && deps.onCursorPresencesChange) {
-      cursorPresencesUnsubscribe = deps.onCursorPresencesChange(() => {
+      const unsubscribe = deps.onCursorPresencesChange(() => {
         notifyUsersChange();
       });
+      if (unsubscribe) {
+        cursorPresencesUnsubscribe = unsubscribe;
+      }
     }
   }
 
@@ -219,8 +186,8 @@ export function createUsersAPI(
     return identity.publicKey;
   }
 
-  function getAll(): Map<string, User> {
-    const users = new Map<string, User>();
+  function getAll(): User[] {
+    const usersByStableId = new Map<string, User>();
     const awareness = deps.getAwareness();
     const states = awareness.getStates();
     const mySelfStableId = getSelfStableId();
@@ -256,10 +223,10 @@ export function createUsersAPI(
         (state[IDENTITY_FIELD] as PlayerIdentity | undefined) ??
         cursorState?.playerIdentity;
       if (isMe) {
-        users.set(stableId, toUser(identity, true));
+        usersByStableId.set(stableId, toUser(identity, true));
       } else if (remoteIdentity) {
         try {
-          users.set(stableId, toUser(remoteIdentity, false));
+          usersByStableId.set(stableId, toUser(remoteIdentity, false));
         } catch {
           // Remote identity missing a primary color (old client, corrupted
           // state) — skip rather than surface an invalid User.
@@ -268,8 +235,8 @@ export function createUsersAPI(
     }
 
     // Self is always present, even if awareness hasn't synced yet.
-    if (!users.has(mySelfStableId)) {
-      users.set(mySelfStableId, toUser(identity, true));
+    if (!usersByStableId.has(mySelfStableId)) {
+      usersByStableId.set(mySelfStableId, toUser(identity, true));
     }
 
     const cursorPresences = deps.getCursorPresences?.();
@@ -278,7 +245,7 @@ export function createUsersAPI(
         if (!presence.playerIdentity) continue;
         const isMe = stableId === mySelfStableId;
         try {
-          users.set(
+          usersByStableId.set(
             stableId,
             isMe ? toUser(identity, true) : toUser(presence.playerIdentity, false),
           );
@@ -288,12 +255,12 @@ export function createUsersAPI(
       }
     }
 
-    return users;
+    return Array.from(usersByStableId.values());
   }
 
   function applyIdentityMutation(mutate: () => void): void {
     mutate();
-    savePlayerIdentityToStorage();
+    savePlayerIdentityToStorage(identity);
     publishIdentity();
     notifySelfChange();
     notifyUsersChange();
@@ -326,48 +293,17 @@ export function createUsersAPI(
         identity.playerStyle.colorPalette[0] = newColor;
       });
     },
-    get custom() {
-      return { ...(identity.custom ?? {}) };
-    },
-    set custom(newCustom: Record<string, unknown>) {
-      validateIdentityCustom(newCustom);
-      applyIdentityMutation(() => {
-        identity.custom = { ...newCustom };
-        ephemeralCustomKeys.clear();
-      });
-    },
-    setCustom(
-      key: string,
-      value: unknown,
-      options?: { persist?: boolean },
-    ): void {
-      const nextCustom = { ...(identity.custom ?? {}) };
-      if (value === undefined) {
-        delete nextCustom[key];
-      } else {
-        nextCustom[key] = value;
-      }
-      validateIdentityCustom(nextCustom);
-      applyIdentityMutation(() => {
-        identity.custom = nextCustom;
-        if (value === undefined) {
-          ephemeralCustomKeys.delete(key);
-        } else if (options?.persist === false) {
-          ephemeralCustomKeys.add(key);
-        } else {
-          ephemeralCustomKeys.delete(key);
-        }
-      });
-    },
   };
+
+  ensureIdentityWritten();
 
   return {
     me,
-    getAll(): Map<string, User> {
+    getAll(): User[] {
       ensureSubscribed();
       return getAll();
     },
-    onChange(callback: (users: Map<string, User>) => void): () => void {
+    onChange(callback: (users: User[]) => void): () => void {
       ensureSubscribed();
       usersChangeListeners.add(callback);
       callback(getAll());
@@ -386,7 +322,6 @@ export function createUsersAPI(
       if (identity === newIdentity) return;
       applyIdentityMutation(() => {
         identity = newIdentity;
-        ephemeralCustomKeys.clear();
       });
     },
     getIdentity(): PlayerIdentity {
@@ -405,4 +340,8 @@ export function createUsersAPI(
 /** Default seed identity when no init option / cursors.playerIdentity is provided. */
 export function defaultSeedIdentity(): PlayerIdentity {
   return generatePersistentPlayerIdentity();
+}
+
+export function selectAllColors(users: User[]): string[] {
+  return Array.from(new Set(users.map((user) => user.color)));
 }

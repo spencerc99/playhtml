@@ -2,7 +2,7 @@
 // ABOUTME: Covers removal paths so ephemeral user state does not linger.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { playhtml, resetPlayHTML } from "../index";
+import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 
 function getCurrentProvider(): any {
   const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
@@ -90,8 +90,7 @@ describe("element awareness sync", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
+    const handler = elementHandlers.get("can-play")!
       .get("room-scoped-presence")!;
     handler.setMyAwareness({ active: true } as any);
 
@@ -114,8 +113,7 @@ describe("element awareness sync", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
+    const handler = elementHandlers.get("can-play")!
       .get("toggle-presence")!;
 
     // The provider only broadcasts an awareness update when y-protocols'
@@ -155,8 +153,7 @@ describe("element awareness sync", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
+    const handler = elementHandlers.get("can-play")!
       .get("seeded-presence")!;
 
     expect(handler.awareness).toEqual([{ active: true }]);

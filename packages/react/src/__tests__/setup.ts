@@ -19,12 +19,11 @@ const mockPresences = new Map<string, unknown>();
 
 // Mock users module: a minimal in-memory identity + getAll/onChange, enough
 // to drive usePlayerIdentity/useUsers tests without a real Yjs/PartyKit stack.
-const usersChangeListeners = new Set<(users: Map<string, unknown>) => void>();
+const usersChangeListeners = new Set<(users: Array<Record<string, unknown>>) => void>();
 const mockSelfIdentity = {
   pid: "mock-pid",
   name: undefined as string | undefined,
   color: "#123456",
-  custom: {} as Record<string, unknown>,
 };
 
 function notifyUsersChange() {
@@ -32,19 +31,15 @@ function notifyUsersChange() {
   for (const cb of usersChangeListeners) cb(snapshot);
 }
 
-function mockGetAllUsers(): Map<string, unknown> {
-  return new Map([
-    [
-      mockSelfIdentity.pid,
-      {
-        pid: mockSelfIdentity.pid,
-        name: mockSelfIdentity.name,
-        color: mockSelfIdentity.color,
-        custom: mockSelfIdentity.custom,
-        isMe: true,
-      },
-    ],
-  ]);
+function mockGetAllUsers(): Array<Record<string, unknown>> {
+  return [
+    {
+      pid: mockSelfIdentity.pid,
+      name: mockSelfIdentity.name,
+      color: mockSelfIdentity.color,
+      isMe: true,
+    },
+  ];
 }
 
 const mockUsers = {
@@ -66,24 +61,9 @@ const mockUsers = {
       mockSelfIdentity.color = value;
       notifyUsersChange();
     },
-    get custom() {
-      return { ...mockSelfIdentity.custom };
-    },
-    set custom(value: Record<string, unknown>) {
-      mockSelfIdentity.custom = { ...value };
-      notifyUsersChange();
-    },
-    setCustom: vi.fn((key: string, value: unknown) => {
-      if (value === undefined) {
-        delete mockSelfIdentity.custom[key];
-      } else {
-        mockSelfIdentity.custom[key] = value;
-      }
-      notifyUsersChange();
-    }),
   },
   getAll: vi.fn(() => mockGetAllUsers()),
-  onChange: vi.fn((callback: (users: Map<string, unknown>) => void) => {
+  onChange: vi.fn((callback: (users: Array<Record<string, unknown>>) => void) => {
     usersChangeListeners.add(callback);
     callback(mockGetAllUsers());
     return () => usersChangeListeners.delete(callback);
@@ -134,7 +114,7 @@ const mockedPlayhtml = {
   setupPlayElement: vi.fn(),
   removePlayElement: vi.fn(),
   deleteElementData: vi.fn(),
-  elementHandlers: {},
+  getHandle: vi.fn(),
   dispatchPlayEvent: vi.fn(),
   registerPlayEventListener: vi.fn().mockReturnValue("mock-id"),
   removePlayEventListener: vi.fn(),

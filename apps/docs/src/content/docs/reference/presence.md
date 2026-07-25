@@ -20,7 +20,6 @@ For usage examples, see [Presence](/docs/data/presence/). For cursor rendering a
 interface PlayerIdentity {
   publicKey: string;
   name?: string;
-  custom?: Record<string, unknown>;
   playerStyle: {
     colorPalette: string[];
     cursorStyle?: string;
@@ -33,7 +32,6 @@ interface PlayerIdentity {
 | --- | --- |
 | `publicKey` | Stable participant id for this browser. |
 | `name` | Display name, if set. |
-| `custom` | [Custom properties](/docs/data/presence/users/), up to 1KB serialized. |
 | `playerStyle.colorPalette` | Cursor colors. Index `0` is the primary color. |
 | `playerStyle.cursorStyle` | Optional custom cursor CSS. |
 | `createdAt` | Local identity creation time as a Unix timestamp in milliseconds. |

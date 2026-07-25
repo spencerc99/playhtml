@@ -33,7 +33,7 @@ import {
   getElementAwarenessFingerprint,
 } from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
-import { createPresenceAPI, ensureAwarenessIdentity } from "./presence";
+import { createPresenceAPI } from "./presence";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
 import type { UsersAPI } from "./users";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
@@ -191,6 +191,10 @@ let cursorClient: CursorClientAwareness | null = null;
 let currentCursorRoomId = "";
 let presenceAPI: PresenceAPI | null = null;
 let usersAPI: UsersAPI | null = null;
+
+function resolveMyIdentity(): PlayerIdentity {
+  return usersAPI?.getIdentity() ?? defaultSeedIdentity();
+}
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
 const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
@@ -316,10 +320,11 @@ function ensureElementProxy<TData = unknown>(
   }
   return tagMap.get(elementId)! as TData;
 }
-let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
-  string,
-  Map<string, ElementHandler>
->();
+// Internal registry of active handlers (tag -> element id -> handler).
+// Exported for package-internal use and tests; not part of the public
+// playhtml singleton — external code goes through getHandle().
+export const elementHandlers: Map<string, Map<string, ElementHandler>> =
+  new Map<string, Map<string, ElementHandler>>();
 const mirrorDescendantElementsByRoot = new WeakMap<
   HTMLElement,
   Map<string, HTMLElement>
@@ -451,11 +456,11 @@ export interface InitOptions<T = unknown> {
   cursors?: CursorOptions;
 
   /**
-   * The local user's durable identity (name, color, custom properties),
-   * available via `playhtml.users` regardless of whether cursors are
-   * enabled. Defaults to a persistent per-browser identity generated on
-   * first use. `cursors.playerIdentity` is still honored and takes
-   * precedence over this option, for back-compat.
+   * The local user's durable identity (name and color), available via
+   * `playhtml.users` regardless of whether cursors are enabled. Defaults to a
+   * persistent per-browser identity generated on first use.
+   * `cursors.playerIdentity` is still honored and takes precedence over this
+   * option, for back-compat.
    */
   playerIdentity?: PlayerIdentity;
 }
@@ -1036,6 +1041,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
       onError: configuredOptions?.onError,
     });
   }
+  usersAPI?.getAll();
 
   bindAwarenessListener();
   markAllElementsAsLoading();
@@ -1055,7 +1061,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
  * shared DOM instead.
  *
  * The extension owns the canonical public key and style. The page owns its
- * display name and custom properties.
+ * display name.
  *
  * Idempotent: only attaches once. Safe to call once users exist, regardless
  * of whether cursor rendering is enabled.
@@ -1067,20 +1073,15 @@ function setupExtensionIdentityListener(): void {
     const incoming = toPublicPlayerIdentity(e.detail?.playerIdentity);
     if (!incoming?.playerStyle.colorPalette[0] || !usersAPI) return;
 
-    const current = usersAPI.getIdentity();
+    const current = resolveMyIdentity();
     // Start from the sanitized extension identity so page-side non-public
     // fields die at the boundary; carry over only the page-owned fields.
     const merged: PlayerIdentity = {
       ...incoming,
       ...(typeof current.name === "string" ? { name: current.name } : {}),
-      ...(current.custom !== undefined ? { custom: current.custom } : {}),
     };
 
-    if (cursorClient) {
-      cursorClient.configure({ playerIdentity: merged });
-    } else {
-      usersAPI.adoptIdentity(merged);
-    }
+    usersAPI.adoptIdentity(merged);
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1174,6 +1175,9 @@ async function runHandleNavigation(): Promise<void> {
         onError: configuredOptions?.onError,
       });
     }
+  }
+  if (mainRoomChanged || cursorEnabledChanged || cursorRoomChanged) {
+    usersAPI?.getAll();
   }
 
   // Element awareness lives on the page provider, so rebind only when the page
@@ -1314,16 +1318,13 @@ async function initPlayHTMLOnce() {
   const seedIdentity: PlayerIdentity =
     cursors.playerIdentity ??
     configuredOptions?.playerIdentity ??
-    defaultSeedIdentity();
+    resolveMyIdentity();
   usersAPI = createUsersAPI(seedIdentity, {
     getAwareness: () => yprovider.awareness,
     getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
     onCursorPresencesChange: (callback) =>
-      cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
+      cursorClient?.onCursorPresencesChange(callback),
   });
-  // Publish identity to main-room awareness unconditionally at init, rather
-  // than waiting for the first presence/element-awareness touch.
-  usersAPI.getAll();
 
   // Initialize cursor tracking immediately after provider creation
   buildCursors({
@@ -1332,13 +1333,15 @@ async function initPlayHTMLOnce() {
     partykitHost,
     onError,
   });
+  usersAPI.getAll();
 
   setupExtensionIdentityListener();
 
   // Create presence API — always available, wraps whichever awareness provider exists
   presenceAPI = createPresenceAPI({
     getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
-    getPlayerIdentity: () => usersAPI!.getIdentity(),
+    getPlayerIdentity: resolveMyIdentity,
+    publishIdentity: false,
     getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
     onCursorPresencesChange: (callback) =>
       cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
@@ -1355,7 +1358,7 @@ async function initPlayHTMLOnce() {
 
   if (configuredOptions?.developmentMode) {
     developmentModule = await import("./development");
-    developmentModule.setupDevUI(playhtml);
+    developmentModule.setupDevUI(playhtml, elementHandlers);
   }
   // TODO: expose a way to activate the dev tools UI on any page at runtime
   // (e.g. window.playhtml.showDevTools()) so it can be triggered from the
@@ -1563,10 +1566,6 @@ function createPlayElementData<T extends TagType, TData = any>(
     },
     onAwarenessChange: (elementAwarenessData) => {
       const awarenessProvider = getElementAwarenessProvider();
-      ensureAwarenessIdentity(
-        awarenessProvider.awareness,
-        usersAPI?.getIdentity() ?? defaultSeedIdentity(),
-      );
       const existingAwareness =
         awarenessProvider.awareness.getLocalState()?.[tag] || {};
 
@@ -1864,7 +1863,8 @@ function createPresenceRoom(name: string): PresenceRoom {
 
   const presence = createPresenceAPI({
     getAwareness: () => provider.awareness,
-    getPlayerIdentity: () => usersAPI!.getIdentity(),
+    getPlayerIdentity: resolveMyIdentity,
+    publishIdentity: true,
   });
 
   let destroyed = false;
@@ -1897,7 +1897,6 @@ export interface PlayHTMLComponents {
   /** @experimental View API — get a handle for a bound element. */
   getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<PlayStore["play"]>;
-  elementHandlers: Map<string, Map<string, ElementHandler>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
@@ -2035,7 +2034,6 @@ export const playhtml: PlayHTMLComponents = {
   get syncedStore() {
     return publicSyncedStore;
   },
-  elementHandlers,
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,

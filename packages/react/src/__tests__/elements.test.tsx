@@ -800,9 +800,7 @@ describe("CanPlayElement with built-in capabilities", () => {
     ]);
     vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
     vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
-    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
-      elementHandlers as typeof playhtml.elementHandlers,
-    );
+    vi.spyOn(playhtml, "getHandle").mockReturnValue({ setData } as any);
 
     const { container } = render(
       <ReactiveOrb id="orb-test" className="orb-test" />,

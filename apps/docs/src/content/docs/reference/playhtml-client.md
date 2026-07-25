@@ -26,7 +26,7 @@ playhtml.init();
 | Events | `dispatchPlayEvent`, `registerPlayEventListener`, `removePlayEventListener` |
 | Page data | `createPageData` |
 | Presence | `presence`, `createPresenceRoom`, `cursorClient` |
-| Inspection | `roomId`, `host`, `syncedStore`, `elementHandlers`, `listSharedElements` |
+| Inspection | `roomId`, `host`, `syncedStore`, `listSharedElements` |
 
 ---
 
@@ -357,17 +357,16 @@ Presence tracks who is in the room and what they are doing. See [Presence & iden
 
 **Type:** `{ me, getAll(), onChange(cb) }`
 
-Durable user identity — name, color, and custom properties — for everyone in the room, whether or not cursors are enabled. Throws if accessed before `init()` completes. Usage guide: [Users](/docs/data/presence/users/).
+Durable user identity (name and color) for everyone in the room, whether or not cursors are enabled. Throws if accessed before `init()` completes. Usage guide: [Users](/docs/data/presence/users/).
 
 ```js
 await playhtml.ready;
 
 playhtml.users.me.name = "Alice";
-playhtml.users.me.setCustom("status", "away", { persist: false });
 
-const everyone = playhtml.users.getAll(); // Map<pid, { pid, name, color, custom, isMe }>
+const everyone = playhtml.users.getAll(); // [{ pid, name, color, isMe }, ...]
 const unsubscribe = playhtml.users.onChange((users) => {
-  console.log(`${users.size} people here`);
+  console.log(`${users.length} people here`);
 });
 ```
 
@@ -483,11 +482,3 @@ See [Shared elements](/docs/advanced/shared-elements/) for the full guide.
 **Type:** `ReadOnlyStore<PlayStore["play"]>` _(read-only)_
 
 A read-only view into the underlying synced data store, keyed by capability tag then element id. Useful for inspecting the raw shared state of all elements in the devtools console. Do not write to this object — mutations will not be validated or synced correctly. Use `setData` from an element handler instead.
-
----
-
-### `elementHandlers`
-
-**Type:** `Map<string, Map<string, ElementHandler>>`
-
-A nested map of all active element handlers, keyed first by capability tag, then by element id. Useful in devtools for inspecting which elements are registered and accessing their current data.

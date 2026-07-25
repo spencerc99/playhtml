@@ -183,7 +183,7 @@ describe("usePlayerIdentity", () => {
       </PlayProvider>,
     );
 
-    expect(seen[0]).toEqual({ color: "", pid: undefined, name: undefined, custom: {} });
+    expect(seen[0]).toEqual({ color: "", pid: undefined, name: undefined });
 
     await waitFor(() => {
       expect(seen.at(-1)?.pid).toBe("mock-pid");
@@ -191,7 +191,7 @@ describe("usePlayerIdentity", () => {
     expect(seen.at(-1)?.color).toBe("#123456");
   });
 
-  it("reflects a color/name/custom change made via playhtml.users.me", async () => {
+  it("reflects a color/name change made via playhtml.users.me", async () => {
     let captured: ReturnType<typeof usePlayerIdentity> | null = null;
     function TestComponent() {
       captured = usePlayerIdentity();
@@ -209,13 +209,11 @@ describe("usePlayerIdentity", () => {
     act(() => {
       playhtml.users.me.color = "#ffae00";
       playhtml.users.me.name = "ada";
-      playhtml.users.me.custom = { mood: "curious" };
     });
 
     await waitFor(() => {
       expect(captured?.color.toLowerCase()).toBe("#ffae00");
       expect(captured?.name).toBe("ada");
-      expect(captured?.custom).toEqual({ mood: "curious" });
     });
   });
 
@@ -240,10 +238,10 @@ describe("usePlayerIdentity", () => {
 });
 
 describe("useUsers", () => {
-  it("returns an empty map pre-sync, then includes self post-sync", async () => {
-    let captured: Map<string, { isMe: boolean }> | null = null;
+  it("returns an empty array pre-sync, then includes self post-sync", async () => {
+    let captured: Array<{ isMe: boolean }> | null = null;
     function TestComponent() {
-      captured = useUsers() as Map<string, { isMe: boolean }>;
+      captured = useUsers();
       return <div />;
     }
 
@@ -254,9 +252,9 @@ describe("useUsers", () => {
     );
 
     await waitFor(() => {
-      expect(captured?.size).toBeGreaterThan(0);
+      expect(captured?.length).toBeGreaterThan(0);
     });
-    const self = Array.from(captured!.values()).find((u) => u.isMe);
+    const self = captured!.find((user) => user.isMe);
     expect(self).toBeDefined();
   });
 });

@@ -406,13 +406,6 @@ export function CanPlayElement<T extends object, V = any>({
         registeredBindingRef.current = bindingAfterSetup;
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
-
-        // If playhtml isn't initialized yet, log a helpful message
-        if (!playhtml.elementHandlers) {
-          console.warn(
-            "[@playhtml/react] PlayHTML not initialized yet. Element will be set up when PlayHTML initializes.",
-          );
-        }
       }
     }
   });
@@ -423,7 +416,7 @@ export function CanPlayElement<T extends object, V = any>({
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
-      if (!mountedElement || !playhtml.elementHandlers) return;
+      if (!mountedElement) return;
       playhtml.removePlayElement(mountedElement);
       registeredBindingRef.current = undefined;
     };

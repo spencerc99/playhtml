@@ -129,7 +129,6 @@ export const PlayContext = createContext<PlayContextInfo>({
     allColors: [],
     color: "",
     name: undefined,
-    custom: {},
   },
   cursorPresences: new Map(),
 });
@@ -243,17 +242,27 @@ export function PlayProvider({
   }, []);
 
   const [cursorsState, setCursorsState] = useState<CursorEvents>({
-    allColors: [] as string[],
+    allColors: [],
     color: "",
     name: undefined,
-    custom: {},
   });
 
   const [cursorPresences, setCursorPresences] = useState<
     Map<string, CursorPresenceView>
   >(new Map());
 
-  // Single effect: cursor client state and presence subscriptions when synced
+  useEffect(() => {
+    if (!hasSynced) return;
+    return playhtml.users.onChange((users) => {
+      const me = playhtml.users.me;
+      setCursorsState({
+        allColors: Array.from(new Set(users.map((user) => user.color))),
+        color: me.color,
+        name: me.name,
+      });
+    });
+  }, [hasSynced]);
+
   useEffect(() => {
     const client = playhtml.cursorClient;
     if (!client) return;
@@ -262,42 +271,7 @@ export function PlayProvider({
     const unsubPresences = client.onCursorPresencesChange((presences) => {
       setCursorPresences(new Map(presences)); // New Map to trigger re-render
     });
-
-    if (!initOptions?.cursors?.enabled) {
-      return unsubPresences;
-    }
-
-    const snap = client.getSnapshot();
-    setCursorsState({
-      allColors: snap.allColors || [],
-      color: snap.color || "",
-      name: snap.name || "",
-      custom: snap.custom || {},
-    });
-    const handleAllColors = (allColors: string[]) => {
-      setCursorsState((prev) => ({ ...prev, allColors }));
-    };
-    const handleColor = (myColor: string) => {
-      setCursorsState((prev) => ({ ...prev, color: myColor }));
-    };
-    const handleName = (myName?: string) => {
-      setCursorsState((prev) => ({ ...prev, name: myName }));
-    };
-    const handleCustom = (myCustom: Record<string, unknown>) => {
-      setCursorsState((prev) => ({ ...prev, custom: myCustom }));
-    };
-    client.on("allColors", handleAllColors);
-    client.on("color", handleColor);
-    client.on("name", handleName);
-    client.on("custom", handleCustom);
-
-    return () => {
-      client.off("allColors", handleAllColors);
-      client.off("color", handleColor);
-      client.off("name", handleName);
-      client.off("custom", handleCustom);
-      unsubPresences();
-    };
+    return unsubPresences;
   }, [hasSynced]);
 
   return (
