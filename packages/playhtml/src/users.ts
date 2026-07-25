@@ -112,14 +112,28 @@ export function createUsersAPI(
     publishIdentity();
   }
 
+  function notifySubscribers<T>(
+    listeners: Set<(value: T) => void>,
+    value: T,
+    subscriberType: string,
+  ): void {
+    for (const callback of listeners) {
+      try {
+        callback(value);
+      } catch (error) {
+        console.error(`[playhtml] ${subscriberType} subscriber threw:`, error);
+      }
+    }
+  }
+
   function notifySelfChange(): void {
-    selfChangeListeners.forEach((cb) => cb(identity));
+    notifySubscribers(selfChangeListeners, identity, "users self-change");
   }
 
   function notifyUsersChange(): void {
     if (usersChangeListeners.size === 0) return;
     const users = getAll();
-    usersChangeListeners.forEach((cb) => cb(users));
+    notifySubscribers(usersChangeListeners, users, "users change");
   }
 
   function attachAwarenessListener(): void {

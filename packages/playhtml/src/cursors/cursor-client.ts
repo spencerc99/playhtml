@@ -1898,7 +1898,16 @@ export class CursorClientAwareness {
   ): void {
     const listeners = this.globalApiListeners.get(event);
     if (listeners) {
-      listeners.forEach((callback) => callback(value));
+      for (const callback of listeners) {
+        try {
+          callback(value);
+        } catch (error) {
+          console.error(
+            `[playhtml] cursors "${event}" subscriber threw:`,
+            error,
+          );
+        }
+      }
     }
   }
 

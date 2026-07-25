@@ -1,7 +1,7 @@
 // ABOUTME: Verifies playhtml.users.me persistence, mutation, and change notification.
 // ABOUTME: Covers identity publication, array snapshots, color selection, and subscriptions.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   createUsersAPI,
   selectAllColors,
@@ -44,6 +44,10 @@ function makeAwareness(clientID = 1): UsersAwarenessLike & {
 describe("playhtml.users.me", () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("persists color and name mutations", () => {
@@ -163,6 +167,63 @@ describe("playhtml.users.me", () => {
     expect(seen.length).toBeGreaterThan(before);
     expect(seen.at(-1)!.find((user) => user.pid === "local-key")?.name).toBe(
       "spencer",
+    );
+  });
+
+  it("isolates throwing onChange subscribers during self mutation", () => {
+    const awareness = makeAwareness();
+    const users = createUsersAPI(makeIdentity("local-key"), {
+      getAwareness: () => awareness,
+    });
+    const callbackError = new Error("onChange failed");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    let throwOnNotification = false;
+    users.onChange(() => {
+      if (throwOnNotification) throw callbackError;
+    });
+    const laterSubscriber = vi.fn();
+    users.onChange(laterSubscriber);
+    laterSubscriber.mockClear();
+    throwOnNotification = true;
+
+    expect(() => {
+      users.me.name = "spencer";
+    }).not.toThrow();
+
+    expect(users.me.name).toBe("spencer");
+    expect(laterSubscriber).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ pid: "local-key", name: "spencer" }),
+      ]),
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      "[playhtml] users change subscriber threw:",
+      callbackError,
+    );
+  });
+
+  it("isolates throwing onSelfChange subscribers during self mutation", () => {
+    const awareness = makeAwareness();
+    const users = createUsersAPI(makeIdentity("local-key"), {
+      getAwareness: () => awareness,
+    });
+    const callbackError = new Error("onSelfChange failed");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    users.onSelfChange(() => {
+      throw callbackError;
+    });
+    const laterSubscriber = vi.fn();
+    users.onSelfChange(laterSubscriber);
+
+    expect(() => {
+      users.me.name = "spencer";
+    }).not.toThrow();
+
+    expect(users.me.name).toBe("spencer");
+    expect(laterSubscriber).toHaveBeenCalledWith(users.getIdentity());
+    expect(consoleError).toHaveBeenCalledWith(
+      "[playhtml] users self-change subscriber threw:",
+      callbackError,
     );
   });
 
