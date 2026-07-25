@@ -597,6 +597,7 @@ const presenceTransportsByRoom = new Map<string, AcquiredPresenceTransport>();
 let cursorPresenceTransportRoom: string | null = null;
 let elementAwarenessClient: ElementAwarenessClient | null = null;
 let elementAwarenessRoom: string | null = null;
+let elementAwarenessSelfChangeUnsub: (() => void) | null = null;
 
 function acquirePresenceTransport(
   room: string,
@@ -911,10 +912,18 @@ function buildElementAwarenessClient(): void {
     getPage: getPresencePage,
     onAwareness: applyElementAwareness,
   });
+  // Identity changes (users.me setters, extension injection via
+  // adoptIdentity) flow through the users module; re-join the element
+  // transport so peers key our state under the current identity.
+  elementAwarenessSelfChangeUnsub = usersAPI?.onSelfChange(() => {
+    elementAwarenessClient?.refreshIdentity();
+  }) ?? null;
 }
 
 function teardownElementAwarenessClient(): void {
   if (!elementAwarenessClient) return;
+  elementAwarenessSelfChangeUnsub?.();
+  elementAwarenessSelfChangeUnsub = null;
   try {
     elementAwarenessClient.destroy();
   } catch {}
@@ -1169,7 +1178,6 @@ function setupExtensionIdentityListener(): void {
     };
 
     usersAPI.adoptIdentity(merged);
-    elementAwarenessClient?.refreshIdentity();
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
