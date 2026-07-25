@@ -34,7 +34,9 @@ export type ReactElementInitializer<T = object, V = any> = Omit<
 } & PlayableChildren<T, V>;
 
 export function getCurrentElementHandler(tag: TagType | string, id: string) {
-  return playhtml.elementHandlers?.get(tag)?.get(id);
+  const handlers = playhtml.elementHandlers;
+  if (!(handlers instanceof Map)) return undefined;
+  return handlers.get(tag)?.get(id);
 }
 
 function isDOMElement(element: React.ReactElement): boolean {
