@@ -26,7 +26,7 @@ playhtml.init();
 | Events | `dispatchPlayEvent`, `registerPlayEventListener`, `removePlayEventListener` |
 | Page data | `createPageData` |
 | Presence | `presence`, `createPresenceRoom`, `cursorClient` |
-| Inspection | `roomId`, `host`, `syncedStore`, `elementHandlers`, `eventHandlers`, `listSharedElements` |
+| Inspection | `roomId`, `host`, `syncedStore`, `elementHandlers`, `listSharedElements` |
 
 ---
 
@@ -471,11 +471,3 @@ A read-only view into the underlying synced data store, keyed by capability tag 
 **Type:** `Map<string, Map<string, ElementHandler>>`
 
 A nested map of all active element handlers, keyed first by capability tag, then by element id. Useful in devtools for inspecting which elements are registered and accessing their current data.
-
----
-
-### `eventHandlers`
-
-**Type:** `Map<string, Array<RegisteredPlayEvent>>`
-
-A map of all registered event listeners, keyed by event type. Useful for verifying that event listeners were registered correctly and checking for duplicates.

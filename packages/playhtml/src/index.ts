@@ -40,6 +40,7 @@ import {
   findSharedElementsOnPage,
   findSharedReferencesOnPage,
   isSharedReadOnly,
+  setSharedPermission,
 } from "./sharing";
 import { parseDataSource, normalizeHost } from "@playhtml/common";
 import type { PageDataChannel } from "@playhtml/common";
@@ -188,8 +189,6 @@ let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
 let currentCursorRoomId = "";
 let presenceAPI: PresenceAPI | null = null;
-// @ts-ignore, will be removed
-let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
 const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
@@ -203,18 +202,8 @@ const pageDataListeners = new Map<string, Set<(data: any) => void>>();
 const sharedUpdateSeen: Set<string> = new Set();
 const sharedHydrationTimers: Map<string, number> = new Map();
 
-// Shared permissions map for tracking element permissions
-export const sharedPermissions = new Map<string, "read-only" | "read-write">();
 // Track discovered shared references to avoid duplicates
 const discoveredSharedReferences = new Set<string>();
-
-function initializeSharedPermissions(): void {
-  // Initialize if not already done
-  if (sharedPermissions.size === 0) {
-    // Clear any existing entries to ensure clean state
-    sharedPermissions.clear();
-  }
-}
 
 // Handle discovery of a new shared reference element
 function handleNewSharedReference(element: HTMLElement): void {
@@ -278,7 +267,7 @@ function handleNewSharedElement(element: HTMLElement): void {
   }
 
   // Update local permissions
-  sharedPermissions.set(elementId, permissionMode);
+  setSharedPermission(elementId, permissionMode);
 
   // Send to server if connected
   if (yprovider?.wsconnected) {
@@ -504,7 +493,7 @@ function onMessage(data: string) {
           "read-only" | "read-write"
         >;
         Object.entries(perms).forEach(([elementId, mode]) => {
-          sharedPermissions.set(elementId, mode);
+          setSharedPermission(elementId, mode);
           if (mode === "read-only") {
             // Add not-allowed affordance to any matching referenced element
             const el = document.querySelector(
@@ -552,16 +541,6 @@ function isPromiseLike(value: unknown): value is Promise<void> {
 /** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
 let lastElementAwarenessFingerprint: string | null = null;
 let trackedElementAwarenessKeys = new Set<string>();
-// NOTE: Potential optimization: allowlist/blocklist collaborative paths
-// In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
-// Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
-// Example API (future):
-// <CanPlayElement
-//   defaultData={...}
-//   crdtPaths={{ allow: ["lists.todos", "nested.a.b.c.values"], block: ["profile", "counters"] }}
-// >
-// This would proxy only specified paths in synced mode, keeping others as plain local React state.
-// This aligns with the common case where nested arrays need collaboration more than nested objects.
 
 let __currentRoomId = "";
 let __currentHost = "";
@@ -578,28 +557,16 @@ let awarenessChangeTarget: {
   awareness: { off: (event: string, cb: () => void) => void };
 } | null = null;
 
-// If the first init() receives an explicit `room`, we store it for future
-// navigation checks. A string stays fixed across navigation; a function is
-// re-invoked on each nav so a path-derived room switches correctly. If no
-// explicit room was given, we store the default-room options and re-derive on
-// each nav so pathname-based rooms switch correctly.
-let explicitRoomOption: string | (() => string) | undefined = undefined;
-
 /** Resolve the explicit room option to a string, calling it if it's a function
  * (so a path-derived room recomputes on each nav). undefined if none was set. */
 function resolveExplicitRoom(): string | undefined {
-  return typeof explicitRoomOption === "function"
-    ? explicitRoomOption()
-    : explicitRoomOption;
+  const room = configuredOptions?.room;
+  return typeof room === "function" ? room() : room;
 }
-let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
-let cursorOptionsCache: CursorOptions | undefined = undefined;
-let cachedOnError: (() => void) | undefined = undefined;
 let roomResetPromise: Promise<void> | null = null;
 let pendingRoomResetEpoch: number | null = null;
 const SERVER_ROOM_RESET_SYNC_TIMEOUT_MS = 5000;
 const mainProviderSyncWaiters = new Set<(error?: Error) => void>();
-let isDevelopmentMode = false;
 
 // The config declared for this playhtml instance. Captured by the first call
 // that supplies config — whether configure() or a config-bearing init() — and
@@ -729,14 +696,13 @@ function applyConfig(options: InitOptions): void {
   // Shallow-copy so a caller that mutates or reuses its options object after
   // declaring config can't silently change the locked config. cursors is
   // copied too since it's the most commonly nested-and-mutated option.
-  configuredOptions = { ...options };
-  explicitRoomOption = options.room;
-  cachedDefaultRoomOptions = options.defaultRoomOptions
-    ? { ...options.defaultRoomOptions }
-    : { includeSearch: false };
-  cursorOptionsCache = options.cursors ? { ...options.cursors } : {};
-  cachedOnError = options.onError;
-  isDevelopmentMode = options.developmentMode ?? false;
+  configuredOptions = {
+    ...options,
+    ...(options.defaultRoomOptions
+      ? { defaultRoomOptions: { ...options.defaultRoomOptions } }
+      : {}),
+    ...(options.cursors ? { cursors: { ...options.cursors } } : {}),
+  };
 
   if (options.extraCapabilities) {
     for (const [tag, tagInfo] of Object.entries(options.extraCapabilities)) {
@@ -773,7 +739,6 @@ function buildMainProvider(args: {
 
   const sharedElements = findSharedElementsOnPage();
   const sharedReferences = findSharedReferencesOnPage();
-  initializeSharedPermissions();
 
   sharedReferences.forEach((ref) => {
     const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
@@ -827,8 +792,8 @@ function teardownMainProvider(): void {
  * room's state, exactly like a page reload, with no tombstone carried into the
  * old room (discard, don't delete). The old doc is destroyed.
  *
- * Everything derived from the doc is rebuilt: globalData, the public read-only
- * store, and the page-data + proxy bookkeeping. Connected element handlers
+ * Everything derived from the doc is rebuilt: the public read-only store and
+ * the page-data + proxy bookkeeping. Connected element handlers
  * re-register against the fresh store via setupElements() (called by the caller
  * after the new provider is built); surviving page-data handles re-bind lazily
  * through their ensureProxy/attachObserver re-acquire path.
@@ -840,7 +805,6 @@ function recreateStore(): void {
   store = syncedStore<StoreShape>({ play: {} });
   doc = getYjsDoc(store);
   publicSyncedStore = createReadOnlyStore(store.play);
-  globalData = doc.getMap<Y.Map<any>>("playhtml-global");
 
   // Proxies and observers referenced the old doc — drop them so they rebuild
   // against the fresh store. KEEP page-data listener sets + refcounts: a channel
@@ -1046,16 +1010,17 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   buildMainProvider({
     room: __currentRoomId,
     partykitHost: __currentHost,
-    onError: cachedOnError,
+    onError: configuredOptions?.onError,
     onMessage,
   });
 
-  if (cursorOptionsCache?.enabled) {
+  const cursors = configuredOptions?.cursors;
+  if (cursors?.enabled) {
     buildCursors({
-      cursors: cursorOptionsCache,
+      cursors,
       mainRoom: __currentRoomId,
       partykitHost: __currentHost,
-      onError: cachedOnError,
+      onError: configuredOptions?.onError,
     });
   }
 
@@ -1112,20 +1077,24 @@ async function runHandleNavigation(): Promise<void> {
   if (firstSetup) return;
 
   const nextRoomInput =
-    resolveExplicitRoom() ?? getDefaultRoom(cachedDefaultRoomOptions);
+    resolveExplicitRoom() ??
+    getDefaultRoom(
+      configuredOptions?.defaultRoomOptions ?? { includeSearch: false },
+    );
   const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
 
-  const cursorsWanted = Boolean(cursorOptionsCache?.enabled);
+  const cursorOptions = configuredOptions?.cursors;
+  const cursorsWanted = Boolean(cursorOptions?.enabled);
   const cursorsActive = cursorClient !== null;
   // Cursor setup is static after init, but the cursor client can still be
   // rebuilt when navigation changes the cursor room.
   const cursorEnabledChanged = cursorsWanted !== cursorsActive;
 
   let cursorRoomChanged = false;
-  if (cursorOptionsCache?.enabled) {
-    if (cursorOptionsCache.room) {
-      const resolved = resolveCursorRoom(cursorOptionsCache.room);
+  if (cursorOptions?.enabled) {
+    if (cursorOptions.room) {
+      const resolved = resolveCursorRoom(cursorOptions.room);
       const normalized = normalizeRoomId(window.location.host, resolved);
       cursorRoomChanged = normalized !== currentCursorRoomId;
     } else {
@@ -1167,22 +1136,22 @@ async function runHandleNavigation(): Promise<void> {
     buildMainProvider({
       room: newMainRoom,
       partykitHost: __currentHost,
-      onError: cachedOnError,
+      onError: configuredOptions?.onError,
       onMessage,
     });
     __currentRoomId = newMainRoom;
   }
 
-  if (cursorEnabledChanged || (cursorRoomChanged && cursorOptionsCache)) {
+  if (cursorEnabledChanged || (cursorRoomChanged && cursorOptions)) {
     // teardownCursors handles the disable case (wanted off, currently on) and
     // clears the way for a rebuild on enable / room change.
     teardownCursors();
-    if (cursorsWanted && cursorOptionsCache) {
+    if (cursorsWanted && cursorOptions) {
       buildCursors({
-        cursors: cursorOptionsCache,
+        cursors: cursorOptions,
         mainRoom: newMainRoom,
         partykitHost: __currentHost,
-        onError: cachedOnError,
+        onError: configuredOptions?.onError,
       });
     }
   }
@@ -1279,13 +1248,14 @@ async function initPlayHTMLOnce() {
   // Connection is about to read config; freeze it. A later configure() now
   // warns instead of silently no-op'ing — config can't change post-connect.
   lockConfigForBootstrap();
-  // host/onError/developmentMode are not mirrored into long-lived module state
-  // beyond cachedOnError/isDevelopmentMode, so read them from configuredOptions.
   const host = configuredOptions?.host;
-  const cursors = cursorOptionsCache ?? {};
+  const cursors = configuredOptions?.cursors ?? {};
   const inputRoom =
-    resolveExplicitRoom() ?? getDefaultRoom(cachedDefaultRoomOptions);
-  const onError = cachedOnError;
+    resolveExplicitRoom() ??
+    getDefaultRoom(
+      configuredOptions?.defaultRoomOptions ?? { includeSearch: false },
+    );
+  const onError = configuredOptions?.onError;
   // @ts-ignore
   window.playhtml = playhtml;
   // DOM marker visible to browser extension content scripts (which run in an
@@ -1348,7 +1318,7 @@ async function initPlayHTMLOnce() {
   playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
   document.head.appendChild(playStyles);
 
-  if (isDevelopmentMode) {
+  if (configuredOptions?.developmentMode) {
     developmentModule = await import("./development");
     developmentModule.setupDevUI(playhtml);
   }
@@ -1482,7 +1452,7 @@ function applyElementDataChange<TData>(
     // `d => (d.x = 1)` return a number/boolean as a side effect of a
     // valid in-place mutation — warning on those is just noise.
     if (
-      isDevelopmentMode &&
+      configuredOptions?.developmentMode &&
       returned !== undefined &&
       typeof returned === "object"
     ) {
@@ -1530,7 +1500,7 @@ function createPlayElementData<T extends TagType, TData = any>(
       initialAwareness !== undefined
         ? initialAwareness
         : tagInfo.myDefaultAwareness,
-    devMode: isDevelopmentMode,
+    devMode: configuredOptions?.developmentMode ?? false,
     // Always provide a plain snapshot to render paths
     data: clonePlain(dataProxy),
     awareness:
@@ -1659,10 +1629,6 @@ function getCustomElementProps(element: HTMLElement) {
       props[key] = el[key];
     }
   }
-  // Legacy alias
-  if (el.additionalSetup !== undefined && props.onMount === undefined) {
-    props.onMount = el.additionalSetup;
-  }
   return props;
 }
 
@@ -1680,7 +1646,7 @@ function getElementInitializerInfoForElement(
   if (tag === TagType.CanPlay) {
     // For can-play, all properties come from the DOM element
     const customProps = getCustomElementProps(element);
-    return customProps as Required<Omit<ElementInitializer, "additionalSetup">>;
+    return customProps as Required<ElementInitializer>;
   }
 
   const builtIn = capabilitiesToInitializer[tag];
@@ -1898,7 +1864,6 @@ export interface PlayHTMLComponents {
   getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<PlayStore["play"]>;
   elementHandlers: Map<string, Map<string, ElementHandler>>;
-  eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
@@ -1998,13 +1963,8 @@ export async function resetPlayHTML(): Promise<void> {
     __currentRoomId = "";
     __currentHost = "";
     presenceAPI = null;
-    explicitRoomOption = undefined;
-    cachedDefaultRoomOptions = { includeSearch: false };
-    cursorOptionsCache = undefined;
-    cachedOnError = undefined;
     roomResetPromise = null;
     pendingRoomResetEpoch = null;
-    isDevelopmentMode = false;
     configuredOptions = null;
     hasBootstrapped = false;
   } finally {
@@ -2039,7 +1999,6 @@ export const playhtml: PlayHTMLComponents = {
     return publicSyncedStore;
   },
   elementHandlers,
-  eventHandlers,
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
@@ -2316,7 +2275,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
   (yVal as any).observeDeep(observer);
   yObserverByKey.set(key, observer);
 
-  if (isDevelopmentMode) {
+  if (configuredOptions?.developmentMode) {
     // Dev hydration warning for shared references
     const el = handler.element;
     if (el && el.hasAttribute && el.hasAttribute("data-source")) {
@@ -2598,7 +2557,7 @@ function findHandlerForElementId(
  * dropped silently otherwise; reads stay quiet.
  */
 function warnUnboundHandleWrite(method: string, elementId: string): void {
-  if (!isDevelopmentMode) return;
+  if (!configuredOptions?.developmentMode) return;
   console.warn(
     `[playhtml] ${method}("${elementId}") — no bound element with that id yet; the write was dropped. ` +
       `Register/add the element first, or check the id.`,
@@ -2656,7 +2615,11 @@ function registerPlayElement<T = any, U = any, V = any>(
   validateRegisteredInitializer(elementId, init as ElementInitializer);
   pendingRegistrations.set(elementId, init as ElementInitializer);
   applyPendingRegistration(elementId);
-  if (isDevelopmentMode && hasSynced && !document.getElementById(elementId)) {
+  if (
+    configuredOptions?.developmentMode &&
+    hasSynced &&
+    !document.getElementById(elementId)
+  ) {
     console.warn(
       `[playhtml] register("${elementId}") — no element with that id is in the DOM yet. ` +
         `It will bind automatically when the element appears.`,
@@ -2745,7 +2708,7 @@ function setupViewDescendants(root: HTMLElement): void {
     for (const el of els) {
       if (el === root) continue;
       if (!el.id) {
-        if (isDevelopmentMode) {
+        if (configuredOptions?.developmentMode) {
           console.warn(
             `[playhtml] a view rendered a "${tag}" element with no id; it won't bind. ` +
               `Give capability children a stable, unique id (key keyed lists by it).`,
@@ -2883,17 +2846,6 @@ function registerPlayEventListener(
     { type, ...event, id },
   ]);
 
-  // NOTE: bring this back if desired to automatically listen to native DOM events of the same type
-  // document.addEventListener(type, (evt) => {
-  //   const payload: EventMessage = {
-  //     type,
-  //     // @ts-ignore
-  //     eventPayload: evt.detail,
-  //     // @ts-ignore
-  //     // element: evt.target,
-  //   };
-  //   sendPlayEvent(payload);
-  // });
   return id;
 }
 

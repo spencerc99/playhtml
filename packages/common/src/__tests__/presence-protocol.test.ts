@@ -1,5 +1,5 @@
 // ABOUTME: Verifies the generic realtime presence wire-message contract.
-// ABOUTME: Covers channel cadence selection and runtime message validation.
+// ABOUTME: Covers runtime validation for identity and channel updates.
 
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -8,7 +8,6 @@ import {
   PLAYER_IDENTITY_STORAGE_KEY,
 } from "../cursor-types";
 import {
-  getPresenceChannelCadence,
   isCursor,
   isPlayerIdentity,
   isPresenceRecord,
@@ -16,20 +15,6 @@ import {
 } from "../presence-protocol";
 
 describe("presence protocol", () => {
-  it("treats cursor updates as frame-cadence presence", () => {
-    expect(getPresenceChannelCadence("cursor")).toBe("frame");
-  });
-
-  it("treats element awareness as interactive presence", () => {
-    expect(getPresenceChannelCadence("element:can-mirror:tile-1")).toBe(
-      "interactive",
-    );
-  });
-
-  it("treats custom presence channels as event-cadence presence", () => {
-    expect(getPresenceChannelCadence("status")).toBe("event");
-  });
-
   it("accepts finite cursor presence updates", () => {
     const message = validatePresenceClientMessage({
       type: "presence-update",

@@ -292,13 +292,48 @@ describe("presence room policy", () => {
     ).toEqual({ accepted: true });
   });
 
+  it("applies the interactive budget to element channels", () => {
+    const state = createPresenceMessageBudgetState();
+    for (let i = 0; i < 45; i++) {
+      expect(
+        consumePresenceMessageBudget(
+          state,
+          "conn-1",
+          {
+            type: "presence-update",
+            channel: "element:can-play",
+            value: { card: { active: true } },
+          },
+          1000,
+        ),
+      ).toEqual({ accepted: true });
+    }
+
+    expect(
+      consumePresenceMessageBudget(
+        state,
+        "conn-1",
+        {
+          type: "presence-update",
+          channel: "element:can-play",
+          value: { card: { active: true } },
+        },
+        1000,
+      ),
+    ).toEqual({
+      accepted: false,
+      channel: "element:can-play",
+      hz: 45,
+    });
+  });
+
   it("resets message budgets after the window elapses", () => {
     const state = createPresenceMessageBudgetState();
     for (let i = 0; i < 10; i++) {
       consumePresenceMessageBudget(
         state,
         "conn-1",
-        { type: "presence-ping" },
+        { type: "presence-join" },
         1000,
       );
     }
@@ -307,7 +342,7 @@ describe("presence room policy", () => {
       consumePresenceMessageBudget(
         state,
         "conn-1",
-        { type: "presence-ping" },
+        { type: "presence-join" },
         1000,
       ),
     ).toEqual({ accepted: false, channel: "control", hz: 10 });
@@ -316,7 +351,7 @@ describe("presence room policy", () => {
       consumePresenceMessageBudget(
         state,
         "conn-1",
-        { type: "presence-ping" },
+        { type: "presence-join" },
         2000,
       ),
     ).toEqual({ accepted: true });

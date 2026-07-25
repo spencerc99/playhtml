@@ -88,9 +88,9 @@ async function runPerfCase(
 
     // Create a Y.Doc and setup like the old system (without SyncedStore)
     const yjsDoc = new Y.Doc();
-    const globalData = yjsDoc.getMap<Y.Map<any>>("playhtml-global");
+    const tagDataRoot = yjsDoc.getMap<Y.Map<any>>("playhtml-global");
     const tagMap = new Y.Map();
-    globalData.set("can-play", tagMap);
+    tagDataRoot.set("can-play", tagMap);
 
     // Create real ElementHandler instances but with Y.Map data source
     for (let i = 0; i < count; i++) {

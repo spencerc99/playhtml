@@ -318,7 +318,7 @@ When you delete an element at runtime, its playhtml data stays behind by default
 playhtml.deleteElementData("can-move", elementId);
 ```
 
-This removes the SyncedStore entry, observer subscriptions, element handlers, and any legacy globalData entries.
+This removes the SyncedStore entry, observer subscriptions, and element handlers.
 
 Example, a fridge magnet app deleting words:
 
