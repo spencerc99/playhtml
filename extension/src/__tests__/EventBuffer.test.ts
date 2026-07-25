@@ -141,7 +141,7 @@ describe("EventBuffer", () => {
     });
   });
 
-  it("retries events when the background reports a storage failure", async () => {
+  it("automatically retries failed storage writes with backoff", async () => {
     const buffer = new EventBuffer();
     let storeAttempts = 0;
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -149,7 +149,7 @@ describe("EventBuffer", () => {
     vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
       if ((message as { type?: string }).type === "STORE_EVENTS") {
         storeAttempts++;
-        return Promise.resolve({ success: storeAttempts > 1 });
+        return Promise.resolve({ success: storeAttempts > 2 });
       }
       return Promise.resolve({ success: true });
     });
@@ -162,15 +162,79 @@ describe("EventBuffer", () => {
       "[EventBuffer] Background failed to store events",
     );
 
+    await vi.advanceTimersByTimeAsync(999);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(3, {
+      type: "STORE_EVENTS",
+      events: [expect.objectContaining({ id: "retry", uploaded: false })],
+    });
+    expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(4, {
+      type: "FLUSH_PENDING_UPLOADS",
+    });
+  });
+
+  it("automatically retries rejected storage messages", async () => {
+    const buffer = new EventBuffer();
+    const storageError = new Error("background unavailable");
+    let storeAttempts = 0;
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "STORE_EVENTS") {
+        storeAttempts++;
+        return storeAttempts === 1
+          ? Promise.reject(storageError)
+          : Promise.resolve({ success: true });
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    await buffer.addEvent(testEvent("retry-rejection"));
     await buffer.flushBatch();
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(storageError);
+
+    await vi.advanceTimersByTimeAsync(1_000);
 
     expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(2, {
       type: "STORE_EVENTS",
-      events: [expect.objectContaining({ id: "retry", uploaded: false })],
+      events: [
+        expect.objectContaining({ id: "retry-rejection", uploaded: false }),
+      ],
     });
     expect(browser.runtime.sendMessage).toHaveBeenNthCalledWith(3, {
       type: "FLUSH_PENDING_UPLOADS",
     });
+  });
+
+  it("caps storage retry backoff at 30 seconds", async () => {
+    const buffer = new EventBuffer();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ success: false });
+
+    await buffer.addEvent(testEvent("retry-cap"));
+    await buffer.flushBatch();
+
+    const retryDelays = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000];
+    for (const [index, retryDelay] of retryDelays.entries()) {
+      await vi.advanceTimersByTimeAsync(retryDelay - 1);
+      expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(index + 1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(index + 2);
+    }
+
+    expect(error).toHaveBeenCalledTimes(retryDelays.length + 1);
   });
 
   it("reuses participant and session lookups for event metadata", async () => {
