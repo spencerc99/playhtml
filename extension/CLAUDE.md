@@ -22,11 +22,24 @@ changesets release-PR flow but on a separate cadence.
 
 **Day-to-day:** when a PR changes the extension itself — `extension/src/**`,
 `extension/wxt.config.ts`, `extension/public/**`, or anything else that ships
-in the extension zip — add a bullet to `extension/PENDING.md` describing the
-user-facing change. Changes under `extension/website/**` (wewere.online pages
-and visualizations) and `extension/worker/**` deploy on their own and do NOT
-get PENDING bullets or extension releases. If the change should
-show public media in release notes, add the finished image or video under
+in the extension zip — add a bullet to `extension/PENDING.md` for each
+meaningful user-facing change. Write each bullet as final release-note copy for
+people who use the extension:
+
+- Lead with what they can now do, what works better, or what problem no longer
+  affects them.
+- Use one short sentence in plain language.
+- Include only details that help someone understand the change or use it.
+- Do not mention filenames, functions, storage engines, schemas, migrations,
+  message passing, retries, build systems, deployment, tests, PRs, or other
+  implementation and maintainer details.
+- Do not describe internal-only maintenance. If a change has no meaningful
+  user-facing effect, it does not need a bullet.
+
+Changes under `extension/website/**` (wewere.online pages and visualizations)
+and `extension/worker/**` deploy on their own and do NOT get PENDING bullets or
+extension releases. If the change should show public media in release notes,
+add the finished image or video under
 `extension/website/public/changelog/media/` and reference it from
 `PENDING.md`. Use normal Markdown images for photos/screenshots and the
 `![video: Title](/changelog/media/file.mp4)` convention for videos. The public
