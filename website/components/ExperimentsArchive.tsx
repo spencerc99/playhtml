@@ -362,7 +362,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
       cursors,
       dispatchPlayEvent,
       getMyPlayerIdentity,
-      hasSynced,
+      isLoading,
       registerPlayEventListener,
       removePlayEventListener,
     } = useContext(PlayContext);
@@ -512,7 +512,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
 
     useEffect(() => {
       if (
-        !hasSynced ||
+        isLoading ||
         !registerPlayEventListener ||
         !removePlayEventListener
       ) {
@@ -541,7 +541,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
         removePlayEventListener(RandomExperimentEventType, listenerId);
       };
     }, [
-      hasSynced,
+      isLoading,
       getMyPlayerIdentity,
       registerPlayEventListener,
       removePlayEventListener,
@@ -581,7 +581,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
       (event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
 
-        if (!hasSynced) return;
+        if (isLoading) return;
 
         const availableExperiments = experiments.filter(
           (experiment) => experiment.href,
@@ -612,7 +612,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
           eventPayload: payload,
         });
       },
-      [dispatchPlayEvent, getMyPlayerIdentity, hasSynced, myColor],
+      [dispatchPlayEvent, getMyPlayerIdentity, isLoading, myColor],
     );
 
     return (
@@ -671,10 +671,10 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
           </span>
           <button
             type="button"
-            disabled={!hasSynced}
+            disabled={isLoading}
             onClick={handleRandomExperiment}
           >
-            {hasSynced ? "random experiment" : "syncing..."}
+            {!isLoading ? "random experiment" : "syncing..."}
           </button>
         </div>
       </section>
