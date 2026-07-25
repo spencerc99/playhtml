@@ -3,7 +3,7 @@
 // TODO: idk why but this is not getting registered otherwise??
 import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "playhtml";
+import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, elementHandlers, getIdForElement } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
@@ -371,7 +371,7 @@ export function CanPlayElement<T extends object, V = any>({
       element.updateElementAwareness = updateElementAwareness;
 
       const elementId = getIdForElement(element);
-      const handlers = playhtml.elementHandlers;
+      const handlers = elementHandlers;
       if (elementId && handlers instanceof Map) {
         for (const tag of Object.keys(computedTagInfo) as TagType[]) {
           const handler = handlers.get(tag)?.get(elementId);
@@ -406,13 +406,6 @@ export function CanPlayElement<T extends object, V = any>({
         registeredBindingRef.current = bindingAfterSetup;
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
-
-        // If playhtml isn't initialized yet, log a helpful message
-        if (!playhtml.elementHandlers) {
-          console.warn(
-            "[@playhtml/react] PlayHTML not initialized yet. Element will be set up when PlayHTML initializes.",
-          );
-        }
       }
     }
   });
@@ -423,7 +416,7 @@ export function CanPlayElement<T extends object, V = any>({
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
-      if (!mountedElement || !playhtml.elementHandlers) return;
+      if (!mountedElement) return;
       playhtml.removePlayElement(mountedElement);
       registeredBindingRef.current = undefined;
     };
@@ -622,6 +615,7 @@ export {
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useUsers,
 } from "./hooks";
 export {
   CanMoveElement,

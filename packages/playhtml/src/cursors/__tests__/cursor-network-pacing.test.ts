@@ -188,7 +188,11 @@ describe("cursor network pacing", () => {
     const callCountAfterIdentityChange =
       provider.awareness.setLocalStateField.mock.calls.length;
 
-    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 1);
+    // Identity change writes two awareness fields: `__playhtml_identity__`
+    // (published by the users module on every identity change) and
+    // `__playhtml_cursors__` (cursor awareness, refreshed by the cursor client's
+    // reaction to that change).
+    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 2);
 
     vi.advanceTimersByTime(Math.ceil(getCursorNetworkIntervalMs(20)));
 
@@ -271,7 +275,6 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
-
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -308,7 +311,6 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
-
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -666,6 +668,8 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
+    const allColorEvents: string[][] = [];
+    client.on("allColors", (colors) => allColorEvents.push(colors));
 
     transport.emit({
       type: "presence-sync",
@@ -684,6 +688,10 @@ describe("cursor network pacing", () => {
 
     expect(client.getSnapshot().allColors).toEqual(["#ff0000", "#00ff00"]);
     expect(window.cursors.allColors).toEqual(["#ff0000", "#00ff00"]);
+    expect(allColorEvents).toContainEqual(["#ff0000", "#00ff00"]);
+    expect(
+      Object.getOwnPropertyDescriptor(window.cursors, "allColors")?.set,
+    ).toBeUndefined();
 
     client.destroy();
   });

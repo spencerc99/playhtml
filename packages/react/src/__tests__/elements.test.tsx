@@ -13,9 +13,13 @@ import type { ElementAwarenessEventHandlerData } from "playhtml";
 import { ReactiveOrb } from "../../examples/ReactiveOrb";
 
 describe("CanPlayElement with built-in capabilities", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Tests seed the module-level handler registry; clear it so seeds don't
+    // leak between tests.
+    const { elementHandlers } = await import("playhtml");
+    elementHandlers.clear();
   });
 
   it("composes capability updateElement with React state updates for CanMove", () => {
@@ -215,9 +219,10 @@ describe("CanPlayElement with built-in capabilities", () => {
 
   it("refreshes built-in event handlers after a React rerender", async () => {
     const { ElementHandler } = await import("../../../playhtml/src/elements");
-    const handlers = new Map([[TagType.CanPlay, new Map()]]);
-    const originalHandlers = playhtml.elementHandlers;
-    playhtml.elementHandlers = handlers as any;
+    // The component reads the module-level registry exported by playhtml (the
+    // mock spreads the real module, so this is the same Map the component sees).
+    const { elementHandlers: handlers } = await import("playhtml");
+    handlers.set(TagType.CanPlay, new Map());
     vi.mocked(playhtml.setupPlayElement).mockReset();
 
     const firstClick = vi.fn();
@@ -298,7 +303,7 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(element.classList.contains("cursordown")).toBe(false);
 
     unmount();
-    playhtml.elementHandlers = originalHandlers;
+    handlers.delete(TagType.CanPlay);
   });
 
   it("removes the mounted element on unmount", () => {
@@ -656,25 +661,21 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(removePermissions).toEqual(["read-write"]);
   });
 
-  it("does not write through a handler owned by another element", () => {
+  it("does not write through a handler owned by another element", async () => {
     const otherElement = document.createElement("div");
     const otherSetData = vi.fn();
-    const elementHandlers = new Map([
-      [
-        TagType.CanPlay,
-        new Map([
-          [
-            "duplicate-id",
-            { element: otherElement, setData: otherSetData },
-          ],
-        ]),
-      ],
-    ]);
+    const { elementHandlers } = await import("playhtml");
+    elementHandlers.set(
+      TagType.CanPlay,
+      new Map([
+        [
+          "duplicate-id",
+          { element: otherElement, setData: otherSetData } as any,
+        ],
+      ]),
+    );
     vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
     vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
-    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
-      elementHandlers as typeof playhtml.elementHandlers,
-    );
 
     const SharedElement = withSharedState(
       { id: "duplicate-id", defaultData: { count: 0 } },
@@ -694,16 +695,12 @@ describe("CanPlayElement with built-in capabilities", () => {
     );
   });
 
-  it("binds writes after core assigns an element id", () => {
+  it("binds writes after core assigns an element id", async () => {
     const setData = vi.fn();
-    const elementHandlers = new Map([
-      [TagType.CanPlay, new Map()],
-    ]);
+    const { elementHandlers } = await import("playhtml");
+    elementHandlers.set(TagType.CanPlay, new Map());
     vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
     vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
-    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
-      elementHandlers as typeof playhtml.elementHandlers,
-    );
 
     const SharedElement = withSharedState(
       { defaultData: { count: 0 } },
@@ -793,16 +790,12 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(conflictWarnings).toHaveLength(1);
   });
 
-  it("increments ReactiveOrb clicks through the current shared data", () => {
+  it("increments ReactiveOrb clicks through the current shared data", async () => {
     const setData = vi.fn();
-    const elementHandlers = new Map([
-      [TagType.CanPlay, new Map()],
-    ]);
+    const { elementHandlers } = await import("playhtml");
+    elementHandlers.set(TagType.CanPlay, new Map());
     vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
     vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
-    vi.spyOn(playhtml, "elementHandlers", "get").mockReturnValue(
-      elementHandlers as typeof playhtml.elementHandlers,
-    );
 
     const { container } = render(
       <ReactiveOrb id="orb-test" className="orb-test" />,

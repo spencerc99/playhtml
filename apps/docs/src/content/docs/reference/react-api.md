@@ -400,9 +400,37 @@ useCursorZone(ref);
 return <div ref={ref} id="shared-canvas" />; // the element needs a stable id
 ```
 
+### `useUsers`
+
+Reactive version of `playhtml.users.getAll()`. Returns the live array of everyone in the room and re-renders your component on join/leave/identity changes. Works without `cursors: { enabled: true }`.
+
+```tsx
+function useUsers(): User[];
+```
+
+```tsx
+interface User {
+  pid: string;
+  name?: string;
+  color: string;
+  isMe: boolean;
+}
+```
+
+```tsx
+import { useUsers } from "@playhtml/react";
+
+function OnlineCount() {
+  const users = useUsers();
+  return <div>{users.length} online</div>;
+}
+```
+
+See [Users](/docs/data/presence/users/) for the full identity API.
+
 ### `usePlayerIdentity`
 
-Read the local player's cursor color, participant id, and name. Requires `cursors: { enabled: true }`.
+Read the local player's color, participant id, and name. Backed by `playhtml.users`, so it works without `cursors: { enabled: true }`.
 
 ```tsx
 function usePlayerIdentity(): {
@@ -414,8 +442,8 @@ function usePlayerIdentity(): {
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `color` | `string` | Primary cursor color. |
-| `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until cursors sync. |
+| `color` | `string` | Primary color. |
+| `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until sync. |
 | `name` | `string \| undefined` | Display name, if set. |
 
 ```tsx
@@ -429,7 +457,7 @@ function Profile() {
 
 Values update reactively. With the "we were online" extension installed, color and `pid` reflect the extension's injected identity.
 
-See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
+To set these values or read other players, see [Users](/docs/data/presence/users/). See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
 
 ## `TagType`
 

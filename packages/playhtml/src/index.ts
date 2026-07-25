@@ -13,7 +13,6 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
-  generatePersistentPlayerIdentity,
   toPublicPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
@@ -34,7 +33,9 @@ import {
   getElementAwarenessFingerprint,
 } from "./awareness-utils";
 import { CursorClientAwareness } from "./cursors/cursor-client";
-import { createPresenceAPI, ensureAwarenessIdentity } from "./presence";
+import { createPresenceAPI } from "./presence";
+import { createUsersAPI, defaultSeedIdentity } from "./users";
+import type { UsersAPI } from "./users";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import {
   findSharedElementsOnPage,
@@ -189,6 +190,11 @@ let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
 let currentCursorRoomId = "";
 let presenceAPI: PresenceAPI | null = null;
+let usersAPI: UsersAPI | null = null;
+
+function resolveMyIdentity(): PlayerIdentity {
+  return usersAPI?.getIdentity() ?? defaultSeedIdentity();
+}
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
 const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
@@ -314,10 +320,11 @@ function ensureElementProxy<TData = unknown>(
   }
   return tagMap.get(elementId)! as TData;
 }
-let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
-  string,
-  Map<string, ElementHandler>
->();
+// Internal registry of active handlers (tag -> element id -> handler).
+// Exported for package-internal use and tests; not part of the public
+// playhtml singleton — external code goes through getHandle().
+export const elementHandlers: Map<string, Map<string, ElementHandler>> =
+  new Map<string, Map<string, ElementHandler>>();
 const mirrorDescendantElementsByRoot = new WeakMap<
   HTMLElement,
   Map<string, HTMLElement>
@@ -447,6 +454,15 @@ export interface InitOptions<T = unknown> {
    * Cursor tracking and proximity detection configuration
    */
   cursors?: CursorOptions;
+
+  /**
+   * The local user's durable identity (name and color), available via
+   * `playhtml.users` regardless of whether cursors are enabled. Defaults to a
+   * persistent per-browser identity generated on first use.
+   * `cursors.playerIdentity` is still honored and takes precedence over this
+   * option, for back-compat.
+   */
+  playerIdentity?: PlayerIdentity;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
@@ -866,10 +882,11 @@ function buildCursors(args: {
     return;
   }
 
-  const cursorOptions: CursorOptions = { ...cursors };
-  if (!cursorOptions.playerIdentity) {
-    cursorOptions.playerIdentity = generatePersistentPlayerIdentity();
+  if (!usersAPI) {
+    throw new Error("[playhtml] buildCursors requires the users module to exist first.");
   }
+
+  const cursorOptions: CursorOptions = { ...cursors };
 
   let providerForCursors: YProvider = yprovider;
 
@@ -906,6 +923,7 @@ function buildCursors(args: {
     providerForCursors,
     cursorOptions,
     cursorPresenceTransport,
+    usersAPI,
   );
 }
 
@@ -1023,6 +1041,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
       onError: configuredOptions?.onError,
     });
   }
+  usersAPI?.getAll();
 
   bindAwarenessListener();
   markAllElementsAsLoading();
@@ -1044,23 +1063,25 @@ async function resetCurrentRoomFromServer(): Promise<void> {
  * The extension owns the canonical public key and style. The page owns its
  * display name.
  *
- * Idempotent: only attaches once. Safe to call from both the initial
- * cursor-enabled path and the late-enable path.
+ * Idempotent: only attaches once. Safe to call once users exist, regardless
+ * of whether cursor rendering is enabled.
  */
 function setupExtensionIdentityListener(): void {
   if (configureIdentityListener) return;
 
   configureIdentityListener = ((e: CustomEvent) => {
     const incoming = toPublicPlayerIdentity(e.detail?.playerIdentity);
-    if (!incoming?.playerStyle.colorPalette[0] || !cursorClient) return;
+    if (!incoming?.playerStyle.colorPalette[0] || !usersAPI) return;
 
-    const current = cursorClient.getMyPlayerIdentity();
-    cursorClient.configure({
-      playerIdentity: {
-        ...incoming,
-        ...(typeof current.name === "string" ? { name: current.name } : {}),
-      },
-    });
+    const current = resolveMyIdentity();
+    // Start from the sanitized extension identity so page-side non-public
+    // fields die at the boundary; carry over only the page-owned fields.
+    const merged: PlayerIdentity = {
+      ...incoming,
+      ...(typeof current.name === "string" ? { name: current.name } : {}),
+    };
+
+    usersAPI.adoptIdentity(merged);
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1154,6 +1175,9 @@ async function runHandleNavigation(): Promise<void> {
         onError: configuredOptions?.onError,
       });
     }
+  }
+  if (mainRoomChanged || cursorEnabledChanged || cursorRoomChanged) {
+    usersAPI?.getAll();
   }
 
   // Element awareness lives on the page provider, so rebind only when the page
@@ -1287,6 +1311,21 @@ async function initPlayHTMLOnce() {
     onMessage,
   });
 
+  // Users module owns identity for the lifetime of this playhtml instance —
+  // created unconditionally, before the cursor client, so `playhtml.users`
+  // works whether or not cursors are enabled. `cursors.playerIdentity` is
+  // still honored and takes precedence over the top-level option.
+  const seedIdentity: PlayerIdentity =
+    cursors.playerIdentity ??
+    configuredOptions?.playerIdentity ??
+    resolveMyIdentity();
+  usersAPI = createUsersAPI(seedIdentity, {
+    getAwareness: () => yprovider.awareness,
+    getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
+    onCursorPresencesChange: (callback) =>
+      cursorClient?.onCursorPresencesChange(callback),
+  });
+
   // Initialize cursor tracking immediately after provider creation
   buildCursors({
     cursors,
@@ -1294,16 +1333,15 @@ async function initPlayHTMLOnce() {
     partykitHost,
     onError,
   });
+  usersAPI.getAll();
 
-  if (cursors.enabled) {
-    setupExtensionIdentityListener();
-  }
+  setupExtensionIdentityListener();
 
   // Create presence API — always available, wraps whichever awareness provider exists
   presenceAPI = createPresenceAPI({
     getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
-    getPlayerIdentity: () =>
-      cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+    getPlayerIdentity: resolveMyIdentity,
+    publishIdentity: false,
     getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
     onCursorPresencesChange: (callback) =>
       cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
@@ -1320,7 +1358,7 @@ async function initPlayHTMLOnce() {
 
   if (configuredOptions?.developmentMode) {
     developmentModule = await import("./development");
-    developmentModule.setupDevUI(playhtml);
+    developmentModule.setupDevUI(playhtml, elementHandlers);
   }
   // TODO: expose a way to activate the dev tools UI on any page at runtime
   // (e.g. window.playhtml.showDevTools()) so it can be triggered from the
@@ -1528,10 +1566,6 @@ function createPlayElementData<T extends TagType, TData = any>(
     },
     onAwarenessChange: (elementAwarenessData) => {
       const awarenessProvider = getElementAwarenessProvider();
-      ensureAwarenessIdentity(
-        awarenessProvider.awareness,
-        cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
-      );
       const existingAwareness =
         awarenessProvider.awareness.getLocalState()?.[tag] || {};
 
@@ -1829,8 +1863,8 @@ function createPresenceRoom(name: string): PresenceRoom {
 
   const presence = createPresenceAPI({
     getAwareness: () => provider.awareness,
-    getPlayerIdentity: () =>
-      cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+    getPlayerIdentity: resolveMyIdentity,
+    publishIdentity: true,
   });
 
   let destroyed = false;
@@ -1863,12 +1897,12 @@ export interface PlayHTMLComponents {
   /** @experimental View API — get a handle for a bound element. */
   getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<PlayStore["play"]>;
-  elementHandlers: Map<string, Map<string, ElementHandler>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
   cursorClient: CursorClientAwareness | null;
   presence: PresenceAPI;
+  users: Pick<UsersAPI, "me" | "getAll" | "onChange">;
   createPageData: typeof createPageData;
   createPresenceRoom: typeof createPresenceRoom;
   // Debug / Dev helpers
@@ -1938,6 +1972,8 @@ export async function resetPlayHTML(): Promise<void> {
 
     teardownCursors();
     teardownMainProvider();
+    try { usersAPI?.destroy(); } catch {}
+    usersAPI = null;
 
     try {
       developmentModule?.teardownDevUI();
@@ -1998,7 +2034,6 @@ export const playhtml: PlayHTMLComponents = {
   get syncedStore() {
     return publicSyncedStore;
   },
-  elementHandlers,
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
@@ -2010,6 +2045,12 @@ export const playhtml: PlayHTMLComponents = {
       throw new Error("playhtml.presence is not available before init()");
     }
     return presenceAPI;
+  },
+  get users() {
+    if (!usersAPI) {
+      throw new Error("playhtml.users is not available before init()");
+    }
+    return usersAPI;
   },
   // Filled after init
   get roomId() {
@@ -2890,6 +2931,7 @@ export type {
   CursorPresenceView,
   PresenceRoom,
   PresenceView,
+  User,
 } from "@playhtml/common";
 
 // Re-export a curated subset of lit-html for `view` authoring, so

@@ -145,9 +145,13 @@ async function runPerfCase(
   }
   const t1 = performance.now();
 
-  const handlers = Array.from(
-    play.elementHandlers!.get("can-play")?.values() ?? []
-  );
+  // Baseline mode builds its own registry on the fixture object; real mode
+  // reads the fresh module's internal registry (same instance freshPlayhtml
+  // imported — no vi.resetModules() has run since).
+  const registry =
+    (play as any).elementHandlers ??
+    (await import("../index")).elementHandlers;
+  const handlers = Array.from(registry.get("can-play")?.values() ?? []);
   expect(handlers.length).toBe(count);
 
   const u0 = performance.now();
@@ -305,7 +309,8 @@ describe("nested conflict-y updates", () => {
 
     const play = await freshPlayhtml();
     await play.init(); // SyncedStore-only now
-    const h = Array.from(play.elementHandlers!.get("can-play")!.values())[0]!;
+    const registry = (await import("../index")).elementHandlers;
+    const h = Array.from(registry.get("can-play")!.values())[0]!;
 
     for (let i = 0; i < 200; i++) {
       h.setData((d: any) => {

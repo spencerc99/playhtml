@@ -245,4 +245,5 @@ describe("presence protocol", () => {
       }),
     ).toBe(false);
   });
+
 });
