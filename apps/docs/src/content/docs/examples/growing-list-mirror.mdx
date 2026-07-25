@@ -1,0 +1,38 @@
+---
+title: "Growing mirrored list"
+description: "Append direct list children and let can-mirror share the resulting DOM."
+sidebar:
+  order: 6
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { growingListMirrorRecipe } from "@/components/playground/recipes/mirror-basics";
+
+`can-mirror` shares direct child additions and removals. Put it on the list,
+then change that list with normal DOM methods.
+
+<RecipeExample recipe={growingListMirrorRecipe} client:load />
+
+<RecipeCodeTabs recipe={growingListMirrorRecipe} />
+
+## Append a direct child
+
+Create an element and append it to the mirrored list:
+
+```js
+const item = document.createElement("li");
+item.textContent = new Date().toLocaleTimeString();
+list.appendChild(item);
+```
+
+The list owns the child change because the new `li` is a direct child.
+Mutations deeper inside a child need their own `can-mirror` boundary.
+
+## Test the list
+
+Add entries from both windows. Each new item should appear in both lists and
+remain after reload.
+
+See the [can-mirror playground](/docs/advanced/mirror-playground/) for nested
+elements, forms, contenteditable, focus, and hover behavior.

@@ -1,0 +1,38 @@
+---
+title: "Presence with can-hover"
+description: "Show an ephemeral hover effect to everyone while any reader is hovering."
+sidebar:
+  order: 4
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { canHoverRecipe } from "@/components/playground/recipes/built-in-capabilities";
+
+`can-hover` shares current hover presence without saving it. Style
+`[data-playhtml-hover]` so remote hover produces the same effect as local hover.
+
+<RecipeExample recipe={canHoverRecipe} client:load />
+
+<RecipeCodeTabs recipe={canHoverRecipe} />
+
+## Style remote hover
+
+Use the PlayHTML attribute instead of the local-only `:hover` selector:
+
+```css
+#shared-hover-card[data-playhtml-hover] {
+  background: #f3cf58;
+}
+```
+
+The attribute remains present while at least one connected reader is hovering.
+It disappears when everyone leaves the element or disconnects.
+
+## Test presence
+
+Open the private-window link and hover the card in one window. Both cards
+should light up. Move the pointer away and both should return to normal.
+
+See [can-hover](/docs/capabilities/#can-hover) when you need the full roster of
+people hovering instead of a single on or off effect.

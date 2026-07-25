@@ -1,0 +1,44 @@
+---
+title: "Drag with can-move"
+description: "Drag shared elements inside a bounded area and keep their positions across reloads."
+sidebar:
+  order: 2
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { canMoveRecipe } from "@/components/playground/recipes/built-in-capabilities";
+
+`can-move` makes an element draggable, persistent, and shared. Add a stable
+`id`, then use `can-move-bounds` when the element must stay inside a container.
+
+<RecipeExample recipe={canMoveRecipe} client:load />
+
+<RecipeCodeTabs recipe={canMoveRecipe} />
+
+## Keep elements inside a container
+
+Set `can-move-bounds` to the container's `id`:
+
+```html
+<div id="move-arena">
+  <div
+    id="move-hat"
+    can-move
+    can-move-bounds="move-arena"
+    role="img"
+    aria-label="A draggable baseball cap"
+  >🧢</div>
+</div>
+```
+
+PlayHTML saves each element's position under its own `id`. Reloading the page
+or opening the same room in another browser restores that position.
+
+## Test the shared position
+
+Drag either sticker, then open the private-window link. Both windows should show
+the same positions. Dragging in either window updates the other.
+
+See [can-move](/docs/capabilities/#can-move) for partial-overhang controls and
+the complete attribute reference.

@@ -29,14 +29,17 @@ describe("catalogueExamples", () => {
   it("includes complete recipes and inline docs demos without duplicate ids", () => {
     expect(
       catalogueExamples.filter((example) => example.kind === "recipe"),
-    ).toHaveLength(3);
+    ).toHaveLength(10);
     expect(
       catalogueExamples.filter((example) => example.kind === "docs-demo"),
-    ).toHaveLength(16);
+    ).toHaveLength(9);
     expect(new Set(catalogueExamples.map((example) => example.id)).size).toBe(
       catalogueExamples.length,
     );
-    expect(filterExamples(catalogueExamples, "docs demo")).toHaveLength(16);
+    expect(filterExamples(catalogueExamples, "docs demo")).toHaveLength(9);
+    expect(filterExamples(catalogueExamples, "can-move")).toEqual([
+      expect.objectContaining({ id: "can-move", remixId: "can-move" }),
+    ]);
   });
 });
 

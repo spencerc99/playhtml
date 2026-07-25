@@ -1,0 +1,41 @@
+---
+title: "Emoji-only mirrored textarea"
+description: "Filter a textarea to emoji while can-mirror shares its current value."
+sidebar:
+  order: 5
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { emojiMirrorRecipe } from "@/components/playground/recipes/mirror-basics";
+
+`can-mirror` shares the textarea's current value. A normal input listener
+filters local input before the mirrored value reaches other browsers.
+
+<RecipeExample recipe={emojiMirrorRecipe} client:load />
+
+<RecipeCodeTabs recipe={emojiMirrorRecipe} />
+
+## Filter normal DOM input
+
+The filter uses the browser's Unicode emoji property:
+
+```js
+const emojiOnly = /\p{Extended_Pictographic}/gu;
+
+emojiPad.addEventListener("input", () => {
+  const matches = emojiPad.value.match(emojiOnly);
+  emojiPad.value = matches ? matches.join("") : "";
+});
+```
+
+The application code changes a normal textarea. `can-mirror` observes the
+resulting form state and shares it.
+
+## Test the filter
+
+Type letters and emoji in one window. Only the emoji should remain, and the
+other window should show the same filtered value.
+
+See [can-mirror](/docs/custom-elements/#can-mirror) for its DOM boundary and
+other supported form elements.

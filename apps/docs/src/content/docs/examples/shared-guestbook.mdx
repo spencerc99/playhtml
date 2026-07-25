@@ -1,0 +1,49 @@
+---
+title: "Shared guestbook"
+description: "Add short notes to a persistent shared list capped at the latest 20 entries."
+sidebar:
+  order: 8
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { sharedGuestbookRecipe } from "@/components/playground/recipes/shared-state-basics";
+
+This guestbook keeps form drafts local and stores submitted entries in a
+shared list. The write caps the list at 20 entries so persisted data stays
+bounded.
+
+<RecipeExample recipe={sharedGuestbookRecipe} client:load />
+
+<RecipeCodeTabs recipe={sharedGuestbookRecipe} />
+
+## Keep drafts local
+
+The textarea is normal local form state. Nothing is shared until the form
+passes validation and submits.
+
+Each accepted entry gets a unique `id`, prompt, and text:
+
+```js
+{
+  id: crypto.randomUUID(),
+  prompt: "building",
+  text: "a shared drawing tool",
+}
+```
+
+## Cap the shared list
+
+Append and trim in the same mutator:
+
+```js
+setData((draft) => {
+  draft.entries.push(entry);
+  if (draft.entries.length > 20) {
+    draft.entries.splice(0, draft.entries.length - 20);
+  }
+});
+```
+
+Use `push()` and `splice()` for shared arrays. See
+[Data essentials](/docs/data/data-essentials/) for the complete mutation rules.
