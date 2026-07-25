@@ -258,7 +258,7 @@ The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied howe
 
 Cursors expose a global `window.cursors` object.
 
-`window.cursors` predates [`playhtml.users`](/docs/data/presence/users/), and its identity pieces are the same data, not a second copy: `color` and `name` are aliases for `playhtml.users.me.color` and `playhtml.users.me.name`, and `allColors` is derived from the room's users. Reading or writing through either API gives identical results. For new code, use `playhtml.users` — it works whether or not cursors are enabled. `window.cursors` remains supported.
+`window.cursors` predates [`playhtml.users`](/docs/data/presence/users/). Its identity fields are the same data, not a second copy: `color` and `name` are aliases for `playhtml.users.me.color` and `playhtml.users.me.name`, and `allColors` is derived from the room's users. Reading or writing through either API gives identical results. We recommend `playhtml.users` for new code because it works whether or not cursors are enabled. `window.cursors` remains supported.
 
 ### Properties
 
@@ -267,18 +267,18 @@ Cursors expose a global `window.cursors` object.
 // Same data as playhtml.users.getAll().map(u => u.color), deduplicated.
 const colors = window.cursors.allColors;  // ["#3b82f6", "#8b5cf6", ...]
 
-// Get/set your color — alias for playhtml.users.me.color
+// Get/set your color (alias for playhtml.users.me.color)
 window.cursors.color;  // "#3b82f6"
 window.cursors.color = "#ff0000";
 
-// Get/set your name — alias for playhtml.users.me.name
+// Get/set your name (alias for playhtml.users.me.name)
 window.cursors.name;  // "Alice"
 window.cursors.name = "Bob";
 ```
 
 ### Events
 
-Listen for changes to cursor state. These fire for the same underlying changes as [`playhtml.users.onChange`](/docs/data/presence/users/); use whichever is more convenient — `users.onChange` delivers the whole roster, while these deliver one value per event.
+Listen for changes to cursor state. These events fire for the same changes as [`playhtml.users.onChange`](/docs/data/presence/users/). The difference is shape: `users.onChange` delivers the whole roster, and these deliver one value per event.
 
 ```javascript
 // Listen for color changes
@@ -301,7 +301,7 @@ window.cursors.off('allColors', callback);
 ### Example: User Count Display
 
 ```html
-<div id="user-count">👥 <span>0</span> online</div>
+<div id="user-count"><span>0</span> online</div>
 
 <script>
   const updateCount = () => {
@@ -325,7 +325,7 @@ function UserCount() {
   const { cursors } = usePlayContext();
 
   return (
-    <div>👥 {cursors.allColors.length} users online</div>
+    <div>{cursors.allColors.length} users online</div>
   );
 }
 ```
@@ -335,7 +335,7 @@ The `cursors` object from `usePlayContext()` provides:
 - `cursors.color` - Your current color
 - `cursors.name` - Your current name
 
-These values automatically update when users join/leave or change their settings. They are the same data the users hooks return: prefer [`usePlayerIdentity()`](/docs/data/presence/users/) for your own identity and [`useUsers()`](/docs/data/presence/users/) for the roster — both work without cursors enabled.
+These values update automatically when users join, leave, or change their settings. They are the same data the users hooks return. We recommend [`usePlayerIdentity()`](/docs/data/presence/users/) for your own identity and [`useUsers()`](/docs/data/presence/users/) for the roster; both work without cursors enabled.
 
 ### Configuring Cursors Dynamically
 
@@ -414,7 +414,7 @@ const totalUsers = window.cursors.allColors.length;
 
 function UserCount() {
   const { cursors } = usePlayContext();
-  return <div>👥 {cursors.allColors.length} online</div>;
+  return <div>{cursors.allColors.length} online</div>;
 }
 ```
 
