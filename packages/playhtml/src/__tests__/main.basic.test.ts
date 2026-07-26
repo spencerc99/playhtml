@@ -39,6 +39,10 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.innerHTML = "";
   });
 
+  it("retains the handler registry on the public singleton", () => {
+    expect(playhtml.elementHandlers).toBe(elementHandlers);
+  });
+
   it("initializes and sets up elements by attribute", async () => {
     const el = document.createElement("div");
     el.id = "foo";

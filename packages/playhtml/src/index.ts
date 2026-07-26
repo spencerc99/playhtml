@@ -320,9 +320,9 @@ function ensureElementProxy<TData = unknown>(
   }
   return tagMap.get(elementId)! as TData;
 }
-// Internal registry of active handlers (tag -> element id -> handler).
-// Exported for package-internal use and tests; not part of the public
-// playhtml singleton — external code goes through getHandle().
+// Registry of active handlers (tag -> element id -> handler).
+// Retained on the playhtml singleton for compatibility; external code should
+// use getHandle() so it does not depend on handler internals.
 export const elementHandlers: Map<string, Map<string, ElementHandler>> =
   new Map<string, Map<string, ElementHandler>>();
 const mirrorDescendantElementsByRoot = new WeakMap<
@@ -1897,6 +1897,8 @@ export interface PlayHTMLComponents {
   /** @experimental View API — get a handle for a bound element. */
   getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<PlayStore["play"]>;
+  /** @deprecated Use getHandle(elementId, tag) to access a bound element. */
+  elementHandlers: Map<string, Map<string, ElementHandler>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
@@ -2034,6 +2036,7 @@ export const playhtml: PlayHTMLComponents = {
   get syncedStore() {
     return publicSyncedStore;
   },
+  elementHandlers,
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
