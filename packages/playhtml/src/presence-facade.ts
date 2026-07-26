@@ -2,6 +2,7 @@
 // ABOUTME: Re-attaches active subscriptions to each new inner client on swap.
 
 import type { PlayerIdentity, PresenceAPI, PresenceView } from "@playhtml/common";
+import { safeInvoke } from "./presence-utils";
 
 type FacadeSubscription = {
   channel: string;
@@ -35,11 +36,18 @@ export class PresenceFacade implements PresenceAPI {
       try {
         subscription.innerUnsub();
       } catch {}
-      // Re-subscribing replays the new room's snapshot to the callback.
-      subscription.innerUnsub = inner.onPresenceChange(
-        subscription.channel,
-        subscription.callback,
-      );
+      // Re-subscribing replays the new room's snapshot to the callback. Isolate
+      // a throwing replay so it can't strand the remaining subscriptions on the
+      // dead inner or abort navigation. On failure, leave innerUnsub a no-op so
+      // the subscription stays registered and re-attaches on the next swap.
+      let nextUnsub: () => void = () => {};
+      safeInvoke(() => {
+        nextUnsub = inner.onPresenceChange(
+          subscription.channel,
+          subscription.callback,
+        );
+      }, "presence facade re-attach");
+      subscription.innerUnsub = nextUnsub;
     }
   }
 

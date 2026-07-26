@@ -118,6 +118,24 @@ export function clearPresenceChannel(
   }
 }
 
+/**
+ * Invoke a consumer/user callback in a fan-out, isolating a throw so it can't
+ * skip the remaining listeners (and, on a shared socket, couple otherwise
+ * independent consumers). Mirrors users.ts notifySubscribers. `source` names the
+ * dispatch site in the logged error. Returns true when the callback did not
+ * throw, so callers can defer committing per-listener state (e.g. a fingerprint)
+ * until delivery succeeds and a transient throw is retried on the next emit.
+ */
+export function safeInvoke(fn: () => void, source: string): boolean {
+  try {
+    fn();
+    return true;
+  } catch (error) {
+    console.error(`[playhtml] ${source} callback threw:`, error);
+    return false;
+  }
+}
+
 export function isPresenceCursorChannelValue(
   value: unknown,
 ): value is PresenceCursorChannelValue {

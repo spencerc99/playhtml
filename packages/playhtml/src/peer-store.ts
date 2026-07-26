@@ -10,6 +10,7 @@ import {
   IDENTITY_CHANNEL,
   isElementChannel,
   isPagePresenceChannel,
+  safeInvoke,
 } from "./presence-utils";
 
 /** Coarse channel groupings that consumers subscribe to. A consumer for one
@@ -72,7 +73,10 @@ export class PeerStore {
    */
   subscribe(namespace: PeerNamespace, listener: NamespaceListener): () => void {
     this.listeners[namespace].add(listener);
-    listener();
+    // Isolate the immediate snapshot replay too, so a consumer that throws on
+    // its first render doesn't propagate into the subscribing caller (which,
+    // during a synchronous client constructor, would leak the transport ref).
+    safeInvoke(listener, "peer store namespace");
     return () => {
       this.listeners[namespace].delete(listener);
     };
@@ -142,7 +146,9 @@ export class PeerStore {
       for (const listener of this.listeners[namespace]) {
         if (fired.has(listener)) continue;
         fired.add(listener);
-        listener();
+        // Isolate a throwing consumer so it can't skip the rest of the fan-out
+        // (which, on a shared socket, would couple independent consumers).
+        safeInvoke(listener, "peer store namespace");
       }
     }
   }
