@@ -63,6 +63,7 @@ import {
   type ElementAwarenessMap,
 } from "./element-awareness";
 import { PresenceClient } from "./presence-client";
+import { PresenceFacade } from "./presence-facade";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 
 export {
@@ -197,7 +198,11 @@ let yprovider: YProvider;
 let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
 let currentCursorRoomId = "";
-let presenceAPI: PresenceAPI | null = null;
+// The stable object returned by playhtml.presence for the instance lifetime.
+// Delegates to the current inner client, which is rebuilt on room change; the
+// facade re-attaches active subscriptions to each new inner so references (and
+// onPresenceChange subscriptions) captured before navigation keep working.
+let presenceFacade: PresenceFacade | null = null;
 let usersAPI: UsersAPI | null = null;
 
 function resolveMyIdentity(): PlayerIdentity {
@@ -955,14 +960,35 @@ function teardownElementAwarenessClient(): void {
 }
 
 /**
- * Builds the public page presence API. Prefers the generic presence transport
- * on the normalized page room (sharing the cursor/element-awareness socket via
- * the refcounted registry). Falls back to the Yjs-awareness path when the
- * transport is unavailable (e.g. no WebSocket), preserving the exact same
- * public API and callback shapes. The cursor channel is served from the cursor
- * client's snapshot in both modes so cursor rendering has one source of truth.
+ * Reseed a freshly built element awareness client from every retained handler's
+ * current selfAwareness, so still-mounted elements stay visible in the new room
+ * without a user action. Batched into one publish (not one per element) to
+ * avoid an O(N) publish burst against the server's per-connection rate budget.
  */
-function buildPresenceAPI(): PresenceAPI {
+function seedElementAwarenessFromHandlers(): void {
+  if (!elementAwarenessClient) return;
+  const entries: Array<[string, string, unknown]> = [];
+  for (const [tag, handlersById] of elementHandlers) {
+    for (const [elementId, handler] of handlersById) {
+      if (handler.selfAwareness === undefined) continue;
+      entries.push([tag, elementId, handler.selfAwareness]);
+    }
+  }
+  if (entries.length === 0) return;
+  elementAwarenessClient.setLocalAwarenessBatch(entries);
+}
+
+/**
+ * Builds the inner page presence client for the current room. Prefers the
+ * generic presence transport on the normalized page room (sharing the
+ * cursor/element-awareness socket via the refcounted registry). Falls back to
+ * the Yjs-awareness path when the transport is unavailable (e.g. no WebSocket),
+ * preserving the exact same public API and callback shapes. The cursor channel
+ * is served from the cursor client's snapshot in both modes so cursor rendering
+ * has one source of truth. Wrapped by the stable PresenceFacade — never handed
+ * to consumers directly, since it is torn down and replaced on room change.
+ */
+function buildInnerPresenceAPI(): PresenceAPI {
   const transport = acquirePresenceTransport(__currentRoomId);
   if (transport) {
     presenceClientRoom = __currentRoomId;
@@ -1325,10 +1351,15 @@ async function runHandleNavigation(): Promise<void> {
     });
     __currentRoomId = newMainRoom;
     buildElementAwarenessClient();
-    // Rebuild the public page presence API on the new room. When the transport
-    // path is active this reassigns presenceAPI to a fresh PresenceClient; the
-    // Yjs fallback re-reads the rebuilt provider through its live getter.
-    presenceAPI = buildPresenceAPI();
+    // Retained handlers (still-mounted SPA/React elements) keep their
+    // selfAwareness across the room change, but the fresh client starts empty —
+    // reseed it so those elements stay visible in the new room without waiting
+    // for the next user action. One batched publish, not one per element.
+    seedElementAwarenessFromHandlers();
+    // Rebuild the inner presence client on the new room and swap it into the
+    // stable facade, which re-attaches active subscriptions (replaying the new
+    // room's snapshot). Consumers holding playhtml.presence keep working.
+    presenceFacade?.setInner(buildInnerPresenceAPI());
   }
 
   if (cursorEnabledChanged || (cursorRoomChanged && cursorOptions)) {
@@ -1508,8 +1539,9 @@ async function initPlayHTMLOnce() {
   setupExtensionIdentityListener();
 
   // Create presence API — always available, over the transport when possible
-  // and the Yjs-awareness path otherwise.
-  presenceAPI = buildPresenceAPI();
+  // and the Yjs-awareness path otherwise. Wrapped in a stable facade so the
+  // object playhtml.presence returns survives room rebuilds.
+  presenceFacade = new PresenceFacade(buildInnerPresenceAPI());
 
   // extraCapabilities and events were applied by applyConfig when config was
   // declared, so they're available before this connect step runs.
@@ -2247,7 +2279,7 @@ export async function resetPlayHTML(): Promise<void> {
     readyPromise = createReadyPromise();
     __currentRoomId = "";
     __currentHost = "";
-    presenceAPI = null;
+    presenceFacade = null;
     roomResetPromise = null;
     pendingRoomResetEpoch = null;
     configuredOptions = null;
@@ -2290,10 +2322,10 @@ export const playhtml: PlayHTMLComponents = {
     return cursorClient;
   },
   get presence() {
-    if (!presenceAPI) {
+    if (!presenceFacade) {
       throw new Error("playhtml.presence is not available before init()");
     }
-    return presenceAPI;
+    return presenceFacade;
   },
   get users() {
     if (!usersAPI) {
