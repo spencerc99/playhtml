@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 import {
+  flushMicrotasks,
   getPresenceSocketForRoom,
   getPresenceSockets,
   sentChannelUpdates,
@@ -90,6 +91,8 @@ describe("element awareness sync", () => {
     const handler = elementHandlers.get("can-play")!
       .get("room-scoped-presence")!;
     handler.setMyAwareness({ active: true } as any);
+    // Publishing is coalesced onto a microtask.
+    await flushMicrotasks();
 
     const pageSocket = getPresenceSocketForRoom(playhtml.roomId);
     const cursorSocket = getPresenceSockets().find(
@@ -202,5 +205,33 @@ describe("element awareness sync", () => {
     expect(handler.getAwarenessEventHandlerData().myAwareness).toEqual({
       active: true,
     });
+  });
+
+  it("coalesces many elements' init awareness into a bounded burst of updates", async () => {
+    // 100 elements each seed awareness on setup — without coalescing this would
+    // be O(N) full-shard resends and blow the server's per-second budget. Add
+    // them all, then run one synchronous setup sweep (the real page-load path)
+    // so every setMyAwareness fires in the same tick and coalesces.
+    for (let i = 0; i < 100; i += 1) {
+      const el = document.createElement("div");
+      el.id = `burst-${i}`;
+      el.setAttribute("can-play", "");
+      (el as any).defaultData = {};
+      (el as any).myDefaultAwareness = { i };
+      (el as any).updateElement = vi.fn();
+      (el as any).updateElementAwareness = vi.fn();
+      document.body.appendChild(el);
+    }
+    playhtml.setupPlayElements();
+    await flushMicrotasks();
+
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    const updates = sentChannelUpdates(socket, "element:shard:0");
+    // Bounded well under the server's 45 interactive-updates/sec budget.
+    expect(updates.length).toBeLessThan(45);
+    // Final published state contains every element.
+    const finalShard = JSON.stringify(updates.at(-1));
+    expect(finalShard).toContain("burst-0");
+    expect(finalShard).toContain("burst-99");
   });
 });
