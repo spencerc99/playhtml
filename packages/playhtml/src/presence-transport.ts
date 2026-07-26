@@ -13,6 +13,7 @@ import {
   isPresenceRemoves,
   isPresenceSnapshot,
 } from "./presence-utils";
+import { PeerStore } from "./peer-store";
 
 export type PresenceSocket = Pick<PartySocket, "readyState" | "send" | "close"> &
   Pick<EventTarget, "addEventListener" | "removeEventListener">;
@@ -41,6 +42,10 @@ export class RealtimePresenceTransport {
   private listeners = new Set<PresenceTransportListener>();
   private latestJoin: PresenceJoinInput | null = null;
   private channelValues = new Map<string, unknown>();
+  // One peer-folding layer per socket, shared by every consumer (cursors,
+  // element awareness, page presence). It subscribes to this transport's raw
+  // message stream and exposes per-namespace subscriptions + the folded peers.
+  readonly peers: PeerStore;
   private onMessage = (event: MessageEvent) => {
     const message = parsePresenceServerMessage(event.data);
     if (!message) return;
@@ -64,6 +69,7 @@ export class RealtimePresenceTransport {
     });
     this.socket.addEventListener("message", this.onMessage as EventListener);
     this.socket.addEventListener("open", this.onOpen);
+    this.peers = new PeerStore(this);
   }
 
   join(input: PresenceJoinInput): void {
@@ -106,6 +112,7 @@ export class RealtimePresenceTransport {
   }
 
   destroy(): void {
+    this.peers.destroy();
     this.socket.removeEventListener("message", this.onMessage as EventListener);
     this.socket.removeEventListener("open", this.onOpen);
     this.socket.close();
