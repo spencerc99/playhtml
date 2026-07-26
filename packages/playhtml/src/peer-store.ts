@@ -6,6 +6,11 @@ import type {
   PresenceServerMessage,
   PresenceSnapshot,
 } from "@playhtml/common";
+import {
+  IDENTITY_CHANNEL,
+  isElementChannel,
+  isPagePresenceChannel,
+} from "./presence-utils";
 
 /** Coarse channel groupings that consumers subscribe to. A consumer for one
  * namespace is only notified when a message actually touched that namespace, so
@@ -21,16 +26,13 @@ type PeerMessageSource = {
 
 type NamespaceListener = () => void;
 
-const ELEMENT_CHANNEL_PREFIX = "element:";
-const PAGE_PRESENCE_CHANNEL_PREFIX = "presence:";
-
 /** Maps a raw channel name to the namespace it belongs to. `message` and `page`
  * are cursor-view fields; `identity` is its own namespace so any view can re-key
  * on an identity change. */
 function namespaceOf(channel: string): PeerNamespace {
-  if (channel === "identity") return "identity";
-  if (channel.startsWith(ELEMENT_CHANNEL_PREFIX)) return "element";
-  if (channel.startsWith(PAGE_PRESENCE_CHANNEL_PREFIX)) return "presence";
+  if (channel === IDENTITY_CHANNEL) return "identity";
+  if (isElementChannel(channel)) return "element";
+  if (isPagePresenceChannel(channel)) return "presence";
   // cursor, message, page, and anything else fold into the cursor view.
   return "cursor";
 }

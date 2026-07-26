@@ -2,7 +2,6 @@
 // ABOUTME: Rebuilds per-channel PresenceView maps from page-scoped presence peers.
 
 import {
-  MAX_PRESENCE_VALUE_BYTES,
   type Cursor,
   type CursorPresenceView,
   type PlayerIdentity,
@@ -10,26 +9,15 @@ import {
   type PresenceView,
 } from "@playhtml/common";
 import type { RealtimePresenceTransport } from "./presence-transport";
-import { isPresenceRecord } from "./presence-utils";
-
-// Custom presence channels are published under this prefix so the server
-// classifies them as low-frequency `event` traffic and they never collide with
-// the reserved `cursor` / `identity` / `element:*` channels sharing the socket.
-export const PAGE_PRESENCE_CHANNEL_PREFIX = "presence:";
-
-/** Channels this client mirrors from peers; everything else (cursor / element
- * traffic on a shared socket) is handled elsewhere or ignored. */
-function isPagePresenceChannel(channel: string): boolean {
-  return channel.startsWith(PAGE_PRESENCE_CHANNEL_PREFIX);
-}
-
-function toPagePresenceChannel(channel: string): string {
-  return `${PAGE_PRESENCE_CHANNEL_PREFIX}${channel}`;
-}
-
-function fromPagePresenceChannel(channel: string): string {
-  return channel.slice(PAGE_PRESENCE_CHANNEL_PREFIX.length);
-}
+import {
+  clearPresenceChannel,
+  fromPagePresenceChannel,
+  getPeerPublicKey,
+  isPagePresenceChannel,
+  isPresenceRecord,
+  publishPresenceValue,
+  toPagePresenceChannel,
+} from "./presence-utils";
 
 type PresenceClientOptions = {
   transport: RealtimePresenceTransport;
@@ -92,10 +80,10 @@ export class PresenceClient implements PresenceAPI {
     if (data === null || data === undefined) {
       if (!this.localChannels.has(channel)) return;
       this.localChannels.delete(channel);
-      this.clearChannel(wireChannel);
+      clearPresenceChannel(this.transport, wireChannel, "presence");
     } else {
       this.localChannels.set(channel, data);
-      this.publishChannel(wireChannel, data);
+      publishPresenceValue(this.transport, wireChannel, data, "presence");
     }
     this.emit();
   }
@@ -149,31 +137,6 @@ export class PresenceClient implements PresenceAPI {
     }
   }
 
-  private publishChannel(channel: string, value: unknown): void {
-    if (jsonByteLength(value) > MAX_PRESENCE_VALUE_BYTES) {
-      console.warn(
-        "[playhtml] Failed to publish presence:",
-        new Error(
-          `Presence value must be ${MAX_PRESENCE_VALUE_BYTES} bytes or less`,
-        ),
-      );
-      return;
-    }
-    try {
-      this.transport.update(channel, value);
-    } catch (error) {
-      console.warn("[playhtml] Failed to publish presence:", error);
-    }
-  }
-
-  private clearChannel(channel: string): void {
-    try {
-      this.transport.clear(channel);
-    } catch (error) {
-      console.warn("[playhtml] Failed to clear presence:", error);
-    }
-  }
-
   /** The shared PeerStore's folded peer map. Views read all channels and filter
    * to the presence + identity namespaces they care about. */
   private get peers(): Map<string, Record<string, unknown>> {
@@ -224,10 +187,7 @@ export class PresenceClient implements PresenceAPI {
     for (const connectionId of Array.from(this.peers.keys()).sort()) {
       const channels = this.peers.get(connectionId)!;
       const identity = channels.identity;
-      const publicKey =
-        isPresenceRecord(identity) && typeof identity.publicKey === "string"
-          ? identity.publicKey
-          : undefined;
+      const publicKey = getPeerPublicKey(channels);
       if (publicKey === myPublicKey) continue;
       const stableId = publicKey ?? connectionId;
 
@@ -290,15 +250,5 @@ function safeStringify(value: unknown): string {
     return JSON.stringify(value ?? null);
   } catch {
     return "null";
-  }
-}
-
-function jsonByteLength(value: unknown): number {
-  try {
-    const json = JSON.stringify(value);
-    if (json === undefined) return Infinity;
-    return new TextEncoder().encode(json).byteLength;
-  } catch {
-    return Infinity;
   }
 }

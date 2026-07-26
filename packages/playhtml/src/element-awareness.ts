@@ -6,10 +6,17 @@ import {
   type PlayerIdentity,
 } from "@playhtml/common";
 import type { RealtimePresenceTransport } from "./presence-transport";
-import { isPresenceRecord } from "./presence-utils";
+import {
+  clearPresenceChannel,
+  ELEMENT_CHANNEL_PREFIX,
+  getPeerPublicKey,
+  isElementChannel,
+  isPresenceRecord,
+  jsonByteLength,
+  publishPresenceValue,
+} from "./presence-utils";
 
-export const ELEMENT_PRESENCE_CHANNEL_PREFIX = "element:";
-const ELEMENT_PRESENCE_SHARD_CHANNEL_PREFIX = `${ELEMENT_PRESENCE_CHANNEL_PREFIX}shard:`;
+const ELEMENT_PRESENCE_SHARD_CHANNEL_PREFIX = `${ELEMENT_CHANNEL_PREFIX}shard:`;
 const ELEMENT_PRESENCE_SHARD_VERSION = 1;
 
 // The server caps channels per connection (identity/page/cursor use some of
@@ -208,44 +215,25 @@ export class ElementAwarenessClient {
 
     for (let i = 0; i < shards.length; i += 1) {
       const channel = `${ELEMENT_PRESENCE_SHARD_CHANNEL_PREFIX}${i}`;
-      if (this.publishChannel(channel, shards[i])) {
+      if (
+        publishPresenceValue(
+          this.transport,
+          channel,
+          shards[i],
+          "element awareness",
+        )
+      ) {
         nextChannels.add(channel);
       }
     }
 
     for (const channel of this.publishedChannels) {
-      if (!nextChannels.has(channel)) this.clearChannel(channel);
+      if (!nextChannels.has(channel)) {
+        clearPresenceChannel(this.transport, channel, "element awareness");
+      }
     }
 
     this.publishedChannels = nextChannels;
-  }
-
-  private publishChannel(channel: string, value: unknown): boolean {
-    if (jsonByteLength(value) > MAX_PRESENCE_VALUE_BYTES) {
-      console.warn(
-        "[playhtml] Failed to publish element awareness:",
-        new Error(
-          `Presence value must be ${MAX_PRESENCE_VALUE_BYTES} bytes or less`,
-        ),
-      );
-      return false;
-    }
-
-    try {
-      this.transport.update(channel, value);
-      return true;
-    } catch (error) {
-      console.warn("[playhtml] Failed to publish element awareness:", error);
-      return false;
-    }
-  }
-
-  private clearChannel(channel: string): void {
-    try {
-      this.transport.clear(channel);
-    } catch (error) {
-      console.warn("[playhtml] Failed to clear element awareness:", error);
-    }
   }
 
   private emit(): void {
@@ -267,22 +255,18 @@ export class ElementAwarenessClient {
     const peers = this.transport.peers.getPeers();
     for (const connectionId of Array.from(peers.keys()).sort()) {
       const channels = peers.get(connectionId)!;
-      const identity = channels.identity;
-      const publicKey =
-        isPresenceRecord(identity) && typeof identity.publicKey === "string"
-          ? identity.publicKey
-          : undefined;
+      const publicKey = getPeerPublicKey(channels);
       // Our own server echo (and other tabs sharing our identity): the local
       // tag map is canonical, so skip to avoid duplicate entries.
       if (publicKey === myPublicKey) continue;
       const stableId = publicKey ?? connectionId;
 
       for (const [channel, value] of Object.entries(channels)) {
-        if (!channel.startsWith(ELEMENT_PRESENCE_CHANNEL_PREFIX)) continue;
+        if (!isElementChannel(channel)) continue;
         if (channel.startsWith(ELEMENT_PRESENCE_SHARD_CHANNEL_PREFIX)) {
           addShardEntries(result, value, stableId);
         } else if (isPresenceRecord(value)) {
-          const tag = channel.slice(ELEMENT_PRESENCE_CHANNEL_PREFIX.length);
+          const tag = channel.slice(ELEMENT_CHANNEL_PREFIX.length);
           for (const [elementId, awarenessValue] of Object.entries(value)) {
             addEntry(result, tag, elementId, awarenessValue, stableId);
           }
@@ -392,14 +376,4 @@ function isElementPresenceShard(value: unknown): value is ElementPresenceShard {
       typeof entry[0] === "string" &&
       typeof entry[1] === "string",
   );
-}
-
-function jsonByteLength(value: unknown): number {
-  try {
-    const json = JSON.stringify(value);
-    if (json === undefined) return Infinity;
-    return new TextEncoder().encode(json).byteLength;
-  } catch {
-    return Infinity;
-  }
 }

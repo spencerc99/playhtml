@@ -25,7 +25,7 @@ import {
   CURSOR_PRESENCE_MAX_AGE_MS,
   CursorPresenceStore,
 } from "./cursor-presence-store";
-import type { PeerStore } from "../peer-store";
+import type { RealtimePresenceTransport } from "../presence-transport";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -39,15 +39,6 @@ export type ValidCursorPresence = CursorPresence & {
 
 type RemoteCursorPresence = CursorPresence & {
   playerIdentity: PlayerIdentity;
-};
-
-type CursorPresenceTransport = {
-  join(input: { identity: PlayerIdentity; page?: string }): void;
-  update(channel: string, value: unknown): void;
-  clear(channel: string): void;
-  subscribe(listener: (message: PresenceServerMessage) => void): () => void;
-  peers: PeerStore;
-  destroy(): void;
 };
 
 /** Returns primary color from player identity; throws if missing (no default). */
@@ -570,7 +561,7 @@ export class CursorClientAwareness {
   constructor(
     private provider: YProvider,
     private options: CursorOptions = {},
-    private presenceTransport?: CursorPresenceTransport,
+    private presenceTransport?: RealtimePresenceTransport,
     users?: UsersAPI,
   ) {
     // Callers that construct playhtml via init() always pass the shared users
