@@ -1,8 +1,13 @@
-// ABOUTME: Verifies cursor state derived from generic realtime presence channels.
-// ABOUTME: Keeps cursor transport state testable without DOM rendering or sockets.
+// ABOUTME: Verifies cursor presence derived from the shared PeerStore's folded
+// ABOUTME: channels — decode, per-player collapse, and stale-cursor expiry.
 
 import { describe, expect, it } from "vitest";
-import type { PlayerIdentity } from "@playhtml/common";
+import type {
+  PlayerIdentity,
+  PresenceServerMessage,
+  PresenceSnapshot,
+} from "@playhtml/common";
+import { PeerStore } from "../../peer-store";
 import { CursorPresenceStore } from "../cursor-presence-store";
 
 const alice: PlayerIdentity = {
@@ -22,11 +27,44 @@ function makeIdentity(publicKey: string): PlayerIdentity {
   };
 }
 
+/** A message source (transport stand-in) driven directly in tests. */
+function makeSource() {
+  const listeners = new Set<(message: PresenceServerMessage) => void>();
+  return {
+    subscribe(listener: (message: PresenceServerMessage) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit(message: PresenceServerMessage) {
+      for (const listener of listeners) listener(message);
+    },
+  };
+}
+
+/** Build a cursor view over a PeerStore, plus helpers to feed sync/changes. */
+function makeStore() {
+  const source = makeSource();
+  const peerStore = new PeerStore(source);
+  const store = new CursorPresenceStore(peerStore);
+  return {
+    store,
+    applySync(peers: PresenceSnapshot) {
+      source.emit({ type: "presence-sync", peers });
+    },
+    applyChanges(
+      updates: PresenceSnapshot,
+      removes: Record<string, string[]> = {},
+    ) {
+      source.emit({ type: "presence-changes", updates, removes });
+    },
+  };
+}
+
 describe("CursorPresenceStore", () => {
   it("builds remote cursor presence from generic presence sync channels", () => {
-    const store = new CursorPresenceStore();
+    const { store, applySync } = makeStore();
 
-    store.applySync({
+    applySync({
       "conn-1": {
         identity: alice,
         cursor: {
@@ -54,9 +92,9 @@ describe("CursorPresenceStore", () => {
   });
 
   it("ignores presences for the local public key", () => {
-    const store = new CursorPresenceStore();
+    const { store, applySync } = makeStore();
 
-    store.applySync({
+    applySync({
       "conn-1": {
         identity: alice,
         cursor: {
@@ -69,9 +107,9 @@ describe("CursorPresenceStore", () => {
   });
 
   it("keeps identity-only peers visible before their first cursor frame", () => {
-    const store = new CursorPresenceStore();
+    const { store, applySync } = makeStore();
 
-    store.applySync({
+    applySync({
       "conn-1": {
         identity: alice,
         page: "/week/1",
@@ -94,9 +132,9 @@ describe("CursorPresenceStore", () => {
   });
 
   it("prefers an active cursor over identity-only tabs for the same public key", () => {
-    const store = new CursorPresenceStore();
+    const { store, applySync } = makeStore();
 
-    store.applySync({
+    applySync({
       "conn-1": {
         identity: alice,
         cursor: {
@@ -123,8 +161,8 @@ describe("CursorPresenceStore", () => {
   });
 
   it("coalesces cursor changes to the latest received value", () => {
-    const store = new CursorPresenceStore();
-    store.applySync({
+    const { store, applySync, applyChanges } = makeStore();
+    applySync({
       "conn-1": {
         identity: bob,
         cursor: {
@@ -134,17 +172,13 @@ describe("CursorPresenceStore", () => {
       },
     });
 
-    store.applyChanges({
-      type: "presence-changes",
-      updates: {
-        "conn-1": {
-          cursor: {
-            cursor: { x: 10, y: 20, pointer: "mouse" },
-            at: 116,
-          },
+    applyChanges({
+      "conn-1": {
+        cursor: {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          at: 116,
         },
       },
-      removes: {},
     });
 
     expect(store.getPresenceByStableId("pk_bob")?.cursor).toEqual({
@@ -156,8 +190,8 @@ describe("CursorPresenceStore", () => {
   });
 
   it("keeps the identity after the cursor channel is removed", () => {
-    const store = new CursorPresenceStore();
-    store.applySync({
+    const { store, applySync, applyChanges } = makeStore();
+    applySync({
       "conn-1": {
         identity: bob,
         cursor: {
@@ -166,13 +200,7 @@ describe("CursorPresenceStore", () => {
       },
     });
 
-    store.applyChanges({
-      type: "presence-changes",
-      updates: {},
-      removes: {
-        "conn-1": ["cursor"],
-      },
-    });
+    applyChanges({}, { "conn-1": ["cursor"] });
 
     expect(store.getPresenceByStableId("pk_bob")).toEqual({
       cursor: null,
@@ -185,8 +213,8 @@ describe("CursorPresenceStore", () => {
   });
 
   it("removes expired cursor channels while keeping identity presence", () => {
-    const store = new CursorPresenceStore();
-    store.applySync({
+    const { store, applySync } = makeStore();
+    applySync({
       "conn-stale": {
         identity: makeIdentity("stale"),
         cursor: {

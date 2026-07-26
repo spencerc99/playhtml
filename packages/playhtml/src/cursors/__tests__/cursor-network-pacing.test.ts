@@ -7,6 +7,7 @@ import {
   getCursorNetworkHz,
   getCursorNetworkIntervalMs,
 } from "../cursor-network-pacing";
+import { PeerStore } from "../../peer-store";
 
 function makeIdentity(publicKey: string, color: string) {
   return {
@@ -77,7 +78,7 @@ function dispatchMouseMove(x: number, y: number) {
 
 function makeFakePresenceTransport() {
   const listeners = new Set<(message: unknown) => void>();
-  return {
+  const transport: any = {
     updates: [] as Array<{ channel: string; value: unknown }>,
     clears: [] as string[],
     join: vi.fn(),
@@ -96,6 +97,10 @@ function makeFakePresenceTransport() {
     },
     destroy: vi.fn(),
   };
+  // The real transport owns a PeerStore fed by its own message stream; mirror
+  // that here so the cursor client's PeerStore-backed cursor view works.
+  transport.peers = new PeerStore(transport);
+  return transport;
 }
 
 describe("cursor network pacing", () => {
