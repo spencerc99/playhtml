@@ -229,4 +229,27 @@ describe("PeerStore", () => {
     });
     expect(store.getPeers().has("conn-2")).toBe(false);
   });
+
+  it("isolates a throwing subscriber so others in the same namespace still fire", () => {
+    const source = makeSource();
+    const store = new PeerStore(source);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const good = vi.fn();
+    store.subscribe("presence", () => {
+      throw new Error("boom");
+    });
+    store.subscribe("presence", good);
+    good.mockClear();
+
+    expect(() =>
+      source.emit({
+        type: "presence-changes",
+        updates: { "conn-1": { "presence:x": 1 } },
+        removes: {},
+      }),
+    ).not.toThrow();
+    expect(good).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });

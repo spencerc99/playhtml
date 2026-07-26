@@ -1,7 +1,7 @@
 // ABOUTME: Verifies PresenceClient publishes page presence over the transport
 // ABOUTME: and rebuilds per-channel PresenceView maps from page-scoped peers.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PlayerIdentity, PresenceView } from "@playhtml/common";
 import { RealtimePresenceTransport } from "../presence-transport";
 import { PresenceClient } from "../presence-client";
@@ -313,5 +313,109 @@ describe("PresenceClient", () => {
     expect(remote.cursor).toEqual({ x: 10, y: 20, pointer: "mouse" });
     expect(remote.playerIdentity!.publicKey).toBe("pk_remote");
     expect(remote.isMe).toBe(false);
+  });
+
+  it("isolates a throwing subscriber so another channel's subscriber still fires", () => {
+    const { socket, client } = createClient();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const good = vi.fn();
+    client.onPresenceChange("status", () => {
+      throw new Error("boom");
+    });
+    client.onPresenceChange("mood", good);
+    good.mockClear();
+
+    expect(() =>
+      socket.receive({
+        type: "presence-changes",
+        updates: {
+          "conn-2": {
+            identity: remoteIdentity("pk_remote"),
+            "presence:status": { t: 1 },
+            "presence:mood": { emoji: "smile" },
+          },
+        },
+        removes: {},
+      }),
+    ).not.toThrow();
+    // The mood subscriber still fired even though the status subscriber threw.
+    expect(good).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("retries delivery after a throwing subscriber recovers (fingerprint not eaten)", () => {
+    const { socket, client } = createClient();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let shouldThrow = true;
+    const received: unknown[] = [];
+    client.onPresenceChange("status", (p) => {
+      if (shouldThrow) throw new Error("boom");
+      received.push(p);
+    });
+    received.length = 0;
+
+    // First delivery throws; the fingerprint must NOT be committed.
+    socket.receive({
+      type: "presence-changes",
+      updates: {
+        "conn-2": {
+          identity: remoteIdentity("pk_remote"),
+          "presence:status": { t: 1 },
+        },
+      },
+      removes: {},
+    });
+    expect(received).toHaveLength(0);
+
+    // The subscriber recovers; a subsequent change re-delivers the state.
+    shouldThrow = false;
+    socket.receive({
+      type: "presence-changes",
+      updates: { "conn-2": { "presence:status": { t: 2 } } },
+      removes: {},
+    });
+    expect(received.length).toBeGreaterThan(0);
+    errorSpy.mockRestore();
+  });
+
+  it("re-publishes the latest channel values after a burst settles (rate-drop recovery)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, parsedSent } = createClient();
+      client.setMyPresence("status", { text: "online" });
+      const afterInitial = parsedSent().filter(
+        (m) => m.type === "presence-update",
+      ).length;
+      expect(afterInitial).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(500);
+      const afterTrailing = parsedSent().filter(
+        (m) => m.type === "presence-update",
+      ).length;
+      // One trailing re-publish of the latest value.
+      expect(afterTrailing).toBe(2);
+      expect(parsedSent().at(-1)).toEqual({
+        type: "presence-update",
+        channel: "presence:status",
+        value: { text: "online" },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("destroy cancels a pending trailing re-publish", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, parsedSent } = createClient();
+      client.setMyPresence("status", { text: "online" });
+      const before = parsedSent().length;
+      client.destroy();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(parsedSent().length).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

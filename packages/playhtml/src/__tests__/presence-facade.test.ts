@@ -119,4 +119,33 @@ describe("PresenceFacade", () => {
     facade.setInner(inner);
     expect(inner.onPresenceChange.mock.calls.length).toBe(subscribeCalls);
   });
+
+  it("a throwing re-attach does not strand the remaining subscriptions", () => {
+    const innerA = makeInner("a");
+    const facade = new PresenceFacade(innerA);
+    facade.onPresenceChange("first", () => {});
+    facade.onPresenceChange("second", () => {});
+
+    // A new inner whose onPresenceChange throws for the "first" channel only.
+    const goodSubs = new Map<number, { channel: string; callback: SubCallback }>();
+    let nextId = 0;
+    const innerB: any = {
+      onPresenceChange: vi.fn((channel: string, callback: SubCallback) => {
+        if (channel === "first") throw new Error("re-attach boom");
+        const id = nextId++;
+        goodSubs.set(id, { channel, callback });
+        return () => goodSubs.delete(id);
+      }),
+      setMyPresence: vi.fn(),
+      getPresences: vi.fn(() => new Map()),
+      getMyIdentity: vi.fn(() => makeIdentity("pk_b")),
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(() => facade.setInner(innerB)).not.toThrow();
+    // The "second" subscription still re-attached despite "first" throwing.
+    expect([...goodSubs.values()].some((s) => s.channel === "second")).toBe(true);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });

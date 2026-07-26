@@ -173,4 +173,34 @@ describe("presence across navigation", () => {
     expect(seeded).toContain("batch-0");
     expect(seeded).toContain("batch-4");
   });
+
+  it("drops a removed element's local awareness on a same-room DOM swap", async () => {
+    // Same-room nav: the URL room does not change, so the element awareness
+    // client is NOT rebuilt. A disconnected element's awareness must be removed
+    // in the sweep, or it rebroadcasts forever.
+    history.replaceState(null, "", "/same-room");
+    await playhtml.init({ cursors: { enabled: false }, room: "/pinned-room" });
+
+    const keep = addCanPlayElement("keep");
+    const gone = addCanPlayElement("gone");
+    await playhtml.setupPlayElementForTag(keep, "can-play");
+    await playhtml.setupPlayElementForTag(gone, "can-play");
+    elementHandlers.get("can-play")!.get("keep")!.setMyAwareness({ v: 1 } as any);
+    elementHandlers.get("can-play")!.get("gone")!.setMyAwareness({ v: 2 } as any);
+    await flushMicrotasks();
+
+    const room = playhtml.roomId;
+    const socket = getPresenceSocketForRoom(room);
+
+    // Disconnect "gone" from the DOM, then run a same-room navigation.
+    gone.remove();
+    history.replaceState(null, "", "/same-room-elsewhere");
+    await playhtml.handleNavigation();
+    await flushMicrotasks();
+
+    const publishes = sentChannelUpdates(socket, "element:shard:0");
+    const latest = JSON.stringify(publishes.at(-1));
+    expect(latest).toContain("keep");
+    expect(latest).not.toContain("gone");
+  });
 });

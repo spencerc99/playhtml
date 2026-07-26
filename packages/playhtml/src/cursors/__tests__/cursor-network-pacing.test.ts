@@ -513,7 +513,10 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
-  it("warns when the presence server rejects a message", () => {
+  it("does not itself warn on presence-error (the transport logs it now)", () => {
+    // Base control-message logging moved to RealtimePresenceTransport so it
+    // happens on every socket, not just the cursor client's. The cursor client
+    // only layers hz pacing; it must not duplicate the rejection warning.
     const provider = makeFakeProvider();
     const transport = makeFakePresenceTransport();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -528,12 +531,13 @@ describe("cursor network pacing", () => {
 
     transport.emit({ type: "presence-error", message: "bad cursor" });
 
-    expect(warn).toHaveBeenCalledWith(
-      "[playhtml] Presence server rejected message:",
-      "bad cursor",
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("rejected"),
+      expect.anything(),
     );
 
     client.destroy();
+    warn.mockRestore();
   });
 
   it("omits overlong page paths from transport messages", () => {
