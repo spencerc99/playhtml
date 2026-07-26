@@ -23,7 +23,11 @@ import {
   attachNavigationListeners,
   dispatchNavigated,
 } from "./navigation";
-import type { PlayerIdentity, CursorPresence } from "@playhtml/common";
+import type {
+  PlayerIdentity,
+  CursorPresence,
+  CursorPresenceView,
+} from "@playhtml/common";
 import * as Y from "yjs";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
@@ -64,6 +68,7 @@ import {
 } from "./element-awareness";
 import { PresenceClient } from "./presence-client";
 import { PresenceFacade } from "./presence-facade";
+import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 
 export {
@@ -204,6 +209,45 @@ let currentCursorRoomId = "";
 // onPresenceChange subscriptions) captured before navigation keep working.
 let presenceFacade: PresenceFacade | null = null;
 let usersAPI: UsersAPI | null = null;
+
+// Stable indirection between the page presence client's "cursor" channel and
+// whichever cursor client currently exists. The cursor client is torn down and
+// rebuilt on navigation / server reset, and momentarily null while disabled, so
+// binding a subscription to a cursor-client instance strands it. Instead,
+// subscribers register on this hub (which outlives every cursor client), and
+// the hub resolves the CURRENT cursor client at dispatch time. buildCursors
+// wires the live cursor client to feed the hub; teardownCursors unwires it.
+type CursorPresences = Map<string, CursorPresenceView>;
+const cursorPresenceHub = {
+  subscribers: new Set<(presences: CursorPresences) => void>(),
+  feedUnsub: null as (() => void) | null,
+  getPresences(): CursorPresences {
+    return cursorClient?.getCursorPresences() ?? new Map();
+  },
+  subscribe(callback: (presences: CursorPresences) => void): () => void {
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
+  },
+  notify(presences: CursorPresences): void {
+    for (const callback of this.subscribers) {
+      safeInvoke(() => callback(presences), "cursor presence subscriber");
+    }
+  },
+  // Point the hub at a freshly built cursor client: drop the previous feed and
+  // forward the new client's presence changes to hub subscribers.
+  connect(client: CursorClientAwareness): void {
+    this.feedUnsub?.();
+    this.feedUnsub = client.onCursorPresencesChange((presences) => {
+      this.notify(presences);
+    });
+  },
+  disconnect(): void {
+    this.feedUnsub?.();
+    this.feedUnsub = null;
+  },
+};
 
 function resolveMyIdentity(): PlayerIdentity {
   return usersAPI?.getIdentity() ?? defaultSeedIdentity();
@@ -633,7 +677,12 @@ function acquirePresenceTransport(
           identity: resolveMyIdentity(),
           page: getPresencePage(),
         });
-      } catch {}
+      } catch (error) {
+        // join validates identity and can throw (e.g. an extension-injected
+        // identity edge case). Surface it — the empty catch also let latestJoin
+        // keep replaying a stale identity on reconnect silently.
+        console.warn("[playhtml] Failed to republish identity on change:", error);
+      }
     }) ?? null;
   presenceTransportsByRoom.set(room, {
     transport,
@@ -866,6 +915,7 @@ function buildMainProvider(args: {
 
 /** Disconnect and destroy the cursor client + cursor provider. */
 function teardownCursors(): void {
+  cursorPresenceHub.disconnect();
   try { cursorClient?.destroy?.(); } catch {}
   cursorClient = null;
   if (cursorPresenceTransportRoom !== null) {
@@ -931,13 +981,25 @@ function recreateStore(): void {
 function buildElementAwarenessClient(): void {
   const transport = acquirePresenceTransport(__currentRoomId);
   if (!transport) return;
-  elementAwarenessRoom = __currentRoomId;
-  elementAwarenessClient = new ElementAwarenessClient({
-    transport,
-    getIdentity: resolveMyIdentity,
-    getPage: getPresencePage,
-    onAwareness: applyElementAwareness,
-  });
+  const room = __currentRoomId;
+  elementAwarenessRoom = room;
+  // Construct AFTER recording the room, then release the acquired ref if the
+  // constructor throws (reachable via synchronous snapshot replay into a user
+  // callback) — otherwise the client stays null, teardown early-returns on the
+  // null client, and the transport ref leaks forever.
+  try {
+    elementAwarenessClient = new ElementAwarenessClient({
+      transport,
+      getIdentity: resolveMyIdentity,
+      getPage: getPresencePage,
+      onAwareness: applyElementAwareness,
+    });
+  } catch (error) {
+    elementAwarenessRoom = null;
+    releasePresenceTransport(room);
+    console.error("[playhtml] Failed to build element awareness client:", error);
+    return;
+  }
   // Identity re-joins are owned by the shared transport (see
   // acquirePresenceTransport); element awareness re-keys peers from the
   // transport's identity channel, so it needs no self-change wiring of its own.
@@ -987,25 +1049,37 @@ function seedElementAwarenessFromHandlers(): void {
 function buildInnerPresenceAPI(): PresenceAPI {
   const transport = acquirePresenceTransport(__currentRoomId);
   if (transport) {
-    presenceClientRoom = __currentRoomId;
-    presenceClient = new PresenceClient({
-      transport,
-      getIdentity: resolveMyIdentity,
-      getPage: getPresencePage,
-      getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
-      onCursorPresencesChange: (callback) =>
-        cursorClient?.onCursorPresencesChange(callback),
-    });
-    return presenceClient;
+    const room = __currentRoomId;
+    presenceClientRoom = room;
+    // Release the acquired ref if the constructor throws (see
+    // buildElementAwarenessClient) so it can't leak forever; fall through to the
+    // Yjs path so presence still works.
+    try {
+      presenceClient = new PresenceClient({
+        transport,
+        getIdentity: resolveMyIdentity,
+        getPage: getPresencePage,
+        // Route the cursor channel through the stable hub, not the current cursor
+        // client instance, so the subscription survives cursor rebuilds (nav /
+        // server reset) and the null-cursor window.
+        getCursorPresences: () => cursorPresenceHub.getPresences(),
+        onCursorPresencesChange: (callback) =>
+          cursorPresenceHub.subscribe(callback),
+      });
+      return presenceClient;
+    } catch (error) {
+      presenceClientRoom = null;
+      releasePresenceTransport(room);
+      console.error("[playhtml] Failed to build presence client:", error);
+    }
   }
 
   return createPresenceAPI({
     getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
     getPlayerIdentity: resolveMyIdentity,
     publishIdentity: false,
-    getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
-    onCursorPresencesChange: (callback) =>
-      cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
+    getCursorPresences: () => cursorPresenceHub.getPresences(),
+    onCursorPresencesChange: (callback) => cursorPresenceHub.subscribe(callback),
   });
 }
 
@@ -1108,6 +1182,9 @@ function buildCursors(args: {
     cursorPresenceTransport,
     usersAPI,
   );
+  // Feed the stable cursor presence hub from this (current) cursor client so
+  // the page presence "cursor" channel keeps firing across cursor rebuilds.
+  cursorPresenceHub.connect(cursorClient);
 }
 
 function storeResetEpochForRoom(room: string, resetEpoch: number): void {
@@ -1313,7 +1390,7 @@ async function runHandleNavigation(): Promise<void> {
   // has no listener cleanup. React-managed elements stay connected across
   // route changes when the same node is reused; React's unmount path already
   // calls removePlayElement for replaced nodes.
-  for (const [, map] of elementHandlers) {
+  for (const [tag, map] of elementHandlers) {
     for (const [id, handler] of [...map.entries()]) {
       const el = (handler as { element?: HTMLElement }).element;
       if (!el || !el.isConnected) {
@@ -1322,6 +1399,11 @@ async function runHandleNavigation(): Promise<void> {
         // view element's clock loop keeps ticking forever after navigation.
         (handler as { destroy?: () => void }).destroy?.();
         map.delete(id);
+        // Drop the element's local awareness too. On a SAME-room DOM swap the
+        // client is not rebuilt, so a stale entry would rebroadcast forever and
+        // eat the shard budget. (On a room change the client is rebuilt empty
+        // and reseeded from surviving handlers, so this is a no-op there.)
+        elementAwarenessClient?.removeLocalAwareness(tag, id);
       }
     }
   }
@@ -1957,13 +2039,21 @@ function onChangeAwareness() {
 }
 
 function applyElementAwareness(elementAwareness: ElementAwarenessMap): void {
+  // Isolate per key so one handler that throws (a view render, say) can't skip
+  // awareness delivery to the other elements sharing this socket.
   elementAwareness.forEach(({ array, byStableId }, key) => {
-    updateHandlerAwarenessForKey(key, array, byStableId);
+    safeInvoke(
+      () => updateHandlerAwarenessForKey(key, array, byStableId),
+      "element awareness handler",
+    );
   });
 
   for (const key of trackedElementAwarenessKeys) {
     if (elementAwareness.has(key)) continue;
-    updateHandlerAwarenessForKey(key, [], new Map());
+    safeInvoke(
+      () => updateHandlerAwarenessForKey(key, [], new Map()),
+      "element awareness handler",
+    );
   }
 
   trackedElementAwarenessKeys = new Set(elementAwareness.keys());
@@ -2092,7 +2182,12 @@ function createPresenceRoom(name: string): PresenceRoom {
       usersAPI?.onSelfChange(() => {
         try {
           transport.join({ identity: resolveMyIdentity(), page: getPresencePage() });
-        } catch {}
+        } catch (error) {
+          console.warn(
+            "[playhtml] Failed to republish identity on change:",
+            error,
+          );
+        }
       }) ?? null;
 
     const presence = new PresenceClient({
@@ -2276,6 +2371,11 @@ export async function resetPlayHTML(): Promise<void> {
     __currentRoomId = "";
     __currentHost = "";
     presenceFacade = null;
+    // The facade is discarded here without unsubscribing its cursor-channel
+    // subscriptions (unlike navigation, which re-attaches via setInner), so
+    // clear the hub's subscriber set too — otherwise stale wrappers pointing at
+    // the destroyed presence client survive into the next init.
+    cursorPresenceHub.subscribers.clear();
     roomResetPromise = null;
     pendingRoomResetEpoch = null;
     configuredOptions = null;
