@@ -7,9 +7,6 @@ import {
   type CursorPresenceView,
   type PlayerIdentity,
   type PresenceAPI,
-  type PresenceChangesMessage,
-  type PresenceServerMessage,
-  type PresenceSnapshot,
   type PresenceView,
 } from "@playhtml/common";
 import type { RealtimePresenceTransport } from "./presence-transport";
@@ -65,7 +62,6 @@ export class PresenceClient implements PresenceAPI {
   private onCursorPresencesChange?: PresenceClientOptions["onCursorPresencesChange"];
 
   private localChannels = new Map<string, unknown>();
-  private peers = new Map<string, Record<string, unknown>>();
   private listeners = new Map<string, ChannelListener>();
   private nextListenerId = 0;
   private unsubscribe: () => void;
@@ -76,9 +72,18 @@ export class PresenceClient implements PresenceAPI {
     this.getPage = options.getPage;
     this.getCursorPresences = options.getCursorPresences;
     this.onCursorPresencesChange = options.onCursorPresencesChange;
-    this.unsubscribe = this.transport.subscribe((message) =>
-      this.handleMessage(message),
-    );
+    // The shared per-socket PeerStore folds messages; we subscribe to just the
+    // presence + identity namespaces so frame-rate cursor traffic never fires
+    // page-presence listeners. One shared listener reference means a combined
+    // message (presence + identity) emits once; per-channel fingerprinting in
+    // emit() further dedupes within the presence namespace. subscribe() replays.
+    const onChange = () => this.emit();
+    const unsubPresence = this.transport.peers.subscribe("presence", onChange);
+    const unsubIdentity = this.transport.peers.subscribe("identity", onChange);
+    this.unsubscribe = () => {
+      unsubPresence();
+      unsubIdentity();
+    };
     this.join();
   }
 
@@ -169,64 +174,10 @@ export class PresenceClient implements PresenceAPI {
     }
   }
 
-  private handleMessage(message: PresenceServerMessage): void {
-    if (message.type === "presence-sync") {
-      this.applySync(message.peers);
-      this.emit();
-      return;
-    }
-    if (message.type === "presence-changes") {
-      if (this.applyChanges(message)) this.emit();
-    }
-    // presence-rate / presence-error: cursor client logs these when sharing a
-    // socket; page presence has no pacing to adjust, so ignore.
-  }
-
-  private applySync(snapshot: PresenceSnapshot): void {
-    this.peers.clear();
-    for (const [connectionId, channels] of Object.entries(snapshot)) {
-      const kept = this.keepRelevantChannels(channels);
-      if (Object.keys(kept).length > 0) this.peers.set(connectionId, kept);
-    }
-  }
-
-  private keepRelevantChannels(
-    channels: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const kept: Record<string, unknown> = {};
-    for (const [channel, value] of Object.entries(channels)) {
-      if (channel === "identity" || isPagePresenceChannel(channel)) {
-        kept[channel] = value;
-      }
-    }
-    return kept;
-  }
-
-  private applyChanges(message: PresenceChangesMessage): boolean {
-    let changed = false;
-
-    for (const [connectionId, channels] of Object.entries(message.updates)) {
-      for (const [channel, value] of Object.entries(channels)) {
-        if (channel !== "identity" && !isPagePresenceChannel(channel)) continue;
-        const peer = this.peers.get(connectionId) ?? {};
-        this.peers.set(connectionId, peer);
-        peer[channel] = value;
-        changed = true;
-      }
-    }
-
-    for (const [connectionId, channels] of Object.entries(message.removes)) {
-      const peer = this.peers.get(connectionId);
-      if (!peer) continue;
-      for (const channel of channels) {
-        if (!(channel in peer)) continue;
-        delete peer[channel];
-        changed = true;
-      }
-      if (Object.keys(peer).length === 0) this.peers.delete(connectionId);
-    }
-
-    return changed;
+  /** The shared PeerStore's folded peer map. Views read all channels and filter
+   * to the presence + identity namespaces they care about. */
+  private get peers(): Map<string, Record<string, unknown>> {
+    return this.transport.peers.getPeers();
   }
 
   private emit(): void {

@@ -25,6 +25,7 @@ import {
   CURSOR_PRESENCE_MAX_AGE_MS,
   CursorPresenceStore,
 } from "./cursor-presence-store";
+import type { PeerStore } from "../peer-store";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -45,6 +46,7 @@ type CursorPresenceTransport = {
   update(channel: string, value: unknown): void;
   clear(channel: string): void;
   subscribe(listener: (message: PresenceServerMessage) => void): () => void;
+  peers: PeerStore;
   destroy(): void;
 };
 
@@ -461,7 +463,9 @@ export class CursorClientAwareness {
     (presences: Map<string, CursorPresenceView>) => void
   >();
   private coordinateMode: "relative" | "absolute";
-  private presenceStore = new CursorPresenceStore();
+  // Cursor view over the shared PeerStore; only present (and only read) in
+  // transport mode. Assigned in setupPresenceTransportHandling.
+  private presenceStore: CursorPresenceStore | null = null;
   private presenceTransportUnsubscribe: (() => void) | null = null;
   private presenceExpiryInterval: ReturnType<typeof setInterval> | null = null;
   private serverCursorMaxHz: number | null = null;
@@ -691,35 +695,52 @@ export class CursorClientAwareness {
   }
 
   private setupPresenceTransportHandling(): void {
+    if (!this.presenceTransport) return;
+    // Cursor view over the shared per-socket PeerStore (the sole consumer of
+    // presence-sync/changes). We subscribe to the cursor + identity namespaces
+    // so a peer's cursor move or identity change re-renders, but frame-rate
+    // cursor traffic on the shared socket never wakes element/presence views.
+    this.presenceStore = new CursorPresenceStore(this.presenceTransport.peers);
     this.publishPresenceTransportState();
-    this.presenceTransportUnsubscribe = this.presenceTransport?.subscribe(
-      (message) => {
-        this.handlePresenceTransportMessage(message);
-      },
-    ) ?? null;
+    // One shared listener reference for both namespaces so a combined
+    // sync/join (which touches cursor + identity) renders once, not twice —
+    // PeerStore.notify dedupes a listener across the namespaces it touched.
+    const onCursorChange = () => this.onPeerCursorChange();
+    const unsubCursor = this.presenceTransport.peers.subscribe(
+      "cursor",
+      onCursorChange,
+    );
+    const unsubIdentity = this.presenceTransport.peers.subscribe(
+      "identity",
+      onCursorChange,
+    );
+    // Rate/error still arrive on the raw transport stream (the PeerStore folds
+    // only sync/changes), so keep a thin subscription for pacing feedback.
+    const unsubRaw = this.presenceTransport.subscribe((message) => {
+      this.handlePresenceControlMessage(message);
+    });
+    this.presenceTransportUnsubscribe = () => {
+      unsubCursor();
+      unsubIdentity();
+      unsubRaw();
+    };
     this.startPresenceExpiryTimer();
   }
 
-  private handlePresenceTransportMessage(message: PresenceServerMessage): void {
-    if (message.type === "presence-sync") {
-      this.presenceStore.applySync(message.peers);
-    } else if (message.type === "presence-changes") {
-      this.presenceStore.applyChanges(message);
-    } else if (message.type === "presence-rate") {
+  private onPeerCursorChange(): void {
+    this.removeExpiredPresenceCursors();
+    this.renderPresenceStore();
+  }
+
+  private handlePresenceControlMessage(message: PresenceServerMessage): void {
+    if (message.type === "presence-rate") {
       this.handlePresenceRate(message.channel, message.hz);
-      return;
     } else if (message.type === "presence-error") {
       console.warn(
         "[playhtml] Presence server rejected message:",
         message.message,
       );
-      return;
-    } else {
-      return;
     }
-
-    this.removeExpiredPresenceCursors();
-    this.renderPresenceStore();
   }
 
   private handlePresenceRate(channel: string, hz: number): void {
@@ -738,7 +759,7 @@ export class CursorClientAwareness {
   }
 
   private removeExpiredPresenceCursors(): boolean {
-    if (!this.presenceTransport) return false;
+    if (!this.presenceStore) return false;
     return this.presenceStore.removeExpiredCursors(
       Date.now(),
       CURSOR_PRESENCE_MAX_AGE_MS,
@@ -862,7 +883,7 @@ export class CursorClientAwareness {
   private *cursorPresenceEntries(options: {
     includeLocalAwareness?: boolean;
   } = {}): Iterable<[string, RemoteCursorPresence]> {
-    if (this.presenceTransport) {
+    if (this.presenceTransport && this.presenceStore) {
       const presences = this.presenceStore.getRemotePresences(
         this.playerIdentity.publicKey,
       );

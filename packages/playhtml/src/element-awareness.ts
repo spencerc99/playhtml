@@ -4,9 +4,6 @@
 import {
   MAX_PRESENCE_VALUE_BYTES,
   type PlayerIdentity,
-  type PresenceChangesMessage,
-  type PresenceServerMessage,
-  type PresenceSnapshot,
 } from "@playhtml/common";
 import type { RealtimePresenceTransport } from "./presence-transport";
 import { isPresenceRecord } from "./presence-utils";
@@ -48,14 +45,6 @@ export type ElementAwarenessClientOptions = {
   onAwareness: (awareness: ElementAwarenessMap) => void;
 };
 
-/** Channels this client mirrors from peers; everything else (cursor traffic on
- * a shared socket) is ignored without recomputing. */
-function isElementRelevantChannel(channel: string): boolean {
-  return (
-    channel === "identity" || channel.startsWith(ELEMENT_PRESENCE_CHANNEL_PREFIX)
-  );
-}
-
 export class ElementAwarenessClient {
   private transport: RealtimePresenceTransport;
   private getIdentity: () => PlayerIdentity;
@@ -63,7 +52,6 @@ export class ElementAwarenessClient {
   private onAwareness: (awareness: ElementAwarenessMap) => void;
   private localTags = new Map<string, Record<string, unknown>>();
   private publishedChannels = new Set<string>();
-  private peers = new Map<string, Record<string, unknown>>();
   private unsubscribe: () => void;
   private publishScheduled = false;
   private republishTimer: ReturnType<typeof setTimeout> | null = null;
@@ -74,9 +62,18 @@ export class ElementAwarenessClient {
     this.getIdentity = options.getIdentity;
     this.getPage = options.getPage;
     this.onAwareness = options.onAwareness;
-    this.unsubscribe = this.transport.subscribe((message) =>
-      this.handleMessage(message),
-    );
+    // The shared per-socket PeerStore folds messages; we subscribe to just the
+    // element + identity namespaces, so frame-rate cursor traffic on the same
+    // socket never triggers an element awareness recompute. One shared listener
+    // reference means a combined message (element + identity) recomputes once.
+    // The subscribe call replays the current snapshot immediately.
+    const onChange = () => this.emit();
+    const unsubElement = this.transport.peers.subscribe("element", onChange);
+    const unsubIdentity = this.transport.peers.subscribe("identity", onChange);
+    this.unsubscribe = () => {
+      unsubElement();
+      unsubIdentity();
+    };
     this.join();
   }
 
@@ -251,61 +248,6 @@ export class ElementAwarenessClient {
     }
   }
 
-  private handleMessage(message: PresenceServerMessage): void {
-    if (message.type === "presence-sync") {
-      this.applySync(message.peers);
-      this.emit();
-      return;
-    }
-    if (message.type === "presence-changes") {
-      if (this.applyChanges(message)) {
-        this.emit();
-      }
-    }
-    // presence-rate / presence-error: cursor client logs these when sharing a
-    // socket; element awareness has no pacing to adjust, so ignore.
-  }
-
-  private applySync(snapshot: PresenceSnapshot): void {
-    this.peers.clear();
-    for (const [connectionId, channels] of Object.entries(snapshot)) {
-      const kept: Record<string, unknown> = {};
-      for (const [channel, value] of Object.entries(channels)) {
-        if (isElementRelevantChannel(channel)) kept[channel] = value;
-      }
-      if (Object.keys(kept).length > 0) this.peers.set(connectionId, kept);
-    }
-  }
-
-  private applyChanges(message: PresenceChangesMessage): boolean {
-    let changed = false;
-
-    for (const [connectionId, channels] of Object.entries(message.updates)) {
-      for (const [channel, value] of Object.entries(channels)) {
-        if (!isElementRelevantChannel(channel)) continue;
-        const peer = this.peers.get(connectionId) ?? {};
-        this.peers.set(connectionId, peer);
-        peer[channel] = value;
-        changed = true;
-      }
-    }
-
-    for (const [connectionId, channels] of Object.entries(message.removes)) {
-      const peer = this.peers.get(connectionId);
-      if (!peer) continue;
-      for (const channel of channels) {
-        if (!(channel in peer)) continue;
-        delete peer[channel];
-        changed = true;
-      }
-      if (Object.keys(peer).length === 0) {
-        this.peers.delete(connectionId);
-      }
-    }
-
-    return changed;
-  }
-
   private emit(): void {
     this.onAwareness(this.buildElementAwareness());
   }
@@ -320,8 +262,11 @@ export class ElementAwarenessClient {
       }
     }
 
-    for (const connectionId of Array.from(this.peers.keys()).sort()) {
-      const channels = this.peers.get(connectionId)!;
+    // Read the shared PeerStore's folded peer map; iterate only element channels
+    // (cursor/presence channels on the same socket are ignored here).
+    const peers = this.transport.peers.getPeers();
+    for (const connectionId of Array.from(peers.keys()).sort()) {
+      const channels = peers.get(connectionId)!;
       const identity = channels.identity;
       const publicKey =
         isPresenceRecord(identity) && typeof identity.publicKey === "string"

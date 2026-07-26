@@ -1,14 +1,13 @@
-// ABOUTME: Converts generic realtime presence channels into cursor presence state.
-// ABOUTME: Collapses per-connection socket state into stable player identities.
+// ABOUTME: Cursor view over the shared PeerStore: decodes folded channels into
+// ABOUTME: cursor presence, collapses tabs per player, and expires stale cursors.
 
 import type {
   Cursor,
   CursorPresence,
   CursorZonePosition,
   PlayerIdentity,
-  PresenceChangesMessage,
-  PresenceSnapshot,
 } from "@playhtml/common";
+import type { PeerChannels, PeerStore } from "../peer-store";
 import {
   getNullableString,
   getOptionalString,
@@ -17,8 +16,6 @@ import {
   isPresenceCursorChannelValue,
 } from "../presence-utils";
 
-type PeerChannels = Record<string, unknown>;
-
 export const CURSOR_PRESENCE_MAX_AGE_MS = 30_000;
 
 export type StoredCursorPresence = CursorPresence & {
@@ -26,35 +23,18 @@ export type StoredCursorPresence = CursorPresence & {
   playerIdentity: PlayerIdentity;
 };
 
+/**
+ * Reads the shared PeerStore's folded peer map and shapes it into cursor
+ * presence. Owns cursor-specific concerns only: decoding the identity/cursor/
+ * message channels, collapsing multiple tabs of one player (preferring an active
+ * cursor, then the newest frame), and expiring stale cursors. The raw
+ * per-connection fold lives in PeerStore and is shared with element/presence.
+ */
 export class CursorPresenceStore {
-  private peers = new Map<string, PeerChannels>();
+  constructor(private peerStore: PeerStore) {}
 
-  applySync(snapshot: PresenceSnapshot): void {
-    this.peers.clear();
-    for (const [connectionId, channels] of Object.entries(snapshot)) {
-      this.peers.set(connectionId, { ...channels });
-    }
-  }
-
-  applyChanges(message: PresenceChangesMessage): void {
-    for (const [connectionId, channels] of Object.entries(message.updates)) {
-      const peer = this.peers.get(connectionId) ?? {};
-      this.peers.set(connectionId, peer);
-      for (const [channel, value] of Object.entries(channels)) {
-        peer[channel] = value;
-      }
-    }
-
-    for (const [connectionId, channels] of Object.entries(message.removes)) {
-      const peer = this.peers.get(connectionId);
-      if (!peer) continue;
-      for (const channel of channels) {
-        delete peer[channel];
-      }
-      if (Object.keys(peer).length === 0) {
-        this.peers.delete(connectionId);
-      }
-    }
+  private get peers(): Map<string, PeerChannels> {
+    return this.peerStore.getPeers();
   }
 
   getRemotePresences(localPublicKey: string): Map<string, StoredCursorPresence> {
