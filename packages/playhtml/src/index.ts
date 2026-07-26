@@ -921,10 +921,6 @@ function recreateStore(): void {
   }
 }
 
-function getElementAwarenessIdentity(): PlayerIdentity {
-  return resolveMyIdentity();
-}
-
 /**
  * Connects element awareness to the normalized page room over the generic
  * presence transport. Reuses the cursor presence socket when the cursor room
@@ -938,7 +934,7 @@ function buildElementAwarenessClient(): void {
   elementAwarenessRoom = __currentRoomId;
   elementAwarenessClient = new ElementAwarenessClient({
     transport,
-    getIdentity: getElementAwarenessIdentity,
+    getIdentity: resolveMyIdentity,
     getPage: getPresencePage,
     onAwareness: applyElementAwareness,
   });

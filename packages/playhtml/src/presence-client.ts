@@ -31,7 +31,7 @@ function fromPagePresenceChannel(channel: string): string {
   return channel.slice(PAGE_PRESENCE_CHANNEL_PREFIX.length);
 }
 
-export type PresenceClientOptions = {
+type PresenceClientOptions = {
   transport: RealtimePresenceTransport;
   getIdentity: () => PlayerIdentity;
   getPage: () => string | undefined;

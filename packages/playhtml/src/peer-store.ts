@@ -15,7 +15,7 @@ export type PeerNamespace = "cursor" | "element" | "presence" | "identity";
 export type PeerChannels = Record<string, unknown>;
 
 /** Minimal message source the store subscribes to (the presence transport). */
-export type PeerMessageSource = {
+type PeerMessageSource = {
   subscribe(listener: (message: PresenceServerMessage) => void): () => void;
 };
 

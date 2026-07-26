@@ -38,7 +38,7 @@ export type ElementAwarenessEntry = {
 
 export type ElementAwarenessMap = Map<string, ElementAwarenessEntry>;
 
-export type ElementAwarenessClientOptions = {
+type ElementAwarenessClientOptions = {
   transport: RealtimePresenceTransport;
   getIdentity: () => PlayerIdentity;
   getPage: () => string | undefined;
