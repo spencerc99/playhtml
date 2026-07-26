@@ -1,0 +1,5 @@
+---
+"playhtml": minor
+---
+
+Page presence now syncs over the generic realtime presence transport. `playhtml.presence.setMyPresence` / `onPresenceChange` publish to the page room's presence socket — shared with cursors and element awareness when their rooms coincide — instead of Yjs awareness, and `playhtml.createPresenceRoom(name)` connects to its named room over the same transport (isolated from the page room, so a lobby room never leaks into page presence). The previous Yjs-awareness path remains as an automatic fallback when WebSocket is unavailable. Identity is now broadcast once per socket: a single re-join keeps everyone's name and color current for cursors, element awareness, and custom presence together, instead of each consumer republishing on its own. No public API changes. During rollout, clients on older versions and clients on this version cannot see each other's page presence in the same room; this affects only ephemeral presence and resolves once clients are on the same version.
