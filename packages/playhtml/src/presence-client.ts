@@ -16,6 +16,7 @@ import {
   isPagePresenceChannel,
   isPresenceRecord,
   publishPresenceValue,
+  safeInvoke,
   toPagePresenceChannel,
 } from "./presence-utils";
 
@@ -35,6 +36,13 @@ type ChannelListener = {
   lastFingerprint: string;
 };
 
+// After a publish, re-send the latest channel values once things quiet down.
+// Page presence shares the server's low-frequency `event` budget (20/s); a
+// burst past it is dropped and only replied to with presence-rate, so a single
+// trailing re-publish recovers whatever the server dropped. Mirrors the element
+// awareness client's recovery.
+const PRESENCE_REPUBLISH_DELAY_MS = 400;
+
 /**
  * Page-presence client over the generic presence transport. Mirrors the public
  * PresenceAPI (setMyPresence/getPresences/onPresenceChange/getMyIdentity) but
@@ -53,6 +61,8 @@ export class PresenceClient implements PresenceAPI {
   private listeners = new Map<string, ChannelListener>();
   private nextListenerId = 0;
   private unsubscribe: () => void;
+  private republishTimer: ReturnType<typeof setTimeout> | null = null;
+  private destroyed = false;
 
   constructor(options: PresenceClientOptions) {
     this.transport = options.transport;
@@ -85,6 +95,7 @@ export class PresenceClient implements PresenceAPI {
       this.localChannels.set(channel, data);
       publishPresenceValue(this.transport, wireChannel, data, "presence");
     }
+    this.scheduleRepublish();
     this.emit();
   }
 
@@ -100,7 +111,9 @@ export class PresenceClient implements PresenceAPI {
       const unsubscribe = this.onCursorPresencesChange(() => {
         callback(this.buildPresences());
       });
-      callback(this.buildPresences());
+      // Isolate the immediate replay (future notifications go through the hub's
+      // own isolation).
+      safeInvoke(() => callback(this.buildPresences()), "presence subscriber");
       return unsubscribe ?? (() => {});
     }
 
@@ -111,8 +124,10 @@ export class PresenceClient implements PresenceAPI {
       lastFingerprint: this.channelFingerprint(channel),
     });
     // Replay the current snapshot immediately so late subscribers see existing
-    // peer state instead of waiting for the next change.
-    callback(this.buildPresences());
+    // peer state instead of waiting for the next change. Isolate the throw so it
+    // doesn't propagate to the subscribing caller (and future emits are already
+    // isolated in emit()).
+    safeInvoke(() => callback(this.buildPresences()), "presence subscriber");
     return () => {
       this.listeners.delete(id);
     };
@@ -123,7 +138,33 @@ export class PresenceClient implements PresenceAPI {
   }
 
   destroy(): void {
+    this.destroyed = true;
+    if (this.republishTimer !== null) {
+      clearTimeout(this.republishTimer);
+      this.republishTimer = null;
+    }
     this.unsubscribe();
+  }
+
+  /**
+   * After a publish burst settles, re-send the latest value of every live
+   * channel once, recovering anything the server dropped over its rate budget.
+   */
+  private scheduleRepublish(): void {
+    if (this.destroyed) return;
+    if (this.republishTimer !== null) clearTimeout(this.republishTimer);
+    this.republishTimer = setTimeout(() => {
+      this.republishTimer = null;
+      if (this.destroyed) return;
+      for (const [channel, value] of this.localChannels) {
+        publishPresenceValue(
+          this.transport,
+          toPagePresenceChannel(channel),
+          value,
+          "presence",
+        );
+      }
+    }, PRESENCE_REPUBLISH_DELAY_MS);
   }
 
   private join(): void {
@@ -153,8 +194,14 @@ export class PresenceClient implements PresenceAPI {
     for (const listener of this.listeners.values()) {
       const fingerprint = this.channelFingerprint(listener.channel);
       if (fingerprint === listener.lastFingerprint) continue;
-      listener.lastFingerprint = fingerprint;
-      listener.callback(getOnce());
+      // Commit the fingerprint only after successful delivery so a throwing
+      // subscriber doesn't permanently swallow the next matching state (and one
+      // throw can't skip the remaining listeners).
+      const delivered = safeInvoke(
+        () => listener.callback(getOnce()),
+        "presence subscriber",
+      );
+      if (delivered) listener.lastFingerprint = fingerprint;
     }
   }
 

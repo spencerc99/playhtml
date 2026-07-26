@@ -724,13 +724,11 @@ export class CursorClientAwareness {
   }
 
   private handlePresenceControlMessage(message: PresenceServerMessage): void {
+    // The transport logs presence-error / presence-rate on every socket (see
+    // RealtimePresenceTransport.handleControlMessage). The cursor client only
+    // layers its own reaction: hz pacing off the server rate signal.
     if (message.type === "presence-rate") {
       this.handlePresenceRate(message.channel, message.hz);
-    } else if (message.type === "presence-error") {
-      console.warn(
-        "[playhtml] Presence server rejected message:",
-        message.message,
-      );
     }
   }
 

@@ -121,6 +121,13 @@ export class CursorPresenceStore {
   }
 }
 
+// Multi-tab winner selection: when one player has several open tabs (same
+// publicKey, different connections), the cursor view keeps the tab with an
+// active cursor, tie-broken by recency (newest `at`). This differs on purpose
+// from the presence and element-awareness views, which collapse by iterating
+// connection ids in sorted order and taking the last publicKey match — recency
+// is meaningless for their non-cursor state, whereas a cursor should follow the
+// tab you're actually moving in.
 function shouldReplacePresence(
   current: StoredCursorPresence,
   candidate: StoredCursorPresence,
