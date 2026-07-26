@@ -626,13 +626,14 @@ export class CursorClientAwareness {
 
   // React to any users.me mutation (color/name/whole-identity adopt):
   // invalidate the cached own-cursor SVG, refresh the document cursor style,
-  // republish to both transports, and emit the CursorEvents subscribers
-  // (window.cursors.on) already rely on, only for fields that changed.
+  // republish our cursor awareness, and emit the CursorEvents subscribers
+  // (window.cursors.on) already rely on, only for fields that changed. The
+  // identity channel itself is republished by the shared transport's
+  // onSelfChange re-join (see acquirePresenceTransport), not here.
   private handleSelfIdentityChange(): void {
     this.ownCursorSvgCache = null;
     const nextColor = getPrimaryColor(this.playerIdentity);
     document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
-    this.presenceTransport?.update("identity", this.playerIdentity);
     this.updateCursorAwareness();
 
     const nextName = this.playerIdentity.name;

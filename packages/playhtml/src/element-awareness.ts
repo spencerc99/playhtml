@@ -91,13 +91,6 @@ export class ElementAwarenessClient {
     return this.localTags.get(tag)?.[elementId];
   }
 
-  /** Re-join so the server-side identity channel reflects an identity change
-   * (e.g. the browser extension injecting a persistent identity). */
-  refreshIdentity(): void {
-    this.join();
-    this.emit();
-  }
-
   refresh(): void {
     this.emit();
   }

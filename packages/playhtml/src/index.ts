@@ -62,6 +62,7 @@ import {
   ElementAwarenessClient,
   type ElementAwarenessMap,
 } from "./element-awareness";
+import { PresenceClient } from "./presence-client";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 
 export {
@@ -589,15 +590,20 @@ function resolveExplicitRoom(): string | undefined {
 type AcquiredPresenceTransport = {
   transport: RealtimePresenceTransport;
   refCount: number;
+  selfChangeUnsub: (() => void) | null;
 };
-// One presence socket per room, shared between the cursor client and element
-// awareness when their rooms coincide. Refcounted so a cursor-room change
-// never tears down a socket element awareness still uses (and vice versa).
+// One presence socket per room, shared between the cursor client, element
+// awareness, and page presence when their rooms coincide. Refcounted so a
+// cursor-room change never tears down a socket another consumer still uses.
+// Identity is a transport concern: each socket subscribes ONCE to
+// users.onSelfChange and re-joins on any identity change, so exactly one
+// broadcaster keeps the join identity current for every consumer sharing it.
 const presenceTransportsByRoom = new Map<string, AcquiredPresenceTransport>();
 let cursorPresenceTransportRoom: string | null = null;
 let elementAwarenessClient: ElementAwarenessClient | null = null;
 let elementAwarenessRoom: string | null = null;
-let elementAwarenessSelfChangeUnsub: (() => void) | null = null;
+let presenceClient: PresenceClient | null = null;
+let presenceClientRoom: string | null = null;
 
 function acquirePresenceTransport(
   room: string,
@@ -612,7 +618,23 @@ function acquirePresenceTransport(
     host: __currentHost,
     room,
   });
-  presenceTransportsByRoom.set(room, { transport, refCount: 1 });
+  // Republish the join identity whenever users.me changes (color/name set,
+  // whole-identity adopt, extension injection via adoptIdentity). Owned here so
+  // no individual consumer wires identity — one broadcaster per socket.
+  const selfChangeUnsub =
+    usersAPI?.onSelfChange(() => {
+      try {
+        transport.join({
+          identity: resolveMyIdentity(),
+          page: getPresencePage(),
+        });
+      } catch {}
+    }) ?? null;
+  presenceTransportsByRoom.set(room, {
+    transport,
+    refCount: 1,
+    selfChangeUnsub,
+  });
   return transport;
 }
 
@@ -622,6 +644,9 @@ function releasePresenceTransport(room: string): void {
   entry.refCount--;
   if (entry.refCount > 0) return;
   presenceTransportsByRoom.delete(room);
+  try {
+    entry.selfChangeUnsub?.();
+  } catch {}
   try {
     entry.transport.destroy();
   } catch {}
@@ -912,18 +937,13 @@ function buildElementAwarenessClient(): void {
     getPage: getPresencePage,
     onAwareness: applyElementAwareness,
   });
-  // Identity changes (users.me setters, extension injection via
-  // adoptIdentity) flow through the users module; re-join the element
-  // transport so peers key our state under the current identity.
-  elementAwarenessSelfChangeUnsub = usersAPI?.onSelfChange(() => {
-    elementAwarenessClient?.refreshIdentity();
-  }) ?? null;
+  // Identity re-joins are owned by the shared transport (see
+  // acquirePresenceTransport); element awareness re-keys peers from the
+  // transport's identity channel, so it needs no self-change wiring of its own.
 }
 
 function teardownElementAwarenessClient(): void {
   if (!elementAwarenessClient) return;
-  elementAwarenessSelfChangeUnsub?.();
-  elementAwarenessSelfChangeUnsub = null;
   try {
     elementAwarenessClient.destroy();
   } catch {}
@@ -931,6 +951,51 @@ function teardownElementAwarenessClient(): void {
   if (elementAwarenessRoom !== null) {
     releasePresenceTransport(elementAwarenessRoom);
     elementAwarenessRoom = null;
+  }
+}
+
+/**
+ * Builds the public page presence API. Prefers the generic presence transport
+ * on the normalized page room (sharing the cursor/element-awareness socket via
+ * the refcounted registry). Falls back to the Yjs-awareness path when the
+ * transport is unavailable (e.g. no WebSocket), preserving the exact same
+ * public API and callback shapes. The cursor channel is served from the cursor
+ * client's snapshot in both modes so cursor rendering has one source of truth.
+ */
+function buildPresenceAPI(): PresenceAPI {
+  const transport = acquirePresenceTransport(__currentRoomId);
+  if (transport) {
+    presenceClientRoom = __currentRoomId;
+    presenceClient = new PresenceClient({
+      transport,
+      getIdentity: resolveMyIdentity,
+      getPage: getPresencePage,
+      getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
+      onCursorPresencesChange: (callback) =>
+        cursorClient?.onCursorPresencesChange(callback),
+    });
+    return presenceClient;
+  }
+
+  return createPresenceAPI({
+    getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
+    getPlayerIdentity: resolveMyIdentity,
+    publishIdentity: false,
+    getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
+    onCursorPresencesChange: (callback) =>
+      cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
+  });
+}
+
+function teardownPresenceClient(): void {
+  if (!presenceClient) return;
+  try {
+    presenceClient.destroy();
+  } catch {}
+  presenceClient = null;
+  if (presenceClientRoom !== null) {
+    releasePresenceTransport(presenceClientRoom);
+    presenceClientRoom = null;
   }
 }
 
@@ -1242,6 +1307,7 @@ async function runHandleNavigation(): Promise<void> {
   if (mainRoomChanged) {
     teardownMainProvider();
     teardownElementAwarenessClient();
+    teardownPresenceClient();
     hasSynced = false;
     lastElementAwarenessFingerprint = null;
     trackedElementAwarenessKeys.clear();
@@ -1259,6 +1325,10 @@ async function runHandleNavigation(): Promise<void> {
     });
     __currentRoomId = newMainRoom;
     buildElementAwarenessClient();
+    // Rebuild the public page presence API on the new room. When the transport
+    // path is active this reassigns presenceAPI to a fresh PresenceClient; the
+    // Yjs fallback re-reads the rebuilt provider through its live getter.
+    presenceAPI = buildPresenceAPI();
   }
 
   if (cursorEnabledChanged || (cursorRoomChanged && cursorOptions)) {
@@ -1437,15 +1507,9 @@ async function initPlayHTMLOnce() {
 
   setupExtensionIdentityListener();
 
-  // Create presence API — always available, wraps whichever awareness provider exists
-  presenceAPI = createPresenceAPI({
-    getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
-    getPlayerIdentity: resolveMyIdentity,
-    publishIdentity: false,
-    getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
-    onCursorPresencesChange: (callback) =>
-      cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
-  });
+  // Create presence API — always available, over the transport when possible
+  // and the Yjs-awareness path otherwise.
+  presenceAPI = buildPresenceAPI();
 
   // extraCapabilities and events were applied by applyConfig when config was
   // declared, so they're available before this connect step runs.
@@ -1983,6 +2047,53 @@ function createPresenceRoom(name: string): PresenceRoom {
   }
 
   const roomId = normalizeRoomId(window.location.host, name);
+
+  // Transport path: an isolated presence socket to the named room. Its traffic
+  // never touches the page room, and reconnects replay join+state on their own.
+  // Not refcounted with the page registry — each named room is its own socket
+  // with its own lifecycle, torn down on destroy().
+  const transport = canUseRealtimePresenceTransport()
+    ? new RealtimePresenceTransport({ host: __currentHost, room: roomId })
+    : null;
+
+  if (transport) {
+    // One identity broadcaster per socket, same contract as the page registry:
+    // re-join on any users.me change so peers key our state under the current
+    // identity.
+    const selfChangeUnsub =
+      usersAPI?.onSelfChange(() => {
+        try {
+          transport.join({ identity: resolveMyIdentity(), page: getPresencePage() });
+        } catch {}
+      }) ?? null;
+
+    const presence = new PresenceClient({
+      transport,
+      getIdentity: resolveMyIdentity,
+      getPage: getPresencePage,
+    });
+
+    let destroyed = false;
+    return {
+      presence,
+      destroy: () => {
+        if (destroyed) return;
+        destroyed = true;
+        try {
+          selfChangeUnsub?.();
+        } catch {}
+        try {
+          presence.destroy();
+        } catch {}
+        try {
+          transport.destroy();
+        } catch {}
+      },
+    };
+  }
+
+  // Fallback: no WebSocket available. Keep the dedicated Y.Doc awareness bus so
+  // isolated presence rooms still work in non-WebSocket environments.
   const roomDoc = new Y.Doc();
   const provider = new YProvider(__currentHost, roomId, roomDoc);
 
@@ -2096,12 +2207,16 @@ export async function resetPlayHTML(): Promise<void> {
     mainProviderSyncWaiters.clear();
 
     teardownElementAwarenessClient();
+    teardownPresenceClient();
     teardownCursors();
     teardownMainProvider();
     try { usersAPI?.destroy(); } catch {}
     usersAPI = null;
 
     for (const [, entry] of presenceTransportsByRoom) {
+      try {
+        entry.selfChangeUnsub?.();
+      } catch {}
       try {
         entry.transport.destroy();
       } catch {}
