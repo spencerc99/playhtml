@@ -1,9 +1,21 @@
 // ABOUTME: Verifies the shared PeerStore folds channels once and notifies only
 // ABOUTME: the namespaces a message touched, replaying snapshots to subscribers.
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PresenceServerMessage } from "@playhtml/common";
 import { PeerStore } from "../peer-store";
+
+// Pin the clock so the tiny `at` timestamps used as fold fixtures below stay
+// within PeerStore's staleness window (the staleness sweep is exercised by its
+// own dedicated test with an explicit time advance).
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(100);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function makeSource() {
   const listeners = new Set<(message: PresenceServerMessage) => void>();
@@ -251,5 +263,43 @@ describe("PeerStore", () => {
     expect(good).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  it("sweeps a stale stamped channel on the periodic timer (ghost peer)", () => {
+    const source = makeSource();
+    const store = new PeerStore(source);
+    const now = Date.now();
+    source.emit({
+      type: "presence-sync",
+      peers: {
+        "conn-ghost": {
+          identity: identity("pk_ghost"),
+          "presence:status": { at: now, value: { t: 1 } },
+        },
+      },
+    });
+    expect("presence:status" in store.getPeers().get("conn-ghost")!).toBe(true);
+
+    // No further message arrives (killed tab). After the window, the periodic
+    // sweep drops the stale channel; identity (unstamped) survives.
+    vi.advanceTimersByTime(31_000);
+    const ghost = store.getPeers().get("conn-ghost")!;
+    expect("presence:status" in ghost).toBe(false);
+    expect("identity" in ghost).toBe(true);
+  });
+
+  it("does not notify when a periodic sweep expires nothing", () => {
+    const source = makeSource();
+    const store = new PeerStore(source);
+    source.emit({
+      type: "presence-sync",
+      peers: { "conn-1": { identity: identity("pk_a") } },
+    });
+    const cb = vi.fn();
+    store.subscribe("presence", cb);
+    cb.mockClear();
+    // Advancing time with only an unstamped identity channel expires nothing.
+    vi.advanceTimersByTime(31_000);
+    expect(cb).not.toHaveBeenCalled();
   });
 });

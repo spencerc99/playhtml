@@ -55,7 +55,7 @@ describe("element awareness across navigation", () => {
     elementHandlers.get("can-play")!.get("nav-card")!
       .setMyAwareness({ here: true } as any);
     await flushMicrotasks();
-    expect(sentChannelUpdates(socketB, "element:shard:0").at(-1)).toEqual({
+    expect(sentChannelUpdates(socketB, "element:shard:0").at(-1)).toMatchObject({
       v: 1,
       entries: [["can-play", "nav-card", { here: true }]],
     });

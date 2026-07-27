@@ -6,8 +6,8 @@ import { playhtml, resetPlayHTML } from "../index";
 import {
   getPresenceSocketForRoom,
   getPresenceSockets,
-  sentChannelUpdates,
   sentMessages,
+  sentPresenceValues,
 } from "./presence-test-utils";
 
 describe("page presence over the transport", () => {
@@ -27,7 +27,7 @@ describe("page presence over the transport", () => {
   it("publishes setMyPresence on the page room socket under presence:<channel>", () => {
     playhtml.presence.setMyPresence("status", { text: "online" });
     const socket = getPresenceSocketForRoom(playhtml.roomId);
-    expect(sentChannelUpdates(socket, "presence:status")).toContainEqual({
+    expect(sentPresenceValues(socket, "presence:status")).toContainEqual({
       text: "online",
     });
   });

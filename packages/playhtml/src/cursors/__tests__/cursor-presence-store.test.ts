@@ -1,7 +1,7 @@
 // ABOUTME: Verifies cursor presence derived from the shared PeerStore's folded
 // ABOUTME: channels — decode, per-player collapse, and stale-cursor expiry.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   PlayerIdentity,
   PresenceServerMessage,
@@ -9,6 +9,20 @@ import type {
 } from "@playhtml/common";
 import { PeerStore } from "../../peer-store";
 import { CursorPresenceStore } from "../cursor-presence-store";
+
+// Pin the clock near the small `at` values used below so PeerStore's staleness
+// sweep (which reads Date.now()) treats them as fresh; the expiry test advances
+// time explicitly.
+const CLOCK_START = 1_000;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(CLOCK_START);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const alice: PlayerIdentity = {
   publicKey: "pk_alice",
@@ -212,23 +226,44 @@ describe("CursorPresenceStore", () => {
     });
   });
 
-  it("removes expired cursor channels while keeping identity presence", () => {
+  it("drops a stale cursor channel (PeerStore sweep) while keeping identity", () => {
+    // Expiry now lives in PeerStore's shared staleness sweep, not this view.
+    // A cursor frame older than the 30s window is swept; the identity-only
+    // peer remains (same behavior the old removeExpiredCursors had).
+    const now = Date.now();
     const { store, applySync } = makeStore();
     applySync({
       "conn-stale": {
         identity: makeIdentity("stale"),
+        // 31s old -> past the 30s staleness window.
         cursor: {
           cursor: { x: 30, y: 40, pointer: "mouse" },
           page: "/",
-          at: 1,
+          at: now - 31_000,
         },
       },
     });
 
-    expect(store.removeExpiredCursors(1000, 500)).toBe(true);
-
+    // PeerStore prunes the stale cursor channel on fold, so it's gone already.
     const presence = store.getRemotePresences("local").get("stale");
     expect(presence?.playerIdentity.publicKey).toBe("stale");
     expect(presence?.cursor).toBeNull();
+  });
+
+  it("keeps a fresh cursor until it ages out on the periodic sweep", () => {
+    const now = Date.now();
+    const { store, applySync } = makeStore();
+    applySync({
+      "conn-1": {
+        identity: makeIdentity("pk_x"),
+        cursor: { cursor: { x: 1, y: 2, pointer: "mouse" }, at: now },
+      },
+    });
+    // Still fresh right after arrival.
+    expect(store.getRemotePresences("local").get("pk_x")?.cursor).not.toBeNull();
+
+    // Advance past the staleness window; the periodic sweep drops the cursor.
+    vi.advanceTimersByTime(31_000);
+    expect(store.getRemotePresences("local").get("pk_x")?.cursor ?? null).toBeNull();
   });
 });

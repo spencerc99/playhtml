@@ -8,6 +8,7 @@ import {
   getPresenceSocketForRoom,
   getPresenceSockets,
   sentChannelUpdates,
+  sentPresenceValues,
 } from "./presence-test-utils";
 
 describe("presence across navigation", () => {
@@ -61,7 +62,7 @@ describe("presence across navigation", () => {
     capturedPresence.setMyPresence("status", { text: "post-nav" });
 
     const socketB = getPresenceSocketForRoom(roomB);
-    expect(sentChannelUpdates(socketB, "presence:status")).toContainEqual({
+    expect(sentPresenceValues(socketB, "presence:status")).toContainEqual({
       text: "post-nav",
     });
     // The old room's socket never saw the post-nav write.
@@ -140,7 +141,7 @@ describe("presence across navigation", () => {
     // The new room's socket receives the retained awareness with no further
     // setMyAwareness call.
     const socketB = getPresenceSocketForRoom(roomB);
-    expect(sentChannelUpdates(socketB, "element:shard:0").at(-1)).toEqual({
+    expect(sentChannelUpdates(socketB, "element:shard:0").at(-1)).toMatchObject({
       v: 1,
       entries: [["can-play", "retained-card", { here: true }]],
     });

@@ -93,11 +93,13 @@ describe("ElementAwarenessClient", () => {
     expect(client.getLocalAwareness("can-play", "card")).toEqual({ active: true });
     // Publish is coalesced onto a microtask.
     await flushPublish();
-    expect(parsedSent().at(-1)).toEqual({
+    expect(parsedSent().at(-1)).toMatchObject({
       type: "presence-update",
       channel: "element:shard:0",
       value: { v: 1, entries: [["can-play", "card", { active: true }]] },
     });
+    // The shard carries a numeric staleness stamp.
+    expect(typeof parsedSent().at(-1).value.at).toBe("number");
   });
 
   it("skips publish when the value is reference-equal", async () => {
@@ -130,7 +132,7 @@ describe("ElementAwarenessClient", () => {
     client.setLocalAwareness("can-play", "b", { n: 2 });
     client.removeLocalAwareness("can-play", "a");
     await flushPublish();
-    expect(parsedSent().at(-1)).toEqual({
+    expect(parsedSent().at(-1)).toMatchObject({
       type: "presence-update",
       channel: "element:shard:0",
       value: { v: 1, entries: [["can-play", "b", { n: 2 }]] },
@@ -357,28 +359,56 @@ describe("ElementAwarenessClient", () => {
     error.mockRestore();
   });
 
-  it("re-publishes the latest snapshot after a burst settles (resilience)", async () => {
+  it("re-publishes the latest snapshot only after the rate window (resilience)", async () => {
     vi.useFakeTimers();
     try {
       const { client, parsedSent } = createClient();
       client.setLocalAwareness("can-play", "card", { active: true });
       await Promise.resolve(); // drain the coalescing microtask
-      const afterInitial = parsedSent().filter(
-        (m) => m.type === "presence-update",
-      ).length;
-      expect(afterInitial).toBe(1);
+      const countUpdates = () =>
+        parsedSent().filter((m) => m.type === "presence-update").length;
+      expect(countUpdates()).toBe(1);
 
-      // A trailing re-publish re-sends whatever the server may have dropped.
+      // The trailing re-publish must not land inside the server's 1,000ms window.
       await vi.advanceTimersByTimeAsync(500);
-      const afterTrailing = parsedSent().filter(
-        (m) => m.type === "presence-update",
-      ).length;
-      expect(afterTrailing).toBe(2);
-      expect(parsedSent().at(-1)).toEqual({
+      expect(countUpdates()).toBe(1);
+
+      // It fires once the window has passed.
+      await vi.advanceTimersByTimeAsync(700);
+      expect(countUpdates()).toBe(2);
+      expect(parsedSent().at(-1)).toMatchObject({
         type: "presence-update",
         channel: "element:shard:0",
-        value: { v: 1, entries: [["can-play", "card", { active: true }]] },
       });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("re-issues a dropped shard clear on the trailing re-publish", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, parsedSent } = createClient();
+      client.setLocalAwareness("can-play", "a", { n: 1 });
+      await Promise.resolve();
+      // Advance past the window so the initial publish + its republish settle.
+      await vi.advanceTimersByTimeAsync(1200);
+
+      // Removing the only element clears shard:0.
+      client.removeLocalAwareness("can-play", "a");
+      await Promise.resolve();
+      const clearsBefore = parsedSent().filter(
+        (m) => m.type === "presence-clear" && m.channel === "element:shard:0",
+      ).length;
+      expect(clearsBefore).toBe(1);
+
+      // The trailing re-publish re-issues the clear (in a fresh window), so a
+      // dropped clear is not permanent.
+      await vi.advanceTimersByTimeAsync(1200);
+      const clearsAfter = parsedSent().filter(
+        (m) => m.type === "presence-clear" && m.channel === "element:shard:0",
+      ).length;
+      expect(clearsAfter).toBe(2);
     } finally {
       vi.useRealTimers();
     }
@@ -392,7 +422,7 @@ describe("ElementAwarenessClient", () => {
       await Promise.resolve();
       const before = parsedSent().length;
       client.destroy();
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1200);
       expect(parsedSent().length).toBe(before);
     } finally {
       vi.useRealTimers();
@@ -409,5 +439,70 @@ describe("ElementAwarenessClient", () => {
     });
     expect(emitted.length).toBe(count);
     expect(socket.closed).toBe(false);
+  });
+
+  it("drops a ghost peer's element awareness after the staleness window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    try {
+      const { socket, emitted } = createClient();
+      socket.receive({
+        type: "presence-sync",
+        peers: {
+          "conn-ghost": {
+            identity: {
+              publicKey: "pk_ghost",
+              playerStyle: { colorPalette: ["blue"] },
+            },
+            "element:shard:0": {
+              v: 1,
+              at: Date.now(),
+              entries: [["can-play", "card", { active: true }]],
+            },
+          },
+        },
+      });
+      expect(emitted.at(-1)!.get("can-play:card")!.byStableId.has("pk_ghost")).toBe(
+        true,
+      );
+
+      // No further message from the ghost; after the window the sweep drops it.
+      vi.advanceTimersByTime(31_000);
+      expect(emitted.at(-1)!.has("can-play:card")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not re-fire awareness when only a peer's timestamp refreshes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    try {
+      const { socket, emitted } = createClient();
+      const shardAt = (at: number) => ({
+        type: "presence-sync" as const,
+        peers: {
+          "conn-2": {
+            identity: {
+              publicKey: "pk_remote",
+              playerStyle: { colorPalette: ["blue"] },
+            },
+            "element:shard:0": {
+              v: 1,
+              at,
+              entries: [["can-play", "card", { active: true }]],
+            },
+          },
+        },
+      });
+      socket.receive(shardAt(1000));
+      const countAfterFirst = emitted.length;
+
+      // Same content, only a newer `at` (a keepalive re-stamp): no re-fire.
+      socket.receive(shardAt(2000));
+      expect(emitted.length).toBe(countAfterFirst);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

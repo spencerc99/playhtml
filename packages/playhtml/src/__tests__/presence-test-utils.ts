@@ -41,6 +41,17 @@ export function sentChannelUpdates(
     .map((message) => message.value);
 }
 
+/** Like sentChannelUpdates but unwraps the page-presence {at, value} staleness
+ * envelope back to the user payload, so assertions can ignore the timestamp. */
+export function sentPresenceValues(
+  socket: FakePresenceSocket,
+  channel: string,
+): any[] {
+  return sentChannelUpdates(socket, channel).map((v) =>
+    v && typeof v === "object" && "value" in v && "at" in v ? v.value : v,
+  );
+}
+
 export function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }

@@ -99,7 +99,7 @@ describe("element awareness sync", () => {
       (socket) => socket.options.room !== playhtml.roomId && !socket.closed,
     )!;
     expect(cursorSocket).toBeDefined();
-    expect(sentChannelUpdates(pageSocket, "element:shard:0").at(-1)).toEqual({
+    expect(sentChannelUpdates(pageSocket, "element:shard:0").at(-1)).toMatchObject({
       v: 1,
       entries: [["can-play", "room-scoped-presence", { active: true }]],
     });

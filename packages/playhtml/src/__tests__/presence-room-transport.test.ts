@@ -7,6 +7,7 @@ import {
   getPresenceSockets,
   sentChannelUpdates,
   sentMessages,
+  sentPresenceValues,
 } from "./presence-test-utils";
 
 function socketForRoomIncludingClosed(room: string) {
@@ -52,7 +53,7 @@ describe("createPresenceRoom over the transport", () => {
       // Force the socket open so queued join/updates flush (mirrors reconnect).
       lobbySocket.open();
       room.presence.setMyPresence("page", { url: "/a" });
-      expect(sentChannelUpdates(lobbySocket, "presence:page")).toContainEqual({
+      expect(sentPresenceValues(lobbySocket, "presence:page")).toContainEqual({
         url: "/a",
       });
 
