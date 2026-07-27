@@ -9,6 +9,9 @@ import {
 } from "./cursor-types";
 
 export const MAX_PRESENCE_PAGE_LENGTH = 512;
+// Cap on a single presence channel value's JSON size. Enforced client-side by
+// publishers of unstructured channels (element awareness) before sending.
+export const MAX_PRESENCE_VALUE_BYTES = 4096;
 
 export type PresenceChannelCadence = "frame" | "interactive" | "event";
 

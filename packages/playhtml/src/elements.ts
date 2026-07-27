@@ -482,7 +482,16 @@ export class ElementHandler<T = any, U = any, V = any> {
   updateAwareness(data: V[], byStableId: Map<string, V>) {
     this.awareness = data;
     this.awarenessByStableId = byStableId;
-    this.updateElementAwareness?.(this.getAwarenessEventHandlerData());
+    // Isolate the user's awareness callback: a throw here must not abort the
+    // element awareness recompute for the remaining elements sharing the socket.
+    try {
+      this.updateElementAwareness?.(this.getAwarenessEventHandlerData());
+    } catch (error) {
+      console.error(
+        "[playhtml] updateElementAwareness callback threw:",
+        error,
+      );
+    }
     // Views render from awareness too (e.g. "3 people here"), so an awareness
     // change must re-render — even when updateElementAwareness is also present
     // (otherwise the view goes stale while the callback runs).

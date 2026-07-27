@@ -21,10 +21,9 @@ import { createUsersAPI, selectAllColors, type UsersAPI } from "../users";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
 import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
-import {
-  CURSOR_PRESENCE_MAX_AGE_MS,
-  CursorPresenceStore,
-} from "./cursor-presence-store";
+import { CursorPresenceStore } from "./cursor-presence-store";
+import { PRESENCE_STALE_MS } from "../presence-utils";
+import type { RealtimePresenceTransport } from "../presence-transport";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
 const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
@@ -38,14 +37,6 @@ export type ValidCursorPresence = CursorPresence & {
 
 type RemoteCursorPresence = CursorPresence & {
   playerIdentity: PlayerIdentity;
-};
-
-type CursorPresenceTransport = {
-  join(input: { identity: PlayerIdentity; page?: string }): void;
-  update(channel: string, value: unknown): void;
-  clear(channel: string): void;
-  subscribe(listener: (message: PresenceServerMessage) => void): () => void;
-  destroy(): void;
 };
 
 /** Returns primary color from player identity; throws if missing (no default). */
@@ -385,7 +376,7 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
   return cursorStyle.slice(5, closeQuote);
 }
 
-function getPresencePage(): string | undefined {
+export function getPresencePage(): string | undefined {
   const page = window.location.pathname;
   return page.length <= MAX_PRESENCE_PAGE_LENGTH ? page : undefined;
 }
@@ -461,9 +452,10 @@ export class CursorClientAwareness {
     (presences: Map<string, CursorPresenceView>) => void
   >();
   private coordinateMode: "relative" | "absolute";
-  private presenceStore = new CursorPresenceStore();
+  // Cursor view over the shared PeerStore; only present (and only read) in
+  // transport mode. Assigned in setupPresenceTransportHandling.
+  private presenceStore: CursorPresenceStore | null = null;
   private presenceTransportUnsubscribe: (() => void) | null = null;
-  private presenceExpiryInterval: ReturnType<typeof setInterval> | null = null;
   private serverCursorMaxHz: number | null = null;
 
   // When the cursor container is a non-body element with a CSS transform,
@@ -566,7 +558,7 @@ export class CursorClientAwareness {
   constructor(
     private provider: YProvider,
     private options: CursorOptions = {},
-    private presenceTransport?: CursorPresenceTransport,
+    private presenceTransport?: RealtimePresenceTransport,
     users?: UsersAPI,
   ) {
     // Callers that construct playhtml via init() always pass the shared users
@@ -626,13 +618,14 @@ export class CursorClientAwareness {
 
   // React to any users.me mutation (color/name/whole-identity adopt):
   // invalidate the cached own-cursor SVG, refresh the document cursor style,
-  // republish to both transports, and emit the CursorEvents subscribers
-  // (window.cursors.on) already rely on, only for fields that changed.
+  // republish our cursor awareness, and emit the CursorEvents subscribers
+  // (window.cursors.on) already rely on, only for fields that changed. The
+  // identity channel itself is republished by the shared transport's
+  // onSelfChange re-join (see acquirePresenceTransport), not here.
   private handleSelfIdentityChange(): void {
     this.ownCursorSvgCache = null;
     const nextColor = getPrimaryColor(this.playerIdentity);
     document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
-    this.presenceTransport?.update("identity", this.playerIdentity);
     this.updateCursorAwareness();
 
     const nextName = this.playerIdentity.name;
@@ -690,58 +683,57 @@ export class CursorClientAwareness {
   }
 
   private setupPresenceTransportHandling(): void {
+    if (!this.presenceTransport) return;
+    // Cursor view over the shared per-socket PeerStore (the sole consumer of
+    // presence-sync/changes). We subscribe to the cursor + identity namespaces
+    // so a peer's cursor move or identity change re-renders, but frame-rate
+    // cursor traffic on the shared socket never wakes element/presence views.
+    this.presenceStore = new CursorPresenceStore(this.presenceTransport.peers);
     this.publishPresenceTransportState();
-    this.presenceTransportUnsubscribe = this.presenceTransport?.subscribe(
-      (message) => {
-        this.handlePresenceTransportMessage(message);
-      },
-    ) ?? null;
-    this.startPresenceExpiryTimer();
+    // One shared listener reference for both namespaces so a combined
+    // sync/join (which touches cursor + identity) renders once, not twice —
+    // PeerStore.notify dedupes a listener across the namespaces it touched.
+    const onCursorChange = () => this.onPeerCursorChange();
+    const unsubCursor = this.presenceTransport.peers.subscribe(
+      "cursor",
+      onCursorChange,
+    );
+    const unsubIdentity = this.presenceTransport.peers.subscribe(
+      "identity",
+      onCursorChange,
+    );
+    // Rate/error still arrive on the raw transport stream (the PeerStore folds
+    // only sync/changes), so keep a thin subscription for pacing feedback.
+    const unsubRaw = this.presenceTransport.subscribe((message) => {
+      this.handlePresenceControlMessage(message);
+    });
+    this.presenceTransportUnsubscribe = () => {
+      unsubCursor();
+      unsubIdentity();
+      unsubRaw();
+    };
   }
 
-  private handlePresenceTransportMessage(message: PresenceServerMessage): void {
-    if (message.type === "presence-sync") {
-      this.presenceStore.applySync(message.peers);
-    } else if (message.type === "presence-changes") {
-      this.presenceStore.applyChanges(message);
-    } else if (message.type === "presence-rate") {
-      this.handlePresenceRate(message.channel, message.hz);
-      return;
-    } else if (message.type === "presence-error") {
-      console.warn(
-        "[playhtml] Presence server rejected message:",
-        message.message,
-      );
-      return;
-    } else {
-      return;
-    }
-
-    this.removeExpiredPresenceCursors();
+  private onPeerCursorChange(): void {
+    // PeerStore already swept any stale cursor channel before notifying (on
+    // fold and on its periodic sweep), so freshness is guaranteed here — just
+    // re-render from the current folded state.
     this.renderPresenceStore();
+  }
+
+  private handlePresenceControlMessage(message: PresenceServerMessage): void {
+    // The transport logs presence-error / presence-rate on every socket (see
+    // RealtimePresenceTransport.handleControlMessage). The cursor client only
+    // layers its own reaction: hz pacing off the server rate signal.
+    if (message.type === "presence-rate") {
+      this.handlePresenceRate(message.channel, message.hz);
+    }
   }
 
   private handlePresenceRate(channel: string, hz: number): void {
     if (channel !== "cursor") return;
     if (!Number.isFinite(hz) || hz <= 0) return;
     this.serverCursorMaxHz = hz;
-  }
-
-  private startPresenceExpiryTimer(): void {
-    if (this.presenceExpiryInterval !== null) return;
-    this.presenceExpiryInterval = setInterval(() => {
-      if (this.removeExpiredPresenceCursors()) {
-        this.renderPresenceStore();
-      }
-    }, 1000);
-  }
-
-  private removeExpiredPresenceCursors(): boolean {
-    if (!this.presenceTransport) return false;
-    return this.presenceStore.removeExpiredCursors(
-      Date.now(),
-      CURSOR_PRESENCE_MAX_AGE_MS,
-    );
   }
 
   private renderPresenceStore(): void {
@@ -861,7 +853,7 @@ export class CursorClientAwareness {
   private *cursorPresenceEntries(options: {
     includeLocalAwareness?: boolean;
   } = {}): Iterable<[string, RemoteCursorPresence]> {
-    if (this.presenceTransport) {
+    if (this.presenceTransport && this.presenceStore) {
       const presences = this.presenceStore.getRemotePresences(
         this.playerIdentity.publicKey,
       );
@@ -916,13 +908,17 @@ export class CursorClientAwareness {
     }
   }
 
+  // A stricter, SYNCHRONOUS freshness check for proximity (freshOnly): between
+  // PeerStore sweep ticks a cursor can be technically stale but not yet swept,
+  // and it must not participate in proximity. Distinct from PeerStore's
+  // sweep-based channel deletion — both run, at different cadences.
   private isFreshCursorPresence(
     presence: RemoteCursorPresence,
     now: number,
   ): boolean {
     if (!this.presenceTransport) return true;
     if (!Number.isFinite(presence.lastSeen)) return false;
-    return now - Number(presence.lastSeen) <= CURSOR_PRESENCE_MAX_AGE_MS;
+    return now - Number(presence.lastSeen) <= PRESENCE_STALE_MS;
   }
 
   private rebuildSpatialGrid(): void {
@@ -2213,14 +2209,9 @@ export class CursorClientAwareness {
     }
 
     if (this.presenceTransport) {
-      if (this.presenceExpiryInterval !== null) {
-        clearInterval(this.presenceExpiryInterval);
-        this.presenceExpiryInterval = null;
-      }
       this.presenceTransportUnsubscribe?.();
       this.presenceTransportUnsubscribe = null;
       this.presenceTransport.clear("cursor");
-      this.presenceTransport.destroy();
     } else {
       this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
     }
