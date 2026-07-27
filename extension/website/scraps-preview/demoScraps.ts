@@ -420,5 +420,104 @@ export function buildItems(): ScrapItem[] {
     });
   });
 
+  // Planted near-duplicates: exercise canonicalScrapKey dedup in curateScraps.
+  // (a) Same Subscribe button text+color on videotube.example, only boxShadow
+  // differs -- canonical key ignores it, so this collapses into the original.
+  const subscribeButton = BUTTONS[0];
+  items.push({
+    id: "btn-subscribe-dup",
+    key: `btn-${subscribeButton.domain}-${subscribeButton.text}-dup`,
+    kind: "button",
+    text: subscribeButton.text,
+    styles: {
+      ...subscribeButton.styles,
+      boxShadow: "rgba(204, 0, 0, 0.35) 0px 4px 10px 0px",
+    },
+    pageTitle: "moss time-lapse, part two",
+    domain: subscribeButton.domain,
+    pageUrl: `https://${subscribeButton.domain}/part-two`,
+    ts: NOW - 90 * 60 * 1000,
+  });
+
+  // (b) Same heart icon markup on birdsite.example rendered at 32px instead
+  // of 24px -- canonical key hashes only path/viewBox geometry, so this
+  // collapses into the original.
+  const heartIcon = SVG_ICONS.find((icon) => icon.name === "heart");
+  if (!heartIcon) throw new Error("expected heart icon in SVG_ICONS");
+  items.push({
+    id: "svg-heart-dup",
+    key: "svg-heart-dup",
+    kind: "svg-icon",
+    markup: heartIcon.markup.replace(/width="24"/, 'width="32"').replace(/height="24"/, 'height="32"'),
+    width: 32,
+    height: 32,
+    pageTitle: heartIcon.pageTitle,
+    domain: heartIcon.domain,
+    pageUrl: `https://${heartIcon.domain}/`,
+    ts: NOW - 100 * 60 * 1000,
+  });
+
+  // (c) Pear image src with a fake CDN query string appended -- canonical
+  // key strips query/hash, so this collapses into the original.
+  const pearImage = FAKE_IMAGES.find((image) => image.name === "pear");
+  if (!pearImage) throw new Error("expected pear image in FAKE_IMAGES");
+  items.push({
+    id: "img-pear-dup",
+    key: `${svgDataUri(pearImage.markup)}?w=480&fit=crop`,
+    kind: "image",
+    src: `${svgDataUri(pearImage.markup)}?w=480&fit=crop`,
+    alt: pearImage.name,
+    naturalWidth: pearImage.naturalWidth,
+    naturalHeight: pearImage.naturalHeight,
+    pageTitle: "Heirloom pears, ranked (mirror)",
+    domain: pearImage.domain,
+    pageUrl: `https://${pearImage.domain}/mirror`,
+    ts: NOW - 110 * 60 * 1000,
+  });
+
+  // (d) Two "Preview" buttons on the SAME domain (codeforge.example) with
+  // identical text but different backgroundColor -- canonical key includes
+  // backgroundColor, so these must NOT collapse into each other.
+  items.push({
+    id: "btn-preview-teal",
+    key: "btn-codeforge.example-Preview-teal",
+    kind: "button",
+    text: "Preview",
+    styles: {
+      backgroundColor: "rgb(74, 154, 138)",
+      color: "rgb(255, 255, 255)",
+      border: "0px none",
+      borderRadius: "6px",
+      padding: "8px 16px",
+      fontFamily: "monospace",
+      fontSize: "13px",
+      fontWeight: "500",
+    },
+    pageTitle: "tiny-collage-engine",
+    domain: "codeforge.example",
+    pageUrl: "https://codeforge.example/",
+    ts: NOW - 120 * 60 * 1000,
+  });
+  items.push({
+    id: "btn-preview-gray",
+    key: "btn-codeforge.example-Preview-gray",
+    kind: "button",
+    text: "Preview",
+    styles: {
+      backgroundColor: "rgb(110, 110, 110)",
+      color: "rgb(255, 255, 255)",
+      border: "0px none",
+      borderRadius: "6px",
+      padding: "8px 16px",
+      fontFamily: "monospace",
+      fontSize: "13px",
+      fontWeight: "500",
+    },
+    pageTitle: "tiny-collage-engine, archived fork",
+    domain: "codeforge.example",
+    pageUrl: "https://codeforge.example/archived-fork",
+    ts: NOW - 130 * 60 * 1000,
+  });
+
   return items;
 }

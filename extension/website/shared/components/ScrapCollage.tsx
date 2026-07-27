@@ -100,6 +100,64 @@ function itemOrder(item: ScrapItem, seed: number): number {
   return seededRandom(seed + hashString(item.key));
 }
 
+const PATH_DATA_PATTERN = /\bd="([^"]*)"/g;
+const VIEW_BOX_PATTERN = /\bviewBox="([^"]*)"/;
+const SIZE_AND_PAINT_ATTRIBUTE_PATTERN =
+  /\b(?:width|height|fill|stroke|style)="[^"]*"/g;
+
+function normalizeWhitespace(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function svgGeometryHash(markup: string): string {
+  const pathData: string[] = [];
+  for (const match of markup.matchAll(PATH_DATA_PATTERN)) {
+    pathData.push(match[1]);
+  }
+  const viewBox = markup.match(VIEW_BOX_PATTERN)?.[1] ?? "";
+
+  if (pathData.length > 0) {
+    return String(
+      hashString(normalizeWhitespace(pathData.join("|") + "|" + viewBox)),
+    );
+  }
+
+  const shapeMarkup = markup.replace(SIZE_AND_PAINT_ATTRIBUTE_PATTERN, "");
+  return String(hashString(normalizeWhitespace(shapeMarkup)));
+}
+
+/**
+ * Canonical identity for near-duplicate detection: two scraps with the same
+ * canonical key are treated as the same underlying thing even if their raw
+ * `key` differs (different computed style values, different rendered size,
+ * different CDN query params). Used only for the dedup/count steps in
+ * curateScraps -- `item.key` remains the identity used for layout seeding,
+ * React keys, and per-item jitter so surviving tiles keep stable placement.
+ */
+export function canonicalScrapKey(item: ScrapItem): string {
+  switch (item.kind) {
+    case "image": {
+      try {
+        const url = new URL(item.src);
+        url.search = "";
+        url.hash = "";
+        return url.toString();
+      } catch {
+        return item.src;
+      }
+    }
+    case "button": {
+      const normalizedText = normalizeWhitespace(item.text.toLowerCase());
+      const backgroundColor = item.styles.backgroundColor ?? "";
+      return `${item.domain}|button|${normalizedText}|${backgroundColor}`;
+    }
+    case "svg-icon":
+      return `${item.domain}|svg|${svgGeometryHash(item.markup)}`;
+    case "cursor":
+      return item.url;
+  }
+}
+
 function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
   const areaDifference = naturalArea(b) - naturalArea(a);
   if (areaDifference !== 0) return areaDifference;
@@ -127,16 +185,17 @@ export function curateScraps(
   );
   if (perDomainCap === 0 || targetCount === 0) return [];
 
-  const newestByKey = new Map<string, ScrapItem>();
+  const newestByCanonicalKey = new Map<string, ScrapItem>();
   for (const item of items) {
-    const current = newestByKey.get(item.key);
+    const canonicalKey = canonicalScrapKey(item);
+    const current = newestByCanonicalKey.get(canonicalKey);
     if (!current || item.ts > current.ts) {
-      newestByKey.set(item.key, item);
+      newestByCanonicalKey.set(canonicalKey, item);
     }
   }
 
   const scrapsByDomain = new Map<string, ScrapItem[]>();
-  for (const item of newestByKey.values()) {
+  for (const item of newestByCanonicalKey.values()) {
     const domainScraps = scrapsByDomain.get(item.domain);
     if (domainScraps) {
       domainScraps.push(item);
@@ -716,7 +775,11 @@ export function ScrapCollage({
       "svg-icon": 0,
       cursor: 0,
     };
+    const seenCanonicalKeys = new Set<string>();
     for (const item of items) {
+      const canonicalKey = canonicalScrapKey(item);
+      if (seenCanonicalKeys.has(canonicalKey)) continue;
+      seenCanonicalKeys.add(canonicalKey);
       counts[item.kind] += 1;
     }
     return counts;
