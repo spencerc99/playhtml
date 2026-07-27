@@ -7,7 +7,7 @@ sidebar:
 
 The `ElementInitializer` configures a custom collaborative element. Use the same shape in three supported APIs:
 
-1. **`playhtml.register(id, initializer)`** for one element
+1. **`playhtml.register(elementOrId, initializer)`** for one element
 2. **`playhtml.define(name, initializer)`** for a reusable capability
 3. **`extraCapabilities`** in `playhtml.init()` for capabilities declared during initialization
 
@@ -336,7 +336,7 @@ Direct assignments such as `element.defaultData = …` and `element.updateElemen
 
 The compatibility path reads these keys from the element: `defaultData`, `defaultLocalData`, `myDefaultAwareness`, `updateElement`, `view`, `updateElementAwareness`, `onClick`, `onDrag`, `onDragStart`, `onMount`, `resetShortcut`, `debounceMs`, and `isValidElementForTag`.
 
-If existing code assigns those properties and calls `setupPlayElement(element)`, replace both steps with `register(element.id, initializer)`. `setupPlayElement` remains supported for dynamically added built-in and defined capabilities.
+If existing code assigns those properties and calls `setupPlayElement(element)`, replace both steps with `register(element, initializer)`. `setupPlayElement` remains supported for dynamically added built-in and defined capabilities.
 
 ---
 

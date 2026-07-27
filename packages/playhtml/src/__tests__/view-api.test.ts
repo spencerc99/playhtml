@@ -228,6 +228,52 @@ describe("rail 2: lifecycle & guards", () => {
     expect((el as any).updateElement).toBeUndefined();
   });
 
+  it("accepts an element and binds its initializer immediately", async () => {
+    const el = document.createElement("div");
+    el.id = "element-registration";
+    document.body.appendChild(el);
+
+    const handle = playhtml.register(el, {
+      defaultData: { count: 4 },
+      updateElement: ({ element, data }) => {
+        element.textContent = String(data.count);
+      },
+    });
+    await tick();
+
+    expect(handle.id).toBe("element-registration");
+    expect(handle.getElement()).toBe(el);
+    expect(handle.getData()).toEqual({ count: 4 });
+    expect(el.textContent).toBe("4");
+    expect((el as any).defaultData).toBeUndefined();
+    expect((el as any).updateElement).toBeUndefined();
+
+    handle.unregister();
+  });
+
+  it("rejects an element registration without an id", () => {
+    const el = document.createElement("div");
+
+    expect(() =>
+      playhtml.register(el, {
+        defaultData: {},
+        updateElement: () => {},
+      }),
+    ).toThrow(/non-empty id/);
+  });
+
+  it("rejects a non-HTML element registration", () => {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    el.id = "svg-registration";
+
+    expect(() =>
+      (playhtml.register as any)(el, {
+        defaultData: {},
+        updateElement: () => {},
+      }),
+    ).toThrow(/requires an HTML element/);
+  });
+
   it("uses a registered initializer's element validator without stamping it", async () => {
     const el = document.createElement("div");
     el.id = "direct-validator";
@@ -335,9 +381,7 @@ describe("rail 2: define + composition", () => {
     el.setAttribute("can-flavor", "");
     document.body.appendChild(el);
 
-    // Bind the define'd capability first. register() below stamps its own
-    // defaultData/view as element props (for can-play), so set up can-flavor
-    // before those props land on the node.
+    // Bind the define'd capability before adding can-play to the same node.
     await playhtml.setupPlayElementForTag(el, "can-flavor");
     await tick();
 

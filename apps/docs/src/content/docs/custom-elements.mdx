@@ -116,7 +116,7 @@ If a mirrored child also has its own playhtml capability, keep giving it a stabl
 
 ### can-play
 
-Register an element with its starting data, event handlers, and renderer in one initializer object. `playhtml.register(id, initializer)` works before or after `playhtml.init()`, and before or after the element exists. playhtml syncs the data and calls `updateElement` whenever it changes.
+Register an element with its starting data, event handlers, and renderer in one initializer object. Pass the element itself when you already have it, or pass its id before it exists. Both `playhtml.register(element, initializer)` and `playhtml.register(id, initializer)` work before or after `playhtml.init()`. playhtml syncs the data and calls `updateElement` whenever it changes.
 
 The [Element API reference](/docs/reference/element-api/#initializer) lists every initializer field and callback context.
 

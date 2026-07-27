@@ -15,12 +15,13 @@ The declarative `view` renderer and the lit-html helpers are experimental. `regi
 import { playhtml, html, svg, repeat, classMap, styleMap, nothing } from "playhtml";
 ```
 
-## `playhtml.register(elementId, init)`
+## `playhtml.register(elementOrId, init)`
 
-Binds an initializer to one element by `id` and returns a [handle](#playelementhandle). Call it before or after `playhtml.init()`. If the element does not exist yet, playhtml binds it when it appears.
+Binds an initializer to one element and returns a [handle](#playelementhandle). Pass an element when you already have the DOM node. Pass its `id` when you need to register before the element exists. Both forms work before or after `playhtml.init()`.
 
 ```js
-const handle = playhtml.register("my-counter", {
+const counter = document.getElementById("my-counter");
+const handle = playhtml.register(counter, {
   defaultData: { count: 0 },
   onClick: (_event, { setData }) => {
     setData((data) => {
@@ -33,7 +34,9 @@ const handle = playhtml.register("my-counter", {
 });
 ```
 
-- The element needs a stable, unique `id` (it _is_ the `elementId`). The `can-play` attribute is optional — `register` implies it.
+- The element form requires an HTML element with a stable, non-empty `id`.
+- The id form binds automatically when an element with that id appears.
+- The `can-play` attribute is optional. `register` supplies the custom capability.
 - Re-registering the same id replaces its initializer.
 
 :::note[Direct element properties]

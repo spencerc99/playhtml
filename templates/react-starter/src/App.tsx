@@ -86,7 +86,7 @@ function PeopleHere() {
 }
 
 // withSharedState is the React API for custom collaborative elements.
-// Vanilla HTML uses playhtml.register(id, initializer) for the same role.
+// Vanilla HTML uses playhtml.register(elementOrId, initializer) for the same role.
 const ReactionButton = withSharedState(
   { defaultData: { count: 0 } },
   ({ data, setData, ref }) => {

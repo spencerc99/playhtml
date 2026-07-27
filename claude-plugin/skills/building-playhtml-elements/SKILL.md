@@ -29,7 +29,7 @@ These determine which API and data type to use. Getting them wrong means a rewri
 ## Critical Rules
 
 - Every element MUST have a unique `id` attribute — without it, sync silently fails
-- Vanilla HTML: Put custom-element behavior in `playhtml.register(id, initializer)`
+- Vanilla HTML: Put custom-element behavior in `playhtml.register(elementOrId, initializer)`
 - React: Wrap app in `<PlayProvider>`
 
 ## Quick Reference — Vanilla HTML (can-play)
@@ -37,7 +37,8 @@ These determine which API and data type to use. Getting them wrong means a rewri
 ```javascript
 import { playhtml } from "https://unpkg.com/playhtml@latest";
 
-playhtml.register("myElement", {
+const el = document.getElementById("myElement");
+playhtml.register(el, {
   defaultData: { count: 0 },                           // REQUIRED
   updateElement: ({ element, data }) => { ... },        // REQUIRED
   onClick: (e, { data, setData }) => { ... },
@@ -50,8 +51,9 @@ playhtml.register("myElement", {
 playhtml.init();
 ```
 
-`register` works before or after `init()`, and before or after the element exists.
-Use `setupPlayElement(element)` after inserting a dynamic built-in or defined
+Pass an element when you already have the DOM node, or pass its id before it
+exists. `register` works before or after `init()`. Use
+`setupPlayElement(element)` after inserting a dynamic built-in or defined
 capability. Registered custom elements bind automatically.
 
 ## Quick Reference — React (withSharedState)
@@ -169,7 +171,7 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 
 ## Common Mistakes
 
-1. **Direct element-property setup** (vanilla): Use `playhtml.register(id, initializer)` so setup does not depend on assigning callbacks to a DOM node before initialization.
+1. **Direct element-property setup** (vanilla): Use `playhtml.register(elementOrId, initializer)` so setup does not depend on assigning callbacks to a DOM node before initialization.
 2. **Missing `id`**: No id = no sync. Silent failure.
 3. **Wrong data type**: Awareness for persistent data (disappears on disconnect) or defaultData for ephemeral presence (leaves stale data). Refer to the Data Types table.
 4. **Bad array mutations**: In mutator form, the draft is a Yjs CRDT proxy. Use `push()`/`splice()` only — `shift()`, `pop()`, and `items[i] = x` don't sync correctly.

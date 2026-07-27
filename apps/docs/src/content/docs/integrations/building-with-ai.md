@@ -51,7 +51,7 @@ playhtml makes HTML elements collaborative and real-time. Here's what you need t
 
 CRITICAL REQUIREMENTS:
 - All elements MUST have a unique `id` attribute
-- Vanilla HTML: register a custom element with `playhtml.register(id, initializer)`
+- Vanilla HTML: register a custom element with `playhtml.register(elementOrId, initializer)`
 - React: Components must be wrapped in <PlayProvider>
 
 SETUP — Vanilla HTML (custom element with register + view):
@@ -98,7 +98,7 @@ DATA TYPES (choose the right one):
 KEY APIs:
 
 Vanilla HTML (register):
-- playhtml.register(id, init) → handle                         // Bind one element by id
+- playhtml.register(elementOrId, init) → handle                // Bind one element by DOM node or id
 - playhtml.define(name, init)                                  // Reusable capability for every [name] element
 - init.defaultData = { ... }                                   // Initial state (REQUIRED)
 - init.updateElement = ({ element, data }) => { ... }           // Supported imperative renderer

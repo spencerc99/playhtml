@@ -37,22 +37,22 @@ playhtml.setupPlayElement(el, { ignoreIfAlreadySetup: true });
 
 To re-walk the whole DOM (e.g. after injecting a chunk of server-rendered HTML), call `playhtml.setupPlayElements()`, the same pass `init()` runs.
 
-For a one-off custom element, call `register` with its future id. The registration can come before or after the element:
+For a one-off custom element that already exists, pass the element and its initializer to `register`:
 
 ```js
-playhtml.register("note-42", {
+const note = document.createElement("div");
+note.id = "note-42";
+document.body.appendChild(note);
+
+playhtml.register(note, {
   defaultData: { text: "" },
   updateElement: ({ element, data }) => {
     element.textContent = data.text;
   },
 });
-
-const note = document.createElement("div");
-note.id = "note-42";
-document.body.appendChild(note);
 ```
 
-playhtml binds the custom element when both the registration and DOM node exist. Do not call `setupPlayElement` for this path.
+This preserves the `setupPlayElement(element)` call shape while keeping the initializer in one object. You can also call `register("note-42", initializer)` before the element exists. Do not call `setupPlayElement` for either custom-element path.
 
 ### Cleaning up
 

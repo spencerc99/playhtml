@@ -2281,7 +2281,7 @@ export interface PlayHTMLComponents {
   removePlayElement: typeof removePlayElement;
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  /** Register a custom element by id. */
+  /** Register a custom element by id or DOM reference. */
   register: typeof registerPlayElement;
   /** Register a reusable capability by attribute name. */
   define: typeof definePlayCapability;
@@ -3031,19 +3031,45 @@ function createPlayElementHandle(
 }
 
 /**
- * Registers a `view`/`updateElement` initializer for a single element by id.
- * Callable before or after `init()` and before or after the element exists;
- * binding happens once both are present. Returns a handle for reads/writes
- * from outside the view (e.g. form submit handlers).
- *
+ * Registers a `view`/`updateElement` initializer for a single element by id or
+ * DOM reference. Callable before or after `init()`. An id registration binds
+ * once the element exists; an element registration binds the provided node.
+ * Returns a handle for reads/writes from outside the view.
  */
 function registerPlayElement<T = any, U = any, V = any>(
   elementId: string,
   init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>;
+function registerPlayElement<T = any, U = any, V = any>(
+  element: HTMLElement,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>;
+function registerPlayElement<T = any, U = any, V = any>(
+  elementOrId: string | Element,
+  init: ElementInitializer<T, U, V>,
 ): PlayElementHandle<T, U, V> {
+  let element: HTMLElement | null;
+  let elementId: string;
+  if (typeof elementOrId === "string") {
+    elementId = elementOrId;
+    element = document.getElementById(elementId);
+  } else {
+    if (!isHTMLElement(elementOrId)) {
+      throw new Error(
+        "[playhtml] register(element, initializer) requires an HTML element.",
+      );
+    }
+    if (!elementOrId.id) {
+      throw new Error(
+        "[playhtml] register(element, initializer) requires an element with a non-empty id.",
+      );
+    }
+    element = elementOrId;
+    elementId = element.id;
+  }
+
   validateRegisteredInitializer(elementId, init as ElementInitializer);
   elementInitializersById.set(elementId, init as ElementInitializer);
-  const element = document.getElementById(elementId);
   if (element && isHTMLElement(element)) {
     setupPlayElement(element);
   }
@@ -3106,7 +3132,7 @@ function validateCapability(
   }
   if (capabilityName === TagType.CanPlay) {
     throw new Error(
-      `[playhtml] "${TagType.CanPlay}" is reserved — use register(id, init) for single elements.`,
+      `[playhtml] "${TagType.CanPlay}" is reserved — use register(elementOrId, init) for single elements.`,
     );
   }
   if (Object.prototype.hasOwnProperty.call(TagTypeToElement, capabilityName)) {

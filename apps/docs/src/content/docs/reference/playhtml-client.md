@@ -129,7 +129,7 @@ Pass `{ ignoreIfAlreadySetup: true }` to skip elements that are already register
 
 The element needs a unique `id`.
 
-For a one-off custom element, use [`register(id, initializer)`](#registerelementid-init). It binds the element automatically, so it does not need a separate `setupPlayElement` call.
+For a one-off custom element, use [`register(elementOrId, initializer)`](#registerelementorid-init). It binds the element automatically, so it does not need a separate `setupPlayElement` call.
 
 ```js
 const card = document.createElement("div");
@@ -202,14 +202,27 @@ Throws a console warning if called before `init()` completes sync.
 
 Use `register` for one custom element and `define` for a reusable capability. Both accept an `ElementInitializer` with either the supported imperative `updateElement` renderer or the experimental declarative `view` renderer. See [Registration API](/docs/reference/view-api/).
 
-### `register(elementId, init)`
+### `register(elementOrId, init)`
 
-**Signature:** `register<T, U, V>(elementId: string, init: ElementInitializer<T, U, V>): PlayElementHandle<T, U, V>`
+**Signatures:**
 
-Binds an initializer to one element by id. Returns a handle for reads and writes from outside the element's own callbacks. Callable before or after `init()` and before or after the element exists in the DOM.
+```ts
+register<T, U, V>(
+  elementId: string,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>
+
+register<T, U, V>(
+  element: HTMLElement,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>
+```
+
+Binds an initializer to one element. Pass a string id before the element exists, or pass an existing HTML element to bind that node directly. The element form requires a non-empty `id`. Both forms return a handle for reads and writes outside the element's callbacks.
 
 ```js
-const handle = playhtml.register("my-counter", {
+const counter = document.getElementById("my-counter");
+const handle = playhtml.register(counter, {
   defaultData: { count: 0 },
   onClick: (_event, { setData }) => {
     setData((data) => {

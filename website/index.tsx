@@ -97,9 +97,10 @@ function setupHomepageAwarenessStatus() {
 }
 
 function setupHomepageCandle() {
-  if (!document.getElementById("customCandle")) return;
+  const candle = document.getElementById("customCandle");
+  if (!candle) return;
 
-  playhtml.register("customCandle", {
+  playhtml.register(candle, {
     defaultData: { on: true },
     onClick: (_event, { data, setData }) => {
       setData({ on: !data.on });
