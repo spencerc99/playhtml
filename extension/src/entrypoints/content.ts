@@ -1187,6 +1187,17 @@ export default defineContentScript({
         this.globalCleanup?.();
         this.globalCleanup = null;
       }
+
+      // Recreate the collaborative-feature resources torn down before the page
+      // entered bfcache. Called from the pageshow-restore path. The underlying
+      // playhtml instance is never torn down (only the presence-room socket and
+      // feature listeners are), so this re-runs the same presence setup that
+      // created those cleanups; each init helper is self-gating or was cleared
+      // by teardown, so re-running rebuilds exactly what was released.
+      async reinitCollaboration() {
+        if (!this.isInitialized) return;
+        await this.setupPresenceDetection();
+      }
     }
 
     // Initialize extension when DOM is ready
@@ -1354,12 +1365,30 @@ export default defineContentScript({
     }
 
     // Tear down the extension's collaborative-feature resources when the page
-    // goes away or the extension is invalidated. pagehide covers bfcache/normal
-    // unload; beforeunload is a belt-and-braces fallback; onInvalidated handles
-    // extension reload/update while the page stays open.
+    // goes away or the extension is invalidated, and restore them if the page
+    // comes back from the bfcache.
+    //
+    // pagehide fires both on real unload AND when the page is frozen into the
+    // bfcache for back/forward navigation (event.persisted === true). We tear
+    // down in both cases: the collaborative features hold open WebSockets, which
+    // Chrome won't keep alive in the bfcache anyway, so leaving them running
+    // would just leak a stale connection into a frozen page. The listeners are
+    // NOT { once: true } — a restored page can navigate away again and must be
+    // able to tear down (and re-restore) on each round trip.
+    //
+    // pageshow with event.persisted === true means the page was restored from
+    // the bfcache with its script state intact but its resources released on
+    // pagehide; re-establish the collaborative features so the resumed page
+    // isn't left with dead collaboration. teardown is idempotent, so a
+    // beforeunload+pagehide pair before a real unload is harmless.
     const teardownExtension = () => extensionInstance?.teardown();
-    window.addEventListener("pagehide", teardownExtension, { once: true });
-    window.addEventListener("beforeunload", teardownExtension, { once: true });
+    window.addEventListener("pagehide", teardownExtension);
+    window.addEventListener("beforeunload", teardownExtension);
+    window.addEventListener("pageshow", (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        void extensionInstance?.reinitCollaboration();
+      }
+    });
     ctx?.onInvalidated(teardownExtension);
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
