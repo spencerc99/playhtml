@@ -2,6 +2,12 @@
 // ABOUTME: Sanitizes inline SVG markup before it reaches extension rendering surfaces.
 
 import type { ScrapEventData } from "./types";
+import {
+  canonicalButtonKey,
+  canonicalCursorKey,
+  canonicalImageKey,
+  canonicalSvgIconKey,
+} from "@movement/utils/scrapIdentity";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
@@ -82,6 +88,26 @@ export function getScrapKey(data: ScrapEventData): string {
       return hashScrapString(data.markup);
     case "cursor":
       return data.url;
+  }
+}
+
+/**
+ * Canonical identity for near-duplicate detection, matching the collage's
+ * render-time dedup (see ScrapCollage.tsx's canonicalScrapKey). Two scraps
+ * with the same canonical key are treated as the same underlying thing even
+ * if their per-capture `getScrapKey` differs (different computed style
+ * values, different rendered size, different CDN query params).
+ */
+export function getCanonicalScrapKey(domain: string, data: ScrapEventData): string {
+  switch (data.kind) {
+    case "image":
+      return canonicalImageKey(data.src);
+    case "button":
+      return canonicalButtonKey(domain, data.text, data.styles.backgroundColor);
+    case "svg-icon":
+      return canonicalSvgIconKey(domain, data.markup);
+    case "cursor":
+      return canonicalCursorKey(data.url);
   }
 }
 
