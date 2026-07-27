@@ -21,10 +21,8 @@ import { createUsersAPI, selectAllColors, type UsersAPI } from "../users";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
 import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
-import {
-  CURSOR_PRESENCE_MAX_AGE_MS,
-  CursorPresenceStore,
-} from "./cursor-presence-store";
+import { CursorPresenceStore } from "./cursor-presence-store";
+import { PRESENCE_STALE_MS } from "../presence-utils";
 import type { RealtimePresenceTransport } from "../presence-transport";
 
 // Reserved awareness field for cursors - won't conflict with user awareness
@@ -458,7 +456,6 @@ export class CursorClientAwareness {
   // transport mode. Assigned in setupPresenceTransportHandling.
   private presenceStore: CursorPresenceStore | null = null;
   private presenceTransportUnsubscribe: (() => void) | null = null;
-  private presenceExpiryInterval: ReturnType<typeof setInterval> | null = null;
   private serverCursorMaxHz: number | null = null;
 
   // When the cursor container is a non-body element with a CSS transform,
@@ -715,11 +712,12 @@ export class CursorClientAwareness {
       unsubIdentity();
       unsubRaw();
     };
-    this.startPresenceExpiryTimer();
   }
 
   private onPeerCursorChange(): void {
-    this.removeExpiredPresenceCursors();
+    // PeerStore already swept any stale cursor channel before notifying (on
+    // fold and on its periodic sweep), so freshness is guaranteed here — just
+    // re-render from the current folded state.
     this.renderPresenceStore();
   }
 
@@ -736,23 +734,6 @@ export class CursorClientAwareness {
     if (channel !== "cursor") return;
     if (!Number.isFinite(hz) || hz <= 0) return;
     this.serverCursorMaxHz = hz;
-  }
-
-  private startPresenceExpiryTimer(): void {
-    if (this.presenceExpiryInterval !== null) return;
-    this.presenceExpiryInterval = setInterval(() => {
-      if (this.removeExpiredPresenceCursors()) {
-        this.renderPresenceStore();
-      }
-    }, 1000);
-  }
-
-  private removeExpiredPresenceCursors(): boolean {
-    if (!this.presenceStore) return false;
-    return this.presenceStore.removeExpiredCursors(
-      Date.now(),
-      CURSOR_PRESENCE_MAX_AGE_MS,
-    );
   }
 
   private renderPresenceStore(): void {
@@ -927,13 +908,17 @@ export class CursorClientAwareness {
     }
   }
 
+  // A stricter, SYNCHRONOUS freshness check for proximity (freshOnly): between
+  // PeerStore sweep ticks a cursor can be technically stale but not yet swept,
+  // and it must not participate in proximity. Distinct from PeerStore's
+  // sweep-based channel deletion — both run, at different cadences.
   private isFreshCursorPresence(
     presence: RemoteCursorPresence,
     now: number,
   ): boolean {
     if (!this.presenceTransport) return true;
     if (!Number.isFinite(presence.lastSeen)) return false;
-    return now - Number(presence.lastSeen) <= CURSOR_PRESENCE_MAX_AGE_MS;
+    return now - Number(presence.lastSeen) <= PRESENCE_STALE_MS;
   }
 
   private rebuildSpatialGrid(): void {
@@ -2224,10 +2209,6 @@ export class CursorClientAwareness {
     }
 
     if (this.presenceTransport) {
-      if (this.presenceExpiryInterval !== null) {
-        clearInterval(this.presenceExpiryInterval);
-        this.presenceExpiryInterval = null;
-      }
       this.presenceTransportUnsubscribe?.();
       this.presenceTransportUnsubscribe = null;
       this.presenceTransport.clear("cursor");

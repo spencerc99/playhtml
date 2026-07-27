@@ -14,6 +14,7 @@ import {
   isPresenceRecord,
   jsonByteLength,
   publishPresenceValue,
+  startPresenceKeepalive,
 } from "./presence-utils";
 
 const ELEMENT_PRESENCE_SHARD_CHANNEL_PREFIX = `${ELEMENT_CHANNEL_PREFIX}shard:`;
@@ -28,13 +29,20 @@ export const MAX_ELEMENT_PRESENCE_SHARDS = 8;
 
 // Local writes are coalesced across a microtask so N elements initializing in
 // one tick produce ONE shard-set publish instead of N. After a publish, a
-// trailing re-publish is scheduled so anything the server dropped under a burst
-// (it rejects updates past its per-second budget) is re-sent once things quiet.
-const ELEMENT_PRESENCE_REPUBLISH_DELAY_MS = 400;
+// trailing re-publish re-sends anything the server dropped under a burst. The
+// server budget resets on a FIXED 1,000ms window, so the trailing publish must
+// land BEYOND that window — a shorter delay lands in the same exhausted window
+// and is dropped too.
+const ELEMENT_PRESENCE_REPUBLISH_DELAY_MS = 1_100;
 
 type ElementPresenceEntry = [tag: string, elementId: string, value: unknown];
 type ElementPresenceShard = {
   v: typeof ELEMENT_PRESENCE_SHARD_VERSION;
+  // Publish timestamp for the client-side staleness backstop (PeerStore reads
+  // it via isLiveChannel). Additive and optional — older peers omit it and are
+  // treated as fresh. Excluded from the content fingerprint (a keepalive that
+  // only bumps `at` must not re-fire awareness callbacks).
+  at?: number;
   entries: ElementPresenceEntry[];
 };
 
@@ -59,10 +67,16 @@ export class ElementAwarenessClient {
   private onAwareness: (awareness: ElementAwarenessMap) => void;
   private localTags = new Map<string, Record<string, unknown>>();
   private publishedChannels = new Set<string>();
+  // Shard channels whose clear may not have reached the server yet. A dropped
+  // clear is otherwise permanent: publishedChannels is updated immediately, so a
+  // later publish wouldn't re-issue it. Held until a trailing republish re-sends.
+  private pendingClears = new Set<string>();
   private unsubscribe: () => void;
+  private stopKeepalive: () => void;
   private publishScheduled = false;
   private republishTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
+  private lastAwarenessFingerprint = "";
 
   constructor(options: ElementAwarenessClientOptions) {
     this.transport = options.transport;
@@ -81,6 +95,13 @@ export class ElementAwarenessClient {
       unsubElement();
       unsubIdentity();
     };
+    // Keepalive: re-publish (fresh `at`) on a low-frequency timer so a quiet-
+    // but-connected peer's shards don't age out of peers' views. Only re-sends
+    // when there IS local awareness — an empty client publishes nothing.
+    this.stopKeepalive = startPresenceKeepalive(() => {
+      if (this.destroyed || this.localTags.size === 0) return;
+      this.publishLocalAwareness();
+    });
     this.join();
   }
 
@@ -148,6 +169,7 @@ export class ElementAwarenessClient {
       clearTimeout(this.republishTimer);
       this.republishTimer = null;
     }
+    this.stopKeepalive();
     this.unsubscribe();
   }
 
@@ -178,6 +200,13 @@ export class ElementAwarenessClient {
     this.republishTimer = setTimeout(() => {
       this.republishTimer = null;
       if (this.destroyed) return;
+      // Re-issue any clears that may have been dropped, in a fresh rate window,
+      // BEFORE republishing (publishLocalAwareness only clears channels still in
+      // publishedChannels — an already-dropped clear is tracked separately).
+      for (const channel of this.pendingClears) {
+        clearPresenceChannel(this.transport, channel, "element awareness");
+      }
+      this.pendingClears.clear();
       this.publishLocalAwareness();
     }, ELEMENT_PRESENCE_REPUBLISH_DELAY_MS);
   }
@@ -219,16 +248,24 @@ export class ElementAwarenessClient {
         publishPresenceValue(
           this.transport,
           channel,
+          // Each shard already carries an `at` stamp (createElementPresenceShard)
+          // so it ages out client-side if this peer disconnects ungracefully.
           shards[i],
           "element awareness",
         )
       ) {
         nextChannels.add(channel);
       }
+      // This channel now carries live data, so it's no longer pending a clear.
+      this.pendingClears.delete(channel);
     }
 
     for (const channel of this.publishedChannels) {
       if (!nextChannels.has(channel)) {
+        // Track the clear until a trailing republish confirms it: a clear
+        // dropped over the rate budget is otherwise permanent, since
+        // publishedChannels drops the channel here and won't re-clear it.
+        this.pendingClears.add(channel);
         clearPresenceChannel(this.transport, channel, "element awareness");
       }
     }
@@ -237,7 +274,15 @@ export class ElementAwarenessClient {
   }
 
   private emit(): void {
-    this.onAwareness(this.buildElementAwareness());
+    const awareness = this.buildElementAwareness();
+    // Fire only when the awareness CONTENT changed. The map excludes `at`
+    // (addShardEntries reads only entries), so a keepalive re-stamp — or the
+    // periodic sweep touching an unrelated peer — produces an identical
+    // fingerprint and does not re-fire the awareness callback.
+    const fingerprint = fingerprintAwareness(awareness);
+    if (fingerprint === this.lastAwarenessFingerprint) return;
+    this.lastAwarenessFingerprint = fingerprint;
+    this.onAwareness(awareness);
   }
 
   private buildElementAwareness(): ElementAwarenessMap {
@@ -276,6 +321,26 @@ export class ElementAwarenessClient {
 
     return result;
   }
+}
+
+/** Content fingerprint of a built awareness map (per element key, per stableId,
+ * by value). Excludes `at` by construction — the map never carries it — so a
+ * keepalive re-stamp yields an unchanged fingerprint. */
+function fingerprintAwareness(awareness: ElementAwarenessMap): string {
+  const parts: string[] = [];
+  for (const key of Array.from(awareness.keys()).sort()) {
+    const entry = awareness.get(key)!;
+    for (const stableId of Array.from(entry.byStableId.keys()).sort()) {
+      let serialized: string;
+      try {
+        serialized = JSON.stringify(entry.byStableId.get(stableId)) ?? "null";
+      } catch {
+        serialized = "null";
+      }
+      parts.push(`${key}:${stableId}:${serialized}`);
+    }
+  }
+  return parts.join("|");
 }
 
 function addEntry(
@@ -340,6 +405,10 @@ function createElementPresenceShard(
 ): ElementPresenceShard {
   return {
     v: ELEMENT_PRESENCE_SHARD_VERSION,
+    // Stamp the publish time here (not at send) so shard sizing accounts for the
+    // `at` field and a near-4KB shard can't tip over the cap once stamped. The
+    // exact value doesn't affect byte length (always a ~13-digit epoch ms).
+    at: Date.now(),
     entries,
   };
 }

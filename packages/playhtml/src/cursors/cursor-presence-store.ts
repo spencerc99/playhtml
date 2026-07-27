@@ -1,5 +1,5 @@
 // ABOUTME: Cursor view over the shared PeerStore: decodes folded channels into
-// ABOUTME: cursor presence, collapses tabs per player, and expires stale cursors.
+// ABOUTME: cursor presence and collapses multiple tabs of one player.
 
 import type {
   Cursor,
@@ -16,8 +16,6 @@ import {
   isPresenceCursorChannelValue,
 } from "../presence-utils";
 
-export const CURSOR_PRESENCE_MAX_AGE_MS = 30_000;
-
 export type StoredCursorPresence = CursorPresence & {
   cursor: Cursor | null;
   playerIdentity: PlayerIdentity;
@@ -26,9 +24,11 @@ export type StoredCursorPresence = CursorPresence & {
 /**
  * Reads the shared PeerStore's folded peer map and shapes it into cursor
  * presence. Owns cursor-specific concerns only: decoding the identity/cursor/
- * message channels, collapsing multiple tabs of one player (preferring an active
- * cursor, then the newest frame), and expiring stale cursors. The raw
- * per-connection fold lives in PeerStore and is shared with element/presence.
+ * message channels and collapsing multiple tabs of one player (preferring an
+ * active cursor, then the newest frame). Stale-cursor expiry is no longer this
+ * view's job — PeerStore drops any peer channel whose stamped `at` ages out
+ * (shared with element/presence); a swept `cursor` channel simply disappears
+ * from the folded map, leaving the identity-only peer, exactly as before.
  */
 export class CursorPresenceStore {
   constructor(private peerStore: PeerStore) {}
@@ -65,23 +65,6 @@ export class CursorPresenceStore {
       }
     }
     return bestPresence;
-  }
-
-  removeExpiredCursors(now: number, maxAgeMs: number): boolean {
-    let changed = false;
-
-    for (const [connectionId, channels] of this.peers) {
-      if (!("cursor" in channels)) continue;
-      if (isActiveCursorChannel(channels.cursor, now, maxAgeMs)) continue;
-
-      delete channels.cursor;
-      changed = true;
-      if (Object.keys(channels).length === 0) {
-        this.peers.delete(connectionId);
-      }
-    }
-
-    return changed;
   }
 
   private getPresenceForConnection(
@@ -142,16 +125,4 @@ function shouldReplacePresence(
 
 function getFiniteNumber(value: unknown): number {
   return Number.isFinite(value) ? Number(value) : Number.NEGATIVE_INFINITY;
-}
-
-function isActiveCursorChannel(
-  value: unknown,
-  now: number,
-  maxAgeMs: number,
-): boolean {
-  if (!isPresenceCursorChannelValue(value)) return false;
-  if (value.cursor === null) return false;
-  if (!isCursor(value.cursor)) return false;
-  if (!Number.isFinite(value.at)) return false;
-  return now - Number(value.at) <= maxAgeMs;
 }

@@ -15,9 +15,13 @@ import {
   getPeerPublicKey,
   isPagePresenceChannel,
   isPresenceRecord,
+  isReservedPresenceField,
   publishPresenceValue,
   safeInvoke,
+  startPresenceKeepalive,
   toPagePresenceChannel,
+  unwrapPagePresenceValue,
+  wrapPagePresenceValue,
 } from "./presence-utils";
 
 type PresenceClientOptions = {
@@ -36,12 +40,13 @@ type ChannelListener = {
   lastFingerprint: string;
 };
 
-// After a publish, re-send the latest channel values once things quiet down.
-// Page presence shares the server's low-frequency `event` budget (20/s); a
-// burst past it is dropped and only replied to with presence-rate, so a single
-// trailing re-publish recovers whatever the server dropped. Mirrors the element
-// awareness client's recovery.
-const PRESENCE_REPUBLISH_DELAY_MS = 400;
+// After a publish, re-send the latest channel state once things quiet down.
+// Page presence shares the server's low-frequency `event` budget (20 messages
+// per FIXED 1,000ms window). A burst past the budget is dropped for the rest of
+// that window, so the trailing re-publish MUST land in a fresh window — schedule
+// it just beyond the window, not inside it (a 400ms replay would be dropped too,
+// with no further retry).
+const PRESENCE_REPUBLISH_DELAY_MS = 1_100;
 
 /**
  * Page-presence client over the generic presence transport. Mirrors the public
@@ -58,9 +63,15 @@ export class PresenceClient implements PresenceAPI {
   private onCursorPresencesChange?: PresenceClientOptions["onCursorPresencesChange"];
 
   private localChannels = new Map<string, unknown>();
+  // Wire channels whose clear may not have reached the server yet (a dropped
+  // clear is otherwise permanent: localChannels no longer holds the value, so
+  // the trailing republish wouldn't re-send it). Cleared channels are held here
+  // until a trailing republish re-issues the clear.
+  private pendingClears = new Set<string>();
   private listeners = new Map<string, ChannelListener>();
   private nextListenerId = 0;
   private unsubscribe: () => void;
+  private stopKeepalive: () => void;
   private republishTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
@@ -82,21 +93,51 @@ export class PresenceClient implements PresenceAPI {
       unsubPresence();
       unsubIdentity();
     };
+    // Keepalive: re-stamp live channels on a low-frequency timer so a quiet-
+    // but-connected peer's presence doesn't age out of peers' views.
+    this.stopKeepalive = startPresenceKeepalive(() => {
+      if (this.destroyed || this.localChannels.size === 0) return;
+      this.republishLiveChannels();
+    });
     this.join();
   }
 
   setMyPresence(channel: string, data: unknown): void {
+    if (isReservedPresenceField(channel)) {
+      throw new Error(
+        `[playhtml] "${channel}" is a reserved presence field and cannot be used as a channel name. ` +
+          `playerIdentity, cursor, and isMe are populated by playhtml; choose a different channel name.`,
+      );
+    }
     const wireChannel = toPagePresenceChannel(channel);
     if (data === null || data === undefined) {
-      if (!this.localChannels.has(channel)) return;
+      if (!this.localChannels.has(channel) && this.pendingClears.has(wireChannel)) {
+        // Already cleared and the clear is still pending retry — nothing to do.
+        return;
+      }
       this.localChannels.delete(channel);
+      // Track the clear until a trailing republish re-issues it, so a clear
+      // dropped over the rate budget is not permanent (localChannels no longer
+      // holds the value for the republish to re-send).
+      this.pendingClears.add(wireChannel);
       clearPresenceChannel(this.transport, wireChannel, "presence");
     } else {
       this.localChannels.set(channel, data);
-      publishPresenceValue(this.transport, wireChannel, data, "presence");
+      this.pendingClears.delete(wireChannel);
+      this.publishChannel(channel, data);
     }
     this.scheduleRepublish();
     this.emit();
+  }
+
+  /** Publish a live channel wrapped in the staleness envelope ({at, value}). */
+  private publishChannel(channel: string, data: unknown): void {
+    publishPresenceValue(
+      this.transport,
+      toPagePresenceChannel(channel),
+      wrapPagePresenceValue(data),
+      "presence",
+    );
   }
 
   getPresences(): Map<string, PresenceView> {
@@ -143,6 +184,7 @@ export class PresenceClient implements PresenceAPI {
       clearTimeout(this.republishTimer);
       this.republishTimer = null;
     }
+    this.stopKeepalive();
     this.unsubscribe();
   }
 
@@ -156,15 +198,24 @@ export class PresenceClient implements PresenceAPI {
     this.republishTimer = setTimeout(() => {
       this.republishTimer = null;
       if (this.destroyed) return;
-      for (const [channel, value] of this.localChannels) {
-        publishPresenceValue(
-          this.transport,
-          toPagePresenceChannel(channel),
-          value,
-          "presence",
-        );
+      // Re-send the latest value of every live channel (fresh `at`)...
+      this.republishLiveChannels();
+      // ...and re-issue any clears that may have been dropped. This lands in a
+      // fresh rate window (see PRESENCE_REPUBLISH_DELAY_MS), so treat them as
+      // delivered afterwards.
+      for (const wireChannel of this.pendingClears) {
+        clearPresenceChannel(this.transport, wireChannel, "presence");
       }
+      this.pendingClears.clear();
     }, PRESENCE_REPUBLISH_DELAY_MS);
+  }
+
+  /** Re-send every live channel with a fresh timestamp. Shared by the burst
+   * recovery (scheduleRepublish) and the keepalive re-stamp. */
+  private republishLiveChannels(): void {
+    for (const [channel, value] of this.localChannels) {
+      this.publishChannel(channel, value);
+    }
   }
 
   private join(): void {
@@ -206,7 +257,9 @@ export class PresenceClient implements PresenceAPI {
   }
 
   /** Fingerprint of one channel across self + all remote peers, so a listener
-   * only fires when its channel actually changed. */
+   * only fires when its channel actually changed. Fingerprints the UNWRAPPED
+   * payload so a keepalive re-stamp (which only bumps the envelope `at`) does
+   * not count as a change and re-fire subscribers. */
   private channelFingerprint(channel: string): string {
     const parts: string[] = [];
     if (this.localChannels.has(channel)) {
@@ -214,9 +267,9 @@ export class PresenceClient implements PresenceAPI {
     }
     const wireChannel = toPagePresenceChannel(channel);
     for (const connectionId of Array.from(this.peers.keys()).sort()) {
-      const value = this.peers.get(connectionId)?.[wireChannel];
-      if (value === undefined) continue;
-      parts.push(`${connectionId}:${safeStringify(value)}`);
+      const folded = this.peers.get(connectionId)?.[wireChannel];
+      if (folded === undefined) continue;
+      parts.push(`${connectionId}:${safeStringify(unwrapPagePresenceValue(folded))}`);
     }
     return parts.join("|");
   }
@@ -251,8 +304,13 @@ export class PresenceClient implements PresenceAPI {
 
       for (const [channel, value] of Object.entries(channels)) {
         if (!isPagePresenceChannel(channel)) continue;
-        (view as Record<string, unknown>)[fromPagePresenceChannel(channel)] =
-          value;
+        const field = fromPagePresenceChannel(channel);
+        // Security boundary: a hostile peer can bypass the write-side check and
+        // publish presence:playerIdentity (etc.) directly. Never let a stripped
+        // key overwrite a trusted PresenceView system field.
+        if (isReservedPresenceField(field)) continue;
+        // Unwrap the {at, value} staleness envelope back to the user's payload.
+        (view as Record<string, unknown>)[field] = unwrapPagePresenceValue(value);
       }
       presences.set(stableId, view);
     }
@@ -268,6 +326,9 @@ export class PresenceClient implements PresenceAPI {
       isMe: true,
     };
     for (const [channel, value] of this.localChannels) {
+      // localChannels can't hold a reserved name (setMyPresence rejects them),
+      // but guard anyway so a reserved key can never shadow a trusted field.
+      if (isReservedPresenceField(channel)) continue;
       (view as Record<string, unknown>)[channel] = value;
     }
     return view;

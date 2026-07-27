@@ -9,9 +9,16 @@ import type {
 import {
   IDENTITY_CHANNEL,
   isElementChannel,
+  isLiveChannel,
   isPagePresenceChannel,
+  PRESENCE_STALE_MS,
   safeInvoke,
 } from "./presence-utils";
+
+// Cadence of the periodic staleness sweep for peers that go silent (no message
+// arrives to trigger a fold). Matches the cursor view's previous 1s expiry
+// interval so observable expiry timing is unchanged.
+const PEER_SWEEP_INTERVAL_MS = 1_000;
 
 /** Coarse channel groupings that consumers subscribe to. A consumer for one
  * namespace is only notified when a message actually touched that namespace, so
@@ -56,9 +63,18 @@ export class PeerStore {
     identity: new Set(),
   };
   private unsubscribe: () => void;
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(source: PeerMessageSource) {
     this.unsubscribe = source.subscribe((message) => this.handleMessage(message));
+    // Client-side staleness backstop: drop a peer's stamped channels once their
+    // `at` ages out, even if the server never sent a remove (killed tab, dropped
+    // network). One sweep timer per socket — the only place this runs. Peers
+    // going silent are caught here; a peer whose first-seen value is already
+    // stale is caught synchronously on fold (see handleMessage).
+    this.sweepTimer = setInterval(() => {
+      this.sweepExpired(Date.now());
+    }, PEER_SWEEP_INTERVAL_MS);
   }
 
   /** The live folded peer map, keyed by connection id. Views read this. */
@@ -83,6 +99,10 @@ export class PeerStore {
   }
 
   destroy(): void {
+    if (this.sweepTimer !== null) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
     this.unsubscribe();
     for (const set of Object.values(this.listeners)) set.clear();
   }
@@ -90,12 +110,17 @@ export class PeerStore {
   private handleMessage(message: PresenceServerMessage): void {
     if (message.type === "presence-sync") {
       this.applySync(message.peers);
+      // Drop any already-stale channels the snapshot carried (e.g. a peer whose
+      // last frame is older than the window) before notifying, so views never
+      // momentarily render a stale peer between sweep ticks.
+      this.pruneExpired(Date.now());
       // A full snapshot may touch any namespace; notify all.
       this.notify(new Set<PeerNamespace>(["cursor", "element", "presence", "identity"]));
       return;
     }
     if (message.type === "presence-changes") {
       const touched = this.applyChanges(message);
+      this.pruneExpired(Date.now(), touched);
       if (touched.size > 0) this.notify(touched);
     }
     // presence-rate / presence-error are handled by the cursor client directly
@@ -151,5 +176,39 @@ export class PeerStore {
         safeInvoke(listener, "peer store namespace");
       }
     }
+  }
+
+  /** Periodic sweep for peers that went silent: prune expired channels and
+   * notify only the namespaces that actually lost one (no-op when nothing
+   * expired, so a quiet room never re-fires callbacks). */
+  private sweepExpired(now: number): void {
+    const touched = new Set<PeerNamespace>();
+    this.pruneExpired(now, touched);
+    if (touched.size > 0) this.notify(touched);
+  }
+
+  /**
+   * Delete every peer channel whose stamped `at` has aged past the staleness
+   * window, recording the touched namespaces into `touched`. Never removes a
+   * peer wholesale for having only unstamped channels (identity persists) —
+   * only prunes a now-empty peer row. Unstamped channels (identity) are always
+   * live, so they are never swept. This is the single implementation of
+   * client-side staleness for cursor, element, and presence views.
+   */
+  private pruneExpired(
+    now: number,
+    touched: Set<PeerNamespace> = new Set(),
+  ): Set<PeerNamespace> {
+    for (const [connectionId, channels] of this.peers) {
+      for (const [channel, value] of Object.entries(channels)) {
+        if (isLiveChannel(value, now, PRESENCE_STALE_MS)) continue;
+        delete channels[channel];
+        touched.add(namespaceOf(channel));
+      }
+      if (Object.keys(channels).length === 0) {
+        this.peers.delete(connectionId);
+      }
+    }
+    return touched;
   }
 }

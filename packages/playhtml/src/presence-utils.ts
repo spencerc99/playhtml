@@ -26,6 +26,21 @@ export const IDENTITY_CHANNEL = "identity";
 export const ELEMENT_CHANNEL_PREFIX = "element:";
 export const PAGE_PRESENCE_CHANNEL_PREFIX = "presence:";
 
+// PresenceView's trusted system fields. A custom presence channel must never
+// use these names: they are populated from validated identity/cursor state, and
+// letting a peer publish `presence:playerIdentity` (etc.) would let them spoof
+// another user's identity, cursor, or isMe flag in the built PresenceView.
+// Rejected on write (DX) and skipped on fold (the security boundary).
+export const RESERVED_PRESENCE_FIELDS = new Set([
+  "playerIdentity",
+  "cursor",
+  "isMe",
+]);
+
+export function isReservedPresenceField(name: string): boolean {
+  return RESERVED_PRESENCE_FIELDS.has(name);
+}
+
 export function isElementChannel(channel: string): boolean {
   return channel.startsWith(ELEMENT_CHANNEL_PREFIX);
 }
@@ -42,6 +57,83 @@ export function toPagePresenceChannel(channel: string): string {
 /** `presence:status` -> `status` (page presence wire channel). */
 export function fromPagePresenceChannel(channel: string): string {
   return channel.slice(PAGE_PRESENCE_CHANNEL_PREFIX.length);
+}
+
+// Client-side staleness backstop, shared by cursors, element awareness, and
+// page presence. Yjs awareness dropped peers that went quiet for ~30s even when
+// the server never saw the disconnect (killed tab, dropped network, lid close);
+// the transport views reproduce that by stamping publications with `at` and
+// age-filtering here. Peers re-stamp on every publish and on a keepalive re-
+// publish well under this window, so only genuinely-gone peers expire.
+export const PRESENCE_STALE_MS = 30_000;
+// Re-stamp interval: comfortably under PRESENCE_STALE_MS so a quiet-but-
+// connected peer keeps its presence alive across the window.
+export const PRESENCE_KEEPALIVE_MS = 10_000;
+
+/** True when a publication's `at` timestamp is within the staleness window.
+ * A missing/non-finite `at` is treated as fresh (older peers that never stamp
+ * must not vanish — the field is new in this release). */
+export function isFreshTimestamp(
+  at: unknown,
+  now: number,
+  maxAgeMs: number = PRESENCE_STALE_MS,
+): boolean {
+  if (!Number.isFinite(at)) return true;
+  return now - Number(at) <= maxAgeMs;
+}
+
+/**
+ * True when a folded channel value is still "live" — i.e. its stamped `at` is
+ * within the staleness window. A value with no `at` (unstamped channel like
+ * identity, or an older peer) is always live: only stamped channels expire.
+ */
+export function isLiveChannel(
+  value: unknown,
+  now: number,
+  maxAgeMs: number = PRESENCE_STALE_MS,
+): boolean {
+  if (!isPresenceRecord(value)) return true;
+  if (!("at" in value)) return true;
+  return isFreshTimestamp(value.at, now, maxAgeMs);
+}
+
+/**
+ * Run `republish` every intervalMs (default well under the staleness window) so
+ * a quiet-but-connected peer's last-published channels get a fresh `at` before
+ * they age out. Returns a stop function. The single source of the keepalive
+ * cadence, shared by element awareness and page presence.
+ */
+export function startPresenceKeepalive(
+  republish: () => void,
+  intervalMs: number = PRESENCE_KEEPALIVE_MS,
+): () => void {
+  const handle = setInterval(() => {
+    republish();
+  }, intervalMs);
+  return () => clearInterval(handle);
+}
+
+/** Wire envelope for a page-presence channel value: the user's payload plus the
+ * staleness timestamp. `value` is arbitrary user data (primitive, array, or
+ * object), so `at` is a sibling field rather than spread in — that keeps the
+ * payload round-tripping byte-for-byte and avoids colliding with a user field
+ * literally named `at`. */
+export type PagePresenceEnvelope = { at: number; value: unknown };
+
+export function wrapPagePresenceValue(
+  value: unknown,
+  now: number = Date.now(),
+): PagePresenceEnvelope {
+  return { at: now, value };
+}
+
+/** Extract the user payload from a folded page-presence channel value. Tolerates
+ * an un-enveloped value (older peer) by returning it as-is. */
+export function unwrapPagePresenceValue(folded: unknown): unknown {
+  if (isPresenceRecord(folded) && "value" in folded && "at" in folded) {
+    return (folded as PagePresenceEnvelope).value;
+  }
+  return folded;
 }
 
 /**
