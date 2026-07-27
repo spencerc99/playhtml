@@ -1,6 +1,6 @@
 ---
 title: "Custom elements"
-description: "Build your own collaborative element: can-mirror for syncing existing DOM, the imperative can-play API, and the experimental reactive view API. Vanilla and React paths, each in their own section."
+description: "Build custom collaborative elements with can-mirror, register, updateElement, view, or React shared state."
 sidebar:
   order: 5
 ---
@@ -116,26 +116,35 @@ If a mirrored child also has its own playhtml capability, keep giving it a stabl
 
 ### can-play
 
-You give the element a `defaultData`, handlers like `onClick`, and an `updateElement` callback that writes the DOM from the current `data`. Set those properties on the element **before `playhtml.init()` runs**. playhtml syncs the data and calls `updateElement` whenever it changes — locally or from another tab.
+Register an element with its starting data, event handlers, and renderer in one initializer object. `playhtml.register(id, initializer)` works before or after `playhtml.init()`, and before or after the element exists. playhtml syncs the data and calls `updateElement` whenever it changes.
 
-The [Element API reference](/docs/reference/element-api/#initializer) has the full annotated property list — **`ctx`** is defined once at the top.
+The [Element API reference](/docs/reference/element-api/#initializer) lists every initializer field and callback context.
 
-Most capability tags can share the same element. Each tag keeps its own data and behavior, so an element can be both custom and draggable with `<img can-play can-move id="candle">`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate automatically.
+:::note[Existing property-based elements]
+Direct assignments such as `element.defaultData = …` and `element.updateElement = …` remain supported for compatibility. Use `register` for new vanilla elements.
+:::
+
+Most capabilities can share the same element. Each keeps its own data and behavior, so a registered element can also carry `can-move`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate.
 
 #### A click counter
 
 ```html
-<div id="counter" can-play></div>
+<div id="counter"></div>
 
 <script type="module">
   import { playhtml } from "playhtml";
 
-  const el = document.getElementById("counter");
-  el.defaultData = { count: 0 };
-  el.onClick = (_e, { setData }) => setData((d) => { d.count += 1; });
-  el.updateElement = ({ element, data }) => {
-    element.textContent = `${data.count}`;
-  };
+  playhtml.register("counter", {
+    defaultData: { count: 0 },
+    onClick: (_event, { setData }) => {
+      setData((data) => {
+        data.count += 1;
+      });
+    },
+    updateElement: ({ element, data }) => {
+      element.textContent = String(data.count);
+    },
+  });
 
   playhtml.init();
 </script>
@@ -163,18 +172,23 @@ Most capability tags can share the same element. Each tag keeps its own data and
 `updateElement` runs on every change, so the simplest pattern is "read `data`, set a class or style."
 
 ```html
-<button id="switch" can-play>off</button>
+<button id="switch">off</button>
 
 <script type="module">
   import { playhtml } from "playhtml";
 
-  const el = document.getElementById("switch");
-  el.defaultData = { on: false };
-  el.onClick = (_e, { setData }) => setData((d) => { d.on = !d.on; });
-  el.updateElement = ({ element, data }) => {
-    element.classList.toggle("on", data.on);
-    element.textContent = data.on ? "on" : "off";
-  };
+  playhtml.register("switch", {
+    defaultData: { on: false },
+    onClick: (_event, { setData }) => {
+      setData((data) => {
+        data.on = !data.on;
+      });
+    },
+    updateElement: ({ element, data }) => {
+      element.classList.toggle("on", data.on);
+      element.textContent = data.on ? "on" : "off";
+    },
+  });
 
   playhtml.init();
 </script>
@@ -195,23 +209,24 @@ Most capability tags can share the same element. Each tag keeps its own data and
 `myDefaultAwareness` seeds a per-user ephemeral value; `setMyAwareness` broadcasts it; `updateElementAwareness` renders everyone's. Awareness does **not** persist — it's "who's here right now."
 
 ```html
-<div id="online" can-play></div>
+<div id="online"></div>
 
 <script type="module">
   import { playhtml } from "playhtml";
 
-  const el = document.getElementById("online");
-  el.myDefaultAwareness = "#2563eb";
-  el.updateElementAwareness = ({ element, awareness }) => {
-    element.replaceChildren(
-      ...awareness.map((color) => {
-        const dot = document.createElement("span");
-        dot.className = "dot";
-        dot.style.background = color;
-        return dot;
-      }),
-    );
-  };
+  playhtml.register("online", {
+    myDefaultAwareness: "#2563eb",
+    updateElementAwareness: ({ element, awareness }) => {
+      element.replaceChildren(
+        ...awareness.map((color) => {
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          dot.style.background = color;
+          return dot;
+        }),
+      );
+    },
+  });
 
   playhtml.init();
 </script>
@@ -229,15 +244,21 @@ Most capability tags can share the same element. Each tag keeps its own data and
 
 #### Reset shortcut
 
-Set `resetShortcut` so shift-clicking (or ctrl/alt/meta) resets the element to its `defaultData` for everyone:
+Put `resetShortcut` in the initializer so shift-clicking (or ctrl/alt/meta) resets the element to its `defaultData` for everyone:
 
 ```js
-el.resetShortcut = "shiftKey";
+playhtml.register("counter", {
+  defaultData: { count: 0 },
+  resetShortcut: "shiftKey",
+  updateElement: ({ element, data }) => {
+    element.textContent = String(data.count);
+  },
+});
 ```
 
 #### Dynamically-added elements
 
-`playhtml.init()` scans the DOM once. For elements you add later, call `playhtml.setupPlayElement(el)` after inserting them (and use [`selector-id`](/docs/advanced/dynamic-elements/) for many-of-a-kind elements). See [Dynamic elements](/docs/advanced/dynamic-elements/).
+`register` can run before the element exists and binds it when it appears. For dynamically added built-in or defined capabilities, call `playhtml.setupPlayElement(element)` after insertion. Use [`selector-id`](/docs/advanced/dynamic-elements/) for many-of-a-kind elements.
 
 :::note[Lists and data-driven UIs get verbose here]
 With `updateElement` you hand-build and diff the DOM yourself, which is painful for lists, chat, and anything computed from a collection. That's exactly what the [reactive view API](#reactive-view-api-experimental) below is for.
@@ -246,11 +267,10 @@ With `updateElement` you hand-build and diff the DOM yourself, which is painful 
 ### Reactive view API (experimental)
 
 <Aside type="caution" title="Experimental">
-  `playhtml.register` / `playhtml.define` and the `view` render function are new
-  and **experimental** — the surface may change in a future minor release based
-  on feedback. The imperative `can-play` API above keeps working unchanged, and
-  React's `withSharedState` is **stable**. Trying the view API? Tell us how it
-  goes in [#95](https://github.com/spencerc99/playhtml/issues/95).
+  The `view` renderer and lit-html helpers are experimental. `register`,
+  `define`, handles, and the imperative `updateElement` renderer are supported.
+  Trying `view`? Tell us how it goes in
+  [#95](https://github.com/spencerc99/playhtml/issues/95).
 </Aside>
 
 Instead of hand-writing DOM updates in `updateElement`, you can register a **`view`**: a pure function from state to a [lit-html](https://lit.dev/docs/libraries/standalone-templates/) template. playhtml patches only what changed when the data updates. It's the vanilla equivalent of what React's `withSharedState` already gives you.
@@ -264,7 +284,7 @@ import { playhtml, html, svg, repeat, classMap, styleMap, nothing } from "playht
 The element is an empty mount point; everything you see is rendered from state. `register` is callable before or after `init()` and before or after the element exists.
 
 ```html
-<div id="counter" can-play></div>
+<div id="counter"></div>
 
 <script type="module">
   import { playhtml, html } from "playhtml";
@@ -607,7 +627,7 @@ const Chats = withSharedState(
 ## Reference
 
 - Every `ElementInitializer` property: [Element API (`can-play`)](/docs/reference/element-api/)
-- Vanilla view API: [`register` / `define` / `view`](/docs/reference/view-api/)
+- Vanilla registration API: [`register` / `define` / `view`](/docs/reference/view-api/)
 - The `playhtml` object (setup, events, page data): [playhtml client](/docs/reference/playhtml-client/)
 - Presence & identity: [reference](/docs/reference/presence/)
 - React: [`@playhtml/react` API](/docs/reference/react-api/)

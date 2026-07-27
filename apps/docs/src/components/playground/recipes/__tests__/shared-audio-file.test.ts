@@ -10,27 +10,36 @@ describe("sharedAudioFileRecipe", () => {
       "/docs/examples/shared-audio-file/",
     );
     expect(sharedAudioFileRecipe.html).toContain(
-      'id="shared-audio-player" class="player" can-play',
+      'id="shared-audio-player" class="player"',
     );
     expect(sharedAudioFileRecipe.html).toContain("<audio");
     expect(sharedAudioFileRecipe.html).toContain("t-rex-roar.mp3");
   });
 
-  it("configures the element before playhtml initializes", () => {
+  it("registers the element before playhtml initializes", () => {
     const source = sharedAudioFileRecipe.html;
+    const registerIndex = source.indexOf(
+      'playhtml.register("shared-audio-player", {',
+    );
     const initIndex = source.indexOf("await playhtml.init");
 
-    expect(source.indexOf("player.defaultData")).toBeLessThan(initIndex);
-    expect(source.indexOf("player.updateElement")).toBeLessThan(initIndex);
-    expect(source.indexOf("player.onClick")).toBeLessThan(initIndex);
-    expect(source.indexOf("player.onMount")).toBeLessThan(initIndex);
+    expect(registerIndex).toBeGreaterThan(-1);
+    expect(registerIndex).toBeLessThan(initIndex);
+    expect(source.indexOf("updateElement:", registerIndex)).toBeLessThan(
+      initIndex,
+    );
+    expect(source.indexOf("onClick:", registerIndex)).toBeLessThan(initIndex);
+    expect(source.indexOf("onMount:", registerIndex)).toBeLessThan(initIndex);
   });
 
   it("writes shared data only from explicit controls", () => {
     const source = sharedAudioFileRecipe.html;
-    const updateStart = source.indexOf("player.updateElement");
-    const clickStart = source.indexOf("player.onClick");
-    const mountStart = source.indexOf("player.onMount");
+    const registerStart = source.indexOf(
+      'playhtml.register("shared-audio-player", {',
+    );
+    const updateStart = source.indexOf("updateElement:", registerStart);
+    const clickStart = source.indexOf("onClick:", registerStart);
+    const mountStart = source.indexOf("onMount:", registerStart);
     const initStart = source.indexOf("await playhtml.init");
 
     expect(source.slice(updateStart, clickStart)).not.toContain("setData(");

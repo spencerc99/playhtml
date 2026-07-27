@@ -1955,7 +1955,8 @@ function getElementInitializerValidationIssues(
   return issues;
 }
 
-// Read custom element properties set by CanPlayElement (React) on the DOM node
+// Read initializer properties from React elements and direct can-play
+// configurations that remain supported for compatibility.
 function getCustomElementProps(element: HTMLElement) {
   const el = element as any;
   const props: Partial<ElementInitializer> = {};
@@ -2280,11 +2281,11 @@ export interface PlayHTMLComponents {
   removePlayElement: typeof removePlayElement;
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  /** @experimental View API — register a custom element by id. */
+  /** Register a custom element by id. */
   register: typeof registerPlayElement;
-  /** @experimental View API — register a reusable capability by attribute name. */
+  /** Register a reusable capability by attribute name. */
   define: typeof definePlayCapability;
-  /** @experimental View API — get a handle for a bound element. */
+  /** Get a handle for a bound element. */
   getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<PlayStore["play"]>;
   /** @deprecated Use getHandle(elementId, tag) to access a bound element. */
@@ -2903,7 +2904,6 @@ function removePlayElement(element: Element | null) {
  * bound element. Reads/writes resolve the live handler lazily, so a handle
  * obtained before the element binds still works once it does.
  *
- * @experimental Part of the new view API; subject to change in a future minor.
  */
 export interface PlayElementHandle<T = any, U = any, V = any> {
   id: string;
@@ -3036,7 +3036,6 @@ function createPlayElementHandle(
  * binding happens once both are present. Returns a handle for reads/writes
  * from outside the view (e.g. form submit handlers).
  *
- * @experimental New view API; signature may change in a future minor release.
  */
 function registerPlayElement<T = any, U = any, V = any>(
   elementId: string,
@@ -3073,7 +3072,6 @@ function registerPlayElement<T = any, U = any, V = any>(
  *
  * @param capabilityName - The attribute name elements use to opt in (used in an
  *   attribute selector, e.g. `[can-note]`).
- * @experimental New view API; signature may change in a future minor release.
  */
 function definePlayCapability<T = any, U = any, V = any>(
   capabilityName: string,

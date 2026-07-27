@@ -93,7 +93,7 @@ export const synchronizedSoundRecipe: ExampleRecipe = {
       play/pause timeline, so people who arrive later join at the current beat.
     </p>
 
-    <section id="sound-transport" can-play>
+    <section id="sound-transport">
       <div class="audio-unlock">
         <button type="button" data-action="enable-audio">Enable audio</button>
         <p><strong>Do this in every window.</strong> Browsers require a local click before a page can make sound.</p>
@@ -267,66 +267,65 @@ export const synchronizedSoundRecipe: ExampleRecipe = {
       }
     }
 
-    soundTransport.defaultData = {
-      isPlaying: false,
-      startedAtMs: 0,
-      positionMs: 0,
-    };
+    playhtml.register("sound-transport", {
+      defaultData: {
+        isPlaying: false,
+        startedAtMs: 0,
+        positionMs: 0,
+      },
+      updateElement: ({ element, data }) => {
+        renderTimeline(element, data, Date.now());
+      },
+      onClick: (event, { data, setData }) => {
+        const button = event.target.closest("[data-action]");
+        if (!button) return;
 
-    soundTransport.updateElement = ({ element, data }) => {
-      renderTimeline(element, data, Date.now());
-    };
+        if (button.dataset.action === "enable-audio") {
+          void enableAudio();
+          return;
+        }
 
-    soundTransport.onClick = (event, { data, setData }) => {
-      const button = event.target.closest("[data-action]");
-      if (!button) return;
+        if (button.dataset.action === "send-cue") {
+          playhtml.dispatchPlayEvent({
+            type: CUE_EVENT,
+            eventPayload: { frequency: 880 },
+          });
+          return;
+        }
 
-      if (button.dataset.action === "enable-audio") {
-        void enableAudio();
-        return;
-      }
-
-      if (button.dataset.action === "send-cue") {
-        playhtml.dispatchPlayEvent({
-          type: CUE_EVENT,
-          eventPayload: { frequency: 880 },
-        });
-        return;
-      }
-
-      const nowMs = Date.now();
-      if (button.dataset.action === "toggle-transport") {
-        const positionMs = loopPositionMs(data, nowMs);
-        setData((draft) => {
-          draft.isPlaying = !data.isPlaying;
-          draft.positionMs = positionMs;
-          draft.startedAtMs = nowMs - positionMs;
-        });
-      }
-
-      if (button.dataset.action === "restart-transport") {
-        setData((draft) => {
-          draft.positionMs = 0;
-          draft.startedAtMs = nowMs;
-        });
-      }
-    };
-
-    soundTransport.onMount = ({ getData, getElement }) => {
-      let animationFrame = 0;
-      const tick = () => {
         const nowMs = Date.now();
-        const data = getData();
-        renderTimeline(getElement(), data, nowMs);
-        schedulePattern(data, nowMs);
+        if (button.dataset.action === "toggle-transport") {
+          const positionMs = loopPositionMs(data, nowMs);
+          setData((draft) => {
+            draft.isPlaying = !data.isPlaying;
+            draft.positionMs = positionMs;
+            draft.startedAtMs = nowMs - positionMs;
+          });
+        }
+
+        if (button.dataset.action === "restart-transport") {
+          setData((draft) => {
+            draft.positionMs = 0;
+            draft.startedAtMs = nowMs;
+          });
+        }
+      },
+      onMount: ({ getData, getElement }) => {
+        let animationFrame = 0;
+        const tick = () => {
+          const nowMs = Date.now();
+          const data = getData();
+          renderTimeline(getElement(), data, nowMs);
+          schedulePattern(data, nowMs);
+          animationFrame = requestAnimationFrame(tick);
+        };
         animationFrame = requestAnimationFrame(tick);
-      };
-      animationFrame = requestAnimationFrame(tick);
-      return () => {
-        cancelAnimationFrame(animationFrame);
-        silencePattern();
-      };
-    };
+        return () => {
+          cancelAnimationFrame(animationFrame);
+          silencePattern();
+        };
+      },
+    });
 
     await playhtml.init({
       developmentMode: true,

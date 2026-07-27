@@ -64,7 +64,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(playhtml.syncedStore["can-toggle"]["foo"]).toEqual({ on: false });
   });
 
-  it("keeps can-play element props scoped when combined with can-move", async () => {
+  it("keeps direct can-play property configuration compatible with can-move", async () => {
     const el = document.createElement("img");
     el.id = "composed-candle";
     el.setAttribute("can-play", "");

@@ -51,14 +51,14 @@ playhtml makes HTML elements collaborative and real-time. Here's what you need t
 
 CRITICAL REQUIREMENTS:
 - All elements MUST have a unique `id` attribute
-- Vanilla HTML: register a custom element with playhtml.register(id, { defaultData, view })
+- Vanilla HTML: register a custom element with `playhtml.register(id, initializer)`
 - React: Components must be wrapped in <PlayProvider>
 
 SETUP — Vanilla HTML (custom element with register + view):
-Put an empty mount point in the HTML, then register a `view` that renders it from
-state. `register` can be called before OR after `playhtml.init()` — there is no
-ordering rule. Drive writes from `@event` handlers in the template; the view
-re-renders automatically when data changes.
+Put an empty mount point in the HTML, then register an initializer. `register`
+can be called before OR after `playhtml.init()` and before OR after the element
+exists. Use `updateElement` for imperative DOM updates or the experimental
+`view` renderer for lit-html templates.
 
   <div id="myElement" can-play></div>
 
@@ -97,17 +97,21 @@ DATA TYPES (choose the right one):
 
 KEY APIs:
 
-Vanilla HTML (register + view):
+Vanilla HTML (register):
 - playhtml.register(id, init) → handle                         // Bind one element by id
 - playhtml.define(name, init)                                  // Reusable capability for every [name] element
 - init.defaultData = { ... }                                   // Initial state (REQUIRED)
-- init.view = ({ data, setData }) => html`...`                 // Render from state; events via @click (REQUIRED)
+- init.updateElement = ({ element, data }) => { ... }           // Supported imperative renderer
+- init.view = ({ data, setData }) => html`...`                 // Experimental declarative renderer
 - init.onMount = (ctx) => { ...; return cleanup }              // Setup loops/listeners; return a cleanup
 - init.resetShortcut = "shiftKey"                              // Keyboard reset
 - ctx.setData(value | (draft) => { ... })                     // Write shared state
 - ctx.localData / ctx.setLocalData(...)                        // Per-user, un-synced UI state
 - ctx.awareness / ctx.setMyAwareness(...)                      // Presence
 - ctx.requestUpdate()                                          // Repaint clock-driven views (timers)
+
+Use exactly one renderer: `updateElement` or `view`. Do not assign initializer
+fields directly to the DOM element in new code.
 
 React (withSharedState):
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)

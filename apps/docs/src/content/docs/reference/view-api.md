@@ -1,14 +1,14 @@
 ---
-title: "View API (vanilla)"
-description: "playhtml.register, playhtml.define, the view function, the element handle, and lit-html helpers."
+title: "Registration API (vanilla)"
+description: "Register one-off elements and reusable capabilities with initializer objects."
 sidebar:
   order: 6
 ---
 
-The vanilla API for building custom collaborative elements. For usage with side-by-side examples, see [Custom elements](/docs/custom-elements/); for the React equivalent, see the [React API](/docs/reference/react-api/).
+Register a custom collaborative element with one initializer object. Use `register` for one element and `define` for a reusable capability.
 
 :::caution[Experimental]
-This API (`register` / `define` / `view`) is new and **experimental** — signatures may change in a future minor release. The imperative `can-play` path (`updateElement`) is unaffected. Feedback welcome on [#95](https://github.com/spencerc99/playhtml/issues/95).
+The declarative `view` renderer and the lit-html helpers are experimental. `register`, `define`, handles, and the imperative `updateElement` renderer are supported APIs.
 :::
 
 ```js
@@ -17,14 +17,28 @@ import { playhtml, html, svg, repeat, classMap, styleMap, nothing } from "playht
 
 ## `playhtml.register(elementId, init)`
 
-Binds an initializer to one element by `id` and returns a [handle](#playelementhandle). Callable before or after `playhtml.init()` and before or after the element exists in the DOM — binding happens once both are present (like `customElements.define`).
+Binds an initializer to one element by `id` and returns a [handle](#playelementhandle). Call it before or after `playhtml.init()`. If the element does not exist yet, playhtml binds it when it appears.
 
 ```js
-const handle = playhtml.register("my-counter", init);
+const handle = playhtml.register("my-counter", {
+  defaultData: { count: 0 },
+  onClick: (_event, { setData }) => {
+    setData((data) => {
+      data.count += 1;
+    });
+  },
+  updateElement: ({ element, data }) => {
+    element.textContent = String(data.count);
+  },
+});
 ```
 
 - The element needs a stable, unique `id` (it _is_ the `elementId`). The `can-play` attribute is optional — `register` implies it.
 - Re-registering the same id replaces its initializer.
+
+:::note[Direct element properties]
+Direct assignments such as `element.defaultData = …` and `element.updateElement = …` remain supported for compatibility. Use `register` for new vanilla code so the initializer stays in one object and dynamic elements bind without a separate `setupPlayElement` call.
+:::
 
 ## `playhtml.define(capabilityName, init)`
 
@@ -46,13 +60,13 @@ const handle = playhtml.getHandle("card-1", "can-move");
 
 ## The `init` object
 
-The full annotated property list is on [Element API](/docs/reference/element-api/#initializer). The `view` argument is **`ctx`** — see [Callback context](/docs/reference/element-api/#callback-context-ctx).
+The full annotated property list is on [Element API](/docs/reference/element-api/#initializer). Both `updateElement` and `view` receive the [callback context](/docs/reference/element-api/#callback-context-ctx).
 
 `defaultData` must be an object (or a function that returns one), not a bare value like `0` or `""`. Use `{ count: 0 }`, not `0`.
 
 A valid initializer provides exactly one update path — `view` **or** `updateElement`.
 
-## The view context
+## The `view` context
 
 `view` receives **`ctx`** ([Callback context](/docs/reference/element-api/#callback-context-ctx)). Drive `ctx.setData` from `@click` handlers, not during render.
 
