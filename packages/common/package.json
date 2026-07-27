@@ -22,8 +22,7 @@
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",
-      "import": "./dist/playhtml-common.es.js",
-      "require": "./dist/playhtml-common.umd.js"
+      "import": "./dist/playhtml-common.es.js"
     }
   },
   "publishConfig": {

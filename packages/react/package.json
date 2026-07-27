@@ -35,8 +35,7 @@
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",
-      "import": "./dist/react-playhtml.es.js",
-      "require": "./dist/react-playhtml.umd.js"
+      "import": "./dist/react-playhtml.es.js"
     }
   },
   "scripts": {
