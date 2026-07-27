@@ -553,6 +553,28 @@ describe("ScrapCollector", () => {
     expect(observer().observed.has(uniqueIcons[19])).toBe(false);
   });
 
+  it("captures a same-geometry icon rendered at different sizes once per page", () => {
+    const small = createSvg({ width: 24, height: 24 });
+    small.setAttribute("viewBox", "0 0 24 24");
+    const large = createSvg({ width: 40, height: 40 });
+    large.setAttribute("viewBox", "0 0 24 24");
+    for (const svg of [small, large]) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M2 2h20v20z");
+      svg.appendChild(path);
+    }
+
+    collector.enable();
+    showForCapture([small, large]);
+
+    expect(emitted("svg-icon")).toHaveLength(1);
+    expect(emitted("svg-icon")[0]).toMatchObject({
+      kind: "svg-icon",
+      width: 24,
+      height: 24,
+    });
+  });
+
   it("captures cursor URLs and hotspots while ignoring fallback-only cursors", () => {
     const fallback = document.createElement("div");
     fallback.setAttribute("data-cursor", "pointer");

@@ -2,7 +2,7 @@
 // ABOUTME: Applies per-kind filtering, visibility timing, sanitization, and page-session limits.
 
 import { BaseCollector } from "./BaseCollector";
-import { getScrapKey, serializeSvg } from "./scrapUtils";
+import { getCanonicalScrapKey, serializeSvg } from "./scrapUtils";
 import type {
   ButtonScrapData,
   CursorScrapData,
@@ -10,6 +10,7 @@ import type {
   SvgIconScrapData,
 } from "./types";
 import { getFaviconUrl } from "../utils/pageMetadata";
+import { extractDomain } from "../utils/urlNormalization";
 
 const MIN_IMAGE_DISPLAY_SIZE = 80;
 const MIN_IMAGE_NATURAL_SIZE = 50;
@@ -84,10 +85,10 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private observedButtons = new Set<Element>();
   private observedSvgIcons = new Set<SVGSVGElement>();
   private loadHandlers = new Map<HTMLImageElement, () => void>();
-  private seenImageSources = new Set<string>();
-  private seenButtonKeys = new Set<string>();
-  private seenSvgKeys = new Set<string>();
-  private seenCursorUrls = new Set<string>();
+  private seenCanonicalImageKeys = new Set<string>();
+  private seenCanonicalButtonKeys = new Set<string>();
+  private seenCanonicalSvgKeys = new Set<string>();
+  private seenCanonicalCursorKeys = new Set<string>();
   private imageCaptureCount = 0;
   private buttonCaptureCount = 0;
   private svgCaptureCount = 0;
@@ -149,10 +150,10 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.observedImages.clear();
     this.observedButtons.clear();
     this.observedSvgIcons.clear();
-    this.seenImageSources.clear();
-    this.seenButtonKeys.clear();
-    this.seenSvgKeys.clear();
-    this.seenCursorUrls.clear();
+    this.seenCanonicalImageKeys.clear();
+    this.seenCanonicalButtonKeys.clear();
+    this.seenCanonicalSvgKeys.clear();
+    this.seenCanonicalCursorKeys.clear();
     this.imageCaptureCount = 0;
     this.buttonCaptureCount = 0;
     this.svgCaptureCount = 0;
@@ -273,12 +274,15 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
   }
 
+  private pageDomain(): string {
+    return extractDomain(window.location.href);
+  }
+
   private captureImage(image: HTMLImageElement): void {
     if (!this.enabled || this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) return;
 
     const src = image.currentSrc || image.src;
     if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
-    if (this.seenImageSources.has(src)) return;
 
     const bounds = image.getBoundingClientRect();
     if (
@@ -294,10 +298,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       return;
     }
 
-    const faviconUrl = getFaviconUrl();
-    this.seenImageSources.add(src);
-    this.imageCaptureCount++;
-    this.emit({
+    const data: ScrapEventData = {
       kind: "image",
       src,
       ...(image.alt ? { alt: image.alt } : {}),
@@ -306,6 +307,15 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       displayWidth: bounds.width,
       displayHeight: bounds.height,
       pageTitle: document.title,
+    };
+    const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
+    if (this.seenCanonicalImageKeys.has(canonicalKey)) return;
+
+    const faviconUrl = getFaviconUrl();
+    this.seenCanonicalImageKeys.add(canonicalKey);
+    this.imageCaptureCount++;
+    this.emit({
+      ...data,
       ...(faviconUrl ? { faviconUrl } : {}),
     });
 
@@ -343,21 +353,23 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       : undefined;
     if (!text && !innerSvg) return;
 
-    const faviconUrl = getFaviconUrl();
     const data: ButtonScrapData = {
       kind: "button",
       text,
       styles,
       ...(innerSvg ? { innerSvg } : {}),
       pageTitle: document.title,
-      ...(faviconUrl ? { faviconUrl } : {}),
     };
-    const key = getScrapKey(data);
-    if (this.seenButtonKeys.has(key)) return;
+    const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
+    if (this.seenCanonicalButtonKeys.has(canonicalKey)) return;
 
-    this.seenButtonKeys.add(key);
+    const faviconUrl = getFaviconUrl();
+    this.seenCanonicalButtonKeys.add(canonicalKey);
     this.buttonCaptureCount++;
-    this.emit(data);
+    this.emit({
+      ...data,
+      ...(faviconUrl ? { faviconUrl } : {}),
+    });
 
     if (this.buttonCaptureCount >= MAX_BUTTONS_PER_PAGE) {
       this.stopObservingButtons();
@@ -434,21 +446,23 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     });
     if (!markup) return;
 
-    const faviconUrl = getFaviconUrl();
     const data: SvgIconScrapData = {
       kind: "svg-icon",
       markup,
       width: bounds.width,
       height: bounds.height,
       pageTitle: document.title,
-      ...(faviconUrl ? { faviconUrl } : {}),
     };
-    const key = getScrapKey(data);
-    if (this.seenSvgKeys.has(key)) return;
+    const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
+    if (this.seenCanonicalSvgKeys.has(canonicalKey)) return;
 
-    this.seenSvgKeys.add(key);
+    const faviconUrl = getFaviconUrl();
+    this.seenCanonicalSvgKeys.add(canonicalKey);
     this.svgCaptureCount++;
-    this.emit(data);
+    this.emit({
+      ...data,
+      ...(faviconUrl ? { faviconUrl } : {}),
+    });
 
     if (this.svgCaptureCount >= MAX_SVG_ICONS_PER_PAGE) {
       this.stopObservingSvgIcons();
@@ -462,15 +476,8 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.lastCursorCheckAt = now;
 
     const cursorImage = this.parseCursorImage(getComputedStyle(event.target).cursor);
-    if (
-      !cursorImage ||
-      cursorImage.url.startsWith("blob:") ||
-      this.seenCursorUrls.has(cursorImage.url)
-    ) {
-      return;
-    }
+    if (!cursorImage || cursorImage.url.startsWith("blob:")) return;
 
-    const faviconUrl = getFaviconUrl();
     const data: CursorScrapData = {
       kind: "cursor",
       url: cursorImage.url,
@@ -481,10 +488,16 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
         ? { hotspotY: cursorImage.hotspotY }
         : {}),
       pageTitle: document.title,
-      ...(faviconUrl ? { faviconUrl } : {}),
     };
-    this.seenCursorUrls.add(getScrapKey(data));
-    this.emit(data);
+    const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
+    if (this.seenCanonicalCursorKeys.has(canonicalKey)) return;
+
+    const faviconUrl = getFaviconUrl();
+    this.seenCanonicalCursorKeys.add(canonicalKey);
+    this.emit({
+      ...data,
+      ...(faviconUrl ? { faviconUrl } : {}),
+    });
   };
 
   private parseCursorImage(cursor: string): CursorImage | undefined {

@@ -7,7 +7,7 @@ import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData } from '../collectors/types'
-import { getScrapKey } from '../collectors/scrapUtils'
+import { getCanonicalScrapKey, getScrapKey } from '../collectors/scrapUtils'
 import {
   ensurePlayerIdentity,
   getPlayerProfile,
@@ -134,6 +134,104 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 }
 
 const store = new LocalEventStore()
+
+/**
+ * Storage-time dedup for scrap ("element") events: drops incoming events
+ * whose canonical identity (see getCanonicalScrapKey) already exists in the
+ * store, so near-duplicates captured across pages/sessions are never
+ * persisted. `knownCanonicalScrapKeys` is lazily populated by scanning
+ * existing stored element events on first use, then kept current as new
+ * events are accepted. This matches the render-time dedup in ScrapCollage's
+ * canonicalScrapKey, but skips persistence entirely instead of collapsing
+ * duplicates at render.
+ *
+ * The set is rebuilt via the same lazy scan on every service-worker restart
+ * (MV3 workers are short-lived) — `knownCanonicalScrapKeysInitPromise` makes
+ * sure two STORE_EVENTS batches arriving before the scan completes don't
+ * both trigger a scan or race past each other.
+ */
+const knownCanonicalScrapKeys = new Set<string>()
+let knownCanonicalScrapKeysInitialized = false
+let knownCanonicalScrapKeysInitPromise: Promise<void> | null = null
+
+function resolveScrapEventDomain(event: CollectionEvent): string {
+  return event.domain || extractDomain(event.meta.url)
+}
+
+async function ensureKnownCanonicalScrapKeys(): Promise<void> {
+  if (knownCanonicalScrapKeysInitialized) return
+  if (knownCanonicalScrapKeysInitPromise) return knownCanonicalScrapKeysInitPromise
+
+  knownCanonicalScrapKeysInitPromise = (async () => {
+    const existing = await store.queryByType('element')
+    for (const event of existing) {
+      const kind = (event.data as { kind?: unknown } | null)?.kind
+      if (
+        kind !== 'image' &&
+        kind !== 'button' &&
+        kind !== 'svg-icon' &&
+        kind !== 'cursor'
+      ) {
+        continue
+      }
+      const domain = resolveScrapEventDomain(event)
+      const canonicalKey = getCanonicalScrapKey(domain, event.data as ScrapEventData)
+      knownCanonicalScrapKeys.add(canonicalKey)
+    }
+  })()
+
+  try {
+    await knownCanonicalScrapKeysInitPromise
+    knownCanonicalScrapKeysInitialized = true
+  } finally {
+    // Cleared so a failed scan retries on the next batch; a successful scan
+    // is latched by knownCanonicalScrapKeysInitialized instead.
+    knownCanonicalScrapKeysInitPromise = null
+  }
+}
+
+/**
+ * Filters incoming events, dropping "element" (scrap) events whose canonical
+ * identity is already known — either already persisted, or a duplicate of
+ * another event earlier in this same batch. Non-element events pass through
+ * unchanged. Accepted scrap events are added to the known-keys set so later
+ * batches (and later events within this batch) see them as duplicates too.
+ */
+async function dedupeScrapEvents(events: CollectionEvent[]): Promise<CollectionEvent[]> {
+  const hasElementEvent = events.some((event) => event.type === 'element')
+  if (!hasElementEvent) return events
+
+  await ensureKnownCanonicalScrapKeys()
+
+  const accepted: CollectionEvent[] = []
+  for (const event of events) {
+    if (event.type !== 'element') {
+      accepted.push(event)
+      continue
+    }
+
+    const kind = (event.data as { kind?: unknown } | null)?.kind
+    if (
+      kind !== 'image' &&
+      kind !== 'button' &&
+      kind !== 'svg-icon' &&
+      kind !== 'cursor'
+    ) {
+      accepted.push(event)
+      continue
+    }
+
+    const domain = resolveScrapEventDomain(event)
+    const canonicalKey = getCanonicalScrapKey(domain, event.data as ScrapEventData)
+    if (knownCanonicalScrapKeys.has(canonicalKey)) continue
+
+    knownCanonicalScrapKeys.add(canonicalKey)
+    accepted.push(event)
+  }
+
+  return accepted
+}
+
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
 const LOCAL_RAW_EVENT_RETENTION_MS = LOCAL_RAW_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000
@@ -415,7 +513,8 @@ export default defineBackground(() => {
 
     if (message.type === 'STORE_EVENTS') {
       const events = (message.events || []) as CollectionEvent[]
-      store.addEvents(events)
+      dedupeScrapEvents(events)
+        .then((dedupedEvents) => store.addEvents(dedupedEvents))
         .then(() => {
           // A navigation focus is the canonical "user is now looking at this
           // domain" signal — the moment a domain-visit milestone could fire
