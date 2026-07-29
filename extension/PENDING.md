@@ -1,6 +1,7 @@
 # Unreleased
 
 - Keep newly collected activity queued when local storage temporarily fails.
+- See a visible patina on Wikipedia links after their first click.
 
 <!--
 Add a bullet here for each meaningful user-facing change that ships in the
