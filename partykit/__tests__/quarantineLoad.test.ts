@@ -13,8 +13,28 @@ class FakeDurableObject {
   ) {}
 }
 
+// Stands in for the QUARANTINE_CONTROL KV namespace: the operator control plane
+// that is readable before hydration, unlike anything in Durable Object storage.
+const kvStore = new Map<string, string>();
+let kvFailure: Error | null = null;
+
+const quarantineKvStub = {
+  async get(key: string) {
+    if (kvFailure) throw kvFailure;
+    return kvStore.get(key) ?? null;
+  },
+  async put(key: string, value: string) {
+    if (kvFailure) throw kvFailure;
+    kvStore.set(key, value);
+  },
+  async delete(key: string) {
+    if (kvFailure) throw kvFailure;
+    kvStore.delete(key);
+  },
+};
+
 mock.module("cloudflare:workers", () => ({
-  env: {},
+  env: { QUARANTINE_CONTROL: quarantineKvStub },
   DurableObject: FakeDurableObject,
   WorkerEntrypoint: class {},
 }));
@@ -25,6 +45,10 @@ type PersistedRow = { document: string | null };
 const persistedRow: PersistedRow = { document: null };
 let upsertCalls: Array<{ name: string; document: string }> = [];
 
+// Counts reads of the documents row. The load-backoff contract requires that a
+// deferred room never touches Supabase at all, which this makes observable.
+let documentReadCount = 0;
+
 const supabaseStub = {
   from() {
     return {
@@ -32,13 +56,16 @@ const supabaseStub = {
         return {
           eq() {
             return {
-              maybeSingle: async () => ({
-                data:
-                  persistedRow.document === null
-                    ? null
-                    : { document: persistedRow.document },
-                error: null,
-              }),
+              maybeSingle: async () => {
+                documentReadCount += 1;
+                return {
+                  data:
+                    persistedRow.document === null
+                      ? null
+                      : { document: persistedRow.document },
+                  error: null,
+                };
+              },
             };
           },
         };
@@ -55,6 +82,7 @@ const supabaseStub = {
 mock.module(`${import.meta.dir}/../db.ts`, () => ({ supabase: supabaseStub }));
 
 const { PartyServer } = await import(`${import.meta.dir}/../party.ts`);
+const { AdminHandler } = await import(`${import.meta.dir}/../admin.ts`);
 
 // Minimal in-memory stand-ins for Durable Object storage.
 class FakeStorage {
@@ -92,13 +120,14 @@ class FakeStorage {
 // `name` is a readonly accessor on the server base class, so room fields are
 // installed as own properties rather than assigned.
 function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
-  return Object.create(PartyServer.prototype, {
+  const room = Object.create(PartyServer.prototype, {
     ctx: { value: { storage }, writable: true },
     name: { value: name, writable: true },
     document: { value: doc ?? new Y.Doc(), writable: true },
     persistenceMode: { value: { kind: "available" }, writable: true },
     quarantine: { value: null, writable: true },
     compactionTooLargeBytes: { value: null, writable: true },
+    loadDeferredUntil: { value: null, writable: true },
     isSkippingSave: { value: false, writable: true },
     lastKnownDocumentBytes: { value: 0, writable: true },
     hasWarnedDocumentSize: { value: false, writable: true },
@@ -110,6 +139,11 @@ function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
     emptyRoomCompactionPromise: { value: null, writable: true },
     getConnections: { value: () => [], writable: true },
   }) as any;
+
+  // Class field initializers do not run for Object.create, so the admin handler
+  // is wired up explicitly.
+  room.adminHandler = new AdminHandler(room);
+  return room;
 }
 
 function createRoom(name = "example-room") {
@@ -158,6 +192,9 @@ const COMPACT_LETHAL_DOCUMENT = encodeDoc(COMPACT_LETHAL_DOC);
 beforeEach(() => {
   persistedRow.document = null;
   upsertCalls = [];
+  documentReadCount = 0;
+  kvStore.clear();
+  kvFailure = null;
 });
 
 describe("load path", () => {
@@ -198,17 +235,128 @@ describe("load path", () => {
     expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
   });
 
-  // Below the high threshold the room keeps trying: most load failures are
-  // environmental and clear on their own.
-  test("prior load failures do not stop hydration below the threshold", async () => {
+  // Previously this asserted that a failing room re-read and re-hydrated on
+  // every request until it hit the quarantine threshold, which is what turned a
+  // single OOM into a crash loop. The contract is now a hard backoff window.
+  test("a room inside its backoff window does not read the document", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
-    storage.values.set("quarantineLoadAttempts", 5);
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 5 * 60_000);
 
     await room.onLoad();
 
+    // Supabase was never queried, and nothing was hydrated.
+    expect(documentReadCount).toBe(0);
+    expect(docIsEmpty(room.document)).toBe(true);
+    expect(room.isLoadDeferred()).toBe(true);
+    // A deferred room is NOT quarantined: no transient mode, no ephemeral service.
     expect(room.isQuarantined()).toBe(false);
+  });
+
+  test("a deferred room answers requests with 503 and Retry-After", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 90_000);
+    await room.onLoad();
+
+    const response = await room.onRequest(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: "{}",
+      })
+    );
+
+    expect(response.status).toBe(503);
+    const retryAfter = Number(response.headers.get("retry-after"));
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(90);
+    const body = await response.json();
+    expect(body.error).toBe("room_load_deferred");
+    // Still zero reads: answering a request must not trigger a load either.
+    expect(documentReadCount).toBe(0);
+  });
+
+  // Admin has to stay reachable, otherwise a room that will not load cannot be
+  // inspected or quarantined.
+  test("admin routes still work while a room is deferred", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 60_000);
+    await room.onLoad();
+
+    const response = await room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.failures.load).toBe(2);
+  });
+
+  test("a connection to a deferred room is closed, not joined", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 60_000);
+    await room.onLoad();
+
+    const closes: Array<{ code: number; reason: string }> = [];
+    const connection = {
+      id: "c1",
+      close: (code: number, reason: string) => closes.push({ code, reason }),
+      setState: () => {},
+      state: {},
+    };
+
+    await room.onConnect(connection, {
+      request: new Request("https://example.com/parties/main/example-room"),
+    });
+
+    expect(closes).toEqual([{ code: 1013, reason: "Room Load Deferred" }]);
+  });
+
+  // At the deadline exactly one attempt proceeds. The next deadline is written
+  // before hydration, so requests racing the boundary in a fresh isolate see a
+  // future deadline instead of all retrying together.
+  test("the deadline allows a single attempt and re-arms before hydrating", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+
+    const deadlineWrites: number[] = [];
+    const originalPut = storage.put.bind(storage);
+    storage.put = async (key: string, value: unknown) => {
+      if (key === "loadRetryAfter") {
+        // Record whether the document had been read by the time this was written.
+        deadlineWrites.push(documentReadCount);
+      }
+      return originalPut(key, value);
+    };
+
+    await room.onLoad();
+
+    // The new deadline was committed while the read count was still zero.
+    expect(deadlineWrites).toEqual([0]);
+    expect(room.isLoadDeferred()).toBe(false);
+    expect(documentReadCount).toBe(1);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
+  });
+
+  test("a first-time failure is not deferred, so healthy rooms are unaffected", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+
+    await room.onLoad();
+
+    expect(room.isLoadDeferred()).toBe(false);
+    expect(documentReadCount).toBe(1);
   });
 
   test("eight consecutive load failures quarantine as a last resort", async () => {
@@ -228,12 +376,13 @@ describe("load path", () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
     storage.values.set("quarantineLoadAttempts", 4);
-    storage.values.set("failureRetryAfter", Date.now() + 60_000);
+    // Already past the deadline, so this start is the one allowed attempt.
+    storage.values.set("loadRetryAfter", Date.now() - 1000);
 
     await room.onLoad();
 
     expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
-    expect(storage.values.get("failureRetryAfter")).toBeUndefined();
+    expect(storage.values.get("loadRetryAfter")).toBeUndefined();
   });
 });
 
@@ -295,6 +444,31 @@ describe("in-DO compaction size gate", () => {
     expect(await room.getCompactionParkedBytes()).toBeNull();
   });
 
+  // A later disconnect would otherwise re-schedule the compaction that was just
+  // parked, putting the room straight back into the crash loop.
+  test("a parked room does not reschedule compaction on disconnect", async () => {
+    const storage = new FakeStorage();
+    const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
+    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
+    await room.compactEmptyRoomDocument();
+    expect(await room.getCompactionParkedBytes()).toBeGreaterThan(0);
+    storage.setAlarmCalls = [];
+
+    // The last visitor leaves again.
+    await room.scheduleEmptyRoomCompaction();
+
+    expect(storage.values.get("emptyRoomCompactAfter")).toBeUndefined();
+    expect(storage.setAlarmCalls).toEqual([]);
+  });
+
+  test("an unparked room still schedules compaction on disconnect", async () => {
+    const { room, storage } = createRoom();
+
+    await room.scheduleEmptyRoomCompaction();
+
+    expect(storage.values.get("emptyRoomCompactAfter")).toBeGreaterThan(0);
+  });
+
   test("parking is reported once, not on every attempt", async () => {
     const storage = new FakeStorage();
     const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
@@ -341,7 +515,7 @@ describe("alarm failure backoff", () => {
 
     await room.onAlarm();
 
-    const retryAfter = storage.values.get("failureRetryAfter") as number;
+    const retryAfter = storage.values.get("alarmRetryAfter") as number;
     // First failure backs off by one minute, absorbing the platform's rapid retry.
     expect(retryAfter).toBeGreaterThanOrEqual(before + 60_000);
     // The alarm is re-armed at the backoff time, and no work ran.
@@ -356,7 +530,7 @@ describe("alarm failure backoff", () => {
       storage.values.set("alarmFailureAttempts", failures);
       const before = Date.now();
       await room.onAlarm();
-      delays.push((storage.values.get("failureRetryAfter") as number) - before);
+      delays.push((storage.values.get("alarmRetryAfter") as number) - before);
     }
 
     expect(delays[0]).toBeLessThan(delays[1]);
@@ -367,13 +541,13 @@ describe("alarm failure backoff", () => {
     const { room, storage } = createRoom();
     storage.values.set("alarmFailureAttempts", 1);
     // The backoff window has already passed.
-    storage.values.set("failureRetryAfter", Date.now() - 1000);
+    storage.values.set("alarmRetryAfter", Date.now() - 1000);
 
     await room.onAlarm();
 
     // The alarm ran its work and cleared the failure history.
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
-    expect(storage.values.get("failureRetryAfter")).toBeUndefined();
+    expect(storage.values.get("alarmRetryAfter")).toBeUndefined();
   });
 
   test("eight consecutive alarm failures quarantine as a last resort", async () => {
@@ -403,6 +577,132 @@ describe("alarm failure backoff", () => {
 
     expect(storage.setAlarmCalls).toEqual([]);
     expect(storage.alarm).toBeNull();
+  });
+});
+
+describe("separate retry ladders", () => {
+  // A shared deadline meant a healthy load erased the alarm's backoff, letting
+  // compaction start crash-looping again.
+  test("a successful load leaves the alarm backoff intact", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    const alarmDeadline = Date.now() + 30 * 60_000;
+    storage.values.set("alarmFailureAttempts", 3);
+    storage.values.set("alarmRetryAfter", alarmDeadline);
+
+    await room.onLoad();
+
+    expect(storage.values.get("alarmRetryAfter")).toBe(alarmDeadline);
+    expect(storage.values.get("alarmFailureAttempts")).toBe(3);
+  });
+
+  test("a successful alarm leaves the load backoff intact", async () => {
+    const { room, storage } = createRoom();
+    const loadDeadline = Date.now() + 30 * 60_000;
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", loadDeadline);
+
+    await room.onAlarm();
+
+    expect(storage.values.get("loadRetryAfter")).toBe(loadDeadline);
+    expect(storage.values.get("quarantineLoadAttempts")).toBe(2);
+  });
+
+  test("status reports each deadline separately", async () => {
+    const { room, storage } = createRoom();
+    storage.values.set("loadRetryAfter", 1779829545000);
+    storage.values.set("alarmRetryAfter", 1779829999000);
+
+    const body = await room.getQuarantineStatusBody();
+
+    expect(body.failures.loadRetryAfter).toBe("2026-05-26T21:05:45.000Z");
+    expect(body.failures.alarmRetryAfter).toBe("2026-05-26T21:13:19.000Z");
+  });
+});
+
+describe("external quarantine control plane", () => {
+  // Every admin route runs after hydration, so a room that OOMs on start can
+  // only be stopped by a flag consulted before hydration happens.
+  test("a KV-flagged room quarantines without reading the document", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+    kvStore.set("quarantine:example-room", "microcosmos incident");
+
+    await room.applyExternalQuarantineFlag();
+
+    expect(room.isQuarantined()).toBe(true);
+    expect(room.getQuarantineState().reason).toBe("manual");
+    expect(room.getQuarantineState().detail).toBe("microcosmos incident");
+    expect(documentReadCount).toBe(0);
+
+    // And the subsequent load never hydrates either.
+    await room.onLoad();
+    expect(documentReadCount).toBe(0);
+    expect(docIsEmpty(room.document)).toBe(true);
+  });
+
+  test("setting quarantine writes the flag that survives a crashing room", async () => {
+    const { room } = createRoom();
+
+    await room.enterQuarantine({
+      reason: "manual",
+      detail: "operator note",
+      failureKind: null,
+      failureCount: 0,
+    });
+
+    expect(kvStore.get("quarantine:example-room")).toBe("operator note");
+  });
+
+  test("clearing quarantine removes the external flag", async () => {
+    const { room } = createRoom();
+    await room.enterQuarantine({
+      reason: "manual",
+      detail: "operator note",
+      failureKind: null,
+      failureCount: 0,
+    });
+
+    await room.clearQuarantine();
+
+    expect(kvStore.has("quarantine:example-room")).toBe(false);
+  });
+
+  test("set and clear round-trip through KV across restarts", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    await room.enterQuarantine({
+      reason: "manual",
+      detail: "operator note",
+      failureKind: null,
+      failureCount: 0,
+    });
+
+    // A brand new isolate with EMPTY durable storage still sees the flag.
+    const freshStorage = new FakeStorage();
+    const restarted = buildRoom(freshStorage, "example-room");
+    await restarted.applyExternalQuarantineFlag();
+    expect(restarted.isQuarantined()).toBe(true);
+
+    await restarted.clearQuarantine();
+
+    const afterClear = buildRoom(new FakeStorage(), "example-room");
+    await afterClear.applyExternalQuarantineFlag();
+    expect(afterClear.isQuarantined()).toBe(false);
+  });
+
+  // Manual quarantine is an operator tool, not a correctness gate: a KV outage
+  // must never take rooms offline.
+  test("a KV read failure fails open", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+    kvFailure = new Error("kv unavailable");
+
+    await room.applyExternalQuarantineFlag();
+    await room.onLoad();
+
+    expect(room.isQuarantined()).toBe(false);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
   });
 });
 
@@ -436,7 +736,8 @@ describe("manual quarantine", () => {
     const { room, storage } = createRoom();
     storage.values.set("alarmFailureAttempts", 8);
     storage.values.set("quarantineLoadAttempts", 3);
-    storage.values.set("failureRetryAfter", Date.now() + 1000);
+    storage.values.set("loadRetryAfter", Date.now() + 1000);
+    storage.values.set("alarmRetryAfter", Date.now() + 1000);
     await room.enterQuarantine({
       reason: "repeated-failures",
       detail: "alarm work failed 8 times in a row",
@@ -448,7 +749,8 @@ describe("manual quarantine", () => {
 
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
     expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
-    expect(storage.values.get("failureRetryAfter")).toBeUndefined();
+    expect(storage.values.get("loadRetryAfter")).toBeUndefined();
+    expect(storage.values.get("alarmRetryAfter")).toBeUndefined();
   });
 
   test("a quarantined room resumes quarantine on restart without hydrating", async () => {

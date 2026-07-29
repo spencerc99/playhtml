@@ -239,7 +239,8 @@ describe("createQuarantineStatusBody", () => {
       failureThreshold: 8,
       loadFailures: 0,
       alarmFailures: 0,
-      retryAfter: null,
+      loadRetryAfter: null,
+      alarmRetryAfter: null,
       compactionParkedBytes: null,
     });
 
@@ -248,7 +249,8 @@ describe("createQuarantineStatusBody", () => {
       load: 0,
       alarm: 0,
       quarantineAfter: 8,
-      retryAfter: null,
+      loadRetryAfter: null,
+      alarmRetryAfter: null,
     });
     expect(body.compaction.parked).toBe(false);
   });
@@ -268,7 +270,8 @@ describe("createQuarantineStatusBody", () => {
       failureThreshold: 8,
       loadFailures: 0,
       alarmFailures: 8,
-      retryAfter: 1779829545000,
+      loadRetryAfter: null,
+      alarmRetryAfter: 1779829545000,
       compactionParkedBytes: 7 * MB,
     });
 
@@ -276,7 +279,9 @@ describe("createQuarantineStatusBody", () => {
     expect(body.reason).toBe("repeated-failures");
     expect(body.quarantinedAt).toBe("2026-05-26T21:05:45.000Z");
     expect(body.failures.alarm).toBe(8);
-    expect(body.failures.retryAfter).toBe("2026-05-26T21:05:45.000Z");
+    expect(body.failures.alarmRetryAfter).toBe("2026-05-26T21:05:45.000Z");
+    // A load that never failed keeps a null deadline of its own.
+    expect(body.failures.loadRetryAfter).toBeNull();
     expect(body.compaction).toEqual({
       parked: true,
       documentBytes: 7 * MB,

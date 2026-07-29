@@ -184,7 +184,8 @@ export function createQuarantineStatusBody({
   failureThreshold,
   loadFailures,
   alarmFailures,
-  retryAfter,
+  loadRetryAfter,
+  alarmRetryAfter,
   compactionParkedBytes,
 }: {
   roomName: string;
@@ -194,7 +195,8 @@ export function createQuarantineStatusBody({
   failureThreshold: number;
   loadFailures: number;
   alarmFailures: number;
-  retryAfter: number | null;
+  loadRetryAfter: number | null;
+  alarmRetryAfter: number | null;
   compactionParkedBytes: number | null;
 }) {
   return {
@@ -210,8 +212,13 @@ export function createQuarantineStatusBody({
       load: loadFailures,
       alarm: alarmFailures,
       quarantineAfter: failureThreshold,
-      retryAfter:
-        retryAfter === null ? null : new Date(retryAfter).toISOString(),
+      // Separate deadlines: a healthy load must not imply the alarm is healthy.
+      loadRetryAfter:
+        loadRetryAfter === null ? null : new Date(loadRetryAfter).toISOString(),
+      alarmRetryAfter:
+        alarmRetryAfter === null
+          ? null
+          : new Date(alarmRetryAfter).toISOString(),
     },
     compaction: {
       parked: compactionParkedBytes !== null,

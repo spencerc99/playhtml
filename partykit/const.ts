@@ -24,8 +24,11 @@ export const STORAGE_KEYS = {
   // Counts alarm runs that started but never reported completion, which is how
   // an OOM inside compaction is detected
   alarmFailureAttempts: "alarmFailureAttempts",
-  // Earliest time the alarm should retry risky work after repeated failures
-  failureRetryAfter: "failureRetryAfter",
+  // Earliest time each risky operation may be retried after repeated failures.
+  // Load and alarm keep separate deadlines so a success on one never erases the
+  // other's backoff.
+  loadRetryAfter: "loadRetryAfter",
+  alarmRetryAfter: "alarmRetryAfter",
   // Set when a document is too large to compact inside the Durable Object and
   // must be compacted externally
   compactionParked: "compactionParked",
