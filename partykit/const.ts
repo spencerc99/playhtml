@@ -21,6 +21,14 @@ export const STORAGE_KEYS = {
   quarantine: "quarantine",
   // Counts hydration attempts that started but never reported completion
   quarantineLoadAttempts: "quarantineLoadAttempts",
+  // Counts alarm runs that started but never reported completion, which is how
+  // an OOM inside compaction is detected
+  alarmFailureAttempts: "alarmFailureAttempts",
+  // Earliest time the alarm should retry risky work after repeated failures
+  failureRetryAfter: "failureRetryAfter",
+  // Set when a document is too large to compact inside the Durable Object and
+  // must be compacted externally
+  compactionParked: "compactionParked",
 };
 // Subscriber lease configuration (default 12 hours)
 export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
@@ -61,13 +69,37 @@ export const DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES = (() => {
 export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
   return 1024 * 1024 * 40;
 })();
-// Persisted documents above this size are never hydrated. Lethality varies with
-// isolate co-tenancy: 7-8MB rooms have OOMed on load, but four healthy production
-// rooms also sit in the 6-8MB band, so the size gate only catches the absurd
-// (10MB+); empirically-lethal smaller documents are caught by the crash-loop
-// counter instead (3 failed loads -> quarantine).
+// Documents above this size are reported as a load risk. Lethality varies with
+// isolate co-tenancy: 7-8MB rooms have OOMed, but healthy production rooms also
+// sit in the 6-8MB band, so size alone never blocks a load or quarantines a
+// room. It is a warning; repeated real failures are what drive backoff.
 export const DEFAULT_QUARANTINE_DOCUMENT_BYTES = (() => {
   return 1024 * 1024 * 10;
+})();
+// In-DO compaction rebuilds the document and holds the live Y.Doc, its JSON
+// projection, and the rebuilt copy at once, so it costs several times the
+// document size in peak memory. The ceiling therefore sits far below the load
+// ceiling: above this, compaction is skipped and the document must be compacted
+// externally. Skipping is not a quarantine -- the room loads and runs normally.
+export const DEFAULT_COMPACTION_MAX_IN_DO_BYTES = (() => {
+  return 1024 * 1024 * 4;
+})();
+// Consecutive failures of the same risky operation before the room is
+// quarantined as a last resort. The backoff ladder below is expected to absorb
+// transient failures long before this is reached.
+export const DEFAULT_QUARANTINE_FAILURE_THRESHOLD = (() => {
+  return 8;
+})();
+// Retry backoff for risky work that keeps failing. Cloudflare retries a failed
+// alarm within seconds, which is what turns one OOM into a crash loop, so the
+// alarm is rescheduled onto this ladder instead: 1min, 5min, 20min, 1h, 6h,
+// then capped. Failures self-heal -- a success clears the counter and restores
+// the normal cadence.
+export const DEFAULT_FAILURE_BACKOFF_MS = (() => {
+  return 60 * 1000;
+})();
+export const DEFAULT_FAILURE_BACKOFF_MAX_MS = (() => {
+  return 60 * 60 * 1000 * 24;
 })();
 export const DEFAULT_SUPABASE_LOAD_TIMEOUT_MS = (() => {
   return 5000;

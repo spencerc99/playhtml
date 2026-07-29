@@ -106,6 +106,9 @@ export class AdminHandler {
       if (path.includes("admin/quarantine-status") && request.method === "GET") {
         return this.handleAdminQuarantineStatus(request);
       }
+      if (path.includes("admin/quarantine-set") && request.method === "POST") {
+        return this.handleAdminQuarantineSet(request);
+      }
       if (
         path.includes("admin/quarantine-clear") &&
         request.method === "POST"
@@ -178,10 +181,7 @@ export class AdminHandler {
       const subscribers = await this.context.getSubscribers();
       const sharedReferences = await this.context.getSharedReferences();
       const sharedPermissions = await this.context.getSharedPermissions();
-      const quarantineLoadAttempts =
-        await this.context.getQuarantineLoadAttempts();
-      const quarantine =
-        this.context.getQuarantineStatusBody(quarantineLoadAttempts);
+      const quarantine = await this.context.getQuarantineStatusBody();
 
       // Never rebuild the Y.Doc of a quarantined room: applying that update is
       // exactly what OOMs the isolate.
@@ -200,7 +200,7 @@ export class AdminHandler {
               },
               connections: Array.from(this.context.getConnections()).length,
               timestamp: new Date().toISOString(),
-              documentSize: quarantine.documentBytes ?? 0,
+              documentSize: quarantine.compaction.documentBytes ?? 0,
               resetEpoch: await this.context.getResetEpoch(),
             },
             null,
@@ -1026,9 +1026,10 @@ export class AdminHandler {
         { bumpEpoch: true, allowQuarantined: true }
       );
 
-      // The persisted document has been replaced, so the condition that caused
-      // quarantine is gone. Lift it here rather than making the operator run a
-      // second call.
+      // The persisted document has been replaced, so the conditions that parked
+      // compaction or quarantined the room are gone. Lift both here rather than
+      // making the operator run follow-up calls.
+      await this.context.clearCompactionPark();
       if (this.context.isQuarantined()) {
         await this.context.clearQuarantine();
       }
@@ -1078,8 +1079,7 @@ export class AdminHandler {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
-    const loadAttempts = await this.context.getQuarantineLoadAttempts();
-    const body = this.context.getQuarantineStatusBody(loadAttempts);
+    const body = await this.context.getQuarantineStatusBody();
 
     return new Response(JSON.stringify(body, null, 2), {
       headers: {
@@ -1091,10 +1091,40 @@ export class AdminHandler {
     });
   }
 
-  // Clearing quarantine only removes the flag and the counter. The room stays in
-  // transient mode until it restarts, so the next load is the one that retries
-  // hydration. Clear this only after the persisted document has been shrunk or
-  // repaired, otherwise the room will simply re-quarantine.
+  // Quarantine is primarily an operator decision: it takes a room out of
+  // persistence entirely, so nothing automatic reaches for it except as a last
+  // resort after the retry backoff is exhausted.
+  private async handleAdminQuarantineSet(request: Request): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+
+    const body = (await request.json().catch(() => null)) as {
+      reason?: string;
+    } | null;
+
+    await this.context.enterQuarantine({
+      reason: "manual",
+      detail: body?.reason?.trim() || "no reason given",
+      failureKind: null,
+      failureCount: 0,
+    });
+
+    return new Response(
+      JSON.stringify(await this.context.getQuarantineStatusBody(), null, 2),
+      {
+        headers: {
+          "content-type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      }
+    );
+  }
+
+  // Clearing quarantine removes the flag and the failure history. The room stays
+  // in transient mode until it restarts, so the next load is the one that
+  // retries hydration.
   private async handleAdminQuarantineClear(
     request: Request
   ): Promise<Response> {
@@ -1110,12 +1140,12 @@ export class AdminHandler {
           roomId: this.context.name,
           cleared: previous !== null,
           previousReason: previous?.reason ?? null,
-          previousDocumentBytes: previous?.documentBytes ?? null,
+          previousDetail: previous?.detail ?? null,
           stillTransient: !this.context.isPersistenceAvailable(),
           message:
             previous === null
               ? "Room was not quarantined; nothing to clear."
-              : "Quarantine cleared. This room stays transient (nothing persists) until it restarts; the next load retries hydration and will re-quarantine if the document is still oversized.",
+              : "Quarantine cleared, along with the failure history that caused it. This room stays transient (nothing persists) until it restarts; the next load retries hydration.",
         },
         null,
         2
