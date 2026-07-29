@@ -57,64 +57,64 @@ export class AdminHandler {
 
       // Route admin endpoints
       if (path.includes("admin/inspect") && request.method === "GET") {
-        return this.handleAdminInspect(request);
+        return await this.handleAdminInspect(request);
       }
       if (path.includes("admin/raw-data") && request.method === "GET") {
-        return this.handleAdminRawData(request);
+        return await this.handleAdminRawData(request);
       }
       if (
         path.includes("admin/remove-subscriber") &&
         request.method === "POST"
       ) {
-        return this.handleAdminRemoveSubscriber(request);
+        return await this.handleAdminRemoveSubscriber(request);
       }
       if (path.includes("admin/live-compare") && request.method === "GET") {
-        return this.handleAdminLiveCompare(request);
+        return await this.handleAdminLiveCompare(request);
       }
       if (path.includes("admin/force-save-live") && request.method === "POST") {
-        return this.handleAdminForceSaveLive(request);
+        return await this.handleAdminForceSaveLive(request);
       }
       if (
         path.includes("admin/force-reload-live") &&
         request.method === "POST"
       ) {
-        return this.handleAdminForceReloadLive(request);
+        return await this.handleAdminForceReloadLive(request);
       }
       if (
         path.includes("admin/save-edited-data") &&
         request.method === "POST"
       ) {
-        return this.handleAdminSaveEditedData(request);
+        return await this.handleAdminSaveEditedData(request);
       }
       if (
         path.includes("admin/moderation-remove") &&
         request.method === "POST"
       ) {
-        return this.handleModerationRemove(request);
+        return await this.handleModerationRemove(request);
       }
       if (path.includes("admin/cleanup-orphans") && request.method === "POST") {
-        return this.handleAdminCleanupOrphans(request);
+        return await this.handleAdminCleanupOrphans(request);
       }
       if (path.includes("admin/hard-reset") && request.method === "POST") {
-        return this.handleAdminHardReset(request);
+        return await this.handleAdminHardReset(request);
       }
       if (
         path.includes("admin/restore-raw-document") &&
         request.method === "POST"
       ) {
-        return this.handleAdminRestoreRawDocument(request);
+        return await this.handleAdminRestoreRawDocument(request);
       }
       if (path.includes("admin/quarantine-status") && request.method === "GET") {
-        return this.handleAdminQuarantineStatus(request);
+        return await this.handleAdminQuarantineStatus(request);
       }
       if (path.includes("admin/quarantine-set") && request.method === "POST") {
-        return this.handleAdminQuarantineSet(request);
+        return await this.handleAdminQuarantineSet(request);
       }
       if (
         path.includes("admin/quarantine-clear") &&
         request.method === "POST"
       ) {
-        return this.handleAdminQuarantineClear(request);
+        return await this.handleAdminQuarantineClear(request);
       }
 
       return new Response("Admin endpoint not found", { status: 404 });
@@ -1043,21 +1043,52 @@ export class AdminHandler {
         { bumpEpoch: true, allowQuarantined: true }
       );
 
-      // The persisted document has been replaced, so the conditions that parked
-      // compaction or quarantined the room are gone. Lift both here rather than
-      // making the operator run follow-up calls.
-      await this.context.clearCompactionPark();
-      if (this.context.isQuarantined()) {
-        await this.context.clearQuarantine();
+      // Only lift the parks if the replacement document is actually small
+      // enough to work with. Auto-clearing after restoring a still-oversized
+      // document would send the room straight back into its crash loop.
+      const maxInDurableObjectBytes =
+        this.context.getCompactionMaxInDurableObjectBytes();
+      const stillTooLarge = result.documentSize > maxInDurableObjectBytes;
+
+      let quarantineCleared = false;
+      let compactionUnparked = false;
+      let cleanupError: string | null = null;
+
+      if (!stillTooLarge) {
+        // The restore itself already succeeded and is durable. A failure in this
+        // cleanup must not turn into a 500, or an operator would re-run a
+        // restore that actually worked.
+        try {
+          await this.context.clearCompactionPark();
+          compactionUnparked = true;
+          if (this.context.isQuarantined()) {
+            await this.context.clearQuarantine();
+            quarantineCleared = true;
+          }
+        } catch (error) {
+          cleanupError =
+            error instanceof Error ? error.message : String(error);
+          console.error(
+            `[Restore Raw] Post-restore cleanup failed for room ${roomId}:`,
+            error
+          );
+        }
       }
 
       return new Response(
         JSON.stringify({
           ok: true,
-          message: "Raw document restored successfully",
+          message: stillTooLarge
+            ? "Raw document restored, but it is still too large to compact in the room, so the room stays quarantined and compaction stays parked. Compact it further and restore again."
+            : "Raw document restored successfully",
           documentSize: result.documentSize,
           resetEpoch: result.resetEpoch,
           closedConnections: result.closedConnections,
+          stillTooLarge,
+          maxInDurableObjectBytes,
+          quarantineCleared,
+          compactionUnparked,
+          cleanupError,
         }),
         {
           headers: {
@@ -1090,22 +1121,51 @@ export class AdminHandler {
     }
   }
 
+  // The three quarantine handlers carry their own try/catch. Without it a
+  // rejection escapes the router's catch (which returns un-awaited promises) and
+  // surfaces as a bare platform 500 with no CORS headers and no log.
+  private quarantineErrorResponse(operation: string, error: unknown): Response {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[Admin] ${operation} failed for room ${this.context.name}:`,
+      error
+    );
+    return new Response(
+      JSON.stringify({
+        error: `Failed to ${operation}`,
+        message,
+        roomId: this.context.name,
+      }),
+      {
+        status: 500,
+        headers: {
+          "content-type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
+  }
+
   private async handleAdminQuarantineStatus(
     request: Request
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
-    const body = await this.context.getQuarantineStatusBody();
+    try {
+      const body = await this.context.getQuarantineStatusBody();
 
-    return new Response(JSON.stringify(body, null, 2), {
-      headers: {
-        "content-type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      },
-    });
+      return new Response(JSON.stringify(body, null, 2), {
+        headers: {
+          "content-type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      });
+    } catch (error) {
+      return this.quarantineErrorResponse("read quarantine status", error);
+    }
   }
 
   // Quarantine is primarily an operator decision: it takes a room out of
@@ -1115,28 +1175,70 @@ export class AdminHandler {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
-    const body = (await request.json().catch(() => null)) as {
-      reason?: string;
-    } | null;
-
-    await this.context.enterQuarantine({
-      reason: "manual",
-      detail: body?.reason?.trim() || "no reason given",
-      failureKind: null,
-      failureCount: 0,
-    });
-
-    return new Response(
-      JSON.stringify(await this.context.getQuarantineStatusBody(), null, 2),
-      {
-        headers: {
-          "content-type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
+    let body: { reason?: string } | null = null;
+    const rawBody = await request.text();
+    if (rawBody.trim()) {
+      try {
+        body = JSON.parse(rawBody) as { reason?: string };
+      } catch {
+        // Silently recording "no reason given" would lose the operator's note.
+        return new Response(
+          JSON.stringify({
+            error: "Invalid JSON body",
+            message:
+              "Send {\"reason\": \"...\"} or an empty body to quarantine without a note.",
+          }),
+          {
+            status: 400,
+            headers: {
+              "content-type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
       }
-    );
+    }
+
+    try {
+      const hasControlPlane = this.context.hasQuarantineControlPlane();
+      await this.context.enterQuarantine({
+        reason: "manual",
+        detail: body?.reason?.trim() || "no reason given",
+        failureKind: null,
+        failureCount: 0,
+      });
+
+      const externalFlag = await this.context.readExternalQuarantineFlag();
+      const status = await this.context.getQuarantineStatusBody();
+
+      return new Response(
+        JSON.stringify(
+          {
+            ...status,
+            // Without the binding the room is quarantined locally only, which
+            // will NOT survive a restart of a room that crashes on start.
+            externalFlagWritten: externalFlag.available
+              ? externalFlag.value !== null
+              : false,
+            warning: hasControlPlane
+              ? undefined
+              : "No quarantine control plane is configured, so this quarantine is local only and will not survive a restart.",
+          },
+          null,
+          2
+        ),
+        {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
+      );
+    } catch (error) {
+      return this.quarantineErrorResponse("set quarantine", error);
+    }
   }
 
   // Clearing quarantine removes the flag and the failure history. The room stays
@@ -1148,33 +1250,51 @@ export class AdminHandler {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
 
-    const previous = this.context.getQuarantineState();
-    await this.context.clearQuarantine();
+    try {
+      const previous = this.context.getQuarantineState();
+      const reset = await this.context.clearQuarantine();
 
-    return new Response(
-      JSON.stringify(
+      // Even when nothing was quarantined this may have reset a failure ledger,
+      // so the response reports what actually changed.
+      const resetSomething =
+        reset.wasQuarantined ||
+        reset.loadFailures > 0 ||
+        reset.alarmFailures > 0 ||
+        reset.wasLoadDeferred;
+
+      return new Response(
+        JSON.stringify(
+          {
+            roomId: this.context.name,
+            cleared: reset.wasQuarantined,
+            previousReason: previous?.reason ?? null,
+            previousDetail: previous?.detail ?? null,
+            reset: {
+              loadFailures: reset.loadFailures,
+              alarmFailures: reset.alarmFailures,
+              loadDeferral: reset.wasLoadDeferred,
+            },
+            stillTransient: !this.context.isPersistenceAvailable(),
+            message: reset.wasQuarantined
+              ? "Quarantine cleared, along with the failure history that caused it. This room stays transient (nothing persists) until it restarts; the next load retries hydration."
+              : resetSomething
+                ? "Room was not quarantined, but its failure history was reset."
+                : "Room was not quarantined and had no failure history; nothing changed.",
+          },
+          null,
+          2
+        ),
         {
-          roomId: this.context.name,
-          cleared: previous !== null,
-          previousReason: previous?.reason ?? null,
-          previousDetail: previous?.detail ?? null,
-          stillTransient: !this.context.isPersistenceAvailable(),
-          message:
-            previous === null
-              ? "Room was not quarantined; nothing to clear."
-              : "Quarantine cleared, along with the failure history that caused it. This room stays transient (nothing persists) until it restarts; the next load retries hydration.",
-        },
-        null,
-        2
-      ),
-      {
-        headers: {
-          "content-type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
-      }
-    );
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
+      );
+    } catch (error) {
+      return this.quarantineErrorResponse("clear quarantine", error);
+    }
   }
 }

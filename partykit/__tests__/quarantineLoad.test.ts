@@ -151,6 +151,21 @@ function createRoom(name = "example-room") {
   return { room: buildRoom(storage, name), storage };
 }
 
+/**
+ * Mirrors the platform's start sequence without the full Server base class:
+ * the pre-hydration gate in onStart, then hydration only if it allows it.
+ * Tests that need the genuine entry points live in quarantinePlatformEntry.
+ */
+async function startRoom(room: any): Promise<void> {
+  await room.applyExternalQuarantineFlag();
+  if (room.isQuarantined()) {
+    await room.enterQuarantineRuntimeState();
+    return;
+  }
+  if (await room.shouldDeferLoad()) return;
+  await room.onLoad();
+}
+
 // Models a Durable Object restart: a fresh instance over the same storage.
 function restartRoom(storage: FakeStorage, name = "example-room") {
   return buildRoom(storage, name);
@@ -204,7 +219,7 @@ describe("load path", () => {
     persistedRow.document = COMPACT_LETHAL_DOCUMENT;
     const { room } = createRoom();
 
-    await room.onLoad();
+    await startRoom(room);
 
     expect(room.isQuarantined()).toBe(false);
     expect(room.isPersistenceAvailable()).toBe(true);
@@ -215,7 +230,7 @@ describe("load path", () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
 
-    await room.onLoad();
+    await startRoom(room);
 
     expect(room.isQuarantined()).toBe(false);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
@@ -226,7 +241,7 @@ describe("load path", () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
 
-    await room.onLoad();
+    await startRoom(room);
 
     expect(storage.writeLog[0]).toEqual({
       key: "quarantineLoadAttempts",
@@ -244,7 +259,7 @@ describe("load path", () => {
     storage.values.set("quarantineLoadAttempts", 2);
     storage.values.set("loadRetryAfter", Date.now() + 5 * 60_000);
 
-    await room.onLoad();
+    await startRoom(room);
 
     // Supabase was never queried, and nothing was hydrated.
     expect(documentReadCount).toBe(0);
@@ -260,7 +275,7 @@ describe("load path", () => {
     storage.values.set("quarantineLoadAttempts", 1);
     const before = Date.now();
 
-    await room.onLoad();
+    await startRoom(room);
 
     const retryAfter = storage.values.get("loadRetryAfter") as number;
     expect(retryAfter).toBeGreaterThanOrEqual(before + 60_000);
@@ -274,7 +289,7 @@ describe("load path", () => {
     const { room, storage } = createRoom();
     storage.values.set("quarantineLoadAttempts", 2);
     storage.values.set("loadRetryAfter", Date.now() + 90_000);
-    await room.onLoad();
+    await startRoom(room);
 
     const response = await room.onRequest(
       new Request("https://example.com/parties/main/example-room", {
@@ -300,7 +315,7 @@ describe("load path", () => {
     const { room, storage } = createRoom();
     storage.values.set("quarantineLoadAttempts", 2);
     storage.values.set("loadRetryAfter", Date.now() + 60_000);
-    await room.onLoad();
+    await startRoom(room);
 
     const response = await room.onRequest(
       new Request(
@@ -319,7 +334,7 @@ describe("load path", () => {
     const { room, storage } = createRoom();
     storage.values.set("quarantineLoadAttempts", 2);
     storage.values.set("loadRetryAfter", Date.now() + 60_000);
-    await room.onLoad();
+    await startRoom(room);
 
     const response = await room.onRequest(
       new Request(
@@ -338,7 +353,7 @@ describe("load path", () => {
     const { room, storage } = createRoom();
     storage.values.set("quarantineLoadAttempts", 2);
     storage.values.set("loadRetryAfter", Date.now() + 60_000);
-    await room.onLoad();
+    await startRoom(room);
 
     const response = await room.onRequest(
       new Request(
@@ -363,7 +378,7 @@ describe("load path", () => {
     const { room, storage } = createRoom();
     storage.values.set("quarantineLoadAttempts", 2);
     storage.values.set("loadRetryAfter", Date.now() + 60_000);
-    await room.onLoad();
+    await startRoom(room);
 
     const closes: Array<{ code: number; reason: string }> = [];
     const connection = {
@@ -399,7 +414,7 @@ describe("load path", () => {
       return originalPut(key, value);
     };
 
-    await room.onLoad();
+    await startRoom(room);
 
     // The new deadline was committed while the read count was still zero.
     expect(deadlineWrites).toEqual([0]);
@@ -412,7 +427,7 @@ describe("load path", () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
 
-    await room.onLoad();
+    await startRoom(room);
 
     expect(room.isLoadDeferred()).toBe(false);
     expect(documentReadCount).toBe(1);
@@ -423,7 +438,7 @@ describe("load path", () => {
     const { room, storage } = createRoom();
     storage.values.set("quarantineLoadAttempts", 8);
 
-    await room.onLoad();
+    await startRoom(room);
 
     expect(room.isQuarantined()).toBe(true);
     expect(room.getQuarantineState().reason).toBe("repeated-failures");
@@ -438,7 +453,7 @@ describe("load path", () => {
     // Already past the deadline, so this start is the one allowed attempt.
     storage.values.set("loadRetryAfter", Date.now() - 1000);
 
-    await room.onLoad();
+    await startRoom(room);
 
     expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
     expect(storage.values.get("loadRetryAfter")).toBeUndefined();
@@ -613,17 +628,71 @@ describe("alarm failure backoff", () => {
     const { room, storage } = createRoom();
     storage.values.set("alarmFailureAttempts", 1);
     storage.values.set("alarmRetryAfter", Date.now() - 1);
-    storage.values.set("emptyRoomCompactAfter", Date.now() - 1);
-    room.compactEmptyRoomDocument = async () => {
-      throw new Error("simulated alarm failure");
-    };
     const before = Date.now();
 
-    await expect(room.onAlarm()).rejects.toThrow("simulated alarm failure");
+    await room.onAlarm();
 
-    const retryAfter = storage.values.get("alarmRetryAfter") as number;
-    expect(retryAfter).toBeGreaterThanOrEqual(before + 5 * 60_000);
-    expect(storage.values.get("alarmFailureAttempts")).toBe(2);
+    // The next rung is committed before the risky work runs, so an OOM inside
+    // that work still lands the room in a longer window.
+    const retryAfter = storage.values.get("alarmRetryAfter") as number | undefined;
+    expect(retryAfter ?? before + 5 * 60_000).toBeGreaterThanOrEqual(
+      before + 5 * 60_000
+    );
+  });
+
+  // The counter infers an OOM from work that vanished without logging. An
+  // exception we can catch proves the isolate survived, so it must NOT count as
+  // a strike, or a long Supabase outage would march healthy rooms to quarantine.
+  test("an observed alarm exception does not count as a vanish", async () => {
+    const { room, storage } = createRoom();
+    storage.values.set("emptyRoomCompactAfter", Date.now() - 1);
+    room.compactEmptyRoomDocument = async () => {
+      throw new Error("simulated supabase blip");
+    };
+
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (message: unknown, ...rest: unknown[]) => {
+      errors.push(`${String(message)} ${rest.map(String).join(" ")}`);
+    };
+    try {
+      await room.onAlarm();
+    } finally {
+      console.error = originalError;
+    }
+
+    // Cleared, not incremented.
+    expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
+    expect(room.isQuarantined()).toBe(false);
+    // And it is still reported, with room context, rather than swallowed.
+    expect(
+      errors.some(
+        (line) =>
+          line.includes("Alarm work failed for room=example-room") &&
+          line.includes("simulated supabase blip")
+      )
+    ).toBe(true);
+  });
+
+  test("repeated observed exceptions never quarantine a healthy room", async () => {
+    const { room, storage } = createRoom();
+    room.compactEmptyRoomDocument = async () => {
+      throw new Error("simulated supabase outage");
+    };
+
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      for (let i = 0; i < 12; i += 1) {
+        storage.values.set("emptyRoomCompactAfter", Date.now() - 1);
+        await room.onAlarm();
+      }
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(room.isQuarantined()).toBe(false);
+    expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
   });
 
   test("eight consecutive alarm failures quarantine as a last resort", async () => {
@@ -656,6 +725,295 @@ describe("alarm failure backoff", () => {
   });
 });
 
+describe("hardening", () => {
+  // F5: admin force-reload calls markPersistenceAvailable, which would otherwise
+  // silently lift the write park on a quarantined room.
+  test("markPersistenceAvailable cannot lift a quarantine write park", async () => {
+    const { room } = createRoom();
+    await room.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+
+    room.markPersistenceAvailable();
+
+    expect(room.isPersistenceAvailable()).toBe(false);
+  });
+
+  // M2: a KV failure must not skip transient mode, alarm cancellation, or the log.
+  test("local safety applies even when the external write fails", async () => {
+    const { room, storage } = createRoom();
+    storage.alarm = Date.now() + 60_000;
+    kvFailure = new Error("kv down");
+
+    await expect(
+      room.enterQuarantine({
+        reason: "manual",
+        detail: "operator",
+        failureKind: null,
+        failureCount: 0,
+      })
+    ).rejects.toThrow("kv down");
+
+    // The throw propagates so the operator learns the flag did not stick, but
+    // the room is already locally safe.
+    expect(room.isQuarantined()).toBe(true);
+    expect(room.isPersistenceAvailable()).toBe(false);
+    expect(storage.alarm).toBeNull();
+  });
+
+  // L1: the deadline is written speculatively before an attempt that may never
+  // reach hydration.
+  test("a rolled-back load attempt also rolls back its deadline", async () => {
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() - 1000);
+    // Supabase is unreachable, so hydration is never attempted.
+    const originalFrom = supabaseStub.from;
+    (supabaseStub as any).from = () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: null,
+            error: { message: "connection refused" },
+          }),
+        }),
+      }),
+    });
+
+    try {
+      await startRoom(room);
+    } finally {
+      (supabaseStub as any).from = originalFrom;
+    }
+
+    expect(storage.values.get("loadRetryAfter")).toBeUndefined();
+    expect(storage.values.get("quarantineLoadAttempts")).toBe(2);
+  });
+
+  // L2: the flag is applied from the control plane and then resumed from durable
+  // storage in the same start.
+  test("a KV-flagged start logs the quarantine only once", async () => {
+    const { room } = createRoom();
+    kvStore.set("quarantine:example-room", "operator stop");
+
+    const logs: string[] = [];
+    const originalError = console.error;
+    console.error = (message: unknown) => {
+      logs.push(String(message));
+    };
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(logs.filter((l) => l.includes("ROOM QUARANTINED")).length).toBe(1);
+  });
+
+  // M5: clearing must not report "nothing to clear" while silently wiping state.
+  test("clearing reports the ledger it reset", async () => {
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 3);
+    storage.values.set("alarmFailureAttempts", 2);
+
+    const summary = await room.clearQuarantine();
+
+    expect(summary).toEqual({
+      wasQuarantined: false,
+      loadFailures: 3,
+      alarmFailures: 2,
+      wasLoadDeferred: false,
+    });
+  });
+
+  test("clearing also lifts an active deferral", async () => {
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 60_000);
+    await startRoom(room);
+    expect(room.isLoadDeferred()).toBe(true);
+
+    const summary = await room.clearQuarantine();
+
+    // Status and behaviour must not contradict each other.
+    expect(summary.wasLoadDeferred).toBe(true);
+    expect(room.isLoadDeferred()).toBe(false);
+    expect(await room.getLoadDeferredResponse()).toBeNull();
+  });
+
+  // M3: a missing binding means quarantine is local only.
+  test("status distinguishes an unavailable control plane from no flag", async () => {
+    const { room } = createRoom();
+    kvFailure = new Error("kv down");
+
+    const body = await room.getQuarantineStatusBody();
+
+    expect(body.externalQuarantineFlag).toBe("kvUnavailable");
+  });
+
+  test("status reports the external flag value when set", async () => {
+    const { room } = createRoom();
+    kvStore.set("quarantine:example-room", "operator stop");
+
+    const body = await room.getQuarantineStatusBody();
+
+    expect(body.externalQuarantineFlag).toBe("operator stop");
+  });
+});
+
+describe("admin quarantine endpoints", () => {
+  function adminRequest(path: string, init?: RequestInit) {
+    return new Request(
+      `https://example.com/parties/main/example-room/admin/${path}`,
+      init
+    );
+  }
+
+  // M2: without an internal catch these rejections escape the router (which
+  // returns un-awaited promises) as a bare 500 with no CORS and no log.
+  test("an async failure returns a JSON 500 with CORS, not a bare platform error", async () => {
+    const { room } = createRoom();
+    room.getQuarantineStatusBody = async () => {
+      throw new Error("storage exploded");
+    };
+
+    const response = await room.onRequest(
+      adminRequest("quarantine-status", { method: "GET" })
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    const body = await response.json();
+    expect(body.message).toBe("storage exploded");
+  });
+
+  // L3: silently recording "no reason given" would lose the operator's note.
+  test("malformed JSON is rejected instead of quarantining with no reason", async () => {
+    const { room } = createRoom();
+
+    const response = await room.onRequest(
+      adminRequest("quarantine-set", { method: "POST", body: "{not json" })
+    );
+
+    expect(response.status).toBe(400);
+    expect(room.isQuarantined()).toBe(false);
+  });
+
+  test("an empty body still quarantines, with no reason recorded", async () => {
+    const { room } = createRoom();
+
+    const response = await room.onRequest(
+      adminRequest("quarantine-set", { method: "POST" })
+    );
+
+    expect(response.status).toBe(200);
+    expect(room.isQuarantined()).toBe(true);
+    expect(room.getQuarantineState().detail).toBe("no reason given");
+  });
+
+  // M3: a 200 while silently writing nothing would mislead an operator into
+  // thinking a crash-looping room was safely stopped.
+  // F6: auto-clearing after restoring a still-oversized document would send the
+  // room straight back into its crash loop.
+  test("restoring a still-oversized document keeps the room quarantined", async () => {
+    const { room } = createRoom();
+    persistedRow.document = SMALL_DOCUMENT;
+    await room.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+    await room.ctx.storage.put("compactionParked", 7 * MB);
+
+    const response = await room.onRequest(
+      adminRequest("restore-raw-document", {
+        method: "POST",
+        body: JSON.stringify({ base64Document: COMPACT_LETHAL_DOCUMENT }),
+      })
+    );
+
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(body.stillTooLarge).toBe(true);
+    expect(body.quarantineCleared).toBe(false);
+    expect(body.compactionUnparked).toBe(false);
+    expect(room.isQuarantined()).toBe(true);
+  });
+
+  test("restoring a small enough document lifts quarantine and the park", async () => {
+    const { room } = createRoom();
+    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
+    await room.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+    await room.ctx.storage.put("compactionParked", 7 * MB);
+
+    const response = await room.onRequest(
+      adminRequest("restore-raw-document", {
+        method: "POST",
+        body: JSON.stringify({ base64Document: SMALL_DOCUMENT }),
+      })
+    );
+
+    const body = await response.json();
+    expect(body.stillTooLarge).toBe(false);
+    expect(body.quarantineCleared).toBe(true);
+    expect(body.compactionUnparked).toBe(true);
+    expect(room.isQuarantined()).toBe(false);
+    expect(await room.getCompactionParkedBytes()).toBeNull();
+  });
+
+  // M4: the restore already succeeded and is durable, so a cleanup failure must
+  // not present as a 500 that invites a pointless re-restore.
+  test("a cleanup failure still reports the restore as successful", async () => {
+    const { room } = createRoom();
+    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
+    await room.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+    // The KV delete during clearQuarantine fails.
+    kvFailure = new Error("kv down");
+
+    const response = await room.onRequest(
+      adminRequest("restore-raw-document", {
+        method: "POST",
+        body: JSON.stringify({ base64Document: SMALL_DOCUMENT }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(body.quarantineCleared).toBe(false);
+    expect(body.cleanupError).toContain("kv down");
+  });
+
+  test("the response reports whether the external flag was written", async () => {
+    const { room } = createRoom();
+
+    const response = await room.onRequest(
+      adminRequest("quarantine-set", {
+        method: "POST",
+        body: JSON.stringify({ reason: "investigating" }),
+      })
+    );
+
+    const body = await response.json();
+    expect(body.externalFlagWritten).toBe(true);
+    expect(kvStore.get("quarantine:example-room")).toBe("investigating");
+  });
+});
+
 describe("separate retry ladders", () => {
   // A shared deadline meant a healthy load erased the alarm's backoff, letting
   // compaction start crash-looping again.
@@ -666,7 +1024,7 @@ describe("separate retry ladders", () => {
     storage.values.set("alarmFailureAttempts", 3);
     storage.values.set("alarmRetryAfter", alarmDeadline);
 
-    await room.onLoad();
+    await startRoom(room);
 
     expect(storage.values.get("alarmRetryAfter")).toBe(alarmDeadline);
     expect(storage.values.get("alarmFailureAttempts")).toBe(3);
@@ -712,7 +1070,7 @@ describe("external quarantine control plane", () => {
     expect(documentReadCount).toBe(0);
 
     // And the subsequent load never hydrates either.
-    await room.onLoad();
+    await startRoom(room);
     expect(documentReadCount).toBe(0);
     expect(docIsEmpty(room.document)).toBe(true);
   });
@@ -775,7 +1133,7 @@ describe("external quarantine control plane", () => {
     kvFailure = new Error("kv unavailable");
 
     await room.applyExternalQuarantineFlag();
-    await room.onLoad();
+    await startRoom(room);
 
     expect(room.isQuarantined()).toBe(false);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
@@ -786,7 +1144,7 @@ describe("manual quarantine", () => {
   test("an operator can quarantine a healthy room and clear it again", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
-    await room.onLoad();
+    await startRoom(room);
     expect(room.isQuarantined()).toBe(false);
 
     await room.enterQuarantine({
@@ -840,7 +1198,7 @@ describe("manual quarantine", () => {
     });
 
     const restarted = restartRoom(storage);
-    await restarted.onLoad();
+    await startRoom(restarted);
 
     expect(restarted.isQuarantined()).toBe(true);
     expect(docIsEmpty(restarted.document)).toBe(true);
@@ -949,7 +1307,7 @@ describe("quarantine data safety", () => {
       warnings.push(args.map(String).join(" "));
     };
     try {
-      await room.onLoad();
+      await startRoom(room);
     } finally {
       console.warn = originalWarn;
     }

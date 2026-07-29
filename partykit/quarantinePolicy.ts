@@ -200,6 +200,8 @@ export function createQuarantineStatusBody({
   loadRetryAfter,
   alarmRetryAfter,
   compactionParkedBytes,
+  loadDeferredUntil = null,
+  externalFlag = { available: false },
 }: {
   roomName: string;
   quarantine: QuarantineState | null;
@@ -211,6 +213,8 @@ export function createQuarantineStatusBody({
   loadRetryAfter: number | null;
   alarmRetryAfter: number | null;
   compactionParkedBytes: number | null;
+  loadDeferredUntil?: number | null;
+  externalFlag?: { available: true; value: string | null } | { available: false };
 }) {
   return {
     roomId: roomName,
@@ -238,6 +242,20 @@ export function createQuarantineStatusBody({
       documentBytes: compactionParkedBytes,
       maxInDurableObjectBytes,
     },
+    // Whether this isolate is currently refusing requests, which can differ from
+    // the stored deadline after an in-place recovery.
+    loadDeferred: {
+      active: loadDeferredUntil !== null,
+      until:
+        loadDeferredUntil === null
+          ? null
+          : new Date(loadDeferredUntil).toISOString(),
+    },
+    // The pre-hydration flag. "kvUnavailable" means it could not be checked,
+    // which is not the same as no flag being set.
+    externalQuarantineFlag: externalFlag.available
+      ? externalFlag.value
+      : "kvUnavailable",
     documentWarningBytes,
   };
 }
