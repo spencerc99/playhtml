@@ -404,7 +404,7 @@ const CursorRedraw = () => {
 
       {mode === "circles" && detectedCircles.length === 0 && !loading && (
         <div style={styles.dropPrompt}>
-          waiting for circles drawn at wewere.online/circle-draw
+          waiting for circles drawn at {CIRCLE_SOURCE_DOMAIN}/circle-draw
         </div>
       )}
 
