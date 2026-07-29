@@ -93,6 +93,34 @@ describe("detectCircularGestures", () => {
     ).toEqual([]);
   });
 
+  it("rejects closed loops with long straight sides", () => {
+    const top = Array.from({ length: 8 }, (_, index) => ({
+      x: 100 + index * 35,
+      y: 100,
+    }));
+    const roundedEnd = Array.from({ length: 12 }, (_, index) => {
+      const angle = -Math.PI / 2 + (index / 11) * Math.PI;
+      return {
+        x: 345 + Math.cos(angle) * 150,
+        y: 250 + Math.sin(angle) * 150,
+      };
+    });
+    const bottom = Array.from({ length: 8 }, (_, index) => ({
+      x: 345 - index * 35,
+      y: 400,
+    }));
+    const left = Array.from({ length: 10 }, (_, index) => ({
+      x: 100,
+      y: 400 - index * (300 / 9),
+    }));
+
+    expect(
+      detectCircularGestures([
+        trail([...top, ...roundedEnd, ...bottom, ...left], "flat-loop"),
+      ]),
+    ).toEqual([]);
+  });
+
   it("selects two non-overlapping circles from one continuous trail", () => {
     const points = [
       ...circlePoints({ centerX: 220, centerY: 240 }),

@@ -25,7 +25,6 @@ import {
 } from "./circles";
 
 const MAX_POOL_EVENTS = 100000;
-const CIRCLE_POOL_EVENTS = 20000;
 const IMAGE_MAX_SIZE = 640;
 const LIBRARY_CHUNK_POINTS = 120;
 const LIBRARY_MIN_CHUNK_POINTS = 8;
@@ -35,6 +34,7 @@ const CIRCLE_SOURCE_DOMAIN = window.location.hostname.replace(/^www\./, "");
 const CIRCLE_SOURCE_PATH = "/circle-draw";
 
 type Mode = "mosaic" | "warp" | "inplace" | "circles";
+type CircleSource = "archive" | "guided";
 
 const styles = {
   page: {
@@ -124,7 +124,7 @@ const CursorRedraw = () => {
   );
   const { events, loading, deepening, error: poolError } = useCursorEventPool(
     "",
-    mode === "circles" ? CIRCLE_POOL_EVENTS : MAX_POOL_EVENTS,
+    MAX_POOL_EVENTS,
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -145,6 +145,7 @@ const CursorRedraw = () => {
   const [maxCircles, setMaxCircles] = useState(80);
   const [circleMinScore, setCircleMinScore] = useState(0.58);
   const [spatialOverlap, setSpatialOverlap] = useState(0.72);
+  const [circleSource, setCircleSource] = useState<CircleSource>("archive");
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -190,7 +191,7 @@ const CursorRedraw = () => {
     () => ({
       randomizeColors: false,
       filters:
-        mode === "circles"
+        mode === "circles" && circleSource === "guided"
           ? [{ domain: CIRCLE_SOURCE_DOMAIN, path: CIRCLE_SOURCE_PATH }]
           : [],
       pidFilter: "",
@@ -204,7 +205,7 @@ const CursorRedraw = () => {
       minGapBetweenTrails: 0.3,
       documentSpace: false,
     }),
-    [mode],
+    [circleSource, mode],
   );
 
   const { trailStates } = useCursorTrails(events, viewportSize, cursorSettings);
@@ -385,7 +386,10 @@ const CursorRedraw = () => {
     : displayError
       ? displayError
       : mode === "circles"
-        ? `${detectedCircles.length} circular gestures detected from ${events.length} events`
+        ? `${detectedCircles.length} circular gestures detected from ${
+            circleSource === "archive" ? "all pages" : "the guided page"
+          } while scanning ${events.length} archived events` +
+          (deepening ? " — scanning older events..." : "")
         : (!image
           ? `${library.length} gestures in the library`
           : `${drawnTrails.length} strokes from ${library.length} gestures`) +
@@ -402,9 +406,14 @@ const CursorRedraw = () => {
         </div>
       )}
 
-      {mode === "circles" && detectedCircles.length === 0 && !loading && (
+      {mode === "circles" &&
+        detectedCircles.length === 0 &&
+        !loading &&
+        !deepening && (
         <div style={styles.dropPrompt}>
-          waiting for circles drawn at {CIRCLE_SOURCE_DOMAIN}/circle-draw
+          {circleSource === "archive"
+            ? `no circular gestures found in ${events.length} archived events`
+            : `waiting for circles drawn at ${CIRCLE_SOURCE_DOMAIN}/circle-draw`}
         </div>
       )}
 
@@ -426,7 +435,7 @@ const CursorRedraw = () => {
 
       {sequence.trailStates.length > 0 && (
         <AnimatedTrails
-          key={`${mode}-${threshold}-${maxStrokes}-${allowRotation}-${warpStrength}-${corridor}-${maxCircles}-${circleMinScore}-${spatialOverlap}-${image?.objectUrl}`}
+          key={`${mode}-${threshold}-${maxStrokes}-${allowRotation}-${warpStrength}-${corridor}-${circleSource}-${maxCircles}-${circleMinScore}-${spatialOverlap}-${image?.objectUrl}`}
           trailStates={sequence.trailStates}
           timeRange={timeRange}
           windowSize={sequence.trailStates.length}
@@ -544,6 +553,24 @@ const CursorRedraw = () => {
           )}
           {mode === "circles" && (
             <>
+              <div style={styles.row}>
+                <label htmlFor="circle-source">source</label>
+                <select
+                  id="circle-source"
+                  value={circleSource}
+                  onChange={(e) =>
+                    setCircleSource(e.target.value as CircleSource)
+                  }
+                  style={{
+                    width: 140,
+                    fontFamily: "'Martian Mono', monospace",
+                    fontSize: 9,
+                  }}
+                >
+                  <option value="archive">all archive</option>
+                  <option value="guided">guided page only</option>
+                </select>
+              </div>
               <div style={styles.row}>
                 <span>circles: {maxCircles}</span>
                 <input

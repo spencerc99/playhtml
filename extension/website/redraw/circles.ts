@@ -11,7 +11,10 @@ const DEFAULT_MIN_POINTS = 9;
 const DEFAULT_MAX_WINDOW_POINTS = 64;
 const DEFAULT_MIN_DIAMETER = 70;
 const DEFAULT_MIN_SCORE = 0.58;
-const MAX_CLOSURE_RATIO = 0.4;
+const MAX_CLOSURE_RATIO = 0.25;
+const MAX_ANGLE_STEP_VARIATION = 0.75;
+const MAX_TURN_VARIATION = 0.8;
+const MIN_CIRCULARITY = 0.55;
 
 export interface CircularGesture extends LibraryItem {
   score: number;
@@ -35,6 +38,16 @@ function distance(a: Point, b: Point): number {
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function coefficientOfVariation(values: number[]): number {
+  if (values.length === 0) return Infinity;
+  const mean = values.reduce((total, value) => total + value, 0) / values.length;
+  if (mean === 0) return Infinity;
+  const variance =
+    values.reduce((total, value) => total + (value - mean) ** 2, 0) /
+    values.length;
+  return Math.sqrt(variance) / mean;
 }
 
 function circularDelta(from: number, to: number): number {
@@ -62,6 +75,37 @@ function tangentTurnConcentration(points: Point[]): number {
   const meanTurn = turns.reduce((total, turn) => total + turn, 0) / turns.length;
   const ninetiethPercentile = turns[Math.floor(turns.length * 0.9)];
   return meanTurn === 0 ? Infinity : ninetiethPercentile / meanTurn;
+}
+
+function tangentTurnVariation(points: Point[]): number {
+  const turns: number[] = [];
+  for (let index = 2; index < points.length - 2; index++) {
+    const incoming = Math.atan2(
+      points[index].y - points[index - 2].y,
+      points[index].x - points[index - 2].x,
+    );
+    const outgoing = Math.atan2(
+      points[index + 2].y - points[index].y,
+      points[index + 2].x - points[index].x,
+    );
+    turns.push(Math.abs(circularDelta(incoming, outgoing)));
+  }
+  if (turns.length === 0) return Infinity;
+
+  return coefficientOfVariation(turns);
+}
+
+function polygonCircularity(points: Point[]): number {
+  let twiceArea = 0;
+  let perimeter = 0;
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    const next = points[(index + 1) % points.length];
+    twiceArea += point.x * next.y - next.x * point.y;
+    perimeter += distance(point, next);
+  }
+  if (perimeter === 0) return 0;
+  return (2 * Math.PI * Math.abs(twiceArea)) / perimeter ** 2;
 }
 
 function analyzeCircle(points: Point[], minDiameter: number): CircleMetrics | null {
@@ -111,11 +155,13 @@ function analyzeCircle(points: Point[], minDiameter: number): CircleMetrics | nu
   );
   let netTurn = 0;
   let totalTurn = 0;
+  const angleSteps: number[] = [];
   const visitedAngleBins = new Set<number>();
   for (let index = 1; index < angles.length; index++) {
     const delta = circularDelta(angles[index - 1], angles[index]);
     netTurn += delta;
     totalTurn += Math.abs(delta);
+    angleSteps.push(Math.abs(delta));
   }
   for (const angle of angles) {
     const normalized = (angle + Math.PI) / (Math.PI * 2);
@@ -125,14 +171,20 @@ function analyzeCircle(points: Point[], minDiameter: number): CircleMetrics | nu
   const turnCoverage = Math.abs(netTurn) / (Math.PI * 2);
   const directionConsistency =
     totalTurn === 0 ? 0 : Math.abs(netTurn) / totalTurn;
+  const angleStepVariation = coefficientOfVariation(angleSteps);
   const angleCoverage = visitedAngleBins.size / 12;
   const turnConcentration = tangentTurnConcentration(sampled);
+  const turnVariation = tangentTurnVariation(sampled);
+  const circularity = polygonCircularity(sampled);
   if (
     turnCoverage < 0.68 ||
     turnCoverage > 1.45 ||
     directionConsistency < 0.62 ||
+    angleStepVariation > MAX_ANGLE_STEP_VARIATION ||
     angleCoverage < 0.67 ||
-    turnConcentration > 4.5
+    turnConcentration > 4.5 ||
+    turnVariation > MAX_TURN_VARIATION ||
+    circularity < MIN_CIRCULARITY
   ) {
     return null;
   }
