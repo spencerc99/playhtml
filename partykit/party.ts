@@ -99,6 +99,7 @@ import {
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
 import {
   createQuarantineStatusBody,
+  ExternalCompactionRequiredError,
   formatCompactionSkipLog,
   formatFailureBackoffLog,
   formatQuarantineLog,
@@ -554,9 +555,11 @@ export class PartyServer extends YServer {
   private async handleRepeatedFailures({
     kind,
     failureCount,
+    retryFailureCount = failureCount,
   }: {
     kind: FailureKind;
     failureCount: number;
+    retryFailureCount?: number;
   }): Promise<{ quarantined: boolean; retryAt: number }> {
     const failureThreshold = this.getQuarantineFailureThreshold();
 
@@ -571,7 +574,7 @@ export class PartyServer extends YServer {
     }
 
     const retryAt = getFailureRetryAt({
-      failureCount,
+      failureCount: retryFailureCount,
       baseMs: this.getFailureBackoffBaseMs(),
       maxMs: this.getFailureBackoffMaxMs(),
       now: Date.now(),
@@ -794,6 +797,22 @@ export class PartyServer extends YServer {
       );
     }
     return true;
+  }
+
+  private async assertCanCompactDocument(documentBytes: number): Promise<void> {
+    const maxBytes = this.getCompactionMaxInDurableObjectBytes();
+    if (
+      !isTooLargeToCompactInDurableObject({
+        documentBytes,
+        maxBytes,
+      })
+    ) {
+      return;
+    }
+
+    this.compactionTooLargeBytes = documentBytes;
+    await this.parkCompactionIfTooLarge();
+    throw new ExternalCompactionRequiredError(documentBytes, maxBytes);
   }
 
   /**
@@ -1973,6 +1992,24 @@ export class PartyServer extends YServer {
         return;
       }
 
+      if (retryAfter === null) {
+        const firstRetryAt = getFailureRetryAt({
+          failureCount: previousFailures,
+          baseMs: this.getFailureBackoffBaseMs(),
+          maxMs: this.getFailureBackoffMaxMs(),
+          now: Date.now(),
+        });
+        await this.ctx.storage.put(STORAGE_KEYS.loadRetryAfter, firstRetryAt);
+        this.loadDeferredUntil = firstRetryAt;
+        console.warn(
+          `[PartyServer] Load deferred for room=${this.name}: ` +
+            `consecutiveFailures=${previousFailures}, ` +
+            `retryAt=${new Date(firstRetryAt).toISOString()}. ` +
+            "Serving 503 until the retry deadline; the document was not read."
+        );
+        return;
+      }
+
       // The deadline has arrived. Exactly one attempt is allowed through: record
       // the next backoff BEFORE hydrating, so requests racing the deadline in a
       // fresh isolate see a future deadline rather than all retrying at once.
@@ -2039,6 +2076,19 @@ export class PartyServer extends YServer {
         this.document,
         new Uint8Array(Buffer.from(result.data.document, "base64"))
       );
+
+      const documentResetEpoch = getDocResetEpoch(this.document);
+      const storedResetEpoch = await this.getResetEpoch();
+      if (
+        documentResetEpoch !== null &&
+        (storedResetEpoch === null || documentResetEpoch > storedResetEpoch)
+      ) {
+        await this.setResetEpoch(documentResetEpoch);
+        console.warn(
+          `[PartyServer] Loaded document advanced the server reset epoch for room=${this.name}: ` +
+            `documentResetEpoch=${documentResetEpoch}, storedResetEpoch=${storedResetEpoch ?? "none"}`
+        );
+      }
     }
 
     // Hydration completed without killing the isolate, so the failure history
@@ -2420,9 +2470,18 @@ export class PartyServer extends YServer {
 
       // Route admin requests to admin handler
       // PartyKit paths are like /parties/main/room-id/admin/inspect
-      // Admin stays reachable during a load-backoff window: diagnosing and
-      // quarantining a room that will not load is the whole point.
       if (url.pathname.includes("/admin")) {
+        // The control-plane routes stay reachable during load backoff so an
+        // operator can inspect or quarantine the room. Every other admin route
+        // is blocked: the live document was never hydrated, so a write derived
+        // from it could overwrite the real snapshot with an empty document.
+        const isLoadControlRoute = [
+          "/admin/quarantine-status",
+          "/admin/quarantine-set",
+          "/admin/quarantine-clear",
+        ].some((path) => url.pathname.includes(path));
+        const loadDeferred = this.getLoadDeferredResponse();
+        if (loadDeferred && !isLoadControlRoute) return loadDeferred;
         return this.adminHandler.handleRequest(request);
       }
 
@@ -2716,6 +2775,9 @@ export class PartyServer extends YServer {
       const liveYDoc = this.document;
       console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
 
+      let beforeSize = encodeDocToBase64(liveYDoc).length;
+      await this.assertCanCompactDocument(beforeSize);
+
       // Extract current state as JSON
       let currentPlayData = docToJson(liveYDoc);
       console.log(
@@ -2743,12 +2805,18 @@ export class PartyServer extends YServer {
         }
 
         if (dbRow?.document) {
+          beforeSize = dbRow.document.length;
+          await this.assertCanCompactDocument(beforeSize);
           const fallbackDoc = new Y.Doc();
-          Y.applyUpdate(
-            fallbackDoc,
-            new Uint8Array(Buffer.from(dbRow.document, "base64"))
-          );
-          currentPlayData = docToJson(fallbackDoc);
+          try {
+            Y.applyUpdate(
+              fallbackDoc,
+              new Uint8Array(Buffer.from(dbRow.document, "base64"))
+            );
+            currentPlayData = docToJson(fallbackDoc);
+          } finally {
+            fallbackDoc.destroy();
+          }
           console.log(
             `[Hard Reset] Loaded from database: ${
               currentPlayData ? "has data" : "still empty"
@@ -2757,8 +2825,6 @@ export class PartyServer extends YServer {
         }
       }
 
-      // Calculate before size
-      const beforeSize = encodeDocToBase64(liveYDoc).length;
       console.log(
         `[Hard Reset] Before size: ${beforeSize} bytes (${(
           beforeSize /
@@ -2777,19 +2843,27 @@ export class PartyServer extends YServer {
           `[Hard Reset] Room is empty in both live doc and database, creating empty fresh doc...`
         );
         const emptyDoc = new Y.Doc();
-        setDocResetEpoch(emptyDoc, resetEpoch);
-        freshBase64 = encodeDocToBase64(emptyDoc);
+        try {
+          setDocResetEpoch(emptyDoc, resetEpoch);
+          freshBase64 = encodeDocToBase64(emptyDoc);
+        } finally {
+          emptyDoc.destroy();
+        }
         afterSize = freshBase64.length;
         console.log(`[Hard Reset] Empty doc size: ${afterSize} bytes`);
       } else {
         // Create a fresh Y.Doc with the current state (no history/tombstones)
         console.log(`[Hard Reset] Creating fresh Y.Doc from play data...`);
         const freshDoc = jsonToDoc(currentPlayData);
-        setDocResetEpoch(freshDoc, resetEpoch);
-        console.log(`[Hard Reset] Successfully created fresh Y.Doc`);
+        try {
+          setDocResetEpoch(freshDoc, resetEpoch);
+          console.log(`[Hard Reset] Successfully created fresh Y.Doc`);
 
-        // Encode the fresh doc
-        freshBase64 = encodeDocToBase64(freshDoc);
+          // Encode the fresh doc
+          freshBase64 = encodeDocToBase64(freshDoc);
+        } finally {
+          freshDoc.destroy();
+        }
         afterSize = freshBase64.length;
         console.log(
           `[Hard Reset] After size: ${afterSize} bytes (${(
@@ -2799,6 +2873,10 @@ export class PartyServer extends YServer {
           ).toFixed(2)} MB)`
         );
       }
+
+      // The plain projection can be substantially larger than the encoded Y.Doc.
+      // Release it before the database write and live-document replacement.
+      currentPlayData = null;
 
       // Save to database
       console.log(`[Hard Reset] Saving fresh doc to database...`);
@@ -2998,6 +3076,10 @@ export class PartyServer extends YServer {
       const outcome = await this.handleRepeatedFailures({
         kind: "alarm",
         failureCount: previousFailures,
+        // The current deadline has elapsed, so this is the retry attempt. Store
+        // the following rung before risky work in case this attempt also OOMs.
+        retryFailureCount:
+          retryAfter === null ? previousFailures : previousFailures + 1,
       });
       if (outcome.quarantined) return;
 

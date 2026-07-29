@@ -7,6 +7,7 @@ import { supabase } from "./db";
 import { PartyServer } from "./party";
 import { docToJson, encodeDocToBase64 } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
+import { ExternalCompactionRequiredError } from "./quarantinePolicy";
 
 function compareKeys(
   obj1: any,
@@ -933,6 +934,22 @@ export class AdminHandler {
         }
       );
     } catch (error: unknown) {
+      if (error instanceof ExternalCompactionRequiredError) {
+        return new Response(
+          JSON.stringify({
+            error: "External compaction required",
+            message: error.message,
+            roomId,
+            documentBytes: error.documentBytes,
+            maxInDurableObjectBytes: error.maxBytes,
+          }),
+          {
+            status: 409,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
+
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;

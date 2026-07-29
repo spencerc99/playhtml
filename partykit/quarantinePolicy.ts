@@ -17,6 +17,19 @@ export type QuarantineState = {
   quarantinedAt: number;
 };
 
+export class ExternalCompactionRequiredError extends Error {
+  constructor(
+    public readonly documentBytes: number,
+    public readonly maxBytes: number
+  ) {
+    super(
+      `Document is too large to compact safely in the room: ` +
+        `${documentBytes} bytes exceeds the ${maxBytes} byte limit`
+    );
+    this.name = "ExternalCompactionRequiredError";
+  }
+}
+
 // Size alone never blocks a load or quarantines a room: healthy production rooms
 // live in the same size band as rooms that have OOMed. Oversized documents are
 // only reported, so they can be compacted before they become a problem.

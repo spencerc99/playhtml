@@ -254,6 +254,21 @@ describe("load path", () => {
     expect(room.isQuarantined()).toBe(false);
   });
 
+  test("the first inferred load failure waits on the one-minute rung", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 1);
+    const before = Date.now();
+
+    await room.onLoad();
+
+    const retryAfter = storage.values.get("loadRetryAfter") as number;
+    expect(retryAfter).toBeGreaterThanOrEqual(before + 60_000);
+    expect(retryAfter).toBeLessThanOrEqual(before + 61_000);
+    expect(documentReadCount).toBe(0);
+    expect(room.isLoadDeferred()).toBe(true);
+  });
+
   test("a deferred room answers requests with 503 and Retry-After", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
@@ -297,6 +312,50 @@ describe("load path", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.failures.load).toBe(2);
+  });
+
+  test("admin write routes cannot persist an un-hydrated deferred document", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 60_000);
+    await room.onLoad();
+
+    const response = await room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/force-save-live",
+        { method: "POST" }
+      )
+    );
+
+    expect(response.status).toBe(503);
+    expect(upsertCalls).toEqual([]);
+    expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
+  test("manual quarantine remains reachable while a room is deferred", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 60_000);
+    await room.onLoad();
+
+    const response = await room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-set",
+        {
+          method: "POST",
+          body: JSON.stringify({ reason: "operator intervention" }),
+        }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(room.isQuarantined()).toBe(true);
+    expect(kvStore.get("quarantine:example-room")).toBe(
+      "operator intervention"
+    );
+    expect(documentReadCount).toBe(0);
   });
 
   test("a connection to a deferred room is closed, not joined", async () => {
@@ -548,6 +607,23 @@ describe("alarm failure backoff", () => {
     // The alarm ran its work and cleared the failure history.
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
     expect(storage.values.get("alarmRetryAfter")).toBeUndefined();
+  });
+
+  test("a due alarm reserves the next backoff rung before risky work", async () => {
+    const { room, storage } = createRoom();
+    storage.values.set("alarmFailureAttempts", 1);
+    storage.values.set("alarmRetryAfter", Date.now() - 1);
+    storage.values.set("emptyRoomCompactAfter", Date.now() - 1);
+    room.compactEmptyRoomDocument = async () => {
+      throw new Error("simulated alarm failure");
+    };
+    const before = Date.now();
+
+    await expect(room.onAlarm()).rejects.toThrow("simulated alarm failure");
+
+    const retryAfter = storage.values.get("alarmRetryAfter") as number;
+    expect(retryAfter).toBeGreaterThanOrEqual(before + 5 * 60_000);
+    expect(storage.values.get("alarmFailureAttempts")).toBe(2);
   });
 
   test("eight consecutive alarm failures quarantine as a last resort", async () => {
@@ -819,6 +895,72 @@ describe("quarantine data safety", () => {
       /Refusing to hard reset for quarantined room/
     );
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
+  test("a hard reset parks an oversized room before rebuilding or writing", async () => {
+    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
+    const storage = new FakeStorage();
+    const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
+
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    let response: Response;
+    try {
+      response = await room.onRequest(
+        new Request(
+          "https://example.com/parties/main/example-room/admin/hard-reset",
+          { method: "POST" }
+        )
+      );
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "External compaction required",
+      roomId: "example-room",
+    });
+    expect(upsertCalls).toEqual([]);
+    expect(persistedRow.document).toBe(COMPACT_LETHAL_DOCUMENT);
+    expect(await room.getCompactionParkedBytes()).toBeGreaterThan(0);
+    expect(
+      errors.some((line) => line.includes("ExternalCompactionRequiredError"))
+    ).toBe(true);
+  });
+
+  test("loading a committed reset repairs a stale server epoch", async () => {
+    const resetEpoch = 1_785_299_170_000;
+    const resetDocument = new Y.Doc();
+    resetDocument.getMap("play").set("greeting", "hello");
+    resetDocument.getMap("__playhtml_meta").set("resetEpoch", resetEpoch);
+    persistedRow.document = encodeDoc(resetDocument);
+
+    const { room, storage } = createRoom();
+    storage.values.set("resetEpoch", resetEpoch - 10_000);
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    };
+    try {
+      await room.onLoad();
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(await room.getResetEpoch()).toBe(resetEpoch);
+    expect(storage.values.get("resetEpoch")).toBe(resetEpoch);
+    expect(
+      warnings.some((line) =>
+        line.includes("Loaded document advanced the server reset epoch")
+      )
+    ).toBe(true);
   });
 
   test("restoring a snapshot refuses by default while quarantined", async () => {
