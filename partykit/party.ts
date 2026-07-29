@@ -33,6 +33,7 @@ import {
   DEFAULT_MESSAGE_RATE_LIMIT,
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
   DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES,
+  DEFAULT_QUARANTINE_DOCUMENT_BYTES,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
@@ -92,6 +93,15 @@ import {
   type PersistenceMode,
 } from "./persistenceMode";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
+import {
+  createQuarantineStatusBody,
+  formatQuarantineLog,
+  shouldQuarantineForDocumentSize,
+  shouldQuarantineForLoadAttempts,
+  DEFAULT_QUARANTINE_LOAD_ATTEMPTS,
+  type QuarantineReason,
+  type QuarantineState,
+} from "./quarantinePolicy";
 export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
@@ -182,6 +192,9 @@ export class PartyServer extends YServer {
   private cachedSharedPerms: Record<string, SharedElementPermissions> | null =
     null;
   private persistenceMode: PersistenceMode = { kind: "available" };
+  // Set when this room must never hydrate or persist its document. Loaded from
+  // storage at the top of onLoad, before any hydration work happens.
+  private quarantine: QuarantineState | null = null;
 
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -419,6 +432,123 @@ export class PartyServer extends YServer {
     );
   }
 
+  private getQuarantineDocumentBytes(): number {
+    return readPositiveNumberEnv(
+      "QUARANTINE_DOCUMENT_BYTES",
+      DEFAULT_QUARANTINE_DOCUMENT_BYTES
+    );
+  }
+
+  private getQuarantineMaxLoadAttempts(): number {
+    return readPositiveNumberEnv(
+      "QUARANTINE_LOAD_ATTEMPTS",
+      DEFAULT_QUARANTINE_LOAD_ATTEMPTS
+    );
+  }
+
+  isQuarantined(): boolean {
+    return this.quarantine !== null;
+  }
+
+  getQuarantineState(): QuarantineState | null {
+    return this.quarantine;
+  }
+
+  async getQuarantineLoadAttempts(): Promise<number> {
+    const value = await this.ctx.storage.get(
+      STORAGE_KEYS.quarantineLoadAttempts
+    );
+    return typeof value === "number" ? value : 0;
+  }
+
+  private async readStoredQuarantine(): Promise<QuarantineState | null> {
+    const value = await this.ctx.storage.get(STORAGE_KEYS.quarantine);
+    return (value as QuarantineState | undefined) ?? null;
+  }
+
+  /**
+   * Enters quarantine: the persisted document is never hydrated and never
+   * overwritten. The room keeps serving visitors through the existing transient
+   * mode, which already suppresses autosave, admin writes, and bridge flushes.
+   * Pending alarms are canceled so Cloudflare stops retrying the load that
+   * killed the isolate.
+   */
+  private async enterQuarantine({
+    reason,
+    documentBytes,
+    loadAttempts,
+  }: {
+    reason: QuarantineReason;
+    documentBytes: number | null;
+    loadAttempts: number;
+  }): Promise<void> {
+    const quarantine: QuarantineState = {
+      reason,
+      documentBytes,
+      loadAttempts,
+      quarantinedAt: Date.now(),
+    };
+    this.quarantine = quarantine;
+    await this.ctx.storage.put(STORAGE_KEYS.quarantine, quarantine);
+
+    // Transient mode is the existing ephemeral-only path: realtime sync keeps
+    // working, autosave and persistence writes are refused.
+    this.persistenceMode = {
+      kind: "transient",
+      reason: `room quarantined (${reason})`,
+      failedAt: quarantine.quarantinedAt,
+    };
+
+    await this.cancelAlarmForQuarantine();
+
+    console.error(
+      formatQuarantineLog({
+        roomName: this.name,
+        reason,
+        documentBytes,
+        thresholdBytes: this.getQuarantineDocumentBytes(),
+        loadAttempts,
+      })
+    );
+  }
+
+  private async cancelAlarmForQuarantine(): Promise<void> {
+    await this.ctx.storage.deleteAlarm?.();
+  }
+
+  /**
+   * Enforces the quarantine data-safety invariant at the write functions rather
+   * than at the admin routes. A quarantined room never hydrated its persisted
+   * document, so its live doc is empty and every document write derived from it
+   * would destroy real data. Rebuilding the persisted document is just as
+   * dangerous: applying that update is the OOM this breaker exists to prevent.
+   */
+  private assertNotQuarantined(operation: string): void {
+    if (!this.isQuarantined()) return;
+    throw new Error(
+      `Refusing to ${operation} for quarantined room ${this.name}: the persisted document was never hydrated, so this would overwrite or reload data that is known to crash the room. Clear quarantine only after shrinking or repairing the document.`
+    );
+  }
+
+  async clearQuarantine(): Promise<void> {
+    this.quarantine = null;
+    await this.ctx.storage.delete(STORAGE_KEYS.quarantine);
+    await this.ctx.storage.delete(STORAGE_KEYS.quarantineLoadAttempts);
+    console.log(
+      `[PartyServer] Quarantine cleared for room=${this.name}; the next load will attempt hydration again.`
+    );
+  }
+
+  getQuarantineStatusBody(loadAttempts: number) {
+    return createQuarantineStatusBody({
+      roomName: this.name,
+      quarantine: this.quarantine,
+      thresholdBytes: this.getQuarantineDocumentBytes(),
+      maxLoadAttempts: this.getQuarantineMaxLoadAttempts(),
+      loadAttempts,
+    });
+  }
+
   private async readLimitedJson(request: Request): Promise<unknown | Response> {
     const limits = this.getServerLimits();
     const contentLength = request.headers.get("content-length");
@@ -543,6 +673,8 @@ export class PartyServer extends YServer {
   }
 
   private async saveDocumentBase64(documentBase64: string): Promise<void> {
+    this.assertNotQuarantined("persist document");
+
     const { error } = await supabase.from("documents").upsert(
       {
         name: this.name,
@@ -785,12 +917,19 @@ export class PartyServer extends YServer {
    */
   async restoreFromSnapshot(
     snapshotBase64: string,
-    options?: { bumpEpoch?: boolean }
+    options?: { bumpEpoch?: boolean; allowQuarantined?: boolean }
   ): Promise<{
     documentSize: number;
     resetEpoch: number;
     closedConnections: number;
   }> {
+    // Restoring an operator-supplied snapshot is the one write a quarantined
+    // room legitimately accepts, because it is how an oversized document gets
+    // repaired. Callers opt in explicitly so no other path inherits it.
+    if (!options?.allowQuarantined) {
+      this.assertNotQuarantined("restore a snapshot");
+    }
+
     const roomId = this.name;
     console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
 
@@ -910,6 +1049,13 @@ export class PartyServer extends YServer {
   }
 
   private async scheduleNextAlarm(): Promise<void> {
+    // A quarantined room must not schedule work that wakes it up: every wake is
+    // another chance to retry the load that killed the isolate.
+    if (this.isQuarantined()) {
+      await this.cancelAlarmForQuarantine();
+      return;
+    }
+
     const now = Date.now();
     const subs = await this.getSubscribers();
     const refs = await this.getSharedReferences();
@@ -1448,6 +1594,39 @@ export class PartyServer extends YServer {
   }
 
   override async onLoad(): Promise<void> {
+    // The crash-loop breaker and size gate both run before any hydration work.
+    // A room whose document OOMs the isolate never reaches the end of this
+    // method, so anything protective has to be durable before that point.
+    this.quarantine = await this.readStoredQuarantine();
+    if (this.quarantine !== null) {
+      await this.resumeQuarantine();
+      return;
+    }
+
+    const maxLoadAttempts = this.getQuarantineMaxLoadAttempts();
+    const previousAttempts = await this.getQuarantineLoadAttempts();
+    if (
+      shouldQuarantineForLoadAttempts({
+        loadAttempts: previousAttempts,
+        maxLoadAttempts,
+      })
+    ) {
+      await this.enterQuarantine({
+        reason: "crash-loop",
+        documentBytes: null,
+        loadAttempts: previousAttempts,
+      });
+      return;
+    }
+
+    // Durable BEFORE the risky work: if hydration kills the isolate, this
+    // increment survives and the next start counts it.
+    const loadAttempts = previousAttempts + 1;
+    await this.ctx.storage.put(
+      STORAGE_KEYS.quarantineLoadAttempts,
+      loadAttempts
+    );
+
     // Load the document from Supabase on first connection
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
     const query = supabase
@@ -1464,23 +1643,85 @@ export class PartyServer extends YServer {
     });
 
     if (result === null) {
+      // Supabase is unreachable, so hydration never ran. Roll the attempt back
+      // rather than zeroing it: a sub-threshold document that OOMs mid-hydration
+      // must still be able to accumulate evidence across an outage.
+      await this.releaseLoadAttempt(loadAttempts);
       return;
     }
 
     if (result.error) {
       this.enterTransientPersistenceMode(new Error(result.error.message));
+      await this.releaseLoadAttempt(loadAttempts);
       return;
     }
 
     this.markPersistenceAvailable();
 
     if (result.data) {
+      // Size gate. The download itself is safe; Y.applyUpdate is what OOMs the
+      // Durable Object, so the check sits between the two.
+      const documentBytes = result.data.document.length;
+      if (
+        shouldQuarantineForDocumentSize({
+          documentBytes,
+          thresholdBytes: this.getQuarantineDocumentBytes(),
+        })
+      ) {
+        await this.enterQuarantine({
+          reason: "document-size",
+          documentBytes,
+          loadAttempts,
+        });
+        return;
+      }
+
       this.markDocumentPersisted(result.data.document);
       Y.applyUpdate(
         this.document,
         new Uint8Array(Buffer.from(result.data.document, "base64"))
       );
     }
+
+    // Hydration completed without killing the isolate.
+    await this.clearLoadAttempts();
+  }
+
+  private async clearLoadAttempts(): Promise<void> {
+    await this.ctx.storage.delete(STORAGE_KEYS.quarantineLoadAttempts);
+  }
+
+  // Undoes this start's increment when the load ended before hydration could be
+  // attempted. Attempts that DID reach hydration stay counted, so the crash-loop
+  // breaker keeps its evidence even if Supabase is flaky in between.
+  private async releaseLoadAttempt(loadAttempts: number): Promise<void> {
+    const remaining = loadAttempts - 1;
+    if (remaining <= 0) {
+      await this.clearLoadAttempts();
+      return;
+    }
+    await this.ctx.storage.put(STORAGE_KEYS.quarantineLoadAttempts, remaining);
+  }
+
+  // A room that was already quarantined on a previous start re-enters transient
+  // mode without touching Supabase at all.
+  private async resumeQuarantine(): Promise<void> {
+    const quarantine = ensureExists(this.quarantine);
+    this.persistenceMode = {
+      kind: "transient",
+      reason: `room quarantined (${quarantine.reason})`,
+      failedAt: quarantine.quarantinedAt,
+    };
+    await this.cancelAlarmForQuarantine();
+    console.error(
+      formatQuarantineLog({
+        roomName: this.name,
+        reason: quarantine.reason,
+        documentBytes: quarantine.documentBytes,
+        thresholdBytes: this.getQuarantineDocumentBytes(),
+        loadAttempts: quarantine.loadAttempts,
+      })
+    );
   }
 
   override async onSave(): Promise<void> {
@@ -2092,6 +2333,11 @@ export class PartyServer extends YServer {
     resetEpoch: number;
     closedConnections: number;
   }> {
+    // A hard reset derives its new document from the live doc, which is empty
+    // for a quarantined room, and falls back to re-reading the persisted one.
+    // Both outcomes are exactly what quarantine exists to prevent.
+    this.assertNotQuarantined("hard reset");
+
     const roomId = this.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
@@ -2356,6 +2602,14 @@ export class PartyServer extends YServer {
 
   // PartyKit Alarm: invoked when storage alarm rings
   override async onAlarm(): Promise<void> {
+    if (this.isQuarantined()) {
+      console.warn(
+        `[PartyServer] Alarm skipped for quarantined room=${this.name}; canceling pending alarms.`
+      );
+      await this.cancelAlarmForQuarantine();
+      return;
+    }
+
     try {
       const compactAfter = await this.getEmptyRoomCompactAfter();
       if (compactAfter !== null && compactAfter <= Date.now()) {

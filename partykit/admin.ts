@@ -103,6 +103,15 @@ export class AdminHandler {
       ) {
         return this.handleAdminRestoreRawDocument(request);
       }
+      if (path.includes("admin/quarantine-status") && request.method === "GET") {
+        return this.handleAdminQuarantineStatus(request);
+      }
+      if (
+        path.includes("admin/quarantine-clear") &&
+        request.method === "POST"
+      ) {
+        return this.handleAdminQuarantineClear(request);
+      }
 
       return new Response("Admin endpoint not found", { status: 404 });
     } catch (err) {
@@ -169,6 +178,44 @@ export class AdminHandler {
       const subscribers = await this.context.getSubscribers();
       const sharedReferences = await this.context.getSharedReferences();
       const sharedPermissions = await this.context.getSharedPermissions();
+      const quarantineLoadAttempts =
+        await this.context.getQuarantineLoadAttempts();
+      const quarantine =
+        this.context.getQuarantineStatusBody(quarantineLoadAttempts);
+
+      // Never rebuild the Y.Doc of a quarantined room: applying that update is
+      // exactly what OOMs the isolate.
+      if (this.context.isQuarantined()) {
+        return new Response(
+          JSON.stringify(
+            {
+              roomId: this.context.name,
+              subscribers,
+              sharedReferences,
+              sharedPermissions,
+              quarantine,
+              ydoc: {
+                error:
+                  "Room is quarantined; the persisted document was not loaded because hydrating it crashes the room.",
+              },
+              connections: Array.from(this.context.getConnections()).length,
+              timestamp: new Date().toISOString(),
+              documentSize: quarantine.documentBytes ?? 0,
+              resetEpoch: await this.context.getResetEpoch(),
+            },
+            null,
+            2
+          ),
+          {
+            headers: {
+              "content-type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "GET",
+              "Access-Control-Allow-Headers": "Content-Type",
+            },
+          }
+        );
+      }
 
       // Get Y.Doc data if available - use direct approach for consistency
       let ydocData = null;
@@ -235,6 +282,7 @@ export class AdminHandler {
         subscribers,
         sharedReferences,
         sharedPermissions,
+        quarantine,
         ydoc: ydocData,
         connections: Array.from(this.context.getConnections()).length,
         timestamp: new Date().toISOString(),
@@ -467,6 +515,11 @@ export class AdminHandler {
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
+    // Reloading the persisted document into the live doc is the exact operation
+    // that OOMs a quarantined room, and it is a tempting thing to reach for
+    // while a room looks broken.
+    const persistenceError = this.checkPersistenceWriteAvailable();
+    if (persistenceError) return persistenceError;
 
     try {
       // Load snapshot from DB
@@ -915,8 +968,13 @@ export class AdminHandler {
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
-    const persistenceError = this.checkPersistenceWriteAvailable();
-    if (persistenceError) return persistenceError;
+    // Quarantine also runs the room in transient mode, but this endpoint is how
+    // an oversized document gets replaced with a repaired one, so it stays open
+    // for a quarantined room. A genuine Supabase outage still blocks it.
+    if (!this.context.isQuarantined()) {
+      const persistenceError = this.checkPersistenceWriteAvailable();
+      if (persistenceError) return persistenceError;
+    }
 
     const roomId = this.context.name;
     console.log(`[Restore Raw] Starting for room: ${roomId}`);
@@ -960,11 +1018,20 @@ export class AdminHandler {
         );
       }
 
-      // Use the centralized restoreFromSnapshot method (bump epoch)
+      // Use the centralized restoreFromSnapshot method (bump epoch).
+      // The document here is operator-supplied and already validated above, so
+      // this is the sanctioned way to replace a quarantined room's document.
       const result = await this.context.restoreFromSnapshot(
         body.base64Document,
-        { bumpEpoch: true }
+        { bumpEpoch: true, allowQuarantined: true }
       );
+
+      // The persisted document has been replaced, so the condition that caused
+      // quarantine is gone. Lift it here rather than making the operator run a
+      // second call.
+      if (this.context.isQuarantined()) {
+        await this.context.clearQuarantine();
+      }
 
       return new Response(
         JSON.stringify({
@@ -1003,5 +1070,64 @@ export class AdminHandler {
         { status: 500, headers: { "content-type": "application/json" } }
       );
     }
+  }
+
+  private async handleAdminQuarantineStatus(
+    request: Request
+  ): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+
+    const loadAttempts = await this.context.getQuarantineLoadAttempts();
+    const body = this.context.getQuarantineStatusBody(loadAttempts);
+
+    return new Response(JSON.stringify(body, null, 2), {
+      headers: {
+        "content-type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
+    });
+  }
+
+  // Clearing quarantine only removes the flag and the counter. The room stays in
+  // transient mode until it restarts, so the next load is the one that retries
+  // hydration. Clear this only after the persisted document has been shrunk or
+  // repaired, otherwise the room will simply re-quarantine.
+  private async handleAdminQuarantineClear(
+    request: Request
+  ): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+
+    const previous = this.context.getQuarantineState();
+    await this.context.clearQuarantine();
+
+    return new Response(
+      JSON.stringify(
+        {
+          roomId: this.context.name,
+          cleared: previous !== null,
+          previousReason: previous?.reason ?? null,
+          previousDocumentBytes: previous?.documentBytes ?? null,
+          stillTransient: !this.context.isPersistenceAvailable(),
+          message:
+            previous === null
+              ? "Room was not quarantined; nothing to clear."
+              : "Quarantine cleared. This room stays transient (nothing persists) until it restarts; the next load retries hydration and will re-quarantine if the document is still oversized.",
+        },
+        null,
+        2
+      ),
+      {
+        headers: {
+          "content-type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      }
+    );
   }
 }

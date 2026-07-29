@@ -16,6 +16,11 @@ export const STORAGE_KEYS = {
   emergencyCompactCheckAfter: "emergencyCompactCheckAfter",
   // Stores the next time autosave should try compacting before persistence
   persistedDocumentCompactCheckAfter: "persistedDocumentCompactCheckAfter",
+  // Stores the quarantine record for a room whose persisted document cannot be
+  // hydrated without crashing the Durable Object
+  quarantine: "quarantine",
+  // Counts hydration attempts that started but never reported completion
+  quarantineLoadAttempts: "quarantineLoadAttempts",
 };
 // Subscriber lease configuration (default 12 hours)
 export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
@@ -55,6 +60,12 @@ export const DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES = (() => {
 })();
 export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
   return 1024 * 1024 * 40;
+})();
+// Persisted documents above this size are never hydrated. Rooms observed at
+// 7-8MB base64 OOM the Durable Object during load, which resets the isolate and
+// kills every co-located room, so the gate sits below that range.
+export const DEFAULT_QUARANTINE_DOCUMENT_BYTES = (() => {
+  return 1024 * 1024 * 6;
 })();
 export const DEFAULT_SUPABASE_LOAD_TIMEOUT_MS = (() => {
   return 5000;
