@@ -61,11 +61,13 @@ export const DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES = (() => {
 export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
   return 1024 * 1024 * 40;
 })();
-// Persisted documents above this size are never hydrated. Rooms observed at
-// 7-8MB base64 OOM the Durable Object during load, which resets the isolate and
-// kills every co-located room, so the gate sits below that range.
+// Persisted documents above this size are never hydrated. Lethality varies with
+// isolate co-tenancy: 7-8MB rooms have OOMed on load, but four healthy production
+// rooms also sit in the 6-8MB band, so the size gate only catches the absurd
+// (10MB+); empirically-lethal smaller documents are caught by the crash-loop
+// counter instead (3 failed loads -> quarantine).
 export const DEFAULT_QUARANTINE_DOCUMENT_BYTES = (() => {
-  return 1024 * 1024 * 6;
+  return 1024 * 1024 * 10;
 })();
 export const DEFAULT_SUPABASE_LOAD_TIMEOUT_MS = (() => {
   return 5000;
