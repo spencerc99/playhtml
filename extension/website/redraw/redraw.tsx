@@ -19,6 +19,10 @@ import { DEFAULT_SETTINGS } from "../shared/components/settingsDefaults";
 import { scheduleTrailSequence } from "../shared/utils/trailSequence";
 import { dilateMask, extractStrokes, loadImageData, Point } from "./image";
 import { LibraryItem, inPlaceTrails, mosaicTrails, warpTrails } from "./draw";
+import {
+  arrangeCircularGestures,
+  detectCircularGestures,
+} from "./circles";
 
 const MAX_POOL_EVENTS = 100000;
 const IMAGE_MAX_SIZE = 640;
@@ -26,8 +30,10 @@ const LIBRARY_CHUNK_POINTS = 120;
 const LIBRARY_MIN_CHUNK_POINTS = 8;
 const LIBRARY_MAX_ITEMS = 1500;
 const CANVAS_FIT = 0.85;
+const CIRCLE_SOURCE_DOMAIN = "wewere.online";
+const CIRCLE_SOURCE_PATH = "/circle-draw";
 
-type Mode = "mosaic" | "warp" | "inplace";
+type Mode = "mosaic" | "warp" | "inplace" | "circles";
 
 const styles = {
   page: {
@@ -87,6 +93,7 @@ const styles = {
   } as React.CSSProperties,
   row: {
     display: "flex",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
     gap: "8px",
@@ -109,8 +116,13 @@ const styles = {
 
 const CursorRedraw = () => {
   const chromeHidden = useChromeToggle();
+  const [mode, setMode] = useState<Mode>(() =>
+    new URLSearchParams(window.location.search).get("mode") === "circles"
+      ? "circles"
+      : "mosaic",
+  );
   const { events, loading, deepening, error: poolError } = useCursorEventPool(
-    "",
+    mode === "circles" ? CIRCLE_SOURCE_DOMAIN : "",
     MAX_POOL_EVENTS,
   );
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +132,6 @@ const CursorRedraw = () => {
     objectUrl: string;
   } | null>(null);
 
-  const [mode, setMode] = useState<Mode>("mosaic");
   const [threshold, setThreshold] = useState(60);
   const [maxStrokes, setMaxStrokes] = useState(160);
   const [allowRotation, setAllowRotation] = useState(false);
@@ -130,6 +141,9 @@ const CursorRedraw = () => {
   const [pxPerSecond, setPxPerSecond] = useState(1400);
   const [overlap, setOverlap] = useState(0.85);
   const [showUnderlay, setShowUnderlay] = useState(true);
+  const [maxCircles, setMaxCircles] = useState(80);
+  const [circleMinScore, setCircleMinScore] = useState(0.58);
+  const [spatialOverlap, setSpatialOverlap] = useState(0.72);
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -174,7 +188,10 @@ const CursorRedraw = () => {
   const cursorSettings: CursorTrailSettings = useMemo(
     () => ({
       randomizeColors: false,
-      filters: [],
+      filters:
+        mode === "circles"
+          ? [{ domain: CIRCLE_SOURCE_DOMAIN, path: CIRCLE_SOURCE_PATH }]
+          : [],
       pidFilter: "",
       eventFilter: { move: true, click: true, hold: true, cursor_change: true },
       // Straight keeps the genuine gesture shapes for matching.
@@ -186,7 +203,7 @@ const CursorRedraw = () => {
       minGapBetweenTrails: 0.3,
       documentSpace: false,
     }),
-    [],
+    [mode],
   );
 
   const { trailStates } = useCursorTrails(events, viewportSize, cursorSettings);
@@ -253,6 +270,15 @@ const CursorRedraw = () => {
     [trailStates],
   );
 
+  const detectedCircles = useMemo(
+    () =>
+      detectCircularGestures(fullTrails, {
+        maxGestures: Math.max(maxCircles, 120),
+        minScore: circleMinScore,
+      }),
+    [circleMinScore, fullTrails, maxCircles],
+  );
+
   const corridorMask = useMemo(() => {
     if (!imageStrokes || mode !== "inplace") return null;
     return dilateMask(
@@ -264,6 +290,12 @@ const CursorRedraw = () => {
   }, [imageStrokes, mode, corridor]);
 
   const drawnTrails = useMemo(() => {
+    if (mode === "circles") {
+      return arrangeCircularGestures(detectedCircles, viewportSize, {
+        maxCircles,
+        spatialOverlap,
+      });
+    }
     if (!canvasStrokes || library.length === 0) return [];
     if (mode === "mosaic") {
       return mosaicTrails(canvasStrokes.strokes, library, allowRotation);
@@ -294,6 +326,10 @@ const CursorRedraw = () => {
     fit,
     fullTrails,
     maxStrokes,
+    detectedCircles,
+    viewportSize,
+    maxCircles,
+    spatialOverlap,
   ]);
 
   const sequence = useMemo(() => {
@@ -347,7 +383,9 @@ const CursorRedraw = () => {
     ? "loading cursor events..."
     : displayError
       ? displayError
-      : (!image
+      : mode === "circles"
+        ? `${detectedCircles.length} circular gestures detected from ${events.length} events`
+        : (!image
           ? `${library.length} gestures in the library`
           : `${drawnTrails.length} strokes from ${library.length} gestures`) +
         (deepening ? ` — deepening pool (${events.length} events)...` : "");
@@ -357,13 +395,19 @@ const CursorRedraw = () => {
       {!chromeHidden && <div style={styles.title}>cursor redraw</div>}
       {!chromeHidden && <div style={styles.status}>{statusText}</div>}
 
-      {!image && !loading && (
+      {mode !== "circles" && !image && !loading && (
         <div style={styles.dropPrompt}>
           drop an image anywhere to draw it with cursor trails
         </div>
       )}
 
-      {image && fit && showUnderlay && (
+      {mode === "circles" && detectedCircles.length === 0 && !loading && (
+        <div style={styles.dropPrompt}>
+          waiting for circles drawn at wewere.online/circle-draw
+        </div>
+      )}
+
+      {mode !== "circles" && image && fit && showUnderlay && (
         <img
           src={image.objectUrl}
           alt=""
@@ -381,7 +425,7 @@ const CursorRedraw = () => {
 
       {sequence.trailStates.length > 0 && (
         <AnimatedTrails
-          key={`${mode}-${threshold}-${maxStrokes}-${allowRotation}-${warpStrength}-${corridor}-${image?.objectUrl}`}
+          key={`${mode}-${threshold}-${maxStrokes}-${allowRotation}-${warpStrength}-${corridor}-${maxCircles}-${circleMinScore}-${spatialOverlap}-${image?.objectUrl}`}
           trailStates={sequence.trailStates}
           timeRange={timeRange}
           windowSize={sequence.trailStates.length}
@@ -411,42 +455,52 @@ const CursorRedraw = () => {
             >
               in place
             </button>
+            <button
+              style={styles.modeButton(mode === "circles")}
+              onClick={() => setMode("circles")}
+            >
+              circles
+            </button>
           </div>
-          <div style={styles.row}>
-            <span>image</span>
-            <input
-              type="file"
-              accept="image/*"
-              style={{ width: 130, fontSize: 9 }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFile(file);
-              }}
-            />
-          </div>
-          <div style={styles.row}>
-            <span>edges: {threshold}</span>
-            <input
-              type="range"
-              min={20}
-              max={200}
-              value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-              style={styles.slider}
-            />
-          </div>
-          <div style={styles.row}>
-            <span>strokes: {maxStrokes}</span>
-            <input
-              type="range"
-              min={20}
-              max={400}
-              step={10}
-              value={maxStrokes}
-              onChange={(e) => setMaxStrokes(Number(e.target.value))}
-              style={styles.slider}
-            />
-          </div>
+          {mode !== "circles" && (
+            <>
+              <div style={styles.row}>
+                <span>image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ width: 130, fontSize: 9 }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFile(file);
+                  }}
+                />
+              </div>
+              <div style={styles.row}>
+                <span>edges: {threshold}</span>
+                <input
+                  type="range"
+                  min={20}
+                  max={200}
+                  value={threshold}
+                  onChange={(e) => setThreshold(Number(e.target.value))}
+                  style={styles.slider}
+                />
+              </div>
+              <div style={styles.row}>
+                <span>strokes: {maxStrokes}</span>
+                <input
+                  type="range"
+                  min={20}
+                  max={400}
+                  step={10}
+                  value={maxStrokes}
+                  onChange={(e) => setMaxStrokes(Number(e.target.value))}
+                  style={styles.slider}
+                />
+              </div>
+            </>
+          )}
           {mode === "mosaic" && (
             <div style={styles.row}>
               <label>
@@ -487,6 +541,52 @@ const CursorRedraw = () => {
               />
             </div>
           )}
+          {mode === "circles" && (
+            <>
+              <div style={styles.row}>
+                <span>circles: {maxCircles}</span>
+                <input
+                  type="range"
+                  min={5}
+                  max={120}
+                  step={5}
+                  value={maxCircles}
+                  onChange={(e) => setMaxCircles(Number(e.target.value))}
+                  style={styles.slider}
+                />
+              </div>
+              <div style={styles.row}>
+                <span>confidence: {circleMinScore.toFixed(2)}</span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={0.85}
+                  step={0.01}
+                  value={circleMinScore}
+                  onChange={(e) => setCircleMinScore(Number(e.target.value))}
+                  style={styles.slider}
+                />
+              </div>
+              <div style={styles.row}>
+                <span>spatial overlap: {spatialOverlap.toFixed(2)}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.02}
+                  value={spatialOverlap}
+                  onChange={(e) => setSpatialOverlap(Number(e.target.value))}
+                  style={styles.slider}
+                />
+              </div>
+              <a
+                href="/circle-draw/"
+                style={{ color: "#3d3833", textAlign: "right" }}
+              >
+                collect more circles →
+              </a>
+            </>
+          )}
           <div style={styles.row}>
             <span>pace: {pxPerSecond}px/s</span>
             <input
@@ -500,7 +600,7 @@ const CursorRedraw = () => {
             />
           </div>
           <div style={styles.row}>
-            <span>overlap: {overlap.toFixed(2)}</span>
+            <span>timing overlap: {overlap.toFixed(2)}</span>
             <input
               type="range"
               min={0}
@@ -523,17 +623,19 @@ const CursorRedraw = () => {
               style={styles.slider}
             />
           </div>
-          <div style={styles.row}>
-            <label>
-              <input
-                type="checkbox"
-                checked={showUnderlay}
-                onChange={(e) => setShowUnderlay(e.target.checked)}
-                style={{ marginRight: 6 }}
-              />
-              show image underlay
-            </label>
-          </div>
+          {mode !== "circles" && (
+            <div style={styles.row}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showUnderlay}
+                  onChange={(e) => setShowUnderlay(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                show image underlay
+              </label>
+            </div>
+          )}
         </div>
       )}
     </div>
