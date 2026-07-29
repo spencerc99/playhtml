@@ -31,7 +31,7 @@ const LIBRARY_CHUNK_POINTS = 120;
 const LIBRARY_MIN_CHUNK_POINTS = 8;
 const LIBRARY_MAX_ITEMS = 1500;
 const CANVAS_FIT = 0.85;
-const CIRCLE_SOURCE_DOMAIN = "wewere.online";
+const CIRCLE_SOURCE_DOMAIN = window.location.hostname.replace(/^www\./, "");
 const CIRCLE_SOURCE_PATH = "/circle-draw";
 
 type Mode = "mosaic" | "warp" | "inplace" | "circles";
