@@ -9,6 +9,30 @@ import { docToJson, encodeDocToBase64 } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 import { ExternalCompactionRequiredError } from "./quarantinePolicy";
 
+export function getAdminAuthError(
+  request: Request,
+  adminToken: string | undefined
+): Response | null {
+  if (!adminToken) return null;
+
+  const url = new URL(request.url);
+  const token =
+    url.searchParams.get("token") ||
+    request.headers.get("Authorization")?.replace("Bearer ", "");
+
+  if (!token || token !== adminToken) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: {
+        "content-type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  return null;
+}
+
 function compareKeys(
   obj1: any,
   obj2: any
@@ -125,21 +149,7 @@ export class AdminHandler {
   }
 
   private checkAdminAuth(request: Request): Response | null {
-    const adminToken = env.ADMIN_TOKEN;
-    if (adminToken) {
-      const url = new URL(request.url);
-      const token =
-        url.searchParams.get("token") ||
-        request.headers.get("Authorization")?.replace("Bearer ", "");
-
-      if (!token || token !== adminToken) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
-      }
-    }
-    return null;
+    return getAdminAuthError(request, env.ADMIN_TOKEN);
   }
 
   private checkPersistenceWriteAvailable(): Response | null {

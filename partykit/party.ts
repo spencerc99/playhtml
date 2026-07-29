@@ -9,7 +9,7 @@ import { env } from "cloudflare:workers";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { supabase } from "./db";
-import { AdminHandler } from "./admin";
+import { AdminHandler, getAdminAuthError } from "./admin";
 import {
   docToJson,
   jsonToDoc,
@@ -112,6 +112,7 @@ import {
   type QuarantineReason,
   type QuarantineState,
 } from "./quarantinePolicy";
+import { listQuarantinedRooms } from "./quarantineControl";
 export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
@@ -3479,10 +3480,75 @@ export class PartyServer extends YServer {
 
 export default {
   // Set up your fetch handler to use configured Servers
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, workerEnv: Env): Promise<Response> {
     try {
+      const url = new URL(request.url);
+      if (url.pathname === "/admin/quarantines") {
+        if (request.method === "OPTIONS") {
+          return new Response(null, {
+            status: 200,
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "GET, OPTIONS",
+              "Access-Control-Allow-Headers":
+                "Content-Type, Authorization",
+            },
+          });
+        }
+
+        if (request.method !== "GET") {
+          return new Response("Method Not Allowed", {
+            status: 405,
+            headers: { Allow: "GET, OPTIONS" },
+          });
+        }
+
+        const authError = getAdminAuthError(
+          request,
+          workerEnv.ADMIN_TOKEN
+        );
+        if (authError) return authError;
+
+        try {
+          const rooms = await listQuarantinedRooms(
+            workerEnv.QUARANTINE_CONTROL
+          );
+          return new Response(
+            JSON.stringify({
+              available: true,
+              count: rooms.length,
+              rooms,
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        } catch (error) {
+          console.error(
+            "[PartyServer] Failed to list quarantined rooms:",
+            error
+          );
+          return new Response(
+            JSON.stringify({
+              available: false,
+              error: "Failed to read the quarantine control plane",
+            }),
+            {
+              status: 503,
+              headers: {
+                "content-type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        }
+      }
+
       return (
-        (await routePartykitRequest(request, env)) ||
+        (await routePartykitRequest(request, workerEnv)) ||
         new Response("Not Found", { status: 404 })
       );
     } catch (error) {

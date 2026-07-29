@@ -22,6 +22,15 @@ const quarantineKvStub = {
   async delete(key: string) {
     kvStore.delete(key);
   },
+  async list({ prefix }: { prefix?: string }) {
+    return {
+      keys: Array.from(kvStore.keys())
+        .filter((key) => !prefix || key.startsWith(prefix))
+        .map((name) => ({ name })),
+      list_complete: true as const,
+      cacheStatus: null,
+    };
+  },
 };
 
 mock.module("cloudflare:workers", () => ({
@@ -71,7 +80,9 @@ const supabaseStub = {
 
 mock.module(`${import.meta.dir}/../db.ts`, () => ({ supabase: supabaseStub }));
 
-const { PartyServer } = await import(`${import.meta.dir}/../party.ts`);
+const partyModule = await import(`${import.meta.dir}/../party.ts`);
+const { PartyServer } = partyModule;
+const worker = partyModule.default;
 
 // Mirrors the Durable Object storage surface the server actually uses.
 class FakeStorage {
@@ -291,5 +302,47 @@ describe("fetch entry point", () => {
     const body = await response.json();
     expect(body.loadDeferred.active).toBe(true);
     expect(documentReadCount).toBe(0);
+  });
+});
+
+describe("global quarantine admin endpoint", () => {
+  const workerEnv = {
+    ADMIN_TOKEN: "secret",
+    QUARANTINE_CONTROL: quarantineKvStub,
+  } as never;
+
+  test("lists every current quarantine without initializing a room", async () => {
+    kvStore.set("quarantine:z-room", "automatic load failures");
+    kvStore.set("unrelated:key", "ignore me");
+    kvStore.set("quarantine:a-room", "operator stop");
+
+    const response = await worker.fetch(
+      new Request(
+        "https://api.playhtml.fun/admin/quarantines?token=secret"
+      ),
+      workerEnv
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      available: true,
+      count: 2,
+      rooms: [
+        { roomId: "a-room", detail: "operator stop" },
+        { roomId: "z-room", detail: "automatic load failures" },
+      ],
+    });
+    expect(documentReadCount).toBe(0);
+  });
+
+  test("requires the admin token", async () => {
+    kvStore.set("quarantine:private-room", "operator stop");
+
+    const response = await worker.fetch(
+      new Request("https://api.playhtml.fun/admin/quarantines"),
+      workerEnv
+    );
+
+    expect(response.status).toBe(401);
   });
 });
