@@ -125,9 +125,6 @@ function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
     name: { value: name, writable: true },
     document: { value: doc ?? new Y.Doc(), writable: true },
     persistenceMode: { value: { kind: "available" }, writable: true },
-    quarantine: { value: null, writable: true },
-    compactionTooLargeBytes: { value: null, writable: true },
-    loadDeferredUntil: { value: null, writable: true },
     realtimeSyncStarted: { value: true, writable: true },
     documentLoadCompleted: { value: false, writable: true },
     isSkippingSave: { value: false, writable: true },
@@ -159,12 +156,12 @@ function createRoom(name = "example-room") {
  * Tests that need the genuine entry points live in quarantinePlatformEntry.
  */
 async function startRoom(room: any): Promise<void> {
-  await room.applyExternalQuarantineFlag();
-  if (room.isQuarantined()) {
-    await room.enterQuarantineRuntimeState();
+  await room.circuitBreaker.applyExternalQuarantineFlag();
+  if (room.circuitBreaker.isQuarantined()) {
+    await room.circuitBreaker.enterQuarantineRuntimeState();
     return;
   }
-  if (await room.shouldDeferLoad()) return;
+  if (await room.circuitBreaker.shouldDeferLoad()) return;
   await room.onLoad();
 }
 
@@ -223,7 +220,7 @@ describe("load path", () => {
 
     await startRoom(room);
 
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
     expect(room.isPersistenceAvailable()).toBe(true);
     expect(docIsEmpty(room.document)).toBe(false);
   });
@@ -234,7 +231,7 @@ describe("load path", () => {
 
     await startRoom(room);
 
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
     expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
   });
@@ -266,9 +263,9 @@ describe("load path", () => {
     // Supabase was never queried, and nothing was hydrated.
     expect(documentReadCount).toBe(0);
     expect(docIsEmpty(room.document)).toBe(true);
-    expect(room.isLoadDeferred()).toBe(true);
+    expect(room.circuitBreaker.isLoadDeferred()).toBe(true);
     // A deferred room is NOT quarantined: no transient mode, no ephemeral service.
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
   });
 
   test("the first inferred load failure waits on the one-minute rung", async () => {
@@ -283,7 +280,7 @@ describe("load path", () => {
     expect(retryAfter).toBeGreaterThanOrEqual(before + 60_000);
     expect(retryAfter).toBeLessThanOrEqual(before + 61_000);
     expect(documentReadCount).toBe(0);
-    expect(room.isLoadDeferred()).toBe(true);
+    expect(room.circuitBreaker.isLoadDeferred()).toBe(true);
   });
 
   test("a deferred room answers requests with 503 and Retry-After", async () => {
@@ -368,7 +365,7 @@ describe("load path", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(room.isQuarantined()).toBe(true);
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
     expect(kvStore.get("quarantine:example-room")).toBe(
       "operator intervention"
     );
@@ -420,7 +417,7 @@ describe("load path", () => {
 
     // The new deadline was committed while the read count was still zero.
     expect(deadlineWrites).toEqual([0]);
-    expect(room.isLoadDeferred()).toBe(false);
+    expect(room.circuitBreaker.isLoadDeferred()).toBe(false);
     expect(documentReadCount).toBe(1);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
   });
@@ -431,7 +428,7 @@ describe("load path", () => {
 
     await startRoom(room);
 
-    expect(room.isLoadDeferred()).toBe(false);
+    expect(room.circuitBreaker.isLoadDeferred()).toBe(false);
     expect(documentReadCount).toBe(1);
   });
 
@@ -442,8 +439,10 @@ describe("load path", () => {
 
     await startRoom(room);
 
-    expect(room.isQuarantined()).toBe(true);
-    expect(room.getQuarantineState().reason).toBe("repeated-failures");
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
+    expect(room.circuitBreaker.getQuarantineState().reason).toBe(
+      "repeated-failures"
+    );
     expect(docIsEmpty(room.document)).toBe(true);
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
   });
@@ -475,10 +474,12 @@ describe("in-DO compaction size gate", () => {
     // retrying doomed work.
     expect(upsertCalls).toEqual([]);
     expect(persistedRow.document).toBe(COMPACT_LETHAL_DOCUMENT);
-    expect(await room.getCompactionParkedBytes()).toBeGreaterThan(0);
+    expect(
+      await room.circuitBreaker.getCompactionParkedBytes()
+    ).toBeGreaterThan(0);
     expect(storage.values.get("emptyRoomCompactAfter")).toBeUndefined();
     // Critically, this is NOT a quarantine.
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
     expect(room.isPersistenceAvailable()).toBe(true);
   });
 
@@ -501,7 +502,7 @@ describe("in-DO compaction size gate", () => {
     await room.compactEmptyRoomDocument();
 
     // Not parked, and the compacted document was persisted.
-    expect(await room.getCompactionParkedBytes()).toBeNull();
+    expect(await room.circuitBreaker.getCompactionParkedBytes()).toBeNull();
     expect(upsertCalls.length).toBe(1);
     expect(persistedRow.document).not.toBe("");
   });
@@ -513,11 +514,13 @@ describe("in-DO compaction size gate", () => {
     const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
     persistedRow.document = COMPACT_LETHAL_DOCUMENT;
     await room.compactEmptyRoomDocument();
-    expect(await room.getCompactionParkedBytes()).toBeGreaterThan(0);
+    expect(
+      await room.circuitBreaker.getCompactionParkedBytes()
+    ).toBeGreaterThan(0);
 
-    await room.clearCompactionPark();
+    await room.circuitBreaker.clearCompactionPark();
 
-    expect(await room.getCompactionParkedBytes()).toBeNull();
+    expect(await room.circuitBreaker.getCompactionParkedBytes()).toBeNull();
   });
 
   // A later disconnect would otherwise re-schedule the compaction that was just
@@ -527,7 +530,9 @@ describe("in-DO compaction size gate", () => {
     const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
     persistedRow.document = COMPACT_LETHAL_DOCUMENT;
     await room.compactEmptyRoomDocument();
-    expect(await room.getCompactionParkedBytes()).toBeGreaterThan(0);
+    expect(
+      await room.circuitBreaker.getCompactionParkedBytes()
+    ).toBeGreaterThan(0);
     storage.setAlarmCalls = [];
 
     // The last visitor leaves again.
@@ -636,7 +641,9 @@ describe("alarm failure backoff", () => {
 
     // The next rung is committed before the risky work runs, so an OOM inside
     // that work still lands the room in a longer window.
-    const retryAfter = storage.values.get("alarmRetryAfter") as number | undefined;
+    const retryAfter = storage.values.get("alarmRetryAfter") as
+      | number
+      | undefined;
     expect(retryAfter ?? before + 5 * 60_000).toBeGreaterThanOrEqual(
       before + 5 * 60_000
     );
@@ -665,7 +672,7 @@ describe("alarm failure backoff", () => {
 
     // Cleared, not incremented.
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
     // And it is still reported, with room context, rather than swallowed.
     expect(
       errors.some(
@@ -693,7 +700,7 @@ describe("alarm failure backoff", () => {
       console.error = originalError;
     }
 
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
   });
 
@@ -704,15 +711,17 @@ describe("alarm failure backoff", () => {
 
     await room.onAlarm();
 
-    expect(room.isQuarantined()).toBe(true);
-    expect(room.getQuarantineState().reason).toBe("repeated-failures");
-    expect(room.getQuarantineState().failureKind).toBe("alarm");
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
+    expect(room.circuitBreaker.getQuarantineState().reason).toBe(
+      "repeated-failures"
+    );
+    expect(room.circuitBreaker.getQuarantineState().failureKind).toBe("alarm");
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
   });
 
   test("a quarantined room does no alarm work and parks the alarm", async () => {
     const { room, storage } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -732,7 +741,7 @@ describe("hardening", () => {
   // silently lift the write park on a quarantined room.
   test("markPersistenceAvailable cannot lift a quarantine write park", async () => {
     const { room } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -751,7 +760,7 @@ describe("hardening", () => {
     kvFailure = new Error("kv down");
 
     await expect(
-      room.enterQuarantine({
+      room.circuitBreaker.enterQuarantine({
         reason: "manual",
         detail: "operator",
         failureKind: null,
@@ -761,7 +770,7 @@ describe("hardening", () => {
 
     // The throw propagates so the operator learns the flag did not stick, but
     // the room is already locally safe.
-    expect(room.isQuarantined()).toBe(true);
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
     expect(room.isPersistenceAvailable()).toBe(false);
     expect(storage.alarm).toBeNull();
   });
@@ -821,7 +830,7 @@ describe("hardening", () => {
     storage.values.set("quarantineLoadAttempts", 3);
     storage.values.set("alarmFailureAttempts", 2);
 
-    const summary = await room.clearQuarantine();
+    const summary = await room.circuitBreaker.clearQuarantine();
 
     expect(summary).toEqual({
       wasQuarantined: false,
@@ -836,14 +845,14 @@ describe("hardening", () => {
     storage.values.set("quarantineLoadAttempts", 2);
     storage.values.set("loadRetryAfter", Date.now() + 60_000);
     await startRoom(room);
-    expect(room.isLoadDeferred()).toBe(true);
+    expect(room.circuitBreaker.isLoadDeferred()).toBe(true);
 
-    const summary = await room.clearQuarantine();
+    const summary = await room.circuitBreaker.clearQuarantine();
 
     // The original backoff is gone, but the empty document stays gated until a
     // normal request or connection completes a guarded hydration.
     expect(summary.wasLoadDeferred).toBe(true);
-    expect(room.isLoadDeferred()).toBe(true);
+    expect(room.circuitBreaker.isLoadDeferred()).toBe(true);
     expect(docIsEmpty(room.document)).toBe(true);
   });
 
@@ -852,7 +861,7 @@ describe("hardening", () => {
     const { room } = createRoom();
     kvFailure = new Error("kv down");
 
-    const body = await room.getQuarantineStatusBody();
+    const body = await room.circuitBreaker.getQuarantineStatusBody();
 
     expect(body.externalQuarantineFlag).toBe("kvUnavailable");
   });
@@ -861,7 +870,7 @@ describe("hardening", () => {
     const { room } = createRoom();
     kvStore.set("quarantine:example-room", "operator stop");
 
-    const body = await room.getQuarantineStatusBody();
+    const body = await room.circuitBreaker.getQuarantineStatusBody();
 
     expect(body.externalQuarantineFlag).toBe("operator stop");
   });
@@ -879,7 +888,7 @@ describe("admin quarantine endpoints", () => {
   // returns un-awaited promises) as a bare 500 with no CORS and no log.
   test("an async failure returns a JSON 500 with CORS, not a bare platform error", async () => {
     const { room } = createRoom();
-    room.getQuarantineStatusBody = async () => {
+    room.circuitBreaker.getQuarantineStatusBody = async () => {
       throw new Error("storage exploded");
     };
 
@@ -902,7 +911,7 @@ describe("admin quarantine endpoints", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
   });
 
   test("an empty body still quarantines, with no reason recorded", async () => {
@@ -913,8 +922,10 @@ describe("admin quarantine endpoints", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(room.isQuarantined()).toBe(true);
-    expect(room.getQuarantineState().detail).toBe("no reason given");
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
+    expect(room.circuitBreaker.getQuarantineState().detail).toBe(
+      "no reason given"
+    );
   });
 
   // M3: a 200 while silently writing nothing would mislead an operator into
@@ -924,7 +935,7 @@ describe("admin quarantine endpoints", () => {
   test("restoring a still-oversized document keeps the room quarantined", async () => {
     const { room } = createRoom();
     persistedRow.document = SMALL_DOCUMENT;
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -944,13 +955,13 @@ describe("admin quarantine endpoints", () => {
     expect(body.stillTooLarge).toBe(true);
     expect(body.quarantineCleared).toBe(false);
     expect(body.compactionUnparked).toBe(false);
-    expect(room.isQuarantined()).toBe(true);
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
   });
 
   test("restoring a small enough document lifts quarantine and the park", async () => {
     const { room } = createRoom();
     persistedRow.document = COMPACT_LETHAL_DOCUMENT;
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -969,8 +980,8 @@ describe("admin quarantine endpoints", () => {
     expect(body.stillTooLarge).toBe(false);
     expect(body.quarantineCleared).toBe(true);
     expect(body.compactionUnparked).toBe(true);
-    expect(room.isQuarantined()).toBe(false);
-    expect(await room.getCompactionParkedBytes()).toBeNull();
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
+    expect(await room.circuitBreaker.getCompactionParkedBytes()).toBeNull();
   });
 
   // M4: the restore already succeeded and is durable, so a cleanup failure must
@@ -978,7 +989,7 @@ describe("admin quarantine endpoints", () => {
   test("a cleanup failure still reports the restore as successful", async () => {
     const { room } = createRoom();
     persistedRow.document = COMPACT_LETHAL_DOCUMENT;
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -1050,7 +1061,7 @@ describe("separate retry ladders", () => {
     storage.values.set("loadRetryAfter", 1779829545000);
     storage.values.set("alarmRetryAfter", 1779829999000);
 
-    const body = await room.getQuarantineStatusBody();
+    const body = await room.circuitBreaker.getQuarantineStatusBody();
 
     expect(body.failures.loadRetryAfter).toBe("2026-05-26T21:05:45.000Z");
     expect(body.failures.alarmRetryAfter).toBe("2026-05-26T21:13:19.000Z");
@@ -1065,11 +1076,13 @@ describe("external quarantine control plane", () => {
     const { room } = createRoom();
     kvStore.set("quarantine:example-room", "microcosmos incident");
 
-    await room.applyExternalQuarantineFlag();
+    await room.circuitBreaker.applyExternalQuarantineFlag();
 
-    expect(room.isQuarantined()).toBe(true);
-    expect(room.getQuarantineState().reason).toBe("manual");
-    expect(room.getQuarantineState().detail).toBe("microcosmos incident");
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
+    expect(room.circuitBreaker.getQuarantineState().reason).toBe("manual");
+    expect(room.circuitBreaker.getQuarantineState().detail).toBe(
+      "microcosmos incident"
+    );
     expect(documentReadCount).toBe(0);
 
     // And the subsequent load never hydrates either.
@@ -1081,7 +1094,7 @@ describe("external quarantine control plane", () => {
   test("setting quarantine writes the flag that survives a crashing room", async () => {
     const { room } = createRoom();
 
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator note",
       failureKind: null,
@@ -1093,14 +1106,14 @@ describe("external quarantine control plane", () => {
 
   test("clearing quarantine removes the external flag", async () => {
     const { room } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator note",
       failureKind: null,
       failureCount: 0,
     });
 
-    await room.clearQuarantine();
+    await room.circuitBreaker.clearQuarantine();
 
     expect(kvStore.has("quarantine:example-room")).toBe(false);
   });
@@ -1108,7 +1121,7 @@ describe("external quarantine control plane", () => {
   test("set and clear round-trip through KV across restarts", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator note",
       failureKind: null,
@@ -1118,14 +1131,14 @@ describe("external quarantine control plane", () => {
     // A brand new isolate with EMPTY durable storage still sees the flag.
     const freshStorage = new FakeStorage();
     const restarted = buildRoom(freshStorage, "example-room");
-    await restarted.applyExternalQuarantineFlag();
-    expect(restarted.isQuarantined()).toBe(true);
+    await restarted.circuitBreaker.applyExternalQuarantineFlag();
+    expect(restarted.circuitBreaker.isQuarantined()).toBe(true);
 
-    await restarted.clearQuarantine();
+    await restarted.circuitBreaker.clearQuarantine();
 
     const afterClear = buildRoom(new FakeStorage(), "example-room");
-    await afterClear.applyExternalQuarantineFlag();
-    expect(afterClear.isQuarantined()).toBe(false);
+    await afterClear.circuitBreaker.applyExternalQuarantineFlag();
+    expect(afterClear.circuitBreaker.isQuarantined()).toBe(false);
   });
 
   // Manual quarantine is an operator tool, not a correctness gate: a KV outage
@@ -1135,10 +1148,10 @@ describe("external quarantine control plane", () => {
     const { room } = createRoom();
     kvFailure = new Error("kv unavailable");
 
-    await room.applyExternalQuarantineFlag();
+    await room.circuitBreaker.applyExternalQuarantineFlag();
     await startRoom(room);
 
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
   });
 });
@@ -1148,25 +1161,25 @@ describe("manual quarantine", () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
     await startRoom(room);
-    expect(room.isQuarantined()).toBe(false);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
 
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "investigating runaway growth",
       failureKind: null,
       failureCount: 0,
     });
 
-    expect(room.isQuarantined()).toBe(true);
-    expect(room.getQuarantineState().detail).toBe(
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
+    expect(room.circuitBreaker.getQuarantineState().detail).toBe(
       "investigating runaway growth"
     );
     // Manual quarantine still suppresses persistence.
     expect(room.isPersistenceAvailable()).toBe(false);
     expect(storage.alarm).toBeNull();
 
-    await room.clearQuarantine();
-    expect(room.isQuarantined()).toBe(false);
+    await room.circuitBreaker.clearQuarantine();
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
   });
 
   test("clearing quarantine also clears the failure history behind it", async () => {
@@ -1175,14 +1188,14 @@ describe("manual quarantine", () => {
     storage.values.set("quarantineLoadAttempts", 3);
     storage.values.set("loadRetryAfter", Date.now() + 1000);
     storage.values.set("alarmRetryAfter", Date.now() + 1000);
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "repeated-failures",
       detail: "alarm work failed 8 times in a row",
       failureKind: "alarm",
       failureCount: 8,
     });
 
-    await room.clearQuarantine();
+    await room.circuitBreaker.clearQuarantine();
 
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
     expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
@@ -1193,7 +1206,7 @@ describe("manual quarantine", () => {
   test("a quarantined room resumes quarantine on restart without hydrating", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -1203,7 +1216,7 @@ describe("manual quarantine", () => {
     const restarted = restartRoom(storage);
     await startRoom(restarted);
 
-    expect(restarted.isQuarantined()).toBe(true);
+    expect(restarted.circuitBreaker.isQuarantined()).toBe(true);
     expect(docIsEmpty(restarted.document)).toBe(true);
     expect(restarted.isPersistenceAvailable()).toBe(false);
   });
@@ -1213,7 +1226,7 @@ describe("quarantine data safety", () => {
   test("autosave cannot overwrite the persisted document while quarantined", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -1229,7 +1242,7 @@ describe("quarantine data safety", () => {
   test("the document write helper refuses to run while quarantined", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -1245,7 +1258,7 @@ describe("quarantine data safety", () => {
   test("a hard reset refuses to run while quarantined", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -1288,7 +1301,9 @@ describe("quarantine data safety", () => {
     });
     expect(upsertCalls).toEqual([]);
     expect(persistedRow.document).toBe(COMPACT_LETHAL_DOCUMENT);
-    expect(await room.getCompactionParkedBytes()).toBeGreaterThan(0);
+    expect(
+      await room.circuitBreaker.getCompactionParkedBytes()
+    ).toBeGreaterThan(0);
     expect(
       errors.some((line) => line.includes("ExternalCompactionRequiredError"))
     ).toBe(true);
@@ -1327,7 +1342,7 @@ describe("quarantine data safety", () => {
   test("restoring a snapshot refuses by default while quarantined", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,
@@ -1344,7 +1359,7 @@ describe("quarantine data safety", () => {
   test("an explicit repair restore is allowed and replaces the document", async () => {
     persistedRow.document = COMPACT_LETHAL_DOCUMENT;
     const { room } = createRoom();
-    await room.enterQuarantine({
+    await room.circuitBreaker.enterQuarantine({
       reason: "manual",
       detail: "operator",
       failureKind: null,

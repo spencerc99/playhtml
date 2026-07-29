@@ -168,7 +168,7 @@ describe("alarm entry point", () => {
     await server.alarm();
 
     expect(documentReadCount).toBe(0);
-    expect(server.isLoadDeferred()).toBe(true);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(true);
   });
 
   test("a KV-quarantined room does not hydrate when its alarm fires", async () => {
@@ -178,7 +178,7 @@ describe("alarm entry point", () => {
     await server.alarm();
 
     expect(documentReadCount).toBe(0);
-    expect(server.isQuarantined()).toBe(true);
+    expect(server.circuitBreaker.isQuarantined()).toBe(true);
     // Nothing may be written back over the untouched document.
     expect(upsertCalls).toEqual([]);
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
@@ -190,8 +190,8 @@ describe("alarm entry point", () => {
     await server.alarm();
 
     expect(documentReadCount).toBe(1);
-    expect(server.isQuarantined()).toBe(false);
-    expect(server.isLoadDeferred()).toBe(false);
+    expect(server.circuitBreaker.isQuarantined()).toBe(false);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(false);
   });
 
   test("an alarm on a room past its deferral deadline retries exactly once", async () => {
@@ -202,7 +202,7 @@ describe("alarm entry point", () => {
     await server.alarm();
 
     expect(documentReadCount).toBe(1);
-    expect(server.isLoadDeferred()).toBe(false);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(false);
   });
 });
 
@@ -219,7 +219,7 @@ describe("fetch entry point", () => {
     await server.__unsafe_ensureInitialized?.();
 
     expect(documentReadCount).toBe(0);
-    expect(server.isQuarantined()).toBe(true);
+    expect(server.circuitBreaker.isQuarantined()).toBe(true);
     expect(sentMessages.length).toBeGreaterThan(0);
 
     sentMessages.length = 0;
@@ -239,7 +239,7 @@ describe("fetch entry point", () => {
     await server.__unsafe_ensureInitialized?.();
 
     expect(documentReadCount).toBe(0);
-    expect(server.isQuarantined()).toBe(true);
+    expect(server.circuitBreaker.isQuarantined()).toBe(true);
     expect(sentMessages.length).toBeGreaterThan(0);
   });
 
@@ -272,7 +272,7 @@ describe("fetch entry point", () => {
     );
 
     expect(documentReadCount).toBe(0);
-    expect(server.isQuarantined()).toBe(true);
+    expect(server.circuitBreaker.isQuarantined()).toBe(true);
   });
 
   // Without in-place recovery a live isolate would 503 forever, since onStart
@@ -304,7 +304,7 @@ describe("fetch entry point", () => {
     // Exactly one hydration attempt, and the room is serving again.
     expect(documentReadCount).toBe(1);
     expect(recovered.status).not.toBe(503);
-    expect(server.isLoadDeferred()).toBe(false);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(false);
   });
 
   test("a recovered room completes Yjs and bridge startup", async () => {
@@ -326,7 +326,7 @@ describe("fetch entry point", () => {
     expect(deferred.status).toBe(503);
     expect(sentMessages).toEqual([]);
 
-    (server as any).loadDeferredUntil = Date.now() - 1;
+    (server as any).circuitBreaker.setLoadDeferredUntil(Date.now() - 1);
     const recovered = await server.fetch(
       new Request("https://example.com/parties/main/example-room", {
         method: "POST",
@@ -394,7 +394,7 @@ describe("fetch entry point", () => {
         { method: "GET" }
       )
     );
-    (server as any).loadDeferredUntil = Date.now() - 1;
+    (server as any).circuitBreaker.setLoadDeferredUntil(Date.now() - 1);
 
     const response = await server.fetch(
       new Request(
@@ -405,7 +405,7 @@ describe("fetch entry point", () => {
 
     expect(response.status).toBe(200);
     expect(documentReadCount).toBe(0);
-    expect(server.isLoadDeferred()).toBe(true);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(true);
   });
 
   test("manual quarantine turns a deferred room into transient realtime service", async () => {
@@ -424,7 +424,7 @@ describe("fetch entry point", () => {
         { method: "GET" }
       )
     );
-    expect(server.isLoadDeferred()).toBe(true);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(true);
 
     const response = await server.fetch(
       new Request(
@@ -438,8 +438,8 @@ describe("fetch entry point", () => {
 
     expect(response.status).toBe(200);
     expect(documentReadCount).toBe(0);
-    expect(server.isQuarantined()).toBe(true);
-    expect(server.isLoadDeferred()).toBe(false);
+    expect(server.circuitBreaker.isQuarantined()).toBe(true);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(false);
     expect(sentMessages.length).toBeGreaterThan(0);
   });
 
@@ -464,8 +464,8 @@ describe("fetch entry point", () => {
     );
 
     expect(cleared.status).toBe(200);
-    expect(server.isQuarantined()).toBe(false);
-    expect(server.isLoadDeferred()).toBe(true);
+    expect(server.circuitBreaker.isQuarantined()).toBe(false);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(true);
     expect(documentReadCount).toBe(0);
 
     const status = await server.fetch(
@@ -486,7 +486,7 @@ describe("fetch entry point", () => {
 
     expect(recovered.status).not.toBe(503);
     expect(documentReadCount).toBe(1);
-    expect(server.isLoadDeferred()).toBe(false);
+    expect(server.circuitBreaker.isLoadDeferred()).toBe(false);
     expect(server.document.getMap("play").get("greeting")).toBe("hello");
   });
 });
@@ -503,9 +503,7 @@ describe("global quarantine admin endpoint", () => {
     kvStore.set("quarantine:a-room", "operator stop");
 
     const response = await worker.fetch(
-      new Request(
-        "https://api.playhtml.fun/admin/quarantines?token=secret"
-      ),
+      new Request("https://api.playhtml.fun/admin/quarantines?token=secret"),
       workerEnv
     );
 

@@ -9,7 +9,7 @@ import { env } from "cloudflare:workers";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { supabase } from "./db";
-import { AdminHandler, getAdminAuthError } from "./admin";
+import { AdminHandler } from "./admin";
 import {
   docToJson,
   jsonToDoc,
@@ -98,21 +98,11 @@ import {
 } from "./persistenceMode";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
 import {
-  createQuarantineStatusBody,
-  ExternalCompactionRequiredError,
-  formatCompactionSkipLog,
-  formatFailureBackoffLog,
-  formatQuarantineLog,
-  getFailureRetryAt,
   isDocumentOversized,
-  isRetryDue,
   isTooLargeToCompactInDurableObject,
-  shouldQuarantineForFailures,
-  type FailureKind,
-  type QuarantineReason,
-  type QuarantineState,
 } from "./quarantinePolicy";
-import { listQuarantinedRooms } from "./quarantineControl";
+import { RoomCircuitBreaker } from "./roomCircuitBreaker";
+import { handleQuarantineControlRequest } from "./quarantineControl";
 export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
@@ -203,20 +193,7 @@ export class PartyServer extends YServer {
   private cachedSharedPerms: Record<string, SharedElementPermissions> | null =
     null;
   private persistenceMode: PersistenceMode = { kind: "available" };
-  // Set when this room must never hydrate or persist its document. Loaded from
-  // storage at the top of onLoad, before any hydration work happens.
-  private quarantine: QuarantineState | null = null;
-  // Set by buildCompactedDocument when the document is too large to rebuild in
-  // memory. Callers turn this into a parked compaction schedule and one loud log.
-  private compactionTooLargeBytes: number | null = null;
-  // Deadline of an active load-backoff window. While set, this isolate never
-  // hydrated, so every request is refused rather than served an empty document.
-  private loadDeferredUntil: number | null = null;
-  // Guards against logging the same quarantine twice when it is both applied
-  // from the control plane and resumed from durable storage in one start.
-  private hasLoggedQuarantine = false;
-  // Single-flight guard for an in-place re-load attempt at the deadline.
-  private inFlightReload: Promise<boolean> | null = null;
+  private roomCircuitBreakerInstance: RoomCircuitBreaker | null = null;
   // Tracks the two startup phases separately because a deferred room hydrates
   // after the platform's one-time onStart hook has already returned.
   private realtimeSyncStarted = false;
@@ -240,6 +217,54 @@ export class PartyServer extends YServer {
   private observersAttached = false;
   private adminHandler = new AdminHandler(this);
 
+  get circuitBreaker(): RoomCircuitBreaker {
+    if (!this.roomCircuitBreakerInstance) {
+      this.roomCircuitBreakerInstance = new RoomCircuitBreaker({
+        roomName: this.name,
+        storage: this.ctx.storage,
+        getQuarantineControl: () => env.QUARANTINE_CONTROL ?? null,
+        readPositiveNumber: readPositiveNumberEnv,
+        defaults: {
+          documentWarningBytes: DEFAULT_QUARANTINE_DOCUMENT_BYTES,
+          maxInDurableObjectBytes: DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
+          failureThreshold: DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
+          failureBackoffMs: DEFAULT_FAILURE_BACKOFF_MS,
+          failureBackoffMaxMs: DEFAULT_FAILURE_BACKOFF_MAX_MS,
+        },
+        activateTransientPersistence: (quarantine) => {
+          this.persistenceMode = {
+            kind: "transient",
+            reason: `room quarantined (${quarantine.reason})`,
+            failedAt: quarantine.quarantinedAt,
+          };
+        },
+        startRealtimeSync: () => this.startRealtimeSync(),
+        reloadRoom: async () => {
+          this.documentLoadCompleted = false;
+          if (this.realtimeSyncStarted) {
+            await this.onLoad();
+          } else {
+            await this.startRealtimeSync();
+          }
+
+          const remainingFailures =
+            await this.circuitBreaker.getFailureCount("load");
+          if (remainingFailures !== 0 || !this.documentLoadCompleted) {
+            return false;
+          }
+
+          await this.completeRoomStartup();
+          return true;
+        },
+        prepareGuardedReload: () => {
+          this.documentLoadCompleted = false;
+        },
+        clearCompactionSchedule: () => this.clearEmptyRoomCompactAfter(),
+      });
+    }
+    return this.roomCircuitBreakerInstance;
+  }
+
   /**
    * Every entry path (fetch, websocket, alarm) funnels through the platform's
    * initialization, which calls onStart() -> onLoad() and hydrates. So this is
@@ -251,16 +276,16 @@ export class PartyServer extends YServer {
     // Operator control plane first: a room that crashes during hydration can
     // never be reached by an admin route, so an external flag is the only way to
     // take it out of service.
-    await this.applyExternalQuarantineFlag();
+    await this.circuitBreaker.applyExternalQuarantineFlag();
 
-    if (this.isQuarantined()) {
-      await this.enterQuarantineRuntimeState();
+    if (this.circuitBreaker.isQuarantined()) {
+      await this.circuitBreaker.enterQuarantineRuntimeState();
       await this.startRealtimeSync();
       return;
     }
 
     // Load backoff, evaluated before hydration for the same reason.
-    if (await this.shouldDeferLoad()) {
+    if (await this.circuitBreaker.shouldDeferLoad()) {
       return;
     }
 
@@ -278,92 +303,6 @@ export class PartyServer extends YServer {
     await this.attachImmediateBridgeObservers();
     await this.pruneBridgeLeases();
     await this.ensureAlarmScheduled();
-  }
-
-  /**
-   * Decides whether this start may hydrate, and records the consequences.
-   * Returns true when the room must not load.
-   *
-   * Runs before hydration so it also protects the alarm path, where the platform
-   * initializes the room before invoking onAlarm.
-   */
-  private async shouldDeferLoad(): Promise<boolean> {
-    const previousFailures = await this.getFailureCount("load");
-    if (previousFailures === 0) return false;
-
-    const failureThreshold = this.getQuarantineFailureThreshold();
-    if (
-      shouldQuarantineForFailures({
-        failureCount: previousFailures,
-        failureThreshold,
-      })
-    ) {
-      await this.enterQuarantine({
-        reason: "repeated-failures",
-        detail: `load work failed ${previousFailures} times in a row`,
-        failureKind: "load",
-        failureCount: previousFailures,
-      });
-      return true;
-    }
-
-    const retryAfter = await this.getFailureRetryAfter("load");
-
-    // A recorded failure with no deadline yet: this is the first strike, so open
-    // the window now rather than letting the platform retry immediately.
-    if (retryAfter === null) {
-      const firstRetryAt = getFailureRetryAt({
-        failureCount: previousFailures,
-        baseMs: this.getFailureBackoffBaseMs(),
-        maxMs: this.getFailureBackoffMaxMs(),
-        now: Date.now(),
-      });
-      await this.ctx.storage.put(STORAGE_KEYS.loadRetryAfter, firstRetryAt);
-      this.deferLoad(firstRetryAt, previousFailures);
-      return true;
-    }
-
-    if (!isRetryDue({ retryAfter, now: Date.now() })) {
-      this.deferLoad(retryAfter, previousFailures);
-      return true;
-    }
-
-    // The deadline has arrived. Exactly one attempt is allowed through: the next
-    // deadline is committed BEFORE hydrating, so requests racing the boundary in
-    // a fresh isolate see a future deadline rather than all retrying at once.
-    const nextRetryAt = getFailureRetryAt({
-      failureCount: previousFailures + 1,
-      baseMs: this.getFailureBackoffBaseMs(),
-      maxMs: this.getFailureBackoffMaxMs(),
-      now: Date.now(),
-    });
-    await this.ctx.storage.put(STORAGE_KEYS.loadRetryAfter, nextRetryAt);
-
-    // Logged at error level immediately before the risky attempt: if hydration
-    // kills the isolate, this is the last record that it was tried at all.
-    console.error(
-      formatFailureBackoffLog({
-        roomName: this.name,
-        failureKind: "load",
-        failureCount: previousFailures,
-        retryAt: nextRetryAt,
-        failureThreshold,
-      }) + " Attempting hydration now."
-    );
-    return false;
-  }
-
-  private deferLoad(retryAt: number, failureCount: number): void {
-    this.loadDeferredUntil = retryAt;
-    console.error(
-      formatFailureBackoffLog({
-        roomName: this.name,
-        failureKind: "load",
-        failureCount,
-        retryAt,
-        failureThreshold: this.getQuarantineFailureThreshold(),
-      }) + " Serving 503 until the deadline; the document was not read."
-    );
   }
 
   async getSubscribers(): Promise<Subscriber[]> {
@@ -547,7 +486,7 @@ export class PartyServer extends YServer {
   markPersistenceAvailable(): void {
     // A quarantined room's transient mode IS the write park. Lifting it here
     // would re-enable autosave against a document that was never hydrated.
-    if (this.isQuarantined()) return;
+    if (this.circuitBreaker.isQuarantined()) return;
 
     if (this.persistenceMode.kind === "transient") {
       console.log(
@@ -579,607 +518,6 @@ export class PartyServer extends YServer {
         error,
       })
     );
-  }
-
-  private getQuarantineDocumentBytes(): number {
-    return readPositiveNumberEnv(
-      "QUARANTINE_DOCUMENT_BYTES",
-      DEFAULT_QUARANTINE_DOCUMENT_BYTES
-    );
-  }
-
-  getCompactionMaxInDurableObjectBytes(): number {
-    return readPositiveNumberEnv(
-      "COMPACTION_MAX_IN_DO_BYTES",
-      DEFAULT_COMPACTION_MAX_IN_DO_BYTES
-    );
-  }
-
-  private getQuarantineFailureThreshold(): number {
-    return readPositiveNumberEnv(
-      "QUARANTINE_FAILURE_THRESHOLD",
-      DEFAULT_QUARANTINE_FAILURE_THRESHOLD
-    );
-  }
-
-  private getFailureBackoffBaseMs(): number {
-    return readPositiveNumberEnv(
-      "FAILURE_BACKOFF_MS",
-      DEFAULT_FAILURE_BACKOFF_MS
-    );
-  }
-
-  private getFailureBackoffMaxMs(): number {
-    return readPositiveNumberEnv(
-      "FAILURE_BACKOFF_MAX_MS",
-      DEFAULT_FAILURE_BACKOFF_MAX_MS
-    );
-  }
-
-  isQuarantined(): boolean {
-    return this.quarantine !== null;
-  }
-
-  getQuarantineState(): QuarantineState | null {
-    return this.quarantine;
-  }
-
-  private failureKeyFor(kind: FailureKind): string {
-    return kind === "load"
-      ? STORAGE_KEYS.quarantineLoadAttempts
-      : STORAGE_KEYS.alarmFailureAttempts;
-  }
-
-  async getFailureCount(kind: FailureKind): Promise<number> {
-    const value = await this.ctx.storage.get(this.failureKeyFor(kind));
-    return typeof value === "number" ? value : 0;
-  }
-
-  private retryKeyFor(kind: FailureKind): string {
-    return kind === "load"
-      ? STORAGE_KEYS.loadRetryAfter
-      : STORAGE_KEYS.alarmRetryAfter;
-  }
-
-  async getFailureRetryAfter(kind: FailureKind): Promise<number | null> {
-    const value = await this.ctx.storage.get(this.retryKeyFor(kind));
-    return typeof value === "number" ? value : null;
-  }
-
-  async getCompactionParkedBytes(): Promise<number | null> {
-    const value = await this.ctx.storage.get(STORAGE_KEYS.compactionParked);
-    return typeof value === "number" ? value : null;
-  }
-
-  /**
-   * Records that a risky operation is starting. The write is awaited so that an
-   * isolate killed mid-operation leaves the increment behind: that is the only
-   * evidence an out-of-memory crash ever produces.
-   *
-   * Note for log readers: any mid-work isolate kill counts as a strike, including
-   * routine ones like a deploy evicting the isolate. Those are harmless and
-   * self-heal, since the next successful run clears the counter. A single strike
-   * appearing right after a deploy is expected and is not evidence of an OOM.
-   */
-  private async beginRiskyOperation(kind: FailureKind): Promise<number> {
-    const attempt = (await this.getFailureCount(kind)) + 1;
-    await this.ctx.storage.put(this.failureKeyFor(kind), attempt);
-    return attempt;
-  }
-
-  /**
-   * Marks a risky operation as completed. Clearing the counter is what makes
-   * failures self-healing: once the underlying cause clears, the room returns to
-   * its normal cadence without any operator action.
-   */
-  private async completeRiskyOperation(kind: FailureKind): Promise<void> {
-    await this.ctx.storage.delete(this.failureKeyFor(kind));
-    // Only this operation's deadline is cleared: a healthy load must not erase
-    // the alarm's backoff, or compaction would start crash-looping again.
-    await this.ctx.storage.delete(this.retryKeyFor(kind));
-  }
-
-  /**
-   * Reacts to a previous attempt that started and never finished. Backoff comes
-   * first so the platform's rapid alarm retry cannot spin; quarantine is the
-   * last resort once the whole ladder has been exhausted.
-   */
-  private async handleRepeatedFailures({
-    kind,
-    failureCount,
-    retryFailureCount = failureCount,
-  }: {
-    kind: FailureKind;
-    failureCount: number;
-    retryFailureCount?: number;
-  }): Promise<{ quarantined: boolean; retryAt: number }> {
-    const failureThreshold = this.getQuarantineFailureThreshold();
-
-    if (shouldQuarantineForFailures({ failureCount, failureThreshold })) {
-      await this.enterQuarantine({
-        reason: "repeated-failures",
-        detail: `${kind} work failed ${failureCount} times in a row`,
-        failureKind: kind,
-        failureCount,
-      });
-      return { quarantined: true, retryAt: 0 };
-    }
-
-    const retryAt = getFailureRetryAt({
-      failureCount: retryFailureCount,
-      baseMs: this.getFailureBackoffBaseMs(),
-      maxMs: this.getFailureBackoffMaxMs(),
-      now: Date.now(),
-    });
-    await this.ctx.storage.put(this.retryKeyFor(kind), retryAt);
-
-    console.error(
-      formatFailureBackoffLog({
-        roomName: this.name,
-        failureKind: kind,
-        failureCount,
-        retryAt,
-        failureThreshold,
-      })
-    );
-
-    return { quarantined: false, retryAt };
-  }
-
-  private async readStoredQuarantine(): Promise<QuarantineState | null> {
-    const value = await this.ctx.storage.get(STORAGE_KEYS.quarantine);
-    return (value as QuarantineState | undefined) ?? null;
-  }
-
-  /**
-   * Enters quarantine: the persisted document is never hydrated and never
-   * overwritten. The room keeps serving visitors through the existing transient
-   * mode, which already suppresses autosave, admin writes, and bridge flushes.
-   * Pending alarms are canceled so the platform stops retrying the work that
-   * killed the isolate.
-   */
-  async enterQuarantine({
-    reason,
-    detail,
-    failureKind,
-    failureCount,
-    skipExternalWrite = false,
-  }: {
-    reason: QuarantineReason;
-    detail: string;
-    failureKind: FailureKind | null;
-    failureCount: number;
-    skipExternalWrite?: boolean;
-  }): Promise<void> {
-    const quarantine: QuarantineState = {
-      reason,
-      detail,
-      failureKind,
-      failureCount,
-      quarantinedAt: Date.now(),
-    };
-    this.quarantine = quarantine;
-    await this.ctx.storage.put(STORAGE_KEYS.quarantine, quarantine);
-
-    // Local safety FIRST: transient mode, canceled alarms, and the runbook log
-    // must not depend on a best-effort external write. A KV failure used to
-    // leave the room writable with its alarms still armed and nothing logged.
-    await this.enterQuarantineRuntimeState();
-
-    // KV is the pre-hydration authority; DO storage is the local record. Both
-    // are written so a quarantine survives a room that cannot start.
-    if (!skipExternalWrite) {
-      await this.writeExternalQuarantineFlag(detail);
-    }
-
-    await this.startRealtimeSync();
-  }
-
-  /**
-   * Applies the runtime consequences of quarantine. Split out because it must
-   * run identically whether quarantine was just entered, resumed from durable
-   * storage, or resumed from the external control plane.
-   */
-  private async enterQuarantineRuntimeState(): Promise<void> {
-    const quarantine = ensureExists(this.quarantine);
-
-    // Transient mode is the existing ephemeral-only path: realtime sync keeps
-    // working, autosave and persistence writes are refused.
-    this.persistenceMode = {
-      kind: "transient",
-      reason: `room quarantined (${quarantine.reason})`,
-      failedAt: quarantine.quarantinedAt,
-    };
-    // Quarantine intentionally serves an ephemeral collaborative room instead
-    // of refusing traffic behind the load-backoff gate.
-    this.loadDeferredUntil = null;
-
-    await this.cancelAlarmForQuarantine();
-
-    if (this.hasLoggedQuarantine) return;
-    this.hasLoggedQuarantine = true;
-    console.error(
-      formatQuarantineLog({
-        roomName: this.name,
-        reason: quarantine.reason,
-        detail: quarantine.detail,
-        failureKind: quarantine.failureKind,
-        failureCount: quarantine.failureCount,
-      })
-    );
-  }
-
-  private async cancelAlarmForQuarantine(): Promise<void> {
-    await this.ctx.storage.deleteAlarm?.();
-  }
-
-  isLoadDeferred(): boolean {
-    return this.loadDeferredUntil !== null;
-  }
-
-  private getQuarantineControlKv(): KVNamespace | null {
-    // Absent in tests and in any deployment where the binding is not configured.
-    return env.QUARANTINE_CONTROL ?? null;
-  }
-
-  private getQuarantineControlKey(): string {
-    return `quarantine:${this.name}`;
-  }
-
-  /**
-   * Reads the external quarantine flag before hydration. This is the only
-   * quarantine path that works for a room which crashes on start, because every
-   * admin route runs after hydration has already happened.
-   *
-   * Fails OPEN: a KV outage must not take rooms offline. Manual quarantine is an
-   * operator tool, not a correctness gate.
-   */
-  private async applyExternalQuarantineFlag(): Promise<void> {
-    const kv = this.getQuarantineControlKv();
-    if (kv === null) return;
-
-    let flag: string | null;
-    try {
-      flag = await kv.get(this.getQuarantineControlKey());
-    } catch (error) {
-      console.warn(
-        `[PartyServer] Quarantine control lookup failed for room=${this.name}; proceeding normally. ` +
-          `reason=${getErrorMessage(error)}`
-      );
-      return;
-    }
-
-    if (flag === null) return;
-
-    await this.enterQuarantine({
-      reason: "manual",
-      detail: flag || "no reason given",
-      failureKind: null,
-      failureCount: 0,
-      // KV is already the source of truth here; writing back would be a no-op.
-      skipExternalWrite: true,
-    });
-  }
-
-  private async writeExternalQuarantineFlag(
-    detail: string | null
-  ): Promise<void> {
-    const kv = this.getQuarantineControlKv();
-    if (kv === null) return;
-
-    const key = this.getQuarantineControlKey();
-    try {
-      if (detail === null) {
-        await kv.delete(key);
-      } else {
-        await kv.put(key, detail);
-      }
-    } catch (error) {
-      // Surfaced loudly: the operator needs to know the pre-hydration flag did
-      // not stick, because that is the copy that survives a crashing room.
-      console.error(
-        `[PartyServer] Quarantine control write FAILED for room=${this.name}; ` +
-          `the pre-hydration flag is NOT set and will not survive a restart. ` +
-          `reason=${getErrorMessage(error)}`
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Response for a room inside its load-backoff window. This is deliberately a
-   * hard failure rather than transient mode: the document was never read, so
-   * serving the empty live doc would look like data loss to a visitor. Quarantine
-   * is the opposite trade-off, where an operator has accepted ephemeral service.
-   */
-  async getLoadDeferredResponse(): Promise<Response | null> {
-    if (this.loadDeferredUntil === null) return null;
-
-    // The isolate can outlive the deadline: onStart only runs once, so without
-    // this a live isolate would serve 503 forever while client retries kept it
-    // alive. Re-evaluate in place when the deadline passes.
-    if (Date.now() >= this.loadDeferredUntil) {
-      const recovered = await this.attemptDeferredReload();
-      if (recovered) return null;
-    }
-
-    if (this.loadDeferredUntil === null) return null;
-
-    const retryAfterSeconds = Math.max(
-      1,
-      Math.ceil((this.loadDeferredUntil - Date.now()) / 1000)
-    );
-
-    return new Response(
-      JSON.stringify({
-        error: "room_load_deferred",
-        message:
-          "This room failed to load and is waiting before trying again. Its data is intact and was not read or modified.",
-        roomId: this.name,
-        retryAfterSeconds,
-        retryAt: new Date(this.loadDeferredUntil).toISOString(),
-      }),
-      {
-        status: 503,
-        headers: {
-          "content-type": "application/json",
-          "retry-after": String(retryAfterSeconds),
-          "Access-Control-Allow-Origin": "*",
-        },
-      }
-    );
-  }
-
-  /**
-   * Retries hydration in place once a deferral deadline has passed, so a live
-   * isolate recovers on its own instead of serving 503 until it is evicted.
-   *
-   * Single-flight: concurrent requests arriving at the deadline share one
-   * attempt. The next deadline is committed before hydrating, exactly as in the
-   * pre-hydration path, so a crash here still lands the room in a longer window.
-   *
-   * Returns true when the room is serving again.
-   */
-  private async attemptDeferredReload(): Promise<boolean> {
-    if (this.inFlightReload) return this.inFlightReload;
-
-    const attempt = (async () => {
-      try {
-        const previousFailures = await this.getFailureCount("load");
-        const failureThreshold = this.getQuarantineFailureThreshold();
-
-        if (
-          shouldQuarantineForFailures({
-            failureCount: previousFailures,
-            failureThreshold,
-          })
-        ) {
-          await this.enterQuarantine({
-            reason: "repeated-failures",
-            detail: `load work failed ${previousFailures} times in a row`,
-            failureKind: "load",
-            failureCount: previousFailures,
-          });
-          this.loadDeferredUntil = null;
-          return false;
-        }
-
-        const nextRetryAt = getFailureRetryAt({
-          failureCount: previousFailures + 1,
-          baseMs: this.getFailureBackoffBaseMs(),
-          maxMs: this.getFailureBackoffMaxMs(),
-          now: Date.now(),
-        });
-        await this.ctx.storage.put(STORAGE_KEYS.loadRetryAfter, nextRetryAt);
-
-        if (previousFailures === 0) {
-          console.log(
-            `[PartyServer] Starting guarded hydration after quarantine clear: room=${this.name}`
-          );
-        } else {
-          console.error(
-            formatFailureBackoffLog({
-              roomName: this.name,
-              failureKind: "load",
-              failureCount: previousFailures,
-              retryAt: nextRetryAt,
-              failureThreshold,
-            }) + " Retrying hydration in place now."
-          );
-        }
-
-        // Clear the flag so the guarded load does not short-circuit on it.
-        this.loadDeferredUntil = null;
-        this.documentLoadCompleted = false;
-        if (this.realtimeSyncStarted) {
-          await this.onLoad();
-        } else {
-          await this.startRealtimeSync();
-        }
-
-        // onLoad clears the counter on success.
-        const remainingFailures = await this.getFailureCount("load");
-        if (remainingFailures === 0 && this.documentLoadCompleted) {
-          await this.completeRoomStartup();
-          console.log(
-            `[PartyServer] Room recovered after deferral: room=${this.name}`
-          );
-          return true;
-        }
-
-        this.loadDeferredUntil = nextRetryAt;
-        return false;
-      } catch (error) {
-        // An observed throw is not the OOM case the counter infers, but the room
-        // still cannot serve, so it stays deferred.
-        console.error(
-          `[PartyServer] Deferred reload failed for room=${this.name}:`,
-          error
-        );
-        this.loadDeferredUntil = await this.getFailureRetryAfter("load");
-        return false;
-      } finally {
-        this.inFlightReload = null;
-      }
-    })();
-
-    this.inFlightReload = attempt;
-    return attempt;
-  }
-
-  /**
-   * Handles a compaction attempt that was refused because the document is too
-   * large to rebuild in memory. The compaction schedule is parked so the alarm
-   * stops retrying doomed work, and the room is otherwise untouched: it loads,
-   * serves visitors, and persists normally. This is not a quarantine.
-   *
-   * Returns true when a skip was recorded, so callers can stop.
-   */
-  private async parkCompactionIfTooLarge(): Promise<boolean> {
-    const documentBytes = this.compactionTooLargeBytes;
-    this.compactionTooLargeBytes = null;
-    if (documentBytes === null) return false;
-
-    const alreadyParked = await this.getCompactionParkedBytes();
-    await this.ctx.storage.put(STORAGE_KEYS.compactionParked, documentBytes);
-    // Parking clears the pending compaction request so the alarm does not keep
-    // waking the room to retry work that cannot succeed.
-    await this.clearEmptyRoomCompactAfter();
-
-    // One loud log per room, not one per alarm.
-    if (alreadyParked === null) {
-      console.error(
-        formatCompactionSkipLog({
-          roomName: this.name,
-          documentBytes,
-          maxBytes: this.getCompactionMaxInDurableObjectBytes(),
-        })
-      );
-    }
-    return true;
-  }
-
-  private async assertCanCompactDocument(documentBytes: number): Promise<void> {
-    const maxBytes = this.getCompactionMaxInDurableObjectBytes();
-    if (
-      !isTooLargeToCompactInDurableObject({
-        documentBytes,
-        maxBytes,
-      })
-    ) {
-      return;
-    }
-
-    this.compactionTooLargeBytes = documentBytes;
-    await this.parkCompactionIfTooLarge();
-    throw new ExternalCompactionRequiredError(documentBytes, maxBytes);
-  }
-
-  /**
-   * Enforces the quarantine data-safety invariant at the write functions rather
-   * than at the admin routes. A quarantined room never hydrated its persisted
-   * document, so its live doc is empty and every document write derived from it
-   * would destroy real data. Rebuilding the persisted document is just as
-   * dangerous: applying that update is the OOM this breaker exists to prevent.
-   */
-  private assertNotQuarantined(operation: string): void {
-    if (!this.isQuarantined()) return;
-    throw new Error(
-      `Refusing to ${operation} for quarantined room ${this.name}: the persisted document was never hydrated, so this would overwrite or reload data that is known to crash the room. Clear quarantine only after shrinking or repairing the document.`
-    );
-  }
-
-  // Clears quarantine along with the failure history that caused it, so the room
-  // starts from a clean slate rather than re-quarantining on the next failure.
-  /**
-   * Clears quarantine and the failure ledger behind it. Returns what was
-   * actually reset, because this endpoint also doubles as "unstick this room"
-   * and silently wiping counters while reporting "nothing to clear" hides real
-   * state from whoever is running it.
-   */
-  async clearQuarantine(): Promise<{
-    wasQuarantined: boolean;
-    loadFailures: number;
-    alarmFailures: number;
-    wasLoadDeferred: boolean;
-  }> {
-    const summary = {
-      wasQuarantined: this.quarantine !== null,
-      loadFailures: await this.getFailureCount("load"),
-      alarmFailures: await this.getFailureCount("alarm"),
-      wasLoadDeferred: this.loadDeferredUntil !== null,
-    };
-    const needsGuardedReload =
-      summary.wasQuarantined || summary.wasLoadDeferred;
-
-    // Clear the external flag first: if it survived while local state did not,
-    // the room would silently re-quarantine on its next start.
-    await this.writeExternalQuarantineFlag(null);
-
-    this.quarantine = null;
-    this.hasLoggedQuarantine = false;
-    this.documentLoadCompleted = false;
-    // The persisted document was not necessarily loaded in this isolate. Keep
-    // normal traffic gated until the next guarded load proves it is safe.
-    this.loadDeferredUntil = needsGuardedReload ? Date.now() : null;
-    await this.ctx.storage.delete(STORAGE_KEYS.quarantine);
-    await this.ctx.storage.delete(STORAGE_KEYS.quarantineLoadAttempts);
-    await this.ctx.storage.delete(STORAGE_KEYS.alarmFailureAttempts);
-    await this.ctx.storage.delete(STORAGE_KEYS.loadRetryAfter);
-    await this.ctx.storage.delete(STORAGE_KEYS.alarmRetryAfter);
-    console.log(
-      `[PartyServer] Quarantine cleared for room=${this.name}: ` +
-        `wasQuarantined=${summary.wasQuarantined}, ` +
-        `loadFailuresReset=${summary.loadFailures}, ` +
-        `alarmFailuresReset=${summary.alarmFailures}, ` +
-        `wasLoadDeferred=${summary.wasLoadDeferred}, ` +
-        `recoveryPending=${needsGuardedReload}.`
-    );
-    return summary;
-  }
-
-  // Lets an operator re-enable in-DO compaction after shrinking a document
-  // externally.
-  async clearCompactionPark(): Promise<void> {
-    await this.ctx.storage.delete(STORAGE_KEYS.compactionParked);
-  }
-
-  /**
-   * Reads the external flag for reporting. Distinguishes "no flag" from "could
-   * not check", because those mean very different things when an operator is
-   * deciding whether a quarantine actually took effect.
-   */
-  async readExternalQuarantineFlag(): Promise<
-    { available: true; value: string | null } | { available: false }
-  > {
-    const kv = this.getQuarantineControlKv();
-    if (kv === null) return { available: false };
-    try {
-      return { available: true, value: await kv.get(this.getQuarantineControlKey()) };
-    } catch {
-      return { available: false };
-    }
-  }
-
-  hasQuarantineControlPlane(): boolean {
-    return this.getQuarantineControlKv() !== null;
-  }
-
-  async getQuarantineStatusBody() {
-    return createQuarantineStatusBody({
-      roomName: this.name,
-      quarantine: this.quarantine,
-      documentWarningBytes: this.getQuarantineDocumentBytes(),
-      maxInDurableObjectBytes: this.getCompactionMaxInDurableObjectBytes(),
-      failureThreshold: this.getQuarantineFailureThreshold(),
-      loadFailures: await this.getFailureCount("load"),
-      alarmFailures: await this.getFailureCount("alarm"),
-      loadRetryAfter: await this.getFailureRetryAfter("load"),
-      alarmRetryAfter: await this.getFailureRetryAfter("alarm"),
-      compactionParkedBytes: await this.getCompactionParkedBytes(),
-      loadDeferredUntil: this.loadDeferredUntil,
-      externalFlag: await this.readExternalQuarantineFlag(),
-    });
   }
 
   private async readLimitedJson(request: Request): Promise<unknown | Response> {
@@ -1267,14 +605,15 @@ export class PartyServer extends YServer {
     // faithful measure available here.
     const sourceBase64 = sourceDocumentBase64 ?? encodeDocToBase64(doc);
     const beforeSize = sourceBase64.length;
-    const maxInDurableObjectBytes = this.getCompactionMaxInDurableObjectBytes();
+    const maxInDurableObjectBytes =
+      this.circuitBreaker.getCompactionMaxInDurableObjectBytes();
     if (
       isTooLargeToCompactInDurableObject({
         documentBytes: beforeSize,
         maxBytes: maxInDurableObjectBytes,
       })
     ) {
-      this.compactionTooLargeBytes = beforeSize;
+      this.circuitBreaker.markCompactionTooLarge(beforeSize);
       return null;
     }
 
@@ -1321,7 +660,7 @@ export class PartyServer extends YServer {
   }
 
   private async saveDocumentBase64(documentBase64: string): Promise<void> {
-    this.assertNotQuarantined("persist document");
+    this.circuitBreaker.assertNotQuarantined("persist document");
 
     const { error } = await supabase.from("documents").upsert(
       {
@@ -1575,7 +914,7 @@ export class PartyServer extends YServer {
     // room legitimately accepts, because it is how an oversized document gets
     // repaired. Callers opt in explicitly so no other path inherits it.
     if (!options?.allowQuarantined) {
-      this.assertNotQuarantined("restore a snapshot");
+      this.circuitBreaker.assertNotQuarantined("restore a snapshot");
     }
 
     const roomId = this.name;
@@ -1699,8 +1038,8 @@ export class PartyServer extends YServer {
   private async scheduleNextAlarm(): Promise<void> {
     // A quarantined room must not schedule work that wakes it up: every wake is
     // another chance to retry the load that killed the isolate.
-    if (this.isQuarantined()) {
-      await this.cancelAlarmForQuarantine();
+    if (this.circuitBreaker.isQuarantined()) {
+      await this.circuitBreaker.cancelAlarm();
       return;
     }
 
@@ -1731,7 +1070,7 @@ export class PartyServer extends YServer {
     if (this.getOpenConnectionCount() !== 0) return;
     // Parked rooms must never be re-scheduled by a later disconnect, or the
     // alarm would keep waking the room to retry work that cannot succeed.
-    if ((await this.getCompactionParkedBytes()) !== null) return;
+    if ((await this.circuitBreaker.getCompactionParkedBytes()) !== null) return;
 
     const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
     await this.setEmptyRoomCompactAfter(compactAfter);
@@ -2066,19 +1405,9 @@ export class PartyServer extends YServer {
   ) {
     this.setConnectionOpenedAt(connection, Date.now());
 
-    // Inside a load-backoff window the live document is empty because it was
-    // never read. Joining a visitor to it would look like their data vanished,
-    // so the socket is closed instead. Past the deadline this recovers in place
-    // rather than refusing forever.
-    if (this.loadDeferredUntil !== null && Date.now() >= this.loadDeferredUntil) {
-      await this.attemptDeferredReload();
-    }
-
-    if (this.loadDeferredUntil !== null) {
-      const retryAfterSeconds = Math.max(
-        1,
-        Math.ceil((this.loadDeferredUntil - Date.now()) / 1000)
-      );
+    const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+    if (loadDeferred) {
+      const retryAfterSeconds = loadDeferred.headers.get("retry-after") ?? "1";
       console.warn(
         `[PartyServer] Refusing connection to deferred room=${this.name}: ` +
           `connectionId=${connection.id}, retryAfterSeconds=${retryAfterSeconds}`
@@ -2276,17 +1605,17 @@ export class PartyServer extends YServer {
    */
   override async onLoad(): Promise<void> {
     this.documentLoadCompleted = false;
-    this.quarantine = await this.readStoredQuarantine();
-    if (this.quarantine !== null) {
-      await this.enterQuarantineRuntimeState();
+    await this.circuitBreaker.loadStoredQuarantine();
+    if (this.circuitBreaker.isQuarantined()) {
+      await this.circuitBreaker.enterQuarantineRuntimeState();
       return;
     }
 
-    if (this.loadDeferredUntil !== null) return;
+    if (this.circuitBreaker.isLoadDeferred()) return;
 
     // Durable BEFORE the risky work: if hydration kills the isolate, this
     // increment survives and the next start counts it.
-    const loadAttempts = await this.beginRiskyOperation("load");
+    const loadAttempts = await this.circuitBreaker.beginRiskyOperation("load");
 
     // Load the document from Supabase on first connection
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
@@ -2324,7 +1653,7 @@ export class PartyServer extends YServer {
       // and succeeds well past this threshold; it is compaction that multiplies
       // memory, so that is where the hard ceiling lives.
       const documentBytes = result.data.document.length;
-      const thresholdBytes = this.getQuarantineDocumentBytes();
+      const thresholdBytes = this.circuitBreaker.getDocumentWarningBytes();
       if (isDocumentOversized({ documentBytes, thresholdBytes })) {
         console.warn(
           `[PartyServer] Large document load for room=${this.name}: ` +
@@ -2355,7 +1684,7 @@ export class PartyServer extends YServer {
 
     // Hydration completed without killing the isolate, so the failure history
     // and any pending backoff are cleared.
-    await this.completeRiskyOperation("load");
+    await this.circuitBreaker.completeRiskyOperation("load");
     this.documentLoadCompleted = true;
   }
 
@@ -2363,16 +1692,7 @@ export class PartyServer extends YServer {
   // attempted. Attempts that DID reach hydration stay counted, so the failure
   // history keeps its evidence even if Supabase is flaky in between.
   private async releaseLoadAttempt(loadAttempts: number): Promise<void> {
-    const remaining = loadAttempts - 1;
-    if (remaining <= 0) {
-      await this.completeRiskyOperation("load");
-      return;
-    }
-    await this.ctx.storage.put(STORAGE_KEYS.quarantineLoadAttempts, remaining);
-    // The deadline was written speculatively before this attempt. Hydration was
-    // never reached, so roll it back too or the room stays deferred for a
-    // backoff rung it did not earn.
-    await this.ctx.storage.delete(STORAGE_KEYS.loadRetryAfter);
+    await this.circuitBreaker.releaseLoadAttempt(loadAttempts);
   }
 
   override async onSave(): Promise<void> {
@@ -2395,7 +1715,7 @@ export class PartyServer extends YServer {
     if (compactedDocument === null) {
       // Too large to rebuild in memory: park the schedule and report the
       // external-compaction runbook rather than retrying on every autosave.
-      if (await this.parkCompactionIfTooLarge()) {
+      if (await this.circuitBreaker.parkCompactionIfTooLarge()) {
         await setRecheckAfter(recheckAfter);
         return null;
       }
@@ -2727,7 +2047,8 @@ export class PartyServer extends YServer {
           "/admin/quarantine-clear",
         ].some((path) => url.pathname.includes(path));
         if (!isLoadControlRoute) {
-          const loadDeferred = await this.getLoadDeferredResponse();
+          const loadDeferred =
+            await this.circuitBreaker.getLoadDeferredResponse();
           if (loadDeferred) return loadDeferred;
         }
         // Awaited so a rejection lands in this method's catch rather than
@@ -2736,7 +2057,7 @@ export class PartyServer extends YServer {
       }
 
       // The document was never read, so there is nothing to serve.
-      const loadDeferred = await this.getLoadDeferredResponse();
+      const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
       if (loadDeferred) return loadDeferred;
 
       if (request.method !== "POST") {
@@ -3012,7 +2333,7 @@ export class PartyServer extends YServer {
     // A hard reset derives its new document from the live doc, which is empty
     // for a quarantined room, and falls back to re-reading the persisted one.
     // Both outcomes are exactly what quarantine exists to prevent.
-    this.assertNotQuarantined("hard reset");
+    this.circuitBreaker.assertNotQuarantined("hard reset");
 
     const roomId = this.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
@@ -3026,7 +2347,7 @@ export class PartyServer extends YServer {
       console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
 
       let beforeSize = encodeDocToBase64(liveYDoc).length;
-      await this.assertCanCompactDocument(beforeSize);
+      await this.circuitBreaker.assertCanCompactDocument(beforeSize);
 
       // Extract current state as JSON
       let currentPlayData = docToJson(liveYDoc);
@@ -3056,7 +2377,7 @@ export class PartyServer extends YServer {
 
         if (dbRow?.document) {
           beforeSize = dbRow.document.length;
-          await this.assertCanCompactDocument(beforeSize);
+          await this.circuitBreaker.assertCanCompactDocument(beforeSize);
           const fallbackDoc = new Y.Doc();
           try {
             Y.applyUpdate(
@@ -3224,7 +2545,7 @@ export class PartyServer extends YServer {
         // Distinguishes "nothing to compact" from "too large to compact here":
         // the latter parks the schedule and reports the external-compaction
         // runbook.
-        if (await this.parkCompactionIfTooLarge()) return;
+        if (await this.circuitBreaker.parkCompactionIfTooLarge()) return;
         await this.clearEmptyRoomCompactAfter();
         return;
       }
@@ -3301,48 +2622,10 @@ export class PartyServer extends YServer {
 
   // PartyKit Alarm: invoked when storage alarm rings
   override async onAlarm(): Promise<void> {
-    if (this.isQuarantined()) {
-      console.warn(
-        `[PartyServer] Alarm skipped for quarantined room=${this.name}; canceling pending alarms.`
-      );
-      await this.cancelAlarmForQuarantine();
-      return;
-    }
-
-    // A previous alarm started risky work and never finished it, which is what
-    // an out-of-memory crash looks like from here. Back off instead of letting
-    // the platform's rapid retry turn one crash into a permanent loop.
-    const previousFailures = await this.getFailureCount("alarm");
-    if (previousFailures > 0) {
-      // Check the existing window BEFORE recording a new one, otherwise a retry
-      // that has come due would be pushed out again and never run.
-      const retryAfter = await this.getFailureRetryAfter("alarm");
-      if (!isRetryDue({ retryAfter, now: Date.now() })) {
-        // Not yet time to retry: re-arm at the backoff time and do no work.
-        await this.ctx.storage.setAlarm?.(ensureExists(retryAfter));
-        return;
-      }
-
-      const outcome = await this.handleRepeatedFailures({
-        kind: "alarm",
-        failureCount: previousFailures,
-        // The current deadline has elapsed, so this is the retry attempt. Store
-        // the following rung before risky work in case this attempt also OOMs.
-        retryFailureCount:
-          retryAfter === null ? previousFailures : previousFailures + 1,
-      });
-      if (outcome.quarantined) return;
-
-      // A fresh backoff was just recorded for this failure count. Honour it
-      // unless this attempt is the one allowed to proceed.
-      if (retryAfter === null) {
-        await this.ctx.storage.setAlarm?.(outcome.retryAt);
-        return;
-      }
-    }
+    if (!(await this.circuitBreaker.shouldRunAlarm())) return;
 
     // Durable BEFORE the risky work, mirroring the load path.
-    await this.beginRiskyOperation("alarm");
+    await this.circuitBreaker.beginRiskyOperation("alarm");
 
     try {
       const compactAfter = await this.getEmptyRoomCompactAfter();
@@ -3356,14 +2639,14 @@ export class PartyServer extends YServer {
 
       await this.pruneBridgeLeases();
       // Reached only if the risky work above did not kill the isolate.
-      await this.completeRiskyOperation("alarm");
+      await this.circuitBreaker.completeRiskyOperation("alarm");
     } catch (error) {
       // An exception we can observe is NOT the failure mode this counter infers.
       // The counter exists to detect work that vanished mid-flight (an OOM kills
       // the isolate, so nothing gets to log). A caught throw means the isolate
       // survived, so it is cleared: otherwise a long Supabase outage would march
       // healthy rooms all the way to quarantine and mislabel them as OOM.
-      await this.completeRiskyOperation("alarm");
+      await this.circuitBreaker.completeRiskyOperation("alarm");
       console.error(
         `[PartyServer] Alarm work failed for room=${this.name} (observed exception, not a vanish):`,
         error
@@ -3523,70 +2806,11 @@ export default {
   // Set up your fetch handler to use configured Servers
   async fetch(request: Request, workerEnv: Env): Promise<Response> {
     try {
-      const url = new URL(request.url);
-      if (url.pathname === "/admin/quarantines") {
-        if (request.method === "OPTIONS") {
-          return new Response(null, {
-            status: 200,
-            headers: {
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods": "GET, OPTIONS",
-              "Access-Control-Allow-Headers":
-                "Content-Type, Authorization",
-            },
-          });
-        }
-
-        if (request.method !== "GET") {
-          return new Response("Method Not Allowed", {
-            status: 405,
-            headers: { Allow: "GET, OPTIONS" },
-          });
-        }
-
-        const authError = getAdminAuthError(
-          request,
-          workerEnv.ADMIN_TOKEN
-        );
-        if (authError) return authError;
-
-        try {
-          const rooms = await listQuarantinedRooms(
-            workerEnv.QUARANTINE_CONTROL
-          );
-          return new Response(
-            JSON.stringify({
-              available: true,
-              count: rooms.length,
-              rooms,
-            }),
-            {
-              headers: {
-                "content-type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-              },
-            }
-          );
-        } catch (error) {
-          console.error(
-            "[PartyServer] Failed to list quarantined rooms:",
-            error
-          );
-          return new Response(
-            JSON.stringify({
-              available: false,
-              error: "Failed to read the quarantine control plane",
-            }),
-            {
-              status: 503,
-              headers: {
-                "content-type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-              },
-            }
-          );
-        }
-      }
+      const quarantineResponse = await handleQuarantineControlRequest(request, {
+        adminToken: workerEnv.ADMIN_TOKEN,
+        quarantineControl: workerEnv.QUARANTINE_CONTROL,
+      });
+      if (quarantineResponse) return quarantineResponse;
 
       return (
         (await routePartykitRequest(request, workerEnv)) ||

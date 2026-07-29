@@ -8,30 +8,9 @@ import { PartyServer } from "./party";
 import { docToJson, encodeDocToBase64 } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 import { ExternalCompactionRequiredError } from "./quarantinePolicy";
+import { getAdminAuthError } from "./adminAuth";
 
-export function getAdminAuthError(
-  request: Request,
-  adminToken: string | undefined
-): Response | null {
-  if (!adminToken) return null;
-
-  const url = new URL(request.url);
-  const token =
-    url.searchParams.get("token") ||
-    request.headers.get("Authorization")?.replace("Bearer ", "");
-
-  if (!token || token !== adminToken) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: {
-        "content-type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
-  }
-
-  return null;
-}
+export { getAdminAuthError } from "./adminAuth";
 
 function compareKeys(
   obj1: any,
@@ -192,11 +171,12 @@ export class AdminHandler {
       const subscribers = await this.context.getSubscribers();
       const sharedReferences = await this.context.getSharedReferences();
       const sharedPermissions = await this.context.getSharedPermissions();
-      const quarantine = await this.context.getQuarantineStatusBody();
+      const quarantine =
+        await this.context.circuitBreaker.getQuarantineStatusBody();
 
       // Never rebuild the Y.Doc of a quarantined room: applying that update is
       // exactly what OOMs the isolate.
-      if (this.context.isQuarantined()) {
+      if (this.context.circuitBreaker.isQuarantined()) {
         return new Response(
           JSON.stringify(
             {
@@ -998,7 +978,7 @@ export class AdminHandler {
     // Quarantine also runs the room in transient mode, but this endpoint is how
     // an oversized document gets replaced with a repaired one, so it stays open
     // for a quarantined room. A genuine Supabase outage still blocks it.
-    if (!this.context.isQuarantined()) {
+    if (!this.context.circuitBreaker.isQuarantined()) {
       const persistenceError = this.checkPersistenceWriteAvailable();
       if (persistenceError) return persistenceError;
     }
@@ -1057,7 +1037,7 @@ export class AdminHandler {
       // enough to work with. Auto-clearing after restoring a still-oversized
       // document would send the room straight back into its crash loop.
       const maxInDurableObjectBytes =
-        this.context.getCompactionMaxInDurableObjectBytes();
+        this.context.circuitBreaker.getCompactionMaxInDurableObjectBytes();
       const stillTooLarge = result.documentSize > maxInDurableObjectBytes;
 
       let quarantineCleared = false;
@@ -1069,10 +1049,10 @@ export class AdminHandler {
         // cleanup must not turn into a 500, or an operator would re-run a
         // restore that actually worked.
         try {
-          await this.context.clearCompactionPark();
+          await this.context.circuitBreaker.clearCompactionPark();
           compactionUnparked = true;
-          if (this.context.isQuarantined()) {
-            await this.context.clearQuarantine();
+          if (this.context.circuitBreaker.isQuarantined()) {
+            await this.context.circuitBreaker.clearQuarantine();
             quarantineCleared = true;
           }
         } catch (error) {
@@ -1163,7 +1143,7 @@ export class AdminHandler {
     if (authError) return authError;
 
     try {
-      const body = await this.context.getQuarantineStatusBody();
+      const body = await this.context.circuitBreaker.getQuarantineStatusBody();
 
       return new Response(JSON.stringify(body, null, 2), {
         headers: {
@@ -1210,16 +1190,19 @@ export class AdminHandler {
     }
 
     try {
-      const hasControlPlane = this.context.hasQuarantineControlPlane();
-      await this.context.enterQuarantine({
+      const hasControlPlane =
+        this.context.circuitBreaker.hasQuarantineControlPlane();
+      await this.context.circuitBreaker.enterQuarantine({
         reason: "manual",
         detail: body?.reason?.trim() || "no reason given",
         failureKind: null,
         failureCount: 0,
       });
 
-      const externalFlag = await this.context.readExternalQuarantineFlag();
-      const status = await this.context.getQuarantineStatusBody();
+      const externalFlag =
+        await this.context.circuitBreaker.readExternalQuarantineFlag();
+      const status =
+        await this.context.circuitBreaker.getQuarantineStatusBody();
 
       return new Response(
         JSON.stringify(
@@ -1260,8 +1243,8 @@ export class AdminHandler {
     if (authError) return authError;
 
     try {
-      const previous = this.context.getQuarantineState();
-      const reset = await this.context.clearQuarantine();
+      const previous = this.context.circuitBreaker.getQuarantineState();
+      const reset = await this.context.circuitBreaker.clearQuarantine();
 
       // Even when nothing was quarantined this may have reset a failure ledger,
       // so the response reports what actually changed.
