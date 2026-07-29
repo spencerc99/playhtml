@@ -45,7 +45,7 @@ export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_idle",
   cssInjectionMode: "manifest",
-  main() {
+  main(ctx) {
     // Don't run collectors or extension features on extension-internal pages
     // (portrait, popup, options, etc.) — they generate noise and can trigger
     // the 64MiB sendMessage limit when the portrait page requests all events.
@@ -62,6 +62,7 @@ export default defineContentScript({
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
       private emoteCleanup: (() => void) | null = null;
+      private customSiteCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
       private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
@@ -1130,7 +1131,9 @@ export default defineContentScript({
         // instance just inited above.
         if (enableCursors) {
           try {
-            await initCustomSite({
+            // Retain the cleanup so its presence-room socket and listeners are
+            // torn down on unload/invalidation instead of leaking per navigation.
+            this.customSiteCleanup = await initCustomSite({
               createPageData: playhtml.createPageData,
               createPresenceRoom: playhtml.createPresenceRoom,
               presence: playhtml.presence,
@@ -1170,6 +1173,30 @@ export default defineContentScript({
 
         (window as any).cursors.on("allColors", emit);
         emit(); // read initial value
+      }
+
+      // Release the collaborative-feature resources this instance owns (custom
+      // site presence-room socket + listeners, emote wheel, global features) so
+      // they don't leak across page navigation or extension invalidation. Safe
+      // to call more than once; each cleanup is cleared after running.
+      teardown() {
+        this.customSiteCleanup?.();
+        this.customSiteCleanup = null;
+        this.emoteCleanup?.();
+        this.emoteCleanup = null;
+        this.globalCleanup?.();
+        this.globalCleanup = null;
+      }
+
+      // Recreate the collaborative-feature resources torn down before the page
+      // entered bfcache. Called from the pageshow-restore path. The underlying
+      // playhtml instance is never torn down (only the presence-room socket and
+      // feature listeners are), so this re-runs the same presence setup that
+      // created those cleanups; each init helper is self-gating or was cleared
+      // by teardown, so re-running rebuilds exactly what was released.
+      async reinitCollaboration() {
+        if (!this.isInitialized) return;
+        await this.setupPresenceDetection();
       }
     }
 
@@ -1336,6 +1363,33 @@ export default defineContentScript({
       initializeCollectors().catch(console.error);
       setupModeChangeListener();
     }
+
+    // Tear down the extension's collaborative-feature resources when the page
+    // goes away or the extension is invalidated, and restore them if the page
+    // comes back from the bfcache.
+    //
+    // pagehide fires both on real unload AND when the page is frozen into the
+    // bfcache for back/forward navigation (event.persisted === true). We tear
+    // down in both cases: the collaborative features hold open WebSockets, which
+    // Chrome won't keep alive in the bfcache anyway, so leaving them running
+    // would just leak a stale connection into a frozen page. The listeners are
+    // NOT { once: true } — a restored page can navigate away again and must be
+    // able to tear down (and re-restore) on each round trip.
+    //
+    // pageshow with event.persisted === true means the page was restored from
+    // the bfcache with its script state intact but its resources released on
+    // pagehide; re-establish the collaborative features so the resumed page
+    // isn't left with dead collaboration. teardown is idempotent, so a
+    // beforeunload+pagehide pair before a real unload is harmless.
+    const teardownExtension = () => extensionInstance?.teardown();
+    window.addEventListener("pagehide", teardownExtension);
+    window.addEventListener("beforeunload", teardownExtension);
+    window.addEventListener("pageshow", (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        void extensionInstance?.reinitCollaboration();
+      }
+    });
+    ctx?.onInvalidated(teardownExtension);
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
     document.addEventListener("keydown", (e) => {
