@@ -217,6 +217,10 @@ export class PartyServer extends YServer {
   private hasLoggedQuarantine = false;
   // Single-flight guard for an in-place re-load attempt at the deadline.
   private inFlightReload: Promise<boolean> | null = null;
+  // Tracks the two startup phases separately because a deferred room hydrates
+  // after the platform's one-time onStart hook has already returned.
+  private realtimeSyncStarted = false;
+  private documentLoadCompleted = false;
 
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -251,6 +255,7 @@ export class PartyServer extends YServer {
 
     if (this.isQuarantined()) {
       await this.enterQuarantineRuntimeState();
+      await this.startRealtimeSync();
       return;
     }
 
@@ -259,7 +264,17 @@ export class PartyServer extends YServer {
       return;
     }
 
+    await this.startRealtimeSync();
+    await this.completeRoomStartup();
+  }
+
+  private async startRealtimeSync(): Promise<void> {
+    if (this.realtimeSyncStarted) return;
     await super.onStart();
+    this.realtimeSyncStarted = true;
+  }
+
+  private async completeRoomStartup(): Promise<void> {
     await this.attachImmediateBridgeObservers();
     await this.pruneBridgeLeases();
     await this.ensureAlarmScheduled();
@@ -756,6 +771,8 @@ export class PartyServer extends YServer {
     if (!skipExternalWrite) {
       await this.writeExternalQuarantineFlag(detail);
     }
+
+    await this.startRealtimeSync();
   }
 
   /**
@@ -773,6 +790,9 @@ export class PartyServer extends YServer {
       reason: `room quarantined (${quarantine.reason})`,
       failedAt: quarantine.quarantinedAt,
     };
+    // Quarantine intentionally serves an ephemeral collaborative room instead
+    // of refusing traffic behind the load-backoff gate.
+    this.loadDeferredUntil = null;
 
     await this.cancelAlarmForQuarantine();
 
@@ -952,23 +972,35 @@ export class PartyServer extends YServer {
         });
         await this.ctx.storage.put(STORAGE_KEYS.loadRetryAfter, nextRetryAt);
 
-        console.error(
-          formatFailureBackoffLog({
-            roomName: this.name,
-            failureKind: "load",
-            failureCount: previousFailures,
-            retryAt: nextRetryAt,
-            failureThreshold,
-          }) + " Retrying hydration in place now."
-        );
+        if (previousFailures === 0) {
+          console.log(
+            `[PartyServer] Starting guarded hydration after quarantine clear: room=${this.name}`
+          );
+        } else {
+          console.error(
+            formatFailureBackoffLog({
+              roomName: this.name,
+              failureKind: "load",
+              failureCount: previousFailures,
+              retryAt: nextRetryAt,
+              failureThreshold,
+            }) + " Retrying hydration in place now."
+          );
+        }
 
-        // Clear the flag so onLoad does not short-circuit on it.
+        // Clear the flag so the guarded load does not short-circuit on it.
         this.loadDeferredUntil = null;
-        await this.onLoad();
+        this.documentLoadCompleted = false;
+        if (this.realtimeSyncStarted) {
+          await this.onLoad();
+        } else {
+          await this.startRealtimeSync();
+        }
 
         // onLoad clears the counter on success.
         const remainingFailures = await this.getFailureCount("load");
-        if (remainingFailures === 0) {
+        if (remainingFailures === 0 && this.documentLoadCompleted) {
+          await this.completeRoomStartup();
           console.log(
             `[PartyServer] Room recovered after deferral: room=${this.name}`
           );
@@ -1077,6 +1109,8 @@ export class PartyServer extends YServer {
       alarmFailures: await this.getFailureCount("alarm"),
       wasLoadDeferred: this.loadDeferredUntil !== null,
     };
+    const needsGuardedReload =
+      summary.wasQuarantined || summary.wasLoadDeferred;
 
     // Clear the external flag first: if it survived while local state did not,
     // the room would silently re-quarantine on its next start.
@@ -1084,8 +1118,10 @@ export class PartyServer extends YServer {
 
     this.quarantine = null;
     this.hasLoggedQuarantine = false;
-    // Otherwise status would report a healthy room while requests still 503.
-    this.loadDeferredUntil = null;
+    this.documentLoadCompleted = false;
+    // The persisted document was not necessarily loaded in this isolate. Keep
+    // normal traffic gated until the next guarded load proves it is safe.
+    this.loadDeferredUntil = needsGuardedReload ? Date.now() : null;
     await this.ctx.storage.delete(STORAGE_KEYS.quarantine);
     await this.ctx.storage.delete(STORAGE_KEYS.quarantineLoadAttempts);
     await this.ctx.storage.delete(STORAGE_KEYS.alarmFailureAttempts);
@@ -1096,7 +1132,8 @@ export class PartyServer extends YServer {
         `wasQuarantined=${summary.wasQuarantined}, ` +
         `loadFailuresReset=${summary.loadFailures}, ` +
         `alarmFailuresReset=${summary.alarmFailures}, ` +
-        `wasLoadDeferred=${summary.wasLoadDeferred}. The next load will attempt hydration again.`
+        `wasLoadDeferred=${summary.wasLoadDeferred}, ` +
+        `recoveryPending=${needsGuardedReload}.`
     );
     return summary;
   }
@@ -2238,6 +2275,7 @@ export class PartyServer extends YServer {
    * the quarantine check is repeated here as a cheap safety net.
    */
   override async onLoad(): Promise<void> {
+    this.documentLoadCompleted = false;
     this.quarantine = await this.readStoredQuarantine();
     if (this.quarantine !== null) {
       await this.enterQuarantineRuntimeState();
@@ -2318,6 +2356,7 @@ export class PartyServer extends YServer {
     // Hydration completed without killing the isolate, so the failure history
     // and any pending backoff are cleared.
     await this.completeRiskyOperation("load");
+    this.documentLoadCompleted = true;
   }
 
   // Undoes this start's increment when the load ended before hydration could be
@@ -2687,8 +2726,10 @@ export class PartyServer extends YServer {
           "/admin/quarantine-set",
           "/admin/quarantine-clear",
         ].some((path) => url.pathname.includes(path));
-        const loadDeferred = await this.getLoadDeferredResponse();
-        if (loadDeferred && !isLoadControlRoute) return loadDeferred;
+        if (!isLoadControlRoute) {
+          const loadDeferred = await this.getLoadDeferredResponse();
+          if (loadDeferred) return loadDeferred;
+        }
         // Awaited so a rejection lands in this method's catch rather than
         // escaping as a bare platform 500 with no CORS headers and no log.
         return await this.adminHandler.handleRequest(request);

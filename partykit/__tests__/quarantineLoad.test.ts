@@ -128,6 +128,8 @@ function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
     quarantine: { value: null, writable: true },
     compactionTooLargeBytes: { value: null, writable: true },
     loadDeferredUntil: { value: null, writable: true },
+    realtimeSyncStarted: { value: true, writable: true },
+    documentLoadCompleted: { value: false, writable: true },
     isSkippingSave: { value: false, writable: true },
     lastKnownDocumentBytes: { value: 0, writable: true },
     hasWarnedDocumentSize: { value: false, writable: true },
@@ -829,7 +831,7 @@ describe("hardening", () => {
     });
   });
 
-  test("clearing also lifts an active deferral", async () => {
+  test("clearing replaces an active deferral with an immediate guarded reload", async () => {
     const { room, storage } = createRoom();
     storage.values.set("quarantineLoadAttempts", 2);
     storage.values.set("loadRetryAfter", Date.now() + 60_000);
@@ -838,10 +840,11 @@ describe("hardening", () => {
 
     const summary = await room.clearQuarantine();
 
-    // Status and behaviour must not contradict each other.
+    // The original backoff is gone, but the empty document stays gated until a
+    // normal request or connection completes a guarded hydration.
     expect(summary.wasLoadDeferred).toBe(true);
-    expect(room.isLoadDeferred()).toBe(false);
-    expect(await room.getLoadDeferredResponse()).toBeNull();
+    expect(room.isLoadDeferred()).toBe(true);
+    expect(docIsEmpty(room.document)).toBe(true);
   });
 
   // M3: a missing binding means quarantine is local only.

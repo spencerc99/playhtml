@@ -117,7 +117,10 @@ class FakeStorage {
  * entry points the runtime calls. `blockConcurrencyWhile` and `id.name` are the
  * only pieces of DurableObjectState the initialization path touches.
  */
-function createServer(name = "example-room") {
+function createServer(
+  name = "example-room",
+  connections: Array<{ readyState: number; send(message: unknown): void }> = []
+) {
   const storage = new FakeStorage();
   const ctx = {
     storage,
@@ -131,6 +134,9 @@ function createServer(name = "example-room") {
   };
 
   const server = new PartyServer(ctx as never, {} as never);
+  Object.defineProperty(server, "getConnections", {
+    value: () => connections,
+  });
   return { server, storage };
 }
 
@@ -201,6 +207,42 @@ describe("alarm entry point", () => {
 });
 
 describe("fetch entry point", () => {
+  test("a cold quarantined room completes Yjs startup without hydrating", async () => {
+    const sentMessages: unknown[] = [];
+    const connection = {
+      readyState: 1,
+      send: (message: unknown) => sentMessages.push(message),
+    };
+    const { server } = createServer("example-room", [connection]);
+    kvStore.set("quarantine:example-room", "operator stop");
+
+    await server.__unsafe_ensureInitialized?.();
+
+    expect(documentReadCount).toBe(0);
+    expect(server.isQuarantined()).toBe(true);
+    expect(sentMessages.length).toBeGreaterThan(0);
+
+    sentMessages.length = 0;
+    server.document.getMap("play").set("transient", "shared");
+    expect(sentMessages.length).toBeGreaterThan(0);
+  });
+
+  test("automatic quarantine completes Yjs startup without hydrating", async () => {
+    const sentMessages: unknown[] = [];
+    const connection = {
+      readyState: 1,
+      send: (message: unknown) => sentMessages.push(message),
+    };
+    const { server, storage } = createServer("example-room", [connection]);
+    storage.values.set("quarantineLoadAttempts", 8);
+
+    await server.__unsafe_ensureInitialized?.();
+
+    expect(documentReadCount).toBe(0);
+    expect(server.isQuarantined()).toBe(true);
+    expect(sentMessages.length).toBeGreaterThan(0);
+  });
+
   test("a deferred room answers 503 without reading the document", async () => {
     const { server, storage } = createServer();
     storage.values.set("quarantineLoadAttempts", 2);
@@ -265,6 +307,43 @@ describe("fetch entry point", () => {
     expect(server.isLoadDeferred()).toBe(false);
   });
 
+  test("a recovered room completes Yjs and bridge startup", async () => {
+    const sentMessages: unknown[] = [];
+    const connection = {
+      readyState: 1,
+      send: (message: unknown) => sentMessages.push(message),
+    };
+    const { server, storage } = createServer("example-room", [connection]);
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 10 * 60_000);
+
+    const deferred = await server.fetch(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: "{}",
+      })
+    );
+    expect(deferred.status).toBe(503);
+    expect(sentMessages).toEqual([]);
+
+    (server as any).loadDeferredUntil = Date.now() - 1;
+    const recovered = await server.fetch(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: JSON.stringify({ nonsense: true }),
+      })
+    );
+
+    expect(recovered.status).not.toBe(503);
+    expect(documentReadCount).toBe(1);
+    expect(sentMessages.length).toBeGreaterThan(0);
+    expect((server as any).observersAttached).toBe(true);
+
+    sentMessages.length = 0;
+    server.document.getMap("play").set("afterRecovery", "shared");
+    expect(sentMessages.length).toBeGreaterThan(0);
+  });
+
   test("concurrent requests at the deadline share a single hydration", async () => {
     const { server, storage } = createServer();
     storage.values.set("quarantineLoadAttempts", 2);
@@ -302,6 +381,113 @@ describe("fetch entry point", () => {
     const body = await response.json();
     expect(body.loadDeferred.active).toBe(true);
     expect(documentReadCount).toBe(0);
+  });
+
+  test("admin control routes do not retry hydration after the deadline", async () => {
+    const { server, storage } = createServer();
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 10 * 60_000);
+
+    await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+    (server as any).loadDeferredUntil = Date.now() - 1;
+
+    const response = await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(documentReadCount).toBe(0);
+    expect(server.isLoadDeferred()).toBe(true);
+  });
+
+  test("manual quarantine turns a deferred room into transient realtime service", async () => {
+    const sentMessages: unknown[] = [];
+    const connection = {
+      readyState: 1,
+      send: (message: unknown) => sentMessages.push(message),
+    };
+    const { server, storage } = createServer("example-room", [connection]);
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 10 * 60_000);
+
+    await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+    expect(server.isLoadDeferred()).toBe(true);
+
+    const response = await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-set",
+        {
+          method: "POST",
+          body: JSON.stringify({ reason: "operator stop" }),
+        }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(documentReadCount).toBe(0);
+    expect(server.isQuarantined()).toBe(true);
+    expect(server.isLoadDeferred()).toBe(false);
+    expect(sentMessages.length).toBeGreaterThan(0);
+  });
+
+  test("clearing a cold quarantine keeps traffic gated until hydration succeeds", async () => {
+    const { server } = createServer();
+    kvStore.set("quarantine:example-room", "operator stop");
+
+    await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+    expect(documentReadCount).toBe(0);
+    expect(server.document.getMap("play").get("greeting")).toBeUndefined();
+
+    const cleared = await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-clear",
+        { method: "POST" }
+      )
+    );
+
+    expect(cleared.status).toBe(200);
+    expect(server.isQuarantined()).toBe(false);
+    expect(server.isLoadDeferred()).toBe(true);
+    expect(documentReadCount).toBe(0);
+
+    const status = await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+    expect(status.status).toBe(200);
+    expect(documentReadCount).toBe(0);
+
+    const recovered = await server.fetch(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: JSON.stringify({ nonsense: true }),
+      })
+    );
+
+    expect(recovered.status).not.toBe(503);
+    expect(documentReadCount).toBe(1);
+    expect(server.isLoadDeferred()).toBe(false);
+    expect(server.document.getMap("play").get("greeting")).toBe("hello");
   });
 });
 

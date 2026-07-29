@@ -1251,9 +1251,8 @@ export class AdminHandler {
     }
   }
 
-  // Clearing quarantine removes the flag and the failure history. The room stays
-  // in transient mode until it restarts, so the next load is the one that
-  // retries hydration.
+  // Clearing quarantine removes the flag and failure history, then leaves normal
+  // traffic gated until a guarded load restores the persisted document.
   private async handleAdminQuarantineClear(
     request: Request
   ): Promise<Response> {
@@ -1286,9 +1285,9 @@ export class AdminHandler {
             },
             stillTransient: !this.context.isPersistenceAvailable(),
             message: reset.wasQuarantined
-              ? "Quarantine cleared, along with the failure history that caused it. This room stays transient (nothing persists) until it restarts; the next load retries hydration."
+              ? "Quarantine cleared, along with the failure history that caused it. Normal traffic stays gated until a guarded load restores the persisted document."
               : resetSomething
-                ? "Room was not quarantined, but its failure history was reset."
+                ? "Room was not quarantined, but its failure history was reset. Normal traffic stays gated until a guarded load restores the persisted document."
                 : "Room was not quarantined and had no failure history; nothing changed.",
           },
           null,
