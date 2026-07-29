@@ -25,6 +25,7 @@ import {
 } from "./circles";
 
 const MAX_POOL_EVENTS = 100000;
+const CIRCLE_POOL_EVENTS = 20000;
 const IMAGE_MAX_SIZE = 640;
 const LIBRARY_CHUNK_POINTS = 120;
 const LIBRARY_MIN_CHUNK_POINTS = 8;
@@ -122,8 +123,8 @@ const CursorRedraw = () => {
       : "mosaic",
   );
   const { events, loading, deepening, error: poolError } = useCursorEventPool(
-    mode === "circles" ? CIRCLE_SOURCE_DOMAIN : "",
-    MAX_POOL_EVENTS,
+    "",
+    mode === "circles" ? CIRCLE_POOL_EVENTS : MAX_POOL_EVENTS,
   );
   const [error, setError] = useState<string | null>(null);
 
