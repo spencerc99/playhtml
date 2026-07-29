@@ -1,5 +1,5 @@
 // ABOUTME: Drives the real PartyServer load and alarm paths to verify breaker behavior.
-// ABOUTME: Asserts oversized rooms still load, compaction is skipped, and backoff self-heals.
+// ABOUTME: Asserts rooms stay available while failed work backs off or is disabled.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as Y from "yjs";
 import { Buffer } from "node:buffer";
@@ -170,8 +170,8 @@ function restartRoom(storage: FakeStorage, name = "example-room") {
   return buildRoom(storage, name);
 }
 
-// Builds a Y.Doc whose encoded form is at least `targetBytes`, so size checks see
-// a realistic document rather than a synthetic string.
+// Builds a Y.Doc whose encoded form is at least `targetBytes`, so large-document
+// tests exercise a realistic Yjs document rather than a synthetic string.
 function buildLargeDoc(targetBytes: number): Y.Doc {
   const doc = new Y.Doc();
   const map = doc.getMap("play");
@@ -461,26 +461,22 @@ describe("load path", () => {
   });
 });
 
-describe("in-DO compaction size gate", () => {
-  test("an oversized document is not compacted and the room stays normal", async () => {
-    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
-    const storage = new FakeStorage();
-    const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
-    await room.setEmptyRoomCompactAfter(Date.now() - 1000);
+describe("automatic compaction breaker", () => {
+  test("document size does not block creation of a compaction candidate", () => {
+    const room = buildRoom(
+      new FakeStorage(),
+      "example-room",
+      COMPACT_LETHAL_DOC
+    );
 
-    await room.compactEmptyRoomDocument();
+    const compacted = room.buildCompactedDocument(
+      COMPACT_LETHAL_DOC,
+      COMPACT_LETHAL_DOCUMENT
+    );
 
-    // Persisted data untouched, and compaction is parked so the alarm stops
-    // retrying doomed work.
-    expect(upsertCalls).toEqual([]);
-    expect(persistedRow.document).toBe(COMPACT_LETHAL_DOCUMENT);
-    expect(
-      await room.circuitBreaker.getCompactionParkedBytes()
-    ).toBeGreaterThan(0);
-    expect(storage.values.get("emptyRoomCompactAfter")).toBeUndefined();
-    // Critically, this is NOT a quarantine.
-    expect(room.circuitBreaker.isQuarantined()).toBe(false);
-    expect(room.isPersistenceAvailable()).toBe(true);
+    expect(compacted).not.toBeNull();
+    expect(compacted.beforeSize).toBeGreaterThan(4 * MB);
+    expect(compacted.afterSize).toBeGreaterThan(0);
   });
 
   test("a healthy small room still compacts normally", async () => {
@@ -501,77 +497,86 @@ describe("in-DO compaction size gate", () => {
 
     await room.compactEmptyRoomDocument();
 
-    // Not parked, and the compacted document was persisted.
-    expect(await room.circuitBreaker.getCompactionParkedBytes()).toBeNull();
     expect(upsertCalls.length).toBe(1);
     expect(persistedRow.document).not.toBe("");
+    expect(storage.values.get("compactionAttempts")).toBeUndefined();
+    expect(storage.values.get("compactionRetryAfter")).toBeUndefined();
   });
 
-  // After an external compaction the room should resume compacting on its own,
-  // without an operator having to unpark it by hand.
-  test("parking clears so a repaired room compacts again", async () => {
-    const storage = new FakeStorage();
-    const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
-    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
-    await room.compactEmptyRoomDocument();
-    expect(
-      await room.circuitBreaker.getCompactionParkedBytes()
-    ).toBeGreaterThan(0);
+  test("three vanished attempts retry after 15s and 30s, then disable", async () => {
+    const { room, storage } = createRoom();
+    storage.values.set("emptyRoomCompactAfter", Date.now() - 1);
+    storage.values.set("compactionAttempts", 1);
 
-    await room.circuitBreaker.clearCompactionPark();
+    const firstRetryStart = Date.now();
+    expect(await room.circuitBreaker.getCompactionAdmission()).toEqual({
+      kind: "defer",
+      retryAt: expect.any(Number),
+    });
+    const firstRetryAt = storage.values.get("compactionRetryAfter") as number;
+    expect(firstRetryAt).toBeGreaterThanOrEqual(firstRetryStart + 15_000);
+    expect(firstRetryAt).toBeLessThanOrEqual(firstRetryStart + 16_000);
 
-    expect(await room.circuitBreaker.getCompactionParkedBytes()).toBeNull();
+    storage.values.set("compactionRetryAfter", Date.now() - 1);
+    expect(await room.circuitBreaker.getCompactionAdmission()).toEqual({
+      kind: "run",
+    });
+    const secondRetryAt = storage.values.get("compactionRetryAfter") as number;
+    expect(secondRetryAt).toBeGreaterThanOrEqual(Date.now() + 29_000);
+    expect(await room.circuitBreaker.beginCompactionAttempt()).toBe(2);
+
+    storage.values.set("compactionRetryAfter", Date.now() - 1);
+    expect(await room.circuitBreaker.getCompactionAdmission()).toEqual({
+      kind: "run",
+    });
+    expect(storage.values.get("compactionRetryAfter")).toBeUndefined();
+    expect(await room.circuitBreaker.beginCompactionAttempt()).toBe(3);
+
+    const disabled = await room.circuitBreaker.getCompactionAdmission();
+    expect(disabled).toEqual({
+      kind: "disabled",
+      disabledAt: expect.any(Number),
+    });
+    expect(storage.values.get("compactionDisabledAt")).toBe(
+      disabled.disabledAt
+    );
+    expect(storage.values.get("emptyRoomCompactAfter")).toBeUndefined();
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
+    expect(room.isPersistenceAvailable()).toBe(true);
   });
 
-  // A later disconnect would otherwise re-schedule the compaction that was just
-  // parked, putting the room straight back into the crash loop.
-  test("a parked room does not reschedule compaction on disconnect", async () => {
-    const storage = new FakeStorage();
-    const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
-    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
-    await room.compactEmptyRoomDocument();
-    expect(
-      await room.circuitBreaker.getCompactionParkedBytes()
-    ).toBeGreaterThan(0);
+  test("an observed exception clears the compaction attempt marker", async () => {
+    const { room, storage } = createRoom();
+    room.buildCompactedDocument = () => {
+      throw new Error("observed compaction failure");
+    };
+
+    await expect(room.compactEmptyRoomDocument()).rejects.toThrow(
+      "observed compaction failure"
+    );
+
+    expect(storage.values.get("compactionAttempts")).toBeUndefined();
+    expect(storage.values.get("compactionRetryAfter")).toBeUndefined();
+    expect(storage.values.get("compactionDisabledAt")).toBeUndefined();
+  });
+
+  test("a disabled room still loads and persists without rescheduling compaction", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("compactionAttempts", 3);
+    await room.circuitBreaker.getCompactionAdmission();
     storage.setAlarmCalls = [];
 
-    // The last visitor leaves again.
-    await room.scheduleEmptyRoomCompaction();
+    await startRoom(room);
+    room.document.getMap("play").set("greeting", "updated");
+    await room.onSave();
 
+    expect(room.document.getMap("play").get("greeting")).toBe("updated");
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).not.toBe(SMALL_DOCUMENT);
     expect(storage.values.get("emptyRoomCompactAfter")).toBeUndefined();
     expect(storage.setAlarmCalls).toEqual([]);
-  });
-
-  test("an unparked room still schedules compaction on disconnect", async () => {
-    const { room, storage } = createRoom();
-
-    await room.scheduleEmptyRoomCompaction();
-
-    expect(storage.values.get("emptyRoomCompactAfter")).toBeGreaterThan(0);
-  });
-
-  test("parking is reported once, not on every attempt", async () => {
-    const storage = new FakeStorage();
-    const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
-    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
-
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (message: unknown) => {
-      errors.push(String(message));
-    };
-    try {
-      await room.compactEmptyRoomDocument();
-      await room.compactEmptyRoomDocument();
-      await room.compactEmptyRoomDocument();
-    } finally {
-      console.error = originalError;
-    }
-
-    const parkLogs = errors.filter((line) =>
-      line.includes("REQUIRES EXTERNAL COMPACTION")
-    );
-    expect(parkLogs.length).toBe(1);
+    expect(await room.circuitBreaker.getCompactionDisabledAt()).not.toBeNull();
   });
 });
 
@@ -649,10 +654,9 @@ describe("alarm failure backoff", () => {
     );
   });
 
-  // The counter infers an OOM from work that vanished without logging. An
-  // exception we can catch proves the isolate survived, so it must NOT count as
-  // a strike, or a long Supabase outage would march healthy rooms to quarantine.
-  test("an observed alarm exception does not count as a vanish", async () => {
+  // A caught compaction exception proves the isolate survived, so it must not
+  // count as either a compaction vanish or a generic alarm failure.
+  test("an observed compaction exception does not count as a vanish", async () => {
     const { room, storage } = createRoom();
     storage.values.set("emptyRoomCompactAfter", Date.now() - 1);
     room.compactEmptyRoomDocument = async () => {
@@ -670,14 +674,15 @@ describe("alarm failure backoff", () => {
       console.error = originalError;
     }
 
-    // Cleared, not incremented.
+    // Neither independent ledger is incremented.
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
+    expect(storage.values.get("compactionAttempts")).toBeUndefined();
     expect(room.circuitBreaker.isQuarantined()).toBe(false);
     // And it is still reported, with room context, rather than swallowed.
     expect(
       errors.some(
         (line) =>
-          line.includes("Alarm work failed for room=example-room") &&
+          line.includes("Automatic compaction failed for room=example-room") &&
           line.includes("simulated supabase blip")
       )
     ).toBe(true);
@@ -928,11 +933,7 @@ describe("admin quarantine endpoints", () => {
     );
   });
 
-  // M3: a 200 while silently writing nothing would mislead an operator into
-  // thinking a crash-looping room was safely stopped.
-  // F6: auto-clearing after restoring a still-oversized document would send the
-  // room straight back into its crash loop.
-  test("restoring a still-oversized document keeps the room quarantined", async () => {
+  test("restoring a document clears quarantine and compaction failure state", async () => {
     const { room } = createRoom();
     persistedRow.document = SMALL_DOCUMENT;
     await room.circuitBreaker.enterQuarantine({
@@ -941,7 +942,9 @@ describe("admin quarantine endpoints", () => {
       failureKind: null,
       failureCount: 0,
     });
-    await room.ctx.storage.put("compactionParked", 7 * MB);
+    await room.ctx.storage.put("compactionAttempts", 3);
+    await room.ctx.storage.put("compactionRetryAfter", Date.now() + 30_000);
+    await room.ctx.storage.put("compactionDisabledAt", Date.now());
 
     const response = await room.onRequest(
       adminRequest("restore-raw-document", {
@@ -952,36 +955,32 @@ describe("admin quarantine endpoints", () => {
 
     const body = await response.json();
     expect(body.ok).toBe(true);
-    expect(body.stillTooLarge).toBe(true);
-    expect(body.quarantineCleared).toBe(false);
-    expect(body.compactionUnparked).toBe(false);
-    expect(room.circuitBreaker.isQuarantined()).toBe(true);
+    expect(body.quarantineCleared).toBe(true);
+    expect(body.compactionFailureCleared).toBe(true);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
+    expect(await room.circuitBreaker.getCompactionFailureCount()).toBe(0);
+    expect(await room.circuitBreaker.getCompactionRetryAfter()).toBeNull();
+    expect(await room.circuitBreaker.getCompactionDisabledAt()).toBeNull();
   });
 
-  test("restoring a small enough document lifts quarantine and the park", async () => {
+  test("the compaction retry endpoint clears the breaker and runs compaction", async () => {
     const { room } = createRoom();
-    persistedRow.document = COMPACT_LETHAL_DOCUMENT;
-    await room.circuitBreaker.enterQuarantine({
-      reason: "manual",
-      detail: "operator",
-      failureKind: null,
-      failureCount: 0,
-    });
-    await room.ctx.storage.put("compactionParked", 7 * MB);
+    persistedRow.document = SMALL_DOCUMENT;
+    room.document.getMap("play").set("greeting", "hello");
+    await room.ctx.storage.put("compactionAttempts", 3);
+    await room.ctx.storage.put("compactionDisabledAt", Date.now());
 
     const response = await room.onRequest(
-      adminRequest("restore-raw-document", {
-        method: "POST",
-        body: JSON.stringify({ base64Document: SMALL_DOCUMENT }),
-      })
+      adminRequest("compaction-retry", { method: "POST" })
     );
 
     const body = await response.json();
-    expect(body.stillTooLarge).toBe(false);
-    expect(body.quarantineCleared).toBe(true);
-    expect(body.compactionUnparked).toBe(true);
-    expect(room.circuitBreaker.isQuarantined()).toBe(false);
-    expect(await room.circuitBreaker.getCompactionParkedBytes()).toBeNull();
+    expect(response.status).toBe(200);
+    expect(body.reset.failures).toBe(3);
+    expect(body.reset.disabledAt).toEqual(expect.any(Number));
+    expect(body.compaction.disabled).toBe(false);
+    expect(body.compaction.failures).toBe(0);
+    expect(await room.circuitBreaker.getCompactionDisabledAt()).toBeNull();
   });
 
   // M4: the restore already succeeded and is durable, so a cleanup failure must
@@ -1271,42 +1270,25 @@ describe("quarantine data safety", () => {
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
   });
 
-  test("a hard reset parks an oversized room before rebuilding or writing", async () => {
+  test("a hard reset is not rejected by a document-size threshold", async () => {
     persistedRow.document = COMPACT_LETHAL_DOCUMENT;
     const storage = new FakeStorage();
     const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
 
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => {
-      errors.push(args.map(String).join(" "));
-    };
+    const response = await room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/hard-reset",
+        { method: "POST" }
+      )
+    );
 
-    let response: Response;
-    try {
-      response = await room.onRequest(
-        new Request(
-          "https://example.com/parties/main/example-room/admin/hard-reset",
-          { method: "POST" }
-        )
-      );
-    } finally {
-      console.error = originalError;
-    }
-
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      error: "External compaction required",
-      roomId: "example-room",
+      ok: true,
+      message: "Hard reset completed successfully",
     });
-    expect(upsertCalls).toEqual([]);
-    expect(persistedRow.document).toBe(COMPACT_LETHAL_DOCUMENT);
-    expect(
-      await room.circuitBreaker.getCompactionParkedBytes()
-    ).toBeGreaterThan(0);
-    expect(
-      errors.some((line) => line.includes("ExternalCompactionRequiredError"))
-    ).toBe(true);
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).not.toBe(COMPACT_LETHAL_DOCUMENT);
   });
 
   test("loading a committed reset repairs a stale server epoch", async () => {

@@ -34,7 +34,6 @@ import {
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
   DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES,
   DEFAULT_QUARANTINE_DOCUMENT_BYTES,
-  DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
   DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
   DEFAULT_FAILURE_BACKOFF_MS,
   DEFAULT_FAILURE_BACKOFF_MAX_MS,
@@ -97,10 +96,7 @@ import {
   type PersistenceMode,
 } from "./persistenceMode";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
-import {
-  isDocumentOversized,
-  isTooLargeToCompactInDurableObject,
-} from "./quarantinePolicy";
+import { isDocumentOversized } from "./quarantinePolicy";
 import { RoomCircuitBreaker } from "./roomCircuitBreaker";
 import { handleQuarantineControlRequest } from "./quarantineControl";
 export { PresenceServer } from "./presenceServer";
@@ -142,6 +138,12 @@ type UsefulCompactedDocumentOptions = {
   setRecheckAfter: (timestamp: number) => Promise<void>;
   onMissingPlayData?: () => void;
   onNotUseful: (compactedDocument: CompactedDocument) => void;
+};
+
+type AutomaticCompactionOptions<T> = {
+  run: () => Promise<T>;
+  onDeferred: (retryAt: number) => Promise<void>;
+  onDisabled: () => Promise<void>;
 };
 
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
@@ -226,7 +228,6 @@ export class PartyServer extends YServer {
         readPositiveNumber: readPositiveNumberEnv,
         defaults: {
           documentWarningBytes: DEFAULT_QUARANTINE_DOCUMENT_BYTES,
-          maxInDurableObjectBytes: DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
           failureThreshold: DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
           failureBackoffMs: DEFAULT_FAILURE_BACKOFF_MS,
           failureBackoffMaxMs: DEFAULT_FAILURE_BACKOFF_MAX_MS,
@@ -247,8 +248,9 @@ export class PartyServer extends YServer {
             await this.startRealtimeSync();
           }
 
-          const remainingFailures =
-            await this.circuitBreaker.getFailureCount("load");
+          const remainingFailures = await this.circuitBreaker.getFailureCount(
+            "load"
+          );
           if (remainingFailures !== 0 || !this.documentLoadCompleted) {
             return false;
           }
@@ -599,23 +601,8 @@ export class PartyServer extends YServer {
     doc: Y.Doc,
     sourceDocumentBase64?: string
   ): CompactedDocument | null {
-    // Measure BEFORE docToJson: the projection is itself a full copy of the
-    // document, so an oversized room would already be over budget by the time a
-    // later check ran. Encoding the source is one copy and is the cheapest
-    // faithful measure available here.
     const sourceBase64 = sourceDocumentBase64 ?? encodeDocToBase64(doc);
     const beforeSize = sourceBase64.length;
-    const maxInDurableObjectBytes =
-      this.circuitBreaker.getCompactionMaxInDurableObjectBytes();
-    if (
-      isTooLargeToCompactInDurableObject({
-        documentBytes: beforeSize,
-        maxBytes: maxInDurableObjectBytes,
-      })
-    ) {
-      this.circuitBreaker.markCompactionTooLarge(beforeSize);
-      return null;
-    }
 
     const currentPlayData = docToJson(doc);
     if (!currentPlayData) {
@@ -624,16 +611,49 @@ export class PartyServer extends YServer {
 
     const resetEpoch = Date.now();
     const compactDoc = jsonToDoc(currentPlayData);
-    setDocResetEpoch(compactDoc, resetEpoch);
-    const base64 = encodeDocToBase64(compactDoc);
+    try {
+      setDocResetEpoch(compactDoc, resetEpoch);
+      const base64 = encodeDocToBase64(compactDoc);
 
-    return {
-      base64,
-      sourceBase64,
-      beforeSize,
-      afterSize: base64.length,
-      resetEpoch,
-    };
+      return {
+        base64,
+        sourceBase64,
+        beforeSize,
+        afterSize: base64.length,
+        resetEpoch,
+      };
+    } finally {
+      compactDoc.destroy();
+    }
+  }
+
+  private async runAutomaticCompaction<T>({
+    run,
+    onDeferred,
+    onDisabled,
+  }: AutomaticCompactionOptions<T>): Promise<T | null> {
+    const admission = await this.circuitBreaker.getCompactionAdmission();
+    if (admission.kind === "defer") {
+      await onDeferred(admission.retryAt);
+      return null;
+    }
+    if (admission.kind === "disabled") {
+      await onDisabled();
+      return null;
+    }
+
+    await this.circuitBreaker.beginCompactionAttempt();
+    try {
+      const result = await run();
+      await this.circuitBreaker.completeCompactionAttempt();
+      return result;
+    } catch (error) {
+      // A caught exception proves the isolate survived. Only work that vanishes
+      // mid-flight is evidence of an OOM, so observed failures do not advance
+      // the compaction failure counter.
+      await this.circuitBreaker.completeCompactionAttempt();
+      throw error;
+    }
   }
 
   private async restoreResetEpoch(resetEpoch: number | null): Promise<void> {
@@ -1068,9 +1088,7 @@ export class PartyServer extends YServer {
     if (this.isSkippingSave) return;
     if (!this.isPersistenceAvailable()) return;
     if (this.getOpenConnectionCount() !== 0) return;
-    // Parked rooms must never be re-scheduled by a later disconnect, or the
-    // alarm would keep waking the room to retry work that cannot succeed.
-    if ((await this.circuitBreaker.getCompactionParkedBytes()) !== null) return;
+    if ((await this.circuitBreaker.getCompactionDisabledAt()) !== null) return;
 
     const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
     await this.setEmptyRoomCompactAfter(compactAfter);
@@ -1079,6 +1097,24 @@ export class PartyServer extends YServer {
     console.log(
       `[PartyServer] Empty-room compaction scheduled: room=${this.name}, compactAfter=${compactAfter}`
     );
+  }
+
+  async retryAutomaticCompaction() {
+    if (!this.isPersistenceAvailable()) {
+      throw new Error(
+        "Cannot retry automatic compaction while persistence is unavailable"
+      );
+    }
+    if (this.getOpenConnectionCount() !== 0) {
+      throw new Error(
+        "Cannot retry automatic compaction while the room has active connections"
+      );
+    }
+
+    const reset = await this.circuitBreaker.clearCompactionFailure();
+    await this.clearEmptyRoomCompactAfter();
+    await this.compactEmptyRoomDocument();
+    return reset;
   }
 
   // --- Helper: group SharedReferences into storage entries
@@ -1713,12 +1749,6 @@ export class PartyServer extends YServer {
       sourceBase64
     );
     if (compactedDocument === null) {
-      // Too large to rebuild in memory: park the schedule and report the
-      // external-compaction runbook rather than retrying on every autosave.
-      if (await this.circuitBreaker.parkCompactionIfTooLarge()) {
-        await setRecheckAfter(recheckAfter);
-        return null;
-      }
       await setRecheckAfter(recheckAfter);
       onMissingPlayData?.();
       return null;
@@ -1752,6 +1782,36 @@ export class PartyServer extends YServer {
     recheckAfter: number;
     thresholdBytes: number;
   }): Promise<boolean> {
+    const result = await this.runAutomaticCompaction({
+      onDeferred: (retryAt) =>
+        this.setPersistedDocumentCompactCheckAfter(retryAt),
+      onDisabled: () =>
+        this.setPersistedDocumentCompactCheckAfter(recheckAfter),
+      run: () =>
+        this.compactAutosaveCandidate({
+          activeConnectionCount,
+          documentBase64,
+          documentSize,
+          recheckAfter,
+          thresholdBytes,
+        }),
+    });
+    return result ?? false;
+  }
+
+  private async compactAutosaveCandidate({
+    activeConnectionCount,
+    documentBase64,
+    documentSize,
+    recheckAfter,
+    thresholdBytes,
+  }: {
+    activeConnectionCount: number;
+    documentBase64: string;
+    documentSize: number;
+    recheckAfter: number;
+    thresholdBytes: number;
+  }): Promise<boolean> {
     const compactedDocument = await this.getUsefulCompactedDocument({
       sourceBase64: documentBase64,
       documentSize,
@@ -1773,9 +1833,7 @@ export class PartyServer extends YServer {
         );
       },
     });
-    if (compactedDocument === null) {
-      return false;
-    }
+    if (compactedDocument === null) return false;
 
     await this.commitCompactedDocument({
       compactedDocument,
@@ -1981,6 +2039,28 @@ export class PartyServer extends YServer {
     // while clients are connected can merge stale client history back into the
     // room. If compaction is not useful, the cooldown prevents every later
     // autosave of a naturally large document from rebuilding the whole Y.Doc.
+    const result = await this.runAutomaticCompaction({
+      onDeferred: (retryAt) => this.setEmergencyCompactCheckAfter(retryAt),
+      onDisabled: () => this.setEmergencyCompactCheckAfter(recheckAfter),
+      run: () =>
+        this.compactLargeConnectedRoom({
+          documentSize,
+          thresholdBytes,
+          recheckAfter,
+        }),
+    });
+    return result ?? false;
+  }
+
+  private async compactLargeConnectedRoom({
+    documentSize,
+    thresholdBytes,
+    recheckAfter,
+  }: {
+    documentSize: number;
+    thresholdBytes: number;
+    recheckAfter: number;
+  }): Promise<boolean> {
     const compactedDocument = await this.getUsefulCompactedDocument({
       documentSize,
       thresholdBytes,
@@ -1993,9 +2073,7 @@ export class PartyServer extends YServer {
         );
       },
     });
-    if (compactedDocument === null) {
-      return false;
-    }
+    if (compactedDocument === null) return false;
 
     const committed = await this.commitCompactedDocument({
       compactedDocument,
@@ -2347,7 +2425,6 @@ export class PartyServer extends YServer {
       console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
 
       let beforeSize = encodeDocToBase64(liveYDoc).length;
-      await this.circuitBreaker.assertCanCompactDocument(beforeSize);
 
       // Extract current state as JSON
       let currentPlayData = docToJson(liveYDoc);
@@ -2377,7 +2454,6 @@ export class PartyServer extends YServer {
 
         if (dbRow?.document) {
           beforeSize = dbRow.document.length;
-          await this.circuitBreaker.assertCanCompactDocument(beforeSize);
           const fallbackDoc = new Y.Doc();
           try {
             Y.applyUpdate(
@@ -2529,6 +2605,49 @@ export class PartyServer extends YServer {
     }
   }
 
+  private async compactEmptyRoomDocumentOnce(): Promise<void> {
+    const compactedDocument = this.buildCompactedDocument(this.document);
+    if (compactedDocument === null) {
+      await this.clearEmptyRoomCompactAfter();
+      return;
+    }
+
+    if (
+      !shouldStoreCompactedDocument(
+        compactedDocument.beforeSize,
+        compactedDocument.afterSize
+      )
+    ) {
+      await this.clearEmptyRoomCompactAfter();
+      console.log(
+        `[PartyServer] Empty-room compaction skipped: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes`
+      );
+      return;
+    }
+
+    const committed = await this.commitCompactedDocument({
+      compactedDocument,
+      beforeCommit: async () => {
+        if (this.getOpenConnectionCount() === 0) {
+          return true;
+        }
+        await this.clearEmptyRoomCompactAfter();
+        return false;
+      },
+      afterReplace: async () => {
+        await this.clearEmptyRoomCompactAfter();
+      },
+    });
+    if (!committed) {
+      await this.clearEmptyRoomCompactAfter();
+    }
+    if (committed) {
+      console.log(
+        `[PartyServer] Empty-room compacted: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes (${((1 - compactedDocument.afterSize / compactedDocument.beforeSize) * 100).toFixed(1)}% reduction), resetEpoch=${compactedDocument.resetEpoch}`
+      );
+    }
+  }
+
   private async compactEmptyRoomDocument(): Promise<void> {
     if (this.emptyRoomCompactionPromise) {
       await this.emptyRoomCompactionPromise;
@@ -2540,50 +2659,11 @@ export class PartyServer extends YServer {
     if (this.getOpenConnectionCount() !== 0) return;
 
     const run = async () => {
-      const compactedDocument = this.buildCompactedDocument(this.document);
-      if (compactedDocument === null) {
-        // Distinguishes "nothing to compact" from "too large to compact here":
-        // the latter parks the schedule and reports the external-compaction
-        // runbook.
-        if (await this.circuitBreaker.parkCompactionIfTooLarge()) return;
-        await this.clearEmptyRoomCompactAfter();
-        return;
-      }
-
-      if (
-        !shouldStoreCompactedDocument(
-          compactedDocument.beforeSize,
-          compactedDocument.afterSize
-        )
-      ) {
-        await this.clearEmptyRoomCompactAfter();
-        console.log(
-          `[PartyServer] Empty-room compaction skipped: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes`
-        );
-        return;
-      }
-
-      const committed = await this.commitCompactedDocument({
-        compactedDocument,
-        beforeCommit: async () => {
-          if (this.getOpenConnectionCount() === 0) {
-            return true;
-          }
-          await this.clearEmptyRoomCompactAfter();
-          return false;
-        },
-        afterReplace: async () => {
-          await this.clearEmptyRoomCompactAfter();
-        },
+      await this.runAutomaticCompaction({
+        onDeferred: (retryAt) => this.setEmptyRoomCompactAfter(retryAt),
+        onDisabled: () => this.clearEmptyRoomCompactAfter(),
+        run: () => this.compactEmptyRoomDocumentOnce(),
       });
-      if (!committed) {
-        await this.clearEmptyRoomCompactAfter();
-      }
-      if (committed) {
-        console.log(
-          `[PartyServer] Empty-room compacted: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes (${((1 - compactedDocument.afterSize / compactedDocument.beforeSize) * 100).toFixed(1)}% reduction), resetEpoch=${compactedDocument.resetEpoch}`
-        );
-      }
     };
 
     this.emptyRoomCompactionPromise = run();
@@ -2624,33 +2704,36 @@ export class PartyServer extends YServer {
   override async onAlarm(): Promise<void> {
     if (!(await this.circuitBreaker.shouldRunAlarm())) return;
 
-    // Durable BEFORE the risky work, mirroring the load path.
-    await this.circuitBreaker.beginRiskyOperation("alarm");
-
     try {
       const compactAfter = await this.getEmptyRoomCompactAfter();
       if (compactAfter !== null && compactAfter <= Date.now()) {
         if (this.getOpenConnectionCount() === 0) {
-          await this.compactEmptyRoomDocument();
+          try {
+            await this.compactEmptyRoomDocument();
+          } catch (error) {
+            console.error(
+              `[PartyServer] Automatic compaction failed for room=${this.name} (observed exception, not a vanish):`,
+              error
+            );
+          }
         } else {
           await this.clearEmptyRoomCompactAfter();
         }
       }
 
-      await this.pruneBridgeLeases();
-      // Reached only if the risky work above did not kill the isolate.
-      await this.circuitBreaker.completeRiskyOperation("alarm");
-    } catch (error) {
-      // An exception we can observe is NOT the failure mode this counter infers.
-      // The counter exists to detect work that vanished mid-flight (an OOM kills
-      // the isolate, so nothing gets to log). A caught throw means the isolate
-      // survived, so it is cleared: otherwise a long Supabase outage would march
-      // healthy rooms all the way to quarantine and mislabel them as OOM.
-      await this.circuitBreaker.completeRiskyOperation("alarm");
-      console.error(
-        `[PartyServer] Alarm work failed for room=${this.name} (observed exception, not a vanish):`,
-        error
-      );
+      // Generic alarm work keeps its own longer backoff. Starting this marker
+      // after compaction prevents a compaction OOM from advancing both ledgers.
+      await this.circuitBreaker.beginRiskyOperation("alarm");
+      try {
+        await this.pruneBridgeLeases();
+        await this.circuitBreaker.completeRiskyOperation("alarm");
+      } catch (error) {
+        await this.circuitBreaker.completeRiskyOperation("alarm");
+        console.error(
+          `[PartyServer] Alarm work failed for room=${this.name} (observed exception, not a vanish):`,
+          error
+        );
+      }
     } finally {
       // scheduleNextAlarm's quarantine guard is what stops a room quarantined
       // moments ago inside this try block from having its alarm re-armed here.

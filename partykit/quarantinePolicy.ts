@@ -1,5 +1,5 @@
-// ABOUTME: Decides how a room reacts to oversized documents and repeated OOM failures.
-// ABOUTME: Owns retry backoff, compaction skips, and the last-resort quarantine threshold.
+// ABOUTME: Decides how a room reacts to repeated load, alarm, and compaction failures.
+// ABOUTME: Owns retry backoff and last-resort failure thresholds.
 export type QuarantineReason = "manual" | "repeated-failures";
 
 // Which risky operation a failure counter tracks. Load and alarm failures are
@@ -17,19 +17,6 @@ export type QuarantineState = {
   quarantinedAt: number;
 };
 
-export class ExternalCompactionRequiredError extends Error {
-  constructor(
-    public readonly documentBytes: number,
-    public readonly maxBytes: number
-  ) {
-    super(
-      `Document is too large to compact safely in the room: ` +
-        `${documentBytes} bytes exceeds the ${maxBytes} byte limit`
-    );
-    this.name = "ExternalCompactionRequiredError";
-  }
-}
-
 // Size alone never blocks a load or quarantines a room: healthy production rooms
 // live in the same size band as rooms that have OOMed. Oversized documents are
 // only reported, so they can be compacted before they become a problem.
@@ -41,19 +28,6 @@ export function isDocumentOversized({
   thresholdBytes: number;
 }): boolean {
   return documentBytes > thresholdBytes;
-}
-
-// In-DO compaction holds the live doc, its JSON projection, and the rebuilt copy
-// at once, so its ceiling is far below the load ceiling. Above it, compaction is
-// doomed work: it would crash the isolate without producing a smaller document.
-export function isTooLargeToCompactInDurableObject({
-  documentBytes,
-  maxBytes,
-}: {
-  documentBytes: number;
-  maxBytes: number;
-}): boolean {
-  return documentBytes > maxBytes;
 }
 
 export function shouldQuarantineForFailures({
@@ -116,22 +90,56 @@ export function isRetryDue({
   return retryAfter === null || retryAfter <= now;
 }
 
-export function formatCompactionSkipLog({
+export function getCompactionRetryDelayMs({
+  failureCount,
+  retryDelaysMs,
+}: {
+  failureCount: number;
+  retryDelaysMs: readonly number[];
+}): number | null {
+  return retryDelaysMs[failureCount - 1] ?? null;
+}
+
+export function shouldDisableCompaction({
+  failureCount,
+  disableAfter,
+}: {
+  failureCount: number;
+  disableAfter: number;
+}): boolean {
+  return failureCount >= disableAfter;
+}
+
+export function formatCompactionBackoffLog({
   roomName,
-  documentBytes,
-  maxBytes,
+  failureCount,
+  retryAt,
 }: {
   roomName: string;
-  documentBytes: number;
-  maxBytes: number;
+  failureCount: number;
+  retryAt: number;
 }): string {
   return [
-    `[PartyServer] ROOM REQUIRES EXTERNAL COMPACTION: room=${roomName}`,
-    `documentBytes=${documentBytes}`,
-    `maxInDurableObjectBytes=${maxBytes}`,
-    "Compacting this document inside the room would rebuild it in memory and crash the room, so in-DO compaction is disabled for it and the compaction schedule is parked.",
-    "The room still loads and runs normally; only automatic shrinking is off.",
-    `To recover: GET admin/raw-data for room=${roomName}, compact the document offline, then POST admin/restore-raw-document.`,
+    `[PartyServer] AUTOMATIC COMPACTION BACKOFF: room=${roomName}`,
+    `vanishedAttempts=${failureCount}`,
+    `retryAt=${new Date(retryAt).toISOString()}`,
+    "The previous compaction started but never completed, most likely because the isolate ran out of memory.",
+    "The room continues loading, syncing, and persisting normally while compaction waits.",
+  ].join(" ");
+}
+
+export function formatCompactionDisabledLog({
+  roomName,
+  failureCount,
+}: {
+  roomName: string;
+  failureCount: number;
+}): string {
+  return [
+    `[PartyServer] AUTOMATIC COMPACTION DISABLED: room=${roomName}`,
+    `vanishedAttempts=${failureCount}`,
+    "Compaction vanished three times in a row, so automatic compaction is disabled without affecting room service or persistence.",
+    `To retry: POST admin/compaction-retry for room=${roomName}.`,
   ].join(" ");
 }
 
@@ -193,26 +201,30 @@ export function createQuarantineStatusBody({
   roomName,
   quarantine,
   documentWarningBytes,
-  maxInDurableObjectBytes,
   failureThreshold,
   loadFailures,
   alarmFailures,
   loadRetryAfter,
   alarmRetryAfter,
-  compactionParkedBytes,
+  compactionFailures,
+  compactionRetryAfter,
+  compactionDisabledAt,
+  compactionDisableAfter,
   loadDeferredUntil = null,
   externalFlag = { available: false },
 }: {
   roomName: string;
   quarantine: QuarantineState | null;
   documentWarningBytes: number;
-  maxInDurableObjectBytes: number;
   failureThreshold: number;
   loadFailures: number;
   alarmFailures: number;
   loadRetryAfter: number | null;
   alarmRetryAfter: number | null;
-  compactionParkedBytes: number | null;
+  compactionFailures: number;
+  compactionRetryAfter: number | null;
+  compactionDisabledAt: number | null;
+  compactionDisableAfter: number;
   loadDeferredUntil?: number | null;
   externalFlag?: { available: true; value: string | null } | { available: false };
 }) {
@@ -238,9 +250,17 @@ export function createQuarantineStatusBody({
           : new Date(alarmRetryAfter).toISOString(),
     },
     compaction: {
-      parked: compactionParkedBytes !== null,
-      documentBytes: compactionParkedBytes,
-      maxInDurableObjectBytes,
+      disabled: compactionDisabledAt !== null,
+      disabledAt:
+        compactionDisabledAt === null
+          ? null
+          : new Date(compactionDisabledAt).toISOString(),
+      failures: compactionFailures,
+      disableAfter: compactionDisableAfter,
+      retryAfter:
+        compactionRetryAfter === null
+          ? null
+          : new Date(compactionRetryAfter).toISOString(),
     },
     // Whether this isolate is currently refusing requests, which can differ from
     // the stored deadline after an in-place recovery.

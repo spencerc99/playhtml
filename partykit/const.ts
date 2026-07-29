@@ -21,17 +21,19 @@ export const STORAGE_KEYS = {
   quarantine: "quarantine",
   // Counts hydration attempts that started but never reported completion
   quarantineLoadAttempts: "quarantineLoadAttempts",
-  // Counts alarm runs that started but never reported completion, which is how
-  // an OOM inside compaction is detected
+  // Counts generic alarm runs that started but never reported completion.
   alarmFailureAttempts: "alarmFailureAttempts",
   // Earliest time each risky operation may be retried after repeated failures.
   // Load and alarm keep separate deadlines so a success on one never erases the
   // other's backoff.
   loadRetryAfter: "loadRetryAfter",
   alarmRetryAfter: "alarmRetryAfter",
-  // Set when a document is too large to compact inside the Durable Object and
-  // must be compacted externally
-  compactionParked: "compactionParked",
+  // Tracks automatic compaction attempts that started but never completed.
+  compactionAttempts: "compactionAttempts",
+  // Earliest time a failed automatic compaction may be retried.
+  compactionRetryAfter: "compactionRetryAfter",
+  // Timestamp set after automatic compaction vanishes three times in a row.
+  compactionDisabledAt: "compactionDisabledAt",
 };
 // Subscriber lease configuration (default 12 hours)
 export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
@@ -79,14 +81,10 @@ export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
 export const DEFAULT_QUARANTINE_DOCUMENT_BYTES = (() => {
   return 1024 * 1024 * 10;
 })();
-// In-DO compaction rebuilds the document and holds the live Y.Doc, its JSON
-// projection, and the rebuilt copy at once, so it costs several times the
-// document size in peak memory. The ceiling therefore sits far below the load
-// ceiling: above this, compaction is skipped and the document must be compacted
-// externally. Skipping is not a quarantine -- the room loads and runs normally.
-export const DEFAULT_COMPACTION_MAX_IN_DO_BYTES = (() => {
-  return 1024 * 1024 * 4;
-})();
+// Automatic compaction gets two delayed retries after the initial attempt.
+// A third vanished attempt disables automatic compaction for that room.
+export const DEFAULT_COMPACTION_RETRY_DELAYS_MS = [15_000, 30_000] as const;
+export const DEFAULT_COMPACTION_DISABLE_AFTER = 3;
 // Consecutive failures of the same risky operation before the room is
 // quarantined as a last resort. The backoff ladder below is expected to absorb
 // transient failures long before this is reached.

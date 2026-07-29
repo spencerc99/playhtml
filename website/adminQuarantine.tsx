@@ -12,13 +12,15 @@ export interface RoomQuarantineStatus {
     load: number;
     alarm: number;
     quarantineAfter: number;
-    loadRetryAt: string | null;
-    alarmRetryAt: string | null;
+    loadRetryAfter: string | null;
+    alarmRetryAfter: string | null;
   };
   compaction: {
-    parked: boolean;
-    documentBytes: number | null;
-    maxInDurableObjectBytes: number;
+    disabled: boolean;
+    disabledAt: string | null;
+    failures: number;
+    disableAfter: number;
+    retryAfter: string | null;
   };
   loadDeferred: {
     active: boolean;
@@ -43,11 +45,6 @@ function formatRoomId(roomId: string): string {
   } catch {
     return roomId;
   }
-}
-
-function formatBytes(bytes: number | null): string {
-  if (bytes === null) return "Unknown";
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function formatDate(timestamp: string | null): string {
@@ -125,9 +122,11 @@ export const RoomQuarantinePanel: React.FC<{
       }
     : status.loadDeferred.active
       ? { label: "Load deferred", tone: "warning" }
-      : status.compaction.parked
-        ? { label: "External compaction required", tone: "warning" }
-        : { label: "Healthy", tone: "healthy" };
+      : status.compaction.disabled
+        ? { label: "Automatic compaction disabled", tone: "warning" }
+        : status.compaction.retryAfter
+          ? { label: "Compaction retry delayed", tone: "warning" }
+          : { label: "Healthy", tone: "healthy" };
 
   return (
     <div className={`room-quarantine-panel ${state.tone}`}>
@@ -138,7 +137,8 @@ export const RoomQuarantinePanel: React.FC<{
 
       {(status.quarantined ||
         status.loadDeferred.active ||
-        status.compaction.parked) && (
+        status.compaction.disabled ||
+        status.compaction.retryAfter) && (
         <div className="room-quarantine-details">
           {status.detail && (
             <div>
@@ -165,13 +165,25 @@ export const RoomQuarantinePanel: React.FC<{
               <span>{formatDate(status.loadDeferred.until)}</span>
             </div>
           )}
-          {status.compaction.parked && (
+          {(status.compaction.disabled || status.compaction.retryAfter) && (
             <div>
               <strong>Compaction</strong>
               <span>
-                Parked at {formatBytes(status.compaction.documentBytes)}; in-room
-                limit {formatBytes(status.compaction.maxInDurableObjectBytes)}
+                {status.compaction.failures} vanished attempts; disable after{" "}
+                {status.compaction.disableAfter}
               </span>
+            </div>
+          )}
+          {status.compaction.retryAfter && (
+            <div>
+              <strong>Next compaction retry</strong>
+              <span>{formatDate(status.compaction.retryAfter)}</span>
+            </div>
+          )}
+          {status.compaction.disabledAt && (
+            <div>
+              <strong>Compaction disabled at</strong>
+              <span>{formatDate(status.compaction.disabledAt)}</span>
             </div>
           )}
           <div>

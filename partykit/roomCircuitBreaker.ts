@@ -1,16 +1,21 @@
-// ABOUTME: Owns room quarantine, retry backoff, and compaction parking state.
+// ABOUTME: Owns room quarantine and retry state for load, alarm, and compaction work.
 // ABOUTME: Keeps failure recovery policy separate from PartyServer synchronization.
-import { STORAGE_KEYS } from "./const";
+import {
+  DEFAULT_COMPACTION_DISABLE_AFTER,
+  DEFAULT_COMPACTION_RETRY_DELAYS_MS,
+  STORAGE_KEYS,
+} from "./const";
 import { getErrorMessage } from "./persistenceMode";
 import {
   createQuarantineStatusBody,
-  ExternalCompactionRequiredError,
-  formatCompactionSkipLog,
+  formatCompactionBackoffLog,
+  formatCompactionDisabledLog,
   formatFailureBackoffLog,
   formatQuarantineLog,
+  getCompactionRetryDelayMs,
   getFailureRetryAt,
   isRetryDue,
-  isTooLargeToCompactInDurableObject,
+  shouldDisableCompaction,
   shouldQuarantineForFailures,
   type FailureKind,
   type QuarantineReason,
@@ -32,7 +37,6 @@ type RoomCircuitBreakerOptions = {
   readPositiveNumber: (name: string, fallback: number) => number;
   defaults: {
     documentWarningBytes: number;
-    maxInDurableObjectBytes: number;
     failureThreshold: number;
     failureBackoffMs: number;
     failureBackoffMaxMs: number;
@@ -59,9 +63,19 @@ export type QuarantineResetSummary = {
   wasLoadDeferred: boolean;
 };
 
+export type CompactionAdmission =
+  | { kind: "run" }
+  | { kind: "defer"; retryAt: number }
+  | { kind: "disabled"; disabledAt: number };
+
+export type CompactionResetSummary = {
+  failures: number;
+  retryAfter: number | null;
+  disabledAt: number | null;
+};
+
 export class RoomCircuitBreaker {
   private quarantine: QuarantineState | null = null;
-  private compactionTooLargeBytes: number | null = null;
   private loadDeferredUntil: number | null = null;
   private hasLoggedQuarantine = false;
   private inFlightReload: Promise<boolean> | null = null;
@@ -80,13 +94,6 @@ export class RoomCircuitBreaker {
     return this.options.readPositiveNumber(
       "QUARANTINE_DOCUMENT_BYTES",
       this.options.defaults.documentWarningBytes
-    );
-  }
-
-  getCompactionMaxInDurableObjectBytes(): number {
-    return this.options.readPositiveNumber(
-      "COMPACTION_MAX_IN_DO_BYTES",
-      this.options.defaults.maxInDurableObjectBytes
     );
   }
 
@@ -149,9 +156,117 @@ export class RoomCircuitBreaker {
     return typeof value === "number" ? value : null;
   }
 
-  async getCompactionParkedBytes(): Promise<number | null> {
-    const value = await this.storage.get(STORAGE_KEYS.compactionParked);
+  async getCompactionFailureCount(): Promise<number> {
+    const value = await this.storage.get(STORAGE_KEYS.compactionAttempts);
+    return typeof value === "number" ? value : 0;
+  }
+
+  async getCompactionRetryAfter(): Promise<number | null> {
+    const value = await this.storage.get(STORAGE_KEYS.compactionRetryAfter);
     return typeof value === "number" ? value : null;
+  }
+
+  async getCompactionDisabledAt(): Promise<number | null> {
+    const value = await this.storage.get(STORAGE_KEYS.compactionDisabledAt);
+    return typeof value === "number" ? value : null;
+  }
+
+  async beginCompactionAttempt(): Promise<number> {
+    const attempt = (await this.getCompactionFailureCount()) + 1;
+    await this.storage.put(STORAGE_KEYS.compactionAttempts, attempt);
+    return attempt;
+  }
+
+  async completeCompactionAttempt(): Promise<void> {
+    await this.storage.delete(STORAGE_KEYS.compactionAttempts);
+    await this.storage.delete(STORAGE_KEYS.compactionRetryAfter);
+    await this.storage.delete(STORAGE_KEYS.compactionDisabledAt);
+  }
+
+  async getCompactionAdmission(): Promise<CompactionAdmission> {
+    const disabledAt = await this.getCompactionDisabledAt();
+    if (disabledAt !== null) {
+      return { kind: "disabled", disabledAt };
+    }
+
+    const failures = await this.getCompactionFailureCount();
+    if (
+      shouldDisableCompaction({
+        failureCount: failures,
+        disableAfter: DEFAULT_COMPACTION_DISABLE_AFTER,
+      })
+    ) {
+      const now = Date.now();
+      await this.storage.put(STORAGE_KEYS.compactionDisabledAt, now);
+      await this.storage.delete(STORAGE_KEYS.compactionRetryAfter);
+      await this.options.clearCompactionSchedule();
+      console.error(
+        formatCompactionDisabledLog({
+          roomName: this.roomName,
+          failureCount: failures,
+        })
+      );
+      return { kind: "disabled", disabledAt: now };
+    }
+
+    if (failures === 0) return { kind: "run" };
+
+    const retryAfter = await this.getCompactionRetryAfter();
+    if (retryAfter !== null && !isRetryDue({ retryAfter, now: Date.now() })) {
+      return { kind: "defer", retryAt: retryAfter };
+    }
+
+    if (retryAfter === null) {
+      const delayMs = getCompactionRetryDelayMs({
+        failureCount: failures,
+        retryDelaysMs: DEFAULT_COMPACTION_RETRY_DELAYS_MS,
+      });
+      if (delayMs === null) {
+        throw new Error(
+          `Missing compaction retry delay for failure ${failures}`
+        );
+      }
+      const firstRetryAt = Date.now() + delayMs;
+      await this.storage.put(STORAGE_KEYS.compactionRetryAfter, firstRetryAt);
+      console.error(
+        formatCompactionBackoffLog({
+          roomName: this.roomName,
+          failureCount: failures,
+          retryAt: firstRetryAt,
+        })
+      );
+      return { kind: "defer", retryAt: firstRetryAt };
+    }
+
+    const nextDelayMs = getCompactionRetryDelayMs({
+      failureCount: failures + 1,
+      retryDelaysMs: DEFAULT_COMPACTION_RETRY_DELAYS_MS,
+    });
+    if (nextDelayMs === null) {
+      await this.storage.delete(STORAGE_KEYS.compactionRetryAfter);
+    } else {
+      await this.storage.put(
+        STORAGE_KEYS.compactionRetryAfter,
+        Date.now() + nextDelayMs
+      );
+    }
+    return { kind: "run" };
+  }
+
+  async clearCompactionFailure(): Promise<CompactionResetSummary> {
+    const summary = {
+      failures: await this.getCompactionFailureCount(),
+      retryAfter: await this.getCompactionRetryAfter(),
+      disabledAt: await this.getCompactionDisabledAt(),
+    };
+    await this.completeCompactionAttempt();
+    console.log(
+      `[PartyServer] Automatic compaction re-enabled for room=${this.roomName}: ` +
+        `failuresReset=${summary.failures}, ` +
+        `retryAfterReset=${summary.retryAfter ?? "none"}, ` +
+        `wasDisabled=${summary.disabledAt !== null}.`
+    );
+    return summary;
   }
 
   /**
@@ -516,47 +631,6 @@ export class RoomCircuitBreaker {
     return attempt;
   }
 
-  markCompactionTooLarge(documentBytes: number): void {
-    this.compactionTooLargeBytes = documentBytes;
-  }
-
-  async parkCompactionIfTooLarge(): Promise<boolean> {
-    const documentBytes = this.compactionTooLargeBytes;
-    this.compactionTooLargeBytes = null;
-    if (documentBytes === null) return false;
-
-    const alreadyParked = await this.getCompactionParkedBytes();
-    await this.storage.put(STORAGE_KEYS.compactionParked, documentBytes);
-    await this.options.clearCompactionSchedule();
-
-    if (alreadyParked === null) {
-      console.error(
-        formatCompactionSkipLog({
-          roomName: this.roomName,
-          documentBytes,
-          maxBytes: this.getCompactionMaxInDurableObjectBytes(),
-        })
-      );
-    }
-    return true;
-  }
-
-  async assertCanCompactDocument(documentBytes: number): Promise<void> {
-    const maxBytes = this.getCompactionMaxInDurableObjectBytes();
-    if (
-      !isTooLargeToCompactInDurableObject({
-        documentBytes,
-        maxBytes,
-      })
-    ) {
-      return;
-    }
-
-    this.compactionTooLargeBytes = documentBytes;
-    await this.parkCompactionIfTooLarge();
-    throw new ExternalCompactionRequiredError(documentBytes, maxBytes);
-  }
-
   assertNotQuarantined(operation: string): void {
     if (!this.isQuarantined()) return;
     throw new Error(
@@ -596,10 +670,6 @@ export class RoomCircuitBreaker {
     return summary;
   }
 
-  async clearCompactionPark(): Promise<void> {
-    await this.storage.delete(STORAGE_KEYS.compactionParked);
-  }
-
   async readExternalQuarantineFlag(): Promise<
     { available: true; value: string | null } | { available: false }
   > {
@@ -624,13 +694,15 @@ export class RoomCircuitBreaker {
       roomName: this.roomName,
       quarantine: this.quarantine,
       documentWarningBytes: this.getDocumentWarningBytes(),
-      maxInDurableObjectBytes: this.getCompactionMaxInDurableObjectBytes(),
       failureThreshold: this.getFailureThreshold(),
       loadFailures: await this.getFailureCount("load"),
       alarmFailures: await this.getFailureCount("alarm"),
       loadRetryAfter: await this.getFailureRetryAfter("load"),
       alarmRetryAfter: await this.getFailureRetryAfter("alarm"),
-      compactionParkedBytes: await this.getCompactionParkedBytes(),
+      compactionFailures: await this.getCompactionFailureCount(),
+      compactionRetryAfter: await this.getCompactionRetryAfter(),
+      compactionDisabledAt: await this.getCompactionDisabledAt(),
+      compactionDisableAfter: DEFAULT_COMPACTION_DISABLE_AFTER,
       loadDeferredUntil: this.loadDeferredUntil,
       externalFlag: await this.readExternalQuarantineFlag(),
     });

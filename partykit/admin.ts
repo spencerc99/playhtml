@@ -7,7 +7,6 @@ import { supabase } from "./db";
 import { PartyServer } from "./party";
 import { docToJson, encodeDocToBase64 } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
-import { ExternalCompactionRequiredError } from "./quarantinePolicy";
 import { getAdminAuthError } from "./adminAuth";
 
 export { getAdminAuthError } from "./adminAuth";
@@ -119,6 +118,12 @@ export class AdminHandler {
       ) {
         return await this.handleAdminQuarantineClear(request);
       }
+      if (
+        path.includes("admin/compaction-retry") &&
+        request.method === "POST"
+      ) {
+        return await this.handleAdminCompactionRetry(request);
+      }
 
       return new Response("Admin endpoint not found", { status: 404 });
     } catch (err) {
@@ -191,7 +196,6 @@ export class AdminHandler {
               },
               connections: Array.from(this.context.getConnections()).length,
               timestamp: new Date().toISOString(),
-              documentSize: quarantine.compaction.documentBytes ?? 0,
               resetEpoch: await this.context.getResetEpoch(),
             },
             null,
@@ -924,22 +928,6 @@ export class AdminHandler {
         }
       );
     } catch (error: unknown) {
-      if (error instanceof ExternalCompactionRequiredError) {
-        return new Response(
-          JSON.stringify({
-            error: "External compaction required",
-            message: error.message,
-            roomId,
-            documentBytes: error.documentBytes,
-            maxInDurableObjectBytes: error.maxBytes,
-          }),
-          {
-            status: 409,
-            headers: { "content-type": "application/json" },
-          }
-        );
-      }
-
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
@@ -1008,7 +996,11 @@ export class AdminHandler {
         );
         // Try to decode a Y.Doc to validate it's a valid YJS document
         const testDoc = new Y.Doc();
-        Y.applyUpdate(testDoc, buffer);
+        try {
+          Y.applyUpdate(testDoc, buffer);
+        } finally {
+          testDoc.destroy();
+        }
       } catch (validationError) {
         return new Response(
           JSON.stringify({
@@ -1033,51 +1025,37 @@ export class AdminHandler {
         { bumpEpoch: true, allowQuarantined: true }
       );
 
-      // Only lift the parks if the replacement document is actually small
-      // enough to work with. Auto-clearing after restoring a still-oversized
-      // document would send the room straight back into its crash loop.
-      const maxInDurableObjectBytes =
-        this.context.circuitBreaker.getCompactionMaxInDurableObjectBytes();
-      const stillTooLarge = result.documentSize > maxInDurableObjectBytes;
-
       let quarantineCleared = false;
-      let compactionUnparked = false;
+      let compactionFailureCleared = false;
       let cleanupError: string | null = null;
 
-      if (!stillTooLarge) {
-        // The restore itself already succeeded and is durable. A failure in this
-        // cleanup must not turn into a 500, or an operator would re-run a
-        // restore that actually worked.
-        try {
-          await this.context.circuitBreaker.clearCompactionPark();
-          compactionUnparked = true;
-          if (this.context.circuitBreaker.isQuarantined()) {
-            await this.context.circuitBreaker.clearQuarantine();
-            quarantineCleared = true;
-          }
-        } catch (error) {
-          cleanupError =
-            error instanceof Error ? error.message : String(error);
-          console.error(
-            `[Restore Raw] Post-restore cleanup failed for room ${roomId}:`,
-            error
-          );
+      // The restore itself already succeeded and is durable. A failure in this
+      // cleanup must not turn into a 500, or an operator would re-run a restore
+      // that actually worked.
+      try {
+        await this.context.circuitBreaker.clearCompactionFailure();
+        compactionFailureCleared = true;
+        if (this.context.circuitBreaker.isQuarantined()) {
+          await this.context.circuitBreaker.clearQuarantine();
+          quarantineCleared = true;
         }
+      } catch (error) {
+        cleanupError = error instanceof Error ? error.message : String(error);
+        console.error(
+          `[Restore Raw] Post-restore cleanup failed for room ${roomId}:`,
+          error
+        );
       }
 
       return new Response(
         JSON.stringify({
           ok: true,
-          message: stillTooLarge
-            ? "Raw document restored, but it is still too large to compact in the room, so the room stays quarantined and compaction stays parked. Compact it further and restore again."
-            : "Raw document restored successfully",
+          message: "Raw document restored successfully",
           documentSize: result.documentSize,
           resetEpoch: result.resetEpoch,
           closedConnections: result.closedConnections,
-          stillTooLarge,
-          maxInDurableObjectBytes,
           quarantineCleared,
-          compactionUnparked,
+          compactionFailureCleared,
           cleanupError,
         }),
         {
@@ -1111,10 +1089,9 @@ export class AdminHandler {
     }
   }
 
-  // The three quarantine handlers carry their own try/catch. Without it a
-  // rejection escapes the router's catch (which returns un-awaited promises) and
-  // surfaces as a bare platform 500 with no CORS headers and no log.
-  private quarantineErrorResponse(operation: string, error: unknown): Response {
+  // The room safety handlers carry their own try/catch so failures include
+  // structured details and CORS headers instead of a bare platform 500.
+  private controlErrorResponse(operation: string, error: unknown): Response {
     const message = error instanceof Error ? error.message : String(error);
     console.error(
       `[Admin] ${operation} failed for room ${this.context.name}:`,
@@ -1154,7 +1131,7 @@ export class AdminHandler {
         },
       });
     } catch (error) {
-      return this.quarantineErrorResponse("read quarantine status", error);
+      return this.controlErrorResponse("read quarantine status", error);
     }
   }
 
@@ -1230,7 +1207,7 @@ export class AdminHandler {
         }
       );
     } catch (error) {
-      return this.quarantineErrorResponse("set quarantine", error);
+      return this.controlErrorResponse("set quarantine", error);
     }
   }
 
@@ -1286,7 +1263,47 @@ export class AdminHandler {
         }
       );
     } catch (error) {
-      return this.quarantineErrorResponse("clear quarantine", error);
+      return this.controlErrorResponse("clear quarantine", error);
+    }
+  }
+
+  private async handleAdminCompactionRetry(
+    request: Request
+  ): Promise<Response> {
+    const authError = this.checkAdminAuth(request);
+    if (authError) return authError;
+
+    try {
+      const reset = await this.context.retryAutomaticCompaction();
+      const status =
+        await this.context.circuitBreaker.getQuarantineStatusBody();
+
+      return new Response(
+        JSON.stringify(
+          {
+            ...status,
+            reset: {
+              failures: reset.failures,
+              retryAfter: reset.retryAfter,
+              disabledAt: reset.disabledAt,
+            },
+            message:
+              "Automatic compaction failure state cleared and compaction retried.",
+          },
+          null,
+          2
+        ),
+        {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
+      );
+    } catch (error) {
+      return this.controlErrorResponse("retry automatic compaction", error);
     }
   }
 }

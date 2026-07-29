@@ -18,13 +18,15 @@ const AUTOMATIC_QUARANTINE: RoomQuarantineStatus = {
     load: 8,
     alarm: 0,
     quarantineAfter: 8,
-    loadRetryAt: null,
-    alarmRetryAt: null,
+    loadRetryAfter: null,
+    alarmRetryAfter: null,
   },
   compaction: {
-    parked: true,
-    documentBytes: 6 * 1024 * 1024,
-    maxInDurableObjectBytes: 4 * 1024 * 1024,
+    disabled: true,
+    disabledAt: "2026-07-29T05:01:00.000Z",
+    failures: 3,
+    disableAfter: 3,
+    retryAfter: null,
   },
   loadDeferred: {
     active: false,
@@ -117,6 +119,40 @@ describe("RoomQuarantinePanel", () => {
     expect(
       screen.getByText(/8 load \/ 0 alarm failures; quarantine at 8/)
     ).toBeTruthy();
-    expect(screen.getByText(/Parked at 6\.00 MB/)).toBeTruthy();
+    expect(
+      screen.getByText(/3 vanished attempts; disable after 3/)
+    ).toBeTruthy();
+    expect(screen.getByText("Compaction disabled at")).toBeTruthy();
+  });
+
+  test("shows a delayed compaction retry without calling the room unhealthy", () => {
+    render(
+      <RoomQuarantinePanel
+        status={{
+          ...AUTOMATIC_QUARANTINE,
+          quarantined: false,
+          reason: null,
+          detail: null,
+          quarantinedAt: null,
+          failures: {
+            ...AUTOMATIC_QUARANTINE.failures,
+            load: 0,
+          },
+          compaction: {
+            disabled: false,
+            disabledAt: null,
+            failures: 1,
+            disableAfter: 3,
+            retryAfter: "2026-07-29T05:00:15.000Z",
+          },
+          externalQuarantineFlag: null,
+        }}
+      />
+    );
+
+    expect(screen.getByText("Compaction retry delayed")).toBeTruthy();
+    expect(
+      screen.getByText(/1 vanished attempts; disable after 3/)
+    ).toBeTruthy();
   });
 });

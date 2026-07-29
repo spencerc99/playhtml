@@ -1,20 +1,23 @@
-// ABOUTME: Verifies the policy decisions behind compaction skips, backoff, and quarantine.
-// ABOUTME: Covers the size-warning boundary, the backoff ladder, and operator-facing logs.
+// ABOUTME: Verifies the policy decisions behind compaction retries, backoff, and quarantine.
+// ABOUTME: Covers failure boundaries, retry ladders, and operator-facing logs.
 import { describe, expect, test } from "bun:test";
 import {
   createQuarantineStatusBody,
-  formatCompactionSkipLog,
+  formatCompactionBackoffLog,
+  formatCompactionDisabledLog,
   formatFailureBackoffLog,
   formatQuarantineLog,
+  getCompactionRetryDelayMs,
   getFailureBackoffMs,
   getFailureRetryAt,
   isDocumentOversized,
   isRetryDue,
-  isTooLargeToCompactInDurableObject,
+  shouldDisableCompaction,
   shouldQuarantineForFailures,
 } from "../quarantinePolicy";
 import {
-  DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
+  DEFAULT_COMPACTION_DISABLE_AFTER,
+  DEFAULT_COMPACTION_RETRY_DELAYS_MS,
   DEFAULT_FAILURE_BACKOFF_MAX_MS,
   DEFAULT_FAILURE_BACKOFF_MS,
   DEFAULT_QUARANTINE_DOCUMENT_BYTES,
@@ -48,35 +51,31 @@ describe("isDocumentOversized", () => {
   });
 });
 
-describe("isTooLargeToCompactInDurableObject", () => {
-  // Compaction holds the live doc, its JSON projection, and the rebuild at once,
-  // so rooms that survive loading still cannot be compacted in place.
-  test("catches the 6-8MB band that OOMs during compaction", () => {
-    for (const megabytes of [6, 7, 8, 13]) {
-      expect(
-        isTooLargeToCompactInDurableObject({
-          documentBytes: MB * megabytes,
-          maxBytes: DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
+describe("automatic compaction failure policy", () => {
+  test("retries after 15 seconds and then 30 seconds", () => {
+    expect(
+      [1, 2, 3].map((failureCount) =>
+        getCompactionRetryDelayMs({
+          failureCount,
+          retryDelaysMs: DEFAULT_COMPACTION_RETRY_DELAYS_MS,
         })
-      ).toBe(true);
-    }
+      )
+    ).toEqual([15_000, 30_000, null]);
   });
 
-  test("leaves ordinary rooms compactable", () => {
-    for (const kilobytes of [1, 64, 512, 2048]) {
-      expect(
-        isTooLargeToCompactInDurableObject({
-          documentBytes: 1024 * kilobytes,
-          maxBytes: DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
-        })
-      ).toBe(false);
-    }
-  });
-
-  test("the compaction ceiling sits well below the load warning", () => {
-    expect(DEFAULT_COMPACTION_MAX_IN_DO_BYTES).toBeLessThan(
-      DEFAULT_QUARANTINE_DOCUMENT_BYTES
-    );
+  test("disables only after the third vanished attempt", () => {
+    expect(
+      shouldDisableCompaction({
+        failureCount: DEFAULT_COMPACTION_DISABLE_AFTER - 1,
+        disableAfter: DEFAULT_COMPACTION_DISABLE_AFTER,
+      })
+    ).toBe(false);
+    expect(
+      shouldDisableCompaction({
+        failureCount: DEFAULT_COMPACTION_DISABLE_AFTER,
+        disableAfter: DEFAULT_COMPACTION_DISABLE_AFTER,
+      })
+    ).toBe(true);
   });
 });
 
@@ -161,20 +160,31 @@ describe("shouldQuarantineForFailures", () => {
   });
 });
 
-describe("formatCompactionSkipLog", () => {
-  test("names the room and points at the external compaction runbook", () => {
-    const message = formatCompactionSkipLog({
+describe("compaction failure logs", () => {
+  test("reports a delayed retry without claiming the room is unavailable", () => {
+    const message = formatCompactionBackoffLog({
       roomName: "kwolanne.github.io-offerings",
-      documentBytes: 7 * MB,
-      maxBytes: DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
+      failureCount: 1,
+      retryAt: 1779829545000,
     });
 
-    expect(message).toContain("REQUIRES EXTERNAL COMPACTION");
+    expect(message).toContain("AUTOMATIC COMPACTION BACKOFF");
     expect(message).toContain("room=kwolanne.github.io-offerings");
-    expect(message).toContain("admin/raw-data");
-    expect(message).toContain("admin/restore-raw-document");
-    // The room is explicitly NOT broken, which matters for triage.
-    expect(message).toContain("loads and runs normally");
+    expect(message).toContain("vanishedAttempts=1");
+    expect(message).toContain("2026-05-26T21:05:45.000Z");
+    expect(message).toContain("continues loading, syncing, and persisting");
+  });
+
+  test("reports failure-based disablement and the operator retry path", () => {
+    const message = formatCompactionDisabledLog({
+      roomName: "kwolanne.github.io-offerings",
+      failureCount: 3,
+    });
+
+    expect(message).toContain("AUTOMATIC COMPACTION DISABLED");
+    expect(message).toContain("vanishedAttempts=3");
+    expect(message).toContain("without affecting room service or persistence");
+    expect(message).toContain("admin/compaction-retry");
   });
 });
 
@@ -230,18 +240,20 @@ describe("formatQuarantineLog", () => {
 });
 
 describe("createQuarantineStatusBody", () => {
-  test("reports a healthy room with no failures and no parking", () => {
+  test("reports a healthy room with no failures or compaction delay", () => {
     const body = createQuarantineStatusBody({
       roomName: "healthy-room",
       quarantine: null,
       documentWarningBytes: DEFAULT_QUARANTINE_DOCUMENT_BYTES,
-      maxInDurableObjectBytes: DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
       failureThreshold: 8,
       loadFailures: 0,
       alarmFailures: 0,
       loadRetryAfter: null,
       alarmRetryAfter: null,
-      compactionParkedBytes: null,
+      compactionFailures: 0,
+      compactionRetryAfter: null,
+      compactionDisabledAt: null,
+      compactionDisableAfter: DEFAULT_COMPACTION_DISABLE_AFTER,
     });
 
     expect(body.quarantined).toBe(false);
@@ -252,10 +264,16 @@ describe("createQuarantineStatusBody", () => {
       loadRetryAfter: null,
       alarmRetryAfter: null,
     });
-    expect(body.compaction.parked).toBe(false);
+    expect(body.compaction).toEqual({
+      disabled: false,
+      disabledAt: null,
+      failures: 0,
+      disableAfter: DEFAULT_COMPACTION_DISABLE_AFTER,
+      retryAfter: null,
+    });
   });
 
-  test("surfaces backoff state and compaction parking for triage", () => {
+  test("surfaces independent quarantine and compaction failure state", () => {
     const body = createQuarantineStatusBody({
       roomName: "sick-room",
       quarantine: {
@@ -266,13 +284,15 @@ describe("createQuarantineStatusBody", () => {
         quarantinedAt: 1779829545000,
       },
       documentWarningBytes: DEFAULT_QUARANTINE_DOCUMENT_BYTES,
-      maxInDurableObjectBytes: DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
       failureThreshold: 8,
       loadFailures: 0,
       alarmFailures: 8,
       loadRetryAfter: null,
       alarmRetryAfter: 1779829545000,
-      compactionParkedBytes: 7 * MB,
+      compactionFailures: 3,
+      compactionRetryAfter: null,
+      compactionDisabledAt: 1779829999000,
+      compactionDisableAfter: DEFAULT_COMPACTION_DISABLE_AFTER,
     });
 
     expect(body.quarantined).toBe(true);
@@ -283,9 +303,11 @@ describe("createQuarantineStatusBody", () => {
     // A load that never failed keeps a null deadline of its own.
     expect(body.failures.loadRetryAfter).toBeNull();
     expect(body.compaction).toEqual({
-      parked: true,
-      documentBytes: 7 * MB,
-      maxInDurableObjectBytes: DEFAULT_COMPACTION_MAX_IN_DO_BYTES,
+      disabled: true,
+      disabledAt: "2026-05-26T21:13:19.000Z",
+      failures: 3,
+      disableAfter: DEFAULT_COMPACTION_DISABLE_AFTER,
+      retryAfter: null,
     });
   });
 });
