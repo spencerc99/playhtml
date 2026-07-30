@@ -37,6 +37,7 @@ const TITLE_REQUIRED_DOMAINS = [
   'instagram.com',
   'itch.io',
   'pinterest.com',
+  'substack.com',
   'tiktok.com',
   'wikipedia.org',
   'wordpress.com',
@@ -52,6 +53,17 @@ const GENERIC_PATHS = new Set([
   '/search',
 ]);
 
+const NEVER_LAND_SUBDOMAIN_LABELS = new Set([
+  'account',
+  'accounts',
+  'admin',
+  'auth',
+  'candidate',
+  'dashboard',
+  'login',
+  'mail',
+]);
+
 const NEVER_LAND_PATH_SEGMENTS = new Set([
   'account',
   'accounts',
@@ -63,6 +75,7 @@ const NEVER_LAND_PATH_SEGMENTS = new Set([
   'editor',
   'inbox',
   'login',
+  'myschedule',
   'oauth',
   'outbound',
   'publish',
@@ -72,7 +85,6 @@ const NEVER_LAND_PATH_SEGMENTS = new Set([
   'signin',
   'sso',
   'statements',
-  'myschedule',
 ]);
 
 const NEVER_LAND_PATH_PREFIXES = [
@@ -191,26 +203,31 @@ function getMeaningfulTitle(
     : normalizedTitle;
 }
 
+function hasUserBoundSubdomain(domain: string): boolean {
+  const labels = domain.split('.');
+  return labels
+    .slice(0, -2)
+    .some((label) => NEVER_LAND_SUBDOMAIN_LABELS.has(comparableLabel(label)));
+}
+
+function isExcludedDestinationSurface(url: URL, domain: string): boolean {
+  return (
+    Boolean(url.username || url.password) ||
+    NEVER_LAND_DOMAINS.some((candidate) => domainMatches(domain, candidate)) ||
+    hasUserBoundSubdomain(domain) ||
+    hasBlockedPath(url.pathname || '/', domain)
+  );
+}
+
 function sanitizePublicDestinationUrl(rawUrl: string): string | null {
   try {
     const url = new URL(canonicalizeUrl(rawUrl));
-    if (
-      (url.protocol !== 'https:' && url.protocol !== 'http:') ||
-      url.username ||
-      url.password
-    ) {
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       return null;
     }
 
     const domain = normalizeDomain(url.hostname);
-    if (
-      NEVER_LAND_DOMAINS.some((candidate) => domainMatches(domain, candidate))
-    ) {
-      return null;
-    }
-    if (hasBlockedPath(url.pathname || '/', domain)) {
-      return null;
-    }
+    if (isExcludedDestinationSurface(url, domain)) return null;
 
     if (domainMatches(domain, 'youtube.com') && url.pathname === '/watch') {
       const videoId = url.searchParams.get('v');
@@ -245,12 +262,14 @@ function toCandidate(event: CollectionEvent): NavigationCandidate | null {
     if (!domain || isLocalNetworkHost(domain)) return null;
 
     const data = event.data as Record<string, unknown>;
+    const title = typeof data.title === 'string' ? data.title : null;
+
     return {
       domain,
       hue: event.meta.cursor_color ?? '#4a9a8a',
       pid: event.meta.pid,
       recentDomainVisits: 1,
-      title: typeof data.title === 'string' ? data.title : null,
+      title,
       url: event.meta.url,
       visitedAt: event.ts,
     };

@@ -56,7 +56,7 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
-  it('keeps private applications and unknown query pages in domain-only scenery', () => {
+  it('keeps private applications and unknown query pages as domain-only scenery', () => {
     const response = buildCommuteResponse(
       [
         event(
@@ -109,7 +109,7 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
-  it('rejects account state, login, redirect, and URL-only titles', () => {
+  it('keeps user-bound surfaces as scenery but excludes them from destinations', () => {
     const response = buildCommuteResponse(
       [
         event(
@@ -119,6 +119,30 @@ describe('buildCommuteResponse', () => {
           500,
           'cart-rider',
           'Your cart',
+        ),
+        event(
+          'account',
+          'navigation',
+          'https://shop.example/account/orders',
+          450,
+          'account-rider',
+          'Order history',
+        ),
+        event(
+          'account-subdomain',
+          'navigation',
+          'https://account.mayoclinic.org/',
+          440,
+          'patient-rider',
+          'Patient portal',
+        ),
+        event(
+          'candidate-portal',
+          'navigation',
+          'https://candidate.atsglobe.com/',
+          430,
+          'candidate-rider',
+          'Candidate portal',
         ),
         event(
           'login',
@@ -192,14 +216,45 @@ describe('buildCommuteResponse', () => {
           'pinterest-rider',
           'Pinterest',
         ),
+        event(
+          'public-newsletter',
+          'navigation',
+          'https://newsletter.substack.com/p/a-public-essay',
+          130,
+          'newsletter-rider',
+          'A public essay',
+        ),
+        event(
+          'generic-newsletter',
+          'navigation',
+          'https://generic.substack.com/',
+          125,
+          'generic-newsletter-rider',
+          'Substack',
+        ),
       ],
       [],
       1_000,
     );
 
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'shop.example',
+      'account.mayoclinic.org',
+      'candidate.atsglobe.com',
+      'service.example',
+      'newsletter.example',
+      'article.example',
+      'newsletter.substack.com',
+      'work.example',
+      'open.spotify.com',
+      'game.itch.io',
+      'nytimes.com',
+      'uk.pinterest.com',
+      'generic.substack.com',
+    ]);
     expect(
       response.destinations.map((destination) => destination.domain),
-    ).toEqual(['article.example']);
+    ).toEqual(['article.example', 'newsletter.substack.com']);
   });
 
   it('omits local-network hosts from scenery', () => {
