@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { CollectionEvent } from "../shared/types";
-import { deriveRecentStops } from "./commuteStops";
+import { deriveRecentStops, getFaviconUrl, SAMPLE_STOPS } from "./commuteStops";
 
 function navigationEvent(
   id: string,
@@ -78,5 +78,23 @@ describe("deriveRecentStops", () => {
         source: "live",
       },
     ]);
+  });
+});
+
+describe("getFaviconUrl", () => {
+  it("uses the first-party origin for live destinations", () => {
+    expect(
+      getFaviconUrl({
+        domain: "neal.fun",
+        source: "live",
+        url: "https://neal.fun/deep-sea/",
+      }),
+    ).toBe("https://neal.fun/favicon.ico");
+  });
+
+  it("uses known favicon images for the public sample route", () => {
+    expect(getFaviconUrl(SAMPLE_STOPS[0])).toBe(
+      "https://www.google.com/s2/favicons?domain=shrine.computer&sz=64",
+    );
   });
 });

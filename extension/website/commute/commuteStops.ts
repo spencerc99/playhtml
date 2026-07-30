@@ -49,6 +49,16 @@ export const SAMPLE_STOPS: CommuteStop[] = [
   },
 ];
 
+export function getFaviconUrl(
+  stop: Pick<CommuteStop, "domain" | "source" | "url">,
+): string {
+  if (stop.source === "sample") {
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(stop.domain)}&sz=64`;
+  }
+
+  return new URL("/favicon.ico", stop.url).toString();
+}
+
 function toCommuteStop(event: CollectionEvent): CommuteStop | null {
   const candidate = event.normalizedUrl ?? event.meta?.url;
   if (!candidate) return null;
