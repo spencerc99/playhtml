@@ -8,6 +8,7 @@ export interface CommuteStop {
   url: string;
   domain: string;
   path: string;
+  faviconUrl: string | null;
   visitedBy: string;
   visitedAt: number | null;
   sampleAge: string | null;
@@ -21,6 +22,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://html.energy/",
     domain: "html.energy",
     path: "/",
+    faviconUrl: null,
     visitedBy: "amber-moth-2210",
     visitedAt: null,
     sampleAge: "3m",
@@ -32,6 +34,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://special.fish/",
     domain: "special.fish",
     path: "/",
+    faviconUrl: null,
     visitedBy: "quiet-lantern-3704",
     visitedAt: null,
     sampleAge: "7m",
@@ -43,6 +46,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://thehtml.review/",
     domain: "thehtml.review",
     path: "/",
+    faviconUrl: null,
     visitedBy: "paper-crane-8841",
     visitedAt: null,
     sampleAge: "12m",
@@ -54,6 +58,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://playhtml.fun/",
     domain: "playhtml.fun",
     path: "/",
+    faviconUrl: null,
     visitedBy: "low-tide-0952",
     visitedAt: null,
     sampleAge: "2m",
@@ -65,6 +70,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://wiby.me/",
     domain: "wiby.me",
     path: "/",
+    faviconUrl: null,
     visitedBy: "dim-star-4417",
     visitedAt: null,
     sampleAge: "9m",
@@ -74,8 +80,19 @@ export const SAMPLE_STOPS: CommuteStop[] = [
 ];
 
 export function getFaviconUrl(
-  stop: Pick<CommuteStop, "domain" | "source" | "url">,
+  stop: Pick<CommuteStop, "domain" | "faviconUrl" | "source" | "url">,
 ): string {
+  if (stop.faviconUrl) {
+    try {
+      const faviconUrl = new URL(stop.faviconUrl);
+      if (faviconUrl.protocol === "https:" || faviconUrl.protocol === "http:") {
+        return faviconUrl.toString();
+      }
+    } catch {
+      // Fall through to the destination origin when metadata is malformed.
+    }
+  }
+
   if (stop.source === "sample") {
     return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(stop.domain)}&sz=64`;
   }
@@ -114,12 +131,16 @@ function toCommuteStop(event: CollectionEvent): CommuteStop | null {
 
     const path = url.pathname || "/";
     const canonicalUrl = `${url.protocol}//${url.host}${path}`;
+    const data = event.data as Record<string, unknown>;
+    const faviconUrl =
+      typeof data.favicon_url === "string" ? data.favicon_url : null;
 
     return {
       id: canonicalUrl,
       url: canonicalUrl,
       domain,
       path,
+      faviconUrl,
       visitedBy: formatRiderLabel(event.meta.pid),
       visitedAt: event.ts,
       sampleAge: null,
@@ -148,4 +169,15 @@ export function deriveRecentStops(
   }
 
   return [...stops.values()];
+}
+
+export function parseRecentCommuteStops(
+  payload: unknown,
+  limit = 10,
+): CommuteStop[] {
+  if (!Array.isArray(payload)) {
+    throw new Error("Recent navigation response must be an array");
+  }
+
+  return deriveRecentStops(payload as CollectionEvent[], limit);
 }

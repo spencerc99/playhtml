@@ -21,9 +21,8 @@ describe("createLandscapePlan", () => {
     const plan = createLandscapePlan("all-layers");
 
     expect(plan.clouds).toHaveLength(7);
-    expect(plan.distantMountains).toHaveLength(2);
     expect(plan.mountain).toMatch(/^M /);
-    expect(plan.contours).toHaveLength(4);
+    expect(plan.contours).toHaveLength(2);
     expect(plan.ridgeTrees.length).toBeGreaterThan(0);
     expect(plan.foregroundTrees).toHaveLength(13);
     expect(plan.water).toHaveLength(8);

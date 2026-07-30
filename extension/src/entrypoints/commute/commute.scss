@@ -239,10 +239,6 @@ button {
   animation-duration: 70s;
 }
 
-.landscape-track--distant {
-  animation-duration: 42s;
-}
-
 .landscape-track--mountain {
   animation-duration: 22s;
 }
@@ -267,10 +263,6 @@ button {
 .landscape--arriving {
   .landscape-track--clouds {
     animation-duration: 120s;
-  }
-
-  .landscape-track--distant {
-    animation-duration: 72s;
   }
 
   .landscape-track--mountain {
@@ -302,19 +294,9 @@ button {
   stroke: $landscape-ink;
   stroke-width: 1.15;
 
-  &--distant-1 {
-    fill: rgba(143, 135, 120, 0.23);
-    opacity: 0.68;
-  }
-
-  &--distant-2 {
-    fill: rgba(143, 135, 120, 0.28);
-    opacity: 0.56;
-  }
-
   &--near {
-    fill: rgba(207, 194, 164, 0.68);
-    opacity: 0.78;
+    fill: rgba(184, 174, 151, 0.5);
+    opacity: 0.76;
   }
 }
 
@@ -323,7 +305,7 @@ button {
   stroke: $landscape-ink;
   stroke-linecap: round;
   stroke-width: 1;
-  opacity: 0.34;
+  opacity: 0.28;
 }
 
 .landscape-tree {

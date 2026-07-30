@@ -7,6 +7,7 @@ import {
   deriveRecentStops,
   formatStopAge,
   getFaviconUrl,
+  parseRecentCommuteStops,
   SAMPLE_STOPS,
 } from "./commuteStops";
 
@@ -47,6 +48,7 @@ describe("deriveRecentStops", () => {
         url: "https://www.next.example/path",
         domain: "next.example",
         path: "/path",
+        faviconUrl: null,
         visitedBy: "rider",
         visitedAt: 3,
         sampleAge: null,
@@ -58,6 +60,7 @@ describe("deriveRecentStops", () => {
         url: "https://slow.example/first",
         domain: "slow.example",
         path: "/first",
+        faviconUrl: null,
         visitedBy: "rider",
         visitedAt: 2,
         sampleAge: null,
@@ -88,6 +91,7 @@ describe("deriveRecentStops", () => {
         url: "https://public.example/place",
         domain: "public.example",
         path: "/place",
+        faviconUrl: null,
         visitedBy: "rider",
         visitedAt: 2,
         sampleAge: null,
@@ -103,6 +107,7 @@ describe("getFaviconUrl", () => {
     expect(
       getFaviconUrl({
         domain: "neal.fun",
+        faviconUrl: null,
         source: "live",
         url: "https://neal.fun/deep-sea/",
       }),
@@ -112,6 +117,51 @@ describe("getFaviconUrl", () => {
   it("uses known favicon images for the public sample route", () => {
     expect(getFaviconUrl(SAMPLE_STOPS[0])).toBe(
       "https://www.google.com/s2/favicons?domain=html.energy&sz=64",
+    );
+  });
+
+  it("prefers favicon metadata returned with a recent navigation", () => {
+    expect(
+      getFaviconUrl({
+        domain: "neal.fun",
+        faviconUrl: "https://neal.fun/icon.png",
+        source: "live",
+        url: "https://neal.fun/deep-sea/",
+      }),
+    ).toBe("https://neal.fun/icon.png");
+  });
+});
+
+describe("parseRecentCommuteStops", () => {
+  it("turns the worker response into a recent route with favicon metadata", () => {
+    const event = navigationEvent(
+      "live",
+      "https://garden.example/paths/one?private=secret",
+      100,
+    );
+    Object.assign(event.data, {
+      favicon_url: "https://garden.example/leaf.svg",
+    });
+
+    expect(parseRecentCommuteStops([event])).toEqual([
+      {
+        id: "https://garden.example/paths/one",
+        url: "https://garden.example/paths/one",
+        domain: "garden.example",
+        path: "/paths/one",
+        faviconUrl: "https://garden.example/leaf.svg",
+        visitedBy: "rider",
+        visitedAt: 100,
+        sampleAge: null,
+        hue: "#4a9a8a",
+        source: "live",
+      },
+    ]);
+  });
+
+  it("rejects malformed recent navigation responses", () => {
+    expect(() => parseRecentCommuteStops({ events: [] })).toThrow(
+      "Recent navigation response must be an array",
     );
   });
 });

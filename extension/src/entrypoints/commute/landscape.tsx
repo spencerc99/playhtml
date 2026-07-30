@@ -18,9 +18,15 @@ interface TreeMark {
   lean: number;
 }
 
+interface RidgePeak {
+  center: number;
+  height: number;
+  leftWidth: number;
+  rightWidth: number;
+}
+
 export interface LandscapePlan {
   clouds: string[];
-  distantMountains: string[];
   mountain: string;
   contours: string[];
   ridgeTrees: TreeMark[];
@@ -75,27 +81,53 @@ function makeRidge(
   step: number,
 ): Point[] {
   const points: Point[] = [{ x: 0, y: baseline }];
-  let pointIndex = 0;
+  const availableHeight = baseline - minY;
+  const peaks: RidgePeak[] = [];
+  let peakCenter = between(random, 100, 260);
+
+  while (peakCenter < STRIP_WIDTH) {
+    peaks.push({
+      center: peakCenter,
+      height: between(random, availableHeight * 0.42, availableHeight * 0.8),
+      leftWidth: between(random, 120, 210),
+      rightWidth: between(random, 140, 230),
+    });
+    peakCenter += between(random, 260, 380);
+  }
+
+  const shoulderFrequency = between(random, 5, 8);
+  const shoulderPhase = between(random, 0, Math.PI * 2);
 
   for (let x = step; x < STRIP_WIDTH; x += step) {
-    const ridgePosition = pointIndex % 4;
-    let y: number;
-
-    if (ridgePosition === 1) {
-      y = between(random, minY, minY + 15);
-    } else if (ridgePosition === 2) {
-      y = between(random, minY + 16, baseline - 32);
-    } else if (ridgePosition === 3) {
-      y = between(random, baseline - 48, baseline - 18);
-    } else {
-      y = between(random, baseline - 28, baseline - 8);
-    }
+    const peakHeight = peaks.reduce((highest, peak) => {
+      const distance = x - peak.center;
+      const width = distance < 0 ? peak.leftWidth : peak.rightWidth;
+      const contribution =
+        peak.height * Math.exp(-0.5 * Math.pow(distance / width, 2));
+      return Math.max(highest, contribution);
+    }, 0);
+    const shoulder =
+      ((Math.sin(
+        (x / STRIP_WIDTH) * Math.PI * shoulderFrequency + shoulderPhase,
+      ) +
+        1) /
+        2) *
+      availableHeight *
+      0.1;
+    const y = Math.max(
+      minY,
+      baseline -
+        7 -
+        availableHeight * 0.1 -
+        peakHeight -
+        shoulder +
+        between(random, -3, 3),
+    );
 
     points.push({
       x,
-      y: y + Math.sin((x / STRIP_WIDTH) * Math.PI * 7) * between(random, 1, 4),
+      y,
     });
-    pointIndex += 1;
   }
 
   points.push({ x: STRIP_WIDTH, y: baseline });
@@ -172,22 +204,18 @@ function makeWaterLine(random: () => number, index: number): string {
 // simplified generator built for the train's narrow SVG scenery.
 export function createLandscapePlan(seed: string): LandscapePlan {
   const random = seededRandom(seed);
-  const distantMountains = Array.from({ length: 2 }, (_, index) => {
-    const baseline = 91 + index * 10;
-    const ridge = makeRidge(random, baseline, 48 + index * 8, 210);
-    return closeMountain(smoothPath(ridge), baseline);
-  });
-
   const mountainRidge = makeRidge(random, 118, 30, 115);
   const mountainPath = closeMountain(smoothPath(mountainRidge), 118);
-  const contours = Array.from({ length: 4 }, (_, contourIndex) => {
+  const contours = Array.from({ length: 2 }, (_, contourIndex) => {
     const points = mountainRidge.map((point, pointIndex) => ({
-      x: point.x + contourIndex * 3,
-      y:
+      x: point.x + contourIndex * 4,
+      y: Math.min(
+        110 + contourIndex * 4,
         point.y +
-        10 +
-        contourIndex * 9 +
-        Math.sin(pointIndex * 1.7 + contourIndex) * 2,
+          13 +
+          contourIndex * 14 +
+          Math.sin(pointIndex * 1.7 + contourIndex) * 2,
+      ),
     }));
     return smoothPath(points);
   });
@@ -206,7 +234,6 @@ export function createLandscapePlan(seed: string): LandscapePlan {
 
   return {
     clouds: Array.from({ length: 7 }, () => makeCloud(random)),
-    distantMountains,
     mountain: mountainPath,
     contours,
     ridgeTrees,
@@ -257,7 +284,7 @@ function LandscapeSvg({
   layer,
 }: {
   plan: LandscapePlan;
-  layer: "clouds" | "distant" | "mountain" | "foreground" | "water";
+  layer: "clouds" | "mountain" | "foreground" | "water";
 }) {
   return (
     <svg
@@ -268,14 +295,6 @@ function LandscapeSvg({
       {layer === "clouds" &&
         plan.clouds.map((cloud, index) => (
           <path key={index} className="landscape-cloud" d={cloud} />
-        ))}
-      {layer === "distant" &&
-        plan.distantMountains.map((mountain, index) => (
-          <path
-            key={index}
-            className={`landscape-mountain landscape-mountain--distant-${index + 1}`}
-            d={mountain}
-          />
         ))}
       {layer === "mountain" && (
         <>
@@ -306,7 +325,7 @@ function MovingLayer({
   className,
 }: {
   plan: LandscapePlan;
-  layer: "clouds" | "distant" | "mountain" | "foreground" | "water";
+  layer: "clouds" | "mountain" | "foreground" | "water";
   className: string;
 }) {
   return (
@@ -336,7 +355,6 @@ export function ProceduralLandscape({
       {edge === "upper" ? (
         <>
           <MovingLayer plan={plan} layer="clouds" className="landscape-track--clouds" />
-          <MovingLayer plan={plan} layer="distant" className="landscape-track--distant" />
           <MovingLayer plan={plan} layer="mountain" className="landscape-track--mountain" />
           <MovingLayer
             plan={plan}

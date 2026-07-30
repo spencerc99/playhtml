@@ -11,11 +11,13 @@ const WEBSITE_PAGES_HOST = 'we-were-online-website.pages.dev';
 
 /** Dev origins matched by host (any port). */
 const DEV_HOSTS = new Set(['localhost', '127.0.0.1']);
+const EXTENSION_PROTOCOLS = new Set(['chrome-extension:', 'moz-extension:']);
 
 function originIsAllowed(origin: string): boolean {
   if (ALLOWED_ORIGINS.has(origin)) return true;
   try {
     const url = new URL(origin);
+    if (EXTENSION_PROTOCOLS.has(url.protocol) && url.hostname) return true;
     if (
       url.protocol === 'https:' &&
       (url.hostname === WEBSITE_PAGES_HOST ||

@@ -10,11 +10,12 @@ import {
   withSharedState,
 } from "@playhtml/react";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
+import { RECENT_EVENTS_URL } from "@movement/config";
 import { summarizeActiveLocations } from "@movement/utils/eventUtils";
 import {
-  deriveRecentStops,
   formatStopAge,
   getFaviconUrl,
+  parseRecentCommuteStops,
   SAMPLE_STOPS,
   type CommuteStop,
 } from "./commuteStops";
@@ -49,6 +50,11 @@ interface CommuteCarProps {
   onRiderStateChange: (state: { count: number; hasSeat: boolean }) => void;
 }
 
+interface RecentRoute {
+  stops: CommuteStop[];
+  status: "loading" | "live" | "empty" | "error";
+}
+
 const SEAT_BANKS = [
   [44, 100, 156, 212],
   [420, 476, 532, 588, 644],
@@ -71,6 +77,48 @@ const SEATS: SeatDefinition[] = ["top", "bottom"].flatMap((row) =>
 );
 
 const DOORS = [276, 696];
+
+function useRecentRoute(): RecentRoute {
+  const [route, setRoute] = useState<RecentRoute>({
+    stops: [],
+    status: "loading",
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      type: "navigation",
+      limit: "80",
+      require_title: "true",
+    });
+
+    const load = async () => {
+      try {
+        const response = await fetch(`${RECENT_EVENTS_URL}?${params}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Recent navigation request failed: ${response.status}`);
+        }
+
+        const stops = parseRecentCommuteStops(await response.json(), 10);
+        setRoute({
+          stops,
+          status: stops.length > 0 ? "live" : "empty",
+        });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.warn("[internet commute] recent route unavailable:", error);
+        setRoute({ stops: [], status: "error" });
+      }
+    };
+
+    void load();
+    return () => controller.abort();
+  }, []);
+
+  return route;
+}
 
 function StopFavicon({
   stop,
@@ -199,7 +247,7 @@ function Platform({
       <span className="station-sign">
         {!atOrigin && <StopFavicon stop={currentStop} />}
         <span className="station-sign__destination">
-          <strong>{atOrigin ? "this page" : currentStop.domain}</strong>
+          <strong>{atOrigin ? "home station" : currentStop.domain}</strong>
           {!atOrigin && (
             <small>
               {currentStop.path === "/" ? "front page" : currentStop.path}
@@ -408,7 +456,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const canExit = doorOpen && !props.atOrigin;
 
     return (
-      <div id={props.id} className="train-car-wrap" ref={ref}>
+      <section id={props.id} className="train-car-wrap" ref={ref}>
         <section
           className={`train-car train-car--${props.phase}`}
           aria-label="Internet commute carriage"
@@ -454,7 +502,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             {toast}
           </div>
         )}
-      </div>
+      </section>
     );
   },
 );
@@ -508,8 +556,9 @@ function Banner({
 
 function InternetCommute() {
   const { events, connected } = useLiveEvents({ maxEvents: 400 });
-  const liveStops = useMemo(() => deriveRecentStops(events, 10), [events]);
-  const stops = liveStops.length >= 3 ? liveStops : SAMPLE_STOPS;
+  const recentRoute = useRecentRoute();
+  const stops =
+    recentRoute.status === "live" ? recentRoute.stops : SAMPLE_STOPS;
   const browsingCount = useMemo(
     () => summarizeActiveLocations(events).people,
     [events],
@@ -593,9 +642,14 @@ function InternetCommute() {
         </div>
 
         <p className="commute-note">
-          stops are populated from pages recently visited by people using the
-          extension · {connected ? "live service" : "quiet service"} · you only
-          appear while you ride
+          {recentRoute.status === "live"
+            ? "destinations are recent pages visited by people using the extension"
+            : recentRoute.status === "loading"
+              ? "finding recent destinations — preview route shown while the train boards"
+              : "recent destinations unavailable — running the preview route"}
+          {" · "}
+          {connected ? "live browsing activity" : "browsing activity offline"}
+          {" · "}you only appear while you ride
         </p>
       </div>
     </main>
