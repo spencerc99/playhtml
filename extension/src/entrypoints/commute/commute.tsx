@@ -13,8 +13,11 @@ import { useLiveEvents } from "@movement/hooks/useLiveEvents";
 import { RECENT_EVENTS_URL } from "@movement/config";
 import { summarizeActiveLocations } from "@movement/utils/eventUtils";
 import {
+  curateCommuteStops,
   formatStopAge,
   getFaviconUrl,
+  getStopDisplayDetail,
+  getStopDisplayName,
   parseRecentCommuteStops,
   SAMPLE_STOPS,
   type CommuteStop,
@@ -52,6 +55,7 @@ interface CommuteCarProps {
 
 interface RecentRoute {
   stops: CommuteStop[];
+  sceneryStops: CommuteStop[];
   status: "loading" | "live" | "empty" | "error";
 }
 
@@ -81,6 +85,7 @@ const DOORS = [276, 696];
 function useRecentRoute(): RecentRoute {
   const [route, setRoute] = useState<RecentRoute>({
     stops: [],
+    sceneryStops: [],
     status: "loading",
   });
 
@@ -101,15 +106,20 @@ function useRecentRoute(): RecentRoute {
           throw new Error(`Recent navigation request failed: ${response.status}`);
         }
 
-        const stops = parseRecentCommuteStops(await response.json(), 10);
+        const sceneryStops = parseRecentCommuteStops(
+          await response.json(),
+          40,
+        );
+        const stops = curateCommuteStops(sceneryStops, 10);
         setRoute({
           stops,
+          sceneryStops,
           status: stops.length > 0 ? "live" : "empty",
         });
       } catch (error) {
         if (controller.signal.aborted) return;
         console.warn("[internet commute] recent route unavailable:", error);
-        setRoute({ stops: [], status: "error" });
+        setRoute({ stops: [], sceneryStops: [], status: "error" });
       }
     };
 
@@ -247,11 +257,11 @@ function Platform({
       <span className="station-sign">
         {!atOrigin && <StopFavicon stop={currentStop} />}
         <span className="station-sign__destination">
-          <strong>{atOrigin ? "home station" : currentStop.domain}</strong>
+          <strong>
+            {atOrigin ? "home station" : getStopDisplayName(currentStop)}
+          </strong>
           {!atOrigin && (
-            <small>
-              {currentStop.path === "/" ? "front page" : currentStop.path}
-            </small>
+            <small>{getStopDisplayDetail(currentStop)}</small>
           )}
         </span>
       </span>
@@ -523,21 +533,22 @@ function Banner({
   let message: string;
   let aside: string;
   let instruction = "";
+  const stopName = getStopDisplayName(currentStop);
 
   if (atOrigin) {
-    message = `next train to ${currentStop.domain}`;
+    message = `next train to ${stopName}`;
     aside = `doors close in ${secondsLeft}s`;
     instruction = "find a seat — click any empty seat to sit down";
   } else if (phase === "stopped") {
-    message = `now stopped at ${currentStop.domain}`;
+    message = `now stopped at ${stopName}`;
     aside = `doors close in ${secondsLeft}s`;
     instruction = `the doors are open — click one to step off at ${currentStop.domain}`;
   } else if (phase === "arriving") {
-    message = `now arriving at ${currentStop.domain}`;
+    message = `now arriving at ${stopName}`;
     aside = `last visited by ${currentStop.visitedBy}, ${formatStopAge(currentStop)} ago`;
   } else {
     message = `${secondsLeft} seconds until next stop`;
-    aside = `next stop: ${currentStop.domain}`;
+    aside = `next stop: ${stopName}`;
     if (!hasSeat) instruction = "click an empty seat to sit";
   }
 
@@ -559,6 +570,10 @@ function InternetCommute() {
   const recentRoute = useRecentRoute();
   const stops =
     recentRoute.status === "live" ? recentRoute.stops : SAMPLE_STOPS;
+  const sceneryStops =
+    recentRoute.sceneryStops.length > 0
+      ? recentRoute.sceneryStops
+      : SAMPLE_STOPS;
   const browsingCount = useMemo(
     () => summarizeActiveLocations(events).people,
     [events],
@@ -613,7 +628,7 @@ function InternetCommute() {
           phase={timing.phase}
           atOrigin={timing.atOrigin}
           edge="upper"
-          stops={stops}
+          stops={sceneryStops}
         />
         <CommuteCar
           id="internet-commute-car"
@@ -627,7 +642,7 @@ function InternetCommute() {
           phase={timing.phase}
           atOrigin={timing.atOrigin}
           edge="lower"
-          stops={stops}
+          stops={sceneryStops}
         />
 
         <div className="commute-counts">

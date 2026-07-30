@@ -4,11 +4,15 @@
 import { describe, expect, it } from "vitest";
 import type { CollectionEvent } from "@movement/types";
 import {
+  curateCommuteStops,
   deriveRecentStops,
   formatStopAge,
   getFaviconUrl,
+  getStopDisplayDetail,
+  getStopDisplayName,
   parseRecentCommuteStops,
   SAMPLE_STOPS,
+  type CommuteStop,
 } from "./commuteStops";
 
 function navigationEvent(
@@ -34,6 +38,22 @@ function navigationEvent(
   };
 }
 
+function commuteStop(
+  domain: string,
+  overrides: Partial<CommuteStop> = {},
+): CommuteStop {
+  return {
+    ...SAMPLE_STOPS[0],
+    id: `https://${domain}/interesting`,
+    url: `https://${domain}/interesting`,
+    domain,
+    path: "/interesting",
+    title: "An interesting page",
+    source: "live",
+    ...overrides,
+  };
+}
+
 describe("deriveRecentStops", () => {
   it("returns the newest unique web pages without query strings or hashes", () => {
     const stops = deriveRecentStops([
@@ -48,6 +68,7 @@ describe("deriveRecentStops", () => {
         url: "https://www.next.example/path",
         domain: "next.example",
         path: "/path",
+        title: null,
         faviconUrl: null,
         visitedBy: "rider",
         visitedAt: 3,
@@ -60,6 +81,7 @@ describe("deriveRecentStops", () => {
         url: "https://slow.example/first",
         domain: "slow.example",
         path: "/first",
+        title: null,
         faviconUrl: null,
         visitedBy: "rider",
         visitedAt: 2,
@@ -91,6 +113,7 @@ describe("deriveRecentStops", () => {
         url: "https://public.example/place",
         domain: "public.example",
         path: "/place",
+        title: null,
         faviconUrl: null,
         visitedBy: "rider",
         visitedAt: 2,
@@ -141,6 +164,7 @@ describe("parseRecentCommuteStops", () => {
     );
     Object.assign(event.data, {
       favicon_url: "https://garden.example/leaf.svg",
+      title: "Walking through a strange garden",
     });
 
     expect(parseRecentCommuteStops([event])).toEqual([
@@ -149,6 +173,7 @@ describe("parseRecentCommuteStops", () => {
         url: "https://garden.example/paths/one",
         domain: "garden.example",
         path: "/paths/one",
+        title: "Walking through a strange garden",
         faviconUrl: "https://garden.example/leaf.svg",
         visitedBy: "rider",
         visitedAt: 100,
@@ -163,6 +188,88 @@ describe("parseRecentCommuteStops", () => {
     expect(() => parseRecentCommuteStops({ events: [] })).toThrow(
       "Recent navigation response must be an array",
     );
+  });
+});
+
+describe("curateCommuteStops", () => {
+  it("keeps excluded destinations in the source pool but not the landing route", () => {
+    const candidates = [
+      commuteStop("x.com"),
+      commuteStop("gemini.google.com"),
+      commuteStop("small-web.example"),
+    ];
+
+    expect(curateCommuteStops(candidates).map((stop) => stop.domain)).toEqual([
+      "small-web.example",
+    ]);
+    expect(candidates.map((stop) => stop.domain)).toEqual([
+      "x.com",
+      "gemini.google.com",
+      "small-web.example",
+    ]);
+  });
+
+  it("rejects utility pages and untitled pages on content platforms", () => {
+    expect(
+      curateCommuteStops([
+        commuteStop("interesting.example", { path: "/home" }),
+        commuteStop("youtube.com", { title: null, path: "/watch" }),
+        commuteStop("youtube.com", {
+          id: "https://youtube.com/watch/one",
+          url: "https://youtube.com/watch/one",
+          title: "A handmade corner of the web",
+          path: "/watch/one",
+        }),
+      ]).map((stop) => stop.url),
+    ).toEqual(["https://youtube.com/watch/one"]);
+  });
+
+  it("limits a route to one stop per domain and two stops per rider", () => {
+    const route = curateCommuteStops([
+      commuteStop("one.example", { visitedBy: "same-rider" }),
+      commuteStop("one.example", {
+        id: "https://one.example/other",
+        url: "https://one.example/other",
+        path: "/other",
+        visitedBy: "other-rider",
+      }),
+      commuteStop("two.example", { visitedBy: "same-rider" }),
+      commuteStop("three.example", { visitedBy: "same-rider" }),
+      commuteStop("four.example", { visitedBy: "other-rider" }),
+    ]);
+
+    expect(route.map((stop) => stop.domain)).toEqual([
+      "one.example",
+      "two.example",
+      "four.example",
+    ]);
+  });
+});
+
+describe("station labels", () => {
+  it("uses a meaningful title with the domain and path as context", () => {
+    const stop = commuteStop("video.example", {
+      path: "/watch/one",
+      title: "The web page that only appears at night",
+    });
+
+    expect(getStopDisplayName(stop)).toBe(
+      "The web page that only appears at night",
+    );
+    expect(getStopDisplayDetail(stop)).toBe("video.example/watch/one");
+  });
+
+  it("falls back to the domain for generic or redundant titles", () => {
+    expect(
+      getStopDisplayName(
+        commuteStop("youtube.com", { path: "/", title: "YouTube" }),
+      ),
+    ).toBe("youtube.com");
+    expect(
+      getStopDisplayDetail(
+        commuteStop("youtube.com", { path: "/", title: "YouTube" }),
+      ),
+    ).toBe("front page");
   });
 });
 

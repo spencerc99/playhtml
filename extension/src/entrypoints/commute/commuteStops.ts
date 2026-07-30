@@ -1,5 +1,5 @@
 // ABOUTME: Turns recent WWO navigation events into safe, deduplicated train stops.
-// ABOUTME: Provides visit metadata and sample destinations when the stream is quiet.
+// ABOUTME: Curates landing routes while preserving the full pool for scenery.
 
 import type { CollectionEvent } from "@movement/types";
 
@@ -8,6 +8,7 @@ export interface CommuteStop {
   url: string;
   domain: string;
   path: string;
+  title: string | null;
   faviconUrl: string | null;
   visitedBy: string;
   visitedAt: number | null;
@@ -22,6 +23,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://html.energy/",
     domain: "html.energy",
     path: "/",
+    title: null,
     faviconUrl: null,
     visitedBy: "amber-moth-2210",
     visitedAt: null,
@@ -34,6 +36,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://special.fish/",
     domain: "special.fish",
     path: "/",
+    title: null,
     faviconUrl: null,
     visitedBy: "quiet-lantern-3704",
     visitedAt: null,
@@ -46,6 +49,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://thehtml.review/",
     domain: "thehtml.review",
     path: "/",
+    title: null,
     faviconUrl: null,
     visitedBy: "paper-crane-8841",
     visitedAt: null,
@@ -58,6 +62,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://playhtml.fun/",
     domain: "playhtml.fun",
     path: "/",
+    title: null,
     faviconUrl: null,
     visitedBy: "low-tide-0952",
     visitedAt: null,
@@ -70,6 +75,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     url: "https://wiby.me/",
     domain: "wiby.me",
     path: "/",
+    title: null,
     faviconUrl: null,
     visitedBy: "dim-star-4417",
     visitedAt: null,
@@ -78,6 +84,119 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     source: "sample",
   },
 ];
+
+const NEVER_LAND_DOMAINS = ["x.com", "twitter.com", "gemini.google.com"];
+const TITLE_REQUIRED_DOMAINS = [
+  "youtube.com",
+  "youtu.be",
+  "github.com",
+  "wikipedia.org",
+  "itch.io",
+  "wordpress.com",
+  "tiktok.com",
+  "instagram.com",
+];
+const GENERIC_PATHS = [
+  "/dashboard",
+  "/feed",
+  "/home",
+  "/login",
+  "/newtab",
+  "/search",
+  "/signin",
+];
+const GENERIC_TITLES = new Set([
+  "dashboard",
+  "home",
+  "homepage",
+  "log in",
+  "login",
+  "new tab",
+  "search",
+  "sign in",
+  "untitled",
+]);
+
+function domainMatches(domain: string, candidate: string): boolean {
+  return domain === candidate || domain.endsWith(`.${candidate}`);
+}
+
+function comparableLabel(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+export function getMeaningfulStopTitle(stop: CommuteStop): string | null {
+  const title = stop.title?.replace(/\s+/g, " ").trim();
+  if (!title || title.length < 3 || title.length > 100) return null;
+  if (GENERIC_TITLES.has(title.toLowerCase())) return null;
+
+  const comparableTitle = comparableLabel(title);
+  const domainParts = stop.domain.split(".");
+  const comparableDomains = new Set([
+    comparableLabel(stop.domain),
+    comparableLabel(domainParts[0]),
+    comparableLabel(domainParts.slice(0, -1).join(" ")),
+  ]);
+
+  return comparableDomains.has(comparableTitle) ? null : title;
+}
+
+export function getStopDisplayName(stop: CommuteStop): string {
+  return getMeaningfulStopTitle(stop) ?? stop.domain;
+}
+
+export function getStopDisplayDetail(stop: CommuteStop): string {
+  if (getMeaningfulStopTitle(stop)) {
+    return `${stop.domain}${stop.path === "/" ? "" : stop.path}`;
+  }
+
+  return stop.path === "/" ? "front page" : stop.path;
+}
+
+export function curateCommuteStops(
+  stops: CommuteStop[],
+  limit = 10,
+): CommuteStop[] {
+  const curated: CommuteStop[] = [];
+  const seenDomains = new Set<string>();
+  const stopsByRider = new Map<string, number>();
+
+  for (const stop of stops) {
+    if (
+      NEVER_LAND_DOMAINS.some((domain) =>
+        domainMatches(stop.domain, domain),
+      )
+    ) {
+      continue;
+    }
+    if (
+      GENERIC_PATHS.some(
+        (path) => stop.path === path || stop.path.startsWith(`${path}/`),
+      )
+    ) {
+      continue;
+    }
+    if (
+      TITLE_REQUIRED_DOMAINS.some((domain) =>
+        domainMatches(stop.domain, domain),
+      ) &&
+      !getMeaningfulStopTitle(stop)
+    ) {
+      continue;
+    }
+    if (seenDomains.has(stop.domain)) continue;
+
+    const riderStopCount = stopsByRider.get(stop.visitedBy) ?? 0;
+    if (riderStopCount >= 2) continue;
+
+    curated.push(stop);
+    seenDomains.add(stop.domain);
+    stopsByRider.set(stop.visitedBy, riderStopCount + 1);
+    if (curated.length === limit) break;
+  }
+
+  return curated;
+}
 
 export function getFaviconUrl(
   stop: Pick<CommuteStop, "domain" | "faviconUrl" | "source" | "url">,
@@ -132,6 +251,7 @@ function toCommuteStop(event: CollectionEvent): CommuteStop | null {
     const path = url.pathname || "/";
     const canonicalUrl = `${url.protocol}//${url.host}${path}`;
     const data = event.data as Record<string, unknown>;
+    const title = typeof data.title === "string" ? data.title : null;
     const faviconUrl =
       typeof data.favicon_url === "string" ? data.favicon_url : null;
 
@@ -140,6 +260,7 @@ function toCommuteStop(event: CollectionEvent): CommuteStop | null {
       url: canonicalUrl,
       domain,
       path,
+      title,
       faviconUrl,
       visitedBy: formatRiderLabel(event.meta.pid),
       visitedAt: event.ts,
