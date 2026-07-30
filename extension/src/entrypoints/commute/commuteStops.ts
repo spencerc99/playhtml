@@ -106,11 +106,20 @@ const GENERIC_PATHS = [
   "/dashboard",
   "/feed",
   "/home",
-  "/login",
   "/newtab",
   "/search",
-  "/signin",
 ];
+const NEVER_LAND_PATH_SEGMENTS = new Set([
+  "auth",
+  "authorize",
+  "login",
+  "oauth",
+  "outbound",
+  "redirect",
+  "redir",
+  "signin",
+  "sso",
+]);
 const GENERIC_TITLES = new Set([
   "attentionrequiredcloudflare",
   "checkingyourbrowser",
@@ -133,14 +142,34 @@ function comparableLabel(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-function hasGenericTitle(stop: CommuteStop): boolean {
-  return GENERIC_TITLES.has(comparableLabel(stop.title ?? ""));
+function hasUnusableTitle(stop: CommuteStop): boolean {
+  const title = stop.title?.trim() ?? "";
+  return (
+    GENERIC_TITLES.has(comparableLabel(title)) ||
+    /^https?:\/\/\S+$/i.test(title)
+  );
+}
+
+function hasBlockedPath(stop: CommuteStop): boolean {
+  if (
+    GENERIC_PATHS.some(
+      (path) => stop.path === path || stop.path.startsWith(`${path}/`),
+    )
+  ) {
+    return true;
+  }
+
+  return stop.path
+    .split("/")
+    .some((segment) =>
+      NEVER_LAND_PATH_SEGMENTS.has(comparableLabel(segment)),
+    );
 }
 
 export function getMeaningfulStopTitle(stop: CommuteStop): string | null {
   const title = stop.title?.replace(/\s+/g, " ").trim();
   if (!title || title.length < 3 || title.length > 100) return null;
-  if (hasGenericTitle(stop)) return null;
+  if (hasUnusableTitle(stop)) return null;
 
   const comparableTitle = comparableLabel(title);
   const domainParts = stop.domain.split(".");
@@ -179,17 +208,11 @@ export function curateCommuteStops(
   });
 
   for (const stop of rankedStops) {
-    if (hasGenericTitle(stop)) continue;
+    if (hasUnusableTitle(stop)) continue;
+    if (hasBlockedPath(stop)) continue;
     if (
       NEVER_LAND_DOMAINS.some((domain) =>
         domainMatches(stop.domain, domain),
-      )
-    ) {
-      continue;
-    }
-    if (
-      GENERIC_PATHS.some(
-        (path) => stop.path === path || stop.path.startsWith(`${path}/`),
       )
     ) {
       continue;

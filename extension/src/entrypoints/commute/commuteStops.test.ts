@@ -251,6 +251,32 @@ describe("curateCommuteStops", () => {
     ).toEqual(["https://youtube.com/watch/one"]);
   });
 
+  it("rejects nested login and redirect pages", () => {
+    expect(
+      curateCommuteStops([
+        commuteStop("application.example", {
+          path: "/my-application/login",
+          visitedBy: "application-rider",
+        }),
+        commuteStop("accounts.example", {
+          path: "/users/sign_in",
+          visitedBy: "accounts-rider",
+        }),
+        commuteStop("newsletter.example", {
+          path: "/redirect/message-id",
+          visitedBy: "newsletter-rider",
+        }),
+        commuteStop("outbound.example", {
+          title: "https://destination.example/interesting",
+          visitedBy: "outbound-rider",
+        }),
+        commuteStop("interesting.example", {
+          visitedBy: "interesting-rider",
+        }),
+      ]).map((stop) => stop.domain),
+    ).toEqual(["interesting.example"]);
+  });
+
   it("limits a route to one stop per domain and two stops per rider", () => {
     const route = curateCommuteStops([
       commuteStop("one.example", { visitedBy: "same-rider" }),
