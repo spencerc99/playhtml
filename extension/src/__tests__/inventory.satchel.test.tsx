@@ -23,6 +23,7 @@ function makeInventory(): InventoryAPI {
     getArmed: () => null,
     onArmedChange: () => () => {},
     hidePageObjects: vi.fn(),
+    hidePageObjectsOnSite: vi.fn().mockResolvedValue(undefined),
     showPageObjects: vi.fn(),
     arePageObjectsVisible: () => true,
     onPageObjectsVisibilityChange: () => () => {},
@@ -115,7 +116,7 @@ describe("Satchel", () => {
     }
   });
 
-  it("hides all page objects from the satchel", async () => {
+  it("hides page objects immediately and offers a site-wide preference", async () => {
     const { container, inventory, root } = await renderSatchel();
     try {
       const nub = container.querySelector(".wwo-nub");
@@ -132,6 +133,74 @@ describe("Satchel", () => {
       });
 
       expect(inventory.hidePageObjects).toHaveBeenCalledOnce();
+      expect(container.querySelector('[role="dialog"]')?.textContent).toContain(
+        "Keep the satchel hidden here?",
+      );
+
+      const onlyThisTime = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Only this time",
+      );
+      await act(async () => {
+        onlyThisTime?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+      expect(inventory.hidePageObjectsOnSite).not.toHaveBeenCalled();
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
+  it("saves the hidden default for the current site", async () => {
+    const { container, inventory, root } = await renderSatchel();
+    try {
+      const nub = container.querySelector(".wwo-nub");
+      Object.assign(nub!, { setPointerCapture: vi.fn() });
+      await act(async () => {
+        nub?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        nub?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+      });
+      const hide = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "hide",
+      );
+      await act(async () => {
+        hide?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      const alwaysHide = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Always hide on this site",
+      );
+      await act(async () => {
+        alwaysHide?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(inventory.hidePageObjectsOnSite).toHaveBeenCalledOnce();
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
+  it("keeps the hide preference prompt inside the viewport", async () => {
+    const { container, root } = await renderSatchel();
+    try {
+      const nub = container.querySelector(".wwo-nub");
+      Object.assign(nub!, { setPointerCapture: vi.fn() });
+      await act(async () => {
+        nub?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        nub?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+      });
+      const kit = container.querySelector(".wwo-kit") as HTMLDivElement;
+      kit.style.left = "900px";
+      const hide = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "hide",
+      );
+      await act(async () => {
+        hide?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(
+        (container.querySelector('[role="dialog"]') as HTMLDivElement).style.left,
+      ).toBe("792px");
     } finally {
       cleanupRoot(root, container);
     }

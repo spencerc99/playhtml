@@ -18,6 +18,11 @@ import { InternetPortraitHome } from "../../components/InternetPortraitHome";
 import { ProfilePage } from "../../components/ProfilePage";
 import { FLAGS } from "../../flags";
 import {
+  pageObjectsAreHiddenOnSite,
+  showPageObjectsOnSite,
+  siteOriginFromUrl,
+} from "../../features/inventory/siteVisibility";
+import {
   PlayerIdentity,
   GameInventory,
   InventoryItem,
@@ -47,6 +52,10 @@ function PlayHTMLPopup() {
     "main" | "inventory" | "collections" | "profile" | "bag-settings"
   >("main");
   const [internalDevFeaturesEnabled, setInternalDevFeaturesEnabled] = useState(false);
+  const [hiddenSite, setHiddenSite] = useState<{
+    origin: string;
+    name: string;
+  } | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
     null,
   );
@@ -99,6 +108,15 @@ function PlayHTMLPopup() {
         currentWindow: true,
       });
       setCurrentTab(tab);
+      const siteOrigin = tab?.url ? siteOriginFromUrl(tab.url) : null;
+      if (siteOrigin && await pageObjectsAreHiddenOnSite(siteOrigin)) {
+        setHiddenSite({
+          origin: siteOrigin,
+          name: new URL(siteOrigin).hostname,
+        });
+      } else {
+        setHiddenSite(null);
+      }
 
       // Get public identity and profile data
       const profile = await browser.runtime.sendMessage({
@@ -270,6 +288,21 @@ function PlayHTMLPopup() {
     } catch (error) {
       console.error("Failed to ping content script:", error);
     }
+  };
+
+  const showSatchelOnSite = async () => {
+    if (!hiddenSite || !currentTab?.id) return;
+
+    await showPageObjectsOnSite(hiddenSite.origin);
+    setHiddenSite(null);
+    try {
+      await browser.tabs.sendMessage(currentTab.id, {
+        type: "wwo:open-inventory",
+      });
+    } catch (error) {
+      console.error("Failed to open the satchel on this page:", error);
+    }
+    window.close();
   };
 
   if (isLoading || onboardingComplete === null) {
@@ -445,6 +478,8 @@ function PlayHTMLPopup() {
         await browser.tabs.create({ url: PUBLIC_CHANGELOG_URL });
         window.close();
       }}
+      hiddenSiteName={hiddenSite?.name}
+      onShowSatchel={hiddenSite ? showSatchelOnSite : undefined}
     />
   );
 }

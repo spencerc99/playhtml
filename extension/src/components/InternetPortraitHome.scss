@@ -119,6 +119,32 @@
 
 }
 
+.site-visibility-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgba($accent-gold, 0.55);
+  border-radius: 8px;
+  background: rgba($accent-gold, 0.08);
+  color: $text-muted;
+  font-size: 11px;
+
+  button {
+    flex-shrink: 0;
+    padding: 5px 7px;
+    border: 1px solid $accent-teal;
+    border-radius: 5px;
+    background: $accent-teal;
+    color: white;
+    font-family: $font-mono;
+    font-size: 9px;
+    cursor: pointer;
+  }
+}
+
 .feedback-form {
   flex-basis: 100%;
   margin-top: 4px;

@@ -12,6 +12,7 @@ import "./InternetPortraitHome.scss";
 import { FLAGS } from "../flags";
 import { PostcardStack } from "../announcements/PostcardStack";
 import { FeedbackForm } from "./FeedbackForm";
+import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -23,6 +24,8 @@ interface Props {
   onViewCommute?: () => void;
   onViewScraps?: () => void;
   onViewChangelog: () => void;
+  hiddenSiteName?: string;
+  onShowSatchel?: () => void;
 }
 
 interface PortraitStats {
@@ -45,6 +48,8 @@ export function InternetPortraitHome({
   onViewCommute,
   onViewScraps,
   onViewChangelog,
+  hiddenSiteName,
+  onShowSatchel,
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +155,12 @@ export function InternetPortraitHome({
       </header>
 
       <main className="portrait-home__main">
+        {hiddenSiteName && onShowSatchel && (
+          <SiteVisibilityNotice
+            siteName={hiddenSiteName}
+            onShowSatchel={onShowSatchel}
+          />
+        )}
         <section className="collection-status">
           <div className="collection-status__header-row">
             <h3>Your Collection Status</h3>

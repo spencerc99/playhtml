@@ -19,6 +19,11 @@ export function Satchel({ inventory, openSignal }: Props) {
     inventory.arePageObjectsVisible(),
   );
   const [isOpen, setIsOpen] = useState(false);
+  const [hidePromptPosition, setHidePromptPosition] = useState<{
+    left: string;
+    top: string;
+  } | null>(null);
+  const [hidePreferenceError, setHidePreferenceError] = useState(false);
   const nubRef = useRef<HTMLDivElement>(null);
   const kitRef = useRef<HTMLDivElement>(null);
   const pos = useRef({ top: Math.round(window.innerHeight / 2) - 24 });
@@ -67,6 +72,8 @@ export function Satchel({ inventory, openSignal }: Props) {
   function openKit(at: { x: number; y: number } | null) {
     const kit = kitRef.current;
     if (!kit) return;
+    setHidePromptPosition(null);
+    setHidePreferenceError(false);
     inventory.showPageObjects();
     setIsOpen(true);
     kit.classList.add("show");
@@ -94,8 +101,28 @@ export function Satchel({ inventory, openSignal }: Props) {
     setIsOpen(false);
   }
   function hideInventory() {
+    const kit = kitRef.current;
+    if (!kit) return;
+    const promptLeft = Math.max(
+      12,
+      Math.min(parseFloat(kit.style.left), window.innerWidth - 220 - 12),
+    );
+    setHidePromptPosition({ left: `${promptLeft}px`, top: kit.style.top });
+    setHidePreferenceError(false);
     setIsOpen(false);
     inventory.hidePageObjects();
+  }
+  async function alwaysHideOnSite() {
+    try {
+      await inventory.hidePageObjectsOnSite();
+      setHidePromptPosition(null);
+    } catch (error) {
+      console.error(
+        "[we-were-online] failed to save hidden satchel preference:",
+        error,
+      );
+      setHidePreferenceError(true);
+    }
   }
 
   // drag the nub (snap to nearest edge on release)
@@ -177,6 +204,33 @@ export function Satchel({ inventory, openSignal }: Props) {
           ))}
         </div>
       </div>
+
+      {hidePromptPosition && (
+        <div
+          className="wwo-hide-prompt"
+          role="dialog"
+          aria-labelledby="wwo-hide-prompt-title"
+          style={hidePromptPosition}
+        >
+          <div id="wwo-hide-prompt-title" className="wwo-hide-prompt-title">
+            Keep the satchel hidden here?
+          </div>
+          <p>
+            Save this to hide the satchel and objects like bottles across this site.
+          </p>
+          {hidePreferenceError && (
+            <p className="wwo-hide-prompt-error">Couldn’t save that preference.</p>
+          )}
+          <div className="wwo-hide-prompt-actions">
+            <button type="button" onClick={alwaysHideOnSite}>
+              Always hide on this site
+            </button>
+            <button type="button" onClick={() => setHidePromptPosition(null)}>
+              Only this time
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -42,6 +42,8 @@ export interface InventoryAPI {
   onArmedChange(cb: (armed: ArmedTool | null) => void): () => void;
   /** Hide the satchel and every object registered through it on this page. */
   hidePageObjects(): void;
+  /** Hide page objects now and save that default for this site. */
+  hidePageObjectsOnSite(): Promise<void>;
   /** Restore the satchel and its registered page objects. */
   showPageObjects(): void;
   /** Whether the satchel and its registered page objects are visible. */
