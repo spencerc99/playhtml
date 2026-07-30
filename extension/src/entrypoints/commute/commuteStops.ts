@@ -1,6 +1,7 @@
 // ABOUTME: Turns recent WWO navigation events into safe, deduplicated train stops.
 // ABOUTME: Curates landing routes while preserving the full pool for scenery.
 
+import type { CommuteResponse } from "@playhtml/extension-types";
 import type { CollectionEvent } from "@movement/types";
 
 export interface CommuteStop {
@@ -187,11 +188,7 @@ export function getStopDisplayName(stop: CommuteStop): string {
 }
 
 export function getStopDisplayDetail(stop: CommuteStop): string {
-  if (getMeaningfulStopTitle(stop)) {
-    return `${stop.domain}${stop.path === "/" ? "" : stop.path}`;
-  }
-
-  return stop.path === "/" ? "front page" : stop.path;
+  return stop.domain;
 }
 
 export function curateCommuteStops(
@@ -353,4 +350,102 @@ export function parseRecentCommuteStops(
   }
 
   return deriveRecentStops(payload as CollectionEvent[], limit);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isSceneryItem(
+  value: unknown,
+): value is CommuteResponse["scenery"][number] {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.domain === "string" &&
+    typeof value.visitedAt === "number" &&
+    typeof value.hue === "string"
+  );
+}
+
+function isDestination(
+  value: unknown,
+): value is CommuteResponse["destinations"][number] {
+  if (!isSceneryItem(value) || !isRecord(value)) return false;
+
+  return (
+    typeof value.url === "string" &&
+    (typeof value.title === "string" || value.title === null)
+  );
+}
+
+function sceneryItemToStop(
+  item: CommuteResponse["scenery"][number],
+): CommuteStop {
+  return {
+    id: item.id,
+    url: `https://${item.domain}/`,
+    domain: item.domain,
+    path: "/",
+    title: null,
+    faviconUrl: null,
+    recentDomainVisits: 1,
+    visitedBy: "another rider",
+    visitedAt: item.visitedAt,
+    sampleAge: null,
+    hue: item.hue,
+    source: "live",
+  };
+}
+
+function destinationToStop(
+  destination: CommuteResponse["destinations"][number],
+): CommuteStop {
+  const url = new URL(destination.url);
+  const domain = url.hostname.replace(/^www\./, "");
+  if (
+    (url.protocol !== "https:" && url.protocol !== "http:") ||
+    domain !== destination.domain
+  ) {
+    throw new Error("Commute response is malformed");
+  }
+
+  return {
+    id: destination.id,
+    url: destination.url,
+    domain: destination.domain,
+    path: url.pathname || "/",
+    title: destination.title,
+    faviconUrl: null,
+    recentDomainVisits: 1,
+    visitedBy: "another rider",
+    visitedAt: destination.visitedAt,
+    sampleAge: null,
+    hue: destination.hue,
+    source: "live",
+  };
+}
+
+export function parseCommuteResponse(payload: unknown): {
+  activePeople: number;
+  sceneryStops: CommuteStop[];
+  stops: CommuteStop[];
+} {
+  if (
+    !isRecord(payload) ||
+    typeof payload.generatedAt !== "number" ||
+    typeof payload.activePeople !== "number" ||
+    !Array.isArray(payload.scenery) ||
+    !payload.scenery.every(isSceneryItem) ||
+    !Array.isArray(payload.destinations) ||
+    !payload.destinations.every(isDestination)
+  ) {
+    throw new Error("Commute response is malformed");
+  }
+
+  return {
+    activePeople: payload.activePeople,
+    sceneryStops: payload.scenery.map(sceneryItemToStop),
+    stops: payload.destinations.map(destinationToStop),
+  };
 }

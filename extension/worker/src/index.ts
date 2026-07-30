@@ -11,6 +11,7 @@ import { handleSubscribe } from './routes/subscribe';
 import { handleFeedback } from './routes/feedback';
 import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
+import { handleCommute } from './routes/commute';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -49,6 +50,11 @@ export default {
     if (path === '/events/recent' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleRecent(request, env);
+    }
+
+    if (path === '/commute/recent' && request.method === 'GET') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleCommute(request, env);
     }
 
     if (path === '/events/daily-counts' && request.method === 'GET') {

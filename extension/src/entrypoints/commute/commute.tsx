@@ -9,16 +9,13 @@ import {
   usePlayContext,
   withSharedState,
 } from "@playhtml/react";
-import { useLiveEvents } from "@movement/hooks/useLiveEvents";
-import { RECENT_EVENTS_URL } from "@movement/config";
-import { summarizeActiveLocations } from "@movement/utils/eventUtils";
+import { COMMUTE_RECENT_URL } from "@movement/config";
 import {
-  curateCommuteStops,
   formatStopAge,
   getFaviconUrl,
   getStopDisplayDetail,
   getStopDisplayName,
-  parseRecentCommuteStops,
+  parseCommuteResponse,
   SAMPLE_STOPS,
   type CommuteStop,
 } from "./commuteStops";
@@ -56,6 +53,7 @@ interface CommuteCarProps {
 interface RecentRoute {
   stops: CommuteStop[];
   sceneryStops: CommuteStop[];
+  activePeople: number;
   status: "loading" | "live" | "empty" | "error";
 }
 
@@ -81,51 +79,63 @@ const SEATS: SeatDefinition[] = ["top", "bottom"].flatMap((row) =>
 );
 
 const DOORS = [276, 696];
-const RECENT_NAVIGATION_FETCH_LIMIT = 500;
+const COMMUTE_REFRESH_MS = 30_000;
 
 function useRecentRoute(): RecentRoute {
   const [route, setRoute] = useState<RecentRoute>({
     stops: [],
     sceneryStops: [],
+    activePeople: 0,
     status: "loading",
   });
 
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({
-      type: "navigation",
-      limit: RECENT_NAVIGATION_FETCH_LIMIT.toString(),
-      require_title: "true",
-    });
+    let hasLoadedRoute = false;
 
     const load = async () => {
       try {
-        const response = await fetch(`${RECENT_EVENTS_URL}?${params}`, {
+        const response = await fetch(COMMUTE_RECENT_URL, {
           signal: controller.signal,
         });
         if (!response.ok) {
-          throw new Error(`Recent navigation request failed: ${response.status}`);
+          throw new Error(`Recent commute request failed: ${response.status}`);
         }
 
-        const sceneryStops = parseRecentCommuteStops(
-          await response.json(),
-          RECENT_NAVIGATION_FETCH_LIMIT,
-        );
-        const stops = curateCommuteStops(sceneryStops, 10);
-        setRoute({
-          stops,
-          sceneryStops,
-          status: stops.length > 0 ? "live" : "empty",
+        const commute = parseCommuteResponse(await response.json());
+        setRoute((current) => {
+          if (hasLoadedRoute) {
+            return { ...current, activePeople: commute.activePeople };
+          }
+
+          hasLoadedRoute = true;
+          return {
+            stops: commute.stops,
+            sceneryStops: commute.sceneryStops,
+            activePeople: commute.activePeople,
+            status: commute.stops.length > 0 ? "live" : "empty",
+          };
         });
       } catch (error) {
         if (controller.signal.aborted) return;
         console.warn("[internet commute] recent route unavailable:", error);
-        setRoute({ stops: [], sceneryStops: [], status: "error" });
+        if (!hasLoadedRoute) {
+          setRoute({
+            stops: [],
+            sceneryStops: [],
+            activePeople: 0,
+            status: "error",
+          });
+        }
       }
     };
 
     void load();
-    return () => controller.abort();
+    const refreshTimer = window.setInterval(() => void load(), COMMUTE_REFRESH_MS);
+    return () => {
+      controller.abort();
+      window.clearInterval(refreshTimer);
+    };
   }, []);
 
   return route;
@@ -546,7 +556,7 @@ function Banner({
     instruction = `the doors are open — click one to step off at ${currentStop.domain}`;
   } else if (phase === "arriving") {
     message = `now arriving at ${stopName}`;
-    aside = `last visited by ${currentStop.visitedBy}, ${formatStopAge(currentStop)} ago`;
+    aside = `last visited ${formatStopAge(currentStop)} ago`;
   } else {
     message = `${secondsLeft} seconds until next stop`;
     aside = `next stop: ${stopName}`;
@@ -567,7 +577,6 @@ function Banner({
 }
 
 function InternetCommute() {
-  const { events, connected } = useLiveEvents({ maxEvents: 400 });
   const recentRoute = useRecentRoute();
   const stops =
     recentRoute.status === "live" ? recentRoute.stops : SAMPLE_STOPS;
@@ -575,10 +584,7 @@ function InternetCommute() {
     recentRoute.sceneryStops.length > 0
       ? recentRoute.sceneryStops
       : SAMPLE_STOPS;
-  const browsingCount = useMemo(
-    () => summarizeActiveLocations(events).people,
-    [events],
-  );
+  const browsingCount = recentRoute.activePeople;
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [riderState, setRiderState] = useState({
     count: 0,
@@ -664,7 +670,7 @@ function InternetCommute() {
               ? "finding recent destinations — preview route shown while the train boards"
               : "recent destinations unavailable — running the preview route"}
           {" · "}
-          {connected ? "live browsing activity" : "browsing activity offline"}
+          recent browsing activity
           {" · "}you only appear while you ride
         </p>
       </div>

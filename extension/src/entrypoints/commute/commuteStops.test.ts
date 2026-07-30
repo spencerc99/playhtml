@@ -10,6 +10,7 @@ import {
   getFaviconUrl,
   getStopDisplayDetail,
   getStopDisplayName,
+  parseCommuteResponse,
   parseRecentCommuteStops,
   SAMPLE_STOPS,
   type CommuteStop,
@@ -217,6 +218,57 @@ describe("parseRecentCommuteStops", () => {
   });
 });
 
+describe("parseCommuteResponse", () => {
+  it("uses only the sanitized route and domain-only scenery", () => {
+    expect(
+      parseCommuteResponse({
+        generatedAt: 1_000,
+        activePeople: 4,
+        scenery: [
+          {
+            id: "docs.google.com:900",
+            domain: "docs.google.com",
+            visitedAt: 900,
+            hue: "#5b8db8",
+          },
+        ],
+        destinations: [
+          {
+            id: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            domain: "youtube.com",
+            title: "A particular video",
+            visitedAt: 800,
+            hue: "#4a9a8a",
+          },
+        ],
+      }),
+    ).toEqual({
+      activePeople: 4,
+      sceneryStops: [
+        expect.objectContaining({
+          domain: "docs.google.com",
+          title: null,
+          url: "https://docs.google.com/",
+        }),
+      ],
+      stops: [
+        expect.objectContaining({
+          domain: "youtube.com",
+          title: "A particular video",
+          url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        }),
+      ],
+    });
+  });
+
+  it("rejects malformed sanitized responses", () => {
+    expect(() => parseCommuteResponse({ destinations: [] })).toThrow(
+      "Commute response is malformed",
+    );
+  });
+});
+
 describe("curateCommuteStops", () => {
   it("keeps excluded destinations in the source pool but not the landing route", () => {
     const candidates = [
@@ -326,7 +378,7 @@ describe("curateCommuteStops", () => {
 });
 
 describe("station labels", () => {
-  it("uses a meaningful title with the domain and path as context", () => {
+  it("uses a meaningful title with only the domain as context", () => {
     const stop = commuteStop("video.example", {
       path: "/watch/one",
       title: "The web page that only appears at night",
@@ -335,7 +387,7 @@ describe("station labels", () => {
     expect(getStopDisplayName(stop)).toBe(
       "The web page that only appears at night",
     );
-    expect(getStopDisplayDetail(stop)).toBe("video.example/watch/one");
+    expect(getStopDisplayDetail(stop)).toBe("video.example");
   });
 
   it("falls back to the domain for generic or redundant titles", () => {
@@ -344,11 +396,9 @@ describe("station labels", () => {
         commuteStop("youtube.com", { path: "/", title: "YouTube" }),
       ),
     ).toBe("youtube.com");
-    expect(
-      getStopDisplayDetail(
-        commuteStop("youtube.com", { path: "/", title: "YouTube" }),
-      ),
-    ).toBe("front page");
+    expect(getStopDisplayDetail(commuteStop("youtube.com"))).toBe(
+      "youtube.com",
+    );
   });
 });
 
