@@ -212,6 +212,9 @@ export function Satchel({ inventory, openSignal }: Props) {
           aria-labelledby="wwo-hide-prompt-title"
           style={hidePromptPosition}
         >
+          <span className="wwo-hide-prompt-brand" aria-hidden="true">
+            wwo
+          </span>
           <div id="wwo-hide-prompt-title" className="wwo-hide-prompt-title">
             Keep the satchel hidden here?
           </div>

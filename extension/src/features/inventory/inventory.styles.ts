@@ -62,20 +62,27 @@ export const INVENTORY_CSS = `
 .wwo-slot.empty { cursor: default; background: radial-gradient(circle at 50% 40%, #efe5d0, #e6d8bd); box-shadow: inset 0 2px 6px rgba(120,85,40,.3); }
 
 .wwo-hide-prompt { position: fixed; z-index: 2147483647; width: 220px; box-sizing: border-box;
-  padding: 14px; border: 2px solid #b98a4e; border-radius: 14px;
-  background: linear-gradient(165deg,#fffaf0,#f0e2c6);
-  box-shadow: 0 10px 26px rgba(120,85,40,.3), inset 0 1px 0 rgba(255,255,255,.7);
-  color: #5f4729; pointer-events: auto; }
-.wwo-hide-prompt-title { font-family: 'Source Serif 4', serif; font-size: 17px; font-style: italic; color: #6f512d; }
-.wwo-hide-prompt p { margin: 7px 0 0; font-size: 12px; line-height: 1.4; color: #806b4c; }
-.wwo-hide-prompt .wwo-hide-prompt-error { color: #a34e35; }
+  padding: 14px; border: 1px solid rgba(61,56,51,.12); border-radius: 10px;
+  background: #f5f0e8; box-shadow: 0 4px 16px rgba(61,56,51,.12);
+  color: #3d3833; pointer-events: auto; }
+.wwo-hide-prompt-brand { position: absolute; top: 10px; right: 12px;
+  font-family: 'Source Serif 4', 'Lora', Georgia, serif; font-size: 11px;
+  font-style: italic; font-weight: 300; line-height: 1; color: rgba(61,56,51,.45); }
+.wwo-hide-prompt-title { max-width: 155px; font-family: 'Lora', Georgia, serif;
+  font-size: 14px; font-weight: 600; line-height: 1.35; color: #3d3833; }
+.wwo-hide-prompt p { margin: 7px 0 0; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
+  font-size: 11.5px; line-height: 1.4; color: #8a8279; }
+.wwo-hide-prompt .wwo-hide-prompt-error { color: #9a5a3a; }
 .wwo-hide-prompt-actions { display: flex; flex-direction: column; align-items: stretch; gap: 7px; margin-top: 12px; }
-.wwo-hide-prompt-actions button { appearance: none; padding: 7px 9px; border: 1px solid #b98a4e;
-  border-radius: 7px; background: #b98a4e; color: #fffaf0; cursor: pointer;
-  font-family: 'Martian Mono', monospace; font-size: 9px; text-align: center; }
-.wwo-hide-prompt-actions button:last-child { background: transparent; color: #8a6b3f; }
+.wwo-hide-prompt-actions button { appearance: none; padding: 8px 10px; border: 1px solid #4a9a8a;
+  border-radius: 6px; background: #4a9a8a; color: white; cursor: pointer;
+  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; font-size: 11px;
+  font-weight: 600; line-height: 1.2; text-align: center; }
+.wwo-hide-prompt-actions button:last-child { border-color: rgba(90,78,65,.25);
+  background: #faf7f2; color: #3d3833; }
 .wwo-hide-prompt-actions button:hover, .wwo-hide-prompt-actions button:focus-visible {
-  filter: brightness(.95); outline: 2px solid #4a9a8a; outline-offset: 2px; }
+  filter: brightness(.95); }
+.wwo-hide-prompt-actions button:focus-visible { outline: 2px solid rgba(74,154,138,.55); outline-offset: 2px; }
 
 /* wielded item next to cursor */
 .wwo-wield { position: fixed; left: 0; top: 0; width: 30px; height: 30px; pointer-events: none; z-index: 2147483647;

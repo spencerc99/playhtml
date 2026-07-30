@@ -205,4 +205,15 @@ describe("Satchel", () => {
       cleanupRoot(root, container);
     }
   });
+
+  it("uses the standard WWO surface and action styling", () => {
+    expect(INVENTORY_CSS).toContain("background: #f5f0e8");
+    expect(INVENTORY_CSS).toContain("background: #4a9a8a");
+    expect(INVENTORY_CSS).toContain(
+      "font-family: 'Atkinson Hyperlegible', system-ui, sans-serif",
+    );
+    expect(INVENTORY_CSS).toContain(
+      "font-family: 'Lora', Georgia, serif",
+    );
+  });
 });
