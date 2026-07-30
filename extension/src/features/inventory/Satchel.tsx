@@ -15,7 +15,9 @@ interface Props {
 
 export function Satchel({ inventory, openSignal }: Props) {
   const [armed, setArmed] = useState<ArmedTool | null>(inventory.getArmed());
-  const [hidden, setHidden] = useState(false);
+  const [pageObjectsVisible, setPageObjectsVisible] = useState(
+    inventory.arePageObjectsVisible(),
+  );
   const [isOpen, setIsOpen] = useState(false);
   const nubRef = useRef<HTMLDivElement>(null);
   const kitRef = useRef<HTMLDivElement>(null);
@@ -23,6 +25,10 @@ export function Satchel({ inventory, openSignal }: Props) {
   const edge = useRef<"edge-r" | "edge-l">("edge-l");
 
   useEffect(() => inventory.onArmedChange(setArmed), [inventory]);
+  useEffect(
+    () => inventory.onPageObjectsVisibilityChange(setPageObjectsVisible),
+    [inventory],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -61,7 +67,7 @@ export function Satchel({ inventory, openSignal }: Props) {
   function openKit(at: { x: number; y: number } | null) {
     const kit = kitRef.current;
     if (!kit) return;
-    setHidden(false);
+    inventory.showPageObjects();
     setIsOpen(true);
     kit.classList.add("show");
     // Measure the rendered kit so cursor summons stay inside the viewport.
@@ -89,7 +95,7 @@ export function Satchel({ inventory, openSignal }: Props) {
   }
   function hideInventory() {
     setIsOpen(false);
-    setHidden(true);
+    inventory.hidePageObjects();
   }
 
   // drag the nub (snap to nearest edge on release)
@@ -126,7 +132,7 @@ export function Satchel({ inventory, openSignal }: Props) {
 
   return (
     <div className="wwo-inv">
-      {!hidden && !isOpen && (
+      {pageObjectsVisible && !isOpen && (
         <div
           ref={nubRef}
           className="wwo-nub edge-l"

@@ -10,6 +10,8 @@ export class InventoryManager {
   private registry = new InventoryRegistry();
   private armedState = new ArmedState();
   private held = new HeldStore();
+  private pageObjectsVisible = true;
+  private visibilitySubscribers = new Set<(visible: boolean) => void>();
 
   async load(): Promise<void> {
     await this.held.load();
@@ -33,6 +35,22 @@ export class InventoryManager {
     disarm: () => this.armedState.disarm(),
     getArmed: (): ArmedTool | null => this.armedState.get(),
     onArmedChange: (cb) => this.armedState.subscribe(cb),
+    hidePageObjects: () => {
+      if (!this.pageObjectsVisible) return;
+      this.pageObjectsVisible = false;
+      this.armedState.disarm();
+      for (const cb of this.visibilitySubscribers) cb(false);
+    },
+    showPageObjects: () => {
+      if (this.pageObjectsVisible) return;
+      this.pageObjectsVisible = true;
+      for (const cb of this.visibilitySubscribers) cb(true);
+    },
+    arePageObjectsVisible: () => this.pageObjectsVisible,
+    onPageObjectsVisibilityChange: (cb) => {
+      this.visibilitySubscribers.add(cb);
+      return () => this.visibilitySubscribers.delete(cb);
+    },
     count: (itemId: string) => this.resolveCount(itemId),
   };
 }

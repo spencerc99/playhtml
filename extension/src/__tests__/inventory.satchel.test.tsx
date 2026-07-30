@@ -22,6 +22,10 @@ function makeInventory(): InventoryAPI {
     disarm: vi.fn(),
     getArmed: () => null,
     onArmedChange: () => () => {},
+    hidePageObjects: vi.fn(),
+    showPageObjects: vi.fn(),
+    arePageObjectsVisible: () => true,
+    onPageObjectsVisibilityChange: () => () => {},
     count: () => Infinity,
   };
 }
@@ -106,6 +110,28 @@ describe("Satchel", () => {
 
       expect(inventory.arm).toHaveBeenCalledWith("item-1");
       expect(container.querySelector(".wwo-kit")?.classList).not.toContain("show");
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
+  it("hides all page objects from the satchel", async () => {
+    const { container, inventory, root } = await renderSatchel();
+    try {
+      const nub = container.querySelector(".wwo-nub");
+      Object.assign(nub!, { setPointerCapture: vi.fn() });
+      await act(async () => {
+        nub?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        nub?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+      });
+      const hide = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "hide",
+      );
+      await act(async () => {
+        hide?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(inventory.hidePageObjects).toHaveBeenCalledOnce();
     } finally {
       cleanupRoot(root, container);
     }

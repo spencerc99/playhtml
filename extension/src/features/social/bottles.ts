@@ -57,6 +57,13 @@ export const bottlesExperiment: SocialExperiment = {
     // Portal the dialog into a sibling shadow-root node so it inherits the
     // shadow's CSS but is NOT inside the React tree that re-renders the overlay.
     const shadowPortal = ui.portal;
+    const setVisible = (visible: boolean) => {
+      ui.host.hidden = !visible;
+    };
+    setVisible(deps.inventory.arePageObjectsVisible());
+    cleanups.push(
+      deps.inventory.onPageObjectsVisibilityChange(setVisible),
+    );
 
     // Bottles whose reply was dropped (rate-limited etc.) — don't mark them
     // seen on close, so the bottle stays for the user to retry after cooldown.

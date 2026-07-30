@@ -47,6 +47,25 @@ describe("InventoryManager API", () => {
     expect(cb).toHaveBeenCalledTimes(2);
   });
 
+  it("hides page objects, disarms the active item, and notifies subscribers", async () => {
+    const api = await makeApi();
+    api.register(tape);
+    api.arm("tape");
+    const cb = vi.fn();
+    api.onPageObjectsVisibilityChange(cb);
+
+    api.hidePageObjects();
+
+    expect(api.arePageObjectsVisible()).toBe(false);
+    expect(api.getArmed()).toBeNull();
+    expect(cb).toHaveBeenCalledWith(false);
+
+    api.showPageObjects();
+
+    expect(api.arePageObjectsVisible()).toBe(true);
+    expect(cb).toHaveBeenLastCalledWith(true);
+  });
+
   it("arming an unregistered item is a no-op", async () => {
     const api = await makeApi();
     api.arm("ghost");
