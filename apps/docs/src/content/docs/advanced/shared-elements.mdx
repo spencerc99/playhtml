@@ -5,8 +5,12 @@ sidebar:
   order: 2
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 Shared elements let you share data between different pages on the same site, and even across different domains. The same state can be rendered with different markup and styles on each page. You define a shared element on a source page, then reference it on a consumer page by its domain and path (the playhtml room it's assigned to).
 
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
 ```html
 <!-- Source page (thissite.com) -->
 <div id="couch" shared can-move style="font-size: 80px">🛋</div>
@@ -69,8 +73,8 @@ You can add extra, local-only capabilities on the consumer. Only the capabilitie
 
 Best practice: keep consumer-only capabilities orthogonal to the shared data shape.
 
-#### React usage
-
+  </TabItem>
+  <TabItem label="React">
 ```tsx
 import {
   CanMoveElement,
@@ -105,6 +109,8 @@ export const Status = withSharedState(
 ```
 
 The prop names map to the HTML attributes: `shared` → `shared`, `dataSource` → `data-source`. For forcing read-only, `CanToggleElement` exposes a convenience `readOnly` prop, while `CanPlayElement` / `withSharedState` use `dataSourceReadOnly` (both set `data-source-read-only`). See the [React API reference](/docs/reference/react-api/#shared-data-props).
+  </TabItem>
+</Tabs>
 
 #### Troubleshooting
 
