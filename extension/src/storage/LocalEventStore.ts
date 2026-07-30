@@ -1,7 +1,13 @@
 // ABOUTME: Local storage interface for querying collected events by domain
 // ABOUTME: Provides domain-based queries for historical data visualization
 
-import type { CollectionEvent, CollectionEventType, NavigationEventData, ViewportEventData } from "../collectors/types";
+import type {
+  CollectionEvent,
+  CollectionEventType,
+  CursorEventData,
+  NavigationEventData,
+  ViewportEventData,
+} from "../collectors/types";
 import { VERBOSE } from "../config";
 import {
   normalizeUrl,
@@ -130,6 +136,11 @@ export interface ScreenTimeResult {
   totalMs: number;
   sessions: ScreenTimeSession[];
   totalScrollDistancePx: number;
+}
+
+export interface WalkingRecordEventResult {
+  events: CollectionEvent[];
+  cursorDistancePx: number;
 }
 
 /**
@@ -973,6 +984,7 @@ export class LocalEventStore {
       firstVisit: number;
       totalTimeMs: number;
       uniquePageCount: number;
+      sessionCount: number;
       eventCounts: Record<string, number>;
     }>
   > {
@@ -995,6 +1007,7 @@ export class LocalEventStore {
         firstVisit: number;
         totalTimeMs: number;
         uniquePageCount: number;
+        sessionCount: number;
         eventCounts: Record<string, number>;
       }> = [];
 
@@ -1020,6 +1033,7 @@ export class LocalEventStore {
               firstVisit: aggregate.firstVisit,
               totalTimeMs: aggregate.totalTimeMs,
               uniquePageCount: aggregate.uniqueUrlCount,
+              sessionCount: aggregate.sessionCount,
               eventCounts,
             });
           }
@@ -1194,6 +1208,101 @@ export class LocalEventStore {
           events.sort((a, b) => a.ts - b.ts);
           resolve(events);
         }
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Read the event subset needed by the walking record without transferring
+   * every high-frequency cursor and viewport sample to the new-tab page.
+   */
+  async getWalkingRecordEvents(
+    options: Pick<QueryOptions, "startTs" | "endTs">,
+  ): Promise<WalkingRecordEventResult> {
+    await this.ensureInitialized();
+
+    const { startTs, endTs } = options;
+    if (startTs === undefined || endTs === undefined) {
+      throw new Error("Walking record event bounds are required");
+    }
+
+    const sampleIntervalMs = 5 * 60_000;
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const tsIndex = store.index("ts");
+      const range = IDBKeyRange.bound(startTs, endTs);
+      const request = tsIndex.openCursor(range);
+      const events: CollectionEvent[] = [];
+      const sampledMotionWindows = new Set<string>();
+      let previousCursorEvent: CollectionEvent | null = null;
+      let cursorDistancePx = 0;
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve({ events, cursorDistancePx });
+          return;
+        }
+
+        const storedEvent = cursor.value as StoredCollectionEvent;
+        const event = toCollectionEvent(storedEvent);
+
+        if (event.type === "navigation") {
+          events.push(event);
+        } else if (event.type === "cursor") {
+          const data = event.data as CursorEventData;
+          if (data.event === "move" || data.event === undefined) {
+            if (previousCursorEvent) {
+              const previous = previousCursorEvent.data as CursorEventData;
+              const previousUrl =
+                previousCursorEvent.normalizedUrl ??
+                normalizeUrl(previousCursorEvent.meta.url);
+              const currentUrl =
+                event.normalizedUrl ?? normalizeUrl(event.meta.url);
+              if (
+                previousUrl === currentUrl &&
+                event.ts - previousCursorEvent.ts <= 5_000 &&
+                Number.isFinite(previous.x) &&
+                Number.isFinite(previous.y) &&
+                Number.isFinite(data.x) &&
+                Number.isFinite(data.y)
+              ) {
+                const width = event.meta.vw || previousCursorEvent.meta.vw;
+                const height = event.meta.vh || previousCursorEvent.meta.vh;
+                const dx = (data.x - previous.x) * width;
+                const dy = (data.y - previous.y) * height;
+                cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
+              }
+            }
+            previousCursorEvent = event;
+          }
+
+          const sampleWindow = Math.floor((event.ts - startTs) / sampleIntervalMs);
+          const page = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+          const sampleKey = `cursor:${page}:${sampleWindow}`;
+          if (!sampledMotionWindows.has(sampleKey)) {
+            sampledMotionWindows.add(sampleKey);
+            events.push(event);
+          }
+        } else if (event.type === "viewport") {
+          const sampleWindow = Math.floor((event.ts - startTs) / sampleIntervalMs);
+          const page = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+          const sampleKey = `viewport:${page}:${sampleWindow}`;
+          if (!sampledMotionWindows.has(sampleKey)) {
+            sampledMotionWindows.add(sampleKey);
+            events.push(event);
+          }
+        }
+
+        cursor.continue();
       };
 
       request.onerror = () => reject(request.error);

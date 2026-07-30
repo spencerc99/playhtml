@@ -1,0 +1,732 @@
+// ABOUTME: Styles the walking-record new-tab page from the supplied WWO prototype.
+// ABOUTME: Keeps the linen paper, quiet typography, and riso-colored movement traces responsive.
+
+@use "../styles/variables" as *;
+
+:root {
+  @include root-tokens;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background-color: $bg;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(90, 78, 65, 0.025) 0 1px,
+      transparent 1px 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(90, 78, 65, 0.025) 0 1px,
+      transparent 1px 3px
+    );
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: transparent;
+  color: $text;
+  font-family: $font-body;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+a {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid rgba($accent-teal, 0.65);
+  outline-offset: 3px;
+}
+
+.walking-record {
+  width: min(100%, 776px);
+  margin: 0 auto;
+  padding: 52px 28px 80px;
+}
+
+.walking-record__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.walking-record__wordmark,
+.walking-record__portrait-signature span {
+  color: $text;
+  font-family: $font-wordmark;
+  font-size: 17px;
+  font-style: italic;
+  font-weight: 200;
+}
+
+.walking-record__nav {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  color: $text-muted;
+  font-family: $font-mono;
+  font-size: 10px;
+
+  button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  a:hover,
+  button:hover {
+    color: $text;
+    text-decoration: underline;
+  }
+
+  [aria-current="page"] {
+    color: $text;
+  }
+}
+
+.walking-record__loading,
+.walking-record__error {
+  display: flex;
+  min-height: 360px;
+  align-items: center;
+  justify-content: center;
+  color: $text-muted;
+  font-family: $font-mono;
+  font-size: 11px;
+}
+
+.walking-record__error {
+  flex-direction: column;
+  gap: 8px;
+
+  strong {
+    color: $text;
+    font-family: $font-heading;
+    font-size: 18px;
+  }
+}
+
+.walking-record__portrait {
+  overflow: hidden;
+  margin: 20px 0 40px;
+  border: 1px solid rgba(90, 78, 65, 0.14);
+  border-radius: 10px;
+  background: $surface;
+  box-shadow: 0 2px 10px rgba(90, 78, 65, 0.1);
+}
+
+.walking-record__portrait-main {
+  position: relative;
+  min-height: 205px;
+  overflow: hidden;
+  padding: 26px 28px 20px;
+
+  &::after {
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(90, 78, 65, 0.03) 0 1px,
+        transparent 1px 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(90, 78, 65, 0.03) 0 1px,
+        transparent 1px 3px
+      );
+    content: "";
+    pointer-events: none;
+  }
+}
+
+.walking-record__portrait-texture {
+  position: absolute;
+  inset: -10px;
+  width: calc(100% + 20px);
+  height: calc(100% + 20px);
+  filter: blur(10px) saturate(0.9);
+}
+
+.walking-record__portrait-content {
+  position: relative;
+  z-index: 1;
+}
+
+.walking-record__hero {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 10px 0 24px;
+  font-family: $font-heading;
+  font-size: clamp(42px, 7vw, 56px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+
+  span {
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+}
+
+.walking-record__portrait-details {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.walking-record__metrics {
+  display: flex;
+  gap: 36px;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+  }
+
+  strong {
+    font-family: $font-mono;
+    font-size: 18px;
+    font-weight: 400;
+  }
+
+  span {
+    margin-top: 6px;
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+}
+
+.walking-record__portrait-signature {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+
+  span {
+    color: $accent-teal;
+  }
+
+  time {
+    margin-top: 4px;
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 10px;
+  }
+}
+
+.walking-record__portrait-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 28px;
+  border-top: 1px solid $border;
+  background: rgba($bg, 0.85);
+  color: $text-muted;
+  font-family: $font-mono;
+  font-size: 11px;
+
+  > div {
+    display: flex;
+    gap: 14px;
+  }
+
+  button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  a:hover,
+  button:hover:not(:disabled) {
+    color: $text;
+    text-decoration: underline;
+  }
+
+  button:disabled {
+    cursor: wait;
+    opacity: 0.6;
+  }
+}
+
+.walking-record__active-period {
+  color: $text-muted;
+}
+
+.walking-record__divider {
+  color: #d5cec3;
+}
+
+.walking-record__save-error {
+  margin: -30px 0 32px;
+  color: $error-text;
+  font-size: 12px;
+  text-align: right;
+}
+
+.walking-record__section {
+  margin-bottom: 48px;
+
+  h1,
+  h2 {
+    margin: 0;
+    font-family: $font-heading;
+    font-size: 19px;
+    font-weight: 600;
+  }
+}
+
+.walking-record__section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+
+  > span {
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 9px;
+    text-align: right;
+  }
+}
+
+.walking-record__section-intro {
+  margin: 0 0 18px;
+  color: $text-muted;
+  font-size: 13px;
+}
+
+.walking-record__departures {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.walking-record__departure {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+
+  &:hover {
+    border-color: $border-strong;
+    background: $surface-hover;
+  }
+
+  > svg {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    margin-top: 2px;
+  }
+}
+
+.walking-record__departure-copy {
+  min-width: 0;
+  flex: 1;
+
+  > div {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: $text-muted;
+    font-size: 13px;
+
+    span:nth-child(-n + 2) {
+      font-family: $font-mono;
+      font-size: 9px;
+    }
+
+    strong {
+      color: $text;
+      font-family: $font-heading;
+      font-size: 15px;
+      font-weight: 600;
+    }
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: $text-muted;
+    font-size: 12.5px;
+  }
+}
+
+.walking-record__day {
+  color: $text-faint;
+}
+
+.walking-record__familiarity {
+  margin-top: 3px;
+  color: $accent-teal;
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.walking-record__empty {
+  padding: 20px;
+  border: 1px dashed $border-strong;
+  border-radius: 8px;
+  color: $text-muted;
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.walking-record__subheading {
+  margin: 24px 0 12px !important;
+  color: $text-muted;
+  font-size: 14px !important;
+  font-style: italic;
+}
+
+.walking-record__revisit-heroes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+
+  > a {
+    padding: 16px;
+    border: 1px solid $border;
+    border-radius: 8px;
+    background: rgba($bg, 0.76);
+
+    &:hover {
+      border-color: $border-strong;
+      background: $surface;
+    }
+
+    > div {
+      font-family: $font-heading;
+      font-size: 21px;
+      font-weight: 500;
+      line-height: 1.25;
+    }
+
+    p {
+      margin: 6px 0 0;
+      font-size: 13px;
+
+      strong {
+        color: $accent-blue;
+        font-weight: 400;
+      }
+    }
+
+    small {
+      display: block;
+      margin-top: 4px;
+      color: $text-faint;
+      font-size: 12px;
+      font-style: italic;
+    }
+  }
+}
+
+.walking-record__revisit-ledger {
+  padding: 4px 14px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: rgba($bg, 0.76);
+
+  > a {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(90, 78, 65, 0.08);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    &:hover strong {
+      text-decoration: underline;
+    }
+
+    > span {
+      width: 74px;
+      flex-shrink: 0;
+      font-family: $font-mono;
+      font-size: 10px;
+      text-align: right;
+    }
+
+    strong {
+      color: $accent-blue;
+      font-size: 13px;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    small {
+      overflow: hidden;
+      color: $text-faint;
+      font-size: 11.5px;
+      font-style: italic;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}
+
+.walking-record__day-plates {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.walking-record__day-plate {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 6px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+
+  svg {
+    width: 100%;
+    height: 58px;
+  }
+
+  strong {
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 8.5px;
+    font-weight: 400;
+    text-align: center;
+  }
+
+  > span {
+    color: $text-faint;
+    font-size: 9.5px;
+    font-style: italic;
+    line-height: 1.35;
+    text-align: center;
+  }
+}
+
+.walking-record__hours {
+  display: flex;
+  flex-direction: column;
+
+  > a,
+  > div {
+    display: grid;
+    grid-template-columns: 18px 14px minmax(0, 1fr);
+    gap: 10px;
+    align-items: flex-start;
+    padding: 9px 4px;
+    border-bottom: 1px solid $border;
+  }
+
+  > a:hover {
+    background: rgba($surface, 0.55);
+  }
+
+  small {
+    color: $text-faint;
+    font-size: 11px;
+  }
+}
+
+.walking-record__rank {
+  padding-top: 2px;
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 10px;
+  text-align: right;
+}
+
+.walking-record__site-color {
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border-radius: 3px;
+}
+
+.walking-record__hour-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+
+  strong {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    color: $accent-teal;
+    flex-shrink: 0;
+    font-family: $font-mono;
+    font-size: 11px;
+    font-weight: 600;
+  }
+}
+
+.walking-record__time-track {
+  height: 3px;
+  margin: 4px 0;
+  overflow: hidden;
+  border-radius: 2px;
+  background: $border;
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    opacity: 0.7;
+  }
+}
+
+@media (max-width: 650px) {
+  .walking-record {
+    padding: 30px 18px 56px;
+  }
+
+  .walking-record__header {
+    align-items: flex-start;
+  }
+
+  .walking-record__nav {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px 12px;
+  }
+
+  .walking-record__portrait-main {
+    padding: 22px 20px 18px;
+  }
+
+  .walking-record__hero {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .walking-record__portrait-details {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .walking-record__metrics {
+    width: 100%;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .walking-record__portrait-signature {
+    align-items: flex-start;
+  }
+
+  .walking-record__portrait-actions {
+    padding: 10px 20px;
+  }
+
+  .walking-record__section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .walking-record__departure {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+
+    > svg {
+      width: 36px;
+      height: 36px;
+      flex-basis: 36px;
+    }
+  }
+
+  .walking-record__familiarity {
+    grid-column: 2;
+    margin-top: -8px;
+  }
+
+  .walking-record__revisit-heroes {
+    grid-template-columns: 1fr;
+  }
+
+  .walking-record__day-plates {
+    grid-template-columns: repeat(7, 90px);
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+
+  .walking-record__revisit-ledger > a {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+
+    > span {
+      width: auto;
+    }
+
+    small {
+      grid-column: 2;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

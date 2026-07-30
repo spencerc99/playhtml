@@ -300,6 +300,86 @@ describe("LocalEventStore aggregates", () => {
   });
 });
 
+describe("LocalEventStore walking record events", () => {
+  it("keeps navigation events and samples motion without losing measured distance", async () => {
+    const store = createStore();
+    const otherPage = {
+      meta: {
+        ...event("other-page", "cursor").meta,
+        url: "https://example.com/other",
+      },
+      normalizedUrl: "https://example.com/other",
+    };
+
+    await store.addEvents([
+      {
+        ...event("navigation-1", "navigation"),
+        ts: 1_000,
+      },
+      {
+        ...event("cursor-1", "cursor"),
+        ts: 2_000,
+        data: { event: "move", x: 0.1, y: 0.2 },
+      },
+      {
+        ...event("cursor-2", "cursor"),
+        ts: 3_000,
+        data: { event: "move", x: 0.2, y: 0.2 },
+      },
+      {
+        ...event("viewport-1", "viewport"),
+        ts: 4_000,
+        data: { event: "scroll", scrollDistancePx: 400 },
+      },
+      {
+        ...event("viewport-2", "viewport"),
+        ts: 5_000,
+        data: { event: "scroll", scrollDistancePx: 600 },
+      },
+      {
+        ...event("cursor-other-page", "cursor"),
+        ...otherPage,
+        ts: 6_000,
+        data: { event: "move", x: 0.5, y: 0.5 },
+      },
+      {
+        ...event("cursor-next-window", "cursor"),
+        ts: 5 * 60_000 + 2_000,
+        data: { event: "move", x: 0.3, y: 0.2 },
+      },
+      {
+        ...event("navigation-2", "navigation"),
+        ...otherPage,
+        ts: 5 * 60_000 + 3_000,
+        data: { event: "focus" },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 10 * 60_000,
+    });
+
+    expect(result.events.map((storedEvent) => storedEvent.id)).toEqual([
+      "navigation-1",
+      "cursor-1",
+      "viewport-1",
+      "cursor-other-page",
+      "cursor-next-window",
+      "navigation-2",
+    ]);
+    expect(result.cursorDistancePx).toBeCloseTo(102.4);
+  });
+
+  it("requires an explicit completed-week range", async () => {
+    const store = createStore();
+
+    await expect(store.getWalkingRecordEvents({})).rejects.toThrow(
+      "Walking record event bounds are required",
+    );
+  });
+});
+
 describe("LocalEventStore aggregate migrations", () => {
   it("migrates version 8 aggregates without losing retained history", async () => {
     const db = await openVersion8Database({
@@ -368,6 +448,7 @@ describe("LocalEventStore aggregate migrations", () => {
         eventCount: 2,
         totalTimeMs: 0,
         uniquePageCount: 1,
+        sessionCount: 0,
         eventCounts: { navigation: 1, cursor: 1 },
       }),
     ]);

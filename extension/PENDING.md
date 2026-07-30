@@ -2,6 +2,7 @@
 
 - Keep newly collected activity queued when local storage temporarily fails.
 - See a visible patina on Wikipedia links after their first click.
+- See a weekly walking record of the places you explored whenever you open a new tab.
 
 <!--
 Add a bullet here for each meaningful user-facing change that ships in the

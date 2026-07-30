@@ -765,6 +765,17 @@ export default defineBackground(() => {
       return true
     }
 
+    if (message.type === 'GET_WALKING_RECORD_EVENTS') {
+      const options = (message.options || {}) as Pick<QueryOptions, 'startTs' | 'endTs'>
+      store.getWalkingRecordEvents(options)
+        .then((result) => reply({ success: true, ...result }))
+        .catch((e) => {
+          console.error('[Background] GET_WALKING_RECORD_EVENTS error:', e)
+          reply({ success: false, events: [], cursorDistancePx: 0 })
+        })
+      return true
+    }
+
     if (message.type === 'QUERY_EVENTS_BY_DOMAIN') {
       const domain = message.domain as string
       const options = (message.options || {}) as QueryOptions
