@@ -43,6 +43,11 @@ describe('isAllowedOrigin', () => {
     expect(isAllowedOrigin(req({ Origin: 'http://127.0.0.1:3000' }))).toBe(true);
   });
 
+  it('allows installed Chrome and Firefox extension origins', () => {
+    expect(isAllowedOrigin(req({ Origin: 'chrome-extension://abcdefghijklmnop' }))).toBe(true);
+    expect(isAllowedOrigin(req({ Origin: 'moz-extension://39a66f04-cdb8-4b00' }))).toBe(true);
+  });
+
   it('falls back to Referer when Origin is absent', () => {
     expect(isAllowedOrigin(req({ Referer: 'https://wewere.online/portrait' }))).toBe(true);
   });

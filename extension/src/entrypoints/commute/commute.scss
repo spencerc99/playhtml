@@ -1,0 +1,1040 @@
+// ABOUTME: Styles the extension's bird's-eye Internet Commute carriage.
+// ABOUTME: Translates the authored prototype and its ink-wash moving landscape.
+
+@use "../../styles/variables" as *;
+
+$car-shell: #e7e0d4;
+$car-trim: #f5f0e8;
+$car-metal: #b9b2a7;
+$landscape-paper: #efe6cf;
+$landscape-ink: #5f574a;
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#commute-root {
+  min-width: 1140px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  color: $text;
+  background: $bg;
+  font-family: $font-body;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+a {
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  appearance: none;
+}
+
+.commute-page {
+  min-height: 100vh;
+  padding: 28px 20px 40px;
+  overflow-x: auto;
+  background-color: $bg;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(90, 78, 65, 0.025) 0 1px,
+      transparent 1px 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(90, 78, 65, 0.025) 0 1px,
+      transparent 1px 3px
+    );
+}
+
+.commute-shell {
+  width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.commute-header {
+  width: 100%;
+  margin-bottom: 6px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+
+  h1 {
+    margin: 0;
+    font-family: $font-heading;
+    font-size: 26px;
+    font-weight: 600;
+  }
+
+  > span {
+    justify-self: end;
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+  }
+}
+
+.commute-wordmark {
+  width: max-content;
+  font-family: $font-wordmark;
+  font-size: 18px;
+  font-style: italic;
+  font-weight: 200;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: $accent-blue;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+.commute-subtitle {
+  margin: 0 0 16px;
+  color: $text-muted;
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+}
+
+.commute-banner {
+  width: 100%;
+  min-height: 50px;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid $border-strong;
+  border-radius: 10px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+
+  strong {
+    max-width: 600px;
+    overflow: hidden;
+    font-size: 17px;
+    letter-spacing: 0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.commute-line-number {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: $bg;
+  border-radius: 7px;
+  background: $accent-teal;
+  font-family: $font-mono;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.commute-banner__rule {
+  min-width: 20px;
+  flex: 1;
+  border-top: 1px solid rgba(90, 78, 65, 0.18);
+}
+
+.commute-banner__aside {
+  max-width: 390px;
+  overflow: hidden;
+  color: $text-muted;
+  font-family: $font-mono;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commute-instruction {
+  width: 100%;
+  min-height: 26px;
+  margin: 0;
+  padding: 5px 0;
+  color: $text-muted;
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+}
+
+.landscape-window {
+  width: 1100px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid $border-strong;
+  background: $landscape-paper;
+
+  &--upper {
+    height: 92px;
+    border-bottom: 0;
+    border-radius: 10px 10px 0 0;
+  }
+
+  &--lower {
+    height: 58px;
+    border-top: 0;
+    border-radius: 0 0 10px 10px;
+  }
+
+  &--riding .station-platform {
+    transform: translateX(-115%);
+    transition: transform 2.6s cubic-bezier(0.6, 0.05, 0.85, 0.5);
+  }
+
+  &--arriving .station-platform {
+    animation: station-arrive 3.8s cubic-bezier(0.22, 0.75, 0.35, 1) both;
+  }
+
+  &--stopped .station-platform {
+    transform: translateX(0);
+    transition: none;
+  }
+}
+
+.landscape {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(90, 78, 65, 0.025) 0 1px,
+      transparent 1px 3px
+    ),
+    $landscape-paper;
+}
+
+.landscape-track {
+  width: 4400px;
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  animation: landscape-scroll 20s linear infinite;
+  will-change: transform;
+
+  svg {
+    width: 2200px;
+    height: 100%;
+    flex: 0 0 2200px;
+    overflow: visible;
+  }
+}
+
+.landscape-track--clouds {
+  animation-duration: 70s;
+}
+
+.landscape-track--mountain {
+  animation-duration: 22s;
+}
+
+.landscape-track--foreground {
+  animation-duration: 11s;
+}
+
+.landscape-track--water {
+  animation-duration: 6s;
+}
+
+.landscape-track--lower-trees {
+  top: 4px;
+  animation-duration: 9s;
+}
+
+.landscape--stopped .landscape-track {
+  animation-play-state: paused;
+}
+
+.landscape--arriving {
+  .landscape-track--clouds {
+    animation-duration: 120s;
+  }
+
+  .landscape-track--mountain {
+    animation-duration: 42s;
+  }
+
+  .landscape-track--foreground {
+    animation-duration: 24s;
+  }
+
+  .landscape-track--water {
+    animation-duration: 15s;
+  }
+
+  .landscape-track--lower-trees {
+    animation-duration: 20s;
+  }
+}
+
+.landscape-cloud {
+  fill: none;
+  stroke: $landscape-ink;
+  stroke-linecap: round;
+  stroke-width: 2;
+  opacity: 0.12;
+}
+
+.landscape-mountain {
+  stroke: $landscape-ink;
+  stroke-width: 1.15;
+
+  &--near {
+    fill: rgba(184, 174, 151, 0.5);
+    opacity: 0.76;
+  }
+}
+
+.landscape-contour {
+  fill: none;
+  stroke: $landscape-ink;
+  stroke-linecap: round;
+  stroke-width: 1;
+  opacity: 0.28;
+}
+
+.landscape-tree {
+  fill: none;
+  stroke: $landscape-ink;
+  stroke-linecap: round;
+
+  &--small {
+    stroke-width: 1;
+    opacity: 0.6;
+  }
+
+  &--curvy {
+    stroke-width: 1.35;
+    opacity: 0.55;
+  }
+}
+
+.landscape-tree__leaf {
+  fill: $landscape-ink;
+  stroke: none;
+  opacity: 0.78;
+}
+
+.landscape-water {
+  fill: none;
+  stroke: $landscape-ink;
+  stroke-linecap: round;
+  stroke-width: 1.2;
+  opacity: 0.24;
+}
+
+.passing-site {
+  position: absolute;
+  top: var(--passing-top);
+  left: 0;
+  z-index: 2;
+  padding: 3px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid $border-strong;
+  border-radius: 6px;
+  background: rgba($bg, 0.92);
+  box-shadow: 0 1px 4px rgba(90, 78, 65, 0.15);
+  font-family: $font-mono;
+  font-size: 9px;
+  white-space: nowrap;
+  animation: passing-site-drift 13s linear infinite;
+  animation-delay: var(--passing-delay);
+
+  .stop-favicon {
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 3px;
+    box-shadow: none;
+
+    img {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  i {
+    color: $text-faint;
+    font-style: normal;
+  }
+}
+
+.station-platform {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  background-color: #efe9df;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(90, 78, 65, 0.09) 0 1px,
+      transparent 1px 21px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(90, 78, 65, 0.09) 0 1px,
+      transparent 1px 33px
+    );
+  transform: translateX(115%);
+}
+
+.station-platform__stripe {
+  height: 12px;
+  position: absolute;
+  top: 54px;
+  right: 0;
+  left: 0;
+  border-block: 1px solid rgba($text, 0.15);
+  background: var(--station-hue);
+  opacity: 0.85;
+}
+
+.station-platform__pillar {
+  width: 26px;
+  position: absolute;
+  top: 0;
+  bottom: 9px;
+  border-inline: 1px solid rgba(90, 78, 65, 0.3);
+  background: #ddd5c8;
+
+  &--left {
+    left: 150px;
+  }
+
+  &--right {
+    right: 150px;
+  }
+}
+
+.station-platform__edge {
+  height: 9px;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    $accent-gold 0 26px,
+    #c9a94a 26px 52px
+  );
+}
+
+.landscape-window--lower {
+  .station-platform {
+    background-image: repeating-linear-gradient(
+      90deg,
+      rgba(90, 78, 65, 0.06) 0 1px,
+      transparent 1px 40px
+    );
+  }
+
+  .station-platform__stripe,
+  .station-platform__pillar,
+  .station-sign {
+    display: none;
+  }
+
+  .station-platform__edge {
+    top: 0;
+    bottom: auto;
+  }
+}
+
+.station-sign {
+  min-width: 130px;
+  max-width: 520px;
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  padding: 5px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  color: $text;
+  border-bottom: 2px solid var(--station-hue);
+  background: rgba($bg, 0.82);
+  font-family: $font-mono;
+  transform: translateX(-50%);
+
+  .stop-favicon {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    border: 1px solid rgba($text, 0.14);
+    border-radius: 5px;
+    box-shadow: 0 1px 4px rgba(90, 78, 65, 0.12);
+
+    img {
+      width: 28px;
+      height: 28px;
+    }
+  }
+}
+
+.station-sign__destination {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+
+  strong,
+  small {
+    overflow: hidden;
+    display: block;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    font-size: 16px;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 9px;
+    letter-spacing: 0.03em;
+  }
+}
+
+.stop-favicon {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: $text;
+  background: $bg;
+  font-family: $font-mono;
+  font-size: 8px;
+  text-transform: uppercase;
+
+  img {
+    display: block;
+    object-fit: contain;
+  }
+}
+
+.train-car-wrap {
+  width: 1100px;
+  position: relative;
+}
+
+.train-car {
+  width: 1100px;
+  height: 360px;
+  position: relative;
+  overflow: hidden;
+  border: 2px solid $text;
+  border-radius: 22px;
+  background-color: $car-shell;
+  background-image: radial-gradient(
+    rgba($accent-blue, 0.1) 1px,
+    transparent 1px
+  );
+  background-size: 14px 14px;
+  box-shadow: 0 2px 10px rgba(90, 78, 65, 0.12);
+
+  &--riding,
+  &--arriving {
+    animation: car-rumble 0.9s linear infinite;
+  }
+}
+
+.train-car__edge {
+  position: absolute;
+  z-index: 1;
+  background: $car-trim;
+
+  &--top,
+  &--bottom {
+    height: 24px;
+    right: 0;
+    left: 0;
+  }
+
+  &--top {
+    top: 0;
+    border-bottom: 1px solid $border-strong;
+  }
+
+  &--bottom {
+    bottom: 0;
+    border-top: 1px solid $border-strong;
+  }
+
+  &--left,
+  &--right {
+    width: 24px;
+    top: 0;
+    bottom: 0;
+  }
+
+  &--left {
+    left: 0;
+    border-right: 1px solid $border-strong;
+  }
+
+  &--right {
+    right: 0;
+    border-left: 1px solid $border-strong;
+  }
+}
+
+.train-car__side-door {
+  width: 12px;
+  height: 100px;
+  position: absolute;
+  top: 130px;
+  z-index: 2;
+  border: 1px solid rgba(90, 78, 65, 0.35);
+  border-radius: 4px;
+  background: $car-metal;
+
+  &--left {
+    left: 3px;
+  }
+
+  &--right {
+    right: 3px;
+  }
+}
+
+.train-door {
+  width: 128px;
+  height: 22px;
+  padding: 0;
+  position: absolute;
+  top: 2px;
+  z-index: 5;
+  border: 0;
+  background: transparent;
+  cursor: default;
+
+  &--open {
+    .train-door__panel--left {
+      transform: translateX(-56px);
+    }
+
+    .train-door__panel--right {
+      transform: translateX(56px);
+    }
+  }
+
+  &--exit {
+    cursor: pointer;
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 2px 0 auto;
+      height: 17px;
+      border-radius: 3px;
+      animation: door-pulse 1.6s ease-in-out infinite;
+    }
+
+    .train-door__label {
+      opacity: 1;
+    }
+  }
+}
+
+.train-door__panel {
+  width: 62px;
+  height: 17px;
+  position: absolute;
+  top: 2px;
+  border: 1px solid rgba(90, 78, 65, 0.4);
+  border-radius: 3px;
+  background: $car-metal;
+  transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.3, 1);
+
+  &--left {
+    left: 0;
+  }
+
+  &--right {
+    right: 0;
+  }
+}
+
+.train-door__label {
+  position: absolute;
+  top: 26px;
+  left: 50%;
+  color: $error-text;
+  font-family: $font-mono;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 0.5s;
+  white-space: nowrap;
+}
+
+.floor-light {
+  width: 38px;
+  height: 38px;
+  position: absolute;
+  top: 160px;
+  border: 1.5px solid rgba(168, 136, 58, 0.6);
+  border-radius: 50%;
+
+  &::after {
+    content: "";
+    width: 22px;
+    height: 22px;
+    position: absolute;
+    top: 7px;
+    left: 7px;
+    border: 1px solid rgba(90, 78, 65, 0.4);
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at 35% 35%,
+      #ecd692,
+      $accent-gold 55%,
+      #a8883a
+    );
+  }
+
+  &--left {
+    left: 288px;
+  }
+
+  &--right {
+    left: 798px;
+  }
+}
+
+.hand-straps {
+  height: 10px;
+  position: absolute;
+  right: 60px;
+  left: 60px;
+  background-image: radial-gradient(
+    circle at 5px 5px,
+    transparent 3px,
+    rgba(168, 136, 58, 0.65) 3px,
+    rgba(168, 136, 58, 0.65) 4.5px,
+    transparent 5px
+  );
+  background-repeat: repeat-x;
+  background-size: 34px 10px;
+
+  &--top {
+    top: 116px;
+  }
+
+  &--bottom {
+    top: 234px;
+  }
+}
+
+.train-car--riding .hand-straps,
+.train-car--arriving .hand-straps {
+  animation: strap-swing 1.7s ease-in-out infinite;
+}
+
+.aisle-rule {
+  position: absolute;
+  top: 179px;
+  right: 60px;
+  left: 60px;
+  border-top: 1px dashed rgba($text, 0.14);
+}
+
+.warning-strip {
+  width: 128px;
+  height: 8px;
+  position: absolute;
+  top: 26px;
+  border-radius: 0 0 3px 3px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba($accent-gold, 0.7) 0 8px,
+    rgba($text, 0.35) 8px 16px
+  );
+
+  &--left {
+    left: 276px;
+  }
+
+  &--right {
+    left: 696px;
+  }
+}
+
+.train-seat {
+  width: 50px;
+  height: 44px;
+  padding: 0;
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--seat-border);
+  border-radius: 6px 6px 12px 12px;
+  background-color: var(--seat-bg);
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 6px,
+    var(--seat-ticks) 6px 8px,
+    transparent 8px 14px
+  );
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.12),
+    0 1px 4px rgba(90, 78, 65, 0.15);
+  cursor: pointer;
+
+  &--bottom {
+    border-radius: 12px 12px 6px 6px;
+  }
+
+  &--teal {
+    --seat-bg: #4a9a8a;
+    --seat-border: #35756a;
+    --seat-ticks: rgba(212, 184, 92, 0.55);
+  }
+
+  &--gold {
+    --seat-bg: #d4b85c;
+    --seat-border: #a8883a;
+    --seat-ticks: rgba(196, 114, 78, 0.5);
+  }
+
+  &--plum {
+    --seat-bg: #8b6b7f;
+    --seat-border: #6d5263;
+    --seat-ticks: rgba(250, 247, 242, 0.45);
+  }
+
+  &:hover,
+  &:focus-visible {
+    outline: 2px dashed $accent-gold;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  &--mine {
+    outline: 2px solid $text;
+    outline-offset: 2px;
+  }
+}
+
+.train-seat__prompt {
+  padding: 1px 4px;
+  color: $bg;
+  border-radius: 3px;
+  background: rgba($text, 0.5);
+  font-family: $font-mono;
+  font-size: 8px;
+  opacity: 0;
+}
+
+.train-seat:hover .train-seat__prompt,
+.train-seat:focus-visible .train-seat__prompt {
+  opacity: 1;
+}
+
+.cursor-rider {
+  position: absolute;
+  top: 4px;
+  left: 11px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+
+  svg {
+    display: block;
+    filter: drop-shadow(0 1px 0 rgba($bg, 0.8));
+  }
+
+  span {
+    max-width: 70px;
+    margin-top: -2px;
+    padding: 1px 4px;
+    overflow: hidden;
+    color: $bg;
+    border-radius: 3px;
+    background: var(--cursor-color);
+    font-family: $font-mono;
+    font-size: 8px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.cursor-rider--you {
+  animation: cursor-breathe 2.2s ease-in-out infinite;
+}
+
+.commute-counts {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 20px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  color: #fff;
+  border-radius: 10px;
+  background: $accent-blue;
+  box-shadow: 0 2px 10px $shadow;
+
+  strong {
+    font-size: 14px;
+  }
+
+  strong:last-child {
+    justify-self: end;
+  }
+
+  span {
+    font-family: $font-mono;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    opacity: 0.9;
+  }
+}
+
+.commute-note {
+  margin: 18px 0 0;
+  color: $text-faint;
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+}
+
+.commute-toast {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  z-index: 20;
+  padding: 10px 18px;
+  color: $bg;
+  border-radius: 8px;
+  background: $text;
+  box-shadow: 0 2px 10px rgba(90, 78, 65, 0.3);
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+
+@keyframes landscape-scroll {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-2200px);
+  }
+}
+
+@keyframes station-arrive {
+  from {
+    transform: translateX(115%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes passing-site-drift {
+  from {
+    transform: translateX(1150px);
+  }
+
+  to {
+    transform: translateX(-450px);
+  }
+}
+
+@keyframes car-rumble {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  23% {
+    transform: translateY(-1.2px);
+  }
+
+  48% {
+    transform: translateY(0.6px);
+  }
+
+  74% {
+    transform: translateY(-0.5px);
+  }
+}
+
+@keyframes strap-swing {
+  0%,
+  100% {
+    background-position-x: 0;
+  }
+
+  50% {
+    background-position-x: 4px;
+  }
+}
+
+@keyframes door-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba($accent-gold, 0);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba($accent-gold, 0.35);
+  }
+}
+
+@keyframes cursor-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landscape-window--arriving .station-platform {
+    transform: translateX(0);
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

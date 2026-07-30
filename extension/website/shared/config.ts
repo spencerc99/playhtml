@@ -13,6 +13,7 @@ export const WORKER_URL: string =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ?? DEFAULT_WORKER_URL;
 
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
+export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
 export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
 

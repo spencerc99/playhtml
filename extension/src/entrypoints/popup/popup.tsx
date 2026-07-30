@@ -423,6 +423,15 @@ function PlayHTMLPopup() {
       onViewBagSettings={
         bagEnabled ? () => setCurrentView("bag-settings") : undefined
       }
+      onViewCommute={
+        FLAGS.COMMUTE || internalDevFeaturesEnabled
+          ? async () => {
+              const url = browser.runtime.getURL("commute.html");
+              await browser.tabs.create({ url });
+              window.close();
+            }
+          : undefined
+      }
       onViewScraps={
         FLAGS.SCRAPS || internalDevFeaturesEnabled
           ? async () => {
