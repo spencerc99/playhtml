@@ -2,8 +2,13 @@
 // ABOUTME: Covers URL cleanup, recency ordering, deduplication, and unsafe schemes.
 
 import { describe, expect, it } from "vitest";
-import type { CollectionEvent } from "../shared/types";
-import { deriveRecentStops, getFaviconUrl, SAMPLE_STOPS } from "./commuteStops";
+import type { CollectionEvent } from "@movement/types";
+import {
+  deriveRecentStops,
+  formatStopAge,
+  getFaviconUrl,
+  SAMPLE_STOPS,
+} from "./commuteStops";
 
 function navigationEvent(
   id: string,
@@ -42,6 +47,10 @@ describe("deriveRecentStops", () => {
         url: "https://www.next.example/path",
         domain: "next.example",
         path: "/path",
+        visitedBy: "rider",
+        visitedAt: 3,
+        sampleAge: null,
+        hue: "#4a9a8a",
         source: "live",
       },
       {
@@ -49,6 +58,10 @@ describe("deriveRecentStops", () => {
         url: "https://slow.example/first",
         domain: "slow.example",
         path: "/first",
+        visitedBy: "rider",
+        visitedAt: 2,
+        sampleAge: null,
+        hue: "#4a9a8a",
         source: "live",
       },
     ]);
@@ -75,6 +88,10 @@ describe("deriveRecentStops", () => {
         url: "https://public.example/place",
         domain: "public.example",
         path: "/place",
+        visitedBy: "rider",
+        visitedAt: 2,
+        sampleAge: null,
+        hue: "#4a9a8a",
         source: "live",
       },
     ]);
@@ -94,7 +111,27 @@ describe("getFaviconUrl", () => {
 
   it("uses known favicon images for the public sample route", () => {
     expect(getFaviconUrl(SAMPLE_STOPS[0])).toBe(
-      "https://www.google.com/s2/favicons?domain=shrine.computer&sz=64",
+      "https://www.google.com/s2/favicons?domain=html.energy&sz=64",
     );
+  });
+});
+
+describe("formatStopAge", () => {
+  it("formats live visit age against the supplied clock", () => {
+    expect(
+      formatStopAge(
+        {
+          ...SAMPLE_STOPS[0],
+          visitedAt: 940_000,
+          sampleAge: null,
+          source: "live",
+        },
+        1_000_000,
+      ),
+    ).toBe("1m");
+  });
+
+  it("keeps the authored sample age", () => {
+    expect(formatStopAge(SAMPLE_STOPS[0], 1_000_000)).toBe("3m");
   });
 });

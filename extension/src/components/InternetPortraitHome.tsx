@@ -20,6 +20,7 @@ interface Props {
   onViewHistory: () => void;
   onViewProfile?: () => void;
   onViewBagSettings?: () => void;
+  onViewCommute?: () => void;
   onViewScraps?: () => void;
   onViewChangelog: () => void;
 }
@@ -41,6 +42,7 @@ export function InternetPortraitHome({
   onViewHistory,
   onViewProfile,
   onViewBagSettings,
+  onViewCommute,
   onViewScraps,
   onViewChangelog,
 }: Props) {
@@ -242,6 +244,17 @@ export function InternetPortraitHome({
             >
               time
             </button>
+            {onViewCommute && (
+              <button
+                className="portrait-home__nav-link"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewCommute();
+                }}
+              >
+                commute
+              </button>
+            )}
             {onViewScraps && (
               <button
                 className="portrait-home__nav-link"

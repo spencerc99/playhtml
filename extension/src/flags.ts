@@ -20,4 +20,8 @@ export const FLAGS = {
   // Internet scraps: passive collection of distinctive images seen while
   // browsing, rendered as a scatter-collage (scraps.html). Local-only data.
   SCRAPS: false,
+
+  // Internet Commute: full-tab slow browsing train populated from recent
+  // extension navigation events (commute.html).
+  COMMUTE: false,
 } as const;
