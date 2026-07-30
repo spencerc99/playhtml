@@ -70,6 +70,7 @@ describe("deriveRecentStops", () => {
         path: "/path",
         title: null,
         faviconUrl: null,
+        recentDomainVisits: 1,
         visitedBy: "rider",
         visitedAt: 3,
         sampleAge: null,
@@ -83,6 +84,7 @@ describe("deriveRecentStops", () => {
         path: "/first",
         title: null,
         faviconUrl: null,
+        recentDomainVisits: 2,
         visitedBy: "rider",
         visitedAt: 2,
         sampleAge: null,
@@ -115,12 +117,35 @@ describe("deriveRecentStops", () => {
         path: "/place",
         title: null,
         faviconUrl: null,
+        recentDomainVisits: 1,
         visitedBy: "rider",
         visitedAt: 2,
         sampleAge: null,
         hue: "#4a9a8a",
         source: "live",
       },
+    ]);
+  });
+
+  it("counts every domain visit before limiting the unique page pool", () => {
+    const stops = deriveRecentStops(
+      [
+        navigationEvent("common-old", "https://common.example/one", 1),
+        navigationEvent("common-middle", "https://common.example/two", 2),
+        navigationEvent("common-new", "https://common.example/one", 3),
+        navigationEvent("rare", "https://rare.example/place", 4),
+      ],
+      2,
+    );
+
+    expect(
+      stops.map((stop) => ({
+        domain: stop.domain,
+        recentDomainVisits: stop.recentDomainVisits,
+      })),
+    ).toEqual([
+      { domain: "rare.example", recentDomainVisits: 1 },
+      { domain: "common.example", recentDomainVisits: 3 },
     ]);
   });
 });
@@ -175,6 +200,7 @@ describe("parseRecentCommuteStops", () => {
         path: "/paths/one",
         title: "Walking through a strange garden",
         faviconUrl: "https://garden.example/leaf.svg",
+        recentDomainVisits: 1,
         visitedBy: "rider",
         visitedAt: 100,
         sampleAge: null,
@@ -213,6 +239,7 @@ describe("curateCommuteStops", () => {
     expect(
       curateCommuteStops([
         commuteStop("interesting.example", { path: "/home" }),
+        commuteStop("challenge.example", { title: "Just a moment..." }),
         commuteStop("youtube.com", { title: null, path: "/watch" }),
         commuteStop("youtube.com", {
           id: "https://youtube.com/watch/one",
@@ -242,6 +269,32 @@ describe("curateCommuteStops", () => {
       "one.example",
       "two.example",
       "four.example",
+    ]);
+  });
+
+  it("ranks less-visited domains first and uses recency to break ties", () => {
+    const route = curateCommuteStops([
+      commuteStop("popular.example", {
+        recentDomainVisits: 8,
+        visitedAt: 300,
+        visitedBy: "popular-rider",
+      }),
+      commuteStop("older-rare.example", {
+        recentDomainVisits: 1,
+        visitedAt: 100,
+        visitedBy: "older-rider",
+      }),
+      commuteStop("newer-rare.example", {
+        recentDomainVisits: 1,
+        visitedAt: 200,
+        visitedBy: "newer-rider",
+      }),
+    ]);
+
+    expect(route.map((stop) => stop.domain)).toEqual([
+      "newer-rare.example",
+      "older-rare.example",
+      "popular.example",
     ]);
   });
 });

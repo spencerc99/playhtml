@@ -81,6 +81,7 @@ const SEATS: SeatDefinition[] = ["top", "bottom"].flatMap((row) =>
 );
 
 const DOORS = [276, 696];
+const RECENT_NAVIGATION_FETCH_LIMIT = 500;
 
 function useRecentRoute(): RecentRoute {
   const [route, setRoute] = useState<RecentRoute>({
@@ -93,7 +94,7 @@ function useRecentRoute(): RecentRoute {
     const controller = new AbortController();
     const params = new URLSearchParams({
       type: "navigation",
-      limit: "80",
+      limit: RECENT_NAVIGATION_FETCH_LIMIT.toString(),
       require_title: "true",
     });
 
@@ -108,7 +109,7 @@ function useRecentRoute(): RecentRoute {
 
         const sceneryStops = parseRecentCommuteStops(
           await response.json(),
-          40,
+          RECENT_NAVIGATION_FETCH_LIMIT,
         );
         const stops = curateCommuteStops(sceneryStops, 10);
         setRoute({

@@ -10,6 +10,7 @@ export interface CommuteStop {
   path: string;
   title: string | null;
   faviconUrl: string | null;
+  recentDomainVisits: number;
   visitedBy: string;
   visitedAt: number | null;
   sampleAge: string | null;
@@ -25,6 +26,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     path: "/",
     title: null,
     faviconUrl: null,
+    recentDomainVisits: 1,
     visitedBy: "amber-moth-2210",
     visitedAt: null,
     sampleAge: "3m",
@@ -38,6 +40,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     path: "/",
     title: null,
     faviconUrl: null,
+    recentDomainVisits: 1,
     visitedBy: "quiet-lantern-3704",
     visitedAt: null,
     sampleAge: "7m",
@@ -51,6 +54,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     path: "/",
     title: null,
     faviconUrl: null,
+    recentDomainVisits: 1,
     visitedBy: "paper-crane-8841",
     visitedAt: null,
     sampleAge: "12m",
@@ -64,6 +68,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     path: "/",
     title: null,
     faviconUrl: null,
+    recentDomainVisits: 1,
     visitedBy: "low-tide-0952",
     visitedAt: null,
     sampleAge: "2m",
@@ -77,6 +82,7 @@ export const SAMPLE_STOPS: CommuteStop[] = [
     path: "/",
     title: null,
     faviconUrl: null,
+    recentDomainVisits: 1,
     visitedBy: "dim-star-4417",
     visitedAt: null,
     sampleAge: "9m",
@@ -106,14 +112,16 @@ const GENERIC_PATHS = [
   "/signin",
 ];
 const GENERIC_TITLES = new Set([
+  "attentionrequiredcloudflare",
+  "checkingyourbrowser",
   "dashboard",
   "home",
   "homepage",
-  "log in",
+  "justamoment",
   "login",
-  "new tab",
+  "newtab",
   "search",
-  "sign in",
+  "signin",
   "untitled",
 ]);
 
@@ -125,10 +133,14 @@ function comparableLabel(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+function hasGenericTitle(stop: CommuteStop): boolean {
+  return GENERIC_TITLES.has(comparableLabel(stop.title ?? ""));
+}
+
 export function getMeaningfulStopTitle(stop: CommuteStop): string | null {
   const title = stop.title?.replace(/\s+/g, " ").trim();
   if (!title || title.length < 3 || title.length > 100) return null;
-  if (GENERIC_TITLES.has(title.toLowerCase())) return null;
+  if (hasGenericTitle(stop)) return null;
 
   const comparableTitle = comparableLabel(title);
   const domainParts = stop.domain.split(".");
@@ -160,8 +172,14 @@ export function curateCommuteStops(
   const curated: CommuteStop[] = [];
   const seenDomains = new Set<string>();
   const stopsByRider = new Map<string, number>();
+  const rankedStops = [...stops].sort((a, b) => {
+    const visitDifference = a.recentDomainVisits - b.recentDomainVisits;
+    if (visitDifference !== 0) return visitDifference;
+    return (b.visitedAt ?? 0) - (a.visitedAt ?? 0);
+  });
 
-  for (const stop of stops) {
+  for (const stop of rankedStops) {
+    if (hasGenericTitle(stop)) continue;
     if (
       NEVER_LAND_DOMAINS.some((domain) =>
         domainMatches(stop.domain, domain),
@@ -262,6 +280,7 @@ function toCommuteStop(event: CollectionEvent): CommuteStop | null {
       path,
       title,
       faviconUrl,
+      recentDomainVisits: 1,
       visitedBy: formatRiderLabel(event.meta.pid),
       visitedAt: event.ts,
       sampleAge: null,
@@ -279,13 +298,23 @@ export function deriveRecentStops(
 ): CommuteStop[] {
   const stops = new Map<string, CommuteStop>();
   const newestFirst = [...events].sort((a, b) => b.ts - a.ts);
+  const parsedStops = newestFirst
+    .filter((event) => event.type === "navigation")
+    .map(toCommuteStop)
+    .filter((stop): stop is CommuteStop => stop !== null);
+  const visitsByDomain = new Map<string, number>();
 
-  for (const event of newestFirst) {
-    if (event.type !== "navigation") continue;
-    const stop = toCommuteStop(event);
-    if (!stop || stops.has(stop.url)) continue;
+  for (const stop of parsedStops) {
+    visitsByDomain.set(stop.domain, (visitsByDomain.get(stop.domain) ?? 0) + 1);
+  }
 
-    stops.set(stop.url, stop);
+  for (const stop of parsedStops) {
+    if (stops.has(stop.url)) continue;
+
+    stops.set(stop.url, {
+      ...stop,
+      recentDomainVisits: visitsByDomain.get(stop.domain) ?? 1,
+    });
     if (stops.size === limit) break;
   }
 
