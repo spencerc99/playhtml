@@ -8,32 +8,32 @@ describe("getCommuteTiming", () => {
   it("starts at the origin with open doors", () => {
     expect(getCommuteTiming(0, 5)).toEqual({
       phase: "stopped",
-      secondsLeft: 12,
+      secondsLeft: 10,
       stopIndex: 0,
       atOrigin: true,
     });
   });
 
   it("moves through travel, arrival, and the destination platform", () => {
-    expect(getCommuteTiming(12, 5).phase).toBe("riding");
-    expect(getCommuteTiming(32, 5)).toEqual({
+    expect(getCommuteTiming(10, 5).phase).toBe("riding");
+    expect(getCommuteTiming(25, 5)).toEqual({
       phase: "arriving",
       secondsLeft: 4,
       stopIndex: 0,
       atOrigin: false,
     });
-    expect(getCommuteTiming(36, 5)).toEqual({
+    expect(getCommuteTiming(29, 5)).toEqual({
       phase: "stopped",
-      secondsLeft: 12,
+      secondsLeft: 10,
       stopIndex: 0,
       atOrigin: false,
     });
   });
 
   it("advances to the next route stop after the platform dwell", () => {
-    expect(getCommuteTiming(48, 5)).toEqual({
+    expect(getCommuteTiming(39, 5)).toEqual({
       phase: "riding",
-      secondsLeft: 20,
+      secondsLeft: 15,
       stopIndex: 1,
       atOrigin: false,
     });

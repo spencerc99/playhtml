@@ -1,10 +1,10 @@
 // ABOUTME: Computes the Internet Commute's platform, travel, and arrival phases.
 // ABOUTME: Keeps train timing deterministic and independent from React rendering.
 
-export const INITIAL_PLATFORM_SECONDS = 12;
-export const TRAVEL_SECONDS = 20;
+export const INITIAL_PLATFORM_SECONDS = 10;
+export const TRAVEL_SECONDS = 15;
 export const ARRIVAL_SECONDS = 4;
-export const PLATFORM_SECONDS = 12;
+export const PLATFORM_SECONDS = 10;
 
 export type CommutePhase = "stopped" | "riding" | "arriving";
 
