@@ -198,7 +198,14 @@ function Platform({
       <span className="station-platform__edge" />
       <span className="station-sign">
         {!atOrigin && <StopFavicon stop={currentStop} />}
-        <span>{atOrigin ? "this page" : currentStop.domain}</span>
+        <span className="station-sign__destination">
+          <strong>{atOrigin ? "this page" : currentStop.domain}</strong>
+          {!atOrigin && (
+            <small>
+              {currentStop.path === "/" ? "front page" : currentStop.path}
+            </small>
+          )}
+        </span>
       </span>
     </div>
   );
