@@ -116,14 +116,15 @@ button {
   right: 14px;
   bottom: 14px;
   z-index: 30;
-  min-width: 174px;
-  padding: 8px 8px 8px 11px;
+  min-width: 198px;
+  min-height: 64px;
+  padding: 9px 11px 8px 8px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  overflow: hidden;
   border: 1px dashed rgba($text, 0.32);
-  border-radius: 7px;
+  border-radius: 10px 6px 6px 10px;
   background:
     repeating-linear-gradient(
       90deg,
@@ -131,7 +132,9 @@ button {
       transparent 1px 5px
     ),
     rgba($surface, 0.96);
-  box-shadow: 0 2px 8px rgba($text, 0.14);
+  box-shadow:
+    inset 0 3px $accent-teal,
+    0 2px 8px rgba($text, 0.14);
   text-decoration: none;
   transition:
     border-color 0.15s,
@@ -141,31 +144,53 @@ button {
   &:hover,
   &:focus-visible {
     border-color: rgba($accent-teal, 0.72);
-    box-shadow: 0 3px 12px rgba($text, 0.18);
+    box-shadow:
+      inset 0 3px $accent-teal,
+      0 3px 12px rgba($text, 0.18);
     outline: none;
     transform: translateY(-1px);
   }
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    left: 61px;
+    width: 9px;
+    height: 9px;
+    border: 1px dashed rgba($text, 0.28);
+    border-radius: 50%;
+    background: $bg;
+  }
+
+  &::before {
+    top: -5px;
+  }
+
+  &::after {
+    bottom: -5px;
+  }
 }
 
-.commute-install-cta__ticket {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
+.commute-install-cta__icon {
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
-  color: $bg;
-  border-radius: 4px;
-  background: $accent-rust;
-  font-family: $font-mono;
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  border: 1px solid rgba($text, 0.18);
+  border-radius: 6px;
+  background-color: $bg;
+  background-image: url("../../../public/icon/128.png");
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgba($bg, 0.7);
 }
 
 .commute-install-cta__copy {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  border-left: 1px dashed rgba($text, 0.25);
+  padding-left: 5px;
 
   strong {
     font-size: 12px;
@@ -175,6 +200,14 @@ button {
     color: $text-muted;
     font-family: $font-mono;
     font-size: 8px;
+  }
+
+  .commute-install-cta__label {
+    color: $accent-rust;
+    font-size: 7px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 }
 

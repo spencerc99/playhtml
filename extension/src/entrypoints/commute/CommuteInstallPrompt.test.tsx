@@ -47,6 +47,7 @@ describe("CommuteInstallPrompt", () => {
       vi.advanceTimersByTime(800);
     });
 
+    expect(container.textContent).toContain("internet transit pass");
     expect(container.textContent).toContain("get the extension");
     const link = container.querySelector("a");
     expect(link?.href).toBe("https://wewere.online/");

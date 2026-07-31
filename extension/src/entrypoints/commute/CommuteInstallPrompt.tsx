@@ -70,12 +70,13 @@ export function CommuteInstallPrompt() {
       rel="noreferrer"
       aria-label="Visit we were online to download the extension"
     >
+      <span className="commute-install-cta__icon" aria-hidden="true" />
       <span className="commute-install-cta__copy">
+        <span className="commute-install-cta__label">
+          internet transit pass
+        </span>
         <strong>add your stops</strong>
         <span>get the extension →</span>
-      </span>
-      <span className="commute-install-cta__ticket" aria-hidden="true">
-        WWO
       </span>
     </a>
   );
