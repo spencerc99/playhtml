@@ -15,6 +15,15 @@ import {
 } from "playhtml";
 import type { CursorZoneOptions } from "playhtml";
 
+type SelectedPresenceView<
+  Channel extends string,
+  Payload extends Record<string, unknown>,
+> = PresenceView<Partial<Record<Channel, Payload>>>;
+type SelectedPresences<
+  Channel extends string,
+  Payload extends Record<string, unknown>,
+> = Map<string, SelectedPresenceView<Channel, Payload>>;
+
 function warnPreInit(call: string): void {
   console.warn(`[@playhtml/react] ${call} called before init — ignored.`);
 }
@@ -84,31 +93,36 @@ export function useCursorZone(
  * returns an empty map, a setter that warns and no-ops, and `null` identity
  * until sync completes — then wires up automatically.
  *
- * Type parameter `T` is an assertion about the shape of presence values; no
- * runtime validation is performed.
+ * Type parameters describe the selected channel and its payload. No runtime
+ * validation is performed.
  */
-export function usePresence<T extends Record<string, unknown> = Record<string, unknown>>(
-  channel: string,
+export function usePresence<
+  Channel extends string,
+  Payload extends Record<string, unknown> = Record<string, unknown>,
+>(
+  channel: Channel,
 ): {
-  presences: Map<string, PresenceView<T>>;
-  setMyPresence: (data: T) => void;
+  presences: SelectedPresences<Channel, Payload>;
+  setMyPresence: (data: Payload) => void;
   myIdentity: PlayerIdentity | null;
 } {
   const { isLoading } = useContext(PlayContext);
   const presences = usePlayhtmlSubscription(
     isLoading,
-    () => new Map<string, PresenceView<T>>(),
+    () => new Map() as SelectedPresences<Channel, Payload>,
     (setPresences) => {
-      setPresences(playhtml.presence.getPresences() as Map<string, PresenceView<T>>);
+      setPresences(
+        playhtml.presence.getPresences() as SelectedPresences<Channel, Payload>,
+      );
       return playhtml.presence.onPresenceChange(channel, (next) => {
-        setPresences(new Map(next) as Map<string, PresenceView<T>>);
+        setPresences(new Map(next) as SelectedPresences<Channel, Payload>);
       });
     },
     [channel],
   );
 
   const setMyPresence = useCallback(
-    (data: T) => {
+    (data: Payload) => {
       if (isLoading) {
         warnPreInit(`usePresence("${channel}").setMyPresence`);
         return;
