@@ -706,17 +706,6 @@ button {
   }
 
   &--joining {
-    border-color: rgba($accent-gold, 0.75);
-    background:
-      repeating-linear-gradient(
-        90deg,
-        rgba($accent-gold, 0.18) 0 2px,
-        transparent 2px 5px
-      ),
-      #4e5351;
-    box-shadow:
-      inset -2px 0 rgba($bg, 0.65),
-      0 0 0 3px rgba($accent-gold, 0.2);
     animation: side-door-welcome 1.4s ease both;
   }
 }
@@ -729,6 +718,7 @@ button {
   display: flex;
   align-items: center;
   gap: 5px;
+  opacity: 0;
   pointer-events: none;
   animation: carriage-entry 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) both;
 
