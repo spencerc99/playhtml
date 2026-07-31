@@ -263,28 +263,6 @@ button {
   animation-play-state: paused;
 }
 
-.landscape--arriving {
-  .landscape-track--clouds {
-    animation-duration: 120s;
-  }
-
-  .landscape-track--mountain {
-    animation-duration: 42s;
-  }
-
-  .landscape-track--foreground {
-    animation-duration: 24s;
-  }
-
-  .landscape-track--water {
-    animation-duration: 15s;
-  }
-
-  .landscape-track--lower-trees {
-    animation-duration: 20s;
-  }
-}
-
 .landscape-cloud {
   fill: none;
   stroke: $landscape-ink;
@@ -618,6 +596,51 @@ button {
   &--right {
     right: 3px;
   }
+
+  &--joining {
+    border-color: rgba($accent-gold, 0.75);
+    background:
+      repeating-linear-gradient(
+        90deg,
+        rgba($accent-gold, 0.18) 0 2px,
+        transparent 2px 5px
+      ),
+      #4e5351;
+    box-shadow:
+      inset -2px 0 rgba($bg, 0.65),
+      0 0 0 3px rgba($accent-gold, 0.2);
+    animation: side-door-welcome 1.4s ease both;
+  }
+}
+
+.train-joiner {
+  position: absolute;
+  top: 140px;
+  left: 5px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  pointer-events: none;
+  animation: carriage-entry 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+
+  .cursor-rider {
+    position: relative;
+    top: auto;
+    left: auto;
+  }
+}
+
+.train-joiner__message {
+  padding: 3px 6px;
+  color: $text;
+  border: 1px solid rgba($text, 0.25);
+  border-radius: 4px;
+  background: rgba($bg, 0.94);
+  box-shadow: 0 1px 4px rgba($text, 0.18);
+  font-family: $font-mono;
+  font-size: 8px;
+  white-space: nowrap;
 }
 
 .train-door {
@@ -642,7 +665,10 @@ button {
   }
 
   &--exit {
-    cursor: pointer;
+    cursor:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Crect x='2' y='3' width='13' height='21' rx='2' fill='%23faf7f2' stroke='%235a4e41' stroke-width='2'/%3E%3Cpath d='M10 14h15m-5-5 5 5-5 5' fill='none' stroke='%23c56d4f' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+        14 14,
+      alias;
 
     &::after {
       content: "";
@@ -654,7 +680,20 @@ button {
     }
 
     .train-door__label {
-      opacity: 1;
+      opacity: 0;
+    }
+
+    &:hover,
+    &:focus-visible {
+      .train-door__panel {
+        border-color: rgba($accent-gold, 0.9);
+        box-shadow: 0 0 0 2px rgba($accent-gold, 0.18);
+      }
+
+      .train-door__label {
+        opacity: 1;
+        transform: translate(-50%, 2px);
+      }
     }
   }
 }
@@ -688,7 +727,9 @@ button {
   font-weight: 600;
   opacity: 0;
   transform: translateX(-50%);
-  transition: opacity 0.5s;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
   white-space: nowrap;
 }
 
@@ -1012,6 +1053,53 @@ button {
 
   50% {
     box-shadow: 0 0 0 6px rgba($accent-gold, 0.35);
+  }
+}
+
+@keyframes side-door-welcome {
+  0%,
+  100% {
+    border-color: rgba(90, 78, 65, 0.35);
+    background: $car-metal;
+    box-shadow: none;
+    filter: brightness(1);
+  }
+
+  35%,
+  70% {
+    border-color: rgba($accent-gold, 0.75);
+    background:
+      repeating-linear-gradient(
+        90deg,
+        rgba($accent-gold, 0.18) 0 2px,
+        transparent 2px 5px
+      ),
+      #4e5351;
+    box-shadow:
+      inset -2px 0 rgba($bg, 0.65),
+      0 0 0 3px rgba($accent-gold, 0.2);
+    filter: brightness(1.35);
+  }
+}
+
+@keyframes carriage-entry {
+  0% {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  72% {
+    opacity: 1;
+    transform: translateX(76px);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(96px);
   }
 }
 
