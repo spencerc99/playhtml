@@ -65,6 +65,11 @@ vi.mock("webextension-polyfill", () => ({
     tabs: {
       query: vi.fn().mockResolvedValue([{ id: 1, url: "https://example.com" }]),
       sendMessage: vi.fn().mockResolvedValue({ success: true }),
+      create: vi.fn().mockResolvedValue({ id: 2 }),
+      update: vi.fn().mockResolvedValue({ id: 1 }),
+    },
+    windows: {
+      update: vi.fn().mockResolvedValue({ id: 1 }),
     },
   },
 }));

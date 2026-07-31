@@ -53,7 +53,8 @@ export default {
     }
 
     if (path === '/commute/recent' && request.method === 'GET') {
-      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      // This response is reduced to public destinations, domain-only scenery,
+      // and aggregate counts. Extension-page GETs can omit Origin and Referer.
       return handleCommute(request, env);
     }
 

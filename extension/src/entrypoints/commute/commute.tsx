@@ -7,6 +7,7 @@ import {
   PlayProvider,
   useCursorZone,
   usePlayContext,
+  useUsers,
   withSharedState,
 } from "@playhtml/react";
 import { COMMUTE_RECENT_URL } from "@movement/config";
@@ -47,7 +48,7 @@ interface CommuteCarProps {
   currentStop: CommuteStop;
   phase: CommutePhase;
   atOrigin: boolean;
-  onRiderStateChange: (state: { count: number; hasSeat: boolean }) => void;
+  onSeatStateChange: (hasSeat: boolean) => void;
 }
 
 interface RecentRoute {
@@ -423,11 +424,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     ]);
 
     useEffect(() => {
-      props.onRiderStateChange({
-        count: displayedRiders.size,
-        hasSeat: mySeatId !== null,
-      });
-    }, [displayedRiders, mySeatId, props.onRiderStateChange]);
+      props.onSeatStateChange(mySeatId !== null);
+    }, [mySeatId, props.onSeatStateChange]);
 
     useEffect(
       () => () => {
@@ -577,6 +575,7 @@ function Banner({
 }
 
 function InternetCommute() {
+  const riders = useUsers();
   const recentRoute = useRecentRoute();
   const stops =
     recentRoute.status === "live" ? recentRoute.stops : SAMPLE_STOPS;
@@ -586,10 +585,7 @@ function InternetCommute() {
       : SAMPLE_STOPS;
   const browsingCount = recentRoute.activePeople;
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [riderState, setRiderState] = useState({
-    count: 0,
-    hasSeat: false,
-  });
+  const [hasSeat, setHasSeat] = useState(false);
 
   useEffect(() => {
     const startedAt = Date.now();
@@ -627,7 +623,7 @@ function InternetCommute() {
           secondsLeft={timing.secondsLeft}
           atOrigin={timing.atOrigin}
           currentStop={currentStop}
-          hasSeat={riderState.hasSeat}
+          hasSeat={hasSeat}
         />
 
         <LandscapeWindow
@@ -642,7 +638,7 @@ function InternetCommute() {
           currentStop={currentStop}
           phase={timing.phase}
           atOrigin={timing.atOrigin}
-          onRiderStateChange={setRiderState}
+          onSeatStateChange={setHasSeat}
         />
         <LandscapeWindow
           currentStop={currentStop}
@@ -654,8 +650,7 @@ function InternetCommute() {
 
         <div className="commute-counts">
           <strong>
-            {riderState.count}{" "}
-            {riderState.count === 1 ? "person" : "people"} riding
+            {riders.length} {riders.length === 1 ? "person" : "people"} riding
           </strong>
           <span>LOCAL LINE · EVERY STOP</span>
           <strong>

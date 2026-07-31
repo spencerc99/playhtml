@@ -28,6 +28,10 @@ import {
   InventoryItem,
   PlayHTMLStatus,
 } from "../../types";
+import {
+  findOpenCommuteTab,
+  openOrFocusCommute,
+} from "./commuteNavigation";
 
 const PUBLIC_CHANGELOG_URL = "https://wewere.online/changelog/";
 
@@ -52,6 +56,7 @@ function PlayHTMLPopup() {
     "main" | "inventory" | "collections" | "profile" | "bag-settings"
   >("main");
   const [internalDevFeaturesEnabled, setInternalDevFeaturesEnabled] = useState(false);
+  const [commuteIsOpen, setCommuteIsOpen] = useState(false);
   const [hiddenSite, setHiddenSite] = useState<{
     origin: string;
     name: string;
@@ -99,6 +104,13 @@ function PlayHTMLPopup() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!FLAGS.COMMUTE && !internalDevFeaturesEnabled) return;
+    findOpenCommuteTab()
+      .then((tab) => setCommuteIsOpen(tab !== null))
+      .catch(() => setCommuteIsOpen(false));
+  }, [internalDevFeaturesEnabled]);
 
   const loadPlayerData = async () => {
     try {
@@ -459,12 +471,12 @@ function PlayHTMLPopup() {
       onViewCommute={
         FLAGS.COMMUTE || internalDevFeaturesEnabled
           ? async () => {
-              const url = browser.runtime.getURL("commute.html");
-              await browser.tabs.create({ url });
+              await openOrFocusCommute();
               window.close();
             }
           : undefined
       }
+      commuteIsOpen={commuteIsOpen}
       onViewScraps={
         FLAGS.SCRAPS || internalDevFeaturesEnabled
           ? async () => {
