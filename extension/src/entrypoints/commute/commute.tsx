@@ -36,6 +36,7 @@ import {
   INITIAL_PLATFORM_SECONDS,
   type CommutePhase,
 } from "./commuteTiming";
+import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import { ProceduralLandscape } from "./landscape";
 import "./commute.scss";
 
@@ -853,6 +854,8 @@ function InternetCommute() {
           a slow train through the recent web — stops are pages other riders
           visited lately
         </p>
+
+        <CommuteInstallPrompt />
 
         <Banner
           phase={timing.phase}
