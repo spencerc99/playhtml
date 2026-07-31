@@ -112,85 +112,77 @@ button {
 }
 
 .commute-install-cta {
-  width: 100%;
-  min-height: 62px;
-  margin: 0 0 14px;
-  padding: 9px 14px 9px 10px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 30;
+  min-width: 174px;
+  padding: 8px 8px 8px 11px;
+  display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 10px;
   border: 1px dashed rgba($text, 0.32);
-  border-left: 5px solid $accent-gold;
-  border-radius: 8px;
+  border-radius: 7px;
   background:
     repeating-linear-gradient(
       90deg,
       rgba($accent-gold, 0.04) 0 1px,
       transparent 1px 5px
     ),
-    rgba($surface, 0.9);
-  box-shadow: 0 1px 4px rgba($text, 0.08);
+    rgba($surface, 0.96);
+  box-shadow: 0 2px 8px rgba($text, 0.14);
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
+
+  &:hover,
+  &:focus-visible {
+    border-color: rgba($accent-teal, 0.72);
+    box-shadow: 0 3px 12px rgba($text, 0.18);
+    outline: none;
+    transform: translateY(-1px);
+  }
 }
 
 .commute-install-cta__ticket {
-  padding: 8px 9px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
   color: $bg;
-  border-radius: 5px;
+  border-radius: 4px;
   background: $accent-rust;
   font-family: $font-mono;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
 }
 
 .commute-install-cta__copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 
   strong {
-    font-size: 15px;
+    font-size: 12px;
   }
 
   span {
     color: $text-muted;
-    font-size: 11px;
+    font-family: $font-mono;
+    font-size: 8px;
   }
 }
 
-.commute-install-cta__links {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: $font-mono;
-  font-size: 10px;
-
-  > span {
-    color: $text-muted;
-  }
-
-  a {
-    padding: 6px 8px;
-    border: 1px solid rgba($accent-teal, 0.45);
-    border-radius: 5px;
-    background: rgba($bg, 0.72);
-    color: $text;
-    text-decoration: none;
-    transition:
-      border-color 0.15s,
-      background 0.15s,
-      transform 0.15s;
-
-    &:hover,
-    &:focus-visible {
-      border-color: $accent-teal;
-      background: rgba($accent-teal, 0.12);
-      outline: none;
-      transform: translateY(-1px);
-    }
+@media (max-width: 600px) {
+  .commute-install-cta {
+    right: auto;
+    bottom: 8px;
+    left: 8px;
   }
 }
 

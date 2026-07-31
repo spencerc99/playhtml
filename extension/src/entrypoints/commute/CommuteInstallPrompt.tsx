@@ -1,8 +1,7 @@
-// ABOUTME: Shows browser-store links on the public commute when the extension is absent.
+// ABOUTME: Links the public commute to the extension homepage when installation is absent.
 // ABOUTME: Waits for the content-script marker so installed riders do not see the prompt.
 
 import { useEffect, useState } from "react";
-import { DOWNLOAD_LINKS } from "@movement/downloadLinks";
 import {
   EXTENSION_INSTALL_ATTRIBUTE,
   isExtensionInstalled,
@@ -64,25 +63,20 @@ export function CommuteInstallPrompt() {
   if (installState !== "missing") return null;
 
   return (
-    <aside
+    <a
       className="commute-install-cta"
-      aria-label="Download the we were online extension"
+      href="https://wewere.online/"
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Visit we were online to download the extension"
     >
-      <span className="commute-install-cta__ticket" aria-hidden="true">
-        ADD YOUR STOP
-      </span>
       <span className="commute-install-cta__copy">
-        <strong>make your browsing part of the line</strong>
-        <span>get the extension to leave stops for future riders</span>
+        <strong>add your stops</strong>
+        <span>get the extension →</span>
       </span>
-      <span className="commute-install-cta__links">
-        <span>download:</span>
-        {DOWNLOAD_LINKS.map(({ browser, url }) => (
-          <a key={browser} href={url} target="_blank" rel="noreferrer">
-            {browser}
-          </a>
-        ))}
+      <span className="commute-install-cta__ticket" aria-hidden="true">
+        WWO
       </span>
-    </aside>
+    </a>
   );
 }

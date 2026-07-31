@@ -47,10 +47,10 @@ describe("CommuteInstallPrompt", () => {
       vi.advanceTimersByTime(800);
     });
 
-    expect(container.textContent).toContain(
-      "make your browsing part of the line",
-    );
-    expect(container.querySelectorAll("a")).toHaveLength(3);
+    expect(container.textContent).toContain("get the extension");
+    const link = container.querySelector("a");
+    expect(link?.href).toBe("https://wewere.online/");
+    expect(link?.target).toBe("_blank");
     act(() => root.unmount());
   });
 
