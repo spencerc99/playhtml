@@ -2119,6 +2119,12 @@ export class CursorClientAwareness {
     // Update options object
     Object.assign(this.options, options);
 
+    if ("shouldRenderCursor" in options) {
+      for (const [stableId, presence] of this.activeCursorPresenceEntries()) {
+        this.updateCursor(stableId, presence);
+      }
+    }
+
     // Update visibility threshold if changed
     if (options.visibilityThreshold !== undefined) {
       this.visibilityThreshold = options.visibilityThreshold;
