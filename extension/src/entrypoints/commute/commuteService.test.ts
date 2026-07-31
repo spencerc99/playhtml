@@ -6,7 +6,8 @@ import { SAMPLE_STOPS } from "./commuteStops";
 import {
   COMMUTE_SERVICE_CHANNEL,
   createCommuteService,
-  estimateServerTimeOffset,
+  getCommuteServicesFromPresences,
+  getCommuteStops,
   getCommuteServiceFromPresence,
   selectCommuteService,
 } from "./commuteService";
@@ -14,7 +15,6 @@ import {
 function presenceFor(service: ReturnType<typeof createCommuteService>) {
   return {
     [COMMUTE_SERVICE_CHANNEL]: {
-      joinedAt: service.startedAt,
       service,
     },
   };
@@ -25,10 +25,10 @@ describe("Internet Commute service", () => {
     const stops = SAMPLE_STOPS.slice(0, 2).map((stop) => ({ ...stop }));
     const service = createCommuteService(1_000, "rider-a", stops);
 
-    stops[0].domain = "changed.example";
+    stops[0].title = "changed title";
 
     expect(service.id).toBe("1000:rider-a");
-    expect(service.stops[0].domain).toBe(SAMPLE_STOPS[0].domain);
+    expect(service.stops[0].title).toBe(SAMPLE_STOPS[0].title);
   });
 
   it("selects the earliest valid active service", () => {
@@ -36,11 +36,7 @@ describe("Internet Commute service", () => {
     const later = createCommuteService(1_100, "rider-b", SAMPLE_STOPS);
 
     expect(
-      selectCommuteService([
-        presenceFor(later),
-        { [COMMUTE_SERVICE_CHANNEL]: { service: null } },
-        presenceFor(first),
-      ]),
+      selectCommuteService([later, first]),
     ).toEqual(first);
   });
 
@@ -49,14 +45,14 @@ describe("Internet Commute service", () => {
     const serviceA = createCommuteService(1_000, "rider-a", SAMPLE_STOPS);
 
     expect(
-      selectCommuteService([presenceFor(serviceB), presenceFor(serviceA)])?.id,
+      selectCommuteService([serviceB, serviceA])?.id,
     ).toBe(serviceA.id);
   });
 
   it("ignores malformed route data from presence", () => {
+    const valid = createCommuteService(1_000, "rider-a", SAMPLE_STOPS);
     const malformed = {
       [COMMUTE_SERVICE_CHANNEL]: {
-        joinedAt: 1_000,
         service: {
           id: "bad",
           startedAt: 1_000,
@@ -66,16 +62,49 @@ describe("Internet Commute service", () => {
     };
 
     expect(getCommuteServiceFromPresence(malformed)).toBeNull();
-    expect(selectCommuteService([malformed])).toBeNull();
+    expect(
+      getCommuteServicesFromPresences([malformed, presenceFor(valid)]),
+    ).toEqual([valid]);
   });
 
-  it("calibrates from receipt because generatedAt is set after route work", () => {
-    expect(estimateServerTimeOffset(10_100, 9_900, 10_150)).toBe(-50);
+  it("reconstructs display stops from the compact service route", () => {
+    const service = createCommuteService(1_000, "rider-a", [
+      {
+        ...SAMPLE_STOPS[0],
+        url: "https://www.example.com/a-page",
+        title: "A page",
+      },
+    ]);
+
+    expect(getCommuteStops(service)[0]).toMatchObject({
+      id: "https://www.example.com/a-page",
+      domain: "example.com",
+      path: "/a-page",
+      title: "A page",
+      source: "sample",
+    });
   });
 
-  it("rejects an inverted request interval", () => {
-    expect(() => estimateServerTimeOffset(10_000, 10_100, 10_000)).toThrow(
-      "Internet Commute response preceded its request",
+  it("keeps a ten-stop route below the PlayHTML presence value limit", () => {
+    const stops = Array.from({ length: 10 }, (_, index) => ({
+      ...SAMPLE_STOPS[0],
+      url: `https://destination-${index}.example/${"path/".repeat(20)}`,
+      title: "T".repeat(100),
+      visitedAt: 1_000 + index,
+      sampleAge: null,
+      source: "live" as const,
+    }));
+    const service = createCommuteService(
+      1_000,
+      `pk_${"a".repeat(130)}`,
+      stops,
     );
+    const wireValue = {
+      at: 1_000,
+      value: { service },
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(wireValue)).byteLength;
+
+    expect(bytes).toBeLessThanOrEqual(4_096);
   });
 });

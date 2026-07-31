@@ -6,14 +6,22 @@ import type { CommuteStop } from "./commuteStops";
 export const COMMUTE_SERVICE_CHANNEL = "internet-commute-service";
 export const COMMUTE_SERVICE_DISCOVERY_MS = 1_500;
 
+export interface CommuteServiceStop {
+  url: string;
+  title: string | null;
+  visitedAt: number | null;
+  sampleAge: string | null;
+  hue: string;
+  source: "live" | "sample";
+}
+
 export interface CommuteService {
   id: string;
   startedAt: number;
-  stops: CommuteStop[];
+  stops: CommuteServiceStop[];
 }
 
 export interface CommuteServicePresence extends Record<string, unknown> {
-  joinedAt: number;
   service: CommuteService;
 }
 
@@ -25,18 +33,23 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
-function isCommuteStop(value: unknown): value is CommuteStop {
+function isWebUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function isCommuteServiceStop(value: unknown): value is CommuteServiceStop {
   if (!isRecord(value)) return false;
 
   return (
-    typeof value.id === "string" &&
-    typeof value.url === "string" &&
-    typeof value.domain === "string" &&
-    typeof value.path === "string" &&
+    isWebUrl(value.url) &&
     isNullableString(value.title) &&
-    isNullableString(value.faviconUrl) &&
-    typeof value.recentDomainVisits === "number" &&
-    typeof value.visitedBy === "string" &&
     (value.visitedAt === null || typeof value.visitedAt === "number") &&
     isNullableString(value.sampleAge) &&
     typeof value.hue === "string" &&
@@ -55,7 +68,7 @@ export function isCommuteService(value: unknown): value is CommuteService {
     value.startedAt > 0 &&
     Array.isArray(value.stops) &&
     value.stops.length > 0 &&
-    value.stops.every(isCommuteStop)
+    value.stops.every(isCommuteServiceStop)
   );
 }
 
@@ -72,15 +85,25 @@ export function getCommuteServiceFromPresence(
   return channelValue.service;
 }
 
-export function selectCommuteService(
+export function getCommuteServicesFromPresences(
   presences: Iterable<unknown>,
+): CommuteService[] {
+  const services: CommuteService[] = [];
+
+  for (const presence of presences) {
+    const service = getCommuteServiceFromPresence(presence);
+    if (service) services.push(service);
+  }
+
+  return services;
+}
+
+export function selectCommuteService(
+  services: Iterable<CommuteService>,
 ): CommuteService | null {
   let selected: CommuteService | null = null;
 
-  for (const presence of presences) {
-    const candidate = getCommuteServiceFromPresence(presence);
-    if (!candidate) continue;
-
+  for (const candidate of services) {
     if (
       selected === null ||
       candidate.startedAt < selected.startedAt ||
@@ -112,18 +135,36 @@ export function createCommuteService(
   return {
     id: `${Math.floor(startedAt)}:${creatorId}`,
     startedAt,
-    stops: stops.map((stop) => ({ ...stop })),
+    stops: stops.map(
+      ({ url, title, visitedAt, sampleAge, hue, source }) => ({
+        url,
+        title,
+        visitedAt,
+        sampleAge,
+        hue,
+        source,
+      }),
+    ),
   };
 }
 
-export function estimateServerTimeOffset(
-  generatedAt: number,
-  requestStartedAt: number,
-  responseReceivedAt: number,
-): number {
-  if (responseReceivedAt < requestStartedAt) {
-    throw new Error("Internet Commute response preceded its request");
-  }
+export function getCommuteStops(service: CommuteService): CommuteStop[] {
+  return service.stops.map((stop) => {
+    const url = new URL(stop.url);
 
-  return generatedAt - responseReceivedAt;
+    return {
+      id: stop.url,
+      url: stop.url,
+      domain: url.hostname.replace(/^www\./, ""),
+      path: url.pathname || "/",
+      title: stop.title,
+      faviconUrl: null,
+      recentDomainVisits: 1,
+      visitedBy: "another rider",
+      visitedAt: stop.visitedAt,
+      sampleAge: stop.sampleAge,
+      hue: stop.hue,
+      source: stop.source,
+    };
+  });
 }

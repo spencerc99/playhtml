@@ -25,7 +25,8 @@ import {
   COMMUTE_SERVICE_CHANNEL,
   COMMUTE_SERVICE_DISCOVERY_MS,
   createCommuteService,
-  estimateServerTimeOffset,
+  getCommuteServicesFromPresences,
+  getCommuteStops,
   selectCommuteService,
   type CommuteService,
   type CommuteServicePresence,
@@ -113,7 +114,6 @@ function useRecentRoute(): RecentRoute {
 
     const load = async () => {
       try {
-        const requestStartedAt = Date.now();
         const response = await fetch(COMMUTE_RECENT_URL, {
           signal: controller.signal,
         });
@@ -122,7 +122,6 @@ function useRecentRoute(): RecentRoute {
         }
 
         const commute = parseCommuteResponse(await response.json());
-        const responseReceivedAt = Date.now();
         if (hasLoadedRoute) {
           setRoute((current) => ({
             ...current,
@@ -134,11 +133,7 @@ function useRecentRoute(): RecentRoute {
             stops: commute.stops,
             sceneryStops: commute.sceneryStops,
             activePeople: commute.activePeople,
-            serverTimeOffsetMs: estimateServerTimeOffset(
-              commute.generatedAt,
-              requestStartedAt,
-              responseReceivedAt,
-            ),
+            serverTimeOffsetMs: commute.generatedAt - Date.now(),
             status: commute.stops.length > 0 ? "live" : "empty",
           });
         }
@@ -186,15 +181,6 @@ interface CommuteServiceConnection {
   service: CommuteService | null;
 }
 
-function presenceWithService(service: CommuteService): Record<string, unknown> {
-  return {
-    [COMMUTE_SERVICE_CHANNEL]: {
-      joinedAt: service.startedAt,
-      service,
-    },
-  };
-}
-
 function useCommuteService(
   availableStops: CommuteStop[],
   routeStatus: RecentRoute["status"],
@@ -219,7 +205,7 @@ function useCommuteService(
 
     const discoveryTimer = window.setTimeout(() => {
       const existingService = selectCommuteService(
-        presencesRef.current.values(),
+        getCommuteServicesFromPresences(presencesRef.current.values()),
       );
       if (
         existingService === null &&
@@ -233,7 +219,6 @@ function useCommuteService(
         existingService ??
         createCommuteService(serverNow, myIdentity.publicKey, availableStops);
       const presence: CommuteServicePresence = {
-        joinedAt: serverNow,
         service,
       };
 
@@ -255,9 +240,9 @@ function useCommuteService(
   ]);
 
   const canonicalService = useMemo(() => {
-    const candidates: unknown[] = [...presences.values()];
+    const candidates = getCommuteServicesFromPresences(presences.values());
     if (connection.service) {
-      candidates.push(presenceWithService(connection.service));
+      candidates.push(connection.service);
     }
     return selectCommuteService(candidates);
   }, [connection.service, presences]);
@@ -266,14 +251,12 @@ function useCommuteService(
     if (
       !connection.service ||
       !canonicalService ||
-      canonicalService.id === connection.service.id ||
-      serverTimeOffsetMs === null
+      canonicalService.id === connection.service.id
     ) {
       return;
     }
 
     const presence: CommuteServicePresence = {
-      joinedAt: Date.now() + serverTimeOffsetMs,
       service: canonicalService,
     };
     setConnection({
@@ -284,7 +267,6 @@ function useCommuteService(
   }, [
     canonicalService,
     connection.service,
-    serverTimeOffsetMs,
     setMyPresence,
   ]);
 
@@ -786,7 +768,13 @@ function InternetCommute() {
     recentRoute.status,
     recentRoute.serverTimeOffsetMs,
   );
-  const stops = serviceConnection.service?.stops ?? availableStops;
+  const stops = useMemo(
+    () =>
+      serviceConnection.service
+        ? getCommuteStops(serviceConnection.service)
+        : availableStops,
+    [availableStops, serviceConnection.service],
+  );
   const sceneryStops =
     recentRoute.sceneryStops.length > 0
       ? recentRoute.sceneryStops
