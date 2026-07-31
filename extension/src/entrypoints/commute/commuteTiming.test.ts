@@ -10,32 +10,85 @@ describe("getCommuteTiming", () => {
       phase: "stopped",
       secondsLeft: 10,
       stopIndex: 0,
+      departureStopIndex: null,
       atOrigin: true,
     });
   });
 
-  it("moves through travel, arrival, and the destination platform", () => {
-    expect(getCommuteTiming(10, 5).phase).toBe("riding");
-    expect(getCommuteTiming(25, 5)).toEqual({
-      phase: "arriving",
-      secondsLeft: 4,
-      stopIndex: 0,
-      atOrigin: false,
-    });
-    expect(getCommuteTiming(29, 5)).toEqual({
+  it("keeps the initial Home Station platform open for ten seconds", () => {
+    expect(getCommuteTiming(9.999, 5)).toMatchObject({
       phase: "stopped",
-      secondsLeft: 10,
       stopIndex: 0,
+      departureStopIndex: null,
+      atOrigin: true,
+    });
+    expect(getCommuteTiming(9.999, 5).secondsLeft).toBeCloseTo(0.001);
+    expect(getCommuteTiming(10, 5)).toEqual({
+      phase: "riding",
+      secondsLeft: 15,
+      stopIndex: 0,
+      departureStopIndex: null,
       atOrigin: false,
     });
   });
 
-  it("advances to the next route stop after the platform dwell", () => {
-    expect(getCommuteTiming(39, 5)).toEqual({
+  it("moves through travel, arrival, and a five-second destination dwell", () => {
+    expect(getCommuteTiming(24.999, 5)).toMatchObject({
+      phase: "riding",
+      stopIndex: 0,
+      departureStopIndex: null,
+    });
+    expect(getCommuteTiming(25, 5)).toEqual({
+      phase: "arriving",
+      secondsLeft: 4,
+      stopIndex: 0,
+      departureStopIndex: null,
+      atOrigin: false,
+    });
+    expect(getCommuteTiming(28.999, 5)).toMatchObject({
+      phase: "arriving",
+      stopIndex: 0,
+      departureStopIndex: null,
+    });
+    expect(getCommuteTiming(29, 5)).toEqual({
+      phase: "stopped",
+      secondsLeft: 5,
+      stopIndex: 0,
+      departureStopIndex: null,
+      atOrigin: false,
+    });
+    expect(getCommuteTiming(33.999, 5)).toMatchObject({
+      phase: "stopped",
+      stopIndex: 0,
+      departureStopIndex: null,
+    });
+  });
+
+  it("keeps showing the departed stop through the platform departure", () => {
+    expect(getCommuteTiming(34, 5)).toEqual({
       phase: "riding",
       secondsLeft: 15,
       stopIndex: 1,
+      departureStopIndex: 0,
       atOrigin: false,
+    });
+    expect(getCommuteTiming(36.599, 5)).toMatchObject({
+      phase: "riding",
+      stopIndex: 1,
+      departureStopIndex: 0,
+    });
+    expect(getCommuteTiming(36.6, 5)).toMatchObject({
+      phase: "riding",
+      stopIndex: 1,
+      departureStopIndex: null,
+    });
+  });
+
+  it("identifies the previous stop when the route loops", () => {
+    expect(getCommuteTiming(58, 2)).toMatchObject({
+      phase: "riding",
+      stopIndex: 0,
+      departureStopIndex: 1,
     });
   });
 
