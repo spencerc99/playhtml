@@ -730,6 +730,7 @@ function Banner({
   let aside: React.ReactNode;
   let instruction = "";
   const stopName = getStopDisplayName(currentStop);
+  const stopTitle = stopName === currentStop.domain ? null : stopName;
 
   if (atOrigin) {
     message = `next train to ${stopName}`;
@@ -748,9 +749,14 @@ function Banner({
     } until next stop`;
     aside = (
       <>
-        <span>next stop:</span>
+        <span>next stop</span>
         <StopFavicon stop={currentStop} />
-        <span className="commute-banner__domain">{currentStop.domain}</span>
+        <span className="commute-banner__destination">
+          <span className="commute-banner__domain">{currentStop.domain}</span>
+          {stopTitle && (
+            <span className="commute-banner__title">{stopTitle}</span>
+          )}
+        </span>
       </>
     );
     if (!hasSeat) instruction = "click an empty seat to sit";
