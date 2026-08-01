@@ -15,6 +15,7 @@ import { COMMUTE_RECENT_URL } from "@movement/config";
 import {
   formatStopAge,
   getFaviconUrl,
+  getPassingSceneryStops,
   getStopDisplayDetail,
   getStopDisplayName,
   parseCommuteResponse,
@@ -419,6 +420,7 @@ function LandscapeWindow({
   platformAtOrigin,
   edge,
   stops,
+  stopIndex,
 }: {
   currentStop: CommuteStop;
   platformStop: CommuteStop;
@@ -426,10 +428,13 @@ function LandscapeWindow({
   platformAtOrigin: boolean;
   edge: "upper" | "lower";
   stops: CommuteStop[];
+  stopIndex: number;
 }) {
-  const passingSites = stops
-    .filter((stop) => stop.id !== currentStop.id)
-    .slice(0, 4);
+  const passingSites = getPassingSceneryStops(
+    stops,
+    currentStop.domain,
+    stopIndex,
+  );
   const stationVisible = phase === "stopped" || phase === "arriving";
 
   return (
@@ -860,6 +865,7 @@ function InternetCommute() {
           platformAtOrigin={platformAtOrigin}
           edge="upper"
           stops={sceneryStops}
+          stopIndex={timing.stopIndex}
         />
         <CommuteCar
           id="internet-commute-car"
@@ -876,6 +882,7 @@ function InternetCommute() {
           platformAtOrigin={platformAtOrigin}
           edge="lower"
           stops={sceneryStops}
+          stopIndex={timing.stopIndex}
         />
 
         <div className="commute-counts">
