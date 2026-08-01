@@ -23,6 +23,7 @@ const NEVER_LAND_DOMAINS = [
   'docs.superhuman.com',
   'drive.google.com',
   'gemini.google.com',
+  'grok.com',
   'mail.google.com',
   'outlook.cloud.microsoft',
   'outlook.live.com',

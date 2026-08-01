@@ -185,6 +185,43 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('keeps Grok as scenery while allowing Archive.org item pages as stops', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'grok',
+          'navigation',
+          'https://grok.com/',
+          200,
+          'grok-rider',
+          'Grok',
+        ),
+        event(
+          'archive-item',
+          'navigation',
+          'https://archive.org/details/computerchronicles',
+          100,
+          'archive-rider',
+          'Computer Chronicles',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'grok.com',
+      'archive.org',
+    ]);
+    expect(response.destinations).toEqual([
+      expect.objectContaining({
+        domain: 'archive.org',
+        title: 'Computer Chronicles',
+        url: 'https://archive.org/details/computerchronicles',
+      }),
+    ]);
+  });
+
   it('keeps user-bound surfaces as scenery but excludes them from destinations', () => {
     const response = buildCommuteResponse(
       [
