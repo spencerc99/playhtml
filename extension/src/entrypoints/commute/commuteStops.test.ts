@@ -8,6 +8,7 @@ import {
   deriveRecentStops,
   formatStopAge,
   getFaviconUrl,
+  getPassingSceneryStops,
   getStopDisplayDetail,
   getStopDisplayName,
   parseCommuteResponse,
@@ -54,6 +55,38 @@ function commuteStop(
     ...overrides,
   };
 }
+
+describe("getPassingSceneryStops", () => {
+  it("rotates the visible domains for each stop and omits the current domain", () => {
+    const stops = [
+      commuteStop("current.example"),
+      ...Array.from({ length: 9 }, (_, index) =>
+        commuteStop(`scenery-${index}.example`),
+      ),
+    ];
+
+    expect(
+      getPassingSceneryStops(stops, "current.example", 0).map(
+        (stop) => stop.domain,
+      ),
+    ).toEqual([
+      "scenery-0.example",
+      "scenery-1.example",
+      "scenery-2.example",
+      "scenery-3.example",
+    ]);
+    expect(
+      getPassingSceneryStops(stops, "current.example", 1).map(
+        (stop) => stop.domain,
+      ),
+    ).toEqual([
+      "scenery-4.example",
+      "scenery-5.example",
+      "scenery-6.example",
+      "scenery-7.example",
+    ]);
+  });
+});
 
 describe("deriveRecentStops", () => {
   it("returns the newest unique web pages without query strings or hashes", () => {

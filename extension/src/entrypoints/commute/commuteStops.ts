@@ -19,6 +19,23 @@ export interface CommuteStop {
   source: "live" | "sample";
 }
 
+const PASSING_SCENERY_COUNT = 4;
+
+export function getPassingSceneryStops(
+  stops: CommuteStop[],
+  currentDomain: string,
+  stopIndex: number,
+): CommuteStop[] {
+  const candidates = stops.filter((stop) => stop.domain !== currentDomain);
+  if (candidates.length <= PASSING_SCENERY_COUNT) return candidates;
+
+  const start = (stopIndex * PASSING_SCENERY_COUNT) % candidates.length;
+  return [...candidates, ...candidates].slice(
+    start,
+    start + PASSING_SCENERY_COUNT,
+  );
+}
+
 export const SAMPLE_STOPS: CommuteStop[] = [
   {
     id: "html-energy",
