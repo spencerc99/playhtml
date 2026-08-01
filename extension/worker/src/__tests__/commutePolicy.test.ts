@@ -109,6 +109,82 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('keeps large documentation and authentication surfaces as scenery only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'superhuman-docs',
+          'navigation',
+          'https://docs.superhuman.com/help/article',
+          300,
+          'docs-rider',
+          'Superhuman Help Center',
+        ),
+        event(
+          'saml-callback',
+          'navigation',
+          'https://idpproxy.illinois.edu/simplesaml/module.php/saml/sp/saml2-acs.php/saml-sp',
+          200,
+          'auth-rider',
+          'Sign in',
+        ),
+        event(
+          'saml-callback-path',
+          'navigation',
+          'https://university.example/simplesaml/module.php/saml/sp/saml2-acs.php/service',
+          150,
+          'callback-rider',
+          'University login',
+        ),
+        event(
+          'article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          100,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'docs.superhuman.com',
+      'idpproxy.illinois.edu',
+      'university.example',
+      'garden.example',
+    ]);
+    expect(
+      response.destinations.map((destination) => destination.domain),
+    ).toEqual(['garden.example']);
+  });
+
+  it('keeps IMDb entity pages while removing tracking queries', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'imdb-title',
+          'navigation',
+          'https://www.imdb.com/title/tt0133093/?ref_=nv_sr_srsg_0_tt_8_nm_0_in_0_q_matrix',
+          200,
+          'movie-rider',
+          'The Matrix (1999) - IMDb',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.destinations).toEqual([
+      expect.objectContaining({
+        domain: 'imdb.com',
+        title: 'The Matrix (1999) - IMDb',
+        url: 'https://www.imdb.com/title/tt0133093',
+      }),
+    ]);
+  });
+
   it('keeps user-bound surfaces as scenery but excludes them from destinations', () => {
     const response = buildCommuteResponse(
       [

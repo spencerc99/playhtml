@@ -20,6 +20,7 @@ const NEVER_LAND_DOMAINS = [
   'chatgpt.com',
   'discord.com',
   'docs.google.com',
+  'docs.superhuman.com',
   'drive.google.com',
   'gemini.google.com',
   'mail.google.com',
@@ -34,6 +35,7 @@ const NEVER_LAND_DOMAINS = [
 
 const TITLE_REQUIRED_DOMAINS = [
   'github.com',
+  'imdb.com',
   'instagram.com',
   'itch.io',
   'pinterest.com',
@@ -60,8 +62,11 @@ const NEVER_LAND_SUBDOMAIN_LABELS = new Set([
   'auth',
   'candidate',
   'dashboard',
+  'idp',
+  'idpproxy',
   'login',
   'mail',
+  'sso',
 ]);
 
 const NEVER_LAND_PATH_SEGMENTS = new Set([
@@ -92,6 +97,13 @@ const NEVER_LAND_PATH_PREFIXES = [
     domain: 'nytimes.com',
     prefixes: ['/puzzles/stats'],
   },
+];
+
+const AUTHENTICATION_PATH_MARKERS = [
+  'oauth2callback',
+  'saml2acs',
+  'signinoidc',
+  'simplesaml',
 ];
 
 const GENERIC_TITLES = new Set([
@@ -171,9 +183,13 @@ function hasBlockedPath(pathname: string, domain: string): boolean {
     return true;
   }
 
-  return pathname
-    .split('/')
-    .some((segment) => NEVER_LAND_PATH_SEGMENTS.has(comparableLabel(segment)));
+  return pathname.split('/').some((segment) => {
+    const label = comparableLabel(segment);
+    return (
+      NEVER_LAND_PATH_SEGMENTS.has(label) ||
+      AUTHENTICATION_PATH_MARKERS.some((marker) => label.includes(marker))
+    );
+  });
 }
 
 function getMeaningfulTitle(
@@ -239,6 +255,14 @@ function sanitizePublicDestinationUrl(rawUrl: string): string | null {
       const videoId = url.pathname.replace(/^\/+/, '').split('/')[0];
       if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
       return `https://youtu.be/${videoId}`;
+    }
+
+    if (
+      domainMatches(domain, 'imdb.com') &&
+      /^\/(?:title\/tt\d+|name\/nm\d+)(?:\/|$)/.test(url.pathname)
+    ) {
+      url.search = '';
+      return url.toString();
     }
 
     if (url.searchParams.size > 0) return null;
