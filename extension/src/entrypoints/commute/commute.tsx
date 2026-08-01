@@ -7,6 +7,7 @@ import {
   PlayProvider,
   useCursorZone,
   usePlayContext,
+  usePresence,
   useUsers,
   withSharedState,
 } from "@playhtml/react";
@@ -21,9 +22,22 @@ import {
   type CommuteStop,
 } from "./commuteStops";
 import {
+  COMMUTE_SERVICE_CHANNEL,
+  COMMUTE_SERVICE_DISCOVERY_MS,
+  createCommuteService,
+  getCommuteServicesFromPresences,
+  getCommuteStops,
+  selectCommuteService,
+  type CommuteService,
+  type CommuteServicePresence,
+} from "./commuteService";
+import {
+  DEPARTURE_SECONDS,
   getCommuteTiming,
+  INITIAL_PLATFORM_SECONDS,
   type CommutePhase,
 } from "./commuteTiming";
+import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import { ProceduralLandscape } from "./landscape";
 import "./commute.scss";
 
@@ -48,6 +62,7 @@ interface CommuteCarProps {
   currentStop: CommuteStop;
   phase: CommutePhase;
   atOrigin: boolean;
+  isJoining: boolean;
   onSeatStateChange: (hasSeat: boolean) => void;
 }
 
@@ -55,6 +70,7 @@ interface RecentRoute {
   stops: CommuteStop[];
   sceneryStops: CommuteStop[];
   activePeople: number;
+  serverTimeOffsetMs: number | null;
   status: "loading" | "live" | "empty" | "error";
 }
 
@@ -81,12 +97,14 @@ const SEATS: SeatDefinition[] = ["top", "bottom"].flatMap((row) =>
 
 const DOORS = [276, 696];
 const COMMUTE_REFRESH_MS = 30_000;
+const COMMUTE_ROUTE_TIMEOUT_MS = 5_000;
 
 function useRecentRoute(): RecentRoute {
   const [route, setRoute] = useState<RecentRoute>({
     stops: [],
     sceneryStops: [],
     activePeople: 0,
+    serverTimeOffsetMs: null,
     status: "loading",
   });
 
@@ -104,19 +122,21 @@ function useRecentRoute(): RecentRoute {
         }
 
         const commute = parseCommuteResponse(await response.json());
-        setRoute((current) => {
-          if (hasLoadedRoute) {
-            return { ...current, activePeople: commute.activePeople };
-          }
-
+        if (hasLoadedRoute) {
+          setRoute((current) => ({
+            ...current,
+            activePeople: commute.activePeople,
+          }));
+        } else {
           hasLoadedRoute = true;
-          return {
+          setRoute({
             stops: commute.stops,
             sceneryStops: commute.sceneryStops,
             activePeople: commute.activePeople,
+            serverTimeOffsetMs: commute.generatedAt - Date.now(),
             status: commute.stops.length > 0 ? "live" : "empty",
-          };
-        });
+          });
+        }
       } catch (error) {
         if (controller.signal.aborted) return;
         console.warn("[internet commute] recent route unavailable:", error);
@@ -125,6 +145,7 @@ function useRecentRoute(): RecentRoute {
             stops: [],
             sceneryStops: [],
             activePeople: 0,
+            serverTimeOffsetMs: 0,
             status: "error",
           });
         }
@@ -132,14 +153,124 @@ function useRecentRoute(): RecentRoute {
     };
 
     void load();
+    const routeTimeout = window.setTimeout(() => {
+      if (hasLoadedRoute) return;
+      setRoute((current) =>
+        current.status === "loading"
+          ? {
+              ...current,
+              serverTimeOffsetMs: 0,
+              status: "error",
+            }
+          : current,
+      );
+    }, COMMUTE_ROUTE_TIMEOUT_MS);
     const refreshTimer = window.setInterval(() => void load(), COMMUTE_REFRESH_MS);
     return () => {
       controller.abort();
+      window.clearTimeout(routeTimeout);
       window.clearInterval(refreshTimer);
     };
   }, []);
 
   return route;
+}
+
+interface CommuteServiceConnection {
+  joinedExistingService: boolean;
+  service: CommuteService | null;
+}
+
+function useCommuteService(
+  availableStops: CommuteStop[],
+  routeStatus: RecentRoute["status"],
+  serverTimeOffsetMs: number | null,
+): CommuteServiceConnection {
+  const { presences, setMyPresence, myIdentity } =
+    usePresence<CommuteServicePresence>(COMMUTE_SERVICE_CHANNEL);
+  const [connection, setConnection] = useState<CommuteServiceConnection>({
+    joinedExistingService: false,
+    service: null,
+  });
+  const presencesRef = useRef(presences);
+
+  useEffect(() => {
+    presencesRef.current = presences;
+  }, [presences]);
+
+  useEffect(() => {
+    if (connection.service || !myIdentity) {
+      return;
+    }
+
+    const discoveryTimer = window.setTimeout(() => {
+      const existingService = selectCommuteService(
+        getCommuteServicesFromPresences(presencesRef.current.values()),
+      );
+      if (
+        existingService === null &&
+        (routeStatus === "loading" || serverTimeOffsetMs === null)
+      ) {
+        return;
+      }
+
+      const serverNow = Date.now() + (serverTimeOffsetMs ?? 0);
+      const service =
+        existingService ??
+        createCommuteService(serverNow, myIdentity.publicKey, availableStops);
+      const presence: CommuteServicePresence = {
+        service,
+      };
+
+      setConnection({
+        joinedExistingService: existingService !== null,
+        service,
+      });
+      setMyPresence(presence);
+    }, COMMUTE_SERVICE_DISCOVERY_MS);
+
+    return () => window.clearTimeout(discoveryTimer);
+  }, [
+    availableStops,
+    connection.service,
+    myIdentity,
+    routeStatus,
+    serverTimeOffsetMs,
+    setMyPresence,
+  ]);
+
+  const canonicalService = useMemo(() => {
+    const candidates = getCommuteServicesFromPresences(presences.values());
+    if (connection.service) {
+      candidates.push(connection.service);
+    }
+    return selectCommuteService(candidates);
+  }, [connection.service, presences]);
+
+  useEffect(() => {
+    if (
+      !connection.service ||
+      !canonicalService ||
+      canonicalService.id === connection.service.id
+    ) {
+      return;
+    }
+
+    const presence: CommuteServicePresence = {
+      service: canonicalService,
+    };
+    setConnection({
+      joinedExistingService: true,
+      service: canonicalService,
+    });
+    setMyPresence(presence);
+  }, [
+    canonicalService,
+    connection.service,
+    setMyPresence,
+  ]);
+
+  return connection;
 }
 
 function StopFavicon({
@@ -283,14 +414,16 @@ function Platform({
 
 function LandscapeWindow({
   currentStop,
+  platformStop,
   phase,
-  atOrigin,
+  platformAtOrigin,
   edge,
   stops,
 }: {
   currentStop: CommuteStop;
+  platformStop: CommuteStop;
   phase: CommutePhase;
-  atOrigin: boolean;
+  platformAtOrigin: boolean;
   edge: "upper" | "lower";
   stops: CommuteStop[];
 }) {
@@ -326,9 +459,9 @@ function LandscapeWindow({
           </span>
         ))}
       <Platform
-        currentStop={currentStop}
+        currentStop={platformStop}
         visible={stationVisible}
-        atOrigin={atOrigin}
+        atOrigin={platformAtOrigin}
       />
     </div>
   );
@@ -373,7 +506,7 @@ function TrainDoor({
       <span className="train-door__panel train-door__panel--left" />
       <span className="train-door__panel train-door__panel--right" />
       <span className="train-door__label" aria-hidden={!canExit}>
-        click door to get off
+        leave this train →
       </span>
     </button>
   );
@@ -389,7 +522,13 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     },
   }),
   ({ awarenessByStableId, myAwareness, setMyAwareness, ref }, props) => {
-    const { cursors } = usePlayContext();
+    const { onSeatStateChange } = props;
+    const {
+      configureCursors,
+      cursors,
+      getMyPlayerIdentity,
+      isLoading,
+    } = usePlayContext();
     const [toast, setToast] = useState<string | null>(null);
     const toastTimer = useRef<number | undefined>(undefined);
     useCursorZone(ref);
@@ -407,6 +546,33 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     }, [awarenessByStableId]);
 
     const mySeatId = myAwareness?.seatId ?? null;
+    const seatedRiderIds = useMemo(() => {
+      const riderIds = new Set<string>();
+      for (const [stableId, awareness] of awarenessByStableId) {
+        if (awareness.seatId !== null) riderIds.add(stableId);
+      }
+      if (mySeatId !== null) {
+        const myPlayerId = getMyPlayerIdentity()?.publicKey;
+        if (myPlayerId) riderIds.add(myPlayerId);
+      }
+      return riderIds;
+    }, [awarenessByStableId, getMyPlayerIdentity, mySeatId]);
+
+    useEffect(() => {
+      if (isLoading) return;
+
+      configureCursors({
+        shouldRenderCursor: (presence) => {
+          const playerId = presence.playerIdentity?.publicKey;
+          return playerId === undefined || !seatedRiderIds.has(playerId);
+        },
+      });
+
+      return () => {
+        configureCursors({ shouldRenderCursor: () => true });
+      };
+    }, [configureCursors, isLoading, seatedRiderIds]);
+
     const displayedRiders = useMemo(() => {
       const riders = new Map(ridersBySeat);
       if (mySeatId !== null) {
@@ -424,8 +590,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     ]);
 
     useEffect(() => {
-      props.onSeatStateChange(mySeatId !== null);
-    }, [mySeatId, props.onSeatStateChange]);
+      onSeatStateChange(mySeatId !== null);
+    }, [mySeatId, onSeatStateChange]);
 
     useEffect(
       () => () => {
@@ -484,8 +650,24 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           <span className="train-car__edge train-car__edge--bottom" />
           <span className="train-car__edge train-car__edge--left" />
           <span className="train-car__edge train-car__edge--right" />
-          <span className="train-car__side-door train-car__side-door--left" />
+          <span
+            className={`train-car__side-door train-car__side-door--left ${
+              props.isJoining ? "train-car__side-door--joining" : ""
+            }`}
+          />
           <span className="train-car__side-door train-car__side-door--right" />
+          {props.isJoining && (
+            <span className="train-joiner" aria-hidden>
+              <CursorRider
+                color={cursors.color || "#5b8db8"}
+                label="you"
+                isYou
+              />
+              <span className="train-joiner__message">
+                joining from the next carriage
+              </span>
+            </span>
+          )}
 
           {DOORS.map((x) => (
             <TrainDoor
@@ -556,7 +738,9 @@ function Banner({
     message = `now arriving at ${stopName}`;
     aside = `last visited ${formatStopAge(currentStop)} ago`;
   } else {
-    message = `${secondsLeft} seconds until next stop`;
+    message = `${secondsLeft} ${
+      secondsLeft === 1 ? "second" : "seconds"
+    } until next stop`;
     aside = `next stop: ${stopName}`;
     if (!hasSeat) instruction = "click an empty seat to sit";
   }
@@ -577,29 +761,70 @@ function Banner({
 function InternetCommute() {
   const riders = useUsers();
   const recentRoute = useRecentRoute();
-  const stops =
+  const availableStops =
     recentRoute.status === "live" ? recentRoute.stops : SAMPLE_STOPS;
+  const serviceConnection = useCommuteService(
+    availableStops,
+    recentRoute.status,
+    recentRoute.serverTimeOffsetMs,
+  );
+  const stops = useMemo(
+    () =>
+      serviceConnection.service
+        ? getCommuteStops(serviceConnection.service)
+        : availableStops,
+    [availableStops, serviceConnection.service],
+  );
   const sceneryStops =
     recentRoute.sceneryStops.length > 0
       ? recentRoute.sceneryStops
       : SAMPLE_STOPS;
   const browsingCount = recentRoute.activePeople;
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [hasSeat, setHasSeat] = useState(false);
 
   useEffect(() => {
-    const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+      setClockNow(Date.now());
     }, 250);
     return () => window.clearInterval(timer);
   }, []);
 
+  const elapsedSeconds = serviceConnection.service
+    ? Math.max(
+        0,
+        Math.floor(
+          (clockNow +
+            (recentRoute.serverTimeOffsetMs ?? 0) -
+            serviceConnection.service.startedAt) /
+            1000,
+        ),
+      )
+    : 0;
   const timing = getCommuteTiming(elapsedSeconds, stops.length);
   const currentStop = stops[timing.stopIndex];
+  const departingOrigin =
+    timing.phase === "riding" &&
+    elapsedSeconds < INITIAL_PLATFORM_SECONDS + DEPARTURE_SECONDS;
+  const platformStop =
+    timing.departureStopIndex === null
+      ? currentStop
+      : stops[timing.departureStopIndex];
+  const platformAtOrigin = timing.atOrigin || departingOrigin;
 
   return (
-    <main className="commute-page">
+    <main
+      className="commute-page"
+      data-service-id={serviceConnection.service?.id}
+      data-service-started-at={serviceConnection.service?.startedAt}
+      data-service-elapsed-seconds={elapsedSeconds}
+      data-joined-existing-service={serviceConnection.joinedExistingService}
+      data-joining-service={
+        serviceConnection.joinedExistingService
+          ? serviceConnection.service?.id
+          : undefined
+      }
+    >
       <div className="commute-shell">
         <header className="commute-header">
           <a
@@ -618,6 +843,8 @@ function InternetCommute() {
           visited lately
         </p>
 
+        <CommuteInstallPrompt />
+
         <Banner
           phase={timing.phase}
           secondsLeft={timing.secondsLeft}
@@ -628,8 +855,9 @@ function InternetCommute() {
 
         <LandscapeWindow
           currentStop={currentStop}
+          platformStop={platformStop}
           phase={timing.phase}
-          atOrigin={timing.atOrigin}
+          platformAtOrigin={platformAtOrigin}
           edge="upper"
           stops={sceneryStops}
         />
@@ -638,12 +866,14 @@ function InternetCommute() {
           currentStop={currentStop}
           phase={timing.phase}
           atOrigin={timing.atOrigin}
+          isJoining={serviceConnection.joinedExistingService}
           onSeatStateChange={setHasSeat}
         />
         <LandscapeWindow
           currentStop={currentStop}
+          platformStop={platformStop}
           phase={timing.phase}
-          atOrigin={timing.atOrigin}
+          platformAtOrigin={platformAtOrigin}
           edge="lower"
           stops={sceneryStops}
         />

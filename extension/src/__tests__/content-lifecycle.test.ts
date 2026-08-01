@@ -2,6 +2,7 @@
 // ABOUTME: Verifies bfcache pageshow restores collaboration and listeners are not one-shot.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EXTENSION_INSTALL_ATTRIBUTE } from "../utils/extensionInstallMarker";
 
 const storageGet = vi.hoisted(() => vi.fn());
 const storageSet = vi.hoisted(() => vi.fn());
@@ -64,6 +65,7 @@ describe("content page-lifecycle wiring", () => {
     vi.stubGlobal("defineContentScript", (definition: unknown) => definition);
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     document.body.innerHTML = "";
+    document.documentElement.removeAttribute(EXTENSION_INSTALL_ATTRIBUTE);
     // Present native playhtml so setupPresence takes the identity-injection
     // branch, which re-dispatches "playhtml:configure-identity" every time
     // presence setup runs — the observable signal we assert on.
@@ -108,6 +110,9 @@ describe("content page-lifecycle wiring", () => {
         .default as { main: () => void };
 
       contentScript.main();
+      expect(
+        document.documentElement.getAttribute(EXTENSION_INSTALL_ATTRIBUTE),
+      ).toBe("installed");
 
       // Initial presence setup dispatches identity once.
       await vi.waitFor(() => {

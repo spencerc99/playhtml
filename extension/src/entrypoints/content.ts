@@ -23,6 +23,7 @@ import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
 import { shouldStartExtensionPresence } from "./content/presencePolicy";
+import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 
 async function internalDevFeaturesEnabled(): Promise<boolean> {
   try {
@@ -53,6 +54,8 @@ export default defineContentScript({
     if (proto === "chrome-extension:" || proto === "moz-extension:") {
       return;
     }
+
+    markExtensionInstalled(document.documentElement);
 
     let currentPresenceCount = 0;
 

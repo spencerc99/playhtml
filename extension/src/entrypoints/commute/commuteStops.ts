@@ -428,6 +428,7 @@ function destinationToStop(
 
 export function parseCommuteResponse(payload: unknown): {
   activePeople: number;
+  generatedAt: number;
   sceneryStops: CommuteStop[];
   stops: CommuteStop[];
 } {
@@ -445,6 +446,7 @@ export function parseCommuteResponse(payload: unknown): {
 
   return {
     activePeople: payload.activePeople,
+    generatedAt: payload.generatedAt,
     sceneryStops: payload.scenery.map(sceneryItemToStop),
     stops: payload.destinations.map(destinationToStop),
   };

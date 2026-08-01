@@ -245,6 +245,7 @@ describe("parseCommuteResponse", () => {
       }),
     ).toEqual({
       activePeople: 4,
+      generatedAt: 1_000,
       sceneryStops: [
         expect.objectContaining({
           domain: "docs.google.com",
