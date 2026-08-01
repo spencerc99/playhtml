@@ -263,13 +263,29 @@ button {
 
 .commute-banner__aside {
   max-width: 390px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   color: $text-muted;
   font-family: $font-mono;
   font-size: 11px;
   letter-spacing: 0.04em;
-  text-overflow: ellipsis;
   white-space: nowrap;
+
+  .stop-favicon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 4px;
+  }
+}
+
+.commute-banner__domain {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .commute-instruction {

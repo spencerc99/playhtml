@@ -727,7 +727,7 @@ function Banner({
   hasSeat: boolean;
 }) {
   let message: string;
-  let aside: string;
+  let aside: React.ReactNode;
   let instruction = "";
   const stopName = getStopDisplayName(currentStop);
 
@@ -746,7 +746,13 @@ function Banner({
     message = `${secondsLeft} ${
       secondsLeft === 1 ? "second" : "seconds"
     } until next stop`;
-    aside = `next stop: ${stopName}`;
+    aside = (
+      <>
+        <span>next stop:</span>
+        <StopFavicon stop={currentStop} />
+        <span className="commute-banner__domain">{currentStop.domain}</span>
+      </>
+    );
     if (!hasSeat) instruction = "click an empty seat to sit";
   }
 
