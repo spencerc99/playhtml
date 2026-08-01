@@ -726,14 +726,21 @@ function Banner({
   currentStop: CommuteStop;
   hasSeat: boolean;
 }) {
-  let message: string;
+  let message: React.ReactNode;
   let aside: React.ReactNode;
   let instruction = "";
   const stopName = getStopDisplayName(currentStop);
-  const stopTitle = stopName === currentStop.domain ? null : stopName;
+
+  const destinationLabel = (label: string) => (
+    <span className="commute-banner__destination">
+      <span className="commute-banner__destination-label">{label}</span>
+      <StopFavicon stop={currentStop} />
+      <span className="commute-banner__domain">{currentStop.domain}</span>
+    </span>
+  );
 
   if (atOrigin) {
-    message = `next train to ${stopName}`;
+    message = destinationLabel("next train to");
     aside = `doors close in ${secondsLeft}s`;
     instruction = "find a seat — click any empty seat to sit down";
   } else if (phase === "stopped") {
@@ -747,18 +754,7 @@ function Banner({
     message = `${secondsLeft} ${
       secondsLeft === 1 ? "second" : "seconds"
     } until next stop`;
-    aside = (
-      <>
-        <span>next stop</span>
-        <StopFavicon stop={currentStop} />
-        <span className="commute-banner__destination">
-          <span className="commute-banner__domain">{currentStop.domain}</span>
-          {stopTitle && (
-            <span className="commute-banner__title">{stopTitle}</span>
-          )}
-        </span>
-      </>
-    );
+    aside = destinationLabel("next stop");
     if (!hasSeat) instruction = "click an empty seat to sit";
   }
 

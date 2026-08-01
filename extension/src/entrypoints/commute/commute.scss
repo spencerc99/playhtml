@@ -273,6 +273,16 @@ button {
   font-size: 11px;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+.commute-banner__destination {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  font-family: $font-mono;
+  white-space: nowrap;
 
   .stop-favicon {
     width: 24px;
@@ -283,26 +293,21 @@ button {
   }
 }
 
-.commute-banner__destination {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
+.commute-banner__destination-label {
+  flex: 0 0 auto;
+  color: $text-muted;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
 }
 
 .commute-banner__domain {
+  min-width: 0;
   overflow: hidden;
   color: $text;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  text-overflow: ellipsis;
-}
-
-.commute-banner__title {
-  overflow: hidden;
-  color: $text-muted;
-  font-size: 9px;
-  letter-spacing: 0.02em;
   text-overflow: ellipsis;
 }
 
