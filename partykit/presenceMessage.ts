@@ -9,6 +9,8 @@ const PUBLIC_IDENTITY_FIELDS = [
 ] as const;
 const PUBLIC_PLAYER_STYLE_FIELDS = ["colorPalette", "cursorStyle"] as const;
 
+// Compatibility for playhtml@2.11.1–2.13.1, which sent profile fields in
+// presence identities. Remove when those published clients no longer need support.
 export function projectPresenceClientIdentity(value: unknown): unknown {
   if (!isRecord(value)) return value;
 
