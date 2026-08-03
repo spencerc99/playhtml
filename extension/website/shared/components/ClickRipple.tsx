@@ -83,6 +83,19 @@ export function getRippleTargetRadii(
   );
 }
 
+export function hasRippleCompleted(
+  elapsed: number,
+  effectTotalDuration: number,
+  expansionDuration: number,
+  numRings: number,
+  ringStaggerMs: number,
+): boolean {
+  const outerRingElapsed = elapsed - (numRings - 1) * ringStaggerMs;
+  return (
+    elapsed >= effectTotalDuration && outerRingElapsed >= expansionDuration
+  );
+}
+
 export const RippleEffect = memo(
   ({
     effect,
@@ -122,12 +135,13 @@ export const RippleEffect = memo(
     // ripple has finished animating.
     const allRingsComplete = useMemo(() => {
       const totalElapsed = now - effect.startTime;
-      if (totalElapsed >= effectTotalDuration) return true;
-
-      const outerIndex = numRings - 1;
-      const outerStartTime = effect.startTime + outerIndex * ringStaggerMs;
-      const outerElapsed = now - outerStartTime;
-      return outerElapsed >= expansionDuration;
+      return hasRippleCompleted(
+        totalElapsed,
+        effectTotalDuration,
+        expansionDuration,
+        numRings,
+        ringStaggerMs,
+      );
     }, [
       now,
       effect.startTime,

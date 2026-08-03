@@ -5,6 +5,7 @@ import {
   getHoldMultiplier,
   getRippleMaxRadius,
   getRippleRingCount,
+  hasRippleCompleted,
 } from "../ClickRipple";
 
 const radiusSettings = {
@@ -32,5 +33,31 @@ describe("ClickRipple sizing", () => {
     expect(getRippleRingCount(0.5, ringSettings)).toBe(4);
     expect(getRippleRingCount(0.8, ringSettings)).toBe(6);
     expect(getRippleRingCount(1, ringSettings)).toBe(6);
+  });
+
+  it("waits for the outer ring to finish before completing the ripple", () => {
+    const effectDuration = 500;
+    const expansionDuration = 2400;
+    const ringCount = 6;
+    const ringStaggerMs = 160;
+
+    expect(
+      hasRippleCompleted(
+        effectDuration,
+        effectDuration,
+        expansionDuration,
+        ringCount,
+        ringStaggerMs,
+      ),
+    ).toBe(false);
+    expect(
+      hasRippleCompleted(
+        expansionDuration + (ringCount - 1) * ringStaggerMs,
+        effectDuration,
+        expansionDuration,
+        ringCount,
+        ringStaggerMs,
+      ),
+    ).toBe(true);
   });
 });
