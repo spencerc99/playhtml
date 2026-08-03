@@ -322,15 +322,24 @@ All hooks must be used inside a `PlayProvider`. Each is safe to call before play
 Subscribe to a custom [presence](/docs/data/presence/) channel. Returns the live map of everyone's presence, a setter for your own, and your identity.
 
 ```tsx
-function usePresence<T = Record<string, unknown>>(channel: string): {
-  presences: Map<string, PresenceView<T>>;
-  setMyPresence: (data: T) => void;
+function usePresence<
+  Channel extends string,
+  Payload extends Record<string, unknown> = Record<string, unknown>,
+>(channel: Channel): {
+  presences: Map<
+    string,
+    PresenceView<Partial<Record<Channel, Payload>>>
+  >;
+  setMyPresence: (data: Payload) => void;
   myIdentity: PlayerIdentity | null;
 };
 ```
 
 ```tsx
-const { presences, setMyPresence } = usePresence<{ text: string }>("status");
+const { presences, setMyPresence } = usePresence<
+  "status",
+  { text: string }
+>("status");
 setMyPresence({ text: "focused" });
 // presences is keyed by stable id; each value has isMe, playerIdentity, cursor,
 // plus your channel data nested under the channel name:
@@ -340,7 +349,7 @@ for (const [, p] of presences) {
 }
 ```
 
-The type parameter is an assertion about your channel's shape; no runtime validation is performed. Note your data lives under the channel key (`p.status`), not flattened onto the view.
+The type parameters describe the channel name and its payload. No runtime validation is performed. The channel property is optional because a peer may not have published a value. Your data lives under the channel key (`p.status`), not directly on the view.
 
 ### `usePageData`
 

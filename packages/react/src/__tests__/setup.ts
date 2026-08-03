@@ -121,7 +121,17 @@ const mockedPlayhtml = {
   handleNavigation: vi.fn().mockResolvedValue(undefined),
   presence: {
     setMyPresence: vi.fn((channel: string, data: unknown) => {
-      mockPresences.set("me", { ...data, isMe: true, cursor: null });
+      const view: Record<string, unknown> = {
+        ...(mockPresences.get("me") as Record<string, unknown> | undefined),
+        isMe: true,
+        cursor: null,
+      };
+      if (data === null) {
+        delete view[channel];
+      } else {
+        view[channel] = data;
+      }
+      mockPresences.set("me", view);
       const listeners = presenceListeners.get(channel);
       if (listeners) for (const cb of listeners) cb(new Map(mockPresences));
     }),

@@ -49,10 +49,12 @@ describe("usePresence", () => {
 
   it("setMyPresence is a no-op pre-sync, works post-sync", async () => {
     const warnSpy = vi.spyOn(console, "warn");
-    let captured: ReturnType<typeof usePresence> | null = null;
+    let captured:
+      | ReturnType<typeof usePresence<"selection", { x: number }>>
+      | null = null;
 
     function TestComponent() {
-      captured = usePresence("selection");
+      captured = usePresence<"selection", { x: number }>("selection");
       return <div />;
     }
 
@@ -78,10 +80,18 @@ describe("usePresence", () => {
     act(() => {
       captured!.setMyPresence({ x: 2 });
     });
+    expect(playhtml.presence.setMyPresence).toHaveBeenLastCalledWith("selection", {
+      x: 2,
+    });
 
     await waitFor(() => {
       expect(captured!.presences.size).toBeGreaterThan(0);
+      expect(captured!.presences.get("me")).toMatchObject({
+        selection: { x: 2 },
+        isMe: true,
+      });
     });
+    expect(captured!.presences.get("me")).not.toHaveProperty("x");
   });
 });
 
