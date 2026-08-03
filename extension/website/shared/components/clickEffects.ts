@@ -19,6 +19,7 @@ export function createClickEffect(params: {
   return {
     ...params,
     radiusFactor: Math.random(),
+    ringCountFactor: Math.random(),
     durationFactor: Math.random(),
   };
 }

@@ -179,6 +179,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
               y: sc.y,
               color: sc.color,
               radiusFactor: Math.random(),
+              ringCountFactor: Math.random(),
               durationFactor: Math.random(),
               startTime: Date.now(),
               trailIndex: 0,

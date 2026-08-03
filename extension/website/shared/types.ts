@@ -70,6 +70,7 @@ export interface ClickEffect {
   y: number;
   color: string;
   radiusFactor: number;
+  ringCountFactor: number;
   durationFactor: number;
   startTime: number;
   trailIndex: number;

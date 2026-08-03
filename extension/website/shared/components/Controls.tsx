@@ -1290,11 +1290,11 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
-            <label htmlFor="click-num-rings">Concentric Rings</label>
+            <label htmlFor="click-num-rings">Maximum Concentric Rings</label>
             <input
               id="click-num-rings"
               type="range"
-              min="1"
+              min="2"
               max="20"
               step="1"
               value={settings.clickNumRings}

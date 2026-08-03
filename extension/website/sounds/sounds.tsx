@@ -348,6 +348,7 @@ const SoundPlayground = () => {
       y,
       color,
       radiusFactor: Math.random(),
+      ringCountFactor: Math.random(),
       durationFactor: Math.random(),
       startTime: Date.now(),
       trailIndex: 0,

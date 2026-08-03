@@ -43,17 +43,22 @@ export function getRippleMaxRadius(
 }
 
 export function getRippleRingCount(
-  effectMaxRadius: number,
-  settings: Pick<RippleSettings, "clickMaxRadius" | "clickNumRings">,
+  ringCountFactor: number,
+  settings: Pick<RippleSettings, "clickNumRings">,
 ): number {
-  const configuredRingCount = Math.max(1, Math.round(settings.clickNumRings));
-  if (settings.clickMaxRadius <= 0) return 1;
-  const sizeRatio = Math.min(1, effectMaxRadius / settings.clickMaxRadius);
-  return Math.max(1, Math.round(configuredRingCount * sizeRatio));
+  const maximumRingCount = Math.max(2, Math.round(settings.clickNumRings));
+  const boundedFactor = Math.max(0, Math.min(1, ringCountFactor));
+  return Math.min(
+    maximumRingCount,
+    2 + Math.floor(boundedFactor * (maximumRingCount - 1)),
+  );
 }
 
 export function getRippleTargetRadii(
-  effect: Pick<ClickEffect, "radiusFactor" | "holdDuration">,
+  effect: Pick<
+    ClickEffect,
+    "radiusFactor" | "ringCountFactor" | "holdDuration"
+  >,
   settings: RippleSettings,
 ): number[] {
   const effectMaxRadius = getRippleMaxRadius(
@@ -68,7 +73,7 @@ export function getRippleTargetRadii(
     1,
     Math.min(settings.clickCoreRadius + coreJitterPx, outerTargetRadius),
   );
-  const numRings = getRippleRingCount(effectMaxRadius, settings);
+  const numRings = getRippleRingCount(effect.ringCountFactor, settings);
 
   return Array.from({ length: numRings }, (_, index) =>
     numRings === 1

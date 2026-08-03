@@ -24,12 +24,13 @@ describe("ClickRipple sizing", () => {
     expect(getRippleMaxRadius(0.5, undefined, radiusSettings)).toBe(33.5);
   });
 
-  it("uses more concentric rings as ripples approach the maximum size", () => {
-    const ringSettings = { clickMaxRadius: 55, clickNumRings: 4 };
+  it("varies concentric rings independently from two to the configured maximum", () => {
+    const ringSettings = { clickNumRings: 6 };
 
-    expect(getRippleRingCount(12, ringSettings)).toBe(1);
-    expect(getRippleRingCount(28, ringSettings)).toBe(2);
-    expect(getRippleRingCount(42, ringSettings)).toBe(3);
-    expect(getRippleRingCount(55, ringSettings)).toBe(4);
+    expect(getRippleRingCount(0, ringSettings)).toBe(2);
+    expect(getRippleRingCount(0.2, ringSettings)).toBe(3);
+    expect(getRippleRingCount(0.5, ringSettings)).toBe(4);
+    expect(getRippleRingCount(0.8, ringSettings)).toBe(6);
+    expect(getRippleRingCount(1, ringSettings)).toBe(6);
   });
 });
