@@ -32,7 +32,10 @@ import { usePageMetaFallback } from "../hooks/usePageMetaFallback";
 import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import { useFollowerCoordination } from "../hooks/useFollowerCoordination";
-import { usePlaybackCycle } from "../hooks/usePlaybackCycle";
+import {
+  getPlaybackCycleDuration,
+  usePlaybackCycle,
+} from "../hooks/usePlaybackCycle";
 import {
   extractDomain,
   formatFilterChip,
@@ -1130,14 +1133,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     vizSet.size === 1 &&
     onPlaybackCycleComplete !== undefined;
   const playbackCycleDuration = useMemo(() => {
-    const durations: number[] = [];
-    if (showTrails && cursorCycleDuration > 0)
-      durations.push(cursorCycleDuration);
-    if (showClicks && clickCycleDuration > 0)
-      durations.push(clickCycleDuration);
-    if (showTyping && keyboardCycleDuration > 0)
-      durations.push(keyboardCycleDuration);
-    return durations.length > 0 ? Math.max(...durations) : 60000;
+    return getPlaybackCycleDuration([
+      showTrails ? cursorCycleDuration : 0,
+      showClicks ? clickCycleDuration : 0,
+      showTyping ? keyboardCycleDuration : 0,
+    ]);
   }, [
     clickCycleDuration,
     cursorCycleDuration,

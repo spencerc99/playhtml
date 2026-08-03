@@ -4,6 +4,16 @@
 import { useEffect, useRef } from "react";
 
 const HIDDEN_TAB_TICK_MS = 100;
+const EMPTY_PLAYBACK_DURATION_MS = 60000;
+
+export function getPlaybackCycleDuration(
+  durations: readonly number[],
+): number {
+  const activeDurations = durations.filter((duration) => duration > 0);
+  return activeDurations.length > 0
+    ? Math.max(...activeDurations)
+    : EMPTY_PLAYBACK_DURATION_MS;
+}
 
 export function usePlaybackCycle(params: {
   enabled: boolean;
