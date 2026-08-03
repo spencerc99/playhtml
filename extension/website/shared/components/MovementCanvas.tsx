@@ -1042,15 +1042,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     keyboardCycleDuration,
   ]);
 
-  usePlaybackCycle({
-    enabled: !live && onPlaybackCycleComplete !== undefined,
-    cycleKey: playbackKey,
-    durationMs: timeRange.duration,
-    animationSpeed: settings.animationSpeed,
-    frozen: paused,
-    onComplete: onPlaybackCycleComplete,
-  });
-
   const { scheduledClicks, clickCycleDuration } = useMemo(() => {
     if (!showClicks) {
       return { scheduledClicks: [], clickCycleDuration: 0 };
@@ -1133,6 +1124,40 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   const { animations: scrollAnimations, urlMetadata: scrollUrlMetadata } =
     useViewportScroll(activeScrollingEvents, viewportSize, viewportSettings);
+  const scrollingControlsPlayback =
+    !live &&
+    showScrolling &&
+    vizSet.size === 1 &&
+    onPlaybackCycleComplete !== undefined;
+  const playbackCycleDuration = useMemo(() => {
+    const durations: number[] = [];
+    if (showTrails && cursorCycleDuration > 0)
+      durations.push(cursorCycleDuration);
+    if (showClicks && clickCycleDuration > 0)
+      durations.push(clickCycleDuration);
+    if (showTyping && keyboardCycleDuration > 0)
+      durations.push(keyboardCycleDuration);
+    return durations.length > 0 ? Math.max(...durations) : 60000;
+  }, [
+    clickCycleDuration,
+    cursorCycleDuration,
+    keyboardCycleDuration,
+    showClicks,
+    showTrails,
+    showTyping,
+  ]);
+
+  usePlaybackCycle({
+    enabled:
+      !live &&
+      !scrollingControlsPlayback &&
+      onPlaybackCycleComplete !== undefined,
+    cycleKey: playbackKey,
+    durationMs: playbackCycleDuration,
+    animationSpeed: settings.animationSpeed,
+    frozen: paused,
+    onComplete: onPlaybackCycleComplete,
+  });
 
   // For viewports whose URL has no captured title (no navigation event), ask
   // the worker's /page-meta endpoint to resolve title + favicon live (oEmbed
@@ -1601,7 +1626,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {showClicks && !paused && (
           <AnimatedClicks
-            key={`clicks-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+            key={`clicks-${playbackKey}-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
             scheduledClicks={scheduledClicks}
             timeRange={{ duration: clickCycleDuration }}
             soundEngine={soundEnabled ? soundEngineReady : null}
@@ -1624,6 +1649,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {showTyping && !paused && (
           <AnimatedTyping
+            key={`typing-${playbackKey}`}
             typingStates={typingStates}
             timeRange={timeRange}
             settings={typingSettings}
@@ -1632,8 +1658,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {showScrolling && !paused && scrollAnimations && scrollAnimations.length > 0 && (
           <AnimatedScrollViewports
+            key={`scrolling-${playbackKey}`}
             animations={scrollAnimations}
             canvasSize={viewportSize}
+            repeatAnimations={!scrollingControlsPlayback}
+            onAnimationsComplete={
+              scrollingControlsPlayback
+                ? onPlaybackCycleComplete
+                : undefined
+            }
             settings={scrollSettings}
             urlMetadata={resolvedScrollMetadata}
           />
