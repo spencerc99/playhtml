@@ -20,6 +20,38 @@ export interface RippleSettings {
   clickAnimationStopPoint: number;
 }
 
+const MAX_HOLD_MULTIPLIER = 3;
+
+export function getHoldMultiplier(holdDuration?: number): number {
+  return holdDuration
+    ? Math.min(MAX_HOLD_MULTIPLIER, 1 + holdDuration / 1000)
+    : 1;
+}
+
+export function getRippleMaxRadius(
+  radiusFactor: number,
+  holdDuration: number | undefined,
+  settings: Pick<RippleSettings, "clickMinRadius" | "clickMaxRadius">,
+): number {
+  const baseMaxRadius =
+    settings.clickMinRadius +
+    radiusFactor * (settings.clickMaxRadius - settings.clickMinRadius);
+  return Math.min(
+    settings.clickMaxRadius,
+    baseMaxRadius * getHoldMultiplier(holdDuration),
+  );
+}
+
+export function getRippleRingCount(
+  effectMaxRadius: number,
+  settings: Pick<RippleSettings, "clickMaxRadius" | "clickNumRings">,
+): number {
+  const configuredRingCount = Math.max(1, Math.round(settings.clickNumRings));
+  if (settings.clickMaxRadius <= 0) return 1;
+  const sizeRatio = Math.min(1, effectMaxRadius / settings.clickMaxRadius);
+  return Math.max(1, Math.round(configuredRingCount * sizeRatio));
+}
+
 export const RippleEffect = memo(
   ({
     effect,
@@ -35,17 +67,14 @@ export const RippleEffect = memo(
     /** Ensures onComplete runs once — render-phase callbacks can run twice in Strict Mode. */
     const completionFiredRef = useRef(false);
 
-    // Scale by hold duration if present.
-    // 250ms = 1.25x, 1000ms = 2x, 2000ms = 3x
-    const holdMultiplier = effect.holdDuration
-      ? 1 + effect.holdDuration / 1000
-      : 1;
-
-    const baseMaxRadius =
-      rippleSettings.clickMinRadius +
-      effect.radiusFactor *
-        (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
-    const effectMaxRadius = baseMaxRadius * holdMultiplier;
+    // Scale holds up to the configured visual ceiling. The multiplier matches
+    // the bounded hold response used by click audio.
+    const holdMultiplier = getHoldMultiplier(effect.holdDuration);
+    const effectMaxRadius = getRippleMaxRadius(
+      effect.radiusFactor,
+      effect.holdDuration,
+      rippleSettings,
+    );
 
     const baseTotalDuration =
       rippleSettings.clickMinDuration +
@@ -60,7 +89,7 @@ export const RippleEffect = memo(
     // BEGINS expanding. The visual density comes from each ring freezing at
     // a different target radius (see ring rendering below), not time stagger.
     const ringStaggerMs = rippleSettings.clickRingDelayMs;
-    const numRings = Math.max(1, rippleSettings.clickNumRings);
+    const numRings = getRippleRingCount(effectMaxRadius, rippleSettings);
 
     // The outermost ring travels the farthest, so it dictates when the whole
     // ripple has finished animating.
