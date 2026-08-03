@@ -1626,7 +1626,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {showClicks && !paused && (
           <AnimatedClicks
-            key={`clicks-${playbackKey}-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+            key={`clicks-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
             scheduledClicks={scheduledClicks}
             timeRange={{ duration: clickCycleDuration }}
             soundEngine={soundEnabled ? soundEngineReady : null}
