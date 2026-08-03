@@ -20,6 +20,7 @@ import {
 
 const EVENTS_URL = RECENT_EVENTS_URL;
 const RETRY_BACKOFFS_MS = [400, 1200];
+const PREFETCH_RETRY_DELAY_MS = 3000;
 
 class NonRetryableFetchError extends Error {}
 
@@ -123,6 +124,7 @@ export function useArchiveEvents(params: {
   });
   const [batchKey, setBatchKey] = useState("fixed");
   const [batchRefreshVersion, setBatchRefreshVersion] = useState(0);
+  const [prefetchRetryVersion, setPrefetchRetryVersion] = useState(0);
   const batchQueueRef = useRef(batchQueue);
   const batchGenerationRef = useRef(0);
   const batchSequenceRef = useRef(0);
@@ -420,6 +422,8 @@ export function useArchiveEvents(params: {
   useEffect(() => {
     if (!batchPlayback || !batchQueue.current || batchQueue.prefetched) return;
 
+    let cancelled = false;
+    let retryTimeout: number | undefined;
     const { current, generation } = batchQueue;
     const requestKey = `${generation}:${current.key}:${current.nextBeforeMs ?? "newest"}`;
     if (prefetchRequestRef.current === requestKey) return;
@@ -458,13 +462,23 @@ export function useArchiveEvents(params: {
     };
 
     prefetch().catch((err) => {
-      if (generation !== batchGenerationRef.current) return;
+      if (cancelled || generation !== batchGenerationRef.current) return;
       console.warn("Failed to prefetch archive batch:", err);
       prefetchRequestRef.current = "";
+      retryTimeout = window.setTimeout(
+        () => setPrefetchRetryVersion((version) => version + 1),
+        PREFETCH_RETRY_DELAY_MS,
+      );
     });
+
+    return () => {
+      cancelled = true;
+      if (retryTimeout !== undefined) window.clearTimeout(retryTimeout);
+    };
   }, [
     batchPlayback,
     batchQueue,
+    prefetchRetryVersion,
     selectedDay,
     timeOfDay,
     serverDomain,

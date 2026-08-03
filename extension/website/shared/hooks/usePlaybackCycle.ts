@@ -80,5 +80,5 @@ export function usePlaybackCycle(params: {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearScheduledFrame();
     };
-  }, [enabled, cycleKey, durationMs]);
+  }, [enabled, cycleKey, durationMs, frozen]);
 }
