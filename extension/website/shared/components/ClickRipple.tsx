@@ -52,6 +52,32 @@ export function getRippleRingCount(
   return Math.max(1, Math.round(configuredRingCount * sizeRatio));
 }
 
+export function getRippleTargetRadii(
+  effect: Pick<ClickEffect, "radiusFactor" | "holdDuration">,
+  settings: RippleSettings,
+): number[] {
+  const effectMaxRadius = getRippleMaxRadius(
+    effect.radiusFactor,
+    effect.holdDuration,
+    settings,
+  );
+  const outerTargetRadius =
+    effectMaxRadius * settings.clickAnimationStopPoint;
+  const coreJitterPx = (effect.radiusFactor - 0.5) * 4;
+  const coreRadius = Math.max(
+    1,
+    Math.min(settings.clickCoreRadius + coreJitterPx, outerTargetRadius),
+  );
+  const numRings = getRippleRingCount(effectMaxRadius, settings);
+
+  return Array.from({ length: numRings }, (_, index) =>
+    numRings === 1
+      ? outerTargetRadius
+      : coreRadius +
+        (outerTargetRadius - coreRadius) * (index / (numRings - 1)),
+  );
+}
+
 export const RippleEffect = memo(
   ({
     effect,
@@ -70,11 +96,7 @@ export const RippleEffect = memo(
     // Scale holds up to the configured visual ceiling. The multiplier matches
     // the bounded hold response used by click audio.
     const holdMultiplier = getHoldMultiplier(effect.holdDuration);
-    const effectMaxRadius = getRippleMaxRadius(
-      effect.radiusFactor,
-      effect.holdDuration,
-      rippleSettings,
-    );
+    const ringTargetRadii = getRippleTargetRadii(effect, rippleSettings);
 
     const baseTotalDuration =
       rippleSettings.clickMinDuration +
@@ -89,7 +111,7 @@ export const RippleEffect = memo(
     // BEGINS expanding. The visual density comes from each ring freezing at
     // a different target radius (see ring rendering below), not time stagger.
     const ringStaggerMs = rippleSettings.clickRingDelayMs;
-    const numRings = getRippleRingCount(effectMaxRadius, rippleSettings);
+    const numRings = ringTargetRadii.length;
 
     // The outermost ring travels the farthest, so it dictates when the whole
     // ripple has finished animating.
@@ -149,32 +171,14 @@ export const RippleEffect = memo(
     // Pinning the innermost ring to clickCoreRadius (with ±2px jitter via
     // radiusFactor) guarantees every ripple has a visible "core" mark where
     // the click landed, regardless of size.
-    const outerTargetRadius =
-      effectMaxRadius * rippleSettings.clickAnimationStopPoint;
-    const coreJitterPx = (effect.radiusFactor - 0.5) * 4;
-    const coreRadius = Math.max(
-      1,
-      Math.min(
-        rippleSettings.clickCoreRadius + coreJitterPx,
-        outerTargetRadius,
-      ),
-    );
+    const outerTargetRadius = ringTargetRadii.at(-1) ?? 0;
     const expansionVelocity = outerTargetRadius / expansionDuration;
 
-    const rings = Array.from({ length: numRings }, (_, i) => {
+    const rings = ringTargetRadii.map((ringTargetRadius, i) => {
       const ringStartTime = effect.startTime + i * ringStaggerMs;
       const elapsed = now - ringStartTime;
 
       if (elapsed < 0) return null;
-
-      // Innermost ring sits at the core mark; outer rings interpolate
-      // linearly from core out to outerTargetRadius. With numRings === 1
-      // the lone ring goes all the way out (otherwise it'd be a tiny dot).
-      const ringTargetRadius =
-        numRings === 1
-          ? outerTargetRadius
-          : coreRadius +
-            (outerTargetRadius - coreRadius) * (i / (numRings - 1));
 
       const ringDuration = Math.max(1, ringTargetRadius / expansionVelocity);
       const rawProgress = Math.min(1, elapsed / ringDuration);

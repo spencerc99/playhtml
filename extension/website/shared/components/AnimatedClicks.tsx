@@ -3,6 +3,10 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
 import { ClickEffect } from "../types";
 import { RippleEffect, RippleSettings } from "./ClickRipple";
+import {
+  ClickResidueCanvas,
+  type ClickResidueCanvasHandle,
+} from "./ClickResidueCanvas";
 import type { SoundEngine } from "../sound/SoundEngine";
 
 // Hidden tabs heavily throttle rAF; 100ms (~10fps) keeps audio/time progression
@@ -19,23 +23,6 @@ export interface ScheduledClick {
   holdDuration?: number;
 }
 
-export const MAX_VISIBLE_CLICK_EFFECTS = 2000;
-
-export type VisibleClickEffect = ClickEffect & {
-  sourceId: string;
-};
-
-export function mergeClickEffects(
-  current: VisibleClickEffect[],
-  incoming: VisibleClickEffect[],
-): VisibleClickEffect[] {
-  const incomingSourceIds = new Set(incoming.map((effect) => effect.sourceId));
-  return [
-    ...current.filter((effect) => !incomingSourceIds.has(effect.sourceId)),
-    ...incoming,
-  ].slice(-MAX_VISIBLE_CLICK_EFFECTS);
-}
-
 interface AnimatedClicksProps {
   scheduledClicks: ScheduledClick[];
   timeRange: { duration: number };
@@ -47,9 +34,11 @@ interface AnimatedClicksProps {
 
 export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
   ({ scheduledClicks, timeRange, settings, soundEngine = null }) => {
-    const [activeClickEffects, setActiveClickEffects] = useState<
-      VisibleClickEffect[]
-    >([]);
+    const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
+      [],
+    );
+    const activeClickEffectsRef = useRef(activeClickEffects);
+    const residueCanvasRef = useRef<ClickResidueCanvasHandle>(null);
     const animationRef = useRef<number>();
     const timeoutRef = useRef<number>();
     const spawnedThisCycleRef = useRef<Set<string>>(new Set());
@@ -66,18 +55,44 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       soundEngineRef.current = soundEngine;
     }, [soundEngine]);
 
-    // Finished ripples remain as residue while their event ids are replayed.
-    // Track the current pass by rendered id so completions from a previous
-    // archive batch cannot make the next pass finish early.
+    const rippleSettings: RippleSettings = {
+      clickMinRadius: settings.clickMinRadius,
+      clickMaxRadius: settings.clickMaxRadius,
+      clickCoreRadius: settings.clickCoreRadius,
+      clickMinDuration: settings.clickMinDuration,
+      clickMaxDuration: settings.clickMaxDuration,
+      clickExpansionDuration: settings.clickExpansionDuration,
+      clickStrokeWidth: settings.clickStrokeWidth,
+      clickOpacity: settings.clickOpacity,
+      clickNumRings: settings.clickNumRings,
+      clickRingDelayMs: settings.clickRingDelayMs,
+      clickAnimationStopPoint: settings.clickAnimationStopPoint,
+    };
+    const rippleSettingsRef = useRef(rippleSettings);
+    rippleSettingsRef.current = rippleSettings;
+    activeClickEffectsRef.current = activeClickEffects;
+
+    // Completed SVG ripples become pixels on one decaying canvas, then leave
+    // React state. Track the current pass separately so an older batch's
+    // completion cannot make the next archive cycle finish early.
     const handleClickComplete = useCallback((id: string) => {
       if (currentCycleEffectIdsRef.current.has(id)) {
         completedCycleEffectIdsRef.current.add(id);
+      }
+      const effect = activeClickEffectsRef.current.find(
+        (candidate) => candidate.id === id,
+      );
+      if (effect) {
+        residueCanvasRef.current?.add(effect, rippleSettingsRef.current);
+        setActiveClickEffects((current) =>
+          current.filter((candidate) => candidate.id !== id),
+        );
       }
     }, []);
 
     // Microtask-batched commits so multiple per-frame spawns don't each cause
     // their own React re-render.
-    const pendingSpawnsRef = useRef<VisibleClickEffect[]>([]);
+    const pendingSpawnsRef = useRef<ClickEffect[]>([]);
     const flushSpawnsScheduledRef = useRef(false);
     const scheduleFlushSpawns = useCallback(() => {
       if (flushSpawnsScheduledRef.current) return;
@@ -87,7 +102,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
         const batch = pendingSpawnsRef.current;
         if (batch.length === 0) return;
         pendingSpawnsRef.current = [];
-        setActiveClickEffects((prev) => mergeClickEffects(prev, batch));
+        setActiveClickEffects((current) => [...current, ...batch]);
       });
     }, []);
 
@@ -105,9 +120,8 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
         return;
       }
 
-      // A new event set starts a fresh clock but retains the previous residue.
-      // Incoming events replace matching marks and the bounded visible set
-      // gradually pushes unrelated marks out without blanking the canvas.
+      // A new event set starts a fresh clock while the residue canvas continues
+      // decaying independently, so batch swaps never blank the scene.
       spawnedThisCycleRef.current.clear();
       currentCycleEffectIdsRef.current.clear();
       completedCycleEffectIdsRef.current.clear();
@@ -161,7 +175,6 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
             currentCycleEffectIdsRef.current.add(renderedId);
             pendingSpawnsRef.current.push({
               id: renderedId,
-              sourceId: sc.id,
               x: sc.x,
               y: sc.y,
               color: sc.color,
@@ -212,41 +225,30 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       };
     }, [scheduledClicks, timeRange.duration, scheduleFlushSpawns]);
 
-    const rippleSettings: RippleSettings = {
-      clickMinRadius: settings.clickMinRadius,
-      clickMaxRadius: settings.clickMaxRadius,
-      clickCoreRadius: settings.clickCoreRadius,
-      clickMinDuration: settings.clickMinDuration,
-      clickMaxDuration: settings.clickMaxDuration,
-      clickExpansionDuration: settings.clickExpansionDuration,
-      clickStrokeWidth: settings.clickStrokeWidth,
-      clickOpacity: settings.clickOpacity,
-      clickNumRings: settings.clickNumRings,
-      clickRingDelayMs: settings.clickRingDelayMs,
-      clickAnimationStopPoint: settings.clickAnimationStopPoint,
-    };
-
     return (
-      <svg
-        className="animated-clicks-svg"
-        width="100%"
-        height="100%"
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          pointerEvents: "none",
-        }}
-      >
-        {activeClickEffects.map((effect) => (
-          <RippleEffect
-            key={effect.id}
-            effect={effect}
-            settings={rippleSettings}
-            onComplete={handleClickComplete}
-          />
-        ))}
-      </svg>
+      <>
+        <ClickResidueCanvas ref={residueCanvasRef} />
+        <svg
+          className="animated-clicks-svg"
+          width="100%"
+          height="100%"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            pointerEvents: "none",
+          }}
+        >
+          {activeClickEffects.map((effect) => (
+            <RippleEffect
+              key={effect.id}
+              effect={effect}
+              settings={rippleSettings}
+              onComplete={handleClickComplete}
+            />
+          ))}
+        </svg>
+      </>
     );
   },
   (prevProps, nextProps) => {
