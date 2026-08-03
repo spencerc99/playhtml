@@ -15,7 +15,7 @@ import {
 import {
   collectDueClickEffects,
   retainClickEffectsForActiveTrails,
-} from "../liveClickEffects";
+} from "../clickEffects";
 
 function trailState(): TrailState {
   return {

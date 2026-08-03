@@ -1,10 +1,26 @@
-// ABOUTME: Converts due live-trail clicks into one-shot ripple effects.
-// ABOUTME: Tracks emitted keys so growing trails do not replay prior clicks.
+// ABOUTME: Creates one-shot click effects for archive and live cursor trails.
+// ABOUTME: Tracks live emitted keys so growing trails do not replay prior clicks.
 
 import type { ClickEffect, TrailState } from "../types";
 
 export interface LiveClickEffect extends ClickEffect {
   trailId: string;
+}
+
+export function createClickEffect(params: {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  startTime: number;
+  trailIndex: number;
+  holdDuration?: number;
+}): ClickEffect {
+  return {
+    ...params,
+    radiusFactor: Math.random(),
+    durationFactor: Math.random(),
+  };
 }
 
 export function collectDueClickEffects(
@@ -25,16 +41,16 @@ export function collectDueClickEffects(
 
     spawnedClickKeys.add(key);
     effects.push({
-      id: key,
+      ...createClickEffect({
+        id: key,
+        x: position.x,
+        y: position.y,
+        color,
+        startTime,
+        trailIndex: 0,
+        holdDuration: click.duration,
+      }),
       trailId: trailState.trail.id,
-      x: position.x,
-      y: position.y,
-      color,
-      radiusFactor: Math.random(),
-      durationFactor: Math.random(),
-      startTime,
-      trailIndex: 0,
-      holdDuration: click.duration,
     });
   });
 

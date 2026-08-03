@@ -10,7 +10,7 @@ import {
   TypingState,
 } from "../types";
 import {
-  getColorForParticipant,
+  getColorForEvent,
   eventMatchesAnyFilter,
   type FilterChip,
 } from "../utils/eventUtils";
@@ -215,7 +215,7 @@ export function useKeyboardTyping(
           event: firstEvent,
           x,
           y,
-          color: getColorForParticipant(firstEvent.meta.pid),
+          color: getColorForEvent(firstEvent),
           startTime: firstEvent.ts,
           sequence: mergedSequence,
         });

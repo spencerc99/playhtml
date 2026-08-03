@@ -33,6 +33,10 @@ import { useNavigationTimeline } from "../hooks/useNavigationTimeline";
 import { useNavigationRadial } from "../hooks/useNavigationRadial";
 import { useFollowerCoordination } from "../hooks/useFollowerCoordination";
 import {
+  getPlaybackCycleDuration,
+  usePlaybackCycle,
+} from "../hooks/usePlaybackCycle";
+import {
   extractDomain,
   formatFilterChip,
   summarizeActiveLocations,
@@ -386,6 +390,10 @@ interface MovementCanvasProps {
    * window computes the same time from a shared wall-clock epoch. Optional so
    * pages that don't run the installation are completely unaffected. */
   getInstallationElapsedMs?: (animationSpeed: number) => number | null;
+  /** Restarts finite archive playback when the parent swaps event batches. */
+  playbackKey?: string;
+  /** Called when finite archive playback reaches the end of its batch. */
+  onPlaybackCycleComplete?: () => boolean;
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -407,6 +415,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   live = false,
   connected = false,
   getInstallationElapsedMs,
+  playbackKey = "fixed",
+  onPlaybackCycleComplete,
 }) => {
   const settingsDefaults = useMemo(
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
@@ -1117,6 +1127,37 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   const { animations: scrollAnimations, urlMetadata: scrollUrlMetadata } =
     useViewportScroll(activeScrollingEvents, viewportSize, viewportSettings);
+  const scrollingControlsPlayback =
+    !live &&
+    showScrolling &&
+    vizSet.size === 1 &&
+    onPlaybackCycleComplete !== undefined;
+  const playbackCycleDuration = useMemo(() => {
+    return getPlaybackCycleDuration([
+      showTrails ? cursorCycleDuration : 0,
+      showClicks ? clickCycleDuration : 0,
+      showTyping ? keyboardCycleDuration : 0,
+    ]);
+  }, [
+    clickCycleDuration,
+    cursorCycleDuration,
+    keyboardCycleDuration,
+    showClicks,
+    showTrails,
+    showTyping,
+  ]);
+
+  usePlaybackCycle({
+    enabled:
+      !live &&
+      !scrollingControlsPlayback &&
+      onPlaybackCycleComplete !== undefined,
+    cycleKey: playbackKey,
+    durationMs: playbackCycleDuration,
+    animationSpeed: settings.animationSpeed,
+    frozen: paused,
+    onComplete: onPlaybackCycleComplete,
+  });
 
   // For viewports whose URL has no captured title (no navigation event), ask
   // the worker's /page-meta endpoint to resolve title + favicon live (oEmbed
@@ -1570,7 +1611,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           ) : (
             <AnimatedTrails
-              key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              key={`trails-${playbackKey}-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
               timeRange={timeRange}
               showClickRipples={!showClicks}
@@ -1609,6 +1650,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {showTyping && !paused && (
           <AnimatedTyping
+            key={`typing-${playbackKey}`}
             typingStates={typingStates}
             timeRange={timeRange}
             settings={typingSettings}
@@ -1617,8 +1659,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
         {showScrolling && !paused && scrollAnimations && scrollAnimations.length > 0 && (
           <AnimatedScrollViewports
+            key={`scrolling-${playbackKey}`}
             animations={scrollAnimations}
             canvasSize={viewportSize}
+            repeatAnimations={!scrollingControlsPlayback}
+            onAnimationsComplete={
+              scrollingControlsPlayback
+                ? onPlaybackCycleComplete
+                : undefined
+            }
             settings={scrollSettings}
             urlMetadata={resolvedScrollMetadata}
           />

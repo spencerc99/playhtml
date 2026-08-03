@@ -23,8 +23,8 @@ import {
   RISO_COLORS,
   TRAIL_TIME_THRESHOLD,
   getColorForParticipant,
+  getColorForEvent,
   eventMatchesAnyFilter,
-  deriveSessionColor,
   type FilterChip,
 } from "../utils/eventUtils";
 
@@ -185,8 +185,7 @@ export function useCursorTrails(
       groupEvents.sort((a, b) => a.ts - b.ts);
 
       const pid = groupEvents[0].meta.pid;
-      const cursorColor = groupEvents[0].meta.cursor_color;
-      const timezone = groupEvents[0].meta.tz;
+      const firstEvent = groupEvents[0];
 
       // Determine color resolution. When randomizeColors is on, every NEW
       // trail picks a fresh palette color (so a single participant's session
@@ -198,9 +197,8 @@ export function useCursorTrails(
           trailColorIndex++;
           return c;
         }
-        if (cursorColor) {
-          return deriveSessionColor(cursorColor, trailStartTs, timezone);
-        }
+        if (firstEvent.meta.cursor_color)
+          return getColorForEvent(firstEvent, trailStartTs);
         if (!participantColors.has(pid)) {
           participantColors.set(pid, getColorForParticipant(pid));
         }

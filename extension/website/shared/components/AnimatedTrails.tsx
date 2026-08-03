@@ -10,12 +10,14 @@ import React, {
 } from "react";
 import { TrailState, ClickEffect } from "../types";
 import { RippleEffect } from "./ClickRipple";
+import { createClickEffect } from "./clickEffects";
 import { useDebugHover } from "./DebugHover";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import {
   buildStraightPathSegment,
+  didPlaybackCycleWrap,
   getFinishedTrailRenderRange,
 } from "../utils/trailAnimation";
 import {
@@ -409,7 +411,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         const loopedElapsed = scaledElapsed % timeRange.duration;
 
         // Detect loop wrap
-        if (loopedElapsed < prevElapsedRef.current) {
+        if (didPlaybackCycleWrap(prevElapsedRef.current, loopedElapsed)) {
           resetPlaybackTrackers();
           setActiveClickEffects([]);
           soundEngineRef.current?.reset();
@@ -592,17 +594,18 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                 holdDuration: click.duration,
               });
 
-              pendingClicks.current.push({
-                id: `${idx}-${clickIdx}-${Date.now()}`,
-                x: result.cursorPosition.x,
-                y: result.cursorPosition.y,
-                color: rendererRef.current.getClickColor(ts.trail.color),
-                radiusFactor: Math.random(),
-                durationFactor: Math.random(),
-                startTime: Date.now(),
-                trailIndex: idx,
-                holdDuration: click.duration,
-              });
+              const clickStartTime = Date.now();
+              pendingClicks.current.push(
+                createClickEffect({
+                  id: `${idx}-${clickIdx}-${clickStartTime}`,
+                  x: result.cursorPosition.x,
+                  y: result.cursorPosition.y,
+                  color: rendererRef.current.getClickColor(ts.trail.color),
+                  startTime: clickStartTime,
+                  trailIndex: idx,
+                  holdDuration: click.duration,
+                }),
+              );
 
               clickIdx++;
             }
