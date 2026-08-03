@@ -8,71 +8,121 @@ import {
   type CommuteResponse,
   type CommuteSceneryItem,
 } from '@playhtml/extension-types';
+import { getDomain, getDomainWithoutSuffix, getSubdomain } from 'tldts';
 
 const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
 const DESTINATION_LIMIT = 10;
 const SCENERY_LIMIT = 100;
 
-const NEVER_LAND_DOMAINS = [
+const SCENERY_ONLY_DOMAINS = [
   'accounts.google.com',
+  'ai.joinhandshake.com',
+  'airtable.com',
+  'app.flourish.studio',
+  'app.joinhandshake.com',
+  'app.mural.co',
+  'app.slack.com',
+  'apply.commonapp.org',
+  'bing.com',
+  'bsky.app',
   'calendar.google.com',
   'chat.deepseek.com',
   'chatgpt.com',
+  'claude.ai',
   'discord.com',
   'docs.google.com',
   'docs.superhuman.com',
   'drive.google.com',
+  'duckduckgo.com',
+  'ecosia.org',
+  'ellipsus.com',
+  'facebook.com',
+  'figma.com',
+  'form.typeform.com',
   'gemini.google.com',
   'grok.com',
+  'joinoasis.com',
+  'jotform.com',
+  'linkedin.com',
   'mail.google.com',
+  'meet.google.com',
+  'messenger.com',
+  'miro.com',
+  'myaccount.google.com',
+  'myjobs.indeed.com',
+  'netflix.com',
+  'notion.so',
+  'onedrive.live.com',
+  'onlyfans.com',
   'outlook.cloud.microsoft',
   'outlook.live.com',
   'outlook.office.com',
   'open.spotify.com',
+  'partiful.com',
+  'patreon.com',
+  'photos.google.com',
+  'play.hbomax.com',
+  'profile.indeed.com',
+  'proton.me',
+  'safelinks.protection.outlook.com',
+  'search.brave.com',
+  'smartapply.indeed.com',
+  'snapchat.com',
+  'spicychat.ai',
+  'startpage.com',
+  'stoat.chat',
+  'tally.so',
+  'tasks.google.com',
+  'twitch.tv',
   'twitter.com',
+  'van.dpo.org',
+  'vk.com',
   'web.telegram.org',
   'x.com',
 ];
 
-const TITLE_REQUIRED_DOMAINS = [
-  'github.com',
-  'imdb.com',
-  'instagram.com',
-  'itch.io',
-  'pinterest.com',
-  'substack.com',
-  'tiktok.com',
-  'wikipedia.org',
-  'wordpress.com',
-  'youtu.be',
-  'youtube.com',
-];
+const MEANINGFUL_TITLE_REQUIRED_DOMAINS = ['itch.io', 'wordpress.com'];
 
 const GENERIC_PATHS = new Set([
+  '/browse',
   '/dashboard',
   '/feed',
   '/home',
   '/newtab',
+  '/notifications',
+  '/saved',
   '/search',
 ]);
 
-const NEVER_LAND_SUBDOMAIN_LABELS = new Set([
+const NEVER_SHOW_SUBDOMAIN_LABELS = new Set(['tracking']);
+
+const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'account',
   'accounts',
   'admin',
+  'apply',
   'auth',
   'candidate',
   'dashboard',
+  'file',
+  'files',
+  'fs',
   'idp',
   'idpproxy',
+  'inside',
+  'intranet',
   'login',
   'mail',
+  'my',
+  'portal',
+  'profile',
   'sso',
 ]);
 
-const NEVER_LAND_PATH_SEGMENTS = new Set([
+const SCENERY_ONLY_PATH_SEGMENTS = new Set([
   'account',
   'accounts',
+  'admin',
   'auth',
   'authorize',
   'cart',
@@ -82,6 +132,7 @@ const NEVER_LAND_PATH_SEGMENTS = new Set([
   'inbox',
   'login',
   'myschedule',
+  'mypolicy',
   'oauth',
   'outbound',
   'publish',
@@ -93,12 +144,25 @@ const NEVER_LAND_PATH_SEGMENTS = new Set([
   'statements',
 ]);
 
-const NEVER_LAND_PATH_PREFIXES = [
+const SCENERY_ONLY_PATH_PREFIXES = [
   {
     domain: 'nytimes.com',
     prefixes: ['/puzzles/stats'],
   },
 ];
+
+const PRIVATE_ROUTE_SEGMENTS = new Set([
+  'board',
+  'chat',
+  'client',
+  'document',
+  'edit',
+  'e2ee',
+  'messages',
+  'room',
+  'rooms',
+  'workspace',
+]);
 
 const AUTHENTICATION_PATH_MARKERS = [
   'oauth2callback',
@@ -106,6 +170,66 @@ const AUTHENTICATION_PATH_MARKERS = [
   'signinoidc',
   'simplesaml',
 ];
+
+const RAW_ASSET_EXTENSIONS = new Set([
+  '7z',
+  'avi',
+  'avif',
+  'bmp',
+  'csv',
+  'gif',
+  'ico',
+  'jpeg',
+  'jpg',
+  'mov',
+  'mp3',
+  'mp4',
+  'mpeg',
+  'ogg',
+  'pdf',
+  'png',
+  'rar',
+  'svg',
+  'tar',
+  'txt',
+  'wav',
+  'webm',
+  'webp',
+  'zip',
+]);
+
+const WIKIPEDIA_PRIVATE_NAMESPACES = new Set([
+  'benutzer',
+  'benutzerdiskussion',
+  'discussaodeusuario',
+  'discussionutilisateur',
+  'discussioniutente',
+  'dyskusjauzytkownika',
+  'gebruiker',
+  'overleggebruiker',
+  'special',
+  'user',
+  'usertalk',
+  'usuario',
+  'usuariodiscusion',
+  'utente',
+  'utilisateur',
+  'uzytkownik',
+  'anvandare',
+  'anvandardiskussion',
+  'обсуждениеучастника',
+  'участник',
+  '使用者',
+  '使用者討論',
+  '利用者',
+  '利用者会話',
+  '用户',
+  '用户讨论',
+  '用戶',
+  '用戶討論',
+  '사용자',
+  '사용자토론',
+]);
 
 const GENERIC_TITLES = new Set([
   'attentionrequiredcloudflare',
@@ -126,9 +250,15 @@ interface NavigationCandidate {
   hue: string;
   pid: string;
   recentDomainVisits: number;
+  registrableDomain: string;
   title: string | null;
   url: string;
   visitedAt: number;
+}
+
+interface PlatformRoutePolicy {
+  matches: (domain: string) => boolean;
+  sanitize: (url: URL) => string | null;
 }
 
 function domainMatches(domain: string, candidate: string): boolean {
@@ -136,48 +266,107 @@ function domainMatches(domain: string, candidate: string): boolean {
 }
 
 function comparableLabel(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return value
+    .normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
 }
 
 function normalizeDomain(hostname: string): string {
   return hostname.toLowerCase().replace(/^www\./, '');
 }
 
-function isLocalNetworkHost(domain: string): boolean {
-  if (
-    domain === 'localhost' ||
-    domain.endsWith('.localhost') ||
-    domain.endsWith('.local') ||
-    domain.includes(':')
-  ) {
-    return true;
-  }
+function getRegistrableDomain(domain: string): string | null {
+  return getDomain(domain, { allowPrivateDomains: true });
+}
 
-  const ipv4Parts = domain.split('.');
+function getSubdomainLabels(domain: string): string[] {
   return (
-    ipv4Parts.length === 4 &&
-    ipv4Parts.every((part) => {
-      const number = Number(part);
-      return Number.isInteger(number) && number >= 0 && number <= 255;
-    })
+    getSubdomain(domain, { allowPrivateDomains: true })
+      ?.split('.')
+      .filter(Boolean) ?? []
   );
 }
 
+function hasSubdomainLabel(domain: string, labels: Set<string>): boolean {
+  return getSubdomainLabels(domain).some((label) =>
+    labels.has(comparableLabel(label)),
+  );
+}
+
+function isNeverShownHost(
+  domain: string,
+  registrableDomain: string | null,
+): boolean {
+  return (
+    domain === 'localhost' ||
+    domain.endsWith('.localhost') ||
+    domain.endsWith('.local') ||
+    registrableDomain === null ||
+    hasSubdomainLabel(domain, NEVER_SHOW_SUBDOMAIN_LABELS)
+  );
+}
+
+function isOpaqueIdentifier(segment: string): boolean {
+  return (
+    /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(segment) ||
+    (/^[a-z0-9_-]{8,}={0,2}$/i.test(segment) && /\d/.test(segment))
+  );
+}
+
+function hasPrivateRouteShape(pathname: string): boolean {
+  const segments = pathname
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    });
+
+  return segments.some((segment, index) => {
+    if (!PRIVATE_ROUTE_SEGMENTS.has(comparableLabel(segment))) return false;
+    return segments.slice(index + 1).some(isOpaqueIdentifier);
+  });
+}
+
+function hasRawAssetPath(pathname: string): boolean {
+  const filename = pathname.split('/').at(-1)?.toLowerCase() ?? '';
+  const extension = filename.includes('.') ? filename.split('.').at(-1) : null;
+  return extension ? RAW_ASSET_EXTENSIONS.has(extension) : false;
+}
+
+function hasQueryLikePath(pathname: string): boolean {
+  try {
+    return /(?:^|[&?])(?:q|query|search)=/i.test(decodeURIComponent(pathname));
+  } catch {
+    return false;
+  }
+}
+
 function hasBlockedPath(pathname: string, domain: string): boolean {
+  const normalizedPathname = pathname.toLowerCase();
   if (
     [...GENERIC_PATHS].some(
-      (path) => pathname === path || pathname.startsWith(`${path}/`),
+      (path) =>
+        normalizedPathname === path ||
+        normalizedPathname.startsWith(`${path}/`),
     )
   ) {
     return true;
   }
 
   if (
-    NEVER_LAND_PATH_PREFIXES.some(
+    SCENERY_ONLY_PATH_PREFIXES.some(
       (rule) =>
         domainMatches(domain, rule.domain) &&
         rule.prefixes.some(
-          (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+          (prefix) =>
+            normalizedPathname === prefix ||
+            normalizedPathname.startsWith(`${prefix}/`),
         ),
     )
   ) {
@@ -187,7 +376,7 @@ function hasBlockedPath(pathname: string, domain: string): boolean {
   return pathname.split('/').some((segment) => {
     const label = comparableLabel(segment);
     return (
-      NEVER_LAND_PATH_SEGMENTS.has(label) ||
+      SCENERY_ONLY_PATH_SEGMENTS.has(label) ||
       AUTHENTICATION_PATH_MARKERS.some((marker) => label.includes(marker))
     );
   });
@@ -220,19 +409,203 @@ function getMeaningfulTitle(
     : normalizedTitle;
 }
 
-function hasUserBoundSubdomain(domain: string): boolean {
-  const labels = domain.split('.');
-  return labels
-    .slice(0, -2)
-    .some((label) => NEVER_LAND_SUBDOMAIN_LABELS.has(comparableLabel(label)));
+function sanitizeContentUrl(url: URL): string {
+  url.search = '';
+  return canonicalizeUrl(url.toString());
+}
+
+function normalizeWikipediaNamespace(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}]+/gu, '');
+}
+
+function isWikipediaArticle(pathname: string): boolean {
+  if (!pathname.startsWith('/wiki/')) return false;
+
+  try {
+    const pageName = decodeURIComponent(pathname.slice('/wiki/'.length));
+    const namespaceSeparator = pageName.indexOf(':');
+    if (namespaceSeparator === -1) return true;
+
+    const namespace = normalizeWikipediaNamespace(
+      pageName.slice(0, namespaceSeparator),
+    );
+    return !WIKIPEDIA_PRIVATE_NAMESPACES.has(namespace);
+  } catch {
+    return false;
+  }
+}
+
+const GITHUB_NON_REPOSITORY_ROUTES = new Set([
+  'about',
+  'collections',
+  'customer-stories',
+  'enterprise',
+  'enterprises',
+  'events',
+  'explore',
+  'features',
+  'issues',
+  'login',
+  'marketplace',
+  'new',
+  'notifications',
+  'organizations',
+  'orgs',
+  'pricing',
+  'search',
+  'security',
+  'settings',
+  'sponsors',
+  'topics',
+  'trending',
+  'users',
+]);
+
+const PLATFORM_ROUTE_POLICIES: PlatformRoutePolicy[] = [
+  {
+    matches: (domain) => domainMatches(domain, 'youtube.com'),
+    sanitize: (url) => {
+      if (url.pathname !== '/watch') return null;
+      const videoId = url.searchParams.get('v');
+      if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
+      return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+    },
+  },
+  {
+    matches: (domain) => domain === 'youtu.be',
+    sanitize: (url) => {
+      const videoId = url.pathname.replace(/^\/+/, '').split('/')[0];
+      return /^[A-Za-z0-9_-]{11}$/.test(videoId)
+        ? `https://youtu.be/${videoId}`
+        : null;
+    },
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'imdb.com'),
+    sanitize: (url) =>
+      /^\/(?:title\/tt\d+|name\/nm\d+)(?:\/|$)/.test(url.pathname)
+        ? sanitizeContentUrl(url)
+        : null,
+  },
+  {
+    matches: (domain) => domain === 'archive.org',
+    sanitize: (url) =>
+      /^\/details\/[^/]+(?:\/|$)/.test(url.pathname)
+        ? sanitizeContentUrl(url)
+        : null,
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'pinterest.com'),
+    sanitize: (url) =>
+      /^\/pin\/\d+(?:\/|$)/.test(url.pathname) ? sanitizeContentUrl(url) : null,
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'tiktok.com'),
+    sanitize: (url) =>
+      /^\/@[^/]+\/video\/\d+(?:\/|$)/.test(url.pathname)
+        ? sanitizeContentUrl(url)
+        : null,
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'github.com'),
+    sanitize: (url) => {
+      const segments = url.pathname.split('/').filter(Boolean);
+      if (
+        segments.length < 2 ||
+        GITHUB_NON_REPOSITORY_ROUTES.has(segments[0].toLowerCase())
+      ) {
+        return null;
+      }
+      return sanitizeContentUrl(url);
+    },
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'archiveofourown.org'),
+    sanitize: (url) =>
+      /^\/works\/\d+(?:\/|$)/.test(url.pathname)
+        ? sanitizeContentUrl(url)
+        : null,
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'roblox.com'),
+    sanitize: (url) =>
+      /^\/games\/\d+(?:\/|$)/.test(url.pathname)
+        ? sanitizeContentUrl(url)
+        : null,
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'substack.com'),
+    sanitize: (url) =>
+      /^\/(?:p\/[^/]+|@[^/]+\/p\/[^/]+)(?:\/|$)/.test(url.pathname)
+        ? sanitizeContentUrl(url)
+        : null,
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'wikipedia.org'),
+    sanitize: (url) =>
+      isWikipediaArticle(url.pathname) ? sanitizeContentUrl(url) : null,
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'instagram.com'),
+    sanitize: (url) =>
+      /^\/(?:p|reel|tv)\/[^/]+(?:\/|$)/.test(url.pathname)
+        ? sanitizeContentUrl(url)
+        : null,
+  },
+  {
+    matches: (domain) => domainMatches(domain, 'tumblr.com'),
+    sanitize: (url) => {
+      const isCustomBlogPost =
+        domainMatches(normalizeDomain(url.hostname), 'tumblr.com') &&
+        normalizeDomain(url.hostname) !== 'tumblr.com' &&
+        /^\/post\/\d+(?:\/|$)/.test(url.pathname);
+      const isCentralPost = /^\/[^/]+\/\d+(?:\/|$)/.test(url.pathname);
+      return isCustomBlogPost || isCentralPost ? sanitizeContentUrl(url) : null;
+    },
+  },
+  {
+    matches: (domain) =>
+      getDomainWithoutSuffix(domain, { allowPrivateDomains: true }) ===
+        'google' && getSubdomainLabels(domain).length === 0,
+    sanitize: () => null,
+  },
+];
+
+function getPlatformDestinationUrl(
+  url: URL,
+  domain: string,
+): string | null | undefined {
+  const policy = PLATFORM_ROUTE_POLICIES.find((candidate) =>
+    candidate.matches(domain),
+  );
+  return policy ? policy.sanitize(url) : undefined;
+}
+
+function hasPersonBoundRoute(url: URL, domain: string): boolean {
+  return (
+    (domainMatches(domain, 'last.fm') &&
+      /^\/user\/[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (domainMatches(domain, 'artfight.net') &&
+      /^\/~[^/]+(?:\/|$)/.test(url.pathname))
+  );
 }
 
 function isExcludedDestinationSurface(url: URL, domain: string): boolean {
   return (
     Boolean(url.username || url.password) ||
-    NEVER_LAND_DOMAINS.some((candidate) => domainMatches(domain, candidate)) ||
-    hasUserBoundSubdomain(domain) ||
-    hasBlockedPath(url.pathname || '/', domain)
+    SCENERY_ONLY_DOMAINS.some((candidate) =>
+      domainMatches(domain, candidate),
+    ) ||
+    hasSubdomainLabel(domain, SCENERY_ONLY_SUBDOMAIN_LABELS) ||
+    hasBlockedPath(url.pathname || '/', domain) ||
+    hasPrivateRouteShape(url.pathname) ||
+    hasPersonBoundRoute(url, domain) ||
+    hasRawAssetPath(url.pathname) ||
+    hasQueryLikePath(url.pathname)
   );
 }
 
@@ -246,29 +619,12 @@ function sanitizePublicDestinationUrl(rawUrl: string): string | null {
     const domain = normalizeDomain(url.hostname);
     if (isExcludedDestinationSurface(url, domain)) return null;
 
-    if (domainMatches(domain, 'youtube.com') && url.pathname === '/watch') {
-      const videoId = url.searchParams.get('v');
-      if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
-      return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
-    }
-
-    if (domain === 'youtu.be') {
-      const videoId = url.pathname.replace(/^\/+/, '').split('/')[0];
-      if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
-      return `https://youtu.be/${videoId}`;
-    }
-
-    if (
-      domainMatches(domain, 'imdb.com') &&
-      /^\/(?:title\/tt\d+|name\/nm\d+)(?:\/|$)/.test(url.pathname)
-    ) {
-      url.search = '';
-      return url.toString();
-    }
+    const platformUrl = getPlatformDestinationUrl(url, domain);
+    if (platformUrl !== undefined) return platformUrl;
 
     if (url.searchParams.size > 0) return null;
 
-    return url.toString();
+    return canonicalizeUrl(url.toString());
   } catch {
     return null;
   }
@@ -284,7 +640,16 @@ function toCandidate(event: CollectionEvent): NavigationCandidate | null {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
 
     const domain = normalizeDomain(url.hostname);
-    if (!domain || isLocalNetworkHost(domain)) return null;
+    const registrableDomain = getRegistrableDomain(domain);
+    if (
+      !domain ||
+      !registrableDomain ||
+      url.username ||
+      url.password ||
+      isNeverShownHost(domain, registrableDomain)
+    ) {
+      return null;
+    }
 
     const data = event.data as Record<string, unknown>;
     const title = typeof data.title === 'string' ? data.title : null;
@@ -294,6 +659,7 @@ function toCandidate(event: CollectionEvent): NavigationCandidate | null {
       hue: event.meta.cursor_color ?? '#4a9a8a',
       pid: event.meta.pid,
       recentDomainVisits: 1,
+      registrableDomain,
       title,
       url: event.meta.url,
       visitedAt: event.ts,
@@ -326,7 +692,7 @@ function buildDestinations(
   candidates: NavigationCandidate[],
 ): CommuteDestination[] {
   const destinations: CommuteDestination[] = [];
-  const seenDomains = new Set<string>();
+  const seenRegistrableDomains = new Set<string>();
   const stopsByRider = new Map<string, number>();
   const rankedCandidates = [...candidates].sort((first, second) => {
     const visitDifference =
@@ -337,11 +703,13 @@ function buildDestinations(
 
   for (const candidate of rankedCandidates) {
     const url = sanitizePublicDestinationUrl(candidate.url);
-    if (!url || seenDomains.has(candidate.domain)) continue;
+    if (!url || seenRegistrableDomains.has(candidate.registrableDomain)) {
+      continue;
+    }
 
     const title = getMeaningfulTitle(candidate.title, candidate.domain);
     if (
-      TITLE_REQUIRED_DOMAINS.some((domain) =>
+      MEANINGFUL_TITLE_REQUIRED_DOMAINS.some((domain) =>
         domainMatches(candidate.domain, domain),
       ) &&
       !title
@@ -360,7 +728,7 @@ function buildDestinations(
       visitedAt: candidate.visitedAt,
       hue: candidate.hue,
     });
-    seenDomains.add(candidate.domain);
+    seenRegistrableDomains.add(candidate.registrableDomain);
     stopsByRider.set(candidate.pid, riderStopCount + 1);
     if (destinations.length === DESTINATION_LIMIT) break;
   }
@@ -402,14 +770,14 @@ export function buildCommuteResponse(
 
   for (const candidate of newestFirst) {
     visitsByDomain.set(
-      candidate.domain,
-      (visitsByDomain.get(candidate.domain) ?? 0) + 1,
+      candidate.registrableDomain,
+      (visitsByDomain.get(candidate.registrableDomain) ?? 0) + 1,
     );
   }
 
   const candidates = newestFirst.map((candidate) => ({
     ...candidate,
-    recentDomainVisits: visitsByDomain.get(candidate.domain) ?? 1,
+    recentDomainVisits: visitsByDomain.get(candidate.registrableDomain) ?? 1,
   }));
 
   return {

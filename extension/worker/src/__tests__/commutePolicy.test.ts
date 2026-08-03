@@ -399,6 +399,519 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('omits non-public and tracking hosts from scenery', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'single-label',
+          'navigation',
+          'http://jellyfin-local:8096/web',
+          300,
+          'local-rider',
+          'Jellyfin',
+        ),
+        event(
+          'tracking-host',
+          'navigation',
+          'https://tracking.prmtracking.com/click/campaign',
+          200,
+          'tracking-rider',
+          'Redirecting',
+        ),
+        event(
+          'credentialed-host',
+          'navigation',
+          'https://person:secret@example.com/private',
+          150,
+          'credential-rider',
+          'Private server',
+        ),
+        event(
+          'article',
+          'navigation',
+          'https://article.example/story',
+          100,
+          'article-rider',
+          'A story worth visiting',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'article.example',
+    ]);
+  });
+
+  it('keeps search engines and query-like paths as scenery only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'search-engine',
+          'navigation',
+          'https://duckduckgo.com/?q=private+search',
+          400,
+          'search-rider',
+          'Private search',
+        ),
+        event(
+          'query-path',
+          'navigation',
+          'https://search.example/results/&q=private+search',
+          300,
+          'query-path-rider',
+          'Private search',
+        ),
+        event(
+          'article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          200,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
+  it('keeps private applications and opaque sessions as scenery only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'photos-search',
+          'navigation',
+          'https://photos.google.com/u/1/search/private-search-id',
+          1_000,
+          'photos-rider',
+          'Google Photos',
+        ),
+        event(
+          'slack-channel',
+          'navigation',
+          'https://app.slack.com/client/T52AJV4BA/C0B90D2LLS3',
+          900,
+          'slack-rider',
+          'Workspace channel',
+        ),
+        event(
+          'miro-board',
+          'navigation',
+          'https://miro.com/app/board/uXjVH9KT5eM=',
+          800,
+          'miro-rider',
+          'A private workspace',
+        ),
+        event(
+          'messenger-thread',
+          'navigation',
+          'https://messenger.com/e2ee/t/6091314047652823',
+          700,
+          'messenger-rider',
+          'Messenger',
+        ),
+        event(
+          'meeting',
+          'navigation',
+          'https://meet.google.com/abc-defg-hij',
+          600,
+          'meeting-rider',
+          'Private meeting',
+        ),
+        event(
+          'application',
+          'navigation',
+          'https://apply.commonapp.org/mycolleges/327/3900/14662',
+          500,
+          'application-rider',
+          'My Colleges',
+        ),
+        event(
+          'university-portal',
+          'navigation',
+          'https://my.university.example/uPortal/f/servicehub/normal/render.uP',
+          400,
+          'portal-rider',
+          'Student service hub',
+        ),
+        event(
+          'collaborative-room',
+          'navigation',
+          'https://collaboration.example/rooms/2df06b06-ab84-448e-b904-84c8f0997aa9',
+          300,
+          'room-rider',
+          'Shared room',
+        ),
+        event(
+          'article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          200,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'photos.google.com',
+      'app.slack.com',
+      'miro.com',
+      'messenger.com',
+      'meet.google.com',
+      'apply.commonapp.org',
+      'my.university.example',
+      'collaboration.example',
+      'garden.example',
+    ]);
+    expect(response.destinations).toEqual([
+      expect.objectContaining({
+        domain: 'garden.example',
+        url: 'https://garden.example/essays/moss',
+      }),
+    ]);
+  });
+
+  it('allows public platform content while excluding private platform surfaces', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'pinterest-board',
+          'navigation',
+          'https://www.pinterest.com/person/ideas',
+          1_400,
+          'pinterest-profile-rider',
+          'Ideas',
+        ),
+        event(
+          'pinterest-pin',
+          'navigation',
+          'https://www.pinterest.com/pin/1112811389198317559',
+          1_300,
+          'pinterest-pin-rider',
+          'A particular pin',
+        ),
+        event(
+          'github-profile',
+          'navigation',
+          'https://github.com/person',
+          1_200,
+          'github-profile-rider',
+          'A GitHub profile',
+        ),
+        event(
+          'github-organization',
+          'navigation',
+          'https://github.com/orgs/organization/repositories',
+          1_150,
+          'github-organization-rider',
+          'An organization on GitHub',
+        ),
+        event(
+          'github-repository',
+          'navigation',
+          'https://github.com/owner/project',
+          1_100,
+          'github-repository-rider',
+          'A public repository',
+        ),
+        event(
+          'ao3-profile',
+          'navigation',
+          'https://archiveofourown.org/users/person/stats',
+          1_000,
+          'ao3-profile-rider',
+          'User Statistics',
+        ),
+        event(
+          'ao3-work',
+          'navigation',
+          'https://archiveofourown.org/works/12345678',
+          900,
+          'ao3-work-rider',
+          'A public work',
+        ),
+        event(
+          'substack-note',
+          'navigation',
+          'https://substack.com/@person/note/c-123456',
+          800,
+          'substack-note-rider',
+          'A personal note',
+        ),
+        event(
+          'substack-article',
+          'navigation',
+          'https://publication.substack.com/p/a-public-essay',
+          700,
+          'substack-article-rider',
+          'A public essay',
+        ),
+        event(
+          'roblox-profile',
+          'navigation',
+          'https://roblox.com/users/123456/profile',
+          600,
+          'roblox-profile-rider',
+          'A Roblox profile',
+        ),
+        event(
+          'roblox-game',
+          'navigation',
+          'https://roblox.com/games/123456/a-public-game',
+          500,
+          'roblox-game-rider',
+          'A public game',
+        ),
+        event(
+          'wikipedia-user',
+          'navigation',
+          'https://sv.wikipedia.org/wiki/Anv%C3%A4ndare:Person',
+          400,
+          'wikipedia-user-rider',
+          'Användare:Person – Wikipedia',
+        ),
+        event(
+          'wikipedia-article',
+          'navigation',
+          'https://de.wikipedia.org/wiki/Depression',
+          300,
+          'wikipedia-article-rider',
+          'Depression – Wikipedia',
+        ),
+        event(
+          'archive-home',
+          'navigation',
+          'https://archive.org/',
+          200,
+          'archive-home-rider',
+          'Internet Archive',
+        ),
+        event(
+          'archive-item',
+          'navigation',
+          'https://archive.org/details/computerchronicles',
+          100,
+          'archive-item-rider',
+          'Computer Chronicles',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((destination) => destination.url)).toEqual(
+      expect.arrayContaining([
+        'https://www.pinterest.com/pin/1112811389198317559',
+        'https://github.com/owner/project',
+        'https://archiveofourown.org/works/12345678',
+        'https://publication.substack.com/p/a-public-essay',
+        'https://roblox.com/games/123456/a-public-game',
+        'https://de.wikipedia.org/wiki/Depression',
+        'https://archive.org/details/computerchronicles',
+      ]),
+    );
+    expect(response.destinations).toHaveLength(7);
+  });
+
+  it('keeps person-bound profiles and personalized homepages as scenery only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'linkedin-profile',
+          'navigation',
+          'https://linkedin.com/in/person-123',
+          800,
+          'linkedin-rider',
+          'A person on LinkedIn',
+        ),
+        event(
+          'bluesky-profile',
+          'navigation',
+          'https://bsky.app/profile/person.example',
+          700,
+          'bluesky-rider',
+          'A person on Bluesky',
+        ),
+        event(
+          'lastfm-profile',
+          'navigation',
+          'https://last.fm/user/person',
+          600,
+          'lastfm-rider',
+          'A music profile',
+        ),
+        event(
+          'artfight-profile',
+          'navigation',
+          'https://artfight.net/~person',
+          500,
+          'artfight-rider',
+          'An Art Fight profile',
+        ),
+        event(
+          'patreon-profile',
+          'navigation',
+          'https://patreon.com/person',
+          400,
+          'patreon-rider',
+          'A creator profile',
+        ),
+        event(
+          'netflix-browse',
+          'navigation',
+          'https://netflix.com/browse',
+          300,
+          'netflix-rider',
+          'Netflix',
+        ),
+        event(
+          'article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          200,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
+  it('keeps public social posts while excluding profiles on the same platform', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'instagram-profile',
+          'navigation',
+          'https://instagram.com/person',
+          500,
+          'instagram-profile-rider',
+          'A person on Instagram',
+        ),
+        event(
+          'instagram-post',
+          'navigation',
+          'https://instagram.com/p/C0NTENT1234/',
+          400,
+          'instagram-post-rider',
+          'A public post',
+        ),
+        event(
+          'tumblr-profile',
+          'navigation',
+          'https://tumblr.com/person',
+          300,
+          'tumblr-profile-rider',
+          'A person on Tumblr',
+        ),
+        event(
+          'tumblr-post',
+          'navigation',
+          'https://tumblr.com/person/823750052332847104/a-public-post',
+          200,
+          'tumblr-post-rider',
+          'A public post',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.url)).toEqual([
+      'https://instagram.com/p/C0NTENT1234',
+      'https://tumblr.com/person/823750052332847104/a-public-post',
+    ]);
+  });
+
+  it('keeps direct files as scenery only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'pdf',
+          'navigation',
+          'https://assets.example/reports/research.pdf',
+          400,
+          'pdf-rider',
+          'Research report',
+        ),
+        event(
+          'image',
+          'navigation',
+          'https://uploads.example/private-image.png',
+          300,
+          'image-rider',
+          'private-image.png',
+        ),
+        event(
+          'article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          200,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
+  it('deduplicates destinations by registrable domain', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'shop',
+          'navigation',
+          'https://shop.norlys.dk/products/keyboard',
+          300,
+          'shop-rider',
+          'A keyboard',
+        ),
+        event(
+          'main',
+          'navigation',
+          'https://norlys.dk/articles/design',
+          200,
+          'article-rider',
+          'An article about design',
+        ),
+        event(
+          'other',
+          'navigation',
+          'https://garden.example/essays/moss',
+          100,
+          'garden-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+      'shop.norlys.dk',
+    ]);
+  });
+
   it('returns an aggregate active-person count without participant identifiers', () => {
     const response = buildCommuteResponse(
       [],
