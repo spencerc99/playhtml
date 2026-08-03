@@ -1,8 +1,87 @@
-// ABOUTME: Verifies generic presence server lifecycle diagnostics.
-// ABOUTME: Keeps expected WebSocket closes from polluting Worker logs.
+// ABOUTME: Verifies presence message compatibility and server lifecycle behavior.
+// ABOUTME: Covers public identity projection, state persistence, and close diagnostics.
 import { describe, expect, it } from "bun:test";
+import { validatePresenceClientMessage } from "@playhtml/common";
 import { getConnectionCloseDiagnostic } from "../connectionDiagnostics";
-import { persistPresenceConnectionState } from "../presenceMessage";
+import {
+  persistPresenceConnectionState,
+  projectPresenceClientIdentity,
+} from "../presenceMessage";
+
+describe("presence message compatibility", () => {
+  it("projects legacy join identities to public fields before validation", () => {
+    const message = validatePresenceClientMessage(
+      projectPresenceClientIdentity({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          name: "Reader",
+          playerStyle: {
+            colorPalette: ["red"],
+            cursorStyle: "default",
+            privateStyle: "secret",
+          },
+          createdAt: 123,
+          discoveredSites: ["example.com"],
+          privateKey: { d: "secret" },
+        },
+      }),
+    );
+
+    expect(message).toEqual({
+      type: "presence-join",
+      identity: {
+        publicKey: "pk_1",
+        name: "Reader",
+        playerStyle: {
+          colorPalette: ["red"],
+          cursorStyle: "default",
+        },
+        createdAt: 123,
+      },
+    });
+  });
+
+  it("projects legacy identity-channel updates to public fields", () => {
+    const message = validatePresenceClientMessage(
+      projectPresenceClientIdentity({
+        type: "presence-update",
+        channel: "identity",
+        value: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+          discoveredSites: ["example.com"],
+        },
+      }),
+    );
+
+    expect(message).toEqual({
+      type: "presence-update",
+      channel: "identity",
+      value: {
+        publicKey: "pk_1",
+        playerStyle: { colorPalette: ["red"] },
+      },
+    });
+  });
+
+  it("preserves invalid public identity fields for strict validation", () => {
+    expect(() =>
+      validatePresenceClientMessage(
+        projectPresenceClientIdentity({
+          type: "presence-join",
+          identity: {
+            publicKey: "pk_1",
+            playerStyle: { colorPalette: [] },
+            discoveredSites: ["example.com"],
+          },
+        }),
+      ),
+    ).toThrow(
+      "identity.playerStyle.colorPalette[0] must be a non-empty string",
+    );
+  });
+});
 
 describe("presence connection state persistence", () => {
   it("restores the previous state after a rejected attachment write", () => {
