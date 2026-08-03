@@ -7,6 +7,10 @@ import {
 } from "../ClickResidueCanvas";
 
 describe("ClickResidueCanvas fading", () => {
+  it("uses a three-minute visual half-life", () => {
+    expect(CLICK_RESIDUE_HALF_LIFE_MS).toBe(3 * 60_000);
+  });
+
   it("fades continuously by half-life", () => {
     expect(getResidueFadeAlpha(0)).toBe(0);
     expect(getResidueFadeAlpha(CLICK_RESIDUE_HALF_LIFE_MS)).toBeCloseTo(0.5);

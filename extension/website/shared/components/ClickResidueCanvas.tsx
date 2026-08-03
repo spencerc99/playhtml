@@ -13,7 +13,7 @@ import {
 } from "./ClickRipple";
 
 const FADE_TICK_MS = 1000;
-export const CLICK_RESIDUE_HALF_LIFE_MS = 5 * 60_000;
+export const CLICK_RESIDUE_HALF_LIFE_MS = 3 * 60_000;
 
 export function getResidueFadeAlpha(
   elapsedMs: number,
