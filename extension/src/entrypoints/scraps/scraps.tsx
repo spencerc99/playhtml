@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
+import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
   ScrapCollage,
   type ScrapItem,
@@ -206,22 +207,18 @@ export function ScrapsPage() {
         />
       </svg>
 
-      <span
+      <div
         style={{
           position: "absolute",
           top: 14,
           left: 20,
+          right: 20,
           zIndex: 4,
-          color: "#3d3833",
-          fontFamily: "'Source Serif 4', Georgia, serif",
-          fontSize: 20,
-          fontStyle: "italic",
-          fontWeight: 200,
-          pointerEvents: "none",
+          pointerEvents: "auto",
         }}
       >
-        we were online
-      </span>
+        <ExtensionPageNav currentPage="scraps" />
+      </div>
 
       <header
         style={{
