@@ -6,7 +6,6 @@ import type {
   CollectionEventType,
   CursorEventData,
   NavigationEventData,
-  ViewportEventData,
 } from "../collectors/types";
 import { VERBOSE } from "../config";
 import {
@@ -135,12 +134,117 @@ function toCollectionEvent(event: StoredCollectionEvent): CollectionEvent {
 export interface ScreenTimeResult {
   totalMs: number;
   sessions: ScreenTimeSession[];
-  totalScrollDistancePx: number;
 }
 
 export interface WalkingRecordEventResult {
   events: CollectionEvent[];
   cursorDistancePx: number;
+}
+
+export interface WalkingRecordTracePoint {
+  x: number;
+  y: number;
+}
+
+export interface WalkingRecordTraceTarget {
+  id: string;
+  url: string;
+  startTs: number;
+  endTs: number;
+}
+
+export interface WalkingRecordTrace {
+  targetId: string;
+  paths: WalkingRecordTracePoint[][];
+}
+
+interface TimedTracePoint extends WalkingRecordTracePoint {
+  ts: number;
+}
+
+function squaredDistance(
+  first: WalkingRecordTracePoint,
+  second: WalkingRecordTracePoint,
+): number {
+  const dx = first.x - second.x;
+  const dy = first.y - second.y;
+  return dx * dx + dy * dy;
+}
+
+function squaredSegmentDistance(
+  point: WalkingRecordTracePoint,
+  start: WalkingRecordTracePoint,
+  end: WalkingRecordTracePoint,
+): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  if (dx === 0 && dy === 0) return squaredDistance(point, start);
+
+  const progress = Math.max(
+    0,
+    Math.min(
+      1,
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) /
+        (dx * dx + dy * dy),
+    ),
+  );
+  return squaredDistance(point, {
+    x: start.x + progress * dx,
+    y: start.y + progress * dy,
+  });
+}
+
+function simplifyTracePath(
+  points: TimedTracePoint[],
+  tolerance = 0.004,
+): WalkingRecordTracePoint[] {
+  if (points.length <= 2) return points.map(({ x, y }) => ({ x, y }));
+
+  const keep = new Set([0, points.length - 1]);
+  const segments: Array<[number, number]> = [[0, points.length - 1]];
+  const squaredTolerance = tolerance * tolerance;
+
+  while (segments.length > 0) {
+    const [startIndex, endIndex] = segments.pop()!;
+    let farthestIndex = -1;
+    let farthestDistance = squaredTolerance;
+
+    for (let index = startIndex + 1; index < endIndex; index++) {
+      const distance = squaredSegmentDistance(
+        points[index],
+        points[startIndex],
+        points[endIndex],
+      );
+      if (distance > farthestDistance) {
+        farthestDistance = distance;
+        farthestIndex = index;
+      }
+    }
+
+    if (farthestIndex !== -1) {
+      keep.add(farthestIndex);
+      segments.push([startIndex, farthestIndex], [farthestIndex, endIndex]);
+    }
+  }
+
+  const simplified = [...keep]
+    .sort((a, b) => a - b)
+    .map((index) => ({ x: points[index].x, y: points[index].y }));
+  if (simplified.length <= 48) return simplified;
+
+  return Array.from({ length: 48 }, (_, index) => {
+    const sourceIndex = Math.round((index / 47) * (simplified.length - 1));
+    return simplified[sourceIndex];
+  });
+}
+
+function tracePathDistance(points: TimedTracePoint[]): number {
+  let distance = 0;
+  for (let index = 1; index < points.length; index++) {
+    distance += Math.sqrt(squaredDistance(points[index - 1], points[index]));
+  }
+  return distance;
 }
 
 /**
@@ -1216,7 +1320,7 @@ export class LocalEventStore {
 
   /**
    * Read the event subset needed by the walking record without transferring
-   * every high-frequency cursor and viewport sample to the new-tab page.
+   * every high-frequency cursor sample to the new-tab page.
    */
   async getWalkingRecordEvents(
     options: Pick<QueryOptions, "startTs" | "endTs">,
@@ -1241,7 +1345,7 @@ export class LocalEventStore {
       const range = IDBKeyRange.bound(startTs, endTs);
       const request = tsIndex.openCursor(range);
       const events: CollectionEvent[] = [];
-      const sampledMotionWindows = new Set<string>();
+      const sampledCursorWindows = new Set<string>();
       let previousCursorEvent: CollectionEvent | null = null;
       let cursorDistancePx = 0;
 
@@ -1288,17 +1392,151 @@ export class LocalEventStore {
           const sampleWindow = Math.floor((event.ts - startTs) / sampleIntervalMs);
           const page = event.normalizedUrl ?? normalizeUrl(event.meta.url);
           const sampleKey = `cursor:${page}:${sampleWindow}`;
-          if (!sampledMotionWindows.has(sampleKey)) {
-            sampledMotionWindows.add(sampleKey);
+          if (!sampledCursorWindows.has(sampleKey)) {
+            sampledCursorWindows.add(sampleKey);
             events.push(event);
           }
-        } else if (event.type === "viewport") {
-          const sampleWindow = Math.floor((event.ts - startTs) / sampleIntervalMs);
-          const page = event.normalizedUrl ?? normalizeUrl(event.meta.url);
-          const sampleKey = `viewport:${page}:${sampleWindow}`;
-          if (!sampledMotionWindows.has(sampleKey)) {
-            sampledMotionWindows.add(sampleKey);
-            events.push(event);
+        }
+
+        cursor.continue();
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Extract a few representative, continuous cursor paths for selected sessions.
+   * Paths remain normalized to the source viewport and are simplified before transfer.
+   */
+  async getWalkingRecordTraces(
+    targets: WalkingRecordTraceTarget[],
+  ): Promise<WalkingRecordTrace[]> {
+    await this.ensureInitialized();
+
+    if (targets.length > 16) {
+      throw new Error("Walking record trace target limit exceeded");
+    }
+    if (targets.length === 0) return [];
+
+    for (const target of targets) {
+      if (
+        !target.id ||
+        !/^https?:\/\//.test(target.url) ||
+        !Number.isFinite(target.startTs) ||
+        !Number.isFinite(target.endTs) ||
+        target.endTs < target.startTs
+      ) {
+        throw new Error("Walking record trace target is invalid");
+      }
+    }
+
+    const collectors = new Map(
+      targets.map((target) => [
+        target.id,
+        {
+          target,
+          normalizedUrl: normalizeUrl(target.url),
+          paths: [] as TimedTracePoint[][],
+          currentPath: [] as TimedTracePoint[],
+        },
+      ]),
+    );
+    const startTs = Math.min(...targets.map((target) => target.startTs));
+    const endTs = Math.max(...targets.map((target) => target.endTs));
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const tsIndex = store.index("ts");
+      const request = tsIndex.openCursor(IDBKeyRange.bound(startTs, endTs));
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          const traces = [...collectors.values()].map((collector) => {
+            if (collector.currentPath.length >= 2) {
+              collector.paths.push(collector.currentPath);
+            }
+
+            const paths = collector.paths
+              .map((points, index) => ({
+                points,
+                index,
+                distance: tracePathDistance(points),
+              }))
+              .filter(({ points }) => points.length >= 2)
+              .sort((a, b) => b.distance - a.distance)
+              .slice(0, 3)
+              .sort((a, b) => a.index - b.index)
+              .map(({ points }) => simplifyTracePath(points));
+
+            return { targetId: collector.target.id, paths };
+          });
+          resolve(traces);
+          return;
+        }
+
+        const event = cursor.value as StoredCollectionEvent;
+        if (event.type === "cursor") {
+          const data = event.data as CursorEventData;
+          const eventUrl = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+
+          if (
+            (data.event === "move" || data.event === undefined) &&
+            Number.isFinite(data.x) &&
+            Number.isFinite(data.y)
+          ) {
+            for (const collector of collectors.values()) {
+              if (
+                event.ts < collector.target.startTs ||
+                event.ts > collector.target.endTs ||
+                eventUrl !== collector.normalizedUrl
+              ) {
+                continue;
+              }
+
+              const point: TimedTracePoint = {
+                x: Math.max(0, Math.min(1, data.x)),
+                y: Math.max(0, Math.min(1, data.y)),
+                ts: event.ts,
+              };
+              const previous = collector.currentPath.at(-1);
+
+              if (previous && point.ts - previous.ts > 5_000) {
+                if (
+                  collector.currentPath.length >= 2 &&
+                  collector.paths.length < 256
+                ) {
+                  collector.paths.push(collector.currentPath);
+                }
+                collector.currentPath = [];
+              }
+
+              const lastAccepted = collector.currentPath.at(-1);
+              if (
+                !lastAccepted ||
+                squaredDistance(lastAccepted, point) >= 0.000004 ||
+                point.ts - lastAccepted.ts >= 500
+              ) {
+                collector.currentPath.push(point);
+              }
+
+              if (collector.currentPath.length >= 1_024) {
+                const lastPoint = collector.currentPath.at(-1)!;
+                collector.currentPath = collector.currentPath.filter(
+                  (_, index) => index % 2 === 0,
+                );
+                if (collector.currentPath.at(-1) !== lastPoint) {
+                  collector.currentPath.push(lastPoint);
+                }
+              }
+            }
           }
         }
 
@@ -1348,18 +1586,12 @@ export class LocalEventStore {
 
   /**
    * Compute screen time by pairing focus→blur navigation events.
-   * Also sums scroll distance from viewport events.
-   *
-   * Optional domain/url filter via QueryOptions.type is ignored here since
-   * navigation events are what drive the session calculation; pass startTs/endTs
-   * to restrict the time window.
    */
   async getScreenTime(options: Pick<QueryOptions, 'startTs' | 'endTs'> = {}): Promise<ScreenTimeResult> {
     await this.ensureInitialized();
 
-    // Pull all navigation events (focus/blur) and viewport scroll events in one pass
-    const navEvents = await this.getAllEvents({ type: 'navigation', ...options });
-    const viewportEvents = await this.getAllEvents({ type: 'viewport', ...options });
+    const navEvents = await this.queryByType("navigation", options);
+    navEvents.sort((a, b) => a.ts - b.ts);
 
     // Pair focus → blur into sessions
     const sessions: ScreenTimeSession[] = [];
@@ -1385,17 +1617,7 @@ export class LocalEventStore {
     }
 
     const totalMs = sessions.reduce((sum, s) => sum + s.durationMs, 0);
-
-    // Sum scroll distance from viewport scroll events
-    let totalScrollDistancePx = 0;
-    for (const evt of viewportEvents) {
-      const d = evt.data as ViewportEventData;
-      if (d.event === 'scroll' && d.scrollDistancePx != null) {
-        totalScrollDistancePx += d.scrollDistancePx;
-      }
-    }
-
-    return { totalMs, sessions, totalScrollDistancePx };
+    return { totalMs, sessions };
   }
 
   /**

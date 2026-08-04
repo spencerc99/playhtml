@@ -5,6 +5,7 @@
 import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
+import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import "../../styles/options.scss";
 import "./stats.scss";
 
@@ -133,9 +134,13 @@ const StatsPage = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await browser.runtime.sendMessage({ type: "GET_ALL_DOMAINS" });
+      const res = await browser.runtime.sendMessage({
+        type: "GET_ALL_DOMAINS",
+      });
       if (!res?.success || !res.domains) {
-        setError("Could not reach background script. Try reloading the extension.");
+        setError(
+          "Could not reach background script. Try reloading the extension.",
+        );
         return;
       }
 
@@ -158,7 +163,9 @@ const StatsPage = () => {
       });
 
       setDomains(sorted);
-      setTotalTimeMs(sorted.reduce((sum, d) => sum + (d.stats?.totalTimeMs ?? 0), 0));
+      setTotalTimeMs(
+        sorted.reduce((sum, d) => sum + (d.stats?.totalTimeMs ?? 0), 0),
+      );
     } catch (e) {
       console.error("[Stats] Failed to load domain data:", e);
       setError("Failed to load data. Check the browser console for details.");
@@ -241,7 +248,10 @@ const StatsPage = () => {
     return b.eventCount - a.eventCount;
   });
 
-  const maxTime = Math.max(1, ...sortedDomains.map((d) => d.stats?.totalTimeMs ?? 0));
+  const maxTime = Math.max(
+    1,
+    ...sortedDomains.map((d) => d.stats?.totalTimeMs ?? 0),
+  );
 
   const toggleDomain = (domain: string) => {
     setExpandedDomain((prev) => {
@@ -257,17 +267,7 @@ const StatsPage = () => {
     <div className="stats-page">
       <header className="stats-page__header">
         <div className="stats-page__header-inner">
-          <div className="stats-page__wordmark">
-            we were online
-            <a
-              href={browser.runtime.getURL("portrait.html")}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="stats-page__nav-link"
-            >
-              portrait
-            </a>
-          </div>
+          <ExtensionPageNav currentPage="time" />
           <h1 className="stats-page__title">time spent</h1>
           {!loading && totalTimeMs > 0 && (
             <p className="stats-page__subtitle">
@@ -315,7 +315,8 @@ const StatsPage = () => {
             <div className="stats-page__list">
               {sortedDomains.map((domain, i) => {
                 const time = domain.stats?.totalTimeMs;
-                const barWidth = time != null ? Math.max(2, (time / maxTime) * 100) : 0;
+                const barWidth =
+                  time != null ? Math.max(2, (time / maxTime) * 100) : 0;
                 const isExpanded = expandedDomain === domain.domain;
                 const topPages =
                   isExpanded && domain.stats?.sessions
@@ -349,15 +350,21 @@ const StatsPage = () => {
                       />
                       <div className="domain-row__body">
                         <div className="domain-row__top">
-                          <span className="domain-row__name">{domain.domain}</span>
+                          <span className="domain-row__name">
+                            {domain.domain}
+                          </span>
                           <div className="domain-row__right">
                             <span className="domain-row__time">
                               {domain.loading ? (
-                                <span className="domain-row__time--loading">…</span>
+                                <span className="domain-row__time--loading">
+                                  …
+                                </span>
                               ) : time != null ? (
                                 formatDuration(time)
                               ) : (
-                                <span className="domain-row__time--none">—</span>
+                                <span className="domain-row__time--none">
+                                  —
+                                </span>
                               )}
                             </span>
                             {hasPages && (
@@ -387,14 +394,18 @@ const StatsPage = () => {
                     {/* Expanded pages list */}
                     {isExpanded && domain.pagesLoading && (
                       <div className="domain-row__pages">
-                        <p className="domain-row__pages-empty">loading page sessions…</p>
+                        <p className="domain-row__pages-empty">
+                          loading page sessions…
+                        </p>
                       </div>
                     )}
 
                     {isExpanded && !domain.pagesLoading && topPages && (
                       <div className="domain-row__pages">
                         {topPages.length === 0 ? (
-                          <p className="domain-row__pages-empty">no page sessions recorded</p>
+                          <p className="domain-row__pages-empty">
+                            no page sessions recorded
+                          </p>
                         ) : (
                           <>
                             {topPages.map((page, pi) => {
@@ -405,7 +416,9 @@ const StatsPage = () => {
                               );
                               return (
                                 <div key={page.url} className="page-row">
-                                  <span className="page-row__rank">{pi + 1}</span>
+                                  <span className="page-row__rank">
+                                    {pi + 1}
+                                  </span>
                                   <div className="page-row__body">
                                     <div className="page-row__top">
                                       <span
@@ -426,7 +439,9 @@ const StatsPage = () => {
                                     </div>
                                     <span className="page-row__visits">
                                       {page.visitCount}{" "}
-                                      {page.visitCount === 1 ? "visit" : "visits"}
+                                      {page.visitCount === 1
+                                        ? "visit"
+                                        : "visits"}
                                     </span>
                                   </div>
                                 </div>
@@ -442,7 +457,8 @@ const StatsPage = () => {
             </div>
 
             <p className="stats-page__note">
-              time is measured from focus/blur events — only counts active browsing sessions
+              time is measured from focus/blur events — only counts active
+              browsing sessions
             </p>
           </>
         )}

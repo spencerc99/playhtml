@@ -1,158 +1,168 @@
 // ABOUTME: Renders the phase-one walking record for the extension new-tab page.
-// ABOUTME: Presents weekly departures, dormant familiar sites, and time spent from local data.
+// ABOUTME: Presents period-specific departures, familiar sites, and time spent from local data.
 
-import React, { useMemo, useRef, useState } from "react";
-import { captureDomPortrait } from "../utils/portraitExport";
+import React from "react";
 import {
-  formatDistance,
+  colorShade,
+  readableTextLightness,
+} from "@movement/utils/colorStyle";
+import { buildFreehandPathSegment } from "@movement/utils/trailAnimation";
+import { roundPathCorners } from "@movement/utils/styleUtils";
+import {
   type DayPlate,
-  type Departure,
   type WalkingRecord,
+  type WalkingRecordPeriod,
+  type WalkingRecordPeriodSummary,
 } from "../history/walkingRecord";
+import type { WalkingRecordTracePoint } from "../storage/LocalEventStore";
+import { ExtensionPageNav } from "./ExtensionPageNav";
+import { PortraitCard } from "./PortraitCard";
 import "./WalkingRecord.scss";
 
 interface WalkingRecordPageProps {
   record: WalkingRecord | null;
+  period: WalkingRecordPeriod;
+  periodOffset: number;
+  periodSummaries: WalkingRecordPeriodSummary[];
+  onPeriodChange: (period: WalkingRecordPeriod) => void;
+  onPeriodOffsetChange: (offset: number) => void;
   loading: boolean;
   error: string | null;
-  portraitHref: string;
-  onOpenCollections: () => void;
 }
 
-interface Stroke {
-  path: string;
-  opacity: number;
+function readablePaletteColor(color: string): string {
+  return colorShade(color, readableTextLightness(color));
 }
 
-function seededRandom(seed: number): () => number {
-  let state = seed || 1;
-  return () => {
-    state = Math.imul(state ^ (state >>> 15), state | 1);
-    state ^= state + Math.imul(state ^ (state >>> 7), state | 61);
-    return ((state ^ (state >>> 14)) >>> 0) / 4_294_967_296;
-  };
-}
+function fitTracePaths(
+  paths: WalkingRecordTracePoint[][],
+): WalkingRecordTracePoint[][] {
+  const points = paths.flat();
+  if (points.length < 2) return paths;
 
-function plateStrokes(plate: DayPlate): Stroke[] {
-  const random = seededRandom(plate.seed);
-  const count = plate.strokeCount;
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  const span = Math.max(maxX - minX, maxY - minY);
+  if (span <= 0 || span >= 0.72) return paths;
 
-  return Array.from({ length: count }, (_, index) => {
-    const progress = count <= 1 ? 1 : index / (count - 1);
-    const opacity = 0.18 + progress * 0.45;
+  const scale = Math.min(5, 0.72 / span);
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
 
-    if (plate.kind === "read") {
-      const y = 10 + index * (38 / Math.max(count, 1)) + random() * 4;
-      return {
-        path: `M6 ${y.toFixed(1)} C 28 ${(y - 2 + random() * 5).toFixed(1)}, 52 ${(y + random() * 5).toFixed(1)}, 74 ${(y + random() * 3).toFixed(1)}`,
-        opacity,
-      };
-    }
-
-    if (plate.kind === "skim") {
-      const x = 8 + index * (64 / Math.max(count, 1)) + random() * 4;
-      return {
-        path: `M${x.toFixed(1)} 6 C ${(x + 2).toFixed(1)} 22, ${(x - 2).toFixed(1)} 38, ${(x + 1).toFixed(1)} 52`,
-        opacity,
-      };
-    }
-
-    if (plate.kind === "dwell") {
-      const centerX = 40 + random() * 8 - 4;
-      const centerY = 28 + random() * 8 - 4;
-      const radius = 4 + index * 2.4;
-      return {
-        path: `M${(centerX - radius).toFixed(1)} ${centerY.toFixed(1)} C ${(centerX - radius).toFixed(1)} ${(centerY - radius).toFixed(1)}, ${(centerX + radius).toFixed(1)} ${(centerY - radius).toFixed(1)}, ${(centerX + radius).toFixed(1)} ${centerY.toFixed(1)} S ${(centerX - radius).toFixed(1)} ${(centerY + radius).toFixed(1)}, ${(centerX - radius).toFixed(1)} ${centerY.toFixed(1)}`,
-        opacity,
-      };
-    }
-
-    if (plate.kind === "night") {
-      return {
-        path: `M${(8 + random() * 14).toFixed(1)} ${(40 + random() * 12).toFixed(1)} C 30 ${(20 + random() * 20).toFixed(1)}, 50 ${(20 + random() * 20).toFixed(1)}, ${(60 + random() * 14).toFixed(1)} ${(38 + random() * 14).toFixed(1)}`,
-        opacity: 0.4 + progress * 0.35,
-      };
-    }
-
-    return {
-      path: `M${(4 + random() * 10).toFixed(1)} ${(6 + random() * 46).toFixed(1)} C ${(20 + random() * 20).toFixed(1)} ${(6 + random() * 46).toFixed(1)}, ${(40 + random() * 20).toFixed(1)} ${(6 + random() * 46).toFixed(1)}, ${(66 + random() * 10).toFixed(1)} ${(6 + random() * 46).toFixed(1)}`,
-      opacity,
-    };
-  });
-}
-
-function DayPlateGraphic({ plate }: { plate: DayPlate }) {
-  const strokes = useMemo(() => plateStrokes(plate), [plate]);
-
-  return (
-    <svg viewBox="0 0 80 58" role="img" aria-label={plate.vignette}>
-      {strokes.map((stroke, index) => (
-        <path
-          key={index}
-          d={stroke.path}
-          fill="none"
-          stroke={plate.hue}
-          strokeWidth="1"
-          opacity={stroke.opacity}
-          strokeLinecap="round"
-        />
-      ))}
-    </svg>
+  return paths.map((path) =>
+    path.map((point) => ({
+      x: 0.5 + (point.x - centerX) * scale,
+      y: 0.5 + (point.y - centerY) * scale,
+    })),
   );
 }
 
-function departureTrail(departure: Departure): string {
-  const random = seededRandom(
-    [...departure.to].reduce((sum, character) => sum + character.charCodeAt(0), 0),
+function freehandTracePath(
+  points: WalkingRecordTracePoint[],
+  width: number,
+  height: number,
+  padding: number,
+  minimumSize: number,
+  maximumSize: number,
+): string {
+  if (points.length < 2) return "";
+
+  const scaledPoints = points.map((point) => ({
+    x: padding + point.x * (width - padding * 2),
+    y: padding + point.y * (height - padding * 2),
+  }));
+  const roundedPoints = roundPathCorners(scaledPoints);
+
+  let normalizedDistance = 0;
+  for (let index = 1; index < points.length; index++) {
+    normalizedDistance += Math.hypot(
+      points[index].x - points[index - 1].x,
+      points[index].y - points[index - 1].y,
+    );
+  }
+
+  const detailWeight = Math.min(1, Math.max(0, points.length - 2) / 18);
+  const distanceWeight = Math.min(1, normalizedDistance / 1.2);
+  const activityWeight = detailWeight * 0.55 + distanceWeight * 0.45;
+  const size = minimumSize + (maximumSize - minimumSize) * activityWeight;
+
+  return buildFreehandPathSegment(
+    roundedPoints,
+    0,
+    roundedPoints.length - 1,
+    size,
+    true,
+    undefined,
+    {
+      thinning: 0.55,
+      simulatePressure: true,
+      taper: size * 2.5,
+    },
   );
-  const startY = 10 + random() * 24;
-  const endY = 10 + random() * 24;
-  return `M6 ${startY.toFixed(1)} C 15 ${(6 + random() * 32).toFixed(1)}, 28 ${(6 + random() * 32).toFixed(1)}, 38 ${endY.toFixed(1)}`;
 }
 
-function WeeklyTexture({ record }: { record: WalkingRecord }) {
-  const lines = useMemo(() => {
-    const random = seededRandom(record.range.startTs);
-    const totalMs = record.hourBuckets.reduce((sum, value) => sum + value, 0);
-    const count = Math.min(180, Math.max(24, Math.round(totalMs / 900_000)));
-    const weightedHours = record.hourBuckets.flatMap((value, hour) => {
-      const weight = totalMs > 0 ? Math.max(1, Math.round((value / totalMs) * 100)) : 1;
-      return Array.from({ length: weight }, () => hour);
-    });
-    const hues = ["#4a9a8a", "#c4724e", "#5b8db8", "#d4b85c", "#8b6b7f"];
-
-    return Array.from({ length: count }, (_, index) => {
-      const hour =
-        weightedHours[Math.floor(random() * weightedHours.length)] ?? index % 24;
-      return {
-        x: ((hour + random()) / 24) * 720,
-        width: 1 + random() * 5,
-        height: 70 + random() * 140,
-        hue: hues[(hour + index) % hues.length],
-        opacity: 0.08 + random() * 0.12,
-      };
-    });
-  }, [record]);
+function TraceGraphic({
+  paths,
+  hue,
+  width,
+  height,
+  padding,
+  minimumSize,
+  maximumSize,
+  label,
+}: {
+  paths: WalkingRecordTracePoint[][];
+  hue: string;
+  width: number;
+  height: number;
+  padding: number;
+  minimumSize: number;
+  maximumSize: number;
+  label?: string;
+}) {
+  const fittedPaths = fitTracePaths(paths);
 
   return (
     <svg
-      className="walking-record__portrait-texture"
-      viewBox="0 0 720 220"
-      preserveAspectRatio="none"
-      aria-hidden="true"
+      viewBox={`0 0 ${width} ${height}`}
+      role={label ? "img" : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
     >
-      {lines.map((line, index) => (
-        <rect
+      {fittedPaths.map((points, index) => (
+        <path
           key={index}
-          x={line.x}
-          y={0}
-          width={line.width}
-          height={line.height}
-          fill={line.hue}
-          opacity={line.opacity}
+          className="walking-record__trace"
+          d={freehandTracePath(
+            points,
+            width,
+            height,
+            padding,
+            minimumSize,
+            maximumSize,
+          )}
+          fill={hue}
+          opacity={0.5 + index * 0.16}
         />
       ))}
     </svg>
+  );
+}
+
+function DayPlateGraphic({ plate }: { plate: DayPlate }) {
+  return (
+    <TraceGraphic
+      paths={plate.tracePaths}
+      hue={plate.hue}
+      width={80}
+      height={58}
+      padding={5}
+      minimumSize={1.8}
+      maximumSize={4.2}
+      label={plate.vignette}
+    />
   );
 }
 
@@ -160,50 +170,126 @@ function EmptySection({ children }: { children: React.ReactNode }) {
   return <div className="walking-record__empty">{children}</div>;
 }
 
+function periodTitle(
+  period: WalkingRecordPeriod,
+  timestamp: number,
+): string {
+  const date = new Date(timestamp);
+  if (period === "week") {
+    return `week of ${date.toLocaleDateString("en", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })}`;
+  }
+  if (period === "month") {
+    return `month of ${date.toLocaleDateString("en", {
+      month: "long",
+      year: "numeric",
+    })}`;
+  }
+  return `year ${date.getFullYear()}`;
+}
+
+function periodIntensityHours(
+  period: WalkingRecordPeriod,
+  totalTimeMs: number,
+): number {
+  const periodWeeks = period === "week" ? 1 : period === "month" ? 4.35 : 52.18;
+  return totalTimeMs / 3_600_000 / periodWeeks;
+}
+
+function PeriodNavigationRail({
+  period,
+  periodOffset,
+  summaries,
+  onSelect,
+}: {
+  period: WalkingRecordPeriod;
+  periodOffset: number;
+  summaries: WalkingRecordPeriodSummary[];
+  onSelect: (offset: number) => void;
+}) {
+  const earliestOffset = summaries[0]?.offset ?? periodOffset;
+  const atEarliest = periodOffset <= earliestOffset;
+  const atLatest = periodOffset >= 0;
+
+  return (
+    <nav
+      className="walking-record__period-rail"
+      aria-label={`${period} history`}
+    >
+      <button
+        className="walking-record__period-step walking-record__period-step--earlier"
+        type="button"
+        aria-label={`Earlier ${period}`}
+        disabled={atEarliest}
+        onClick={() => onSelect(periodOffset - 1)}
+      >
+        ↤ earlier
+      </button>
+      <div className="walking-record__period-dabs">
+        {summaries.map((summary) => {
+          const title = periodTitle(period, summary.range.startTs);
+          const hours = periodIntensityHours(period, summary.totalTimeMs);
+          const diameter = 4.5 + hours * 0.18;
+          const opacity = Math.min(1, 0.3 + hours * 0.015);
+          const selected = summary.offset === periodOffset;
+
+          return (
+            <button
+              className="walking-record__period-dab"
+              type="button"
+              key={summary.range.startTs}
+              title={title}
+              aria-label={title}
+              aria-pressed={selected}
+              data-period-offset={summary.offset}
+              onClick={() => onSelect(summary.offset)}
+            >
+              <span
+                style={{
+                  width: `${diameter}px`,
+                  height: `${diameter}px`,
+                  opacity: selected ? 1 : opacity,
+                }}
+              />
+            </button>
+          );
+        })}
+      </div>
+      <button
+        className="walking-record__period-step walking-record__period-step--later"
+        type="button"
+        aria-label={`Later ${period}`}
+        disabled={atLatest}
+        onClick={() => onSelect(periodOffset + 1)}
+      >
+        {atLatest ? <em>browsing to come ↦</em> : "later ↦"}
+      </button>
+    </nav>
+  );
+}
+
 export function WalkingRecordPage({
   record,
+  period,
+  periodOffset,
+  periodSummaries,
+  onPeriodChange,
+  onPeriodOffsetChange,
   loading,
   error,
-  portraitHref,
-  onOpenCollections,
 }: WalkingRecordPageProps) {
-  const portraitRef = useRef<HTMLDivElement>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(false);
-
-  const savePortrait = async () => {
-    if (!portraitRef.current || !record || saving) return;
-    setSaving(true);
-    setSaveError(false);
-    try {
-      await captureDomPortrait(
-        portraitRef.current,
-        `we-were-online-walking-record-${record.rangeLabel.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.png`,
-      );
-    } catch (captureError) {
-      console.error("[WalkingRecord] Could not save portrait:", captureError);
-      setSaveError(true);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <main className="walking-record">
       <header className="walking-record__header">
-        <span className="walking-record__wordmark">we were online</span>
-        <nav className="walking-record__nav" aria-label="Extension pages">
-          <a href={portraitHref}>portrait</a>
-          <button type="button" onClick={onOpenCollections}>
-            collections
-          </button>
-          <span aria-current="page">walking record</span>
-        </nav>
+        <ExtensionPageNav currentPage="walking-record" />
       </header>
 
       {loading && (
         <div className="walking-record__loading" role="status">
-          gathering last week’s record…
+          gathering this {period}’s record…
         </div>
       )}
 
@@ -216,67 +302,63 @@ export function WalkingRecordPage({
 
       {!loading && !error && record && (
         <>
-          <div className="walking-record__portrait" ref={portraitRef}>
-            <div className="walking-record__portrait-main">
-              <WeeklyTexture record={record} />
-              <div className="walking-record__portrait-content">
-                <div className="walking-record__hero">
-                  {record.totalTimeLabel}
-                  <span>browsing</span>
+          <div className="walking-record__portrait-shell">
+            <div className="walking-record__portrait">
+              <div className="walking-record__portrait-card">
+                <PortraitCard
+                  domain=""
+                  scopeLabel={`your ${period}`}
+                  totalTimeMs={record.totalTimeMs}
+                  hourBuckets={record.hourBuckets}
+                  cursorDistancePx={record.cursorDistancePx}
+                  dateRange={null}
+                  uniquePageCount={record.pageCount}
+                />
+              </div>
+              <div
+                className="walking-record__portrait-periods"
+                aria-label="Browsing portrait period"
+              >
+                <div className="walking-record__period-options">
+                  {(["week", "month", "year"] as const).map((period) => (
+                    <button
+                      type="button"
+                      key={period}
+                      aria-pressed={record.period === period}
+                      onClick={() => onPeriodChange(period)}
+                    >
+                      {record.period === period && (
+                        <span aria-hidden="true">◉</span>
+                      )}
+                      {period}
+                    </button>
+                  ))}
                 </div>
-                <div className="walking-record__portrait-details">
-                  <div className="walking-record__metrics">
-                    <div>
-                      <strong>
-                        {record.cursorDistancePx > 0
-                          ? formatDistance(record.cursorDistancePx)
-                          : "0 m"}
-                      </strong>
-                      <span>moved</span>
-                    </div>
-                    <div>
-                      <strong>{record.pageCount}</strong>
-                      <span>pages</span>
-                    </div>
-                    <div>
-                      <strong>{record.movementCount}</strong>
-                      <span>departures</span>
-                    </div>
-                  </div>
-                  <div className="walking-record__portrait-signature">
-                    <span>we were online</span>
-                    <time>{record.rangeLabel}</time>
-                  </div>
+                <div className="walking-record__period-navigation">
+                  <span>{record.rangeLabel}</span>
                 </div>
               </div>
             </div>
-            <div className="walking-record__portrait-actions">
-              <div>
-                <span className="walking-record__active-period">◉ Week</span>
-                <span className="walking-record__divider">|</span>
-                <a href={portraitHref}>view portrait ↗</a>
-              </div>
-              <button type="button" onClick={savePortrait} disabled={saving}>
-                {saving ? "saving…" : "↓ save image"}
-              </button>
-            </div>
+            <PeriodNavigationRail
+              period={period}
+              periodOffset={periodOffset}
+              summaries={periodSummaries}
+              onSelect={onPeriodOffsetChange}
+            />
           </div>
-          {saveError && (
-            <p className="walking-record__save-error" role="alert">
-              The image could not be saved.
-            </p>
-          )}
 
           <section className="walking-record__section">
             <div className="walking-record__section-heading">
               <h1>how you traveled</h1>
               <span>
-                top {record.departures.length} of {record.movementCount} movement
-                {record.movementCount === 1 ? "" : "s"} last week
+                top {record.departures.length} of {record.movementCount}{" "}
+                movement
+                {record.movementCount === 1 ? "" : "s"}
               </span>
             </div>
             <p className="walking-record__section-intro">
-              some of the off-beaten paths and places you haven’t visited in a while
+              some of the off-beaten paths and places you haven’t visited in a
+              while
             </p>
 
             {record.departures.length > 0 ? (
@@ -287,20 +369,27 @@ export function WalkingRecordPage({
                     href={departure.toUrl}
                     key={`${departure.day}:${departure.to}`}
                   >
-                    <svg viewBox="0 0 44 44" aria-hidden="true">
-                      <path
-                        d={departureTrail(departure)}
-                        fill="none"
-                        stroke={departure.hue}
-                        strokeWidth="1.4"
-                        opacity="0.6"
-                      />
-                      <circle cx="38" cy="18" r="2.4" fill={departure.hue} />
-                    </svg>
+                    <TraceGraphic
+                      paths={departure.tracePaths}
+                      hue={departure.hue}
+                      width={44}
+                      height={44}
+                      padding={4}
+                      minimumSize={1.5}
+                      maximumSize={3.2}
+                    />
                     <div className="walking-record__departure-copy">
                       <div>
-                        <span className="walking-record__day">{departure.day}</span>
-                        <span style={{ color: departure.hue }}>{departure.verb}</span>
+                        <span className="walking-record__day">
+                          {departure.day}
+                        </span>
+                        <span
+                          style={{
+                            color: readablePaletteColor(departure.accentHue),
+                          }}
+                        >
+                          {departure.verb}
+                        </span>
                         <span>{departure.from}</span>
                         <span aria-hidden="true">→</span>
                         <strong>{departure.to}</strong>
@@ -315,42 +404,34 @@ export function WalkingRecordPage({
               </div>
             ) : (
               <EmptySection>
-                no departures were recorded. the quiet roads will appear here when you
-                leave one of your usual places for somewhere unfamiliar.
+                no departures were recorded. the quiet roads will appear here
+                when you leave one of your usual places for somewhere
+                unfamiliar.
               </EmptySection>
             )}
 
             <h2 className="walking-record__subheading">revisiting history</h2>
+            <p className="walking-record__revisit-intro">
+              places you knew well, ordered by familiarity and time away
+            </p>
             {record.revisits.length > 0 ? (
-              <>
-                <div className="walking-record__revisit-heroes">
-                  {record.revisits.slice(0, 2).map((revisit) => (
-                    <a href={revisit.href} key={revisit.site}>
-                      <div>
-                        it’s been <span style={{ color: revisit.hue }}>{revisit.span}</span>
-                      </div>
-                      <p>
-                        since you visited <strong>{revisit.site}</strong>
-                      </p>
-                      <small>{revisit.memory}</small>
-                    </a>
-                  ))}
-                </div>
-                {record.revisits.length > 2 && (
-                  <div className="walking-record__revisit-ledger">
-                    {record.revisits.slice(2).map((revisit) => (
-                      <a href={revisit.href} key={revisit.site}>
-                        <span style={{ color: revisit.hue }}>{revisit.span}</span>
-                        <strong>{revisit.site}</strong>
-                        <small>{revisit.memory}</small>
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </>
+              <div className="walking-record__revisit-ledger">
+                {record.revisits.map((revisit) => (
+                  <a href={revisit.href} key={revisit.site}>
+                    <span
+                      style={{ color: readablePaletteColor(revisit.hue) }}
+                    >
+                      {revisit.span}
+                    </span>
+                    <strong>{revisit.site}</strong>
+                    <small>{revisit.memory}</small>
+                  </a>
+                ))}
+              </div>
             ) : (
               <EmptySection>
-                no familiar place has been quiet long enough to call you back yet.
+                no familiar place has been quiet long enough to call you back
+                yet.
               </EmptySection>
             )}
           </section>
@@ -358,11 +439,18 @@ export function WalkingRecordPage({
           <section className="walking-record__section">
             <div className="walking-record__section-heading">
               <h2>where the hours went</h2>
-              <span>{record.totalTimeLabel} online last week</span>
+              <span>
+                {record.totalTimeLabel} browsing
+              </span>
             </div>
-            <p className="walking-record__section-intro">{record.timeSpentIntro}</p>
+            <p className="walking-record__section-intro">
+              {record.timeSpentIntro}
+            </p>
 
-            <div className="walking-record__day-plates">
+            <div
+              className="walking-record__day-plates"
+              data-period={record.period}
+            >
               {record.dayPlates.map((plate) => (
                 <div className="walking-record__day-plate" key={plate.date}>
                   <DayPlateGraphic plate={plate} />

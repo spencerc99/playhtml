@@ -84,16 +84,9 @@ export async function captureDomPortrait(
     backgroundColor: null,
     scale: 1,
   });
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((result) => {
-      if (result) {
-        resolve(result);
-      } else {
-        reject(new Error("Could not encode portrait image"));
-      }
-    }, "image/png");
-  });
-  triggerDownload(blob, filename);
+  canvas.toBlob((blob) => {
+    if (blob) triggerDownload(blob, filename);
+  }, "image/png");
 }
 
 export function triggerDownload(blob: Blob, filename: string): void {

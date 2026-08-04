@@ -1,20 +1,27 @@
-// ABOUTME: Derives a weekly walking record from locally collected browsing events.
-// ABOUTME: Ranks departures, dormant familiar sites, time spent, and daily movement plates.
+// ABOUTME: Derives calendar-period walking records from locally collected browsing events.
+// ABOUTME: Ranks departures, dormant familiar sites, time spent, and representative traces.
 
 import type {
   CollectionEvent,
   CursorEventData,
   NavigationEventData,
-  ViewportEventData,
 } from "../collectors/types";
-import type { ScreenTimeSession } from "../storage/LocalEventStore";
+import type {
+  ScreenTimeSession,
+  WalkingRecordTrace,
+  WalkingRecordTracePoint,
+  WalkingRecordTraceTarget,
+} from "../storage/LocalEventStore";
+import { risoInkColor } from "../utils/risoInk";
 import { extractDomain, normalizeUrl } from "../utils/urlNormalization";
+import { parseColorToHsl } from "@movement/utils/eventUtils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SMALL_SITE_MAX_VISITS = 5;
 const FAMILIAR_SITE_MIN_VISITS = 10;
 const MAIN_ROAD_LIMIT = 20;
-const RISO_HUES = ["#4a9a8a", "#c4724e", "#5b8db8", "#d4b85c", "#8b6b7f"];
+const DEPARTURE_TRACE_MAX_MS = 30 * 60_000;
+const PAGE_HUE_SHIFTS = [-28, -18, -10, 10, 18, 28];
 
 const POPULAR_DOMAIN_ROOTS = [
   "amazon.com",
@@ -58,6 +65,21 @@ export interface WalkingRecordRange {
   endTs: number;
 }
 
+export type WalkingRecordPeriod = "week" | "month" | "year";
+
+export interface WalkingRecordPeriodSummary {
+  offset: number;
+  range: WalkingRecordRange;
+  totalTimeMs: number;
+}
+
+interface BrowsingPortrait {
+  totalTimeMs: number;
+  cursorDistancePx: number;
+  pageCount: number;
+  hourBuckets: number[];
+}
+
 export interface WalkingRecordDomain {
   domain: string;
   eventCount: number;
@@ -78,7 +100,10 @@ export interface Departure {
   note: string;
   familiarity: string;
   hue: string;
+  accentHue: string;
   score: number;
+  traceTarget?: WalkingRecordTraceTarget;
+  tracePaths: WalkingRecordTracePoint[][];
 }
 
 export interface Revisit {
@@ -90,16 +115,13 @@ export interface Revisit {
   score: number;
 }
 
-export type DayPlateKind = "read" | "skim" | "dwell" | "wander" | "night" | "empty";
-
 export interface DayPlate {
   date: string;
   day: string;
   vignette: string;
-  kind: DayPlateKind;
   hue: string;
-  strokeCount: number;
-  seed: number;
+  traceTarget?: WalkingRecordTraceTarget;
+  tracePaths: WalkingRecordTracePoint[][];
 }
 
 export interface TimeSpentEntry {
@@ -113,6 +135,7 @@ export interface TimeSpentEntry {
 }
 
 export interface WalkingRecord {
+  period: WalkingRecordPeriod;
   range: WalkingRecordRange;
   rangeLabel: string;
   totalTimeMs: number;
@@ -129,6 +152,8 @@ export interface WalkingRecord {
 }
 
 interface WalkingRecordInput {
+  period: WalkingRecordPeriod;
+  baseColor: string;
   events: CollectionEvent[];
   sessions: ScreenTimeSession[];
   domains: WalkingRecordDomain[];
@@ -152,19 +177,73 @@ function startOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-export function getLastCompletedWeek(now = new Date()): WalkingRecordRange {
+export function getWalkingRecordPeriodRange(
+  period: WalkingRecordPeriod,
+  periodOffset = 0,
+  now = new Date(),
+): WalkingRecordRange {
   const currentDay = startOfLocalDay(now);
-  const daysSinceMonday = (currentDay.getDay() + 6) % 7;
-  const currentMonday = new Date(currentDay);
-  currentMonday.setDate(currentMonday.getDate() - daysSinceMonday);
+  if (period === "week") {
+    const daysSinceMonday = (currentDay.getDay() + 6) % 7;
+    const periodStart = new Date(currentDay);
+    periodStart.setDate(
+      periodStart.getDate() - daysSinceMonday + periodOffset * 7,
+    );
+    const nextPeriod = new Date(periodStart);
+    nextPeriod.setDate(nextPeriod.getDate() + 7);
+    return {
+      startTs: periodStart.getTime(),
+      endTs: nextPeriod.getTime() - 1,
+    };
+  }
 
-  const previousMonday = new Date(currentMonday);
-  previousMonday.setDate(previousMonday.getDate() - 7);
+  if (period === "month") {
+    const periodStart = new Date(
+      currentDay.getFullYear(),
+      currentDay.getMonth() + periodOffset,
+      1,
+    );
+    const nextPeriod = new Date(
+      periodStart.getFullYear(),
+      periodStart.getMonth() + 1,
+      1,
+    );
+    return {
+      startTs: periodStart.getTime(),
+      endTs: nextPeriod.getTime() - 1,
+    };
+  }
 
+  const periodStart = new Date(
+    currentDay.getFullYear() + periodOffset,
+    0,
+    1,
+  );
+  const nextPeriod = new Date(periodStart.getFullYear() + 1, 0, 1);
   return {
-    startTs: previousMonday.getTime(),
-    endTs: currentMonday.getTime() - 1,
+    startTs: periodStart.getTime(),
+    endTs: nextPeriod.getTime() - 1,
   };
+}
+
+export function summarizeWalkingRecordPeriods(
+  period: WalkingRecordPeriod,
+  sessions: ScreenTimeSession[],
+  count = 12,
+  now = new Date(),
+): WalkingRecordPeriodSummary[] {
+  return Array.from({ length: count }, (_, index) => {
+    const offset = index - count + 1;
+    const range = getWalkingRecordPeriodRange(period, offset, now);
+    const totalTimeMs = sessions
+      .filter(
+        (session) =>
+          session.focusTs >= range.startTs && session.focusTs <= range.endTs,
+      )
+      .reduce((sum, session) => sum + session.durationMs, 0);
+
+    return { offset, range, totalTimeMs };
+  });
 }
 
 export function formatDuration(ms: number): string {
@@ -177,15 +256,6 @@ export function formatDuration(ms: number): string {
   const minutes = totalMinutes % 60;
   const hourLabel = `${hours} hr${hours === 1 ? "" : "s"}`;
   return minutes === 0 ? hourLabel : `${hourLabel} ${minutes} min`;
-}
-
-export function formatDistance(px: number): string {
-  const millimeters = px * 0.311;
-  if (millimeters < 1_000) return `${Math.round(millimeters)} mm`;
-
-  const meters = millimeters / 1_000;
-  if (meters < 1_000) return `${meters.toFixed(1)} m`;
-  return `${(meters / 1_000).toFixed(2)} km`;
 }
 
 export function formatRange(range: WalkingRecordRange): string {
@@ -213,21 +283,25 @@ function isPopularDomain(domain: string): boolean {
   return POPULAR_DOMAIN_ROOTS.some((root) => domainMatchesRoot(domain, root));
 }
 
-function colorForDomain(domain: string): string {
+function hashDomain(domain: string): number {
   let hash = 0;
   for (const character of domain) {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
-  return RISO_HUES[hash % RISO_HUES.length];
+  return hash;
 }
 
-function seedFor(value: string): number {
-  let hash = 2166136261;
-  for (const character of value) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
+export function colorForDomain(baseColor: string, domain: string): string {
+  const base = parseColorToHsl(baseColor);
+  if (!base) return baseColor;
+
+  const shift = PAGE_HUE_SHIFTS[hashDomain(domain) % PAGE_HUE_SHIFTS.length];
+  const hue = (base.h + shift + 360) % 360;
+  return `hsl(${hue}, ${base.s}%, ${base.l}%)`;
+}
+
+export function paletteColorForIndex(index: number): string {
+  return risoInkColor(index);
 }
 
 function getMainRoads(domains: WalkingRecordDomain[]): Set<string> {
@@ -282,6 +356,23 @@ function sessionsByDomain(sessions: ScreenTimeSession[]): Map<string, DomainTime
   return grouped;
 }
 
+function cursorSamplesByUrl(events: CollectionEvent[]): Map<string, number[]> {
+  const samples = new Map<string, number[]>();
+
+  for (const event of events) {
+    if (event.type !== "cursor") continue;
+    const data = event.data as CursorEventData;
+    if (data.event !== "move" && data.event !== undefined) continue;
+
+    const url = normalizeUrl(event.meta.url);
+    const timestamps = samples.get(url) ?? [];
+    timestamps.push(event.ts);
+    samples.set(url, timestamps);
+  }
+
+  return samples;
+}
+
 function getVisitSession(
   visit: FocusVisit,
   domainTime: DomainTime | undefined,
@@ -325,20 +416,25 @@ function buildDepartures(
   sessions: ScreenTimeSession[],
   domains: WalkingRecordDomain[],
   mainRoads: Set<string>,
+  range: WalkingRecordRange,
+  baseColor: string,
 ): { departures: Departure[]; movementCount: number } {
   const visits = focusVisits(events);
   const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
   const timeByDomain = sessionsByDomain(sessions);
+  const movementByUrl = cursorSamplesByUrl(events);
   const visitsByDomain = new Map<string, number>();
 
   for (const visit of visits) {
     visitsByDomain.set(visit.domain, (visitsByDomain.get(visit.domain) ?? 0) + 1);
   }
 
-  const candidates: Array<Departure & { dayKey: string }> = [];
+  const candidates: Array<Omit<Departure, "accentHue"> & { dayKey: string }> =
+    [];
   for (let index = 1; index < visits.length; index++) {
     const previous = visits[index - 1];
     const visit = visits[index];
+    const nextVisit = visits[index + 1];
     const domain = domainByName.get(visit.domain);
 
     if (!domain) continue;
@@ -351,6 +447,20 @@ function buildDepartures(
     const dwellScore = session ? Math.min(session.durationMs / 60_000, 30) / 10 : 0;
     const date = new Date(visit.ts);
     const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    const traceEndTs = Math.max(
+      visit.ts,
+      Math.min(
+        range.endTs,
+        visit.ts + DEPARTURE_TRACE_MAX_MS,
+        session?.blurTs ?? Infinity,
+        nextVisit ? nextVisit.ts - 1 : Infinity,
+      ),
+    );
+    const isFirstVisit = domain.firstVisit >= visit.ts - 60_000;
+    const movementSamples = (
+      movementByUrl.get(normalizeUrl(visit.url)) ?? []
+    ).filter((timestamp) => timestamp >= visit.ts && timestamp <= traceEndTs).length;
+    const movementScore = Math.min(movementSamples, 3) * 2;
 
     candidates.push({
       dayKey,
@@ -366,37 +476,45 @@ function buildDepartures(
         visitsByDomain.get(visit.domain) ?? 1,
       ),
       familiarity:
-        domain.sessionCount === 1
+        isFirstVisit
           ? "new to you"
-          : `${domain.sessionCount} visits by you`,
-      hue: colorForDomain(visit.domain),
-      score: rarityScore + dwellScore,
+          : domain.sessionCount > 0
+            ? `${domain.sessionCount} visits by you`
+            : "seen before",
+      hue: colorForDomain(baseColor, visit.domain),
+      score: rarityScore + dwellScore + movementScore,
+      traceTarget: {
+        id: `departure:${visit.ts}:${visit.domain}`,
+        url: visit.url,
+        startTs: visit.ts,
+        endTs: traceEndTs,
+      },
+      tracePaths: [],
     });
   }
 
-  const deduped = new Map<string, Departure>();
+  const deduped = new Map<
+    string,
+    Omit<Departure, "accentHue"> & { dayKey: string }
+  >();
   for (const candidate of candidates) {
     const key = `${candidate.dayKey}:${candidate.to}`;
     const existing = deduped.get(key);
     if (!existing || candidate.score > existing.score) {
-      deduped.set(key, {
-        day: candidate.day,
-        verb: candidate.verb,
-        from: candidate.from,
-        to: candidate.to,
-        toUrl: candidate.toUrl,
-        note: candidate.note,
-        familiarity: candidate.familiarity,
-        hue: candidate.hue,
-        score: candidate.score,
-      });
+      deduped.set(key, candidate);
     }
   }
 
   const ranked = [...deduped.values()].sort((a, b) => b.score - a.score);
   return {
     movementCount: ranked.length,
-    departures: ranked.slice(0, 4),
+    departures: ranked.slice(0, 4).map((candidate, index) => {
+      const { dayKey: _, ...departure } = candidate;
+      return {
+        ...departure,
+        accentHue: paletteColorForIndex(index),
+      };
+    }),
   };
 }
 
@@ -430,12 +548,15 @@ function buildRevisits(
         site: domain.domain,
         href: `https://${domain.domain}`,
         memory: `you visited ${domain.sessionCount} times before the gap`,
-        hue: colorForDomain(domain.domain),
         score: Math.log2(domain.sessionCount + 1) * Math.log2(gapMs / DAY_MS + 1),
       };
     })
     .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
+    .slice(0, 8)
+    .map((revisit, index) => ({
+      ...revisit,
+      hue: paletteColorForIndex(index),
+    }));
 }
 
 function cursorDistance(events: CollectionEvent[]): number {
@@ -474,52 +595,27 @@ function hourBuckets(sessions: ScreenTimeSession[]): number[] {
   return buckets;
 }
 
-function eventsDuringSession(
-  events: CollectionEvent[],
-  session: ScreenTimeSession,
-): CollectionEvent[] {
-  const domain = extractDomain(session.url);
-  return events.filter(
-    (event) =>
-      event.ts >= session.focusTs &&
-      event.ts <= session.blurTs &&
-      extractDomain(event.meta.url) === domain,
+function deriveBrowsingPortrait({
+  events,
+  sessions,
+  cursorDistancePx: measuredCursorDistance,
+}: Pick<
+  WalkingRecordInput,
+  "events" | "sessions" | "cursorDistancePx"
+>): BrowsingPortrait {
+  const uniquePages = new Set(
+    events
+      .map((event) => event.meta.url)
+      .filter((url) => /^https?:\/\//.test(url))
+      .map(normalizeUrl),
   );
-}
 
-function getPlateKind(
-  session: ScreenTimeSession,
-  sessionEvents: CollectionEvent[],
-): DayPlateKind {
-  if (new Date(session.focusTs).getHours() < 5) return "night";
-
-  const cursorEvents = sessionEvents.filter((event) => event.type === "cursor");
-  const viewportEvents = sessionEvents.filter((event) => event.type === "viewport");
-  const cursorPoints = cursorEvents.map((event) => event.data as CursorEventData);
-  const xValues = cursorPoints.map((point) => point.x);
-  const yValues = cursorPoints.map((point) => point.y);
-  const horizontalSpan =
-    xValues.length > 1 ? Math.max(...xValues) - Math.min(...xValues) : 0;
-  const verticalSpan =
-    yValues.length > 1 ? Math.max(...yValues) - Math.min(...yValues) : 0;
-  const scrollDistance = viewportEvents.reduce((sum, event) => {
-    const data = event.data as ViewportEventData;
-    return sum + (data.event === "scroll" ? data.scrollDistancePx ?? 0 : 0);
-  }, 0);
-  const minutes = Math.max(session.durationMs / 60_000, 1);
-  const scrollPerMinute = scrollDistance / minutes;
-
-  if (scrollPerMinute > 2_000 && session.durationMs < 10 * 60_000) return "skim";
-  if (horizontalSpan > verticalSpan * 1.4 && scrollPerMinute < 1_000) return "read";
-  if (
-    cursorPoints.length >= 3 &&
-    horizontalSpan < 0.25 &&
-    verticalSpan < 0.25 &&
-    session.durationMs >= 8 * 60_000
-  ) {
-    return "dwell";
-  }
-  return "wander";
+  return {
+    totalTimeMs: sessions.reduce((sum, session) => sum + session.durationMs, 0),
+    cursorDistancePx: measuredCursorDistance ?? cursorDistance(events),
+    pageCount: uniquePages.size,
+    hourBuckets: hourBuckets(sessions),
+  };
 }
 
 function localDateKey(timestamp: number): string {
@@ -529,64 +625,119 @@ function localDateKey(timestamp: number): string {
   ).padStart(2, "0")}`;
 }
 
-function daysInRange(range: WalkingRecordRange): Date[] {
-  const days: Date[] = [];
-  const cursor = startOfLocalDay(new Date(range.startTs));
-  const end = startOfLocalDay(new Date(range.endTs));
+interface TraceInterval {
+  key: string;
+  label: string;
+  startTs: number;
+  endTs: number;
+}
 
-  while (cursor <= end) {
-    days.push(new Date(cursor));
-    cursor.setDate(cursor.getDate() + 1);
+function traceIntervals(
+  period: WalkingRecordPeriod,
+  range: WalkingRecordRange,
+): TraceInterval[] {
+  const intervals: TraceInterval[] = [];
+  const rangeEnd = range.endTs;
+
+  if (period === "week") {
+    const cursor = startOfLocalDay(new Date(range.startTs));
+    while (cursor.getTime() <= rangeEnd) {
+      const nextDay = new Date(cursor);
+      nextDay.setDate(nextDay.getDate() + 1);
+      intervals.push({
+        key: `day:${localDateKey(cursor.getTime())}`,
+        label: cursor
+          .toLocaleDateString("en", { weekday: "short" })
+          .toLowerCase(),
+        startTs: cursor.getTime(),
+        endTs: Math.min(rangeEnd, nextDay.getTime() - 1),
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return intervals;
   }
-  return days;
+
+  if (period === "month") {
+    const cursor = startOfLocalDay(new Date(range.startTs));
+    let week = 1;
+    while (cursor.getTime() <= rangeEnd) {
+      const nextWeek = new Date(cursor);
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      intervals.push({
+        key: `week:${localDateKey(cursor.getTime())}`,
+        label: `week ${week}`,
+        startTs: cursor.getTime(),
+        endTs: Math.min(rangeEnd, nextWeek.getTime() - 1),
+      });
+      cursor.setDate(cursor.getDate() + 7);
+      week += 1;
+    }
+    return intervals;
+  }
+
+  const cursor = new Date(new Date(range.startTs).getFullYear(), 0, 1);
+  while (cursor.getTime() <= rangeEnd) {
+    const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    intervals.push({
+      key: `month:${localDateKey(cursor.getTime())}`,
+      label: cursor.toLocaleDateString("en", { month: "short" }).toLowerCase(),
+      startTs: cursor.getTime(),
+      endTs: Math.min(rangeEnd, nextMonth.getTime() - 1),
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return intervals;
 }
 
 function buildDayPlates(
-  events: CollectionEvent[],
   sessions: ScreenTimeSession[],
   range: WalkingRecordRange,
   domains: WalkingRecordDomain[],
+  period: WalkingRecordPeriod,
+  baseColor: string,
 ): DayPlate[] {
   const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
 
-  return daysInRange(range).map((date) => {
-    const dateKey = localDateKey(date.getTime());
-    const sessionsForDay = sessions
-      .filter((session) => localDateKey(session.focusTs) === dateKey)
+  return traceIntervals(period, range).map((interval) => {
+    const sessionsForInterval = sessions
+      .filter(
+        (session) =>
+          session.focusTs >= interval.startTs &&
+          session.focusTs <= interval.endTs,
+      )
       .sort((a, b) => {
         if (a.durationMs !== b.durationMs) return b.durationMs - a.durationMs;
         const aVisits = domainByName.get(extractDomain(a.url))?.sessionCount ?? Infinity;
         const bVisits = domainByName.get(extractDomain(b.url))?.sessionCount ?? Infinity;
         return aVisits - bVisits;
       });
-    const session = sessionsForDay[0];
-    const day = date.toLocaleDateString("en", { weekday: "short" }).toLowerCase();
+    const session = sessionsForInterval[0];
 
     if (!session) {
       return {
-        date: dateKey,
-        day,
+        date: interval.key,
+        day: interval.label,
         vignette: "no trace kept",
-        kind: "empty",
         hue: "#b5aea5",
-        strokeCount: 0,
-        seed: seedFor(dateKey),
+        tracePaths: [],
       };
     }
 
     const domain = extractDomain(session.url);
-    const sessionEvents = eventsDuringSession(events, session);
-    const kind = getPlateKind(session, sessionEvents);
     const minutes = Math.max(1, Math.round(session.durationMs / 60_000));
 
     return {
-      date: dateKey,
-      day,
+      date: interval.key,
+      day: interval.label,
       vignette: `${minutes} quiet minute${minutes === 1 ? "" : "s"} on ${domain}`,
-      kind,
-      hue: colorForDomain(domain),
-      strokeCount: Math.min(12, Math.max(2, Math.ceil(sessionEvents.length / 8))),
-      seed: seedFor(`${dateKey}:${domain}`),
+      hue: colorForDomain(baseColor, domain),
+      traceTarget: {
+        id: interval.key,
+        url: session.url,
+        startTs: session.focusTs,
+        endTs: session.blurTs,
+      },
+      tracePaths: [],
     };
   });
 }
@@ -643,7 +794,7 @@ function buildTimeSpent(
         site: row.domain,
         time: formatDuration(row.totalMs),
         percentage: (row.totalMs / maxMs) * 100,
-        hue: "#4a9a8a",
+        hue: paletteColorForIndex(index),
         note: `${quiet.length} small site${quiet.length === 1 ? "" : "s"} · ${quietLongReads} long read${quietLongReads === 1 ? "" : "s"}`,
       };
     }
@@ -653,7 +804,7 @@ function buildTimeSpent(
       site: row.domain,
       time: formatDuration(row.totalMs),
       percentage: (row.totalMs / maxMs) * 100,
-      hue: colorForDomain(row.domain),
+      hue: paletteColorForIndex(index),
       note: topHourNote(row.sessions),
       href: `https://${row.domain}`,
     };
@@ -662,7 +813,7 @@ function buildTimeSpent(
   if (grouped.length === 0) {
     return {
       entries: [],
-      intro: "there is no completed screen-time record for this week.",
+      intro: "there is no completed screen-time record for this period.",
     };
   }
 
@@ -677,45 +828,88 @@ function buildTimeSpent(
 }
 
 export function deriveWalkingRecord({
+  period,
+  baseColor,
   events,
   sessions,
   domains,
   range,
   cursorDistancePx: measuredCursorDistance,
 }: WalkingRecordInput): WalkingRecord {
+  const portrait = deriveBrowsingPortrait({
+    events,
+    sessions,
+    cursorDistancePx: measuredCursorDistance,
+  });
   const mainRoads = getMainRoads(domains);
   const { departures, movementCount } = buildDepartures(
     events,
     sessions,
     domains,
     mainRoads,
+    range,
+    baseColor,
   );
   const { entries: timeSpent, intro: timeSpentIntro } = buildTimeSpent(
     sessions,
     domains,
     mainRoads,
   );
-  const totalTimeMs = sessions.reduce((sum, session) => sum + session.durationMs, 0);
-  const uniquePages = new Set(
-    events
-      .map((event) => event.meta.url)
-      .filter((url) => /^https?:\/\//.test(url))
-      .map(normalizeUrl),
-  );
 
   return {
+    period,
     range,
     rangeLabel: formatRange(range),
-    totalTimeMs,
-    totalTimeLabel: formatDuration(totalTimeMs),
-    cursorDistancePx: measuredCursorDistance ?? cursorDistance(events),
-    pageCount: uniquePages.size,
-    hourBuckets: hourBuckets(sessions),
+    totalTimeMs: portrait.totalTimeMs,
+    totalTimeLabel: formatDuration(portrait.totalTimeMs),
+    cursorDistancePx: portrait.cursorDistancePx,
+    pageCount: portrait.pageCount,
+    hourBuckets: portrait.hourBuckets,
     movementCount,
     departures,
     revisits: buildRevisits(domains, range),
-    dayPlates: buildDayPlates(events, sessions, range, domains),
+    dayPlates: buildDayPlates(
+      sessions,
+      range,
+      domains,
+      period,
+      baseColor,
+    ),
     timeSpent,
     timeSpentIntro,
+  };
+}
+
+export function getWalkingRecordTraceTargets(
+  record: WalkingRecord,
+): WalkingRecordTraceTarget[] {
+  return [
+    ...record.dayPlates.map((plate) => plate.traceTarget),
+    ...record.departures.map((departure) => departure.traceTarget),
+  ].filter((target): target is WalkingRecordTraceTarget => target !== undefined);
+}
+
+export function attachWalkingRecordTraces(
+  record: WalkingRecord,
+  traces: WalkingRecordTrace[],
+): WalkingRecord {
+  const pathsByTarget = new Map(
+    traces.map((trace) => [trace.targetId, trace.paths]),
+  );
+
+  return {
+    ...record,
+    dayPlates: record.dayPlates.map((plate) => ({
+      ...plate,
+      tracePaths: plate.traceTarget
+        ? pathsByTarget.get(plate.traceTarget.id) ?? []
+        : [],
+    })),
+    departures: record.departures.map((departure) => ({
+      ...departure,
+      tracePaths: departure.traceTarget
+        ? pathsByTarget.get(departure.traceTarget.id) ?? []
+        : [],
+    })),
   };
 }
