@@ -541,6 +541,14 @@ describe('buildCommuteResponse', () => {
           'Student service hub',
         ),
         event(
+          'university-course-manager',
+          'navigation',
+          'https://mygju.gju.edu.jo/faces/course_sections/manage_course_sections.xhtml',
+          350,
+          'course-manager-rider',
+          'Manage Course Sections',
+        ),
+        event(
           'collaborative-room',
           'navigation',
           'https://collaboration.example/rooms/2df06b06-ab84-448e-b904-84c8f0997aa9',
@@ -569,6 +577,7 @@ describe('buildCommuteResponse', () => {
       'meet.google.com',
       'apply.commonapp.org',
       'my.university.example',
+      'mygju.gju.edu.jo',
       'collaboration.example',
       'garden.example',
     ]);
@@ -910,6 +919,28 @@ describe('buildCommuteResponse', () => {
       'garden.example',
       'shop.norlys.dk',
     ]);
+  });
+
+  it('shows more representative scenery when browsing activity is higher', () => {
+    const makeEvents = (count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        event(
+          `event-${index}`,
+          'navigation',
+          `https://site-${index}.example/article`,
+          count - index,
+          `rider-${index}`,
+          `Article ${index}`,
+        ),
+      );
+
+    const lowActivity = buildCommuteResponse(makeEvents(40), [], 2_000);
+    const highActivity = buildCommuteResponse(makeEvents(600), [], 2_000);
+    const maximumActivity = buildCommuteResponse(makeEvents(2_000), [], 2_000);
+
+    expect(lowActivity.scenery).toHaveLength(40);
+    expect(highActivity.scenery).toHaveLength(120);
+    expect(maximumActivity.scenery).toHaveLength(200);
   });
 
   it('returns an aggregate active-person count without participant identifiers', () => {

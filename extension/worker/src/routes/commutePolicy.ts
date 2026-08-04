@@ -12,7 +12,9 @@ import { getDomain, getDomainWithoutSuffix, getSubdomain } from 'tldts';
 
 const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
 const DESTINATION_LIMIT = 10;
-const SCENERY_LIMIT = 100;
+const BASE_SCENERY_LIMIT = 100;
+const MAX_SCENERY_LIMIT = 200;
+const NAVIGATION_EVENTS_PER_SCENERY_ITEM = 5;
 
 const SCENERY_ONLY_DOMAINS = [
   'accounts.google.com',
@@ -49,6 +51,7 @@ const SCENERY_ONLY_DOMAINS = [
   'messenger.com',
   'miro.com',
   'myaccount.google.com',
+  'mygju.gju.edu.jo',
   'myjobs.indeed.com',
   'netflix.com',
   'notion.so',
@@ -669,7 +672,20 @@ function toCandidate(event: CollectionEvent): NavigationCandidate | null {
   }
 }
 
-function buildScenery(candidates: NavigationCandidate[]): CommuteSceneryItem[] {
+function getSceneryLimit(navigationEventCount: number): number {
+  return Math.min(
+    MAX_SCENERY_LIMIT,
+    Math.max(
+      BASE_SCENERY_LIMIT,
+      Math.ceil(navigationEventCount / NAVIGATION_EVENTS_PER_SCENERY_ITEM),
+    ),
+  );
+}
+
+function buildScenery(
+  candidates: NavigationCandidate[],
+  limit: number,
+): CommuteSceneryItem[] {
   const scenery: CommuteSceneryItem[] = [];
   const seenDomains = new Set<string>();
 
@@ -682,7 +698,7 @@ function buildScenery(candidates: NavigationCandidate[]): CommuteSceneryItem[] {
       hue: candidate.hue,
     });
     seenDomains.add(candidate.domain);
-    if (scenery.length === SCENERY_LIMIT) break;
+    if (scenery.length === limit) break;
   }
 
   return scenery;
@@ -783,7 +799,7 @@ export function buildCommuteResponse(
   return {
     generatedAt: now,
     activePeople: countActivePeople(cursorEvents, now),
-    scenery: buildScenery(candidates),
+    scenery: buildScenery(candidates, getSceneryLimit(candidates.length)),
     destinations: buildDestinations(candidates),
   };
 }
