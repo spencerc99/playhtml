@@ -1,5 +1,16 @@
 # @playhtml/extension-types
 
+## 0.5.0
+
+### Minor Changes
+
+- c3164bf: Add `element` to `CollectionEventType` and `getValidEventTypes()`. Element events record distinctive page objects seen while browsing (starting with images: URL plus page provenance, with a `kind` discriminant in the payload for future object kinds like buttons) for the extension's internet-scraps collage. They are collected locally by the extension and are not uploaded to the worker.
+
+### Patch Changes
+
+- d70d7c3: Mark the packages as ESM-only instead of advertising CommonJS entry points that could not load their exports. The `playhtml/leafEditor` subpath now provides declarations that type-check with NodeNext module resolution.
+- 5e44cad: Add the privacy-limited response contract shared by Internet Commute and its Worker endpoint.
+
 ## 0.4.0
 
 ### Minor Changes
