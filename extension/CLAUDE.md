@@ -8,8 +8,10 @@ Browser extension that collects anonymous browsing behavior (cursor movements, n
 - `bun run dev:firefox`: WXT dev server (Firefox)
 - `bun run build`: Production build (Chrome)
 - `bun run build:firefox`: Production build (Firefox)
+- `bun run build:safari`: Production Manifest V3 build (Safari)
 - `bun run test`: Run Vitest tests
 - `bun run zip`: Package for Chrome Web Store
+- `bun run zip:safari`: Package for Safari Web Extension Packager
 
 Worker backend (in `worker/`):
 - `cd worker && wrangler dev`: Local API server (localhost:8787)
@@ -60,9 +62,10 @@ pending notes into `CHANGELOG.md`.
   `Release: @playhtml/extension v{version}`. Force-pushes the release branch
   on every prep cycle so the PR always reflects current `main`.
 - Merging that PR to `main` triggers `.github/workflows/extension-release.yml`,
-  which builds Chrome + Firefox zips, submits Chrome through
+  which builds Chrome, Firefox, and Safari zips, submits Chrome through
   `scripts/submitChrome.mjs`, submits Edge through `scripts/submitEdge.mjs`,
-  submits Firefox through `wxt submit`, and pushes a
+  submits Firefox through `wxt submit`, packages and uploads macOS and iOS
+  Safari apps to App Store Connect, and pushes a
   `@playhtml/extension@x.y.z` tag. Non-dry-run releases also announce the
   version in Discord with a link to the public changelog.
 
@@ -105,9 +108,24 @@ Microsoft Edge Add-ons:
 - `EDGE_API_KEY` — from Microsoft Edge → Publish API
 - `EDGE_CERTIFICATION_NOTES` — optional notes sent with the submission
 
+App Store Connect:
+- `APPLE_TEAM_ID` — Apple Developer team ID
+- `APPLE_API_KEY_ID` — App Store Connect team API key ID
+- `APPLE_API_ISSUER_ID` — issuer ID for the team API key
+- `APPLE_API_PRIVATE_KEY` — full contents of the downloaded `.p8` private key
+
+The App Store Connect key must support provisioning and app uploads. Create one
+app record for bundle ID `online.wewere.extension` with macOS and iOS enabled
+before the first release. The release workflow uses Xcode cloud signing to
+create provisioning profiles, archives both platforms, and uploads both
+builds. Select the processed builds and submit them for App Review in App Store
+Connect.
+
 **Manual fallback:** The local `./release.sh` continues to work as an escape
-hatch (uses `.env.submit` instead of GitHub secrets, requires a manual
-`extension/package.json` bump first).
+hatch (uses `.env.submit` instead of GitHub secrets, requires Xcode 26 and a
+manual `extension/package.json` bump first). Set `APPLE_API_KEY_PATH` to the
+downloaded `.p8` file. Use `--skip-safari` when Xcode or Apple credentials are
+not available.
 
 ## Website & experiments (`extension/website/`)
 

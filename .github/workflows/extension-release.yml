@@ -26,6 +26,10 @@ on:
         description: "Skip Firefox submission"
         type: boolean
         default: false
+      skip-safari:
+        description: "Skip Safari submission"
+        type: boolean
+        default: false
 
 concurrency: ${{ github.workflow }}
 
@@ -88,12 +92,13 @@ jobs:
     name: Build and submit to stores
     needs: guard
     if: needs.guard.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: macos-26
     env:
       DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
       SKIP_CHROME: ${{ inputs.skip-chrome && 'true' || 'false' }}
       SKIP_EDGE: ${{ inputs.skip-edge && 'true' || 'false' }}
       SKIP_FIREFOX: ${{ inputs.skip-firefox && 'true' || 'false' }}
+      SKIP_SAFARI: ${{ inputs.skip-safari && 'true' || 'false' }}
       VERSION: ${{ needs.guard.outputs.version }}
     steps:
       - name: Checkout repo
@@ -130,6 +135,13 @@ jobs:
         working-directory: extension
         run: WXT_OUT_DIR=publish bun run zip:firefox
 
+      - name: Build Safari zip
+        if: env.SKIP_SAFARI != 'true'
+        working-directory: extension
+        run: |
+          WXT_OUT_DIR=publish bun run zip:safari
+          node scripts/validateExtensionBuild.mjs publish/safari-mv3 safari
+
       - name: Resolve zip paths
         id: zips
         working-directory: extension
@@ -137,9 +149,11 @@ jobs:
           CHROME_ZIP=$(ls publish/*-"$VERSION"-chrome.zip 2>/dev/null | head -1 || true)
           FIREFOX_ZIP=$(ls publish/*-"$VERSION"-firefox.zip 2>/dev/null | head -1 || true)
           SOURCES_ZIP=$(ls publish/*-"$VERSION"-sources.zip 2>/dev/null | head -1 || true)
+          SAFARI_ZIP=$(ls publish/*-"$VERSION"-safari.zip 2>/dev/null | head -1 || true)
           echo "chrome=$CHROME_ZIP" >> "$GITHUB_OUTPUT"
           echo "firefox=$FIREFOX_ZIP" >> "$GITHUB_OUTPUT"
           echo "sources=$SOURCES_ZIP" >> "$GITHUB_OUTPUT"
+          echo "safari=$SAFARI_ZIP" >> "$GITHUB_OUTPUT"
           echo "Built artifacts:"
           ls -la publish/
 
@@ -196,6 +210,42 @@ jobs:
             else
               scripts/submitFirefox.sh "${FIREFOX_ARGS[@]}"
             fi
+          fi
+
+      - name: Prepare App Store Connect key
+        id: apple-key
+        if: env.SKIP_SAFARI != 'true' && env.DRY_RUN != 'true'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_PRIVATE_KEY" ]; then
+            echo "APPLE_API_KEY_ID and APPLE_API_PRIVATE_KEY are required."
+            exit 1
+          fi
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "path=$KEY_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Package and submit Safari apps
+        if: env.SKIP_SAFARI != 'true'
+        working-directory: extension
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_PATH: ${{ steps.apple-key.outputs.path }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          if [ -z "${{ steps.zips.outputs.safari }}" ]; then
+            echo "Safari zip was not found."
+            exit 1
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            scripts/submitSafari.sh --dry-run
+          else
+            scripts/submitSafari.sh
           fi
 
       - name: Tag release

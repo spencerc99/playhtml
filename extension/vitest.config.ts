@@ -19,6 +19,13 @@ const extensionTypesSource = fileURLToPath(
 
 export default defineConfig({
   root: rootDir,
+  css: {
+    preprocessorOptions: {
+      scss: {
+        silenceDeprecations: ["legacy-js-api"],
+      },
+    },
+  },
   resolve: {
     alias: {
       "@extension": extensionSource,

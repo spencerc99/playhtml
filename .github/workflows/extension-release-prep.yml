@@ -164,7 +164,7 @@ jobs:
           - Bumps \`extension/package.json\` to **$VERSION**
           - Updates \`bun.lock\` for the extension package version
           - Moves bullets from \`PENDING.md\` into \`CHANGELOG.md\`
-          - Triggers the Extension Release workflow on merge → builds Chrome + Firefox zips, submits to Chrome, Edge, and Firefox, tags \`@playhtml/extension@$VERSION\`
+          - Triggers the Extension Release workflow on merge → builds Chrome, Firefox, and Safari zips; submits to Chrome, Edge, Firefox, and App Store Connect; tags \`@playhtml/extension@$VERSION\`
 
           ## Changes in this release
 
