@@ -108,4 +108,21 @@ describe("loadWalkingRecord", () => {
       message: "restoring cursor trails…",
     });
   });
+
+  it("surfaces background reload guidance", async () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      0,
+      new Date(2026, 6, 30, 14),
+    );
+    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({
+      success: false,
+      error:
+        "Local history is waiting for an older extension process to close. Reload the extension and open a new tab.",
+    });
+
+    await expect(
+      loadWalkingRecord("week", range, "#4a9a8a", vi.fn()),
+    ).rejects.toThrow("Reload the extension and open a new tab.");
+  });
 });

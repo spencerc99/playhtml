@@ -321,17 +321,38 @@ export class LocalEventStore {
 
     this.initPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+      let upgradeBlocked = false;
 
       request.onerror = () => {
         this.initPromise = null;
         reject(request.error);
       };
       request.onblocked = () => {
-        console.warn("[LocalEventStore] DB upgrade blocked by another connection");
+        upgradeBlocked = true;
+        this.initPromise = null;
+        reject(
+          new Error(
+            "Local history is waiting for an older extension process to close. Reload the extension and open a new tab.",
+          ),
+        );
       };
 
       request.onsuccess = () => {
-        this.db = request.result;
+        const db = request.result;
+        if (upgradeBlocked) {
+          db.close();
+          return;
+        }
+
+        db.onversionchange = () => {
+          db.close();
+          if (this.db === db) {
+            this.db = null;
+            this.isInitialized = false;
+            this.initPromise = null;
+          }
+        };
+        this.db = db;
         this.isInitialized = true;
         if (VERBOSE) {
           console.log("[LocalEventStore] Initialized successfully");

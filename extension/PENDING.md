@@ -1,6 +1,7 @@
 # Unreleased
 
 - Keep newly collected activity queued when local storage temporarily fails.
+- Get reload guidance instead of an endless loading screen when an older extension process blocks a local-history update.
 - See a visible patina on Wikipedia links after their first click.
 - See time by site, active explorations, regularly visited places, and daily cursor portraits in your weekly, monthly, or yearly walking record.
 

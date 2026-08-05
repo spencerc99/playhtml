@@ -27,6 +27,7 @@ export interface WalkingRecordLoadProgress {
 
 interface EventsResponse {
   success?: boolean;
+  error?: string;
   events?: CollectionEvent[];
   cursorDistancePx?: number;
   activity?: WalkingRecordActivity[];
@@ -34,11 +35,13 @@ interface EventsResponse {
 
 interface ScreenTimeResponse {
   success?: boolean;
+  error?: string;
   sessions?: ScreenTimeSession[];
 }
 
 interface DomainsResponse {
   success?: boolean;
+  error?: string;
   domains?: WalkingRecordDomain[];
 }
 
@@ -49,6 +52,7 @@ interface TracesResponse {
 
 interface DomainDaysResponse {
   success?: boolean;
+  error?: string;
   days?: AggregateDay[];
 }
 
@@ -104,13 +108,19 @@ export async function loadWalkingRecord(
     ])) as [EventsResponse, ScreenTimeResponse, DomainsResponse];
 
   if (!eventsResponse.success || !eventsResponse.events) {
-    throw new Error("The local activity record is unavailable.");
+    throw new Error(
+      eventsResponse.error ?? "The local activity record is unavailable.",
+    );
   }
   if (!screenTimeResponse.success || !screenTimeResponse.sessions) {
-    throw new Error("The local screen-time record is unavailable.");
+    throw new Error(
+      screenTimeResponse.error ?? "The local screen-time record is unavailable.",
+    );
   }
   if (!domainsResponse.success || !domainsResponse.domains) {
-    throw new Error("The local place record is unavailable.");
+    throw new Error(
+      domainsResponse.error ?? "The local place record is unavailable.",
+    );
   }
 
   const familiarDomains = domainsResponse.domains
@@ -121,7 +131,10 @@ export async function loadWalkingRecord(
     domains: familiarDomains,
   })) as DomainDaysResponse;
   if (!domainDaysResponse.success || !domainDaysResponse.days) {
-    throw new Error("The local relationship record is unavailable.");
+    throw new Error(
+      domainDaysResponse.error ??
+        "The local relationship record is unavailable.",
+    );
   }
   onProgress({
     completed: 4,

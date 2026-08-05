@@ -1,7 +1,7 @@
 // ABOUTME: Tests local event database storage, query, and aggregate behavior.
 // ABOUTME: Guards hot paths, storage stats, and upload metadata handling in IndexedDB.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IDBKeyRange as fakeIDBKeyRange,
   indexedDB as fakeIndexedDB,
@@ -199,6 +199,33 @@ afterEach(async () => {
 });
 
 describe("LocalEventStore aggregates", () => {
+  it("fails with reload guidance instead of hanging when an upgrade is blocked", async () => {
+    const existingConnection = await openVersion8Database();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const store = createStore();
+
+    await expect(store.getAllDomains()).rejects.toThrow(
+      "Reload the extension and open a new tab.",
+    );
+
+    existingConnection.close();
+    consoleError.mockRestore();
+  });
+
+  it("closes its connection when a newer database version is requested", async () => {
+    const store = createStore();
+    await store.getAllDomains();
+
+    const upgradedDatabase = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = fakeIndexedDB.open(DB_NAME, 12);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    expect((store as unknown as { db: IDBDatabase | null }).db).toBeNull();
+    upgradedDatabase.close();
+  });
+
   it("updates bounded aggregate fields for non-navigation events", () => {
     const agg = aggregate();
 
