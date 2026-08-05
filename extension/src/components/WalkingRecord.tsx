@@ -158,6 +158,21 @@ function TraceGraphic({
 }
 
 function DayPlateGraphic({ plate }: { plate: DayPlate }) {
+  if (plate.future) {
+    return (
+      <svg
+        viewBox="0 0 80 58"
+        role="img"
+        aria-label={`${plate.day} portrait still to come`}
+      >
+        <path
+          className="walking-record__future-trace"
+          d="M 8 45 C 20 30, 31 33, 43 29 S 60 31, 72 14"
+        />
+      </svg>
+    );
+  }
+
   return (
     <TraceGraphic
       paths={plate.tracePaths}
@@ -312,7 +327,12 @@ function HoursSection({ record }: { record: WalkingRecord }) {
         data-period={record.period}
       >
         {record.dayPlates.map((plate) => (
-          <div className="walking-record__day-plate" key={plate.date}>
+          <div
+            className={`walking-record__day-plate${
+              plate.future ? " walking-record__day-plate--future" : ""
+            }`}
+            key={plate.date}
+          >
             <DayPlateGraphic plate={plate} />
             <strong>{plate.day}</strong>
             <span>{plate.vignette}</span>

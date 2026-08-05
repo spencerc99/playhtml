@@ -239,6 +239,15 @@ describe("walking record color and trace cadence", () => {
       "still to come",
       "still to come",
     ]);
+    expect(record.dayPlates.map((plate) => plate.future)).toEqual([
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+    ]);
   });
 });
 

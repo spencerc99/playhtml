@@ -503,6 +503,14 @@ button:focus-visible {
   mix-blend-mode: multiply;
 }
 
+.walking-record__future-trace {
+  fill: none;
+  stroke: rgba(90, 78, 65, 0.12);
+  stroke-dasharray: 2 4;
+  stroke-linecap: round;
+  stroke-width: 1;
+}
+
 .walking-record__day-plate {
   display: flex;
   min-width: 0;
@@ -533,6 +541,18 @@ button:focus-visible {
     font-style: italic;
     line-height: 1.35;
     text-align: center;
+  }
+}
+
+.walking-record__day-plate--future {
+  border-color: rgba(90, 78, 65, 0.18);
+  border-style: dashed;
+  background: rgba($surface, 0.2);
+  box-shadow: none;
+
+  strong,
+  > span {
+    color: rgba(90, 78, 65, 0.45);
   }
 }
 

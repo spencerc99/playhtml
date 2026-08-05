@@ -122,6 +122,7 @@ export interface DayPlate {
   day: string;
   vignette: string;
   hue: string;
+  future: boolean;
   traceTarget?: WalkingRecordTraceTarget;
   tracePaths: WalkingRecordTracePoint[][];
 }
@@ -788,12 +789,13 @@ function buildDayPlates(
     const session = sessionsForInterval[0];
 
     if (!session) {
+      const future = interval.startTs > nowTs;
       return {
         date: interval.key,
         day: interval.label,
-        vignette:
-          interval.startTs > nowTs ? "still to come" : "no trace kept",
+        vignette: future ? "still to come" : "no trace kept",
         hue: "#b5aea5",
+        future,
         tracePaths: [],
       };
     }
@@ -812,6 +814,7 @@ function buildDayPlates(
       day: interval.label,
       vignette: `${minutes} quiet minute${minutes === 1 ? "" : "s"} on ${domain}`,
       hue: colorForDomain(baseColor, domain),
+      future: false,
       traceTarget,
       tracePaths: derivedSessionPath(traceTarget),
     };

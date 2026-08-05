@@ -27,7 +27,16 @@ const record: WalkingRecord = {
   movementCount: 0,
   departures: [],
   revisits: [],
-  dayPlates: [],
+  dayPlates: [
+    {
+      date: "2026-08-02",
+      day: "sun",
+      vignette: "still to come",
+      hue: "#b5aea5",
+      future: true,
+      tracePaths: [],
+    },
+  ],
   timeSpent: [
     {
       rank: 1,
@@ -166,6 +175,12 @@ describe("WalkingRecordPage calendar navigation", () => {
           .querySelector(".walking-record__site-favicon")
           ?.getAttribute("src"),
       ).toBe("https://example.com/icon.png");
+      expect(
+        container.querySelector(".walking-record__day-plate--future"),
+      ).not.toBeNull();
+      expect(
+        container.querySelector(".walking-record__future-trace"),
+      ).not.toBeNull();
 
       await act(async () => {
         earlier?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
