@@ -10,6 +10,12 @@ interface VellumStackProps {
   settings: VellumSettings;
 }
 
+/** Below this spread, sheets are still effectively stacked flush — hovering
+ * would just dim the entire concentrated pile under whatever sheet happens to
+ * be on top, which reads as distracting noise rather than "picking up a
+ * sheet". Hover only engages once sheets have physically fanned apart. */
+const HOVER_SPREAD_THRESHOLD = 0.05;
+
 function useWindowSize(): { width: number; height: number } {
   const [size, setSize] = useState(() => ({
     width: window.innerWidth,
@@ -50,6 +56,13 @@ export function VellumStack({ sheets, settings }: VellumStackProps) {
   const windowSize = useWindowSize();
   const t = usePlaybackT(settings.animate, settings.loopSeconds);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  // If the user zeroes the spread slider back out while a sheet is hovered
+  // (or was already dimmed from a prior hover), clear it — otherwise the
+  // stack could get stuck dimmed with no way to un-hover once it's flush.
+  useEffect(() => {
+    if (settings.spread <= HOVER_SPREAD_THRESHOLD) setHoveredId(null);
+  }, [settings.spread]);
 
   const frame = useMemo(() => {
     const maxWidth = windowSize.width * settings.frameScale;
@@ -95,7 +108,9 @@ export function VellumStack({ sheets, settings }: VellumStackProps) {
             hovered={hoveredId === sheet.id}
             dimmed={hoveredId !== null && hoveredId !== sheet.id}
             onHoverStart={() => {
-              if (settings.hoverLift) setHoveredId(sheet.id);
+              if (settings.hoverLift && settings.spread > HOVER_SPREAD_THRESHOLD) {
+                setHoveredId(sheet.id);
+              }
             }}
             onHoverEnd={() =>
               setHoveredId((current) => (current === sheet.id ? null : current))

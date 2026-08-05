@@ -130,8 +130,15 @@ export function buildSheets(
 
     const allTimed = [...group.cursorEvents, ...group.viewportEvents, ...group.navigationEvents];
     if (allTimed.length === 0) continue;
-    const startTs = Math.min(...allTimed.map((e) => e.ts));
-    const endTs = Math.max(...allTimed.map((e) => e.ts));
+    // Plain loop rather than Math.min(...allTimed.map(...)): a day-grouping
+    // group can hold tens of thousands of cursor events, and spreading that
+    // many arguments into Math.min/max risks a call-stack RangeError.
+    let startTs = Infinity;
+    let endTs = -Infinity;
+    for (const e of allTimed) {
+      if (e.ts < startTs) startTs = e.ts;
+      if (e.ts > endTs) endTs = e.ts;
+    }
     const domain = group.domain || "unknown";
     const title = bestTitle(group, settings.groupingMode);
 

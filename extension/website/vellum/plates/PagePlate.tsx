@@ -6,6 +6,15 @@ import { buildScrollTimeline, scrollRangeOf, scrollYAt, sheetLocalTs } from "./s
 
 const RENDER_WIDTH = 1280;
 
+/** Deterministic pseudo-random value in [0, 1) from a seed — same sin-hash
+ * trick Sheet.tsx uses for rotation jitter, kept as a local copy here (rather
+ * than imported) since it's a generic one-liner and PagePlate shouldn't reach
+ * into Sheet.tsx for it. */
+function seededUnit(seed: number): number {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
 export function PagePlate({ sheet, frame, t, settings, isEligibleForIframe }: PlateProps) {
   const timeline = useMemo(
     () => buildScrollTimeline(sheet.viewportEvents),
@@ -23,6 +32,16 @@ export function PagePlate({ sheet, frame, t, settings, isEligibleForIframe }: Pl
 
   const filter = settings.pageGrayscale ? "grayscale(1) contrast(0.92)" : "none";
 
+  // Ghost-title placement is deterministic-per-sheet rather than centered:
+  // every sheet centering its title at the same spot means a stacked view
+  // piles "localhost/wikipedia/nytimes" directly on top of each other into
+  // illegible mush. Two independent draws off the same seed (decorrelated via
+  // a salt on the second) spread titles across ~10%-60% of the frame height
+  // and ~26px-40px of size, so stacked titles overprint at varied positions
+  // like letterpress runs instead of coinciding.
+  const titleTopPct = 10 + seededUnit(sheet.seed) * 50;
+  const titleFontSize = 26 + seededUnit(sheet.seed * 2.6180339887 + 11) * 14;
+
   return (
     <div
       style={{
@@ -31,6 +50,15 @@ export function PagePlate({ sheet, frame, t, settings, isEligibleForIframe }: Pl
         overflow: "hidden",
         opacity: settings.pageOpacity,
         filter,
+        // mixBlendMode lives on this same container as opacity/filter, not on
+        // the ghost title alone: opacity < 1 already isolates this element
+        // into its own compositing group (same rule that governs Sheet.tsx's
+        // fan transform), so a mixBlendMode set only on an inner child could
+        // never reach the stack below. Blending the whole container as one
+        // group is also the look we want — under multiply a page's white
+        // background becomes a no-op (the paper shows through) and only its
+        // dark ghost-title/iframe features actually print.
+        mixBlendMode: settings.blendMode,
         pointerEvents: "none",
       }}
     >
@@ -38,12 +66,10 @@ export function PagePlate({ sheet, frame, t, settings, isEligibleForIframe }: Pl
         <div
           style={{
             position: "absolute",
-            inset: 0,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            padding: "6% 8%",
-            mixBlendMode: settings.blendMode,
+            left: 0,
+            right: 0,
+            top: `${titleTopPct}%`,
+            padding: "0 8%",
             color: "rgba(61,56,51,0.28)",
           }}
         >
@@ -52,7 +78,7 @@ export function PagePlate({ sheet, frame, t, settings, isEligibleForIframe }: Pl
               fontFamily: "'Source Serif 4', Georgia, serif",
               fontStyle: "italic",
               fontWeight: 300,
-              fontSize: "34px",
+              fontSize: `${titleFontSize}px`,
               lineHeight: 1.1,
             }}
           >

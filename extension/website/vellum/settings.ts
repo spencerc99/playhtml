@@ -39,6 +39,7 @@ export interface VellumSettings {
   // scroll
   showScrollFrame: boolean;
   scrollFrameOpacity: number;
+  showScrollHistory: boolean;
 
   // trails
   showTrails: boolean;
@@ -78,12 +79,13 @@ export const DEFAULT_VELLUM_SETTINGS: VellumSettings = {
 
   showPages: true,
   maxPageLayers: 4,
-  pageOpacity: 0.35,
+  pageOpacity: 0.2,
   pageGrayscale: true,
   showGhostTitles: true,
 
   showScrollFrame: true,
-  scrollFrameOpacity: 0.5,
+  scrollFrameOpacity: 0.35,
+  showScrollHistory: false,
 
   showTrails: true,
   strokeWidth: 2.5,
@@ -263,6 +265,12 @@ export const VELLUM_PARAM_SPEC: ParamSpec[] = [
     label: "scroll frame opacity",
     group: "scroll",
     control: { type: "slider", min: 0, max: 1, step: 0.01 },
+  },
+  {
+    key: "showScrollHistory",
+    label: "scroll history ticks",
+    group: "scroll",
+    control: { type: "toggle" },
   },
 
   // trails

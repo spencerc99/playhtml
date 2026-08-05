@@ -1,5 +1,5 @@
 // ABOUTME: Renders one stacked "sheet" — paper backing plus its ordered plates (page, scroll, trails) and caption.
-// ABOUTME: Owns the sheet's fan transform (translate + rotation); hover/dim state is driven from VellumStack.
+// ABOUTME: Owns the sheet's fan offset (left/top px, NOT transform) and jitter rotation; hover/dim state is driven from VellumStack.
 import type { VellumSettings } from "./settings";
 import type { VellumSheet } from "./types";
 import { PLATE_REGISTRY } from "./plates/registry";
