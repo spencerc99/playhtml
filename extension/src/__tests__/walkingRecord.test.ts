@@ -482,7 +482,7 @@ describe("deriveWalkingRecord", () => {
     ]);
   });
 
-  it("keeps a departure when no screen-time session completed", () => {
+  it("omits a departure when no browsing evidence was recorded", () => {
     const range = getWalkingRecordPeriodRange(
       "week",
       -1,
@@ -530,13 +530,70 @@ describe("deriveWalkingRecord", () => {
       range,
     });
 
+    expect(record.departures).toEqual([]);
+    expect(record.movementCount).toBe(0);
+  });
+
+  it("describes a sub-minute active departure without rounding it to zero", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const mondayMorning = new Date(2026, 6, 20, 9).getTime();
+    const departureTs = mondayMorning + 5 * 60_000;
+
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [
+        event(
+          "main-focus",
+          "navigation",
+          mondayMorning,
+          "https://google.com/search",
+          { event: "focus" },
+        ),
+        event(
+          "departure-focus",
+          "navigation",
+          departureTs,
+          "https://tiny.garden/path",
+          { event: "focus" },
+        ),
+      ],
+      activity: [
+        {
+          url: "https://tiny.garden/path",
+          windowStarts: [departureTs],
+        },
+      ],
+      sessions: [
+        {
+          url: "https://tiny.garden/path",
+          focusTs: departureTs,
+          blurTs: departureTs + 45_000,
+          durationMs: 45_000,
+        },
+      ],
+      domains: [
+        domain("google.com", { sessionCount: 100 }),
+        domain("tiny.garden", {
+          firstVisit: departureTs - 2 * 60_000,
+          lastVisit: departureTs,
+          sessionCount: 1,
+        }),
+      ],
+      range,
+    });
+
     expect(record.departures).toEqual([
       expect.objectContaining({
         to: "tiny.garden",
-        time: "0 min",
+        time: "< 1 min active",
+        note: "actively browsed",
       }),
     ]);
-    expect(record.departures[0]).not.toHaveProperty("traceTarget");
   });
 
   it("uses the most actively browsed session for a portrait and preserves a derived mark", () => {

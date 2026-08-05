@@ -27,6 +27,7 @@ const FAMILIAR_SITE_MIN_GAP_DAYS = 14;
 const MAIN_ROAD_LIMIT = 20;
 const TIME_SPENT_SITE_LIMIT = 5;
 const ACTIVE_WINDOW_MS = 30_000;
+const MIN_DEPARTURE_DWELL_MS = 60_000;
 const PAGE_HUE_SHIFTS = [-28, -18, -10, 10, 18, 28];
 
 const POPULAR_DOMAIN_ROOTS = [
@@ -437,6 +438,10 @@ function logarithmicScore(valueMinutes: number, capMinutes: number): number {
   );
 }
 
+function formatDepartureDuration(ms: number): string {
+  return ms < 60_000 ? "< 1 min" : formatDuration(ms);
+}
+
 function activeTimeForSession(
   session: ScreenTimeSession | undefined,
   activityByUrl: Map<string, number[]>,
@@ -479,6 +484,8 @@ function buildDepartureNote(
   }
   if (activeTimeMs >= 60_000) {
     notes.push(`${Math.round(activeTimeMs / 60_000)} active minutes`);
+  } else if (activeTimeMs > 0) {
+    notes.push("actively browsed");
   } else if (session && session.durationMs >= 10 * 60_000) {
     notes.push(`stayed ${Math.round(session.durationMs / 60_000)} minutes`);
   }
@@ -530,6 +537,12 @@ function buildDepartures(
 
     const session = getVisitSession(visit, timeByDomain.get(visit.domain));
     const activeTimeMs = activeTimeForSession(session, activityByUrl);
+    if (
+      activeTimeMs < ACTIVE_WINDOW_MS &&
+      (session?.durationMs ?? 0) < MIN_DEPARTURE_DWELL_MS
+    ) {
+      continue;
+    }
     const dwellMinutes = (session?.durationMs ?? 0) / 60_000;
     const activeMinutes = activeTimeMs / 60_000;
     const activeScore = logarithmicScore(activeMinutes, 30);
@@ -556,9 +569,9 @@ function buildDepartures(
       fromFaviconUrl: faviconByDomain.get(previous.domain),
       toFaviconUrl: faviconByDomain.get(visit.domain),
       time:
-        activeTimeMs >= 60_000
-          ? `${formatDuration(activeTimeMs)} active`
-          : formatDuration(session?.durationMs ?? 0),
+        activeTimeMs > 0
+          ? `${formatDepartureDuration(activeTimeMs)} active`
+          : formatDepartureDuration(session!.durationMs),
       note: buildDepartureNote(
         visit,
         session,
