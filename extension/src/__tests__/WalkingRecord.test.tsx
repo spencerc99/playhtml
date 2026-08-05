@@ -54,6 +54,7 @@ async function renderWalkingRecord(
     onPeriodChange: ReturnType<typeof vi.fn>;
     onPeriodOffsetChange: ReturnType<typeof vi.fn>;
   },
+  loading = false,
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -68,7 +69,12 @@ async function renderWalkingRecord(
         periodSummaries={periodSummaries}
         onPeriodChange={callbacks.onPeriodChange}
         onPeriodOffsetChange={callbacks.onPeriodOffsetChange}
-        loading={false}
+        loading={loading}
+        loadingProgress={{
+          completed: 3,
+          total: 5,
+          message: "familiar places found…",
+        }}
         error={null}
       />,
     );
@@ -143,6 +149,31 @@ describe("WalkingRecordPage calendar navigation", () => {
 
       expect(callbacks.onPeriodOffsetChange).toHaveBeenNthCalledWith(1, -1);
       expect(callbacks.onPeriodOffsetChange).toHaveBeenNthCalledWith(2, 0);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("shows the current loading step and measured progress", async () => {
+    const callbacks = {
+      onPeriodChange: vi.fn(),
+      onPeriodOffsetChange: vi.fn(),
+    };
+    const { container, root } = await renderWalkingRecord(
+      0,
+      callbacks,
+      true,
+    );
+
+    try {
+      const progress = container.querySelector(
+        '[role="progressbar"]',
+      ) as HTMLElement | null;
+
+      expect(container.textContent).toContain("familiar places found…");
+      expect(container.textContent).toContain("60%");
+      expect(progress?.getAttribute("aria-valuenow")).toBe("60");
+      expect(progress?.querySelector("span")?.style.width).toBe("60%");
     } finally {
       cleanup(root, container);
     }

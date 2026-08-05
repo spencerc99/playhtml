@@ -27,6 +27,11 @@ interface WalkingRecordPageProps {
   onPeriodChange: (period: WalkingRecordPeriod) => void;
   onPeriodOffsetChange: (offset: number) => void;
   loading: boolean;
+  loadingProgress: {
+    completed: number;
+    total: number;
+    message: string;
+  };
   error: string | null;
 }
 
@@ -279,8 +284,13 @@ export function WalkingRecordPage({
   onPeriodChange,
   onPeriodOffsetChange,
   loading,
+  loadingProgress,
   error,
 }: WalkingRecordPageProps) {
+  const loadingPercentage = Math.round(
+    (loadingProgress.completed / loadingProgress.total) * 100,
+  );
+
   return (
     <main className="walking-record">
       <header className="walking-record__header">
@@ -289,7 +299,20 @@ export function WalkingRecordPage({
 
       {loading && (
         <div className="walking-record__loading" role="status">
-          gathering this {period}’s record…
+          <div className="walking-record__loading-copy">
+            <span>{loadingProgress.message}</span>
+            <span>{loadingPercentage}%</span>
+          </div>
+          <div
+            className="walking-record__loading-track"
+            role="progressbar"
+            aria-label={`Loading ${period} record`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={loadingPercentage}
+          >
+            <span style={{ width: `${loadingPercentage}%` }} />
+          </div>
         </div>
       )}
 

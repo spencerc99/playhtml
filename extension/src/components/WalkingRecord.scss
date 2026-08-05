@@ -80,6 +80,36 @@ button:focus-visible {
   font-size: 11px;
 }
 
+.walking-record__loading {
+  width: min(100%, 320px);
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 auto;
+}
+
+.walking-record__loading-copy {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.walking-record__loading-track {
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(90, 78, 65, 0.12);
+
+  > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: $accent-teal;
+    transition: width 0.22s ease-out;
+  }
+}
+
 .walking-record__error {
   flex-direction: column;
   gap: 8px;
