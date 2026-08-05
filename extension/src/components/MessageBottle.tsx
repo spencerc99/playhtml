@@ -5,6 +5,8 @@ import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FoldCeremony } from "./sealing/FoldCeremony";
 import { LetterScroll } from "./bottle/LetterScroll";
+import { WaxSeal } from "./bottle/WaxSeal";
+import { segmentStyle } from "./bottle/segmentStyles";
 import type { StampedLetter } from "./bottle/WriteSegment";
 import type { BottleNote } from "../features/BottleManager";
 
@@ -22,10 +24,16 @@ interface MessageBottleProps {
   /** Whether the current viewer may write a reply (false if they left the
    * bottle's latest note themselves). Defaults to true. */
   canReply?: boolean;
+  /** A bottle the user just placed from the inventory: it opens straight into
+   * the write scroll, and its leave CTA reads "take it back" — backing out
+   * without writing calls onDismissPlaced instead of leaving it behind. */
+  justPlaced?: boolean;
   onSeal: (text: string, meta: { authorName?: string; styleId?: string }) => void;
   onOpened?: () => void;
   /** Fires when the scroll fully closes (after read/write/cancel). */
   onClosed?: () => void;
+  /** A just-placed bottle was closed without sealing a note — remove it. */
+  onDismissPlaced?: () => void;
   rotateDeg?: number;
   pageBg?: string;
   /**
@@ -47,9 +55,11 @@ export function MessageBottle({
   notes,
   authorColor,
   canReply = true,
+  justPlaced = false,
   onSeal,
   onOpened,
   onClosed,
+  onDismissPlaced,
   rotateDeg = 0,
   pageBg = "#ffffff",
   portalContainer,
@@ -63,6 +73,10 @@ export function MessageBottle({
   // shows through, so the ceremony mounts with no blank gap / jump.
   const [scrollHidden, setScrollHidden] = useState(false);
   const capsuleRef = useRef<HTMLButtonElement>(null);
+  // Whether this bottle got a sealed note during its lifetime. Guards the
+  // just-placed dismiss: closing after a real seal must not "take back" the
+  // bottle the user just wrote.
+  const sealedRef = useRef(false);
   // Stage-transition timers, tracked so they can be cleared on unmount and at
   // the start of each new transition (otherwise an unmount mid-open/close runs
   // setStage on a gone component, resurrecting or mutating a closed scroll).
@@ -86,6 +100,15 @@ export function MessageBottle({
     if (onOpened) onOpened();
   }, [onOpened, clearTimers]);
 
+  // A just-placed bottle opens straight into the write scroll on mount, so the
+  // user goes from "click to place" to "write your letter" in one motion.
+  useEffect(() => {
+    if (justPlaced) open();
+    // Mount-only: opening is the placement's whole point; re-running on prop
+    // changes would re-trigger the animation mid-write.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const close = useCallback(() => {
     setStage("closing");
     clearTimers();
@@ -93,10 +116,17 @@ export function MessageBottle({
       setTimeout(() => {
         setStage("sealed");
         setOrigin(null);
-        if (onClosed) onClosed();
+        // A just-placed bottle closed without a note ever being sealed is
+        // "taken back" — tell the parent to drop it rather than leaving a
+        // sealed-empty prompt on the page.
+        if (justPlaced && !sealedRef.current) {
+          if (onDismissPlaced) onDismissPlaced();
+        } else if (onClosed) {
+          onClosed();
+        }
       }, 360),
     );
-  }, [onClosed, clearTimers]);
+  }, [onClosed, onDismissPlaced, justPlaced, clearTimers]);
 
   const handleStamped = useCallback(
     (letter: StampedLetter) => {
@@ -126,6 +156,7 @@ export function MessageBottle({
 
   const finishCeremony = useCallback(() => {
     if (pendingLetter) {
+      sealedRef.current = true;
       onSeal(pendingLetter.text, {
         authorName: pendingLetter.authorName,
         styleId: pendingLetter.styleId,
@@ -171,9 +202,13 @@ export function MessageBottle({
     stage === "sealing" ||
     stage === "closing";
 
+  // The capsule wears the top letter's own paper; an unwritten bottle stays the
+  // plain blank card (an invitation).
+  const topNote = notes.length > 0 ? notes[notes.length - 1] : undefined;
   const capsuleClass = [
     "mb-capsule",
     "mb-variant-foldedLetter",
+    topNote ? `mb-paper-${segmentStyle(topNote.styleId).id}` : "",
     stage === "unrolling" ? "mb-capsuleUnrolling" : "",
     stage === "expanding" || stage === "scroll" || stage === "sealing"
       ? "mb-capsuleOpen"
@@ -197,8 +232,6 @@ export function MessageBottle({
     .filter(Boolean)
     .join(" ");
 
-  const isEmpty = notes.length === 0;
-
   return (
     <>
       <div className="mb-mound" style={capsuleStyle}>
@@ -212,7 +245,11 @@ export function MessageBottle({
             aria-label="open message bottle"
             title="something tucked into the page"
           >
-            {!isEmpty && <FoldedLetterArt />}
+            {topNote && (
+              <span className="mb-sealMark" aria-hidden="true">
+                <WaxSeal color={topNote.authorColor} />
+              </span>
+            )}
           </button>
         </div>
         <span className="mb-slotCrack" aria-hidden="true" />
@@ -224,6 +261,7 @@ export function MessageBottle({
             <LetterScroll
               notes={notes}
               canReply={canReply}
+              justPlaced={justPlaced}
               authorColor={authorColor ?? "#4a9a8a"}
               onStamped={handleStamped}
               onClose={close}
@@ -260,18 +298,6 @@ export function MessageBottle({
           portalContainer ?? document.body,
         )}
     </>
-  );
-}
-
-/** The card's surface: a small paper card creased by two faint horizontal fold
- *  lines — a letter folded in thirds, seen small. Reads as "something folded
- *  tucked into the page" without any legible text. */
-function FoldedLetterArt() {
-  return (
-    <div className="mb-foldedLetterWrap" aria-hidden="true">
-      <span className="mb-foldCrease mb-foldCrease1" />
-      <span className="mb-foldCrease mb-foldCrease2" />
-    </div>
   );
 }
 

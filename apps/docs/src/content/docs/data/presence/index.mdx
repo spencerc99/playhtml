@@ -50,7 +50,10 @@ import { usePresence } from "@playhtml/react";
 function StatusList() {
   // presences is the live map (keyed by stable id); setMyPresence writes
   // your own; myIdentity is your name/colors/publicKey.
-  const { presences, setMyPresence, myIdentity } = usePresence<{ text: string }>("status");
+  const { presences, setMyPresence, myIdentity } = usePresence<
+    "status",
+    { text: string }
+  >("status");
 
   return (
     <>
@@ -61,7 +64,7 @@ function StatusList() {
 }
 ```
 
-The hook subscribes and unsubscribes with the component lifecycle. Your channel value lives under the channel name (`p.status`), not flattened onto the view.
+The hook subscribes and unsubscribes with the component lifecycle. Your channel value lives under the channel name (`p.status`), not directly on the view. The value is optional because a peer may not have published to that channel.
   </TabItem>
 </Tabs>
 
@@ -190,7 +193,7 @@ function Lobby() {
 
 ## Try it live
 
-<div className="ph-demo-slot" data-label="PRESENCE — online indicator">
+<div id="online-indicator-demo" className="ph-demo-slot" data-label="PRESENCE — online indicator">
   <OnlineIndicatorDemo client:only="react" />
 </div>
 

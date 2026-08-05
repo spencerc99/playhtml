@@ -10,6 +10,9 @@ import { WriteSegment, type StampedLetter } from "./WriteSegment";
 interface LetterScrollProps {
   notes: BottleNote[];
   canReply: boolean;
+  /** A bottle the user just placed and hasn't written into yet — the leave CTA
+   * reads "take it back" (backing out removes it) instead of "seal & leave". */
+  justPlaced?: boolean;
   authorColor: string;
   onStamped: (letter: StampedLetter) => void;
   onClose: () => void;
@@ -18,6 +21,7 @@ interface LetterScrollProps {
 export function LetterScroll({
   notes,
   canReply,
+  justPlaced = false,
   authorColor,
   onStamped,
   onClose,
@@ -55,7 +59,6 @@ export function LetterScroll({
             <div data-seg="write" className="mbs-segSlot">
               <WriteSegment
                 authorColor={authorColor}
-                isFirst={notes.length === 0}
                 onStamped={onStamped}
               />
             </div>
@@ -86,7 +89,7 @@ export function LetterScroll({
       )}
 
       <button type="button" className="mbs-leave" onClick={onClose}>
-        seal &amp; leave
+        {justPlaced ? "take it back" : "seal & leave"}
       </button>
     </div>
   );

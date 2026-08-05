@@ -7,6 +7,7 @@ import {
   getCursorNetworkHz,
   getCursorNetworkIntervalMs,
 } from "../cursor-network-pacing";
+import { PeerStore } from "../../peer-store";
 
 function makeIdentity(publicKey: string, color: string) {
   return {
@@ -77,7 +78,7 @@ function dispatchMouseMove(x: number, y: number) {
 
 function makeFakePresenceTransport() {
   const listeners = new Set<(message: unknown) => void>();
-  return {
+  const transport: any = {
     updates: [] as Array<{ channel: string; value: unknown }>,
     clears: [] as string[],
     join: vi.fn(),
@@ -96,6 +97,10 @@ function makeFakePresenceTransport() {
     },
     destroy: vi.fn(),
   };
+  // The real transport owns a PeerStore fed by its own message stream; mirror
+  // that here so the cursor client's PeerStore-backed cursor view works.
+  transport.peers = new PeerStore(transport);
+  return transport;
 }
 
 describe("cursor network pacing", () => {
@@ -188,7 +193,11 @@ describe("cursor network pacing", () => {
     const callCountAfterIdentityChange =
       provider.awareness.setLocalStateField.mock.calls.length;
 
-    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 1);
+    // Identity change writes two awareness fields: `__playhtml_identity__`
+    // (published by the users module on every identity change) and
+    // `__playhtml_cursors__` (cursor awareness, refreshed by the cursor client's
+    // reaction to that change).
+    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 2);
 
     vi.advanceTimersByTime(Math.ceil(getCursorNetworkIntervalMs(20)));
 
@@ -271,7 +280,6 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
-
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -308,7 +316,6 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
-
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -506,7 +513,10 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
-  it("warns when the presence server rejects a message", () => {
+  it("does not itself warn on presence-error (the transport logs it now)", () => {
+    // Base control-message logging moved to RealtimePresenceTransport so it
+    // happens on every socket, not just the cursor client's. The cursor client
+    // only layers hz pacing; it must not duplicate the rejection warning.
     const provider = makeFakeProvider();
     const transport = makeFakePresenceTransport();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -521,12 +531,13 @@ describe("cursor network pacing", () => {
 
     transport.emit({ type: "presence-error", message: "bad cursor" });
 
-    expect(warn).toHaveBeenCalledWith(
-      "[playhtml] Presence server rejected message:",
-      "bad cursor",
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("rejected"),
+      expect.anything(),
     );
 
     client.destroy();
+    warn.mockRestore();
   });
 
   it("omits overlong page paths from transport messages", () => {
@@ -617,7 +628,11 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
-  it("publishes global cursor identity changes through the presence transport", () => {
+  it("does not republish the identity channel itself on self-change (transport owns it)", () => {
+    // Identity broadcasting moved to the shared presence transport (one
+    // re-join per socket on users.onSelfChange). The cursor client only reacts
+    // to identity changes for rendering + CursorEvents, and must NOT also push
+    // the identity channel — that would be a second broadcaster on the socket.
     const provider = makeFakeProvider();
     const transport = makeFakePresenceTransport();
     const client = new CursorClientAwareness(
@@ -630,27 +645,25 @@ describe("cursor network pacing", () => {
     );
     transport.updates = [];
 
+    const colors: string[] = [];
+    const names: Array<string | undefined> = [];
+    window.cursors.on("color", (c: string) => colors.push(c));
+    window.cursors.on("name", (n: string | undefined) => names.push(n));
+
     window.cursors.color = "#00ff00";
     window.cursors.name = "Ada";
 
+    // No identity-channel updates from the cursor client.
     expect(
       transport.updates.filter((update) => update.channel === "identity"),
-    ).toEqual([
-      {
-        channel: "identity",
-        value: expect.objectContaining({
-          playerStyle: { colorPalette: ["#00ff00"] },
-          publicKey: "local",
-        }),
-      },
-      {
-        channel: "identity",
-        value: expect.objectContaining({
-          name: "Ada",
-          publicKey: "local",
-        }),
-      },
-    ]);
+    ).toEqual([]);
+    // But cursor awareness still republishes (cursor rendering source of truth).
+    expect(
+      transport.updates.some((update) => update.channel === "cursor"),
+    ).toBe(true);
+    // And CursorEvents subscribers still fire for changed fields.
+    expect(colors).toContain("#00ff00");
+    expect(names).toContain("Ada");
 
     client.destroy();
   });
@@ -666,6 +679,8 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
+    const allColorEvents: string[][] = [];
+    client.on("allColors", (colors) => allColorEvents.push(colors));
 
     transport.emit({
       type: "presence-sync",
@@ -684,6 +699,10 @@ describe("cursor network pacing", () => {
 
     expect(client.getSnapshot().allColors).toEqual(["#ff0000", "#00ff00"]);
     expect(window.cursors.allColors).toEqual(["#ff0000", "#00ff00"]);
+    expect(allColorEvents).toContainEqual(["#ff0000", "#00ff00"]);
+    expect(
+      Object.getOwnPropertyDescriptor(window.cursors, "allColors")?.set,
+    ).toBeUndefined();
 
     client.destroy();
   });

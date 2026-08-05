@@ -87,6 +87,7 @@ export default defineConfig({
       //
       //   Start        → getting-started, concepts, using-react
       //   Capabilities → capabilities (single page)
+      //   Examples     → autogenerate (examples/)
       //   Data         → autogenerate (data/)
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
@@ -97,7 +98,7 @@ export default defineConfig({
       // reasons — so they have to be hand-rolled. Everything below is in a
       // real subdirectory, so we let Starlight autogenerate from the
       // `sidebar.order` frontmatter on each page. New pages added to
-      // data/ / advanced/ / integrations/ / reference/ show up in the
+      // examples/ / data/ / advanced/ / integrations/ / reference/ show up in the
       // sidebar automatically — set `sidebar.order` in the page frontmatter
       // to control position within its group.
       //
@@ -132,6 +133,7 @@ export default defineConfig({
             { label: "Custom elements", slug: "custom-elements" },
           ],
         },
+        { label: "Examples", autogenerate: { directory: "examples" } },
         { label: "Data", autogenerate: { directory: "data" } },
         { label: "Advanced", autogenerate: { directory: "advanced" } },
         { label: "Integrations", autogenerate: { directory: "integrations" } },

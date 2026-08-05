@@ -215,3 +215,86 @@ describe("BottleManager.seal", () => {
     }
   });
 });
+
+describe("BottleManager.placeAndOpen", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    __resetPouchForTests();
+    // `body` anchors resolve via getBoundingClientRect; jsdom reports zero-size
+    // rects, so stub a real box (see the render test above).
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(
+      ({
+        x: 0, y: 0, top: 0, left: 0, right: 1024, bottom: 768,
+        width: 1024, height: 768, toJSON() {},
+      }) as DOMRect,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders a just-placed bottle as the sole slot, flagged justPlaced", () => {
+    const channel = new MemoryPageDataChannel<BottlePageData>({ bottles: {} });
+    let rendered: { id: string; isEmpty: boolean; justPlaced?: boolean }[] = [];
+    const createPageData = <T,>(_n: string, _d: T) =>
+      channel as unknown as PageDataChannel<T>;
+    const mgr = new BottleManager("#4a9a8a", "me", createPageData);
+    mgr.init((req) => {
+      rendered = req.bottles.map((b) => ({
+        id: b.id, isEmpty: b.isEmpty, justPlaced: b.justPlaced,
+      }));
+    });
+
+    mgr.placeAndOpen(anchor);
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0].isEmpty).toBe(true);
+    expect(rendered[0].justPlaced).toBe(true);
+    expect(rendered[0].id.startsWith("placed-")).toBe(true);
+  });
+
+  it("dismissPlaced drops the placed bottle from the render list", () => {
+    const channel = new MemoryPageDataChannel<BottlePageData>({ bottles: {} });
+    let rendered: string[] = [];
+    const createPageData = <T,>(_n: string, _d: T) =>
+      channel as unknown as PageDataChannel<T>;
+    const mgr = new BottleManager("#4a9a8a", "me", createPageData);
+    mgr.init((req) => {
+      rendered = req.bottles.map((b) => b.id);
+    });
+
+    mgr.placeAndOpen(anchor);
+    const placedId = rendered[0];
+    expect(placedId).toBeDefined();
+
+    mgr.dismissPlaced(placedId);
+    expect(rendered).toEqual([]);
+  });
+
+  it("sealing into a placed bottle persists a real bottle and clears the placement", () => {
+    const channel = new MemoryPageDataChannel<BottlePageData>({ bottles: {} });
+    let rendered: { id: string; justPlaced?: boolean }[] = [];
+    const createPageData = <T,>(_n: string, _d: T) =>
+      channel as unknown as PageDataChannel<T>;
+    const mgr = new BottleManager("#4a9a8a", "me", createPageData);
+    mgr.init((req) => {
+      rendered = req.bottles.map((b) => ({ id: b.id, justPlaced: b.justPlaced }));
+    });
+
+    mgr.placeAndOpen(anchor);
+    const placedId = rendered[0].id;
+
+    // The overlay seals under the placed bottle's id; since no record exists
+    // under it, seal() creates a fresh persisted bottle.
+    const ok = mgr.seal("a placed letter", { id: placedId, anchor });
+    expect(ok).toBe(true);
+
+    const persisted = Object.values(channel.read().bottles);
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].notes[0].text).toBe("a placed letter");
+
+    // The placement no longer wins the render slot (it's the author's own
+    // bottle, so it's marked seen and filtered out).
+    expect(rendered.some((b) => b.justPlaced)).toBe(false);
+  });
+});

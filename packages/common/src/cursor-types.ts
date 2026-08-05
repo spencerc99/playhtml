@@ -56,6 +56,16 @@ export interface CursorEvents {
   name: string | undefined;
 }
 
+// Flat view of a participant's durable identity, as returned by
+// playhtml.users.getAll() / playhtml.users.onChange(). `pid` is the stable
+// publicKey; `color` is playerStyle.colorPalette[0].
+export type User = {
+  pid: string;
+  name?: string;
+  color: string;
+  isMe: boolean;
+};
+
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
 
@@ -146,7 +156,7 @@ function hasValidPrimaryColor(identity: PlayerIdentity): boolean {
   return typeof color === "string" && color.length > 0;
 }
 
-function savePlayerIdentityToStorage(identity: PlayerIdentity): void {
+export function savePlayerIdentityToStorage(identity: PlayerIdentity): void {
   try {
     localStorage.setItem(
       PLAYER_IDENTITY_STORAGE_KEY,

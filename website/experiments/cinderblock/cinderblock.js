@@ -122,6 +122,9 @@ class CinderblockYard {
     document.querySelector('[data-action="remove"]').addEventListener("click", () => {
       this.removeSelected();
     });
+    document.querySelector('[data-action="reset-all"]').addEventListener("click", () => {
+      this.resetAllBlocks();
+    });
 
     this.resizeObserver = new ResizeObserver(() => this.scaleToFrame());
     this.resizeObserver.observe(this.frame);
@@ -175,6 +178,7 @@ class CinderblockYard {
       this.pendingSelectionId = null;
     }
 
+    document.querySelector('[data-action="reset-all"]').disabled = sharedIds.size === 0;
     this.render();
   }
 
@@ -235,6 +239,18 @@ class CinderblockYard {
     this.selectBlock(null);
     this.setData((draft) => {
       delete draft.blocks[id];
+    });
+  }
+
+  resetAllBlocks() {
+    this.selectBlock(null);
+    this.pendingSelectionId = null;
+    this.locallyControlledIds.clear();
+    this.lastPublished = {};
+    this.setData((draft) => {
+      for (const id of Object.keys(draft.blocks)) {
+        delete draft.blocks[id];
+      }
     });
   }
 
@@ -336,18 +352,30 @@ class CinderblockYard {
 
   beginLocalMotion(id) {
     this.locallyControlledIds.add(id);
+    for (const body of this.bodies.values()) {
+      Sleeping.set(body, false);
+    }
     this.lastMotionAt = performance.now();
+  }
+
+  isBodyMoving(body) {
+    return (
+      !body.isSleeping &&
+      (body.speed > MOVING_SPEED ||
+        Math.abs(body.angularSpeed) > MOVING_ANGULAR_SPEED)
+    );
+  }
+
+  claimMovingBodies() {
+    for (const [id, body] of this.bodies) {
+      if (this.isBodyMoving(body)) this.locallyControlledIds.add(id);
+    }
   }
 
   hasMovingBodies() {
     return [...this.locallyControlledIds].some((id) => {
       const body = this.bodies.get(id);
-      return (
-        body &&
-        !body.isSleeping &&
-        (body.speed > MOVING_SPEED ||
-          Math.abs(body.angularSpeed) > MOVING_ANGULAR_SPEED)
-      );
+      return body && this.isBodyMoving(body);
     });
   }
 
@@ -463,6 +491,7 @@ class CinderblockYard {
     while (this.accumulator >= FIXED_TIMESTEP_MS) {
       Engine.update(this.engine, FIXED_TIMESTEP_MS);
       this.limitBodySpeeds();
+      if (this.locallyControlledIds.size > 0) this.claimMovingBodies();
       this.accumulator -= FIXED_TIMESTEP_MS;
     }
 

@@ -15,14 +15,52 @@ interface Props {
 
 export function Satchel({ inventory, openSignal }: Props) {
   const [armed, setArmed] = useState<ArmedTool | null>(inventory.getArmed());
-  const [hidden, setHidden] = useState(false);
-  const [dismissHover, setDismissHover] = useState(false);
+  const [pageObjectsVisible, setPageObjectsVisible] = useState(
+    inventory.arePageObjectsVisible(),
+  );
+  const [isOpen, setIsOpen] = useState(false);
+  const [hidePromptPosition, setHidePromptPosition] = useState<{
+    left: string;
+    top: string;
+  } | null>(null);
+  const [hidePreferenceError, setHidePreferenceError] = useState(false);
   const nubRef = useRef<HTMLDivElement>(null);
   const kitRef = useRef<HTMLDivElement>(null);
   const pos = useRef({ top: Math.round(window.innerHeight / 2) - 24 });
-  const edge = useRef<"edge-r" | "edge-l">("edge-r");
+  const edge = useRef<"edge-r" | "edge-l">("edge-l");
 
   useEffect(() => inventory.onArmedChange(setArmed), [inventory]);
+  useEffect(
+    () => inventory.onPageObjectsVisibilityChange(setPageObjectsVisible),
+    [inventory],
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      const index = Number(event.key) - 1;
+      if (!Number.isInteger(index) || index < 0 || index >= 6) return;
+      const item = inventory.list()[index];
+      if (!item) return;
+      event.preventDefault();
+      if (armed?.itemId === item.id) inventory.disarm();
+      else inventory.arm(item.id);
+      closeKit();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [armed, inventory, isOpen]);
 
   // keyboard / external open signal
   useEffect(() => {
@@ -34,13 +72,16 @@ export function Satchel({ inventory, openSignal }: Props) {
   function openKit(at: { x: number; y: number } | null) {
     const kit = kitRef.current;
     if (!kit) return;
+    setHidePromptPosition(null);
+    setHidePreferenceError(false);
+    inventory.showPageObjects();
+    setIsOpen(true);
     kit.classList.add("show");
-    // Measure the kit's real rendered size (its width grew past the old 320px
-    // guess, so a hardcoded clamp let it run off the right edge). Fall back to
-    // sensible defaults if layout hasn't produced a box yet.
+    // Measure the rendered kit so cursor summons stay inside the viewport.
+    // Fall back to sensible dimensions if layout has not produced a box yet.
     const kitRect = kit.getBoundingClientRect();
-    const kw = kitRect.width || 320;
-    const kh = kitRect.height || 200;
+    const kw = kitRect.width || 200;
+    const kh = kitRect.height || 300;
     const maxX = window.innerWidth - kw - 12;
     const maxY = window.innerHeight - kh - 12;
     let x: number, y: number;
@@ -49,14 +90,39 @@ export function Satchel({ inventory, openSignal }: Props) {
       y = Math.min(at.y, maxY);
     } else {
       const r = nubRef.current!.getBoundingClientRect();
-      x = Math.min(r.left - kw + r.width, maxX);
+      x = edge.current === "edge-l" ? r.left : r.left - kw + r.width;
+      x = Math.min(x, maxX);
       y = Math.min(r.top, maxY);
     }
     kit.style.left = `${Math.max(12, x)}px`;
     kit.style.top = `${Math.max(12, y)}px`;
   }
   function closeKit() {
-    kitRef.current?.classList.remove("show");
+    setIsOpen(false);
+  }
+  function hideInventory() {
+    const kit = kitRef.current;
+    if (!kit) return;
+    const promptLeft = Math.max(
+      12,
+      Math.min(parseFloat(kit.style.left), window.innerWidth - 220 - 12),
+    );
+    setHidePromptPosition({ left: `${promptLeft}px`, top: kit.style.top });
+    setHidePreferenceError(false);
+    setIsOpen(false);
+    inventory.hidePageObjects();
+  }
+  async function alwaysHideOnSite() {
+    try {
+      await inventory.hidePageObjectsOnSite();
+      setHidePromptPosition(null);
+    } catch (error) {
+      console.error(
+        "[we-were-online] failed to save hidden satchel preference:",
+        error,
+      );
+      setHidePreferenceError(true);
+    }
   }
 
   // drag the nub (snap to nearest edge on release)
@@ -89,47 +155,30 @@ export function Satchel({ inventory, openSignal }: Props) {
     if (!drag.current.moved) openKit(null); // a click opens at the nub
   }
 
-  // Dismiss control sits just above the nub, hugging whichever edge it's docked to.
-  function dismissStyle(): React.CSSProperties {
-    const top = pos.current.top - 24;
-    return edge.current === "edge-r" ? { right: 6, top } : { left: 6, top };
-  }
-
-  const items = inventory.list();
+  const items = inventory.list().slice(0, 6);
 
   return (
     <div className="wwo-inv">
-      {!hidden && (
-        <>
-          <div
-            ref={nubRef}
-            className="wwo-nub edge-r"
-            style={{ right: -8, top: pos.current.top }}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onMouseEnter={() => setDismissHover(true)}
-            onMouseLeave={() => setDismissHover(false)}
-          >
-            <div className="bp" style={{ backgroundImage: `url("${BACKPACK}")` }} />
-          </div>
-          <div
-            className={`wwo-nub-dismiss${dismissHover ? " show" : ""}`}
-            style={dismissStyle()}
-            title="hide satchel"
-            onClick={() => setHidden(true)}
-            onMouseEnter={() => setDismissHover(true)}
-            onMouseLeave={() => setDismissHover(false)}
-          >
-            &times;
-          </div>
-        </>
+      {pageObjectsVisible && !isOpen && (
+        <div
+          ref={nubRef}
+          className="wwo-nub edge-l"
+          style={{ left: -8, top: pos.current.top }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        >
+          <div className="bp" style={{ backgroundImage: `url("${BACKPACK}")` }} />
+        </div>
       )}
 
-      <div ref={kitRef} className="wwo-kit">
+      <div ref={kitRef} className={`wwo-kit${isOpen ? " show" : ""}`}>
         <div className="wwo-kit-head">
           <span className="t">your satchel</span>
-          <span className="x" onClick={closeKit}>&#9656; collapse</span>
+          <div className="wwo-kit-actions">
+            <button type="button" onClick={hideInventory}>hide</button>
+            <button type="button" onClick={closeKit}>&#9666; close</button>
+          </div>
         </div>
         <div className="wwo-grid">
           {items.map((item, i) => {
@@ -148,13 +197,43 @@ export function Satchel({ inventory, openSignal }: Props) {
               </div>
             );
           })}
-          {Array.from({ length: Math.max(0, 8 - items.length) }).map((_, i) => (
+          {Array.from({ length: Math.max(0, 6 - items.length) }).map((_, i) => (
             <div key={`e${i}`} className="wwo-slot empty">
               <span className="key">{items.length + i + 1}</span>
             </div>
           ))}
         </div>
       </div>
+
+      {hidePromptPosition && (
+        <div
+          className="wwo-hide-prompt"
+          role="dialog"
+          aria-labelledby="wwo-hide-prompt-title"
+          style={hidePromptPosition}
+        >
+          <span className="wwo-hide-prompt-brand" aria-hidden="true">
+            wwo
+          </span>
+          <div id="wwo-hide-prompt-title" className="wwo-hide-prompt-title">
+            Keep the satchel hidden here?
+          </div>
+          <p>
+            Save this to hide the satchel and objects like bottles across this site.
+          </p>
+          {hidePreferenceError && (
+            <p className="wwo-hide-prompt-error">Couldn’t save that preference.</p>
+          )}
+          <div className="wwo-hide-prompt-actions">
+            <button type="button" onClick={alwaysHideOnSite}>
+              Always hide on this site
+            </button>
+            <button type="button" onClick={() => setHidePromptPosition(null)}>
+              Only this time
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

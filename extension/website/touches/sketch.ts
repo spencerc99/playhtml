@@ -1,4 +1,4 @@
-// ABOUTME: p5 sketch for the touches page — replays comet-like cursors on the
+// ABOUTME: p5 sketch for the touches page — replays cursor dots on the
 // ABOUTME: co-presence timeline and fires nebula collision bursts where they touch
 
 import p5 from "p5";
@@ -32,7 +32,6 @@ export type MarkStyle =
 /** Live-tunable settings the sketch reads every frame. */
 export interface SketchSettings {
   speed: number;
-  afterglowMs: number;
   showCursors: boolean;
   /** Dark sky mode: additive glow against near-black. Off = linen paper,
    * where marks blend like ink instead of light. */
@@ -44,7 +43,6 @@ export interface SketchSettings {
 
 const BURST_LIFE_MS = 2800;
 const BURST_MAX_RADIUS = 95;
-const CURSOR_WAKE_MS = 450;
 /** How far ahead of a touch its before-glow starts building (timeline ms). */
 const FORESHADOW_MS = 3500;
 const MARK_RADIUS = 13;
@@ -579,37 +577,21 @@ export function createTouchesSketch(
       for (let i = 0; i < nextTouchIndex; i++) stampMark(data.touches[i]);
     };
 
-    /** Koi in a pond: moving cursors are a small soft-glowing body with a
-     * thin whisker of a wake — ambient presence, not a comet show. The glow
-     * swells with `imminence` (0-1) as a touch approaches. */
+    /** Moving cursors are soft-glowing dots. The glow swells with
+     * `imminence` (0-1) as a touch approaches. */
     const drawCursor = (trail: Trail, realTs: number, imminence: number) => {
       const pos = motionAt(trail, realTs);
       const night = settingsRef.current.night;
       const color = inkAdjusted(p.color(trail.color), night);
 
       // Parked cursors (wide sample bracket) sit dim and still, like faint
-      // stars — no tail, no interpolated drift across idle gaps.
+      // stars, without interpolating across idle gaps.
       if (!pos.live) {
         color.setAlpha(night ? 120 : 80);
         p.noStroke();
         p.fill(color);
         p.circle(pos.x, pos.y, night ? 4.5 : 6);
         return;
-      }
-
-      // Thin wake, quickly fading.
-      const steps = 8;
-      let prev: { x: number; y: number } = pos;
-      for (let i = 1; i <= steps; i++) {
-        const t = realTs - (CURSOR_WAKE_MS * i) / steps;
-        if (t <= trail.startTime) break;
-        const point = positionAt(trail, Math.max(t, trail.startTime));
-        const falloff = 1 - i / (steps + 1);
-        color.setAlpha((night ? 90 : 70) * falloff * falloff);
-        p.stroke(color);
-        p.strokeWeight(0.4 + 1.5 * falloff);
-        p.line(prev.x, prev.y, point.x, point.y);
-        prev = point;
       }
 
       // Soft body glow, swelling as a touch nears.
@@ -641,35 +623,10 @@ export function createTouchesSketch(
       p.circle(pos.x, pos.y, 5.5 + imminence * 1.5);
     };
 
-    /** The moments before: as a touch nears, the two cursors' upcoming
-     * paths to the meeting point fade in as faint threads and a glimmer
-     * grows where they will meet. */
-    const drawForeglow = (
-      touch: CursorTouch,
-      factor: number,
-      realTs: number,
-    ) => {
+    /** The moments before: as a touch nears, a glimmer grows where the
+     * cursors will meet. */
+    const drawTouchGlimmer = (touch: CursorTouch, factor: number) => {
       const night = settingsRef.current.night;
-      for (const trailIndex of [touch.trailA, touch.trailB]) {
-        const trail = data.trails[trailIndex];
-        if (touch.ts <= realTs) continue;
-        const color = inkAdjusted(p.color(trail.color), night);
-        color.setAlpha((night ? 85 : 80) * factor);
-        p.noFill();
-        p.stroke(color);
-        p.strokeWeight(1.1);
-        p.beginShape();
-        for (let ts = realTs; ts <= touch.ts; ts += 120) {
-          const pos = positionAt(trail, ts);
-          p.vertex(pos.x, pos.y);
-        }
-        p.vertex(
-          positionAt(trail, touch.ts).x,
-          positionAt(trail, touch.ts).y,
-        );
-        p.endShape();
-      }
-
       const ctx = p.drawingContext as CanvasRenderingContext2D;
       ctx.save();
       ctx.globalCompositeOperation = glowComposite();
@@ -895,35 +852,6 @@ export function createTouchesSketch(
       ctx.restore();
     };
 
-    const drawAfterglow = (burst: Burst, realTs: number) => {
-      const { afterglowMs } = settingsRef.current;
-      if (afterglowMs <= 0) return;
-      const age = playElapsed - burst.startPlayMs;
-      if (age > afterglowMs) return;
-      const fade = 1 - age / afterglowMs;
-
-      for (const trailIndex of [burst.touch.trailA, burst.touch.trailB]) {
-        const trail = data.trails[trailIndex];
-        const from = burst.touch.ts;
-        const to = Math.min(realTs, trail.endTime);
-        if (to <= from) continue;
-        const color = inkAdjusted(
-          p.color(trail.color),
-          settingsRef.current.night,
-        );
-        color.setAlpha((settingsRef.current.night ? 90 : 80) * fade);
-        p.noFill();
-        p.stroke(color);
-        p.strokeWeight(1.5);
-        p.beginShape();
-        for (let ts = from; ts <= to; ts += 120) {
-          const pos = positionAt(trail, ts);
-          p.vertex(pos.x, pos.y);
-        }
-        p.endShape();
-      }
-    };
-
     p.draw = () => {
       const settings = settingsRef.current;
       playElapsed += Math.min(250, p.deltaTime) * settings.speed;
@@ -960,9 +888,7 @@ export function createTouchesSketch(
         nextTouchIndex++;
       }
       bursts = bursts.filter(
-        (burst) =>
-          playElapsed - burst.startPlayMs <=
-          Math.max(BURST_LIFE_MS, settings.afterglowMs),
+        (burst) => playElapsed - burst.startPlayMs <= BURST_LIFE_MS,
       );
 
       // The moments before: touches coming up within the foreshadow window
@@ -986,9 +912,8 @@ export function createTouchesSketch(
         }
       }
 
-      for (const burst of bursts) drawAfterglow(burst, realTs);
       for (const entry of upcoming) {
-        drawForeglow(entry.touch, entry.factor, realTs);
+        drawTouchGlimmer(entry.touch, entry.factor);
       }
 
       if (settings.showCursors) {

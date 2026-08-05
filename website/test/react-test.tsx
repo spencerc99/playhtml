@@ -51,7 +51,7 @@ const Candle = withSharedState(
 
 // Loading State Test Component
 const LoadingStateTest = () => {
-  const { hasSynced } = usePlayContext();
+  const { isLoading } = usePlayContext();
 
   return (
     <div
@@ -60,7 +60,7 @@ const LoadingStateTest = () => {
       <h3>Enhanced Loading State Tests</h3>
       <p style={{ marginBottom: "20px" }}>
         Sync Status:{" "}
-        <strong>{hasSynced ? "✅ Synced" : "⏳ Loading..."}</strong>
+        <strong>{!isLoading ? "✅ Synced" : "⏳ Loading..."}</strong>
       </p>
 
       <div

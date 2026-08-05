@@ -1,3 +1,5 @@
+<!-- ABOUTME: Provides consumer elements for manually testing cross-site shared state. -->
+<!-- ABOUTME: Connects to source elements and records visits from another origin. -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -79,6 +81,19 @@
         font-weight: bold;
         text-align: center;
         margin: 1rem 0;
+      }
+      .visit-counter {
+        box-sizing: border-box;
+        min-width: 100px;
+        overflow: hidden;
+        padding: 1rem;
+        border-radius: 8px;
+        background: #8b5e3c;
+        color: white;
+        font-size: 1.25rem;
+        text-align: center;
+        white-space: nowrap;
+        transition: width 0.2s ease;
       }
       button {
         background: #28a745;
@@ -311,6 +326,24 @@
       </div>
 
       <div class="referenced-element">
+        <h3>🪑 Cross-Site Visit Count</h3>
+        <div class="element-info">
+          <code
+            >data-source="localhost:5173/test/shared-test-source#couch"
+            can-play</code
+          >
+        </div>
+        <div
+          id="chair"
+          data-source="localhost:5173/test/shared-test-source#couch"
+          can-play
+          class="visit-counter"
+        >
+          🪑 <span id="consumer-visit-count">0</span> visits
+        </div>
+      </div>
+
+      <div class="referenced-element">
         <h3>🔒 Referenced Read-Only Status</h3>
         <div class="element-info">
           <code
@@ -458,6 +491,25 @@
       import { playhtml } from "../../packages/playhtml/src";
 
       console.log("📡 Initializing PlayHTML...");
+
+      const chair = document.getElementById("chair");
+      const consumerVisitCount = document.getElementById(
+        "consumer-visit-count"
+      );
+
+      chair.defaultData = { count: 0 };
+      chair.updateElement = ({ data }) => {
+        chair.setAttribute("visit-count", String(data.count));
+        chair.style.width = `${100 + data.count * 10}px`;
+        consumerVisitCount.textContent = String(data.count);
+      };
+      chair.onMount = ({ setData }) => {
+        queueMicrotask(() => {
+          setData((data) => {
+            data.count += 1;
+          });
+        });
+      };
 
       // Debug logging for dynamic discovery
       const consumerLogContainer = document.getElementById("consumer-log");

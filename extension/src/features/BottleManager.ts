@@ -55,6 +55,10 @@ export interface RenderedBottle {
   anchor: BottleAnchor;
   isEmpty: boolean;
   canReply: boolean;
+  /** A bottle the user just placed from the inventory: the overlay opens its
+   * write scroll immediately and its "leave" CTA reads "take it back" (backing
+   * out removes it rather than leaving a sealed empty prompt behind). */
+  justPlaced?: boolean;
 }
 
 export interface BottleRenderRequest {
@@ -96,6 +100,11 @@ export class BottleManager {
   // but no anchor resolves yet — so a transient early no-anchor doesn't suppress
   // the bottle for the rest of the page's life; it retries on later renders.
   private emptyBottle: RenderedBottle | null = null;
+
+  // A bottle the user just placed from the inventory. Transient (never
+  // persisted until its note is sealed) and takes priority over auto-empties.
+  // Cleared when the user seals a note into it or backs out (dismissPlaced).
+  private placedBottle: RenderedBottle | null = null;
 
   constructor(
     private playerColor: string,
@@ -198,15 +207,48 @@ export class BottleManager {
       }
     });
 
-    // The empty bottle (if any) is now filled by our own message; suppress it
-    // so it isn't re-rendered as empty.
+    // The empty/placed bottle (if any) is now filled by our own message;
+    // suppress it so it isn't re-rendered as an empty prompt.
     this.showEmpty = false;
     this.emptyBottle = null;
+    this.placedBottle = null;
 
     spendLetter();
     // Mark our own bottle seen so we don't see it again ourselves
     this.markSeen(bottleId);
     return true;
+  }
+
+  /**
+   * Place a fresh bottle at a user-chosen anchor and surface it so the overlay
+   * opens its write scroll immediately. The bottle is transient — it isn't
+   * persisted until the user seals a note into it (via `seal`, keyed by this
+   * bottle's id). If they back out, `dismissPlaced` drops it.
+   */
+  placeAndOpen(anchor: BottleAnchor): void {
+    const id = (typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    this.placedBottle = {
+      id: `placed-${id}`,
+      anchor,
+      isEmpty: true,
+      canReply: true,
+      justPlaced: true,
+    };
+    // The placed bottle wins the slot; suppress any auto-empty for this load so
+    // the two don't compete for the render list.
+    this.showEmpty = false;
+    this.emptyBottle = null;
+    this.render();
+  }
+
+  /** The user backed out of a just-placed bottle without writing — drop it. */
+  dismissPlaced(bottleId: string): void {
+    if (this.placedBottle?.id === bottleId) {
+      this.placedBottle = null;
+      this.render();
+    }
   }
 
   /**
@@ -259,6 +301,16 @@ export class BottleManager {
   }
 
   private computeRenderList(): RenderedBottle[] {
+    // A just-placed bottle owns the view: it's mid-interaction (its write
+    // scroll auto-opens), so don't let filled/empty bottles crowd it out.
+    if (this.placedBottle) {
+      if (resolveBottlePosition(this.placedBottle.anchor) !== null) {
+        return [this.placedBottle];
+      }
+      // Its anchor element vanished before we could render — drop it.
+      this.placedBottle = null;
+    }
+
     const seen = this.loadSeen();
     const here = normalizeUrl(window.location.href);
 

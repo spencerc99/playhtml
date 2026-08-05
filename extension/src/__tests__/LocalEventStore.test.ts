@@ -65,7 +65,7 @@ async function waitForBackgroundDatabaseWork(): Promise<void> {
 }
 
 async function openVersion8Database(
-  seedAggregate: Partial<DomainStatsAggregate> = aggregate(),
+  seedAggregate: Record<string, unknown> = { ...aggregate() },
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = fakeIndexedDB.open(DB_NAME, 8);
@@ -154,8 +154,7 @@ function aggregate(): DomainStatsAggregate {
     storageSizeBytes: 0,
     firstVisit: 0,
     lastVisit: 0,
-    uniqueUrls: ["https://example.com/"],
-    processedNavIds: ["nav-1"],
+    uniqueUrlCount: 1,
   };
 }
 
@@ -196,34 +195,75 @@ afterEach(async () => {
 });
 
 describe("LocalEventStore aggregates", () => {
-  it("preserves URL and navigation ID arrays for non-navigation events", () => {
+  it("updates bounded aggregate fields for non-navigation events", () => {
     const agg = aggregate();
-    const uniqueUrls = agg.uniqueUrls;
-    const processedNavIds = agg.processedNavIds;
 
     (LocalEventStore as any).applyEventsToAggregate(agg, [
       event("cursor-1", "cursor"),
     ]);
 
-    expect(agg.uniqueUrls).toBe(uniqueUrls);
-    expect(agg.processedNavIds).toBe(processedNavIds);
+    expect(agg.uniqueUrlCount).toBe(1);
+    expect(agg).not.toHaveProperty("uniqueUrls");
+    expect(agg).not.toHaveProperty("processedNavIds");
     expect(agg.eventsByType.cursor).toBe(1);
     expect(agg.storageSizeBytes).toBeGreaterThan(0);
     expect(agg.firstVisit).toBe(1_000);
     expect(agg.lastVisit).toBe(1_000);
   });
 
-  it("tracks URLs and navigation IDs for navigation events", () => {
-    const agg = aggregate();
+  it("tracks exact URL counts without growing aggregate records", async () => {
+    const store = createStore();
+    const secondUrlEvent = {
+      ...event("nav-2", "navigation"),
+      meta: {
+        ...event("nav-2", "navigation").meta,
+        url: "https://example.com/other",
+      },
+      normalizedUrl: "https://example.com/other",
+    };
 
-    (LocalEventStore as any).applyEventsToAggregate(agg, [
-      event("nav-2", "navigation"),
+    await store.addEvents([
+      event("nav-1", "navigation"),
+      secondUrlEvent,
+      event("nav-3", "navigation"),
     ]);
 
-    expect(agg.uniqueUrls).toContain("https://example.com/page");
-    expect(agg.processedNavIds).toContain("nav-2");
-    expect(agg.pendingFocusTs).toBe(1_000);
-    expect(agg.pendingFocusUrl).toBe("https://example.com/page");
+    const [domainStats, globalStats] = await Promise.all([
+      store.getSessionStats("example.com"),
+      store.getGlobalStats(),
+    ]);
+
+    for (const stats of [domainStats, globalStats]) {
+      expect(stats?.uniqueUrlCount).toBe(2);
+      expect(stats).not.toHaveProperty("uniqueUrls");
+      expect(stats).not.toHaveProperty("processedNavIds");
+    }
+  });
+
+  it("does not count an upserted event twice in aggregates", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("focus-event", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("blur-event", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    await store.addEvents([focus, blur]);
+    await store.addEvents([focus, blur]);
+
+    const stats = await store.getSessionStats("example.com");
+
+    expect(stats).toMatchObject({
+      totalTimeMs: 6_000,
+      sessionCount: 1,
+      eventsByType: { navigation: 2 },
+      uniqueUrlCount: 1,
+    });
   });
 
   it("rebuilds aggregates from unique events in chronological order after a bulk import", async () => {
@@ -260,21 +300,203 @@ describe("LocalEventStore aggregates", () => {
   });
 });
 
+describe("LocalEventStore walking record events", () => {
+  it("derives screen time from navigation events without reading cursor or viewport data", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("focus", "navigation"),
+        ts: 1_000,
+        data: { event: "focus" },
+      },
+      {
+        ...event("cursor", "cursor"),
+        ts: 2_000,
+      },
+      {
+        ...event("viewport", "viewport"),
+        ts: 3_000,
+        data: { event: "scroll", scrollDistancePx: 500 },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: 6_000,
+        data: { event: "blur" },
+      },
+    ]);
+
+    await expect(
+      store.getScreenTime({ startTs: 0, endTs: 10_000 }),
+    ).resolves.toEqual({
+      totalMs: 5_000,
+      sessions: [
+        {
+          url: "https://example.com/page",
+          focusTs: 1_000,
+          blurTs: 6_000,
+          durationMs: 5_000,
+        },
+      ],
+    });
+  });
+
+  it("keeps navigation events and samples cursors without losing measured distance", async () => {
+    const store = createStore();
+    const otherPage = {
+      meta: {
+        ...event("other-page", "cursor").meta,
+        url: "https://example.com/other",
+      },
+      normalizedUrl: "https://example.com/other",
+    };
+
+    await store.addEvents([
+      {
+        ...event("navigation-1", "navigation"),
+        ts: 1_000,
+      },
+      {
+        ...event("cursor-1", "cursor"),
+        ts: 2_000,
+        data: { event: "move", x: 0.1, y: 0.2 },
+      },
+      {
+        ...event("cursor-2", "cursor"),
+        ts: 3_000,
+        data: { event: "move", x: 0.2, y: 0.2 },
+      },
+      {
+        ...event("viewport-1", "viewport"),
+        ts: 4_000,
+        data: { event: "scroll", scrollDistancePx: 400 },
+      },
+      {
+        ...event("viewport-2", "viewport"),
+        ts: 5_000,
+        data: { event: "scroll", scrollDistancePx: 600 },
+      },
+      {
+        ...event("cursor-other-page", "cursor"),
+        ...otherPage,
+        ts: 6_000,
+        data: { event: "move", x: 0.5, y: 0.5 },
+      },
+      {
+        ...event("cursor-next-window", "cursor"),
+        ts: 5 * 60_000 + 2_000,
+        data: { event: "move", x: 0.3, y: 0.2 },
+      },
+      {
+        ...event("navigation-2", "navigation"),
+        ...otherPage,
+        ts: 5 * 60_000 + 3_000,
+        data: { event: "focus" },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 10 * 60_000,
+    });
+
+    expect(result.events.map((storedEvent) => storedEvent.id)).toEqual([
+      "navigation-1",
+      "cursor-1",
+      "cursor-other-page",
+      "cursor-next-window",
+      "navigation-2",
+    ]);
+    expect(result.cursorDistancePx).toBeCloseTo(102.4);
+  });
+
+  it("requires an explicit walking-record range", async () => {
+    const store = createStore();
+
+    await expect(store.getWalkingRecordEvents({})).rejects.toThrow(
+      "Walking record event bounds are required",
+    );
+  });
+
+  it("returns simplified cursor paths from the exact selected page and session", async () => {
+    const store = createStore();
+    const cursor = (
+      id: string,
+      ts: number,
+      x: number,
+      y: number,
+      url = "https://example.com/page",
+    ): CollectionEvent => ({
+      ...event(id, "cursor"),
+      ts,
+      data: { event: "move", x, y },
+      meta: { ...event(id, "cursor").meta, url },
+      normalizedUrl: url,
+    });
+
+    await store.addEvents([
+      cursor("before", 500, 0, 0),
+      cursor("first", 2_000, 0.1, 0.2),
+      cursor("middle", 3_000, 0.2, 0.3),
+      cursor("other-page", 4_000, 0.9, 0.9, "https://example.com/other"),
+      cursor("after-gap", 9_001, 0.6, 0.4),
+      cursor("last", 9_500, 0.8, 0.7),
+      cursor("after", 12_000, 1, 1),
+    ]);
+
+    const traces = await store.getWalkingRecordTraces([
+      {
+        id: "day:2026-07-20",
+        url: "https://example.com/page",
+        startTs: 1_000,
+        endTs: 10_000,
+      },
+    ]);
+
+    expect(traces).toEqual([
+      {
+        targetId: "day:2026-07-20",
+        paths: [
+          [{ x: 0.1, y: 0.2 }, { x: 0.2, y: 0.3 }],
+          [{ x: 0.6, y: 0.4 }, { x: 0.8, y: 0.7 }],
+        ],
+      },
+    ]);
+  });
+});
+
 describe("LocalEventStore aggregate migrations", () => {
-  it("preserves version 8 stats aggregates when opening version 9", async () => {
+  it("migrates version 8 aggregates without losing retained history", async () => {
     const db = await openVersion8Database({
       ...aggregate(),
       totalTimeMs: 12_345,
       sessionCount: 7,
-      storageSizeBytes: undefined,
+      uniqueUrlCount: undefined,
+      uniqueUrls: ["https://example.com/stale"],
+      processedNavIds: ["nav-stale"],
     });
     db.close();
 
     const store = createStore();
+    await store.getSessionStats("example.com");
+    await store.addEvents([
+      {
+        ...event("nav-after-upgrade", "navigation"),
+        meta: {
+          ...event("nav-after-upgrade", "navigation").meta,
+          url: "https://example.com/stale",
+        },
+        normalizedUrl: "https://example.com/stale",
+      },
+    ]);
     const stats = await store.getSessionStats("example.com");
 
-    expect(stats?.totalTimeMs).toBe(12_345);
-    expect(stats?.sessionCount).toBe(7);
+    expect(stats).toMatchObject({
+      totalTimeMs: 12_345,
+      sessionCount: 7,
+      uniqueUrlCount: 1,
+    });
+    expect(stats).not.toHaveProperty("uniqueUrls");
+    expect(stats).not.toHaveProperty("processedNavIds");
   });
 
   it("reports local raw storage stats when preserved version 8 aggregates do not have size data", async () => {
@@ -310,6 +532,7 @@ describe("LocalEventStore aggregate migrations", () => {
         eventCount: 2,
         totalTimeMs: 0,
         uniquePageCount: 1,
+        sessionCount: 0,
         eventCounts: { navigation: 1, cursor: 1 },
       }),
     ]);
@@ -498,6 +721,23 @@ describe("LocalEventStore pending uploads", () => {
     expect(events.map((storedEvent) => storedEvent.id)).toEqual([
       "cursor-event",
       "navigation-event",
+    ]);
+  });
+
+  it("queries one event type newest-first with a limit", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...event("scrap-first", "element"), ts: 1_000 },
+      { ...event("scrap-last", "element"), ts: 3_000 },
+      { ...event("scrap-middle", "element"), ts: 2_000 },
+      { ...event("cursor-later", "cursor"), ts: 4_000 },
+    ]);
+
+    const events = await store.queryByType("element", { limit: 2 });
+
+    expect(events.map((storedEvent) => storedEvent.id)).toEqual([
+      "scrap-last",
+      "scrap-middle",
     ]);
   });
 

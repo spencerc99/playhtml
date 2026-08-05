@@ -308,7 +308,7 @@ const Main = withSharedState(
     id: "stellar-connections",
   },
   ({ data, setData, awareness, setMyAwareness }) => {
-    const { hasSynced, configureCursors, getMyPlayerIdentity, cursors } =
+    const { isLoading, configureCursors, getMyPlayerIdentity, cursors } =
       usePlayContext();
     const [proximityUsers, setProximityUsers] = useState<Set<string>>(
       new Set()
@@ -421,7 +421,7 @@ const Main = withSharedState(
         setMyAwareness({ activeHandHold: handHold });
 
         // Create or brighten star
-        if (hasSynced) {
+        if (!isLoading) {
           setData((draft) => {
             const starId = pairId;
             const otherColor = otherPlayer.playerStyle.colorPalette[0];
@@ -459,7 +459,7 @@ const Main = withSharedState(
           });
         }
       },
-      [hasSynced, setData, setMyAwareness, triggerStarAnimation]
+      [isLoading, setData, setMyAwareness, triggerStarAnimation]
     );
 
     const handleProximityLeft = useCallback(

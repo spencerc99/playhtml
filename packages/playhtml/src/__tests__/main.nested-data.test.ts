@@ -1,7 +1,7 @@
 // ABOUTME: Tests SyncedStore-backed element data and nested CRDT operations.
 // ABOUTME: Verifies value updates, mutator updates, arrays, and nested objects.
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
-import { playhtml } from "../index";
+import { elementHandlers, playhtml } from "../index";
 
 describe("playhtml SyncedStore CRDT behavior", () => {
   beforeEach(() => {
@@ -46,7 +46,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
   it("stores data in SyncedStore and supports both value and mutator forms", async () => {
     const el = setupSimpleElement("can-toggle", "el1");
 
-    const handler = playhtml.elementHandlers!.get("can-toggle")!.get("el1")!;
+    const handler = elementHandlers!.get("can-toggle")!.get("el1")!;
     expect(handler.data).toEqual({ on: false });
 
     // Test value form - replaces entire object
@@ -69,8 +69,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
   it("prevents browser scripts from mutating public shared state", async () => {
     setupSimpleElement("can-toggle", "readonly-el");
 
-    const handler = playhtml
-      .elementHandlers!.get("can-toggle")!
+    const handler = elementHandlers.get("can-toggle")!
       .get("readonly-el")!;
     expect(handler.data).toEqual({ on: false });
     expect(playhtml.syncedStore["can-toggle"]["readonly-el"]).toEqual({
@@ -93,8 +92,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
   it("prevents browser scripts from mutating nested public shared state", async () => {
     setupSimpleElement("can-mirror", "readonly-nested-el");
 
-    const handler = playhtml
-      .elementHandlers!.get("can-mirror")!
+    const handler = elementHandlers.get("can-mirror")!
       .get("readonly-nested-el")!;
     expect(handler.data.attributes.id).toBe("readonly-nested-el");
 
@@ -162,8 +160,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);
 
-    const handler = playhtml
-      .elementHandlers!.get(tag)!
+    const handler = elementHandlers.get(tag)!
       .get("readonly-array-el")!;
     handler.setData((draft: any) => {
       draft.push("existing");
@@ -197,7 +194,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);
 
-    const handler = playhtml.elementHandlers!.get(tag)!.get("e2")!;
+    const handler = elementHandlers!.get(tag)!.get("e2")!;
     expect(Array.isArray(handler.data)).toBe(true);
 
     // Test CRDT array push operations
@@ -228,7 +225,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);
 
-    const handler = playhtml.elementHandlers!.get(tag)!.get("e3")!;
+    const handler = elementHandlers!.get(tag)!.get("e3")!;
 
     // Start with some data
     handler.setData((draft: any) => {
@@ -266,7 +263,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);
 
-    const handler = playhtml.elementHandlers!.get(tag)!.get("e4")!;
+    const handler = elementHandlers!.get(tag)!.get("e4")!;
 
     // Simulate multiple rapid mutations - SyncedStore CRDT handles the merging
     handler.setData((draft: any) => {
@@ -292,7 +289,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     const tag = "can-mirror";
     const el = setupSimpleElement(tag, "e5");
 
-    const handler = playhtml.elementHandlers!.get(tag)!.get("e5")!;
+    const handler = elementHandlers!.get(tag)!.get("e5")!;
 
     // Test nested object mutations - update existing attributes
     handler.setData((draft: any) => {
@@ -334,7 +331,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     // @ts-ignore
     await playhtml.setupPlayElementForTag(el, tag);
 
-    const handler = playhtml.elementHandlers!.get(tag)!.get("e6")!;
+    const handler = elementHandlers!.get(tag)!.get("e6")!;
 
     // Add some initial data
     handler.setData((draft: any) => {
@@ -370,7 +367,7 @@ describe("playhtml SyncedStore CRDT behavior", () => {
     // doc when a write loop fires repeatedly.
     const tag = "can-mirror";
     const el = setupSimpleElement(tag, "e-roster");
-    const handler = playhtml.elementHandlers!.get(tag)!.get("e-roster")!;
+    const handler = elementHandlers!.get(tag)!.get("e-roster")!;
 
     // Seed a nested keyed map.
     handler.setData((draft: any) => {

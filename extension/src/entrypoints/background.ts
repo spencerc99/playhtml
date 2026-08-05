@@ -2,10 +2,15 @@
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
 import { LocalEventStore } from '../storage/LocalEventStore'
-import type { QueryOptions } from '../storage/LocalEventStore'
+import type {
+  QueryOptions,
+  WalkingRecordTraceTarget,
+} from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
+import type { ScrapEventData } from '../collectors/types'
+import { getCanonicalScrapKey, getScrapKey } from '../collectors/scrapUtils'
 import {
   ensurePlayerIdentity,
   getPlayerProfile,
@@ -24,10 +29,212 @@ import {
   isOnCooldown,
   recordToastShown,
 } from '../milestones/state'
-import { checkAllMilestones, pxToMiles } from '../milestones/milestones'
+import {
+  checkAllMilestones,
+  detectLongGapReturn,
+  pxToMiles,
+} from '../milestones/milestones'
 import { getSessionId } from '../storage/participant'
 
+interface ScrapRecordBase {
+  id: string
+  key: string
+  domain: string
+  pageUrl: string
+  ts: number
+  pageTitle: string
+  faviconUrl?: string
+}
+
+export type ScrapRecord = ScrapRecordBase & (
+  | {
+      kind: "image"
+      src: string
+      alt?: string
+      naturalWidth: number
+      naturalHeight: number
+    }
+  | {
+      kind: "button"
+      text: string
+      styles: Record<string, string>
+      innerSvg?: string
+    }
+  | {
+      kind: "svg-icon"
+      markup: string
+      width: number
+      height: number
+    }
+  | {
+      kind: "cursor"
+      url: string
+      hotspotX?: number
+      hotspotY?: number
+    }
+)
+
+function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
+  const kind = (event.data as { kind?: unknown } | null)?.kind
+  if (
+    kind !== "image" &&
+    kind !== "button" &&
+    kind !== "svg-icon" &&
+    kind !== "cursor"
+  ) {
+    return undefined
+  }
+  if (!event.domain) {
+    throw new Error(`Scrap event ${event.id} is missing its domain`)
+  }
+
+  const data = event.data as ScrapEventData
+  const base: ScrapRecordBase = {
+    id: event.id,
+    key: getScrapKey(data),
+    domain: event.domain,
+    pageUrl: event.meta.url,
+    ts: event.ts,
+    pageTitle: data.pageTitle,
+    ...(data.faviconUrl ? { faviconUrl: data.faviconUrl } : {}),
+  }
+
+  switch (data.kind) {
+    case "image":
+      return {
+        ...base,
+        kind: data.kind,
+        src: data.src,
+        ...(data.alt ? { alt: data.alt } : {}),
+        naturalWidth: data.naturalWidth,
+        naturalHeight: data.naturalHeight,
+      }
+    case "button":
+      return {
+        ...base,
+        kind: data.kind,
+        text: data.text,
+        styles: data.styles,
+        ...(data.innerSvg ? { innerSvg: data.innerSvg } : {}),
+      }
+    case "svg-icon":
+      return {
+        ...base,
+        kind: data.kind,
+        markup: data.markup,
+        width: data.width,
+        height: data.height,
+      }
+    case "cursor":
+      return {
+        ...base,
+        kind: data.kind,
+        url: data.url,
+        ...(data.hotspotX !== undefined ? { hotspotX: data.hotspotX } : {}),
+        ...(data.hotspotY !== undefined ? { hotspotY: data.hotspotY } : {}),
+      }
+  }
+}
+
 const store = new LocalEventStore()
+
+/**
+ * Storage-time dedup for scrap ("element") events: drops incoming events
+ * whose canonical identity (see getCanonicalScrapKey) already exists in the
+ * store, so near-duplicates captured across pages/sessions are never
+ * persisted. `knownCanonicalScrapKeys` is lazily populated by scanning
+ * existing stored element events on first use, then kept current as new
+ * events are accepted. This matches the render-time dedup in ScrapCollage's
+ * canonicalScrapKey, but skips persistence entirely instead of collapsing
+ * duplicates at render.
+ *
+ * The set is rebuilt via the same lazy scan on every service-worker restart
+ * (MV3 workers are short-lived) — `knownCanonicalScrapKeysInitPromise` makes
+ * sure two STORE_EVENTS batches arriving before the scan completes don't
+ * both trigger a scan or race past each other.
+ */
+const knownCanonicalScrapKeys = new Set<string>()
+let knownCanonicalScrapKeysInitialized = false
+let knownCanonicalScrapKeysInitPromise: Promise<void> | null = null
+
+function resolveScrapEventDomain(event: CollectionEvent): string {
+  return event.domain || extractDomain(event.meta.url)
+}
+
+async function ensureKnownCanonicalScrapKeys(): Promise<void> {
+  if (knownCanonicalScrapKeysInitialized) return
+  if (knownCanonicalScrapKeysInitPromise) return knownCanonicalScrapKeysInitPromise
+
+  knownCanonicalScrapKeysInitPromise = (async () => {
+    const existing = await store.queryByType('element')
+    for (const event of existing) {
+      const kind = (event.data as { kind?: unknown } | null)?.kind
+      if (
+        kind !== 'image' &&
+        kind !== 'button' &&
+        kind !== 'svg-icon' &&
+        kind !== 'cursor'
+      ) {
+        continue
+      }
+      const domain = resolveScrapEventDomain(event)
+      const canonicalKey = getCanonicalScrapKey(domain, event.data as ScrapEventData)
+      knownCanonicalScrapKeys.add(canonicalKey)
+    }
+  })()
+
+  try {
+    await knownCanonicalScrapKeysInitPromise
+    knownCanonicalScrapKeysInitialized = true
+  } finally {
+    // Cleared so a failed scan retries on the next batch; a successful scan
+    // is latched by knownCanonicalScrapKeysInitialized instead.
+    knownCanonicalScrapKeysInitPromise = null
+  }
+}
+
+/**
+ * Filters incoming events, dropping "element" (scrap) events whose canonical
+ * identity is already known — either already persisted, or a duplicate of
+ * another event earlier in this same batch. Non-element events pass through
+ * unchanged. Accepted scrap events are added to the known-keys set so later
+ * batches (and later events within this batch) see them as duplicates too.
+ */
+async function dedupeScrapEvents(events: CollectionEvent[]): Promise<CollectionEvent[]> {
+  const hasElementEvent = events.some((event) => event.type === 'element')
+  if (!hasElementEvent) return events
+
+  await ensureKnownCanonicalScrapKeys()
+
+  const accepted: CollectionEvent[] = []
+  for (const event of events) {
+    if (event.type !== 'element') {
+      accepted.push(event)
+      continue
+    }
+
+    const kind = (event.data as { kind?: unknown } | null)?.kind
+    if (
+      kind !== 'image' &&
+      kind !== 'button' &&
+      kind !== 'svg-icon' &&
+      kind !== 'cursor'
+    ) {
+      accepted.push(event)
+      continue
+    }
+
+    const domain = resolveScrapEventDomain(event)
+    const canonicalKey = getCanonicalScrapKey(domain, event.data as ScrapEventData)
+    if (knownCanonicalScrapKeys.has(canonicalKey)) continue
+
+    knownCanonicalScrapKeys.add(canonicalKey)
+    accepted.push(event)
+  }
+
+  return accepted
+}
+
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
 const LOCAL_RAW_EVENT_RETENTION_MS = LOCAL_RAW_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000
@@ -85,6 +292,7 @@ async function flushPendingUploads(): Promise<void> {
     const result = await browser.storage.local.get(keys)
 
     const uploadable = pending.filter((e) => {
+      if (e.type === 'element') return false
       const mode = result[`collection_mode_${e.type}`]
       const normalized: 'off' | 'local' | 'shared' =
         mode === 'off' || mode === 'shared' || mode === 'local' ? mode : 'local'
@@ -308,7 +516,8 @@ export default defineBackground(() => {
 
     if (message.type === 'STORE_EVENTS') {
       const events = (message.events || []) as CollectionEvent[]
-      store.addEvents(events)
+      dedupeScrapEvents(events)
+        .then((dedupedEvents) => store.addEvents(dedupedEvents))
         .then(() => {
           // A navigation focus is the canonical "user is now looking at this
           // domain" signal — the moment a domain-visit milestone could fire
@@ -355,6 +564,23 @@ export default defineBackground(() => {
         .catch((e) => {
           console.error('[Background] GET_RECENT_EVENTS error:', e)
           reply({ success: false, events: [] })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SCRAPS') {
+      const limit = (message.options?.limit ?? 5000) as number
+      store.queryByType('element', { limit })
+        .then((events) => events
+          .sort((first, second) => second.ts - first.ts)
+          .flatMap((event): ScrapRecord[] => {
+            const scrap = toScrapRecord(event)
+            return scrap ? [scrap] : []
+          }))
+        .then((scraps) => reply({ scraps }))
+        .catch((e) => {
+          console.error('[Background] GET_SCRAPS error:', e)
+          reply({ scraps: [] })
         })
       return true
     }
@@ -443,7 +669,7 @@ export default defineBackground(() => {
               dateRange,
               ...(sessions ? { sessions } : {}),
               // Only include uniquePageCount for domain-level stats (not page-level)
-              uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrls?.length ?? 0),
+              uniquePageCount: normalizedUrl ? undefined : (agg?.uniqueUrlCount ?? 0),
             },
           })
         } catch (e) {
@@ -470,7 +696,7 @@ export default defineBackground(() => {
               eventsByType: agg.eventsByType,
               firstVisit: agg.firstVisit,
               lastVisit: agg.lastVisit,
-              uniqueUrlCount: agg.uniqueUrls.length,
+              uniqueUrlCount: agg.uniqueUrlCount,
             },
           })
         })
@@ -525,7 +751,7 @@ export default defineBackground(() => {
         .then((result) => reply({ success: true, ...result }))
         .catch((e) => {
           console.error('[Background] GET_SCREEN_TIME error:', e)
-          reply({ success: false, totalMs: 0, sessions: [], totalScrollDistancePx: 0 })
+          reply({ success: false, totalMs: 0, sessions: [] })
         })
       return true
     }
@@ -538,6 +764,28 @@ export default defineBackground(() => {
         .catch((e) => {
           console.error('[Background] GET_ALL_EVENTS error:', e)
           reply({ success: false, events: [] })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_WALKING_RECORD_EVENTS') {
+      const options = (message.options || {}) as Pick<QueryOptions, 'startTs' | 'endTs'>
+      store.getWalkingRecordEvents(options)
+        .then((result) => reply({ success: true, ...result }))
+        .catch((e) => {
+          console.error('[Background] GET_WALKING_RECORD_EVENTS error:', e)
+          reply({ success: false, events: [], cursorDistancePx: 0 })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_WALKING_RECORD_TRACES') {
+      const targets = (message.targets || []) as WalkingRecordTraceTarget[]
+      store.getWalkingRecordTraces(targets)
+        .then((traces) => reply({ success: true, traces }))
+        .catch((e) => {
+          console.error('[Background] GET_WALKING_RECORD_TRACES error:', e)
+          reply({ success: false, traces: [] })
         })
       return true
     }
@@ -713,7 +961,33 @@ export default defineBackground(() => {
       topDomains.push({ domain, visitCount: agg.sessionCount, faviconUrl });
     }
 
-    const result = checkAllMilestones(state, globalStats, cursorDistancePx, topDomains);
+    // Long-gap return: for the active tab's domain, look at raw
+    // navigation timestamps and see if the user just came back after >90 days.
+    const [gapTab] = await browser.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+    const activeDomain = extractDomain(gapTab?.url ?? null);
+    let longGap: Parameters<typeof checkAllMilestones>[4] = null;
+    if (activeDomain) {
+      // No limit: queryByDomain resolves early when a limit is hit, before its
+      // ascending-by-time sort, so a limit would return the OLDEST events and
+      // miss the recent return. Navigation events are sparse (2s dedup), so an
+      // unbounded per-domain scan stays cheap.
+      const gapNavEvents = await store.queryByDomain(activeDomain, {
+        type: 'navigation',
+      });
+      const gap = detectLongGapReturn(
+        gapNavEvents.map((e) => e.ts),
+        Date.now(),
+      );
+      if (gap) {
+        const faviconUrl = topDomains.find((d) => d.domain === activeDomain)?.faviconUrl;
+        longGap = { domain: activeDomain, faviconUrl, return: gap };
+      }
+    }
+
+    const result = checkAllMilestones(state, globalStats, cursorDistancePx, topDomains, longGap);
     if (!result) {
       await saveState(state);
       return;
@@ -726,8 +1000,8 @@ export default defineBackground(() => {
     const idleState = await browser.idle.queryState(60);
     if (idleState !== "active") return;
 
-    // Resolve the active tab. Use lastFocusedWindow rather than currentWindow so
-    // this works even when DevTools is the focused window.
+    // Resolve the active tab again because it may have changed while the raw
+    // event history was being queried.
     const tabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
     const tab = tabs[0];
     if (!tab?.id) return;

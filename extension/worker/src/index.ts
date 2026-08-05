@@ -1,5 +1,5 @@
 // ABOUTME: Cloudflare Worker entry point for the event collection API.
-// ABOUTME: Routes HTTP requests to ingest, recent, stats, export, participant, and subscribe handlers.
+// ABOUTME: Routes HTTP requests to event, participant, subscribe, and feedback handlers.
 
 import { handleIngest } from './routes/ingest';
 import { handleRecent } from './routes/recent';
@@ -8,8 +8,10 @@ import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
 import { handleParticipantUpsert } from './routes/participants';
 import { handleSubscribe } from './routes/subscribe';
+import { handleFeedback } from './routes/feedback';
 import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
+import { handleCommute } from './routes/commute';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -50,6 +52,12 @@ export default {
       return handleRecent(request, env);
     }
 
+    if (path === '/commute/recent' && request.method === 'GET') {
+      // This response is reduced to public destinations, domain-only scenery,
+      // and aggregate counts. Extension-page GETs can omit Origin and Referer.
+      return handleCommute(request, env);
+    }
+
     if (path === '/events/daily-counts' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleDailyCounts(request, env);
@@ -65,6 +73,10 @@ export default {
 
     if (path === '/subscribe' && request.method === 'POST') {
       return handleSubscribe(request, env);
+    }
+
+    if (path === '/feedback' && request.method === 'POST') {
+      return handleFeedback(request, env);
     }
 
     if (path === '/page-meta' && request.method === 'GET') {

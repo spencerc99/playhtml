@@ -70,9 +70,8 @@ can-move-bounds=".arenas"       <!-- CSS selector — first match wins -->
 
 An id lookup is tried first; if that fails, the value is used as a CSS selector.
 
-The cursor can move past the edge; only the element's position is clamped.
-
-On mount, playhtml re-clamps stored positions that now fall outside the container.
+While dragging, the cursor can move past the edge; only the element's position is clamped.
+Setup leaves the element's initial CSS layout and persisted position unchanged.
 
 #### `can-move-bounds-min-visible`
 

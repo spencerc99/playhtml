@@ -10,7 +10,7 @@ stopped bootstrapping playhtml and every experiment page broke in production.
 ```bash
 # From repo root
 bun build-site
-bun run -C smoke-tests install-browsers   # one-time
+bun run --cwd smoke-tests install-browsers   # one-time
 bun smoke
 ```
 

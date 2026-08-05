@@ -18,15 +18,11 @@ export interface StampedLetter {
 
 interface WriteSegmentProps {
   authorColor: string;
-  /** True when no letters exist yet — the writer is starting the thread, so the
-   * sheet greets them as a first letter rather than a reply. */
-  isFirst?: boolean;
   onStamped: (letter: StampedLetter) => void;
 }
 
 export function WriteSegment({
   authorColor,
-  isFirst = false,
   onStamped,
 }: WriteSegmentProps) {
   const [text, setText] = useState("");
@@ -61,55 +57,59 @@ export function WriteSegment({
   return (
     <>
       <div
-        className={`mbs-segment mbs-writeSegment ${style.className}${
-          isFirst ? " mbs-writeFirst" : ""
-        }`}
+        className={`mbs-segment mbs-writeSegment ${style.className}`}
         style={{ color: style.ink }}
       >
-        <div className="mbs-swatchRow">
-          {SEGMENT_STYLES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`mbs-swatch swatch-${s.id}${s.id === styleId ? " selected" : ""}`}
-              title={s.label}
-              aria-label={`paper style: ${s.label}`}
-              onClick={() => setStyleId(s.id)}
-            />
-          ))}
-        </div>
-        <div className="mbs-salutation">
-          {favicon && <img className="mbs-salutationFavicon" src={favicon} alt="" />}
-          <span>
-            dear <span className="mbs-salutationSite">{parts.label}</span>
-            {parts.domain && <span className="mbs-salutationDomain">({parts.domain})</span>}
-            ,
-          </span>
+        <div className="mbs-writeHeader">
+          <div className="mbs-salutation">
+            <span>
+              dear{" "}
+              {favicon && (
+                <img className="mbs-salutationFavicon" src={favicon} alt="" />
+              )}{" "}
+              <span className="mbs-salutationSite">{parts.label}</span>
+              {parts.domain && <span className="mbs-salutationDomain">({parts.domain})</span>}
+              ,
+            </span>
+          </div>
+          <div className="mbs-stylePicker" role="group" aria-label="paper style">
+            <span className="mbs-styleLabel">paper</span>
+            <div className="mbs-swatchRow">
+              {SEGMENT_STYLES.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`mbs-swatch swatch-${s.id}${s.id === styleId ? " selected" : ""}`}
+                  title={s.label}
+                  aria-label={`paper style: ${s.label}`}
+                  onClick={() => setStyleId(s.id)}
+                />
+              ))}
+            </div>
+          </div>
         </div>
         <textarea
           className="mbs-writeField"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={
-            isFirst
-              ? "no one has written here yet — yours would be the first letter..."
-              : "what brought you here? what do you want this place to know?"
-          }
+          placeholder="what brought you here? what do you want this place to know?"
           maxLength={500}
           style={{ color: style.ink }}
         />
-        <div className="mbs-signoff" style={{ color: authorColor }}>
-          <input
-            className="mbs-signInput"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="sign your name (optional)"
-            maxLength={40}
-            style={{ color: authorColor }}
-          />
-          <Fingerprint color={authorColor} />
+        <div className="mbs-writeFooter">
+          <div className="mbs-signoff" style={{ color: authorColor }}>
+            <input
+              className="mbs-signInput"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="sign your name (optional)"
+              maxLength={40}
+              style={{ color: authorColor }}
+            />
+            <Fingerprint color={authorColor} />
+          </div>
+          <DateStamp disabled={!text.trim()} onStamped={handleStamped} />
         </div>
-        <DateStamp disabled={!text.trim()} onStamped={handleStamped} />
       </div>
       <div className={`mbs-perf perf-${style.id}`} aria-hidden="true" />
     </>

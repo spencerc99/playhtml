@@ -1,7 +1,12 @@
 // ABOUTME: Local storage interface for querying collected events by domain
 // ABOUTME: Provides domain-based queries for historical data visualization
 
-import type { CollectionEvent, CollectionEventType, NavigationEventData, ViewportEventData } from "../collectors/types";
+import type {
+  CollectionEvent,
+  CollectionEventType,
+  CursorEventData,
+  NavigationEventData,
+} from "../collectors/types";
 import { VERBOSE } from "../config";
 import {
   normalizeUrl,
@@ -9,9 +14,10 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
+const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
 const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
 const UPLOAD_STATE_PENDING = "pending";
 const UPLOAD_STATE_UPLOADED = "uploaded";
@@ -20,6 +26,7 @@ const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "navigation",
   "viewport",
   "keyboard",
+  "element",
 ];
 const STORAGE_SIZE_SAMPLE_LIMIT = 200;
 
@@ -29,6 +36,11 @@ type StatsBackfillState = "running" | "complete";
 interface StoredCollectionEvent extends CollectionEvent {
   uploaded?: boolean;
   uploadState?: UploadState;
+}
+
+interface AggregateUrl {
+  aggregateKey: string;
+  url: string;
 }
 
 // Aggregate key for cross-domain totals (all browsing activity combined)
@@ -89,13 +101,8 @@ export interface DomainStatsAggregate {
   firstVisit: number;
   /** Latest event timestamp */
   lastVisit: number;
-  // TODO: uniqueUrls and processedNavIds grow unboundedly on the __global__
-  // aggregate (every URL/nav ID ever seen). Consider tracking just a count for
-  // uniqueUrls, and capping or clearing processedNavIds after backfill completes.
-  /** Set of unique URLs seen (stored as array for JSON serialization, domain-level only) */
-  uniqueUrls: string[];
-  /** Set of event IDs that have been processed for session stats (prevents double-counting) */
-  processedNavIds: string[];
+  /** Number of unique URLs represented by this aggregate */
+  uniqueUrlCount: number;
 }
 
 function domainStatsKey(domain: string): string {
@@ -127,7 +134,117 @@ function toCollectionEvent(event: StoredCollectionEvent): CollectionEvent {
 export interface ScreenTimeResult {
   totalMs: number;
   sessions: ScreenTimeSession[];
-  totalScrollDistancePx: number;
+}
+
+export interface WalkingRecordEventResult {
+  events: CollectionEvent[];
+  cursorDistancePx: number;
+}
+
+export interface WalkingRecordTracePoint {
+  x: number;
+  y: number;
+}
+
+export interface WalkingRecordTraceTarget {
+  id: string;
+  url: string;
+  startTs: number;
+  endTs: number;
+}
+
+export interface WalkingRecordTrace {
+  targetId: string;
+  paths: WalkingRecordTracePoint[][];
+}
+
+interface TimedTracePoint extends WalkingRecordTracePoint {
+  ts: number;
+}
+
+function squaredDistance(
+  first: WalkingRecordTracePoint,
+  second: WalkingRecordTracePoint,
+): number {
+  const dx = first.x - second.x;
+  const dy = first.y - second.y;
+  return dx * dx + dy * dy;
+}
+
+function squaredSegmentDistance(
+  point: WalkingRecordTracePoint,
+  start: WalkingRecordTracePoint,
+  end: WalkingRecordTracePoint,
+): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  if (dx === 0 && dy === 0) return squaredDistance(point, start);
+
+  const progress = Math.max(
+    0,
+    Math.min(
+      1,
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) /
+        (dx * dx + dy * dy),
+    ),
+  );
+  return squaredDistance(point, {
+    x: start.x + progress * dx,
+    y: start.y + progress * dy,
+  });
+}
+
+function simplifyTracePath(
+  points: TimedTracePoint[],
+  tolerance = 0.004,
+): WalkingRecordTracePoint[] {
+  if (points.length <= 2) return points.map(({ x, y }) => ({ x, y }));
+
+  const keep = new Set([0, points.length - 1]);
+  const segments: Array<[number, number]> = [[0, points.length - 1]];
+  const squaredTolerance = tolerance * tolerance;
+
+  while (segments.length > 0) {
+    const [startIndex, endIndex] = segments.pop()!;
+    let farthestIndex = -1;
+    let farthestDistance = squaredTolerance;
+
+    for (let index = startIndex + 1; index < endIndex; index++) {
+      const distance = squaredSegmentDistance(
+        points[index],
+        points[startIndex],
+        points[endIndex],
+      );
+      if (distance > farthestDistance) {
+        farthestDistance = distance;
+        farthestIndex = index;
+      }
+    }
+
+    if (farthestIndex !== -1) {
+      keep.add(farthestIndex);
+      segments.push([startIndex, farthestIndex], [farthestIndex, endIndex]);
+    }
+  }
+
+  const simplified = [...keep]
+    .sort((a, b) => a - b)
+    .map((index) => ({ x: points[index].x, y: points[index].y }));
+  if (simplified.length <= 48) return simplified;
+
+  return Array.from({ length: 48 }, (_, index) => {
+    const sourceIndex = Math.round((index / 47) * (simplified.length - 1));
+    return simplified[sourceIndex];
+  });
+}
+
+function tracePathDistance(points: TimedTracePoint[]): number {
+  let distance = 0;
+  for (let index = 1; index < points.length; index++) {
+    distance += Math.sqrt(squaredDistance(points[index - 1], points[index]));
+  }
+  return distance;
 }
 
 /**
@@ -283,6 +400,54 @@ export class LocalEventStore {
           }
         } else if (!db.objectStoreNames.contains(STATS_STORE_NAME)) {
           db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
+        }
+
+        if (oldVersion < 10) {
+          let aggregateUrlsStore: IDBObjectStore;
+          if (!db.objectStoreNames.contains(AGGREGATE_URLS_STORE_NAME)) {
+            aggregateUrlsStore = db.createObjectStore(AGGREGATE_URLS_STORE_NAME, {
+              keyPath: ["aggregateKey", "url"],
+            });
+          } else {
+            const tx = (event.target as IDBOpenDBRequest).transaction!;
+            aggregateUrlsStore = tx.objectStore(AGGREGATE_URLS_STORE_NAME);
+          }
+
+          const tx = (event.target as IDBOpenDBRequest).transaction!;
+          const statsStore = tx.objectStore(STATS_STORE_NAME);
+          const migrateRequest = statsStore.openCursor();
+          migrateRequest.onsuccess = () => {
+            const cursor = migrateRequest.result;
+            if (!cursor) return;
+
+            const aggregate = cursor.value as DomainStatsAggregate & {
+              uniqueUrls?: unknown;
+              processedNavIds?: string[];
+            };
+            if (aggregate.key !== STATS_BACKFILL_STATE_KEY) {
+              const uniqueUrls = Array.isArray(aggregate.uniqueUrls)
+                ? [
+                    ...new Set(
+                      aggregate.uniqueUrls.filter(
+                        (url): url is string => typeof url === "string",
+                      ),
+                    ),
+                  ]
+                : [];
+              aggregate.uniqueUrlCount = uniqueUrls.length;
+              delete aggregate.uniqueUrls;
+              delete aggregate.processedNavIds;
+              cursor.update(aggregate);
+
+              for (const url of uniqueUrls) {
+                aggregateUrlsStore.put({
+                  aggregateKey: aggregate.key,
+                  url,
+                } satisfies AggregateUrl);
+              }
+            }
+            cursor.continue();
+          };
         }
 
         if (oldVersion < 9) {
@@ -573,16 +738,29 @@ export class LocalEventStore {
     }
 
     // Compute and write aggregates
-    const tx = this.db!.transaction([STATS_STORE_NAME], "readwrite");
+    const tx = this.db!.transaction(
+      [STATS_STORE_NAME, AGGREGATE_URLS_STORE_NAME],
+      "readwrite",
+    );
     const statsStore = tx.objectStore(STATS_STORE_NAME);
+    const aggregateUrlsStore = tx.objectStore(AGGREGATE_URLS_STORE_NAME);
     statsStore.clear();
+    aggregateUrlsStore.clear();
 
     for (const [key, { domain, events }] of keyToEvents) {
       const agg = LocalEventStore.emptyAggregate(key, domain);
       // Sort events by timestamp so session pairing works correctly
       events.sort((a, b) => a.ts - b.ts);
+      const uniqueUrls = LocalEventStore.uniqueUrlsForEvents(events);
+      agg.uniqueUrlCount = uniqueUrls.length;
       LocalEventStore.applyEventsToAggregate(agg, events);
       statsStore.put(agg);
+      for (const url of uniqueUrls) {
+        aggregateUrlsStore.put({
+          aggregateKey: key,
+          url,
+        } satisfies AggregateUrl);
+      }
     }
     statsStore.put({
       key: STATS_BACKFILL_STATE_KEY,
@@ -660,6 +838,49 @@ export class LocalEventStore {
         console.error("[LocalEventStore] Query error:", request.error);
         reject(request.error);
       };
+    });
+  }
+
+  async queryByType(
+    type: CollectionEventType,
+    options: Pick<QueryOptions, "limit" | "startTs" | "endTs"> = {},
+  ): Promise<CollectionEvent[]> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const typeIndex = store.index("type");
+      const request = typeIndex.openCursor(IDBKeyRange.only(type));
+      const events: CollectionEvent[] = [];
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+        if (!cursor) {
+          events.sort((a, b) => b.ts - a.ts);
+          resolve(
+            options.limit === undefined ? events : events.slice(0, options.limit),
+          );
+          return;
+        }
+
+        const storedEvent = cursor.value as StoredCollectionEvent;
+        const afterStart =
+          options.startTs === undefined || storedEvent.ts >= options.startTs;
+        const beforeEnd =
+          options.endTs === undefined || storedEvent.ts <= options.endTs;
+        if (afterStart && beforeEnd) {
+          events.push(toCollectionEvent(storedEvent));
+        }
+        cursor.continue();
+      };
+
+      request.onerror = () => reject(request.error);
     });
   }
 
@@ -867,6 +1088,7 @@ export class LocalEventStore {
       firstVisit: number;
       totalTimeMs: number;
       uniquePageCount: number;
+      sessionCount: number;
       eventCounts: Record<string, number>;
     }>
   > {
@@ -889,6 +1111,7 @@ export class LocalEventStore {
         firstVisit: number;
         totalTimeMs: number;
         uniquePageCount: number;
+        sessionCount: number;
         eventCounts: Record<string, number>;
       }> = [];
 
@@ -913,7 +1136,8 @@ export class LocalEventStore {
               lastVisit: aggregate.lastVisit,
               firstVisit: aggregate.firstVisit,
               totalTimeMs: aggregate.totalTimeMs,
-              uniquePageCount: aggregate.uniqueUrls?.length ?? 0,
+              uniquePageCount: aggregate.uniqueUrlCount,
+              sessionCount: aggregate.sessionCount,
               eventCounts,
             });
           }
@@ -1095,6 +1319,235 @@ export class LocalEventStore {
   }
 
   /**
+   * Read the event subset needed by the walking record without transferring
+   * every high-frequency cursor sample to the new-tab page.
+   */
+  async getWalkingRecordEvents(
+    options: Pick<QueryOptions, "startTs" | "endTs">,
+  ): Promise<WalkingRecordEventResult> {
+    await this.ensureInitialized();
+
+    const { startTs, endTs } = options;
+    if (startTs === undefined || endTs === undefined) {
+      throw new Error("Walking record event bounds are required");
+    }
+
+    const sampleIntervalMs = 5 * 60_000;
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const tsIndex = store.index("ts");
+      const range = IDBKeyRange.bound(startTs, endTs);
+      const request = tsIndex.openCursor(range);
+      const events: CollectionEvent[] = [];
+      const sampledCursorWindows = new Set<string>();
+      let previousCursorEvent: CollectionEvent | null = null;
+      let cursorDistancePx = 0;
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve({ events, cursorDistancePx });
+          return;
+        }
+
+        const storedEvent = cursor.value as StoredCollectionEvent;
+        const event = toCollectionEvent(storedEvent);
+
+        if (event.type === "navigation") {
+          events.push(event);
+        } else if (event.type === "cursor") {
+          const data = event.data as CursorEventData;
+          if (data.event === "move" || data.event === undefined) {
+            if (previousCursorEvent) {
+              const previous = previousCursorEvent.data as CursorEventData;
+              const previousUrl =
+                previousCursorEvent.normalizedUrl ??
+                normalizeUrl(previousCursorEvent.meta.url);
+              const currentUrl =
+                event.normalizedUrl ?? normalizeUrl(event.meta.url);
+              if (
+                previousUrl === currentUrl &&
+                event.ts - previousCursorEvent.ts <= 5_000 &&
+                Number.isFinite(previous.x) &&
+                Number.isFinite(previous.y) &&
+                Number.isFinite(data.x) &&
+                Number.isFinite(data.y)
+              ) {
+                const width = event.meta.vw || previousCursorEvent.meta.vw;
+                const height = event.meta.vh || previousCursorEvent.meta.vh;
+                const dx = (data.x - previous.x) * width;
+                const dy = (data.y - previous.y) * height;
+                cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
+              }
+            }
+            previousCursorEvent = event;
+          }
+
+          const sampleWindow = Math.floor((event.ts - startTs) / sampleIntervalMs);
+          const page = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+          const sampleKey = `cursor:${page}:${sampleWindow}`;
+          if (!sampledCursorWindows.has(sampleKey)) {
+            sampledCursorWindows.add(sampleKey);
+            events.push(event);
+          }
+        }
+
+        cursor.continue();
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Extract a few representative, continuous cursor paths for selected sessions.
+   * Paths remain normalized to the source viewport and are simplified before transfer.
+   */
+  async getWalkingRecordTraces(
+    targets: WalkingRecordTraceTarget[],
+  ): Promise<WalkingRecordTrace[]> {
+    await this.ensureInitialized();
+
+    if (targets.length > 16) {
+      throw new Error("Walking record trace target limit exceeded");
+    }
+    if (targets.length === 0) return [];
+
+    for (const target of targets) {
+      if (
+        !target.id ||
+        !/^https?:\/\//.test(target.url) ||
+        !Number.isFinite(target.startTs) ||
+        !Number.isFinite(target.endTs) ||
+        target.endTs < target.startTs
+      ) {
+        throw new Error("Walking record trace target is invalid");
+      }
+    }
+
+    const collectors = new Map(
+      targets.map((target) => [
+        target.id,
+        {
+          target,
+          normalizedUrl: normalizeUrl(target.url),
+          paths: [] as TimedTracePoint[][],
+          currentPath: [] as TimedTracePoint[],
+        },
+      ]),
+    );
+    const startTs = Math.min(...targets.map((target) => target.startTs));
+    const endTs = Math.max(...targets.map((target) => target.endTs));
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const tsIndex = store.index("ts");
+      const request = tsIndex.openCursor(IDBKeyRange.bound(startTs, endTs));
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          const traces = [...collectors.values()].map((collector) => {
+            if (collector.currentPath.length >= 2) {
+              collector.paths.push(collector.currentPath);
+            }
+
+            const paths = collector.paths
+              .map((points, index) => ({
+                points,
+                index,
+                distance: tracePathDistance(points),
+              }))
+              .filter(({ points }) => points.length >= 2)
+              .sort((a, b) => b.distance - a.distance)
+              .slice(0, 3)
+              .sort((a, b) => a.index - b.index)
+              .map(({ points }) => simplifyTracePath(points));
+
+            return { targetId: collector.target.id, paths };
+          });
+          resolve(traces);
+          return;
+        }
+
+        const event = cursor.value as StoredCollectionEvent;
+        if (event.type === "cursor") {
+          const data = event.data as CursorEventData;
+          const eventUrl = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+
+          if (
+            (data.event === "move" || data.event === undefined) &&
+            Number.isFinite(data.x) &&
+            Number.isFinite(data.y)
+          ) {
+            for (const collector of collectors.values()) {
+              if (
+                event.ts < collector.target.startTs ||
+                event.ts > collector.target.endTs ||
+                eventUrl !== collector.normalizedUrl
+              ) {
+                continue;
+              }
+
+              const point: TimedTracePoint = {
+                x: Math.max(0, Math.min(1, data.x)),
+                y: Math.max(0, Math.min(1, data.y)),
+                ts: event.ts,
+              };
+              const previous = collector.currentPath.at(-1);
+
+              if (previous && point.ts - previous.ts > 5_000) {
+                if (
+                  collector.currentPath.length >= 2 &&
+                  collector.paths.length < 256
+                ) {
+                  collector.paths.push(collector.currentPath);
+                }
+                collector.currentPath = [];
+              }
+
+              const lastAccepted = collector.currentPath.at(-1);
+              if (
+                !lastAccepted ||
+                squaredDistance(lastAccepted, point) >= 0.000004 ||
+                point.ts - lastAccepted.ts >= 500
+              ) {
+                collector.currentPath.push(point);
+              }
+
+              if (collector.currentPath.length >= 1_024) {
+                const lastPoint = collector.currentPath.at(-1)!;
+                collector.currentPath = collector.currentPath.filter(
+                  (_, index) => index % 2 === 0,
+                );
+                if (collector.currentPath.at(-1) !== lastPoint) {
+                  collector.currentPath.push(lastPoint);
+                }
+              }
+            }
+          }
+        }
+
+        cursor.continue();
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
    * Count events grouped by calendar day (YYYY-MM-DD) across all domains.
    * Uses the ts index to iterate chronologically without loading full event objects.
    */
@@ -1133,18 +1586,12 @@ export class LocalEventStore {
 
   /**
    * Compute screen time by pairing focus→blur navigation events.
-   * Also sums scroll distance from viewport events.
-   *
-   * Optional domain/url filter via QueryOptions.type is ignored here since
-   * navigation events are what drive the session calculation; pass startTs/endTs
-   * to restrict the time window.
    */
   async getScreenTime(options: Pick<QueryOptions, 'startTs' | 'endTs'> = {}): Promise<ScreenTimeResult> {
     await this.ensureInitialized();
 
-    // Pull all navigation events (focus/blur) and viewport scroll events in one pass
-    const navEvents = await this.getAllEvents({ type: 'navigation', ...options });
-    const viewportEvents = await this.getAllEvents({ type: 'viewport', ...options });
+    const navEvents = await this.queryByType("navigation", options);
+    navEvents.sort((a, b) => a.ts - b.ts);
 
     // Pair focus → blur into sessions
     const sessions: ScreenTimeSession[] = [];
@@ -1170,17 +1617,7 @@ export class LocalEventStore {
     }
 
     const totalMs = sessions.reduce((sum, s) => sum + s.durationMs, 0);
-
-    // Sum scroll distance from viewport scroll events
-    let totalScrollDistancePx = 0;
-    for (const evt of viewportEvents) {
-      const d = evt.data as ViewportEventData;
-      if (d.event === 'scroll' && d.scrollDistancePx != null) {
-        totalScrollDistancePx += d.scrollDistancePx;
-      }
-    }
-
-    return { totalMs, sessions, totalScrollDistancePx };
+    return { totalMs, sessions };
   }
 
   /**
@@ -1194,7 +1631,7 @@ export class LocalEventStore {
 
     const canUpdateStats = await this.canUpdateStatsIncrementally();
 
-    const storedEvents: StoredCollectionEvent[] = [];
+    const storedEventsById = new Map<string, StoredCollectionEvent>();
     for (const event of events) {
       const storedEvent = prepareStoredEvent(event);
       if (storedEvent.meta?.url) {
@@ -1205,10 +1642,10 @@ export class LocalEventStore {
           storedEvent.normalizedUrl = normalizeUrl(storedEvent.meta.url);
         }
       }
-      storedEvents.push(storedEvent);
+      storedEventsById.set(storedEvent.id, storedEvent);
     }
-    const eventsForStats = storedEvents.map(toCollectionEvent);
-    const eventsByDomain = LocalEventStore.groupEventsByDomain(eventsForStats);
+    const storedEvents = [...storedEventsById.values()];
+    let eventsForStats = storedEvents.map(toCollectionEvent);
 
     if (!canUpdateStats) {
       this.queueEventsForStatsAfterBackfill(eventsForStats);
@@ -1216,22 +1653,41 @@ export class LocalEventStore {
 
     // Write events to the main store
     try {
-      await new Promise<void>((resolve, reject) => {
-        if (!this.db) {
-          reject(new Error("Database not initialized"));
-          return;
-        }
+      const insertedEvents = await new Promise<StoredCollectionEvent[]>(
+        (resolve, reject) => {
+          if (!this.db) {
+            reject(new Error("Database not initialized"));
+            return;
+          }
 
-        const transaction = this.db.transaction([STORE_NAME], "readwrite");
-        const evtStore = transaction.objectStore(STORE_NAME);
+          const transaction = this.db.transaction([STORE_NAME], "readwrite");
+          const evtStore = transaction.objectStore(STORE_NAME);
+          const insertedEvents: StoredCollectionEvent[] = [];
 
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
+          transaction.oncomplete = () => resolve(insertedEvents);
+          transaction.onerror = () => reject(transaction.error);
 
-        for (const event of storedEvents) {
-          evtStore.put(event);
-        }
-      });
+          for (const event of storedEvents) {
+            if (!canUpdateStats) {
+              evtStore.put(event);
+              insertedEvents.push(event);
+              continue;
+            }
+
+            const getKeyRequest = evtStore.getKey(event.id);
+            getKeyRequest.onsuccess = () => {
+              if (getKeyRequest.result === undefined) {
+                insertedEvents.push(event);
+              }
+              evtStore.put(event);
+            };
+          }
+        },
+      );
+
+      if (canUpdateStats) {
+        eventsForStats = insertedEvents.map(toCollectionEvent);
+      }
     } catch (e) {
       if (!canUpdateStats) {
         this.removeEventsQueuedForStatsAfterBackfill(eventsForStats);
@@ -1248,7 +1704,8 @@ export class LocalEventStore {
 
     // Update domain aggregates in a separate transaction so a stats
     // failure never blocks event storage
-    if (events.length > 0) {
+    if (eventsForStats.length > 0) {
+      const eventsByDomain = LocalEventStore.groupEventsByDomain(eventsForStats);
       try {
         await this.updateDomainStats(eventsForStats, eventsByDomain);
       } catch (e) {
@@ -1286,8 +1743,7 @@ export class LocalEventStore {
       storageSizeBytes: 0,
       firstVisit: 0,
       lastVisit: 0,
-      uniqueUrls: [],
-      processedNavIds: [],
+      uniqueUrlCount: 0,
     };
   }
 
@@ -1305,17 +1761,27 @@ export class LocalEventStore {
     return eventsByDomain;
   }
 
+  private static uniqueUrlsForEvents(events: CollectionEvent[]): string[] {
+    if (!events.some((event) => event.type === "navigation")) {
+      return [];
+    }
+
+    const uniqueUrls = new Set<string>();
+    for (const event of events) {
+      if (event.meta?.url) {
+        uniqueUrls.add(event.meta.url);
+      }
+    }
+    return [...uniqueUrls];
+  }
+
   /**
    * Apply a batch of events to a single aggregate, mutating it in place.
-   * Returns the updated urlSet and processedSet for serialization.
    */
   private static applyEventsToAggregate(
     agg: DomainStatsAggregate,
     events: CollectionEvent[],
   ): void {
-    const hasNavigationEvents = events.some((evt) => evt.type === "navigation");
-    const urlSet = hasNavigationEvents ? new Set(agg.uniqueUrls) : null;
-    const processedSet = hasNavigationEvents ? new Set(agg.processedNavIds) : null;
     agg.storageSizeBytes ??= 0;
 
     for (const evt of events) {
@@ -1327,15 +1793,8 @@ export class LocalEventStore {
       if (evt.ts > agg.lastVisit) {
         agg.lastVisit = evt.ts;
       }
-      if (urlSet && evt.meta?.url) {
-        urlSet.add(evt.meta.url);
-      }
 
       if (evt.type === "navigation") {
-        if (!processedSet) continue;
-        if (processedSet.has(evt.id)) continue;
-        processedSet.add(evt.id);
-
         const d = evt.data as NavigationEventData;
         if (d.event === "focus") {
           agg.pendingFocusTs = evt.ts;
@@ -1355,13 +1814,6 @@ export class LocalEventStore {
           agg.pendingFocusUrl = "";
         }
       }
-    }
-
-    if (urlSet) {
-      agg.uniqueUrls = [...urlSet];
-    }
-    if (processedSet) {
-      agg.processedNavIds = [...processedSet];
     }
   }
 
@@ -1404,8 +1856,12 @@ export class LocalEventStore {
         return;
       }
 
-      const transaction = this.db.transaction([STATS_STORE_NAME], "readwrite");
+      const transaction = this.db.transaction(
+        [STATS_STORE_NAME, AGGREGATE_URLS_STORE_NAME],
+        "readwrite",
+      );
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const aggregateUrlsStore = transaction.objectStore(AGGREGATE_URLS_STORE_NAME);
 
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
@@ -1417,7 +1873,35 @@ export class LocalEventStore {
             getReq.result ?? LocalEventStore.emptyAggregate(key, domain);
 
           LocalEventStore.applyEventsToAggregate(agg, events);
-          statsStore.put(agg);
+          const uniqueUrls = LocalEventStore.uniqueUrlsForEvents(events);
+          if (uniqueUrls.length === 0) {
+            statsStore.put(agg);
+            return;
+          }
+
+          let pendingUrlReads = uniqueUrls.length;
+          let addedUrlCount = 0;
+          const finishUrlRead = () => {
+            pendingUrlReads--;
+            if (pendingUrlReads > 0) return;
+
+            agg.uniqueUrlCount += addedUrlCount;
+            statsStore.put(agg);
+          };
+
+          for (const url of uniqueUrls) {
+            const getUrlRequest = aggregateUrlsStore.getKey([key, url]);
+            getUrlRequest.onsuccess = () => {
+              if (getUrlRequest.result === undefined) {
+                aggregateUrlsStore.put({
+                  aggregateKey: key,
+                  url,
+                } satisfies AggregateUrl);
+                addedUrlCount++;
+              }
+              finishUrlRead();
+            };
+          }
         };
       }
     });
@@ -1514,13 +1998,15 @@ export class LocalEventStore {
       }
 
       const transaction = this.db.transaction(
-        [STORE_NAME, STATS_STORE_NAME],
+        [STORE_NAME, STATS_STORE_NAME, AGGREGATE_URLS_STORE_NAME],
         "readwrite",
       );
       const evtStore = transaction.objectStore(STORE_NAME);
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const aggregateUrlsStore = transaction.objectStore(AGGREGATE_URLS_STORE_NAME);
       evtStore.clear();
       statsStore.clear();
+      aggregateUrlsStore.clear();
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
     });

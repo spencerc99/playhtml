@@ -1,5 +1,22 @@
 # Change Log
 
+## 2.0.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- 5a32af7: Make `CanToggleElement` apply its `readOnly` prop so read-only shared toggles cannot write data, and activate React event callbacks added after rerenders.
+- Updated dependencies [cd1ebf9]
+- Updated dependencies [7c1bdda]
+- Updated dependencies [5a32af7]
+- Updated dependencies [b3f20bb]
+- Updated dependencies [4a1711c]
+- Updated dependencies [dca1704]
+- Updated dependencies [252acd0]
+- Updated dependencies [1f8cf34]
+- Updated dependencies [c5083b7]
+  - playhtml@2.13.2
+
 ## 2.0.1
 
 ### Patch Changes

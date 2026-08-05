@@ -336,7 +336,7 @@ bootSocial()
   .then(() => {
     if (statusEl)
       statusEl.textContent =
-        "live — satchel bottom-right; scissors tear; hammer dents; synced bottles; emotes on Cmd/Ctrl+Shift+E";
+        "live — satchel left; scissors tear; hammer dents; synced bottles; emotes on Cmd/Ctrl+Shift+E";
   })
   .catch((err) => {
     console.error("[social-playground] live boot failed:", err);

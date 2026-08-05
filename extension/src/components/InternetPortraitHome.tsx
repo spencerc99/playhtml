@@ -11,6 +11,8 @@ import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
 import { FLAGS } from "../flags";
 import { PostcardStack } from "../announcements/PostcardStack";
+import { FeedbackForm } from "./FeedbackForm";
+import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -19,7 +21,12 @@ interface Props {
   onViewHistory: () => void;
   onViewProfile?: () => void;
   onViewBagSettings?: () => void;
+  onViewCommute?: () => void;
+  commuteIsOpen?: boolean;
+  onViewScraps?: () => void;
   onViewChangelog: () => void;
+  hiddenSiteName?: string;
+  onShowSatchel?: () => void;
 }
 
 interface PortraitStats {
@@ -39,7 +46,12 @@ export function InternetPortraitHome({
   onViewHistory,
   onViewProfile,
   onViewBagSettings,
+  onViewCommute,
+  commuteIsOpen = false,
+  onViewScraps,
   onViewChangelog,
+  hiddenSiteName,
+  onShowSatchel,
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +157,44 @@ export function InternetPortraitHome({
       </header>
 
       <main className="portrait-home__main">
+        {hiddenSiteName && onShowSatchel && (
+          <SiteVisibilityNotice
+            siteName={hiddenSiteName}
+            onShowSatchel={onShowSatchel}
+          />
+        )}
+        {onViewCommute && (
+          <button
+            className="commute-entry"
+            onClick={onViewCommute}
+            aria-label={
+              commuteIsOpen
+                ? "Return to the Internet Commute"
+                : "Board the Internet Commute"
+            }
+          >
+            <span className="commute-entry__route" aria-hidden="true">
+              <span className="commute-entry__stop commute-entry__stop--blue" />
+              <span className="commute-entry__stop commute-entry__stop--gold" />
+              <span className="commute-entry__stop commute-entry__stop--rust" />
+            </span>
+            <span className="commute-entry__copy">
+              <span className="commute-entry__eyebrow">
+                LINE 1 · BOARDING NOW
+              </span>
+              <strong>
+                {commuteIsOpen
+                  ? "Return to the internet commute"
+                  : "Board the internet commute"}
+              </strong>
+              <span>A slow train through pages people found lately.</span>
+            </span>
+            <span className="commute-entry__door" aria-hidden="true">
+              <span />
+              <span />
+            </span>
+          </button>
+        )}
         <section className="collection-status">
           <div className="collection-status__header-row">
             <h3>Your Collection Status</h3>
@@ -239,6 +289,17 @@ export function InternetPortraitHome({
             >
               time
             </button>
+            {onViewScraps && (
+              <button
+                className="portrait-home__nav-link"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewScraps();
+                }}
+              >
+                scraps
+              </button>
+            )}
             <button
               className="portrait-home__nav-link"
               onClick={(e) => {
@@ -262,14 +323,7 @@ export function InternetPortraitHome({
 
       <footer className="portrait-home__footer">
         <span>Beta</span>
-        <a
-          className="portrait-home__feedback"
-          href="mailto:hi@spencer.place?subject=we%20were%20online%20feedback"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          feedback → hi@spencer.place
-        </a>
+        <FeedbackForm />
       </footer>
     </div>
   );

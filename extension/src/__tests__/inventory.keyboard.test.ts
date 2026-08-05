@@ -1,7 +1,7 @@
-// ABOUTME: Tests runtime-message controls for opening and arming the injected inventory.
-// ABOUTME: Verifies message validation and listener cleanup at the extension boundary.
+// ABOUTME: Tests runtime-message and direct-shortcut controls for injected inventory.
+// ABOUTME: Verifies open, arm, validation, shortcut fallback, and listener cleanup behavior.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { registerInventoryMessages } from "../features/inventory/keyboard";
 
@@ -17,16 +17,21 @@ describe("registerInventoryMessages", () => {
     );
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("routes valid open and arm messages", () => {
     const onOpen = vi.fn();
     const onArm = vi.fn();
-    registerInventoryMessages({ onOpen, onArm });
+    const cleanup = registerInventoryMessages({ onOpen, onArm });
 
     listener({ type: "wwo:open-inventory" });
     listener({ type: "wwo:arm-inventory", itemId: "scissors" });
 
     expect(onOpen).toHaveBeenCalledOnce();
     expect(onArm).toHaveBeenCalledWith("scissors");
+    cleanup();
   });
 
   it("ignores malformed arm messages and unregisters on cleanup", () => {
@@ -43,5 +48,23 @@ describe("registerInventoryMessages", () => {
     expect(browser.runtime.onMessage.removeListener).toHaveBeenCalledWith(
       listener,
     );
+  });
+
+  it("opens for Command or Control plus Shift and I", () => {
+    const onOpen = vi.fn();
+    const onArm = vi.fn();
+    const cleanup = registerInventoryMessages({ onOpen, onArm });
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "i",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    expect(onOpen).toHaveBeenCalledOnce();
+    expect(onArm).not.toHaveBeenCalled();
+    cleanup();
   });
 });

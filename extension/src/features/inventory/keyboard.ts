@@ -1,5 +1,5 @@
-// ABOUTME: Registers runtime-message controls for opening and arming the inventory.
-// ABOUTME: Supports manifest commands and development surfaces without exposing inventory state to the page.
+// ABOUTME: Opens or arms inventory from runtime messages and direct page shortcuts.
+// ABOUTME: Keeps development controls and browser shortcut fallbacks on one cleanup path.
 
 import browser from "webextension-polyfill";
 
@@ -23,6 +23,23 @@ export function registerInventoryMessages(
       handlers.onArm(message.itemId);
     }
   };
+  const onKeyDown = (event: KeyboardEvent) => {
+    const key = event.key.toLowerCase();
+    if (
+      !event.shiftKey ||
+      event.altKey ||
+      (!event.metaKey && !event.ctrlKey) ||
+      (key !== "i" && key !== "b")
+    ) {
+      return;
+    }
+    event.preventDefault();
+    handlers.onOpen();
+  };
   browser.runtime.onMessage.addListener(handler);
-  return () => browser.runtime.onMessage.removeListener(handler);
+  window.addEventListener("keydown", onKeyDown, true);
+  return () => {
+    browser.runtime.onMessage.removeListener(handler);
+    window.removeEventListener("keydown", onKeyDown, true);
+  };
 }

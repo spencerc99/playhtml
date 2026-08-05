@@ -83,7 +83,7 @@ const styles = {
 };
 
 const CursorTouches = () => {
-  const chromeHidden = useChromeToggle();
+  const chromeHidden = useChromeToggle(true);
   const { events, loading, deepening, error } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,
@@ -91,7 +91,6 @@ const CursorTouches = () => {
 
   const [touchRadius, setTouchRadius] = useState(20);
   const [speed, setSpeed] = useState(1);
-  const [afterglowSec, setAfterglowSec] = useState(2);
   const [showCursors, setShowCursors] = useState(true);
   const [samePersonOk, setSamePersonOk] = useState(false);
   const [night, setNight] = useState(false);
@@ -129,6 +128,22 @@ const CursorTouches = () => {
 
   const { trails } = useCursorTrails(events, viewportSize, cursorSettings);
 
+  useEffect(() => {
+    if (loading || deepening || trails.length === 0) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        (window as unknown as { __movementReady?: boolean }).__movementReady =
+          true;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [loading, deepening, trails.length]);
+
   const touches = useMemo(
     () => detectTouches(trails, touchRadius, !samePersonOk),
     [trails, touchRadius, samePersonOk],
@@ -142,7 +157,6 @@ const CursorTouches = () => {
   // Settings the sketch reads every frame without re-instantiating.
   const settingsRef = useRef<SketchSettings>({
     speed,
-    afterglowMs: afterglowSec * 1000,
     showCursors,
     night,
     markStyle,
@@ -150,12 +164,11 @@ const CursorTouches = () => {
   useEffect(() => {
     settingsRef.current = {
       speed,
-      afterglowMs: afterglowSec * 1000,
       showCursors,
       night,
       markStyle,
     };
-  }, [speed, afterglowSec, showCursors, night, markStyle]);
+  }, [speed, showCursors, night, markStyle]);
 
   const hostRef = useRef<HTMLDivElement>(null);
   // The replayed moment's real date/time, written imperatively from the
@@ -296,17 +309,6 @@ const CursorTouches = () => {
               max={120}
               value={speed}
               onChange={(e) => setSpeed(Number(e.target.value))}
-              style={styles.slider}
-            />
-          </div>
-          <div style={styles.row}>
-            <span>afterglow: {afterglowSec}s</span>
-            <input
-              type="range"
-              min={0}
-              max={15}
-              value={afterglowSec}
-              onChange={(e) => setAfterglowSec(Number(e.target.value))}
               style={styles.slider}
             />
           </div>

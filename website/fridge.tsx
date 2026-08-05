@@ -1118,12 +1118,12 @@ const FridgeWordsContent = withSharedState(
       currentZoom,
       currentPan,
     } = props;
-    const { hasSynced } = useContext(PlayContext);
+    const { isLoading } = useContext(PlayContext);
     const { search } = useLocation();
     const params = new URLSearchParams(search);
     const isAdmin = params.get("admin") !== null;
 
-    return !hasSynced ? (
+    return isLoading ? (
       <div
         className="loading"
         style={{

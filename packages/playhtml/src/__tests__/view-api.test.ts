@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
-import { playhtml, html, svg, repeat } from "../index";
+import { elementHandlers, playhtml, html, svg, repeat } from "../index";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -306,8 +306,8 @@ describe("rail 2: define + composition", () => {
     await tick();
 
     // Both handlers exist keyed by the same id under different tags.
-    expect(playhtml.elementHandlers.get("can-play")!.has("dual-cap")).toBe(true);
-    expect(playhtml.elementHandlers.get("can-flavor")!.has("dual-cap")).toBe(
+    expect(elementHandlers.get("can-play")!.has("dual-cap")).toBe(true);
+    expect(elementHandlers.get("can-flavor")!.has("dual-cap")).toBe(
       true,
     );
 
@@ -344,7 +344,7 @@ describe("rail 2: define + composition", () => {
     await tick();
 
     expect(document.getElementById("chip-1")).not.toBeNull();
-    const chipHandlers = playhtml.elementHandlers.get("can-chip")!;
+    const chipHandlers = elementHandlers.get("can-chip")!;
     expect(chipHandlers.has("chip-1")).toBe(true);
     expect(chipHandlers.has("chip-2")).toBe(true);
     expect(
@@ -380,7 +380,7 @@ describe("rail 2: define + composition", () => {
     await tick();
     await tick();
 
-    const roomHandlers = playhtml.elementHandlers.get("can-room")!;
+    const roomHandlers = elementHandlers.get("can-room")!;
     expect(roomHandlers.has("room-a")).toBe(true);
     expect(roomHandlers.has("room-b")).toBe(true);
 
@@ -464,7 +464,7 @@ describe("rail 2: final-review fixes", () => {
     await tick();
 
     expect(cleanup).toHaveBeenCalledTimes(1);
-    expect(playhtml.elementHandlers.get("can-play")?.has("nav-leak")).toBe(false);
+    expect(elementHandlers.get("can-play")?.has("nav-leak")).toBe(false);
   });
 
   it("drops updateElement when a view is also present on the shared binding path", async () => {
