@@ -543,7 +543,7 @@ button:focus-visible {
   > a,
   > div {
     display: grid;
-    grid-template-columns: 18px 14px minmax(0, 1fr);
+    grid-template-columns: 18px 16px minmax(0, 1fr);
     gap: 10px;
     align-items: flex-start;
     padding: 9px 4px;
@@ -568,11 +568,27 @@ button:focus-visible {
   text-align: right;
 }
 
-.walking-record__site-color {
-  width: 14px;
-  height: 14px;
-  margin-top: 3px;
-  border-radius: 3px;
+.walking-record__site-favicon,
+.walking-record__site-favicon-fallback {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.walking-record__site-favicon {
+  object-fit: contain;
+}
+
+.walking-record__site-favicon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(90, 78, 65, 0.2);
+  border-radius: 50%;
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 8px;
+  line-height: 1;
 }
 
 .walking-record__hour-title {

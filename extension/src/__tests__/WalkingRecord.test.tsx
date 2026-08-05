@@ -28,7 +28,18 @@ const record: WalkingRecord = {
   departures: [],
   revisits: [],
   dayPlates: [],
-  timeSpent: [],
+  timeSpent: [
+    {
+      rank: 1,
+      site: "example.com",
+      faviconUrl: "https://example.com/icon.png",
+      time: "12 min",
+      percentage: 100,
+      hue: "#4a9a8a",
+      note: "mostly around 9 AM–10 AM",
+      href: "https://example.com",
+    },
+  ],
   timeSpentIntro: "there is no screen-time record for this period.",
 };
 
@@ -141,6 +152,20 @@ describe("WalkingRecordPage calendar navigation", () => {
       expect(earlier?.textContent).toBe("↤ earlier");
       expect(later?.textContent).toBe("browsing to come ↦");
       expect(later?.disabled).toBe(true);
+      expect(
+        Array.from(container.querySelectorAll("section h1, section h2")).map(
+          (heading) => heading.textContent,
+        ),
+      ).toEqual([
+        "where the hours went",
+        "how you traveled",
+        "revisiting history",
+      ]);
+      expect(
+        container
+          .querySelector(".walking-record__site-favicon")
+          ?.getAttribute("src"),
+      ).toBe("https://example.com/icon.png");
 
       await act(async () => {
         earlier?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

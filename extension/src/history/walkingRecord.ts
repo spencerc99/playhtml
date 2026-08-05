@@ -129,6 +129,7 @@ export interface DayPlate {
 export interface TimeSpentEntry {
   rank: number;
   site: string;
+  faviconUrl?: string;
   time: string;
   percentage: number;
   hue: string;
@@ -829,6 +830,7 @@ function topHourNote(sessions: ScreenTimeSession[]): string {
 }
 
 function buildTimeSpent(
+  events: CollectionEvent[],
   sessions: ScreenTimeSession[],
   domains: WalkingRecordDomain[],
   mainRoads: Set<string>,
@@ -837,6 +839,26 @@ function buildTimeSpent(
     (a, b) => b.totalMs - a.totalMs,
   );
   const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
+  const faviconByDomain = new Map<string, string>();
+  for (const event of events) {
+    if (event.type !== "navigation") continue;
+
+    const faviconUrl = (event.data as NavigationEventData).favicon_url;
+    if (typeof faviconUrl !== "string" || faviconUrl.length === 0) continue;
+
+    try {
+      const parsed = new URL(faviconUrl);
+      if (
+        parsed.protocol === "https:" ||
+        parsed.protocol === "http:" ||
+        parsed.protocol === "data:"
+      ) {
+        faviconByDomain.set(extractDomain(event.meta.url), faviconUrl);
+      }
+    } catch {
+      // Ignore malformed favicon metadata from the visited page.
+    }
+  }
   const quiet = grouped.filter((entry) => {
     const domain = domainByName.get(entry.domain);
     return (
@@ -880,6 +902,7 @@ function buildTimeSpent(
     return {
       rank: index + 1,
       site: row.domain,
+      faviconUrl: faviconByDomain.get(row.domain),
       time: formatDuration(row.totalMs),
       percentage: (row.totalMs / maxMs) * 100,
       hue: paletteColorForIndex(index),
@@ -930,6 +953,7 @@ export function deriveWalkingRecord({
     baseColor,
   );
   const { entries: timeSpent, intro: timeSpentIntro } = buildTimeSpent(
+    events,
     sessions,
     domains,
     mainRoads,

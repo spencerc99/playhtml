@@ -269,7 +269,10 @@ describe("deriveWalkingRecord", () => {
         "navigation",
         mondayMorning,
         "https://github.com/spencerc99/playhtml",
-        { event: "focus" },
+        {
+          event: "focus",
+          favicon_url: "https://github.githubassets.com/favicons/favicon.svg",
+        },
       ),
       event(
         "garden-focus",
@@ -330,6 +333,9 @@ describe("deriveWalkingRecord", () => {
     expect(record.timeSpent.map((entry) => entry.site)).toContain(
       "the quiet streets, together",
     );
+    expect(
+      record.timeSpent.find((entry) => entry.site === "github.com")?.faviconUrl,
+    ).toBe("https://github.githubassets.com/favicons/favicon.svg");
     expect(record.pageCount).toBe(2);
     expect(record.cursorDistancePx).toBeCloseTo(100);
     expect(record.dayPlates).toHaveLength(7);

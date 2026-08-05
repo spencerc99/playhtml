@@ -13,6 +13,7 @@ import {
   type WalkingRecord,
   type WalkingRecordPeriod,
   type WalkingRecordPeriodSummary,
+  type TimeSpentEntry,
 } from "../history/walkingRecord";
 import type { WalkingRecordTracePoint } from "../storage/LocalEventStore";
 import { ExtensionPageNav } from "./ExtensionPageNav";
@@ -175,6 +176,27 @@ function EmptySection({ children }: { children: React.ReactNode }) {
   return <div className="walking-record__empty">{children}</div>;
 }
 
+function SiteFavicon({ entry }: { entry: TimeSpentEntry }) {
+  const [failed, setFailed] = React.useState(false);
+
+  if (!entry.faviconUrl || failed) {
+    return (
+      <span className="walking-record__site-favicon-fallback" aria-hidden="true">
+        {entry.href ? entry.site.charAt(0).toLowerCase() : "···"}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      className="walking-record__site-favicon"
+      src={entry.faviconUrl}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function periodTitle(
   period: WalkingRecordPeriod,
   timestamp: number,
@@ -276,6 +298,71 @@ function PeriodNavigationRail({
   );
 }
 
+function HoursSection({ record }: { record: WalkingRecord }) {
+  return (
+    <section className="walking-record__section">
+      <div className="walking-record__section-heading">
+        <h1>where the hours went</h1>
+        <span>{record.totalTimeLabel} browsing</span>
+      </div>
+      <p className="walking-record__section-intro">{record.timeSpentIntro}</p>
+
+      <div
+        className="walking-record__day-plates"
+        data-period={record.period}
+      >
+        {record.dayPlates.map((plate) => (
+          <div className="walking-record__day-plate" key={plate.date}>
+            <DayPlateGraphic plate={plate} />
+            <strong>{plate.day}</strong>
+            <span>{plate.vignette}</span>
+          </div>
+        ))}
+      </div>
+
+      {record.timeSpent.length > 0 ? (
+        <div className="walking-record__hours">
+          {record.timeSpent.map((entry) => {
+            const content = (
+              <>
+                <span className="walking-record__rank">{entry.rank}</span>
+                <SiteFavicon entry={entry} />
+                <div>
+                  <div className="walking-record__hour-title">
+                    <strong>{entry.site}</strong>
+                    <span>{entry.time}</span>
+                  </div>
+                  <div className="walking-record__time-track">
+                    <span
+                      style={{
+                        background: entry.hue,
+                        width: `${entry.percentage}%`,
+                      }}
+                    />
+                  </div>
+                  <small>{entry.note}</small>
+                </div>
+              </>
+            );
+
+            return entry.href ? (
+              <a href={entry.href} key={entry.site}>
+                {content}
+              </a>
+            ) : (
+              <div key={entry.site}>{content}</div>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptySection>
+          time appears after a page has been in focus and then left.
+        </EmptySection>
+      )}
+    </section>
+  );
+}
+
 export function WalkingRecordPage({
   record,
   period,
@@ -370,9 +457,11 @@ export function WalkingRecordPage({
             />
           </div>
 
+          <HoursSection record={record} />
+
           <section className="walking-record__section">
             <div className="walking-record__section-heading">
-              <h1>how you traveled</h1>
+              <h2>how you traveled</h2>
               <span>
                 top {record.departures.length} of {record.movementCount}{" "}
                 movement
@@ -455,74 +544,6 @@ export function WalkingRecordPage({
               <EmptySection>
                 no familiar place has been quiet long enough to call you back
                 yet.
-              </EmptySection>
-            )}
-          </section>
-
-          <section className="walking-record__section">
-            <div className="walking-record__section-heading">
-              <h2>where the hours went</h2>
-              <span>
-                {record.totalTimeLabel} browsing
-              </span>
-            </div>
-            <p className="walking-record__section-intro">
-              {record.timeSpentIntro}
-            </p>
-
-            <div
-              className="walking-record__day-plates"
-              data-period={record.period}
-            >
-              {record.dayPlates.map((plate) => (
-                <div className="walking-record__day-plate" key={plate.date}>
-                  <DayPlateGraphic plate={plate} />
-                  <strong>{plate.day}</strong>
-                  <span>{plate.vignette}</span>
-                </div>
-              ))}
-            </div>
-
-            {record.timeSpent.length > 0 ? (
-              <div className="walking-record__hours">
-                {record.timeSpent.map((entry) => {
-                  const content = (
-                    <>
-                      <span className="walking-record__rank">{entry.rank}</span>
-                      <span
-                        className="walking-record__site-color"
-                        style={{ background: entry.hue }}
-                      />
-                      <div>
-                        <div className="walking-record__hour-title">
-                          <strong>{entry.site}</strong>
-                          <span>{entry.time}</span>
-                        </div>
-                        <div className="walking-record__time-track">
-                          <span
-                            style={{
-                              background: entry.hue,
-                              width: `${entry.percentage}%`,
-                            }}
-                          />
-                        </div>
-                        <small>{entry.note}</small>
-                      </div>
-                    </>
-                  );
-
-                  return entry.href ? (
-                    <a href={entry.href} key={entry.site}>
-                      {content}
-                    </a>
-                  ) : (
-                    <div key={entry.site}>{content}</div>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptySection>
-                time appears after a page has been in focus and then left.
               </EmptySection>
             )}
           </section>
