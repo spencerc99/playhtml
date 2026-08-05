@@ -87,6 +87,14 @@ function resetMockReady() {
     mockReadyResolve();
     return mockReady;
   });
+  mockedPlayhtml.createPresenceRoom.mockImplementation(createMockPresenceRoom);
+}
+
+function createMockPresenceRoom(_name: string) {
+  return {
+    presence: mockedPlayhtml.presence,
+    destroy: vi.fn(),
+  };
 }
 
 const mockedPlayhtml = {
@@ -166,10 +174,7 @@ const mockedPlayhtml = {
       destroy: vi.fn(),
     };
   }),
-  createPresenceRoom: vi.fn((_name: string) => ({
-    presence: mockedPlayhtml.presence,
-    destroy: vi.fn(),
-  })),
+  createPresenceRoom: vi.fn(createMockPresenceRoom),
 };
 
 resetMockReady();
