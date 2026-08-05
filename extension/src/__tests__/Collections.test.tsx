@@ -152,4 +152,28 @@ describe("Collections", () => {
       cleanupRoot(root, container);
     }
   });
+
+  it("does not message content scripts on Safari extension pages", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(browser.tabs.query).mockResolvedValue([
+      {
+        id: 1,
+        url: "safari-web-extension://test/newtab.html",
+      } as any,
+    ]);
+
+    const { container, root } = await renderCollections();
+
+    try {
+      expect(browser.tabs.sendMessage).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(
+        "Failed to load collectors:",
+        expect.objectContaining({
+          message: "Content script not available on this page",
+        }),
+      );
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
 });
