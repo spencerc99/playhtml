@@ -4,7 +4,9 @@
 import browser from "webextension-polyfill";
 import type { CollectionEvent } from "../collectors/types";
 import type {
+  AggregateDay,
   ScreenTimeSession,
+  WalkingRecordActivity,
   WalkingRecordTrace,
 } from "../storage/LocalEventStore";
 import {
@@ -27,6 +29,7 @@ interface EventsResponse {
   success?: boolean;
   events?: CollectionEvent[];
   cursorDistancePx?: number;
+  activity?: WalkingRecordActivity[];
 }
 
 interface ScreenTimeResponse {
@@ -44,7 +47,12 @@ interface TracesResponse {
   traces?: WalkingRecordTrace[];
 }
 
-const LOAD_STEP_COUNT = 5;
+interface DomainDaysResponse {
+  success?: boolean;
+  days?: AggregateDay[];
+}
+
+export const WALKING_RECORD_LOAD_STEP_COUNT = 6;
 
 export async function loadWalkingRecord(
   period: WalkingRecordPeriod,
@@ -61,7 +69,7 @@ export async function loadWalkingRecord(
     completedDataSteps += 1;
     onProgress({
       completed: completedDataSteps,
-      total: LOAD_STEP_COUNT,
+      total: WALKING_RECORD_LOAD_STEP_COUNT,
       message,
     });
     return response;
@@ -105,25 +113,43 @@ export async function loadWalkingRecord(
     throw new Error("The local place record is unavailable.");
   }
 
+  const familiarDomains = domainsResponse.domains
+    .filter((domain) => domain.activeDayCount >= 5)
+    .map((domain) => domain.domain);
+  const domainDaysResponse = (await browser.runtime.sendMessage({
+    type: "GET_WALKING_RECORD_DOMAIN_DAYS",
+    domains: familiarDomains,
+  })) as DomainDaysResponse;
+  if (!domainDaysResponse.success || !domainDaysResponse.days) {
+    throw new Error("The local relationship record is unavailable.");
+  }
   onProgress({
     completed: 4,
-    total: LOAD_STEP_COUNT,
+    total: WALKING_RECORD_LOAD_STEP_COUNT,
+    message: "tracing familiar routines…",
+  });
+
+  onProgress({
+    completed: 5,
+    total: WALKING_RECORD_LOAD_STEP_COUNT,
     message: `arranging this ${period}’s record…`,
   });
   const record = deriveWalkingRecord({
     period,
     baseColor,
     events: eventsResponse.events,
+    activity: eventsResponse.activity ?? [],
     sessions: screenTimeResponse.sessions,
     domains: domainsResponse.domains,
+    domainDays: domainDaysResponse.days,
     range,
     cursorDistancePx: eventsResponse.cursorDistancePx,
   });
   const targets = getWalkingRecordTraceTargets(record);
   if (targets.length === 0) {
     onProgress({
-      completed: LOAD_STEP_COUNT,
-      total: LOAD_STEP_COUNT,
+      completed: WALKING_RECORD_LOAD_STEP_COUNT,
+      total: WALKING_RECORD_LOAD_STEP_COUNT,
       message: `finishing this ${period}’s record…`,
     });
     return record;
@@ -135,16 +161,16 @@ export async function loadWalkingRecord(
   })) as TracesResponse;
   if (!tracesResponse.success || !tracesResponse.traces) {
     onProgress({
-      completed: LOAD_STEP_COUNT,
-      total: LOAD_STEP_COUNT,
+      completed: WALKING_RECORD_LOAD_STEP_COUNT,
+      total: WALKING_RECORD_LOAD_STEP_COUNT,
       message: `finishing this ${period}’s record…`,
     });
     return record;
   }
 
   onProgress({
-    completed: LOAD_STEP_COUNT,
-    total: LOAD_STEP_COUNT,
+    completed: WALKING_RECORD_LOAD_STEP_COUNT,
+    total: WALKING_RECORD_LOAD_STEP_COUNT,
     message: "restoring cursor trails…",
   });
   return attachWalkingRecordTraces(record, tracesResponse.traces);

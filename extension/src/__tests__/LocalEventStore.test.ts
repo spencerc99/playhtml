@@ -6,7 +6,10 @@ import {
   IDBKeyRange as fakeIDBKeyRange,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
-import { LocalEventStore, type DomainStatsAggregate } from "../storage/LocalEventStore";
+import {
+  LocalEventStore,
+  type DomainStatsAggregate,
+} from "../storage/LocalEventStore";
 import type { CollectionEvent } from "../collectors/types";
 
 const DB_NAME = "collection_events_db";
@@ -155,6 +158,7 @@ function aggregate(): DomainStatsAggregate {
     firstVisit: 0,
     lastVisit: 0,
     uniqueUrlCount: 1,
+    activeDayCount: 0,
   };
 }
 
@@ -298,6 +302,82 @@ describe("LocalEventStore aggregates", () => {
       });
     }
   });
+
+  it("restores active-day counts after a bulk import rebuilds domain stats", async () => {
+    const store = createStore();
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+
+    await store.getAllDomains();
+    await store.addRestoredEvents([
+      {
+        ...event("focus-first", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-second", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+
+    const [stats, days] = await Promise.all([
+      store.getSessionStats("example.com"),
+      store.getDomainDayHistory(["example.com"]),
+    ]);
+
+    expect(stats?.activeDayCount).toBe(2);
+    expect(days.map((day) => day.localDayKey)).toEqual([
+      "2026-07-20",
+      "2026-07-21",
+    ]);
+  });
+
+  it("tracks one active day per domain regardless of focus churn", async () => {
+    const store = createStore();
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+
+    await store.addEvents([
+      {
+        ...event("focus-first", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-again", "navigation"),
+        ts: firstDay + 60_000,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-next-day", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+
+    const [stats, days] = await Promise.all([
+      store.getSessionStats("example.com"),
+      store.getDomainDayHistory(["example.com"]),
+    ]);
+
+    expect(stats?.activeDayCount).toBe(2);
+    expect(days).toEqual([
+      {
+        domain: "example.com",
+        localDayKey: "2026-07-20",
+        firstVisitTs: firstDay,
+        lastVisitTs: firstDay + 60_000,
+      },
+      {
+        domain: "example.com",
+        localDayKey: "2026-07-21",
+        firstVisitTs: secondDay,
+        lastVisitTs: secondDay,
+      },
+    ]);
+  });
 });
 
 describe("LocalEventStore walking record events", () => {
@@ -338,6 +418,44 @@ describe("LocalEventStore walking record events", () => {
         },
       ],
     });
+  });
+
+  it("compresses interaction events into active browsing windows", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("cursor-first", "cursor"),
+        ts: 1_000,
+        data: { event: "move", x: 0.1, y: 0.1 },
+      },
+      {
+        ...event("scroll-same-window", "viewport"),
+        ts: 20_000,
+        data: { event: "scroll", scrollDistancePx: 300 },
+      },
+      {
+        ...event("keyboard-next-window", "keyboard"),
+        ts: 35_000,
+        data: { event: "typing", x: 0.5, y: 0.5 },
+      },
+      {
+        ...event("resize-ignored", "viewport"),
+        ts: 65_000,
+        data: { event: "resize", width: 1_000, height: 800 },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 90_000,
+    });
+
+    expect(result.activity).toEqual([
+      {
+        url: "https://example.com/page",
+        windowStarts: [0, 30_000],
+      },
+    ]);
   });
 
   it("keeps navigation events and samples cursors without losing measured distance", async () => {
@@ -407,6 +525,16 @@ describe("LocalEventStore walking record events", () => {
       "navigation-2",
     ]);
     expect(result.cursorDistancePx).toBeCloseTo(102.4);
+    expect(result.activity).toEqual([
+      {
+        url: "https://example.com/page",
+        windowStarts: [0, 300_000],
+      },
+      {
+        url: "https://example.com/other",
+        windowStarts: [0],
+      },
+    ]);
   });
 
   it("requires an explicit walking-record range", async () => {

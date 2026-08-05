@@ -2,7 +2,7 @@
 
 - Keep newly collected activity queued when local storage temporarily fails.
 - See a visible patina on Wikipedia links after their first click.
-- See a walking record of the places you explored across the past week, month, or year, with recognizable site icons and progress while each period opens.
+- See time by site, active explorations, regularly visited places, and daily cursor portraits in your weekly, monthly, or yearly walking record.
 
 <!--
 Add a bullet here for each meaningful user-facing change that ships in the

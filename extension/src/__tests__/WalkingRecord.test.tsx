@@ -93,7 +93,7 @@ async function renderWalkingRecord(
         loadingProgress={{
           completed: 3,
           total: 5,
-          message: "familiar places found…",
+          message: "finding familiar places…",
         }}
         error={null}
       />,
@@ -166,9 +166,10 @@ describe("WalkingRecordPage calendar navigation", () => {
           (heading) => heading.textContent,
         ),
       ).toEqual([
-        "where the hours went",
-        "how you traveled",
-        "revisiting history",
+        "how you browsed",
+        "notable new exploration",
+        "where you used to visit",
+        "browsing portraits",
       ]);
       expect(
         container
@@ -210,7 +211,7 @@ describe("WalkingRecordPage calendar navigation", () => {
         '[role="progressbar"]',
       ) as HTMLElement | null;
 
-      expect(container.textContent).toContain("familiar places found…");
+      expect(container.textContent).toContain("finding familiar places…");
       expect(container.textContent).toContain("60%");
       expect(progress?.getAttribute("aria-valuenow")).toBe("60");
       expect(progress?.querySelector("span")?.style.width).toBe("60%");

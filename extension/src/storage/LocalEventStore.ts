@@ -14,11 +14,13 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
+const AGGREGATE_DAYS_STORE_NAME = "aggregate_days";
 const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
+const DAYS_BACKFILL_STATE_KEY = "__days_backfill_state__";
 const UPLOAD_STATE_PENDING = "pending";
 const UPLOAD_STATE_UPLOADED = "uploaded";
 const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
@@ -41,6 +43,13 @@ interface StoredCollectionEvent extends CollectionEvent {
 interface AggregateUrl {
   aggregateKey: string;
   url: string;
+}
+
+export interface AggregateDay {
+  domain: string;
+  localDayKey: string;
+  firstVisitTs: number;
+  lastVisitTs: number;
 }
 
 // Aggregate key for cross-domain totals (all browsing activity combined)
@@ -103,6 +112,8 @@ export interface DomainStatsAggregate {
   lastVisit: number;
   /** Number of unique URLs represented by this aggregate */
   uniqueUrlCount: number;
+  /** Number of local calendar days with at least one focused visit */
+  activeDayCount: number;
 }
 
 function domainStatsKey(domain: string): string {
@@ -111,6 +122,26 @@ function domainStatsKey(domain: string): string {
 
 function pageStatsKey(domain: string, normalizedUrl: string): string {
   return `${domain}::${normalizedUrl}`;
+}
+
+function localDayKey(timestamp: number, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(timestamp);
+    const values = new Map(parts.map((part) => [part.type, part.value]));
+    return `${values.get("year")}-${values.get("month")}-${values.get("day")}`;
+  } catch {
+    const date = new Date(timestamp);
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
 }
 
 function getUploadState(event: StoredCollectionEvent): UploadState {
@@ -139,6 +170,12 @@ export interface ScreenTimeResult {
 export interface WalkingRecordEventResult {
   events: CollectionEvent[];
   cursorDistancePx: number;
+  activity: WalkingRecordActivity[];
+}
+
+export interface WalkingRecordActivity {
+  url: string;
+  windowStarts: number[];
 }
 
 export interface WalkingRecordTracePoint {
@@ -266,6 +303,8 @@ export class LocalEventStore {
   private initPromise: Promise<void> | null = null;
   private statsBackfillPromise: Promise<void> | null = null;
   private statsBackfillComplete = false;
+  private daysBackfillPromise: Promise<void> | null = null;
+  private daysBackfillComplete = false;
   private eventsPendingStatsAfterBackfill: CollectionEvent[] = [];
   private eventIdsPendingStatsAfterBackfill = new Set<string>();
 
@@ -450,6 +489,20 @@ export class LocalEventStore {
           };
         }
 
+        if (oldVersion < 11) {
+          if (!db.objectStoreNames.contains(AGGREGATE_DAYS_STORE_NAME)) {
+            db.createObjectStore(AGGREGATE_DAYS_STORE_NAME, {
+              keyPath: ["domain", "localDayKey"],
+            });
+          }
+
+          const tx = (event.target as IDBOpenDBRequest).transaction!;
+          tx.objectStore(STATS_STORE_NAME).put({
+            key: DAYS_BACKFILL_STATE_KEY,
+            state: oldVersion === 0 ? "complete" : "running",
+          });
+        }
+
         if (oldVersion < 9) {
           if (store.indexNames.contains("uploaded")) {
             store.deleteIndex("uploaded");
@@ -511,6 +564,237 @@ export class LocalEventStore {
     return this.statsBackfillPromise;
   }
 
+  private async ensureAggregateDaysBackfilled(): Promise<void> {
+    if (this.daysBackfillComplete) return;
+
+    if (!this.daysBackfillPromise) {
+      this.daysBackfillPromise = this.readDaysBackfillState()
+        .then(async (state) => {
+          if (state !== "complete") {
+            await this.rebuildAggregateDays();
+          }
+        })
+        .then(() => this.writeDaysBackfillState("complete"))
+        .then(() => {
+          this.daysBackfillComplete = true;
+        })
+        .finally(() => {
+          this.daysBackfillPromise = null;
+        });
+    }
+
+    return this.daysBackfillPromise;
+  }
+
+  private async readDaysBackfillState(): Promise<StatsBackfillState | null> {
+    if (!this.db) return null;
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STATS_STORE_NAME], "readonly");
+      const request = transaction
+        .objectStore(STATS_STORE_NAME)
+        .get(DAYS_BACKFILL_STATE_KEY);
+      request.onsuccess = () => {
+        const state = (request.result as { state?: unknown } | undefined)?.state;
+        resolve(
+          state === "running" || state === "complete" ? state : null,
+        );
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private async writeDaysBackfillState(
+    state: StatsBackfillState,
+  ): Promise<void> {
+    if (!this.db) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        [STATS_STORE_NAME],
+        "readwrite",
+      );
+      transaction.objectStore(STATS_STORE_NAME).put({
+        key: DAYS_BACKFILL_STATE_KEY,
+        state,
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  private static aggregateDaysForEvents(
+    events: CollectionEvent[],
+  ): AggregateDay[] {
+    const days = new Map<string, AggregateDay>();
+
+    for (const event of events) {
+      if (event.type !== "navigation") continue;
+      const data = event.data as NavigationEventData;
+      if (data.event !== "focus") continue;
+
+      const domain = event.domain || extractDomain(event.meta?.url);
+      if (!domain) continue;
+      const dayKey = localDayKey(event.ts, event.meta.tz);
+      const key = `${domain}\n${dayKey}`;
+      const existing = days.get(key);
+      if (existing) {
+        existing.firstVisitTs = Math.min(existing.firstVisitTs, event.ts);
+        existing.lastVisitTs = Math.max(existing.lastVisitTs, event.ts);
+      } else {
+        days.set(key, {
+          domain,
+          localDayKey: dayKey,
+          firstVisitTs: event.ts,
+          lastVisitTs: event.ts,
+        });
+      }
+    }
+
+    return [...days.values()];
+  }
+
+  private async upsertAggregateDays(
+    events: CollectionEvent[],
+  ): Promise<void> {
+    const days = LocalEventStore.aggregateDaysForEvents(events);
+    if (days.length === 0 || !this.db) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        [AGGREGATE_DAYS_STORE_NAME, STATS_STORE_NAME],
+        "readwrite",
+      );
+      const daysStore = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const newDaysByDomain = new Map<string, number>();
+      let pendingDayReads = days.length;
+
+      const updateActiveDayCounts = () => {
+        for (const [domain, count] of newDaysByDomain) {
+          const request = statsStore.get(domainStatsKey(domain));
+          request.onsuccess = () => {
+            const aggregate = request.result as
+              | DomainStatsAggregate
+              | undefined;
+            if (!aggregate) return;
+            aggregate.activeDayCount =
+              (aggregate.activeDayCount ?? 0) + count;
+            statsStore.put(aggregate);
+          };
+        }
+      };
+
+      for (const day of days) {
+        const request = daysStore.get([day.domain, day.localDayKey]);
+        request.onsuccess = () => {
+          const existing = request.result as AggregateDay | undefined;
+          if (existing) {
+            daysStore.put({
+              ...existing,
+              firstVisitTs: Math.min(existing.firstVisitTs, day.firstVisitTs),
+              lastVisitTs: Math.max(existing.lastVisitTs, day.lastVisitTs),
+            } satisfies AggregateDay);
+          } else {
+            daysStore.put(day);
+            newDaysByDomain.set(
+              day.domain,
+              (newDaysByDomain.get(day.domain) ?? 0) + 1,
+            );
+          }
+
+          pendingDayReads--;
+          if (pendingDayReads === 0) updateActiveDayCounts();
+        };
+      }
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  private async rebuildAggregateDays(): Promise<void> {
+    if (!this.db) return;
+    await this.writeDaysBackfillState("running");
+
+    const days = await new Promise<AggregateDay[]>((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], "readonly");
+      const index = transaction.objectStore(STORE_NAME).index("type");
+      const request = index.openCursor(IDBKeyRange.only("navigation"));
+      const aggregated = new Map<string, AggregateDay>();
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve([...aggregated.values()]);
+          return;
+        }
+
+        const event = toCollectionEvent(
+          cursor.value as StoredCollectionEvent,
+        );
+        for (const day of LocalEventStore.aggregateDaysForEvents([event])) {
+          const key = `${day.domain}\n${day.localDayKey}`;
+          const existing = aggregated.get(key);
+          if (existing) {
+            existing.firstVisitTs = Math.min(
+              existing.firstVisitTs,
+              day.firstVisitTs,
+            );
+            existing.lastVisitTs = Math.max(
+              existing.lastVisitTs,
+              day.lastVisitTs,
+            );
+          } else {
+            aggregated.set(key, day);
+          }
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    const counts = new Map<string, number>();
+    for (const day of days) {
+      counts.set(day.domain, (counts.get(day.domain) ?? 0) + 1);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        [AGGREGATE_DAYS_STORE_NAME, STATS_STORE_NAME],
+        "readwrite",
+      );
+      transaction.objectStore(AGGREGATE_DAYS_STORE_NAME).clear();
+      const request = transaction.objectStore(STATS_STORE_NAME).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const aggregate = cursor.value as DomainStatsAggregate;
+        if (aggregate.domain && !aggregate.key.includes("::")) {
+          aggregate.activeDayCount = counts.get(aggregate.domain) ?? 0;
+          cursor.update(aggregate);
+        }
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+
+    for (let index = 0; index < days.length; index += 1_000) {
+      const batch = days.slice(index, index + 1_000);
+      await new Promise<void>((resolve, reject) => {
+        const transaction = this.db!.transaction(
+          [AGGREGATE_DAYS_STORE_NAME],
+          "readwrite",
+        );
+        const store = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
+        for (const day of batch) store.put(day);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    }
+  }
+
   private async canUpdateStatsIncrementally(): Promise<boolean> {
     if (this.statsBackfillComplete) return true;
     if (this.statsBackfillPromise) return false;
@@ -527,7 +811,7 @@ export class LocalEventStore {
       const eventStore = transaction.objectStore(STORE_NAME);
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
       const eventCountRequest = eventStore.count();
-      const statsCountRequest = statsStore.count();
+      const statsCursorRequest = statsStore.openCursor();
       const stateRequest = statsStore.get(STATS_BACKFILL_STATE_KEY);
       let eventCount = 0;
       let statsCount = 0;
@@ -551,8 +835,14 @@ export class LocalEventStore {
         eventCount = eventCountRequest.result;
         complete();
       };
-      statsCountRequest.onsuccess = () => {
-        statsCount = statsCountRequest.result;
+      statsCursorRequest.onsuccess = () => {
+        const cursor = statsCursorRequest.result;
+        if (cursor) {
+          const value = cursor.value as Partial<DomainStatsAggregate>;
+          if (typeof value.domain === "string") statsCount++;
+          cursor.continue();
+          return;
+        }
         complete();
       };
       stateRequest.onsuccess = () => {
@@ -566,7 +856,7 @@ export class LocalEventStore {
         complete();
       };
       eventCountRequest.onerror = () => reject(eventCountRequest.error);
-      statsCountRequest.onerror = () => reject(statsCountRequest.error);
+      statsCursorRequest.onerror = () => reject(statsCursorRequest.error);
       stateRequest.onerror = () => reject(stateRequest.error);
       transaction.onerror = () => reject(transaction.error);
     });
@@ -636,7 +926,7 @@ export class LocalEventStore {
     }>((resolve, reject) => {
       const tx = this.db!.transaction([STATS_STORE_NAME], "readonly");
       const store = tx.objectStore(STATS_STORE_NAME);
-      const countReq = store.count();
+      const countReq = store.openCursor();
       const stateReq = store.get(STATS_BACKFILL_STATE_KEY);
       let statsCount = 0;
       let state: StatsBackfillState | null = null;
@@ -649,7 +939,13 @@ export class LocalEventStore {
       };
 
       countReq.onsuccess = () => {
-        statsCount = countReq.result;
+        const cursor = countReq.result;
+        if (cursor) {
+          const value = cursor.value as Partial<DomainStatsAggregate>;
+          if (typeof value.domain === "string") statsCount++;
+          cursor.continue();
+          return;
+        }
         complete();
       };
       stateReq.onsuccess = () => {
@@ -1089,11 +1385,13 @@ export class LocalEventStore {
       totalTimeMs: number;
       uniquePageCount: number;
       sessionCount: number;
+      activeDayCount: number;
       eventCounts: Record<string, number>;
     }>
   > {
     await this.ensureInitialized();
     await this.ensureSessionStatsBackfilled();
+    await this.ensureAggregateDaysBackfilled();
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -1112,6 +1410,7 @@ export class LocalEventStore {
         totalTimeMs: number;
         uniquePageCount: number;
         sessionCount: number;
+        activeDayCount: number;
         eventCounts: Record<string, number>;
       }> = [];
 
@@ -1138,6 +1437,7 @@ export class LocalEventStore {
               totalTimeMs: aggregate.totalTimeMs,
               uniquePageCount: aggregate.uniqueUrlCount,
               sessionCount: aggregate.sessionCount,
+              activeDayCount: aggregate.activeDayCount ?? 0,
               eventCounts,
             });
           }
@@ -1150,6 +1450,48 @@ export class LocalEventStore {
       };
 
       request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getDomainDayHistory(domains: string[]): Promise<AggregateDay[]> {
+    await this.ensureInitialized();
+    await this.ensureAggregateDaysBackfilled();
+
+    const uniqueDomains = [...new Set(domains)].filter(Boolean);
+    if (uniqueDomains.length === 0) return [];
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      const transaction = this.db.transaction(
+        [AGGREGATE_DAYS_STORE_NAME],
+        "readonly",
+      );
+      const store = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
+      const days: AggregateDay[] = [];
+      let pending = uniqueDomains.length;
+
+      for (const domain of uniqueDomains) {
+        const request = store.getAll(
+          IDBKeyRange.bound([domain, ""], [domain, "\uffff"]),
+        );
+        request.onsuccess = () => {
+          days.push(...(request.result as AggregateDay[]));
+          pending--;
+          if (pending === 0) {
+            days.sort(
+              (a, b) =>
+                a.domain.localeCompare(b.domain) ||
+                a.localDayKey.localeCompare(b.localDayKey),
+            );
+            resolve(days);
+          }
+        };
+        request.onerror = () => reject(request.error);
+      }
     });
   }
 
@@ -1333,6 +1675,7 @@ export class LocalEventStore {
     }
 
     const sampleIntervalMs = 5 * 60_000;
+    const activityWindowMs = 30_000;
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error("Database not initialized"));
@@ -1346,13 +1689,35 @@ export class LocalEventStore {
       const request = tsIndex.openCursor(range);
       const events: CollectionEvent[] = [];
       const sampledCursorWindows = new Set<string>();
+      const activityWindowsByUrl = new Map<string, Set<number>>();
       let previousCursorEvent: CollectionEvent | null = null;
       let cursorDistancePx = 0;
+
+      const recordActivity = (event: CollectionEvent) => {
+        const url = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+        if (!url) return;
+        const windowStart =
+          startTs +
+          Math.floor((event.ts - startTs) / activityWindowMs) *
+            activityWindowMs;
+        const windows = activityWindowsByUrl.get(url) ?? new Set<number>();
+        windows.add(windowStart);
+        activityWindowsByUrl.set(url, windows);
+      };
 
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) {
-          resolve({ events, cursorDistancePx });
+          resolve({
+            events,
+            cursorDistancePx,
+            activity: [...activityWindowsByUrl].map(
+              ([url, windowStarts]) => ({
+                url,
+                windowStarts: [...windowStarts].sort((a, b) => a - b),
+              }),
+            ),
+          });
           return;
         }
 
@@ -1361,8 +1726,18 @@ export class LocalEventStore {
 
         if (event.type === "navigation") {
           events.push(event);
+          const data = event.data as NavigationEventData;
+          if (data.event === "popstate") recordActivity(event);
         } else if (event.type === "cursor") {
           const data = event.data as CursorEventData;
+          if (
+            data.event === "move" ||
+            data.event === "click" ||
+            data.event === "hold" ||
+            data.event === undefined
+          ) {
+            recordActivity(event);
+          }
           if (data.event === "move" || data.event === undefined) {
             if (previousCursorEvent) {
               const previous = previousCursorEvent.data as CursorEventData;
@@ -1396,6 +1771,17 @@ export class LocalEventStore {
             sampledCursorWindows.add(sampleKey);
             events.push(event);
           }
+        } else if (event.type === "viewport") {
+          const data = event.data as { event?: unknown; scrollDistancePx?: unknown };
+          if (
+            data.event === "scroll" &&
+            typeof data.scrollDistancePx === "number" &&
+            data.scrollDistancePx > 0
+          ) {
+            recordActivity(event);
+          }
+        } else if (event.type === "keyboard") {
+          recordActivity(event);
         }
 
         cursor.continue();
@@ -1711,6 +2097,12 @@ export class LocalEventStore {
       } catch (e) {
         console.error("[LocalEventStore] Failed to update domain stats:", e);
       }
+
+      try {
+        await this.upsertAggregateDays(eventsForStats);
+      } catch (e) {
+        console.error("[LocalEventStore] Failed to update active days:", e);
+      }
     }
   }
 
@@ -1719,6 +2111,9 @@ export class LocalEventStore {
     await this.ensureSessionStatsBackfilled();
     await this.addEvents(events);
     await this.rebuildSessionStats();
+    await this.rebuildAggregateDays();
+    await this.writeDaysBackfillState("complete");
+    this.daysBackfillComplete = true;
     await this.writeStatsBackfillState("complete");
     this.statsBackfillComplete = true;
   }
@@ -1744,6 +2139,7 @@ export class LocalEventStore {
       firstVisit: 0,
       lastVisit: 0,
       uniqueUrlCount: 0,
+      activeDayCount: 0,
     };
   }
 
@@ -1998,16 +2394,27 @@ export class LocalEventStore {
       }
 
       const transaction = this.db.transaction(
-        [STORE_NAME, STATS_STORE_NAME, AGGREGATE_URLS_STORE_NAME],
+        [
+          STORE_NAME,
+          STATS_STORE_NAME,
+          AGGREGATE_URLS_STORE_NAME,
+          AGGREGATE_DAYS_STORE_NAME,
+        ],
         "readwrite",
       );
       const evtStore = transaction.objectStore(STORE_NAME);
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
       const aggregateUrlsStore = transaction.objectStore(AGGREGATE_URLS_STORE_NAME);
+      const aggregateDaysStore = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
       evtStore.clear();
       statsStore.clear();
       aggregateUrlsStore.clear();
-      transaction.oncomplete = () => resolve();
+      aggregateDaysStore.clear();
+      transaction.oncomplete = () => {
+        this.statsBackfillComplete = false;
+        this.daysBackfillComplete = false;
+        resolve();
+      };
       transaction.onerror = () => reject(transaction.error);
     });
   }

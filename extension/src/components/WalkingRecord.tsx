@@ -191,13 +191,21 @@ function EmptySection({ children }: { children: React.ReactNode }) {
   return <div className="walking-record__empty">{children}</div>;
 }
 
-function SiteFavicon({ entry }: { entry: TimeSpentEntry }) {
+function SiteFavicon({
+  faviconUrl,
+  site,
+  muted = false,
+}: {
+  faviconUrl?: string;
+  site: string;
+  muted?: boolean;
+}) {
   const [failed, setFailed] = React.useState(false);
 
-  if (!entry.faviconUrl || failed) {
+  if (!faviconUrl || failed) {
     return (
       <span className="walking-record__site-favicon-fallback" aria-hidden="true">
-        {entry.href ? entry.site.charAt(0).toLowerCase() : "···"}
+        {muted ? "···" : site.charAt(0).toLowerCase()}
       </span>
     );
   }
@@ -205,7 +213,7 @@ function SiteFavicon({ entry }: { entry: TimeSpentEntry }) {
   return (
     <img
       className="walking-record__site-favicon"
-      src={entry.faviconUrl}
+      src={faviconUrl}
       alt=""
       onError={() => setFailed(true)}
     />
@@ -313,15 +321,153 @@ function PeriodNavigationRail({
   );
 }
 
-function HoursSection({ record }: { record: WalkingRecord }) {
+function TimeSpentLegendEntry({ entry }: { entry: TimeSpentEntry }) {
+  const content = (
+    <>
+      <SiteFavicon
+        faviconUrl={entry.faviconUrl}
+        site={entry.site}
+        muted={!entry.href}
+      />
+      <span>{entry.site}</span>
+      <strong>{entry.time}</strong>
+    </>
+  );
+
+  return entry.href ? (
+    <a href={entry.href}>{content}</a>
+  ) : (
+    <div>{content}</div>
+  );
+}
+
+function HowBrowsedSection({ record }: { record: WalkingRecord }) {
   return (
     <section className="walking-record__section">
       <div className="walking-record__section-heading">
-        <h1>where the hours went</h1>
-        <span>{record.totalTimeLabel} browsing</span>
+        <h1>how you browsed</h1>
+        <span>{record.totalTimeLabel} online this {record.period}</span>
       </div>
       <p className="walking-record__section-intro">{record.timeSpentIntro}</p>
 
+      {record.timeSpent.length > 0 ? (
+        <div className="walking-record__time-spent">
+          <div
+            className="walking-record__time-stack"
+            aria-label="Browsing time by site"
+          >
+            {record.timeSpent.map((entry) => (
+              <span
+                key={entry.site}
+                title={`${entry.site}: ${entry.time}`}
+                style={{
+                  background: entry.hue,
+                  width: `${entry.percentage}%`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="walking-record__time-legend">
+            {record.timeSpent.map((entry) => (
+              <TimeSpentLegendEntry entry={entry} key={entry.site} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <EmptySection>
+          time appears after a page has been in focus and then left.
+        </EmptySection>
+      )}
+
+      <div className="walking-record__subsection-heading">
+        <h2>notable new exploration</h2>
+        <span>
+          {record.departures.length} shown from {record.movementCount}
+        </span>
+      </div>
+
+      {record.departures.length > 0 ? (
+        <div className="walking-record__departures">
+          {record.departures.map((departure) => (
+            <a
+              className="walking-record__departure"
+              href={departure.toUrl}
+              key={`${departure.day}:${departure.to}`}
+            >
+              <span className="walking-record__day">{departure.day}</span>
+              <div className="walking-record__departure-copy">
+                <div>
+                  <SiteFavicon
+                    faviconUrl={departure.fromFaviconUrl}
+                    site={departure.from}
+                  />
+                  <span>{departure.from}</span>
+                  <span aria-hidden="true">→</span>
+                  <SiteFavicon
+                    faviconUrl={departure.toFaviconUrl}
+                    site={departure.to}
+                  />
+                  <strong>{departure.to}</strong>
+                </div>
+                {departure.note && <p>{departure.note}</p>}
+              </div>
+              <span className="walking-record__departure-time">
+                {departure.time}
+              </span>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <EmptySection>
+          new explorations appear after you leave one of your usual places for
+          a quieter corner of the web.
+        </EmptySection>
+      )}
+    </section>
+  );
+}
+
+function RevisitSection({ record }: { record: WalkingRecord }) {
+  return (
+    <section className="walking-record__section">
+      <div className="walking-record__section-heading">
+        <h2>where you used to visit</h2>
+      </div>
+      <p className="walking-record__section-intro">
+        places you returned to across many days that you haven’t walked lately.
+        the doors are still open.
+      </p>
+      {record.revisits.length > 0 ? (
+        <div className="walking-record__revisit-ledger">
+          {record.revisits.map((revisit) => (
+            <a href={revisit.href} key={revisit.site}>
+              <span style={{ color: readablePaletteColor(revisit.hue) }}>
+                {revisit.span}
+              </span>
+              <strong>{revisit.site}</strong>
+              <small>{revisit.memory}</small>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <EmptySection>
+          no regularly visited place has been quiet long enough to call you
+          back yet.
+        </EmptySection>
+      )}
+    </section>
+  );
+}
+
+function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
+  return (
+    <section className="walking-record__section">
+      <div className="walking-record__section-heading">
+        <h2>browsing portraits</h2>
+      </div>
+      <p className="walking-record__section-intro">
+        one small portrait from each {record.period === "week" ? "day" : "part"}.
+      </p>
       <div
         className="walking-record__day-plates"
         data-period={record.period}
@@ -339,46 +485,6 @@ function HoursSection({ record }: { record: WalkingRecord }) {
           </div>
         ))}
       </div>
-
-      {record.timeSpent.length > 0 ? (
-        <div className="walking-record__hours">
-          {record.timeSpent.map((entry) => {
-            const content = (
-              <>
-                <span className="walking-record__rank">{entry.rank}</span>
-                <SiteFavicon entry={entry} />
-                <div>
-                  <div className="walking-record__hour-title">
-                    <strong>{entry.site}</strong>
-                    <span>{entry.time}</span>
-                  </div>
-                  <div className="walking-record__time-track">
-                    <span
-                      style={{
-                        background: entry.hue,
-                        width: `${entry.percentage}%`,
-                      }}
-                    />
-                  </div>
-                  <small>{entry.note}</small>
-                </div>
-              </>
-            );
-
-            return entry.href ? (
-              <a href={entry.href} key={entry.site}>
-                {content}
-              </a>
-            ) : (
-              <div key={entry.site}>{content}</div>
-            );
-          })}
-        </div>
-      ) : (
-        <EmptySection>
-          time appears after a page has been in focus and then left.
-        </EmptySection>
-      )}
     </section>
   );
 }
@@ -477,96 +583,9 @@ export function WalkingRecordPage({
             />
           </div>
 
-          <HoursSection record={record} />
-
-          <section className="walking-record__section">
-            <div className="walking-record__section-heading">
-              <h2>how you traveled</h2>
-              <span>
-                top {record.departures.length} of {record.movementCount}{" "}
-                movement
-                {record.movementCount === 1 ? "" : "s"}
-              </span>
-            </div>
-            <p className="walking-record__section-intro">
-              some of the off-beaten paths and places you haven’t visited in a
-              while
-            </p>
-
-            {record.departures.length > 0 ? (
-              <div className="walking-record__departures">
-                {record.departures.map((departure) => (
-                  <a
-                    className="walking-record__departure"
-                    href={departure.toUrl}
-                    key={`${departure.day}:${departure.to}`}
-                  >
-                    <TraceGraphic
-                      paths={departure.tracePaths}
-                      hue={departure.hue}
-                      width={44}
-                      height={44}
-                      padding={4}
-                      minimumSize={1.5}
-                      maximumSize={3.2}
-                    />
-                    <div className="walking-record__departure-copy">
-                      <div>
-                        <span className="walking-record__day">
-                          {departure.day}
-                        </span>
-                        <span
-                          style={{
-                            color: readablePaletteColor(departure.accentHue),
-                          }}
-                        >
-                          {departure.verb}
-                        </span>
-                        <span>{departure.from}</span>
-                        <span aria-hidden="true">→</span>
-                        <strong>{departure.to}</strong>
-                      </div>
-                      {departure.note && <p>{departure.note}</p>}
-                    </div>
-                    <span className="walking-record__familiarity">
-                      {departure.familiarity}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <EmptySection>
-                no departures were recorded. the quiet roads will appear here
-                when you leave one of your usual places for somewhere
-                unfamiliar.
-              </EmptySection>
-            )}
-
-            <h2 className="walking-record__subheading">revisiting history</h2>
-            <p className="walking-record__revisit-intro">
-              places you knew well, ordered by familiarity and time away
-            </p>
-            {record.revisits.length > 0 ? (
-              <div className="walking-record__revisit-ledger">
-                {record.revisits.map((revisit) => (
-                  <a href={revisit.href} key={revisit.site}>
-                    <span
-                      style={{ color: readablePaletteColor(revisit.hue) }}
-                    >
-                      {revisit.span}
-                    </span>
-                    <strong>{revisit.site}</strong>
-                    <small>{revisit.memory}</small>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <EmptySection>
-                no familiar place has been quiet long enough to call you back
-                yet.
-              </EmptySection>
-            )}
-          </section>
+          <HowBrowsedSection record={record} />
+          <RevisitSection record={record} />
+          <BrowsingPortraitsSection record={record} />
         </>
       )}
     </main>

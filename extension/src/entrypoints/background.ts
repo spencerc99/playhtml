@@ -774,7 +774,7 @@ export default defineBackground(() => {
         .then((result) => reply({ success: true, ...result }))
         .catch((e) => {
           console.error('[Background] GET_WALKING_RECORD_EVENTS error:', e)
-          reply({ success: false, events: [], cursorDistancePx: 0 })
+          reply({ success: false, events: [], cursorDistancePx: 0, activity: [] })
         })
       return true
     }
@@ -822,6 +822,21 @@ export default defineBackground(() => {
         .catch((e) => {
           console.error('[Background] GET_ALL_DOMAINS error:', e)
           reply({ success: false, domains: [] })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_WALKING_RECORD_DOMAIN_DAYS') {
+      const domains = Array.isArray(message.domains)
+        ? message.domains.filter(
+            (domain: unknown): domain is string => typeof domain === 'string',
+          )
+        : []
+      store.getDomainDayHistory(domains)
+        .then((days) => reply({ success: true, days }))
+        .catch((e) => {
+          console.error('[Background] GET_WALKING_RECORD_DOMAIN_DAYS error:', e)
+          reply({ success: false, days: [] })
         })
       return true
     }

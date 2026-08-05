@@ -38,6 +38,7 @@ describe("loadWalkingRecord", () => {
           },
         ],
         cursorDistancePx: 0,
+        activity: [],
       },
       GET_SCREEN_TIME: {
         success: true,
@@ -61,9 +62,14 @@ describe("loadWalkingRecord", () => {
             totalTimeMs: 60_000,
             uniquePageCount: 1,
             sessionCount: 1,
+            activeDayCount: 1,
             eventCounts: { navigation: 1 },
           },
         ],
+      },
+      GET_WALKING_RECORD_DOMAIN_DAYS: {
+        success: true,
+        days: [],
       },
       GET_WALKING_RECORD_TRACES: {
         success: true,
@@ -78,7 +84,7 @@ describe("loadWalkingRecord", () => {
 
     await loadWalkingRecord("week", range, "#4a9a8a", progress);
 
-    expect(progress).toHaveBeenCalledTimes(5);
+    expect(progress).toHaveBeenCalledTimes(6);
     expect(
       progress.mock.calls.slice(0, 3).map(([update]) => update.message),
     ).toEqual([
@@ -88,12 +94,17 @@ describe("loadWalkingRecord", () => {
     ]);
     expect(progress).toHaveBeenNthCalledWith(4, {
       completed: 4,
-      total: 5,
+      total: 6,
+      message: "tracing familiar routines…",
+    });
+    expect(progress).toHaveBeenNthCalledWith(5, {
+      completed: 5,
+      total: 6,
       message: "arranging this week’s record…",
     });
     expect(progress).toHaveBeenLastCalledWith({
-      completed: 5,
-      total: 5,
+      completed: 6,
+      total: 6,
       message: "restoring cursor trails…",
     });
   });

@@ -26,6 +26,7 @@ import {
 } from "../../history/walkingRecord";
 import {
   loadWalkingRecord,
+  WALKING_RECORD_LOAD_STEP_COUNT,
   type WalkingRecordLoadProgress,
 } from "../../history/loadWalkingRecord";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
@@ -52,7 +53,7 @@ function NewTabPage() {
   const [loadingProgress, setLoadingProgress] =
     useState<WalkingRecordLoadProgress>({
       completed: 0,
-      total: 5,
+      total: WALKING_RECORD_LOAD_STEP_COUNT,
       message: "opening your local record…",
     });
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +91,7 @@ function NewTabPage() {
     setLoading(true);
     setLoadingProgress({
       completed: 0,
-      total: 5,
+      total: WALKING_RECORD_LOAD_STEP_COUNT,
       message: `opening this ${period}’s record…`,
     });
     setError(null);
@@ -152,11 +153,12 @@ function NewTabPage() {
       })
       .then((response: ScreenTimeResponse) => {
         if (cancelled || !response.success || !response.sessions) return;
+        const sessions = response.sessions;
         setPeriodSummaries((current) => ({
           ...current,
           [period]: summarizeWalkingRecordPeriods(
             period,
-            response.sessions,
+            sessions,
             PERIOD_RAIL_COUNT,
           ),
         }));
