@@ -97,7 +97,14 @@ export function PagePlate({ sheet, frame, t, settings, isEligibleForIframe }: Pl
           ) : null}
         </div>
       ) : null}
-      {isEligibleForIframe && sheet.url ? (
+      {/* Live iframe is opt-in (settings.showPages), separate from ghost
+          titles: real sites behind bot protection (e.g. Cloudflare) render a
+          challenge/error page inside a sandboxed cross-origin iframe, and a
+          challenge can never complete there — cookies/storage are blocked and
+          there's no way to detect the failure cross-origin. That failure mode
+          is exactly the top-of-stack sheets (isEligibleForIframe), so it
+          would wash out the top of the pile with white/garbage by default. */}
+      {settings.showPages && isEligibleForIframe && sheet.url ? (
         <iframe
           src={sheet.url}
           sandbox="allow-same-origin allow-scripts"

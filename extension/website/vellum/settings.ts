@@ -18,6 +18,7 @@ export interface VellumSettings {
   frameScale: number;
   paperColor: string;
   blendMode: BlendMode;
+  sheetColor: string;
   sheetOpacity: number;
   showSheetEdges: boolean;
   showLabels: boolean;
@@ -67,6 +68,7 @@ export const DEFAULT_VELLUM_SETTINGS: VellumSettings = {
   frameScale: 0.8,
   paperColor: "#f5f1e8",
   blendMode: "multiply",
+  sheetColor: "#ffffff",
   sheetOpacity: 0.12,
   showSheetEdges: true,
   showLabels: true,
@@ -77,7 +79,10 @@ export const DEFAULT_VELLUM_SETTINGS: VellumSettings = {
   rotateJitterDeg: 1.5,
   hoverLift: true,
 
-  showPages: true,
+  // Real ghosted iframes render Cloudflare bot-challenge pages that can never
+  // complete cross-origin, so pages default off — ghost titles alone still
+  // fill the sheets.
+  showPages: false,
   maxPageLayers: 4,
   pageOpacity: 0.2,
   pageGrayscale: true,
@@ -90,7 +95,9 @@ export const DEFAULT_VELLUM_SETTINGS: VellumSettings = {
   showTrails: true,
   strokeWidth: 2.5,
   trailOpacity: 0.8,
-  inkMode: "participant",
+  // "participant" collapses to one color with real single-user data, making
+  // the whole stack read as one giant scribble — "riso" varies per sheet.
+  inkMode: "riso",
   monoColor: "#1d3fa8",
   showClicks: true,
   clickRadius: 9,
@@ -169,6 +176,12 @@ export const VELLUM_PARAM_SPEC: ParamSpec[] = [
       type: "select",
       options: ["multiply", "normal", "darken", "luminosity"],
     },
+  },
+  {
+    key: "sheetColor",
+    label: "sheet color",
+    group: "composition",
+    control: { type: "color" },
   },
   {
     key: "sheetOpacity",
@@ -344,7 +357,10 @@ export const VELLUM_PARAM_SPEC: ParamSpec[] = [
   },
 ];
 
-const STORAGE_KEY = "vellum-settings-v1";
+// Bump this suffix whenever defaults change in a way that should override
+// users' stored values — otherwise a stored old value pins the broken default
+// forever, since loadSettings merges stored values over the (new) defaults.
+const STORAGE_KEY = "vellum-settings-v2";
 
 /** Reads persisted settings from localStorage, merging stored values over the
  * defaults so a settings-shape change (a newly added param) always has a

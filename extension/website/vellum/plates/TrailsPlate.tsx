@@ -1,8 +1,13 @@
-// ABOUTME: Canvas ink of a sheet's cursor trails and click/hold rings, progressively revealed during playback.
-// ABOUTME: Segments and clicks are memoized per sheet+frame; the draw effect runs on every playback tick with no state churn.
-import { useEffect, useMemo, useRef } from "react";
+// ABOUTME: SVG ink of a sheet's cursor trails and click/hold marks — filled perfect-freehand outlines with tapered ends,
+// ABOUTME: matching the movement visualizations' cursor-trail look. Segments/clicks are memoized per sheet+frame; each tick only rebuilds path strings for the visible window.
+import { useMemo } from "react";
 import type { CollectionEvent } from "../../shared/types";
 import { TRAIL_TIME_THRESHOLD } from "../../shared/utils/eventUtils";
+import { CLICK_DEFAULTS } from "@movement/components/clickDefaults";
+import {
+  buildFreehandPathSegment,
+  buildStraightPathSegment,
+} from "@movement/utils/trailAnimation";
 import type { PlateProps } from "../types";
 import { resolveInk } from "./ink";
 import { sheetLocalTs } from "./scrollTimeline";
@@ -68,25 +73,16 @@ function buildTrailData(
   return { segments, clicks };
 }
 
-function drawSmoothPath(ctx: CanvasRenderingContext2D, points: TrailPoint[]): void {
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length - 1; i++) {
-    const mx = (points[i].x + points[i + 1].x) / 2;
-    const my = (points[i].y + points[i + 1].y) / 2;
-    ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
-  }
-  const last = points[points.length - 1];
-  ctx.lineTo(last.x, last.y);
-}
-
-function drawPolyline(ctx: CanvasRenderingContext2D, points: TrailPoint[]): void {
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
-}
+// The resting click mark reuses the ripple's own size/opacity relationships
+// instead of inventing new ones: the core dot is a fixed small fraction of
+// the ring's resting radius (independent of the min/max radius range, same
+// as ClickRipple's real core), and the ring is dimmer than the dot by the
+// same clickOpacity weighting ClickRipple draws its rings at.
+const CLICK_CORE_RATIO =
+  CLICK_DEFAULTS.clickCoreRadius /
+  (CLICK_DEFAULTS.clickMaxRadius * CLICK_DEFAULTS.clickAnimationStopPoint);
 
 export function TrailsPlate({ sheet, frame, t, settings }: PlateProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
   const { segments, clicks } = useMemo(
     () => buildTrailData(sheet.cursorEvents, frame),
     [sheet.cursorEvents, frame.width, frame.height],
@@ -96,95 +92,108 @@ export function TrailsPlate({ sheet, frame, t, settings }: PlateProps) {
     [sheet, settings.inkMode, settings.monoColor],
   );
 
-  // Size/DPR setup only needs to happen when the frame itself changes.
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = frame.width * dpr;
-    canvas.height = frame.height * dpr;
-    canvas.style.width = `${frame.width}px`;
-    canvas.style.height = `${frame.height}px`;
-    const ctx = canvas.getContext("2d");
-    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }, [frame.width, frame.height]);
-
-  // Actual drawing runs on every playback tick — pure canvas work, no React
-  // state writes, so this stays cheap even at animation frame rate.
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, frame.width, frame.height);
-
-    const currentTs = sheetLocalTs(sheet.startTs, sheet.endTs, t);
-    const range = Math.max(1, sheet.endTs - sheet.startTs);
-    const windowMs = range * 0.15;
-
-    ctx.lineWidth = settings.strokeWidth;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = ink;
-    ctx.globalAlpha = settings.trailOpacity;
-
-    for (const segment of segments) {
-      const visible =
-        settings.trailsDrawMode === "reveal"
-          ? segment.filter((p) => p.ts <= currentTs)
-          : segment.filter((p) => p.ts <= currentTs && p.ts >= currentTs - windowMs);
-      if (visible.length < 2) continue;
-      ctx.beginPath();
-      if (settings.smoothing) drawSmoothPath(ctx, visible);
-      else drawPolyline(ctx, visible);
-      ctx.stroke();
-    }
-
-    if (settings.showClicks) {
-      for (const click of clicks) {
-        if (click.ts > currentTs) continue;
-        let alpha = settings.trailOpacity * 0.9;
-        if (settings.trailsDrawMode === "window") {
-          const age = currentTs - click.ts;
-          if (age > windowMs) continue;
-          alpha *= 1 - age / windowMs;
-        }
-        ctx.globalAlpha = alpha;
-        ctx.beginPath();
-        ctx.arc(click.x, click.y, settings.clickRadius * click.radiusMultiplier, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = settings.trailOpacity;
-    }
-  }, [
-    segments,
-    clicks,
-    ink,
-    t,
-    frame.width,
-    frame.height,
-    sheet.startTs,
-    sheet.endTs,
-    settings.strokeWidth,
-    settings.trailOpacity,
-    settings.smoothing,
-    settings.trailsDrawMode,
-    settings.showClicks,
-    settings.clickRadius,
-  ]);
+  const currentTs = sheetLocalTs(sheet.startTs, sheet.endTs, t);
+  const range = Math.max(1, sheet.endTs - sheet.startTs);
+  const windowMs = range * 0.15;
+  const freehandSize = settings.strokeWidth * 2;
 
   return (
-    <canvas
-      ref={canvasRef}
+    <svg
+      width={frame.width}
+      height={frame.height}
       style={{
         position: "absolute",
         inset: 0,
-        width: frame.width,
-        height: frame.height,
         mixBlendMode: settings.blendMode,
         pointerEvents: "none",
       }}
-    />
+    >
+      {segments.map((segment, i) => {
+        const visible =
+          settings.trailsDrawMode === "reveal"
+            ? segment.filter((p) => p.ts <= currentTs)
+            : segment.filter(
+                (p) => p.ts <= currentTs && p.ts >= currentTs - windowMs,
+              );
+        if (visible.length < 2) return null;
+
+        // The head is still "inside" this segment (actively drawing) until
+        // currentTs passes the segment's own last timestamp — checked against
+        // the full segment, not the (possibly window-trimmed) visible slice,
+        // so ends taper like a finished stroke once the segment is done
+        // regardless of draw mode.
+        const isComplete = currentTs >= segment[segment.length - 1].ts;
+
+        if (settings.smoothing) {
+          const pathData = buildFreehandPathSegment(
+            visible,
+            0,
+            visible.length - 1,
+            freehandSize,
+            isComplete,
+          );
+          if (!pathData) return null;
+          return (
+            <path
+              key={i}
+              d={pathData}
+              fill={ink}
+              fillOpacity={settings.trailOpacity}
+            />
+          );
+        }
+
+        const pathData = buildStraightPathSegment(visible, 0, visible.length - 1);
+        if (!pathData) return null;
+        return (
+          <path
+            key={i}
+            d={pathData}
+            fill="none"
+            stroke={ink}
+            strokeWidth={settings.strokeWidth}
+            strokeOpacity={settings.trailOpacity}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        );
+      })}
+
+      {settings.showClicks
+        ? clicks.map((click, i) => {
+            if (click.ts > currentTs) return null;
+            let alpha = settings.trailOpacity * 0.9;
+            if (settings.trailsDrawMode === "window") {
+              const age = currentTs - click.ts;
+              if (age > windowMs) return null;
+              alpha *= 1 - age / windowMs;
+            }
+
+            const ringRadius = settings.clickRadius * click.radiusMultiplier;
+            const coreRadius = Math.max(1, ringRadius * CLICK_CORE_RATIO);
+
+            return (
+              <g key={i}>
+                <circle
+                  cx={click.x}
+                  cy={click.y}
+                  r={ringRadius}
+                  fill="none"
+                  stroke={ink}
+                  strokeWidth={CLICK_DEFAULTS.clickStrokeWidth}
+                  opacity={alpha * CLICK_DEFAULTS.clickOpacity}
+                />
+                <circle
+                  cx={click.x}
+                  cy={click.y}
+                  r={coreRadius}
+                  fill={ink}
+                  opacity={alpha}
+                />
+              </g>
+            );
+          })
+        : null}
+    </svg>
   );
 }

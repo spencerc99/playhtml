@@ -11,12 +11,30 @@ export interface PlateDef {
   id: string;
   label: string;
   component: ComponentType<PlateProps>;
-  /** Settings key that gates whether this plate renders at all. */
-  enabledKey: keyof VellumSettings;
+  /** Whether this plate renders at all, given the current settings. A
+   * predicate rather than a single settings key so a plate can render off of
+   * more than one toggle — e.g. PagePlate must keep rendering ghost titles
+   * when `showPages` is off but `showGhostTitles` is on. */
+  isEnabled: (settings: VellumSettings) => boolean;
 }
 
 export const PLATE_REGISTRY: PlateDef[] = [
-  { id: "page", label: "Page", component: PagePlate, enabledKey: "showPages" },
-  { id: "scroll", label: "Scroll", component: ScrollPlate, enabledKey: "showScrollFrame" },
-  { id: "trails", label: "Trails", component: TrailsPlate, enabledKey: "showTrails" },
+  {
+    id: "page",
+    label: "Page",
+    component: PagePlate,
+    isEnabled: (s) => s.showPages || s.showGhostTitles,
+  },
+  {
+    id: "scroll",
+    label: "Scroll",
+    component: ScrollPlate,
+    isEnabled: (s) => s.showScrollFrame,
+  },
+  {
+    id: "trails",
+    label: "Trails",
+    component: TrailsPlate,
+    isEnabled: (s) => s.showTrails,
+  },
 ];

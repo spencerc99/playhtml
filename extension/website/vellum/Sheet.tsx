@@ -12,6 +12,24 @@ function seededSignedUnit(seed: number): number {
   return (x - Math.floor(x)) * 2 - 1;
 }
 
+/** Expands a #rgb/#rrggbb hex color into an `rgba(...)` string at `alpha`.
+ * Falls back to opaque white for anything that isn't a valid hex string, so a
+ * bad stored setting can't blank the sheet backing entirely. */
+function hexToRgba(hex: string, alpha: number): string {
+  let h = hex.trim().replace(/^#/, "");
+  if (h.length === 3) {
+    h = h
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return `rgba(255,255,255,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 export interface SheetProps {
   sheet: VellumSheet;
   frame: { width: number; height: number };
@@ -85,21 +103,21 @@ export function Sheet({
               )}px rgba(40,32,20,${0.08 + settings.spread * 0.1})`,
       }}
     >
-      {/* Sheet paper: a translucent white layer. Deliberately not blended —
-          only the ink plates below blend, so the paper itself just adds a
-          milky base each layer contributes. */}
+      {/* Sheet paper: a translucent layer in the user-controlled sheetColor.
+          Deliberately not blended — only the ink plates below blend, so the
+          paper itself just adds a milky base each layer contributes. */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: `rgba(255,255,255,${settings.sheetOpacity})`,
+          background: hexToRgba(settings.sheetColor, settings.sheetOpacity),
           border: settings.showSheetEdges ? "1px solid rgba(60,50,40,0.14)" : "none",
         }}
       />
 
       <div style={{ position: "absolute", inset: 0 }}>
         {PLATE_REGISTRY.map((plate) => {
-          if (!settings[plate.enabledKey]) return null;
+          if (!plate.isEnabled(settings)) return null;
           const Component = plate.component;
           return (
             <Component
