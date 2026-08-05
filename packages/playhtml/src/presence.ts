@@ -27,6 +27,7 @@ export interface AwarenessLike {
 interface PresenceDeps {
   getAwareness: () => AwarenessLike;
   getPlayerIdentity: () => PlayerIdentity;
+  publishIdentity?: boolean;
   getCursorPresences?: () => Map<string, CursorPresenceView>;
   onCursorPresencesChange?: (
     callback: (presences: Map<string, CursorPresenceView>) => void,
@@ -55,6 +56,7 @@ export function createPresenceAPI(deps: PresenceDeps): PresenceAPI {
   // boolean) so SPA navigation that rebuilds the provider — and with it the
   // awareness object — re-arms the write on the new awareness.
   function ensureIdentityWritten(): void {
+    if (deps.publishIdentity === false) return;
     ensureAwarenessIdentity(getAwareness(), deps.getPlayerIdentity());
   }
 

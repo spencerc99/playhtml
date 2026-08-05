@@ -1,5 +1,21 @@
 # @playhtml/common
 
+## 0.8.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- dca1704: Restrict presence player identities to public fields, strip profile-only fields from generated identities, and allow custom presence values larger than 4 KiB.
+- 252acd0: Apply `can-move-bounds` only while dragging so setup preserves initial CSS layout and persisted positions instead of rewriting them from pre-insertion or client-specific geometry.
+
+## 0.8.1
+
+### Patch Changes
+
+- f8bc35d: Keep can-grow hover handling from adding duplicate leave and keyboard listeners during repeated hover events.
+- e76abb7: Keep PlayHTML-managed local DOM state out of `can-mirror` persistence, including inspector highlights, devtools labels, loading markers, and hover/focus attributes, so mirrored elements can still be inspected and reset without saving tool UI state.
+- 44e599d: Make `can-move-bounds` clamp the full element inside its bounds by default, account for the element's starting position within the bounds container, normalize persisted out-of-bounds positions on mount, and keep fast edge drags pinned while synced position updates catch up. Explicit `min-visible` settings can still allow partial overhang when that behavior is wanted.
+
 ## 0.8.0
 
 ### Minor Changes

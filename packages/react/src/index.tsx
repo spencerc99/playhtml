@@ -3,7 +3,14 @@
 // TODO: idk why but this is not getting registered otherwise??
 import * as React from "react";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement, serializePermissionsSpec } from "playhtml";
+import {
+  ElementAwarenessEventHandlerData,
+  ElementInitializer,
+  TagType,
+  elementHandlers,
+  getIdForElement,
+  serializePermissionsSpec,
+} from "playhtml";
 import type { PermissionAction, PermissionActionSpec } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
@@ -102,6 +109,8 @@ type ElementBinding = {
   effectiveId: string;
   domId: string;
   dataSource: string | null;
+  shared: string | null;
+  tags: string;
 };
 
 function getDataSourceElementId(dataSource?: string): string | undefined {
@@ -110,7 +119,10 @@ function getDataSourceElementId(dataSource?: string): string | undefined {
   return elementId || undefined;
 }
 
-function getElementBinding(element: HTMLElement): ElementBinding | undefined {
+function getElementBinding(
+  element: HTMLElement,
+  tags: string[],
+): ElementBinding | undefined {
   const effectiveId = getIdForElement(element);
   if (!effectiveId) return undefined;
 
@@ -118,7 +130,21 @@ function getElementBinding(element: HTMLElement): ElementBinding | undefined {
     effectiveId,
     domId: element.id,
     dataSource: element.getAttribute("data-source"),
+    shared: element.getAttribute("shared"),
+    tags: [...tags].sort().join(" "),
   };
+}
+
+function isSameElementBinding(
+  first: ElementBinding,
+  second: ElementBinding,
+): boolean {
+  return (
+    first.effectiveId === second.effectiveId &&
+    first.dataSource === second.dataSource &&
+    first.shared === second.shared &&
+    first.tags === second.tags
+  );
 }
 
 function withElementBinding(
@@ -128,12 +154,19 @@ function withElementBinding(
 ) {
   const currentId = element.id;
   const currentDataSource = element.getAttribute("data-source");
+  const currentShared = element.getAttribute("shared");
 
-  element.id = binding.domId;
+  // Core can assign the DOM ID after React captures the binding.
+  element.id = binding.domId || currentId;
   if (binding.dataSource === null) {
     element.removeAttribute("data-source");
   } else {
     element.setAttribute("data-source", binding.dataSource);
+  }
+  if (binding.shared === null) {
+    element.removeAttribute("shared");
+  } else {
+    element.setAttribute("shared", binding.shared);
   }
 
   try {
@@ -144,6 +177,11 @@ function withElementBinding(
       element.removeAttribute("data-source");
     } else {
       element.setAttribute("data-source", currentDataSource);
+    }
+    if (currentShared === null) {
+      element.removeAttribute("shared");
+    } else {
+      element.setAttribute("shared", currentShared);
     }
   }
 }
@@ -326,6 +364,32 @@ export function CanPlayElement<T extends object, V = any>({
     capabilityUpdateElementAwareness?.(handlerData);
   };
 
+  const bindingTags = Object.keys(computedTagInfo);
+  const getRegisteredHandler = () => {
+    const element = ref.current;
+    if (!element) return undefined;
+
+    const currentBinding = getElementBinding(element, bindingTags);
+    if (!currentBinding) return undefined;
+
+    const registeredBinding = registeredBindingRef.current;
+    if (
+      registeredBinding &&
+      !isSameElementBinding(registeredBinding, currentBinding)
+    ) return undefined;
+
+    const currentHandler = getCurrentElementHandler(
+      primaryTag,
+      currentBinding.effectiveId,
+    );
+    if (!currentHandler || currentHandler.element !== element) {
+      return undefined;
+    }
+
+    registeredBindingRef.current = currentBinding;
+    return currentHandler;
+  };
+
   useEffect(() => {
     if (ref.current) {
       const element = ref.current;
@@ -341,33 +405,42 @@ export function CanPlayElement<T extends object, V = any>({
       // @ts-ignore
       element.updateElementAwareness = updateElementAwareness;
 
+      const elementId = getIdForElement(element);
+      const handlers = elementHandlers;
+      if (elementId && handlers instanceof Map) {
+        for (const tag of Object.keys(computedTagInfo) as TagType[]) {
+          const handler = handlers.get(tag)?.get(elementId);
+          if (!handler || handler.element !== element) continue;
+          handler.setEventHandlers({
+            onClick: elementProps.onClick,
+            onDrag: elementProps.onDrag,
+            onDragStart: elementProps.onDragStart,
+          });
+        }
+      }
+
       // Setup the element, which will handle data-source discovery if needed
       try {
-        const currentBinding = getElementBinding(element);
+        const currentBinding = getElementBinding(element, bindingTags);
         const registeredBinding = registeredBindingRef.current;
         if (
           registeredBinding &&
-          currentBinding &&
-          registeredBinding.effectiveId !== currentBinding.effectiveId
+          (!currentBinding ||
+            !isSameElementBinding(registeredBinding, currentBinding))
         ) {
           withElementBinding(element, registeredBinding, () => {
             playhtml.removePlayElement(element);
           });
+          registeredBindingRef.current = undefined;
         }
 
         playhtml.setupPlayElement(element, {
           ignoreIfAlreadySetup: true,
         });
-        registeredBindingRef.current = currentBinding;
+        const bindingAfterSetup = getElementBinding(element, bindingTags);
+        registeredBindingRef.current = bindingAfterSetup;
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
-
-        // If playhtml isn't initialized yet, log a helpful message
-        if (!playhtml.elementHandlers) {
-          console.warn(
-            "[@playhtml/react] PlayHTML not initialized yet. Element will be set up when PlayHTML initializes.",
-          );
-        }
       }
     }
   });
@@ -378,8 +451,9 @@ export function CanPlayElement<T extends object, V = any>({
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
-      if (!mountedElement || !playhtml.elementHandlers) return;
+      if (!mountedElement) return;
       playhtml.removePlayElement(mountedElement);
+      registeredBindingRef.current = undefined;
     };
   }, []);
   const renderedChildren = children({
@@ -403,23 +477,17 @@ export function CanPlayElement<T extends object, V = any>({
         );
         return;
       }
-      const handler = getCurrentElementHandler(primaryTag, effectiveId);
+      const handler = getRegisteredHandler();
       if (!handler) {
         console.warn(
-          `[@playhtml/react] No handler found for element ${effectiveId}`,
+          `[@playhtml/react] No handler registered for this element ${effectiveId}`,
         );
         return;
       }
       handler.setData(newData);
     },
     setMyAwareness: (newLocalAwareness) => {
-      const effectiveId = ref.current
-        ? getIdForElement(ref.current as unknown as HTMLElement)
-        : undefined;
-      if (!effectiveId) return;
-      getCurrentElementHandler(primaryTag, effectiveId)?.setMyAwareness(
-        newLocalAwareness,
-      );
+      getRegisteredHandler()?.setMyAwareness(newLocalAwareness);
     },
     myAwareness,
     ref,
@@ -584,113 +652,6 @@ export function withSharedState<T extends object, V = any, P = any>(
   return renderChildren;
 }
 
-// export function useSharedState<T extends object, V = any>({
-//   id,
-//   ...restProps
-// }: WithPlayProps<T, V> & { id: string }): ReactElementEventHandlerData<T, V> {
-//   const { tagInfo = { "can-play": "" }, ...elementProps } = {
-//     defaultData: undefined,
-//     ...restProps,
-//   };
-//   const computedTagInfo = tagInfo
-//     ? Array.isArray(tagInfo)
-//       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
-//       : tagInfo
-//     : { "can-play": "" };
-//   const ref = useRef<HTMLElement>(null);
-//   const { defaultData, myDefaultAwareness } = elementProps;
-//   const [data, setData] = useState<T | undefined>(defaultData);
-//   const [awareness, setAwareness] = useState<V[]>(
-//     myDefaultAwareness ? [myDefaultAwareness] : []
-//   );
-//   const [myAwareness, setMyAwareness] = useState<V | undefined>(
-//     myDefaultAwareness
-//   );
-//   // TODO: maybe have a separate one for free-form variables?
-//   playhtml.globalData?.get("can-play")?.set(id, data);
-
-//   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
-//   const updateElement: ElementInitializer["updateElementAwareness"] = ({
-//     data: newData,
-//     awareness: newAwareness,
-//     myAwareness,
-//   }) => {
-//     setData(newData);
-//     setAwareness(newAwareness);
-//     setMyAwareness(myAwareness);
-//   };
-
-//   useEffect(() => {
-//     if (!ref.current) {
-//       let ele = document.getElementById(id);
-//       if (!ele) {
-//         ele = document.createElement("div");
-//         for (const [tag, value] of Object.entries(computedTagInfo)) {
-//           ele.setAttribute(tag, value);
-//         }
-//         document.body.appendChild(ele).id = id;
-//       }
-//       ref.current = ele;
-//     }
-
-//     for (const [key, value] of Object.entries(elementProps)) {
-//       // @ts-ignore
-//       ref.current[key] = value;
-//     }
-//     // @ts-ignore
-//     ref.current.updateElement = updateElement;
-//     // @ts-ignore
-//     ref.current.updateElementAwareness = updateElement;
-//     playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
-//     console.log("setting up", ref.current.id);
-//     const existingData = playhtml.globalData
-//       ?.get("can-play")
-//       ?.get(ref.current.id);
-//     if (existingData) {
-//       setData(existingData);
-//     }
-//     // console.log("setting up", elementProps.defaultData, ref.current);
-
-//     return () => {
-//       if (!ref.current || !playhtml.elementHandlers) return;
-//       playhtml.removePlayElement(ref.current);
-//     };
-//   }, [playConfig, ref.current]);
-
-//   return {
-//     // @ts-ignore
-//     data,
-//     awareness,
-//     setData: (newData) => {
-//       // console.log("settingdata", newData);
-//       // console.log(ref.current?.id);
-//       // console.log(
-//       //   getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
-//       // );
-//       if (!ref.current?.id) {
-//         console.warn(`[@playhtml/react] No id set for element ${ref.current}`);
-//         return;
-//       }
-//       const handler = getCurrentElementHandler(TagType.CanPlay, ref.current.id);
-//       if (!handler) {
-//         console.warn(
-//           `[@playhtml/react] No handler found for element ${ref.current?.id}`
-//         );
-//         return;
-//       }
-//       handler.setData(newData);
-//     },
-//     setMyAwareness: (newLocalAwareness) => {
-//       getCurrentElementHandler(
-//         TagType.CanPlay,
-//         ref.current?.id || ""
-//       )?.setMyAwareness(newLocalAwareness);
-//     },
-//     myAwareness,
-//     ref,
-//   };
-// }
-
 export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";
 export { usePlayContext } from "./usePlayContext";
@@ -702,6 +663,7 @@ export {
   usePresenceRoom,
   usePlayerIdentity,
   useCan,
+  useUsers,
 } from "./hooks";
 export {
   CanMoveElement,

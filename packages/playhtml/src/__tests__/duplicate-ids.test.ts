@@ -1,9 +1,24 @@
 // ABOUTME: Verifies playhtml reports duplicate element IDs during setup.
 // ABOUTME: Covers live registration diagnostics and dev UI conflict grouping.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listDuplicatePlayElements, setupDevUI } from "../development";
+import {
+  listDuplicatePlayElements,
+  listSharedElements,
+  setupDevUI,
+  teardownDevUI,
+} from "../development";
 import { ElementHandler } from "../elements";
-import { playhtml, resetPlayHTML } from "../index";
+import { elementHandlers, playhtml, resetPlayHTML } from "../index";
+
+// setupDevUI takes the handler registry as its own argument; these tests
+// build a stub playhtml object with the registry inline, so split it out.
+function setupDevUIWithHandlers(stub: Record<string, unknown>) {
+  const { elementHandlers: handlers, ...playhtmlStub } = stub;
+  setupDevUI(
+    playhtmlStub as any,
+    handlers as Map<string, Map<string, ElementHandler>>,
+  );
+}
 
 describe("duplicate playhtml element IDs", () => {
   beforeEach(async () => {
@@ -23,6 +38,35 @@ describe("duplicate playhtml element IDs", () => {
     document.body.innerHTML = "";
   });
 
+  function setupDevUIForElement(
+    tagType: string,
+    elementId: string,
+    element: HTMLElement,
+    data: unknown = {},
+  ) {
+    setupDevUIWithHandlers({
+      elementHandlers: new Map([
+        [
+          tagType,
+          new Map([
+            [
+              elementId,
+              {
+                element,
+                data,
+                defaultData: {},
+                setData: vi.fn(),
+              },
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+  }
+
   it("reports and skips a duplicate ID for the same capability tag", async () => {
     await playhtml.init({});
 
@@ -41,7 +85,7 @@ describe("duplicate playhtml element IDs", () => {
 
     await playhtml.setupPlayElementForTag(second, "can-toggle");
 
-    const handler = playhtml.elementHandlers
+    const handler = elementHandlers
       .get("can-toggle")!
       .get("duplicate-card")!;
     expect(handler.element).toBe(first);
@@ -71,7 +115,7 @@ describe("duplicate playhtml element IDs", () => {
 
     playhtml.removePlayElement(second);
 
-    const handler = playhtml.elementHandlers
+    const handler = elementHandlers
       .get("can-move")!
       .get("duplicate-removal")!;
     expect(handler.element).toBe(first);
@@ -81,6 +125,7 @@ describe("duplicate playhtml element IDs", () => {
     await playhtml.init({ developmentMode: true });
     vi.useFakeTimers();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "table").mockImplementation(() => {});
 
     const element = document.createElement("div");
     element.id = "shared-consumer";
@@ -125,6 +170,13 @@ describe("duplicate playhtml element IDs", () => {
     ]);
   });
 
+  it("does not log an empty shared-elements table", () => {
+    const tableSpy = vi.spyOn(console, "table").mockImplementation(() => {});
+
+    expect(listSharedElements()).toEqual([]);
+    expect(tableSpy).not.toHaveBeenCalled();
+  });
+
   it("renders duplicate IDs as an error callout in dev tools", () => {
     vi.spyOn(console, "table").mockImplementation(() => {});
 
@@ -138,7 +190,7 @@ describe("duplicate playhtml element IDs", () => {
 
     document.body.append(firstToggle, secondToggle);
 
-    setupDevUI({
+    setupDevUIWithHandlers({
       elementHandlers: new Map([
         [
           "can-toggle",
@@ -169,6 +221,63 @@ describe("duplicate playhtml element IDs", () => {
     expect(warning!.textContent).toContain("can-toggle");
   });
 
+  it("edits primitive leaf values through the handler setData path", async () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+    const setData = vi.fn();
+    const element = document.createElement("div");
+    element.id = "editable-card";
+    element.setAttribute("can-play", "");
+    document.body.append(element);
+
+    setupDevUIWithHandlers({
+      elementHandlers: new Map([
+        [
+          "can-play",
+          new Map([
+            [
+              "editable-card",
+              {
+                element,
+                data: {
+                  title: "hello",
+                  stats: { count: 1, active: false },
+                },
+                defaultData: {
+                  title: "hello",
+                  stats: { count: 0, active: false },
+                },
+                setData,
+              },
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    const countValue = Array.from(
+      document.querySelectorAll<HTMLElement>(".ph-json-leaf-value"),
+    ).find((node) => node.textContent === "1");
+
+    countValue!.click();
+    const input = document.querySelector<HTMLInputElement>(
+      ".ph-json-edit-input",
+    )!;
+    input.value = "7";
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+
+    expect(setData).toHaveBeenCalledWith({
+      title: "hello",
+      stats: { count: 7, active: false },
+    });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+
   it("updates the dev tools data tree when handler data changes", async () => {
     vi.spyOn(console, "table").mockImplementation(() => {});
 
@@ -188,7 +297,7 @@ describe("duplicate playhtml element IDs", () => {
       triggerAwarenessUpdate: () => {},
     } as any);
 
-    setupDevUI({
+    setupDevUIWithHandlers({
       elementHandlers: new Map([
         [
           "can-play",
@@ -215,5 +324,112 @@ describe("duplicate playhtml element IDs", () => {
 
     expect(dataArea.textContent).toContain("count: 1");
     expect(dataArea.textContent).not.toContain("count: 0");
+  });
+
+  it("clears row hover highlights when the data tree rerenders", async () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "hovered-card";
+    element.setAttribute("can-play", "");
+    element.className = "__playhtml-element";
+    document.body.append(element);
+
+    const handler = new ElementHandler({
+      element,
+      defaultData: { count: 0 },
+      data: { count: 0 },
+      defaultLocalData: {},
+      updateElement: () => {},
+      onChange: () => {},
+      onAwarenessChange: () => {},
+      triggerAwarenessUpdate: () => {},
+    } as any);
+
+    setupDevUIWithHandlers({
+      elementHandlers: new Map([
+        [
+          "can-play",
+          new Map([
+            [
+              "hovered-card",
+              handler,
+            ],
+          ]),
+        ],
+      ]),
+      cursorClient: null,
+      roomId: "test-room",
+      host: "localhost:1999",
+    } as any);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    const row = document.querySelector<HTMLElement>(
+      '.ph-tree-item[data-element-id="hovered-card"]',
+    )!;
+
+    row.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    expect(element.classList.contains("ph-inspect-highlight")).toBe(true);
+    expect(element.classList.contains("ph-inspect-highlight-hover")).toBe(true);
+
+    (handler as any).__data = { count: 1 };
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(element.classList.contains("ph-inspect-highlight")).toBe(false);
+    expect(element.classList.contains("ph-inspect-highlight-hover")).toBe(false);
+  });
+
+  it("removes inspect highlight classes when dev tools tear down", () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "mirrored-card";
+    element.setAttribute("can-mirror", "");
+    element.className = "__playhtml-element";
+    document.body.append(element);
+
+    setupDevUIForElement("can-mirror", "mirrored-card", element, {
+      attributes: {
+        class: "__playhtml-element",
+      },
+    });
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    const row = document.querySelector<HTMLElement>(
+      '.ph-tree-item[data-element-id="mirrored-card"]',
+    )!;
+
+    row.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+    expect(element.classList.contains("ph-inspect-highlight")).toBe(true);
+    expect(element.classList.contains("ph-inspect-highlight-hover")).toBe(true);
+
+    teardownDevUI();
+
+    expect(element.classList.contains("ph-inspect-highlight")).toBe(false);
+    expect(element.classList.contains("ph-inspect-highlight-hover")).toBe(false);
+  });
+
+  it("stops inspect mode listeners when dev tools tear down", () => {
+    vi.spyOn(console, "table").mockImplementation(() => {});
+
+    const element = document.createElement("div");
+    element.id = "inspected-card";
+    element.className = "__playhtml-element";
+    document.body.append(element);
+
+    setupDevUIForElement("can-play", "inspected-card", element);
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    document.querySelector<HTMLButtonElement>('button[title="Inspect"]')!.click();
+
+    expect(element.classList.contains("ph-inspect-highlight")).toBe(true);
+
+    teardownDevUI();
+    element.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(element.classList.contains("ph-inspect-highlight")).toBe(false);
+    expect(element.classList.contains("ph-inspect-highlight-hover")).toBe(false);
+    expect(element.classList.contains("ph-inspect-selected")).toBe(false);
   });
 });

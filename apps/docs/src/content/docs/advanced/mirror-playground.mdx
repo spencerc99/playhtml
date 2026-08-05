@@ -5,11 +5,27 @@ sidebar:
   order: 5
 ---
 
-`can-mirror` is the "everything syncs" capability. Put it on any element and playhtml observes the DOM (input values, checked state, pseudo-class data attributes, attribute changes, child adds/removes), then replays those mutations on every other reader.
+`can-mirror` syncs the element you put it on. That includes attributes on that element, its direct child list, and form or contenteditable state that surfaces through input/change events.
 
-This page hosts **every edge case we've found useful**, one section each. Open it in two browser windows side by side and poke at each demo. Everything should mirror.
+It does not recursively watch arbitrary descendant DOM mutations. If a nested list, card, or editor should own its own changes, put `can-mirror` on that nested element too and give it a stable `id`.
 
-Nothing on this page requires custom JavaScript. It's all plain HTML with `can-mirror` on a root element. The docs site's shared `playhtml.init()` picks each one up automatically.
+This page hosts the common edge cases, one section each. Open it in two browser windows side by side and poke at each demo.
+
+## Mirror boundary
+
+`can-mirror` updates:
+
+- attributes on the mirrored element itself, including class and style changes;
+- direct child additions, removals, and reorders on the mirrored element itself;
+- form state inside the mirrored element when inputs fire input/change events;
+- contenteditable changes when the browser reports them through input events;
+- hover and focus awareness through `data-playhtml-hover` and `data-playhtml-focus`.
+
+`can-mirror` does not update:
+
+- class, attribute, or text changes on arbitrary descendants inside the mirrored element;
+- additions or removals inside a nested list unless that nested list has its own `can-mirror`;
+- bare text-node edits like `el.firstChild.textContent = "..."` unless they happen through an input/contenteditable event.
 
 ## :hover
 
@@ -139,15 +155,14 @@ Expand and collapse, and the native `open` attribute mirrors automatically.
     <summary>Click to expand</summary>
     <p>
       Hidden until the details element is opened. The <code>open</code>{" "}
-      attribute is a regular DOM attribute, so the MutationObserver catches it
-      automatically.
+      attribute lives on the mirrored element, so it syncs automatically.
     </p>
   </details>
 </div>
 
 ## contenteditable
 
-Type, paste, and delete: every mutation lands on every client. Try pressing `Enter` inside the list to add items; delete them by selecting and pressing `Backspace`.
+Type, paste, and delete inside the contenteditable element. Browser input events sync the editable contents to every client. Try pressing `Enter` inside the list to add items; delete them by selecting and pressing `Backspace`.
 
 <div className="ph-mirror-sample">
   <div
@@ -202,7 +217,7 @@ A single `can-mirror` wrapping a form with heterogeneous inputs, all of them syn
 
 ## Play from devtools
 
-`can-mirror` listens to a `MutationObserver` on the element. It doesn't care whether a mutation comes from a click, a React re-render, or your browser devtools. You can verify that last one right now.
+`can-mirror` listens for attributes and direct child-list changes on the mirrored element. It doesn't care whether those changes come from a click, a React re-render, or your browser devtools. You can verify that last one right now.
 
 Open your browser devtools (F12) and paste this into the console:
 
@@ -214,7 +229,7 @@ el.setAttribute("data-you-changed-this", "yes");
 
 Then open this page in another tab and inspect the element. The class and the custom attribute will be there too.
 
-Same trick for programmatic child changes:
+Same trick for programmatic direct child changes:
 
 ```js
 const el = document.querySelector("#pg-mirror-editable-list");
@@ -223,10 +238,21 @@ li.textContent = "added via console";
 el.appendChild(li);
 ```
 
-Anything a MutationObserver would fire for (attribute additions and removals, childList inserts, characterData changes) can-mirror sends across.
+Attribute additions/removals on the mirrored element and direct child additions/removals on the mirrored element send across.
 
-## What doesn't mirror (yet)
+If you mutate a descendant inside a mirrored parent, that nested mutation does not sync by itself. Put `can-mirror` on the nested element that owns the changing child list.
 
+```html
+<div id="panel">
+  <ul can-mirror id="panel-items">
+    <li>First item</li>
+  </ul>
+</div>
+```
+
+## What doesn't mirror
+
+- **Arbitrary nested DOM mutations**: a parent `can-mirror` does not recursively own changes inside descendant elements. Put `can-mirror` on the nested element that should sync.
 - **Scroll position** on nested containers: `scrollTop`/`scrollLeft` aren't DOM mutations, so the observer doesn't catch them.
 - **Media playback**: `<video>`/`<audio>` `currentTime` isn't attribute-driven.
 - **Canvas / WebGL**: pixel changes don't emit mutations.

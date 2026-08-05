@@ -9,7 +9,7 @@ import {
   beforeAll,
   vi,
 } from "vitest";
-import { playhtml } from "../index";
+import { elementHandlers, playhtml } from "../index";
 import {
   setServerPermissionsPending,
   setServerPermissionsStatus,
@@ -43,6 +43,10 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.innerHTML = "";
   });
 
+  it("retains the handler registry on the public singleton", () => {
+    expect(playhtml.elementHandlers).toBe(elementHandlers);
+  });
+
   it("initializes and sets up elements by attribute", async () => {
     const el = document.createElement("div");
     el.id = "foo";
@@ -50,7 +54,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-toggle");
 
-    const handler = playhtml.elementHandlers!.get("can-toggle")!.get("foo");
+    const handler = elementHandlers!.get("can-toggle")!.get("foo");
     expect(handler).toBeTruthy();
     expect(handler!.data).toEqual({ on: false });
 
@@ -81,11 +85,9 @@ describe("playhtml basic setup with SyncedStore", () => {
     playhtml.setupPlayElement(el);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const playHandler = playhtml
-      .elementHandlers!.get("can-play")!
+    const playHandler = elementHandlers.get("can-play")!
       .get("composed-candle");
-    const moveHandler = playhtml
-      .elementHandlers!.get("can-move")!
+    const moveHandler = elementHandlers.get("can-move")!
       .get("composed-candle");
 
     expect(playHandler).toBeTruthy();
@@ -96,20 +98,136 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(el.style.transform).toBe("translate(0px, 0px)");
   });
 
-  it("reports missing can-play initializer properties", () => {
+  it("sets up can-play elements that only render awareness", async () => {
     const el = document.createElement("div");
-    el.id = "incomplete-widget";
+    el.id = "presence-only-widget";
     el.setAttribute("can-play", "");
+    (el as any).myDefaultAwareness = { seated: false };
+    (el as any).updateElementAwareness = vi.fn(({ element, myAwareness }) => {
+      element.setAttribute("data-seated", String(myAwareness?.seated));
+    });
     document.body.appendChild(el);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    playhtml.setupPlayElement(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Missing or invalid initializer properties: defaultData, updateElement or view.",
-      ),
+    expect(errorSpy).not.toHaveBeenCalled();
+    const handler = elementHandlers.get("can-play")!
+      .get("presence-only-widget");
+    expect(handler).toBeTruthy();
+
+    (el as any).updateElementAwareness.mockClear();
+    handler!.setMyAwareness({ seated: true });
+
+    expect((el as any).updateElementAwareness).toHaveBeenCalledWith(
+      expect.objectContaining({
+        myAwareness: { seated: true },
+      }),
     );
+  });
+
+  it("sets up can-play elements with awareness updates and no default awareness", async () => {
+    const el = document.createElement("div");
+    el.id = "external-presence-widget";
+    el.setAttribute("can-play", "");
+    (el as any).updateElementAwareness = vi.fn();
+    document.body.appendChild(el);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    const handler = elementHandlers.get("can-play")!
+      .get("external-presence-widget");
+    expect(handler).toBeTruthy();
+
+    handler!.setMyAwareness({ active: true });
+
+    expect((el as any).updateElementAwareness).toHaveBeenCalledWith(
+      expect.objectContaining({
+        myAwareness: { active: true },
+      }),
+    );
+  });
+
+  it("reports incomplete can-play initializer pairs", () => {
+    const cases: Array<{
+      id: string;
+      props: Record<string, unknown>;
+      message: string;
+    }> = [
+      {
+        id: "empty-widget",
+        props: {},
+        message: "updateElement, view, or updateElementAwareness",
+      },
+      {
+        id: "data-without-render",
+        props: { defaultData: {} },
+        message: "defaultData requires updateElement or view",
+      },
+      {
+        id: "data-with-awareness-render-only",
+        props: { defaultData: {}, updateElementAwareness: vi.fn() },
+        message: "defaultData requires updateElement or view",
+      },
+      {
+        id: "render-without-data",
+        props: { updateElement: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
+        id: "view-without-data",
+        props: { view: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
+        id: "render-with-awareness-render-without-data",
+        props: { updateElement: vi.fn(), updateElementAwareness: vi.fn() },
+        message: "updateElement or view requires defaultData",
+      },
+      {
+        id: "awareness-without-render",
+        props: { myDefaultAwareness: { seated: false } },
+        message: "myDefaultAwareness requires updateElementAwareness",
+      },
+      {
+        id: "awareness-with-data-render-only",
+        props: {
+          defaultData: {},
+          updateElement: vi.fn(),
+          myDefaultAwareness: { seated: false },
+        },
+        message: "myDefaultAwareness requires updateElementAwareness",
+      },
+      {
+        id: "primitive-default-data",
+        props: { defaultData: 0, updateElement: vi.fn() },
+        message: "defaultData must be an object or function",
+      },
+      {
+        id: "null-default-data",
+        props: { defaultData: null, updateElement: vi.fn() },
+        message: "defaultData must be an object or function",
+      },
+    ];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    for (const { id, props, message } of cases) {
+      const callCount = errorSpy.mock.calls.length;
+      const el = document.createElement("div");
+      el.id = id;
+      el.setAttribute("can-play", "");
+      Object.assign(el, props);
+      document.body.appendChild(el);
+
+      playhtml.setupPlayElement(el);
+
+      expect(errorSpy).toHaveBeenCalledTimes(callCount + 1);
+      expect(errorSpy).toHaveBeenLastCalledWith(
+        expect.stringContaining(message),
+      );
+    }
   });
 
   it("handles awareness changes per element (no updateElementAwareness)", async () => {
@@ -119,7 +237,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-toggle");
 
-    const handler = playhtml.elementHandlers!.get("can-toggle")!.get("bar")!;
+    const handler = elementHandlers!.get("can-toggle")!.get("bar")!;
     // Trigger local awareness update; for can-toggle, updateElementAwareness is undefined, but this should not throw
     expect(() => handler.setMyAwareness({ active: true } as any)).not.toThrow();
 
@@ -136,8 +254,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-toggle");
 
-    const handler = playhtml
-      .elementHandlers!.get("can-toggle")!
+    const handler = elementHandlers.get("can-toggle")!
       .get("toggle-test")!;
 
     // Test value form
@@ -200,6 +317,26 @@ describe("playhtml basic setup with SyncedStore", () => {
     });
   });
 
+  it("blocks writes from explicitly read-only data-source consumers", async () => {
+    const el = document.createElement("div");
+    el.id = "read-only-toggle";
+    el.setAttribute("can-toggle", "");
+    el.setAttribute("data-source", "/room#toggle");
+    el.setAttribute("data-source-read-only", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-toggle");
+
+    const handler = elementHandlers.get("can-toggle")!
+      .get("toggle")!;
+    handler.setData({ on: true });
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(handler.data).toEqual({ on: false });
+    expect(playhtml.syncedStore["can-toggle"]["toggle"]).toEqual({
+      on: false,
+    });
+  });
+
   it("removes handlers for unmounted elements so replacements can register", async () => {
     const first = document.createElement("div");
     first.id = "remount-test";
@@ -208,11 +345,11 @@ describe("playhtml basic setup with SyncedStore", () => {
     await playhtml.setupPlayElementForTag(first, "can-move");
 
     expect(
-      playhtml.elementHandlers!.get("can-move")!.get("remount-test")!.element,
+      elementHandlers!.get("can-move")!.get("remount-test")!.element,
     ).toBe(first);
 
     playhtml.removePlayElement(first);
-    expect(playhtml.elementHandlers!.get("can-move")!.has("remount-test")).toBe(
+    expect(elementHandlers!.get("can-move")!.has("remount-test")).toBe(
       false,
     );
 
@@ -223,7 +360,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     await playhtml.setupPlayElementForTag(replacement, "can-move");
 
     expect(
-      playhtml.elementHandlers!.get("can-move")!.get("remount-test")!.element,
+      elementHandlers!.get("can-move")!.get("remount-test")!.element,
     ).toBe(replacement);
   });
 
@@ -234,7 +371,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-move");
 
-    const handler = playhtml.elementHandlers!.get("can-move")!.get("skip-existing")!;
+    const handler = elementHandlers!.get("can-move")!.get("skip-existing")!;
     const reinitialize = vi.spyOn(handler, "reinitializeElementData");
 
     playhtml.setupPlayElement(el, { ignoreIfAlreadySetup: true });
@@ -251,7 +388,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     await playhtml.setupPlayElementForTag(el, "can-move");
 
     // Verify element is set up
-    const handler = playhtml.elementHandlers!.get("can-move")!.get("cleanup-test");
+    const handler = elementHandlers!.get("can-move")!.get("cleanup-test");
     expect(handler).toBeTruthy();
     expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toEqual({
       x: 0,
@@ -270,12 +407,29 @@ describe("playhtml basic setup with SyncedStore", () => {
     playhtml.deleteElementData("can-move", "cleanup-test");
 
     // Verify handler is removed
-    expect(playhtml.elementHandlers!.get("can-move")!.has("cleanup-test")).toBe(
+    expect(elementHandlers!.get("can-move")!.has("cleanup-test")).toBe(
       false
     );
 
     // Verify data is removed from SyncedStore
     expect(playhtml.syncedStore["can-move"]["cleanup-test"]).toBeUndefined();
+  });
+
+  it("does not add a mouseleave listener on every can-grow hover", async () => {
+    const el = document.createElement("div");
+    el.id = "grow-hover-listeners";
+    el.setAttribute("can-grow", "");
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-grow");
+
+    const addEventListener = vi.spyOn(el, "addEventListener");
+
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+    expect(
+      addEventListener.mock.calls.filter(([type]) => type === "mouseleave"),
+    ).toHaveLength(0);
   });
 
   it("sets up mirrored chair descendants with playhtml capabilities", async () => {
@@ -285,7 +439,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     document.body.appendChild(mirror);
     await playhtml.setupPlayElementForTag(mirror, "can-mirror");
 
-    const handler = playhtml.elementHandlers!
+    const handler = elementHandlers!
       .get("can-mirror")!
       .get("musicalChairs4")!;
 
@@ -324,8 +478,8 @@ describe("playhtml basic setup with SyncedStore", () => {
     await waitForCondition(
       () =>
         document.getElementById("chair-example") !== null &&
-        playhtml.elementHandlers!.get("can-toggle")!.has("chair-example") &&
-        playhtml.elementHandlers!.get("can-spin")!.has("chair-example"),
+        elementHandlers!.get("can-toggle")!.has("chair-example") &&
+        elementHandlers!.get("can-spin")!.has("chair-example"),
       "Expected can-mirror to register the mirrored chair",
     );
 
@@ -337,11 +491,11 @@ describe("playhtml basic setup with SyncedStore", () => {
     );
     expect(mirroredChair.querySelector("img")?.alt).toBe("chair");
     expect(
-      playhtml.elementHandlers!.get("can-toggle")!.get("chair-example")!
+      elementHandlers!.get("can-toggle")!.get("chair-example")!
         .element,
     ).toBe(mirroredChair);
     expect(
-      playhtml.elementHandlers!.get("can-spin")!.get("chair-example")!.element,
+      elementHandlers!.get("can-spin")!.get("chair-example")!.element,
     ).toBe(mirroredChair);
 
     handler.setData({
@@ -356,8 +510,8 @@ describe("playhtml basic setup with SyncedStore", () => {
     await waitForCondition(
       () =>
         document.getElementById("chair-example") === null &&
-        !playhtml.elementHandlers!.get("can-toggle")!.has("chair-example") &&
-        !playhtml.elementHandlers!.get("can-spin")!.has("chair-example"),
+        !elementHandlers!.get("can-toggle")!.has("chair-example") &&
+        !elementHandlers!.get("can-spin")!.has("chair-example"),
       "Expected can-mirror to unregister the removed chair",
     );
 
@@ -385,18 +539,64 @@ describe("playhtml basic setup with SyncedStore", () => {
     await waitForCondition(
       () =>
         document.getElementById("chair-example") !== null &&
-        playhtml.elementHandlers!.get("can-toggle")!.has("chair-example") &&
-        playhtml.elementHandlers!.get("can-spin")!.has("chair-example"),
+        elementHandlers!.get("can-toggle")!.has("chair-example") &&
+        elementHandlers!.get("can-spin")!.has("chair-example"),
       "Expected can-mirror to register the re-added chair",
     );
 
     const readdedChair = document.getElementById("chair-example")!;
     expect(
-      playhtml.elementHandlers!.get("can-toggle")!.get("chair-example")!
+      elementHandlers!.get("can-toggle")!.get("chair-example")!
         .element,
     ).toBe(readdedChair);
     expect(
-      playhtml.elementHandlers!.get("can-spin")!.get("chair-example")!.element,
+      elementHandlers!.get("can-spin")!.get("chair-example")!.element,
     ).toBe(readdedChair);
+  });
+
+  it("rebinds a locally re-added mirrored descendant with the same id", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const mirror = document.createElement("div");
+    mirror.id = "local-mirror-readd";
+    mirror.setAttribute("can-mirror", "");
+    mirror.innerHTML = `
+      <div id="local-mirror-slot">
+        <button id="local-mirror-toggle" can-toggle>Toggle</button>
+      </div>
+    `;
+    document.body.appendChild(mirror);
+    await playhtml.setupPlayElementForTag(mirror, "can-mirror");
+
+    await waitForCondition(
+      () =>
+        elementHandlers!.get("can-toggle")!.get("local-mirror-toggle")
+          ?.element === document.getElementById("local-mirror-toggle"),
+      "Expected can-mirror to register the initial toggle",
+    );
+
+    const firstToggle = document.getElementById("local-mirror-toggle")!;
+    document.getElementById("local-mirror-slot")!.replaceChildren();
+    expect(firstToggle.isConnected).toBe(false);
+
+    const secondToggle = document.createElement("button");
+    secondToggle.id = "local-mirror-toggle";
+    secondToggle.setAttribute("can-toggle", "");
+    secondToggle.textContent = "Toggle";
+    document.getElementById("local-mirror-slot")!.appendChild(secondToggle);
+    playhtml.setupPlayElement(secondToggle);
+
+    await waitForCondition(
+      () =>
+        elementHandlers!.get("can-toggle")!.get("local-mirror-toggle")
+          ?.element === secondToggle,
+      "Expected can-mirror to bind the re-added toggle",
+    );
+
+    secondToggle.click();
+    await waitForCondition(
+      () => secondToggle.classList.contains("toggled"),
+      "Expected the re-added toggle to respond to clicks",
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

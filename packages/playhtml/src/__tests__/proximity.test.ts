@@ -1,3 +1,6 @@
+// ABOUTME: Verifies cursor distance calculations and proximity transitions.
+// ABOUTME: Covers spatial-grid updates and enter/leave callbacks for nearby cursors.
+
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { PROXIMITY_THRESHOLD } from "@playhtml/common";
 import type { Cursor, CursorPresence, PlayerIdentity } from "@playhtml/common";
@@ -115,8 +118,6 @@ describe("Proximity Detection", () => {
   const createPlayerIdentity = (id: string): PlayerIdentity => ({
     publicKey: id,
     playerStyle: { colorPalette: ["#ff0000"] },
-    discoveredSites: [],
-    createdAt: Date.now(),
   });
 
   const createCursorPresence = (

@@ -82,10 +82,22 @@ async function createPartyServerHarness() {
       shared: { active: false },
     },
   });
+  const storageValues = new Map<string, unknown>();
   const server = Object.create(PartyServer.prototype) as any;
   Object.defineProperties(server, {
     name: { value: "source-room" },
     document: { value: document },
+    ctx: {
+      value: {
+        storage: {
+          get: async (key: string) => storageValues.get(key),
+          put: async (key: string, value: unknown) => {
+            storageValues.set(key, value);
+          },
+          delete: async (key: string) => storageValues.delete(key),
+        },
+      },
+    },
   });
   Object.assign(server, {
     persistenceMode: { kind: "available" },

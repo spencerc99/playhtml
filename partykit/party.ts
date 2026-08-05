@@ -33,6 +33,10 @@ import {
   DEFAULT_MESSAGE_RATE_LIMIT,
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
   DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES,
+  DEFAULT_QUARANTINE_DOCUMENT_BYTES,
+  DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
+  DEFAULT_FAILURE_BACKOFF_MS,
+  DEFAULT_FAILURE_BACKOFF_MAX_MS,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
@@ -69,7 +73,9 @@ import {
 import {
   getCompactionCommitDecision,
   getNextAlarmTime,
+  getPrunedBridgeLeases,
   isCompactionAutosave,
+  shouldSetAlarm,
   shouldCheckEmergencyCompaction,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
@@ -122,6 +128,9 @@ import type {
   WellKnownPermissionsConfig,
 } from "@playhtml/common";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
+import { isDocumentOversized } from "./quarantinePolicy";
+import { RoomCircuitBreaker } from "./roomCircuitBreaker";
+import { handleQuarantineControlRequest } from "./quarantineControl";
 export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
@@ -165,6 +174,12 @@ type UsefulCompactedDocumentOptions = {
   setRecheckAfter: (timestamp: number) => Promise<void>;
   onMissingPlayData?: () => void;
   onNotUseful: (compactedDocument: CompactedDocument) => void;
+};
+
+type AutomaticCompactionOptions<T> = {
+  run: () => Promise<T>;
+  onDeferred: (retryAt: number) => Promise<void>;
+  onDisabled: () => Promise<void>;
 };
 
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
@@ -212,6 +227,11 @@ export class PartyServer extends YServer {
   private cachedSharedPerms: Record<string, SharedElementPermissions> | null =
     null;
   private persistenceMode: PersistenceMode = { kind: "available" };
+  private roomCircuitBreakerInstance: RoomCircuitBreaker | null = null;
+  // Tracks the two startup phases separately because a deferred room hydrates
+  // after the platform's one-time onStart hook has already returned.
+  private realtimeSyncStarted = false;
+  private documentLoadCompleted = false;
 
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -240,9 +260,92 @@ export class PartyServer extends YServer {
   private gatedSnapshotsCache: GatedSnapshots | null = null;
   private gatedBackstopAttached = false;
 
+  get circuitBreaker(): RoomCircuitBreaker {
+    if (!this.roomCircuitBreakerInstance) {
+      this.roomCircuitBreakerInstance = new RoomCircuitBreaker({
+        roomName: this.name,
+        storage: this.ctx.storage,
+        getQuarantineControl: () => env.QUARANTINE_CONTROL ?? null,
+        readPositiveNumber: readPositiveNumberEnv,
+        defaults: {
+          documentWarningBytes: DEFAULT_QUARANTINE_DOCUMENT_BYTES,
+          failureThreshold: DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
+          failureBackoffMs: DEFAULT_FAILURE_BACKOFF_MS,
+          failureBackoffMaxMs: DEFAULT_FAILURE_BACKOFF_MAX_MS,
+        },
+        activateTransientPersistence: (quarantine) => {
+          this.persistenceMode = {
+            kind: "transient",
+            reason: `room quarantined (${quarantine.reason})`,
+            failedAt: quarantine.quarantinedAt,
+          };
+        },
+        startRealtimeSync: () => this.startRealtimeSync(),
+        reloadRoom: async () => {
+          this.documentLoadCompleted = false;
+          if (this.realtimeSyncStarted) {
+            await this.onLoad();
+          } else {
+            await this.startRealtimeSync();
+          }
+
+          const remainingFailures = await this.circuitBreaker.getFailureCount(
+            "load"
+          );
+          if (remainingFailures !== 0 || !this.documentLoadCompleted) {
+            return false;
+          }
+
+          await this.completeRoomStartup();
+          return true;
+        },
+        prepareGuardedReload: () => {
+          this.documentLoadCompleted = false;
+        },
+        clearCompactionSchedule: () => this.clearEmptyRoomCompactAfter(),
+      });
+    }
+    return this.roomCircuitBreakerInstance;
+  }
+
+  /**
+   * Every entry path (fetch, websocket, alarm) funnels through the platform's
+   * initialization, which calls onStart() -> onLoad() and hydrates. So this is
+   * the ONLY place a guard can sit and still run before hydration. Guards placed
+   * in onAlarm are downstream of the crash they are meant to prevent and never
+   * execute for a room that dies during hydration.
+   */
   override async onStart(): Promise<void> {
+    // Operator control plane first: a room that crashes during hydration can
+    // never be reached by an admin route, so an external flag is the only way to
+    // take it out of service.
+    await this.circuitBreaker.applyExternalQuarantineFlag();
+
+    if (this.circuitBreaker.isQuarantined()) {
+      await this.circuitBreaker.enterQuarantineRuntimeState();
+      await this.startRealtimeSync();
+      return;
+    }
+
+    // Load backoff, evaluated before hydration for the same reason.
+    if (await this.circuitBreaker.shouldDeferLoad()) {
+      return;
+    }
+
+    await this.startRealtimeSync();
+    await this.completeRoomStartup();
+  }
+
+  private async startRealtimeSync(): Promise<void> {
+    if (this.realtimeSyncStarted) return;
     await super.onStart();
+    this.realtimeSyncStarted = true;
+  }
+
+  private async completeRoomStartup(): Promise<void> {
     await this.attachImmediateBridgeObservers();
+    await this.pruneBridgeLeases();
+    await this.ensureAlarmScheduled();
   }
 
   async getSubscribers(): Promise<Subscriber[]> {
@@ -424,6 +527,10 @@ export class PartyServer extends YServer {
   }
 
   markPersistenceAvailable(): void {
+    // A quarantined room's transient mode IS the write park. Lifting it here
+    // would re-enable autosave against a document that was never hydrated.
+    if (this.circuitBreaker.isQuarantined()) return;
+
     if (this.persistenceMode.kind === "transient") {
       console.log(
         `[PartyServer] Supabase persistence restored for room=${this.name}; leaving transient mode.`
@@ -535,25 +642,59 @@ export class PartyServer extends YServer {
     doc: Y.Doc,
     sourceDocumentBase64?: string
   ): CompactedDocument | null {
+    const sourceBase64 = sourceDocumentBase64 ?? encodeDocToBase64(doc);
+    const beforeSize = sourceBase64.length;
+
     const currentPlayData = docToJson(doc);
     if (!currentPlayData) {
       return null;
     }
 
-    const sourceBase64 = sourceDocumentBase64 ?? encodeDocToBase64(doc);
-    const beforeSize = sourceBase64.length;
     const resetEpoch = Date.now();
     const compactDoc = jsonToDoc(currentPlayData);
-    setDocResetEpoch(compactDoc, resetEpoch);
-    const base64 = encodeDocToBase64(compactDoc);
+    try {
+      setDocResetEpoch(compactDoc, resetEpoch);
+      const base64 = encodeDocToBase64(compactDoc);
 
-    return {
-      base64,
-      sourceBase64,
-      beforeSize,
-      afterSize: base64.length,
-      resetEpoch,
-    };
+      return {
+        base64,
+        sourceBase64,
+        beforeSize,
+        afterSize: base64.length,
+        resetEpoch,
+      };
+    } finally {
+      compactDoc.destroy();
+    }
+  }
+
+  private async runAutomaticCompaction<T>({
+    run,
+    onDeferred,
+    onDisabled,
+  }: AutomaticCompactionOptions<T>): Promise<T | null> {
+    const admission = await this.circuitBreaker.getCompactionAdmission();
+    if (admission.kind === "defer") {
+      await onDeferred(admission.retryAt);
+      return null;
+    }
+    if (admission.kind === "disabled") {
+      await onDisabled();
+      return null;
+    }
+
+    await this.circuitBreaker.beginCompactionAttempt();
+    try {
+      const result = await run();
+      await this.circuitBreaker.completeCompactionAttempt();
+      return result;
+    } catch (error) {
+      // A caught exception proves the isolate survived. Only work that vanishes
+      // mid-flight is evidence of an OOM, so observed failures do not advance
+      // the compaction failure counter.
+      await this.circuitBreaker.completeCompactionAttempt();
+      throw error;
+    }
   }
 
   private async restoreResetEpoch(resetEpoch: number | null): Promise<void> {
@@ -580,6 +721,8 @@ export class PartyServer extends YServer {
   }
 
   private async saveDocumentBase64(documentBase64: string): Promise<void> {
+    this.circuitBreaker.assertNotQuarantined("persist document");
+
     const { error } = await supabase.from("documents").upsert(
       {
         name: this.name,
@@ -822,12 +965,19 @@ export class PartyServer extends YServer {
    */
   async restoreFromSnapshot(
     snapshotBase64: string,
-    options?: { bumpEpoch?: boolean }
+    options?: { bumpEpoch?: boolean; allowQuarantined?: boolean }
   ): Promise<{
     documentSize: number;
     resetEpoch: number;
     closedConnections: number;
   }> {
+    // Restoring an operator-supplied snapshot is the one write a quarantined
+    // room legitimately accepts, because it is how an oversized document gets
+    // repaired. Callers opt in explicitly so no other path inherits it.
+    if (!options?.allowQuarantined) {
+      this.circuitBreaker.assertNotQuarantined("restore a snapshot");
+    }
+
     const roomId = this.name;
     console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
 
@@ -947,12 +1097,20 @@ export class PartyServer extends YServer {
   }
 
   private async scheduleNextAlarm(): Promise<void> {
+    // A quarantined room must not schedule work that wakes it up: every wake is
+    // another chance to retry the load that killed the isolate.
+    if (this.circuitBreaker.isQuarantined()) {
+      await this.circuitBreaker.cancelAlarm();
+      return;
+    }
+
+    const now = Date.now();
     const subs = await this.getSubscribers();
     const refs = await this.getSharedReferences();
     const nextAlarm = getNextAlarmTime({
       compactAfter: await this.getEmptyRoomCompactAfter(),
       hasBridgeLeases: Boolean(subs.length || refs.length),
-      now: Date.now(),
+      now,
       pruneIntervalMs: DEFAULT_PRUNE_INTERVAL_MS,
     });
 
@@ -962,11 +1120,7 @@ export class PartyServer extends YServer {
     }
 
     const previousAlarm = await this.ctx.storage.getAlarm?.();
-    if (
-      previousAlarm === null ||
-      previousAlarm === undefined ||
-      nextAlarm < previousAlarm
-    ) {
+    if (shouldSetAlarm({ previousAlarm, nextAlarm, now })) {
       await this.ctx.storage.setAlarm?.(nextAlarm);
     }
   }
@@ -975,6 +1129,7 @@ export class PartyServer extends YServer {
     if (this.isSkippingSave) return;
     if (!this.isPersistenceAvailable()) return;
     if (this.getOpenConnectionCount() !== 0) return;
+    if ((await this.circuitBreaker.getCompactionDisabledAt()) !== null) return;
 
     const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
     await this.setEmptyRoomCompactAfter(compactAfter);
@@ -983,6 +1138,24 @@ export class PartyServer extends YServer {
     console.log(
       `[PartyServer] Empty-room compaction scheduled: room=${this.name}, compactAfter=${compactAfter}`
     );
+  }
+
+  async retryAutomaticCompaction() {
+    if (!this.isPersistenceAvailable()) {
+      throw new Error(
+        "Cannot retry automatic compaction while persistence is unavailable"
+      );
+    }
+    if (this.getOpenConnectionCount() !== 0) {
+      throw new Error(
+        "Cannot retry automatic compaction while the room has active connections"
+      );
+    }
+
+    const reset = await this.circuitBreaker.clearCompactionFailure();
+    await this.clearEmptyRoomCompactAfter();
+    await this.compactEmptyRoomDocument();
+    return reset;
   }
 
   // --- Helper: group SharedReferences into storage entries
@@ -1033,6 +1206,7 @@ export class PartyServer extends YServer {
         }
       );
       await this.setSharedReferences(merged);
+      await this.ensureAlarmScheduled();
       return { entries: merged, changed: true };
     }
     return { entries: existing, changed: false };
@@ -1288,7 +1462,7 @@ export class PartyServer extends YServer {
       });
       if (subtreesForNew === null) return;
 
-      const subscribers = await this.getSubscribers();
+      const subscribers = await this.pruneBridgeLeases();
       if (!subscribers.length) return;
       await Promise.all(
         subscribers.map(
@@ -1315,6 +1489,18 @@ export class PartyServer extends YServer {
     ctx: Party.ConnectionContext
   ) {
     this.setConnectionOpenedAt(connection, Date.now());
+
+    const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+    if (loadDeferred) {
+      const retryAfterSeconds = loadDeferred.headers.get("retry-after") ?? "1";
+      console.warn(
+        `[PartyServer] Refusing connection to deferred room=${this.name}: ` +
+          `connectionId=${connection.id}, retryAfterSeconds=${retryAfterSeconds}`
+      );
+      connection.close(1013, "Room Load Deferred");
+      return;
+    }
+
     await this.waitForEmptyRoomCompaction();
 
     const url = new URL(ctx.request.url);
@@ -1500,7 +1686,28 @@ export class PartyServer extends YServer {
     );
   }
 
+  /**
+   * Hydration itself. The decision about WHETHER to hydrate lives in onStart(),
+   * which is the only hook that runs before the platform initializes the room on
+   * every entry path. Reaching this method means that decision said yes.
+   *
+   * onLoad is still reachable directly (y-partyserver calls it from onStart), so
+   * the quarantine check is repeated here as a cheap safety net.
+   */
   override async onLoad(): Promise<void> {
+    this.documentLoadCompleted = false;
+    await this.circuitBreaker.loadStoredQuarantine();
+    if (this.circuitBreaker.isQuarantined()) {
+      await this.circuitBreaker.enterQuarantineRuntimeState();
+      return;
+    }
+
+    if (this.circuitBreaker.isLoadDeferred()) return;
+
+    // Durable BEFORE the risky work: if hydration kills the isolate, this
+    // increment survives and the next start counts it.
+    const loadAttempts = await this.circuitBreaker.beginRiskyOperation("load");
+
     // Load the document from Supabase on first connection
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
     const query = supabase
@@ -1517,23 +1724,66 @@ export class PartyServer extends YServer {
     });
 
     if (result === null) {
+      // Supabase is unreachable, so hydration never ran. Roll the attempt back
+      // rather than zeroing it: a sub-threshold document that OOMs mid-hydration
+      // must still be able to accumulate evidence across an outage.
+      await this.releaseLoadAttempt(loadAttempts);
       return;
     }
 
     if (result.error) {
       this.enterTransientPersistenceMode(new Error(result.error.message));
+      await this.releaseLoadAttempt(loadAttempts);
       return;
     }
 
     this.markPersistenceAvailable();
 
     if (result.data) {
+      // Size is reported, never enforced. Hydration is one copy of the document
+      // and succeeds well past this threshold; it is compaction that multiplies
+      // memory, so that is where the hard ceiling lives.
+      const documentBytes = result.data.document.length;
+      const thresholdBytes = this.circuitBreaker.getDocumentWarningBytes();
+      if (isDocumentOversized({ documentBytes, thresholdBytes })) {
+        console.warn(
+          `[PartyServer] Large document load for room=${this.name}: ` +
+            `documentBytes=${documentBytes}, warningThresholdBytes=${thresholdBytes}. ` +
+            "Loading anyway. Consider compacting this document externally."
+        );
+      }
+
       this.markDocumentPersisted(result.data.document);
       Y.applyUpdate(
         this.document,
         new Uint8Array(Buffer.from(result.data.document, "base64"))
       );
+
+      const documentResetEpoch = getDocResetEpoch(this.document);
+      const storedResetEpoch = await this.getResetEpoch();
+      if (
+        documentResetEpoch !== null &&
+        (storedResetEpoch === null || documentResetEpoch > storedResetEpoch)
+      ) {
+        await this.setResetEpoch(documentResetEpoch);
+        console.warn(
+          `[PartyServer] Loaded document advanced the server reset epoch for room=${this.name}: ` +
+            `documentResetEpoch=${documentResetEpoch}, storedResetEpoch=${storedResetEpoch ?? "none"}`
+        );
+      }
     }
+
+    // Hydration completed without killing the isolate, so the failure history
+    // and any pending backoff are cleared.
+    await this.circuitBreaker.completeRiskyOperation("load");
+    this.documentLoadCompleted = true;
+  }
+
+  // Undoes this start's increment when the load ended before hydration could be
+  // attempted. Attempts that DID reach hydration stay counted, so the failure
+  // history keeps its evidence even if Supabase is flaky in between.
+  private async releaseLoadAttempt(loadAttempts: number): Promise<void> {
+    await this.circuitBreaker.releaseLoadAttempt(loadAttempts);
   }
 
   override async onSave(): Promise<void> {
@@ -1587,6 +1837,36 @@ export class PartyServer extends YServer {
     recheckAfter: number;
     thresholdBytes: number;
   }): Promise<boolean> {
+    const result = await this.runAutomaticCompaction({
+      onDeferred: (retryAt) =>
+        this.setPersistedDocumentCompactCheckAfter(retryAt),
+      onDisabled: () =>
+        this.setPersistedDocumentCompactCheckAfter(recheckAfter),
+      run: () =>
+        this.compactAutosaveCandidate({
+          activeConnectionCount,
+          documentBase64,
+          documentSize,
+          recheckAfter,
+          thresholdBytes,
+        }),
+    });
+    return result ?? false;
+  }
+
+  private async compactAutosaveCandidate({
+    activeConnectionCount,
+    documentBase64,
+    documentSize,
+    recheckAfter,
+    thresholdBytes,
+  }: {
+    activeConnectionCount: number;
+    documentBase64: string;
+    documentSize: number;
+    recheckAfter: number;
+    thresholdBytes: number;
+  }): Promise<boolean> {
     const compactedDocument = await this.getUsefulCompactedDocument({
       sourceBase64: documentBase64,
       documentSize,
@@ -1608,9 +1888,7 @@ export class PartyServer extends YServer {
         );
       },
     });
-    if (compactedDocument === null) {
-      return false;
-    }
+    if (compactedDocument === null) return false;
 
     await this.commitCompactedDocument({
       compactedDocument,
@@ -1816,6 +2094,28 @@ export class PartyServer extends YServer {
     // while clients are connected can merge stale client history back into the
     // room. If compaction is not useful, the cooldown prevents every later
     // autosave of a naturally large document from rebuilding the whole Y.Doc.
+    const result = await this.runAutomaticCompaction({
+      onDeferred: (retryAt) => this.setEmergencyCompactCheckAfter(retryAt),
+      onDisabled: () => this.setEmergencyCompactCheckAfter(recheckAfter),
+      run: () =>
+        this.compactLargeConnectedRoom({
+          documentSize,
+          thresholdBytes,
+          recheckAfter,
+        }),
+    });
+    return result ?? false;
+  }
+
+  private async compactLargeConnectedRoom({
+    documentSize,
+    thresholdBytes,
+    recheckAfter,
+  }: {
+    documentSize: number;
+    thresholdBytes: number;
+    recheckAfter: number;
+  }): Promise<boolean> {
     const compactedDocument = await this.getUsefulCompactedDocument({
       documentSize,
       thresholdBytes,
@@ -1828,9 +2128,7 @@ export class PartyServer extends YServer {
         );
       },
     });
-    if (compactedDocument === null) {
-      return false;
-    }
+    if (compactedDocument === null) return false;
 
     const committed = await this.commitCompactedDocument({
       compactedDocument,
@@ -1872,8 +2170,28 @@ export class PartyServer extends YServer {
       // Route admin requests to admin handler
       // PartyKit paths are like /parties/main/room-id/admin/inspect
       if (url.pathname.includes("/admin")) {
-        return this.adminHandler.handleRequest(request);
+        // The control-plane routes stay reachable during load backoff so an
+        // operator can inspect or quarantine the room. Every other admin route
+        // is blocked: the live document was never hydrated, so a write derived
+        // from it could overwrite the real snapshot with an empty document.
+        const isLoadControlRoute = [
+          "/admin/quarantine-status",
+          "/admin/quarantine-set",
+          "/admin/quarantine-clear",
+        ].some((path) => url.pathname.includes(path));
+        if (!isLoadControlRoute) {
+          const loadDeferred =
+            await this.circuitBreaker.getLoadDeferredResponse();
+          if (loadDeferred) return loadDeferred;
+        }
+        // Awaited so a rejection lands in this method's catch rather than
+        // escaping as a bare platform 500 with no CORS headers and no log.
+        return await this.adminHandler.handleRequest(request);
       }
+
+      // The document was never read, so there is nothing to serve.
+      const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+      if (loadDeferred) return loadDeferred;
 
       if (request.method !== "POST") {
         return new Response("Method Not Allowed", { status: 405 });
@@ -1933,6 +2251,7 @@ export class PartyServer extends YServer {
           found.lastSeen = nowIso;
         }
         await this.setSubscribers(existing);
+        await this.ensureAlarmScheduled();
         // A resubscribe means a fresh client load on the consumer side. Reopen
         // its circuit so a genuine new visitor always gets a clean bridge attempt
         // even if the pair had previously tripped from a stale-epoch storm.
@@ -2075,7 +2394,7 @@ export class PartyServer extends YServer {
 
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {
-          const subscribers = await this.getSubscribers();
+          const subscribers = await this.pruneBridgeLeases();
           await Promise.all(
             subscribers.map(
               async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
@@ -2152,6 +2471,11 @@ export class PartyServer extends YServer {
     resetEpoch: number;
     closedConnections: number;
   }> {
+    // A hard reset derives its new document from the live doc, which is empty
+    // for a quarantined room, and falls back to re-reading the persisted one.
+    // Both outcomes are exactly what quarantine exists to prevent.
+    this.circuitBreaker.assertNotQuarantined("hard reset");
+
     const roomId = this.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
@@ -2162,6 +2486,8 @@ export class PartyServer extends YServer {
       // Get current live doc state
       const liveYDoc = this.document;
       console.log(`[Hard Reset] Successfully retrieved live Y.Doc`);
+
+      let beforeSize = encodeDocToBase64(liveYDoc).length;
 
       // Extract current state as JSON
       let currentPlayData = docToJson(liveYDoc);
@@ -2190,12 +2516,17 @@ export class PartyServer extends YServer {
         }
 
         if (dbRow?.document) {
+          beforeSize = dbRow.document.length;
           const fallbackDoc = new Y.Doc();
-          Y.applyUpdate(
-            fallbackDoc,
-            new Uint8Array(Buffer.from(dbRow.document, "base64"))
-          );
-          currentPlayData = docToJson(fallbackDoc);
+          try {
+            Y.applyUpdate(
+              fallbackDoc,
+              new Uint8Array(Buffer.from(dbRow.document, "base64"))
+            );
+            currentPlayData = docToJson(fallbackDoc);
+          } finally {
+            fallbackDoc.destroy();
+          }
           console.log(
             `[Hard Reset] Loaded from database: ${
               currentPlayData ? "has data" : "still empty"
@@ -2204,8 +2535,6 @@ export class PartyServer extends YServer {
         }
       }
 
-      // Calculate before size
-      const beforeSize = encodeDocToBase64(liveYDoc).length;
       console.log(
         `[Hard Reset] Before size: ${beforeSize} bytes (${(
           beforeSize /
@@ -2224,19 +2553,27 @@ export class PartyServer extends YServer {
           `[Hard Reset] Room is empty in both live doc and database, creating empty fresh doc...`
         );
         const emptyDoc = new Y.Doc();
-        setDocResetEpoch(emptyDoc, resetEpoch);
-        freshBase64 = encodeDocToBase64(emptyDoc);
+        try {
+          setDocResetEpoch(emptyDoc, resetEpoch);
+          freshBase64 = encodeDocToBase64(emptyDoc);
+        } finally {
+          emptyDoc.destroy();
+        }
         afterSize = freshBase64.length;
         console.log(`[Hard Reset] Empty doc size: ${afterSize} bytes`);
       } else {
         // Create a fresh Y.Doc with the current state (no history/tombstones)
         console.log(`[Hard Reset] Creating fresh Y.Doc from play data...`);
         const freshDoc = jsonToDoc(currentPlayData);
-        setDocResetEpoch(freshDoc, resetEpoch);
-        console.log(`[Hard Reset] Successfully created fresh Y.Doc`);
+        try {
+          setDocResetEpoch(freshDoc, resetEpoch);
+          console.log(`[Hard Reset] Successfully created fresh Y.Doc`);
 
-        // Encode the fresh doc
-        freshBase64 = encodeDocToBase64(freshDoc);
+          // Encode the fresh doc
+          freshBase64 = encodeDocToBase64(freshDoc);
+        } finally {
+          freshDoc.destroy();
+        }
         afterSize = freshBase64.length;
         console.log(
           `[Hard Reset] After size: ${afterSize} bytes (${(
@@ -2246,6 +2583,10 @@ export class PartyServer extends YServer {
           ).toFixed(2)} MB)`
         );
       }
+
+      // The plain projection can be substantially larger than the encoded Y.Doc.
+      // Release it before the database write and live-document replacement.
+      currentPlayData = null;
 
       // Save to database
       console.log(`[Hard Reset] Saving fresh doc to database...`);
@@ -2327,6 +2668,49 @@ export class PartyServer extends YServer {
     }
   }
 
+  private async compactEmptyRoomDocumentOnce(): Promise<void> {
+    const compactedDocument = this.buildCompactedDocument(this.document);
+    if (compactedDocument === null) {
+      await this.clearEmptyRoomCompactAfter();
+      return;
+    }
+
+    if (
+      !shouldStoreCompactedDocument(
+        compactedDocument.beforeSize,
+        compactedDocument.afterSize
+      )
+    ) {
+      await this.clearEmptyRoomCompactAfter();
+      console.log(
+        `[PartyServer] Empty-room compaction skipped: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes`
+      );
+      return;
+    }
+
+    const committed = await this.commitCompactedDocument({
+      compactedDocument,
+      beforeCommit: async () => {
+        if (this.getOpenConnectionCount() === 0) {
+          return true;
+        }
+        await this.clearEmptyRoomCompactAfter();
+        return false;
+      },
+      afterReplace: async () => {
+        await this.clearEmptyRoomCompactAfter();
+      },
+    });
+    if (!committed) {
+      await this.clearEmptyRoomCompactAfter();
+    }
+    if (committed) {
+      console.log(
+        `[PartyServer] Empty-room compacted: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes (${((1 - compactedDocument.afterSize / compactedDocument.beforeSize) * 100).toFixed(1)}% reduction), resetEpoch=${compactedDocument.resetEpoch}`
+      );
+    }
+  }
+
   private async compactEmptyRoomDocument(): Promise<void> {
     if (this.emptyRoomCompactionPromise) {
       await this.emptyRoomCompactionPromise;
@@ -2338,46 +2722,11 @@ export class PartyServer extends YServer {
     if (this.getOpenConnectionCount() !== 0) return;
 
     const run = async () => {
-      const compactedDocument = this.buildCompactedDocument(this.document);
-      if (compactedDocument === null) {
-        await this.clearEmptyRoomCompactAfter();
-        return;
-      }
-
-      if (
-        !shouldStoreCompactedDocument(
-          compactedDocument.beforeSize,
-          compactedDocument.afterSize
-        )
-      ) {
-        await this.clearEmptyRoomCompactAfter();
-        console.log(
-          `[PartyServer] Empty-room compaction skipped: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes`
-        );
-        return;
-      }
-
-      const committed = await this.commitCompactedDocument({
-        compactedDocument,
-        beforeCommit: async () => {
-          if (this.getOpenConnectionCount() === 0) {
-            return true;
-          }
-          await this.clearEmptyRoomCompactAfter();
-          return false;
-        },
-        afterReplace: async () => {
-          await this.clearEmptyRoomCompactAfter();
-        },
+      await this.runAutomaticCompaction({
+        onDeferred: (retryAt) => this.setEmptyRoomCompactAfter(retryAt),
+        onDisabled: () => this.clearEmptyRoomCompactAfter(),
+        run: () => this.compactEmptyRoomDocumentOnce(),
       });
-      if (!committed) {
-        await this.clearEmptyRoomCompactAfter();
-      }
-      if (committed) {
-        console.log(
-          `[PartyServer] Empty-room compacted: room=${this.name}, ${compactedDocument.beforeSize} -> ${compactedDocument.afterSize} bytes (${((1 - compactedDocument.afterSize / compactedDocument.beforeSize) * 100).toFixed(1)}% reduction), resetEpoch=${compactedDocument.resetEpoch}`
-        );
-      }
     };
 
     this.emptyRoomCompactionPromise = run();
@@ -2388,52 +2737,69 @@ export class PartyServer extends YServer {
     }
   }
 
+  private async pruneBridgeLeases(): Promise<Subscriber[]> {
+    const subscribers = await this.getSubscribers();
+    const sharedReferences = await this.getSharedReferences();
+    const now = Date.now();
+    const prunedSubscribers = getPrunedBridgeLeases({
+      leases: subscribers,
+      now,
+      leaseMs: DEFAULT_SUBSCRIBER_LEASE_MS,
+    });
+    const prunedSharedReferences = getPrunedBridgeLeases({
+      leases: sharedReferences,
+      now,
+      leaseMs: DEFAULT_SUBSCRIBER_LEASE_MS,
+    });
+
+    if (prunedSubscribers.length !== subscribers.length) {
+      await this.setSubscribers(prunedSubscribers);
+    }
+
+    if (prunedSharedReferences.length !== sharedReferences.length) {
+      await this.setSharedReferences(prunedSharedReferences);
+    }
+
+    return prunedSubscribers;
+  }
+
   // PartyKit Alarm: invoked when storage alarm rings
   override async onAlarm(): Promise<void> {
+    if (!(await this.circuitBreaker.shouldRunAlarm())) return;
+
     try {
       const compactAfter = await this.getEmptyRoomCompactAfter();
       if (compactAfter !== null && compactAfter <= Date.now()) {
         if (this.getOpenConnectionCount() === 0) {
-          await this.compactEmptyRoomDocument();
+          try {
+            await this.compactEmptyRoomDocument();
+          } catch (error) {
+            console.error(
+              `[PartyServer] Automatic compaction failed for room=${this.name} (observed exception, not a vanish):`,
+              error
+            );
+          }
         } else {
           await this.clearEmptyRoomCompactAfter();
         }
       }
 
-      const subscribers = await this.getSubscribers();
-
-      if (subscribers.length) {
-        const now = Date.now();
-        const withinLease = (s: any) => {
-          const leaseMs = DEFAULT_SUBSCRIBER_LEASE_MS;
-          const last = s?.lastSeen || s?.createdAt;
-          const t = last ? Date.parse(last) : NaN;
-          if (!Number.isFinite(t)) return true; // if no timestamp, be permissive but keep once
-          return now - t <= leaseMs;
-        };
-
-        const prunedForLease = subscribers.filter(withinLease);
-        if (prunedForLease.length !== subscribers.length) {
-          await this.setSubscribers(prunedForLease);
-        }
-      }
-
-      // Prune shared references by TTL on consumer rooms
-      const refsRaw = await this.getSharedReferences();
-      const refs: Array<SharedRefEntry> = Array.isArray(refsRaw) ? refsRaw : [];
-      if (refs.length) {
-        const now = Date.now();
-        const leaseMs = DEFAULT_SUBSCRIBER_LEASE_MS; // unified lease
-        const kept = refs.filter((r) => {
-          const t = r?.lastSeen ? Date.parse(r.lastSeen) : NaN;
-          if (!Number.isFinite(t)) return true;
-          return now - t <= leaseMs;
-        });
-        if (kept.length !== refs.length) {
-          await this.setSharedReferences(kept);
-        }
+      // Generic alarm work keeps its own longer backoff. Starting this marker
+      // after compaction prevents a compaction OOM from advancing both ledgers.
+      await this.circuitBreaker.beginRiskyOperation("alarm");
+      try {
+        await this.pruneBridgeLeases();
+        await this.circuitBreaker.completeRiskyOperation("alarm");
+      } catch (error) {
+        await this.circuitBreaker.completeRiskyOperation("alarm");
+        console.error(
+          `[PartyServer] Alarm work failed for room=${this.name} (observed exception, not a vanish):`,
+          error
+        );
       }
     } finally {
+      // scheduleNextAlarm's quarantine guard is what stops a room quarantined
+      // moments ago inside this try block from having its alarm re-armed here.
       await this.scheduleNextAlarm();
     }
   }
@@ -2862,8 +3228,9 @@ export class PartyServer extends YServer {
       return;
     }
 
+    const subscribers = await this.pruneBridgeLeases();
+
     // Push to subscribers (source -> consumer direction)
-    const subscribers = await this.getSubscribers();
     if (subscribers.length) {
       const permissions = await this.getSharedPermissions();
       await Promise.all(
@@ -2951,7 +3318,7 @@ export class PartyServer extends YServer {
     }
     if (this.bridgeHealth.recordResult(peerRoomId, direction, applied)) {
       console.warn(
-        `[Bridge] Circuit opened for ${this.name} -> ${peerRoomId} (${direction}): peer keeps rejecting applies; pausing sends until it recovers or resubscribes`
+        `[Bridge] Circuit opened for ${this.name} -> ${peerRoomId} (${direction}): peer keeps rejecting applies; pausing sends until a cooldown probe recovers or it resubscribes`
       );
     }
   }
@@ -2998,10 +3365,16 @@ export class PartyServer extends YServer {
 
 export default {
   // Set up your fetch handler to use configured Servers
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, workerEnv: Env): Promise<Response> {
     try {
+      const quarantineResponse = await handleQuarantineControlRequest(request, {
+        adminToken: workerEnv.ADMIN_TOKEN,
+        quarantineControl: workerEnv.QUARANTINE_CONTROL,
+      });
+      if (quarantineResponse) return quarantineResponse;
+
       return (
-        (await routePartykitRequest(request, env)) ||
+        (await routePartykitRequest(request, workerEnv)) ||
         new Response("Not Found", { status: 404 })
       );
     } catch (error) {

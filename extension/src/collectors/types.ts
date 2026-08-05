@@ -107,6 +107,51 @@ export interface ViewportEventData {
   quantity?: number;      // number of events that occurred during debounce window
 }
 
+export interface ImageScrapData {
+  kind: "image";
+  src: string;
+  alt?: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  displayWidth: number;
+  displayHeight: number;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
+export interface ButtonScrapData {
+  kind: "button";
+  text: string;
+  styles: Record<string, string>;
+  innerSvg?: string;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
+export interface SvgIconScrapData {
+  kind: "svg-icon";
+  markup: string;
+  width: number;
+  height: number;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
+export interface CursorScrapData {
+  kind: "cursor";
+  url: string;
+  hotspotX?: number;
+  hotspotY?: number;
+  pageTitle: string;
+  faviconUrl?: string;
+}
+
+export type ScrapEventData =
+  | ImageScrapData
+  | ButtonScrapData
+  | SvgIconScrapData
+  | CursorScrapData;
+
 /**
  * Collector configuration
  */

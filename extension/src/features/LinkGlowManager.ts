@@ -20,6 +20,18 @@ const DECAY_AMOUNT = 5;
 
 let nextGlowId = 0;
 
+function getArticleLinkPath(link: HTMLAnchorElement): string | null {
+  try {
+    const url = new URL(link.href, location.href);
+    if (url.origin !== location.origin) return null;
+    if (!url.pathname.startsWith("/wiki/")) return null;
+    if (/\/wiki\/[A-Za-z_]+:/.test(url.pathname)) return null;
+    return url.pathname;
+  } catch {
+    return null;
+  }
+}
+
 export class LinkGlowManager {
   private data: PageLinkData = { links: {}, totalClicks: 0 };
   private observer: IntersectionObserver | null = null;
@@ -95,9 +107,7 @@ export class LinkGlowManager {
     const content = document.querySelector("#mw-content-text .mw-parser-output");
     if (!content) return;
 
-    const wikiLinks = content.querySelectorAll<HTMLAnchorElement>(
-      'a[href^="/wiki/"]:not([href*=":"])'
-    );
+    const wikiLinks = content.querySelectorAll<HTMLAnchorElement>("a[href]");
     this.observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -115,7 +125,9 @@ export class LinkGlowManager {
     );
 
     for (const link of wikiLinks) {
-      const destPath = new URL(link.href).pathname;
+      const destPath = getArticleLinkPath(link);
+      if (!destPath) continue;
+
       const onClick = () => this.recordClick(destPath);
       link.addEventListener("click", onClick);
       this.cleanups.push(() => link.removeEventListener("click", onClick));
@@ -179,7 +191,12 @@ export class LinkGlowManager {
     const cssRules: string[] = [];
 
     for (const link of this.visibleLinks) {
-      const destPath = new URL(link.href).pathname;
+      const destPath = getArticleLinkPath(link);
+      if (!destPath) {
+        this.removeGlow(link);
+        continue;
+      }
+
       const entry = this.data.links[destPath];
 
       if (!entry || entry.count === 0) {

@@ -1,5 +1,48 @@
 # Change Log
 
+## 2.13.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- 7c1bdda: Coalesce can-mirror DOM observer writes before syncing so many simultaneous element mutations send a single shared document update instead of one update per element.
+- 5a32af7: Clean up built-in element listeners when an element is removed so remounting and dragging do not leave stale handlers active, and install listeners when callbacks are added after setup.
+- b3f20bb: Update playhtml's default PartyKit hosts to the Cloudflare WAF-protected custom API domains so production pages connect through `api.playhtml.fun` and staging pages connect through `api-staging.playhtml.fun`.
+- 4a1711c: Defer loading the development toolbar until development mode is enabled so production runtime bundles do not include that code path.
+- dca1704: Restrict presence player identities to public fields, strip profile-only fields from generated identities, and allow custom presence values larger than 4 KiB.
+- 252acd0: Apply `can-move-bounds` only while dragging so setup preserves initial CSS layout and persisted positions instead of rewriting them from pre-insertion or client-specific geometry.
+- 1f8cf34: Add inline editing for existing primitive state leaves in the playhtml development toolbar, so developers can update string, number, boolean, and null values without replacing whole JSON blobs.
+- c5083b7: Clean up cursor chat keyboard, timer, and DOM resources when cursor presence is destroyed.
+- Updated dependencies [cd1ebf9]
+- Updated dependencies [dca1704]
+- Updated dependencies [252acd0]
+  - @playhtml/common@0.8.2
+
+## 2.13.1
+
+### Patch Changes
+
+- 77bb3cc: Fix element awareness (`updateElementAwareness` / `setMyAwareness`) not syncing updates to other clients. The awareness write mutated the current local state object in place, which defeated the y-protocols deep-equality check that decides whether to emit the `change` event — so after the initial value, subsequent updates were applied locally but never broadcast. Element awareness now writes a fresh state object on each update so peers receive every change.
+
+## 2.13.0
+
+### Minor Changes
+
+- ca1ebee: Add `playhtml.configure(options)` to declare init options separately from connecting, and make config first-declaration-wins uniformly across all options.
+
+  Previously `init(options)` both declared config and connected, first-call-wins — so on a page with no single top-level init (Astro islands, multi-page apps, multiple React roots), an option-less `init()` from one place could win the race and silently drop the config another place intended (e.g. cursors never turning on). Now you can call `configure({ cursors: { enabled: true }, ... })` once, up front, from wherever owns the config; later `init()` / component mounts just ensure playhtml is running and pick up the declared config regardless of order. `init(options)` still works exactly as before when you only have one call site. A later call that passes genuinely conflicting options warns and is ignored (config is locked to the first declaration); passing the same options again, or none, is quiet.
+
+### Patch Changes
+
+- f8bc35d: Keep can-grow hover handling from adding duplicate leave and keyboard listeners during repeated hover events.
+- e76abb7: Keep PlayHTML-managed local DOM state out of `can-mirror` persistence, including inspector highlights, devtools labels, loading markers, and hover/focus attributes, so mirrored elements can still be inspected and reset without saving tool UI state.
+- b3568ab: Keep element awareness scoped to the page room, preserve existing local awareness when handlers bind, and clear element awareness snapshots when peers leave so callbacks and views stop seeing stale ephemeral user state. Keep the React package test harness aligned with the configured initialization path.
+- 44e599d: Make `can-move-bounds` clamp the full element inside its bounds by default, account for the element's starting position within the bounds container, normalize persisted out-of-bounds positions on mount, and keep fast edge drags pinned while synced position updates catch up. Explicit `min-visible` settings can still allow partial overhang when that behavior is wanted.
+- Updated dependencies [f8bc35d]
+- Updated dependencies [e76abb7]
+- Updated dependencies [44e599d]
+  - @playhtml/common@0.8.1
+
 ## 2.12.0
 
 ### Minor Changes

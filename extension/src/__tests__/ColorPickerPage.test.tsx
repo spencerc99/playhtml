@@ -6,21 +6,17 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
-import type { PlayerIdentity } from "../types";
-import { syncParticipantColor } from "../storage/sync";
-
-vi.mock("../storage/sync", () => ({
-  syncParticipantColor: vi.fn().mockResolvedValue(undefined),
-}));
 
 vi.mock("../components/ColorPickerPage.scss", () => ({}));
 
-const storedIdentity: PlayerIdentity = {
-  publicKey: "pk_test",
-  playerStyle: {
-    colorPalette: ["#4a9a8a"],
+const storedIdentity = {
+  public: {
+    publicKey: "pk_test",
+    playerStyle: {
+      colorPalette: ["#4a9a8a"],
+    },
   },
-  discoveredSites: [],
+  privateKey: { kty: "EC", d: "private" },
 };
 
 async function renderColorPickerPage() {
@@ -52,10 +48,15 @@ describe("ColorPickerPage", () => {
       playerIdentity: structuredClone(storedIdentity),
     });
     vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true }),
+    );
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     document.body.innerHTML = "";
   });
@@ -89,12 +90,22 @@ describe("ColorPickerPage", () => {
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         playerIdentity: {
           ...storedIdentity,
-          playerStyle: {
-            colorPalette: ["#123456"],
+          public: {
+            ...storedIdentity.public,
+            playerStyle: {
+              colorPalette: ["#123456"],
+            },
           },
         },
       });
-      expect(syncParticipantColor).toHaveBeenCalledWith("pk_test", "#123456");
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:8787/participants/pk_test",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cursor_color: "#123456" }),
+        },
+      );
     } finally {
       cleanupRoot(root, container);
     }

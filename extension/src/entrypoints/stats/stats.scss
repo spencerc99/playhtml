@@ -1,6 +1,6 @@
 // ABOUTME: Styles for the domain time stats page
 
-@use '../../styles/variables' as *;
+@use "../../styles/variables" as *;
 
 .stats-page {
   min-height: 100vh;
@@ -17,32 +17,9 @@
     max-width: 680px;
     margin: 0 auto;
     padding: 0 32px;
-  }
 
-  &__wordmark {
-    font-family: $font-wordmark;
-    font-style: italic;
-    font-weight: 200;
-    font-size: 13px;
-    color: $text-muted;
-    margin-bottom: 8px;
-    letter-spacing: 0.02em;
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-  }
-
-  &__nav-link {
-    font-family: $font-mono;
-    font-size: 10px;
-    font-style: normal;
-    color: $text-muted;
-    text-decoration: none;
-    cursor: pointer;
-    transition: color 0.12s;
-
-    &:hover {
-      color: $accent-teal;
+    .extension-page-nav {
+      margin-bottom: 18px;
     }
   }
 
@@ -106,7 +83,10 @@
     font-size: 11px;
     color: $text-muted;
     cursor: pointer;
-    transition: color 0.12s, border-color 0.12s, background 0.12s;
+    transition:
+      color 0.12s,
+      border-color 0.12s,
+      background 0.12s;
 
     &:hover {
       color: $text;

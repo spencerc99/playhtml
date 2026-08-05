@@ -16,9 +16,36 @@ describe('isAllowedOrigin', () => {
     expect(isAllowedOrigin(req({ Origin: 'https://www.wewere.online' }))).toBe(true);
   });
 
+  it('allows website preview deployments', () => {
+    const allowedOrigins = [
+      'https://cx-fix-movement-audio-crackl.we-were-online-website.pages.dev',
+      'https://we-were-online-website.pages.dev',
+    ];
+
+    for (const origin of allowedOrigins) {
+      expect(isAllowedOrigin(req({ Origin: origin }))).toBe(true);
+    }
+  });
+
+  it('rejects lookalike and insecure website preview origins', () => {
+    const rejectedOrigins = [
+      'https://evilwe-were-online-website.pages.dev',
+      'http://cx-fix-movement-audio-crackl.we-were-online-website.pages.dev',
+    ];
+
+    for (const origin of rejectedOrigins) {
+      expect(isAllowedOrigin(req({ Origin: origin }))).toBe(false);
+    }
+  });
+
   it('allows localhost dev origins on any port', () => {
     expect(isAllowedOrigin(req({ Origin: 'http://localhost:5173' }))).toBe(true);
     expect(isAllowedOrigin(req({ Origin: 'http://127.0.0.1:3000' }))).toBe(true);
+  });
+
+  it('allows installed Chrome and Firefox extension origins', () => {
+    expect(isAllowedOrigin(req({ Origin: 'chrome-extension://abcdefghijklmnop' }))).toBe(true);
+    expect(isAllowedOrigin(req({ Origin: 'moz-extension://39a66f04-cdb8-4b00' }))).toBe(true);
   });
 
   it('falls back to Referer when Origin is absent', () => {

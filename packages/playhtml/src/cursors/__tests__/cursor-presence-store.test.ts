@@ -1,9 +1,28 @@
-// ABOUTME: Verifies cursor state derived from generic realtime presence channels.
-// ABOUTME: Keeps cursor transport state testable without DOM rendering or sockets.
+// ABOUTME: Verifies cursor presence derived from the shared PeerStore's folded
+// ABOUTME: channels — decode, per-player collapse, and stale-cursor expiry.
 
-import { describe, expect, it } from "vitest";
-import type { PlayerIdentity } from "@playhtml/common";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  PlayerIdentity,
+  PresenceServerMessage,
+  PresenceSnapshot,
+} from "@playhtml/common";
+import { PeerStore } from "../../peer-store";
 import { CursorPresenceStore } from "../cursor-presence-store";
+
+// Pin the clock near the small `at` values used below so PeerStore's staleness
+// sweep (which reads Date.now()) treats them as fresh; the expiry test advances
+// time explicitly.
+const CLOCK_START = 1_000;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(CLOCK_START);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const alice: PlayerIdentity = {
   publicKey: "pk_alice",
@@ -22,11 +41,44 @@ function makeIdentity(publicKey: string): PlayerIdentity {
   };
 }
 
+/** A message source (transport stand-in) driven directly in tests. */
+function makeSource() {
+  const listeners = new Set<(message: PresenceServerMessage) => void>();
+  return {
+    subscribe(listener: (message: PresenceServerMessage) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit(message: PresenceServerMessage) {
+      for (const listener of listeners) listener(message);
+    },
+  };
+}
+
+/** Build a cursor view over a PeerStore, plus helpers to feed sync/changes. */
+function makeStore() {
+  const source = makeSource();
+  const peerStore = new PeerStore(source);
+  const store = new CursorPresenceStore(peerStore);
+  return {
+    store,
+    applySync(peers: PresenceSnapshot) {
+      source.emit({ type: "presence-sync", peers });
+    },
+    applyChanges(
+      updates: PresenceSnapshot,
+      removes: Record<string, string[]> = {},
+    ) {
+      source.emit({ type: "presence-changes", updates, removes });
+    },
+  };
+}
+
 describe("CursorPresenceStore", () => {
   it("builds remote cursor presence from generic presence sync channels", () => {
-    const store = new CursorPresenceStore();
+    const { store, applySync } = makeStore();
 
-    store.applySync({
+    applySync({
       "conn-1": {
         identity: alice,
         cursor: {
@@ -54,9 +106,9 @@ describe("CursorPresenceStore", () => {
   });
 
   it("ignores presences for the local public key", () => {
-    const store = new CursorPresenceStore();
+    const { store, applySync } = makeStore();
 
-    store.applySync({
+    applySync({
       "conn-1": {
         identity: alice,
         cursor: {
@@ -69,9 +121,9 @@ describe("CursorPresenceStore", () => {
   });
 
   it("keeps identity-only peers visible before their first cursor frame", () => {
-    const store = new CursorPresenceStore();
+    const { store, applySync } = makeStore();
 
-    store.applySync({
+    applySync({
       "conn-1": {
         identity: alice,
         page: "/week/1",
@@ -94,9 +146,9 @@ describe("CursorPresenceStore", () => {
   });
 
   it("prefers an active cursor over identity-only tabs for the same public key", () => {
-    const store = new CursorPresenceStore();
+    const { store, applySync } = makeStore();
 
-    store.applySync({
+    applySync({
       "conn-1": {
         identity: alice,
         cursor: {
@@ -123,8 +175,8 @@ describe("CursorPresenceStore", () => {
   });
 
   it("coalesces cursor changes to the latest received value", () => {
-    const store = new CursorPresenceStore();
-    store.applySync({
+    const { store, applySync, applyChanges } = makeStore();
+    applySync({
       "conn-1": {
         identity: bob,
         cursor: {
@@ -134,17 +186,13 @@ describe("CursorPresenceStore", () => {
       },
     });
 
-    store.applyChanges({
-      type: "presence-changes",
-      updates: {
-        "conn-1": {
-          cursor: {
-            cursor: { x: 10, y: 20, pointer: "mouse" },
-            at: 116,
-          },
+    applyChanges({
+      "conn-1": {
+        cursor: {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          at: 116,
         },
       },
-      removes: {},
     });
 
     expect(store.getPresenceByStableId("pk_bob")?.cursor).toEqual({
@@ -156,8 +204,8 @@ describe("CursorPresenceStore", () => {
   });
 
   it("keeps the identity after the cursor channel is removed", () => {
-    const store = new CursorPresenceStore();
-    store.applySync({
+    const { store, applySync, applyChanges } = makeStore();
+    applySync({
       "conn-1": {
         identity: bob,
         cursor: {
@@ -166,13 +214,7 @@ describe("CursorPresenceStore", () => {
       },
     });
 
-    store.applyChanges({
-      type: "presence-changes",
-      updates: {},
-      removes: {
-        "conn-1": ["cursor"],
-      },
-    });
+    applyChanges({}, { "conn-1": ["cursor"] });
 
     expect(store.getPresenceByStableId("pk_bob")).toEqual({
       cursor: null,
@@ -184,23 +226,44 @@ describe("CursorPresenceStore", () => {
     });
   });
 
-  it("removes expired cursor channels while keeping identity presence", () => {
-    const store = new CursorPresenceStore();
-    store.applySync({
+  it("drops a stale cursor channel (PeerStore sweep) while keeping identity", () => {
+    // Expiry now lives in PeerStore's shared staleness sweep, not this view.
+    // A cursor frame older than the 30s window is swept; the identity-only
+    // peer remains (same behavior the old removeExpiredCursors had).
+    const now = Date.now();
+    const { store, applySync } = makeStore();
+    applySync({
       "conn-stale": {
         identity: makeIdentity("stale"),
+        // 31s old -> past the 30s staleness window.
         cursor: {
           cursor: { x: 30, y: 40, pointer: "mouse" },
           page: "/",
-          at: 1,
+          at: now - 31_000,
         },
       },
     });
 
-    expect(store.removeExpiredCursors(1000, 500)).toBe(true);
-
+    // PeerStore prunes the stale cursor channel on fold, so it's gone already.
     const presence = store.getRemotePresences("local").get("stale");
     expect(presence?.playerIdentity.publicKey).toBe("stale");
     expect(presence?.cursor).toBeNull();
+  });
+
+  it("keeps a fresh cursor until it ages out on the periodic sweep", () => {
+    const now = Date.now();
+    const { store, applySync } = makeStore();
+    applySync({
+      "conn-1": {
+        identity: makeIdentity("pk_x"),
+        cursor: { cursor: { x: 1, y: 2, pointer: "mouse" }, at: now },
+      },
+    });
+    // Still fresh right after arrival.
+    expect(store.getRemotePresences("local").get("pk_x")?.cursor).not.toBeNull();
+
+    // Advance past the staleness window; the periodic sweep drops the cursor.
+    vi.advanceTimersByTime(31_000);
+    expect(store.getRemotePresences("local").get("pk_x")?.cursor ?? null).toBeNull();
   });
 });

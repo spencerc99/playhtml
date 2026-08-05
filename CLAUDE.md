@@ -34,21 +34,52 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 
 ### Per-Package Commands
 
-- `bun run -C packages/playhtml build`: Build core library
-- `bun run -C packages/react build`: Build React bindings
-- `bun run -C packages/common build`: Build shared types
+- `bun run --cwd packages/playhtml build`: Build core library
+- `bun run --cwd packages/react build`: Build React bindings
+- `bun run --cwd packages/common build`: Build shared types
 
 ### Testing
 
-- `bun run -C packages/playhtml test`: Run core library tests (Vitest + jsdom)
-- `bun run -C packages/react test`: Run React component tests (Vitest + jsdom)
-- `bun run -C extension test`: Run extension collector/storage tests (Vitest + jsdom)
+- `bun run --cwd packages/playhtml test`: Run core library tests (Vitest + jsdom)
+- `bun run --cwd packages/react test`: Run React component tests (Vitest + jsdom)
+- `bun run --cwd extension test`: Run extension collector/storage tests (Vitest + jsdom)
 - `bun run lint`: Type-check all packages (`bunx tsc` across workspace)
+
+**Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. CI never hits this because `pr-validation.yml` runs `bun build-packages` before every test job (and does not run the extension suite at all).
+
+### Supabase
+
+- `bun run db:start`: Start the local Supabase stack
+- `bun run db:reset`: Recreate the local database from migrations and seed data
+- `bun run db:new -- extension_describe_change`: Create an extension-owned migration
+- `bun run db:new -- partykit_describe_change`: Create a PartyKit-owned migration
+- `bun run db:verify`: Reset and lint the local database
+- `bun run db:stop`: Stop the local Supabase stack
+- `bun run dev-server:local-db`: Run PartyKit against the local Supabase stack
+- `bun run dev-extension-worker:local-db`: Run the extension Worker against the local Supabase stack
+
+The extension and PartyKit use one Supabase project with different tables. All new migrations live
+in `supabase/migrations/`; the name prefix records which application owns the affected tables.
+
+### Extension Performance
+
+- `bun run perf:extension:trace -- --extension local:extension/dist/chrome-mv3`: Trace a built extension locally. Build packages and the extension first.
+- `bun run perf:extension:compare -- --summary <summary.json>`: Compare trace summaries and write Markdown/JSON reports.
+- `bun run perf:extension:test`: Run comparison logic tests.
+- For extension changes that touch collectors, storage, content-script observers, or page-wide work, check the `Extension Performance Report` workflow or run a local trace before merge. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate. The workflow is report-only unless `--fail-on-regression` is passed locally.
 
 ### Deployment
 
 - `bun deploy-server`: Deploy PartyKit to production
 - `bun deploy-server:staging`: Deploy PartyKit to staging
+
+## Papercuts
+
+When you hit a small friction while working — a tool call that missed and had to be retried, a confusing or undocumented setup step, a flaky command, a stale cache, a misleading error, a non-obvious gotcha — log it via `papercut -m <model> "message"` (a global CLI on the machine, not a repo script). One or two sentences: what you were doing → what got in the way (a guess at the cause/fix is a bonus). Do this proactively, in the moment, even though none of these are blocking — logged together they show where the repo needs sanding down. This is distinct from what you accomplished (that goes in your work summary / commit) and from real bugs or tracked work (those are issues).
+
+To mine a whole session for papercuts at once, `papercut review` feeds the current session transcript to a cheap model and appends what it finds; it auto-detects the latest transcript for this project. This is user-triggered — don't run the review yourself unprompted.
+
+Papercuts are stored centrally per repo on the machine (keyed by git remote), outside the repo, so nothing here is committed. If the `papercut` command isn't installed, skip logging rather than creating files in the repo.
 
 ## Architecture
 
@@ -68,7 +99,7 @@ The library revolves around "capabilities" -- interactive behaviors added to HTM
 
 2. **State Management**: Yjs for real-time collaborative state sync
 
-   - Global shared state: `globalData` (Y.Map)
+   - Shared element state: SyncedStore records keyed by capability and element id
    - Element handlers: `elementHandlers` (Map of ElementHandler instances)
    - Awareness (user presence): `yprovider.awareness`
 
@@ -149,6 +180,12 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 - **React tests:** PlayProvider integration
 - **Extension tests:** Collector unit tests, integration tests
 - Run relevant package tests locally before PRs
+- **Screenshots for user-facing changes:** Every user-facing change MUST be
+  verified on the real affected surface and accompanied by screenshots of the
+  finished result. For interactive changes, capture the key states of the flow
+  (for example, closed, open, and success states), not only the initial screen.
+  Include the screenshots in the handoff and PR. If the surface cannot be
+  captured, stop and tell Spencer what blocks it rather than omitting them.
 
 ## Commit & PR Guidelines
 
@@ -157,6 +194,7 @@ Bun handles workspace linking automatically. Changes across packages are immedia
 - **Package API boundaries:** `playhtml` is the public runtime/API boundary for app code. `@playhtml/react` peers on `playhtml` and imports PlayHTML domain symbols from `playhtml`, not from `@playhtml/common`. `@playhtml/common` is a shared monorepo package owned by `playhtml`; do not make React consumers install/import it unless we intentionally promote a symbol as public protocol SDK. If a React-facing symbol lives in `@playhtml/common`, add a curated re-export from `playhtml` rather than `export *`. Keep `playhtml` externalized in `packages/react/vite.config.ts`, keep it out of React `dependencies`, and verify packed declarations import package names instead of monorepo paths like `../../common/src`. For dependency-boundary changes, run a tarball install simulation before merge: version, build, rewrite workspace deps, `npm pack`, install into a blank consumer, check `npm ls`, inspect the React bundle import, and type-check a small consumer file.
 - **Docs audit for package changes:** Whenever you change code under `packages/`, check whether public documentation in `apps/docs/` needs to change. Update the relevant user-facing docs in the same PR when behavior, APIs, attributes, classes, examples, or gotchas change. Common places to check are `apps/docs/src/content/docs/capabilities.mdx`, `apps/docs/src/content/docs/getting-started.mdx`, `apps/docs/src/content/docs/reference/react-api.md`, and the `data/`, `advanced/`, and `integrations/` docs. If no docs change is needed, mention why in the PR summary.
 - **Starter templates for core API changes:** Whenever you change the public core API under `packages/` (capability attributes/classes, React component props like `<CanDuplicateElement>`/`<CanToggleElement>`, exported functions, the vanilla `can-play` element API `defaultData`/`onClick`/`updateElement`/`setupPlayElement`, `playhtml.init` options, or CSS hooks like `[data-playhtml-hover]`), update BOTH starter templates in the same PR so they stay copy-pasteable and verify them live in a browser: `templates/react-starter/` (React API — `src/App.tsx`, `src/index.css`) and `templates/html-starter/` (vanilla API — `index.html`, `style.css`, `script.js`). The starters depend on the published `@playhtml/react` / `playhtml` (`"latest"`), so they pick up code changes on release — but their own usage (imports, props, selectors, example markup/CSS) won't update itself. Only use real, existing API methods: there is no `playhtml.setupCustomElement`; vanilla custom elements set `defaultData`/`onClick`/`updateElement` directly on the DOM element, then call `playhtml.setupPlayElement(el)`. The starters are standalone projects: `react-starter` is Vite+TS with no `tsconfig.json` of its own (so `npm run build`'s `tsc` step picks up the monorepo root config and fails — verify with `npx vite build` plus a live browser test instead); `html-starter` is static files loading `playhtml@latest` from unpkg. If a change doesn't touch either starter, say why in the PR summary.
+- **Extension release notes:** When a PR changes what regular users see or get in the released extension, add final user-facing release-note copy to `extension/PENDING.md`. Each bullet must be one short, plain-language sentence about what someone can do, what works better, or what problem was fixed. Include only details that help someone understand or use the change. Do not mention implementation or maintainer details such as files, functions, storage engines, schemas, migrations, message passing, retries, builds, deployment, tests, or PRs. Changes behind a `FLAGS.*` feature flag or the `internalDevFeaturesEnabled` dev toggle do not get a bullet until the PR that enables them for everyone. Internal-only maintenance does not need a bullet. Follow the full release guidance in `extension/CLAUDE.md`.
 - **Releases:** `bun run version-packages` then `bun run release` (builds + publishes via changesets).
 - **PRs:** Include summary, rationale, screenshots for UI/site/extension changes, reproduction for fixes, and link issues.
 

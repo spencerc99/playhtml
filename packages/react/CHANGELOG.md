@@ -1,5 +1,35 @@
 # Change Log
 
+## 2.0.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- 5a32af7: Make `CanToggleElement` apply its `readOnly` prop so read-only shared toggles cannot write data, and activate React event callbacks added after rerenders.
+- Updated dependencies [cd1ebf9]
+- Updated dependencies [7c1bdda]
+- Updated dependencies [5a32af7]
+- Updated dependencies [b3f20bb]
+- Updated dependencies [4a1711c]
+- Updated dependencies [dca1704]
+- Updated dependencies [252acd0]
+- Updated dependencies [1f8cf34]
+- Updated dependencies [c5083b7]
+  - playhtml@2.13.2
+
+## 2.0.1
+
+### Patch Changes
+
+- b3568ab: Keep element awareness scoped to the page room, preserve existing local awareness when handlers bind, and clear element awareness snapshots when peers leave so callbacks and views stop seeing stale ephemeral user state. Keep the React package test harness aligned with the configured initialization path.
+- 44e599d: Make `can-move-bounds` clamp the full element inside its bounds by default, account for the element's starting position within the bounds container, normalize persisted out-of-bounds positions on mount, and keep fast edge drags pinned while synced position updates catch up. Explicit `min-visible` settings can still allow partial overhang when that behavior is wanted.
+- Updated dependencies [f8bc35d]
+- Updated dependencies [e76abb7]
+- Updated dependencies [b3568ab]
+- Updated dependencies [ca1ebee]
+- Updated dependencies [44e599d]
+  - playhtml@2.13.0
+
 ## 2.0.0
 
 ### Patch Changes

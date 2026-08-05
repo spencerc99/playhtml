@@ -1,7 +1,13 @@
 // ABOUTME: Loads each public page from the built site and asserts no playhtml
 // ABOUTME: errors, no uncaught exceptions, and no same-origin asset 404s.
 
-import { test, expect, type ConsoleMessage, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Browser,
+  type ConsoleMessage,
+  type Page,
+} from "@playwright/test";
 
 // Pages we ship and expect to load cleanly. Keep this list in sync with the
 // vite build glob in vite.config.site.mts (any *.html under website/, excluding
@@ -156,3 +162,127 @@ for (const { path, skip } of PAGES) {
     }
   });
 }
+
+async function openHomepageAwarenessClient(
+  browser: Browser,
+  room: string,
+  extraParams: Record<string, string> = {},
+) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const errors = await collectErrors(page);
+  const host =
+    process.env.PLAYHTML_AWARENESS_SMOKE_HOST ??
+    "playhtml-staging.spencerc99.workers.dev";
+  const params = new URLSearchParams({
+    playhtmlHost: host,
+    playhtmlRoom: room,
+    ...extraParams,
+  });
+
+  const response = await page.goto(`/?${params}`, {
+    waitUntil: "domcontentloaded",
+  });
+  expect(response, "homepage awareness smoke response").not.toBeNull();
+  expect(response!.status()).toBeLessThan(400);
+
+  const count = page.locator("#site-console-count[can-play]");
+  await expect(count).toHaveCount(1);
+
+  return { context, page, errors };
+}
+
+async function readHomepageAwarenessCount(page: Page) {
+  return Number(await page.locator("#site-console-count-number").innerText());
+}
+
+test("smoke: homepage element awareness syncs across two browser clients", async ({
+  browser,
+}) => {
+  const room = `/smoke/homepage-awareness-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  const clientA = await openHomepageAwarenessClient(browser, room);
+  const clientB = await openHomepageAwarenessClient(browser, room);
+  let clientBClosed = false;
+
+  try {
+    await expect
+      .poll(async () => {
+        return readHomepageAwarenessCount(clientA.page);
+      }, { timeout: 20_000 })
+      .toBe(2);
+    await expect
+      .poll(async () => {
+        return readHomepageAwarenessCount(clientB.page);
+      }, { timeout: 20_000 })
+      .toBe(2);
+
+    expect.soft(clientA.errors.pageErrors, "client A page errors").toEqual([]);
+    expect.soft(clientB.errors.pageErrors, "client B page errors").toEqual([]);
+    expect
+      .soft(clientA.errors.consoleErrors, "client A console errors")
+      .toEqual([]);
+    expect
+      .soft(clientB.errors.consoleErrors, "client B console errors")
+      .toEqual([]);
+    expect
+      .soft(clientA.errors.sameOriginFailures, "client A asset failures")
+      .toEqual([]);
+    expect
+      .soft(clientB.errors.sameOriginFailures, "client B asset failures")
+      .toEqual([]);
+
+    await clientB.context.close();
+    clientBClosed = true;
+    await expect
+      .poll(async () => {
+        return readHomepageAwarenessCount(clientA.page);
+      }, { timeout: 20_000 })
+      .toBe(1);
+  } finally {
+    await clientA.context.close();
+    if (!clientBClosed) {
+      await clientB.context.close();
+    }
+  }
+});
+
+test("smoke: element awareness stays page-scoped when cursors use a domain room", async ({
+  browser,
+}) => {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const roomX = `/smoke/awareness-domain-x-${suffix}`;
+  const roomY = `/smoke/awareness-domain-y-${suffix}`;
+  const cursorParams = { playhtmlCursorRoom: "domain" };
+
+  const clientA = await openHomepageAwarenessClient(browser, roomX, cursorParams);
+  const clientB = await openHomepageAwarenessClient(browser, roomX, cursorParams);
+  // Same domain cursor room, DIFFERENT page room — must not see A/B's element awareness.
+  const clientC = await openHomepageAwarenessClient(browser, roomY, cursorParams);
+
+  try {
+    await expect
+      .poll(async () => readHomepageAwarenessCount(clientA.page), { timeout: 20_000 })
+      .toBe(2);
+    await expect
+      .poll(async () => readHomepageAwarenessCount(clientB.page), { timeout: 20_000 })
+      .toBe(2);
+    await expect
+      .poll(async () => readHomepageAwarenessCount(clientC.page), { timeout: 20_000 })
+      .toBe(1);
+
+    await clientB.context.close();
+    await expect
+      .poll(async () => readHomepageAwarenessCount(clientA.page), { timeout: 20_000 })
+      .toBe(1);
+    await clientC.context.close();
+    await clientA.context.close();
+  } finally {
+    for (const client of [clientA, clientB, clientC]) {
+      try {
+        await client.context.close();
+      } catch {}
+    }
+  }
+});

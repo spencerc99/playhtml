@@ -1,3 +1,5 @@
+<!-- ABOUTME: Manual test page for can-mirror DOM, form, and explicit child sync. -->
+<!-- ABOUTME: Provides browser controls for checking add, update, and removal behavior. -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -73,6 +75,39 @@
       }
       [contenteditable]:focus {
         border-color: #2196f3;
+      }
+
+      .removal-target {
+        padding: 0.75rem;
+        border: 1px solid #bbb;
+        border-radius: 6px;
+        background: #fff;
+        transition: background 0.2s, border-color 0.2s;
+      }
+      .removal-target.is-active {
+        border-color: #4caf50;
+        background: #e8f5e9;
+      }
+      .removal-target[data-state="active"] {
+        border-color: #2196f3;
+        background: #e3f2fd;
+      }
+      .removal-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      .removal-actions button {
+        cursor: pointer;
+      }
+      #m-nested-removal ul {
+        margin: 0;
+        padding-left: 1.25rem;
+      }
+      .removal-toggle.toggled {
+        background: #4caf50;
+        color: white;
       }
     </style>
   </head>
@@ -166,7 +201,7 @@
       <label>Toggle the details — open/closed state should sync (uses the native <code>open</code> attribute).</label>
       <details can-mirror id="m-details">
         <summary>Click to expand</summary>
-        <p>This content is hidden until the details element is opened. The <code>open</code> attribute is a regular DOM attribute, so the MutationObserver catches it automatically.</p>
+        <p>This content is hidden until the details element is opened. The <code>open</code> attribute lives on the mirrored element, so it syncs automatically.</p>
       </details>
     </section>
 
@@ -220,6 +255,134 @@
           if (el.lastElementChild) {
             el.removeChild(el.lastElementChild);
           }
+        }
+      </script>
+    </section>
+
+    <!-- CLASS REMOVAL -->
+    <h2>Class removal</h2>
+    <section>
+      <label>Add then remove a CSS class — both operations should sync.</label>
+      <div can-mirror id="m-class-removal" class="removal-target">
+        Class target
+      </div>
+      <div class="removal-actions">
+        <button id="addRemovalClass" onclick="addRemovalClass()">Add class</button>
+        <button id="removeRemovalClass" onclick="removeRemovalClass()">Remove class</button>
+      </div>
+      <script>
+        function addRemovalClass() {
+          document.getElementById("m-class-removal").classList.add("is-active");
+        }
+        function removeRemovalClass() {
+          document.getElementById("m-class-removal").classList.remove("is-active");
+        }
+      </script>
+    </section>
+
+    <!-- ATTRIBUTE REMOVAL -->
+    <h2>Attribute removal</h2>
+    <section>
+      <label>Set then remove regular attributes — the removed attributes should disappear on peers.</label>
+      <div can-mirror id="m-attribute-removal" class="removal-target">
+        Attribute target
+      </div>
+      <div class="removal-actions">
+        <button id="setRemovalAttributes" onclick="setRemovalAttributes()">Set attributes</button>
+        <button id="removeRemovalAttributes" onclick="removeRemovalAttributes()">Remove attributes</button>
+      </div>
+      <script>
+        function setRemovalAttributes() {
+          const el = document.getElementById("m-attribute-removal");
+          el.setAttribute("data-state", "active");
+          el.setAttribute("title", "temporary title");
+        }
+        function removeRemovalAttributes() {
+          const el = document.getElementById("m-attribute-removal");
+          el.removeAttribute("data-state");
+          el.removeAttribute("title");
+        }
+      </script>
+    </section>
+
+    <!-- TEXT REMOVAL -->
+    <h2>Text removal</h2>
+    <section>
+      <label>Clear then restore text — empty text should sync, not leave stale content.</label>
+      <div can-mirror id="m-text-removal" class="removal-target">
+        This text can be cleared.
+      </div>
+      <div class="removal-actions">
+        <button id="clearRemovalText" onclick="clearRemovalText()">Clear text</button>
+        <button id="restoreRemovalText" onclick="restoreRemovalText()">Restore text</button>
+      </div>
+      <script>
+        function clearRemovalText() {
+          document.getElementById("m-text-removal").textContent = "";
+        }
+        function restoreRemovalText() {
+          document.getElementById("m-text-removal").textContent = "This text can be cleared.";
+        }
+      </script>
+    </section>
+
+    <!-- NESTED CHILD REMOVAL -->
+    <h2>Nested child removal</h2>
+    <section>
+      <label>Remove children inside a nested list — the list itself has can-mirror, so its removals should sync.</label>
+      <div id="m-nested-removal" class="removal-target">
+        <ul can-mirror id="m-nested-removal-list">
+          <li>Alpha</li>
+          <li>Beta</li>
+          <li>Gamma</li>
+        </ul>
+      </div>
+      <div class="removal-actions">
+        <button id="removeNestedRemovalItem" onclick="removeNestedRemovalItem()">Remove last nested item</button>
+        <button id="restoreNestedRemovalItems" onclick="restoreNestedRemovalItems()">Restore nested items</button>
+      </div>
+      <script>
+        function removeNestedRemovalItem() {
+          const list = document.getElementById("m-nested-removal-list");
+          if (list.lastElementChild) {
+            list.removeChild(list.lastElementChild);
+          }
+        }
+        function restoreNestedRemovalItems() {
+          document.getElementById("m-nested-removal-list").innerHTML =
+            "<li>Alpha</li><li>Beta</li><li>Gamma</li>";
+        }
+      </script>
+    </section>
+
+    <!-- MIRRORED DESCENDANT REMOVAL -->
+    <h2>Mirrored descendant remove/re-add</h2>
+    <section>
+      <label>Remove and re-add a child with its own capability — the re-added child should still work.</label>
+      <div can-mirror id="m-descendant-removal" class="removal-target">
+        <div id="m-descendant-removal-slot">
+          <button id="m-descendant-toggle" can-toggle class="removal-toggle">
+            Toggle child
+          </button>
+        </div>
+      </div>
+      <div class="removal-actions">
+        <button id="removeMirroredToggle" onclick="removeMirroredToggle()">Remove toggle child</button>
+        <button id="restoreMirroredToggle" onclick="restoreMirroredToggle()">Restore toggle child</button>
+      </div>
+      <script>
+        function removeMirroredToggle() {
+          document.getElementById("m-descendant-removal-slot").replaceChildren();
+        }
+        function restoreMirroredToggle() {
+          const slot = document.getElementById("m-descendant-removal-slot");
+          slot.innerHTML =
+            '<button id="m-descendant-toggle" can-toggle class="removal-toggle">Toggle child</button>';
+          document.dispatchEvent(
+            new CustomEvent("playhtml:setup-element", {
+              detail: { id: "m-descendant-toggle" },
+            }),
+          );
         }
       </script>
     </section>

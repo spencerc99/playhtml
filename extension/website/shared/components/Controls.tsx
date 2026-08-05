@@ -26,11 +26,11 @@ import {
   subscribeSavedConfigs,
   type SavedConfig,
 } from "../utils/savedConfigs";
-import { DEFAULT_SETTINGS } from "./settingsDefaults";
 
 interface ControlsProps {
   visible: boolean;
   settings: any;
+  settingsDefaults: Record<string, unknown>;
   setSettings: React.Dispatch<React.SetStateAction<any>>;
   loading: boolean;
   error: string | null;
@@ -76,9 +76,15 @@ const WINDOW_LENGTH_OPTIONS: Array<{ label: string; ms: number }> = [
  * `CollapsibleSection` and `PathFilterInput`). */
 const ShareConfigSection: React.FC<{
   settings: Record<string, unknown>;
+  settingsDefaults: Record<string, unknown>;
   activeVisualizations: string[];
   selectedTimeRange: { startMs: number; endMs: number } | null;
-}> = ({ settings, activeVisualizations, selectedTimeRange }) => {
+}> = ({
+  settings,
+  settingsDefaults,
+  activeVisualizations,
+  selectedTimeRange,
+}) => {
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "ok" | "err">(
     "idle",
   );
@@ -91,6 +97,7 @@ const ShareConfigSection: React.FC<{
   const buildCurrentUrl = () =>
     buildShareUrl({
       settings,
+      settingsDefaults,
       activeVisualizations,
       selectedTimeRange,
       // Preserve whichever clean tier the page is currently in (set via
@@ -136,7 +143,7 @@ const ShareConfigSection: React.FC<{
       trailStyle: settings.trailStyle as string | undefined,
       trailStyleIsDefault:
         (settings.trailStyle as string | undefined) ===
-        DEFAULT_SETTINGS.trailStyle,
+        settingsDefaults.trailStyle,
       selectedTimeRange,
     });
     const name = title || autoName;
@@ -701,6 +708,7 @@ export const Controls: React.FC<ControlsProps> = memo(
   ({
     visible,
     settings,
+    settingsDefaults,
     setSettings,
     loading,
     error,
@@ -715,6 +723,13 @@ export const Controls: React.FC<ControlsProps> = memo(
     selectedTimeRange,
     onSelectTimeRange,
   }) => {
+    const clickSettingsDefaults = useMemo(
+      () =>
+        Object.fromEntries(
+          Object.keys(CLICK_DEFAULTS).map((key) => [key, settingsDefaults[key]]),
+        ),
+      [settingsDefaults],
+    );
     // Membership check for viz-specific Controls sections. Each viz-tagged
     // section (Cursor / Click / Keyboard / Scroll / Navigation Settings)
     // only renders when its viz id is in the active list — surfaces stay
@@ -824,6 +839,7 @@ export const Controls: React.FC<ControlsProps> = memo(
       >
         <ShareConfigSection
           settings={settings}
+          settingsDefaults={settingsDefaults}
           activeVisualizations={activeVisualizations}
           selectedTimeRange={selectedTimeRange ?? null}
         />
@@ -1260,7 +1276,7 @@ export const Controls: React.FC<ControlsProps> = memo(
             <button
               type="button"
               onClick={() =>
-                setSettings((s: any) => ({ ...s, ...CLICK_DEFAULTS }))
+                setSettings((s: any) => ({ ...s, ...clickSettingsDefaults }))
               }
               style={{
                 fontSize: "11px",

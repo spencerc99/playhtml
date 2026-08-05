@@ -133,3 +133,50 @@ export function getNextAlarmTime({
 
   return Math.min(...candidates);
 }
+
+export function shouldSetAlarm({
+  previousAlarm,
+  nextAlarm,
+  now,
+}: {
+  previousAlarm: number | null | undefined;
+  nextAlarm: number;
+  now: number;
+}): boolean {
+  return (
+    previousAlarm === null ||
+    previousAlarm === undefined ||
+    previousAlarm <= now ||
+    nextAlarm < previousAlarm
+  );
+}
+
+type BridgeLease = {
+  createdAt?: string;
+  lastSeen?: string;
+};
+
+function isBridgeLeaseWithinWindow(
+  lease: BridgeLease,
+  now: number,
+  leaseMs: number
+): boolean {
+  const lastSeen = lease.lastSeen || lease.createdAt;
+  const timestamp = lastSeen ? Date.parse(lastSeen) : NaN;
+  if (!Number.isFinite(timestamp)) return true;
+  return now - timestamp <= leaseMs;
+}
+
+export function getPrunedBridgeLeases<Lease extends BridgeLease>({
+  leases,
+  now,
+  leaseMs,
+}: {
+  leases: Lease[];
+  now: number;
+  leaseMs: number;
+}): Lease[] {
+  return leases.filter((lease) =>
+    isBridgeLeaseWithinWindow(lease, now, leaseMs)
+  );
+}

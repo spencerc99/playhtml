@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { InventoryManager } from "../features/inventory/InventoryManager";
+import { siteVisibilityStorageKey } from "../features/inventory/siteVisibility";
 import type { Item } from "../features/inventory/types";
 
 const tape: Item = { id: "tape", tier: "system", label: "Tape", icon: "tape.png" };
@@ -45,6 +46,49 @@ describe("InventoryManager API", () => {
     api.disarm();
     expect(api.getArmed()).toBeNull();
     expect(cb).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides page objects, disarms the active item, and notifies subscribers", async () => {
+    const api = await makeApi();
+    api.register(tape);
+    api.arm("tape");
+    const cb = vi.fn();
+    api.onPageObjectsVisibilityChange(cb);
+
+    api.hidePageObjects();
+
+    expect(api.arePageObjectsVisible()).toBe(false);
+    expect(api.getArmed()).toBeNull();
+    expect(cb).toHaveBeenCalledWith(false);
+
+    api.showPageObjects();
+
+    expect(api.arePageObjectsVisible()).toBe(true);
+    expect(cb).toHaveBeenLastCalledWith(true);
+  });
+
+  it("starts hidden when the current site has a saved preference", async () => {
+    const siteOrigin = "https://mail.google.com";
+    const key = siteVisibilityStorageKey(siteOrigin);
+    vi.mocked(browser.storage.local.get).mockResolvedValue({ [key]: true });
+
+    const manager = new InventoryManager(siteOrigin);
+    await manager.load();
+
+    expect(manager.api.arePageObjectsVisible()).toBe(false);
+  });
+
+  it("persists a site-wide hide preference after hiding immediately", async () => {
+    const siteOrigin = "https://example.com";
+    const api = new InventoryManager(siteOrigin).api;
+
+    const save = api.hidePageObjectsOnSite();
+
+    expect(api.arePageObjectsVisible()).toBe(false);
+    await save;
+    expect(browser.storage.local.set).toHaveBeenCalledWith({
+      [siteVisibilityStorageKey(siteOrigin)]: true,
+    });
   });
 
   it("arming an unregistered item is a no-op", async () => {

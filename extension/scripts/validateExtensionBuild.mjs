@@ -19,13 +19,72 @@ function collectManifestResources(manifest) {
   return resources;
 }
 
+async function collectBuildFiles(buildDir, dir = buildDir) {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...(await collectBuildFiles(buildDir, entryPath)));
+    } else if (entry.isFile()) {
+      files.push(path.relative(buildDir, entryPath).split(path.sep).join("/"));
+    }
+  }
+
+  return files;
+}
+
+function hasResourcePattern(resource) {
+  return /[*?]/.test(resource);
+}
+
+function resourcePatternToRegExp(resource) {
+  let source = "^";
+
+  for (let index = 0; index < resource.length; index += 1) {
+    const char = resource[index];
+
+    if (char === "*") {
+      if (resource[index + 1] === "*") {
+        source += ".*";
+        index += 1;
+      } else {
+        source += "[^/]*";
+      }
+    } else if (char === "?") {
+      source += "[^/]";
+    } else {
+      source += char.replace(/[\\^$+?.()|{}[\]]/g, "\\$&");
+    }
+  }
+
+  return new RegExp(`${source}$`);
+}
+
 export async function validateExtensionBuild(buildDir) {
   const manifestPath = path.join(buildDir, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
   const resources = collectManifestResources(manifest);
   const missingResources = [];
+  let buildFiles;
+
+  if (manifest.options_ui?.open_in_tab !== true) {
+    throw new Error("Extension manifest options_ui.open_in_tab must be true");
+  }
 
   for (const resource of resources) {
+    if (hasResourcePattern(resource)) {
+      buildFiles ??= await collectBuildFiles(buildDir);
+      const resourcePattern = resourcePatternToRegExp(resource);
+
+      if (!buildFiles.some((file) => resourcePattern.test(file))) {
+        missingResources.push(resource);
+      }
+      continue;
+    }
+
     try {
       await fs.stat(path.join(buildDir, resource));
     } catch (error) {

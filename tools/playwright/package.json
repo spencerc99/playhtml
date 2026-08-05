@@ -3,9 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "scene": "bun src/runner.ts"
+    "scene": "bun src/runner.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@playwright/test": "^1.52.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^26.0.1"
   }
 }

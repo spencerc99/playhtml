@@ -12,9 +12,10 @@ import {
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useUsers,
   useCursorZone,
+  playhtml,
 } from "../index";
-import type { PlayerIdentity } from "playhtml";
 
 describe("usePresence", () => {
   beforeEach(() => {
@@ -47,10 +48,12 @@ describe("usePresence", () => {
 
   it("setMyPresence is a no-op pre-sync, works post-sync", async () => {
     const warnSpy = vi.spyOn(console, "warn");
-    let captured: ReturnType<typeof usePresence> | null = null;
+    let captured:
+      | ReturnType<typeof usePresence<"selection", { x: number }>>
+      | null = null;
 
     function TestComponent() {
-      captured = usePresence("selection");
+      captured = usePresence<"selection", { x: number }>("selection");
       return <div />;
     }
 
@@ -76,10 +79,18 @@ describe("usePresence", () => {
     act(() => {
       captured!.setMyPresence({ x: 2 });
     });
+    expect(playhtml.presence.setMyPresence).toHaveBeenLastCalledWith("selection", {
+      x: 2,
+    });
 
     await waitFor(() => {
       expect(captured!.presences.size).toBeGreaterThan(0);
+      expect(captured!.presences.get("me")).toMatchObject({
+        selection: { x: 2 },
+        isMe: true,
+      });
     });
+    expect(captured!.presences.get("me")).not.toHaveProperty("x");
   });
 });
 
@@ -163,98 +174,109 @@ describe("usePresenceRoom", () => {
 });
 
 describe("usePlayerIdentity", () => {
-  // The cursor client only exists with a live partykit connection, which the
-  // jsdom test harness intentionally does not mock — so an end-to-end "enable
-  // cursors and read the synced identity" assertion can't run here (that path
-  // is covered by manual browser verification). What this hook actually owns
-  // is the mapping from PlayContext -> { color, pid, name }. We test that real
-  // logic by feeding the hook a known PlayContext value directly.
-  function renderWithContext(value: {
-    color: string;
-    pid: string | undefined;
-    name: string | undefined;
-  }) {
-    let captured: ReturnType<typeof usePlayerIdentity> | null = null;
+  // usePlayerIdentity is backed by playhtml.users (not the cursors context),
+  // so it works without `cursors: { enabled: true }`. These tests render a
+  // <PlayProvider> with NO cursors option and drive the mocked users module
+  // from setup.ts, which stands in for the real Yjs/PartyKit stack.
+  it("returns empty values pre-sync, then the identity post-sync", async () => {
+    const seen: Array<ReturnType<typeof usePlayerIdentity>> = [];
     function TestComponent() {
-      captured = usePlayerIdentity();
+      const identity = usePlayerIdentity();
+      seen.push(identity);
       return <div />;
     }
-    const ctx = {
-      cursors: { allColors: [], color: value.color, name: value.name },
-      getMyPlayerIdentity: () =>
-        value.pid
-          ? ({ publicKey: value.pid } as PlayerIdentity)
-          : null,
-    } as unknown as React.ContextType<typeof PlayContext>;
-    const { rerender } = render(
-      <PlayContext.Provider value={ctx}>
+
+    render(
+      <PlayProvider>
         <TestComponent />
-      </PlayContext.Provider>,
+      </PlayProvider>,
     );
-    return { get: () => captured, rerender, TestComponent };
-  }
 
-  it("maps color, pid, and name from context", () => {
-    const { get } = renderWithContext({
-      color: "#123456",
-      pid: "pk_abc",
-      name: "ada",
-    });
-    expect(get()).toEqual({
-      color: "#123456",
-      pid: "pk_abc",
-      name: "ada",
-      verified: false,
-      roles: [],
-    });
-  });
-
-  it("reports undefined pid when identity is absent", () => {
-    const { get } = renderWithContext({
-      color: "",
-      pid: undefined,
-      name: undefined,
-    });
-    expect(get()).toEqual({
+    expect(seen[0]).toEqual({
       color: "",
       pid: undefined,
       name: undefined,
       verified: false,
       roles: [],
     });
+
+    await waitFor(() => {
+      expect(seen.at(-1)?.pid).toBe("mock-pid");
+    });
+    expect(seen.at(-1)).toEqual({
+      color: "#123456",
+      pid: "mock-pid",
+      name: undefined,
+      verified: false,
+      roles: [],
+    });
   });
 
-  it("reflects an updated identity (e.g. after extension injection)", () => {
-    let value = { color: "", pid: undefined as string | undefined, name: undefined as string | undefined };
+  it("reflects a color/name change made via playhtml.users.me", async () => {
     let captured: ReturnType<typeof usePlayerIdentity> | null = null;
     function TestComponent() {
       captured = usePlayerIdentity();
       return <div />;
     }
-    const makeCtx = () =>
-      ({
-        cursors: { allColors: [], color: value.color, name: value.name },
-        getMyPlayerIdentity: () =>
-          value.pid ? ({ publicKey: value.pid } as PlayerIdentity) : null,
-      }) as unknown as React.ContextType<typeof PlayContext>;
 
-    const { rerender } = render(
-      <PlayContext.Provider value={makeCtx()}>
+    render(
+      <PlayProvider>
         <TestComponent />
-      </PlayContext.Provider>,
+      </PlayProvider>,
     );
-    expect(captured?.pid).toBeUndefined();
 
-    // Simulate the extension merging its identity into the cursor client,
-    // which re-renders consumers with the new color + PID.
-    value = { color: "#ffae00", pid: "pk_injectedtestkey", name: undefined };
-    rerender(
-      <PlayContext.Provider value={makeCtx()}>
+    await waitFor(() => expect(captured?.pid).toBe("mock-pid"));
+
+    act(() => {
+      playhtml.users.me.color = "#ffae00";
+      playhtml.users.me.name = "ada";
+    });
+
+    await waitFor(() => {
+      expect(captured?.color.toLowerCase()).toBe("#ffae00");
+      expect(captured?.name).toBe("ada");
+    });
+  });
+
+  it("works without cursors enabled", async () => {
+    let captured: ReturnType<typeof usePlayerIdentity> | null = null;
+    function TestComponent() {
+      captured = usePlayerIdentity();
+      return <div />;
+    }
+
+    // No initOptions at all — in particular no `cursors: { enabled: true }` —
+    // proving usePlayerIdentity doesn't require cursors to resolve an identity.
+    render(
+      <PlayProvider>
         <TestComponent />
-      </PlayContext.Provider>,
+      </PlayProvider>,
     );
-    expect(captured?.color.toLowerCase()).toBe("#ffae00");
-    expect(captured?.pid).toBe("pk_injectedtestkey");
+
+    await waitFor(() => expect(captured?.pid).toBe("mock-pid"));
+    expect(captured?.color).toBeTruthy();
+  });
+});
+
+describe("useUsers", () => {
+  it("returns an empty array pre-sync, then includes self post-sync", async () => {
+    let captured: Array<{ isMe: boolean }> | null = null;
+    function TestComponent() {
+      captured = useUsers();
+      return <div />;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured?.length).toBeGreaterThan(0);
+    });
+    const self = captured!.find((user) => user.isMe);
+    expect(self).toBeDefined();
   });
 });
 

@@ -131,6 +131,19 @@ describe("can-mirror: attributes", () => {
     expect(sink.element.hasAttribute("data-temp")).toBe(false);
   });
 
+  it("does not mirror a nested attribute removal by itself", async () => {
+    const html = `<div id="root"><span data-temp="x">child</span></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    source.element.querySelector("span")!.removeAttribute("data-temp");
+    await sync(source, sink);
+
+    expect(sink.element.querySelector("span")!.getAttribute("data-temp")).toBe(
+      "x"
+    );
+  });
+
   it("mirrors the native open attribute on <details>", async () => {
     const source = mountClient(
       elementFromHTML(`<details id="d"><summary>x</summary></details>`)
@@ -157,6 +170,23 @@ describe("can-mirror: attributes", () => {
     expect(attrs["data-playhtml-focus"]).toBeUndefined();
   });
 
+  it("does not persist ephemeral attributes during child resyncs", async () => {
+    const html = `<div id="root"><p>a</p><p>b</p></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    source.element.setAttribute("data-playhtml-hover", "");
+    source.element.removeChild(source.element.lastElementChild!);
+    await sync(source, sink);
+
+    const attrs = (source.state as any).attributes;
+    expect(attrs["data-playhtml-hover"]).toBeUndefined();
+    expect(sink.element.hasAttribute("data-playhtml-hover")).toBe(false);
+    expect(
+      Array.from(sink.element.querySelectorAll("p")).map((p) => p.textContent)
+    ).toEqual(["a"]);
+  });
+
   it("still persists a real attribute changed alongside an ephemeral one", async () => {
     const source = mountClient(elementFromHTML(`<div id="a"></div>`));
     const sink = mountClient(elementFromHTML(`<div id="a"></div>`));
@@ -168,6 +198,87 @@ describe("can-mirror: attributes", () => {
     expect(sink.element.getAttribute("data-real")).toBe("1");
     expect(sink.element.hasAttribute("data-playhtml-hover")).toBe(false);
   });
+
+  it("keeps local inspect classes while applying mirrored class state", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a" class="__playhtml-element"></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(
+        `<div id="a" class="__playhtml-element ph-inspect-highlight"></div>`
+      )
+    );
+
+    source.element.setAttribute("data-rev", "1");
+    await sync(source, sink);
+
+    expect(sink.element.classList.contains("ph-inspect-highlight")).toBe(true);
+    expect(sink.element.getAttribute("data-rev")).toBe("1");
+    expect(sink.element.classList.contains("__playhtml-element")).toBe(true);
+    expect((sink.state as any).attributes.class).toBeUndefined();
+  });
+
+  it("excludes playhtml loading markers from mirrored state", () => {
+    const element = elementFromHTML(
+      `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`
+    );
+
+    const state = canMirrorInitializer.defaultData!(element) as any;
+
+    expect(state.attributes.class).toBe("removal-target");
+    expect(state.attributes["aria-busy"]).toBeUndefined();
+    expect(state.attributes["aria-live"]).toBeUndefined();
+  });
+
+  it("excludes custom loading classes from mirrored state", () => {
+    const element = elementFromHTML(
+      `<div id="a" class="removal-target playhtml-loading waiting" loading-class="waiting"></div>`
+    );
+
+    const state = canMirrorInitializer.defaultData!(element) as any;
+
+    expect(state.attributes.class).toBe("removal-target");
+    expect(state.attributes["loading-class"]).toBe("waiting");
+  });
+
+  it("mirrors a custom loading class after loading finishes", async () => {
+    const source = mountClient(
+      elementFromHTML(
+        `<div id="a" class="removal-target" loading-class="ready"></div>`
+      )
+    );
+    const sink = mountClient(
+      elementFromHTML(
+        `<div id="a" class="removal-target" loading-class="ready"></div>`
+      )
+    );
+
+    source.element.classList.add("ready");
+    await sync(source, sink);
+
+    expect((source.state as any).attributes.class).toBe("removal-target ready");
+    expect(sink.element.className).toBe("removal-target ready");
+  });
+
+  it("applies loading-time default state without restoring loading markers", () => {
+    const element = elementFromHTML(
+      `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`
+    );
+    const defaultState = canMirrorInitializer.defaultData!(element) as ElementState;
+    element.className = "removal-target __playhtml-element is-active";
+    element.removeAttribute("aria-busy");
+    element.removeAttribute("aria-live");
+
+    canMirrorInitializer.updateElement!({
+      element,
+      data: defaultState,
+    } as any);
+
+    expect(element.className).toBe("removal-target __playhtml-element");
+    expect(element.hasAttribute("aria-busy")).toBe(false);
+    expect(element.hasAttribute("aria-live")).toBe(false);
+  });
+
 });
 
 describe("can-mirror: child add/remove", () => {
@@ -240,6 +351,69 @@ describe("can-mirror: child add/remove", () => {
     expectMirrored(source.element, sink.element);
   });
 
+  it("keeps local inspect labels while applying mirrored children", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a"><span>real</span></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(
+        `<div id="a"><span>real</span><div class="ph-inspect-label">#a</div></div>`
+      )
+    );
+
+    const remoteChild = document.createElement("span");
+    remoteChild.textContent = "remote";
+    source.element.appendChild(remoteChild);
+    await sync(source, sink);
+
+    expect(
+      Array.from(sink.element.querySelectorAll(":scope > span")).map(
+        (span) => span.textContent
+      )
+    ).toEqual(["real", "remote"]);
+    expect(
+      sink.element.querySelectorAll(":scope > .ph-inspect-label")
+    ).toHaveLength(1);
+    expect((sink.state as any).children).toHaveLength(1);
+  });
+
+  it("does not recreate inspect labels from incoming mirrored state", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="a"><span>real</span></div>`)
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="a"><span>real</span></div>`)
+    );
+    const incoming = wire(source.state) as any;
+    incoming.children.push({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: { class: "ph-inspect-label" },
+      children: [{ nodeType: "Text", textContent: "#a" }],
+    });
+
+    sink.applyRemote(incoming);
+
+    expect(sink.element.querySelectorAll(":scope > span")).toHaveLength(1);
+    expect(
+      sink.element.querySelectorAll(":scope > .ph-inspect-label")
+    ).toHaveLength(0);
+  });
+
+  it("does not mirror a nested child removal by itself", async () => {
+    const html = `<div id="root"><ul><li>a</li><li>b</li></ul></div>`;
+    const source = mountClient(elementFromHTML(html));
+    const sink = mountClient(elementFromHTML(html));
+
+    const list = source.element.querySelector("ul")!;
+    list.removeChild(list.lastElementChild!);
+    await sync(source, sink);
+
+    expect(
+      Array.from(sink.element.querySelectorAll("li")).map((li) => li.textContent)
+    ).toEqual(["a", "b"]);
+  });
+
   it("mirrors a reordered child list", async () => {
     const html = `<ul id="l"><li>a</li><li>b</li><li>c</li></ul>`;
     const source = mountClient(elementFromHTML(html));
@@ -303,10 +477,8 @@ describe("can-mirror: mixed text and element children", () => {
 
 describe("can-mirror: character data", () => {
   it("mirrors a text change that surfaces via an input event", async () => {
-    // The observer runs with subtree: false, so a characterData mutation on a
-    // child text node (target = the text node) is not observed directly. It
-    // syncs when the element fires input (e.g. contenteditable), which
-    // re-snapshots the whole subtree.
+    // Contenteditable surfaces browser edits through input events, which
+    // resnapshot form state and child structure together.
     const source = mountClient(
       elementFromHTML(`<p id="p" contenteditable="true">hello</p>`)
     );
@@ -321,9 +493,9 @@ describe("can-mirror: character data", () => {
     expect(sink.element.textContent).toBe("goodbye");
   });
 
-  it("does NOT observe a direct text-child mutation without an input event", async () => {
-    // Documents the subtree: false boundary. A bare text edit on a child node,
-    // with no input event, is invisible to the observer.
+  it("does not observe a direct text-child mutation without an input event", async () => {
+    // A bare text edit on a child node, with no input event or root-level
+    // mutation, is outside the default can-mirror observer boundary.
     const source = mountClient(elementFromHTML(`<p id="p">hello</p>`));
 
     source.element.firstChild!.textContent = "goodbye";
@@ -542,9 +714,7 @@ describe("can-mirror: sequential operations stay convergent", () => {
     source.element.appendChild(p);
     await sync(source, sink);
 
-    // 3. change a nested child's text, then mutate the root. The root-level
-    // mutation re-snapshots the whole subtree, carrying the nested edit along
-    // even though subtree: false means the nested change wasn't observed alone.
+    // 3. change a nested child's text, then mutate a root attribute.
     source.element.querySelector("h3")!.firstChild!.textContent = "New Title";
     source.element.setAttribute("data-rev", "2");
     await sync(source, sink);
@@ -729,4 +899,57 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
     }
     expect(attrMap(a.element)).toEqual(attrMap(b.element));
   });
+
+  it("propagates class removal through a real Yjs merge", async () => {
+    const html = `<div id="d" class="card"></div>`;
+    const { a, b } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+
+    a.element.classList.add("active");
+    await flush();
+    mergeDocs(a, b);
+    b.applyState();
+    expect(b.element.className).toBe("card active");
+
+    a.element.classList.remove("active");
+    await flush();
+    mergeDocs(a, b);
+    b.applyState();
+
+    expect(b.element.className).toBe("card");
+    expect(b.proxy().attributes.class).toBe("card");
+  });
+
+  it("ignores local inspect class mutations without writing a Yjs update", async () => {
+    const html = `<div id="d" class="card __playhtml-element"></div>`;
+    const { a } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+    let updateCount = 0;
+    a.doc.on("update", () => {
+      updateCount++;
+    });
+
+    a.element.classList.add("ph-inspect-highlight");
+    await flush();
+
+    expect(updateCount).toBe(0);
+    expect(a.proxy().attributes.class).toBe("card");
+  });
+
+  it("ignores local inspect child mutations without writing a Yjs update", async () => {
+    const html = `<div id="d"><span>real</span></div>`;
+    const { a } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+    let updateCount = 0;
+    a.doc.on("update", () => {
+      updateCount++;
+    });
+
+    const label = document.createElement("div");
+    label.className = "ph-inspect-label";
+    label.textContent = "local";
+    a.element.appendChild(label);
+    await flush();
+
+    expect(updateCount).toBe(0);
+    expect(a.proxy().children.length).toBe(1);
+  });
+
 });

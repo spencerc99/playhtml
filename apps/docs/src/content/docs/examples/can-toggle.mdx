@@ -1,0 +1,38 @@
+---
+title: "Switch with can-toggle"
+description: "Share one persistent on or off switch with every connected browser."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { canToggleRecipe } from "@/components/playground/recipes/built-in-capabilities";
+
+`can-toggle` stores one shared on or off value. Clicking the element adds or
+removes its `toggled` class in every connected browser.
+
+<RecipeExample recipe={canToggleRecipe} client:load />
+
+<RecipeCodeTabs recipe={canToggleRecipe} />
+
+## Style the shared state
+
+Target the `toggled` class in CSS:
+
+```css
+#shared-switch.toggled {
+  background: #b9dfad;
+}
+```
+
+The class represents shared state, so avoid adding a second click handler that
+changes the same state. In React, `CanToggleElement` already handles the click.
+
+## Test the switch
+
+Open the private-window link, then click the switch in either window. Both
+switches should show the same value. Reloading keeps the current value.
+
+See [can-toggle](/docs/capabilities/#can-toggle) for reset behavior and the
+complete React form.
