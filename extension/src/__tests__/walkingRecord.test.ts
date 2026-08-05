@@ -539,15 +539,15 @@ describe("deriveWalkingRecord", () => {
     expect(record.departures[0]).not.toHaveProperty("traceTarget");
   });
 
-  it("uses a traceable session for a portrait and preserves a derived mark when cursor data is absent", () => {
+  it("uses the most actively browsed session for a portrait and preserves a derived mark", () => {
     const range = getWalkingRecordPeriodRange(
       "week",
       -1,
       new Date(2026, 6, 30, 14),
     );
     const monday = range.startTs + 9 * 60 * 60_000;
-    const untracedSession: ScreenTimeSession = {
-      url: "https://untraced.example/long",
+    const lightlyTracedSession: ScreenTimeSession = {
+      url: "https://lightly-traced.example/long",
       focusTs: monday,
       blurTs: monday + 2 * 60 * 60_000,
       durationMs: 2 * 60 * 60_000,
@@ -563,6 +563,20 @@ describe("deriveWalkingRecord", () => {
       baseColor: "#4a9a8a",
       events: [
         event(
+          "light-trace-1",
+          "cursor",
+          lightlyTracedSession.focusTs + 1_000,
+          lightlyTracedSession.url,
+          { event: "move", x: 0.2, y: 0.3 },
+        ),
+        event(
+          "light-trace-2",
+          "cursor",
+          lightlyTracedSession.focusTs + 2_000,
+          lightlyTracedSession.url,
+          { event: "move", x: 0.5, y: 0.6 },
+        ),
+        event(
           "trace-1",
           "cursor",
           tracedSession.focusTs + 1_000,
@@ -576,10 +590,17 @@ describe("deriveWalkingRecord", () => {
           tracedSession.url,
           { event: "move", x: 0.5, y: 0.6 },
         ),
+        event(
+          "trace-3",
+          "cursor",
+          tracedSession.focusTs + 3_000,
+          tracedSession.url,
+          { event: "move", x: 0.7, y: 0.4 },
+        ),
       ],
-      sessions: [untracedSession, tracedSession],
+      sessions: [lightlyTracedSession, tracedSession],
       domains: [
-        domain("untraced.example", { sessionCount: 20 }),
+        domain("lightly-traced.example", { sessionCount: 20 }),
         domain("traced.example", { sessionCount: 20 }),
       ],
       range,

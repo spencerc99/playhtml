@@ -167,10 +167,16 @@ describe("WalkingRecordPage calendar navigation", () => {
         ),
       ).toEqual([
         "how you browsed",
-        "notable new exploration",
         "where you used to visit",
         "browsing portraits",
       ]);
+      expect(
+        (
+          container.querySelector(
+            ".walking-record__time-legend-ink",
+          ) as HTMLElement | null
+        )?.style.backgroundColor,
+      ).toBe("rgb(74, 154, 138)");
       expect(
         container
           .querySelector(".walking-record__site-favicon")
@@ -210,9 +216,16 @@ describe("WalkingRecordPage calendar navigation", () => {
       const progress = container.querySelector(
         '[role="progressbar"]',
       ) as HTMLElement | null;
+      const cursorWalk = container.querySelector(
+        ".walking-record__loading-cursors",
+      );
 
       expect(container.textContent).toContain("finding familiar places…");
       expect(container.textContent).toContain("60%");
+      expect(cursorWalk?.getAttribute("aria-hidden")).toBe("true");
+      expect(
+        cursorWalk?.querySelectorAll(".walking-record__loading-cursor"),
+      ).toHaveLength(3);
       expect(progress?.getAttribute("aria-valuenow")).toBe("60");
       expect(progress?.querySelector("span")?.style.width).toBe("60%");
     } finally {

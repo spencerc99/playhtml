@@ -87,6 +87,75 @@ button:focus-visible {
   margin: 0 auto;
 }
 
+.walking-record__loading-cursors {
+  position: relative;
+  width: 100%;
+  height: 64px;
+  overflow: hidden;
+
+  > svg:first-child {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.walking-record__loading-route {
+  fill: none;
+  stroke: rgba(90, 78, 65, 0.16);
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+  stroke-width: 1;
+  animation: walking-record-route 3s linear infinite;
+}
+
+.walking-record__loading-cursor {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 18px;
+  height: 18px;
+  offset-path: path(
+    "M 8 42 C 54 10, 93 53, 137 27 S 218 14, 260 36 S 296 43, 312 17"
+  );
+  offset-rotate: 0deg;
+  opacity: 0;
+  filter: drop-shadow(0 1px 1px rgba(90, 78, 65, 0.12));
+  animation: walking-record-cursor-walk 5.4s linear infinite;
+}
+
+.walking-record__loading-cursor--two {
+  animation-delay: -1.8s;
+}
+
+.walking-record__loading-cursor--three {
+  animation-delay: -3.6s;
+}
+
+@keyframes walking-record-route {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+@keyframes walking-record-cursor-walk {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+
+  10%,
+  88% {
+    opacity: 0.78;
+  }
+
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
 .walking-record__loading-copy {
   display: flex;
   width: 100%;
@@ -344,10 +413,12 @@ button:focus-visible {
 
 .walking-record__departure {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 72px;
+  width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: 34px minmax(0, 1fr) max-content;
   gap: 10px;
   align-items: start;
-  padding: 10px 4px;
+  padding: 10px 8px 10px 4px;
   border-bottom: 1px solid rgba(90, 78, 65, 0.1);
   transition: background 0.12s;
 
@@ -372,6 +443,7 @@ button:focus-visible {
       color: $accent-blue;
       font-size: 13px;
       font-weight: 500;
+      overflow-wrap: anywhere;
     }
   }
 
@@ -604,6 +676,14 @@ button:focus-visible {
   }
 }
 
+.walking-record__time-legend-ink {
+  width: 10px;
+  height: 3px;
+  flex: 0 0 10px;
+  border-radius: 99px;
+  opacity: 0.82;
+}
+
 .walking-record__site-favicon,
 .walking-record__site-favicon-fallback {
   width: 14px;
@@ -711,6 +791,27 @@ button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .walking-record__loading-route,
+  .walking-record__loading-cursor {
+    animation: none;
+  }
+
+  .walking-record__loading-cursor {
+    opacity: 0.5;
+  }
+
+  .walking-record__loading-cursor--one {
+    offset-distance: 22%;
+  }
+
+  .walking-record__loading-cursor--two {
+    offset-distance: 50%;
+  }
+
+  .walking-record__loading-cursor--three {
+    offset-distance: 78%;
+  }
+
   *,
   *::before,
   *::after {

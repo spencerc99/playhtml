@@ -854,20 +854,31 @@ function buildDayPlates(
           session.focusTs >= interval.startTs &&
           session.focusTs <= interval.endTs,
       )
+      .map((session) => ({
+        session,
+        movementCount: (
+          movementByUrl.get(normalizeUrl(session.url)) ?? []
+        ).filter(
+          (timestamp) =>
+            timestamp >= session.focusTs && timestamp <= session.blurTs,
+        ).length,
+      }))
       .sort((a, b) => {
-        const aMovement = (
-          movementByUrl.get(normalizeUrl(a.url)) ?? []
-        ).some((timestamp) => timestamp >= a.focusTs && timestamp <= a.blurTs);
-        const bMovement = (
-          movementByUrl.get(normalizeUrl(b.url)) ?? []
-        ).some((timestamp) => timestamp >= b.focusTs && timestamp <= b.blurTs);
-        if (aMovement !== bMovement) return aMovement ? -1 : 1;
-        if (a.durationMs !== b.durationMs) return b.durationMs - a.durationMs;
-        const aVisits = domainByName.get(extractDomain(a.url))?.sessionCount ?? Infinity;
-        const bVisits = domainByName.get(extractDomain(b.url))?.sessionCount ?? Infinity;
+        if (a.movementCount !== b.movementCount) {
+          return b.movementCount - a.movementCount;
+        }
+        if (a.session.durationMs !== b.session.durationMs) {
+          return b.session.durationMs - a.session.durationMs;
+        }
+        const aVisits =
+          domainByName.get(extractDomain(a.session.url))?.sessionCount ??
+          Infinity;
+        const bVisits =
+          domainByName.get(extractDomain(b.session.url))?.sessionCount ??
+          Infinity;
         return aVisits - bVisits;
       });
-    const session = sessionsForInterval[0];
+    const session = sessionsForInterval[0]?.session;
 
     if (!session) {
       const future = interval.startTs > nowTs;

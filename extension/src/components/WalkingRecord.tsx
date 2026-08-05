@@ -191,6 +191,57 @@ function EmptySection({ children }: { children: React.ReactNode }) {
   return <div className="walking-record__empty">{children}</div>;
 }
 
+const LOADING_CURSOR_BODY =
+  "M12 4 L12 16.5 L14.7 14 L16.7 18.5 L18.3 17.8 L16.3 13.4 L20 13.4 Z";
+
+function LoadingCursor({
+  className,
+  color,
+}: {
+  className: string;
+  color: string;
+}) {
+  return (
+    <svg
+      className={`walking-record__loading-cursor ${className}`}
+      viewBox="0 0 24 24"
+    >
+      <path
+        d={LOADING_CURSOR_BODY}
+        fill={color}
+        stroke="#f7f3ed"
+        strokeLinejoin="round"
+        strokeWidth="0.8"
+      />
+    </svg>
+  );
+}
+
+function LoadingCursorWalk() {
+  return (
+    <div className="walking-record__loading-cursors" aria-hidden="true">
+      <svg viewBox="0 0 320 64" preserveAspectRatio="none">
+        <path
+          className="walking-record__loading-route"
+          d="M8 42 C54 10, 93 53, 137 27 S218 14, 260 36 S296 43, 312 17"
+        />
+      </svg>
+      <LoadingCursor
+        className="walking-record__loading-cursor--one"
+        color="#4a9a8a"
+      />
+      <LoadingCursor
+        className="walking-record__loading-cursor--two"
+        color="#c87959"
+      />
+      <LoadingCursor
+        className="walking-record__loading-cursor--three"
+        color="#6f91b2"
+      />
+    </div>
+  );
+}
+
 function SiteFavicon({
   faviconUrl,
   site,
@@ -324,6 +375,11 @@ function PeriodNavigationRail({
 function TimeSpentLegendEntry({ entry }: { entry: TimeSpentEntry }) {
   const content = (
     <>
+      <span
+        className="walking-record__time-legend-ink"
+        style={{ backgroundColor: entry.hue }}
+        aria-hidden="true"
+      />
       <SiteFavicon
         faviconUrl={entry.faviconUrl}
         site={entry.site}
@@ -379,49 +435,45 @@ function HowBrowsedSection({ record }: { record: WalkingRecord }) {
         </EmptySection>
       )}
 
-      <div className="walking-record__subsection-heading">
-        <h2>notable new exploration</h2>
-        <span>
-          {record.departures.length} shown from {record.movementCount}
-        </span>
-      </div>
-
-      {record.departures.length > 0 ? (
-        <div className="walking-record__departures">
-          {record.departures.map((departure) => (
-            <a
-              className="walking-record__departure"
-              href={departure.toUrl}
-              key={`${departure.day}:${departure.to}`}
-            >
-              <span className="walking-record__day">{departure.day}</span>
-              <div className="walking-record__departure-copy">
-                <div>
-                  <SiteFavicon
-                    faviconUrl={departure.fromFaviconUrl}
-                    site={departure.from}
-                  />
-                  <span>{departure.from}</span>
-                  <span aria-hidden="true">→</span>
-                  <SiteFavicon
-                    faviconUrl={departure.toFaviconUrl}
-                    site={departure.to}
-                  />
-                  <strong>{departure.to}</strong>
+      {record.departures.length > 0 && (
+        <>
+          <div className="walking-record__subsection-heading">
+            <h2>notable new exploration</h2>
+            <span>
+              {record.departures.length} shown from {record.movementCount}
+            </span>
+          </div>
+          <div className="walking-record__departures">
+            {record.departures.map((departure) => (
+              <a
+                className="walking-record__departure"
+                href={departure.toUrl}
+                key={`${departure.day}:${departure.to}`}
+              >
+                <span className="walking-record__day">{departure.day}</span>
+                <div className="walking-record__departure-copy">
+                  <div>
+                    <SiteFavicon
+                      faviconUrl={departure.fromFaviconUrl}
+                      site={departure.from}
+                    />
+                    <span>{departure.from}</span>
+                    <span aria-hidden="true">→</span>
+                    <SiteFavicon
+                      faviconUrl={departure.toFaviconUrl}
+                      site={departure.to}
+                    />
+                    <strong>{departure.to}</strong>
+                  </div>
+                  {departure.note && <p>{departure.note}</p>}
                 </div>
-                {departure.note && <p>{departure.note}</p>}
-              </div>
-              <span className="walking-record__departure-time">
-                {departure.time}
-              </span>
-            </a>
-          ))}
-        </div>
-      ) : (
-        <EmptySection>
-          new explorations appear after you leave one of your usual places for
-          a quieter corner of the web.
-        </EmptySection>
+                <span className="walking-record__departure-time">
+                  {departure.time}
+                </span>
+              </a>
+            ))}
+          </div>
+        </>
       )}
     </section>
   );
@@ -512,6 +564,7 @@ export function WalkingRecordPage({
 
       {loading && (
         <div className="walking-record__loading" role="status">
+          <LoadingCursorWalk />
           <div className="walking-record__loading-copy">
             <span>{loadingProgress.message}</span>
             <span>{loadingPercentage}%</span>

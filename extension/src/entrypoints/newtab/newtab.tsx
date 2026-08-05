@@ -178,8 +178,16 @@ function NewTabPage() {
   const selectPeriod = (nextPeriod: WalkingRecordPeriod) => {
     const nextRange = getWalkingRecordPeriodRange(nextPeriod);
     const nextRecordKey = `${nextPeriod}:${nextRange.startTs}`;
+    const nextRecord = records[nextRecordKey];
     setError(null);
-    setLoading(!records[nextRecordKey]);
+    if (!nextRecord) {
+      setLoadingProgress({
+        completed: 0,
+        total: WALKING_RECORD_LOAD_STEP_COUNT,
+        message: `opening this ${nextPeriod}’s record…`,
+      });
+    }
+    setLoading(!nextRecord);
     setPeriodOffset(0);
     setPeriod(nextPeriod);
   };
@@ -188,8 +196,16 @@ function NewTabPage() {
     if (nextOffset < EARLIEST_PERIOD_OFFSET || nextOffset > 0) return;
 
     const nextRange = getWalkingRecordPeriodRange(period, nextOffset);
+    const nextRecord = records[`${period}:${nextRange.startTs}`];
     setError(null);
-    setLoading(!records[`${period}:${nextRange.startTs}`]);
+    if (!nextRecord) {
+      setLoadingProgress({
+        completed: 0,
+        total: WALKING_RECORD_LOAD_STEP_COUNT,
+        message: `opening this ${period}’s record…`,
+      });
+    }
+    setLoading(!nextRecord);
     setPeriodOffset(nextOffset);
   };
 
