@@ -13,10 +13,16 @@ import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
 import { PortraitCard } from "./PortraitCard";
+import { isSafariExtensionPageUrl } from "../utils/extensionPage";
+import {
+  hasSafariWebsiteAccess,
+  requestSafariWebsiteAccess,
+} from "../utils/safariWebsiteAccess";
 
 type Step = "welcome" | "configure" | "done";
 type Preset = "abstain" | "participate" | "allIn";
 type CollectorMode = "off" | "local" | "shared";
+type WebsiteAccess = "checking" | "needed" | "requesting" | "granted" | "error";
 
 const SETUP_STEPS: Array<{ id: Step; label: string }> = [
   { id: "welcome", label: "welcome" },
@@ -96,6 +102,10 @@ export default function SetupPage() {
   const colorInputRef = useRef<HTMLInputElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
   const [heroSize, setHeroSize] = useState({ width: 0, height: 0 });
+  const isSafari = isSafariExtensionPageUrl(window.location.href);
+  const [websiteAccess, setWebsiteAccess] = useState<WebsiteAccess>(
+    isSafari ? "checking" : "granted",
+  );
 
   useEffect(() => {
     const el = heroRef.current;
@@ -124,6 +134,24 @@ export default function SetupPage() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!isSafari) return;
+
+    hasSafariWebsiteAccess()
+      .then((granted) => setWebsiteAccess(granted ? "granted" : "needed"))
+      .catch(() => setWebsiteAccess("error"));
+  }, [isSafari]);
+
+  const handleWebsiteAccess = async () => {
+    setWebsiteAccess("requesting");
+    try {
+      const granted = await requestSafariWebsiteAccess();
+      setWebsiteAccess(granted ? "granted" : "needed");
+    } catch {
+      setWebsiteAccess("error");
+    }
+  };
 
   const handlePresetChange = (next: Preset) => {
     setPreset(next);
@@ -159,11 +187,19 @@ export default function SetupPage() {
     }
   };
 
+  const closeSetupTab = async () => {
+    const tab = await browser.tabs.getCurrent();
+    if (tab?.id === undefined) {
+      throw new Error("Could not find the setup tab");
+    }
+    await browser.tabs.remove(tab.id);
+  };
+
   const finishOnboarding = async () => {
     setBusy(true);
     try {
       await browser.storage.local.set({ onboarding_complete: "true" });
-      window.close();
+      await closeSetupTab();
     } finally {
       setBusy(false);
     }
@@ -195,6 +231,45 @@ export default function SetupPage() {
               into a living portrait of your digital presence. You choose how
               it's used.
             </p>
+            {isSafari && websiteAccess !== "granted" && (
+              <div className="setup-step__website-access">
+                <h2 className="setup-step__subheading">
+                  Let it work across Safari
+                </h2>
+                <p className="setup-step__desc">
+                  Safari keeps the extension off on each new website until you
+                  allow access. This access lets it collect only the trail you
+                  choose to keep on the next screen.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleWebsiteAccess}
+                  className="setup-step__btn-primary"
+                  disabled={
+                    websiteAccess === "checking" ||
+                    websiteAccess === "requesting"
+                  }
+                >
+                  {websiteAccess === "requesting"
+                    ? "Waiting for Safari…"
+                    : "Allow on every website"}
+                </button>
+                <p className="setup-step__website-access-hint">
+                  When Safari asks, choose “Always Allow on Every Website.”
+                </p>
+                {websiteAccess === "error" && (
+                  <p className="setup-step__website-access-error">
+                    Safari didn’t change access. Try again, or open Safari
+                    Settings → Websites → Extensions.
+                  </p>
+                )}
+              </div>
+            )}
+            {isSafari && websiteAccess === "granted" && (
+              <p className="setup-step__website-access-success">
+                Safari website access is on.
+              </p>
+            )}
             <button
               onClick={() => setStep("configure")}
               className="setup-step__btn-primary"

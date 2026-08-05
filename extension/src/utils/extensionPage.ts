@@ -14,3 +14,11 @@ export function isExtensionPageUrl(url: string): boolean {
     return false;
   }
 }
+
+export function isSafariExtensionPageUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === "safari-web-extension:";
+  } catch {
+    return false;
+  }
+}

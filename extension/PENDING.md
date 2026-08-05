@@ -4,6 +4,7 @@
 - Browse a full year of History without repeated page metadata overwhelming the extension.
 - Presence controls and remote cursors now appear reliably in Firefox.
 - Use the extension in Safari on Mac, iPhone, and iPad.
+- Turn on Safari website access once during setup, then close the setup tab when you’re done.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow

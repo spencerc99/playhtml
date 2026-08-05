@@ -2,7 +2,10 @@
 // ABOUTME: Keeps ordinary and malformed page URLs outside the extension set.
 
 import { describe, expect, it } from "vitest";
-import { isExtensionPageUrl } from "./extensionPage";
+import {
+  isExtensionPageUrl,
+  isSafariExtensionPageUrl,
+} from "./extensionPage";
 
 describe("isExtensionPageUrl", () => {
   it.each([
@@ -19,4 +22,16 @@ describe("isExtensionPageUrl", () => {
       expect(isExtensionPageUrl(url)).toBe(false);
     },
   );
+});
+
+describe("isSafariExtensionPageUrl", () => {
+  it("recognizes Safari extension pages only", () => {
+    expect(
+      isSafariExtensionPageUrl("safari-web-extension://test/setup.html"),
+    ).toBe(true);
+    expect(isSafariExtensionPageUrl("chrome-extension://test/setup.html")).toBe(
+      false,
+    );
+    expect(isSafariExtensionPageUrl("not a url")).toBe(false);
+  });
 });
