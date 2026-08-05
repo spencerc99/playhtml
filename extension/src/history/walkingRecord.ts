@@ -19,8 +19,10 @@ import { parseColorToHsl } from "@movement/utils/eventUtils";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SMALL_SITE_MAX_VISITS = 5;
 const FAMILIAR_SITE_MIN_VISITS = 10;
+const FAMILIAR_SITE_MIN_SPAN_DAYS = 14;
 const MAIN_ROAD_LIMIT = 20;
 const DEPARTURE_TRACE_MAX_MS = 30 * 60_000;
+const TIME_SPENT_SITE_LIMIT = 6;
 const PAGE_HUE_SHIFTS = [-28, -18, -10, 10, 18, 28];
 
 const POPULAR_DOMAIN_ROOTS = [
@@ -159,6 +161,7 @@ interface WalkingRecordInput {
   domains: WalkingRecordDomain[];
   range: WalkingRecordRange;
   cursorDistancePx?: number;
+  nowTs?: number;
 }
 
 interface DomainTime {
@@ -289,6 +292,46 @@ function hashDomain(domain: string): number {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
   return hash;
+}
+
+function seededValue(seed: number, offset: number): number {
+  const value = Math.sin(seed + offset * 12.9898) * 43_758.5453;
+  return value - Math.floor(value);
+}
+
+function derivedSessionPath(
+  target: WalkingRecordTraceTarget,
+): WalkingRecordTracePoint[][] {
+  const seed = hashDomain(`${target.url}:${target.startTs}:${target.endTs}`);
+  const durationMinutes = Math.max(
+    1,
+    (target.endTs - target.startTs) / 60_000,
+  );
+  const pointCount = Math.min(
+    11,
+    4 + Math.floor(Math.log2(durationMinutes + 1)),
+  );
+  const points: WalkingRecordTracePoint[] = [];
+  let x = 0.18 + seededValue(seed, 0) * 0.64;
+  let y = 0.18 + seededValue(seed, 1) * 0.64;
+
+  points.push({ x, y });
+  for (let index = 1; index < pointCount; index++) {
+    x = Math.max(
+      0.08,
+      Math.min(0.92, x + (seededValue(seed, index * 2) - 0.5) * 0.42),
+    );
+    y = Math.max(
+      0.08,
+      Math.min(
+        0.92,
+        y + (seededValue(seed, index * 2 + 1) - 0.5) * 0.42,
+      ),
+    );
+    points.push({ x, y });
+  }
+
+  return [points];
 }
 
 export function colorForDomain(baseColor: string, domain: string): string {
@@ -462,6 +505,13 @@ function buildDepartures(
     ).filter((timestamp) => timestamp >= visit.ts && timestamp <= traceEndTs).length;
     const movementScore = Math.min(movementSamples, 3) * 2;
 
+    const traceTarget = {
+      id: `departure:${visit.ts}:${visit.domain}`,
+      url: visit.url,
+      startTs: visit.ts,
+      endTs: traceEndTs,
+    };
+
     candidates.push({
       dayKey,
       day: date.toLocaleDateString("en", { weekday: "short" }).toLowerCase(),
@@ -483,13 +533,8 @@ function buildDepartures(
             : "seen before",
       hue: colorForDomain(baseColor, visit.domain),
       score: rarityScore + dwellScore + movementScore,
-      traceTarget: {
-        id: `departure:${visit.ts}:${visit.domain}`,
-        url: visit.url,
-        startTs: visit.ts,
-        endTs: traceEndTs,
-      },
-      tracePaths: [],
+      traceTarget,
+      tracePaths: derivedSessionPath(traceTarget),
     });
   }
 
@@ -537,18 +582,36 @@ function buildRevisits(
     .filter(
       (domain) =>
         domain.sessionCount >= FAMILIAR_SITE_MIN_VISITS &&
+        domain.firstVisit > 0 &&
+        domain.lastVisit > domain.firstVisit &&
+        Math.floor((domain.lastVisit - domain.firstVisit) / DAY_MS) + 1 >=
+          FAMILIAR_SITE_MIN_SPAN_DAYS &&
         domain.lastVisit > 0 &&
         domain.lastVisit < range.startTs &&
         !isPopularDomain(domain.domain),
     )
     .map((domain) => {
       const gapMs = range.endTs - domain.lastVisit;
+      const visitSpanMs = domain.lastVisit - domain.firstVisit;
+      const visitSpanDays = Math.max(
+        1,
+        Math.floor(visitSpanMs / DAY_MS) + 1,
+      );
+      const cappedVisitCount = Math.min(domain.sessionCount, visitSpanDays);
+      const visitsPerSpanDay = domain.sessionCount / visitSpanDays;
+      const concentrationPenalty = Math.sqrt(
+        Math.max(1, visitsPerSpanDay),
+      );
       return {
         span: formatGap(gapMs),
         site: domain.domain,
         href: `https://${domain.domain}`,
-        memory: `you visited ${domain.sessionCount} times before the gap`,
-        score: Math.log2(domain.sessionCount + 1) * Math.log2(gapMs / DAY_MS + 1),
+        memory: `part of your browsing for ${formatGap(visitSpanMs)} before the gap`,
+        score:
+          (Math.log2(visitSpanDays + 1) ** 2 *
+            Math.log2(cappedVisitCount + 1) *
+            Math.log2(gapMs / DAY_MS + 1)) /
+          concentrationPenalty,
       };
     })
     .sort((a, b) => b.score - a.score)
@@ -690,13 +753,16 @@ function traceIntervals(
 }
 
 function buildDayPlates(
+  events: CollectionEvent[],
   sessions: ScreenTimeSession[],
   range: WalkingRecordRange,
   domains: WalkingRecordDomain[],
   period: WalkingRecordPeriod,
   baseColor: string,
+  nowTs: number,
 ): DayPlate[] {
   const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
+  const movementByUrl = cursorSamplesByUrl(events);
 
   return traceIntervals(period, range).map((interval) => {
     const sessionsForInterval = sessions
@@ -706,6 +772,13 @@ function buildDayPlates(
           session.focusTs <= interval.endTs,
       )
       .sort((a, b) => {
+        const aMovement = (
+          movementByUrl.get(normalizeUrl(a.url)) ?? []
+        ).some((timestamp) => timestamp >= a.focusTs && timestamp <= a.blurTs);
+        const bMovement = (
+          movementByUrl.get(normalizeUrl(b.url)) ?? []
+        ).some((timestamp) => timestamp >= b.focusTs && timestamp <= b.blurTs);
+        if (aMovement !== bMovement) return aMovement ? -1 : 1;
         if (a.durationMs !== b.durationMs) return b.durationMs - a.durationMs;
         const aVisits = domainByName.get(extractDomain(a.url))?.sessionCount ?? Infinity;
         const bVisits = domainByName.get(extractDomain(b.url))?.sessionCount ?? Infinity;
@@ -717,7 +790,8 @@ function buildDayPlates(
       return {
         date: interval.key,
         day: interval.label,
-        vignette: "no trace kept",
+        vignette:
+          interval.startTs > nowTs ? "still to come" : "no trace kept",
         hue: "#b5aea5",
         tracePaths: [],
       };
@@ -725,19 +799,20 @@ function buildDayPlates(
 
     const domain = extractDomain(session.url);
     const minutes = Math.max(1, Math.round(session.durationMs / 60_000));
+    const traceTarget = {
+      id: interval.key,
+      url: session.url,
+      startTs: session.focusTs,
+      endTs: session.blurTs,
+    };
 
     return {
       date: interval.key,
       day: interval.label,
       vignette: `${minutes} quiet minute${minutes === 1 ? "" : "s"} on ${domain}`,
       hue: colorForDomain(baseColor, domain),
-      traceTarget: {
-        id: interval.key,
-        url: session.url,
-        startTs: session.focusTs,
-        endTs: session.blurTs,
-      },
-      tracePaths: [],
+      traceTarget,
+      tracePaths: derivedSessionPath(traceTarget),
     };
   });
 }
@@ -762,7 +837,6 @@ function buildTimeSpent(
     (a, b) => b.totalMs - a.totalMs,
   );
   const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
-  const top = grouped.slice(0, 3);
   const quiet = grouped.filter((entry) => {
     const domain = domainByName.get(entry.domain);
     return (
@@ -771,6 +845,10 @@ function buildTimeSpent(
       !isMainRoad(entry.domain, mainRoads)
     );
   });
+  const quietDomains = new Set(quiet.map((entry) => entry.domain));
+  const top = grouped
+    .filter((entry) => !quietDomains.has(entry.domain))
+    .slice(0, TIME_SPENT_SITE_LIMIT);
   const quietMs = quiet.reduce((sum, entry) => sum + entry.totalMs, 0);
   const quietLongReads = quiet.flatMap((entry) => entry.sessions).filter(
     (session) => session.durationMs >= 10 * 60_000,
@@ -835,6 +913,7 @@ export function deriveWalkingRecord({
   domains,
   range,
   cursorDistancePx: measuredCursorDistance,
+  nowTs = Date.now(),
 }: WalkingRecordInput): WalkingRecord {
   const portrait = deriveBrowsingPortrait({
     events,
@@ -869,11 +948,13 @@ export function deriveWalkingRecord({
     departures,
     revisits: buildRevisits(domains, range),
     dayPlates: buildDayPlates(
+      events,
       sessions,
       range,
       domains,
       period,
       baseColor,
+      nowTs,
     ),
     timeSpent,
     timeSpentIntro,
@@ -889,6 +970,19 @@ export function getWalkingRecordTraceTargets(
   ].filter((target): target is WalkingRecordTraceTarget => target !== undefined);
 }
 
+function pathsForTarget(
+  target: WalkingRecordTraceTarget | undefined,
+  fallbackPaths: WalkingRecordTracePoint[][],
+  pathsByTarget: Map<string, WalkingRecordTracePoint[][]>,
+): WalkingRecordTracePoint[][] {
+  if (!target) return [];
+
+  const storedPaths = pathsByTarget.get(target.id);
+  return storedPaths?.some((path) => path.length >= 2)
+    ? storedPaths
+    : fallbackPaths;
+}
+
 export function attachWalkingRecordTraces(
   record: WalkingRecord,
   traces: WalkingRecordTrace[],
@@ -901,15 +995,19 @@ export function attachWalkingRecordTraces(
     ...record,
     dayPlates: record.dayPlates.map((plate) => ({
       ...plate,
-      tracePaths: plate.traceTarget
-        ? pathsByTarget.get(plate.traceTarget.id) ?? []
-        : [],
+      tracePaths: pathsForTarget(
+        plate.traceTarget,
+        plate.tracePaths,
+        pathsByTarget,
+      ),
     })),
     departures: record.departures.map((departure) => ({
       ...departure,
-      tracePaths: departure.traceTarget
-        ? pathsByTarget.get(departure.traceTarget.id) ?? []
-        : [],
+      tracePaths: pathsForTarget(
+        departure.traceTarget,
+        departure.tracePaths,
+        pathsByTarget,
+      ),
     })),
   };
 }

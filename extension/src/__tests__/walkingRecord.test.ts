@@ -216,6 +216,30 @@ describe("walking record color and trace cadence", () => {
     expect(year.dayPlates[0].day).toBe("jan");
     expect(year.dayPlates[11].day).toBe("dec");
   });
+
+  it("distinguishes future intervals from past days without activity", () => {
+    const now = new Date(2026, 6, 29, 12);
+    const range = getWalkingRecordPeriodRange("week", 0, now);
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions: [],
+      domains: [],
+      range,
+      nowTs: now.getTime(),
+    });
+
+    expect(record.dayPlates.map((plate) => plate.vignette)).toEqual([
+      "no trace kept",
+      "no trace kept",
+      "no trace kept",
+      "still to come",
+      "still to come",
+      "still to come",
+      "still to come",
+    ]);
+  });
 });
 
 describe("deriveWalkingRecord", () => {
@@ -358,6 +382,7 @@ describe("deriveWalkingRecord", () => {
       sessions: [],
       domains: [
         domain("diagram.website", {
+          firstVisit: oldVisit - 120 * 24 * 60 * 60 * 1_000,
           sessionCount: 31,
           lastVisit: oldVisit,
           totalTimeMs: 90 * 60_000,
@@ -374,13 +399,46 @@ describe("deriveWalkingRecord", () => {
       expect.objectContaining({
         span: "7 months",
         site: "diagram.website",
-        memory: "you visited 31 times before the gap",
+        memory: "part of your browsing for 4 months before the gap",
         hue: paletteColorForIndex(0),
       }),
     ]);
     expect(record.totalTimeMs).toBe(0);
     expect(record.totalTimeLabel).toBe("0 min");
     expect(record.timeSpent).toEqual([]);
+  });
+
+  it("prefers sustained familiarity over a compressed visit burst", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const lastVisit = range.startTs - 45 * 24 * 60 * 60_000;
+
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions: [],
+      domains: [
+        domain("regular.example", {
+          firstVisit: lastVisit - 180 * 24 * 60 * 60_000,
+          lastVisit,
+          sessionCount: 24,
+        }),
+        domain("application.example", {
+          firstVisit: lastVisit - 2 * 24 * 60 * 60_000,
+          lastVisit,
+          sessionCount: 96,
+        }),
+      ],
+      range,
+    });
+
+    expect(record.revisits.map((revisit) => revisit.site)).toEqual([
+      "regular.example",
+    ]);
   });
 
   it("keeps a real departure trace interval when no screen-time session completed", () => {
@@ -435,6 +493,7 @@ describe("deriveWalkingRecord", () => {
       expect.objectContaining({
         to: "tiny.garden",
         familiarity: "new to you",
+        tracePaths: [expect.arrayContaining([expect.any(Object)])],
         traceTarget: {
           id: `departure:${departureTs}:tiny.garden`,
           url: "https://tiny.garden/path",
@@ -443,6 +502,109 @@ describe("deriveWalkingRecord", () => {
         },
       }),
     ]);
+  });
+
+  it("uses a traceable session for a portrait and preserves a derived mark when cursor data is absent", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const monday = range.startTs + 9 * 60 * 60_000;
+    const untracedSession: ScreenTimeSession = {
+      url: "https://untraced.example/long",
+      focusTs: monday,
+      blurTs: monday + 2 * 60 * 60_000,
+      durationMs: 2 * 60 * 60_000,
+    };
+    const tracedSession: ScreenTimeSession = {
+      url: "https://traced.example/short",
+      focusTs: monday + 3 * 60 * 60_000,
+      blurTs: monday + 3 * 60 * 60_000 + 12 * 60_000,
+      durationMs: 12 * 60_000,
+    };
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [
+        event(
+          "trace-1",
+          "cursor",
+          tracedSession.focusTs + 1_000,
+          tracedSession.url,
+          { event: "move", x: 0.2, y: 0.3 },
+        ),
+        event(
+          "trace-2",
+          "cursor",
+          tracedSession.focusTs + 2_000,
+          tracedSession.url,
+          { event: "move", x: 0.5, y: 0.6 },
+        ),
+      ],
+      sessions: [untracedSession, tracedSession],
+      domains: [
+        domain("untraced.example", { sessionCount: 20 }),
+        domain("traced.example", { sessionCount: 20 }),
+      ],
+      range,
+      nowTs: range.endTs + 1,
+    });
+
+    expect(record.dayPlates[0]).toEqual(
+      expect.objectContaining({
+        traceTarget: expect.objectContaining({ url: tracedSession.url }),
+        tracePaths: [expect.arrayContaining([expect.any(Object)])],
+      }),
+    );
+
+    const withoutStoredCursorPath = attachWalkingRecordTraces(record, []);
+    expect(withoutStoredCursorPath.dayPlates[0].tracePaths[0].length).toBeGreaterThan(
+      1,
+    );
+  });
+
+  it("shows six real sites before the quiet-streets summary", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const domains = Array.from({ length: 8 }, (_, index) =>
+      domain(`site-${index + 1}.example`, {
+        sessionCount: index < 6 ? 20 : 2,
+      }),
+    );
+    const sessions = domains.map((entry, index) => {
+      const durationMs = (8 - index) * 10 * 60_000;
+      return {
+        url: `https://${entry.domain}/page`,
+        focusTs: range.startTs + index * 60 * 60_000,
+        blurTs: range.startTs + index * 60 * 60_000 + durationMs,
+        durationMs,
+      };
+    });
+
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions,
+      domains,
+      range,
+      nowTs: range.endTs + 1,
+    });
+
+    expect(record.timeSpent.map((entry) => entry.site)).toEqual([
+      "site-1.example",
+      "site-2.example",
+      "site-3.example",
+      "site-4.example",
+      "site-5.example",
+      "site-6.example",
+      "the quiet streets, together",
+    ]);
+    expect(record.timeSpent.at(-1)?.time).toBe("30 min");
   });
 
   it("ranks traceable departures above equally rare visits without movement", () => {
