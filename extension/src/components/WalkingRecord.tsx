@@ -377,17 +377,17 @@ function PeriodNavigationRail({
 function TimeSpentLegendEntry({ entry }: { entry: TimeSpentEntry }) {
   const content = (
     <>
-      <span
-        className="walking-record__time-legend-ink"
-        style={{ backgroundColor: entry.hue }}
-        aria-hidden="true"
-      />
       <SiteFavicon
         faviconUrl={entry.faviconUrl}
         site={entry.site}
         muted={!entry.href}
       />
-      <span>{entry.site}</span>
+      <span
+        className="walking-record__time-legend-site"
+        style={{ borderBottomColor: entry.hue }}
+      >
+        {entry.site}
+      </span>
       <strong>{entry.time}</strong>
     </>
   );

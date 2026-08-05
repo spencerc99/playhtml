@@ -184,9 +184,9 @@ describe("WalkingRecordPage calendar navigation", () => {
       expect(
         (
           container.querySelector(
-            ".walking-record__time-legend-ink",
+            ".walking-record__time-legend-site",
           ) as HTMLElement | null
-        )?.style.backgroundColor,
+        )?.style.borderBottomColor,
       ).toBe("rgb(74, 154, 138)");
       expect(
         container

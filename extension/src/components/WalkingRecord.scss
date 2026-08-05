@@ -675,8 +675,8 @@ button:focus-visible {
     font-size: 10.5px;
   }
 
-  > a:hover span {
-    text-decoration: underline;
+  > a:hover .walking-record__time-legend-site {
+    color: $text;
   }
 
   strong {
@@ -687,12 +687,9 @@ button:focus-visible {
   }
 }
 
-.walking-record__time-legend-ink {
-  width: 10px;
-  height: 3px;
-  flex: 0 0 10px;
-  border-radius: 99px;
-  opacity: 0.82;
+.walking-record__time-legend-site {
+  border-bottom: 2px solid;
+  line-height: 1.35;
 }
 
 .walking-record__site-favicon,
