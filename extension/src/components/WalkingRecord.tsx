@@ -2,6 +2,7 @@
 // ABOUTME: Presents period-specific departures, familiar sites, and time spent from local data.
 
 import React from "react";
+import browser from "webextension-polyfill";
 import {
   colorShade,
   readableTextLightness,
@@ -16,6 +17,7 @@ import {
   type TimeSpentEntry,
 } from "../history/walkingRecord";
 import type { WalkingRecordTracePoint } from "../storage/LocalEventStore";
+import { portraitDayPath } from "../utils/portraitDay";
 import { ExtensionPageNav } from "./ExtensionPageNav";
 import { PortraitCard } from "./PortraitCard";
 import "./WalkingRecord.scss";
@@ -524,18 +526,33 @@ function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
         className="walking-record__day-plates"
         data-period={record.period}
       >
-        {record.dayPlates.map((plate) => (
-          <div
-            className={`walking-record__day-plate${
-              plate.future ? " walking-record__day-plate--future" : ""
-            }`}
-            key={plate.date}
-          >
-            <DayPlateGraphic plate={plate} />
-            <strong>{plate.day}</strong>
-            <span>{plate.vignette}</span>
-          </div>
-        ))}
+        {record.dayPlates.map((plate) => {
+          const className = `walking-record__day-plate${
+            plate.future ? " walking-record__day-plate--future" : ""
+          }`;
+          const content = (
+            <>
+              <DayPlateGraphic plate={plate} />
+              <strong>{plate.day}</strong>
+              <span>{plate.vignette}</span>
+            </>
+          );
+
+          return plate.portraitDay ? (
+            <a
+              className={className}
+              href={browser.runtime.getURL(portraitDayPath(plate.portraitDay))}
+              title={`Open ${plate.day} portrait`}
+              key={plate.date}
+            >
+              {content}
+            </a>
+          ) : (
+            <div className={className} key={plate.date}>
+              {content}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

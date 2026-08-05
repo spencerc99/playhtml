@@ -361,17 +361,20 @@ describe("deriveWalkingRecord", () => {
       expect.objectContaining({
         day: "mon",
         vignette: "11 quiet minutes on foldedpaper.garden",
-        traceTarget: {
-          id: "day:2026-07-20",
-          url: quietSession.url,
-          startTs: quietSession.focusTs,
-          endTs: quietSession.blurTs,
-        },
+        portraitDay: "2026-07-20",
+        traceTargets: expect.arrayContaining([
+          {
+            id: "day:2026-07-20",
+            url: quietSession.url,
+            startTs: quietSession.focusTs,
+            endTs: quietSession.blurTs,
+          },
+        ]),
       }),
     );
 
     const targets = getWalkingRecordTraceTargets(record);
-    expect(targets).toHaveLength(1);
+    expect(targets).toHaveLength(2);
 
     const tracedRecord = attachWalkingRecordTraces(record, [
       {
@@ -379,9 +382,10 @@ describe("deriveWalkingRecord", () => {
         paths: [[{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.6 }]],
       },
     ]);
-    expect(tracedRecord.dayPlates[0].tracePaths).toEqual([
+    expect(tracedRecord.dayPlates[0].tracePaths[0]).toEqual(
       [{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.6 }],
-    ]);
+    );
+    expect(tracedRecord.dayPlates[0].tracePaths).toHaveLength(2);
     expect(tracedRecord.departures[0]).not.toHaveProperty("tracePaths");
   });
 
@@ -666,8 +670,13 @@ describe("deriveWalkingRecord", () => {
 
     expect(record.dayPlates[0]).toEqual(
       expect.objectContaining({
-        traceTarget: expect.objectContaining({ url: tracedSession.url }),
-        tracePaths: [expect.arrayContaining([expect.any(Object)])],
+        traceTargets: expect.arrayContaining([
+          expect.objectContaining({ url: tracedSession.url }),
+          expect.objectContaining({ url: lightlyTracedSession.url }),
+        ]),
+        tracePaths: expect.arrayContaining([
+          expect.arrayContaining([expect.any(Object)]),
+        ]),
       }),
     );
 

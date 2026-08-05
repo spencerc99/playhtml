@@ -126,7 +126,8 @@ export interface DayPlate {
   vignette: string;
   hue: string;
   future: boolean;
-  traceTarget?: WalkingRecordTraceTarget;
+  portraitDay?: string;
+  traceTargets: WalkingRecordTraceTarget[];
   tracePaths: WalkingRecordTracePoint[][];
 }
 
@@ -859,8 +860,10 @@ function buildDayPlates(
 ): DayPlate[] {
   const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
   const movementByUrl = cursorMovementByUrl(events);
+  const intervals = traceIntervals(period, range);
+  const targetLimit = Math.max(1, Math.floor(16 / intervals.length));
 
-  return traceIntervals(period, range).map((interval) => {
+  return intervals.map((interval) => {
     const sessionsForInterval = sessions
       .filter(
         (session) =>
@@ -891,7 +894,10 @@ function buildDayPlates(
           Infinity;
         return aVisits - bVisits;
       });
-    const session = sessionsForInterval[0]?.session;
+    const selectedSessions = sessionsForInterval
+      .slice(0, targetLimit)
+      .map((candidate) => candidate.session);
+    const session = selectedSessions[0];
 
     if (!session) {
       const future = interval.startTs > nowTs;
@@ -901,18 +907,19 @@ function buildDayPlates(
         vignette: future ? "still to come" : "no trace kept",
         hue: "#b5aea5",
         future,
+        traceTargets: [],
         tracePaths: [],
       };
     }
 
     const domain = extractDomain(session.url);
     const minutes = Math.max(1, Math.round(session.durationMs / 60_000));
-    const traceTarget = {
-      id: interval.key,
-      url: session.url,
-      startTs: session.focusTs,
-      endTs: session.blurTs,
-    };
+    const traceTargets = selectedSessions.map((selectedSession, index) => ({
+      id: index === 0 ? interval.key : `${interval.key}:${index + 1}`,
+      url: selectedSession.url,
+      startTs: selectedSession.focusTs,
+      endTs: selectedSession.blurTs,
+    }));
 
     return {
       date: interval.key,
@@ -920,8 +927,9 @@ function buildDayPlates(
       vignette: `${minutes} quiet minute${minutes === 1 ? "" : "s"} on ${domain}`,
       hue: colorForDomain(baseColor, domain),
       future: false,
-      traceTarget,
-      tracePaths: derivedSessionPath(traceTarget),
+      portraitDay: period === "week" ? interval.key.slice(4) : undefined,
+      traceTargets,
+      tracePaths: traceTargets.flatMap(derivedSessionPath),
     };
   });
 }
@@ -1043,22 +1051,17 @@ export function deriveWalkingRecord({
 export function getWalkingRecordTraceTargets(
   record: WalkingRecord,
 ): WalkingRecordTraceTarget[] {
-  return record.dayPlates
-    .map((plate) => plate.traceTarget)
-    .filter((target): target is WalkingRecordTraceTarget => target !== undefined);
+  return record.dayPlates.flatMap((plate) => plate.traceTargets);
 }
 
 function pathsForTarget(
-  target: WalkingRecordTraceTarget | undefined,
-  fallbackPaths: WalkingRecordTracePoint[][],
+  target: WalkingRecordTraceTarget,
   pathsByTarget: Map<string, WalkingRecordTracePoint[][]>,
 ): WalkingRecordTracePoint[][] {
-  if (!target) return [];
-
   const storedPaths = pathsByTarget.get(target.id);
   return storedPaths?.some((path) => path.length >= 2)
     ? storedPaths
-    : fallbackPaths;
+    : derivedSessionPath(target);
 }
 
 export function attachWalkingRecordTraces(
@@ -1073,10 +1076,8 @@ export function attachWalkingRecordTraces(
     ...record,
     dayPlates: record.dayPlates.map((plate) => ({
       ...plate,
-      tracePaths: pathsForTarget(
-        plate.traceTarget,
-        plate.tracePaths,
-        pathsByTarget,
+      tracePaths: plate.traceTargets.flatMap((target) =>
+        pathsForTarget(target, pathsByTarget),
       ),
     })),
   };

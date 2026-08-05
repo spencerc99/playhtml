@@ -586,6 +586,17 @@ button:focus-visible {
   border-radius: 8px;
   background: $surface;
   box-shadow: 0 1px 4px $shadow;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    transform 0.12s;
+
+  &[href]:hover,
+  &[href]:focus-visible {
+    border-color: rgba($accent-teal, 0.45);
+    box-shadow: 0 3px 10px rgba(90, 78, 65, 0.12);
+    transform: translateY(-1px);
+  }
 
   svg {
     width: 100%;

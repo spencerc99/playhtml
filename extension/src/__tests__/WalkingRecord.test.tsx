@@ -29,11 +29,22 @@ const record: WalkingRecord = {
   revisits: [],
   dayPlates: [
     {
+      date: "day:2026-07-27",
+      day: "mon",
+      vignette: "12 quiet minutes on example.com",
+      hue: "#4a9a8a",
+      future: false,
+      portraitDay: "2026-07-27",
+      traceTargets: [],
+      tracePaths: [],
+    },
+    {
       date: "2026-08-02",
       day: "sun",
       vignette: "still to come",
       hue: "#b5aea5",
       future: true,
+      traceTargets: [],
       tracePaths: [],
     },
   ],
@@ -185,6 +196,11 @@ describe("WalkingRecordPage calendar navigation", () => {
       expect(
         container.querySelector(".walking-record__day-plate--future"),
       ).not.toBeNull();
+      expect(
+        container
+          .querySelector('a[title="Open mon portrait"]')
+          ?.getAttribute("href"),
+      ).toBe("chrome-extension://test/portrait.html?day=2026-07-27");
       expect(
         container.querySelector(".walking-record__future-trace"),
       ).not.toBeNull();
