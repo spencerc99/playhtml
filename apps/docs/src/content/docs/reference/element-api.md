@@ -64,18 +64,20 @@ Everything you can set on `can-play` (same object for `register`, `define`, and 
 
 ```js
 {
-  // Required. Starting shared state. Must be an object (or a function that
-  // returns one) — not a bare number or string. Synced across the room.
+  // Starting shared state for elements that render from shared data. Must be
+  // an object (or a function that returns one) — not a bare number or string.
+  // Synced across the room. Must be paired with updateElement or view.
   defaultData: { count: 0 },
   // defaultData: (element) => ({ color: element.dataset.color }),
 
   // Per-user, per-tab state. Never synced. Drag anchors, drafts, UI flags.
   defaultLocalData: undefined,
 
-  // Your starting awareness value for this element. Ephemeral — clears on disconnect.
+  // Your starting awareness value for this element. Ephemeral — clears on
+  // disconnect. Pair with updateElementAwareness.
   myDefaultAwareness: undefined,
 
-  // --- update path: provide updateElement OR view, not both ---
+  // --- data update path: provide updateElement OR view, not both ---
 
   updateElement(ctx) {
     // ctx — see Callback context above. Write the DOM from ctx.data.
@@ -89,7 +91,7 @@ Everything you can set on `can-play` (same object for `register`, `define`, and 
   },
 
   updateElementAwareness(ctx) {
-    // ctx — Callback context + myAwareness
+    // ctx — Callback context + myAwareness. Pair with myDefaultAwareness.
   },
 
   // --- event handlers (ignored when using view) ---
@@ -302,8 +304,9 @@ When an element has both `can-play` and a built-in capability (e.g. `can-move`),
 
 At registration time, playhtml checks:
 
-- `defaultData` is present and is an object or a function
-- At least one update path exists: `updateElement` **or** `view`
+- `defaultData` and `updateElement` / `view` are provided together
+- `myDefaultAwareness`, when present, is paired with `updateElementAwareness`
+- At least one update function exists: `updateElement`, `view`, or `updateElementAwareness`
 - `register` / `define` throw if both `view` and `updateElement` are set, or if `view` is combined with `onClick` / `onDrag` / `onDragStart`
 
-If validation fails, the element is skipped and a console warning lists the missing fields.
+If validation fails, the element is skipped and a console error lists the missing or invalid pair.

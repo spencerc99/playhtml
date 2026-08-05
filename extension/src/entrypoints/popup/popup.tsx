@@ -18,11 +18,20 @@ import { InternetPortraitHome } from "../../components/InternetPortraitHome";
 import { ProfilePage } from "../../components/ProfilePage";
 import { FLAGS } from "../../flags";
 import {
+  pageObjectsAreHiddenOnSite,
+  showPageObjectsOnSite,
+  siteOriginFromUrl,
+} from "../../features/inventory/siteVisibility";
+import {
   PlayerIdentity,
   GameInventory,
   InventoryItem,
   PlayHTMLStatus,
 } from "../../types";
+import {
+  findOpenCommuteTab,
+  openOrFocusCommute,
+} from "./commuteNavigation";
 
 const PUBLIC_CHANGELOG_URL = "https://wewere.online/changelog/";
 
@@ -30,6 +39,7 @@ function PlayHTMLPopup() {
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(
     null,
   );
+  const [discoveredSites, setDiscoveredSites] = useState<string[]>([]);
   const [currentTab, setCurrentTab] = useState<browser.Tabs.Tab | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [playhtmlStatus, setPlayhtmlStatus] = useState<PlayHTMLStatus>({
@@ -46,6 +56,11 @@ function PlayHTMLPopup() {
     "main" | "inventory" | "collections" | "profile" | "bag-settings"
   >("main");
   const [internalDevFeaturesEnabled, setInternalDevFeaturesEnabled] = useState(false);
+  const [commuteIsOpen, setCommuteIsOpen] = useState(false);
+  const [hiddenSite, setHiddenSite] = useState<{
+    origin: string;
+    name: string;
+  } | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
     null,
   );
@@ -90,6 +105,13 @@ function PlayHTMLPopup() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  useEffect(() => {
+    if (!FLAGS.COMMUTE && !internalDevFeaturesEnabled) return;
+    findOpenCommuteTab()
+      .then((tab) => setCommuteIsOpen(tab !== null))
+      .catch(() => setCommuteIsOpen(false));
+  }, [internalDevFeaturesEnabled]);
+
   const loadPlayerData = async () => {
     try {
       // Get current tab
@@ -98,12 +120,24 @@ function PlayHTMLPopup() {
         currentWindow: true,
       });
       setCurrentTab(tab);
+      const siteOrigin = tab?.url ? siteOriginFromUrl(tab.url) : null;
+      if (siteOrigin && await pageObjectsAreHiddenOnSite(siteOrigin)) {
+        setHiddenSite({
+          origin: siteOrigin,
+          name: new URL(siteOrigin).hostname,
+        });
+      } else {
+        setHiddenSite(null);
+      }
 
-      // Get player identity
-      const identity = await browser.runtime.sendMessage({
-        type: "GET_PLAYER_IDENTITY",
+      // Get public identity and profile data
+      const profile = await browser.runtime.sendMessage({
+        type: "GET_PLAYER_PROFILE",
       });
-      setPlayerIdentity(identity);
+      setPlayerIdentity(profile?.identity ?? null);
+      setDiscoveredSites(
+        Array.isArray(profile?.discoveredSites) ? profile.discoveredSites : [],
+      );
 
       // Check PlayHTML status on current page
       await checkPlayHtmlStatus(tab);
@@ -268,6 +302,21 @@ function PlayHTMLPopup() {
     }
   };
 
+  const showSatchelOnSite = async () => {
+    if (!hiddenSite || !currentTab?.id) return;
+
+    await showPageObjectsOnSite(hiddenSite.origin);
+    setHiddenSite(null);
+    try {
+      await browser.tabs.sendMessage(currentTab.id, {
+        type: "wwo:open-inventory",
+      });
+    } catch (error) {
+      console.error("Failed to open the satchel on this page:", error);
+    }
+    window.close();
+  };
+
   if (isLoading || onboardingComplete === null) {
     return (
       <div style={{ padding: "20px", textAlign: "center" }}>
@@ -334,6 +383,7 @@ function PlayHTMLPopup() {
     return (
       <ProfilePage
         playerIdentity={playerIdentity}
+        discoveredSites={discoveredSites}
         onBack={() => setCurrentView("main")}
         onIdentityUpdated={(updated) => setPlayerIdentity(updated)}
       />
@@ -411,16 +461,37 @@ function PlayHTMLPopup() {
   return (
     <InternetPortraitHome
       playerIdentity={playerIdentity}
+      discoveredSites={discoveredSites}
       onViewCollections={() => setCurrentView("collections")}
       onViewHistory={toggleHistoricalOverlay}
       onViewProfile={() => setCurrentView("profile")}
       onViewBagSettings={
         bagEnabled ? () => setCurrentView("bag-settings") : undefined
       }
+      onViewCommute={
+        FLAGS.COMMUTE || internalDevFeaturesEnabled
+          ? async () => {
+              await openOrFocusCommute();
+              window.close();
+            }
+          : undefined
+      }
+      commuteIsOpen={commuteIsOpen}
+      onViewScraps={
+        FLAGS.SCRAPS || internalDevFeaturesEnabled
+          ? async () => {
+              const url = browser.runtime.getURL("scraps.html");
+              await browser.tabs.create({ url });
+              window.close();
+            }
+          : undefined
+      }
       onViewChangelog={async () => {
         await browser.tabs.create({ url: PUBLIC_CHANGELOG_URL });
         window.close();
       }}
+      hiddenSiteName={hiddenSite?.name}
+      onShowSatchel={hiddenSite ? showSatchelOnSite : undefined}
     />
   );
 }

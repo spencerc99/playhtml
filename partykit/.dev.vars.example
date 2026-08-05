@@ -1,0 +1,5 @@
+# ABOUTME: Lists the private values required to run the PartyKit Worker locally.
+# ABOUTME: Copy this file to .dev.vars and replace every placeholder.
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-secret-key-here
+ADMIN_TOKEN=your-admin-token-here

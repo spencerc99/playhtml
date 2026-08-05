@@ -17,6 +17,59 @@ afterEach(() => {
 const presenceListeners = new Map<string, Set<(presences: Map<string, unknown>) => void>>();
 const mockPresences = new Map<string, unknown>();
 
+// Mock users module: a minimal in-memory identity + getAll/onChange, enough
+// to drive usePlayerIdentity/useUsers tests without a real Yjs/PartyKit stack.
+const usersChangeListeners = new Set<(users: Array<Record<string, unknown>>) => void>();
+const mockSelfIdentity = {
+  pid: "mock-pid",
+  name: undefined as string | undefined,
+  color: "#123456",
+};
+
+function notifyUsersChange() {
+  const snapshot = mockGetAllUsers();
+  for (const cb of usersChangeListeners) cb(snapshot);
+}
+
+function mockGetAllUsers(): Array<Record<string, unknown>> {
+  return [
+    {
+      pid: mockSelfIdentity.pid,
+      name: mockSelfIdentity.name,
+      color: mockSelfIdentity.color,
+      isMe: true,
+    },
+  ];
+}
+
+const mockUsers = {
+  me: {
+    get pid() {
+      return mockSelfIdentity.pid;
+    },
+    get name() {
+      return mockSelfIdentity.name;
+    },
+    set name(value: string | undefined) {
+      mockSelfIdentity.name = value;
+      notifyUsersChange();
+    },
+    get color() {
+      return mockSelfIdentity.color;
+    },
+    set color(value: string) {
+      mockSelfIdentity.color = value;
+      notifyUsersChange();
+    },
+  },
+  getAll: vi.fn(() => mockGetAllUsers()),
+  onChange: vi.fn((callback: (users: Array<Record<string, unknown>>) => void) => {
+    usersChangeListeners.add(callback);
+    callback(mockGetAllUsers());
+    return () => usersChangeListeners.delete(callback);
+  }),
+};
+
 let mockReadyResolve: () => void = () => {};
 let mockReadyReject: (error: unknown) => void = () => {};
 let mockReady: Promise<void>;
@@ -61,15 +114,24 @@ const mockedPlayhtml = {
   setupPlayElement: vi.fn(),
   removePlayElement: vi.fn(),
   deleteElementData: vi.fn(),
-  elementHandlers: {},
-  globalData: new Map(),
+  getHandle: vi.fn(),
   dispatchPlayEvent: vi.fn(),
   registerPlayEventListener: vi.fn().mockReturnValue("mock-id"),
   removePlayEventListener: vi.fn(),
   handleNavigation: vi.fn().mockResolvedValue(undefined),
   presence: {
     setMyPresence: vi.fn((channel: string, data: unknown) => {
-      mockPresences.set("me", { ...data, isMe: true, cursor: null });
+      const view: Record<string, unknown> = {
+        ...(mockPresences.get("me") as Record<string, unknown> | undefined),
+        isMe: true,
+        cursor: null,
+      };
+      if (data === null) {
+        delete view[channel];
+      } else {
+        view[channel] = data;
+      }
+      mockPresences.set("me", view);
       const listeners = presenceListeners.get(channel);
       if (listeners) for (const cb of listeners) cb(new Map(mockPresences));
     }),
@@ -87,6 +149,7 @@ const mockedPlayhtml = {
     ),
     getMyIdentity: vi.fn(() => ({ stableId: "me", name: "Me", color: "#fff" })),
   },
+  users: mockUsers,
   createPageData: vi.fn((_name: string, defaultValue: unknown) => {
     let data = defaultValue;
     const listeners = new Set<(d: unknown) => void>();

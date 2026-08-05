@@ -2,6 +2,7 @@
 // ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
 import "./content/style.css";
 import browser from "webextension-polyfill";
+import { toPublicPlayerIdentity, type PlayerIdentity } from "@playhtml/common";
 import {
   MILESTONE_DURATION_MS,
   MILESTONE_TOAST_CSS,
@@ -17,16 +18,35 @@ import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
+import { ScrapCollector } from "../collectors/ScrapCollector";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
 import { shouldStartExtensionPresence } from "./content/presencePolicy";
+import { markExtensionInstalled } from "../utils/extensionInstallMarker";
+
+async function internalDevFeaturesEnabled(): Promise<boolean> {
+  try {
+    const result = await browser.storage.local.get("internalDevFeaturesEnabled");
+    return Boolean(result.internalDevFeaturesEnabled);
+  } catch {
+    return false;
+  }
+}
+
+async function ensureScrapCollectionMode(): Promise<void> {
+  const key = "collection_mode_element";
+  const result = await browser.storage.local.get(key);
+  if (result[key] === undefined) {
+    await browser.storage.local.set({ [key]: "local" });
+  }
+}
 
 export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_idle",
   cssInjectionMode: "manifest",
-  main() {
+  main(ctx) {
     // Don't run collectors or extension features on extension-internal pages
     // (portrait, popup, options, etc.) — they generate noise and can trigger
     // the 64MiB sendMessage limit when the portrait page requests all events.
@@ -35,13 +55,17 @@ export default defineContentScript({
       return;
     }
 
+    markExtensionInstalled(document.documentElement);
+
     let currentPresenceCount = 0;
 
     // Initialize PlayHTML extension on page
     class PlayHTMLExtension {
-      private playerIdentity: any = null;
+      private presencePlayerIdentity: PlayerIdentity | undefined;
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
+      private emoteCleanup: (() => void) | null = null;
+      private customSiteCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
       private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
@@ -50,10 +74,15 @@ export default defineContentScript({
         if (this.isInitialized) return;
 
         try {
-          // Get player identity from background script
-          this.playerIdentity = await browser.runtime.sendMessage({
-            type: "GET_PLAYER_IDENTITY",
+          // Get public player identity from background script
+          const publicPlayerIdentity = await browser.runtime.sendMessage({
+            type: "GET_PUBLIC_PLAYER_IDENTITY",
           });
+          const presenceIdentity = toPublicPlayerIdentity(publicPlayerIdentity);
+          this.presencePlayerIdentity = presenceIdentity?.playerStyle
+            .colorPalette[0]
+            ? presenceIdentity
+            : undefined;
 
           // Notify background about site discovery
           await browser.runtime.sendMessage({
@@ -950,12 +979,12 @@ export default defineContentScript({
       // Actions taken under the old anonymous identity are intentionally
       // orphaned — anonymous interactions have no continuity expectation.
       private injectIdentityIntoMainWorld() {
-        if (!this.playerIdentity) return;
+        if (!this.presencePlayerIdentity) return;
 
         const dispatch = () => {
           document.dispatchEvent(
             new CustomEvent("playhtml:configure-identity", {
-              detail: { playerIdentity: this.playerIdentity },
+              detail: { playerIdentity: this.presencePlayerIdentity },
             }),
           );
         };
@@ -998,8 +1027,8 @@ export default defineContentScript({
           // No instance yet (normal or native-playhtml page): stand up our own,
           // in an extension-owned room isolated from any site's playhtml room so
           // WWO data can't be read/written by the host site. The room is
-          // auto-prefixed with the page host; we add a `wwo` segment + the path
-          // so it stays per-page but never collides with the site's own room.
+          // auto-prefixed with the page host; we add a `wwo` segment; the room
+          // is domain-scoped (one guestbook per site).
           //
           // NOTE: on custom cursor-sites we instead REUSE the cursor instance
           // (set in setupPresence), whose room is the SITE's room — so bottles
@@ -1008,16 +1037,18 @@ export default defineContentScript({
           const { playhtml } = await import("playhtml");
           await playhtml.init({
             cursors: { enabled: false },
-            // Function form so the room recomputes on SPA navigation — bottles
-            // follow the URL instead of staying pinned to the initial path.
-            room: () => `wwo${window.location.pathname}`,
+            // Domain-scoped: one room per site (auto-prefixed with the host).
+            // Bottles form one guestbook per domain; page scoping happens at
+            // render (records carry pageUrl). A future per-page experiment
+            // should namespace its channel key by path instead.
+            room: "wwo",
           });
           this.playhtmlInstance = playhtml;
         }
 
         const color =
-          this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a";
-        const pid = this.playerIdentity?.publicKey ?? "anon";
+          this.presencePlayerIdentity?.playerStyle.colorPalette[0] ?? "#4a9a8a";
+        const pid = this.presencePlayerIdentity?.publicKey ?? "anon";
 
         try {
           this.globalCleanup = await initGlobalFeatures({
@@ -1092,7 +1123,7 @@ export default defineContentScript({
           defaultRoomOptions: customSiteSettings?.defaultRoomOptions,
           cursors: {
             enabled: enableCursors,
-            playerIdentity: this.playerIdentity,
+            playerIdentity: this.presencePlayerIdentity,
             coordinateMode: "absolute",
           },
         });
@@ -1103,16 +1134,35 @@ export default defineContentScript({
         // instance just inited above.
         if (enableCursors) {
           try {
-            await initCustomSite({
+            // Retain the cleanup so its presence-room socket and listeners are
+            // torn down on unload/invalidation instead of leaking per navigation.
+            this.customSiteCleanup = await initCustomSite({
               createPageData: playhtml.createPageData,
               createPresenceRoom: playhtml.createPresenceRoom,
               presence: playhtml.presence,
               cursorClient: playhtml.cursorClient,
               playerColor:
-                this.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#4a9a8a",
+                this.presencePlayerIdentity?.playerStyle.colorPalette[0] ??
+                "#4a9a8a",
             });
           } catch (err) {
             console.error("[we-were-online] initCustomSite failed:", err);
+          }
+          // Emote wheel rides the same cursor layer; peers are only present
+          // where cursors are enabled, so it lives inside this block. Gated
+          // behind internal-dev mode (Cmd+Shift+. in the popup) while it's still
+          // in progress — not shipped to all users yet.
+          const cursorClient = playhtml.cursorClient;
+          if (cursorClient && (await this.areInternalDevFeaturesEnabled())) {
+            try {
+              const { initEmotes } = await import("../features/emotes");
+              this.emoteCleanup = initEmotes({
+                presence: playhtml.presence,
+                cursorClient,
+              });
+            } catch (err) {
+              console.error("[we-were-online] initEmotes failed:", err);
+            }
           }
         }
       }
@@ -1126,6 +1176,30 @@ export default defineContentScript({
 
         (window as any).cursors.on("allColors", emit);
         emit(); // read initial value
+      }
+
+      // Release the collaborative-feature resources this instance owns (custom
+      // site presence-room socket + listeners, emote wheel, global features) so
+      // they don't leak across page navigation or extension invalidation. Safe
+      // to call more than once; each cleanup is cleared after running.
+      teardown() {
+        this.customSiteCleanup?.();
+        this.customSiteCleanup = null;
+        this.emoteCleanup?.();
+        this.emoteCleanup = null;
+        this.globalCleanup?.();
+        this.globalCleanup = null;
+      }
+
+      // Recreate the collaborative-feature resources torn down before the page
+      // entered bfcache. Called from the pageshow-restore path. The underlying
+      // playhtml instance is never torn down (only the presence-room socket and
+      // feature listeners are), so this re-runs the same presence setup that
+      // created those cleanups; each init helper is self-gating or was cleared
+      // by teardown, so re-running rebuilds exactly what was released.
+      async reinitCollaboration() {
+        if (!this.isInitialized) return;
+        await this.setupPresenceDetection();
       }
     }
 
@@ -1224,6 +1298,12 @@ export default defineContentScript({
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
 
+        if (FLAGS.SCRAPS || (await internalDevFeaturesEnabled())) {
+          await ensureScrapCollectionMode();
+          const scrapCollector = new ScrapCollector();
+          collectorManager.registerCollector(scrapCollector);
+        }
+
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
 
@@ -1286,6 +1366,33 @@ export default defineContentScript({
       initializeCollectors().catch(console.error);
       setupModeChangeListener();
     }
+
+    // Tear down the extension's collaborative-feature resources when the page
+    // goes away or the extension is invalidated, and restore them if the page
+    // comes back from the bfcache.
+    //
+    // pagehide fires both on real unload AND when the page is frozen into the
+    // bfcache for back/forward navigation (event.persisted === true). We tear
+    // down in both cases: the collaborative features hold open WebSockets, which
+    // Chrome won't keep alive in the bfcache anyway, so leaving them running
+    // would just leak a stale connection into a frozen page. The listeners are
+    // NOT { once: true } — a restored page can navigate away again and must be
+    // able to tear down (and re-restore) on each round trip.
+    //
+    // pageshow with event.persisted === true means the page was restored from
+    // the bfcache with its script state intact but its resources released on
+    // pagehide; re-establish the collaborative features so the resumed page
+    // isn't left with dead collaboration. teardown is idempotent, so a
+    // beforeunload+pagehide pair before a real unload is harmless.
+    const teardownExtension = () => extensionInstance?.teardown();
+    window.addEventListener("pagehide", teardownExtension);
+    window.addEventListener("beforeunload", teardownExtension);
+    window.addEventListener("pageshow", (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        void extensionInstance?.reinitCollaboration();
+      }
+    });
+    ctx?.onInvalidated(teardownExtension);
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
     document.addEventListener("keydown", (e) => {

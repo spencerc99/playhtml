@@ -6,6 +6,12 @@
   "compatibility_date": "2024-09-23",
   "workers_dev": true,
   "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "api.playhtml.fun",
+      "custom_domain": true
+    }
+  ],
   "observability": {
     "logs": {
       "enabled": true,
@@ -15,6 +21,15 @@
   "secrets": {
     "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
   },
+  // Operator control plane for room quarantine. Read before hydration, so a room
+  // that crashes on start can still be taken out of service.
+  "kv_namespaces": [
+    {
+      "binding": "QUARANTINE_CONTROL",
+      "id": "ca43215f51df4d699551fea9ed684e87",
+      "preview_id": "b40ca25277454bf59cfbc0a17bc0098f"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -42,6 +57,12 @@
       "name": "playhtml-staging",
       "workers_dev": true,
       "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "api-staging.playhtml.fun",
+          "custom_domain": true
+        }
+      ],
       "observability": {
         "logs": {
           "enabled": true,
@@ -51,6 +72,13 @@
       "secrets": {
         "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
       },
+      "kv_namespaces": [
+        {
+          "binding": "QUARANTINE_CONTROL",
+          "id": "b0d93abaea7d40adae9fced738e54155",
+          "preview_id": "b40ca25277454bf59cfbc0a17bc0098f"
+        }
+      ],
       "durable_objects": {
         "bindings": [
           {

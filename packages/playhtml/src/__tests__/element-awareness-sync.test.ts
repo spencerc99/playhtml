@@ -2,14 +2,13 @@
 // ABOUTME: Covers removal paths so ephemeral user state does not linger.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { playhtml, resetPlayHTML } from "../index";
-
-function getCurrentProvider(): any {
-  const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
-  const provider = providers?.[providers.length - 1];
-  if (!provider) throw new Error("Expected test provider");
-  return provider;
-}
+import { elementHandlers, playhtml, resetPlayHTML } from "../index";
+import {
+  flushMicrotasks,
+  getPresenceSocketForRoom,
+  getPresenceSockets,
+  sentChannelUpdates,
+} from "./presence-test-utils";
 
 describe("element awareness sync", () => {
   beforeEach(async () => {
@@ -24,6 +23,7 @@ describe("element awareness sync", () => {
   afterEach(async () => {
     document.body.innerHTML = "";
     await resetPlayHTML();
+    vi.unstubAllGlobals();
   });
 
   it("clears a handler's awareness when the last peer leaves that element", async () => {
@@ -45,23 +45,28 @@ describe("element awareness sync", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const provider = getCurrentProvider();
-    const states = provider.awareness.getStates();
-    states.set(2, {
-      __playhtml_identity__: { publicKey: "pk_remote" },
-      "can-play": {
-        "presence-card": { active: true },
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote",
+            playerStyle: { colorPalette: ["blue"] },
+          },
+          "element:can-play": { "presence-card": { active: true } },
+        },
       },
     });
-    provider.emit("change", { added: [2], updated: [], removed: [] });
 
     expect(awarenessSnapshots.at(-1)).toEqual([{ active: true }]);
-    expect(byStableIdSnapshots.at(-1)?.get("pk_remote")).toEqual({
-      active: true,
-    });
+    expect(byStableIdSnapshots.at(-1)?.get("pk_remote")).toEqual({ active: true });
 
-    states.delete(2);
-    provider.emit("change", { added: [], updated: [], removed: [2] });
+    socket.receive({
+      type: "presence-changes",
+      updates: {},
+      removes: { "conn-remote": ["identity", "element:can-play"] },
+    });
 
     expect(awarenessSnapshots.at(-1)).toEqual([]);
     expect(byStableIdSnapshots.at(-1)?.size).toBe(0);
@@ -75,13 +80,6 @@ describe("element awareness sync", () => {
       cursors: { enabled: true, room: "domain" },
     });
 
-    const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
-    expect(providers.length).toBeGreaterThanOrEqual(2);
-    const mainProvider = providers[0];
-    const cursorProvider = providers[1];
-    expect(mainProvider.roomname).toBe(playhtml.roomId);
-    expect(cursorProvider.roomname).not.toBe(playhtml.roomId);
-
     const el = document.createElement("div");
     el.id = "room-scoped-presence";
     el.setAttribute("can-play", "");
@@ -90,18 +88,41 @@ describe("element awareness sync", () => {
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
+    const handler = elementHandlers.get("can-play")!
       .get("room-scoped-presence")!;
     handler.setMyAwareness({ active: true } as any);
+    // Publishing is coalesced onto a microtask.
+    await flushMicrotasks();
 
-    expect(mainProvider.awareness.getLocalState()?.["can-play"]).toEqual({
-      "room-scoped-presence": { active: true },
+    const pageSocket = getPresenceSocketForRoom(playhtml.roomId);
+    const cursorSocket = getPresenceSockets().find(
+      (socket) => socket.options.room !== playhtml.roomId && !socket.closed,
+    )!;
+    expect(cursorSocket).toBeDefined();
+    expect(sentChannelUpdates(pageSocket, "element:shard:0").at(-1)).toMatchObject({
+      v: 1,
+      entries: [["can-play", "room-scoped-presence", { active: true }]],
     });
-    expect(cursorProvider.awareness.getLocalState()?.["can-play"]).toBeUndefined();
+    expect(sentChannelUpdates(cursorSocket, "element:can-play")).toEqual([]);
+    expect(sentChannelUpdates(cursorSocket, "element:shard:0")).toEqual([]);
   });
 
   it("does not mutate the previous awareness state object when updating", async () => {
+    vi.stubGlobal("WebSocket", undefined);
+    document.body.innerHTML = "";
+    (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
+    await resetPlayHTML();
+    await playhtml.init({
+      cursors: { enabled: false },
+    });
+
+    function getCurrentProvider(): any {
+      const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
+      const provider = providers?.[providers.length - 1];
+      if (!provider) throw new Error("Expected test provider");
+      return provider;
+    }
+
     const provider = getCurrentProvider();
 
     const el = document.createElement("div");
@@ -110,11 +131,11 @@ describe("element awareness sync", () => {
     (el as any).defaultData = {};
     (el as any).myDefaultAwareness = { hovering: false };
     (el as any).updateElement = vi.fn();
+    (el as any).updateElementAwareness = vi.fn();
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
+    const handler = elementHandlers.get("can-play")!
       .get("toggle-presence")!;
 
     // The provider only broadcasts an awareness update when y-protocols'
@@ -138,31 +159,79 @@ describe("element awareness sync", () => {
     expect(provider.awareness.getLocalState()?.["can-play"]).not.toBe(beforeSub);
   });
 
-  it("keeps existing local awareness when a handler is created", async () => {
-    const provider = getCurrentProvider();
-    provider.awareness.setLocalStateField("can-play", {
-      "seeded-presence": { active: true },
-    });
+  it("invokes updateElementAwareness once per local setMyAwareness", async () => {
+    const calls: unknown[] = [];
 
+    const el = document.createElement("div");
+    el.id = "single-fire-presence";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).updateElement = vi.fn();
+    (el as any).updateElementAwareness = (data: any) => {
+      calls.push(data);
+    };
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    const handler = elementHandlers.get("can-play")!
+      .get("single-fire-presence")!;
+
+    calls.length = 0;
+    handler.setMyAwareness({ active: true } as any);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ myAwareness: { active: true } });
+  });
+
+  it("keeps existing local awareness when a handler is recreated", async () => {
     const el = document.createElement("div");
     el.id = "seeded-presence";
     el.setAttribute("can-play", "");
     (el as any).defaultData = {};
     (el as any).myDefaultAwareness = { active: false };
     (el as any).updateElement = vi.fn();
+    (el as any).updateElementAwareness = vi.fn();
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-play");
 
-    const handler = playhtml
-      .elementHandlers.get("can-play")!
-      .get("seeded-presence")!;
+    elementHandlers.get("can-play")!.get("seeded-presence")!
+      .setMyAwareness({ active: true } as any);
 
+    // Re-binding the same element (e.g. a framework remount) must seed the new
+    // handler from the published local awareness, not myDefaultAwareness.
+    await playhtml.setupPlayElementForTag(el, "can-play");
+    const handler = elementHandlers.get("can-play")!.get("seeded-presence")!;
     expect(handler.awareness).toEqual([{ active: true }]);
     expect(handler.getAwarenessEventHandlerData().myAwareness).toEqual({
       active: true,
     });
-    expect(
-      provider.awareness.getLocalState()?.["can-play"]?.["seeded-presence"],
-    ).toEqual({ active: true });
+  });
+
+  it("coalesces many elements' init awareness into a bounded burst of updates", async () => {
+    // 100 elements each seed awareness on setup — without coalescing this would
+    // be O(N) full-shard resends and blow the server's per-second budget. Add
+    // them all, then run one synchronous setup sweep (the real page-load path)
+    // so every setMyAwareness fires in the same tick and coalesces.
+    for (let i = 0; i < 100; i += 1) {
+      const el = document.createElement("div");
+      el.id = `burst-${i}`;
+      el.setAttribute("can-play", "");
+      (el as any).defaultData = {};
+      (el as any).myDefaultAwareness = { i };
+      (el as any).updateElement = vi.fn();
+      (el as any).updateElementAwareness = vi.fn();
+      document.body.appendChild(el);
+    }
+    playhtml.setupPlayElements();
+    await flushMicrotasks();
+
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    const updates = sentChannelUpdates(socket, "element:shard:0");
+    // Bounded well under the server's 45 interactive-updates/sec budget.
+    expect(updates.length).toBeLessThan(45);
+    // Final published state contains every element.
+    const finalShard = JSON.stringify(updates.at(-1));
+    expect(finalShard).toContain("burst-0");
+    expect(finalShard).toContain("burst-99");
   });
 });

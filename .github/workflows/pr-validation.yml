@@ -36,10 +36,13 @@ jobs:
       run: cd apps/docs && bun run test
 
     - name: Run react tests
-      # 2 pre-existing pathname-prop failures (mock-restore quirk) are
-      # tracked separately. Reports failures but does not block merge.
       run: cd packages/react && bun run test
-      continue-on-error: true
+
+    - name: Run extension tests
+      # The extension's `test` script is bare `vitest` (watch mode), so invoke
+      # `vitest run` explicitly here. Depends on the built @playhtml/common
+      # dist from the Build packages step above.
+      run: cd extension && bunx vitest run
 
     - name: Lint
       run: bun run lint

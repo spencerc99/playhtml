@@ -141,31 +141,9 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
 }
 
 /**
- * Sync participant cursor color to the server.
- * Fire-and-forget — failures are logged but don't block.
- */
-export async function syncParticipantColor(pid: string, cursorColor: string): Promise<void> {
-  try {
-    const workerUrl = await getWorkerUrl();
-    const response = await fetch(`${workerUrl}/participants/${encodeURIComponent(pid)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cursor_color: cursorColor }),
-    });
-
-    if (!response.ok) {
-      console.warn('[Sync] Failed to sync participant color:', response.status);
-    }
-  } catch (error) {
-    console.warn('[Sync] Failed to sync participant color:', error);
-  }
-}
-
-/**
  * Get current configuration
  */
 export async function getConfig(): Promise<{ workerUrl: string }> {
   const workerUrl = await getWorkerUrl();
   return { workerUrl };
 }
-

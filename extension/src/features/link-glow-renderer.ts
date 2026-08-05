@@ -104,6 +104,8 @@ function smearNebulaLayers(
 const INTENSITY_K = 0.1;
 // Controls how many absolute clicks before the effect reaches full strength.
 const ABSOLUTE_RATE = 50;
+// A single click should leave a visible trace even beside heavily traveled links.
+const FIRST_CLICK_INTENSITY = 0.12;
 // Opacity range: linear in t (computeIntensity already provides the curve)
 const BASE_OPACITY_MIN = 0.03;
 const BASE_OPACITY_MAX = 0.5;
@@ -118,7 +120,8 @@ export function computeIntensity(count: number, maxCount: number): number {
   if (denom === 0) return 0;
   const relative = Math.min(1, Math.log(1 + count * INTENSITY_K) / denom);
   const absolute = 1 - Math.exp(-count / ABSOLUTE_RATE);
-  return absolute * (0.3 + 0.7 * relative);
+  const trafficIntensity = absolute * (0.3 + 0.7 * relative);
+  return FIRST_CLICK_INTENSITY + (1 - FIRST_CLICK_INTENSITY) * trafficIntensity;
 }
 
 export function computeGlowStyle(

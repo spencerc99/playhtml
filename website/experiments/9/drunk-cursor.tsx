@@ -73,7 +73,7 @@ const DrunkCursorController = withSharedState(
     const lastInterferenceTimeRef = useRef(0);
     const lastUpdateTimeRef = useRef(0); // Track last mousemove time for wobble detection
     const wobblePhaseRef = useRef({ x: 0, y: 0, lastResetX: 0, lastResetY: 0 }); // Track wobble phase for smooth/jerk pattern
-    const { hasSynced, cursors, getMyPlayerIdentity } = useContext(PlayContext);
+    const { isLoading, cursors, getMyPlayerIdentity } = useContext(PlayContext);
     const myStableId = getMyPlayerIdentity()?.publicKey ?? null;
     const drunkDecayIntervalRef = useRef<number | null>(null);
     const cursorPresences = useCursorPresences();
@@ -89,7 +89,7 @@ const DrunkCursorController = withSharedState(
 
     // Override playhtml's document cursor style - hide it since we render our own
     useEffect(() => {
-      if (!hasSynced) return;
+      if (isLoading) return;
 
       const overrideCursor = () => {
         document.documentElement.style.cursor = "none";
@@ -97,7 +97,7 @@ const DrunkCursorController = withSharedState(
 
       // Override immediately and set up observer to keep it overridden
       overrideCursor();
-    }, [hasSynced]);
+    }, [isLoading]);
 
     // Get my user ID (stable ID)
     const getMyUserId = useCallback((): string | null => {
@@ -121,7 +121,7 @@ const DrunkCursorController = withSharedState(
 
     // Track own cursor movements
     useEffect(() => {
-      if (!hasSynced) return;
+      if (isLoading) return;
 
       let lastUpdateTime = 0;
       const THROTTLE_MS = 1000 / 60; // 60fps for mouse position updates
@@ -312,12 +312,12 @@ const DrunkCursorController = withSharedState(
       return () => {
         document.removeEventListener("mousemove", handleMove);
       };
-    }, [hasSynced, getMyUserId, drunkLevel]);
+    }, [isLoading, getMyUserId, drunkLevel]);
 
     // Smooth interpolation of cursor position (runs continuously)
     // Also handles wobble for other users' cursors
     useEffect(() => {
-      if (!hasSynced) return;
+      if (isLoading) return;
 
       const smoothStep = () => {
         // Update own cursor position
@@ -488,7 +488,7 @@ const DrunkCursorController = withSharedState(
           cancelAnimationFrame(animationFrameRef.current);
         }
       };
-    }, [hasSynced, drunkLevel, getUserDrunkLevel]);
+    }, [isLoading, drunkLevel, getUserDrunkLevel]);
 
     // Drunk level decay over time - use a single interval that runs continuously
     useEffect(() => {
@@ -742,7 +742,7 @@ const DrunkCursorController = withSharedState(
 
     // Collaborative: when anyone drinks, all clients play sound and start local animation
     useEffect(() => {
-      if (!hasSynced || !registerPlayEventListener || !removePlayEventListener)
+      if (isLoading || !registerPlayEventListener || !removePlayEventListener)
         return;
       const listenerId = registerPlayEventListener("drunk-cursor-drink", {
         onEvent: (payload: unknown) => {
@@ -780,7 +780,7 @@ const DrunkCursorController = withSharedState(
       });
       return () => removePlayEventListener("drunk-cursor-drink", listenerId);
     }, [
-      hasSynced,
+      isLoading,
       registerPlayEventListener,
       removePlayEventListener,
       getMyUserId,
@@ -790,7 +790,7 @@ const DrunkCursorController = withSharedState(
     // Click handler: only update shared state and dispatch event; animation is started by event listener
     const handleDrink = useCallback(
       (drinkIndex: number) => {
-        if (!hasSynced || !dispatchPlayEvent) return;
+        if (isLoading || !dispatchPlayEvent) return;
         if (animatingSlotData[drinkIndex] != null) return;
         const consumedType = data?.drinkTypes?.[drinkIndex] ?? "beer";
         const nextType = Math.random() < WATER_SPAWN_CHANCE ? "water" : "beer";
@@ -809,7 +809,7 @@ const DrunkCursorController = withSharedState(
         });
       },
       [
-        hasSynced,
+        isLoading,
         dispatchPlayEvent,
         animatingSlotData,
         data?.drinkTypes,

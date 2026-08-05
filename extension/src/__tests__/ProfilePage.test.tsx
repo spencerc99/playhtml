@@ -8,10 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import type { PlayerIdentity } from "../types";
 
-vi.mock("../storage/sync", () => ({
-  syncParticipantColor: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("../components/ProfilePage.scss", () => ({}));
 
 const identity: PlayerIdentity = {
@@ -19,7 +15,6 @@ const identity: PlayerIdentity = {
   playerStyle: {
     colorPalette: ["#4a9a8a"],
   },
-  discoveredSites: [],
 };
 
 async function renderProfilePage() {
@@ -32,6 +27,7 @@ async function renderProfilePage() {
     root.render(
       <ProfilePage
         playerIdentity={identity}
+        discoveredSites={[]}
         onBack={vi.fn()}
         onIdentityUpdated={vi.fn()}
       />,

@@ -23,8 +23,8 @@ import {
   RISO_COLORS,
   TRAIL_TIME_THRESHOLD,
   getColorForParticipant,
+  getColorForEvent,
   eventMatchesAnyFilter,
-  deriveSessionColor,
   type FilterChip,
 } from "../utils/eventUtils";
 
@@ -68,6 +68,18 @@ interface TrailScheduleItem {
     button?: number;
     duration?: number;
   }>;
+}
+
+export function buildTrailSchedulePositionLookup(
+  orderedIndices: number[],
+  trailCount: number,
+): Int32Array {
+  const positions = new Int32Array(trailCount);
+  positions.fill(-1);
+  for (let position = 0; position < orderedIndices.length; position++) {
+    positions[orderedIndices[position]] = position;
+  }
+  return positions;
 }
 
 export interface UseCursorTrailsResult {
@@ -173,8 +185,7 @@ export function useCursorTrails(
       groupEvents.sort((a, b) => a.ts - b.ts);
 
       const pid = groupEvents[0].meta.pid;
-      const cursorColor = groupEvents[0].meta.cursor_color;
-      const timezone = groupEvents[0].meta.tz;
+      const firstEvent = groupEvents[0];
 
       // Determine color resolution. When randomizeColors is on, every NEW
       // trail picks a fresh palette color (so a single participant's session
@@ -186,9 +197,8 @@ export function useCursorTrails(
           trailColorIndex++;
           return c;
         }
-        if (cursorColor) {
-          return deriveSessionColor(cursorColor, trailStartTs, timezone);
-        }
+        if (firstEvent.meta.cursor_color)
+          return getColorForEvent(firstEvent, trailStartTs);
         if (!participantColors.has(pid)) {
           participantColors.set(pid, getColorForParticipant(pid));
         }
@@ -410,6 +420,10 @@ export function useCursorTrails(
         }
       }
     }
+    const schedulePositions = buildTrailSchedulePositionLookup(
+      orderedIndices,
+      trails.length,
+    );
 
     // Create schedule for each trail
     const schedule = trails.map((trail, originalIndex) => {
@@ -424,7 +438,7 @@ export function useCursorTrails(
       } else {
         // Stagger mode - choreograph trail timing
         const trailDuration = trail.endTime - trail.startTime;
-        const scheduledPosition = orderedIndices.indexOf(originalIndex);
+        const scheduledPosition = schedulePositions[originalIndex];
         const startOffset = (scheduledPosition * actualSpacing) % cycleDuration;
         const timeOffset = min + startOffset - trail.startTime;
 

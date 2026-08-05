@@ -20,13 +20,31 @@ Worker backend (in `worker/`):
 The extension ships independently of the core packages, mirroring the
 changesets release-PR flow but on a separate cadence.
 
-**Day-to-day:** when a PR changes the extension itself — `extension/src/**`,
-`extension/wxt.config.ts`, `extension/public/**`, or anything else that ships
-in the extension zip — add a bullet to `extension/PENDING.md` describing the
-user-facing change. Changes under `extension/website/**` (wewere.online pages
-and visualizations) and `extension/worker/**` deploy on their own and do NOT
-get PENDING bullets or extension releases. If the change should
-show public media in release notes, add the finished image or video under
+**Day-to-day:** when a PR changes what regular users see or get in the
+released extension — `extension/src/**`, `extension/wxt.config.ts`,
+`extension/public/**`, or anything else that ships in the extension zip — add
+a bullet to `extension/PENDING.md` for each meaningful user-facing change.
+Changes that ship dark — behind a `FLAGS.*` feature flag or the
+`internalDevFeaturesEnabled` dev toggle — do NOT get a bullet; the public
+changelog should never describe a feature users can't reach. Add the bullet in
+the PR that enables the feature for everyone.
+
+Write each bullet as final release-note copy for people who use the extension:
+
+- Lead with what they can now do, what works better, or what problem no longer
+  affects them.
+- Use one short sentence in plain language.
+- Include only details that help someone understand the change or use it.
+- Do not mention filenames, functions, storage engines, schemas, migrations,
+  message passing, retries, build systems, deployment, tests, PRs, or other
+  implementation and maintainer details.
+- Do not describe internal-only maintenance. If a change has no meaningful
+  user-facing effect, it does not need a bullet.
+
+Changes under `extension/website/**` (wewere.online pages and visualizations)
+and `extension/worker/**` deploy on their own and do NOT get PENDING bullets or
+extension releases. If the change should show public media in release notes,
+add the finished image or video under
 `extension/website/public/changelog/media/` and reference it from
 `PENDING.md`. Use normal Markdown images for photos/screenshots and the
 `![video: Title](/changelog/media/file.mp4)` convention for videos. The public
@@ -106,6 +124,17 @@ The `extension/website/` Vite app serves both the marketing/landing pages
   manager (`saved.html`)
 - `extension/website/rabbithole/`, `conversations/`, `keypresses/`,
   `sounds/`, `components-preview/` — individual experiments
+- `extension/website/social-playground/` — **the place to develop and test
+  new on-page social features** (satchel/inventory, bottles, emote wheel, …)
+  without installing the extension. It boots the REAL extension code on the
+  site: a live `playhtml.init` (cursors on) → `initGlobalFeatures` (satchel +
+  bottles) + `initEmotes` (emote wheel), all imported from `@extension/*`, so
+  the playground stays in sync with what ships. When you add a new social
+  feature, wire its `init*` into `social-playground.tsx`'s `bootSocial()` and
+  document it in `social-playground/index.html` so it's testable here.
+  Direct-render testers (e.g. `MessageBottle`, `SealingCeremony`) also live
+  here for reliable, network-free screenshots. Runs via `bunx vite
+  extension/website`, served at `/social-playground/`.
 
 Shared visualization code lives at `extension/website/shared/` and is reached
 via the `@movement` path alias from both `extension/website/src/**` and
@@ -148,7 +177,7 @@ Individual collectors:
 ### Storage (`src/storage/`)
 
 - **EventBuffer**: Creates CollectionEvents with metadata in content-script context, batches for 3s flush, sends to background via `browser.runtime.sendMessage`.
-- **LocalEventStore**: IndexedDB v8 with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrls). Screen time from focus/blur session pairing.
+- **LocalEventStore**: IndexedDB v10 with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrlCount), with exact URL membership stored separately in `aggregate_urls`. Screen time from focus/blur session pairing.
 - **sync.ts**: Upload to Cloudflare Worker (`POST /events`), retry on failure, participant color sync.
 
 ### Identity (`src/storage/participant.ts`)
@@ -166,6 +195,11 @@ Domain-specific collaborative features:
 - **FollowManager**: Follow another user's cursor, scroll tethering, cross-page navigation via presence API. `F` to follow nearest, `Q` to unfollow.
 - **PresenceCountPill**: Ambient people-count indicator with colored dots.
 - **OffscreenIndicator**: Directional arrow at screen edge when followed user is off-screen.
+- **inventory/**: The shared satchel — armable items registered by social experiments (see `features/social/`).
+- **emotes/**: Radial emote wheel (`Cmd/Ctrl+Shift+E`) — 10 cursor-native emotes that broadcast to page peers over a presence channel. Runs on cursor-enabled sites (wired into the cursor-site path in `content.ts`). Three emotes (heart, high five, nuzzle, poke) target the nearest cursor.
+
+Test social features live (no extension install) in
+`extension/website/social-playground/` — see the Website & experiments section.
 
 ### Custom Sites (`src/custom-sites/`)
 

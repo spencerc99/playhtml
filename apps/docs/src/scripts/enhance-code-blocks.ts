@@ -1,3 +1,6 @@
+// ABOUTME: Enhances docs code blocks with shared copy tallies and synchronized visual effects.
+// ABOUTME: Registers code blocks through the public playhtml lifecycle after initialization.
+//
 // Progressive enhancement for fenced code blocks.
 //
 // Wraps every Shiki-rendered `<pre class="astro-code">` in our `.ph-copy`
@@ -306,16 +309,16 @@ function enhanceBlock(pre: HTMLPreElement): EnhancedBlock | null {
     // Bump shared wear. The updateElement callback registered below will
     // run on this client as well as every other reader's, so we don't need
     // to update the DOM optimistically.
-    const handler = playhtml.elementHandlers?.get("can-play")?.get(elementId);
-    if (!handler) {
+    const handle = playhtml.getHandle(elementId, "can-play");
+    if (!handle.getData()) {
       // playhtml hasn't finished syncing yet — rare, because the button
       // only mounts after DOMContentLoaded and sync usually lands in tens
       // of ms. Silently no-op rather than forking the rendering path.
       return;
     }
-    const current = (handler as unknown as { _data?: WearData })._data;
-    const next = (current?.wear ?? 0) + 1;
-    handler.setData({ wear: next });
+    handle.setData((draft) => {
+      draft.wear += 1;
+    });
   });
 
   // Attach the vanilla-API properties playhtml reads off the DOM element
@@ -344,28 +347,8 @@ function enhanceBlock(pre: HTMLPreElement): EnhancedBlock | null {
 }
 
 async function registerWithPlayhtml(block: EnhancedBlock): Promise<void> {
-  // Wait for playhtml.init() to finish. `setupPlayElement` is a no-op on
-  // elements before the initial sync completes, so we need init to resolve
-  // first. The HeadOverride.astro boot function kicks off init on window
-  // load; by DOMContentLoaded this promise may or may not exist yet, so
-  // we poll briefly.
-  //
-  // (playhtml exposes `hasInitialized` via its global but not via the
-  // singleton export, so we poke at the internal handler map as a readiness
-  // signal instead. Once `elementHandlers` is non-null, init has started
-  // setting up tags and setupPlayElement is safe to call.)
-  const ready = () => Boolean(playhtml.elementHandlers);
-  if (!ready()) {
-    await new Promise<void>((resolve) => {
-      const interval = window.setInterval(() => {
-        if (ready()) {
-          window.clearInterval(interval);
-          resolve();
-        }
-      }, 150);
-    });
-  }
   try {
+    await playhtml.ready;
     playhtml.setupPlayElement(block.wrap, { ignoreIfAlreadySetup: true });
   } catch (err) {
     console.warn("[docs] Failed to register code-block wear handler", err);
@@ -594,27 +577,12 @@ function triggerCopyEffect(payload: CopyEventPayload): void {
 }
 
 function registerCopyEventListener(): void {
-  // Wait for init to start, same readiness signal used by block handler
-  // registration. Avoids the "event not registered" error console log.
-  const ready = () => Boolean(playhtml.elementHandlers);
-  const attach = () => {
-    playhtml.registerPlayEventListener(COPY_EVENT, {
-      onEvent: (payload: CopyEventPayload | undefined) => {
-        if (!payload || !payload.id) return;
-        triggerCopyEffect(payload);
-      },
-    });
-  };
-  if (ready()) {
-    attach();
-    return;
-  }
-  const interval = window.setInterval(() => {
-    if (ready()) {
-      window.clearInterval(interval);
-      attach();
-    }
-  }, 150);
+  playhtml.registerPlayEventListener(COPY_EVENT, {
+    onEvent: (payload: CopyEventPayload | undefined) => {
+      if (!payload || !payload.id) return;
+      triggerCopyEffect(payload);
+    },
+  });
 }
 
 if (typeof window !== "undefined") {

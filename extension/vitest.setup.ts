@@ -52,17 +52,24 @@ vi.mock("webextension-polyfill", () => ({
       local: {
         get: vi.fn().mockResolvedValue({}),
         set: vi.fn().mockResolvedValue(undefined),
+        remove: vi.fn().mockResolvedValue(undefined),
       },
     },
     runtime: {
       sendMessage: vi.fn().mockResolvedValue({}),
       onMessage: {
         addListener: vi.fn(),
+        removeListener: vi.fn(),
       },
     },
     tabs: {
       query: vi.fn().mockResolvedValue([{ id: 1, url: "https://example.com" }]),
       sendMessage: vi.fn().mockResolvedValue({ success: true }),
+      create: vi.fn().mockResolvedValue({ id: 2 }),
+      update: vi.fn().mockResolvedValue({ id: 1 }),
+    },
+    windows: {
+      update: vi.fn().mockResolvedValue({ id: 1 }),
     },
   },
 }));
@@ -101,7 +108,7 @@ vi.mock("../config", () => ({
 
 // Mock participant storage
 vi.mock("../storage/participant", () => ({
-  getParticipantId: vi.fn().mockResolvedValue("test-participant-id"),
   getSessionId: vi.fn().mockResolvedValue("test-session-id"),
+  requestSessionId: vi.fn().mockResolvedValue("test-session-id"),
   getTimezone: vi.fn().mockReturnValue("America/New_York"),
 }));

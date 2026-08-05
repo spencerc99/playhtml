@@ -26,7 +26,7 @@ playhtml.init();
 | Events | `dispatchPlayEvent`, `registerPlayEventListener`, `removePlayEventListener` |
 | Page data | `createPageData` |
 | Presence | `presence`, `createPresenceRoom`, `cursorClient` |
-| Inspection | `roomId`, `host`, `syncedStore`, `elementHandlers`, `eventHandlers`, `listSharedElements` |
+| Inspection | `roomId`, `host`, `syncedStore`, `listSharedElements` |
 
 ---
 
@@ -353,6 +353,25 @@ Throws if called before `init()` completes sync.
 
 Presence tracks who is in the room and what they are doing. See [Presence & identity](/docs/reference/presence/) for types and API details. Usage guide: [Presence](/docs/data/presence/).
 
+### `users`
+
+**Type:** `{ me, getAll(), onChange(cb) }`
+
+Durable user identity (name and color) for everyone in the room, whether or not cursors are enabled. Throws if accessed before `init()` completes. Usage guide: [Users](/docs/data/presence/users/).
+
+```js
+await playhtml.ready;
+
+playhtml.users.me.name = "Alice";
+
+const everyone = playhtml.users.getAll(); // [{ pid, name, color, isMe }, ...]
+const unsubscribe = playhtml.users.onChange((users) => {
+  console.log(`${users.length} people here`);
+});
+```
+
+---
+
 ### `presence`
 
 **Type:** `PresenceAPI`
@@ -463,19 +482,3 @@ See [Shared elements](/docs/advanced/shared-elements/) for the full guide.
 **Type:** `ReadOnlyStore<PlayStore["play"]>` _(read-only)_
 
 A read-only view into the underlying synced data store, keyed by capability tag then element id. Useful for inspecting the raw shared state of all elements in the devtools console. Do not write to this object — mutations will not be validated or synced correctly. Use `setData` from an element handler instead.
-
----
-
-### `elementHandlers`
-
-**Type:** `Map<string, Map<string, ElementHandler>>`
-
-A nested map of all active element handlers, keyed first by capability tag, then by element id. Useful in devtools for inspecting which elements are registered and accessing their current data.
-
----
-
-### `eventHandlers`
-
-**Type:** `Map<string, Array<RegisteredPlayEvent>>`
-
-A map of all registered event listeners, keyed by event type. Useful for verifying that event listeners were registered correctly and checking for duplicates.

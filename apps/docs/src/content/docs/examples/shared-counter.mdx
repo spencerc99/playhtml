@@ -1,0 +1,45 @@
+---
+title: "Shared click counter"
+description: "Increment one persistent count with a merge-safe can-play data update."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { sharedCounterRecipe } from "@/components/playground/recipes/shared-state-basics";
+
+This counter stores `{ count: 0 }` as shared data. Each click mutates the
+current count so concurrent clicks merge without replacing newer values.
+
+<RecipeExample recipe={sharedCounterRecipe} client:load />
+
+<RecipeCodeTabs recipe={sharedCounterRecipe} />
+
+## Increment from the click handler
+
+Write from the user event:
+
+```js
+counter.onClick = (_event, { setData }) => {
+  setData((draft) => {
+    draft.count += 1;
+  });
+};
+```
+
+Don't rebuild the value from rendered text. The rendered value may be behind a
+remote update.
+
+## Render the current count
+
+`updateElement` reads shared data without writing it:
+
+```js
+counter.updateElement = ({ element, data }) => {
+  element.querySelector("[data-count]").textContent = String(data.count);
+};
+```
+
+See [Data essentials](/docs/data/data-essentials/) for mutator and replacement
+writes.

@@ -40,6 +40,7 @@ const ENV: Env = {
   SUPABASE_SECRET_KEY: 'k',
   ADMIN_KEY: 'a',
   RESEND_API_KEY: 'r',
+  CODA_API_TOKEN: 'c',
   LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
 };
 

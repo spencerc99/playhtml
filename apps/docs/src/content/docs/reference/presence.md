@@ -24,7 +24,6 @@ interface PlayerIdentity {
     colorPalette: string[];
     cursorStyle?: string;
   };
-  discoveredSites?: string[];
   createdAt?: number;
 }
 ```
@@ -35,8 +34,11 @@ interface PlayerIdentity {
 | `name` | Display name, if set. |
 | `playerStyle.colorPalette` | Cursor colors. Index `0` is the primary color. |
 | `playerStyle.cursorStyle` | Optional custom cursor CSS. |
+| `createdAt` | Local identity creation time as a Unix timestamp in milliseconds. |
 
-Read your identity with `playhtml.presence.getMyIdentity()` (vanilla) or `usePlayContext().getMyPlayerIdentity()` / `usePlayerIdentity()` (React).
+`PlayerIdentity` is the public identity shared through presence. Keep private keys, local profile data, and browsing history in your own app storage instead of adding them to this object.
+
+Read your identity with `playhtml.presence.getMyIdentity()` (vanilla) or `usePlayContext().getMyPlayerIdentity()` / `usePlayerIdentity()` (React). To set identity fields, use [`playhtml.users.me`](/docs/data/presence/users/).
 
 When the "we were online" browser extension is installed, it can inject identity via the `playhtml:configure-identity` DOM event. playhtml merges the extension's color and public key automatically.
 
