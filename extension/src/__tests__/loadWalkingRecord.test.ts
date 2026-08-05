@@ -80,8 +80,12 @@ describe("loadWalkingRecord", () => {
 
     expect(progress).toHaveBeenCalledTimes(5);
     expect(
-      progress.mock.calls.slice(0, 3).map(([update]) => update.completed),
-    ).toEqual([1, 2, 3]);
+      progress.mock.calls.slice(0, 3).map(([update]) => update.message),
+    ).toEqual([
+      "gathering movement traces…",
+      "counting browsing time…",
+      "finding familiar places…",
+    ]);
     expect(progress).toHaveBeenNthCalledWith(4, {
       completed: 4,
       total: 5,
@@ -90,7 +94,7 @@ describe("loadWalkingRecord", () => {
     expect(progress).toHaveBeenLastCalledWith({
       completed: 5,
       total: 5,
-      message: "cursor trails restored…",
+      message: "restoring cursor trails…",
     });
   });
 });

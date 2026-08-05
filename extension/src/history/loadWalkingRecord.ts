@@ -77,7 +77,7 @@ export async function loadWalkingRecord(
             endTs: range.endTs,
           },
         }),
-        "movement traces gathered…",
+        "gathering movement traces…",
       ),
       trackDataRequest(
         browser.runtime.sendMessage({
@@ -87,11 +87,11 @@ export async function loadWalkingRecord(
             endTs: range.endTs,
           },
         }),
-        "browsing time counted…",
+        "counting browsing time…",
       ),
       trackDataRequest(
         browser.runtime.sendMessage({ type: "GET_ALL_DOMAINS" }),
-        "familiar places found…",
+        "finding familiar places…",
       ),
     ])) as [EventsResponse, ScreenTimeResponse, DomainsResponse];
 
@@ -124,7 +124,7 @@ export async function loadWalkingRecord(
     onProgress({
       completed: LOAD_STEP_COUNT,
       total: LOAD_STEP_COUNT,
-      message: "record ready…",
+      message: `finishing this ${period}’s record…`,
     });
     return record;
   }
@@ -137,7 +137,7 @@ export async function loadWalkingRecord(
     onProgress({
       completed: LOAD_STEP_COUNT,
       total: LOAD_STEP_COUNT,
-      message: "record ready…",
+      message: `finishing this ${period}’s record…`,
     });
     return record;
   }
@@ -145,7 +145,7 @@ export async function loadWalkingRecord(
   onProgress({
     completed: LOAD_STEP_COUNT,
     total: LOAD_STEP_COUNT,
-    message: "cursor trails restored…",
+    message: "restoring cursor trails…",
   });
   return attachWalkingRecordTraces(record, tracesResponse.traces);
 }
