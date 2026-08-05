@@ -643,7 +643,7 @@ button:focus-visible {
 .walking-record__time-stack {
   display: flex;
   width: 100%;
-  height: 20px;
+  height: 22px;
   overflow: hidden;
   border-radius: 5px;
   background: $border;
@@ -663,16 +663,17 @@ button:focus-visible {
 .walking-record__time-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 10px;
+  gap: 9px 18px;
+  margin-top: 12px;
 
   > a,
   > div {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     color: $text-muted;
-    font-size: 10.5px;
+    font-size: 12.5px;
+    line-height: 1.3;
   }
 
   > a:hover .walking-record__time-legend-site {
@@ -682,14 +683,23 @@ button:focus-visible {
   strong {
     color: $text-faint;
     font-family: $font-mono;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+
+  .walking-record__site-favicon,
+  .walking-record__site-favicon-fallback {
+    width: 15px;
+    height: 15px;
+    flex-basis: 15px;
   }
 }
 
 .walking-record__time-legend-site {
   border-bottom: 2px solid;
-  line-height: 1.35;
+  padding-bottom: 2px;
+  line-height: 1.15;
 }
 
 .walking-record__site-favicon,
@@ -713,6 +723,15 @@ button:focus-visible {
   font-family: $font-mono;
   font-size: 8px;
   line-height: 1;
+}
+
+.walking-record__site-favicon-globe {
+  border: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1;
 }
 
 @media (max-width: 650px) {

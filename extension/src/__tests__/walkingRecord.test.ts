@@ -723,9 +723,10 @@ describe("deriveWalkingRecord", () => {
       "site-3.example",
       "site-4.example",
       "site-5.example",
-      "3 other places",
+      "3 others",
     ]);
-    expect(record.timeSpent.at(-1)?.time).toBe("1 hr");
+    expect(record.timeSpent[0].time).toBe("1h 20m");
+    expect(record.timeSpent.at(-1)?.time).toBe("1h");
   });
 
   it("ranks active browsing above a longer passive visit", () => {

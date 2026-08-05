@@ -256,9 +256,22 @@ function SiteFavicon({
   const [failed, setFailed] = React.useState(false);
 
   if (!faviconUrl || failed) {
+    if (muted) {
+      return (
+        <svg
+          className="walking-record__site-favicon-fallback walking-record__site-favicon-globe"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+        >
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M1.75 8h12.5M8 1.75c2 1.7 3 3.8 3 6.25s-1 4.55-3 6.25C6 12.55 5 10.45 5 8s1-4.55 3-6.25Z" />
+        </svg>
+      );
+    }
+
     return (
       <span className="walking-record__site-favicon-fallback" aria-hidden="true">
-        {muted ? "···" : site.charAt(0).toLowerCase()}
+        {site.charAt(0).toLowerCase()}
       </span>
     );
   }

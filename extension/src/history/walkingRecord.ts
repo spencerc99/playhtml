@@ -269,6 +269,17 @@ export function formatDuration(ms: number): string {
   return minutes === 0 ? hourLabel : `${hourLabel} ${minutes} min`;
 }
 
+function formatCompactDuration(ms: number): string {
+  if (ms <= 0) return "0m";
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 1) return "<1m";
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
 export function formatRange(range: WalkingRecordRange): string {
   const start = new Date(range.startTs);
   const end = new Date(range.endTs);
@@ -952,7 +963,7 @@ function buildTimeSpent(
       rank: index + 1,
       site: row.domain,
       faviconUrl: faviconByDomain.get(row.domain),
-      time: formatDuration(row.totalMs),
+      time: formatCompactDuration(row.totalMs),
       percentage: (row.totalMs / Math.max(totalMs, 1)) * 100,
       hue: paletteColorForIndex(index),
       note: "",
@@ -962,8 +973,8 @@ function buildTimeSpent(
   if (remainingMs > 0) {
     entries.push({
       rank: entries.length + 1,
-      site: `${remaining.length} other place${remaining.length === 1 ? "" : "s"}`,
-      time: formatDuration(remainingMs),
+      site: `${remaining.length} other${remaining.length === 1 ? "" : "s"}`,
+      time: formatCompactDuration(remainingMs),
       percentage: (remainingMs / Math.max(totalMs, 1)) * 100,
       hue: "#c8c3bb",
       note: "",

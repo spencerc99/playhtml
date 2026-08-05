@@ -54,10 +54,18 @@ const record: WalkingRecord = {
       site: "example.com",
       faviconUrl: "https://example.com/icon.png",
       time: "12 min",
-      percentage: 100,
+      percentage: 80,
       hue: "#4a9a8a",
       note: "mostly around 9 AM–10 AM",
       href: "https://example.com",
+    },
+    {
+      rank: 2,
+      site: "3 others",
+      time: "4m",
+      percentage: 20,
+      hue: "#c8c3bb",
+      note: "",
     },
   ],
   timeSpentIntro: "there is no screen-time record for this period.",
@@ -188,6 +196,9 @@ describe("WalkingRecordPage calendar navigation", () => {
           ) as HTMLElement | null
         )?.style.borderBottomColor,
       ).toBe("rgb(74, 154, 138)");
+      expect(
+        container.querySelector(".walking-record__site-favicon-globe"),
+      ).not.toBeNull();
       expect(
         container
           .querySelector(".walking-record__site-favicon")
