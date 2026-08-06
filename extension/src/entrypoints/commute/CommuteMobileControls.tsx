@@ -27,6 +27,13 @@ interface CommuteMobileControlsProps {
   onMove: (vector: CommutePoint) => void;
 }
 
+function shouldUseTouchFullscreen(): boolean {
+  return (
+    typeof window.matchMedia !== "function" ||
+    window.matchMedia("(hover: none) and (pointer: coarse)").matches
+  );
+}
+
 async function enterLandscapeFullscreen(): Promise<void> {
   const root = document.documentElement;
   if (!document.fullscreenElement && root.requestFullscreen) {
@@ -69,7 +76,8 @@ export function CommuteMobileControls({
     };
 
     setCanFullscreen(
-      typeof document.documentElement.requestFullscreen === "function",
+      shouldUseTouchFullscreen() &&
+        typeof document.documentElement.requestFullscreen === "function",
     );
     updateFullscreenState();
     document.addEventListener("fullscreenchange", updateFullscreenState);
@@ -102,6 +110,8 @@ export function CommuteMobileControls({
 
   const board = () => {
     onBoard();
+    if (!shouldUseTouchFullscreen()) return;
+
     void enterLandscapeFullscreen().catch(() => {
       // Boarding remains available when fullscreen is unavailable or denied.
     });

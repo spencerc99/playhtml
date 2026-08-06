@@ -25,11 +25,13 @@ describe("CommuteMobileControls", () => {
       configurable: true,
       value: vi.fn().mockResolvedValue(undefined),
     });
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
   });
 
   afterEach(() => {
     document.body.innerHTML = "";
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("boards from a user gesture and requests landscape fullscreen", async () => {
@@ -50,6 +52,28 @@ describe("CommuteMobileControls", () => {
 
     expect(onBoard).toHaveBeenCalledOnce();
     expect(document.documentElement.requestFullscreen).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+  });
+
+  it("boards without forcing fullscreen in a precise-pointer preview", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+    const onBoard = vi.fn();
+    const { container, root } = renderControls({
+      action: null,
+      boarded: false,
+      onBoard,
+      onMove: vi.fn(),
+    });
+
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>(".commute-mobile-board button")!
+        .click();
+      await Promise.resolve();
+    });
+
+    expect(onBoard).toHaveBeenCalledOnce();
+    expect(document.documentElement.requestFullscreen).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 

@@ -1503,6 +1503,7 @@ button {
     left: calc(148px + env(safe-area-inset-left));
     z-index: 30;
     padding: 9px 20px;
+    display: block;
     color: $bg;
     border: 2px solid rgba($text, 0.25);
     border-radius: 999px;
