@@ -472,6 +472,24 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.walking-record__departures-more {
+  display: block;
+  margin: 10px 4px 0 auto;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid rgba($accent-teal, 0.35);
+  background: transparent;
+  color: $accent-teal;
+  cursor: pointer;
+  font-family: $font-mono;
+  font-size: 10px;
+
+  &:hover {
+    border-bottom-color: $accent-teal;
+    color: $text;
+  }
+}
+
 .walking-record__empty {
   padding: 20px;
   border: 1px dashed $border-strong;
@@ -734,6 +752,34 @@ button:focus-visible {
   stroke-width: 1;
 }
 
+.walking-record__movement-section {
+  margin-bottom: 0;
+}
+
+.walking-record__movement-landscape {
+  position: relative;
+  height: 210px;
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+
+  .trails-svg {
+    z-index: 2;
+  }
+}
+
+.walking-record__movement-paper {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0.42;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
 @media (max-width: 650px) {
   .walking-record {
     padding: 30px 18px 56px;
@@ -814,6 +860,10 @@ button:focus-visible {
     small {
       grid-column: 2;
     }
+  }
+
+  .walking-record__movement-landscape {
+    height: 160px;
   }
 }
 

@@ -3,7 +3,7 @@
 - Keep newly collected activity queued when local storage temporarily fails.
 - Get reload guidance instead of an endless loading screen when an older extension process blocks a local-history update.
 - See a visible patina on Wikipedia links after their first click.
-- See time by site, active explorations, regularly visited places, and combined daily cursor portraits that open the matching full-day portrait.
+- See time by site, active explorations, regularly visited places, daily cursor portraits, and a moving landscape of real browsing traces.
 
 <!--
 Add a bullet here for each meaningful user-facing change that ships in the

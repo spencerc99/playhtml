@@ -598,7 +598,7 @@ describe("LocalEventStore walking record events", () => {
       cursor("after", 12_000, 1, 1),
     ]);
 
-    const traces = await store.getWalkingRecordTraces([
+    const movement = await store.getWalkingRecordMovement([
       {
         id: "day:2026-07-20",
         url: "https://example.com/page",
@@ -607,7 +607,7 @@ describe("LocalEventStore walking record events", () => {
       },
     ]);
 
-    expect(traces).toEqual([
+    expect(movement.traces).toEqual([
       {
         targetId: "day:2026-07-20",
         paths: [
@@ -616,6 +616,46 @@ describe("LocalEventStore walking record events", () => {
         ],
       },
     ]);
+    expect(movement.landscapePaths).toHaveLength(2);
+    expect(movement.landscapePaths[0].map((event) => event.id)).toEqual([
+      "first",
+      "middle",
+    ]);
+    expect(movement.landscapePaths[1].map((event) => event.id)).toEqual([
+      "after-gap",
+      "last",
+    ]);
+  });
+
+  it("turns long movement into a bounded queue of consecutive landscape trails", async () => {
+    const store = createStore();
+    const cursorEvents = Array.from({ length: 300 }, (_, index) => ({
+      ...event(`cursor-${index}`, "cursor"),
+      ts: 1_000 + index * 100,
+      data: {
+        event: "move" as const,
+        x: index / 300,
+        y: index % 2 === 0 ? 0.25 : 0.75,
+      },
+    }));
+    await store.addEvents(cursorEvents);
+
+    const movement = await store.getWalkingRecordMovement([
+      {
+        id: "day:2026-07-20",
+        url: "https://example.com/page",
+        startTs: 1_000,
+        endTs: 31_000,
+      },
+    ]);
+
+    expect(movement.landscapePaths).toHaveLength(4);
+    expect(
+      movement.landscapePaths.every((path) => path.length <= 96),
+    ).toBe(true);
+    expect(movement.landscapePaths[0][0].id).toBe("cursor-0");
+    expect(movement.landscapePaths.at(-1)?.at(-1)?.id).toBe("cursor-299");
+    expect(movement.landscapePaths.at(-1)?.at(-1)?.ts).toBe(30_900);
   });
 });
 

@@ -19,6 +19,7 @@ import {
 import type { WalkingRecordTracePoint } from "../storage/LocalEventStore";
 import { portraitDayPath } from "../utils/portraitDay";
 import { ExtensionPageNav } from "./ExtensionPageNav";
+import { MovementLandscape } from "./MovementLandscape";
 import { PortraitCard } from "./PortraitCard";
 import "./WalkingRecord.scss";
 
@@ -37,6 +38,8 @@ interface WalkingRecordPageProps {
   };
   error: string | null;
 }
+
+const INITIAL_DEPARTURE_COUNT = 3;
 
 function readablePaletteColor(color: string): string {
   return colorShade(color, readableTextLightness(color));
@@ -413,6 +416,11 @@ function TimeSpentLegendEntry({ entry }: { entry: TimeSpentEntry }) {
 }
 
 function HowBrowsedSection({ record }: { record: WalkingRecord }) {
+  const [showAllDepartures, setShowAllDepartures] = React.useState(false);
+  const visibleDepartures = showAllDepartures
+    ? record.departures
+    : record.departures.slice(0, INITIAL_DEPARTURE_COUNT);
+
   return (
     <section className="walking-record__section">
       <div className="walking-record__section-heading">
@@ -455,11 +463,11 @@ function HowBrowsedSection({ record }: { record: WalkingRecord }) {
           <div className="walking-record__subsection-heading">
             <h2>notable new exploration</h2>
             <span>
-              {record.departures.length} shown from {record.movementCount}
+              {visibleDepartures.length} shown from {record.movementCount}
             </span>
           </div>
           <div className="walking-record__departures">
-            {record.departures.map((departure) => (
+            {visibleDepartures.map((departure) => (
               <a
                 className="walking-record__departure"
                 href={departure.toUrl}
@@ -488,6 +496,16 @@ function HowBrowsedSection({ record }: { record: WalkingRecord }) {
               </a>
             ))}
           </div>
+          {record.departures.length > INITIAL_DEPARTURE_COUNT && (
+            <button
+              className="walking-record__departures-more"
+              type="button"
+              aria-expanded={showAllDepartures}
+              onClick={() => setShowAllDepartures((visible) => !visible)}
+            >
+              {showAllDepartures ? "show less" : "show more"}
+            </button>
+          )}
         </>
       )}
     </section>
@@ -567,6 +585,22 @@ function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
           );
         })}
       </div>
+    </section>
+  );
+}
+
+function MovementLandscapeSection({ record }: { record: WalkingRecord }) {
+  if (record.landscapePaths.length === 0) return null;
+
+  return (
+    <section className="walking-record__section walking-record__movement-section">
+      <div className="walking-record__section-heading">
+        <h2>movement from this {record.period}</h2>
+      </div>
+      <MovementLandscape
+        paths={record.landscapePaths}
+        label={`Real cursor movements from this ${record.period}`}
+      />
     </section>
   );
 }
@@ -666,9 +700,13 @@ export function WalkingRecordPage({
             />
           </div>
 
-          <HowBrowsedSection record={record} />
+          <HowBrowsedSection
+            key={`${record.period}:${record.range.startTs}`}
+            record={record}
+          />
           <RevisitSection record={record} />
           <BrowsingPortraitsSection record={record} />
+          <MovementLandscapeSection record={record} />
         </>
       )}
     </main>

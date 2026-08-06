@@ -10,6 +10,7 @@ import type {
   WalkingRecordTrace,
 } from "../storage/LocalEventStore";
 import {
+  attachWalkingRecordLandscape,
   attachWalkingRecordTraces,
   deriveWalkingRecord,
   getWalkingRecordTraceTargets,
@@ -45,9 +46,10 @@ interface DomainsResponse {
   domains?: WalkingRecordDomain[];
 }
 
-interface TracesResponse {
+interface MovementResponse {
   success?: boolean;
   traces?: WalkingRecordTrace[];
+  landscapePaths?: CollectionEvent[][];
 }
 
 interface DomainDaysResponse {
@@ -168,11 +170,11 @@ export async function loadWalkingRecord(
     return record;
   }
 
-  const tracesResponse = (await browser.runtime.sendMessage({
-    type: "GET_WALKING_RECORD_TRACES",
+  const movementResponse = (await browser.runtime.sendMessage({
+    type: "GET_WALKING_RECORD_MOVEMENT",
     targets,
-  })) as TracesResponse;
-  if (!tracesResponse.success || !tracesResponse.traces) {
+  })) as MovementResponse;
+  if (!movementResponse.success || !movementResponse.traces) {
     onProgress({
       completed: WALKING_RECORD_LOAD_STEP_COUNT,
       total: WALKING_RECORD_LOAD_STEP_COUNT,
@@ -186,5 +188,8 @@ export async function loadWalkingRecord(
     total: WALKING_RECORD_LOAD_STEP_COUNT,
     message: "restoring cursor trails…",
   });
-  return attachWalkingRecordTraces(record, tracesResponse.traces);
+  return attachWalkingRecordLandscape(
+    attachWalkingRecordTraces(record, movementResponse.traces),
+    movementResponse.landscapePaths ?? [],
+  );
 }

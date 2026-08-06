@@ -23,6 +23,10 @@ const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
 const DAYS_BACKFILL_STATE_KEY = "__days_backfill_state__";
 const UPLOAD_STATE_PENDING = "pending";
 const UPLOAD_STATE_UPLOADED = "uploaded";
+const LANDSCAPE_SEGMENT_POINT_LIMIT = 96;
+const LANDSCAPE_SEGMENT_DURATION_MS = 12_000;
+const LANDSCAPE_SEGMENTS_PER_TARGET = 8;
+const LANDSCAPE_SOURCE_PATH_LIMIT = 8;
 const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "cursor",
   "navigation",
@@ -195,8 +199,14 @@ export interface WalkingRecordTrace {
   paths: WalkingRecordTracePoint[][];
 }
 
+export interface WalkingRecordMovement {
+  traces: WalkingRecordTrace[];
+  landscapePaths: CollectionEvent[][];
+}
+
 interface TimedTracePoint extends WalkingRecordTracePoint {
   ts: number;
+  event: CollectionEvent;
 }
 
 function squaredDistance(
@@ -282,6 +292,42 @@ function tracePathDistance(points: TimedTracePoint[]): number {
     distance += Math.sqrt(squaredDistance(points[index - 1], points[index]));
   }
   return distance;
+}
+
+function splitLandscapePath(
+  points: TimedTracePoint[],
+): TimedTracePoint[][] {
+  const segments: TimedTracePoint[][] = [];
+  let current: TimedTracePoint[] = [];
+
+  for (const point of points) {
+    const first = current[0];
+    if (
+      current.length >= 2 &&
+      (current.length >= LANDSCAPE_SEGMENT_POINT_LIMIT ||
+        point.ts - first.ts > LANDSCAPE_SEGMENT_DURATION_MS)
+    ) {
+      segments.push(current);
+      current = [current.at(-1)!, point];
+    } else {
+      current.push(point);
+    }
+  }
+
+  if (current.length >= 2) segments.push(current);
+  return segments;
+}
+
+function evenlySpacedPaths(
+  paths: TimedTracePoint[][],
+  limit: number,
+): TimedTracePoint[][] {
+  if (paths.length <= limit) return paths;
+
+  return Array.from({ length: limit }, (_, index) => {
+    const sourceIndex = Math.round((index / (limit - 1)) * (paths.length - 1));
+    return paths[sourceIndex];
+  });
 }
 
 /**
@@ -1813,18 +1859,20 @@ export class LocalEventStore {
   }
 
   /**
-   * Extract a few representative, continuous cursor paths for selected sessions.
-   * Paths remain normalized to the source viewport and are simplified before transfer.
+   * Extract representative cursor paths for cards and animated playback.
+   * Card paths are simplified more heavily; playback keeps original timestamps.
    */
-  async getWalkingRecordTraces(
+  async getWalkingRecordMovement(
     targets: WalkingRecordTraceTarget[],
-  ): Promise<WalkingRecordTrace[]> {
+  ): Promise<WalkingRecordMovement> {
     await this.ensureInitialized();
 
     if (targets.length > 16) {
-      throw new Error("Walking record trace target limit exceeded");
+      throw new Error("Walking record movement target limit exceeded");
     }
-    if (targets.length === 0) return [];
+    if (targets.length === 0) {
+      return { traces: [], landscapePaths: [] };
+    }
 
     for (const target of targets) {
       if (
@@ -1834,7 +1882,7 @@ export class LocalEventStore {
         !Number.isFinite(target.endTs) ||
         target.endTs < target.startTs
       ) {
-        throw new Error("Walking record trace target is invalid");
+        throw new Error("Walking record movement target is invalid");
       }
     }
 
@@ -1866,26 +1914,44 @@ export class LocalEventStore {
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) {
-          const traces = [...collectors.values()].map((collector) => {
+          const completed = [...collectors.values()].map((collector) => {
             if (collector.currentPath.length >= 2) {
               collector.paths.push(collector.currentPath);
             }
 
-            const paths = collector.paths
+            const rankedPaths = collector.paths
               .map((points, index) => ({
                 points,
                 index,
                 distance: tracePathDistance(points),
               }))
               .filter(({ points }) => points.length >= 2)
-              .sort((a, b) => b.distance - a.distance)
-              .slice(0, 3)
-              .sort((a, b) => a.index - b.index)
-              .map(({ points }) => simplifyTracePath(points));
+              .sort((a, b) => b.distance - a.distance);
 
-            return { targetId: collector.target.id, paths };
+            const selectedPaths = rankedPaths
+              .slice(0, 3)
+              .sort((a, b) => a.index - b.index);
+            const paths = selectedPaths
+              .map(({ points }) => simplifyTracePath(points));
+            const landscapePaths = evenlySpacedPaths(
+              rankedPaths
+                .slice(0, LANDSCAPE_SOURCE_PATH_LIMIT)
+                .sort((a, b) => a.index - b.index)
+                .flatMap(({ points }) => splitLandscapePath(points)),
+              LANDSCAPE_SEGMENTS_PER_TARGET,
+            ).map((points) => points.map(({ event }) => event));
+
+            return {
+              trace: { targetId: collector.target.id, paths },
+              landscapePaths,
+            };
           });
-          resolve(traces);
+          resolve({
+            traces: completed.map(({ trace }) => trace),
+            landscapePaths: completed
+              .flatMap(({ landscapePaths }) => landscapePaths)
+              .filter((path) => path.length >= 2),
+          });
           return;
         }
 
@@ -1912,6 +1978,7 @@ export class LocalEventStore {
                 x: Math.max(0, Math.min(1, data.x)),
                 y: Math.max(0, Math.min(1, data.y)),
                 ts: event.ts,
+                event: toCollectionEvent(event),
               };
               const previous = collector.currentPath.at(-1);
 

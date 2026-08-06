@@ -155,6 +155,7 @@ export interface WalkingRecord {
   departures: Departure[];
   revisits: Revisit[];
   dayPlates: DayPlate[];
+  landscapePaths: CollectionEvent[][];
   timeSpent: TimeSpentEntry[];
   timeSpentIntro: string;
 }
@@ -611,7 +612,7 @@ function buildDepartures(
   const ranked = [...deduped.values()].sort((a, b) => b.score - a.score);
   return {
     movementCount: ranked.length,
-    departures: ranked.slice(0, 3).map((candidate) => {
+    departures: ranked.map((candidate) => {
       const { dayKey: _, ...departure } = candidate;
       return departure;
     }),
@@ -1054,6 +1055,7 @@ export function deriveWalkingRecord({
       baseColor,
       nowTs,
     ),
+    landscapePaths: [],
     timeSpent,
     timeSpentIntro,
   };
@@ -1091,5 +1093,15 @@ export function attachWalkingRecordTraces(
         pathsForTarget(target, pathsByTarget),
       ),
     })),
+  };
+}
+
+export function attachWalkingRecordLandscape(
+  record: WalkingRecord,
+  landscapePaths: CollectionEvent[][],
+): WalkingRecord {
+  return {
+    ...record,
+    landscapePaths,
   };
 }

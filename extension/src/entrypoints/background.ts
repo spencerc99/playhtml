@@ -790,13 +790,19 @@ export default defineBackground(() => {
       return true
     }
 
-    if (message.type === 'GET_WALKING_RECORD_TRACES') {
+    if (message.type === 'GET_WALKING_RECORD_MOVEMENT') {
       const targets = (message.targets || []) as WalkingRecordTraceTarget[]
-      store.getWalkingRecordTraces(targets)
-        .then((traces) => reply({ success: true, traces }))
+      store.getWalkingRecordMovement(targets)
+        .then(async (movement) => ({
+          ...movement,
+          landscapePaths: await Promise.all(
+            movement.landscapePaths.map(hydrateCursorColor),
+          ),
+        }))
+        .then((movement) => reply({ success: true, ...movement }))
         .catch((e) => {
-          console.error('[Background] GET_WALKING_RECORD_TRACES error:', e)
-          reply({ success: false, traces: [] })
+          console.error('[Background] GET_WALKING_RECORD_MOVEMENT error:', e)
+          reply({ success: false, traces: [], landscapePaths: [] })
         })
       return true
     }

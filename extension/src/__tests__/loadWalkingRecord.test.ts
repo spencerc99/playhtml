@@ -71,9 +71,10 @@ describe("loadWalkingRecord", () => {
         success: true,
         days: [],
       },
-      GET_WALKING_RECORD_TRACES: {
+      GET_WALKING_RECORD_MOVEMENT: {
         success: true,
         traces: [],
+        landscapePaths: [],
       },
     };
     vi.mocked(browser.runtime.sendMessage).mockImplementation(
