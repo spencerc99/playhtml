@@ -855,6 +855,7 @@ export default defineBackground(() => {
             events: [],
             cursorDistancePx: 0,
             activity: [],
+            sessions: [],
           })
         })
       return true
@@ -930,29 +931,6 @@ export default defineBackground(() => {
             error:
               e instanceof Error ? e.message : 'Local places are unavailable.',
             domains: [],
-          })
-        })
-      return true
-    }
-
-    if (message.type === 'GET_WALKING_RECORD_DOMAIN_DAYS') {
-      const domains = Array.isArray(message.domains)
-        ? message.domains.filter(
-            (domain: unknown): domain is string => typeof domain === 'string',
-          )
-        : []
-      store
-        .getDomainDayHistory(domains)
-        .then((days) => reply({ success: true, days }))
-        .catch((e) => {
-          console.error('[Background] GET_WALKING_RECORD_DOMAIN_DAYS error:', e)
-          reply({
-            success: false,
-            error:
-              e instanceof Error
-                ? e.message
-                : 'Local routines are unavailable.',
-            days: [],
           })
         })
       return true

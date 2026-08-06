@@ -1,5 +1,5 @@
 // ABOUTME: Renders the phase-one walking record for the extension new-tab page.
-// ABOUTME: Presents period-specific departures, familiar sites, and time spent from local data.
+// ABOUTME: Presents period-specific exploration, settled places, and time spent from local data.
 
 import React from "react";
 import browser from "webextension-polyfill";
@@ -422,7 +422,6 @@ function HowBrowsedSection({ record }: { record: WalkingRecord }) {
           {record.totalTimeLabel} online this {record.period}
         </span>
       </div>
-      <p className="walking-record__section-intro">{record.timeSpentIntro}</p>
 
       {record.timeSpent.length > 0 ? (
         <div className="walking-record__time-spent">
@@ -507,34 +506,32 @@ function HowBrowsedSection({ record }: { record: WalkingRecord }) {
   );
 }
 
-function RevisitSection({ record }: { record: WalkingRecord }) {
+function SettledPlacesSection({ record }: { record: WalkingRecord }) {
+  if (record.settledPlaces.length === 0) return null;
+
   return (
     <section className="walking-record__section">
       <div className="walking-record__section-heading">
-        <h2>where you used to visit</h2>
+        <h2>places you settled into</h2>
       </div>
       <p className="walking-record__section-intro">
-        places you returned to across many days that you haven’t walked lately.
-        the doors are still open.
+        smaller places beyond your busiest roads where you spent time and came
+        back.
       </p>
-      {record.revisits.length > 0 ? (
-        <div className="walking-record__revisit-ledger">
-          {record.revisits.map((revisit) => (
-            <a href={revisit.href} key={revisit.site}>
-              <span style={{ color: readablePaletteColor(revisit.hue) }}>
-                {revisit.span}
-              </span>
-              <strong>{revisit.site}</strong>
-              <small>{revisit.memory}</small>
-            </a>
-          ))}
-        </div>
-      ) : (
-        <EmptySection>
-          no regularly visited place has been quiet long enough to call you back
-          yet.
-        </EmptySection>
-      )}
+      <div className="walking-record__settled-ledger">
+        {record.settledPlaces.map((place) => (
+          <a href={place.href} key={place.site}>
+            <span style={{ color: readablePaletteColor(place.hue) }}>
+              {place.activeTime}
+            </span>
+            <div>
+              <SiteFavicon faviconUrl={place.faviconUrl} site={place.site} />
+              <strong title={place.site}>{place.site}</strong>
+            </div>
+            <small>{place.evidence}</small>
+          </a>
+        ))}
+      </div>
     </section>
   );
 }
@@ -697,7 +694,7 @@ export function WalkingRecordPage({
             key={`${record.period}:${record.range.startTs}`}
             record={record}
           />
-          <RevisitSection record={record} />
+          <SettledPlacesSection record={record} />
           <BrowsingPortraitsSection record={record} />
           <MovementLandscapeSection record={record} />
         </>

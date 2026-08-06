@@ -4,7 +4,6 @@
 import browser from "webextension-polyfill";
 import type { CollectionEvent } from "../collectors/types";
 import type {
-  AggregateDay,
   ScreenTimeSession,
   WalkingRecordActivity,
   WalkingRecordTrace,
@@ -34,11 +33,6 @@ interface EventsResponse {
   events?: CollectionEvent[];
   cursorDistancePx?: number;
   activity?: WalkingRecordActivity[];
-}
-
-interface ScreenTimeResponse {
-  success?: boolean;
-  error?: string;
   sessions?: ScreenTimeSession[];
 }
 
@@ -55,13 +49,26 @@ interface MovementResponse {
   favicons?: Record<string, string>;
 }
 
-interface DomainDaysResponse {
-  success?: boolean;
-  error?: string;
-  days?: AggregateDay[];
-}
+export const WALKING_RECORD_LOAD_STEP_COUNT = 4;
 
-export const WALKING_RECORD_LOAD_STEP_COUNT = 6;
+let domainsRequest: Promise<DomainsResponse> | null = null;
+
+function getWalkingRecordDomains(): Promise<DomainsResponse> {
+  if (!domainsRequest) {
+    domainsRequest = browser.runtime
+      .sendMessage({ type: "GET_ALL_DOMAINS" })
+      .then((response) => {
+        const domainsResponse = response as DomainsResponse;
+        if (!domainsResponse.success) domainsRequest = null;
+        return domainsResponse;
+      })
+      .catch((error) => {
+        domainsRequest = null;
+        throw error;
+      });
+  }
+  return domainsRequest;
+}
 
 export async function loadWalkingRecord(
   period: WalkingRecordPeriod,
@@ -84,43 +91,27 @@ export async function loadWalkingRecord(
     return response;
   };
 
-  const [eventsResponse, screenTimeResponse, domainsResponse] =
-    (await Promise.all([
-      trackDataRequest(
-        browser.runtime.sendMessage({
-          type: "GET_WALKING_RECORD_EVENTS",
-          options: {
-            startTs: range.startTs,
-            endTs: range.endTs,
-          },
-        }),
-        "gathering movement traces…",
-      ),
-      trackDataRequest(
-        browser.runtime.sendMessage({
-          type: "GET_SCREEN_TIME",
-          options: {
-            startTs: range.startTs,
-            endTs: range.endTs,
-          },
-        }),
-        "counting browsing time…",
-      ),
-      trackDataRequest(
-        browser.runtime.sendMessage({ type: "GET_ALL_DOMAINS" }),
-        "finding familiar places…",
-      ),
-    ])) as [EventsResponse, ScreenTimeResponse, DomainsResponse];
+  const [eventsResponse, domainsResponse] = (await Promise.all([
+    trackDataRequest(
+      browser.runtime.sendMessage({
+        type: "GET_WALKING_RECORD_EVENTS",
+        options: {
+          startTs: range.startTs,
+          endTs: range.endTs,
+        },
+      }),
+      "gathering browsing activity…",
+    ),
+    trackDataRequest(getWalkingRecordDomains(), "mapping familiar roads…"),
+  ])) as [EventsResponse, DomainsResponse];
 
-  if (!eventsResponse.success || !eventsResponse.events) {
+  if (
+    !eventsResponse.success ||
+    !eventsResponse.events ||
+    !eventsResponse.sessions
+  ) {
     throw new Error(
       eventsResponse.error ?? "The local activity record is unavailable.",
-    );
-  }
-  if (!screenTimeResponse.success || !screenTimeResponse.sessions) {
-    throw new Error(
-      screenTimeResponse.error ??
-        "The local screen-time record is unavailable.",
     );
   }
   if (!domainsResponse.success || !domainsResponse.domains) {
@@ -129,27 +120,8 @@ export async function loadWalkingRecord(
     );
   }
 
-  const familiarDomains = domainsResponse.domains
-    .filter((domain) => domain.activeDayCount >= 5)
-    .map((domain) => domain.domain);
-  const domainDaysResponse = (await browser.runtime.sendMessage({
-    type: "GET_WALKING_RECORD_DOMAIN_DAYS",
-    domains: familiarDomains,
-  })) as DomainDaysResponse;
-  if (!domainDaysResponse.success || !domainDaysResponse.days) {
-    throw new Error(
-      domainDaysResponse.error ??
-        "The local relationship record is unavailable.",
-    );
-  }
   onProgress({
-    completed: 4,
-    total: WALKING_RECORD_LOAD_STEP_COUNT,
-    message: "tracing familiar routines…",
-  });
-
-  onProgress({
-    completed: 5,
+    completed: 3,
     total: WALKING_RECORD_LOAD_STEP_COUNT,
     message: `arranging this ${period}’s record…`,
   });
@@ -158,9 +130,8 @@ export async function loadWalkingRecord(
     baseColor,
     events: eventsResponse.events,
     activity: eventsResponse.activity ?? [],
-    sessions: screenTimeResponse.sessions,
+    sessions: eventsResponse.sessions,
     domains: domainsResponse.domains,
-    domainDays: domainDaysResponse.days,
     range,
     cursorDistancePx: eventsResponse.cursorDistancePx,
   });

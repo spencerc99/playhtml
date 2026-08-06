@@ -1,5 +1,5 @@
 // ABOUTME: Derives calendar-period walking records from locally collected browsing events.
-// ABOUTME: Ranks departures, dormant familiar sites, time spent, and representative traces.
+// ABOUTME: Ranks departures, settled small sites, time spent, and representative traces.
 
 import type {
   CollectionEvent,
@@ -8,7 +8,6 @@ import type {
 } from "../collectors/types";
 import {
   WALKING_RECORD_FAVICON_DOMAIN_LIMIT,
-  type AggregateDay,
   type ScreenTimeSession,
   type WalkingRecordActivity,
   type WalkingRecordTrace,
@@ -21,12 +20,9 @@ import { parseColorToHsl } from "@movement/utils/eventUtils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SMALL_SITE_MAX_VISITS = 5;
-const FAMILIAR_SITE_MIN_ACTIVE_DAYS = 5;
-const FAMILIAR_SITE_MIN_ACTIVE_WEEKS = 3;
-const FAMILIAR_SITE_MIN_SPAN_DAYS = 21;
-const FAMILIAR_SITE_MIN_GAP_DAYS = 14;
 const MAIN_ROAD_LIMIT = 20;
 const TIME_SPENT_SITE_LIMIT = 5;
+const SETTLED_PLACE_LIMIT = 5;
 const ACTIVE_WINDOW_MS = 30_000;
 const MIN_DEPARTURE_DWELL_MS = 60_000;
 const PAGE_HUE_SHIFTS = [-28, -18, -10, 10, 18, 28];
@@ -112,11 +108,12 @@ export interface Departure {
   score: number;
 }
 
-export interface Revisit {
-  span: string;
+export interface SettledPlace {
   site: string;
   href: string;
-  memory: string;
+  faviconUrl?: string;
+  activeTime: string;
+  evidence: string;
   hue: string;
   score: number;
 }
@@ -154,11 +151,10 @@ export interface WalkingRecord {
   hourBuckets: number[];
   movementCount: number;
   departures: Departure[];
-  revisits: Revisit[];
+  settledPlaces: SettledPlace[];
   dayPlates: DayPlate[];
   landscapePaths: CollectionEvent[][];
   timeSpent: TimeSpentEntry[];
-  timeSpentIntro: string;
 }
 
 interface WalkingRecordInput {
@@ -168,7 +164,6 @@ interface WalkingRecordInput {
   activity?: WalkingRecordActivity[];
   sessions: ScreenTimeSession[];
   domains: WalkingRecordDomain[];
-  domainDays?: AggregateDay[];
   range: WalkingRecordRange;
   cursorDistancePx?: number;
   nowTs?: number;
@@ -616,107 +611,163 @@ function buildDepartures(
   };
 }
 
-function formatGap(ms: number): string {
-  const days = Math.max(1, Math.floor(ms / DAY_MS));
-  if (days < 60) return `${days} day${days === 1 ? "" : "s"}`;
-
-  const months = Math.floor(days / 30);
-  if (months < 24) return `${months} month${months === 1 ? "" : "s"}`;
-
-  const years = Math.floor(days / 365);
-  return `${years} year${years === 1 ? "" : "s"}`;
-}
-
-function weekKey(dayKey: string): string {
-  const date = new Date(`${dayKey}T12:00:00`);
-  const day = (date.getDay() + 6) % 7;
-  date.setDate(date.getDate() - day);
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function revisitEvidence(days: AggregateDay[], relationshipMs: number): string {
-  const weekdayCounts = new Map<number, number>();
-  for (const day of days) {
-    const weekday = new Date(`${day.localDayKey}T12:00:00`).getDay();
-    weekdayCounts.set(weekday, (weekdayCounts.get(weekday) ?? 0) + 1);
-  }
-  const [topWeekday, topCount] = [...weekdayCounts].sort(
-    (a, b) => b[1] - a[1],
-  )[0] ?? [0, 0];
-  if (topCount >= 4 && topCount / days.length >= 0.6) {
-    const weekday = new Intl.DateTimeFormat("en", {
-      weekday: "long",
-    }).format(new Date(2026, 7, 2 + topWeekday));
-    return `usually returned on ${weekday.toLowerCase()}s`;
+function periodKey(timestamp: number, period: "week" | "month"): string {
+  const date = new Date(timestamp);
+  if (period === "month") {
+    return `${date.getFullYear()}-${date.getMonth()}`;
   }
 
-  return `visited on ${days.length} days across ${formatGap(relationshipMs)}`;
+  const weekStart = startOfLocalDay(date);
+  const daysFromMonday = (weekStart.getDay() + 6) % 7;
+  weekStart.setDate(weekStart.getDate() - daysFromMonday);
+  return localDateKey(weekStart.getTime());
 }
 
-function buildRevisits(
-  domains: WalkingRecordDomain[],
-  domainDays: AggregateDay[],
-  range: WalkingRecordRange,
-): Revisit[] {
-  const daysByDomain = new Map<string, AggregateDay[]>();
-  const activeDomains = new Set<string>();
-  for (const day of domainDays) {
-    if (day.lastVisitTs >= range.startTs && day.firstVisitTs <= range.endTs) {
-      activeDomains.add(day.domain);
-      continue;
+function timeOfDayLabel(hour: number): string {
+  if (hour >= 5 && hour < 12) return "mornings";
+  if (hour >= 12 && hour < 17) return "afternoons";
+  if (hour >= 17 && hour < 22) return "evenings";
+  return "late nights";
+}
+
+function recurringTimeOfDay(
+  sessions: Array<{ session: ScreenTimeSession; activeTimeMs: number }>,
+): string | null {
+  const strongestSessionByDay = new Map<
+    string,
+    { session: ScreenTimeSession; activeTimeMs: number }
+  >();
+  for (const entry of sessions) {
+    const day = localDateKey(entry.session.focusTs);
+    const strongest = strongestSessionByDay.get(day);
+    if (!strongest || entry.activeTimeMs > strongest.activeTimeMs) {
+      strongestSessionByDay.set(day, entry);
     }
-    if (day.lastVisitTs >= range.startTs) continue;
-    const days = daysByDomain.get(day.domain) ?? [];
-    days.push(day);
-    daysByDomain.set(day.domain, days);
   }
+  if (strongestSessionByDay.size < 3) return null;
 
-  return domains
-    .flatMap((domain) => {
-      if (isPopularDomain(domain.domain)) return [];
+  const counts = new Map<string, number>();
+  for (const { session } of strongestSessionByDay.values()) {
+    const label = timeOfDayLabel(new Date(session.focusTs).getHours());
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const [label, count] = [...counts].sort((a, b) => b[1] - a[1])[0]!;
+  return count / strongestSessionByDay.size >= 0.6 ? label : null;
+}
+
+function qualifiesAsSettledPlace(
+  period: WalkingRecordPeriod,
+  activeDays: number,
+  activeWeeks: number,
+  activeMonths: number,
+  uniquePages: number,
+): boolean {
+  if (activeDays < 2) return false;
+  if (period === "week") return true;
+  if (period === "month") {
+    return (activeDays >= 3 && activeWeeks >= 2) || uniquePages >= 5;
+  }
+  return (activeDays >= 5 && activeMonths >= 3) || uniquePages >= 10;
+}
+
+function settledPlaceCaps(period: WalkingRecordPeriod) {
+  if (period === "week") {
+    return { minutes: 120, days: 5, pages: 12, sessions: 10 };
+  }
+  if (period === "month") {
+    return { minutes: 600, days: 15, pages: 30, sessions: 30 };
+  }
+  return { minutes: 2_400, days: 60, pages: 100, sessions: 120 };
+}
+
+function buildSettledPlaces(
+  activity: WalkingRecordActivity[],
+  sessions: ScreenTimeSession[],
+  period: WalkingRecordPeriod,
+): SettledPlace[] {
+  const activityByUrl = new Map(
+    activity.map((entry) => [entry.url, entry.windowStarts]),
+  );
+  const grouped = [...sessionsByDomain(sessions).values()].sort(
+    (a, b) => b.totalMs - a.totalMs,
+  );
+  const leadingDomains = new Set(
+    grouped.slice(0, TIME_SPENT_SITE_LIMIT).map(({ domain }) => domain),
+  );
+  const caps = settledPlaceCaps(period);
+
+  return grouped
+    .flatMap((group): Omit<SettledPlace, "hue">[] => {
+      if (leadingDomains.has(group.domain) || isPopularDomain(group.domain)) {
+        return [];
+      }
+
+      const engagedSessions = group.sessions
+        .map((session) => ({
+          session,
+          activeTimeMs: activeTimeForSession(session, activityByUrl),
+        }))
+        .filter(({ activeTimeMs }) => activeTimeMs > 0);
+      const activeTimeMs = engagedSessions.reduce(
+        (sum, entry) => sum + entry.activeTimeMs,
+        0,
+      );
+      if (activeTimeMs < 5 * 60_000) return [];
+
+      const activeDays = new Set(
+        engagedSessions.map(({ session }) => localDateKey(session.focusTs)),
+      ).size;
+      const activeWeeks = new Set(
+        engagedSessions.map(({ session }) =>
+          periodKey(session.focusTs, "week"),
+        ),
+      ).size;
+      const activeMonths = new Set(
+        engagedSessions.map(({ session }) =>
+          periodKey(session.focusTs, "month"),
+        ),
+      ).size;
+      const uniquePages = new Set(
+        engagedSessions.map(({ session }) => normalizeUrl(session.url)),
+      ).size;
       if (
-        activeDomains.has(domain.domain) ||
-        (domain.lastVisit >= range.startTs && domain.lastVisit <= range.endTs)
+        !qualifiesAsSettledPlace(
+          period,
+          activeDays,
+          activeWeeks,
+          activeMonths,
+          uniquePages,
+        )
       ) {
         return [];
       }
-      const days = (daysByDomain.get(domain.domain) ?? []).sort(
-        (a, b) => a.firstVisitTs - b.firstVisitTs,
-      );
-      if (days.length < FAMILIAR_SITE_MIN_ACTIVE_DAYS) return [];
 
-      const activeWeeks = new Set(days.map((day) => weekKey(day.localDayKey)));
-      if (activeWeeks.size < FAMILIAR_SITE_MIN_ACTIVE_WEEKS) return [];
+      const recurringTime = recurringTimeOfDay(engagedSessions);
+      const recurrenceScore = recurringTime ? 1 : 0;
+      const score =
+        logarithmicScore(activeTimeMs / 60_000, caps.minutes) * 0.35 +
+        logarithmicScore(activeDays, caps.days) * 0.25 +
+        logarithmicScore(uniquePages, caps.pages) * 0.2 +
+        logarithmicScore(engagedSessions.length, caps.sessions) * 0.1 +
+        recurrenceScore * 0.1;
+      const returnEvidence = recurringTime
+        ? `returned in the ${recurringTime} on ${activeDays} days`
+        : `returned on ${activeDays} days`;
 
-      const firstVisitTs = days[0].firstVisitTs;
-      const lastVisitTs = days.at(-1)!.lastVisitTs;
-      const relationshipMs = lastVisitTs - firstVisitTs;
-      const relationshipDays = Math.floor(relationshipMs / DAY_MS) + 1;
-      if (relationshipDays < FAMILIAR_SITE_MIN_SPAN_DAYS) return [];
-
-      const gapMs = range.endTs - lastVisitTs;
-      if (gapMs < FAMILIAR_SITE_MIN_GAP_DAYS * DAY_MS) return [];
-
-      return {
-        span: formatGap(gapMs),
-        site: domain.domain,
-        href: `https://${domain.domain}`,
-        memory: revisitEvidence(days, relationshipMs),
-        score:
-          Math.log2(days.length + 1) ** 2 *
-          Math.log2(activeWeeks.size + 1) *
-          Math.log2(relationshipDays + 1) *
-          Math.log2(gapMs / DAY_MS + 1),
-      };
+      return [
+        {
+          site: group.domain,
+          href: `https://${group.domain}`,
+          activeTime: `${formatCompactDuration(activeTimeMs)} active`,
+          evidence: `${returnEvidence} · visited ${uniquePages} page${uniquePages === 1 ? "" : "s"}`,
+          score,
+        },
+      ];
     })
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map((revisit, index) => ({
-      ...revisit,
+    .slice(0, SETTLED_PLACE_LIMIT)
+    .map((place, index) => ({
+      ...place,
       hue: paletteColorForIndex(index),
     }));
 }
@@ -957,7 +1008,7 @@ function buildDayPlates(
 function buildTimeSpent(
   events: CollectionEvent[],
   sessions: ScreenTimeSession[],
-): { entries: TimeSpentEntry[]; intro: string } {
+): { entries: TimeSpentEntry[] } {
   const grouped = [...sessionsByDomain(sessions).values()].sort(
     (a, b) => b.totalMs - a.totalMs,
   );
@@ -993,22 +1044,11 @@ function buildTimeSpent(
   if (grouped.length === 0) {
     return {
       entries: [],
-      intro: "there is no completed screen-time record for this period.",
     };
   }
 
-  const leading = top[0];
-  const topSentence =
-    top.length === 1
-      ? `most of this period gathered on ${leading.domain}.`
-      : `${leading.domain} held the most time, followed by ${top[1].domain}.`;
-  const remainingSentence =
-    remaining.length > 0
-      ? ` another ${formatDuration(remainingMs)} was spread across ${remaining.length} other place${remaining.length === 1 ? "" : "s"}.`
-      : "";
   return {
     entries,
-    intro: `${topSentence}${remainingSentence}`,
   };
 }
 
@@ -1019,7 +1059,6 @@ export function deriveWalkingRecord({
   activity = [],
   sessions,
   domains,
-  domainDays = [],
   range,
   cursorDistancePx: measuredCursorDistance,
   nowTs = Date.now(),
@@ -1037,7 +1076,7 @@ export function deriveWalkingRecord({
     domains,
     mainRoads,
   );
-  const { entries: timeSpent, intro: timeSpentIntro } = buildTimeSpent(
+  const { entries: timeSpent } = buildTimeSpent(
     events,
     sessions,
   );
@@ -1053,7 +1092,7 @@ export function deriveWalkingRecord({
     hourBuckets: portrait.hourBuckets,
     movementCount,
     departures,
-    revisits: buildRevisits(domains, domainDays, range),
+    settledPlaces: buildSettledPlaces(activity, sessions, period),
     dayPlates: buildDayPlates(
       events,
       sessions,
@@ -1065,7 +1104,6 @@ export function deriveWalkingRecord({
     ),
     landscapePaths: [],
     timeSpent,
-    timeSpentIntro,
   };
 }
 
@@ -1081,6 +1119,7 @@ export function getWalkingRecordFaviconDomains(
   return [
     ...new Set([
       ...record.timeSpent.flatMap((entry) => (entry.href ? [entry.site] : [])),
+      ...record.settledPlaces.map((place) => place.site),
       ...record.departures.flatMap((departure) => [
         departure.from,
         departure.to,
@@ -1103,6 +1142,10 @@ export function attachWalkingRecordFavicons(
     timeSpent: record.timeSpent.map((entry) => ({
       ...entry,
       faviconUrl: favicons[entry.site],
+    })),
+    settledPlaces: record.settledPlaces.map((place) => ({
+      ...place,
+      faviconUrl: favicons[place.site],
     })),
   };
 }

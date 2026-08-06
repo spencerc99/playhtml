@@ -177,6 +177,7 @@ export interface WalkingRecordEventResult {
   events: CollectionEvent[];
   cursorDistancePx: number;
   activity: WalkingRecordActivity[];
+  sessions: ScreenTimeSession[];
 }
 
 export interface WalkingRecordActivity {
@@ -1472,7 +1473,6 @@ export class LocalEventStore {
   > {
     await this.ensureInitialized();
     await this.ensureSessionStatsBackfilled();
-    await this.ensureAggregateDaysBackfilled();
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -1531,48 +1531,6 @@ export class LocalEventStore {
       };
 
       request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getDomainDayHistory(domains: string[]): Promise<AggregateDay[]> {
-    await this.ensureInitialized();
-    await this.ensureAggregateDaysBackfilled();
-
-    const uniqueDomains = [...new Set(domains)].filter(Boolean);
-    if (uniqueDomains.length === 0) return [];
-
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        reject(new Error("Database not initialized"));
-        return;
-      }
-
-      const transaction = this.db.transaction(
-        [AGGREGATE_DAYS_STORE_NAME],
-        "readonly",
-      );
-      const store = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
-      const days: AggregateDay[] = [];
-      let pending = uniqueDomains.length;
-
-      for (const domain of uniqueDomains) {
-        const request = store.getAll(
-          IDBKeyRange.bound([domain, ""], [domain, "\uffff"]),
-        );
-        request.onsuccess = () => {
-          days.push(...(request.result as AggregateDay[]));
-          pending--;
-          if (pending === 0) {
-            days.sort(
-              (a, b) =>
-                a.domain.localeCompare(b.domain) ||
-                a.localDayKey.localeCompare(b.localDayKey),
-            );
-            resolve(days);
-          }
-        };
-        request.onerror = () => reject(request.error);
-      }
     });
   }
 
@@ -1773,7 +1731,9 @@ export class LocalEventStore {
       const events: CollectionEvent[] = [];
       const sampledCursorWindows = new Set<string>();
       const activityWindowsByUrl = new Map<string, Set<number>>();
+      const sessions: ScreenTimeSession[] = [];
       let previousCursorEvent: CollectionEvent | null = null;
+      let pendingFocus: { ts: number; url: string } | null = null;
       let cursorDistancePx = 0;
 
       const recordActivity = (event: CollectionEvent) => {
@@ -1798,6 +1758,7 @@ export class LocalEventStore {
               url,
               windowStarts: [...windowStarts].sort((a, b) => a - b),
             })),
+            sessions,
           });
           return;
         }
@@ -1808,10 +1769,25 @@ export class LocalEventStore {
         if (event.type === "navigation") {
           const data = event.data as NavigationEventData;
           if (data.event === "focus") {
+            pendingFocus = { ts: event.ts, url: event.meta.url };
             events.push({
               ...event,
               data: { event: data.event },
             });
+          } else if (
+            (data.event === "blur" || data.event === "beforeunload") &&
+            pendingFocus
+          ) {
+            const durationMs = event.ts - pendingFocus.ts;
+            if (durationMs >= 1_000 && durationMs <= 8 * 60 * 60_000) {
+              sessions.push({
+                url: pendingFocus.url,
+                focusTs: pendingFocus.ts,
+                blurTs: event.ts,
+                durationMs,
+              });
+            }
+            pendingFocus = null;
           }
           if (data.event === "popstate") recordActivity(event);
         } else if (event.type === "cursor") {
@@ -1990,8 +1966,6 @@ export class LocalEventStore {
         },
       ]),
     );
-    const startTs = Math.min(...targets.map((target) => target.startTs));
-    const endTs = Math.max(...targets.map((target) => target.endTs));
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -2002,72 +1976,75 @@ export class LocalEventStore {
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
       const tsIndex = store.index("ts");
-      const request = tsIndex.openCursor(IDBKeyRange.bound(startTs, endTs));
+      let remainingCollectors = collectors.size;
 
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) {
-          const completed = [...collectors.values()].map((collector) => {
-            if (collector.currentPath.length >= 2) {
-              collector.paths.push(collector.currentPath);
-            }
+      const finish = () => {
+        const completed = [...collectors.values()].map((collector) => {
+          if (collector.currentPath.length >= 2) {
+            collector.paths.push(collector.currentPath);
+          }
 
-            const rankedPaths = collector.paths
-              .map((points, index) => ({
-                points,
-                index,
-                distance: tracePathDistance(points),
-              }))
-              .filter(({ points }) => points.length >= 2)
-              .sort((a, b) => b.distance - a.distance);
+          const rankedPaths = collector.paths
+            .map((points, index) => ({
+              points,
+              index,
+              distance: tracePathDistance(points),
+            }))
+            .filter(({ points }) => points.length >= 2)
+            .sort((a, b) => b.distance - a.distance);
 
-            const selectedPaths = rankedPaths
-              .slice(0, 3)
-              .sort((a, b) => a.index - b.index);
-            const paths = selectedPaths.map(({ points }) =>
-              simplifyTracePath(points),
-            );
-            const landscapePaths = evenlySpacedPaths(
-              rankedPaths
-                .slice(0, LANDSCAPE_SOURCE_PATH_LIMIT)
-                .sort((a, b) => a.index - b.index)
-                .flatMap(({ points }) => splitLandscapePath(points)),
-              LANDSCAPE_SEGMENTS_PER_TARGET,
-            ).map((points) => points.map(({ event }) => event));
+          const selectedPaths = rankedPaths
+            .slice(0, 3)
+            .sort((a, b) => a.index - b.index);
+          const paths = selectedPaths.map(({ points }) =>
+            simplifyTracePath(points),
+          );
+          const landscapePaths = evenlySpacedPaths(
+            rankedPaths
+              .slice(0, LANDSCAPE_SOURCE_PATH_LIMIT)
+              .sort((a, b) => a.index - b.index)
+              .flatMap(({ points }) => splitLandscapePath(points)),
+            LANDSCAPE_SEGMENTS_PER_TARGET,
+          ).map((points) => points.map(({ event }) => event));
 
-            return {
-              trace: { targetId: collector.target.id, paths },
-              landscapePaths,
-            };
-          });
-          resolve({
-            traces: completed.map(({ trace }) => trace),
-            landscapePaths: completed
-              .flatMap(({ landscapePaths }) => landscapePaths)
-              .filter((path) => path.length >= 2),
-          });
-          return;
-        }
+          return {
+            trace: { targetId: collector.target.id, paths },
+            landscapePaths,
+          };
+        });
+        resolve({
+          traces: completed.map(({ trace }) => trace),
+          landscapePaths: completed
+            .flatMap(({ landscapePaths }) => landscapePaths)
+            .filter((path) => path.length >= 2),
+        });
+      };
 
-        const event = cursor.value as StoredCollectionEvent;
-        if (event.type === "cursor") {
-          const data = event.data as CursorEventData;
-          const eventUrl = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+      for (const collector of collectors.values()) {
+        const request = tsIndex.openCursor(
+          IDBKeyRange.bound(collector.target.startTs, collector.target.endTs),
+        );
 
-          if (
-            (data.event === "move" || data.event === undefined) &&
-            Number.isFinite(data.x) &&
-            Number.isFinite(data.y)
-          ) {
-            for (const collector of collectors.values()) {
-              if (
-                event.ts < collector.target.startTs ||
-                event.ts > collector.target.endTs ||
-                eventUrl !== collector.normalizedUrl
-              ) {
-                continue;
-              }
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) {
+            remainingCollectors -= 1;
+            if (remainingCollectors === 0) finish();
+            return;
+          }
 
+          const event = cursor.value as StoredCollectionEvent;
+          if (event.type === "cursor") {
+            const data = event.data as CursorEventData;
+            const eventUrl =
+              event.normalizedUrl ?? normalizeUrl(event.meta.url);
+
+            if (
+              eventUrl === collector.normalizedUrl &&
+              (data.event === "move" || data.event === undefined) &&
+              Number.isFinite(data.x) &&
+              Number.isFinite(data.y)
+            ) {
               const point: TimedTracePoint = {
                 x: Math.max(0, Math.min(1, data.x)),
                 y: Math.max(0, Math.min(1, data.y)),
@@ -2106,12 +2083,12 @@ export class LocalEventStore {
               }
             }
           }
-        }
 
-        cursor.continue();
-      };
+          cursor.continue();
+        };
 
-      request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error);
+      }
     });
   }
 

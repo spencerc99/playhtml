@@ -1,13 +1,10 @@
 // ABOUTME: Verifies local heuristics that turn browsing events into walking records.
-// ABOUTME: Covers period boundaries, trace cadence, page hues, departures, and revisits.
+// ABOUTME: Covers period boundaries, trace cadence, page hues, departures, and settled places.
 
 import { describe, expect, it } from "vitest";
 import { parseColorToHsl } from "@movement/utils/eventUtils";
 import type { CollectionEvent } from "../collectors/types";
-import type {
-  AggregateDay,
-  ScreenTimeSession,
-} from "../storage/LocalEventStore";
+import type { ScreenTimeSession } from "../storage/LocalEventStore";
 import {
   attachWalkingRecordTraces,
   colorForDomain,
@@ -58,21 +55,6 @@ function domain(
     activeDayCount: 0,
     eventCounts: { navigation: 2 },
     ...overrides,
-  };
-}
-
-function aggregateDay(domain: string, timestamp: number): AggregateDay {
-  const date = new Date(timestamp);
-  const localDayKey = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-  return {
-    domain,
-    localDayKey,
-    firstVisitTs: timestamp,
-    lastVisitTs: timestamp,
   };
 }
 
@@ -389,139 +371,127 @@ describe("deriveWalkingRecord", () => {
     expect(tracedRecord.departures[0]).not.toHaveProperty("tracePaths");
   });
 
-  it("surfaces familiar small sites that went quiet before the report week", () => {
+  it("surfaces smaller places with active returns across the report week", () => {
     const range = getWalkingRecordPeriodRange(
       "week",
       -1,
       new Date(2026, 6, 30, 14),
     );
-    const oldVisit = range.startTs - 214 * 24 * 60 * 60 * 1_000;
+    const monday = range.startTs + 9 * 60 * 60_000;
+    const gardenSessions = [0, 2, 4].map((dayOffset, index) => ({
+      url: `https://garden.example/page-${index + 1}`,
+      focusTs: monday + dayOffset * 24 * 60 * 60_000,
+      blurTs: monday + dayOffset * 24 * 60 * 60_000 + 12 * 60_000,
+      durationMs: 12 * 60_000,
+    }));
+    const leadingSessions = Array.from({ length: 5 }, (_, index) => ({
+      url: `https://leader-${index + 1}.example/work`,
+      focusTs: monday + index * 60_000,
+      blurTs: monday + index * 60_000 + 60 * 60_000,
+      durationMs: 60 * 60_000,
+    }));
 
     const record = deriveWalkingRecord({
       period: "week",
       baseColor: "#4a9a8a",
       events: [],
-      sessions: [],
+      sessions: [...leadingSessions, ...gardenSessions],
+      activity: gardenSessions.map((session) => ({
+        url: session.url,
+        windowStarts: Array.from(
+          { length: 12 },
+          (_, index) => session.focusTs + index * 30_000,
+        ),
+      })),
       domains: [
-        domain("diagram.website", {
-          firstVisit: oldVisit - 120 * 24 * 60 * 60 * 1_000,
-          sessionCount: 31,
-          lastVisit: oldVisit,
-          totalTimeMs: 90 * 60_000,
-          activeDayCount: 5,
-        }),
-        domain("youtube.com", {
-          sessionCount: 80,
-          lastVisit: oldVisit,
+        ...leadingSessions.map((session, index) =>
+          domain(`leader-${index + 1}.example`, {
+            sessionCount: 20,
+            totalTimeMs: session.durationMs,
+          }),
+        ),
+        domain("garden.example", {
+          sessionCount: 3,
+          uniquePageCount: 3,
+          activeDayCount: 3,
         }),
       ],
-      domainDays: [120, 90, 60, 30, 0].map((daysBeforeLast) =>
-        aggregateDay(
-          "diagram.website",
-          oldVisit - daysBeforeLast * 24 * 60 * 60_000,
-        ),
-      ),
       range,
     });
 
-    expect(record.revisits).toEqual([
+    expect(record.settledPlaces).toEqual([
       expect.objectContaining({
-        span: "7 months",
-        site: "diagram.website",
-        memory: "visited on 5 days across 4 months",
+        site: "garden.example",
+        activeTime: "18m active",
+        evidence: "returned in the mornings on 3 days · visited 3 pages",
         hue: paletteColorForIndex(0),
       }),
     ]);
-    expect(record.totalTimeMs).toBe(0);
-    expect(record.totalTimeLabel).toBe("0 min");
-    expect(record.timeSpent).toEqual([]);
   });
 
-  it("does not call a familiar site dormant when it was visited during the report period", () => {
-    const range = getWalkingRecordPeriodRange(
-      "month",
-      0,
-      new Date(2026, 7, 6, 14),
-    );
-    const previousVisit = range.startTs - 31 * 24 * 60 * 60_000;
-    const record = deriveWalkingRecord({
-      period: "month",
-      baseColor: "#4a9a8a",
-      events: [],
-      sessions: [],
-      domains: [
-        domain("visited-today.example", {
-          firstVisit: previousVisit - 180 * 24 * 60 * 60_000,
-          lastVisit: range.startTs + 5 * 24 * 60 * 60_000,
-          sessionCount: 80,
-          activeDayCount: 6,
-        }),
-      ],
-      domainDays: [
-        ...[180, 135, 90, 45, 0].map((daysBeforeLast) =>
-          aggregateDay(
-            "visited-today.example",
-            previousVisit - daysBeforeLast * 24 * 60 * 60_000,
-          ),
-        ),
-        aggregateDay(
-          "visited-today.example",
-          range.startTs + 5 * 24 * 60 * 60_000,
-        ),
-      ],
-      range,
-    });
-
-    expect(record.revisits).toEqual([]);
-  });
-
-  it("prefers sustained familiarity over a compressed visit burst", () => {
+  it("keeps top-time and popular sites out of settled places", () => {
     const range = getWalkingRecordPeriodRange(
       "week",
       -1,
       new Date(2026, 6, 30, 14),
     );
-    const lastVisit = range.startTs - 45 * 24 * 60 * 60_000;
-
+    const monday = range.startTs + 9 * 60 * 60_000;
+    const sessions = ["youtube.com", "top.example"].flatMap((site, siteIndex) =>
+      [0, 2, 4].map((dayOffset) => ({
+        url: `https://${site}/page`,
+        focusTs: monday + dayOffset * 24 * 60 * 60_000 + siteIndex * 60_000,
+        blurTs:
+          monday +
+          dayOffset * 24 * 60 * 60_000 +
+          siteIndex * 60_000 +
+          20 * 60_000,
+        durationMs: 20 * 60_000,
+      })),
+    );
     const record = deriveWalkingRecord({
       period: "week",
       baseColor: "#4a9a8a",
       events: [],
-      sessions: [],
+      sessions,
+      activity: sessions.map((session) => ({
+        url: session.url,
+        windowStarts: [session.focusTs, session.focusTs + 30_000],
+      })),
       domains: [
-        domain("regular.example", {
-          firstVisit: lastVisit - 180 * 24 * 60 * 60_000,
-          lastVisit,
-          sessionCount: 24,
-          activeDayCount: 5,
-        }),
-        domain("application.example", {
-          firstVisit: lastVisit - 2 * 24 * 60 * 60_000,
-          lastVisit,
-          sessionCount: 96,
-          activeDayCount: 5,
-        }),
-      ],
-      domainDays: [
-        ...[180, 135, 90, 45, 0].map((daysBeforeLast) =>
-          aggregateDay(
-            "regular.example",
-            lastVisit - daysBeforeLast * 24 * 60 * 60_000,
-          ),
-        ),
-        ...[2, 1, 1, 0, 0].map((daysBeforeLast, index) =>
-          aggregateDay(
-            "application.example",
-            lastVisit - daysBeforeLast * 24 * 60 * 60_000 + index,
-          ),
-        ),
+        domain("youtube.com", { sessionCount: 3 }),
+        domain("top.example", { sessionCount: 3 }),
       ],
       range,
     });
 
-    expect(record.revisits.map((revisit) => revisit.site)).toEqual([
-      "regular.example",
-    ]);
+    expect(record.settledPlaces).toEqual([]);
+  });
+
+  it("does not mistake one passive session for a settled place", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const focusTs = range.startTs + 9 * 60 * 60_000;
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions: [
+        {
+          url: "https://passive.example/video",
+          focusTs,
+          blurTs: focusTs + 50 * 60_000,
+          durationMs: 50 * 60_000,
+        },
+      ],
+      activity: [],
+      domains: [domain("passive.example", { sessionCount: 1 })],
+      range,
+    });
+
+    expect(record.settledPlaces).toEqual([]);
   });
 
   it("omits a departure when no browsing evidence was recorded", () => {

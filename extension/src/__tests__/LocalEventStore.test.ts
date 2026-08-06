@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  IDBIndex as FakeIDBIndex,
   IDBKeyRange as fakeIDBKeyRange,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
@@ -367,16 +368,9 @@ describe("LocalEventStore aggregates", () => {
       },
     ]);
 
-    const [stats, days] = await Promise.all([
-      store.getSessionStats("example.com"),
-      store.getDomainDayHistory(["example.com"]),
-    ]);
+    const stats = await store.getSessionStats("example.com");
 
     expect(stats?.activeDayCount).toBe(2);
-    expect(days.map((day) => day.localDayKey)).toEqual([
-      "2026-07-20",
-      "2026-07-21",
-    ]);
   });
 
   it("tracks one active day per domain regardless of focus churn", async () => {
@@ -402,31 +396,14 @@ describe("LocalEventStore aggregates", () => {
       },
     ]);
 
-    const [stats, days] = await Promise.all([
-      store.getSessionStats("example.com"),
-      store.getDomainDayHistory(["example.com"]),
-    ]);
+    const stats = await store.getSessionStats("example.com");
 
     expect(stats?.activeDayCount).toBe(2);
-    expect(days).toEqual([
-      {
-        domain: "example.com",
-        localDayKey: "2026-07-20",
-        firstVisitTs: firstDay,
-        lastVisitTs: firstDay + 60_000,
-      },
-      {
-        domain: "example.com",
-        localDayKey: "2026-07-21",
-        firstVisitTs: secondDay,
-        lastVisitTs: secondDay,
-      },
-    ]);
   });
 });
 
 describe("LocalEventStore walking record events", () => {
-  it("derives screen time from navigation events without reading cursor or viewport data", async () => {
+  it("derives screen time while reading walking-record events", async () => {
     const store = createStore();
     await store.addEvents([
       {
@@ -442,6 +419,36 @@ describe("LocalEventStore walking record events", () => {
         ...event("viewport", "viewport"),
         ts: 3_000,
         data: { event: "scroll", scrollDistancePx: 500 },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: 6_000,
+        data: { event: "blur" },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 10_000,
+    });
+
+    expect(result.sessions).toEqual([
+      {
+        url: "https://example.com/page",
+        focusTs: 1_000,
+        blurTs: 6_000,
+        durationMs: 5_000,
+      },
+    ]);
+  });
+
+  it("still supports standalone screen-time queries", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("focus", "navigation"),
+        ts: 1_000,
+        data: { event: "focus" },
       },
       {
         ...event("blur", "navigation"),
@@ -717,6 +724,52 @@ describe("LocalEventStore walking record events", () => {
       "after-gap",
       "last",
     ]);
+  });
+
+  it("opens one exact cursor range per selected movement session", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("first-window", "cursor"),
+        ts: 2_000,
+        data: { event: "move", x: 0.1, y: 0.2 },
+      },
+      {
+        ...event("second-window", "cursor"),
+        ts: 1_002_000,
+        data: { event: "move", x: 0.3, y: 0.4 },
+      },
+    ]);
+    const openCursor = vi.spyOn(FakeIDBIndex.prototype, "openCursor");
+
+    try {
+      await store.getWalkingRecordMovement([
+        {
+          id: "first",
+          url: "https://example.com/page",
+          startTs: 1_000,
+          endTs: 3_000,
+        },
+        {
+          id: "second",
+          url: "https://example.com/page",
+          startTs: 1_001_000,
+          endTs: 1_003_000,
+        },
+      ]);
+
+      expect(
+        openCursor.mock.calls.map(([range]) => {
+          const keyRange = range as IDBKeyRange;
+          return [keyRange.lower, keyRange.upper];
+        }),
+      ).toEqual([
+        [1_000, 3_000],
+        [1_001_000, 1_003_000],
+      ]);
+    } finally {
+      openCursor.mockRestore();
+    }
   });
 
   it("turns long movement into a bounded queue of consecutive landscape trails", async () => {

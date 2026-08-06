@@ -3,9 +3,8 @@
 - Keep newly collected activity queued when local storage temporarily fails.
 - Get reload guidance instead of an endless loading screen when an older extension process blocks a local-history update.
 - See a visible patina on Wikipedia links after their first click.
-- See time by site, active explorations, regularly visited places, daily cursor portraits, and a moving landscape of real browsing traces.
+- See time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
 - Open year-long walking records without repeated page metadata overwhelming the extension.
-- Keep places visited during the selected period out of “where you used to visit.”
 
 <!--
 Add a bullet here for each meaningful user-facing change that ships in the

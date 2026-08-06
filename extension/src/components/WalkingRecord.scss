@@ -513,16 +513,17 @@ button:focus-visible {
   }
 }
 
-.walking-record__revisit-ledger {
+.walking-record__settled-ledger {
   padding: 4px 14px;
   border: 1px solid $border;
   border-radius: 8px;
   background: $bg;
 
   > a {
-    display: flex;
+    display: grid;
+    grid-template-columns: 86px minmax(0, 260px) minmax(0, 1fr);
     gap: 12px;
-    align-items: baseline;
+    align-items: center;
     padding: 8px 0;
     border-bottom: 1px solid rgba(90, 78, 65, 0.08);
 
@@ -535,17 +536,26 @@ button:focus-visible {
     }
 
     > span {
-      width: 74px;
-      flex-shrink: 0;
       font-family: $font-mono;
       font-size: 11px;
       text-align: right;
     }
 
+    > div {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 6px;
+    }
+
     strong {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
       color: $accent-blue;
       font-size: 13px;
       font-weight: 400;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
 
@@ -842,13 +852,8 @@ button:focus-visible {
     }
   }
 
-  .walking-record__revisit-ledger > a {
-    display: grid;
-    grid-template-columns: 72px minmax(0, 1fr);
-
-    > span {
-      width: auto;
-    }
+  .walking-record__settled-ledger > a {
+    grid-template-columns: 80px minmax(0, 1fr);
 
     small {
       grid-column: 2;

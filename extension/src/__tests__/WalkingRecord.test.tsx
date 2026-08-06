@@ -31,7 +31,17 @@ const record: WalkingRecord = {
   hourBuckets: new Array(24).fill(0),
   movementCount: 0,
   departures: [],
-  revisits: [],
+  settledPlaces: [
+    {
+      site: "garden.example",
+      href: "https://garden.example",
+      faviconUrl: "https://garden.example/icon.png",
+      activeTime: "18m active",
+      evidence: "returned in the mornings on 3 days · visited 3 pages",
+      hue: "#d18a6b",
+      score: 0.7,
+    },
+  ],
   landscapePaths: [],
   dayPlates: [
     {
@@ -74,7 +84,6 @@ const record: WalkingRecord = {
       note: "",
     },
   ],
-  timeSpentIntro: "there is no screen-time record for this period.",
 };
 
 const periodSummaries: WalkingRecordPeriodSummary[] = Array.from(
@@ -143,7 +152,7 @@ async function renderWalkingRecord(
         loadingProgress={{
           completed: 3,
           total: 5,
-          message: "finding familiar places…",
+          message: "mapping familiar roads…",
         }}
         error={null}
       />,
@@ -217,9 +226,14 @@ describe("WalkingRecordPage calendar navigation", () => {
         ),
       ).toEqual([
         "how you browsed",
-        "where you used to visit",
+        "places you settled into",
         "browsing portraits",
       ]);
+      expect(
+        container
+          .querySelector(".walking-record__settled-ledger strong")
+          ?.getAttribute("title"),
+      ).toBe("garden.example");
       expect(
         (
           container.querySelector(
@@ -274,7 +288,7 @@ describe("WalkingRecordPage calendar navigation", () => {
         ".walking-record__loading-cursors",
       );
 
-      expect(container.textContent).toContain("finding familiar places…");
+      expect(container.textContent).toContain("mapping familiar roads…");
       expect(container.textContent).toContain("60%");
       expect(cursorWalk?.getAttribute("aria-hidden")).toBe("true");
       expect(

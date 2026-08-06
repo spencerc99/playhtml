@@ -39,9 +39,6 @@ describe("loadWalkingRecord", () => {
         ],
         cursorDistancePx: 0,
         activity: [],
-      },
-      GET_SCREEN_TIME: {
-        success: true,
         sessions: [
           {
             url: "https://example.com/page",
@@ -67,10 +64,6 @@ describe("loadWalkingRecord", () => {
           },
         ],
       },
-      GET_WALKING_RECORD_DOMAIN_DAYS: {
-        success: true,
-        days: [],
-      },
       GET_WALKING_RECORD_MOVEMENT: {
         success: true,
         traces: [],
@@ -88,27 +81,18 @@ describe("loadWalkingRecord", () => {
 
     const record = await loadWalkingRecord("week", range, "#4a9a8a", progress);
 
-    expect(progress).toHaveBeenCalledTimes(6);
+    expect(progress).toHaveBeenCalledTimes(4);
     expect(
-      progress.mock.calls.slice(0, 3).map(([update]) => update.message),
-    ).toEqual([
-      "gathering movement traces…",
-      "counting browsing time…",
-      "finding familiar places…",
-    ]);
-    expect(progress).toHaveBeenNthCalledWith(4, {
-      completed: 4,
-      total: 6,
-      message: "tracing familiar routines…",
-    });
-    expect(progress).toHaveBeenNthCalledWith(5, {
-      completed: 5,
-      total: 6,
+      progress.mock.calls.slice(0, 2).map(([update]) => update.message),
+    ).toEqual(["gathering browsing activity…", "mapping familiar roads…"]);
+    expect(progress).toHaveBeenNthCalledWith(3, {
+      completed: 3,
+      total: 4,
       message: "arranging this week’s record…",
     });
     expect(progress).toHaveBeenLastCalledWith({
-      completed: 6,
-      total: 6,
+      completed: 4,
+      total: 4,
       message: "restoring cursor trails…",
     });
     expect(record.timeSpent[0].faviconUrl).toBe(
@@ -120,6 +104,16 @@ describe("loadWalkingRecord", () => {
         faviconDomains: ["example.com"],
       }),
     );
+    expect(browser.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "GET_SCREEN_TIME" }),
+    );
+
+    await loadWalkingRecord("week", range, "#4a9a8a", vi.fn());
+    expect(
+      vi
+        .mocked(browser.runtime.sendMessage)
+        .mock.calls.filter(([message]) => message.type === "GET_ALL_DOMAINS"),
+    ).toHaveLength(1);
   });
 
   it("surfaces background reload guidance", async () => {
