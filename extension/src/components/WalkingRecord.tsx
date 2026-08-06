@@ -384,7 +384,7 @@ function PeriodNavigationRail({
         disabled={atLatest}
         onClick={() => onSelect(periodOffset + 1)}
       >
-        {atLatest ? <em>browsing to come ↦</em> : "later ↦"}
+        later ↦
       </button>
     </nav>
   );

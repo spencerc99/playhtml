@@ -213,7 +213,7 @@ describe("WalkingRecordPage calendar navigation", () => {
       expect(Number(lightestDab?.style.opacity)).toBeCloseTo(0.315);
       expect(Number(heavierDab?.style.opacity)).toBeCloseTo(0.465);
       expect(earlier?.textContent).toBe("↤ earlier");
-      expect(later?.textContent).toBe("browsing to come ↦");
+      expect(later?.textContent).toBe("later ↦");
       expect(later?.disabled).toBe(true);
       expect(
         Array.from(container.querySelectorAll("section h1, section h2")).map(
