@@ -437,6 +437,44 @@ describe("deriveWalkingRecord", () => {
     expect(record.timeSpent).toEqual([]);
   });
 
+  it("does not call a familiar site dormant when it was visited during the report period", () => {
+    const range = getWalkingRecordPeriodRange(
+      "month",
+      0,
+      new Date(2026, 7, 6, 14),
+    );
+    const previousVisit = range.startTs - 31 * 24 * 60 * 60_000;
+    const record = deriveWalkingRecord({
+      period: "month",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions: [],
+      domains: [
+        domain("visited-today.example", {
+          firstVisit: previousVisit - 180 * 24 * 60 * 60_000,
+          lastVisit: range.startTs + 5 * 24 * 60 * 60_000,
+          sessionCount: 80,
+          activeDayCount: 6,
+        }),
+      ],
+      domainDays: [
+        ...[180, 135, 90, 45, 0].map((daysBeforeLast) =>
+          aggregateDay(
+            "visited-today.example",
+            previousVisit - daysBeforeLast * 24 * 60 * 60_000,
+          ),
+        ),
+        aggregateDay(
+          "visited-today.example",
+          range.startTs + 5 * 24 * 60 * 60_000,
+        ),
+      ],
+      range,
+    });
+
+    expect(record.revisits).toEqual([]);
+  });
+
   it("prefers sustained familiarity over a compressed visit burst", () => {
     const range = getWalkingRecordPeriodRange(
       "week",

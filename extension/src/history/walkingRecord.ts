@@ -667,7 +667,15 @@ function buildRevisits(
   range: WalkingRecordRange,
 ): Revisit[] {
   const daysByDomain = new Map<string, AggregateDay[]>();
+  const activeDomains = new Set<string>();
   for (const day of domainDays) {
+    if (
+      day.lastVisitTs >= range.startTs &&
+      day.firstVisitTs <= range.endTs
+    ) {
+      activeDomains.add(day.domain);
+      continue;
+    }
     if (day.lastVisitTs >= range.startTs) continue;
     const days = daysByDomain.get(day.domain) ?? [];
     days.push(day);
@@ -677,6 +685,13 @@ function buildRevisits(
   return domains
     .flatMap((domain) => {
       if (isPopularDomain(domain.domain)) return [];
+      if (
+        activeDomains.has(domain.domain) ||
+        (domain.lastVisit >= range.startTs &&
+          domain.lastVisit <= range.endTs)
+      ) {
+        return [];
+      }
       const days = (daysByDomain.get(domain.domain) ?? []).sort(
         (a, b) => a.firstVisitTs - b.firstVisitTs,
       );
