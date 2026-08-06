@@ -57,6 +57,7 @@ describe("WXT manifest", () => {
     const manifest = await manifestFor("safari");
     const generatedManifest = await generatedManifestFor("safari");
 
+    expect(manifest.description?.length).toBeLessThanOrEqual(112);
     expect(manifest.permissions).not.toContain("idle");
     expect(generatedManifest.options_ui).toEqual({
       page: "options.html",

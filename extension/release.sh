@@ -50,6 +50,7 @@ if [ "$SKIP_CHROME" -eq 0 ]; then
 fi
 
 VERSION=$(node -p "require('./package.json').version")
+SAFARI_VERSION="${SAFARI_VERSION:-1.0}"
 PUBLISH_DIR="publish"
 
 echo "Building extension v${VERSION} into ${PUBLISH_DIR}/ ..."
@@ -109,9 +110,9 @@ fi
 
 if [ "$SKIP_SAFARI" -eq 0 ]; then
   if [ -n "$DRY_RUN" ]; then
-    VERSION="$VERSION" scripts/submitSafari.sh --dry-run
+    VERSION="$SAFARI_VERSION" scripts/submitSafari.sh --dry-run
   else
-    VERSION="$VERSION" scripts/submitSafari.sh
+    VERSION="$SAFARI_VERSION" scripts/submitSafari.sh
   fi
 fi
 

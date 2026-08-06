@@ -8,7 +8,7 @@ export default defineConfig({
   manifest: ({ browser }) => ({
     name: "we were online",
     description:
-      "A quiet portrait of your time online. See who else is here, chat on Wikipedia, and collect traces of where you've been.",
+      "A quiet portrait of your time online. See who else is here, chat, and collect traces of where you've been.",
     permissions: [
       "storage",
       "tabs",

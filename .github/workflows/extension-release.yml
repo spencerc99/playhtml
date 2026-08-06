@@ -237,6 +237,7 @@ jobs:
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_KEY_PATH: ${{ steps.apple-key.outputs.path }}
           BUILD_NUMBER: ${{ github.run_number }}
+          VERSION: ${{ vars.SAFARI_VERSION || '1.0' }}
         run: |
           if [ -z "${{ steps.zips.outputs.safari }}" ]; then
             echo "Safari zip was not found."

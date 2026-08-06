@@ -114,6 +114,10 @@ App Store Connect:
 - `APPLE_API_ISSUER_ID` — issuer ID for the team API key
 - `APPLE_API_PRIVATE_KEY` — full contents of the downloaded `.p8` private key
 
+Set the optional GitHub Actions variable `SAFARI_VERSION` to the macOS version
+in App Store Connect. It defaults to `1.0`. Update it when you create the next
+macOS version.
+
 The App Store Connect key must support provisioning and app uploads. Before the
 first release, manually create one App Store Connect record with the macOS
 platform and bundle ID `online.wewere.app`. App Store Connect does not support
@@ -127,11 +131,11 @@ profile, archive the macOS app, and upload the build. The containing app uses
 `online.wewere.app.Extension`. Select the processed build and submit it for App
 Review in App Store Connect.
 
-**Manual fallback:** The local `./release.sh` continues to work as an escape
-hatch (uses `.env.submit` instead of GitHub secrets, requires Xcode 26 and a
-manual `extension/package.json` bump first). Set `APPLE_API_KEY_PATH` to the
-downloaded `.p8` file. Use `--skip-safari` when Xcode or Apple credentials are
-not available.
+**Manual fallback:** The local `./release.sh` uses `.env.submit` instead of
+GitHub secrets. It requires Xcode 26 and a manual `extension/package.json` bump
+first. Set `APPLE_API_KEY_PATH` to the downloaded `.p8` file. Set
+`SAFARI_VERSION` when the App Store version is not `1.0`. Use `--skip-safari`
+when Xcode or Apple credentials are not available.
 
 ## Website & experiments (`extension/website/`)
 

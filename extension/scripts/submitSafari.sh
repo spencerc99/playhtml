@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EXTENSION_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "$EXTENSION_DIR"
 
-VERSION="${VERSION:-$(node -p "require('./package.json').version")}"
+VERSION="${VERSION:-1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 SAFARI_BUNDLE_ID="${SAFARI_BUNDLE_ID:-online.wewere.app}"
 SAFARI_BUILD_DIR="${SAFARI_BUILD_DIR:-publish/safari-mv3}"
@@ -24,6 +24,7 @@ SAFARI_PROJECT_ROOT="publish/safari-app"
 APP_NAME="we were online"
 PROJECT_PATH="${SAFARI_PROJECT_ROOT}/${APP_NAME}/${APP_NAME}.xcodeproj"
 PROJECT_FILE="${PROJECT_PATH}/project.pbxproj"
+APP_INFO_PLIST="${SAFARI_PROJECT_ROOT}/${APP_NAME}/${APP_NAME}/Info.plist"
 MACOS_DEPLOYMENT_TARGET="13.0"
 GENERATED_APP_BUNDLE_ID="${SAFARI_BUNDLE_ID%.*}.we-were-online"
 
@@ -61,6 +62,9 @@ if ! grep -q "$GENERATED_APP_BUNDLE_ID" "$PROJECT_FILE"; then
   exit 1
 fi
 sed -i '' "s/${GENERATED_APP_BUNDLE_ID}/${SAFARI_BUNDLE_ID}/g" "$PROJECT_FILE"
+plutil -insert LSApplicationCategoryType \
+  -string "public.app-category.lifestyle" \
+  "$APP_INFO_PLIST"
 
 if [ -n "${APPLE_TEAM_ID:-}" ]; then
   SIGNING_CONFIGURATION_COUNT=$(grep -c "CODE_SIGN_STYLE = Automatic;" "$PROJECT_FILE")
