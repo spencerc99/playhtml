@@ -83,11 +83,7 @@ const periodSummaries: WalkingRecordPeriodSummary[] = Array.from(
     const offset = index - 11;
     return {
       offset,
-      range: getWalkingRecordPeriodRange(
-        "week",
-        offset,
-        new Date(2026, 6, 30),
-      ),
+      range: getWalkingRecordPeriodRange("week", offset, new Date(2026, 6, 30)),
       totalTimeMs: (index + 1) * 60 * 60_000,
     };
   },
@@ -268,11 +264,7 @@ describe("WalkingRecordPage calendar navigation", () => {
       onPeriodChange: vi.fn(),
       onPeriodOffsetChange: vi.fn(),
     };
-    const { container, root } = await renderWalkingRecord(
-      0,
-      callbacks,
-      true,
-    );
+    const { container, root } = await renderWalkingRecord(0, callbacks, true);
 
     try {
       const progress = container.querySelector(
@@ -341,20 +333,15 @@ describe("WalkingRecordPage calendar navigation", () => {
       onPeriodChange: vi.fn(),
       onPeriodOffsetChange: vi.fn(),
     };
-    const { container, root } = await renderWalkingRecord(
-      0,
-      callbacks,
-      false,
-      {
-        ...record,
-        landscapePaths: [
-          [
-            cursorEvent("cursor-1", 1_000, 0.2),
-            cursorEvent("cursor-2", 1_250, 0.8),
-          ],
+    const { container, root } = await renderWalkingRecord(0, callbacks, false, {
+      ...record,
+      landscapePaths: [
+        [
+          cursorEvent("cursor-1", 1_000, 0.2),
+          cursorEvent("cursor-2", 1_250, 0.8),
         ],
-      },
-    );
+      ],
+    });
 
     try {
       expect(container.textContent).toContain("movement from this week");
@@ -382,25 +369,20 @@ describe("WalkingRecordPage calendar navigation", () => {
       onPeriodChange: vi.fn(),
       onPeriodOffsetChange: vi.fn(),
     };
-    const { container, root } = await renderWalkingRecord(
-      0,
-      callbacks,
-      false,
-      {
-        ...record,
-        departures,
-        movementCount: departures.length,
-      },
-    );
+    const { container, root } = await renderWalkingRecord(0, callbacks, false, {
+      ...record,
+      departures,
+      movementCount: departures.length,
+    });
 
     try {
       const showMore = container.querySelector(
         ".walking-record__departures-more",
       ) as HTMLButtonElement;
 
-      expect(container.querySelectorAll(".walking-record__departure")).toHaveLength(
-        3,
-      );
+      expect(
+        container.querySelectorAll(".walking-record__departure"),
+      ).toHaveLength(3);
       expect(container.textContent).toContain("3 shown from 5");
       expect(showMore.textContent).toBe("show more");
 
@@ -408,9 +390,9 @@ describe("WalkingRecordPage calendar navigation", () => {
         showMore.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
 
-      expect(container.querySelectorAll(".walking-record__departure")).toHaveLength(
-        5,
-      );
+      expect(
+        container.querySelectorAll(".walking-record__departure"),
+      ).toHaveLength(5);
       expect(container.textContent).toContain("5 shown from 5");
       expect(showMore.textContent).toBe("show less");
       expect(showMore.getAttribute("aria-expanded")).toBe("true");
@@ -427,14 +409,10 @@ describe("WalkingRecordPage calendar navigation", () => {
     ]);
 
     expect(scheduled.map((trail) => trail.durationMs)).toEqual([
-      9_000,
-      3_000,
-      6_000,
+      9_000, 3_000, 6_000,
     ]);
     expect(scheduled.map((trail) => trail.startOffsetMs)).toEqual([
-      600,
-      0,
-      300,
+      600, 0, 300,
     ]);
 
     const playback = cycleLandscapeTrails(scheduled);
@@ -445,9 +423,7 @@ describe("WalkingRecordPage calendar navigation", () => {
     expect(
       playback.trailStates
         .filter((trail) => trail.startOffsetMs < 0)
-        .every(
-          (trail) => trail.startOffsetMs + trail.durationMs > 0,
-        ),
+        .every((trail) => trail.startOffsetMs + trail.durationMs > 0),
     ).toBe(true);
   });
 });

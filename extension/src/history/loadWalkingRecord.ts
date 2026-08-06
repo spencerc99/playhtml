@@ -119,7 +119,8 @@ export async function loadWalkingRecord(
   }
   if (!screenTimeResponse.success || !screenTimeResponse.sessions) {
     throw new Error(
-      screenTimeResponse.error ?? "The local screen-time record is unavailable.",
+      screenTimeResponse.error ??
+        "The local screen-time record is unavailable.",
     );
   }
   if (!domainsResponse.success || !domainsResponse.domains) {

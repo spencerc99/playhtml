@@ -86,12 +86,7 @@ describe("loadWalkingRecord", () => {
     );
     const progress = vi.fn();
 
-    const record = await loadWalkingRecord(
-      "week",
-      range,
-      "#4a9a8a",
-      progress,
-    );
+    const record = await loadWalkingRecord("week", range, "#4a9a8a", progress);
 
     expect(progress).toHaveBeenCalledTimes(6);
     expect(

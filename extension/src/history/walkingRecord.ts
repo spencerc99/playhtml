@@ -227,11 +227,7 @@ export function getWalkingRecordPeriodRange(
     };
   }
 
-  const periodStart = new Date(
-    currentDay.getFullYear() + periodOffset,
-    0,
-    1,
-  );
+  const periodStart = new Date(currentDay.getFullYear() + periodOffset, 0, 1);
   const nextPeriod = new Date(periodStart.getFullYear() + 1, 0, 1);
   return {
     startTs: periodStart.getTime(),
@@ -324,10 +320,7 @@ function derivedSessionPath(
   target: WalkingRecordTraceTarget,
 ): WalkingRecordTracePoint[][] {
   const seed = hashDomain(`${target.url}:${target.startTs}:${target.endTs}`);
-  const durationMinutes = Math.max(
-    1,
-    (target.endTs - target.startTs) / 60_000,
-  );
+  const durationMinutes = Math.max(1, (target.endTs - target.startTs) / 60_000);
   const pointCount = Math.min(
     11,
     4 + Math.floor(Math.log2(durationMinutes + 1)),
@@ -344,10 +337,7 @@ function derivedSessionPath(
     );
     y = Math.max(
       0.08,
-      Math.min(
-        0.92,
-        y + (seededValue(seed, index * 2 + 1) - 0.5) * 0.42,
-      ),
+      Math.min(0.92, y + (seededValue(seed, index * 2 + 1) - 0.5) * 0.42),
     );
     points.push({ x, y });
   }
@@ -400,11 +390,17 @@ function focusVisits(events: CollectionEvent[]): FocusVisit[] {
 
   return visits.filter((visit, index) => {
     const previous = visits[index - 1];
-    return !previous || previous.domain !== visit.domain || visit.ts - previous.ts > 120_000;
+    return (
+      !previous ||
+      previous.domain !== visit.domain ||
+      visit.ts - previous.ts > 120_000
+    );
   });
 }
 
-function sessionsByDomain(sessions: ScreenTimeSession[]): Map<string, DomainTime> {
+function sessionsByDomain(
+  sessions: ScreenTimeSession[],
+): Map<string, DomainTime> {
   const grouped = new Map<string, DomainTime>();
 
   for (const session of sessions) {
@@ -479,8 +475,7 @@ function getVisitSession(
   return domainTime.sessions
     .filter((session) => Math.abs(session.focusTs - visit.ts) <= 60_000)
     .sort(
-      (a, b) =>
-        Math.abs(a.focusTs - visit.ts) - Math.abs(b.focusTs - visit.ts),
+      (a, b) => Math.abs(a.focusTs - visit.ts) - Math.abs(b.focusTs - visit.ts),
     )[0];
 }
 
@@ -523,7 +518,9 @@ function buildDepartures(
   mainRoads: Set<string>,
 ): { departures: Departure[]; movementCount: number } {
   const visits = focusVisits(events);
-  const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
+  const domainByName = new Map(
+    domains.map((domain) => [domain.domain, domain]),
+  );
   const timeByDomain = sessionsByDomain(sessions);
   const activityByUrl = new Map(
     activity.map((entry) => [entry.url, entry.windowStarts]),
@@ -535,7 +532,10 @@ function buildDepartures(
   const visitsByDomain = new Map<string, number>();
 
   for (const visit of visits) {
-    visitsByDomain.set(visit.domain, (visitsByDomain.get(visit.domain) ?? 0) + 1);
+    visitsByDomain.set(
+      visit.domain,
+      (visitsByDomain.get(visit.domain) ?? 0) + 1,
+    );
   }
 
   const candidates: Array<Departure & { dayKey: string }> = [];
@@ -593,15 +593,11 @@ function buildDepartures(
         domain,
         visitsThisPeriod,
       ),
-      score:
-        browsingScore * 0.6 + rarityScore * 0.25 + discoveryScore * 0.15,
+      score: browsingScore * 0.6 + rarityScore * 0.25 + discoveryScore * 0.15,
     });
   }
 
-  const deduped = new Map<
-    string,
-    Departure & { dayKey: string }
-  >();
+  const deduped = new Map<string, Departure & { dayKey: string }>();
   for (const candidate of candidates) {
     const key = `${candidate.dayKey}:${candidate.to}`;
     const existing = deduped.get(key);
@@ -669,10 +665,7 @@ function buildRevisits(
   const daysByDomain = new Map<string, AggregateDay[]>();
   const activeDomains = new Set<string>();
   for (const day of domainDays) {
-    if (
-      day.lastVisitTs >= range.startTs &&
-      day.firstVisitTs <= range.endTs
-    ) {
+    if (day.lastVisitTs >= range.startTs && day.firstVisitTs <= range.endTs) {
       activeDomains.add(day.domain);
       continue;
     }
@@ -687,8 +680,7 @@ function buildRevisits(
       if (isPopularDomain(domain.domain)) return [];
       if (
         activeDomains.has(domain.domain) ||
-        (domain.lastVisit >= range.startTs &&
-          domain.lastVisit <= range.endTs)
+        (domain.lastVisit >= range.startTs && domain.lastVisit <= range.endTs)
       ) {
         return [];
       }
@@ -703,8 +695,7 @@ function buildRevisits(
       const firstVisitTs = days[0].firstVisitTs;
       const lastVisitTs = days.at(-1)!.lastVisitTs;
       const relationshipMs = lastVisitTs - firstVisitTs;
-      const relationshipDays =
-        Math.floor(relationshipMs / DAY_MS) + 1;
+      const relationshipDays = Math.floor(relationshipMs / DAY_MS) + 1;
       if (relationshipDays < FAMILIAR_SITE_MIN_SPAN_DAYS) return [];
 
       const gapMs = range.endTs - lastVisitTs;
@@ -743,7 +734,8 @@ function cursorDistance(events: CollectionEvent[]): number {
   for (let index = 1; index < moves.length; index++) {
     const previousEvent = moves[index - 1];
     const event = moves[index];
-    if (normalizeUrl(previousEvent.meta.url) !== normalizeUrl(event.meta.url)) continue;
+    if (normalizeUrl(previousEvent.meta.url) !== normalizeUrl(event.meta.url))
+      continue;
     if (event.ts - previousEvent.ts > 5_000) continue;
 
     const previous = previousEvent.data as CursorEventData;
@@ -758,9 +750,7 @@ function cursorDistance(events: CollectionEvent[]): number {
   return distance;
 }
 
-function cursorMovementByUrl(
-  events: CollectionEvent[],
-): Map<string, number[]> {
+function cursorMovementByUrl(events: CollectionEvent[]): Map<string, number[]> {
   const movementByUrl = new Map<string, number[]>();
   for (const event of events) {
     if (event.type !== "cursor") continue;
@@ -886,7 +876,9 @@ function buildDayPlates(
   baseColor: string,
   nowTs: number,
 ): DayPlate[] {
-  const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
+  const domainByName = new Map(
+    domains.map((domain) => [domain.domain, domain]),
+  );
   const movementByUrl = cursorMovementByUrl(events);
   const intervals = traceIntervals(period, range);
   const targetLimit = Math.max(1, Math.floor(16 / intervals.length));

@@ -154,12 +154,7 @@ describe("walking record ranges", () => {
       },
     ];
 
-    const summaries = summarizeWalkingRecordPeriods(
-      "week",
-      sessions,
-      12,
-      now,
-    );
+    const summaries = summarizeWalkingRecordPeriods("week", sessions, 12, now);
 
     expect(summaries).toHaveLength(12);
     expect(summaries.map((summary) => summary.offset)).toEqual([
@@ -347,8 +342,7 @@ describe("deriveWalkingRecord", () => {
         from: "github.com",
         to: "foldedpaper.garden",
         note: "your first visit · stayed 11 minutes",
-        fromFaviconUrl:
-          "https://github.githubassets.com/favicons/favicon.svg",
+        fromFaviconUrl: "https://github.githubassets.com/favicons/favicon.svg",
       }),
     ]);
     expect(
@@ -379,12 +373,18 @@ describe("deriveWalkingRecord", () => {
     const tracedRecord = attachWalkingRecordTraces(record, [
       {
         targetId: "day:2026-07-20",
-        paths: [[{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.6 }]],
+        paths: [
+          [
+            { x: 0.1, y: 0.2 },
+            { x: 0.4, y: 0.6 },
+          ],
+        ],
       },
     ]);
-    expect(tracedRecord.dayPlates[0].tracePaths[0]).toEqual(
-      [{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.6 }],
-    );
+    expect(tracedRecord.dayPlates[0].tracePaths[0]).toEqual([
+      { x: 0.1, y: 0.2 },
+      { x: 0.4, y: 0.6 },
+    ]);
     expect(tracedRecord.dayPlates[0].tracePaths).toHaveLength(2);
     expect(tracedRecord.departures[0]).not.toHaveProperty("tracePaths");
   });
@@ -719,9 +719,9 @@ describe("deriveWalkingRecord", () => {
     );
 
     const withoutStoredCursorPath = attachWalkingRecordTraces(record, []);
-    expect(withoutStoredCursorPath.dayPlates[0].tracePaths[0].length).toBeGreaterThan(
-      1,
-    );
+    expect(
+      withoutStoredCursorPath.dayPlates[0].tracePaths[0].length,
+    ).toBeGreaterThan(1);
   });
 
   it("shows five real sites before the remaining-time summary", () => {

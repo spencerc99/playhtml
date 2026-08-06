@@ -79,8 +79,12 @@ async function openVersion8Database(
       eventStore.createIndex("type", "type", { unique: false });
       eventStore.createIndex("uploaded", "uploaded", { unique: false });
       eventStore.createIndex("domain", "domain", { unique: false });
-      eventStore.createIndex("normalizedUrl", "normalizedUrl", { unique: false });
-      const statsStore = db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
+      eventStore.createIndex("normalizedUrl", "normalizedUrl", {
+        unique: false,
+      });
+      const statsStore = db.createObjectStore(STATS_STORE_NAME, {
+        keyPath: "key",
+      });
       statsStore.put(seedAggregate);
     };
     request.onsuccess = () => resolve(request.result);
@@ -88,7 +92,9 @@ async function openVersion8Database(
   });
 }
 
-async function openVersion7Database(seedEvents: CollectionEvent[]): Promise<IDBDatabase> {
+async function openVersion7Database(
+  seedEvents: CollectionEvent[],
+): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = fakeIndexedDB.open(DB_NAME, 7);
     request.onupgradeneeded = () => {
@@ -98,7 +104,9 @@ async function openVersion7Database(seedEvents: CollectionEvent[]): Promise<IDBD
       eventStore.createIndex("type", "type", { unique: false });
       eventStore.createIndex("uploaded", "uploaded", { unique: false });
       eventStore.createIndex("domain", "domain", { unique: false });
-      eventStore.createIndex("normalizedUrl", "normalizedUrl", { unique: false });
+      eventStore.createIndex("normalizedUrl", "normalizedUrl", {
+        unique: false,
+      });
       db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
 
       for (const seedEvent of seedEvents) {
@@ -110,7 +118,10 @@ async function openVersion7Database(seedEvents: CollectionEvent[]): Promise<IDBD
   });
 }
 
-async function putSeedEvent(db: IDBDatabase, seedEvent: CollectionEvent): Promise<void> {
+async function putSeedEvent(
+  db: IDBDatabase,
+  seedEvent: CollectionEvent,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction([STORE_NAME], "readwrite");
     transaction.objectStore(STORE_NAME).put(seedEvent);
@@ -181,7 +192,10 @@ function event(id: string, type: CollectionEvent["type"]): CollectionEvent {
   };
 }
 
-function contentScriptEvent(id: string, type: CollectionEvent["type"]): CollectionEvent {
+function contentScriptEvent(
+  id: string,
+  type: CollectionEvent["type"],
+): CollectionEvent {
   const { domain, normalizedUrl, ...sourceEvent } = event(id, type);
   return sourceEvent;
 }
@@ -201,7 +215,9 @@ afterEach(async () => {
 describe("LocalEventStore aggregates", () => {
   it("fails with reload guidance instead of hanging when an upgrade is blocked", async () => {
     const existingConnection = await openVersion8Database();
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const store = createStore();
 
     await expect(store.getAllDomains()).rejects.toThrow(
@@ -216,11 +232,13 @@ describe("LocalEventStore aggregates", () => {
     const store = createStore();
     await store.getAllDomains();
 
-    const upgradedDatabase = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = fakeIndexedDB.open(DB_NAME, 12);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
+    const upgradedDatabase = await new Promise<IDBDatabase>(
+      (resolve, reject) => {
+        const request = fakeIndexedDB.open(DB_NAME, 12);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      },
+    );
 
     expect((store as unknown as { db: IDBDatabase | null }).db).toBeNull();
     upgradedDatabase.close();
@@ -679,8 +697,14 @@ describe("LocalEventStore walking record events", () => {
       {
         targetId: "day:2026-07-20",
         paths: [
-          [{ x: 0.1, y: 0.2 }, { x: 0.2, y: 0.3 }],
-          [{ x: 0.6, y: 0.4 }, { x: 0.8, y: 0.7 }],
+          [
+            { x: 0.1, y: 0.2 },
+            { x: 0.2, y: 0.3 },
+          ],
+          [
+            { x: 0.6, y: 0.4 },
+            { x: 0.8, y: 0.7 },
+          ],
         ],
       },
     ]);
@@ -718,9 +742,9 @@ describe("LocalEventStore walking record events", () => {
     ]);
 
     expect(movement.landscapePaths).toHaveLength(4);
-    expect(
-      movement.landscapePaths.every((path) => path.length <= 96),
-    ).toBe(true);
+    expect(movement.landscapePaths.every((path) => path.length <= 96)).toBe(
+      true,
+    );
     expect(movement.landscapePaths[0][0].id).toBe("cursor-0");
     expect(movement.landscapePaths.at(-1)?.at(-1)?.id).toBe("cursor-299");
     expect(movement.landscapePaths.at(-1)?.at(-1)?.ts).toBe(30_900);
@@ -1009,10 +1033,16 @@ describe("LocalEventStore pending uploads", () => {
     await store.addEvents([contentScriptEvent("cursor-indexed", "cursor")]);
 
     const domainEvents = await store.queryByDomain("example.com");
-    const urlEvents = await store.queryByUrl("https://example.com/page?ignored=true#hash");
+    const urlEvents = await store.queryByUrl(
+      "https://example.com/page?ignored=true#hash",
+    );
 
-    expect(domainEvents.map((storedEvent) => storedEvent.id)).toEqual(["cursor-indexed"]);
-    expect(urlEvents.map((storedEvent) => storedEvent.id)).toEqual(["cursor-indexed"]);
+    expect(domainEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "cursor-indexed",
+    ]);
+    expect(urlEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "cursor-indexed",
+    ]);
   });
 
   it("stores new events as pending when uploaded is missing", async () => {
@@ -1022,7 +1052,9 @@ describe("LocalEventStore pending uploads", () => {
 
     const events = await store.getPendingEvents(100);
 
-    expect(events.map((pendingEvent) => pendingEvent.id)).toEqual(["cursor-pending"]);
+    expect(events.map((pendingEvent) => pendingEvent.id)).toEqual([
+      "cursor-pending",
+    ]);
     expect((sourceEvent as StoredTestEvent).uploaded).toBeUndefined();
     expect((sourceEvent as StoredTestEvent).uploadState).toBeUndefined();
     expect((events[0] as StoredTestEvent).uploaded).toBeUndefined();
@@ -1067,7 +1099,9 @@ describe("LocalEventStore pending uploads", () => {
     const store = createStore();
     const events = await store.getPendingEvents(100);
 
-    expect(events.map((storedEvent) => storedEvent.id)).toEqual(["migrated-pending"]);
+    expect(events.map((storedEvent) => storedEvent.id)).toEqual([
+      "migrated-pending",
+    ]);
     expect((events[0] as StoredTestEvent).uploaded).toBeUndefined();
     expect((events[0] as StoredTestEvent).uploadState).toBeUndefined();
   });

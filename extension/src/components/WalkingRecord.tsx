@@ -3,10 +3,7 @@
 
 import React from "react";
 import browser from "webextension-polyfill";
-import {
-  colorShade,
-  readableTextLightness,
-} from "@movement/utils/colorStyle";
+import { colorShade, readableTextLightness } from "@movement/utils/colorStyle";
 import { buildFreehandPathSegment } from "@movement/utils/trailAnimation";
 import { roundPathCorners } from "@movement/utils/styleUtils";
 import {
@@ -273,7 +270,10 @@ function SiteFavicon({
     }
 
     return (
-      <span className="walking-record__site-favicon-fallback" aria-hidden="true">
+      <span
+        className="walking-record__site-favicon-fallback"
+        aria-hidden="true"
+      >
         {site.charAt(0).toLowerCase()}
       </span>
     );
@@ -289,10 +289,7 @@ function SiteFavicon({
   );
 }
 
-function periodTitle(
-  period: WalkingRecordPeriod,
-  timestamp: number,
-): string {
+function periodTitle(period: WalkingRecordPeriod, timestamp: number): string {
   const date = new Date(timestamp);
   if (period === "week") {
     return `week of ${date.toLocaleDateString("en", {
@@ -408,11 +405,7 @@ function TimeSpentLegendEntry({ entry }: { entry: TimeSpentEntry }) {
     </>
   );
 
-  return entry.href ? (
-    <a href={entry.href}>{content}</a>
-  ) : (
-    <div>{content}</div>
-  );
+  return entry.href ? <a href={entry.href}>{content}</a> : <div>{content}</div>;
 }
 
 function HowBrowsedSection({ record }: { record: WalkingRecord }) {
@@ -425,7 +418,9 @@ function HowBrowsedSection({ record }: { record: WalkingRecord }) {
     <section className="walking-record__section">
       <div className="walking-record__section-heading">
         <h1>how you browsed</h1>
-        <span>{record.totalTimeLabel} online this {record.period}</span>
+        <span>
+          {record.totalTimeLabel} online this {record.period}
+        </span>
       </div>
       <p className="walking-record__section-intro">{record.timeSpentIntro}</p>
 
@@ -536,8 +531,8 @@ function RevisitSection({ record }: { record: WalkingRecord }) {
         </div>
       ) : (
         <EmptySection>
-          no regularly visited place has been quiet long enough to call you
-          back yet.
+          no regularly visited place has been quiet long enough to call you back
+          yet.
         </EmptySection>
       )}
     </section>
@@ -551,12 +546,10 @@ function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
         <h2>browsing portraits</h2>
       </div>
       <p className="walking-record__section-intro">
-        one small portrait from each {record.period === "week" ? "day" : "part"}.
+        one small portrait from each {record.period === "week" ? "day" : "part"}
+        .
       </p>
-      <div
-        className="walking-record__day-plates"
-        data-period={record.period}
-      >
+      <div className="walking-record__day-plates" data-period={record.period}>
         {record.dayPlates.map((plate) => {
           const className = `walking-record__day-plate${
             plate.future ? " walking-record__day-plate--future" : ""
