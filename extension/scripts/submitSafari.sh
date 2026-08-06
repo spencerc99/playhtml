@@ -27,6 +27,10 @@ PROJECT_FILE="${PROJECT_PATH}/project.pbxproj"
 MACOS_DEPLOYMENT_TARGET="13.0"
 GENERATED_APP_BUNDLE_ID="${SAFARI_BUNDLE_ID%.*}.we-were-online"
 
+if [ "$DRY_RUN" -eq 0 ]; then
+  : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+fi
+
 if [ ! -f "${SAFARI_BUILD_DIR}/manifest.json" ]; then
   echo "Safari build is missing at ${SAFARI_BUILD_DIR}."
   echo "Run WXT_OUT_DIR=publish bun run zip:safari first."
@@ -58,6 +62,16 @@ if ! grep -q "$GENERATED_APP_BUNDLE_ID" "$PROJECT_FILE"; then
 fi
 sed -i '' "s/${GENERATED_APP_BUNDLE_ID}/${SAFARI_BUNDLE_ID}/g" "$PROJECT_FILE"
 
+if [ -n "${APPLE_TEAM_ID:-}" ]; then
+  SIGNING_CONFIGURATION_COUNT=$(grep -c "CODE_SIGN_STYLE = Automatic;" "$PROJECT_FILE")
+  if [ "$SIGNING_CONFIGURATION_COUNT" -ne 4 ]; then
+    echo "Safari project did not contain the expected signing configurations."
+    exit 1
+  fi
+  sed -i '' "s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Automatic;\\
+                DEVELOPMENT_TEAM = ${APPLE_TEAM_ID};/g" "$PROJECT_FILE"
+fi
+
 COMMON_BUILD_SETTINGS=(
   -quiet
   -project "$PROJECT_PATH"
@@ -76,7 +90,6 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
-: "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
 : "${APPLE_API_KEY_ID:?APPLE_API_KEY_ID is required}"
 : "${APPLE_API_ISSUER_ID:?APPLE_API_ISSUER_ID is required}"
 : "${APPLE_API_KEY_PATH:?APPLE_API_KEY_PATH is required}"
