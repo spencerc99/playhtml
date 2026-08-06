@@ -254,7 +254,7 @@ export function curateCommuteStops(
 }
 
 export function getFaviconUrl(
-  stop: Pick<CommuteStop, "domain" | "faviconUrl" | "source" | "url">,
+  stop: Pick<CommuteStop, "domain" | "faviconUrl">,
 ): string {
   if (stop.faviconUrl) {
     try {
@@ -267,11 +267,7 @@ export function getFaviconUrl(
     }
   }
 
-  if (stop.source === "sample") {
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(stop.domain)}&sz=64`;
-  }
-
-  return new URL("/favicon.ico", stop.url).toString();
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(stop.domain)}&sz=64`;
 }
 
 export function formatStopAge(stop: CommuteStop, now = Date.now()): string {
