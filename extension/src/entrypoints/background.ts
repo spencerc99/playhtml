@@ -2,7 +2,10 @@
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
 import { LocalEventStore } from '../storage/LocalEventStore'
-import type { QueryOptions } from '../storage/LocalEventStore'
+import type {
+  QueryOptions,
+  WalkingRecordTraceTarget,
+} from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
@@ -748,7 +751,7 @@ export default defineBackground(() => {
         .then((result) => reply({ success: true, ...result }))
         .catch((e) => {
           console.error('[Background] GET_SCREEN_TIME error:', e)
-          reply({ success: false, totalMs: 0, sessions: [], totalScrollDistancePx: 0 })
+          reply({ success: false, totalMs: 0, sessions: [] })
         })
       return true
     }
@@ -761,6 +764,28 @@ export default defineBackground(() => {
         .catch((e) => {
           console.error('[Background] GET_ALL_EVENTS error:', e)
           reply({ success: false, events: [] })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_WALKING_RECORD_EVENTS') {
+      const options = (message.options || {}) as Pick<QueryOptions, 'startTs' | 'endTs'>
+      store.getWalkingRecordEvents(options)
+        .then((result) => reply({ success: true, ...result }))
+        .catch((e) => {
+          console.error('[Background] GET_WALKING_RECORD_EVENTS error:', e)
+          reply({ success: false, events: [], cursorDistancePx: 0 })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_WALKING_RECORD_TRACES') {
+      const targets = (message.targets || []) as WalkingRecordTraceTarget[]
+      store.getWalkingRecordTraces(targets)
+        .then((traces) => reply({ success: true, traces }))
+        .catch((e) => {
+          console.error('[Background] GET_WALKING_RECORD_TRACES error:', e)
+          reply({ success: false, traces: [] })
         })
       return true
     }

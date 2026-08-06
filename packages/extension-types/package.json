@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/extension-types",
   "description": "Shared event/metadata types and URL canonicalization helpers for the playhtml 'we were online' extension and its Cloudflare Worker.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "license": "MIT",
   "type": "module",
   "author": "Spencer Chang <spencerc99@gmail.com>",
@@ -22,8 +22,7 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/playhtml-extension-types.es.js",
-      "require": "./dist/playhtml-extension-types.umd.js"
+      "import": "./dist/playhtml-extension-types.es.js"
     }
   },
   "publishConfig": {

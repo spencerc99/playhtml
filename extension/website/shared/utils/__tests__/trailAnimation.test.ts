@@ -66,6 +66,28 @@ describe("buildFreehandPathSegment", () => {
     expect(thick).not.toBe(thin);
   });
 
+  it("can derive width variation from the cursor point spacing", () => {
+    const evenlySpaced = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 20, y: 0 },
+      { x: 30, y: 0 },
+    ];
+    const unevenlySpaced = [
+      { x: 0, y: 0 },
+      { x: 2, y: 0 },
+      { x: 5, y: 0 },
+      { x: 30, y: 0 },
+    ];
+    const style = { thinning: 0.55, simulatePressure: true };
+
+    expect(
+      buildFreehandPathSegment(evenlySpaced, 0, 3, 4, true, undefined, style),
+    ).not.toBe(
+      buildFreehandPathSegment(unevenlySpaced, 0, 3, 4, true, undefined, style),
+    );
+  });
+
   it("returns an empty path for an empty window", () => {
     expect(buildFreehandPathSegment(points, 2, 1, 4, true)).toBe("");
     expect(buildFreehandPathSegment([], 0, 0, 4, true)).toBe("");

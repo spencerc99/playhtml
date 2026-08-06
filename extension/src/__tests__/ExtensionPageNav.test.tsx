@@ -1,0 +1,78 @@
+// ABOUTME: Verifies standalone extension pages share one navigation contract.
+// ABOUTME: Covers active-page labeling and the internal-only scraps visibility gate.
+
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import browser from "webextension-polyfill";
+import { ExtensionPageNav } from "../components/ExtensionPageNav";
+
+async function renderNavigation(currentPage: "portrait" | "time") {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<ExtensionPageNav currentPage={currentPage} />);
+  });
+
+  return { container, root };
+}
+
+function cleanup(root: Root, container: HTMLDivElement) {
+  act(() => root.unmount());
+  container.remove();
+}
+
+describe("ExtensionPageNav", () => {
+  beforeEach(() => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    Object.assign(browser.runtime, {
+      getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("shows the shared public pages and identifies the current page", async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      internalDevFeaturesEnabled: false,
+    });
+    const { container, root } = await renderNavigation("time");
+
+    try {
+      expect(container.textContent).toContain("portrait");
+      expect(container.textContent).toContain("time");
+      expect(container.textContent).toContain("walking record");
+      expect(container.textContent).not.toContain("scraps");
+      expect(
+        container.querySelector('[aria-current="page"]')?.textContent,
+      ).toBe("time");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("shows scraps when internal development features are enabled", async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      internalDevFeaturesEnabled: true,
+    });
+    const { container, root } = await renderNavigation("portrait");
+
+    try {
+      expect(container.textContent).toContain("scraps");
+      expect(
+        container.querySelector(
+          'a[href="chrome-extension://test/scraps.html"]',
+        ),
+      ).not.toBeNull();
+    } finally {
+      cleanup(root, container);
+    }
+  });
+});
