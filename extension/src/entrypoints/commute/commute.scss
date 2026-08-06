@@ -1127,16 +1127,14 @@ button {
   text-align: center;
 }
 
-@media (max-width: 900px),
-  (max-width: 950px) and (max-height: 600px),
-  (hover: none) and (pointer: coarse) {
+@media (hover: none) and (pointer: coarse) {
   .commute-install-cta {
     display: none;
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait),
-  (hover: none) and (pointer: coarse) and (orientation: portrait) {
+@media (hover: none) and (pointer: coarse) and (max-width: 900px) and
+  (orientation: portrait) {
   html,
   body,
   #commute-root {
@@ -1223,8 +1221,8 @@ button {
   }
 }
 
-@media (max-width: 950px) and (max-height: 600px) and (orientation: landscape),
-  (hover: none) and (pointer: coarse) and (orientation: landscape) {
+@media (hover: none) and (pointer: coarse) and (max-width: 950px) and
+  (max-height: 600px) and (orientation: landscape) {
   html,
   body,
   #commute-root {
