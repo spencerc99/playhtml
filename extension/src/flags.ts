@@ -23,5 +23,5 @@ export const FLAGS = {
 
   // Internet Commute: full-tab slow browsing train populated from recent
   // extension navigation events.
-  COMMUTE: true,
+  COMMUTE: false,
 } as const;

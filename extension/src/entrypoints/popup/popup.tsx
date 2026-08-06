@@ -106,11 +106,11 @@ function PlayHTMLPopup() {
   }, []);
 
   useEffect(() => {
-    if (!FLAGS.COMMUTE && !internalDevFeaturesEnabled) return;
+    if (!FLAGS.COMMUTE) return;
     findOpenCommuteTab()
       .then((tab) => setCommuteIsOpen(tab !== null))
       .catch(() => setCommuteIsOpen(false));
-  }, [internalDevFeaturesEnabled]);
+  }, []);
 
   const loadPlayerData = async () => {
     try {
@@ -469,7 +469,7 @@ function PlayHTMLPopup() {
         bagEnabled ? () => setCurrentView("bag-settings") : undefined
       }
       onViewCommute={
-        FLAGS.COMMUTE || internalDevFeaturesEnabled
+        FLAGS.COMMUTE
           ? async () => {
               await openOrFocusCommute();
               window.close();
