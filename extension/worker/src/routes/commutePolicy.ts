@@ -97,6 +97,11 @@ const GENERIC_PATHS = new Set([
   '/search',
 ]);
 
+const PRODUCT_PATH_PATTERNS = [
+  /\/products?\/[^/]+(?:\/|$)/i,
+  /\/listings?\/[^/]+(?:\/|$)/i,
+];
+
 const NEVER_SHOW_SUBDOMAIN_LABELS = new Set(['tracking']);
 
 const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
@@ -417,6 +422,26 @@ function sanitizeContentUrl(url: URL): string {
   return canonicalizeUrl(url.toString());
 }
 
+function sanitizeProductUrl(
+  url: URL,
+  domain: string,
+): string | null | undefined {
+  if (
+    getDomainWithoutSuffix(domain, { allowPrivateDomains: true }) === 'amazon'
+  ) {
+    const productId = url.pathname.match(
+      /\/(?:dp|gp\/product|gp\/aw\/d)\/([a-z0-9]{10})(?:\/|$)/i,
+    )?.[1];
+    return productId ? `${url.origin}/dp/${productId.toUpperCase()}` : null;
+  }
+
+  const isProductPage = PRODUCT_PATH_PATTERNS.some((pattern) =>
+    pattern.test(url.pathname),
+  );
+
+  return isProductPage ? sanitizeContentUrl(url) : undefined;
+}
+
 function normalizeWikipediaNamespace(value: string): string {
   return value
     .normalize('NFKD')
@@ -624,6 +649,9 @@ function sanitizePublicDestinationUrl(rawUrl: string): string | null {
 
     const platformUrl = getPlatformDestinationUrl(url, domain);
     if (platformUrl !== undefined) return platformUrl;
+
+    const productUrl = sanitizeProductUrl(url, domain);
+    if (productUrl !== undefined) return productUrl;
 
     if (url.searchParams.size > 0) return null;
 

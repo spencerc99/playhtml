@@ -185,6 +185,76 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('keeps public product pages while removing shopping parameters', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'amazon-product',
+          'navigation',
+          'https://www.amazon.com/Writing-Tools/dp/B0ABC12345/ref=sr_1_1?dib=private&tag=affiliate-20',
+          300,
+          'amazon-rider',
+          'A useful writing tool',
+        ),
+        event(
+          'store-product',
+          'navigation',
+          'https://shop.example/products/linen-shirt?variant=private&utm_source=feed',
+          200,
+          'store-rider',
+          'Linen shirt',
+        ),
+        event(
+          'marketplace-listing',
+          'navigation',
+          'https://www.etsy.com/listing/123456789/handmade-object?ref=private',
+          150,
+          'marketplace-rider',
+          'Handmade object',
+        ),
+        event(
+          'store-cart',
+          'navigation',
+          'https://shop.example/cart?item=private',
+          100,
+          'cart-rider',
+          'Your cart',
+        ),
+        event(
+          'amazon-home',
+          'navigation',
+          'https://www.amazon.com/',
+          50,
+          'amazon-home-rider',
+          'Amazon.com. Spend less. Smile more.',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.destinations).toHaveLength(3);
+    expect(response.destinations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          domain: 'amazon.com',
+          title: 'A useful writing tool',
+          url: 'https://www.amazon.com/dp/B0ABC12345',
+        }),
+        expect.objectContaining({
+          domain: 'shop.example',
+          title: 'Linen shirt',
+          url: 'https://shop.example/products/linen-shirt',
+        }),
+        expect.objectContaining({
+          domain: 'etsy.com',
+          title: 'Handmade object',
+          url: 'https://www.etsy.com/listing/123456789/handmade-object',
+        }),
+      ]),
+    );
+  });
+
   it('keeps Grok as scenery while allowing Archive.org item pages as stops', () => {
     const response = buildCommuteResponse(
       [
