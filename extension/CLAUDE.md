@@ -64,8 +64,8 @@ pending notes into `CHANGELOG.md`.
 - Merging that PR to `main` triggers `.github/workflows/extension-release.yml`,
   which builds Chrome, Firefox, and Safari zips, submits Chrome through
   `scripts/submitChrome.mjs`, submits Edge through `scripts/submitEdge.mjs`,
-  submits Firefox through `wxt submit`, packages and uploads macOS and iOS
-  Safari apps to App Store Connect, and pushes a
+  submits Firefox through `wxt submit`, packages and uploads the macOS Safari
+  app to App Store Connect, and pushes a
   `@playhtml/extension@x.y.z` tag. Non-dry-run releases also announce the
   version in Discord with a link to the public changelog.
 
@@ -114,12 +114,11 @@ App Store Connect:
 - `APPLE_API_ISSUER_ID` — issuer ID for the team API key
 - `APPLE_API_PRIVATE_KEY` — full contents of the downloaded `.p8` private key
 
-The App Store Connect key must support provisioning and app uploads. Create one
-app record for bundle ID `online.wewere.extension` with macOS and iOS enabled
-before the first release. The release workflow uses Xcode cloud signing to
-create provisioning profiles, archives both platforms, and uploads both
-builds. Select the processed builds and submit them for App Review in App Store
-Connect.
+The App Store Connect key must support provisioning and app uploads. Create a
+macOS app record for bundle ID `online.wewere.extension` before the first
+release. The release workflow uses Xcode cloud signing to create the
+provisioning profile, archive the macOS app, and upload the build. Select the
+processed build and submit it for App Review in App Store Connect.
 
 **Manual fallback:** The local `./release.sh` continues to work as an escape
 hatch (uses `.env.submit` instead of GitHub secrets, requires Xcode 26 and a

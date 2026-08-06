@@ -228,7 +228,7 @@ jobs:
           chmod 600 "$KEY_PATH"
           echo "path=$KEY_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Package and submit Safari apps
+      - name: Package and submit Safari app
         if: env.SKIP_SAFARI != 'true'
         working-directory: extension
         env:

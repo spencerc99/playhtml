@@ -1,6 +1,6 @@
 #!/bin/bash
-# ABOUTME: Packages Safari extension files into iOS and macOS apps.
-# ABOUTME: Validates unsigned builds or uploads signed archives to App Store Connect.
+# ABOUTME: Packages Safari extension files into a macOS app.
+# ABOUTME: Validates an unsigned build or uploads a signed archive to App Store Connect.
 
 set -euo pipefail
 
@@ -23,8 +23,9 @@ SAFARI_BUILD_DIR="${SAFARI_BUILD_DIR:-publish/safari-mv3}"
 SAFARI_PROJECT_ROOT="publish/safari-app"
 APP_NAME="we were online"
 PROJECT_PATH="${SAFARI_PROJECT_ROOT}/${APP_NAME}/${APP_NAME}.xcodeproj"
+PROJECT_FILE="${PROJECT_PATH}/project.pbxproj"
 MACOS_DEPLOYMENT_TARGET="13.0"
-IOS_DEPLOYMENT_TARGET="18.0"
+GENERATED_APP_BUNDLE_ID="${SAFARI_BUNDLE_ID%.*}.we-were-online"
 
 if [ ! -f "${SAFARI_BUILD_DIR}/manifest.json" ]; then
   echo "Safari build is missing at ${SAFARI_BUILD_DIR}."
@@ -38,6 +39,7 @@ PACKAGER_OUTPUT=$(xcrun safari-web-extension-packager \
   --app-name "$APP_NAME" \
   --bundle-identifier "$SAFARI_BUNDLE_ID" \
   --swift \
+  --macos-only \
   --copy-resources \
   --no-open \
   --no-prompt \
@@ -50,6 +52,12 @@ if echo "$PACKAGER_OUTPUT" | grep -q "Warning:"; then
   exit 1
 fi
 
+if ! grep -q "$GENERATED_APP_BUNDLE_ID" "$PROJECT_FILE"; then
+  echo "Safari packager did not generate the expected app bundle identifier."
+  exit 1
+fi
+sed -i '' "s/${GENERATED_APP_BUNDLE_ID}/${SAFARI_BUNDLE_ID}/g" "$PROJECT_FILE"
+
 COMMON_BUILD_SETTINGS=(
   -quiet
   -project "$PROJECT_PATH"
@@ -57,18 +65,12 @@ COMMON_BUILD_SETTINGS=(
   "MARKETING_VERSION=${VERSION}"
   "CURRENT_PROJECT_VERSION=${BUILD_NUMBER}"
   "MACOSX_DEPLOYMENT_TARGET=${MACOS_DEPLOYMENT_TARGET}"
-  "IPHONEOS_DEPLOYMENT_TARGET=${IOS_DEPLOYMENT_TARGET}"
 )
 
 if [ "$DRY_RUN" -eq 1 ]; then
   xcodebuild "${COMMON_BUILD_SETTINGS[@]}" \
-    -scheme "${APP_NAME} (macOS)" \
+    -scheme "$APP_NAME" \
     -destination "generic/platform=macOS" \
-    CODE_SIGNING_ALLOWED=NO \
-    build
-  xcodebuild "${COMMON_BUILD_SETTINGS[@]}" \
-    -scheme "${APP_NAME} (iOS)" \
-    -destination "generic/platform=iOS" \
     CODE_SIGNING_ALLOWED=NO \
     build
   exit 0
@@ -101,21 +103,11 @@ plutil -insert signingStyle -string automatic "$EXPORT_OPTIONS"
 plutil -insert teamID -string "$APPLE_TEAM_ID" "$EXPORT_OPTIONS"
 plutil -insert manageAppVersionAndBuildNumber -bool false "$EXPORT_OPTIONS"
 
-archive_and_upload() {
-  local platform="$1"
-  local scheme="${APP_NAME} (${platform})"
-  local destination
-  local archive_path="${ARCHIVE_DIR}/${platform}.xcarchive"
-
-  if [ "$platform" = "macOS" ]; then
-    destination="generic/platform=macOS"
-  else
-    destination="generic/platform=iOS"
-  fi
-
+archive_and_upload_macos() {
+  local archive_path="${ARCHIVE_DIR}/macOS.xcarchive"
   xcodebuild "${COMMON_BUILD_SETTINGS[@]}" \
-    -scheme "$scheme" \
-    -destination "$destination" \
+    -scheme "$APP_NAME" \
+    -destination "generic/platform=macOS" \
     -archivePath "$archive_path" \
     "DEVELOPMENT_TEAM=${APPLE_TEAM_ID}" \
     CODE_SIGN_STYLE=Automatic \
@@ -130,5 +122,4 @@ archive_and_upload() {
     "${AUTHENTICATION[@]}"
 }
 
-archive_and_upload "macOS"
-archive_and_upload "iOS"
+archive_and_upload_macos
