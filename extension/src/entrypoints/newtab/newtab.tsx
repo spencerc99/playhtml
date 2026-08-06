@@ -18,102 +18,27 @@ import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import { WalkingRecordPage } from "../../components/WalkingRecord";
 import {
-  attachWalkingRecordTraces,
-  deriveWalkingRecord,
   getWalkingRecordPeriodRange,
-  getWalkingRecordTraceTargets,
   summarizeWalkingRecordPeriods,
   type WalkingRecord,
-  type WalkingRecordRange,
-  type WalkingRecordDomain,
   type WalkingRecordPeriod,
   type WalkingRecordPeriodSummary,
 } from "../../history/walkingRecord";
-import type { CollectionEvent } from "../../collectors/types";
-import type {
-  ScreenTimeSession,
-  WalkingRecordTrace,
-} from "../../storage/LocalEventStore";
+import {
+  loadWalkingRecord,
+  WALKING_RECORD_LOAD_STEP_COUNT,
+  type WalkingRecordLoadProgress,
+} from "../../history/loadWalkingRecord";
+import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
 
 const DEFAULT_CURSOR_COLOR = "#4a9a8a";
 const PERIOD_RAIL_COUNT = 12;
 const EARLIEST_PERIOD_OFFSET = 1 - PERIOD_RAIL_COUNT;
 
-interface EventsResponse {
-  success?: boolean;
-  events?: CollectionEvent[];
-  cursorDistancePx?: number;
-}
-
 interface ScreenTimeResponse {
   success?: boolean;
   sessions?: ScreenTimeSession[];
-}
-
-interface DomainsResponse {
-  success?: boolean;
-  domains?: WalkingRecordDomain[];
-}
-
-interface TracesResponse {
-  success?: boolean;
-  traces?: WalkingRecordTrace[];
-}
-
-async function loadWalkingRecord(
-  period: WalkingRecordPeriod,
-  range: WalkingRecordRange,
-  baseColor: string,
-): Promise<WalkingRecord> {
-  const [eventsResponse, screenTimeResponse, domainsResponse] =
-    (await Promise.all([
-      browser.runtime.sendMessage({
-        type: "GET_WALKING_RECORD_EVENTS",
-        options: {
-          startTs: range.startTs,
-          endTs: range.endTs,
-        },
-      }),
-      browser.runtime.sendMessage({
-        type: "GET_SCREEN_TIME",
-        options: {
-          startTs: range.startTs,
-          endTs: range.endTs,
-        },
-      }),
-      browser.runtime.sendMessage({ type: "GET_ALL_DOMAINS" }),
-    ])) as [EventsResponse, ScreenTimeResponse, DomainsResponse];
-
-  if (!eventsResponse.success || !eventsResponse.events) {
-    throw new Error("The local activity record is unavailable.");
-  }
-  if (!screenTimeResponse.success || !screenTimeResponse.sessions) {
-    throw new Error("The local screen-time record is unavailable.");
-  }
-  if (!domainsResponse.success || !domainsResponse.domains) {
-    throw new Error("The local place record is unavailable.");
-  }
-
-  const record = deriveWalkingRecord({
-    period,
-    baseColor,
-    events: eventsResponse.events,
-    sessions: screenTimeResponse.sessions,
-    domains: domainsResponse.domains,
-    range,
-    cursorDistancePx: eventsResponse.cursorDistancePx,
-  });
-  const targets = getWalkingRecordTraceTargets(record);
-  if (targets.length === 0) return record;
-
-  const tracesResponse = (await browser.runtime.sendMessage({
-    type: "GET_WALKING_RECORD_TRACES",
-    targets,
-  })) as TracesResponse;
-  if (!tracesResponse.success || !tracesResponse.traces) return record;
-
-  return attachWalkingRecordTraces(record, tracesResponse.traces);
 }
 
 function NewTabPage() {
@@ -125,6 +50,12 @@ function NewTabPage() {
   >({});
   const [baseColor, setBaseColor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] =
+    useState<WalkingRecordLoadProgress>({
+      completed: 0,
+      total: WALKING_RECORD_LOAD_STEP_COUNT,
+      message: "opening your local record…",
+    });
   const [error, setError] = useState<string | null>(null);
   const range = getWalkingRecordPeriodRange(period, periodOffset);
   const recordKey = `${period}:${range.startTs}`;
@@ -158,8 +89,15 @@ function NewTabPage() {
 
     let cancelled = false;
     setLoading(true);
+    setLoadingProgress({
+      completed: 0,
+      total: WALKING_RECORD_LOAD_STEP_COUNT,
+      message: `opening this ${period}’s record…`,
+    });
     setError(null);
-    loadWalkingRecord(period, range, baseColor)
+    loadWalkingRecord(period, range, baseColor, (progress) => {
+      if (!cancelled) setLoadingProgress(progress);
+    })
       .then((walkingRecord) => {
         if (cancelled) return;
         setRecords((current) => ({
@@ -215,11 +153,12 @@ function NewTabPage() {
       })
       .then((response: ScreenTimeResponse) => {
         if (cancelled || !response.success || !response.sessions) return;
+        const sessions = response.sessions;
         setPeriodSummaries((current) => ({
           ...current,
           [period]: summarizeWalkingRecordPeriods(
             period,
-            response.sessions,
+            sessions,
             PERIOD_RAIL_COUNT,
           ),
         }));
@@ -239,8 +178,16 @@ function NewTabPage() {
   const selectPeriod = (nextPeriod: WalkingRecordPeriod) => {
     const nextRange = getWalkingRecordPeriodRange(nextPeriod);
     const nextRecordKey = `${nextPeriod}:${nextRange.startTs}`;
+    const nextRecord = records[nextRecordKey];
     setError(null);
-    setLoading(!records[nextRecordKey]);
+    if (!nextRecord) {
+      setLoadingProgress({
+        completed: 0,
+        total: WALKING_RECORD_LOAD_STEP_COUNT,
+        message: `opening this ${nextPeriod}’s record…`,
+      });
+    }
+    setLoading(!nextRecord);
     setPeriodOffset(0);
     setPeriod(nextPeriod);
   };
@@ -249,8 +196,16 @@ function NewTabPage() {
     if (nextOffset < EARLIEST_PERIOD_OFFSET || nextOffset > 0) return;
 
     const nextRange = getWalkingRecordPeriodRange(period, nextOffset);
+    const nextRecord = records[`${period}:${nextRange.startTs}`];
     setError(null);
-    setLoading(!records[`${period}:${nextRange.startTs}`]);
+    if (!nextRecord) {
+      setLoadingProgress({
+        completed: 0,
+        total: WALKING_RECORD_LOAD_STEP_COUNT,
+        message: `opening this ${period}’s record…`,
+      });
+    }
+    setLoading(!nextRecord);
     setPeriodOffset(nextOffset);
   };
 
@@ -263,6 +218,7 @@ function NewTabPage() {
       onPeriodChange={selectPeriod}
       onPeriodOffsetChange={selectPeriodOffset}
       loading={loading}
+      loadingProgress={loadingProgress}
       error={error}
     />
   );

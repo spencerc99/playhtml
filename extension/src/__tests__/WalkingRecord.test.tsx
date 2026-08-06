@@ -5,6 +5,11 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
+import type { TrailState } from "@movement/types";
+import {
+  cycleLandscapeTrails,
+  scheduleLandscapeTrails,
+} from "../components/MovementLandscape";
 import { WalkingRecordPage } from "../components/WalkingRecord";
 import {
   getWalkingRecordPeriodRange,
@@ -27,8 +32,48 @@ const record: WalkingRecord = {
   movementCount: 0,
   departures: [],
   revisits: [],
-  dayPlates: [],
-  timeSpent: [],
+  landscapePaths: [],
+  dayPlates: [
+    {
+      date: "day:2026-07-27",
+      day: "mon",
+      vignette: "12 quiet minutes on example.com",
+      hue: "#4a9a8a",
+      future: false,
+      portraitDay: "2026-07-27",
+      traceTargets: [],
+      tracePaths: [],
+    },
+    {
+      date: "2026-08-02",
+      day: "sun",
+      vignette: "still to come",
+      hue: "#b5aea5",
+      future: true,
+      traceTargets: [],
+      tracePaths: [],
+    },
+  ],
+  timeSpent: [
+    {
+      rank: 1,
+      site: "example.com",
+      faviconUrl: "https://example.com/icon.png",
+      time: "12 min",
+      percentage: 80,
+      hue: "#4a9a8a",
+      note: "mostly around 9 AM–10 AM",
+      href: "https://example.com",
+    },
+    {
+      rank: 2,
+      site: "3 others",
+      time: "4m",
+      percentage: 20,
+      hue: "#c8c3bb",
+      note: "",
+    },
+  ],
   timeSpentIntro: "there is no screen-time record for this period.",
 };
 
@@ -48,12 +93,42 @@ const periodSummaries: WalkingRecordPeriodSummary[] = Array.from(
   },
 );
 
+function trailState(
+  id: string,
+  startOffsetMs: number,
+  durationMs: number,
+): TrailState {
+  return {
+    trail: {
+      id,
+      points: [
+        { x: 10, y: 10, ts: 1_000 },
+        { x: 20, y: 20, ts: 2_000 },
+      ],
+      color: "#4a9a8a",
+      opacity: 1,
+      startTime: 1_000,
+      endTime: 2_000,
+      clicks: [],
+    },
+    startOffsetMs,
+    durationMs,
+    variedPoints: [
+      { x: 10, y: 10 },
+      { x: 20, y: 20 },
+    ],
+    clicksWithProgress: [],
+  };
+}
+
 async function renderWalkingRecord(
   periodOffset: number,
   callbacks: {
     onPeriodChange: ReturnType<typeof vi.fn>;
     onPeriodOffsetChange: ReturnType<typeof vi.fn>;
   },
+  loading = false,
+  visibleRecord = record,
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -62,13 +137,18 @@ async function renderWalkingRecord(
   await act(async () => {
     root.render(
       <WalkingRecordPage
-        record={record}
+        record={visibleRecord}
         period="week"
         periodOffset={periodOffset}
         periodSummaries={periodSummaries}
         onPeriodChange={callbacks.onPeriodChange}
         onPeriodOffsetChange={callbacks.onPeriodOffsetChange}
-        loading={false}
+        loading={loading}
+        loadingProgress={{
+          completed: 3,
+          total: 5,
+          message: "finding familiar places…",
+        }}
         error={null}
       />,
     );
@@ -135,6 +215,41 @@ describe("WalkingRecordPage calendar navigation", () => {
       expect(earlier?.textContent).toBe("↤ earlier");
       expect(later?.textContent).toBe("browsing to come ↦");
       expect(later?.disabled).toBe(true);
+      expect(
+        Array.from(container.querySelectorAll("section h1, section h2")).map(
+          (heading) => heading.textContent,
+        ),
+      ).toEqual([
+        "how you browsed",
+        "where you used to visit",
+        "browsing portraits",
+      ]);
+      expect(
+        (
+          container.querySelector(
+            ".walking-record__time-legend-site",
+          ) as HTMLElement | null
+        )?.style.borderBottomColor,
+      ).toBe("rgb(74, 154, 138)");
+      expect(
+        container.querySelector(".walking-record__site-favicon-globe"),
+      ).not.toBeNull();
+      expect(
+        container
+          .querySelector(".walking-record__site-favicon")
+          ?.getAttribute("src"),
+      ).toBe("https://example.com/icon.png");
+      expect(
+        container.querySelector(".walking-record__day-plate--future"),
+      ).not.toBeNull();
+      expect(
+        container
+          .querySelector('a[title="Open mon portrait"]')
+          ?.getAttribute("href"),
+      ).toBe("chrome-extension://test/portrait.html?day=2026-07-27");
+      expect(
+        container.querySelector(".walking-record__future-trace"),
+      ).not.toBeNull();
 
       await act(async () => {
         earlier?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -143,6 +258,38 @@ describe("WalkingRecordPage calendar navigation", () => {
 
       expect(callbacks.onPeriodOffsetChange).toHaveBeenNthCalledWith(1, -1);
       expect(callbacks.onPeriodOffsetChange).toHaveBeenNthCalledWith(2, 0);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("shows the current loading step and measured progress", async () => {
+    const callbacks = {
+      onPeriodChange: vi.fn(),
+      onPeriodOffsetChange: vi.fn(),
+    };
+    const { container, root } = await renderWalkingRecord(
+      0,
+      callbacks,
+      true,
+    );
+
+    try {
+      const progress = container.querySelector(
+        '[role="progressbar"]',
+      ) as HTMLElement | null;
+      const cursorWalk = container.querySelector(
+        ".walking-record__loading-cursors",
+      );
+
+      expect(container.textContent).toContain("finding familiar places…");
+      expect(container.textContent).toContain("60%");
+      expect(cursorWalk?.getAttribute("aria-hidden")).toBe("true");
+      expect(
+        cursorWalk?.querySelectorAll(".walking-record__loading-cursor"),
+      ).toHaveLength(3);
+      expect(progress?.getAttribute("aria-valuenow")).toBe("60");
+      expect(progress?.querySelector("span")?.style.width).toBe("60%");
     } finally {
       cleanup(root, container);
     }
@@ -172,5 +319,135 @@ describe("WalkingRecordPage calendar navigation", () => {
     } finally {
       cleanup(root, container);
     }
+  });
+
+  it("shows a real movement landscape when the period has cursor paths", async () => {
+    const cursorEvent = (id: string, ts: number, x: number) => ({
+      id,
+      type: "cursor" as const,
+      ts,
+      data: { event: "move" as const, x, y: 0.5 },
+      meta: {
+        pid: "pk_test",
+        sid: "sid_test",
+        url: "https://example.com/page",
+        vw: 1_000,
+        vh: 800,
+        tz: "America/Los_Angeles",
+        cursor_color: "#4a9a8a",
+      },
+    });
+    const callbacks = {
+      onPeriodChange: vi.fn(),
+      onPeriodOffsetChange: vi.fn(),
+    };
+    const { container, root } = await renderWalkingRecord(
+      0,
+      callbacks,
+      false,
+      {
+        ...record,
+        landscapePaths: [
+          [
+            cursorEvent("cursor-1", 1_000, 0.2),
+            cursorEvent("cursor-2", 1_250, 0.8),
+          ],
+        ],
+      },
+    );
+
+    try {
+      expect(container.textContent).toContain("movement from this week");
+      expect(
+        container
+          .querySelector(".walking-record__movement-landscape")
+          ?.getAttribute("aria-label"),
+      ).toBe("Real cursor movements from this week");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("reveals every ranked exploration in place", async () => {
+    const departures = Array.from({ length: 5 }, (_, index) => ({
+      day: "mon",
+      from: "google.com",
+      to: `small-${index + 1}.example`,
+      toUrl: `https://small-${index + 1}.example`,
+      time: `${index + 1} min active`,
+      note: "your first visit",
+      score: 1 - index * 0.1,
+    }));
+    const callbacks = {
+      onPeriodChange: vi.fn(),
+      onPeriodOffsetChange: vi.fn(),
+    };
+    const { container, root } = await renderWalkingRecord(
+      0,
+      callbacks,
+      false,
+      {
+        ...record,
+        departures,
+        movementCount: departures.length,
+      },
+    );
+
+    try {
+      const showMore = container.querySelector(
+        ".walking-record__departures-more",
+      ) as HTMLButtonElement;
+
+      expect(container.querySelectorAll(".walking-record__departure")).toHaveLength(
+        3,
+      );
+      expect(container.textContent).toContain("3 shown from 5");
+      expect(showMore.textContent).toBe("show more");
+
+      await act(async () => {
+        showMore.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(container.querySelectorAll(".walking-record__departure")).toHaveLength(
+        5,
+      );
+      expect(container.textContent).toContain("5 shown from 5");
+      expect(showMore.textContent).toBe("show less");
+      expect(showMore.getAttribute("aria-expanded")).toBe("true");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("keeps landscape trails entering on a dense repeating schedule", () => {
+    const scheduled = scheduleLandscapeTrails([
+      trailState("long", 1_000, 60_000),
+      trailState("short", 0, 500),
+      trailState("medium", 500, 6_000),
+    ]);
+
+    expect(scheduled.map((trail) => trail.durationMs)).toEqual([
+      9_000,
+      3_000,
+      6_000,
+    ]);
+    expect(scheduled.map((trail) => trail.startOffsetMs)).toEqual([
+      600,
+      0,
+      300,
+    ]);
+
+    const playback = cycleLandscapeTrails(scheduled);
+    expect(playback.duration).toBe(6_000);
+    expect(
+      playback.trailStates.filter((trail) => trail.startOffsetMs < 0),
+    ).toHaveLength(2);
+    expect(
+      playback.trailStates
+        .filter((trail) => trail.startOffsetMs < 0)
+        .every(
+          (trail) => trail.startOffsetMs + trail.durationMs > 0,
+        ),
+    ).toBe(true);
   });
 });

@@ -80,6 +80,105 @@ button:focus-visible {
   font-size: 11px;
 }
 
+.walking-record__loading {
+  width: min(100%, 320px);
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 auto;
+}
+
+.walking-record__loading-cursors {
+  position: relative;
+  width: 100%;
+  height: 64px;
+  overflow: hidden;
+
+  > svg:first-child {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.walking-record__loading-route {
+  fill: none;
+  stroke: rgba(90, 78, 65, 0.16);
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+  stroke-width: 1;
+  animation: walking-record-route 3s linear infinite;
+}
+
+.walking-record__loading-cursor {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 18px;
+  height: 18px;
+  offset-path: path(
+    "M 8 42 C 54 10, 93 53, 137 27 S 218 14, 260 36 S 296 43, 312 17"
+  );
+  offset-rotate: 0deg;
+  opacity: 0;
+  filter: drop-shadow(0 1px 1px rgba(90, 78, 65, 0.12));
+  animation: walking-record-cursor-walk 5.4s linear infinite;
+}
+
+.walking-record__loading-cursor--two {
+  animation-delay: -1.8s;
+}
+
+.walking-record__loading-cursor--three {
+  animation-delay: -3.6s;
+}
+
+@keyframes walking-record-route {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+@keyframes walking-record-cursor-walk {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+
+  10%,
+  88% {
+    opacity: 0.78;
+  }
+
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+.walking-record__loading-copy {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.walking-record__loading-track {
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(90, 78, 65, 0.12);
+
+  > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: $accent-teal;
+    transition: width 0.22s ease-out;
+  }
+}
+
 .walking-record__error {
   flex-direction: column;
   gap: 8px;
@@ -309,32 +408,22 @@ button:focus-visible {
 .walking-record__departures {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  margin-top: 2px;
 }
 
 .walking-record__departure {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-  padding: 14px 16px;
-  border: 1px solid $border;
-  border-radius: 8px;
-  background: $surface;
-  box-shadow: 0 1px 4px $shadow;
-  transition:
-    border-color 0.12s,
-    background 0.12s;
+  display: grid;
+  width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: 34px minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 8px 10px 4px;
+  border-bottom: 1px solid rgba(90, 78, 65, 0.1);
+  transition: background 0.12s;
 
   &:hover {
-    border-color: $border-strong;
-    background: $surface-hover;
-  }
-
-  > svg {
-    width: 44px;
-    height: 44px;
-    flex: 0 0 44px;
-    margin-top: 2px;
+    background: rgba($surface, 0.55);
   }
 }
 
@@ -344,43 +433,61 @@ button:focus-visible {
 
   > div {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 7px;
     color: $text-muted;
-    font-size: 13px;
-
-    span:nth-child(-n + 2) {
-      font-family: $font-mono;
-      font-size: 10px;
-    }
+    font-size: 12.5px;
 
     strong {
-      color: $text;
-      font-family: $font-heading;
-      font-size: 15px;
-      font-weight: 600;
+      color: $accent-blue;
+      font-size: 13px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
     }
   }
 
   p {
     margin: 4px 0 0;
-    color: $text-muted;
-    font-size: 12.5px;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 10.5px;
   }
 }
 
 .walking-record__day {
+  padding-top: 3px;
   color: $text-faint;
-}
-
-.walking-record__familiarity {
-  margin-top: 3px;
-  color: $accent-teal;
-  flex-shrink: 0;
   font-family: $font-mono;
   font-size: 10px;
+}
+
+.walking-record__departure-time {
+  padding-top: 2px;
+  color: $accent-teal;
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
   white-space: nowrap;
+}
+
+.walking-record__departures-more {
+  display: block;
+  margin: 10px 4px 0 auto;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid rgba($accent-teal, 0.35);
+  background: transparent;
+  color: $accent-teal;
+  cursor: pointer;
+  font-family: $font-mono;
+  font-size: 10px;
+
+  &:hover {
+    border-bottom-color: $accent-teal;
+    color: $text;
+  }
 }
 
 .walking-record__empty {
@@ -393,18 +500,24 @@ button:focus-visible {
   line-height: 1.5;
 }
 
-.walking-record__subheading {
-  margin: 24px 0 4px !important;
-  color: $text-muted;
-  font-size: 14px !important;
-  font-style: italic;
-}
+.walking-record__subsection-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 24px 0 8px;
 
-.walking-record__revisit-intro {
-  margin: 0 0 12px;
-  color: $text-faint;
-  font-size: 11.5px;
-  font-style: italic;
+  h2 {
+    color: $text-muted;
+    font-size: 14px !important;
+    font-style: italic;
+  }
+
+  span {
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 9.5px;
+  }
 }
 
 .walking-record__revisit-ledger {
@@ -458,7 +571,7 @@ button:focus-visible {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 12px;
+  margin-top: 18px;
 
   &[data-period="month"] {
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -473,6 +586,14 @@ button:focus-visible {
   mix-blend-mode: multiply;
 }
 
+.walking-record__future-trace {
+  fill: none;
+  stroke: rgba(90, 78, 65, 0.12);
+  stroke-dasharray: 2 4;
+  stroke-linecap: round;
+  stroke-width: 1;
+}
+
 .walking-record__day-plate {
   display: flex;
   min-width: 0;
@@ -483,6 +604,17 @@ button:focus-visible {
   border-radius: 8px;
   background: $surface;
   box-shadow: 0 1px 4px $shadow;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    transform 0.12s;
+
+  &[href]:hover,
+  &[href]:focus-visible {
+    border-color: rgba($accent-teal, 0.45);
+    box-shadow: 0 3px 10px rgba(90, 78, 65, 0.12);
+    transform: translateY(-1px);
+  }
 
   svg {
     width: 100%;
@@ -506,81 +638,146 @@ button:focus-visible {
   }
 }
 
-.walking-record__hours {
+.walking-record__day-plate--future {
+  border-color: rgba(90, 78, 65, 0.18);
+  border-style: dashed;
+  background: rgba($surface, 0.2);
+  box-shadow: none;
+
+  strong,
+  > span {
+    color: rgba(90, 78, 65, 0.45);
+  }
+}
+
+.walking-record__time-spent {
+  padding: 14px 16px 12px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+}
+
+.walking-record__time-stack {
   display: flex;
-  flex-direction: column;
-
-  > a,
-  > div {
-    display: grid;
-    grid-template-columns: 18px 14px minmax(0, 1fr);
-    gap: 10px;
-    align-items: flex-start;
-    padding: 9px 4px;
-    border-bottom: 1px solid $border;
-  }
-
-  > a:hover {
-    background: rgba($surface, 0.55);
-  }
-
-  small {
-    color: $text-faint;
-    font-size: 11px;
-  }
-}
-
-.walking-record__rank {
-  padding-top: 2px;
-  color: $text-faint;
-  font-family: $font-mono;
-  font-size: 11px;
-  text-align: right;
-}
-
-.walking-record__site-color {
-  width: 14px;
-  height: 14px;
-  margin-top: 3px;
-  border-radius: 3px;
-}
-
-.walking-record__hour-title {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-
-  strong {
-    overflow: hidden;
-    font-size: 13px;
-    font-weight: 500;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  span {
-    color: $accent-teal;
-    flex-shrink: 0;
-    font-family: $font-mono;
-    font-size: 12px;
-    font-weight: 600;
-  }
-}
-
-.walking-record__time-track {
-  height: 3px;
-  margin: 4px 0;
+  width: 100%;
+  height: 22px;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: 5px;
   background: $border;
 
   span {
     display: block;
+    min-width: 1px;
     height: 100%;
-    border-radius: 2px;
-    opacity: 0.7;
+    opacity: 0.82;
+
+    &:not(:last-child) {
+      border-right: 1px solid rgba($bg, 0.7);
+    }
   }
+}
+
+.walking-record__time-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 18px;
+  margin-top: 12px;
+
+  > a,
+  > div {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: $text-muted;
+    font-size: 12.5px;
+    line-height: 1.3;
+  }
+
+  > a:hover .walking-record__time-legend-site {
+    color: $text;
+  }
+
+  strong {
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+
+  .walking-record__site-favicon,
+  .walking-record__site-favicon-fallback {
+    width: 15px;
+    height: 15px;
+    flex-basis: 15px;
+  }
+}
+
+.walking-record__time-legend-site {
+  border-bottom: 2px solid;
+  padding-bottom: 2px;
+  line-height: 1.15;
+}
+
+.walking-record__site-favicon,
+.walking-record__site-favicon-fallback {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+.walking-record__site-favicon {
+  object-fit: contain;
+}
+
+.walking-record__site-favicon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(90, 78, 65, 0.2);
+  border-radius: 50%;
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.walking-record__site-favicon-globe {
+  border: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1;
+}
+
+.walking-record__movement-section {
+  margin-bottom: 0;
+}
+
+.walking-record__movement-landscape {
+  position: relative;
+  height: 210px;
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+
+  .trails-svg {
+    z-index: 2;
+  }
+}
+
+.walking-record__movement-paper {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0.42;
+  pointer-events: none;
+  mix-blend-mode: multiply;
 }
 
 @media (max-width: 650px) {
@@ -630,19 +827,12 @@ button:focus-visible {
   }
 
   .walking-record__departure {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
-
-    > svg {
-      width: 36px;
-      height: 36px;
-      flex-basis: 36px;
-    }
+    grid-template-columns: 28px minmax(0, 1fr);
   }
 
-  .walking-record__familiarity {
+  .walking-record__departure-time {
     grid-column: 2;
-    margin-top: -8px;
+    text-align: left;
   }
 
   .walking-record__day-plates {
@@ -671,9 +861,34 @@ button:focus-visible {
       grid-column: 2;
     }
   }
+
+  .walking-record__movement-landscape {
+    height: 160px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .walking-record__loading-route,
+  .walking-record__loading-cursor {
+    animation: none;
+  }
+
+  .walking-record__loading-cursor {
+    opacity: 0.5;
+  }
+
+  .walking-record__loading-cursor--one {
+    offset-distance: 22%;
+  }
+
+  .walking-record__loading-cursor--two {
+    offset-distance: 50%;
+  }
+
+  .walking-record__loading-cursor--three {
+    offset-distance: 78%;
+  }
+
   *,
   *::before,
   *::after {

@@ -2,6 +2,7 @@
 // ABOUTME: Presents period-specific departures, familiar sites, and time spent from local data.
 
 import React from "react";
+import browser from "webextension-polyfill";
 import {
   colorShade,
   readableTextLightness,
@@ -13,9 +14,12 @@ import {
   type WalkingRecord,
   type WalkingRecordPeriod,
   type WalkingRecordPeriodSummary,
+  type TimeSpentEntry,
 } from "../history/walkingRecord";
 import type { WalkingRecordTracePoint } from "../storage/LocalEventStore";
+import { portraitDayPath } from "../utils/portraitDay";
 import { ExtensionPageNav } from "./ExtensionPageNav";
+import { MovementLandscape } from "./MovementLandscape";
 import { PortraitCard } from "./PortraitCard";
 import "./WalkingRecord.scss";
 
@@ -27,8 +31,15 @@ interface WalkingRecordPageProps {
   onPeriodChange: (period: WalkingRecordPeriod) => void;
   onPeriodOffsetChange: (offset: number) => void;
   loading: boolean;
+  loadingProgress: {
+    completed: number;
+    total: number;
+    message: string;
+  };
   error: string | null;
 }
+
+const INITIAL_DEPARTURE_COUNT = 3;
 
 function readablePaletteColor(color: string): string {
   return colorShade(color, readableTextLightness(color));
@@ -152,6 +163,21 @@ function TraceGraphic({
 }
 
 function DayPlateGraphic({ plate }: { plate: DayPlate }) {
+  if (plate.future) {
+    return (
+      <svg
+        viewBox="0 0 80 58"
+        role="img"
+        aria-label={`${plate.day} portrait still to come`}
+      >
+        <path
+          className="walking-record__future-trace"
+          d="M 8 45 C 20 30, 31 33, 43 29 S 60 31, 72 14"
+        />
+      </svg>
+    );
+  }
+
   return (
     <TraceGraphic
       paths={plate.tracePaths}
@@ -168,6 +194,99 @@ function DayPlateGraphic({ plate }: { plate: DayPlate }) {
 
 function EmptySection({ children }: { children: React.ReactNode }) {
   return <div className="walking-record__empty">{children}</div>;
+}
+
+const LOADING_CURSOR_BODY =
+  "M12 4 L12 16.5 L14.7 14 L16.7 18.5 L18.3 17.8 L16.3 13.4 L20 13.4 Z";
+
+function LoadingCursor({
+  className,
+  color,
+}: {
+  className: string;
+  color: string;
+}) {
+  return (
+    <svg
+      className={`walking-record__loading-cursor ${className}`}
+      viewBox="0 0 24 24"
+    >
+      <path
+        d={LOADING_CURSOR_BODY}
+        fill={color}
+        stroke="#f7f3ed"
+        strokeLinejoin="round"
+        strokeWidth="0.8"
+      />
+    </svg>
+  );
+}
+
+function LoadingCursorWalk() {
+  return (
+    <div className="walking-record__loading-cursors" aria-hidden="true">
+      <svg viewBox="0 0 320 64" preserveAspectRatio="none">
+        <path
+          className="walking-record__loading-route"
+          d="M8 42 C54 10, 93 53, 137 27 S218 14, 260 36 S296 43, 312 17"
+        />
+      </svg>
+      <LoadingCursor
+        className="walking-record__loading-cursor--one"
+        color="#4a9a8a"
+      />
+      <LoadingCursor
+        className="walking-record__loading-cursor--two"
+        color="#c87959"
+      />
+      <LoadingCursor
+        className="walking-record__loading-cursor--three"
+        color="#6f91b2"
+      />
+    </div>
+  );
+}
+
+function SiteFavicon({
+  faviconUrl,
+  site,
+  muted = false,
+}: {
+  faviconUrl?: string;
+  site: string;
+  muted?: boolean;
+}) {
+  const [failed, setFailed] = React.useState(false);
+
+  if (!faviconUrl || failed) {
+    if (muted) {
+      return (
+        <svg
+          className="walking-record__site-favicon-fallback walking-record__site-favicon-globe"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+        >
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M1.75 8h12.5M8 1.75c2 1.7 3 3.8 3 6.25s-1 4.55-3 6.25C6 12.55 5 10.45 5 8s1-4.55 3-6.25Z" />
+        </svg>
+      );
+    }
+
+    return (
+      <span className="walking-record__site-favicon-fallback" aria-hidden="true">
+        {site.charAt(0).toLowerCase()}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      className="walking-record__site-favicon"
+      src={faviconUrl}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 function periodTitle(
@@ -271,6 +390,221 @@ function PeriodNavigationRail({
   );
 }
 
+function TimeSpentLegendEntry({ entry }: { entry: TimeSpentEntry }) {
+  const content = (
+    <>
+      <SiteFavicon
+        faviconUrl={entry.faviconUrl}
+        site={entry.site}
+        muted={!entry.href}
+      />
+      <span
+        className="walking-record__time-legend-site"
+        style={{ borderBottomColor: entry.hue }}
+      >
+        {entry.site}
+      </span>
+      <strong>{entry.time}</strong>
+    </>
+  );
+
+  return entry.href ? (
+    <a href={entry.href}>{content}</a>
+  ) : (
+    <div>{content}</div>
+  );
+}
+
+function HowBrowsedSection({ record }: { record: WalkingRecord }) {
+  const [showAllDepartures, setShowAllDepartures] = React.useState(false);
+  const visibleDepartures = showAllDepartures
+    ? record.departures
+    : record.departures.slice(0, INITIAL_DEPARTURE_COUNT);
+
+  return (
+    <section className="walking-record__section">
+      <div className="walking-record__section-heading">
+        <h1>how you browsed</h1>
+        <span>{record.totalTimeLabel} online this {record.period}</span>
+      </div>
+      <p className="walking-record__section-intro">{record.timeSpentIntro}</p>
+
+      {record.timeSpent.length > 0 ? (
+        <div className="walking-record__time-spent">
+          <div
+            className="walking-record__time-stack"
+            aria-label="Browsing time by site"
+          >
+            {record.timeSpent.map((entry) => (
+              <span
+                key={entry.site}
+                title={`${entry.site}: ${entry.time}`}
+                style={{
+                  background: entry.hue,
+                  width: `${entry.percentage}%`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="walking-record__time-legend">
+            {record.timeSpent.map((entry) => (
+              <TimeSpentLegendEntry entry={entry} key={entry.site} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <EmptySection>
+          time appears after a page has been in focus and then left.
+        </EmptySection>
+      )}
+
+      {record.departures.length > 0 && (
+        <>
+          <div className="walking-record__subsection-heading">
+            <h2>notable new exploration</h2>
+            <span>
+              {visibleDepartures.length} shown from {record.movementCount}
+            </span>
+          </div>
+          <div className="walking-record__departures">
+            {visibleDepartures.map((departure) => (
+              <a
+                className="walking-record__departure"
+                href={departure.toUrl}
+                key={`${departure.day}:${departure.to}`}
+              >
+                <span className="walking-record__day">{departure.day}</span>
+                <div className="walking-record__departure-copy">
+                  <div>
+                    <SiteFavicon
+                      faviconUrl={departure.fromFaviconUrl}
+                      site={departure.from}
+                    />
+                    <span>{departure.from}</span>
+                    <span aria-hidden="true">→</span>
+                    <SiteFavicon
+                      faviconUrl={departure.toFaviconUrl}
+                      site={departure.to}
+                    />
+                    <strong>{departure.to}</strong>
+                  </div>
+                  {departure.note && <p>{departure.note}</p>}
+                </div>
+                <span className="walking-record__departure-time">
+                  {departure.time}
+                </span>
+              </a>
+            ))}
+          </div>
+          {record.departures.length > INITIAL_DEPARTURE_COUNT && (
+            <button
+              className="walking-record__departures-more"
+              type="button"
+              aria-expanded={showAllDepartures}
+              onClick={() => setShowAllDepartures((visible) => !visible)}
+            >
+              {showAllDepartures ? "show less" : "show more"}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function RevisitSection({ record }: { record: WalkingRecord }) {
+  return (
+    <section className="walking-record__section">
+      <div className="walking-record__section-heading">
+        <h2>where you used to visit</h2>
+      </div>
+      <p className="walking-record__section-intro">
+        places you returned to across many days that you haven’t walked lately.
+        the doors are still open.
+      </p>
+      {record.revisits.length > 0 ? (
+        <div className="walking-record__revisit-ledger">
+          {record.revisits.map((revisit) => (
+            <a href={revisit.href} key={revisit.site}>
+              <span style={{ color: readablePaletteColor(revisit.hue) }}>
+                {revisit.span}
+              </span>
+              <strong>{revisit.site}</strong>
+              <small>{revisit.memory}</small>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <EmptySection>
+          no regularly visited place has been quiet long enough to call you
+          back yet.
+        </EmptySection>
+      )}
+    </section>
+  );
+}
+
+function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
+  return (
+    <section className="walking-record__section">
+      <div className="walking-record__section-heading">
+        <h2>browsing portraits</h2>
+      </div>
+      <p className="walking-record__section-intro">
+        one small portrait from each {record.period === "week" ? "day" : "part"}.
+      </p>
+      <div
+        className="walking-record__day-plates"
+        data-period={record.period}
+      >
+        {record.dayPlates.map((plate) => {
+          const className = `walking-record__day-plate${
+            plate.future ? " walking-record__day-plate--future" : ""
+          }`;
+          const content = (
+            <>
+              <DayPlateGraphic plate={plate} />
+              <strong>{plate.day}</strong>
+              <span>{plate.vignette}</span>
+            </>
+          );
+
+          return plate.portraitDay ? (
+            <a
+              className={className}
+              href={browser.runtime.getURL(portraitDayPath(plate.portraitDay))}
+              title={`Open ${plate.day} portrait`}
+              key={plate.date}
+            >
+              {content}
+            </a>
+          ) : (
+            <div className={className} key={plate.date}>
+              {content}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function MovementLandscapeSection({ record }: { record: WalkingRecord }) {
+  if (record.landscapePaths.length === 0) return null;
+
+  return (
+    <section className="walking-record__section walking-record__movement-section">
+      <div className="walking-record__section-heading">
+        <h2>movement from this {record.period}</h2>
+      </div>
+      <MovementLandscape
+        paths={record.landscapePaths}
+        label={`Real cursor movements from this ${record.period}`}
+      />
+    </section>
+  );
+}
+
 export function WalkingRecordPage({
   record,
   period,
@@ -279,8 +613,13 @@ export function WalkingRecordPage({
   onPeriodChange,
   onPeriodOffsetChange,
   loading,
+  loadingProgress,
   error,
 }: WalkingRecordPageProps) {
+  const loadingPercentage = Math.round(
+    (loadingProgress.completed / loadingProgress.total) * 100,
+  );
+
   return (
     <main className="walking-record">
       <header className="walking-record__header">
@@ -289,7 +628,21 @@ export function WalkingRecordPage({
 
       {loading && (
         <div className="walking-record__loading" role="status">
-          gathering this {period}’s record…
+          <LoadingCursorWalk />
+          <div className="walking-record__loading-copy">
+            <span>{loadingProgress.message}</span>
+            <span>{loadingPercentage}%</span>
+          </div>
+          <div
+            className="walking-record__loading-track"
+            role="progressbar"
+            aria-label={`Loading ${period} record`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={loadingPercentage}
+          >
+            <span style={{ width: `${loadingPercentage}%` }} />
+          </div>
         </div>
       )}
 
@@ -347,162 +700,13 @@ export function WalkingRecordPage({
             />
           </div>
 
-          <section className="walking-record__section">
-            <div className="walking-record__section-heading">
-              <h1>how you traveled</h1>
-              <span>
-                top {record.departures.length} of {record.movementCount}{" "}
-                movement
-                {record.movementCount === 1 ? "" : "s"}
-              </span>
-            </div>
-            <p className="walking-record__section-intro">
-              some of the off-beaten paths and places you haven’t visited in a
-              while
-            </p>
-
-            {record.departures.length > 0 ? (
-              <div className="walking-record__departures">
-                {record.departures.map((departure) => (
-                  <a
-                    className="walking-record__departure"
-                    href={departure.toUrl}
-                    key={`${departure.day}:${departure.to}`}
-                  >
-                    <TraceGraphic
-                      paths={departure.tracePaths}
-                      hue={departure.hue}
-                      width={44}
-                      height={44}
-                      padding={4}
-                      minimumSize={1.5}
-                      maximumSize={3.2}
-                    />
-                    <div className="walking-record__departure-copy">
-                      <div>
-                        <span className="walking-record__day">
-                          {departure.day}
-                        </span>
-                        <span
-                          style={{
-                            color: readablePaletteColor(departure.accentHue),
-                          }}
-                        >
-                          {departure.verb}
-                        </span>
-                        <span>{departure.from}</span>
-                        <span aria-hidden="true">→</span>
-                        <strong>{departure.to}</strong>
-                      </div>
-                      {departure.note && <p>{departure.note}</p>}
-                    </div>
-                    <span className="walking-record__familiarity">
-                      {departure.familiarity}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <EmptySection>
-                no departures were recorded. the quiet roads will appear here
-                when you leave one of your usual places for somewhere
-                unfamiliar.
-              </EmptySection>
-            )}
-
-            <h2 className="walking-record__subheading">revisiting history</h2>
-            <p className="walking-record__revisit-intro">
-              places you knew well, ordered by familiarity and time away
-            </p>
-            {record.revisits.length > 0 ? (
-              <div className="walking-record__revisit-ledger">
-                {record.revisits.map((revisit) => (
-                  <a href={revisit.href} key={revisit.site}>
-                    <span
-                      style={{ color: readablePaletteColor(revisit.hue) }}
-                    >
-                      {revisit.span}
-                    </span>
-                    <strong>{revisit.site}</strong>
-                    <small>{revisit.memory}</small>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <EmptySection>
-                no familiar place has been quiet long enough to call you back
-                yet.
-              </EmptySection>
-            )}
-          </section>
-
-          <section className="walking-record__section">
-            <div className="walking-record__section-heading">
-              <h2>where the hours went</h2>
-              <span>
-                {record.totalTimeLabel} browsing
-              </span>
-            </div>
-            <p className="walking-record__section-intro">
-              {record.timeSpentIntro}
-            </p>
-
-            <div
-              className="walking-record__day-plates"
-              data-period={record.period}
-            >
-              {record.dayPlates.map((plate) => (
-                <div className="walking-record__day-plate" key={plate.date}>
-                  <DayPlateGraphic plate={plate} />
-                  <strong>{plate.day}</strong>
-                  <span>{plate.vignette}</span>
-                </div>
-              ))}
-            </div>
-
-            {record.timeSpent.length > 0 ? (
-              <div className="walking-record__hours">
-                {record.timeSpent.map((entry) => {
-                  const content = (
-                    <>
-                      <span className="walking-record__rank">{entry.rank}</span>
-                      <span
-                        className="walking-record__site-color"
-                        style={{ background: entry.hue }}
-                      />
-                      <div>
-                        <div className="walking-record__hour-title">
-                          <strong>{entry.site}</strong>
-                          <span>{entry.time}</span>
-                        </div>
-                        <div className="walking-record__time-track">
-                          <span
-                            style={{
-                              background: entry.hue,
-                              width: `${entry.percentage}%`,
-                            }}
-                          />
-                        </div>
-                        <small>{entry.note}</small>
-                      </div>
-                    </>
-                  );
-
-                  return entry.href ? (
-                    <a href={entry.href} key={entry.site}>
-                      {content}
-                    </a>
-                  ) : (
-                    <div key={entry.site}>{content}</div>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptySection>
-                time appears after a page has been in focus and then left.
-              </EmptySection>
-            )}
-          </section>
+          <HowBrowsedSection
+            key={`${record.period}:${record.range.startTs}`}
+            record={record}
+          />
+          <RevisitSection record={record} />
+          <BrowsingPortraitsSection record={record} />
+          <MovementLandscapeSection record={record} />
         </>
       )}
     </main>

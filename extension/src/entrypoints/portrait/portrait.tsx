@@ -28,6 +28,7 @@ import {
 } from "../../utils/portraitExport";
 import type { PortraitCardProps } from "../../components/PortraitCard";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
+import { portraitDayFromSearch } from "../../utils/portraitDay";
 
 /** Convert sessions to hour buckets (total ms per hour-of-day) for PortraitCard */
 function sessionsToHourBuckets(sessions: ScreenTimeSession[]): number[] {
@@ -45,7 +46,9 @@ const PortraitPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [hovering, setHovering] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(() =>
+    portraitDayFromSearch(window.location.search),
+  );
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
   const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
     DEFAULT_ACTIVE_VISUALIZATIONS,

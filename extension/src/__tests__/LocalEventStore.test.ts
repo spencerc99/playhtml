@@ -1,12 +1,15 @@
 // ABOUTME: Tests local event database storage, query, and aggregate behavior.
 // ABOUTME: Guards hot paths, storage stats, and upload metadata handling in IndexedDB.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IDBKeyRange as fakeIDBKeyRange,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
-import { LocalEventStore, type DomainStatsAggregate } from "../storage/LocalEventStore";
+import {
+  LocalEventStore,
+  type DomainStatsAggregate,
+} from "../storage/LocalEventStore";
 import type { CollectionEvent } from "../collectors/types";
 
 const DB_NAME = "collection_events_db";
@@ -155,6 +158,7 @@ function aggregate(): DomainStatsAggregate {
     firstVisit: 0,
     lastVisit: 0,
     uniqueUrlCount: 1,
+    activeDayCount: 0,
   };
 }
 
@@ -195,6 +199,33 @@ afterEach(async () => {
 });
 
 describe("LocalEventStore aggregates", () => {
+  it("fails with reload guidance instead of hanging when an upgrade is blocked", async () => {
+    const existingConnection = await openVersion8Database();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const store = createStore();
+
+    await expect(store.getAllDomains()).rejects.toThrow(
+      "Reload the extension and open a new tab.",
+    );
+
+    existingConnection.close();
+    consoleError.mockRestore();
+  });
+
+  it("closes its connection when a newer database version is requested", async () => {
+    const store = createStore();
+    await store.getAllDomains();
+
+    const upgradedDatabase = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = fakeIndexedDB.open(DB_NAME, 12);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    expect((store as unknown as { db: IDBDatabase | null }).db).toBeNull();
+    upgradedDatabase.close();
+  });
+
   it("updates bounded aggregate fields for non-navigation events", () => {
     const agg = aggregate();
 
@@ -298,6 +329,82 @@ describe("LocalEventStore aggregates", () => {
       });
     }
   });
+
+  it("restores active-day counts after a bulk import rebuilds domain stats", async () => {
+    const store = createStore();
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+
+    await store.getAllDomains();
+    await store.addRestoredEvents([
+      {
+        ...event("focus-first", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-second", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+
+    const [stats, days] = await Promise.all([
+      store.getSessionStats("example.com"),
+      store.getDomainDayHistory(["example.com"]),
+    ]);
+
+    expect(stats?.activeDayCount).toBe(2);
+    expect(days.map((day) => day.localDayKey)).toEqual([
+      "2026-07-20",
+      "2026-07-21",
+    ]);
+  });
+
+  it("tracks one active day per domain regardless of focus churn", async () => {
+    const store = createStore();
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+
+    await store.addEvents([
+      {
+        ...event("focus-first", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-again", "navigation"),
+        ts: firstDay + 60_000,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-next-day", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+
+    const [stats, days] = await Promise.all([
+      store.getSessionStats("example.com"),
+      store.getDomainDayHistory(["example.com"]),
+    ]);
+
+    expect(stats?.activeDayCount).toBe(2);
+    expect(days).toEqual([
+      {
+        domain: "example.com",
+        localDayKey: "2026-07-20",
+        firstVisitTs: firstDay,
+        lastVisitTs: firstDay + 60_000,
+      },
+      {
+        domain: "example.com",
+        localDayKey: "2026-07-21",
+        firstVisitTs: secondDay,
+        lastVisitTs: secondDay,
+      },
+    ]);
+  });
 });
 
 describe("LocalEventStore walking record events", () => {
@@ -338,6 +445,44 @@ describe("LocalEventStore walking record events", () => {
         },
       ],
     });
+  });
+
+  it("compresses interaction events into active browsing windows", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("cursor-first", "cursor"),
+        ts: 1_000,
+        data: { event: "move", x: 0.1, y: 0.1 },
+      },
+      {
+        ...event("scroll-same-window", "viewport"),
+        ts: 20_000,
+        data: { event: "scroll", scrollDistancePx: 300 },
+      },
+      {
+        ...event("keyboard-next-window", "keyboard"),
+        ts: 35_000,
+        data: { event: "typing", x: 0.5, y: 0.5 },
+      },
+      {
+        ...event("resize-ignored", "viewport"),
+        ts: 65_000,
+        data: { event: "resize", width: 1_000, height: 800 },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 90_000,
+    });
+
+    expect(result.activity).toEqual([
+      {
+        url: "https://example.com/page",
+        windowStarts: [0, 30_000],
+      },
+    ]);
   });
 
   it("keeps navigation events and samples cursors without losing measured distance", async () => {
@@ -407,6 +552,16 @@ describe("LocalEventStore walking record events", () => {
       "navigation-2",
     ]);
     expect(result.cursorDistancePx).toBeCloseTo(102.4);
+    expect(result.activity).toEqual([
+      {
+        url: "https://example.com/page",
+        windowStarts: [0, 300_000],
+      },
+      {
+        url: "https://example.com/other",
+        windowStarts: [0],
+      },
+    ]);
   });
 
   it("requires an explicit walking-record range", async () => {
@@ -443,7 +598,7 @@ describe("LocalEventStore walking record events", () => {
       cursor("after", 12_000, 1, 1),
     ]);
 
-    const traces = await store.getWalkingRecordTraces([
+    const movement = await store.getWalkingRecordMovement([
       {
         id: "day:2026-07-20",
         url: "https://example.com/page",
@@ -452,7 +607,7 @@ describe("LocalEventStore walking record events", () => {
       },
     ]);
 
-    expect(traces).toEqual([
+    expect(movement.traces).toEqual([
       {
         targetId: "day:2026-07-20",
         paths: [
@@ -461,6 +616,46 @@ describe("LocalEventStore walking record events", () => {
         ],
       },
     ]);
+    expect(movement.landscapePaths).toHaveLength(2);
+    expect(movement.landscapePaths[0].map((event) => event.id)).toEqual([
+      "first",
+      "middle",
+    ]);
+    expect(movement.landscapePaths[1].map((event) => event.id)).toEqual([
+      "after-gap",
+      "last",
+    ]);
+  });
+
+  it("turns long movement into a bounded queue of consecutive landscape trails", async () => {
+    const store = createStore();
+    const cursorEvents = Array.from({ length: 300 }, (_, index) => ({
+      ...event(`cursor-${index}`, "cursor"),
+      ts: 1_000 + index * 100,
+      data: {
+        event: "move" as const,
+        x: index / 300,
+        y: index % 2 === 0 ? 0.25 : 0.75,
+      },
+    }));
+    await store.addEvents(cursorEvents);
+
+    const movement = await store.getWalkingRecordMovement([
+      {
+        id: "day:2026-07-20",
+        url: "https://example.com/page",
+        startTs: 1_000,
+        endTs: 31_000,
+      },
+    ]);
+
+    expect(movement.landscapePaths).toHaveLength(4);
+    expect(
+      movement.landscapePaths.every((path) => path.length <= 96),
+    ).toBe(true);
+    expect(movement.landscapePaths[0][0].id).toBe("cursor-0");
+    expect(movement.landscapePaths.at(-1)?.at(-1)?.id).toBe("cursor-299");
+    expect(movement.landscapePaths.at(-1)?.at(-1)?.ts).toBe(30_900);
   });
 });
 

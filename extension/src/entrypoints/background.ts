@@ -751,7 +751,12 @@ export default defineBackground(() => {
         .then((result) => reply({ success: true, ...result }))
         .catch((e) => {
           console.error('[Background] GET_SCREEN_TIME error:', e)
-          reply({ success: false, totalMs: 0, sessions: [] })
+          reply({
+            success: false,
+            error: e instanceof Error ? e.message : 'Local screen time is unavailable.',
+            totalMs: 0,
+            sessions: [],
+          })
         })
       return true
     }
@@ -774,18 +779,30 @@ export default defineBackground(() => {
         .then((result) => reply({ success: true, ...result }))
         .catch((e) => {
           console.error('[Background] GET_WALKING_RECORD_EVENTS error:', e)
-          reply({ success: false, events: [], cursorDistancePx: 0 })
+          reply({
+            success: false,
+            error: e instanceof Error ? e.message : 'Local activity is unavailable.',
+            events: [],
+            cursorDistancePx: 0,
+            activity: [],
+          })
         })
       return true
     }
 
-    if (message.type === 'GET_WALKING_RECORD_TRACES') {
+    if (message.type === 'GET_WALKING_RECORD_MOVEMENT') {
       const targets = (message.targets || []) as WalkingRecordTraceTarget[]
-      store.getWalkingRecordTraces(targets)
-        .then((traces) => reply({ success: true, traces }))
+      store.getWalkingRecordMovement(targets)
+        .then(async (movement) => ({
+          ...movement,
+          landscapePaths: await Promise.all(
+            movement.landscapePaths.map(hydrateCursorColor),
+          ),
+        }))
+        .then((movement) => reply({ success: true, ...movement }))
         .catch((e) => {
-          console.error('[Background] GET_WALKING_RECORD_TRACES error:', e)
-          reply({ success: false, traces: [] })
+          console.error('[Background] GET_WALKING_RECORD_MOVEMENT error:', e)
+          reply({ success: false, traces: [], landscapePaths: [] })
         })
       return true
     }
@@ -821,7 +838,30 @@ export default defineBackground(() => {
         .then((domains) => reply({ success: true, domains }))
         .catch((e) => {
           console.error('[Background] GET_ALL_DOMAINS error:', e)
-          reply({ success: false, domains: [] })
+          reply({
+            success: false,
+            error: e instanceof Error ? e.message : 'Local places are unavailable.',
+            domains: [],
+          })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_WALKING_RECORD_DOMAIN_DAYS') {
+      const domains = Array.isArray(message.domains)
+        ? message.domains.filter(
+            (domain: unknown): domain is string => typeof domain === 'string',
+          )
+        : []
+      store.getDomainDayHistory(domains)
+        .then((days) => reply({ success: true, days }))
+        .catch((e) => {
+          console.error('[Background] GET_WALKING_RECORD_DOMAIN_DAYS error:', e)
+          reply({
+            success: false,
+            error: e instanceof Error ? e.message : 'Local routines are unavailable.',
+            days: [],
+          })
         })
       return true
     }
