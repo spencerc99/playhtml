@@ -48,6 +48,7 @@ import {
 import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import {
   CommuteMobileControls,
+  keepMobileCursorOnAvatar,
   type CommuteMobileAction,
 } from "./CommuteMobileControls";
 import { CommuteStage } from "./CommuteStage";
@@ -79,6 +80,8 @@ interface CommuteCarProps {
   phase: CommutePhase;
   atOrigin: boolean;
   isJoining: boolean;
+  mobileBoarded: boolean;
+  onMobileBoardStateChange: (boarded: boolean) => void;
   onSeatStateChange: (hasSeat: boolean) => void;
 }
 
@@ -550,7 +553,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     },
   }),
   ({ awarenessByStableId, myAwareness, setMyAwareness, ref }, props) => {
-    const { onSeatStateChange } = props;
+    const { mobileBoarded, onMobileBoardStateChange, onSeatStateChange } =
+      props;
     const users = useUsers();
     const {
       configureCursors,
@@ -559,7 +563,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       isLoading,
     } = usePlayContext();
     const [toast, setToast] = useState<string | null>(null);
-    const [mobileBoarded, setMobileBoarded] = useState(false);
     const [avatarPosition, setAvatarPosition] =
       useState<CommutePoint>(COMMUTE_AVATAR_START);
     const [avatarWalking, setAvatarWalking] = useState(false);
@@ -908,7 +911,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             boarded={mobileBoarded}
             onBoard={() => {
               setAvatarPosition(COMMUTE_AVATAR_START);
-              setMobileBoarded(true);
+              onMobileBoardStateChange(true);
             }}
             onMove={updateMovement}
           />,
@@ -1001,6 +1004,7 @@ function InternetCommute() {
   const browsingCount = recentRoute.activePeople;
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [hasSeat, setHasSeat] = useState(false);
+  const [mobileBoarded, setMobileBoarded] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1043,6 +1047,8 @@ function InternetCommute() {
           ? serviceConnection.service?.id
           : undefined
       }
+      onMouseMove={mobileBoarded ? keepMobileCursorOnAvatar : undefined}
+      onTouchMove={mobileBoarded ? keepMobileCursorOnAvatar : undefined}
     >
       <div className="commute-shell">
         <header className="commute-header">
@@ -1088,6 +1094,8 @@ function InternetCommute() {
             phase={timing.phase}
             atOrigin={timing.atOrigin}
             isJoining={serviceConnection.joinedExistingService}
+            mobileBoarded={mobileBoarded}
+            onMobileBoardStateChange={setMobileBoarded}
             onSeatStateChange={setHasSeat}
           />
           <LandscapeWindow

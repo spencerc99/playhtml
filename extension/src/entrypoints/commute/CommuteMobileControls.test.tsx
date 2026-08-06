@@ -4,7 +4,10 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CommuteMobileControls } from "./CommuteMobileControls";
+import {
+  CommuteMobileControls,
+  keepMobileCursorOnAvatar,
+} from "./CommuteMobileControls";
 
 function renderControls(
   props: React.ComponentProps<typeof CommuteMobileControls>,
@@ -143,6 +146,32 @@ describe("CommuteMobileControls", () => {
         .click();
     });
     expect(onSelect).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+  });
+
+  it("keeps boarded pointer movement from replacing the avatar cursor", () => {
+    const documentMove = vi.fn();
+    document.addEventListener("mousemove", documentMove);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        <main onMouseMove={keepMobileCursorOnAvatar}>
+          <span data-testid="train-floor" />
+        </main>,
+      );
+    });
+
+    act(() => {
+      container
+        .querySelector<HTMLElement>('[data-testid="train-floor"]')!
+        .dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    });
+
+    document.removeEventListener("mousemove", documentMove);
+    expect(documentMove).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 });

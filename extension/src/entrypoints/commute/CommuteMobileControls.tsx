@@ -4,6 +4,7 @@
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type SyntheticEvent,
   useEffect,
   useRef,
   useState,
@@ -25,6 +26,10 @@ interface CommuteMobileControlsProps {
   boarded: boolean;
   onBoard: () => void;
   onMove: (vector: CommutePoint) => void;
+}
+
+export function keepMobileCursorOnAvatar(event: SyntheticEvent) {
+  event.stopPropagation();
 }
 
 function shouldUseTouchFullscreen(): boolean {
