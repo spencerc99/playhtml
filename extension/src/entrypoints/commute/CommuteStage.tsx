@@ -17,10 +17,15 @@ export function CommuteStage({ children }: CommuteStageProps) {
     if (!viewport || !stage) return;
 
     const fitStage = () => {
-      const scale = Math.min(
-        viewport.clientWidth / stage.offsetWidth,
-        viewport.clientHeight / stage.offsetHeight,
-        1,
+      const horizontalBreathingRoom = 20;
+      const verticalBreathingRoom = 20;
+      const scale = Math.max(
+        0,
+        Math.min(
+          (viewport.clientWidth - horizontalBreathingRoom) / stage.offsetWidth,
+          (viewport.clientHeight - verticalBreathingRoom) / stage.offsetHeight,
+          1,
+        ),
       );
       stage.style.setProperty("--commute-stage-scale", String(scale));
     };

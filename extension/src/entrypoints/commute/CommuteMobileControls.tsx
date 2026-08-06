@@ -1,10 +1,30 @@
-// ABOUTME: Provides the mobile orientation prompt and fullscreen control for Internet Commute.
-// ABOUTME: Treats landscape locking as an optional enhancement when the browser supports it.
+// ABOUTME: Provides boarding, orientation, fullscreen, and joystick controls for mobile Commute.
+// ABOUTME: Keeps screen-space controls outside the scaled train artwork.
 
-import { useEffect, useState } from "react";
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import type { CommutePoint } from "./commuteMobile";
 
 interface LandscapeOrientation extends ScreenOrientation {
   lock?: (orientation: "landscape") => Promise<void>;
+}
+
+export type CommuteMobileAction = {
+  label: string;
+  tone: "sit" | "stand" | "exit";
+  onSelect: () => void;
+};
+
+interface CommuteMobileControlsProps {
+  action: CommuteMobileAction | null;
+  boarded: boolean;
+  onBoard: () => void;
+  onMove: (vector: CommutePoint) => void;
 }
 
 async function enterLandscapeFullscreen(): Promise<void> {
@@ -23,9 +43,25 @@ async function enterLandscapeFullscreen(): Promise<void> {
   }
 }
 
-export function CommuteMobileControls() {
+async function toggleFullscreen(): Promise<void> {
+  if (document.fullscreenElement) {
+    await document.exitFullscreen();
+    return;
+  }
+  await enterLandscapeFullscreen();
+}
+
+export function CommuteMobileControls({
+  action,
+  boarded,
+  onBoard,
+  onMove,
+}: CommuteMobileControlsProps) {
   const [canFullscreen, setCanFullscreen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [knob, setKnob] = useState<CommutePoint>({ x: 0, y: 0 });
+  const joystickCenter = useRef<CommutePoint | null>(null);
+  const joystickActive = useRef(false);
 
   useEffect(() => {
     const updateFullscreenState = () => {
@@ -39,43 +75,125 @@ export function CommuteMobileControls() {
     document.addEventListener("fullscreenchange", updateFullscreenState);
     return () => {
       document.removeEventListener("fullscreenchange", updateFullscreenState);
+      onMove({ x: 0, y: 0 });
     };
-  }, []);
+  }, [onMove]);
 
-  const requestFullscreen = async () => {
-    try {
-      await enterLandscapeFullscreen();
-    } catch {
-      // The landscape prompt remains useful when fullscreen is unavailable or denied.
+  const updateJoystick = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!joystickActive.current || !joystickCenter.current) return;
+    let x = event.clientX - joystickCenter.current.x;
+    let y = event.clientY - joystickCenter.current.y;
+    const magnitude = Math.hypot(x, y);
+    const maximum = 34;
+    if (magnitude > maximum) {
+      x = (x / magnitude) * maximum;
+      y = (y / magnitude) * maximum;
     }
+    setKnob({ x, y });
+    onMove({ x: x / maximum, y: y / maximum });
+  };
+
+  const stopJoystick = () => {
+    joystickActive.current = false;
+    joystickCenter.current = null;
+    setKnob({ x: 0, y: 0 });
+    onMove({ x: 0, y: 0 });
+  };
+
+  const board = () => {
+    onBoard();
+    void enterLandscapeFullscreen().catch(() => {
+      // Boarding remains available when fullscreen is unavailable or denied.
+    });
   };
 
   return (
-    <>
-      <aside className="commute-mobile-orientation">
-        <span className="commute-mobile-orientation__phone" aria-hidden="true">
+    <div className="commute-mobile-controls">
+      <aside className="commute-mobile-rotate" aria-label="Rotate your phone">
+        <span className="commute-mobile-rotate__phone" aria-hidden>
           <span />
         </span>
-        <strong>turn your phone sideways</strong>
-        <p>the whole carriage fits better in landscape</p>
-        {canFullscreen ? (
-          <button type="button" onClick={() => void requestFullscreen()}>
-            enter fullscreen
-          </button>
-        ) : null}
+        <strong>rotate your phone</strong>
+        <p>the train runs sideways — turn to landscape to board</p>
       </aside>
 
-      {canFullscreen && !isFullscreen ? (
-        <button
-          className="commute-mobile-fullscreen"
-          type="button"
-          onClick={() => void requestFullscreen()}
-          aria-label="Enter fullscreen"
-          title="Enter fullscreen"
-        >
-          <span aria-hidden="true">⛶</span>
-        </button>
-      ) : null}
-    </>
+      {!boarded && (
+        <aside className="commute-mobile-board">
+          <span className="commute-mobile-board__wordmark">we were online</span>
+          <strong>internet commute</strong>
+          <p>
+            a slow train through the recent web — ride with the joystick, sit
+            anywhere, step off wherever it stops
+          </p>
+          <button type="button" onClick={board}>
+            tap to board
+          </button>
+          <small>GOES FULLSCREEN · BEST IN LANDSCAPE</small>
+        </aside>
+      )}
+
+      {boarded && (
+        <>
+          <span className="commute-mobile-wordmark">we were online</span>
+          {canFullscreen && (
+            <button
+              className="commute-mobile-fullscreen"
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 18 18"
+                fill="none"
+                aria-hidden
+              >
+                <path d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4" />
+              </svg>
+            </button>
+          )}
+
+          <div
+            className="commute-mobile-joystick"
+            role="group"
+            aria-label="Move around the train"
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              const bounds = event.currentTarget.getBoundingClientRect();
+              joystickCenter.current = {
+                x: bounds.left + bounds.width / 2,
+                y: bounds.top + bounds.height / 2,
+              };
+              joystickActive.current = true;
+              updateJoystick(event);
+            }}
+            onPointerMove={updateJoystick}
+            onPointerUp={stopJoystick}
+            onPointerCancel={stopJoystick}
+          >
+            <span
+              style={
+                {
+                  "--joystick-x": `${knob.x}px`,
+                  "--joystick-y": `${knob.y}px`,
+                } as CSSProperties
+              }
+            />
+          </div>
+
+          {action && (
+            <button
+              className={`commute-mobile-action commute-mobile-action--${action.tone}`}
+              type="button"
+              onClick={action.onSelect}
+            >
+              {action.label}
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
