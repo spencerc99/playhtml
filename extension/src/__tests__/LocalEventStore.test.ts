@@ -564,6 +564,74 @@ describe("LocalEventStore walking record events", () => {
     ]);
   });
 
+  it("does not transfer repeated page metadata with walking record visits", async () => {
+    const store = createStore();
+    const repeatedMetadata = "a".repeat(100_000);
+    await store.addEvents([
+      {
+        ...event("focus-1", "navigation"),
+        ts: 1_000,
+        data: {
+          event: "focus",
+          title: repeatedMetadata,
+          favicon_url: `data:image/png;base64,${repeatedMetadata}`,
+        },
+      },
+      {
+        ...event("focus-2", "navigation"),
+        ts: 181_000,
+        data: {
+          event: "focus",
+          title: repeatedMetadata,
+          favicon_url: `data:image/png;base64,${repeatedMetadata}`,
+        },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 300_000,
+    });
+
+    expect(JSON.stringify(result).length).toBeLessThan(10_000);
+  });
+
+  it("loads only the latest bounded favicon for requested walking record domains", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("focus-older", "navigation"),
+        ts: 1_000,
+        data: {
+          event: "focus",
+          favicon_url: "https://example.com/older.png",
+        },
+      },
+      {
+        ...event("focus-latest", "navigation"),
+        ts: 2_000,
+        data: {
+          event: "focus",
+          favicon_url: "https://example.com/latest.png",
+        },
+      },
+      {
+        ...event("focus-oversized", "navigation"),
+        ts: 3_000,
+        data: {
+          event: "focus",
+          favicon_url: `data:image/png;base64,${"a".repeat(129 * 1024)}`,
+        },
+      },
+    ]);
+
+    await expect(
+      store.getWalkingRecordFavicons(["example.com"]),
+    ).resolves.toEqual({
+      "example.com": "https://example.com/latest.png",
+    });
+  });
+
   it("requires an explicit walking-record range", async () => {
     const store = createStore();
 

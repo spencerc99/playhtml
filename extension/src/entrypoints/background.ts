@@ -792,9 +792,18 @@ export default defineBackground(() => {
 
     if (message.type === 'GET_WALKING_RECORD_MOVEMENT') {
       const targets = (message.targets || []) as WalkingRecordTraceTarget[]
-      store.getWalkingRecordMovement(targets)
-        .then(async (movement) => ({
+      const faviconDomains = Array.isArray(message.faviconDomains)
+        ? message.faviconDomains.filter(
+            (domain: unknown): domain is string => typeof domain === 'string',
+          )
+        : []
+      Promise.all([
+        store.getWalkingRecordMovement(targets),
+        store.getWalkingRecordFavicons(faviconDomains),
+      ])
+        .then(async ([movement, favicons]) => ({
           ...movement,
+          favicons,
           landscapePaths: await Promise.all(
             movement.landscapePaths.map(hydrateCursorColor),
           ),
@@ -802,7 +811,12 @@ export default defineBackground(() => {
         .then((movement) => reply({ success: true, ...movement }))
         .catch((e) => {
           console.error('[Background] GET_WALKING_RECORD_MOVEMENT error:', e)
-          reply({ success: false, traces: [], landscapePaths: [] })
+          reply({
+            success: false,
+            traces: [],
+            landscapePaths: [],
+            favicons: {},
+          })
         })
       return true
     }

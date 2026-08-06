@@ -6,13 +6,14 @@ import type {
   CursorEventData,
   NavigationEventData,
 } from "../collectors/types";
-import type {
-  AggregateDay,
-  ScreenTimeSession,
-  WalkingRecordActivity,
-  WalkingRecordTrace,
-  WalkingRecordTracePoint,
-  WalkingRecordTraceTarget,
+import {
+  WALKING_RECORD_FAVICON_DOMAIN_LIMIT,
+  type AggregateDay,
+  type ScreenTimeSession,
+  type WalkingRecordActivity,
+  type WalkingRecordTrace,
+  type WalkingRecordTracePoint,
+  type WalkingRecordTraceTarget,
 } from "../storage/LocalEventStore";
 import { risoInkColor } from "../utils/risoInk";
 import { extractDomain, normalizeUrl } from "../utils/urlNormalization";
@@ -1065,6 +1066,38 @@ export function getWalkingRecordTraceTargets(
   record: WalkingRecord,
 ): WalkingRecordTraceTarget[] {
   return record.dayPlates.flatMap((plate) => plate.traceTargets);
+}
+
+export function getWalkingRecordFaviconDomains(
+  record: WalkingRecord,
+): string[] {
+  return [
+    ...new Set([
+      ...record.timeSpent.flatMap((entry) => (entry.href ? [entry.site] : [])),
+      ...record.departures.flatMap((departure) => [
+        departure.from,
+        departure.to,
+      ]),
+    ]),
+  ].slice(0, WALKING_RECORD_FAVICON_DOMAIN_LIMIT);
+}
+
+export function attachWalkingRecordFavicons(
+  record: WalkingRecord,
+  favicons: Record<string, string>,
+): WalkingRecord {
+  return {
+    ...record,
+    departures: record.departures.map((departure) => ({
+      ...departure,
+      fromFaviconUrl: favicons[departure.from],
+      toFaviconUrl: favicons[departure.to],
+    })),
+    timeSpent: record.timeSpent.map((entry) => ({
+      ...entry,
+      faviconUrl: favicons[entry.site],
+    })),
+  };
 }
 
 function pathsForTarget(

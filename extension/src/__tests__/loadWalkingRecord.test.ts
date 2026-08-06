@@ -75,6 +75,9 @@ describe("loadWalkingRecord", () => {
         success: true,
         traces: [],
         landscapePaths: [],
+        favicons: {
+          "example.com": "https://example.com/favicon.png",
+        },
       },
     };
     vi.mocked(browser.runtime.sendMessage).mockImplementation(
@@ -83,7 +86,12 @@ describe("loadWalkingRecord", () => {
     );
     const progress = vi.fn();
 
-    await loadWalkingRecord("week", range, "#4a9a8a", progress);
+    const record = await loadWalkingRecord(
+      "week",
+      range,
+      "#4a9a8a",
+      progress,
+    );
 
     expect(progress).toHaveBeenCalledTimes(6);
     expect(
@@ -108,6 +116,15 @@ describe("loadWalkingRecord", () => {
       total: 6,
       message: "restoring cursor trails…",
     });
+    expect(record.timeSpent[0].faviconUrl).toBe(
+      "https://example.com/favicon.png",
+    );
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "GET_WALKING_RECORD_MOVEMENT",
+        faviconDomains: ["example.com"],
+      }),
+    );
   });
 
   it("surfaces background reload guidance", async () => {

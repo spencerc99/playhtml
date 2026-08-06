@@ -27,6 +27,8 @@ const LANDSCAPE_SEGMENT_POINT_LIMIT = 96;
 const LANDSCAPE_SEGMENT_DURATION_MS = 12_000;
 const LANDSCAPE_SEGMENTS_PER_TARGET = 8;
 const LANDSCAPE_SOURCE_PATH_LIMIT = 8;
+export const WALKING_RECORD_FAVICON_DOMAIN_LIMIT = 24;
+const WALKING_RECORD_FAVICON_URL_LENGTH_LIMIT = 128 * 1024;
 const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "cursor",
   "navigation",
@@ -1792,8 +1794,13 @@ export class LocalEventStore {
         const event = toCollectionEvent(storedEvent);
 
         if (event.type === "navigation") {
-          events.push(event);
           const data = event.data as NavigationEventData;
+          if (data.event === "focus") {
+            events.push({
+              ...event,
+              data: { event: data.event },
+            });
+          }
           if (data.event === "popstate") recordActivity(event);
         } else if (event.type === "cursor") {
           const data = event.data as CursorEventData;
@@ -1856,6 +1863,74 @@ export class LocalEventStore {
 
       request.onerror = () => reject(request.error);
     });
+  }
+
+  async getWalkingRecordFavicons(
+    domains: string[],
+  ): Promise<Record<string, string>> {
+    await this.ensureInitialized();
+
+    const requestedDomains = [
+      ...new Set(domains.filter((domain) => domain.length > 0)),
+    ];
+    if (requestedDomains.length > WALKING_RECORD_FAVICON_DOMAIN_LIMIT) {
+      throw new Error("Walking record favicon domain limit exceeded");
+    }
+    if (requestedDomains.length === 0) return {};
+
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const transaction = this.db.transaction([STORE_NAME], "readonly");
+    const domainIndex = transaction.objectStore(STORE_NAME).index("domain");
+    const entries = await Promise.all(
+      requestedDomains.map(
+        (domain) =>
+          new Promise<[string, string] | null>((resolve, reject) => {
+            const request = domainIndex.openCursor(IDBKeyRange.only(domain));
+            let latest: { ts: number; url: string } | null = null;
+
+            request.onsuccess = () => {
+              const cursor = request.result;
+              if (!cursor) {
+                resolve(latest ? [domain, latest.url] : null);
+                return;
+              }
+
+              const event = cursor.value as StoredCollectionEvent;
+              if (event.type === "navigation") {
+                const faviconUrl = (event.data as NavigationEventData)
+                  .favicon_url;
+                if (
+                  typeof faviconUrl === "string" &&
+                  faviconUrl.length <= WALKING_RECORD_FAVICON_URL_LENGTH_LIMIT &&
+                  event.ts > (latest?.ts ?? -Infinity)
+                ) {
+                  try {
+                    const parsed = new URL(faviconUrl);
+                    if (
+                      parsed.protocol === "https:" ||
+                      parsed.protocol === "http:" ||
+                      parsed.protocol === "data:"
+                    ) {
+                      latest = { ts: event.ts, url: faviconUrl };
+                    }
+                  } catch {
+                    // Ignore malformed favicon metadata from the visited page.
+                  }
+                }
+              }
+              cursor.continue();
+            };
+            request.onerror = () => reject(request.error);
+          }),
+      ),
+    );
+
+    return Object.fromEntries(
+      entries.filter((entry): entry is [string, string] => entry !== null),
+    );
   }
 
   /**
