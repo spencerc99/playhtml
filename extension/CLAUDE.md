@@ -114,11 +114,18 @@ App Store Connect:
 - `APPLE_API_ISSUER_ID` — issuer ID for the team API key
 - `APPLE_API_PRIVATE_KEY` — full contents of the downloaded `.p8` private key
 
-The App Store Connect key must support provisioning and app uploads. Create a
-macOS app record for bundle ID `online.wewere.extension` before the first
-release. The release workflow uses Xcode cloud signing to create the
-provisioning profile, archive the macOS app, and upload the build. Select the
-processed build and submit it for App Review in App Store Connect.
+The App Store Connect key must support provisioning and app uploads. Before the
+first release, manually create one App Store Connect record with the macOS
+platform and bundle ID `online.wewere.app`. App Store Connect does not support
+creating app records through its API. The macOS app is the minimal container
+required to distribute the Safari extension. A future native iOS app and iOS
+Safari extension can be added to this record as another platform.
+
+The release workflow uses Xcode cloud signing to create the provisioning
+profile, archive the macOS app, and upload the build. The containing app uses
+`online.wewere.app`; its embedded Safari extension uses
+`online.wewere.app.Extension`. Select the processed build and submit it for App
+Review in App Store Connect.
 
 **Manual fallback:** The local `./release.sh` continues to work as an escape
 hatch (uses `.env.submit` instead of GitHub secrets, requires Xcode 26 and a

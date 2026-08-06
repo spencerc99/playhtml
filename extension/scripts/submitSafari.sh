@@ -18,7 +18,7 @@ cd "$EXTENSION_DIR"
 
 VERSION="${VERSION:-$(node -p "require('./package.json').version")}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
-SAFARI_BUNDLE_ID="${SAFARI_BUNDLE_ID:-online.wewere.extension}"
+SAFARI_BUNDLE_ID="${SAFARI_BUNDLE_ID:-online.wewere.app}"
 SAFARI_BUILD_DIR="${SAFARI_BUILD_DIR:-publish/safari-mv3}"
 SAFARI_PROJECT_ROOT="publish/safari-app"
 APP_NAME="we were online"

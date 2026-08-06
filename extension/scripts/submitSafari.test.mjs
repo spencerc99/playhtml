@@ -9,6 +9,7 @@ test("packages only the macOS Safari app", async () => {
   const script = await readFile(path.join(process.cwd(), "scripts/submitSafari.sh"), "utf8");
 
   expect(script).toContain("--macos-only");
+  expect(script).toContain('SAFARI_BUNDLE_ID="${SAFARI_BUNDLE_ID:-online.wewere.app}"');
   expect(script).toContain('MACOS_DEPLOYMENT_TARGET="13.0"');
   expect(script).toContain(
     'GENERATED_APP_BUNDLE_ID="${SAFARI_BUNDLE_ID%.*}.we-were-online"',
