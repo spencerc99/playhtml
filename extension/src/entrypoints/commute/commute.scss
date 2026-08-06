@@ -211,14 +211,6 @@ button {
   }
 }
 
-@media (max-width: 600px) {
-  .commute-install-cta {
-    right: auto;
-    bottom: 8px;
-    left: 8px;
-  }
-}
-
 .commute-banner {
   width: 100%;
   min-height: 50px;
@@ -325,6 +317,16 @@ button {
   font-size: 12px;
   font-style: italic;
   text-align: center;
+}
+
+.commute-stage-viewport,
+.commute-stage {
+  width: 1100px;
+}
+
+.commute-mobile-orientation,
+.commute-mobile-fullscreen {
+  display: none;
 }
 
 .landscape-window {
@@ -1113,6 +1115,260 @@ button {
   font-size: 11px;
   font-style: italic;
   text-align: center;
+}
+
+@media (max-width: 900px),
+  (max-width: 950px) and (max-height: 600px),
+  (hover: none) and (pointer: coarse) {
+  .commute-install-cta {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  html,
+  body,
+  #commute-root {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .commute-page {
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .commute-shell {
+    visibility: hidden;
+  }
+
+  .commute-mobile-orientation {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: $text;
+    background-color: $bg;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(90, 78, 65, 0.025) 0 1px,
+        transparent 1px 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(90, 78, 65, 0.025) 0 1px,
+        transparent 1px 3px
+      );
+    text-align: center;
+
+    strong {
+      margin-top: 26px;
+      font-family: $font-heading;
+      font-size: 25px;
+      font-weight: 600;
+    }
+
+    p {
+      max-width: 250px;
+      margin: 7px 0 22px;
+      color: $text-muted;
+      font-size: 13px;
+      font-style: italic;
+      line-height: 1.45;
+    }
+
+    button {
+      min-height: 42px;
+      padding: 0 18px;
+      color: $bg;
+      border: 1px solid $text;
+      border-radius: 8px;
+      background: $accent-teal;
+      box-shadow: 0 2px 0 rgba($text, 0.24);
+      font-family: $font-mono;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+    }
+  }
+
+  .commute-mobile-orientation__phone {
+    width: 50px;
+    height: 84px;
+    position: relative;
+    display: block;
+    border: 2px solid $text;
+    border-radius: 9px;
+    background: $surface;
+    box-shadow:
+      13px 10px 0 rgba($accent-gold, 0.45),
+      -13px -10px 0 rgba($accent-blue, 0.12);
+    transform: rotate(90deg);
+
+    &::before {
+      content: "";
+      width: 15px;
+      height: 2px;
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      border-radius: 2px;
+      background: $text-muted;
+      transform: translateX(-50%);
+    }
+
+    span {
+      position: absolute;
+      inset: 11px 5px 7px;
+      border: 1px solid rgba($text, 0.22);
+      border-radius: 3px;
+      background:
+        linear-gradient(
+          90deg,
+          transparent 46%,
+          rgba($text, 0.3) 46% 54%,
+          transparent 54%
+        ),
+        linear-gradient(
+          $accent-rust 0 25%,
+          $car-shell 25% 75%,
+          $accent-blue 75%
+        );
+    }
+  }
+}
+
+@media (max-width: 950px) and (max-height: 600px) and (orientation: landscape),
+  (hover: none) and (pointer: coarse) and (orientation: landscape) {
+  html,
+  body,
+  #commute-root {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .commute-page {
+    width: 100vw;
+    height: 100dvh;
+    min-height: 0;
+    padding: max(6px, env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+    overflow: hidden;
+  }
+
+  .commute-shell {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    align-items: stretch;
+  }
+
+  .commute-header,
+  .commute-subtitle,
+  .commute-note {
+    display: none;
+  }
+
+  .commute-banner {
+    min-height: 40px;
+    padding: 6px 44px 6px 8px;
+    gap: 8px;
+    border-radius: 7px;
+
+    strong {
+      max-width: 42vw;
+      font-size: 13px;
+    }
+  }
+
+  .commute-line-number {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+
+  .commute-banner__rule {
+    min-width: 8px;
+  }
+
+  .commute-banner__destination-label {
+    font-size: 9px;
+  }
+
+  .commute-banner__domain {
+    font-size: 11px;
+  }
+
+  .commute-instruction {
+    min-height: 22px;
+    padding: 4px 0;
+    font-size: 10px;
+  }
+
+  .commute-stage-viewport {
+    width: 100%;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .commute-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(var(--commute-stage-scale, 1));
+    transform-origin: center;
+  }
+
+  .commute-counts {
+    margin-top: 0;
+    padding: 7px 10px;
+    border-radius: 7px;
+
+    strong {
+      font-size: 11px;
+    }
+
+    span {
+      font-size: 8px;
+    }
+  }
+
+  .commute-mobile-fullscreen {
+    width: 30px;
+    height: 30px;
+    position: fixed;
+    top: max(11px, env(safe-area-inset-top));
+    right: max(13px, env(safe-area-inset-right));
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    color: $text;
+    border: 1px solid rgba($text, 0.24);
+    border-radius: 6px;
+    background: rgba($surface, 0.94);
+    box-shadow: 0 1px 4px $shadow;
+    font-family: $font-mono;
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+  }
 }
 
 .commute-toast {

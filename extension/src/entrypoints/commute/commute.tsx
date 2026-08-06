@@ -39,6 +39,8 @@ import {
   type CommutePhase,
 } from "./commuteTiming";
 import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
+import { CommuteMobileControls } from "./CommuteMobileControls";
+import { CommuteStage } from "./CommuteStage";
 import { ProceduralLandscape } from "./landscape";
 import "./commute.scss";
 
@@ -838,6 +840,7 @@ function InternetCommute() {
           : undefined
       }
     >
+      <CommuteMobileControls />
       <div className="commute-shell">
         <header className="commute-header">
           <a
@@ -866,32 +869,34 @@ function InternetCommute() {
           hasSeat={hasSeat}
         />
 
-        <LandscapeWindow
-          currentStop={currentStop}
-          platformStop={platformStop}
-          phase={timing.phase}
-          platformAtOrigin={platformAtOrigin}
-          edge="upper"
-          stops={sceneryStops}
-          stopIndex={timing.stopIndex}
-        />
-        <CommuteCar
-          id="internet-commute-car"
-          currentStop={currentStop}
-          phase={timing.phase}
-          atOrigin={timing.atOrigin}
-          isJoining={serviceConnection.joinedExistingService}
-          onSeatStateChange={setHasSeat}
-        />
-        <LandscapeWindow
-          currentStop={currentStop}
-          platformStop={platformStop}
-          phase={timing.phase}
-          platformAtOrigin={platformAtOrigin}
-          edge="lower"
-          stops={sceneryStops}
-          stopIndex={timing.stopIndex}
-        />
+        <CommuteStage>
+          <LandscapeWindow
+            currentStop={currentStop}
+            platformStop={platformStop}
+            phase={timing.phase}
+            platformAtOrigin={platformAtOrigin}
+            edge="upper"
+            stops={sceneryStops}
+            stopIndex={timing.stopIndex}
+          />
+          <CommuteCar
+            id="internet-commute-car"
+            currentStop={currentStop}
+            phase={timing.phase}
+            atOrigin={timing.atOrigin}
+            isJoining={serviceConnection.joinedExistingService}
+            onSeatStateChange={setHasSeat}
+          />
+          <LandscapeWindow
+            currentStop={currentStop}
+            platformStop={platformStop}
+            phase={timing.phase}
+            platformAtOrigin={platformAtOrigin}
+            edge="lower"
+            stops={sceneryStops}
+            stopIndex={timing.stopIndex}
+          />
+        </CommuteStage>
 
         <div className="commute-counts">
           <strong>
