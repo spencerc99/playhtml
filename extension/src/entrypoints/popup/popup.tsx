@@ -55,7 +55,7 @@ function PlayHTMLPopup() {
   const [currentView, setCurrentView] = useState<
     "main" | "inventory" | "collections" | "profile" | "bag-settings"
   >("main");
-  const [internalDevFeaturesEnabled, setInternalDevFeaturesEnabled] = useState(false);
+  const [, setInternalDevFeaturesEnabled] = useState(false);
   const [commuteIsOpen, setCommuteIsOpen] = useState(false);
   const [hiddenSite, setHiddenSite] = useState<{
     origin: string;
@@ -284,12 +284,6 @@ function PlayHTMLPopup() {
     }
   };
 
-  // PlayHTML Bag is dev-only until public release.
-  // To enable: open the extension popup, then toggle via Cmd/Ctrl+Shift+. (or > on US keyboards).
-  // Alternative: from any extension page devtools, run
-  //   `browser.storage.local.set({ internalDevFeaturesEnabled: true })` and reopen the popup.
-  const bagEnabled = internalDevFeaturesEnabled;
-
   const pingContentScript = async () => {
     try {
       if (currentTab?.id) {
@@ -465,27 +459,17 @@ function PlayHTMLPopup() {
       onViewCollections={() => setCurrentView("collections")}
       onViewHistory={toggleHistoricalOverlay}
       onViewProfile={() => setCurrentView("profile")}
-      onViewBagSettings={
-        bagEnabled ? () => setCurrentView("bag-settings") : undefined
-      }
-      onViewCommute={
-        FLAGS.COMMUTE
-          ? async () => {
-              await openOrFocusCommute();
-              window.close();
-            }
-          : undefined
-      }
+      onViewBagSettings={() => setCurrentView("bag-settings")}
+      onViewCommute={async () => {
+        await openOrFocusCommute();
+        window.close();
+      }}
       commuteIsOpen={commuteIsOpen}
-      onViewScraps={
-        FLAGS.SCRAPS || internalDevFeaturesEnabled
-          ? async () => {
-              const url = browser.runtime.getURL("scraps.html");
-              await browser.tabs.create({ url });
-              window.close();
-            }
-          : undefined
-      }
+      onViewScraps={async () => {
+        const url = browser.runtime.getURL("scraps.html");
+        await browser.tabs.create({ url });
+        window.close();
+      }}
       onViewChangelog={async () => {
         await browser.tabs.create({ url: PUBLIC_CHANGELOG_URL });
         window.close();

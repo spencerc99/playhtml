@@ -1,9 +1,8 @@
 // ABOUTME: Feature flags for the browser extension.
-// ABOUTME: Controls visibility of in-development features like copresence.
+// ABOUTME: Controls released and experimental extension capabilities.
 
 export const FLAGS = {
-  // When false, hide PlayHTML Bag features by default in popup
-  // Devs can override via Cmd+Shift+. in the popup
+  // Shared cursor presence and the popup's presence count.
   COPRESENCE: true,
 
   // Social experiments — each runs on every page via the social registry
@@ -20,6 +19,9 @@ export const FLAGS = {
   // Internet scraps: passive collection of distinctive images seen while
   // browsing, rendered as a scatter-collage (scraps.html). Local-only data.
   SCRAPS: false,
+
+  // Settings for PlayHTML Bag features that are not ready for general use.
+  BAG_SETTINGS: false,
 
   // Internet Commute: full-tab slow browsing train populated from recent
   // extension navigation events.

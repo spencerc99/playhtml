@@ -104,12 +104,14 @@ describe("PlayHTMLPopup", () => {
     document.body.innerHTML = "";
   });
 
-  it("keeps the commute entry hidden when only development mode is enabled", async () => {
+  it("keeps unreleased entries hidden when development mode is enabled", async () => {
     const { container, root } = await renderPopup();
 
     try {
       expect(container.querySelector(".portrait-home")).not.toBeNull();
       expect(container.querySelector(".commute-entry")).toBeNull();
+      expect(container.textContent).not.toContain("scraps");
+      expect(container.textContent).not.toContain("bag settings");
     } finally {
       cleanup(root, container);
     }
