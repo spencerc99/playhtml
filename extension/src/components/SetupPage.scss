@@ -329,6 +329,26 @@
     font-size: 11px;
   }
 
+  &__toolbar-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin: 0 2px;
+    border: 1px solid $border;
+    border-radius: 5px;
+    background: $surface;
+    box-shadow: 0 1px 2px rgba($text, 0.1);
+    vertical-align: middle;
+
+    img {
+      width: 16px;
+      height: 16px;
+      object-fit: contain;
+    }
+  }
+
   &__milestone-preview {
     display: flex;
     align-items: flex-start;

@@ -327,8 +327,15 @@ export default function SetupPage() {
             <div className="setup-step__tip">
               <h3 className="setup-step__subheading">See your trail, anywhere</h3>
               <p className="setup-step__desc">
-                Click the extension popup anytime to see your current portrait.
-                On any page, press{" "}
+                Click{" "}
+                <span className="setup-step__toolbar-icon">
+                  <img
+                    src={browser.runtime.getURL("icon/32.png")}
+                    alt="we were online extension icon"
+                  />
+                </span>{" "}
+                in your browser toolbar anytime to see your current portrait. On
+                any page, press{" "}
                 <kbd className="setup-step__kbd">
                   {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}
                 </kbd>

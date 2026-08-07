@@ -97,8 +97,12 @@ describe("SetupPage", () => {
       expect(container.textContent).toContain("All set!");
       expect(container.textContent).toContain("See your trail, anywhere");
       expect(container.textContent).toContain(
-        "Click the extension popup anytime",
+        "in your browser toolbar anytime",
       );
+      const toolbarIcon = container.querySelector<HTMLImageElement>(
+        'img[alt="we were online extension icon"]',
+      );
+      expect(toolbarIcon?.src).toBe("chrome-extension://test/icon/32.png");
       expect(container.textContent).toContain("browsing portrait preview");
       expect(container.textContent).toContain("Review your browsing");
       expect(container.textContent).toContain("milestone preview");
