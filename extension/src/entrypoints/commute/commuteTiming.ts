@@ -15,6 +15,18 @@ export interface CommuteTiming {
   stopIndex: number;
   departureStopIndex: number | null;
   atOrigin: boolean;
+  complete: boolean;
+}
+
+export function getCommuteRouteDurationSeconds(stopCount: number): number {
+  if (stopCount < 1) {
+    throw new Error("Internet Commute requires at least one stop");
+  }
+
+  return (
+    INITIAL_PLATFORM_SECONDS +
+    stopCount * (TRAVEL_SECONDS + ARRIVAL_SECONDS + PLATFORM_SECONDS)
+  );
 }
 
 export function getCommuteTiming(
@@ -32,14 +44,26 @@ export function getCommuteTiming(
       stopIndex: 0,
       departureStopIndex: null,
       atOrigin: true,
+      complete: false,
     };
   }
 
   const cycleSeconds = TRAVEL_SECONDS + ARRIVAL_SECONDS + PLATFORM_SECONDS;
   const elapsedAfterOrigin = elapsedSeconds - INITIAL_PLATFORM_SECONDS;
-  const cyclePosition = elapsedAfterOrigin % cycleSeconds;
   const completedCycles = Math.floor(elapsedAfterOrigin / cycleSeconds);
-  const stopIndex = completedCycles % stopCount;
+  if (completedCycles >= stopCount) {
+    return {
+      phase: "stopped",
+      secondsLeft: 0,
+      stopIndex: stopCount - 1,
+      departureStopIndex: null,
+      atOrigin: true,
+      complete: true,
+    };
+  }
+
+  const cyclePosition = elapsedAfterOrigin % cycleSeconds;
+  const stopIndex = completedCycles;
 
   if (cyclePosition < TRAVEL_SECONDS) {
     return {
@@ -49,8 +73,9 @@ export function getCommuteTiming(
       departureStopIndex:
         completedCycles === 0 || cyclePosition >= DEPARTURE_SECONDS
           ? null
-          : (stopIndex - 1 + stopCount) % stopCount,
+          : stopIndex - 1,
       atOrigin: false,
+      complete: false,
     };
   }
 
@@ -61,6 +86,7 @@ export function getCommuteTiming(
       stopIndex,
       departureStopIndex: null,
       atOrigin: false,
+      complete: false,
     };
   }
 
@@ -70,5 +96,6 @@ export function getCommuteTiming(
     stopIndex,
     departureStopIndex: null,
     atOrigin: false,
+    complete: false,
   };
 }

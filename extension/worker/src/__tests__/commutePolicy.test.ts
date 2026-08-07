@@ -31,6 +31,28 @@ function event(
 }
 
 describe('buildCommuteResponse', () => {
+  it('returns a larger destination pool for consecutive finite train routes', () => {
+    const response = buildCommuteResponse(
+      Array.from({ length: 60 }, (_, index) =>
+        event(
+          `destination-${index}`,
+          'navigation',
+          `https://destination-${index}.com/place`,
+          1_000 - index,
+          `rider-${index}`,
+          `Destination ${index}`,
+        ),
+      ),
+      [],
+      2_000,
+    );
+
+    expect(response.destinations).toHaveLength(50);
+    expect(
+      new Set(response.destinations.map((item) => item.domain)).size,
+    ).toBe(50);
+  });
+
   it('keeps only YouTube video identity parameters', () => {
     const response = buildCommuteResponse(
       [

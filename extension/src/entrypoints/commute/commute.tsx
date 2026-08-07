@@ -33,8 +33,11 @@ import {
   COMMUTE_SERVICE_CHANNEL,
   COMMUTE_SERVICE_DISCOVERY_MS,
   createCommuteService,
+  getCommuteServiceDomains,
+  getCommuteServiceEndTime,
   getCommuteServicesFromPresences,
   getCommuteStops,
+  getUnvisitedCommuteStops,
   selectCommuteService,
   type CommuteService,
   type CommuteServicePresence,
@@ -142,21 +145,14 @@ function useRecentRoute(): RecentRoute {
         }
 
         const commute = parseCommuteResponse(await response.json());
-        if (hasLoadedRoute) {
-          setRoute((current) => ({
-            ...current,
-            activePeople: commute.activePeople,
-          }));
-        } else {
-          hasLoadedRoute = true;
-          setRoute({
-            stops: commute.stops,
-            sceneryStops: commute.sceneryStops,
-            activePeople: commute.activePeople,
-            serverTimeOffsetMs: commute.generatedAt - Date.now(),
-            status: commute.stops.length > 0 ? "live" : "empty",
-          });
-        }
+        hasLoadedRoute = true;
+        setRoute({
+          stops: commute.stops,
+          sceneryStops: commute.sceneryStops,
+          activePeople: commute.activePeople,
+          serverTimeOffsetMs: commute.generatedAt - Date.now(),
+          status: commute.stops.length > 0 ? "live" : "empty",
+        });
       } catch (error) {
         if (controller.signal.aborted) return;
         console.warn("[internet commute] recent route unavailable:", error);
@@ -196,9 +192,13 @@ function useRecentRoute(): RecentRoute {
   return route;
 }
 
-interface CommuteServiceConnection {
+interface CommuteServiceState {
   joinedExistingService: boolean;
   service: CommuteService | null;
+}
+
+interface CommuteServiceConnection extends CommuteServiceState {
+  nextStops: CommuteStop[];
 }
 
 function useCommuteService(
@@ -210,11 +210,16 @@ function useCommuteService(
     typeof COMMUTE_SERVICE_CHANNEL,
     CommuteServicePresence
   >(COMMUTE_SERVICE_CHANNEL);
-  const [connection, setConnection] = useState<CommuteServiceConnection>({
+  const [connection, setConnection] = useState<CommuteServiceState>({
     joinedExistingService: false,
     service: null,
   });
+  const [visitedDomains, setVisitedDomains] = useState<string[]>([]);
   const presencesRef = useRef(presences);
+  const nextStops = useMemo(
+    () => getUnvisitedCommuteStops(availableStops, visitedDomains),
+    [availableStops, visitedDomains],
+  );
 
   useEffect(() => {
     presencesRef.current = presences;
@@ -226,8 +231,17 @@ function useCommuteService(
     }
 
     const discoveryTimer = window.setTimeout(() => {
+      const serverNow = Date.now() + (serverTimeOffsetMs ?? 0);
+      const visited = new Set(visitedDomains);
       const existingService = selectCommuteService(
-        getCommuteServicesFromPresences(presencesRef.current.values()),
+        getCommuteServicesFromPresences(
+          presencesRef.current.values(),
+        ).filter((service) =>
+          getCommuteServiceDomains(service).every(
+            (domain) => !visited.has(domain),
+          ),
+        ),
+        serverNow,
       );
       if (
         existingService === null &&
@@ -235,11 +249,13 @@ function useCommuteService(
       ) {
         return;
       }
+      if (existingService === null && nextStops.length === 0) {
+        return;
+      }
 
-      const serverNow = Date.now() + (serverTimeOffsetMs ?? 0);
       const service =
         existingService ??
-        createCommuteService(serverNow, myIdentity.publicKey, availableStops);
+        createCommuteService(serverNow, myIdentity.publicKey, nextStops);
       const presence: CommuteServicePresence = {
         service,
       };
@@ -253,21 +269,37 @@ function useCommuteService(
 
     return () => window.clearTimeout(discoveryTimer);
   }, [
-    availableStops,
     connection.service,
     myIdentity,
+    nextStops,
     routeStatus,
     serverTimeOffsetMs,
     setMyPresence,
+    visitedDomains,
   ]);
 
   const canonicalService = useMemo(() => {
-    const candidates = getCommuteServicesFromPresences(presences.values());
+    const visited = new Set(visitedDomains);
+    const candidates = getCommuteServicesFromPresences(
+      presences.values(),
+    ).filter((service) =>
+      getCommuteServiceDomains(service).every(
+        (domain) => !visited.has(domain),
+      ),
+    );
     if (connection.service) {
       candidates.push(connection.service);
     }
-    return selectCommuteService(candidates);
-  }, [connection.service, presences]);
+    return selectCommuteService(
+      candidates,
+      Date.now() + (serverTimeOffsetMs ?? 0),
+    );
+  }, [
+    connection.service,
+    presences,
+    serverTimeOffsetMs,
+    visitedDomains,
+  ]);
 
   useEffect(() => {
     if (
@@ -292,7 +324,36 @@ function useCommuteService(
     setMyPresence,
   ]);
 
-  return connection;
+  useEffect(() => {
+    const service = connection.service;
+    if (!service) return;
+
+    const serverNow = Date.now() + (serverTimeOffsetMs ?? 0);
+    const delay = Math.max(0, getCommuteServiceEndTime(service) - serverNow);
+    const completeService = () => {
+      const completedDomains = getCommuteServiceDomains(service);
+      setVisitedDomains((current) => [
+        ...new Set([...current, ...completedDomains]),
+      ]);
+      setConnection((current) =>
+        current.service?.id === service.id
+          ? {
+              joinedExistingService: false,
+              service: null,
+            }
+          : current,
+      );
+      setMyPresence({ service: null });
+    };
+
+    const completionTimer = window.setTimeout(completeService, delay);
+    return () => window.clearTimeout(completionTimer);
+  }, [connection.service, serverTimeOffsetMs, setMyPresence]);
+
+  return {
+    ...connection,
+    nextStops,
+  };
 }
 
 function StopFavicon({
@@ -930,12 +991,16 @@ function Banner({
   atOrigin,
   currentStop,
   hasSeat,
+  routeComplete,
+  waitingForFreshStops,
 }: {
   phase: CommutePhase;
   secondsLeft: number;
   atOrigin: boolean;
   currentStop: CommuteStop;
   hasSeat: boolean;
+  routeComplete: boolean;
+  waitingForFreshStops: boolean;
 }) {
   let message: React.ReactNode;
   let aside: React.ReactNode;
@@ -950,7 +1015,15 @@ function Banner({
     </span>
   );
 
-  if (atOrigin) {
+  if (routeComplete) {
+    message = "route complete — returning home";
+    aside = "a fresh train is forming";
+    instruction = "this train will not repeat its route";
+  } else if (waitingForFreshStops) {
+    message = "waiting for a new destination";
+    aside = "checking the recent web";
+    instruction = "the next train will depart when an unseen stop appears";
+  } else if (atOrigin) {
     message = destinationLabel("next train to");
     aside = `doors close in ${secondsLeft}s`;
     instruction = "find a seat — click any empty seat to sit down";
@@ -996,9 +1069,14 @@ function InternetCommute() {
     () =>
       serviceConnection.service
         ? getCommuteStops(serviceConnection.service)
-        : availableStops,
-    [availableStops, serviceConnection.service],
+        : serviceConnection.nextStops.length > 0
+          ? serviceConnection.nextStops
+          : [SAMPLE_STOPS[0]],
+    [serviceConnection.nextStops, serviceConnection.service],
   );
+  const waitingForFreshStops =
+    serviceConnection.service === null &&
+    serviceConnection.nextStops.length === 0;
   const sceneryStops =
     recentRoute.sceneryStops.length > 0
       ? recentRoute.sceneryStops
@@ -1078,6 +1156,8 @@ function InternetCommute() {
           atOrigin={timing.atOrigin}
           currentStop={currentStop}
           hasSeat={hasSeat}
+          routeComplete={timing.complete}
+          waitingForFreshStops={waitingForFreshStops}
         />
 
         <CommuteStage>

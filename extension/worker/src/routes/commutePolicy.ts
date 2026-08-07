@@ -11,7 +11,7 @@ import {
 import { getDomain, getDomainWithoutSuffix, getSubdomain } from 'tldts';
 
 const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
-const DESTINATION_LIMIT = 10;
+const DESTINATION_LIMIT = 50;
 const BASE_SCENERY_LIMIT = 100;
 const MAX_SCENERY_LIMIT = 200;
 const NAVIGATION_EVENTS_PER_SCENERY_ITEM = 5;
