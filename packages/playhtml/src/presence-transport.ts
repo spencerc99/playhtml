@@ -120,6 +120,9 @@ export class RealtimePresenceTransport {
       party: "presence",
       maxEnqueuedMessages: 0,
     });
+    // PartySocket 1.2.0 redispatches cloned events through a custom EventTarget,
+    // which Firefox WebExtension content scripts can skip (playhtml#358). Its
+    // direct handler properties run before that redispatch path.
     if (supportsHandlerProperties(this.socket)) {
       this.socket.onmessage = this.onMessage;
       this.socket.onopen = this.onOpen;
@@ -242,6 +245,8 @@ export class RealtimePresenceTransport {
       this.usesHandlerProperties &&
       supportsHandlerProperties(this.socket)
     ) {
+      // Only clear handlers still owned by this transport; another consumer may
+      // have replaced a property after the playhtml#358 handlers were installed.
       if (this.socket.onmessage === this.onMessage) {
         this.socket.onmessage = null;
       }
