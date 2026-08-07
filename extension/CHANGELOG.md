@@ -3,10 +3,8 @@
 ## 0.1.21 (2026-08-07)
 
 - Keep newly collected activity queued when local storage temporarily fails.
-- Get reload guidance instead of an endless loading screen when an older extension process blocks a local-history update.
-- See a visible patina on Wikipedia links after their first click.
+- Tune Wikipedia patina
 - See time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
-- Open year-long walking records without repeated page metadata overwhelming the extension.
 
 
 ## 0.1.20 (2026-07-23)
