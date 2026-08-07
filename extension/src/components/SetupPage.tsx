@@ -99,6 +99,7 @@ export default function SetupPage() {
   );
   const [customized, setCustomized] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
   const [heroSize, setHeroSize] = useState({ width: 0, height: 0 });
@@ -172,6 +173,7 @@ export default function SetupPage() {
 
   const applyConsent = async () => {
     setBusy(true);
+    setSaveError(null);
     try {
       const types = getValidEventTypes();
       const toSet: Record<string, unknown> = {};
@@ -182,6 +184,12 @@ export default function SetupPage() {
       await browser.storage.local.set(toSet);
       await savePlayerColor(color);
       setStep("done");
+    } catch {
+      setSaveError(
+        isSafari
+          ? "Safari couldn’t save your choices. Disable and re-enable we were online in Safari Settings → Extensions, then try again."
+          : "The extension couldn’t save your choices. Check that it is enabled, then try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -390,9 +398,14 @@ export default function SetupPage() {
                 className="setup-step__btn-primary"
                 disabled={busy}
               >
-                Continue
+                {saveError ? "Try again" : "Continue"}
               </button>
             </div>
+            {saveError && (
+              <p className="setup-step__save-error" role="alert">
+                {saveError}
+              </p>
+            )}
           </section>
         )}
 

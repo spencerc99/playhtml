@@ -277,6 +277,13 @@
     color: $error-text;
   }
 
+  &__save-error {
+    margin-top: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: $error-text;
+  }
+
   &__website-access-success {
     padding: 10px 12px;
     margin-bottom: 20px;

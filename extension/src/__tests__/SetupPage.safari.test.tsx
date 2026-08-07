@@ -40,6 +40,8 @@ beforeEach(() => {
   vi.mocked(browser.tabs.getCurrent).mockResolvedValue({ id: 1 });
   vi.mocked(browser.tabs.remove).mockReset();
   vi.mocked(browser.tabs.remove).mockResolvedValue(undefined);
+  vi.mocked(browser.storage.local.set).mockReset();
+  vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -119,6 +121,56 @@ it("closes the setup tab after onboarding", async () => {
 
   expect(browser.tabs.getCurrent).toHaveBeenCalledOnce();
   expect(browser.tabs.remove).toHaveBeenCalledWith(1);
+
+  act(() => root.unmount());
+  container.remove();
+});
+
+it("offers recovery when Safari cannot save setup choices", async () => {
+  vi.mocked(browser.storage.local.set)
+    .mockRejectedValueOnce(
+      new Error(
+        "Invalid call to browser.storage.local.set(). Disk I/O error.",
+      ),
+    )
+    .mockResolvedValueOnce(undefined);
+  const { default: SetupPage } = await import("../components/SetupPage");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<SetupPage />);
+    await Promise.resolve();
+  });
+
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Get started")
+      ?.click();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Let's go")
+      ?.click();
+    await Promise.resolve();
+  });
+
+  expect(container.textContent).toContain(
+    "Safari couldn’t save your choices. Disable and re-enable we were online in Safari Settings → Extensions, then try again.",
+  );
+  const retryButton = [...container.querySelectorAll("button")].find(
+    (element) => element.textContent === "Try again",
+  );
+  expect(retryButton).toBeDefined();
+  expect(retryButton?.disabled).toBe(false);
+
+  await act(async () => {
+    retryButton?.click();
+    await Promise.resolve();
+  });
+
+  expect(container.textContent).toContain("All set!");
 
   act(() => root.unmount());
   container.remove();
