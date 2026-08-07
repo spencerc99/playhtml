@@ -247,6 +247,52 @@
     margin-bottom: 16px;
   }
 
+  &__website-access {
+    padding: 16px;
+    margin-bottom: 20px;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 10px;
+
+    .setup-step__subheading,
+    .setup-step__desc {
+      margin-bottom: 10px;
+    }
+  }
+
+  &__website-access-hint,
+  &__website-access-error,
+  &__website-access-success {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  &__website-access-hint {
+    margin-top: 10px;
+    color: $text-muted;
+  }
+
+  &__website-access-error {
+    margin-top: 8px;
+    color: $error-text;
+  }
+
+  &__save-error {
+    margin-top: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: $error-text;
+  }
+
+  &__website-access-success {
+    padding: 10px 12px;
+    margin-bottom: 20px;
+    color: $accent-teal;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 8px;
+  }
+
   // ── Collector list (reuses Collections card styles) ─────────────────────────
 
   .collections__collector-list {

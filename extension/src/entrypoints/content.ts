@@ -24,6 +24,7 @@ import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
 import { shouldStartExtensionPresence } from "./content/presencePolicy";
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
+import { isExtensionPageUrl } from "../utils/extensionPage";
 
 async function internalDevFeaturesEnabled(): Promise<boolean> {
   try {
@@ -50,8 +51,7 @@ export default defineContentScript({
     // Don't run collectors or extension features on extension-internal pages
     // (portrait, popup, options, etc.) — they generate noise and can trigger
     // the 64MiB sendMessage limit when the portrait page requests all events.
-    const proto = window.location.protocol;
-    if (proto === "chrome-extension:" || proto === "moz-extension:") {
+    if (isExtensionPageUrl(window.location.href)) {
       return;
     }
 

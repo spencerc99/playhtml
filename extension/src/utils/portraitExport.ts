@@ -42,7 +42,9 @@ export async function compositePagePortrait(
   trailsSvgEl: SVGSVGElement,
   filename: string,
 ): Promise<void> {
-  const canvas = new OffscreenCanvas(window.innerWidth, window.innerHeight);
+  const canvas = document.createElement("canvas");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not get 2D context");
 
@@ -65,7 +67,15 @@ export async function compositePagePortrait(
   trailsBitmap.close();
 
   // Download
-  const blob = await canvas.convertToBlob({ type: "image/png" });
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => {
+      if (result) {
+        resolve(result);
+      } else {
+        reject(new Error("Could not encode portrait image"));
+      }
+    }, "image/png");
+  });
   triggerDownload(blob, filename);
 }
 

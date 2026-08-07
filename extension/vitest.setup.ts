@@ -63,11 +63,17 @@ vi.mock("webextension-polyfill", () => ({
         removeListener: vi.fn(),
       },
     },
+    permissions: {
+      contains: vi.fn().mockResolvedValue(false),
+      request: vi.fn().mockResolvedValue(false),
+    },
     tabs: {
       query: vi.fn().mockResolvedValue([{ id: 1, url: "https://example.com" }]),
+      getCurrent: vi.fn().mockResolvedValue({ id: 1 }),
       sendMessage: vi.fn().mockResolvedValue({ success: true }),
       create: vi.fn().mockResolvedValue({ id: 2 }),
       update: vi.fn().mockResolvedValue({ id: 1 }),
+      remove: vi.fn().mockResolvedValue(undefined),
     },
     windows: {
       update: vi.fn().mockResolvedValue({ id: 1 }),

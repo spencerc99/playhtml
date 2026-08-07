@@ -5,11 +5,17 @@ import path from "path";
 
 export default defineConfig({
   srcDir: "src",
-  manifest: {
+  manifest: ({ browser }) => ({
     name: "we were online",
     description:
-      "A quiet portrait of your time online. See who else is here, chat on Wikipedia, and collect traces of where you've been.",
-    permissions: ["storage", "tabs", "alarms", "idle", "unlimitedStorage"],
+      "A quiet portrait of your time online. See who else is here, chat, and collect traces of where you've been.",
+    permissions: [
+      "storage",
+      "tabs",
+      "alarms",
+      ...(browser === "safari" ? [] : ["idle"]),
+      "unlimitedStorage",
+    ],
     host_permissions: ["http://*/*", "https://*/*"],
     action: {
       default_title: "we were online",
@@ -40,6 +46,13 @@ export default defineConfig({
           optional: ["technicalAndInteraction"],
         },
       },
+    },
+  }),
+  hooks: {
+    "build:manifestGenerated": (wxt, manifest) => {
+      if (wxt.config.browser === "safari" && manifest.options_ui) {
+        delete manifest.options_ui.open_in_tab;
+      }
     },
   },
   modules: ["@wxt-dev/module-react"],

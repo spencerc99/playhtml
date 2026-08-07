@@ -36,6 +36,7 @@ import {
 } from '../milestones/milestones'
 import { getSessionId } from '../storage/participant'
 import { recordAnnouncementInstall } from '../announcements/announcement-storage'
+import { isUserActive } from '../utils/userActivity'
 
 interface ScrapRecordBase {
   id: string
@@ -1149,8 +1150,7 @@ export default defineBackground(() => {
 
     // Only show if user is actively at their computer (idle threshold: 60s).
     // Check before saving state so we don't burn the threshold if user is away.
-    const idleState = await browser.idle.queryState(60)
-    if (idleState !== 'active') return
+    if (!(await isUserActive(browser.idle))) return
 
     // Resolve the active tab again because it may have changed while the raw
     // event history was being queried.

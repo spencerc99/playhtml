@@ -13,10 +13,16 @@ import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
 import { PortraitCard } from "./PortraitCard";
+import { isSafariExtensionPageUrl } from "../utils/extensionPage";
+import {
+  hasSafariWebsiteAccess,
+  requestSafariWebsiteAccess,
+} from "../utils/safariWebsiteAccess";
 
 type Step = "welcome" | "configure" | "done";
 type Preset = "abstain" | "participate" | "allIn";
 type CollectorMode = "off" | "local" | "shared";
+type WebsiteAccess = "checking" | "needed" | "requesting" | "granted" | "error";
 
 const SETUP_STEPS: Array<{ id: Step; label: string }> = [
   { id: "welcome", label: "welcome" },
@@ -36,6 +42,12 @@ interface PresetConfig {
 function randomPrimaryColor(): string {
   const hue = Math.floor(Math.random() * 360);
   return hslToHex(hue, 70, 60);
+}
+
+function setupStorageError(isSafari: boolean): string {
+  return isSafari
+    ? "Safari couldn’t save your choices. Disable and re-enable we were online in Safari Settings → Extensions, then try again."
+    : "The extension couldn’t save your choices. Check that it is enabled, then try again.";
 }
 
 function presetConfigs(): Record<Preset, PresetConfig> {
@@ -93,9 +105,14 @@ export default function SetupPage() {
   );
   const [customized, setCustomized] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
   const [heroSize, setHeroSize] = useState({ width: 0, height: 0 });
+  const isSafari = isSafariExtensionPageUrl(window.location.href);
+  const [websiteAccess, setWebsiteAccess] = useState<WebsiteAccess>(
+    isSafari ? "checking" : "granted",
+  );
 
   useEffect(() => {
     const el = heroRef.current;
@@ -125,6 +142,24 @@ export default function SetupPage() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!isSafari) return;
+
+    hasSafariWebsiteAccess()
+      .then((granted) => setWebsiteAccess(granted ? "granted" : "needed"))
+      .catch(() => setWebsiteAccess("error"));
+  }, [isSafari]);
+
+  const handleWebsiteAccess = async () => {
+    setWebsiteAccess("requesting");
+    try {
+      const granted = await requestSafariWebsiteAccess();
+      setWebsiteAccess(granted ? "granted" : "needed");
+    } catch {
+      setWebsiteAccess("error");
+    }
+  };
+
   const handlePresetChange = (next: Preset) => {
     setPreset(next);
     setCollectorModes(presets[next].modes);
@@ -144,6 +179,7 @@ export default function SetupPage() {
 
   const applyConsent = async () => {
     setBusy(true);
+    setSaveError(null);
     try {
       const types = getValidEventTypes();
       const toSet: Record<string, unknown> = {};
@@ -154,16 +190,29 @@ export default function SetupPage() {
       await browser.storage.local.set(toSet);
       await savePlayerColor(color);
       setStep("done");
+    } catch {
+      setSaveError(setupStorageError(isSafari));
     } finally {
       setBusy(false);
     }
   };
 
+  const closeSetupTab = async () => {
+    const tab = await browser.tabs.getCurrent();
+    if (tab?.id === undefined) {
+      throw new Error("Could not find the setup tab");
+    }
+    await browser.tabs.remove(tab.id);
+  };
+
   const finishOnboarding = async () => {
     setBusy(true);
+    setSaveError(null);
     try {
       await browser.storage.local.set({ onboarding_complete: "true" });
-      window.close();
+      await closeSetupTab();
+    } catch {
+      setSaveError(setupStorageError(isSafari));
     } finally {
       setBusy(false);
     }
@@ -195,6 +244,45 @@ export default function SetupPage() {
               into a living portrait of your digital presence. You choose how
               it's used.
             </p>
+            {isSafari && websiteAccess !== "granted" && (
+              <div className="setup-step__website-access">
+                <h2 className="setup-step__subheading">
+                  Let it work across Safari
+                </h2>
+                <p className="setup-step__desc">
+                  Safari keeps the extension off on each new website until you
+                  allow access. This access lets it collect only the trail you
+                  choose to keep on the next screen.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleWebsiteAccess}
+                  className="setup-step__btn-primary"
+                  disabled={
+                    websiteAccess === "checking" ||
+                    websiteAccess === "requesting"
+                  }
+                >
+                  {websiteAccess === "requesting"
+                    ? "Waiting for Safari…"
+                    : "Allow on every website"}
+                </button>
+                <p className="setup-step__website-access-hint">
+                  When Safari asks, choose “Always Allow on Every Website.”
+                </p>
+                {websiteAccess === "error" && (
+                  <p className="setup-step__website-access-error">
+                    Safari didn’t change access. Try again, or open Safari
+                    Settings → Websites → Extensions.
+                  </p>
+                )}
+              </div>
+            )}
+            {isSafari && websiteAccess === "granted" && (
+              <p className="setup-step__website-access-success">
+                Safari website access is on.
+              </p>
+            )}
             <button
               onClick={() => setStep("configure")}
               className="setup-step__btn-primary"
@@ -315,9 +403,14 @@ export default function SetupPage() {
                 className="setup-step__btn-primary"
                 disabled={busy}
               >
-                Continue
+                {saveError ? "Try again" : "Continue"}
               </button>
             </div>
+            {saveError && (
+              <p className="setup-step__save-error" role="alert">
+                {saveError}
+              </p>
+            )}
           </section>
         )}
 
@@ -452,9 +545,14 @@ export default function SetupPage() {
                 className="setup-step__btn-primary"
                 disabled={busy}
               >
-                Finish setup
+                {saveError ? "Try again" : "Finish setup"}
               </button>
             </div>
+            {saveError && (
+              <p className="setup-step__save-error" role="alert">
+                {saveError}
+              </p>
+            )}
           </section>
         )}
       </div>

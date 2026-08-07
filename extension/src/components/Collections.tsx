@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import browser from "webextension-polyfill";
+import { isExtensionPageUrl } from "../utils/extensionPage";
 import type { CollectorStatus } from "../collectors/types";
 import { getValidEventTypes } from "@playhtml/extension-types";
 import { CollectorIcon } from "./icons";
@@ -560,8 +561,7 @@ export function Collections({ onBack }: CollectionsProps) {
       if (
         tab.url &&
         (tab.url.startsWith("chrome://") ||
-          tab.url.startsWith("chrome-extension://") ||
-          tab.url.startsWith("moz-extension://"))
+          isExtensionPageUrl(tab.url))
       ) {
         throw new Error("Content script not available on this page");
       }
