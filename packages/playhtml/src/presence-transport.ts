@@ -19,6 +19,13 @@ import { PeerStore } from "./peer-store";
 export type PresenceSocket = Pick<PartySocket, "readyState" | "send" | "close"> &
   Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
+type HandlerPropertySocket = PresenceSocket & {
+  onmessage: ((event: MessageEvent) => void) | null;
+  onopen: ((event: Event) => void) | null;
+  onclose: ((event: Event) => void) | null;
+  onerror: ((event: Event) => void) | null;
+};
+
 export type PresenceSocketFactory = (
   options: PartySocketOptions,
 ) => PresenceSocket;
@@ -68,6 +75,7 @@ export class RealtimePresenceTransport {
   private unreachableLogged = false;
   private unreachableTimer: ReturnType<typeof setTimeout> | null = null;
   private lastControlLogAt = new Map<string, number>();
+  private usesHandlerProperties = false;
   private onMessage = (event: MessageEvent) => {
     const message = parsePresenceServerMessage(event.data);
     if (!message) return;
@@ -112,10 +120,21 @@ export class RealtimePresenceTransport {
       party: "presence",
       maxEnqueuedMessages: 0,
     });
-    this.socket.addEventListener("message", this.onMessage as EventListener);
-    this.socket.addEventListener("open", this.onOpen);
-    this.socket.addEventListener("close", this.onCloseOrError);
-    this.socket.addEventListener("error", this.onCloseOrError);
+    // PartySocket 1.2.0 redispatches cloned events through a custom EventTarget,
+    // which Firefox WebExtension content scripts can skip (playhtml#358). Its
+    // direct handler properties run before that redispatch path.
+    if (supportsHandlerProperties(this.socket)) {
+      this.socket.onmessage = this.onMessage;
+      this.socket.onopen = this.onOpen;
+      this.socket.onclose = this.onCloseOrError;
+      this.socket.onerror = this.onCloseOrError;
+      this.usesHandlerProperties = true;
+    } else {
+      this.socket.addEventListener("message", this.onMessage as EventListener);
+      this.socket.addEventListener("open", this.onOpen);
+      this.socket.addEventListener("close", this.onCloseOrError);
+      this.socket.addEventListener("error", this.onCloseOrError);
+    }
     // Grace window: if the socket never opens at all, flag it once.
     this.unreachableTimer = setTimeout(() => {
       this.unreachableTimer = null;
@@ -222,10 +241,33 @@ export class RealtimePresenceTransport {
       this.unreachableTimer = null;
     }
     this.peers.destroy();
-    this.socket.removeEventListener("message", this.onMessage as EventListener);
-    this.socket.removeEventListener("open", this.onOpen);
-    this.socket.removeEventListener("close", this.onCloseOrError);
-    this.socket.removeEventListener("error", this.onCloseOrError);
+    if (
+      this.usesHandlerProperties &&
+      supportsHandlerProperties(this.socket)
+    ) {
+      // Only clear handlers still owned by this transport; another consumer may
+      // have replaced a property after the playhtml#358 handlers were installed.
+      if (this.socket.onmessage === this.onMessage) {
+        this.socket.onmessage = null;
+      }
+      if (this.socket.onopen === this.onOpen) {
+        this.socket.onopen = null;
+      }
+      if (this.socket.onclose === this.onCloseOrError) {
+        this.socket.onclose = null;
+      }
+      if (this.socket.onerror === this.onCloseOrError) {
+        this.socket.onerror = null;
+      }
+    } else {
+      this.socket.removeEventListener(
+        "message",
+        this.onMessage as EventListener,
+      );
+      this.socket.removeEventListener("open", this.onOpen);
+      this.socket.removeEventListener("close", this.onCloseOrError);
+      this.socket.removeEventListener("error", this.onCloseOrError);
+    }
     this.socket.close();
     this.listeners.clear();
   }
@@ -265,6 +307,17 @@ export class RealtimePresenceTransport {
 
 export function canUseRealtimePresenceTransport(): boolean {
   return typeof WebSocket !== "undefined";
+}
+
+function supportsHandlerProperties(
+  socket: PresenceSocket,
+): socket is HandlerPropertySocket {
+  return (
+    "onmessage" in socket &&
+    "onopen" in socket &&
+    "onclose" in socket &&
+    "onerror" in socket
+  );
 }
 
 function parsePresenceServerMessage(value: unknown): PresenceServerMessage | null {
