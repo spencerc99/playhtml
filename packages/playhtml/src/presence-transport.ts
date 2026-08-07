@@ -19,6 +19,10 @@ import { PeerStore } from "./peer-store";
 export type PresenceSocket = Pick<PartySocket, "readyState" | "send" | "close"> &
   Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
+type MessageHandlerSocket = PresenceSocket & {
+  onmessage: ((event: MessageEvent) => void) | null;
+};
+
 export type PresenceSocketFactory = (
   options: PartySocketOptions,
 ) => PresenceSocket;
@@ -68,6 +72,7 @@ export class RealtimePresenceTransport {
   private unreachableLogged = false;
   private unreachableTimer: ReturnType<typeof setTimeout> | null = null;
   private lastControlLogAt = new Map<string, number>();
+  private usesMessageHandlerProperty = false;
   private onMessage = (event: MessageEvent) => {
     const message = parsePresenceServerMessage(event.data);
     if (!message) return;
@@ -112,7 +117,12 @@ export class RealtimePresenceTransport {
       party: "presence",
       maxEnqueuedMessages: 0,
     });
-    this.socket.addEventListener("message", this.onMessage as EventListener);
+    if (supportsMessageHandlerProperty(this.socket)) {
+      this.socket.onmessage = this.onMessage;
+      this.usesMessageHandlerProperty = true;
+    } else {
+      this.socket.addEventListener("message", this.onMessage as EventListener);
+    }
     this.socket.addEventListener("open", this.onOpen);
     this.socket.addEventListener("close", this.onCloseOrError);
     this.socket.addEventListener("error", this.onCloseOrError);
@@ -222,7 +232,19 @@ export class RealtimePresenceTransport {
       this.unreachableTimer = null;
     }
     this.peers.destroy();
-    this.socket.removeEventListener("message", this.onMessage as EventListener);
+    if (
+      this.usesMessageHandlerProperty &&
+      supportsMessageHandlerProperty(this.socket)
+    ) {
+      if (this.socket.onmessage === this.onMessage) {
+        this.socket.onmessage = null;
+      }
+    } else {
+      this.socket.removeEventListener(
+        "message",
+        this.onMessage as EventListener,
+      );
+    }
     this.socket.removeEventListener("open", this.onOpen);
     this.socket.removeEventListener("close", this.onCloseOrError);
     this.socket.removeEventListener("error", this.onCloseOrError);
@@ -265,6 +287,12 @@ export class RealtimePresenceTransport {
 
 export function canUseRealtimePresenceTransport(): boolean {
   return typeof WebSocket !== "undefined";
+}
+
+function supportsMessageHandlerProperty(
+  socket: PresenceSocket,
+): socket is MessageHandlerSocket {
+  return "onmessage" in socket;
 }
 
 function parsePresenceServerMessage(value: unknown): PresenceServerMessage | null {

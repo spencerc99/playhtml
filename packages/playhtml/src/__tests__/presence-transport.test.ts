@@ -61,6 +61,14 @@ class FakeSocket {
   }
 }
 
+class PropertyMessageSocket extends FakeSocket {
+  onmessage: ((event: MessageEvent) => void) | null = null;
+
+  override receive(data: unknown): void {
+    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
+  }
+}
+
 describe("RealtimePresenceTransport", () => {
   it("connects to the generic presence party", () => {
     let createdOptions: Parameters<PresenceSocketFactory>[0] | null = null;
@@ -318,6 +326,25 @@ describe("RealtimePresenceTransport", () => {
       { type: "presence-sync", peers: {} },
       { type: "presence-changes", updates: {}, removes: {} },
     ]);
+  });
+
+  it("uses the socket message handler property when available", () => {
+    const socket = new PropertyMessageSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+    const received: unknown[] = [];
+    transport.subscribe((message) => received.push(message));
+
+    expect(socket.listeners.has("message")).toBe(false);
+    socket.receive({ type: "presence-sync", peers: {} });
+
+    expect(received).toEqual([{ type: "presence-sync", peers: {} }]);
+
+    transport.destroy();
+    expect(socket.onmessage).toBeNull();
   });
 
   it("ignores malformed nested server change messages", () => {
