@@ -13,6 +13,7 @@ import { FLAGS } from "../flags";
 import { PostcardStack } from "../announcements/PostcardStack";
 import { FeedbackForm } from "./FeedbackForm";
 import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
+import { ReleasedFeature } from "./ReleasedFeature";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -163,38 +164,40 @@ export function InternetPortraitHome({
             onShowSatchel={onShowSatchel}
           />
         )}
-        {onViewCommute && (
-          <button
-            className="commute-entry"
-            onClick={onViewCommute}
-            aria-label={
-              commuteIsOpen
-                ? "Return to the Internet Commute"
-                : "Board the Internet Commute"
-            }
-          >
-            <span className="commute-entry__route" aria-hidden="true">
-              <span className="commute-entry__stop commute-entry__stop--blue" />
-              <span className="commute-entry__stop commute-entry__stop--gold" />
-              <span className="commute-entry__stop commute-entry__stop--rust" />
-            </span>
-            <span className="commute-entry__copy">
-              <span className="commute-entry__eyebrow">
-                LINE 1 · BOARDING NOW
+        <ReleasedFeature feature="COMMUTE">
+          {onViewCommute && (
+            <button
+              className="commute-entry"
+              onClick={onViewCommute}
+              aria-label={
+                commuteIsOpen
+                  ? "Return to the Internet Commute"
+                  : "Board the Internet Commute"
+              }
+            >
+              <span className="commute-entry__route" aria-hidden="true">
+                <span className="commute-entry__stop commute-entry__stop--blue" />
+                <span className="commute-entry__stop commute-entry__stop--gold" />
+                <span className="commute-entry__stop commute-entry__stop--rust" />
               </span>
-              <strong>
-                {commuteIsOpen
-                  ? "Return to the internet commute"
-                  : "Board the internet commute"}
-              </strong>
-              <span>A slow train through pages people found lately.</span>
-            </span>
-            <span className="commute-entry__door" aria-hidden="true">
-              <span />
-              <span />
-            </span>
-          </button>
-        )}
+              <span className="commute-entry__copy">
+                <span className="commute-entry__eyebrow">
+                  LINE 1 · BOARDING NOW
+                </span>
+                <strong>
+                  {commuteIsOpen
+                    ? "Return to the internet commute"
+                    : "Board the internet commute"}
+                </strong>
+                <span>A slow train through pages people found lately.</span>
+              </span>
+              <span className="commute-entry__door" aria-hidden="true">
+                <span />
+                <span />
+              </span>
+            </button>
+          )}
+        </ReleasedFeature>
         <section className="collection-status">
           <div className="collection-status__header-row">
             <h3>Your Collection Status</h3>
@@ -289,17 +292,19 @@ export function InternetPortraitHome({
             >
               time
             </button>
-            {onViewScraps && (
-              <button
-                className="portrait-home__nav-link"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewScraps();
-                }}
-              >
-                scraps
-              </button>
-            )}
+            <ReleasedFeature feature="SCRAPS">
+              {onViewScraps && (
+                <button
+                  className="portrait-home__nav-link"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewScraps();
+                  }}
+                >
+                  scraps
+                </button>
+              )}
+            </ReleasedFeature>
             <button
               className="portrait-home__nav-link"
               onClick={(e) => {
@@ -310,14 +315,16 @@ export function InternetPortraitHome({
               changelog
             </button>
           </div>
-          {onViewBagSettings && (
-            <button
-              className="portrait-home__nav-link portrait-home__bag-settings-link"
-              onClick={onViewBagSettings}
-            >
-              bag settings
-            </button>
-          )}
+          <ReleasedFeature feature="BAG_SETTINGS">
+            {onViewBagSettings && (
+              <button
+                className="portrait-home__nav-link portrait-home__bag-settings-link"
+                onClick={onViewBagSettings}
+              >
+                bag settings
+              </button>
+            )}
+          </ReleasedFeature>
         </section>
       </main>
 

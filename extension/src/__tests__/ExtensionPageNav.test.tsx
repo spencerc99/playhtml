@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { ExtensionPageNav } from "../components/ExtensionPageNav";
 
+vi.mock("../components/ExtensionPageNav.scss", () => ({}));
+
 async function renderNavigation(currentPage: "portrait" | "time") {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -58,19 +60,15 @@ describe("ExtensionPageNav", () => {
     }
   });
 
-  it("shows scraps when internal development features are enabled", async () => {
+  it("does not release scraps through internal development mode", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
       internalDevFeaturesEnabled: true,
     });
     const { container, root } = await renderNavigation("portrait");
 
     try {
-      expect(container.textContent).toContain("scraps");
-      expect(
-        container.querySelector(
-          'a[href="chrome-extension://test/scraps.html"]',
-        ),
-      ).not.toBeNull();
+      expect(container.textContent).not.toContain("scraps");
+      expect(browser.storage.local.get).not.toHaveBeenCalled();
     } finally {
       cleanup(root, container);
     }

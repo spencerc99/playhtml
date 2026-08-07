@@ -1,7 +1,14 @@
 // ABOUTME: Full-tab Internet Commute with shared ephemeral cursor seating.
 // ABOUTME: Cycles through recent WWO destinations in a bird's-eye train carriage.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   PlayProvider,
@@ -39,6 +46,21 @@ import {
   type CommutePhase,
 } from "./commuteTiming";
 import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
+import {
+  CommuteMobileControls,
+  keepMobileCursorOnAvatar,
+  type CommuteMobileAction,
+} from "./CommuteMobileControls";
+import { CommuteStage } from "./CommuteStage";
+import {
+  COMMUTE_AVATAR_START,
+  findNearbyCommuteSeat,
+  getStandingPosition,
+  isNearCommuteDoor,
+  moveCommuteAvatar,
+  type CommutePoint,
+  type CommuteSeatGeometry,
+} from "./commuteMobile";
 import { ProceduralLandscape } from "./landscape";
 import "./commute.scss";
 
@@ -46,15 +68,9 @@ type CarData = Record<string, never>;
 
 interface RiderAwareness {
   seatId: number | null;
-  color: string;
-  label: string;
 }
 
-interface SeatDefinition {
-  id: number;
-  x: number;
-  y: number;
-  row: "top" | "bottom";
+interface SeatDefinition extends CommuteSeatGeometry {
   bank: number;
 }
 
@@ -64,6 +80,8 @@ interface CommuteCarProps {
   phase: CommutePhase;
   atOrigin: boolean;
   isJoining: boolean;
+  mobileBoarded: boolean;
+  onMobileBoardStateChange: (boarded: boolean) => void;
   onSeatStateChange: (hasSeat: boolean) => void;
 }
 
@@ -97,6 +115,7 @@ const SEATS: SeatDefinition[] = ["top", "bottom"].flatMap((row) =>
 );
 
 const DOORS = [276, 696];
+const DOOR_GEOMETRY = DOORS.map((x) => ({ x }));
 const COMMUTE_REFRESH_MS = 30_000;
 const COMMUTE_ROUTE_TIMEOUT_MS = 5_000;
 
@@ -187,8 +206,10 @@ function useCommuteService(
   routeStatus: RecentRoute["status"],
   serverTimeOffsetMs: number | null,
 ): CommuteServiceConnection {
-  const { presences, setMyPresence, myIdentity } =
-    usePresence<CommuteServicePresence>(COMMUTE_SERVICE_CHANNEL);
+  const { presences, setMyPresence, myIdentity } = usePresence<
+    typeof COMMUTE_SERVICE_CHANNEL,
+    CommuteServicePresence
+  >(COMMUTE_SERVICE_CHANNEL);
   const [connection, setConnection] = useState<CommuteServiceConnection>({
     joinedExistingService: false,
     service: null,
@@ -305,16 +326,21 @@ function CursorRider({
   color,
   label,
   isYou,
+  ariaLabel,
 }: {
   color: string;
   label: string;
   isYou: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <span
       className={`cursor-rider ${isYou ? "cursor-rider--you" : ""}`}
       style={{ "--cursor-color": color } as React.CSSProperties}
-      aria-label={isYou ? "Your cursor is sitting here" : `${label}'s cursor`}
+      aria-label={
+        ariaLabel ??
+        (isYou ? "Your cursor is sitting here" : `${label}'s cursor`)
+      }
     >
       <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden>
         <path
@@ -335,11 +361,13 @@ function Seat({
   seat,
   occupant,
   isMine,
+  isNearby,
   onSelect,
 }: {
   seat: SeatDefinition;
   occupant?: { color: string; label: string };
   isMine: boolean;
+  isNearby: boolean;
   onSelect: () => void;
 }) {
   const unavailable = Boolean(occupant && !isMine);
@@ -352,7 +380,7 @@ function Seat({
     <button
       className={`train-seat train-seat--${seat.row} train-seat--${fabric} ${
         isMine ? "train-seat--mine" : ""
-      }`}
+      } ${isNearby ? "train-seat--nearby" : ""}`}
       style={{ left: seat.x, top: seat.y }}
       type="button"
       data-seat-id={seat.id}
@@ -522,12 +550,12 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     defaultData: {},
     myDefaultAwareness: {
       seatId: null,
-      color: "#5b8db8",
-      label: "rider",
     },
   }),
   ({ awarenessByStableId, myAwareness, setMyAwareness, ref }, props) => {
-    const { onSeatStateChange } = props;
+    const { mobileBoarded, onMobileBoardStateChange, onSeatStateChange } =
+      props;
+    const users = useUsers();
     const {
       configureCursors,
       cursors,
@@ -535,20 +563,34 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       isLoading,
     } = usePlayContext();
     const [toast, setToast] = useState<string | null>(null);
+    const [avatarPosition, setAvatarPosition] =
+      useState<CommutePoint>(COMMUTE_AVATAR_START);
+    const [avatarWalking, setAvatarWalking] = useState(false);
     const toastTimer = useRef<number | undefined>(undefined);
+    const movementVector = useRef<CommutePoint>({ x: 0, y: 0 });
+    const pressedKeys = useRef(new Set<string>());
+    const mobileActionRef = useRef<CommuteMobileAction | null>(null);
+    const setMyAwarenessRef = useRef(setMyAwareness);
+    setMyAwarenessRef.current = setMyAwareness;
     useCursorZone(ref);
+
+    const usersById = useMemo(
+      () => new Map(users.map((user) => [user.pid, user])),
+      [users],
+    );
 
     const ridersBySeat = useMemo(() => {
       const riders = new Map<number, { label: string; color: string }>();
-      for (const awareness of awarenessByStableId.values()) {
+      for (const [stableId, awareness] of awarenessByStableId) {
         if (awareness.seatId === null) continue;
+        const user = usersById.get(stableId);
         riders.set(awareness.seatId, {
-          label: awareness.label,
-          color: awareness.color,
+          label: user?.name ?? "rider",
+          color: user?.color ?? "#5b8db8",
         });
       }
       return riders;
-    }, [awarenessByStableId]);
+    }, [awarenessByStableId, usersById]);
 
     const mySeatId = myAwareness?.seatId ?? null;
     const seatedRiderIds = useMemo(() => {
@@ -583,16 +625,22 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       if (mySeatId !== null) {
         riders.set(mySeatId, {
           label: "you",
-          color: myAwareness?.color || cursors.color || "#5b8db8",
+          color: cursors.color || "#5b8db8",
         });
       }
       return riders;
-    }, [
-      cursors.color,
-      myAwareness?.color,
-      mySeatId,
-      ridersBySeat,
-    ]);
+    }, [cursors.color, mySeatId, ridersBySeat]);
+
+    const occupiedSeatIds = useMemo(
+      () => new Set(displayedRiders.keys()),
+      [displayedRiders],
+    );
+    const nearbySeat =
+      mobileBoarded && mySeatId === null
+        ? findNearbyCommuteSeat(avatarPosition, SEATS, occupiedSeatIds)
+        : null;
+    const nearDoor =
+      mobileBoarded && isNearCommuteDoor(avatarPosition, DOOR_GEOMETRY);
 
     useEffect(() => {
       onSeatStateChange(mySeatId !== null);
@@ -621,8 +669,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
 
       setMyAwareness({
         seatId: mySeatId === seatId ? null : seatId,
-        color: cursors.color || myAwareness?.color || "#5b8db8",
-        label: cursors.name || "rider",
       });
     };
 
@@ -641,6 +687,137 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         window.open(props.currentStop.url, "_blank", "noopener,noreferrer");
       }, 600);
     };
+
+    const standUp = () => {
+      if (mySeatId === null) return;
+      const seat = SEATS.find((candidate) => candidate.id === mySeatId);
+      setMyAwareness({ seatId: null });
+      if (seat) setAvatarPosition(getStandingPosition(seat));
+    };
+
+    let mobileAction: CommuteMobileAction | null = null;
+    if (mySeatId !== null) {
+      mobileAction = {
+        label: "stand up",
+        tone: "stand",
+        onSelect: standUp,
+      };
+    } else if (nearDoor && props.phase === "stopped" && !props.atOrigin) {
+      mobileAction = {
+        label: `step off at ${props.currentStop.domain}`,
+        tone: "exit",
+        onSelect: exitTrain,
+      };
+    } else if (nearbySeat) {
+      mobileAction = {
+        label: "sit down",
+        tone: "sit",
+        onSelect: () => {
+          setAvatarPosition({
+            x: nearbySeat.x + 25,
+            y: nearbySeat.y + 18,
+          });
+          chooseSeat(nearbySeat.id);
+        },
+      };
+    }
+    mobileActionRef.current = mobileAction;
+
+    const updateMovement = useCallback((vector: CommutePoint) => {
+      movementVector.current = vector;
+    }, []);
+
+    useEffect(() => {
+      if (!mobileBoarded) return;
+
+      const keyMap: Record<string, string> = {
+        ArrowLeft: "left",
+        a: "left",
+        ArrowRight: "right",
+        d: "right",
+        ArrowUp: "up",
+        w: "up",
+        ArrowDown: "down",
+        s: "down",
+      };
+      const handleKey = (event: KeyboardEvent) => {
+        const direction = keyMap[event.key];
+        if (direction) {
+          if (event.type === "keydown") {
+            pressedKeys.current.add(direction);
+          } else {
+            pressedKeys.current.delete(direction);
+          }
+          event.preventDefault();
+          return;
+        }
+        if (
+          event.type === "keydown" &&
+          (event.key === "Enter" || event.key === " ")
+        ) {
+          mobileActionRef.current?.onSelect();
+          event.preventDefault();
+        }
+      };
+
+      window.addEventListener("keydown", handleKey);
+      window.addEventListener("keyup", handleKey);
+      return () => {
+        pressedKeys.current.clear();
+        window.removeEventListener("keydown", handleKey);
+        window.removeEventListener("keyup", handleKey);
+      };
+    }, [mobileBoarded]);
+
+    useEffect(() => {
+      if (!mobileBoarded) return;
+
+      const movementTimer = window.setInterval(() => {
+        const vector = { ...movementVector.current };
+        if (pressedKeys.current.has("left")) vector.x -= 1;
+        if (pressedKeys.current.has("right")) vector.x += 1;
+        if (pressedKeys.current.has("up")) vector.y -= 1;
+        if (pressedKeys.current.has("down")) vector.y += 1;
+
+        if (Math.hypot(vector.x, vector.y) < 0.15) {
+          setAvatarWalking(false);
+          return;
+        }
+
+        if (mySeatId !== null) {
+          const seat = SEATS.find((candidate) => candidate.id === mySeatId);
+          setMyAwarenessRef.current({ seatId: null });
+          if (seat) setAvatarPosition(getStandingPosition(seat));
+          setAvatarWalking(true);
+          return;
+        }
+
+        setAvatarWalking(true);
+        setAvatarPosition((current) => moveCommuteAvatar(current, vector));
+      }, 50);
+
+      return () => window.clearInterval(movementTimer);
+    }, [mobileBoarded, mySeatId]);
+
+    useEffect(() => {
+      const car = ref.current;
+      if (!mobileBoarded || mySeatId !== null || !car) return;
+
+      const bounds = car.getBoundingClientRect();
+      if (car.offsetWidth === 0 || car.offsetHeight === 0) return;
+
+      // Feed joystick movement through the cursor client's paced transport so
+      // remote riders see the train avatar instead of the finger on the joystick.
+      document.dispatchEvent(
+        new MouseEvent("mousemove", {
+          bubbles: true,
+          clientX:
+            bounds.left + avatarPosition.x * (bounds.width / car.offsetWidth),
+          clientY:
+            bounds.top + avatarPosition.y * (bounds.height / car.offsetHeight),
+        }),
+      );
+    }, [avatarPosition, mobileBoarded, mySeatId, ref]);
 
     const doorOpen = props.phase === "stopped";
     const canExit = doorOpen && !props.atOrigin;
@@ -699,14 +876,46 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
               seat={seat}
               occupant={displayedRiders.get(seat.id)}
               isMine={mySeatId === seat.id}
+              isNearby={nearbySeat?.id === seat.id}
               onSelect={() => chooseSeat(seat.id)}
             />
           ))}
+
+          {mobileBoarded && mySeatId === null && (
+            <span
+              className={`commute-mobile-avatar ${
+                avatarWalking ? "commute-mobile-avatar--walking" : ""
+              }`}
+              style={{
+                left: avatarPosition.x,
+                top: avatarPosition.y,
+              }}
+            >
+              <CursorRider
+                color={cursors.color || "#3d3833"}
+                label="you"
+                isYou
+                ariaLabel="Your cursor is walking through the train"
+              />
+            </span>
+          )}
         </section>
         {toast && (
           <div className="commute-toast" role="status">
             {toast}
           </div>
+        )}
+        {createPortal(
+          <CommuteMobileControls
+            action={mobileAction}
+            boarded={mobileBoarded}
+            onBoard={() => {
+              setAvatarPosition(COMMUTE_AVATAR_START);
+              onMobileBoardStateChange(true);
+            }}
+            onMove={updateMovement}
+          />,
+          document.body,
         )}
       </section>
     );
@@ -795,6 +1004,7 @@ function InternetCommute() {
   const browsingCount = recentRoute.activePeople;
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [hasSeat, setHasSeat] = useState(false);
+  const [mobileBoarded, setMobileBoarded] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -837,6 +1047,8 @@ function InternetCommute() {
           ? serviceConnection.service?.id
           : undefined
       }
+      onMouseMove={mobileBoarded ? keepMobileCursorOnAvatar : undefined}
+      onTouchMove={mobileBoarded ? keepMobileCursorOnAvatar : undefined}
     >
       <div className="commute-shell">
         <header className="commute-header">
@@ -866,32 +1078,36 @@ function InternetCommute() {
           hasSeat={hasSeat}
         />
 
-        <LandscapeWindow
-          currentStop={currentStop}
-          platformStop={platformStop}
-          phase={timing.phase}
-          platformAtOrigin={platformAtOrigin}
-          edge="upper"
-          stops={sceneryStops}
-          stopIndex={timing.stopIndex}
-        />
-        <CommuteCar
-          id="internet-commute-car"
-          currentStop={currentStop}
-          phase={timing.phase}
-          atOrigin={timing.atOrigin}
-          isJoining={serviceConnection.joinedExistingService}
-          onSeatStateChange={setHasSeat}
-        />
-        <LandscapeWindow
-          currentStop={currentStop}
-          platformStop={platformStop}
-          phase={timing.phase}
-          platformAtOrigin={platformAtOrigin}
-          edge="lower"
-          stops={sceneryStops}
-          stopIndex={timing.stopIndex}
-        />
+        <CommuteStage>
+          <LandscapeWindow
+            currentStop={currentStop}
+            platformStop={platformStop}
+            phase={timing.phase}
+            platformAtOrigin={platformAtOrigin}
+            edge="upper"
+            stops={sceneryStops}
+            stopIndex={timing.stopIndex}
+          />
+          <CommuteCar
+            id="internet-commute-car"
+            currentStop={currentStop}
+            phase={timing.phase}
+            atOrigin={timing.atOrigin}
+            isJoining={serviceConnection.joinedExistingService}
+            mobileBoarded={mobileBoarded}
+            onMobileBoardStateChange={setMobileBoarded}
+            onSeatStateChange={setHasSeat}
+          />
+          <LandscapeWindow
+            currentStop={currentStop}
+            platformStop={platformStop}
+            phase={timing.phase}
+            platformAtOrigin={platformAtOrigin}
+            edge="lower"
+            stops={sceneryStops}
+            stopIndex={timing.stopIndex}
+          />
+        </CommuteStage>
 
         <div className="commute-counts">
           <strong>
