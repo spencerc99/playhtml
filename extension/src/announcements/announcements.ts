@@ -20,8 +20,8 @@ export const ANNOUNCEMENTS: Announcement[] = [
   {
     id: "history-2026-08",
     shippedAt: Date.parse("2026-08-06T00:00:00Z"),
-    title: "Your browsing history has a new home",
-    body: "History gathers where your time went, the smaller places you explored, the places you settled into, and a portrait from each day. Find it in every new tab or from the popup.",
+    title: "Browsing history review",
+    body: "We browse so many corners of the internet. What were the rabbit holes you went on? Where did you spend time on? A new tab experience shares a review of your browsing history from the week, month, or year. Find it in every new tab or from the popup.",
     popupOnly: true,
     cta: {
       label: "open history →",

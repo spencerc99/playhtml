@@ -28,7 +28,7 @@ describe("AnnouncementPostcard", () => {
     const announcement: Announcement = {
       id: "history",
       shippedAt: Date.parse("2026-08-06T00:00:00Z"),
-      title: "Your browsing history has a new home",
+      title: "Browsing history review",
       body: "Find it in every new tab or from the popup.",
       cta: {
         label: "open history →",

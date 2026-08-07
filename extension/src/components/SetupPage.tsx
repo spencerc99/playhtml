@@ -11,18 +11,16 @@ import { getPublicPlayerIdentity } from "../storage/playerIdentity";
 import { LEGIBILITY_KEY } from "../utils/keyboardRedaction";
 import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
-import { WORKER_URL } from "@movement/config";
+import { MilestoneToastPreview } from "./MilestoneToastPreview";
 
-type Step = "welcome" | "configure" | "history" | "wikipedia" | "social";
+type Step = "welcome" | "configure" | "done";
 type Preset = "abstain" | "participate" | "allIn";
 type CollectorMode = "off" | "local" | "shared";
 
 const SETUP_STEPS: Array<{ id: Step; label: string }> = [
   { id: "welcome", label: "welcome" },
   { id: "configure", label: "consent" },
-  { id: "history", label: "history" },
-  { id: "wikipedia", label: "wikipedia" },
-  { id: "social", label: "social" },
+  { id: "done", label: "complete" },
 ];
 
 interface PresetConfig {
@@ -83,7 +81,6 @@ function presetConfigs(): Record<Preset, PresetConfig> {
 export default function SetupPage() {
   const [step, setStep] = useState<Step>("welcome");
   const showDevStepNav = new URLSearchParams(window.location.search).has("dev");
-  const [email, setEmail] = useState("");
   const [color, setColor] = useState<string>("");
   const presets = presetConfigs();
   const [preset, setPreset] = useState<Preset>("participate");
@@ -155,7 +152,7 @@ export default function SetupPage() {
 
       await browser.storage.local.set(toSet);
       await savePlayerColor(color);
-      setStep("history");
+      setStep("done");
     } finally {
       setBusy(false);
     }
@@ -164,23 +161,7 @@ export default function SetupPage() {
   const finishOnboarding = async () => {
     setBusy(true);
     try {
-      const trimmedEmail = email.trim();
-      await browser.storage.local.set({
-        onboarding_complete: "true",
-        ...(trimmedEmail ? { setup_email: trimmedEmail } : {}),
-      });
-
-      if (trimmedEmail) {
-        fetch(`${WORKER_URL}/subscribe`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: trimmedEmail,
-            source: "extension-setup",
-          }),
-        }).catch(() => {});
-      }
-
+      await browser.storage.local.set({ onboarding_complete: "true" });
       window.close();
     } finally {
       setBusy(false);
@@ -334,130 +315,103 @@ export default function SetupPage() {
           </section>
         )}
 
-        {step === "history" && (
+        {step === "done" && (
           <section className="setup-step">
-            <span className="setup-step__eyebrow">
-              A PLACE TO RETURN TO · 1/3
-            </span>
-            <h2 className="setup-step__heading">Your history</h2>
+            <h2 className="setup-step__heading">All set!</h2>
             <p className="setup-step__desc">
-              Every new tab opens a record of how you browsed. It shows where
-              your time went, the smaller places you explored, places you
-              settled into, and a small portrait from each day.
+              You can close this tab and open the popup to explore your
+              portrait. A few things to know as you wander:
             </p>
+
             <div className="setup-step__tip">
-              <h3 className="setup-step__subheading">
-                More than a list of pages
-              </h3>
+              <h3 className="setup-step__subheading">See your trail, anywhere</h3>
               <p className="setup-step__desc">
-                It favors active browsing and the small web, rather than
-                celebrating whichever platform happened to hold the most time.
-                You can always return through the <strong>history</strong> link
-                in the popup.
+                Press{" "}
+                <kbd className="setup-step__kbd">
+                  {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}
+                </kbd>
+                <span className="setup-step__kbd-plus">+</span>
+                <kbd className="setup-step__kbd">Shift</kbd>
+                <span className="setup-step__kbd-plus">+</span>
+                <kbd className="setup-step__kbd">H</kbd> on any page to bring up
+                your historical overlay—the cursor trails, clicks, and scrolls
+                you left there before.
               </p>
             </div>
-            <div className="setup-step__actions">
+
+            <div className="setup-step__tip">
+              <h3 className="setup-step__subheading">Milestones along the way</h3>
+              <p className="setup-step__desc">
+                As you move, we'll drop the occasional note—marking miles
+                walked, time spent, and places you keep returning to.
+              </p>
+              <MilestoneToastPreview />
+            </div>
+
+            <div className="setup-step__tip">
+              <h3 className="setup-step__subheading">Review your browsing</h3>
+              <p className="setup-step__desc">
+                Every new tab reviews where your time went, the smaller places
+                you explored, and a cursor portrait from each day. You can also
+                open <strong>history</strong> from the popup.
+              </p>
               <button
-                onClick={() => setStep("configure")}
-                className="setup-step__btn-secondary"
-              >
-                Back
-              </button>
-              <button
+                type="button"
                 onClick={() => void openExtensionPage("newtab.html")}
-                className="setup-step__btn-secondary"
+                className="setup-step__text-link"
               >
                 Open history ↗
               </button>
-              <button
-                onClick={() => setStep("wikipedia")}
-                className="setup-step__btn-primary"
-              >
-                Next
-              </button>
             </div>
-          </section>
-        )}
 
-        {step === "wikipedia" && (
-          <section className="setup-step">
-            <span className="setup-step__eyebrow">A SHARED CORNER · 2/3</span>
-            <h2 className="setup-step__heading">Wikipedia feels inhabited</h2>
-            <p className="setup-step__desc">
-              Wikipedia is the first place where the extension becomes
-              explicitly social. You can see other visitors moving through an
-              article, chat with whoever is there, and follow someone through a
-              link when your paths align.
-            </p>
-            <div className="setup-step__wiki-features">
-              <span>live cursors</span>
-              <span>article chat</span>
-              <span>links that remember</span>
-            </div>
-            <p className="setup-step__desc">
-              Links also gather a soft patina after you follow them, so an
-              article gradually carries evidence of where you have wandered.
-            </p>
-            <div className="setup-step__actions">
-              <button
-                onClick={() => setStep("history")}
-                className="setup-step__btn-secondary"
+            <div className="setup-step__tip">
+              <h3 className="setup-step__subheading">
+                Wikipedia feels inhabited
+              </h3>
+              <p className="setup-step__desc">
+                On Wikipedia, live cursors, article chat, remembered links, and
+                shared trails turn reading into a place where you can cross
+                paths with other visitors.
+              </p>
+              <div
+                className="setup-step__wiki-preview"
+                aria-label="Preview of live cursors on Wikipedia"
               >
-                Back
-              </button>
+                <div className="setup-step__wiki-address">
+                  <strong>W</strong>
+                  <span>en.wikipedia.org/wiki/Rabbit_hole</span>
+                </div>
+                <div className="setup-step__wiki-article">
+                  <strong>Rabbit hole</strong>
+                  <i />
+                  <i />
+                  <i className="setup-step__wiki-link" />
+                  <span className="setup-step__wiki-cursor setup-step__wiki-cursor--one">
+                    <CursorSvg size={14} color="#4a9a8a" />
+                    <em>mira</em>
+                  </span>
+                  <span className="setup-step__wiki-cursor setup-step__wiki-cursor--two">
+                    <CursorSvg size={14} color="#d8835d" />
+                    <em>sol</em>
+                  </span>
+                </div>
+              </div>
               <button
+                type="button"
                 onClick={() =>
                   void browser.tabs.create({
                     url: "https://en.wikipedia.org/wiki/Wikipedia:Today%27s_featured_article",
                   })
                 }
-                className="setup-step__btn-secondary"
+                className="setup-step__text-link"
               >
                 Visit Wikipedia ↗
               </button>
-              <button
-                onClick={() => setStep("social")}
-                className="setup-step__btn-primary"
-              >
-                Next
-              </button>
             </div>
-          </section>
-        )}
 
-        {step === "social" && (
-          <section className="setup-step">
-            <span className="setup-step__eyebrow">WHAT COMES NEXT · 3/3</span>
-            <h2 className="setup-step__heading">
-              More social places are coming
-            </h2>
-            <p className="setup-step__desc">
-              Wikipedia is one beginning. More sites will become places where
-              people can cross paths, leave traces, and travel together without
-              retreating into another feed.
-            </p>
-            <div className="setup-step__field">
-              <label
-                className="setup-step__field-label"
-                htmlFor="early-access-email"
-              >
-                Email for early access (optional)
-              </label>
-              <input
-                id="early-access-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                className="setup-step__input"
-              />
-              <span className="setup-step__field-help">
-                Occasional updates and invitations to try social experiments.
-              </span>
-            </div>
             <div className="setup-step__actions">
               <button
-                onClick={() => setStep("wikipedia")}
+                onClick={() => setStep("configure")}
                 className="setup-step__btn-secondary"
               >
                 Back

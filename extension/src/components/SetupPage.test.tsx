@@ -1,5 +1,5 @@
-// ABOUTME: Verifies first-time setup continues through the product tour before completion.
-// ABOUTME: Covers history, Wikipedia, and social early-access onboarding steps.
+// ABOUTME: Verifies first-time setup preserves its completion previews before completion.
+// ABOUTME: Covers History, Wikipedia, milestone, and dev-navigation content.
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -15,6 +15,9 @@ vi.mock("./TrailsHero", () => ({
 vi.mock("./Collections", () => ({
   CollectorList: () => <div>collector choices</div>,
 }));
+vi.mock("./MilestoneToastPreview", () => ({
+  MilestoneToastPreview: () => <div>milestone preview</div>,
+}));
 vi.mock("../storage/playerColor", () => ({
   savePlayerColor: vi.fn().mockResolvedValue(undefined),
 }));
@@ -23,10 +26,6 @@ vi.mock("../storage/playerIdentity", () => ({
     playerStyle: { colorPalette: ["#4a9a8a"] },
   }),
 }));
-vi.mock("@movement/config", () => ({
-  WORKER_URL: "https://worker.example",
-}));
-
 async function renderSetup() {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -72,7 +71,6 @@ describe("SetupPage", () => {
         disconnect() {}
       },
     );
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response()));
     Object.assign(browser.runtime, {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
     });
@@ -86,55 +84,30 @@ describe("SetupPage", () => {
     document.body.innerHTML = "";
   });
 
-  it("introduces history, Wikipedia, and social access before completing setup", async () => {
+  it("keeps the original completion tips and adds History and Wikipedia", async () => {
     const { container, root } = await renderSetup();
 
     try {
       await click(container, "Get started");
       await click(container, "Continue");
 
-      expect(container.textContent).toContain("Your history");
+      expect(container.textContent).toContain("All set!");
+      expect(container.textContent).toContain("See your trail, anywhere");
+      expect(container.textContent).toContain("Milestones along the way");
+      expect(container.textContent).toContain("milestone preview");
+      expect(container.textContent).toContain("Review your browsing");
+      expect(container.textContent).toContain("Wikipedia feels inhabited");
+      expect(container.querySelector('input[type="email"]')).toBeNull();
       expect(browser.storage.local.set).toHaveBeenCalled();
       expect(browser.storage.local.set).not.toHaveBeenCalledWith(
         expect.objectContaining({ onboarding_complete: "true" }),
       );
       expect(savePlayerColor).toHaveBeenCalledWith("#4a9a8a");
 
-      await click(container, "Next");
-      expect(container.textContent).toContain("Wikipedia");
-
-      await click(container, "Next");
-      expect(container.textContent).toContain("More social places are coming");
-
-      const email = container.querySelector<HTMLInputElement>(
-        'input[type="email"]',
-      );
-      expect(email).not.toBeNull();
-      await act(async () => {
-        const setValue = Object.getOwnPropertyDescriptor(
-          HTMLInputElement.prototype,
-          "value",
-        )?.set;
-        setValue?.call(email, "person@example.com");
-        email!.dispatchEvent(new Event("input", { bubbles: true }));
-      });
       await click(container, "Finish setup");
 
       expect(browser.storage.local.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          onboarding_complete: "true",
-          setup_email: "person@example.com",
-        }),
-      );
-      expect(fetch).toHaveBeenCalledWith(
-        "https://worker.example/subscribe",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            email: "person@example.com",
-            source: "extension-setup",
-          }),
-        }),
+        expect.objectContaining({ onboarding_complete: "true" }),
       );
     } finally {
       cleanup(root, container);
@@ -157,10 +130,8 @@ describe("SetupPage", () => {
       );
       expect(devNav).not.toBeNull();
 
-      await click(preview.container, "wikipedia");
-      expect(preview.container.textContent).toContain(
-        "Wikipedia feels inhabited",
-      );
+      await click(preview.container, "complete");
+      expect(preview.container.textContent).toContain("All set!");
       expect(browser.storage.local.set).not.toHaveBeenCalled();
     } finally {
       cleanup(preview.root, preview.container);

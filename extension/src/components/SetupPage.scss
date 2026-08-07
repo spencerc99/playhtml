@@ -83,16 +83,6 @@
     margin-bottom: 16px;
   }
 
-  &__eyebrow {
-    display: block;
-    margin-bottom: 8px;
-    color: $accent-teal;
-    font-family: $font-mono;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-  }
-
   &__heading-link {
     color: $accent-teal;
     text-decoration: underline;
@@ -135,13 +125,6 @@
     @include input-field;
     font-size: 14px;
     max-width: 280px;
-  }
-
-  &__field-help {
-    max-width: 320px;
-    color: $text-faint;
-    font-size: 11px;
-    line-height: 1.45;
   }
 
   // ── Preset tabs ─────────────────────────────────────────────────────────────
@@ -316,26 +299,174 @@
     @include btn-secondary;
   }
 
-  // ── Product tour ────────────────────────────────────────────────────────────
+  // ── Completion page ─────────────────────────────────────────────────────────
 
   &__tip {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
+
+    > .setup-step__desc {
+      margin-bottom: 10px;
+    }
   }
 
-  &__wiki-features {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 4px 0 20px;
+  &__kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    border: 1px solid $border-strong;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: $surface;
+    color: $text;
+    font-family: $font-mono;
+    font-size: 11px;
+    line-height: 1.2;
+    vertical-align: baseline;
+  }
 
-    span {
-      padding: 6px 9px;
-      border: 1px solid rgba($accent-blue, 0.34);
-      border-radius: 999px;
-      background: rgba($accent-blue, 0.08);
-      color: $accent-blue;
-      font-family: $font-mono;
-      font-size: 10px;
+  &__kbd-plus {
+    margin: 0 2px;
+    color: $text-muted;
+    font-size: 11px;
+  }
+
+  &__milestone-preview {
+    display: flex;
+    align-items: flex-start;
+    min-height: 96px;
+    margin-top: 12px;
+  }
+
+  &__text-link {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: $accent-teal;
+    font-family: $font-mono;
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: rgba($accent-teal, 0.35);
+    text-underline-offset: 3px;
+
+    &:hover {
+      text-decoration-color: $accent-teal;
     }
+  }
+
+  &__wiki-preview {
+    width: 100%;
+    max-width: 360px;
+    margin: 12px 0 10px;
+    overflow: hidden;
+    border: 1px solid $border;
+    border-radius: 7px;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba($text, 0.06);
+  }
+
+  &__wiki-address {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 9px;
+    border-bottom: 1px solid $border;
+    background: $surface;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 8px;
+
+    strong {
+      color: $text;
+      font-family: Georgia, serif;
+      font-size: 12px;
+    }
+  }
+
+  &__wiki-article {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 86px;
+    padding: 12px 14px;
+
+    > strong {
+      margin-bottom: 2px;
+      font-family: Georgia, serif;
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    > i {
+      display: block;
+      width: 88%;
+      height: 3px;
+      border-radius: 2px;
+      background: #dedbd5;
+    }
+
+    > i:nth-of-type(2) {
+      width: 72%;
+    }
+
+    > .setup-step__wiki-link {
+      width: 48%;
+      background: rgba($accent-blue, 0.45);
+    }
+  }
+
+  &__wiki-cursor {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    color: $text;
+
+    em {
+      padding: 1px 3px;
+      border-radius: 2px;
+      background: rgba($bg, 0.9);
+      font-family: $font-mono;
+      font-size: 7px;
+      font-style: normal;
+    }
+
+    &--one {
+      top: 24px;
+      left: 64%;
+      animation: setup-wiki-cursor-one 6s ease-in-out infinite;
+    }
+
+    &--two {
+      top: 58px;
+      left: 28%;
+      animation: setup-wiki-cursor-two 7s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes setup-wiki-cursor-one {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-38px, 21px);
+  }
+}
+
+@keyframes setup-wiki-cursor-two {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(54px, -26px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-step__wiki-cursor {
+    animation: none;
   }
 }
