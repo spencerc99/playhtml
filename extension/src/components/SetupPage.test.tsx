@@ -95,6 +95,10 @@ describe("SetupPage", () => {
       await click(container, "Continue");
 
       expect(container.textContent).toContain("All set!");
+      expect(
+        container.querySelector(".setup-page__inner--complete"),
+      ).not.toBeNull();
+      expect(container.querySelector(".setup-step--complete")).not.toBeNull();
       expect(container.textContent).toContain("See your trail, anywhere");
       expect(container.textContent).toContain(
         "in your browser toolbar anytime",

@@ -1,5 +1,5 @@
 // ABOUTME: Styles for the full-page first-time setup wizard
-// ABOUTME: Covers consent choices and the three-step product tour
+// ABOUTME: Covers consent choices and the feature-rich completion page
 
 @use "../styles/variables" as *;
 
@@ -17,6 +17,10 @@
     z-index: 1;
     width: 100%;
     max-width: 560px;
+
+    &--complete {
+      max-width: 720px;
+    }
   }
 
   &__dev-nav {
@@ -61,6 +65,22 @@
 }
 
 .setup-step {
+  &--complete {
+    .setup-step__desc {
+      max-width: 620px;
+    }
+
+    .setup-step__portrait-preview {
+      width: 100%;
+      max-width: 380px;
+      height: 180px;
+    }
+
+    .setup-step__wiki-preview {
+      max-width: 520px;
+    }
+  }
+
   &__trail-art {
     position: fixed;
     inset: 0;

@@ -180,7 +180,12 @@ export default function SetupPage() {
       <div className="setup-step__trail-art" ref={heroRef} aria-hidden>
         <TrailsHero width={heroSize.width} height={heroSize.height} />
       </div>
-      <div className="setup-page__inner">
+      <div
+        className={
+          "setup-page__inner" +
+          (step === "done" ? " setup-page__inner--complete" : "")
+        }
+      >
         {step === "welcome" && (
           <section className="setup-step">
             <h1 className="setup-step__title">we were online</h1>
@@ -317,7 +322,7 @@ export default function SetupPage() {
         )}
 
         {step === "done" && (
-          <section className="setup-step">
+          <section className="setup-step setup-step--complete">
             <h2 className="setup-step__heading">All set!</h2>
             <p className="setup-step__desc">
               You can close this tab and open the popup to explore your
