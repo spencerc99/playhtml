@@ -44,6 +44,12 @@ function randomPrimaryColor(): string {
   return hslToHex(hue, 70, 60);
 }
 
+function setupStorageError(isSafari: boolean): string {
+  return isSafari
+    ? "Safari couldn’t save your choices. Disable and re-enable we were online in Safari Settings → Extensions, then try again."
+    : "The extension couldn’t save your choices. Check that it is enabled, then try again.";
+}
+
 function presetConfigs(): Record<Preset, PresetConfig> {
   const types = getValidEventTypes();
   const allLocal = (): Record<string, CollectorMode> => {
@@ -185,11 +191,7 @@ export default function SetupPage() {
       await savePlayerColor(color);
       setStep("done");
     } catch {
-      setSaveError(
-        isSafari
-          ? "Safari couldn’t save your choices. Disable and re-enable we were online in Safari Settings → Extensions, then try again."
-          : "The extension couldn’t save your choices. Check that it is enabled, then try again.",
-      );
+      setSaveError(setupStorageError(isSafari));
     } finally {
       setBusy(false);
     }
@@ -205,9 +207,12 @@ export default function SetupPage() {
 
   const finishOnboarding = async () => {
     setBusy(true);
+    setSaveError(null);
     try {
       await browser.storage.local.set({ onboarding_complete: "true" });
       await closeSetupTab();
+    } catch {
+      setSaveError(setupStorageError(isSafari));
     } finally {
       setBusy(false);
     }
@@ -540,9 +545,14 @@ export default function SetupPage() {
                 className="setup-step__btn-primary"
                 disabled={busy}
               >
-                Finish setup
+                {saveError ? "Try again" : "Finish setup"}
               </button>
             </div>
+            {saveError && (
+              <p className="setup-step__save-error" role="alert">
+                {saveError}
+              </p>
+            )}
           </section>
         )}
       </div>
