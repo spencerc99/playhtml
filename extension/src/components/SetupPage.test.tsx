@@ -76,6 +76,7 @@ describe("SetupPage", () => {
     Object.assign(browser.runtime, {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
     });
+    window.history.replaceState({}, "", "/");
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
@@ -137,6 +138,32 @@ describe("SetupPage", () => {
       );
     } finally {
       cleanup(root, container);
+    }
+  });
+
+  it("shows direct step navigation only with the dev query parameter", async () => {
+    const regular = await renderSetup();
+    expect(
+      regular.container.querySelector('[aria-label="Setup step preview"]'),
+    ).toBeNull();
+    cleanup(regular.root, regular.container);
+
+    window.history.replaceState({}, "", "/?dev");
+    const preview = await renderSetup();
+
+    try {
+      const devNav = preview.container.querySelector(
+        '[aria-label="Setup step preview"]',
+      );
+      expect(devNav).not.toBeNull();
+
+      await click(preview.container, "wikipedia");
+      expect(preview.container.textContent).toContain(
+        "Wikipedia feels inhabited",
+      );
+      expect(browser.storage.local.set).not.toHaveBeenCalled();
+    } finally {
+      cleanup(preview.root, preview.container);
     }
   });
 });

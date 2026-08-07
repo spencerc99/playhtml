@@ -18,6 +18,46 @@
     width: 100%;
     max-width: 560px;
   }
+
+  &__dev-nav {
+    position: fixed;
+    left: 50%;
+    bottom: 12px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 7px;
+    border: 1px solid $border;
+    border-radius: 999px;
+    background: rgba($bg, 0.92);
+    box-shadow: 0 2px 10px rgba($text, 0.08);
+    font-family: $font-mono;
+    font-size: 9px;
+    transform: translateX(-50%);
+    backdrop-filter: blur(8px);
+
+    span {
+      padding: 0 4px;
+      color: $text-faint;
+    }
+
+    button {
+      padding: 3px 6px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: $text-muted;
+      font: inherit;
+      cursor: pointer;
+
+      &:hover,
+      &[aria-current="step"] {
+        background: $surface-hover;
+        color: $accent-teal;
+      }
+    }
+  }
 }
 
 .setup-step {

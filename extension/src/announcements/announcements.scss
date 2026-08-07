@@ -16,7 +16,7 @@
   background: #f5f0e8;
   border: 1px solid rgba(90, 78, 65, 0.22);
   border-radius: 3px;
-  padding: 8px 88px 9px 10px; // 88px right padding reserves room for cancellation mark
+  padding: 8px 10px 9px;
   cursor: pointer;
   font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   color: #3d3833;
@@ -50,6 +50,7 @@
     position: absolute;
     right: 10px;
     top: 6px;
+    z-index: 0;
     width: 72px;
     text-align: center;
     pointer-events: none;
@@ -89,6 +90,8 @@
   }
 
   &__row {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -122,9 +125,7 @@
     font-weight: 700;
     line-height: 1.25;
     color: #3d3833;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
   }
 
   &__close {

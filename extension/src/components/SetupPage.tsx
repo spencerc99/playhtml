@@ -17,6 +17,14 @@ type Step = "welcome" | "configure" | "history" | "wikipedia" | "social";
 type Preset = "abstain" | "participate" | "allIn";
 type CollectorMode = "off" | "local" | "shared";
 
+const SETUP_STEPS: Array<{ id: Step; label: string }> = [
+  { id: "welcome", label: "welcome" },
+  { id: "configure", label: "consent" },
+  { id: "history", label: "history" },
+  { id: "wikipedia", label: "wikipedia" },
+  { id: "social", label: "social" },
+];
+
 interface PresetConfig {
   label: string;
   subhead: string;
@@ -74,6 +82,7 @@ function presetConfigs(): Record<Preset, PresetConfig> {
 
 export default function SetupPage() {
   const [step, setStep] = useState<Step>("welcome");
+  const showDevStepNav = new URLSearchParams(window.location.search).has("dev");
   const [email, setEmail] = useState("");
   const [color, setColor] = useState<string>("");
   const presets = presetConfigs();
@@ -464,6 +473,21 @@ export default function SetupPage() {
           </section>
         )}
       </div>
+      {showDevStepNav ? (
+        <nav className="setup-page__dev-nav" aria-label="Setup step preview">
+          <span>dev</span>
+          {SETUP_STEPS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              aria-current={step === id ? "step" : undefined}
+              onClick={() => setStep(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
     </div>
   );
 }
