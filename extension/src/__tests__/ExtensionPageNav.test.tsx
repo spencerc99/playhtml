@@ -50,7 +50,8 @@ describe("ExtensionPageNav", () => {
     try {
       expect(container.textContent).toContain("portrait");
       expect(container.textContent).toContain("time");
-      expect(container.textContent).toContain("walking record");
+      expect(container.textContent).toContain("history");
+      expect(container.textContent).not.toContain("walking record");
       expect(container.textContent).not.toContain("scraps");
       expect(
         container.querySelector('[aria-current="page"]')?.textContent,

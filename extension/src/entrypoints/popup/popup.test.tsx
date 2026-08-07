@@ -97,6 +97,13 @@ describe("PlayHTMLPopup", () => {
     vi.mocked(browser.tabs.sendMessage).mockResolvedValue({
       elementCount: 0,
     });
+    vi.mocked(browser.tabs.query).mockResolvedValue([
+      { id: 1, url: "https://example.com" },
+    ]);
+    Object.assign(browser.runtime, {
+      getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
+    });
+    vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -112,6 +119,28 @@ describe("PlayHTMLPopup", () => {
       expect(container.querySelector(".commute-entry")).toBeNull();
       expect(container.textContent).not.toContain("scraps");
       expect(container.textContent).not.toContain("bag settings");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("opens browsing history from the popup navigation", async () => {
+    const { container, root } = await renderPopup();
+
+    try {
+      const historyButton = Array.from(
+        container.querySelectorAll<HTMLButtonElement>("button"),
+      ).find((button) => button.textContent?.trim() === "history");
+      expect(historyButton).toBeDefined();
+
+      await act(async () => {
+        historyButton?.click();
+      });
+
+      expect(browser.runtime.getURL).toHaveBeenCalledWith("newtab.html");
+      expect(browser.tabs.create).toHaveBeenCalledWith({
+        url: "chrome-extension://test/newtab.html",
+      });
     } finally {
       cleanup(root, container);
     }

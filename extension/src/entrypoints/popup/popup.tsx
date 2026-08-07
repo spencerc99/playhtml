@@ -465,6 +465,11 @@ function PlayHTMLPopup() {
         window.close();
       }}
       commuteIsOpen={commuteIsOpen}
+      onViewBrowsingHistory={async () => {
+        const url = browser.runtime.getURL("newtab.html");
+        await browser.tabs.create({ url });
+        window.close();
+      }}
       onViewScraps={async () => {
         const url = browser.runtime.getURL("scraps.html");
         await browser.tabs.create({ url });

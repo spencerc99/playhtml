@@ -1,5 +1,8 @@
 # Unreleased
 
+- Open History from every new tab or the popup to see time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
+- Browse a full year of History without repeated page metadata overwhelming the extension.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR

@@ -2,6 +2,7 @@
 // ABOUTME: Collapsed by default (dot + subject); click to expand into body + CTA + dismiss.
 
 import { useState } from "react";
+import browser from "webextension-polyfill";
 import type { Announcement } from "./announcements";
 
 interface Props {
@@ -18,7 +19,11 @@ function formatPostmark(ts: number): string {
   return `${month} ${year}`;
 }
 
-export function AnnouncementPostcard({ announcement, onDismiss, onCtaClick }: Props) {
+export function AnnouncementPostcard({
+  announcement,
+  onDismiss,
+  onCtaClick,
+}: Props) {
   const [expanded, setExpanded] = useState(false);
   const [exiting, setExiting] = useState(false);
 
@@ -36,12 +41,17 @@ export function AnnouncementPostcard({ announcement, onDismiss, onCtaClick }: Pr
     if (!announcement.cta) return;
     e.preventDefault();
     e.stopPropagation();
-    onCtaClick(announcement.id, announcement.cta.href);
+    onCtaClick(announcement.id, ctaHref);
     setExiting(true);
     setTimeout(() => onDismiss(announcement.id), 200);
   }
 
   const postmark = formatPostmark(announcement.shippedAt);
+  const ctaHref = announcement.cta
+    ? "extensionPath" in announcement.cta
+      ? browser.runtime.getURL(announcement.cta.extensionPath)
+      : announcement.cta.href
+    : "";
 
   return (
     <article
@@ -82,7 +92,7 @@ export function AnnouncementPostcard({ announcement, onDismiss, onCtaClick }: Pr
           {announcement.cta ? (
             <a
               className="announcement-postcard__cta"
-              href={announcement.cta.href}
+              href={ctaHref}
               target="_blank"
               rel="noopener noreferrer"
               onClick={handleCta}

@@ -1,5 +1,5 @@
 // ABOUTME: Styles for the full-page first-time setup wizard
-// ABOUTME: Covers welcome, configure, and done steps
+// ABOUTME: Covers consent choices and the three-step product tour
 
 @use "../styles/variables" as *;
 
@@ -41,6 +41,16 @@
     @include heading;
     font-size: 20px;
     margin-bottom: 16px;
+  }
+
+  &__eyebrow {
+    display: block;
+    margin-bottom: 8px;
+    color: $accent-teal;
+    font-family: $font-mono;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
   }
 
   &__heading-link {
@@ -87,6 +97,13 @@
     max-width: 280px;
   }
 
+  &__field-help {
+    max-width: 320px;
+    color: $text-faint;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
   // ── Preset tabs ─────────────────────────────────────────────────────────────
 
   &__preset-tabs {
@@ -111,7 +128,10 @@
     background: $surface;
     border: 1px solid $border;
     color: $text-muted;
-    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    transition:
+      border-color 0.15s,
+      background 0.15s,
+      color 0.15s;
 
     &:not(&--active):hover {
       background: $surface-hover;
@@ -125,7 +145,9 @@
       color: white;
       border-color: $accent-teal;
 
-      .setup-step__preset-subhead { color: rgba(255, 255, 255, 0.85); }
+      .setup-step__preset-subhead {
+        color: rgba(255, 255, 255, 0.85);
+      }
       .setup-step__preset-chip {
         background: rgba(255, 255, 255, 0.2);
         color: white;
@@ -228,7 +250,9 @@
     border: 1px solid $border;
     border-radius: 8px;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
+    transition:
+      border-color 0.15s,
+      background 0.15s;
 
     &:hover {
       border-color: $border-strong;
@@ -252,36 +276,26 @@
     @include btn-secondary;
   }
 
-  // ── Done-step tips ──────────────────────────────────────────────────────────
+  // ── Product tour ────────────────────────────────────────────────────────────
 
   &__tip {
     margin-bottom: 24px;
   }
 
-  &__kbd {
-    display: inline-block;
-    font-family: 'Martian Mono', monospace;
-    font-size: 11px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: $surface;
-    border: 1px solid $border-strong;
-    border-bottom-width: 2px;
-    color: $text;
-    line-height: 1.2;
-    vertical-align: baseline;
-  }
-
-  &__kbd-plus {
-    color: $text-muted;
-    margin: 0 2px;
-    font-size: 11px;
-  }
-
-  &__milestone-preview {
-    margin-top: 12px;
-    min-height: 96px;
+  &__wiki-features {
     display: flex;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 20px;
+
+    span {
+      padding: 6px 9px;
+      border: 1px solid rgba($accent-blue, 0.34);
+      border-radius: 999px;
+      background: rgba($accent-blue, 0.08);
+      color: $accent-blue;
+      font-family: $font-mono;
+      font-size: 10px;
+    }
   }
 }

@@ -24,6 +24,7 @@ interface Props {
   onViewBagSettings?: () => void;
   onViewCommute?: () => void;
   commuteIsOpen?: boolean;
+  onViewBrowsingHistory: () => void;
   onViewScraps?: () => void;
   onViewChangelog: () => void;
   hiddenSiteName?: string;
@@ -49,6 +50,7 @@ export function InternetPortraitHome({
   onViewBagSettings,
   onViewCommute,
   commuteIsOpen = false,
+  onViewBrowsingHistory,
   onViewScraps,
   onViewChangelog,
   hiddenSiteName,
@@ -116,8 +118,6 @@ export function InternetPortraitHome({
       }
     })();
   }, []);
-
-
   useEffect(() => {
     if (!FLAGS.COPRESENCE) return;
     (async () => {
@@ -305,6 +305,15 @@ export function InternetPortraitHome({
                 </button>
               )}
             </ReleasedFeature>
+            <button
+              className="portrait-home__nav-link"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewBrowsingHistory();
+              }}
+            >
+              history
+            </button>
             <button
               className="portrait-home__nav-link"
               onClick={(e) => {

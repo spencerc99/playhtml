@@ -8,13 +8,15 @@ import {
   setState,
   getToastCandidates,
   getPostcardCandidates,
+  recordAnnouncementInstall,
 } from "../announcements/announcement-storage";
 import { ANNOUNCEMENTS } from "../announcements/announcements";
 
 function setupStorage(): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   vi.mocked(browser.storage.local.get).mockImplementation((keys: any) => {
-    if (typeof keys === "string") return Promise.resolve({ [keys]: data[keys] });
+    if (typeof keys === "string")
+      return Promise.resolve({ [keys]: data[keys] });
     if (Array.isArray(keys)) {
       const out: Record<string, unknown> = {};
       keys.forEach((k) => {
@@ -55,8 +57,10 @@ describe("announcement-storage", () => {
   });
 
   it("getToastCandidates excludes already-seen announcements", async () => {
-    const first = ANNOUNCEMENTS[0];
-    if (!first) return; // guard if list is empty in a future state
+    const first = ANNOUNCEMENTS.find(
+      (announcement) => announcement.relevantUrl,
+    );
+    if (!first) return;
     const url = "https://en.wikipedia.org/wiki/Octopus";
     const before = await getToastCandidates(url);
     if (!first.relevantUrl || first.relevantUrl.test(url)) {
@@ -68,7 +72,9 @@ describe("announcement-storage", () => {
   });
 
   it("getToastCandidates respects relevantUrl gating", async () => {
-    const first = ANNOUNCEMENTS[0];
+    const first = ANNOUNCEMENTS.find(
+      (announcement) => announcement.relevantUrl,
+    );
     if (!first || !first.relevantUrl) return;
     const offTarget = "https://example.com/";
     const onTarget = "https://en.wikipedia.org/wiki/Anything";
@@ -81,10 +87,42 @@ describe("announcement-storage", () => {
   it("getPostcardCandidates excludes only dismissed, includes toast-shown", async () => {
     const first = ANNOUNCEMENTS[0];
     if (!first) return;
-    expect((await getPostcardCandidates()).some((a) => a.id === first.id)).toBe(true);
+    expect((await getPostcardCandidates()).some((a) => a.id === first.id)).toBe(
+      true,
+    );
     await setState(first.id, "toast-shown");
-    expect((await getPostcardCandidates()).some((a) => a.id === first.id)).toBe(true);
+    expect((await getPostcardCandidates()).some((a) => a.id === first.id)).toBe(
+      true,
+    );
     await setState(first.id, "dismissed");
-    expect((await getPostcardCandidates()).some((a) => a.id === first.id)).toBe(false);
+    expect((await getPostcardCandidates()).some((a) => a.id === first.id)).toBe(
+      false,
+    );
+  });
+
+  it("keeps popup-only announcements out of page toasts", async () => {
+    const popupOnly = ANNOUNCEMENTS.find(
+      (announcement) => announcement.popupOnly,
+    );
+    expect(popupOnly).toBeDefined();
+    expect(
+      (await getToastCandidates("https://example.com")).some(
+        (announcement) => announcement.id === popupOnly?.id,
+      ),
+    ).toBe(false);
+    expect(
+      (await getPostcardCandidates()).some(
+        (announcement) => announcement.id === popupOnly?.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("hides the announcement backlog from fresh installs", async () => {
+    await recordAnnouncementInstall(Date.parse("2026-08-07T00:00:00Z"));
+
+    expect(
+      await getToastCandidates("https://en.wikipedia.org/wiki/Anything"),
+    ).toEqual([]);
+    expect(await getPostcardCandidates()).toEqual([]);
   });
 });

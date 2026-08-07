@@ -35,6 +35,7 @@ import {
   pxToMiles,
 } from '../milestones/milestones'
 import { getSessionId } from '../storage/participant'
+import { recordAnnouncementInstall } from '../announcements/announcement-storage'
 
 interface ScrapRecordBase {
   id: string
@@ -394,6 +395,9 @@ export default defineBackground(() => {
   // Extension lifecycle
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
+      recordAnnouncementInstall().catch((e) => {
+        console.warn('Failed to record extension install time', e)
+      })
       // First time installation - setup default identity
       initializePlayerIdentity().then(() => syncIdentityToServer())
       // Open setup page in a new tab
