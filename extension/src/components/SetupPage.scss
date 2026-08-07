@@ -336,6 +336,25 @@
     margin-top: 12px;
   }
 
+  &__portrait-preview {
+    position: relative;
+    width: 250px;
+    height: 132px;
+    margin-top: 12px;
+    overflow: hidden;
+    border: 1px solid $border;
+    border-radius: 7px;
+    box-shadow: 0 2px 8px rgba($text, 0.06);
+  }
+
+  &__progress-note {
+    margin: -3px 0 0;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
   &__text-link {
     padding: 0;
     border: 0;

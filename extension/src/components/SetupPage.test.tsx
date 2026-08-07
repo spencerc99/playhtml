@@ -18,6 +18,9 @@ vi.mock("./Collections", () => ({
 vi.mock("./MilestoneToastPreview", () => ({
   MilestoneToastPreview: () => <div>milestone preview</div>,
 }));
+vi.mock("./PortraitCard", () => ({
+  PortraitCard: () => <div>browsing portrait preview</div>,
+}));
 vi.mock("../storage/playerColor", () => ({
   savePlayerColor: vi.fn().mockResolvedValue(undefined),
 }));
@@ -93,9 +96,15 @@ describe("SetupPage", () => {
 
       expect(container.textContent).toContain("All set!");
       expect(container.textContent).toContain("See your trail, anywhere");
-      expect(container.textContent).toContain("Milestones along the way");
-      expect(container.textContent).toContain("milestone preview");
+      expect(container.textContent).toContain(
+        "Click the extension popup anytime",
+      );
+      expect(container.textContent).toContain("browsing portrait preview");
       expect(container.textContent).toContain("Review your browsing");
+      expect(container.textContent).toContain("milestone preview");
+      expect(container.textContent).toContain(
+        "We'll share some of your progress as you browse.",
+      );
       expect(container.textContent).toContain("Wikipedia feels inhabited");
       expect(container.querySelector('input[type="email"]')).toBeNull();
       expect(browser.storage.local.set).toHaveBeenCalled();

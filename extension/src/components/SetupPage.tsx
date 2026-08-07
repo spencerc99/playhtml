@@ -12,6 +12,7 @@ import { LEGIBILITY_KEY } from "../utils/keyboardRedaction";
 import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
+import { PortraitCard } from "./PortraitCard";
 
 type Step = "welcome" | "configure" | "done";
 type Preset = "abstain" | "participate" | "allIn";
@@ -326,7 +327,8 @@ export default function SetupPage() {
             <div className="setup-step__tip">
               <h3 className="setup-step__subheading">See your trail, anywhere</h3>
               <p className="setup-step__desc">
-                Press{" "}
+                Click the extension popup anytime to see your current portrait.
+                On any page, press{" "}
                 <kbd className="setup-step__kbd">
                   {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}
                 </kbd>
@@ -337,15 +339,24 @@ export default function SetupPage() {
                 your historical overlay—the cursor trails, clicks, and scrolls
                 you left there before.
               </p>
-            </div>
-
-            <div className="setup-step__tip">
-              <h3 className="setup-step__subheading">Milestones along the way</h3>
-              <p className="setup-step__desc">
-                As you move, we'll drop the occasional note—marking miles
-                walked, time spent, and places you keep returning to.
-              </p>
-              <MilestoneToastPreview />
+              <div
+                className="setup-step__portrait-preview"
+                aria-label="Preview of your browsing portrait"
+              >
+                <PortraitCard
+                  domain=""
+                  scopeLabel="your week"
+                  totalTimeMs={14 * 60 * 60_000 + 41 * 60_000}
+                  hourBuckets={[
+                    0, 0, 0, 0, 0, 0, 1, 4, 9, 12, 8, 5, 4, 7, 10, 8, 6, 5,
+                    7, 11, 9, 4, 1, 0,
+                  ]}
+                  cursorDistancePx={4_115_756}
+                  dateRange={null}
+                  dateLabel="jul 27 – aug 2"
+                  uniquePageCount={83}
+                />
+              </div>
             </div>
 
             <div className="setup-step__tip">
@@ -362,6 +373,10 @@ export default function SetupPage() {
               >
                 Open history ↗
               </button>
+              <MilestoneToastPreview />
+              <p className="setup-step__progress-note">
+                We'll share some of your progress as you browse.
+              </p>
             </div>
 
             <div className="setup-step__tip">
