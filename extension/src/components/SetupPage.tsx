@@ -330,7 +330,9 @@ export default function SetupPage() {
             </p>
 
             <div className="setup-step__tip">
-              <h3 className="setup-step__subheading">See your trail, anywhere</h3>
+              <h3 className="setup-step__subheading">
+                1. See your trail, anywhere
+              </h3>
               <p className="setup-step__desc">
                 Click{" "}
                 <span className="setup-step__toolbar-icon">
@@ -372,7 +374,9 @@ export default function SetupPage() {
             </div>
 
             <div className="setup-step__tip">
-              <h3 className="setup-step__subheading">Review your browsing</h3>
+              <h3 className="setup-step__subheading">
+                2. Review your browsing
+              </h3>
               <p className="setup-step__desc">
                 Every new tab reviews where your time went, the smaller places
                 you explored, and a cursor portrait from each day. You can also
@@ -393,7 +397,7 @@ export default function SetupPage() {
 
             <div className="setup-step__tip">
               <h3 className="setup-step__subheading">
-                Wikipedia feels inhabited
+                3. Wikipedia feels inhabited
               </h3>
               <p className="setup-step__desc">
                 On Wikipedia, live cursors, article chat, remembered links, and

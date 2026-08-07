@@ -99,7 +99,7 @@ describe("SetupPage", () => {
         container.querySelector(".setup-page__inner--complete"),
       ).not.toBeNull();
       expect(container.querySelector(".setup-step--complete")).not.toBeNull();
-      expect(container.textContent).toContain("See your trail, anywhere");
+      expect(container.textContent).toContain("1. See your trail, anywhere");
       expect(container.textContent).toContain(
         "in your browser toolbar anytime",
       );
@@ -108,12 +108,12 @@ describe("SetupPage", () => {
       );
       expect(toolbarIcon?.src).toBe("chrome-extension://test/icon/32.png");
       expect(container.textContent).toContain("browsing portrait preview");
-      expect(container.textContent).toContain("Review your browsing");
+      expect(container.textContent).toContain("2. Review your browsing");
       expect(container.textContent).toContain("milestone preview");
       expect(container.textContent).toContain(
         "We'll share some of your progress as you browse.",
       );
-      expect(container.textContent).toContain("Wikipedia feels inhabited");
+      expect(container.textContent).toContain("3. Wikipedia feels inhabited");
       expect(container.querySelector('input[type="email"]')).toBeNull();
       expect(browser.storage.local.set).toHaveBeenCalled();
       expect(browser.storage.local.set).not.toHaveBeenCalledWith(
