@@ -1,5 +1,12 @@
 # @playhtml/extension
 
+## 0.1.21 (2026-08-07)
+
+- Keep newly collected activity queued when local storage temporarily fails.
+- Tune Wikipedia patina
+- See time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
+
+
 ## 0.1.20 (2026-07-23)
 
 - Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
