@@ -487,7 +487,9 @@ function LandscapeWindow({
             key={stop.id}
           >
             <StopFavicon stop={stop} />
-            <span>{stop.domain}</span>
+            <span className="passing-site__domain" title={stop.domain}>
+              {stop.domain}
+            </span>
             <i>{formatStopAge(stop)} ago</i>
           </span>
         ))}

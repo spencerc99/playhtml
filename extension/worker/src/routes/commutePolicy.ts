@@ -16,6 +16,38 @@ const BASE_SCENERY_LIMIT = 100;
 const MAX_SCENERY_LIMIT = 200;
 const NAVIGATION_EVENTS_PER_SCENERY_ITEM = 5;
 
+const MOVIE_TV_STREAMING_DOMAINS = [
+  'amcplus.com',
+  'britbox.com',
+  'criterionchannel.com',
+  'crunchyroll.com',
+  'directv.com',
+  'discoveryplus.com',
+  'disneyplus.com',
+  'fubo.tv',
+  'hoopladigital.com',
+  'hulu.com',
+  'kanopy.com',
+  'max.com',
+  'mubi.com',
+  'netflix.com',
+  'paramountplus.com',
+  'peacocktv.com',
+  'philo.com',
+  'play.hbomax.com',
+  'pluto.tv',
+  'primevideo.com',
+  'showtime.com',
+  'sling.com',
+  'starz.com',
+  'therokuchannel.roku.com',
+  'tubitv.com',
+  'tv.apple.com',
+  'video.amazon.com',
+  'viki.com',
+  'watch.plex.tv',
+];
+
 const SCENERY_ONLY_DOMAINS = [
   'accounts.google.com',
   'ai.joinhandshake.com',
@@ -50,10 +82,10 @@ const SCENERY_ONLY_DOMAINS = [
   'meet.google.com',
   'messenger.com',
   'miro.com',
+  ...MOVIE_TV_STREAMING_DOMAINS,
   'myaccount.google.com',
   'mygju.gju.edu.jo',
   'myjobs.indeed.com',
-  'netflix.com',
   'notion.so',
   'onedrive.live.com',
   'onlyfans.com',
@@ -64,7 +96,6 @@ const SCENERY_ONLY_DOMAINS = [
   'partiful.com',
   'patreon.com',
   'photos.google.com',
-  'play.hbomax.com',
   'profile.indeed.com',
   'proton.me',
   'safelinks.protection.outlook.com',
@@ -76,6 +107,7 @@ const SCENERY_ONLY_DOMAINS = [
   'stoat.chat',
   'tally.so',
   'tasks.google.com',
+  'tiktok.com',
   'twitch.tv',
   'twitter.com',
   'van.dpo.org',
@@ -530,13 +562,6 @@ const PLATFORM_ROUTE_POLICIES: PlatformRoutePolicy[] = [
     matches: (domain) => domainMatches(domain, 'pinterest.com'),
     sanitize: (url) =>
       /^\/pin\/\d+(?:\/|$)/.test(url.pathname) ? sanitizeContentUrl(url) : null,
-  },
-  {
-    matches: (domain) => domainMatches(domain, 'tiktok.com'),
-    sanitize: (url) =>
-      /^\/@[^/]+\/video\/\d+(?:\/|$)/.test(url.pathname)
-        ? sanitizeContentUrl(url)
-        : null,
   },
   {
     matches: (domain) => domainMatches(domain, 'github.com'),

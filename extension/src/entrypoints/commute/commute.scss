@@ -510,6 +510,12 @@ button {
     }
   }
 
+  .passing-site__domain {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   i {
     color: $text-faint;
     font-style: normal;

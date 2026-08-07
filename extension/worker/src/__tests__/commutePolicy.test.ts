@@ -870,6 +870,66 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('keeps short-form video and movie streaming services as scenery only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'tiktok-video',
+          'navigation',
+          'https://www.tiktok.com/@person/video/1234567890123456789',
+          500,
+          'tiktok-rider',
+          'A particular TikTok video',
+        ),
+        event(
+          'peacock-show',
+          'navigation',
+          'https://www.peacocktv.com/watch/asset/tv/a-show/123',
+          400,
+          'peacock-rider',
+          'A show on Peacock',
+        ),
+        event(
+          'disney-show',
+          'navigation',
+          'https://www.disneyplus.com/series/a-show/abc123',
+          300,
+          'disney-rider',
+          'A show on Disney+',
+        ),
+        event(
+          'criterion-film',
+          'navigation',
+          'https://www.criterionchannel.com/videos/a-film',
+          200,
+          'criterion-rider',
+          'A film on Criterion Channel',
+        ),
+        event(
+          'article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          100,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'tiktok.com',
+      'peacocktv.com',
+      'disneyplus.com',
+      'criterionchannel.com',
+      'garden.example',
+    ]);
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
   it('keeps public social posts while excluding profiles on the same platform', () => {
     const response = buildCommuteResponse(
       [
