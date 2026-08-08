@@ -11,36 +11,53 @@ The short manifest description (≤132 chars, shown in search results) lives in
 
 ---
 
-## Chrome Web Store — full description
+## Chrome Web Store and Apple App Store — full description
 
-Chrome renders this field as **plain text** (no markdown, URLs are not
-clickable). Paste exactly as-is.
+Both stores render this field as plain text. Paste exactly as-is.
 
 ```
-A quiet portrait of your time on the internet. Collect traces of where you've been and share them anonymously.
+Turn your browsing history into a living portrait.
 
-we were online is an online multiplayer world—part game, artwork, and tool—that turns the existing Internet into a living, shared world, actively shaped by its inhabitants. Contribute your browsing data to a collective portrait of the Internet and create your own Internet self-portraits.
+we were online is part artwork, game, and browsing-history tool. As you move through the web, it remembers the traces you choose to keep: cursor trails, clicks, scrolls, keyboard rhythm, pages visited, and time spent. Those traces become a visual record of your online life.
 
-Cursor trails, keypresses and clicks, scroll patterns, and navigation rhythms, time on pages come to life on the pages you visit and show you how long you've spent on each page.
+REVIEW YOUR BROWSING
 
-What it collects (all configurable):
-  - Cursor movement, clicks, and holds
-  - Scroll and viewport changes
-  - Page navigation (screen time)
-  - Keyboard rhythm
+Open History from every new tab or the extension popup to see:
+- time by site
+- active explorations and smaller places you returned to
+- a cursor portrait from each day
+- a moving landscape of your real browsing traces
+- up to a year of your walking record across the web
 
-What you can do:
-  - View per-site "internet portraits" that visualize your browsing as trail art
-  - Choose three privacy levels: off, local-only, or shared
-  - Configure exactly which data types are collected
+SEE YOUR TRAIL ANYWHERE
 
-See other people (still in development):
-- On Wikipedia, see others on the same article, chat with them live, watch links grow patina, and follow other cursors down rabbit holes. See it in action https://www.instagram.com/p/DYpRnRAORbE/
+Open your portrait from the browser toolbar. On any page, bring up a historical overlay to revisit the cursor trails, clicks, and scrolls you left there.
 
-Data Collection Policies:
+WIKIPEDIA FEELS INHABITED
 
-* You choose what is collected and where your data goes, on your device or shared for the purposes of the art project.
+On Wikipedia, live cursors, article chat, remembered links, and shared trails turn reading into a place where you can cross paths with other visitors.
+
+YOU STAY IN CONTROL
+
+Choose what is collected and where it goes. Each collection category can be off, stored only on your device, or shared anonymously for the collective artwork. Emails, phone numbers, and Social Security numbers are always redacted from keyboard data.
 ```
+
+### Apple App Store fields
+
+Promotional text:
+
+```
+See where your time went, revisit the smaller places you explored, and turn a year of browsing into a living portrait.
+```
+
+Keywords:
+
+```
+browser history,screen time,cursor trails,internet art,privacy,wikipedia,safari extension
+```
+
+- Support URL: `https://wewere.online/`
+- Marketing URL: `https://wewere.online/`
 
 ---
 
@@ -50,34 +67,29 @@ AMO supports a limited set of HTML tags, so the demo link can be clickable.
 Paste into the "Description" field with HTML enabled.
 
 ```html
-<p>A quiet portrait of your time on the internet. Collect traces of where you've been and share them anonymously.</p>
+<p>Turn your browsing history into a living portrait.</p>
 
-<p>we were online is an online multiplayer world—part game, artwork, and tool—that turns the existing Internet into a living, shared world, actively shaped by its inhabitants. Contribute your browsing data to a collective portrait of the Internet and create your own Internet self-portraits.</p>
+<p>we were online is part artwork, game, and browsing-history tool. As you move through the web, it remembers the traces you choose to keep: cursor trails, clicks, scrolls, keyboard rhythm, pages visited, and time spent. Those traces become a visual record of your online life.</p>
 
-<p>Cursor trails, keypresses and clicks, scroll patterns, and navigation rhythms, time on pages come to life on the pages you visit and show you how long you've spent on each page.</p>
+<p><strong>Review your browsing</strong></p>
 
-<p><strong>What it collects (all configurable):</strong></p>
 <ul>
-  <li>Cursor movement, clicks, and holds</li>
-  <li>Scroll and viewport changes</li>
-  <li>Page navigation (screen time)</li>
-  <li>Keyboard rhythm</li>
+  <li>See time by site.</li>
+  <li>Return to active explorations and smaller places you visited.</li>
+  <li>See a cursor portrait from each day.</li>
+  <li>Move through a landscape of your real browsing traces.</li>
+  <li>Browse up to a year of your walking record across the web.</li>
 </ul>
 
-<p><strong>What you can do:</strong></p>
-<ul>
-  <li>View per-site "internet portraits" that visualize your browsing as trail art</li>
-  <li>Choose three privacy levels: off, local-only, or shared</li>
-  <li>Configure exactly which data types are collected</li>
-</ul>
+<p><strong>See your trail anywhere</strong></p>
 
-<p><strong>See other people (still in development):</strong></p>
-<ul>
-  <li>On Wikipedia, see others on the same article, chat with them live, watch links grow patina, and follow other cursors down rabbit holes. <a href="https://www.instagram.com/p/DYpRnRAORbE/">See it in action</a>.</li>
-</ul>
+<p>Open your portrait from the browser toolbar. On any page, bring up a historical overlay to revisit the cursor trails, clicks, and scrolls you left there.</p>
 
-<p><strong>Data Collection Policies:</strong></p>
-<ul>
-  <li>You choose what is collected and where your data goes, on your device or shared for the purposes of the art project.</li>
-</ul>
+<p><strong>Wikipedia feels inhabited</strong></p>
+
+<p>On Wikipedia, live cursors, article chat, remembered links, and shared trails turn reading into a place where you can cross paths with other visitors.</p>
+
+<p><strong>You stay in control</strong></p>
+
+<p>Choose what is collected and where it goes. Each collection category can be off, stored only on your device, or shared anonymously for the collective artwork. Emails, phone numbers, and Social Security numbers are always redacted from keyboard data.</p>
 ```
