@@ -1,43 +1,11 @@
 // ABOUTME: Tests stable pagination for recent extension events.
 // ABOUTME: Verifies live inserts cannot shift later pages onto duplicate rows.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Env } from '../lib/supabase';
-
-const collectionEvents = {
-  select: vi.fn(),
-  eq: vi.fn(),
-  gte: vi.fn(),
-  lte: vi.fn(),
-  or: vi.fn(),
-  order: vi.fn(),
-  limit: vi.fn(),
-  range: vi.fn(),
-};
-
-const participants = {
-  select: vi.fn(),
-  in: vi.fn(),
-};
-
-const from = vi.fn();
-let offsetPages: Array<{ data: Array<Record<string, unknown>>; error: null }>;
-let keysetPages: Array<{ data: Array<Record<string, unknown>>; error: null }>;
-
-vi.mock('../lib/supabase', () => ({
-  createSupabaseClient: vi.fn(() => ({ from })),
-}));
-
-import { handleRecent } from '../routes/recent';
-
-const ENV: Env = {
-  SUPABASE_URL: 'https://example.supabase.co',
-  SUPABASE_SECRET_KEY: 'k',
-  ADMIN_KEY: 'a',
-  RESEND_API_KEY: 'r',
-  CODA_API_TOKEN: 'c',
-  LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
-};
+import { describe, expect, it } from 'vitest';
+import {
+  getEarlierEventFilter,
+  loadRecentEventRows,
+} from '../routes/recent';
 
 function makeRow(index: number): Record<string, unknown> {
   return {
@@ -54,62 +22,47 @@ function makeRow(index: number): Record<string, unknown> {
   };
 }
 
-describe('handleRecent', () => {
-  beforeEach(() => {
-    Object.values(collectionEvents).forEach((mock) => mock.mockReset());
-    Object.values(participants).forEach((mock) => mock.mockReset());
-    from.mockReset();
+describe('recent event pagination', () => {
+  it('continues after the last row instead of using a shifted offset', async () => {
+    const storedRows = Array.from({ length: 1001 }, (_, index) => makeRow(index));
+    let pageCount = 0;
 
-    const firstPage = Array.from({ length: 1000 }, (_, index) => makeRow(index));
-    offsetPages = [
-      { data: firstPage, error: null },
-      { data: [makeRow(999)], error: null },
-    ];
-    keysetPages = [
-      { data: firstPage, error: null },
-      { data: [makeRow(1000)], error: null },
-    ];
+    const result = await loadRecentEventRows(1001, async (cursor, pageSize) => {
+      pageCount += 1;
+      if (pageCount === 2) storedRows.unshift(makeRow(-1));
 
-    from.mockImplementation((table: string) => {
-      if (table === 'collection_events') return collectionEvents;
-      if (table === 'participants') return participants;
-      throw new Error(`Unexpected table: ${table}`);
+      const rows = storedRows
+        .filter((row) => {
+          if (!cursor) return true;
+          const ts = row.ts as string;
+          const id = row.id as string;
+          return ts < cursor.ts || (ts === cursor.ts && id < cursor.id);
+        })
+        .sort((a, b) => {
+          const tsOrder = (b.ts as string).localeCompare(a.ts as string);
+          return tsOrder || (b.id as string).localeCompare(a.id as string);
+        })
+        .slice(0, pageSize);
+
+      return { data: rows, error: null };
     });
 
-    collectionEvents.select.mockReturnValue(collectionEvents);
-    collectionEvents.eq.mockReturnValue(collectionEvents);
-    collectionEvents.gte.mockReturnValue(collectionEvents);
-    collectionEvents.lte.mockReturnValue(collectionEvents);
-    collectionEvents.or.mockReturnValue(collectionEvents);
-    collectionEvents.order.mockReturnValue(collectionEvents);
-    collectionEvents.range.mockImplementation(() =>
-      Promise.resolve(offsetPages.shift()),
-    );
-    collectionEvents.limit.mockImplementation(() =>
-      Promise.resolve(keysetPages.shift()),
-    );
-
-    participants.select.mockReturnValue(participants);
-    participants.in.mockResolvedValue({ data: [], error: null });
-  });
-
-  it('continues after the last row instead of using a shifted offset', async () => {
-    const response = await handleRecent(
-      new Request('https://worker.example/events/recent?limit=1001'),
-      ENV,
-    );
-
-    expect(response.status).toBe(200);
-    const events = await response.json() as Array<{ id: string }>;
+    if (result.error) throw new Error(result.error.message);
+    const events = result.rows;
 
     expect(events).toHaveLength(1001);
     expect(new Set(events.map((event) => event.id)).size).toBe(1001);
     expect(events.at(-1)?.id).toBe('event-1000');
-    expect(collectionEvents.range).not.toHaveBeenCalled();
-    expect(collectionEvents.order).toHaveBeenCalledWith('ts', { ascending: false });
-    expect(collectionEvents.order).toHaveBeenCalledWith('id', { ascending: false });
-    expect(collectionEvents.or).toHaveBeenCalledWith(
-      'ts.lt."2026-01-01T23:43:21.000Z",and(ts.eq."2026-01-01T23:43:21.000Z",id.lt."event-0999")',
+  });
+
+  it('builds a stable filter for equal timestamps and quoted ids', () => {
+    expect(
+      getEarlierEventFilter(
+        '2026-01-01T23:43:21.000Z',
+        'event-"0999"',
+      ),
+    ).toBe(
+      'ts.lt."2026-01-01T23:43:21.000Z",and(ts.eq."2026-01-01T23:43:21.000Z",id.lt."event-\\"0999\\"")',
     );
   });
 });

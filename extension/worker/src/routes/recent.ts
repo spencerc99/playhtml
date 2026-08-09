@@ -28,10 +28,53 @@ function quoteEventCursorValue(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function getEarlierEventFilter(ts: string, id: string): string {
+export function getEarlierEventFilter(ts: string, id: string): string {
   const quotedTs = quoteEventCursorValue(ts);
   const quotedId = quoteEventCursorValue(id);
   return `ts.lt.${quotedTs},and(ts.eq.${quotedTs},id.lt.${quotedId})`;
+}
+
+interface RecentEventCursor {
+  ts: string;
+  id: string;
+}
+
+interface RecentEventPage {
+  data: Record<string, unknown>[] | null;
+  error: { message: string } | null;
+}
+
+type RecentEventRows =
+  | { rows: Record<string, unknown>[]; error: null }
+  | { rows: null; error: { message: string } };
+
+export async function loadRecentEventRows(
+  limit: number,
+  loadPage: (
+    cursor: RecentEventCursor | null,
+    pageSize: number,
+  ) => Promise<RecentEventPage>,
+): Promise<RecentEventRows> {
+  const rows: Record<string, unknown>[] = [];
+  let cursor: RecentEventCursor | null = null;
+
+  while (rows.length < limit) {
+    const pageSize = Math.min(SUPABASE_PAGE_SIZE, limit - rows.length);
+    const result = await loadPage(cursor, pageSize);
+    if (result.error) return { rows: null, error: result.error };
+
+    const page = result.data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+
+    const lastRow = page.at(-1);
+    if (typeof lastRow?.ts !== 'string' || typeof lastRow.id !== 'string') {
+      throw new Error('Recent event row is missing pagination fields');
+    }
+    cursor = { ts: lastRow.ts, id: lastRow.id };
+  }
+
+  return { rows, error: null };
 }
 
 type PageMeta = { title?: string; favicon_url?: string };
@@ -98,10 +141,7 @@ export async function handleRecent(
     const requireTitle = url.searchParams.get('require_title') === 'true';
 
     const supabase = createSupabaseClient(env);
-    const allRows: Record<string, unknown>[] = [];
-    let cursor: { ts: string; id: string } | null = null;
-
-    while (allRows.length < limit) {
+    const { rows, error } = await loadRecentEventRows(limit, async (cursor, pageSize) => {
       let query = supabase
         .from('collection_events')
         .select('*')
@@ -120,34 +160,19 @@ export async function handleRecent(
       if (toDate) query = query.lte('ts', toDate);
       if (cursor) query = query.or(getEarlierEventFilter(cursor.ts, cursor.id));
 
-      const pageSize = Math.min(SUPABASE_PAGE_SIZE, limit - allRows.length);
-
-      const { data, error } = await query
+      return query
         .order('ts', { ascending: false })
         .order('id', { ascending: false })
         .limit(pageSize);
+    });
 
-      if (error) {
-        console.error('Supabase query error:', error);
-        return new Response(
-          JSON.stringify({ error: 'Failed to fetch events', details: error.message }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const page = data ?? [];
-      allRows.push(...page);
-      if (page.length < pageSize) break;
-
-      const lastRow = page.at(-1);
-      if (typeof lastRow?.ts !== 'string' || typeof lastRow.id !== 'string') {
-        throw new Error('Recent event row is missing pagination fields');
-      }
-      cursor = { ts: lastRow.ts, id: lastRow.id };
+    if (error) {
+      console.error('Supabase query error:', error);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch events', details: error.message }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
     }
-
-    // Cap at requested limit
-    const rows = allRows.slice(0, limit);
 
     // ── Join page titles from page_metadata_history ───────────────────────────
     // Titles are stripped from navigation event rows at ingest time and stored
