@@ -24,6 +24,16 @@ function extractDomain(url: string | null): string {
 /** Supabase/PostgREST returns at most 1000 rows per request; we paginate to satisfy larger limits. */
 const SUPABASE_PAGE_SIZE = 1000;
 
+function quoteEventCursorValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function getEarlierEventFilter(ts: string, id: string): string {
+  const quotedTs = quoteEventCursorValue(ts);
+  const quotedId = quoteEventCursorValue(id);
+  return `ts.lt.${quotedTs},and(ts.eq.${quotedTs},id.lt.${quotedId})`;
+}
+
 type PageMeta = { title?: string; favicon_url?: string };
 
 /**
@@ -89,11 +99,9 @@ export async function handleRecent(
 
     const supabase = createSupabaseClient(env);
     const allRows: Record<string, unknown>[] = [];
+    let cursor: { ts: string; id: string } | null = null;
 
-    for (let offset = 0; offset < limit; offset += SUPABASE_PAGE_SIZE) {
-      const from = offset;
-      const to = offset + SUPABASE_PAGE_SIZE - 1;
-
+    while (allRows.length < limit) {
       let query = supabase
         .from('collection_events')
         .select('*')
@@ -110,10 +118,14 @@ export async function handleRecent(
       const toDate = url.searchParams.get('to');
       if (fromDate) query = query.gte('ts', fromDate);
       if (toDate) query = query.lte('ts', toDate);
+      if (cursor) query = query.or(getEarlierEventFilter(cursor.ts, cursor.id));
+
+      const pageSize = Math.min(SUPABASE_PAGE_SIZE, limit - allRows.length);
 
       const { data, error } = await query
         .order('ts', { ascending: false })
-        .range(from, to);
+        .order('id', { ascending: false })
+        .limit(pageSize);
 
       if (error) {
         console.error('Supabase query error:', error);
@@ -125,7 +137,13 @@ export async function handleRecent(
 
       const page = data ?? [];
       allRows.push(...page);
-      if (page.length < SUPABASE_PAGE_SIZE) break;
+      if (page.length < pageSize) break;
+
+      const lastRow = page.at(-1);
+      if (typeof lastRow?.ts !== 'string' || typeof lastRow.id !== 'string') {
+        throw new Error('Recent event row is missing pagination fields');
+      }
+      cursor = { ts: lastRow.ts, id: lastRow.id };
     }
 
     // Cap at requested limit
