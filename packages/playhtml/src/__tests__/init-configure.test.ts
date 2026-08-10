@@ -24,6 +24,25 @@ describe("playhtml configure() + init()", () => {
     expect(playhtml.cursorClient).not.toBeNull();
   });
 
+  it("uses a function-only room declaration", async () => {
+    await playhtml.init({ room: () => "/function-room" });
+
+    const host = window.location.host.replace(/^www\./, "");
+    expect(playhtml.roomId).toBe(
+      encodeURIComponent(`${host}-/function-room`),
+    );
+  });
+
+  it("uses a function-only error handler declaration", async () => {
+    const onError = vi.fn();
+    await playhtml.init({ onError });
+
+    const [provider] = (globalThis as any).PLAYHTML_TEST_PROVIDERS;
+    provider.emit("error", new Error("connection failed"));
+
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
   it("a repeated empty configure() before init() does not lock config", async () => {
     // configure() with no options is a true no-op: it must not freeze config, so
     // a later real configure() still wins. (configure() is connection-free, so

@@ -751,6 +751,15 @@ function normalizeConfig(value: unknown): unknown {
   return value;
 }
 
+function containsConfiguredFunction(value: unknown): boolean {
+  if (typeof value === "function") return true;
+  if (Array.isArray(value)) return value.some(containsConfiguredFunction);
+  if (value && typeof value === "object") {
+    return Object.values(value).some(containsConfiguredFunction);
+  }
+  return false;
+}
+
 /**
  * Returns true if `incoming` conflicts with the already-locked config.
  *
@@ -799,10 +808,13 @@ function configsConflict(locked: InitOptions, incoming: InitOptions): boolean {
 
 /** True if these options declare no config worth locking (an "ensure running"
  * call). Such a call must NOT lock config, so a real configure() can still win
- * before connection. Uses the same normalization as configsConflict, so
- * `{}`, `{ cursors: {} }`, and `{ room: undefined }` all count as empty. */
+ * before connection. `{}`, `{ cursors: {} }`, and `{ room: undefined }` all
+ * count as empty, while function-valued options still declare config. */
 function isEmptyConfig(options: InitOptions): boolean {
-  return normalizeConfig(options) === undefined;
+  return (
+    normalizeConfig(options) === undefined &&
+    !containsConfiguredFunction(options)
+  );
 }
 
 /**
