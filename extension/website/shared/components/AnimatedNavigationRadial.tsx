@@ -431,7 +431,7 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
     const [footprintAnimatedRadii, setFootprintAnimatedRadii] = useState<
       Map<string, number>
     >(new Map());
-    const animationRef = useRef<number>();
+    const animationRef = useRef<number | undefined>(undefined);
     const sessionOrderRef = useRef<number[]>([]);
     const activeEdgesRef = useRef<ActiveEdge[]>([]);
     const nextStepIndexRef = useRef<number>(1);

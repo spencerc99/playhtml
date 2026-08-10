@@ -44,7 +44,7 @@ function movementEvents(paths: CollectionEvent[][]): MovementEvent[] {
             url: `${event.meta.url}#walking-record-path-${pathIndex}`,
           },
           data: {
-            ...event.data,
+            ...data,
             x: data.x,
             y: data.y,
           },

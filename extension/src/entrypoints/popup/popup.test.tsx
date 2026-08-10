@@ -98,7 +98,15 @@ describe("PlayHTMLPopup", () => {
       elementCount: 0,
     });
     vi.mocked(browser.tabs.query).mockResolvedValue([
-      { id: 1, url: "https://example.com" },
+      {
+        id: 1,
+        url: "https://example.com",
+        index: 0,
+        highlighted: true,
+        active: true,
+        pinned: false,
+        incognito: false,
+      },
     ]);
     Object.assign(browser.runtime, {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
@@ -137,9 +145,9 @@ describe("PlayHTMLPopup", () => {
         historyButton?.click();
       });
 
-      expect(browser.runtime.getURL).toHaveBeenCalledWith("newtab.html");
+      expect(browser.runtime.getURL).toHaveBeenCalledWith("walking-record.html");
       expect(browser.tabs.create).toHaveBeenCalledWith({
-        url: "chrome-extension://test/newtab.html",
+        url: "chrome-extension://test/walking-record.html",
       });
     } finally {
       cleanup(root, container);

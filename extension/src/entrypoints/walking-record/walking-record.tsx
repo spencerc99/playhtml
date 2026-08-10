@@ -1,4 +1,4 @@
-// ABOUTME: Mounts the walking record as both a standalone extension page and the new-tab override.
+// ABOUTME: Mounts the walking record as a standalone extension History page.
 // ABOUTME: Loads navigable calendar week, month, or year records without network requests.
 
 import "@fontsource/atkinson-hyperlegible/latin-400.css";
@@ -41,7 +41,7 @@ interface ScreenTimeResponse {
   sessions?: ScreenTimeSession[];
 }
 
-function NewTabPage() {
+function HistoryPage() {
   const [period, setPeriod] = useState<WalkingRecordPeriod>("week");
   const [periodOffset, setPeriodOffset] = useState(0);
   const [records, setRecords] = useState<Record<string, WalkingRecord>>({});
@@ -229,4 +229,4 @@ if (!container) {
   throw new Error("Walking record root element is missing.");
 }
 
-createRoot(container).render(<NewTabPage />);
+createRoot(container).render(<HistoryPage />);

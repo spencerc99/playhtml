@@ -20,9 +20,6 @@ export default defineConfig({
     action: {
       default_title: "we were online",
     },
-    chrome_url_overrides: {
-      newtab: "newtab.html",
-    },
     commands: {
       "open-inventory": {
         suggested_key: {

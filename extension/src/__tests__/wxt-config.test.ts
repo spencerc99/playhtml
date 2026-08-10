@@ -2,6 +2,7 @@
 // ABOUTME: Keeps Safari manifests free of unsupported permission and options keys.
 // @vitest-environment happy-dom
 
+import type { WxtHooks } from "wxt";
 import { describe, expect, it } from "vitest";
 import config from "../../wxt.config";
 
@@ -25,7 +26,10 @@ async function generatedManifestFor(browser: string) {
       open_in_tab: true,
     },
   };
-  const hook = config.hooks?.["build:manifestGenerated"];
+  const hooks = config.hooks as
+    | { "build:manifestGenerated"?: WxtHooks["build:manifestGenerated"] }
+    | undefined;
+  const hook = hooks?.["build:manifestGenerated"];
   if (!hook) {
     throw new Error("WXT generated-manifest hook must be configured");
   }
@@ -47,6 +51,7 @@ describe("WXT manifest", () => {
     const generatedManifest = await generatedManifestFor("chrome");
 
     expect(manifest.permissions).toContain("idle");
+    expect(manifest.chrome_url_overrides).toBeUndefined();
     expect(generatedManifest.options_ui).toEqual({
       page: "options.html",
       open_in_tab: true,

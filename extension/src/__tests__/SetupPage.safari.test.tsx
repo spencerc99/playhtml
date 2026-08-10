@@ -40,7 +40,14 @@ beforeEach(() => {
   vi.mocked(browser.permissions.request).mockReset();
   vi.mocked(browser.permissions.request).mockResolvedValue(true);
   vi.mocked(browser.tabs.getCurrent).mockReset();
-  vi.mocked(browser.tabs.getCurrent).mockResolvedValue({ id: 1 });
+  vi.mocked(browser.tabs.getCurrent).mockResolvedValue({
+    id: 1,
+    index: 0,
+    highlighted: true,
+    active: true,
+    pinned: false,
+    incognito: false,
+  });
   vi.mocked(browser.tabs.remove).mockReset();
   vi.mocked(browser.tabs.remove).mockResolvedValue(undefined);
   vi.mocked(browser.storage.local.set).mockReset();

@@ -73,6 +73,12 @@ export async function validateExtensionBuild(buildDir, browser = "chrome") {
   if (typeof manifest.options_ui?.page !== "string") {
     throw new Error("Extension manifest options_ui.page must be configured");
   }
+  if (
+    manifest.chrome_url_overrides &&
+    Object.keys(manifest.chrome_url_overrides).length > 0
+  ) {
+    throw new Error("Extension manifest must not replace built-in browser pages");
+  }
   if (browser !== "safari" && manifest.options_ui.open_in_tab !== true) {
     throw new Error("Extension manifest options_ui.open_in_tab must be true");
   }

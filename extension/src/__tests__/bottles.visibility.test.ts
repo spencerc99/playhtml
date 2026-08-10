@@ -34,7 +34,9 @@ class MemoryPageDataChannel<T> implements PageDataChannel<T> {
   }
 
   setData(next: T | ((draft: T) => void)): void {
-    if (typeof next === "function") next(this.data);
+    if (typeof next === "function") {
+      (next as (draft: T) => void)(this.data);
+    }
     else this.data = next;
   }
 
