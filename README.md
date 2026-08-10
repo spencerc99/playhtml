@@ -31,7 +31,7 @@ playhtml is in beta and actively developed. Join the [Discord](https://discord.c
 **React:**
 
 ```bash
-npm install @playhtml/react @playhtml/common
+npm install playhtml @playhtml/react
 ```
 
 ```tsx
