@@ -21,11 +21,11 @@ export const ANNOUNCEMENTS: Announcement[] = [
     id: "history-2026-08",
     shippedAt: Date.parse("2026-08-06T00:00:00Z"),
     title: "Browsing history review",
-    body: "We browse so many corners of the internet. What were the rabbit holes you went on? Where did you spend time on? History shares a review of your browsing from the week, month, or year. Find it from the popup.",
+    body: "We browse so many corners of the internet. What were the rabbit holes you went on? Where did you spend time on? A new tab experience shares a review of your browsing history from the week, month, or year. Find it in every new tab or from the popup.",
     popupOnly: true,
     cta: {
       label: "open history →",
-      extensionPath: "walking-record.html",
+      extensionPath: "newtab.html",
     },
   },
   {

@@ -158,7 +158,7 @@ describe("Collections", () => {
     vi.mocked(browser.tabs.query).mockResolvedValue([
       {
         id: 1,
-        url: "safari-web-extension://test/walking-record.html",
+        url: "safari-web-extension://test/newtab.html",
       } as any,
     ]);
 

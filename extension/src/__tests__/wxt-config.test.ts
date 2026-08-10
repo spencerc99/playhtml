@@ -51,7 +51,6 @@ describe("WXT manifest", () => {
     const generatedManifest = await generatedManifestFor("chrome");
 
     expect(manifest.permissions).toContain("idle");
-    expect(manifest.chrome_url_overrides).toBeUndefined();
     expect(generatedManifest.options_ui).toEqual({
       page: "options.html",
       open_in_tab: true,

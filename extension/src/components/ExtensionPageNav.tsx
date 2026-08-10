@@ -17,7 +17,7 @@ const PAGE_LINKS: Array<{
 }> = [
   { id: "portrait", label: "portrait", path: "portrait.html" },
   { id: "time", label: "time", path: "stats.html" },
-  { id: "walking-record", label: "history", path: "walking-record.html" },
+  { id: "walking-record", label: "history", path: "newtab.html" },
   { id: "scraps", label: "scraps", path: "scraps.html" },
 ];
 

@@ -477,7 +477,7 @@ export default function SetupPage() {
               </p>
               <button
                 type="button"
-                onClick={() => void openExtensionPage("walking-record.html")}
+                onClick={() => void openExtensionPage("newtab.html")}
                 className="setup-step__text-link"
               >
                 Open history ↗

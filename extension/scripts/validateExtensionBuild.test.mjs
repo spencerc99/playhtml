@@ -112,19 +112,6 @@ test("throws when the options page is missing from the manifest", async () => {
   );
 });
 
-test("throws when the extension replaces a built-in browser page", async () => {
-  const dir = await makeBuildDir({
-    manifest_version: 3,
-    chrome_url_overrides: {
-      newtab: "walking-record.html",
-    },
-  });
-
-  await expect(validateExtensionBuild(dir)).rejects.toThrow(
-    /must not replace built-in browser pages/,
-  );
-});
-
 test("allows Safari to omit the unsupported options tab setting", async () => {
   const dir = await makeBuildDir({
     manifest_version: 3,

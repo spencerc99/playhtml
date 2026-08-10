@@ -466,7 +466,7 @@ function PlayHTMLPopup() {
       }}
       commuteIsOpen={commuteIsOpen}
       onViewBrowsingHistory={async () => {
-        const url = browser.runtime.getURL("walking-record.html");
+        const url = browser.runtime.getURL("newtab.html");
         await browser.tabs.create({ url });
         window.close();
       }}

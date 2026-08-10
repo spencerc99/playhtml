@@ -11,7 +11,7 @@ describe("isExtensionPageUrl", () => {
   it.each([
     "chrome-extension://test/popup.html",
     "moz-extension://test/options.html",
-    "safari-web-extension://test/walking-record.html",
+    "safari-web-extension://test/newtab.html",
   ])("recognizes %s", (url) => {
     expect(isExtensionPageUrl(url)).toBe(true);
   });

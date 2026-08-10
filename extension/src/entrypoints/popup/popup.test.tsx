@@ -145,9 +145,9 @@ describe("PlayHTMLPopup", () => {
         historyButton?.click();
       });
 
-      expect(browser.runtime.getURL).toHaveBeenCalledWith("walking-record.html");
+      expect(browser.runtime.getURL).toHaveBeenCalledWith("newtab.html");
       expect(browser.tabs.create).toHaveBeenCalledWith({
-        url: "chrome-extension://test/walking-record.html",
+        url: "chrome-extension://test/newtab.html",
       });
     } finally {
       cleanup(root, container);
