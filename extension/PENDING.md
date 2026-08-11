@@ -6,6 +6,7 @@
 - Use the extension in Safari 18 or later on Mac.
 - Turn on Safari website access once during setup, then close the setup tab when you’re done.
 - Get clear recovery steps if Safari cannot save your setup choices.
+- Reduced WWO's impact on browser performance during long browsing sessions.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow

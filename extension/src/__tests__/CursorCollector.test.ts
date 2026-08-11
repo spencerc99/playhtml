@@ -59,6 +59,7 @@ describe("CursorCollector", () => {
         "mousemove",
         expect.any(Function)
       );
+      expect(removeSpy).toHaveBeenCalledWith("mouseover", expect.any(Function));
       expect(removeSpy).toHaveBeenCalledWith(
         "mousedown",
         expect.any(Function)
@@ -170,7 +171,7 @@ describe("CursorCollector", () => {
       expect(realTimeCallback).toHaveBeenCalled();
     });
 
-    it("reuses cursor style while the pointer stays on the same target", () => {
+    it("reads cursor style only when the pointer enters a target", () => {
       const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle");
       const element = createTestElement("button", {
         id: "steady-target",
@@ -179,11 +180,26 @@ describe("CursorCollector", () => {
 
       collector.enable();
 
+      element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       simulateMouseMove(100, 100, element);
       simulateMouseMove(120, 120, element);
       simulateMouseMove(140, 140, element);
 
       expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
+      getComputedStyleSpy.mockRestore();
+    });
+
+    it("does not read computed style from the raw mousemove handler", () => {
+      const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle");
+      const element = createTestElement("button", {
+        id: "move-target",
+        cursor: "pointer",
+      });
+
+      collector.enable();
+      simulateMouseMove(100, 100, element);
+
+      expect(getComputedStyleSpy).not.toHaveBeenCalled();
       getComputedStyleSpy.mockRestore();
     });
   });
@@ -218,20 +234,20 @@ describe("CursorCollector", () => {
       expect(call.duration).toBeGreaterThanOrEqual(250);
       expect(call.quantity).toBeUndefined(); // Hold events don't have quantity
     });
-    
+
     it("emits rapid clicks as separate events", async () => {
       collector.enable();
 
       const element = createTestElement("button", { id: "rapid-click" });
-      
+
       // First click
       await simulateClick(100, 100, 50, 0, element);
       await advanceTime(300);
-      
+
       // Second click (within 2s window)
       await simulateClick(150, 150, 50, 0, element);
       await advanceTime(500);
-      
+
       // Third click (within 2s window)
       await simulateClick(200, 200, 50, 0, element);
 
@@ -246,12 +262,12 @@ describe("CursorCollector", () => {
       expect((clickCalls[2][0] as CursorEventData).x).toBeCloseTo(200 / 1024, 4);
       expect((clickCalls[2][0] as CursorEventData).y).toBeCloseTo(200 / 768, 4);
     });
-    
+
     it("emits separate click events if clicks are spaced out", async () => {
       collector.enable();
 
       const element = createTestElement("button", { id: "spaced-clicks" });
-      
+
       // First click
       await simulateClick(100, 100, 50, 0, element);
       await advanceTime(2500); // Past 2s debounce
@@ -264,7 +280,7 @@ describe("CursorCollector", () => {
         (call) => (call[0] as CursorEventData).event === "click"
       );
       expect(clickCalls.length).toBe(2);
-      
+
       // Each should have quantity of 1
       expect((clickCalls[0][0] as CursorEventData).quantity).toBe(1);
       expect((clickCalls[1][0] as CursorEventData).quantity).toBe(1);
@@ -296,7 +312,6 @@ describe("CursorCollector", () => {
     });
   });
 
-
   describe("cursor style detection", () => {
     it("detects cursor style changes", async () => {
       collector.enable();
@@ -311,10 +326,12 @@ describe("CursorCollector", () => {
       });
 
       // Move to pointer element
+      pointerElement.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       simulateMouseMove(100, 100, pointerElement);
       await advanceTime(20);
 
       // Move to text element (cursor changes)
+      textElement.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       simulateMouseMove(200, 200, textElement);
       await advanceTime(600); // Wait for 500ms cursor change debounce
 
@@ -340,6 +357,7 @@ describe("CursorCollector", () => {
         id: "button",
         cursor: "pointer",
       });
+      element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       simulateMouseMove(100, 100, element);
 
       await advanceTime(250);
