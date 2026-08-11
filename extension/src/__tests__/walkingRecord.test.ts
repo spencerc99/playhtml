@@ -336,7 +336,7 @@ describe("deriveWalkingRecord", () => {
     expect(record.dayPlates[0]).toEqual(
       expect.objectContaining({
         day: "mon",
-        vignette: "11 quiet minutes on foldedpaper.garden",
+        vignette: "11m on foldedpaper.garden",
         portraitDay: "2026-07-20",
         traceTargets: expect.arrayContaining([
           {

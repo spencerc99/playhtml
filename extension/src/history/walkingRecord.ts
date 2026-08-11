@@ -995,7 +995,7 @@ function buildDayPlates(
     return {
       date: interval.key,
       day: interval.label,
-      vignette: `${minutes} quiet minute${minutes === 1 ? "" : "s"} on ${domain}`,
+      vignette: `${minutes}m on ${domain}`,
       hue: colorForDomain(baseColor, domain),
       future: false,
       portraitDay: period === "week" ? interval.key.slice(4) : undefined,
