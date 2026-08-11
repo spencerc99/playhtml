@@ -633,11 +633,16 @@ button:focus-visible {
   }
 
   > span {
+    display: -webkit-box;
+    overflow: hidden;
     color: $text-faint;
     font-size: 9.5px;
     font-style: italic;
     line-height: 1.35;
+    overflow-wrap: anywhere;
     text-align: center;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 }
 

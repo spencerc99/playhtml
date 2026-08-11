@@ -47,7 +47,7 @@ const record: WalkingRecord = {
     {
       date: "day:2026-07-27",
       day: "mon",
-      vignette: "12 quiet minutes on example.com",
+      vignette: "12m on example.com",
       hue: "#4a9a8a",
       future: false,
       portraitDay: "2026-07-27",
@@ -260,7 +260,6 @@ describe("WalkingRecordPage calendar navigation", () => {
       expect(
         container.querySelector(".walking-record__future-trace"),
       ).not.toBeNull();
-
       await act(async () => {
         earlier?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         selected?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

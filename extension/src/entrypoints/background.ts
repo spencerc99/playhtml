@@ -1037,45 +1037,16 @@ export default defineBackground(() => {
       hourBuckets: globalAgg.hourBuckets,
     }
 
-    // Query cursor distance for today
-    const midnightTs = new Date()
-    midnightTs.setHours(0, 0, 0, 0)
-    const cursorEvents = await store.getAllEvents({
-      type: 'cursor',
-      startTs: midnightTs.getTime(),
-      limit: 5000,
-    })
-    const moveEvents = cursorEvents
-      .filter((e) => (e.data as any).event === 'move')
-      .sort((a, b) => a.ts - b.ts)
-    let cursorDistancePx = 0
-    for (let i = 1; i < moveEvents.length; i++) {
-      const prev = moveEvents[i - 1].data as any
-      const curr = moveEvents[i].data as any
-      const dx = (curr.x - prev.x) * 1920
-      const dy = (curr.y - prev.y) * 1080
-      cursorDistancePx += Math.sqrt(dx * dx + dy * dy)
-    }
-
-    // Compute today's screen time from focus/blur navigation events since midnight
-    const navEvents = await store.getAllEvents({
-      type: 'navigation',
-      startTs: midnightTs.getTime(),
-      limit: 10000,
-    })
-    let dailyScreenTimeMs = 0
-    let focusTs: number | null = null
-    for (const e of navEvents.sort((a, b) => a.ts - b.ts)) {
-      const event = (e.data as any).event
-      if (event === 'focus') {
-        focusTs = e.ts
-      } else if (event === 'blur' && focusTs !== null) {
-        dailyScreenTimeMs += e.ts - focusTs
-        focusTs = null
-      }
-    }
-    // If still focused, count up to now
-    if (focusTs !== null) dailyScreenTimeMs += Date.now() - focusTs
+    const activity =
+      globalAgg.milestoneActivity?.localDayKey === today
+        ? globalAgg.milestoneActivity
+        : null
+    const cursorDistancePx = activity?.cursorDistancePx ?? 0
+    const dailyScreenTimeMs =
+      (activity?.screenTimeMs ?? 0) +
+      (activity?.pendingFocusTs
+        ? Math.max(0, Date.now() - activity.pendingFocusTs)
+        : 0)
     state = { ...state, dailyScreenTimeMs }
 
     // Build top domains by visit count
@@ -1084,30 +1055,16 @@ export default defineBackground(() => {
       visitCount: number
       faviconUrl?: string
     }> = []
-    for (const { domain } of allDomainEntries.slice(0, 20)) {
-      const agg = await store.getSessionStats(domain).catch(() => null)
-      if (!agg) continue
-      // Pull recent navigation events and pick the most recent one with a
-      // non-empty favicon_url. The first stored event is often a blur/beforeunload
-      // captured before <link rel="icon"> was parsed, which leaves favicon_url
-      // pointing at a /favicon.ico fallback that many sites don't actually serve.
-      const domainNavEvents = await store.queryByDomain(domain, {
-        type: 'navigation',
-        limit: 50,
+    for (const domainEntry of allDomainEntries.slice(0, 20)) {
+      topDomains.push({
+        domain: domainEntry.domain,
+        visitCount: domainEntry.sessionCount,
+        ...(domainEntry.latestFaviconUrl
+          ? { faviconUrl: domainEntry.latestFaviconUrl }
+          : {}),
       })
-      let faviconUrl: string | undefined
-      for (let i = domainNavEvents.length - 1; i >= 0; i--) {
-        const candidate = (domainNavEvents[i].data as any).favicon_url
-        if (typeof candidate === 'string' && candidate.length > 0) {
-          faviconUrl = candidate
-          break
-        }
-      }
-      topDomains.push({ domain, visitCount: agg.sessionCount, faviconUrl })
     }
 
-    // Long-gap return: for the active tab's domain, look at raw
-    // navigation timestamps and see if the user just came back after >90 days.
     const [gapTab] = await browser.tabs.query({
       active: true,
       lastFocusedWindow: true,
@@ -1115,15 +1072,11 @@ export default defineBackground(() => {
     const activeDomain = extractDomain(gapTab?.url ?? null)
     let longGap: Parameters<typeof checkAllMilestones>[4] = null
     if (activeDomain) {
-      // No limit: queryByDomain resolves early when a limit is hit, before its
-      // ascending-by-time sort, so a limit would return the OLDEST events and
-      // miss the recent return. Navigation events are sparse (2s dedup), so an
-      // unbounded per-domain scan stays cheap.
-      const gapNavEvents = await store.queryByDomain(activeDomain, {
-        type: 'navigation',
-      })
+      const domainEntry = allDomainEntries.find(
+        (entry) => entry.domain === activeDomain,
+      )
       const gap = detectLongGapReturn(
-        gapNavEvents.map((e) => e.ts),
+        domainEntry?.recentFocusVisits ?? [],
         Date.now(),
       )
       if (gap) {

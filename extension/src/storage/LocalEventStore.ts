@@ -37,6 +37,8 @@ const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "element",
 ];
 const STORAGE_SIZE_SAMPLE_LIMIT = 200;
+const RECENT_FOCUS_VISIT_LIMIT = 5;
+const AGGREGATE_FAVICON_URL_LENGTH_LIMIT = 2048;
 
 type UploadState = typeof UPLOAD_STATE_PENDING | typeof UPLOAD_STATE_UPLOADED;
 type StatsBackfillState = "running" | "complete";
@@ -120,6 +122,20 @@ export interface DomainStatsAggregate {
   uniqueUrlCount: number;
   /** Number of local calendar days with at least one focused visit */
   activeDayCount: number;
+  /** Latest bounded favicon observed for domain-level milestone UI. */
+  latestFaviconUrl?: string;
+  /** Most recent focused visit on up to five distinct local days. */
+  recentFocusVisits?: number[];
+  /** Compact daily activity used by the global milestone check. */
+  milestoneActivity?: MilestoneActivityAggregate;
+}
+
+export interface MilestoneActivityAggregate {
+  localDayKey: string;
+  cursorDistancePx: number;
+  lastCursorPosition: { x: number; y: number } | null;
+  screenTimeMs: number;
+  pendingFocusTs: number | null;
 }
 
 function domainStatsKey(domain: string): string {
@@ -1469,6 +1485,8 @@ export class LocalEventStore {
       sessionCount: number;
       activeDayCount: number;
       eventCounts: Record<string, number>;
+      latestFaviconUrl?: string;
+      recentFocusVisits: number[];
     }>
   > {
     await this.ensureInitialized();
@@ -1493,6 +1511,8 @@ export class LocalEventStore {
         sessionCount: number;
         activeDayCount: number;
         eventCounts: Record<string, number>;
+        latestFaviconUrl?: string;
+        recentFocusVisits: number[];
       }> = [];
 
       request.onsuccess = (event) => {
@@ -1520,6 +1540,10 @@ export class LocalEventStore {
               sessionCount: aggregate.sessionCount,
               activeDayCount: aggregate.activeDayCount ?? 0,
               eventCounts,
+              ...(aggregate.latestFaviconUrl
+                ? { latestFaviconUrl: aggregate.latestFaviconUrl }
+                : {}),
+              recentFocusVisits: aggregate.recentFocusVisits ?? [],
             });
           }
 
@@ -2349,6 +2373,7 @@ export class LocalEventStore {
     agg.storageSizeBytes ??= 0;
 
     for (const evt of events) {
+      const previousLastVisit = agg.lastVisit;
       agg.eventsByType[evt.type] = (agg.eventsByType[evt.type] ?? 0) + 1;
       agg.storageSizeBytes += JSON.stringify(evt).length;
       if (agg.firstVisit === 0 || evt.ts < agg.firstVisit) {
@@ -2361,6 +2386,30 @@ export class LocalEventStore {
       if (evt.type === "navigation") {
         const d = evt.data as NavigationEventData;
         if (d.event === "focus") {
+          if (agg.domain && !agg.key.includes("::")) {
+            const faviconUrl = d.favicon_url;
+            if (
+              typeof faviconUrl === "string" &&
+              faviconUrl.length > 0 &&
+              faviconUrl.length <= AGGREGATE_FAVICON_URL_LENGTH_LIMIT
+            ) {
+              agg.latestFaviconUrl = faviconUrl;
+            }
+
+            const visitDay = localDayKey(evt.ts, evt.meta.tz);
+            const recentVisits =
+              agg.recentFocusVisits ??
+              (previousLastVisit > 0 && previousLastVisit < evt.ts
+                ? [previousLastVisit]
+                : []);
+            agg.recentFocusVisits = [
+              evt.ts,
+              ...recentVisits.filter(
+                (timestamp) => localDayKey(timestamp, evt.meta.tz) !== visitDay,
+              ),
+            ].slice(0, RECENT_FOCUS_VISIT_LIMIT);
+          }
+
           agg.pendingFocusTs = evt.ts;
           agg.pendingFocusUrl = evt.meta?.url ?? "";
         } else if (
@@ -2376,6 +2425,56 @@ export class LocalEventStore {
           }
           agg.pendingFocusTs = null;
           agg.pendingFocusUrl = "";
+        }
+      }
+    }
+
+    if (agg.key === GLOBAL_STATS_KEY) {
+      LocalEventStore.applyEventsToMilestoneActivity(agg, events);
+    }
+  }
+
+  private static applyEventsToMilestoneActivity(
+    agg: DomainStatsAggregate,
+    events: CollectionEvent[],
+  ): void {
+    for (const evt of [...events].sort((a, b) => a.ts - b.ts)) {
+      const eventDay = localDayKey(evt.ts, evt.meta.tz);
+      if (agg.milestoneActivity?.localDayKey !== eventDay) {
+        agg.milestoneActivity = {
+          localDayKey: eventDay,
+          cursorDistancePx: 0,
+          lastCursorPosition: null,
+          screenTimeMs: 0,
+          pendingFocusTs: null,
+        };
+      }
+
+      const activity = agg.milestoneActivity;
+      if (evt.type === "cursor") {
+        const data = evt.data as CursorEventData;
+        if (
+          data.event === "move" &&
+          Number.isFinite(data.x) &&
+          Number.isFinite(data.y)
+        ) {
+          if (activity.lastCursorPosition) {
+            const dx = (data.x - activity.lastCursorPosition.x) * 1920;
+            const dy = (data.y - activity.lastCursorPosition.y) * 1080;
+            activity.cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
+          }
+          activity.lastCursorPosition = { x: data.x, y: data.y };
+        }
+      } else if (evt.type === "navigation") {
+        const data = evt.data as NavigationEventData;
+        if (data.event === "focus") {
+          activity.pendingFocusTs = evt.ts;
+        } else if (data.event === "blur" && activity.pendingFocusTs !== null) {
+          activity.screenTimeMs += Math.max(
+            0,
+            evt.ts - activity.pendingFocusTs,
+          );
+          activity.pendingFocusTs = null;
         }
       }
     }

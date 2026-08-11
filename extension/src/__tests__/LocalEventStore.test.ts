@@ -214,6 +214,121 @@ afterEach(async () => {
 });
 
 describe("LocalEventStore aggregates", () => {
+  it("maintains compact milestone activity and recent domain metadata", async () => {
+    const store = createStore();
+    const focusTs = Date.UTC(2026, 7, 10, 10);
+    const blurTs = focusTs + 5_000;
+
+    await store.addEvents([
+      {
+        ...event("focus", "navigation"),
+        ts: focusTs,
+        data: {
+          event: "focus",
+          favicon_url: "https://example.com/favicon.png",
+        },
+        meta: { ...event("focus", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("cursor-first", "cursor"),
+        ts: focusTs + 1_000,
+        data: { event: "move", x: 0.1, y: 0.2 },
+        meta: { ...event("cursor-first", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("cursor-second", "cursor"),
+        ts: focusTs + 2_000,
+        data: { event: "move", x: 0.2, y: 0.2 },
+        meta: { ...event("cursor-second", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: blurTs,
+        data: { event: "blur" },
+        meta: { ...event("blur", "navigation").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+    const domains = await store.getAllDomains();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-10",
+      cursorDistancePx: 192,
+      lastCursorPosition: { x: 0.2, y: 0.2 },
+      screenTimeMs: 5_000,
+      pendingFocusTs: null,
+    });
+    expect(domains[0]).toEqual(
+      expect.objectContaining({
+        latestFaviconUrl: "https://example.com/favicon.png",
+        recentFocusVisits: [focusTs],
+      }),
+    );
+  });
+
+  it("seeds recent visits from retained aggregate history", async () => {
+    const store = createStore();
+    const previousVisitTs = Date.UTC(2026, 0, 1, 10);
+    const returnTs = Date.UTC(2026, 7, 10, 10);
+
+    await store.addEvents([
+      {
+        ...event("previous-event", "cursor"),
+        ts: previousVisitTs,
+        data: { event: "move", x: 0.1, y: 0.1 },
+        meta: { ...event("previous-event", "cursor").meta, tz: "UTC" },
+      },
+    ]);
+    await store.addEvents([
+      {
+        ...event("return-focus", "navigation"),
+        ts: returnTs,
+        data: { event: "focus" },
+        meta: { ...event("return-focus", "navigation").meta, tz: "UTC" },
+      },
+    ]);
+
+    const domains = await store.getAllDomains();
+
+    expect(domains[0].recentFocusVisits).toEqual([returnTs, previousVisitTs]);
+  });
+
+  it("resets compact daily activity when the local day changes", async () => {
+    const store = createStore();
+
+    await store.addEvents([
+      {
+        ...event("day-one-first", "cursor"),
+        ts: Date.UTC(2026, 7, 10, 10),
+        data: { event: "move", x: 0.1, y: 0.1 },
+        meta: { ...event("day-one-first", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("day-one-second", "cursor"),
+        ts: Date.UTC(2026, 7, 10, 10, 1),
+        data: { event: "move", x: 0.2, y: 0.1 },
+        meta: { ...event("day-one-second", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("day-two-first", "cursor"),
+        ts: Date.UTC(2026, 7, 11, 10),
+        data: { event: "move", x: 0.3, y: 0.1 },
+        meta: { ...event("day-two-first", "cursor").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-11",
+      cursorDistancePx: 0,
+      lastCursorPosition: { x: 0.3, y: 0.1 },
+      screenTimeMs: 0,
+      pendingFocusTs: null,
+    });
+  });
+
   it("fails with reload guidance instead of hanging when an upgrade is blocked", async () => {
     const existingConnection = await openVersion8Database();
     const consoleError = vi
