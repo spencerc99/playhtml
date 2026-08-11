@@ -10,9 +10,11 @@ import {
   PlayContext,
   withSharedState,
   useCursorPresences,
+  usePlayerIdentity,
 } from "../packages/react/src";
 import React, { useContext, useEffect, useState, useRef } from "react";
 import { PlayProvider } from "../packages/react/src";
+import { canDeleteFridgeWord, DeleteWordLimit } from "./fridgeDeletion";
 import { useLocation } from "./useLocation";
 
 // Detect mobile viewport
@@ -228,7 +230,6 @@ interface Props extends FridgeWordType {
 }
 
 const DefaultRoom = "fridge";
-const DeleteWordLimit = 3;
 const DeleteWordInterval = 1000 * 60 * 10; // 10 minutes
 const DeleteLimitReachedKey = "fridge-lastDeleteTime";
 const RestrictedWords = [...profaneWords];
@@ -468,6 +469,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [wallInputValue, setWallInputValue] = React.useState(wall);
     const [showWallControls, setShowWallControls] = React.useState(true);
     const { deleteElementData } = useContext(PlayContext);
+    const { pid } = usePlayerIdentity();
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
@@ -587,7 +589,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
       word: string,
       color: string | undefined,
     ) {
-      if (deleteCount >= DeleteWordLimit) {
+      if (!canDeleteFridgeWord(deleteCount, pid)) {
         // Track delete overload
         window.plausible?.("DeleteWordOverload", {
           props: {
@@ -631,9 +633,11 @@ const WordControls = withSharedState<FridgeWordType[]>(
       setData((d) => {
         d.splice(idxToDelete, 1);
       });
-      setDeleteCount(deleteCount + 1);
-      if (deleteCount + 1 === DeleteWordLimit) {
-        localStorage.setItem(DeleteLimitReachedKey, Date.now().toString());
+      if (!canDeleteFridgeWord(DeleteWordLimit, pid)) {
+        setDeleteCount(deleteCount + 1);
+        if (deleteCount + 1 === DeleteWordLimit) {
+          localStorage.setItem(DeleteLimitReachedKey, Date.now().toString());
+        }
       }
     }
 
