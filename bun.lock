@@ -67,7 +67,7 @@
     },
     "extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.21",
+      "version": "0.1.22",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/extension-types": "workspace:*",
@@ -175,7 +175,7 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.14.0",
+      "version": "2.14.1",
       "dependencies": {
         "@playhtml/common": "workspace:^",
         "@syncedstore/core": "^0.6.0",

@@ -1,5 +1,12 @@
 # @playhtml/extension
 
+## 0.1.22 (2026-08-11)
+
+- Open History from every new tab or the popup to see time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
+- Presence controls and remote cursors now appear reliably in Firefox.
+- Now available for Safari!
+- Reduced WWO's impact on browser performance during long browsing sessions.
+
 ## 0.1.21 (2026-08-07)
 
 - Keep newly collected activity queued when local storage temporarily fails.
