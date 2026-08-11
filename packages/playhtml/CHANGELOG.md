@@ -1,5 +1,13 @@
 # Change Log
 
+## 2.14.1
+
+### Patch Changes
+
+- f8753dc: Receive realtime presence messages reliably in Firefox so remote cursors and presence controls appear.
+- abf44f6: Preserve function-valued initialization options when they are the only configuration so dynamic rooms and error handlers run as declared.
+- 4b19169: Reapply cursor visibility filters immediately when their configuration changes so custom presence views can replace an existing cursor without waiting for that person to move again.
+
 ## 2.14.0
 
 ### Minor Changes
