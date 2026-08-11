@@ -48,7 +48,7 @@ export function AnnouncementPostcard({
 
   const postmark = formatPostmark(announcement.shippedAt);
   const ctaHref = announcement.cta
-    ? "extensionPath" in announcement.cta
+    ? announcement.cta.extensionPath !== undefined
       ? browser.runtime.getURL(announcement.cta.extensionPath)
       : announcement.cta.href
     : "";

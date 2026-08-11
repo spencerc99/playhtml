@@ -201,7 +201,7 @@ export const AnimatedNavigation: React.FC<AnimatedNavigationProps> = memo(({
   settings,
 }) => {
   const [scrollOffset, setScrollOffset] = useState(0);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const lastTimeRef = useRef<number>(0);
   
   // Settings refs

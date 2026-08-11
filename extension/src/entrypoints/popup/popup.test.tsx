@@ -98,7 +98,15 @@ describe("PlayHTMLPopup", () => {
       elementCount: 0,
     });
     vi.mocked(browser.tabs.query).mockResolvedValue([
-      { id: 1, url: "https://example.com" },
+      {
+        id: 1,
+        url: "https://example.com",
+        index: 0,
+        highlighted: true,
+        active: true,
+        pinned: false,
+        incognito: false,
+      },
     ]);
     Object.assign(browser.runtime, {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),

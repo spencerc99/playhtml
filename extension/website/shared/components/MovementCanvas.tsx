@@ -329,7 +329,9 @@ const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
 
 type MovementSettings = typeof DEFAULT_SETTINGS;
 
-const loadSettings = (defaultSettings: Partial<MovementSettings> = {}) => {
+const loadSettings = (
+  defaultSettings: Partial<MovementSettings> = {},
+): MovementSettings => {
   const defaults = { ...DEFAULT_SETTINGS, ...defaultSettings };
   const urlOverrides = parseSettingsFromUrl();
 
