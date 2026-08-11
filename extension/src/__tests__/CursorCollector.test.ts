@@ -189,7 +189,7 @@ describe("CursorCollector", () => {
       getComputedStyleSpy.mockRestore();
     });
 
-    it("does not read computed style from the raw mousemove handler", () => {
+    it("initializes cursor style from the first mousemove only", async () => {
       const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle");
       const element = createTestElement("button", {
         id: "move-target",
@@ -198,8 +198,13 @@ describe("CursorCollector", () => {
 
       collector.enable();
       simulateMouseMove(100, 100, element);
+      simulateMouseMove(120, 120, element);
+      await advanceTime(250);
 
-      expect(getComputedStyleSpy).not.toHaveBeenCalled();
+      expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
+      expect((emitCallback.mock.calls[0][0] as CursorEventData).cursor).toBe(
+        "pointer",
+      );
       getComputedStyleSpy.mockRestore();
     });
   });

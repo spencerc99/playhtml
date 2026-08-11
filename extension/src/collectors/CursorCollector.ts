@@ -75,6 +75,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
         this.currentTargetElement = target;
         this.targetSelectorDirty = true;
       }
+      if (target instanceof HTMLElement && this.lastCursorStyleTarget === null) {
+        this.mouseOverHandler?.(e);
+      }
 
       if (this.hasRealTimeCallback()) {
         this.scheduleRealTimeUpdate();
