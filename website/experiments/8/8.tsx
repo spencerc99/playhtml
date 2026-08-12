@@ -26,6 +26,15 @@ interface CellData {
   timestamp: number;
 }
 
+const PLAYER_COLORS = [
+  { name: "red", value: "hsl(0, 70%, 60%)" },
+  { name: "orange", value: "hsl(25, 70%, 60%)" },
+  { name: "green", value: "hsl(137, 44%, 52%)" },
+  { name: "blue", value: "hsl(221, 83%, 53%)" },
+  { name: "purple", value: "hsl(267, 70%, 60%)" },
+  { name: "pink", value: "hsl(296, 70%, 60%)" },
+];
+
 const Main = withSharedState(
   {
     defaultData: {
@@ -193,7 +202,7 @@ const Main = withSharedState(
       isMe: color === myColor,
     }));
 
-    const [editingName, setEditingName] = useState(false);
+    const [editingIdentity, setEditingIdentity] = useState(false);
     const [nameInput, setNameInput] = useState(cursors.name || "");
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -201,12 +210,16 @@ const Main = withSharedState(
       if (nameInput.trim()) {
         window.cursors.name = nameInput.trim();
       }
-      setEditingName(false);
+    };
+
+    const openIdentityEditor = () => {
+      setNameInput(cursors.name || "");
+      setEditingIdentity(true);
     };
 
     // Update input width to match content
     useEffect(() => {
-      if (inputRef.current && editingName) {
+      if (inputRef.current && editingIdentity) {
         const canvas = document.createElement("canvas");
         const context = canvas.getContext("2d");
         if (context) {
@@ -218,7 +231,7 @@ const Main = withSharedState(
           inputRef.current.style.width = `${width + 20}px`;
         }
       }
-    }, [nameInput, editingName, cursors.name]);
+    }, [nameInput, editingIdentity, cursors.name]);
 
     return (
       <div
@@ -282,35 +295,77 @@ const Main = withSharedState(
                 style={{ backgroundColor: player.color }}
               >
                 {player.isMe ? (
-                  editingName ? (
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={nameInput}
-                      onChange={(e) => setNameInput(e.target.value)}
-                      onBlur={handleNameSubmit}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          handleNameSubmit();
-                        } else if (e.key === "Escape") {
-                          setNameInput(cursors.name || "");
-                          setEditingName(false);
-                        }
-                      }}
-                      autoFocus
-                      className="name-input"
-                    />
-                  ) : (
-                    <span onClick={() => setEditingName(true)}>
+                  <>
+                    <button
+                      type="button"
+                      className="player-name"
+                      onClick={openIdentityEditor}
+                      aria-expanded={editingIdentity}
+                      aria-controls="identity-editor"
+                    >
                       {cursors.name || "you"}
-                    </span>
-                  )
+                    </button>
+                    {editingIdentity && (
+                      <div id="identity-editor" className="identity-editor">
+                        <label htmlFor="identity-name">name</label>
+                        <input
+                          ref={inputRef}
+                          id="identity-name"
+                          type="text"
+                          value={nameInput}
+                          onChange={(e) => setNameInput(e.target.value)}
+                          onBlur={handleNameSubmit}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleNameSubmit();
+                              setEditingIdentity(false);
+                            } else if (e.key === "Escape") {
+                              setNameInput(cursors.name || "");
+                              setEditingIdentity(false);
+                            }
+                          }}
+                          className="name-input"
+                        />
+                        <span>color</span>
+                        <div className="color-options">
+                          {PLAYER_COLORS.map((color) => (
+                            <button
+                              key={color.value}
+                              type="button"
+                              className="color-option"
+                              style={{ backgroundColor: color.value }}
+                              onClick={() => {
+                                window.cursors.color = color.value;
+                              }}
+                              aria-label={`Use ${color.name}`}
+                              aria-pressed={myColor === color.value}
+                            />
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="identity-editor-close"
+                          onClick={() => {
+                            handleNameSubmit();
+                            setEditingIdentity(false);
+                          }}
+                          aria-label="Close name and color settings"
+                        >
+                          done
+                        </button>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <span>{"·"}</span>
                 )}
               </div>
             ))}
           </div>
+          <p className="experiment-attribution">
+            this is <a href="/experiments">experiment 8</a> made with{" "}
+            <a href="/">playhtml</a>
+          </p>
           <OnlineNowIndicator />
         </div>
       </div>
