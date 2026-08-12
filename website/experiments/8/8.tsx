@@ -19,12 +19,19 @@ import {
   shouldPublishTypingAwareness,
   type TypingCursorAwareness,
 } from "./layout";
+import {
+  getIntroScrollY,
+  INTRO_FADE_DURATION_MS,
+  INTRO_SCROLL_DURATION_MS,
+} from "./intro";
 
 interface CellData {
   letter: string;
   color: string;
   timestamp: number;
 }
+
+type IntroState = "scrolling" | "fading" | "hidden";
 
 const PLAYER_COLORS = [
   { name: "red", value: "hsl(0, 70%, 60%)" },
@@ -47,13 +54,20 @@ const Main = withSharedState(
     const myColor = cursors.color;
     const gridRef = useRef<HTMLDivElement>(null);
     const bottomBarRef = useRef<HTMLDivElement>(null);
-    const shouldFollowScrollEndRef = useRef(true);
+    const shouldFollowScrollEndRef = useRef(false);
+    const introStartedRef = useRef(false);
     const [gridDimensions, setGridDimensions] = useState({
       cols: 60,
       rows: 40,
     });
+    const [hasMeasuredGrid, setHasMeasuredGrid] = useState(false);
+    const [introState, setIntroState] = useState<IntroState>("scrolling");
     const [bottomBarHeightPx, setBottomBarHeightPx] =
       useState(BOTTOM_BAR_HEIGHT_PX);
+
+    useLayoutEffect(() => {
+      window.scrollTo(0, 0);
+    }, []);
 
     // Calculate grid dimensions based on window size
     useEffect(() => {
@@ -69,6 +83,7 @@ const Main = withSharedState(
         const cols = Math.floor(window.innerWidth / cellWidth);
         const rows = Math.floor(window.innerHeight / cellHeight);
         setGridDimensions({ cols, rows });
+        setHasMeasuredGrid(true);
       };
 
       calculateDimensions();
@@ -129,7 +144,65 @@ const Main = withSharedState(
 
     const cursorPosition = getTypingCursorPosition(data.letters.length);
 
+    useEffect(() => {
+      if (!hasMeasuredGrid || introStartedRef.current) return;
+
+      introStartedRef.current = true;
+      const destinationY = getScrollEndY({
+        scrollHeight: document.documentElement.scrollHeight,
+        viewportHeight: window.innerHeight,
+      });
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+      const durationMs = reducedMotion ? 0 : INTRO_SCROLL_DURATION_MS;
+      let animationFrame = 0;
+      let fadeTimeout = 0;
+      let startTime: number | undefined;
+
+      const finishIntro = () => {
+        window.scrollTo(0, destinationY);
+        shouldFollowScrollEndRef.current = true;
+        setIntroState("fading");
+        fadeTimeout = window.setTimeout(() => {
+          shouldFollowScrollEndRef.current = true;
+          setIntroState("hidden");
+        }, reducedMotion ? 800 : INTRO_FADE_DURATION_MS);
+      };
+
+      const animateScroll = (timestamp: number) => {
+        startTime ??= timestamp;
+        const elapsedMs = timestamp - startTime;
+        window.scrollTo(
+          0,
+          getIntroScrollY({ destinationY, elapsedMs, durationMs })
+        );
+
+        if (elapsedMs < durationMs) {
+          animationFrame = window.requestAnimationFrame(animateScroll);
+          return;
+        }
+
+        finishIntro();
+      };
+
+      window.scrollTo(0, 0);
+      if (reducedMotion) {
+        finishIntro();
+      } else {
+        animationFrame = window.requestAnimationFrame(() => {
+          animationFrame = window.requestAnimationFrame(animateScroll);
+        });
+      }
+
+      return () => {
+        window.cancelAnimationFrame(animationFrame);
+        window.clearTimeout(fadeTimeout);
+      };
+    }, [hasMeasuredGrid]);
+
     useLayoutEffect(() => {
+      if (introState !== "hidden") return;
       if (!shouldFollowScrollEndRef.current) return;
 
       window.scrollTo(
@@ -139,7 +212,7 @@ const Main = withSharedState(
           viewportHeight: window.innerHeight,
         })
       );
-    }, [totalCells, bottomBarHeightPx]);
+    }, [totalCells, bottomBarHeightPx, introState]);
 
     useEffect(() => {
       const nextAwareness = { color: myColor, cursorPos: cursorPosition };
@@ -244,6 +317,22 @@ const Main = withSharedState(
           } as React.CSSProperties
         }
       >
+        {introState !== "hidden" && (
+          <section
+            className={`intro-message ${
+              introState === "fading" ? "fading" : ""
+            }`}
+            aria-labelledby="intro-title"
+            aria-describedby="intro-description"
+          >
+            <h1 id="intro-title">single grid paper</h1>
+            <p id="intro-description">
+              A website where we share a single piece of paper to type on.
+              everything you type appears in your color. No backspaces! Have fun
+              and be nice
+            </p>
+          </section>
+        )}
         <div
           ref={gridRef}
           className="grid-container"

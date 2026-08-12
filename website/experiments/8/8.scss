@@ -18,6 +18,42 @@ body {
   padding-bottom: var(--bottom-scroll-clearance, 128px);
 }
 
+.intro-message {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 20;
+  box-sizing: border-box;
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1rem 1.25rem;
+  transform: translate(-50%, -50%);
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 500ms ease;
+
+  &.fading {
+    opacity: 0;
+  }
+
+  h1 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    line-height: 1.2;
+    text-transform: lowercase;
+  }
+
+  p {
+    margin: 0;
+    color: #444;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+}
+
 .grid-container {
   display: grid;
   gap: 0;
