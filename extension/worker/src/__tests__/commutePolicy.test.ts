@@ -159,6 +159,14 @@ describe('buildCommuteResponse', () => {
           'University login',
         ),
         event(
+          'microsoft-signins',
+          'navigation',
+          'https://mysignins.microsoft.com/security-info',
+          125,
+          'microsoft-rider',
+          'Security info',
+        ),
+        event(
           'article',
           'navigation',
           'https://garden.example/essays/moss',
@@ -175,6 +183,7 @@ describe('buildCommuteResponse', () => {
       'docs.superhuman.com',
       'idpproxy.illinois.edu',
       'university.example',
+      'mysignins.microsoft.com',
       'garden.example',
     ]);
     expect(
@@ -430,9 +439,25 @@ describe('buildCommuteResponse', () => {
           'janitorai',
           'navigation',
           'https://janitorai.com/chats/example',
-          200,
+          300,
           'janitorai-rider',
           'JanitorAI',
+        ),
+        event(
+          'deepwiki',
+          'navigation',
+          'https://deepwiki.com/example/project',
+          200,
+          'deepwiki-rider',
+          'Build System | Example Project | DeepWiki',
+        ),
+        event(
+          'perplexity',
+          'navigation',
+          'https://www.perplexity.ai/search/example',
+          150,
+          'perplexity-rider',
+          'Perplexity',
         ),
         event(
           'article',
@@ -450,6 +475,8 @@ describe('buildCommuteResponse', () => {
     expect(response.scenery.map((item) => item.domain)).toEqual([
       'app.devin.ai',
       'janitorai.com',
+      'deepwiki.com',
+      'perplexity.ai',
       'garden.example',
     ]);
     expect(response.destinations.map((item) => item.domain)).toEqual([
