@@ -116,6 +116,22 @@ const SCENERY_ONLY_DOMAINS = [
   'x.com',
 ];
 
+const GENERIC_BUSINESS_HOMEPAGE_DOMAINS = [
+  'adobe.com',
+  'airbnb.com',
+  'apple.com',
+  'bestbuy.com',
+  'canva.com',
+  'garmin.com',
+  'microsoft.com',
+  'ouraring.com',
+  'paypal.com',
+  'shopify.com',
+  'stripe.com',
+  'vercel.com',
+  'wayfair.com',
+];
+
 const MEANINGFUL_TITLE_REQUIRED_DOMAINS = ['itch.io', 'wordpress.com'];
 
 const GENERIC_PATHS = new Set([
@@ -647,6 +663,30 @@ function hasPersonBoundRoute(url: URL, domain: string): boolean {
   );
 }
 
+function isGenericBusinessHomepage(url: URL, domain: string): boolean {
+  return (
+    url.pathname === '/' &&
+    GENERIC_BUSINESS_HOMEPAGE_DOMAINS.some((candidate) =>
+      domainMatches(domain, candidate),
+    )
+  );
+}
+
+function isVercelPreviewDomain(domain: string): boolean {
+  if (!domain.endsWith('.vercel.app')) return false;
+
+  const deploymentName = domain.slice(0, -'.vercel.app'.length);
+  if (deploymentName.includes('-git-')) return true;
+
+  const hasGeneratedHash = deploymentName
+    .split('-')
+    .some(
+      (part) =>
+        part.length >= 8 && /[a-z]/.test(part) && /\d/.test(part),
+    );
+  return deploymentName.length >= 40 && hasGeneratedHash;
+}
+
 function isExcludedDestinationSurface(url: URL, domain: string): boolean {
   return (
     Boolean(url.username || url.password) ||
@@ -654,6 +694,8 @@ function isExcludedDestinationSurface(url: URL, domain: string): boolean {
       domainMatches(domain, candidate),
     ) ||
     hasSubdomainLabel(domain, SCENERY_ONLY_SUBDOMAIN_LABELS) ||
+    isGenericBusinessHomepage(url, domain) ||
+    isVercelPreviewDomain(domain) ||
     hasBlockedPath(url.pathname || '/', domain) ||
     hasPrivateRouteShape(url.pathname) ||
     hasPersonBoundRoute(url, domain) ||

@@ -277,6 +277,107 @@ describe('buildCommuteResponse', () => {
     );
   });
 
+  it('keeps generic business homepages as scenery while allowing deep product pages', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'oura-homepage',
+          'navigation',
+          'https://ouraring.com/',
+          400,
+          'oura-rider',
+          'Oura Ring. Smart Ring for Fitness, Stress, Sleep & Health.',
+        ),
+        event(
+          'wayfair-homepage',
+          'navigation',
+          'https://www.wayfair.com/',
+          300,
+          'wayfair-rider',
+          'Wayfair - Online Home Store',
+        ),
+        event(
+          'oura-product',
+          'navigation',
+          'https://ouraring.com/product/rings/oura-ring-4?utm_source=feed',
+          200,
+          'product-rider',
+          'Oura Ring 4',
+        ),
+        event(
+          'garden',
+          'navigation',
+          'https://garden.example/notes/moss',
+          100,
+          'garden-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.destinations).toEqual([
+      expect.objectContaining({
+        domain: 'garden.example',
+      }),
+      expect.objectContaining({
+        domain: 'ouraring.com',
+        title: 'Oura Ring 4',
+        url: 'https://ouraring.com/product/rings/oura-ring-4',
+      }),
+    ]);
+    expect(response.scenery.map((item) => item.domain)).toEqual(
+      expect.arrayContaining(['ouraring.com', 'wayfair.com']),
+    );
+  });
+
+  it('keeps Vercel previews as scenery while allowing stable hosted projects', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'git-preview',
+          'navigation',
+          'https://funded-product-git-redesign-company.vercel.app/',
+          300,
+          'preview-rider',
+          'Funded Product',
+        ),
+        event(
+          'generated-preview',
+          'navigation',
+          'https://funded-product-redesign-a1b2c3d4-company.vercel.app/',
+          200,
+          'generated-preview-rider',
+          'Funded Product',
+        ),
+        event(
+          'stable-project',
+          'navigation',
+          'https://old-icelandic.vercel.app/word/thyrnir',
+          100,
+          'dictionary-rider',
+          'Old Icelandic Dictionary - Þyrnir',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.destinations).toEqual([
+      expect.objectContaining({
+        domain: 'old-icelandic.vercel.app',
+        url: 'https://old-icelandic.vercel.app/word/thyrnir',
+      }),
+    ]);
+    expect(response.scenery.map((item) => item.domain)).toEqual(
+      expect.arrayContaining([
+        'funded-product-git-redesign-company.vercel.app',
+        'funded-product-redesign-a1b2c3d4-company.vercel.app',
+      ]),
+    );
+  });
+
   it('keeps Grok as scenery while allowing Archive.org item pages as stops', () => {
     const response = buildCommuteResponse(
       [
