@@ -415,6 +415,48 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('keeps AI assistant services as scenery only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'devin',
+          'navigation',
+          'https://app.devin.ai/sessions/example',
+          300,
+          'devin-rider',
+          'Devin',
+        ),
+        event(
+          'janitorai',
+          'navigation',
+          'https://janitorai.com/chats/example',
+          200,
+          'janitorai-rider',
+          'JanitorAI',
+        ),
+        event(
+          'article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          100,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'app.devin.ai',
+      'janitorai.com',
+      'garden.example',
+    ]);
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
   it('keeps user-bound surfaces as scenery but excludes them from destinations', () => {
     const response = buildCommuteResponse(
       [
