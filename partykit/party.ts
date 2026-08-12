@@ -37,6 +37,8 @@ import {
   DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
   DEFAULT_FAILURE_BACKOFF_MS,
   DEFAULT_FAILURE_BACKOFF_MAX_MS,
+  DEFAULT_SUPABASE_LOAD_ATTEMPTS,
+  DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
@@ -92,7 +94,7 @@ import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
   getErrorMessage,
-  withTimeout,
+  retryWithTimeout,
   type PersistenceMode,
 } from "./persistenceMode";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
@@ -481,6 +483,25 @@ export class PartyServer extends YServer {
     );
   }
 
+  private getSupabaseLoadAttempts(): number {
+    return Math.max(
+      1,
+      Math.floor(
+        readPositiveNumberEnv(
+          "SUPABASE_LOAD_ATTEMPTS",
+          DEFAULT_SUPABASE_LOAD_ATTEMPTS
+        )
+      )
+    );
+  }
+
+  private getSupabaseLoadRetryDelayMs(): number {
+    return readPositiveNumberEnv(
+      "SUPABASE_LOAD_RETRY_DELAY_MS",
+      DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS
+    );
+  }
+
   isPersistenceAvailable(): boolean {
     return this.persistenceMode.kind === "available";
   }
@@ -508,6 +529,7 @@ export class PartyServer extends YServer {
 
   private enterTransientPersistenceMode(error: unknown): void {
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
+    const attempts = this.getSupabaseLoadAttempts();
     this.persistenceMode = {
       kind: "transient",
       reason: getErrorMessage(error),
@@ -517,6 +539,7 @@ export class PartyServer extends YServer {
       formatPersistenceFailureLog({
         roomName: this.name,
         timeoutMs,
+        attempts,
         error,
       })
     );
@@ -1655,15 +1678,36 @@ export class PartyServer extends YServer {
 
     // Load the document from Supabase on first connection
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
-    const query = supabase
-      .from("documents")
-      .select("document")
-      .eq("name", this.name)
-      .maybeSingle();
-    const result = await withTimeout(Promise.resolve(query), {
-      timeoutMs,
-      errorMessage: `Supabase document load timed out after ${timeoutMs}ms`,
-    }).catch((error) => {
+    const attempts = this.getSupabaseLoadAttempts();
+    const retryDelayMs = this.getSupabaseLoadRetryDelayMs();
+    let successfulAttempt = 1;
+    const result = await retryWithTimeout(
+      async (signal, attempt) => {
+        successfulAttempt = attempt;
+        const queryResult = await supabase
+          .from("documents")
+          .select("document")
+          .eq("name", this.name)
+          .abortSignal(signal)
+          .maybeSingle();
+        if (queryResult.error) {
+          throw new Error(queryResult.error.message);
+        }
+        return queryResult;
+      },
+      {
+        attempts,
+        timeoutMs,
+        retryDelayMs,
+        errorMessage: `Supabase document load timed out after ${timeoutMs}ms`,
+        onRetry: ({ attempt, retryAfterMs, error }) => {
+          console.warn(
+            `[PartyServer] Supabase document load attempt ${attempt}/${attempts} failed for room=${this.name}; ` +
+              `retrying in ${retryAfterMs}ms: ${getErrorMessage(error)}`
+          );
+        },
+      }
+    ).catch((error) => {
       this.enterTransientPersistenceMode(error);
       return null;
     });
@@ -1676,10 +1720,10 @@ export class PartyServer extends YServer {
       return;
     }
 
-    if (result.error) {
-      this.enterTransientPersistenceMode(new Error(result.error.message));
-      await this.releaseLoadAttempt(loadAttempts);
-      return;
+    if (successfulAttempt > 1) {
+      console.log(
+        `[PartyServer] Supabase document load recovered for room=${this.name} after ${successfulAttempt} attempts.`
+      );
     }
 
     this.markPersistenceAvailable();

@@ -33,8 +33,14 @@ const quarantineKvStub = {
   },
 };
 
+const workerEnv: Record<string, unknown> = {
+  QUARANTINE_CONTROL: quarantineKvStub,
+  SUPABASE_LOAD_ATTEMPTS: "3",
+  SUPABASE_LOAD_RETRY_DELAY_MS: "1",
+};
+
 mock.module("cloudflare:workers", () => ({
-  env: { QUARANTINE_CONTROL: quarantineKvStub },
+  env: workerEnv,
   DurableObject: FakeDurableObject,
   WorkerEntrypoint: class {},
 }));
@@ -48,6 +54,31 @@ let upsertCalls: Array<{ name: string; document: string }> = [];
 // Counts reads of the documents row. The load-backoff contract requires that a
 // deferred room never touches Supabase at all, which this makes observable.
 let documentReadCount = 0;
+let documentReadErrors: Error[] = [];
+
+function createDocumentRead() {
+  const maybeSingle = async () => {
+    documentReadCount += 1;
+    const error = documentReadErrors.shift();
+    if (error) {
+      return { data: null, error: { message: error.message } };
+    }
+    return {
+      data:
+        persistedRow.document === null
+          ? null
+          : { document: persistedRow.document },
+      error: null,
+    };
+  };
+
+  return {
+    maybeSingle,
+    abortSignal() {
+      return { maybeSingle };
+    },
+  };
+}
 
 const supabaseStub = {
   from() {
@@ -55,18 +86,7 @@ const supabaseStub = {
       select() {
         return {
           eq() {
-            return {
-              maybeSingle: async () => {
-                documentReadCount += 1;
-                return {
-                  data:
-                    persistedRow.document === null
-                      ? null
-                      : { document: persistedRow.document },
-                  error: null,
-                };
-              },
-            };
+            return createDocumentRead();
           },
         };
       },
@@ -207,6 +227,7 @@ beforeEach(() => {
   persistedRow.document = null;
   upsertCalls = [];
   documentReadCount = 0;
+  documentReadErrors = [];
   kvStore.clear();
   kvFailure = null;
 });
@@ -742,6 +763,68 @@ describe("alarm failure backoff", () => {
 });
 
 describe("hardening", () => {
+  test("a temporary Supabase failure recovers before transient mode", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    documentReadErrors = [new Error("temporary failure")];
+    const { room } = createRoom();
+    const warnings: string[] = [];
+    const logs: string[] = [];
+    const originalWarn = console.warn;
+    const originalLog = console.log;
+    console.warn = (message: unknown) => warnings.push(String(message));
+    console.log = (message: unknown) => logs.push(String(message));
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.warn = originalWarn;
+      console.log = originalLog;
+    }
+
+    expect(documentReadCount).toBe(2);
+    expect(room.isPersistenceAvailable()).toBe(true);
+    expect(docIsEmpty(room.document)).toBe(false);
+    expect(warnings).toEqual([
+      "[PartyServer] Supabase document load attempt 1/3 failed for room=example-room; retrying in 1ms: temporary failure",
+    ]);
+    expect(logs).toEqual([
+      "[PartyServer] Supabase document load recovered for room=example-room after 2 attempts.",
+    ]);
+  });
+
+  test("transient mode starts only after every Supabase attempt fails", async () => {
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const { room } = createRoom();
+    const warnings: string[] = [];
+    const errors: string[] = [];
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    console.warn = (message: unknown) => warnings.push(String(message));
+    console.error = (message: unknown) => errors.push(String(message));
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.warn = originalWarn;
+      console.error = originalError;
+    }
+
+    expect(documentReadCount).toBe(3);
+    expect(room.isPersistenceAvailable()).toBe(false);
+    expect(docIsEmpty(room.document)).toBe(true);
+    expect(warnings).toEqual([
+      "[PartyServer] Supabase document load attempt 1/3 failed for room=example-room; retrying in 1ms: failure 1",
+      "[PartyServer] Supabase document load attempt 2/3 failed for room=example-room; retrying in 2ms: failure 2",
+    ]);
+    expect(errors).toEqual([
+      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=failure 3 Entering TRANSIENT MODE: realtime sync and awareness may continue, autosave disabled, admin writes disabled.",
+    ]);
+  });
+
   // F5: admin force-reload calls markPersistenceAvailable, which would otherwise
   // silently lift the write park on a quarantined room.
   test("markPersistenceAvailable cannot lift a quarantine write park", async () => {
@@ -790,12 +873,16 @@ describe("hardening", () => {
     const originalFrom = supabaseStub.from;
     (supabaseStub as any).from = () => ({
       select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
+        eq: () => {
+          const maybeSingle = async () => ({
             data: null,
             error: { message: "connection refused" },
-          }),
-        }),
+          });
+          return {
+            maybeSingle,
+            abortSignal: () => ({ maybeSingle }),
+          };
+        },
       }),
     });
 

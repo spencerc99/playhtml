@@ -105,6 +105,12 @@ export const DEFAULT_FAILURE_BACKOFF_MAX_MS = (() => {
 export const DEFAULT_SUPABASE_LOAD_TIMEOUT_MS = (() => {
   return 5000;
 })();
+export const DEFAULT_SUPABASE_LOAD_ATTEMPTS = (() => {
+  return 3;
+})();
+export const DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS = (() => {
+  return 250;
+})();
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 
