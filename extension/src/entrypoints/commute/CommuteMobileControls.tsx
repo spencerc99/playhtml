@@ -28,7 +28,7 @@ interface CommuteMobileControlsProps {
   onMove: (vector: CommutePoint) => void;
 }
 
-export function keepMobileCursorOnAvatar(event: SyntheticEvent) {
+export function keepCommuteCursorInCar(event: SyntheticEvent) {
   event.stopPropagation();
 }
 

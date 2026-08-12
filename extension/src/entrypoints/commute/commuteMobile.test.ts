@@ -1,9 +1,12 @@
-// ABOUTME: Verifies mobile commute movement, bounds, and proximity interactions.
-// ABOUTME: Covers the geometry used by joystick walking, seating, and train doors.
+// ABOUTME: Verifies commute cursor movement, bounds, and proximity interactions.
+// ABOUTME: Covers geometry used by clicking, joystick walking, seating, and doors.
 
 import { describe, expect, it } from "vitest";
 import {
   findNearbyCommuteSeat,
+  getCommutePointFromClient,
+  getCommutePointFromZone,
+  getCommuteRiderStart,
   getStandingPosition,
   isNearCommuteDoor,
   moveCommuteAvatar,
@@ -55,5 +58,28 @@ describe("mobile commute geometry", () => {
   it("places a standing rider on the aisle side of either seat row", () => {
     expect(getStandingPosition(SEATS[0])).toEqual({ x: 69, y: 94 });
     expect(getStandingPosition(SEATS[1])).toEqual({ x: 125, y: 270 });
+  });
+
+  it("maps desktop clicks and shared cursor zones into carriage coordinates", () => {
+    expect(
+      getCommutePointFromClient(
+        { x: 375, y: 140 },
+        { left: 100, top: 50, width: 550, height: 180 },
+      ),
+    ).toEqual({ x: 550, y: 180 });
+    expect(getCommutePointFromZone(0.5, 0.5)).toEqual({ x: 550, y: 180 });
+    expect(getCommutePointFromZone(-1, 2)).toEqual({ x: 38, y: 316 });
+  });
+
+  it("gives every rider a stable visible position before they move", () => {
+    const first = getCommuteRiderStart("rider-without-cursor-data");
+    const second = getCommuteRiderStart("another-rider");
+
+    expect(getCommuteRiderStart("rider-without-cursor-data")).toEqual(first);
+    expect(first).not.toEqual(second);
+    expect(first.x).toBeGreaterThanOrEqual(38);
+    expect(first.x).toBeLessThanOrEqual(1062);
+    expect(first.y).toBeGreaterThanOrEqual(32);
+    expect(first.y).toBeLessThanOrEqual(316);
   });
 });

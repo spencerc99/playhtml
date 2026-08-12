@@ -329,8 +329,7 @@ button {
 .commute-mobile-wordmark,
 .commute-mobile-fullscreen,
 .commute-mobile-joystick,
-.commute-mobile-action,
-.commute-mobile-avatar {
+.commute-mobile-action {
   display: none;
 }
 
@@ -1097,6 +1096,27 @@ button {
   animation: cursor-breathe 2.2s ease-in-out infinite;
 }
 
+.commute-avatar {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  transform: translate(-14px, -14px);
+  transition:
+    left 0.4s cubic-bezier(0.2, 0.8, 0.3, 1),
+    top 0.4s cubic-bezier(0.2, 0.8, 0.3, 1);
+  pointer-events: none;
+
+  .cursor-rider {
+    position: relative;
+    top: auto;
+    left: auto;
+  }
+
+  &--walking {
+    transition: none;
+  }
+}
+
 .commute-counts {
   width: 100%;
   margin-top: 14px;
@@ -1139,8 +1159,7 @@ button {
   }
 }
 
-@media (hover: none) and (pointer: coarse) and (max-width: 900px) and
-  (orientation: portrait) {
+@media (hover: none) and (pointer: coarse) and (max-width: 900px) and (orientation: portrait) {
   html,
   body,
   #commute-root {
@@ -1227,8 +1246,7 @@ button {
   }
 }
 
-@media (hover: none) and (pointer: coarse) and (max-width: 950px) and
-  (max-height: 600px) and (orientation: landscape) {
+@media (hover: none) and (pointer: coarse) and (max-width: 950px) and (max-height: 600px) and (orientation: landscape) {
   html,
   body,
   #commute-root {
@@ -1528,27 +1546,6 @@ button {
 
     &--exit {
       background: $accent-rust;
-    }
-  }
-
-  .commute-mobile-avatar {
-    position: absolute;
-    z-index: 10;
-    display: flex;
-    transform: translate(-14px, -14px);
-    transition:
-      left 0.4s cubic-bezier(0.2, 0.8, 0.3, 1),
-      top 0.4s cubic-bezier(0.2, 0.8, 0.3, 1);
-    pointer-events: none;
-
-    .cursor-rider {
-      position: relative;
-      top: auto;
-      left: auto;
-    }
-
-    &--walking {
-      transition: none;
     }
   }
 

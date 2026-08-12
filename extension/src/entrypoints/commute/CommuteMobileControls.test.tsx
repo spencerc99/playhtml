@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CommuteMobileControls,
-  keepMobileCursorOnAvatar,
+  keepCommuteCursorInCar,
 } from "./CommuteMobileControls";
 
 function renderControls(
@@ -28,7 +28,10 @@ describe("CommuteMobileControls", () => {
       configurable: true,
       value: vi.fn().mockResolvedValue(undefined),
     });
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
   });
 
   afterEach(() => {
@@ -59,7 +62,10 @@ describe("CommuteMobileControls", () => {
   });
 
   it("boards without forcing fullscreen in a precise-pointer preview", async () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: false })),
+    );
     const onBoard = vi.fn();
     const { container, root } = renderControls({
       action: null,
@@ -149,7 +155,7 @@ describe("CommuteMobileControls", () => {
     act(() => root.unmount());
   });
 
-  it("keeps boarded pointer movement from replacing the avatar cursor", () => {
+  it("keeps page pointer movement from replacing the in-carriage cursor", () => {
     const documentMove = vi.fn();
     document.addEventListener("mousemove", documentMove);
     const container = document.createElement("div");
@@ -158,7 +164,7 @@ describe("CommuteMobileControls", () => {
 
     act(() => {
       root.render(
-        <main onMouseMove={keepMobileCursorOnAvatar}>
+        <main onMouseMove={keepCommuteCursorInCar}>
           <span data-testid="train-floor" />
         </main>,
       );
