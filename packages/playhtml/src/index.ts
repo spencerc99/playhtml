@@ -16,6 +16,7 @@ import {
   toPublicPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
+  observeElementChanges,
 } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./shared-elements";
 import {
@@ -530,6 +531,47 @@ export interface InitOptions<T = unknown> {
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
 const elementInitializersById = new Map<string, ElementInitializer>();
+let registeredElementObserver: MutationObserver | null = null;
+
+function observeRegisteredElements(): void {
+  if (
+    registeredElementObserver ||
+    elementInitializersById.size === 0 ||
+    typeof MutationObserver === "undefined"
+  ) {
+    return;
+  }
+
+  registeredElementObserver = observeElementChanges(
+    document.documentElement,
+    (mutations) => {
+      for (const mutation of mutations) {
+        for (const addedNode of mutation.addedNodes) {
+          if (!isHTMLElement(addedNode)) continue;
+
+          if (
+            addedNode.id &&
+            elementInitializersById.has(addedNode.id)
+          ) {
+            setupPlayElement(addedNode);
+          }
+
+          addedNode.querySelectorAll<HTMLElement>("[id]").forEach((element) => {
+            if (elementInitializersById.has(element.id)) {
+              setupPlayElement(element);
+            }
+          });
+        }
+      }
+    },
+    { childList: true, subtree: true },
+  );
+}
+
+function disconnectRegisteredElementObserver(): void {
+  registeredElementObserver?.disconnect();
+  registeredElementObserver = null;
+}
 
 function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
@@ -2119,6 +2161,8 @@ function setupElements(): void {
     return;
   }
 
+  observeRegisteredElements();
+
   for (const tag of getTagTypes()) {
     const tagElements = new Set<HTMLElement>(
       Array.from(document.querySelectorAll(`[${tag}]`)).filter(isHTMLElement),
@@ -2362,6 +2406,7 @@ export async function resetPlayHTML(): Promise<void> {
     pageDataRefCounts.clear();
     pageDataListeners.clear();
     mainProviderSyncWaiters.clear();
+    disconnectRegisteredElementObserver();
 
     teardownElementAwarenessClient();
     teardownPresenceClient();
@@ -3023,9 +3068,13 @@ function createPlayElementHandle(
       handler.requestUpdate();
     },
     unregister: () => {
+      const boundElement = findHandlerForElementId(elementId, tag)?.element;
       elementInitializersById.delete(elementId);
-      const el = document.getElementById(elementId);
-      if (el) removePlayElement(el);
+      if (elementInitializersById.size === 0) {
+        disconnectRegisteredElementObserver();
+      }
+      const element = boundElement ?? document.getElementById(elementId);
+      if (element) removePlayElement(element);
     },
   };
 }
@@ -3070,6 +3119,9 @@ function registerPlayElement<T = any, U = any, V = any>(
 
   validateRegisteredInitializer(elementId, init as ElementInitializer);
   elementInitializersById.set(elementId, init as ElementInitializer);
+  if (hasSynced) {
+    observeRegisteredElements();
+  }
   if (element && isHTMLElement(element)) {
     setupPlayElement(element);
   }
@@ -3092,9 +3144,10 @@ function registerPlayElement<T = any, U = any, V = any>(
 
 /**
  * Registers a reusable capability under an attribute name (e.g. "can-note").
- * Every element carrying that attribute gets the capability — including ones
- * added to the DOM later. The imperative counterpart of
- * `init({ extraCapabilities })`.
+ * Upgrades matching elements already in the DOM. Matching descendants rendered
+ * by a view bind through the view's observer. The imperative counterpart of
+ * `init({ extraCapabilities })`; other elements added later still use
+ * `setupPlayElement`.
  *
  * @param capabilityName - The attribute name elements use to opt in (used in an
  *   attribute selector, e.g. `[can-note]`).

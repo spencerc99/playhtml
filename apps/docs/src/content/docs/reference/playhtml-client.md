@@ -243,7 +243,7 @@ Directly assigning initializer fields to an element remains supported for compat
 
 **Signature:** `define<T, U, V>(capabilityName: string, init: ElementInitializer<T, U, V>): void`
 
-Registers a reusable capability under an attribute name. Every element carrying `[capabilityName]` binds, including elements added to the DOM later. The runtime equivalent of `init({ extraCapabilities })`.
+Registers a reusable capability under an attribute name. Matching elements already on the page bind immediately, as do matching descendants rendered by a registered view. Call `setupPlayElement(element)` for other elements added after initialization. `define` is the runtime equivalent of `init({ extraCapabilities })`.
 
 ```js
 playhtml.define("can-note", {

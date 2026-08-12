@@ -162,6 +162,7 @@ describe("rail 2: lifecycle & guards", () => {
     await tick();
     expect(cleanup).not.toHaveBeenCalled();
 
+    el.remove();
     handle.unregister();
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
@@ -226,6 +227,31 @@ describe("rail 2: lifecycle & guards", () => {
     expect(el.hasAttribute("can-play")).toBe(false);
     expect((el as any).defaultData).toBeUndefined();
     expect((el as any).updateElement).toBeUndefined();
+  });
+
+  it("binds an id registration when its element is inserted after init", async () => {
+    const updateElement = vi.fn(({ element, data }) => {
+      element.textContent = String(data.count);
+    });
+    const handle = playhtml.register("deferred-registration", {
+      defaultData: { count: 5 },
+      updateElement,
+    });
+
+    expect(handle.getElement()).toBeNull();
+
+    const el = document.createElement("div");
+    el.id = "deferred-registration";
+    document.body.appendChild(el);
+    await tick();
+    await tick();
+
+    expect(updateElement).toHaveBeenCalled();
+    expect(el.textContent).toBe("5");
+    expect(handle.getElement()).toBe(el);
+    expect(handle.getData()).toEqual({ count: 5 });
+
+    handle.unregister();
   });
 
   it("accepts an element and binds its initializer immediately", async () => {

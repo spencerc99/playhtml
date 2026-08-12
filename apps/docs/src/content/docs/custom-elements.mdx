@@ -362,7 +362,7 @@ form.addEventListener("submit", (e) => {
 
 #### Reusing the element many times: `define`
 
-`playhtml.define(name, init)` registers a capability under an attribute, so every `[name]` element gets it (including ones added later).
+`playhtml.define(name, init)` registers a capability under an attribute. Matching elements already on the page bind immediately, as do matching descendants rendered by a registered view. Call `setupPlayElement(element)` for other elements added after initialization.
 
 ```html
 <div id="note-1" can-note data-color="yellow"></div>
