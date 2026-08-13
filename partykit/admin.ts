@@ -1038,6 +1038,7 @@ export class AdminHandler {
         if (this.context.circuitBreaker.isQuarantined()) {
           await this.context.circuitBreaker.clearQuarantine();
           quarantineCleared = true;
+          this.context.markDocumentHydrated();
         }
       } catch (error) {
         cleanupError = error instanceof Error ? error.message : String(error);
