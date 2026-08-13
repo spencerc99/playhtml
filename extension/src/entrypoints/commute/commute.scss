@@ -233,6 +233,10 @@ button {
   }
 }
 
+.commute-banner__mobile-message {
+  display: none;
+}
+
 .commute-line-number {
   width: 26px;
   height: 26px;
@@ -1114,6 +1118,136 @@ button {
 
   &--walking {
     transition: none;
+
+    .cursor-rider {
+      animation: cursor-walk 0.32s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes cursor-walk {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.commute-debug {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 70;
+  width: min(320px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba($text, 0.45);
+  border-radius: 5px;
+  background: rgba($bg, 0.96);
+  box-shadow: 4px 4px 0 rgba($text, 0.12);
+  color: $text;
+  font-family: $font-mono;
+  font-size: 11px;
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba($text, 0.25);
+  }
+
+  header strong {
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  header button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid rgba($text, 0.35);
+    border-radius: 2px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  dl {
+    display: grid;
+    gap: 4px;
+    margin: 10px 0;
+  }
+
+  dl div {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  dt {
+    color: rgba($text, 0.55);
+    text-transform: uppercase;
+  }
+
+  dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  ol {
+    display: grid;
+    gap: 3px;
+    margin: 0 0 10px;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: grid;
+    grid-template-columns: 18px 18px minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+    padding: 4px 5px;
+    border-radius: 2px;
+  }
+
+  &__stop-index {
+    color: rgba($text, 0.5);
+    text-align: right;
+  }
+
+  &__stop-details {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+
+  &__stop-details strong {
+    overflow: hidden;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stop-favicon {
+    width: 16px;
+    height: 16px;
+  }
+
+  &__stop--current {
+    background: rgba($accent-teal, 0.16);
+    outline: 1px solid rgba($accent-teal, 0.45);
+  }
+
+  > small {
+    color: rgba($text, 0.52);
   }
 }
 
@@ -1287,32 +1421,40 @@ button {
 
   .commute-banner {
     width: auto;
-    max-width: min(84vw, calc(100vw - 220px));
-    min-height: 42px;
+    max-width: min(180px, calc(100vw - 24px));
+    min-height: 30px;
     position: fixed;
-    top: calc(10px + env(safe-area-inset-top));
-    left: 50%;
+    top: calc(8px + env(safe-area-inset-top));
+    left: calc(12px + env(safe-area-inset-left));
     z-index: 30;
-    padding: 8px 16px;
-    gap: 10px;
-    border-radius: 10px;
-    transform: translateX(-50%);
+    padding: 5px 9px;
+    gap: 7px;
+    border-radius: 8px;
+    background: rgba($surface, 0.9);
 
     strong {
-      max-width: 48vw;
-      font-size: 15px;
+      max-width: none;
+      min-width: 0;
+      font-size: 11px;
+      font-family: $font-mono;
+      letter-spacing: 0.03em;
     }
   }
 
   .commute-line-number {
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    font-size: 12px;
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    font-size: 10px;
   }
 
+  .commute-banner__message,
   .commute-banner__rule {
-    min-width: 12px;
+    display: none;
+  }
+
+  .commute-banner__mobile-message {
+    display: block;
   }
 
   .commute-banner__destination-label {
@@ -1324,8 +1466,7 @@ button {
   }
 
   .commute-banner__aside {
-    max-width: 30vw;
-    font-size: 10px;
+    display: none;
   }
 
   .commute-stage-viewport {
@@ -1454,13 +1595,7 @@ button {
   }
 
   .commute-mobile-wordmark {
-    position: fixed;
-    top: calc(10px + env(safe-area-inset-top));
-    left: calc(12px + env(safe-area-inset-left));
-    z-index: 30;
-    display: block;
-    color: $text-muted;
-    font-size: 13px;
+    display: none;
   }
 
   .commute-mobile-fullscreen {

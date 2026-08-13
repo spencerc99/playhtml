@@ -10,6 +10,8 @@ import {
   getStandingPosition,
   isNearCommuteDoor,
   moveCommuteAvatar,
+  moveCommuteAvatarToward,
+  shouldExitCommuteThroughDoor,
   type CommuteSeatGeometry,
 } from "./commuteMobile";
 
@@ -39,6 +41,15 @@ describe("mobile commute geometry", () => {
     expect(moveCommuteAvatar(position, { x: 0.1, y: 0.1 })).toBe(position);
   });
 
+  it("walks toward a clicked destination without overshooting it", () => {
+    expect(
+      moveCommuteAvatarToward({ x: 100, y: 100 }, { x: 130, y: 100 }, 10),
+    ).toEqual({ position: { x: 110, y: 100 }, arrived: false });
+    expect(
+      moveCommuteAvatarToward({ x: 125, y: 100 }, { x: 130, y: 100 }, 10),
+    ).toEqual({ position: { x: 130, y: 100 }, arrived: true });
+  });
+
   it("selects the closest free seat and ignores occupied seats", () => {
     expect(findNearbyCommuteSeat({ x: 70, y: 54 }, SEATS, new Set())).toEqual(
       SEATS[0],
@@ -53,6 +64,21 @@ describe("mobile commute geometry", () => {
     expect(isNearCommuteDoor({ x: 330, y: 80 }, doors)).toBe(true);
     expect(isNearCommuteDoor({ x: 330, y: 140 }, doors)).toBe(false);
     expect(isNearCommuteDoor({ x: 600, y: 80 }, doors)).toBe(false);
+  });
+
+  it("exits only while walking upward into an open destination door", () => {
+    const doors = [{ x: 276 }, { x: 696 }];
+    const doorway = { x: 330, y: 80 };
+
+    expect(
+      shouldExitCommuteThroughDoor(doorway, { x: 0, y: -1 }, doors, true),
+    ).toBe(true);
+    expect(
+      shouldExitCommuteThroughDoor(doorway, { x: 0, y: 1 }, doors, true),
+    ).toBe(false);
+    expect(
+      shouldExitCommuteThroughDoor(doorway, { x: 0, y: -1 }, doors, false),
+    ).toBe(false);
   });
 
   it("places a standing rider on the aisle side of either seat row", () => {

@@ -26,6 +26,7 @@ export const COMMUTE_CAR_WIDTH = 1100;
 export const COMMUTE_CAR_HEIGHT = 360;
 export const COMMUTE_AVATAR_START: CommutePoint = { x: 340, y: 70 };
 export const COMMUTE_WALK_SPEED = 5.5;
+export const COMMUTE_CLICK_WALK_SPEED = 12;
 
 const CAR_MIN_X = 38;
 const CAR_MAX_X = 1062;
@@ -95,6 +96,35 @@ export function moveCommuteAvatar(
   });
 }
 
+export function moveCommuteAvatarToward(
+  position: CommutePoint,
+  destination: CommutePoint,
+  speed: number = COMMUTE_CLICK_WALK_SPEED,
+): { position: CommutePoint; arrived: boolean } {
+  const distance = Math.hypot(
+    destination.x - position.x,
+    destination.y - position.y,
+  );
+  if (distance <= speed) {
+    return {
+      position: clampCommuteAvatarPosition(destination),
+      arrived: true,
+    };
+  }
+
+  return {
+    position: moveCommuteAvatar(
+      position,
+      {
+        x: (destination.x - position.x) / distance,
+        y: (destination.y - position.y) / distance,
+      },
+      speed,
+    ),
+    arrived: false,
+  };
+}
+
 export function findNearbyCommuteSeat(
   position: CommutePoint,
   seats: CommuteSeatGeometry[],
@@ -125,6 +155,15 @@ export function isNearCommuteDoor(
     (door) =>
       position.x > door.x - 14 && position.x < door.x + 142 && position.y < 118,
   );
+}
+
+export function shouldExitCommuteThroughDoor(
+  position: CommutePoint,
+  vector: CommutePoint,
+  doors: CommuteDoorGeometry[],
+  canExit: boolean,
+): boolean {
+  return canExit && vector.y < -0.15 && isNearCommuteDoor(position, doors);
 }
 
 export function getStandingPosition(seat: CommuteSeatGeometry): CommutePoint {
