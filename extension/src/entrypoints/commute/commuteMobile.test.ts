@@ -3,7 +3,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  COMMUTE_AVATAR_START,
+  COMMUTE_JOIN_ENTRY_POSITION,
   findNearbyCommuteSeat,
+  getCommuteAvatarStart,
   getCommutePointFromClient,
   getCommutePointFromZone,
   getCommuteRiderStart,
@@ -21,6 +24,11 @@ const SEATS: CommuteSeatGeometry[] = [
 ];
 
 describe("mobile commute geometry", () => {
+  it("places a joining rider where the side-door animation ends", () => {
+    expect(getCommuteAvatarStart(true)).toBe(COMMUTE_JOIN_ENTRY_POSITION);
+    expect(getCommuteAvatarStart(false)).toBe(COMMUTE_AVATAR_START);
+  });
+
   it("normalizes diagonal movement and clamps it inside the carriage", () => {
     expect(moveCommuteAvatar({ x: 100, y: 100 }, { x: 1, y: 1 }, 10)).toEqual({
       x: 100 + 10 / Math.sqrt(2),
