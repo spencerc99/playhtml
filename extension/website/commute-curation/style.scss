@@ -177,6 +177,10 @@ h1 {
   margin-top: 16px;
 }
 
+.workbench > * {
+  min-width: 0;
+}
+
 .panel {
   border: 1px solid $ink;
   background: rgba($paper-light, 0.94);
@@ -250,8 +254,14 @@ h1 {
 
 .intake form {
   display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   padding: 18px 16px 20px;
+}
+
+.intake form > * {
+  min-width: 0;
 }
 
 .candidate-card {
@@ -285,6 +295,10 @@ h1 {
   margin-top: 18px;
 }
 
+.candidate-card__identity > div {
+  min-width: 0;
+}
+
 .candidate-card__identity img {
   width: 38px;
   height: 38px;
@@ -295,11 +309,13 @@ h1 {
   margin: 0;
   font-family: $mono;
   font-size: 17px;
+  overflow-wrap: anywhere;
 }
 
 .candidate-card__identity p {
   margin-top: 3px;
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .candidate-card > a {
@@ -388,6 +404,13 @@ h1 {
   color: rgba($ink, 0.5);
   font-family: $mono;
   font-size: 9px;
+}
+
+.history li > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 label > span,
