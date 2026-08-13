@@ -132,7 +132,7 @@ h1 {
 
 .verdict-key__item {
   display: grid;
-  grid-template-columns: 32px 1fr auto;
+  grid-template-columns: 32px 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   min-height: 48px;
@@ -150,6 +150,42 @@ h1 {
 .verdict-key__item b {
   font-size: 21px;
   font-weight: 400;
+}
+
+.verdict-key__item .status-icon {
+  color: var(--verdict-color);
+}
+
+.status-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.status-icon__fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+.status-tone--green {
+  --status-color: #{$green};
+}
+
+.status-tone--blue {
+  --status-color: #{$blue};
+}
+
+.status-tone--orange {
+  --status-color: #{$orange};
+}
+
+.status-tone--neutral {
+  --status-color: #{rgba($ink, 0.5)};
 }
 
 .verdict-key__item > span {
@@ -260,22 +296,50 @@ h1 {
   background: #fffef8;
 }
 
-.candidate-card__status {
-  display: flex;
+.route-summary {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid currentColor;
   font-family: $mono;
-  font-size: 9px;
 }
 
-.source {
-  padding: 3px 5px;
-  color: $paper-light;
-  background: $green;
+.route-summary--stop {
+  color: $green;
+  background: rgba($green, 0.09);
 }
 
-.source--scenery {
-  background: $blue;
+.route-summary--scenery {
+  color: $blue;
+  background: rgba($blue, 0.08);
+}
+
+.route-summary .status-icon {
+  width: 25px;
+  height: 25px;
+}
+
+.route-summary small,
+.route-summary strong {
+  display: block;
+}
+
+.route-summary small {
+  margin-bottom: 2px;
+  color: rgba($ink, 0.52);
+  font-size: 7px;
+}
+
+.route-summary strong {
+  color: $ink;
+  font-size: 12px;
+}
+
+.route-summary > span {
+  color: currentColor;
+  font-size: 8px;
 }
 
 .candidate-card__identity {
@@ -326,47 +390,75 @@ h1 {
 }
 
 .inspection-card {
+  --inspection-color: #{rgba($ink, 0.5)};
   padding: 12px 14px;
-  border: 1px solid rgba($blue, 0.55);
+  border: 1px solid var(--inspection-color);
   background:
     repeating-linear-gradient(
       -45deg,
-      rgba($blue, 0.04) 0 7px,
+      color-mix(in srgb, var(--inspection-color) 5%, transparent) 0 7px,
       transparent 7px 14px
     ),
     #fffef8;
 }
 
-.inspection-card > div {
-  display: flex;
-  justify-content: space-between;
-  color: $blue;
-  font-family: $mono;
-  font-size: 9px;
+.inspection-card--green {
+  --inspection-color: #{$green};
+}
+
+.inspection-card--blue {
+  --inspection-color: #{$blue};
+}
+
+.inspection-card--orange {
+  --inspection-color: #{$orange};
 }
 
 .inspection-card > small {
   display: block;
-  margin-top: 4px;
-  color: rgba($ink, 0.48);
+  color: rgba($ink, 0.5);
   font-family: $mono;
   font-size: 7px;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
-.inspection-card p {
+.inspection-card__result {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 10px;
-  font-size: 12px;
+  align-items: center;
+  gap: 11px;
+  margin-top: 8px;
+  color: var(--inspection-color);
 }
 
-.inspection-card p span {
-  color: rgba($ink, 0.54);
+.inspection-card__result .status-icon {
+  width: 29px;
+  height: 29px;
+}
+
+.inspection-card__result strong,
+.inspection-card__result span {
+  display: block;
+}
+
+.inspection-card__result strong {
+  color: $ink;
+  font-size: 16px;
+}
+
+.inspection-card__result span {
+  margin-top: 2px;
+  color: var(--inspection-color);
   font-family: $mono;
-  font-size: 9px;
+  font-size: 8px;
+  text-transform: capitalize;
+}
+
+.inspection-card > p {
+  margin-top: 10px;
+  color: rgba($ink, 0.5);
+  font-family: $mono;
+  font-size: 7px;
+  line-height: 1.45;
 }
 
 label > span,
@@ -488,6 +580,10 @@ fieldset {
 
 .verdict-option {
   position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
   min-height: 68px;
   margin-left: -1px;
   padding: 9px;
@@ -505,10 +601,11 @@ fieldset {
   opacity: 0;
 }
 
+.verdict-option .status-icon {
+  color: var(--status-color);
+}
+
 .verdict-option span {
-  display: flex;
-  height: 100%;
-  align-items: flex-end;
   margin: 0;
   font-family: $body;
   font-size: 13px;
@@ -517,26 +614,11 @@ fieldset {
   text-transform: none;
 }
 
-.verdict-option::before {
-  position: absolute;
-  top: 9px;
-  left: 9px;
-  width: 12px;
-  height: 12px;
-  border: 1px solid $ink;
-  content: "";
-}
-
 .verdict-option:has(input:checked) {
   z-index: 1;
   border-color: $ink;
   background: color-mix(in srgb, var(--verdict-color) 14%, $paper-light);
   box-shadow: inset 0 -5px 0 var(--verdict-color);
-}
-
-.verdict-option:has(input:checked)::before {
-  background: var(--verdict-color);
-  box-shadow: inset 0 0 0 3px $paper-light;
 }
 
 .form-actions {
@@ -625,8 +707,18 @@ fieldset {
 }
 
 .live-place-list .place-card--selected {
-  background: rgba($blue, 0.07);
-  box-shadow: inset 5px 0 0 $blue;
+  background: rgba(var(--route-color-rgb), 0.07);
+  box-shadow: inset 5px 0 0 var(--route-color);
+}
+
+.place-card--route-stop {
+  --route-color: #{$green};
+  --route-color-rgb: 76, 138, 103;
+}
+
+.place-card--route-scenery {
+  --route-color: #{$blue};
+  --route-color-rgb: 52, 104, 212;
 }
 
 .place-card__select {
@@ -650,12 +742,19 @@ fieldset {
 }
 
 .decision-mark {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin-top: 7px;
-  color: var(--verdict-color);
+  color: var(--status-color);
   font-family: $mono;
   font-size: 8px;
   text-transform: uppercase;
+}
+
+.decision-mark .status-icon {
+  width: 12px;
+  height: 12px;
 }
 
 .place-card__remove {
@@ -710,13 +809,28 @@ fieldset {
   white-space: nowrap;
 }
 
-.place-card__topline span {
+.route-chip {
+  display: inline-flex;
   flex: none;
-  color: var(--verdict-color);
+  align-items: center;
+  gap: 4px;
   font-family: $mono;
   font-size: 8px;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+.route-chip--stop {
+  color: $green;
+}
+
+.route-chip--scenery {
+  color: $blue;
+}
+
+.route-chip .status-icon {
+  width: 13px;
+  height: 13px;
 }
 
 .place-card__body a {

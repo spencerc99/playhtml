@@ -55,6 +55,91 @@ const INSPECTION_LABELS: Record<PublicPageInspection["verdict"], string> = {
   unknown: "Unknown",
 };
 
+const ROUTE_LABELS: Record<CommuteReviewItem["currentDisposition"], string> = {
+  stop: "Stop candidate",
+  scenery: "Scenery only",
+};
+
+type StatusIconKind =
+  | CurationVerdict
+  | CommuteReviewItem["currentDisposition"]
+  | PublicPageInspection["verdict"]
+  | "loading";
+
+function StatusIcon({ kind }: { kind: StatusIconKind }) {
+  const iconKind =
+    kind === "promoted"
+      ? "stop"
+      : kind === "scenery-only"
+        ? "scenery"
+        : kind;
+
+  return (
+    <svg
+      className="status-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      {iconKind === "stop" && (
+        <>
+          <circle cx="12" cy="9" r="5.5" />
+          <circle cx="12" cy="9" r="1.8" className="status-icon__fill" />
+          <path d="M12 14.5V21M8.5 21h7" />
+        </>
+      )}
+      {iconKind === "scenery" && (
+        <>
+          <rect x="3" y="4" width="18" height="16" rx="1" />
+          <path d="m5.5 17 4.2-5 3.1 3.2 2.4-2.7 3.3 4.5M16.5 8h.01" />
+        </>
+      )}
+      {(iconKind === "blocked" || iconKind === "not_public") && (
+        <>
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="m6 18 12-12" />
+        </>
+      )}
+      {iconKind === "public" && <path d="m4.5 12 4.5 4.5L19.5 6" />}
+      {iconKind === "gated" && (
+        <>
+          <rect x="5" y="10" width="14" height="10" rx="1" />
+          <path d="M8 10V7.5a4 4 0 0 1 8 0V10M12 14v2" />
+        </>
+      )}
+      {iconKind === "unavailable" && (
+        <>
+          <path d="M4 8h16M4 16h16M8 4v16M16 4v16" />
+          <path d="m5 19 14-14" />
+        </>
+      )}
+      {iconKind === "unknown" && (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9.5 9a2.6 2.6 0 1 1 3.2 2.5c-.7.3-.7.8-.7 1.5M12 17h.01" />
+        </>
+      )}
+      {iconKind === "loading" && (
+        <path d="M12 3a9 9 0 1 1-8.2 5.3" />
+      )}
+    </svg>
+  );
+}
+
+function verdictTone(verdict: CurationVerdict): string {
+  if (verdict === "promoted") return "green";
+  if (verdict === "scenery-only") return "blue";
+  return "orange";
+}
+
+function inspectionTone(
+  verdict: PublicPageInspection["verdict"],
+): string {
+  if (verdict === "public") return "green";
+  if (verdict === "unknown") return "blue";
+  if (verdict === "unavailable") return "neutral";
+  return "orange";
+}
+
 type InspectionState =
   | { status: "loading" }
   | { status: "ready"; inspection: PublicPageInspection }
@@ -271,9 +356,9 @@ export function App() {
           </div>
         </div>
         <div className="masthead__notice">
-          <span>SHADOW REVIEW</span>
-          <strong>DOES NOT CHANGE THE TRAIN</strong>
-          <small>decisions stay in this browser</small>
+          <span>LOCAL DRAFT</span>
+          <strong>REVIEW LIVE CANDIDATES</strong>
+          <small>saved in this browser</small>
         </div>
       </header>
 
@@ -281,6 +366,7 @@ export function App() {
         {CURATION_VERDICTS.map((value, index) => (
           <div className={`verdict-key__item verdict--${value}`} key={value}>
             <span>0{index + 1}</span>
+            <StatusIcon kind={value} />
             <strong>{VERDICT_LABELS[value]}</strong>
             <b>{counts[value]}</b>
           </div>
@@ -323,15 +409,21 @@ export function App() {
           {queueStatus === "ready" && selectedItem && (
             <form className="review-form" onSubmit={fileDecision}>
               <div className="candidate-card">
-                <div className="candidate-card__status">
-                  <span
-                    className={`source source--${selectedItem.currentDisposition}`}
-                  >
+                <div
+                  className={`route-summary route-summary--${selectedItem.currentDisposition}`}
+                >
+                  <StatusIcon kind={selectedItem.currentDisposition} />
+                  <div>
+                    <small>AUTOMATIC ROUTING</small>
+                    <strong>
+                      {ROUTE_LABELS[selectedItem.currentDisposition]}
+                    </strong>
+                  </div>
+                  <span>
                     {selectedItem.currentDisposition === "stop"
-                      ? "CURRENT STOP"
-                      : "CURRENT SCENERY"}
+                      ? "Eligible to arrive"
+                      : "Visible from the train"}
                   </span>
-                  <span>FROM RECENT BROWSING</span>
                 </div>
                 <div className="candidate-card__identity">
                   <img
@@ -360,41 +452,64 @@ export function App() {
                 )}
               </div>
 
-              <div className="inspection-card">
-                <div>
-                  <span>PUBLIC-PAGE INSPECTION</span>
-                  <b>SHADOW ONLY</b>
-                </div>
-                <small>
-                  anonymous page response / robots.txt check pending
-                </small>
-                {!selectedItem.url && <p>Not run for domain-only scenery.</p>}
-                {selectedItem.url &&
-                  selectedInspection?.status === "loading" && (
-                    <p>Inspecting the cached anonymous page response…</p>
-                  )}
-                {selectedItem.url && selectedInspection?.status === "ready" && (
-                  <p>
-                    <strong>
-                      {INSPECTION_LABELS[selectedInspection.inspection.verdict]}
-                    </strong>
-                    <span>
-                      {selectedInspection.inspection.reason.replaceAll(
-                        "_",
-                        " ",
-                      )}
-                    </span>
-                  </p>
+              <div
+                className={`inspection-card inspection-card--${
+                  selectedInspection?.status === "ready"
+                    ? inspectionTone(selectedInspection.inspection.verdict)
+                    : "neutral"
+                }`}
+              >
+                <small>PUBLIC-PAGE INSPECTION</small>
+                {!selectedItem.url ? (
+                  <div className="inspection-card__result">
+                    <StatusIcon kind="unknown" />
+                    <div>
+                      <strong>Not inspected</strong>
+                      <span>Domain-only scenery has no exposed page path</span>
+                    </div>
+                  </div>
+                ) : selectedInspection?.status === "ready" ? (
+                  <div className="inspection-card__result">
+                    <StatusIcon kind={selectedInspection.inspection.verdict} />
+                    <div>
+                      <strong>
+                        {INSPECTION_LABELS[
+                          selectedInspection.inspection.verdict
+                        ]}
+                      </strong>
+                      <span>
+                        {selectedInspection.inspection.reason.replaceAll(
+                          "_",
+                          " ",
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                ) : selectedInspection?.status === "loading" ? (
+                  <div className="inspection-card__result">
+                    <StatusIcon kind="loading" />
+                    <div>
+                      <strong>Inspecting page</strong>
+                      <span>Checking the anonymous response</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="inspection-card__result">
+                    <StatusIcon kind="unknown" />
+                    <div>
+                      <strong>Unknown</strong>
+                      <span>
+                        {selectedInspection?.status === "missing"
+                          ? "Inspector response is not deployed"
+                          : "Inspection failed"}
+                      </span>
+                    </div>
+                  </div>
                 )}
-                {selectedItem.url &&
-                  selectedInspection?.status === "missing" && (
-                    <p>
-                      Inspector response is not deployed on this Worker yet.
-                    </p>
-                  )}
-                {selectedItem.url && selectedInspection?.status === "error" && (
-                  <p>Inspection failed; the result remains unknown.</p>
-                )}
+                <p>
+                  Informational only; does not change routing. robots.txt check
+                  pending.
+                </p>
               </div>
 
               <fieldset>
@@ -431,7 +546,7 @@ export function App() {
                 <div className="verdict-options">
                   {CURATION_VERDICTS.map((value) => (
                     <label
-                      className={`verdict-option verdict--${value}`}
+                      className={`verdict-option verdict--${value} status-tone--${verdictTone(value)}`}
                       key={value}
                     >
                       <input
@@ -440,6 +555,7 @@ export function App() {
                         checked={verdict === value}
                         onChange={() => setVerdict(value)}
                       />
+                      <StatusIcon kind={value} />
                       <span>{VERDICT_LABELS[value]}</span>
                     </label>
                   ))}
@@ -506,7 +622,7 @@ export function App() {
               const priorDecision = getDecisionForReviewItem(places, item);
               return (
                 <li
-                  className={`place-card ${selectedItem?.id === item.id ? "place-card--selected" : ""}`}
+                  className={`place-card place-card--route-${item.currentDisposition} ${selectedItem?.id === item.id ? "place-card--selected" : ""}`}
                   key={item.id}
                 >
                   <button
@@ -520,15 +636,21 @@ export function App() {
                     <span className="place-card__body">
                       <span className="place-card__topline">
                         <strong>{item.domain}</strong>
-                        <span>{item.currentDisposition}</span>
+                        <span
+                          className={`route-chip route-chip--${item.currentDisposition}`}
+                        >
+                          <StatusIcon kind={item.currentDisposition} />
+                          {ROUTE_LABELS[item.currentDisposition]}
+                        </span>
                       </span>
                       <span className="place-card__subtitle">
                         {item.title ?? "Scenery domain"}
                       </span>
                       {priorDecision && (
                         <b
-                          className={`decision-mark verdict--${priorDecision.verdict}`}
+                          className={`decision-mark status-tone--${verdictTone(priorDecision.verdict)}`}
                         >
+                          <StatusIcon kind={priorDecision.verdict} />
                           {VERDICT_LABELS[priorDecision.verdict]}
                         </b>
                       )}
@@ -582,7 +704,7 @@ export function App() {
 
       <footer>
         <span>INTERNET COMMUTE DESTINATION CONTROL</span>
-        <span>WE WERE ONLINE / SHADOW PROTOTYPE</span>
+        <span>WE WERE ONLINE / CURATION PROTOTYPE</span>
       </footer>
     </main>
   );
