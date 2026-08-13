@@ -1,6 +1,6 @@
 // ABOUTME: Runs the cinder-block experiment with Matter.js physics and PlayHTML state.
 // ABOUTME: Publishes locally controlled blocks at a throttled rate while interpolating remote motion.
-// ABOUTME: Captures shared site-diary snapshots with a cooldown so the gallery stays sparse.
+// ABOUTME: Saves site-diary freeze-frames as compact block transforms (no image bytes in the room).
 
 import Matter from "matter-js";
 import { playhtml } from "playhtml";
@@ -8,8 +8,6 @@ import "./cinderblock.css";
 import {
   BLOCK_HEIGHT,
   BLOCK_WIDTH,
-  SNAPSHOT_CAPTURE_SCALE,
-  SNAPSHOT_JPEG_QUALITY,
   WORLD_HEIGHT,
   WORLD_WIDTH,
   applySnapshotToDraft,
@@ -19,8 +17,10 @@ import {
   createSnapshotRecord,
   formatCooldown,
   getChangedTransforms,
+  getSnapshotBlockCount,
   getSnapshotCooldownRemainingMs,
   interpolateTransform,
+  isBlockSnapshot,
   listSnapshotsNewestFirst,
   roundTransform,
 } from "./model";
@@ -151,11 +151,34 @@ class CinderblockYard {
     this.resizeObserver.observe(this.frame);
     this.scaleToFrame();
     this.status.textContent = "yard is live";
+    this.purgeLegacySnapshotsOnce();
     this.refreshSaveControls();
     this.cooldownTimer = window.setInterval(this.refreshSaveControls, 1000);
     this.animationFrame = requestAnimationFrame(this.animate);
 
     return () => this.destroy();
+  }
+
+  /**
+   * One-shot cleanup for rooms that still hold the early JPEG diary entries.
+   * Do not call from applySharedState — that re-runs on every data change.
+   */
+  purgeLegacySnapshotsOnce() {
+    const data = this.getData?.();
+    const snapshots = data?.snapshots;
+    if (!snapshots || typeof snapshots !== "object") return;
+
+    const legacyIds = Object.keys(snapshots).filter(
+      (id) => !isBlockSnapshot(snapshots[id]),
+    );
+    if (legacyIds.length === 0) return;
+
+    this.setData((draft) => {
+      if (!draft.snapshots) return;
+      for (const id of legacyIds) {
+        delete draft.snapshots[id];
+      }
+    });
   }
 
   destroy() {
@@ -216,7 +239,7 @@ class CinderblockYard {
     lightbox.hidden = true;
     lightbox.innerHTML = `
       <div class="lightbox-dialog" role="dialog" aria-modal="true" aria-label="Yard snapshot">
-        <img alt="Saved yard snapshot" />
+        <div class="lightbox-stage" data-lightbox-stage></div>
         <div class="lightbox-bar">
           <span data-lightbox-meta></span>
           <button type="button" data-lightbox-close>CLOSE</button>
@@ -232,11 +255,43 @@ class CinderblockYard {
     this.lightbox = lightbox;
   }
 
+  /**
+   * Render a frozen yard from stored block transforms — DOM only, no Matter.js.
+   * Gallery thumbs and the lightbox share this so diary frames stay cheap.
+   */
+  createFrozenStage(snapshot) {
+    const stage = document.createElement("div");
+    stage.className = "snapshot-stage";
+
+    const yard = document.createElement("div");
+    yard.className = "snapshot-yard";
+    yard.setAttribute("aria-hidden", "true");
+
+    const ground = document.createElement("div");
+    ground.className = "ground";
+    yard.appendChild(ground);
+
+    for (const [id, block] of Object.entries(snapshot.blocks || {})) {
+      const piece = document.createElement("div");
+      piece.className = "snapshot-block real-block";
+      piece.dataset.blockId = id;
+      piece.style.transform = `translate(${block.x - BLOCK_WIDTH / 2}px, ${
+        block.y - BLOCK_HEIGHT / 2
+      }px) rotate(${block.angle}rad)`;
+      piece.innerHTML =
+        '<img src="/cinderblock-realistic.png" alt="" draggable="false" loading="lazy" />';
+      yard.appendChild(piece);
+    }
+
+    stage.appendChild(yard);
+    return stage;
+  }
+
   openLightbox(snapshot) {
-    if (!this.lightbox || !snapshot?.imageDataUrl) return;
-    const image = this.lightbox.querySelector("img");
+    if (!this.lightbox || !snapshot?.blocks) return;
+    const stageHost = this.lightbox.querySelector("[data-lightbox-stage]");
     const meta = this.lightbox.querySelector("[data-lightbox-meta]");
-    image.src = snapshot.imageDataUrl;
+    stageHost.replaceChildren(this.createFrozenStage(snapshot));
     meta.textContent = this.formatSnapshotLabel(snapshot);
     this.lightbox.hidden = false;
   }
@@ -244,6 +299,7 @@ class CinderblockYard {
   closeLightbox() {
     if (!this.lightbox) return;
     this.lightbox.hidden = true;
+    this.lightbox.querySelector("[data-lightbox-stage]")?.replaceChildren();
   }
 
   formatSnapshotLabel(snapshot) {
@@ -256,14 +312,14 @@ class CinderblockYard {
           hour: "numeric",
           minute: "2-digit",
         });
-    const count = Number(snapshot.blockCount) || 0;
+    const count = getSnapshotBlockCount(snapshot);
     return `${stamp} · ${count} block${count === 1 ? "" : "s"}`;
   }
 
   renderGallery(data) {
     const snapshots = listSnapshotsNewestFirst(data);
     const signature = snapshots
-      .map((snapshot) => `${snapshot.id}:${snapshot.createdAt}`)
+      .map((snapshot) => `${snapshot.id}:${snapshot.createdAt}:${getSnapshotBlockCount(snapshot)}`)
       .join("|");
     if (signature === this.renderedSnapshotSignature) return;
     this.renderedSnapshotSignature = signature;
@@ -278,7 +334,6 @@ class CinderblockYard {
     }
 
     for (const snapshot of snapshots) {
-      if (!snapshot?.imageDataUrl) continue;
       const figure = document.createElement("figure");
       figure.className = "snapshot-card";
 
@@ -289,20 +344,14 @@ class CinderblockYard {
         `Open snapshot from ${this.formatSnapshotLabel(snapshot)}`,
       );
       button.addEventListener("click", () => this.openLightbox(snapshot));
-
-      const image = document.createElement("img");
-      image.src = snapshot.imageDataUrl;
-      image.alt = "";
-      image.loading = "lazy";
-      button.appendChild(image);
+      button.appendChild(this.createFrozenStage(snapshot));
 
       const meta = document.createElement("figcaption");
       meta.className = "snapshot-meta";
       const when = document.createElement("span");
       when.textContent = this.formatSnapshotLabel(snapshot).split(" · ")[0];
       const count = document.createElement("span");
-      const blockCount = Number(snapshot.blockCount) || 0;
-      count.textContent = `${blockCount} blk`;
+      count.textContent = `${getSnapshotBlockCount(snapshot)} blk`;
       meta.append(when, count);
 
       figure.append(button, meta);
@@ -319,11 +368,11 @@ class CinderblockYard {
     this.saveButton.disabled = !ready;
     this.saveButton.textContent = ready ? "SAVE" : "WAIT";
     this.saveStatus.textContent = ready
-      ? "ready to save a frame"
+      ? "ready to freeze the yard"
       : `next save in ${formatCooldown(remaining)}`;
   }
 
-  async saveSnapshot() {
+  saveSnapshot() {
     if (!this.getData || !this.setData || this.isSavingSnapshot) return;
     const data = this.getData();
     if (!canSaveSnapshot(data)) {
@@ -335,44 +384,18 @@ class CinderblockYard {
     this.saveButton.disabled = true;
     this.saveButton.classList.add("is-saving");
     this.saveButton.textContent = "SAVING…";
-    this.saveStatus.textContent = "capturing the yard";
-    this.board.classList.add("is-capturing");
+    this.saveStatus.textContent = "freezing the yard";
 
     try {
-      // Wait one paint so selection outlines hide before html2canvas runs.
-      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-      const previousScale = this.board.style.getPropertyValue("--yard-scale");
-      // Temporarily unscale so the capture matches the fixed 1200×720 physics surface
-      // instead of the viewport-fitted stage.
-      this.board.style.setProperty("--yard-scale", "1");
-      const { default: html2canvas } = await import("html2canvas");
-      let canvas;
-      try {
-        canvas = await html2canvas(this.board, {
-          backgroundColor: "#b7b7b1",
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          scale: SNAPSHOT_CAPTURE_SCALE,
-          width: WORLD_WIDTH,
-          height: WORLD_HEIGHT,
-          windowWidth: WORLD_WIDTH,
-          windowHeight: WORLD_HEIGHT,
-        });
-      } finally {
-        if (previousScale) {
-          this.board.style.setProperty("--yard-scale", previousScale);
-        } else {
-          this.scaleToFrame();
-        }
-      }
-      const imageDataUrl = canvas.toDataURL("image/jpeg", SNAPSHOT_JPEG_QUALITY);
+      // Prefer live body transforms so a mid-settle structure is what gets logged.
+      const live = this.getCurrentTransforms();
+      const sourceBlocks =
+        Object.keys(live).length > 0 ? live : data.blocks || {};
       const id = `snap-${crypto.randomUUID()}`;
       const record = createSnapshotRecord({
         id,
-        imageDataUrl,
+        blocks: sourceBlocks,
         createdAt: Date.now(),
-        blockCount: Object.keys(data.blocks || {}).length,
       });
 
       this.setData((draft) => {
@@ -386,7 +409,6 @@ class CinderblockYard {
       console.error("Failed to save yard snapshot", error);
       this.saveStatus.textContent = "save failed — try again";
     } finally {
-      this.board.classList.remove("is-capturing");
       this.saveButton.classList.remove("is-saving");
       this.isSavingSnapshot = false;
       this.refreshSaveControls();

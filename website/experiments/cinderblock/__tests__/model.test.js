@@ -5,19 +5,44 @@ import {
   SNAPSHOT_COOLDOWN_MS,
   applySnapshotToDraft,
   canSaveSnapshot,
+  compactBlocksSnapshot,
   createDefaultYard,
   createSnapshotRecord,
   formatCooldown,
   getLatestSnapshotTime,
+  getSnapshotBlockCount,
   getSnapshotCooldownRemainingMs,
+  isBlockSnapshot,
   listSnapshotsNewestFirst,
 } from "../model.js";
+
+const sampleBlocks = {
+  "block-1": { x: 180, y: 642, angle: 0 },
+  "block-2": { x: 390.12, y: 641.88, angle: 0.12345 },
+};
 
 describe("cinderblock site diary", () => {
   test("default yard includes an empty snapshots map", () => {
     const yard = createDefaultYard();
     expect(yard.snapshots).toEqual({});
     expect(Object.keys(yard.blocks).length).toBeGreaterThan(0);
+  });
+
+  test("stores compact block transforms instead of image bytes", () => {
+    const record = createSnapshotRecord({
+      id: "snap-1",
+      blocks: sampleBlocks,
+      createdAt: 100,
+    });
+
+    expect(record.imageDataUrl).toBeUndefined();
+    expect(record.blocks["block-2"]).toEqual({
+      x: 390.1,
+      y: 641.9,
+      angle: 0.1235,
+    });
+    expect(getSnapshotBlockCount(record)).toBe(2);
+    expect(JSON.stringify(record).length).toBeLessThan(250);
   });
 
   test("cooldown is ready when no snapshots exist", () => {
@@ -31,7 +56,7 @@ describe("cinderblock site diary", () => {
       snapshots: {
         "snap-1": createSnapshotRecord({
           id: "snap-1",
-          imageDataUrl: "data:image/jpeg;base64,abc",
+          blocks: sampleBlocks,
           createdAt,
         }),
       },
@@ -49,14 +74,19 @@ describe("cinderblock site diary", () => {
       snapshots: {
         older: createSnapshotRecord({
           id: "older",
-          imageDataUrl: "data:image/jpeg;base64,a",
+          blocks: sampleBlocks,
           createdAt: 10,
         }),
         newer: createSnapshotRecord({
           id: "newer",
-          imageDataUrl: "data:image/jpeg;base64,b",
+          blocks: sampleBlocks,
           createdAt: 50,
         }),
+        legacy: {
+          id: "legacy",
+          createdAt: 99,
+          imageDataUrl: "data:image/jpeg;base64,aaaaaaaaaaaaaaaa",
+        },
       },
     };
 
@@ -65,21 +95,30 @@ describe("cinderblock site diary", () => {
       "older",
     ]);
     expect(getLatestSnapshotTime(data)).toBe(50);
+    expect(isBlockSnapshot(data.snapshots.legacy)).toBe(false);
   });
 
-  test("prunes the oldest snapshots when the diary exceeds the cap", () => {
-    const snapshots = {};
+  test("prunes oldest snapshots and strips legacy image entries", () => {
+    const snapshots = {
+      legacy: {
+        id: "legacy",
+        createdAt: 1,
+        imageDataUrl: "data:image/jpeg;base64," + "x".repeat(20_000),
+      },
+    };
+
     for (let index = 0; index < MAX_SNAPSHOTS + 3; index += 1) {
       applySnapshotToDraft(
         snapshots,
         createSnapshotRecord({
           id: `snap-${index}`,
-          imageDataUrl: `data:image/jpeg;base64,${index}`,
+          blocks: compactBlocksSnapshot(sampleBlocks),
           createdAt: index + 1,
         }),
       );
     }
 
+    expect(snapshots.legacy).toBeUndefined();
     expect(Object.keys(snapshots)).toHaveLength(MAX_SNAPSHOTS);
     expect(snapshots["snap-0"]).toBeUndefined();
     expect(snapshots["snap-1"]).toBeUndefined();

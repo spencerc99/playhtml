@@ -10,10 +10,6 @@ export const BLOCK_HEIGHT = 96;
 export const SNAPSHOT_COOLDOWN_MS = 15 * 60 * 1000;
 /** Keep the diary from growing without bound in the synced room. */
 export const MAX_SNAPSHOTS = 48;
-/** JPEG quality for diary thumbnails stored in shared state. */
-export const SNAPSHOT_JPEG_QUALITY = 0.62;
-/** Capture scale relative to the 1200×720 physics surface. */
-export const SNAPSHOT_CAPTURE_SCALE = 0.42;
 
 const POSITION_SYNC_THRESHOLD = 0.35;
 const ANGLE_SYNC_THRESHOLD = 0.004;
@@ -43,6 +39,42 @@ export function createDefaultYard() {
   };
 }
 
+export function compactBlockTransform(block) {
+  return {
+    x: Math.round(Number(block.x) * 10) / 10,
+    y: Math.round(Number(block.y) * 10) / 10,
+    angle: Math.round(Number(block.angle) * 10_000) / 10_000,
+  };
+}
+
+/**
+ * Freeze the live yard into a compact keyed transform map for the site diary.
+ * Avoids storing image bytes in the synced room.
+ */
+export function compactBlocksSnapshot(blocks) {
+  return Object.fromEntries(
+    Object.entries(blocks || {}).map(([id, block]) => [
+      id,
+      compactBlockTransform(block),
+    ]),
+  );
+}
+
+export function isBlockSnapshot(snapshot) {
+  return Boolean(
+    snapshot &&
+      typeof snapshot === "object" &&
+      snapshot.blocks &&
+      typeof snapshot.blocks === "object" &&
+      !Array.isArray(snapshot.blocks),
+  );
+}
+
+export function getSnapshotBlockCount(snapshot) {
+  if (!isBlockSnapshot(snapshot)) return 0;
+  return Object.keys(snapshot.blocks).length;
+}
+
 export function getSnapshots(data) {
   if (!data || typeof data !== "object" || !data.snapshots) return {};
   if (typeof data.snapshots !== "object" || Array.isArray(data.snapshots)) {
@@ -52,14 +84,14 @@ export function getSnapshots(data) {
 }
 
 export function listSnapshotsNewestFirst(data) {
-  return Object.values(getSnapshots(data)).sort(
-    (a, b) => (b?.createdAt ?? 0) - (a?.createdAt ?? 0),
-  );
+  return Object.values(getSnapshots(data))
+    .filter(isBlockSnapshot)
+    .sort((a, b) => (b?.createdAt ?? 0) - (a?.createdAt ?? 0));
 }
 
 export function getLatestSnapshotTime(data) {
   let latest = 0;
-  for (const snapshot of Object.values(getSnapshots(data))) {
+  for (const snapshot of listSnapshotsNewestFirst(data)) {
     const createdAt = Number(snapshot?.createdAt) || 0;
     if (createdAt > latest) latest = createdAt;
   }
@@ -86,26 +118,30 @@ export function formatCooldown(ms) {
 
 export function createSnapshotRecord({
   id,
-  imageDataUrl,
+  blocks,
   createdAt = Date.now(),
-  blockCount = 0,
 }) {
   return {
     id,
     createdAt,
-    imageDataUrl,
-    blockCount,
+    blocks: compactBlocksSnapshot(blocks),
   };
 }
 
 /**
  * Apply a new snapshot into a draft snapshots map, pruning oldest when over cap.
+ * Also drops legacy image-byte snapshots so they don't keep bloating the room.
  * Mutates `snapshots` in place for SyncedStore draft writes.
  */
 export function applySnapshotToDraft(snapshots, record) {
+  for (const [id, existing] of Object.entries(snapshots)) {
+    if (!isBlockSnapshot(existing)) delete snapshots[id];
+  }
+
   snapshots[record.id] = record;
 
   const idsByAge = Object.values(snapshots)
+    .filter(isBlockSnapshot)
     .sort((a, b) => (a?.createdAt ?? 0) - (b?.createdAt ?? 0))
     .map((snapshot) => snapshot.id);
 

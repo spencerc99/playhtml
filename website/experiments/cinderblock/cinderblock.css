@@ -226,10 +226,6 @@ kbd {
   background-size: 60px 60px;
 }
 
-#cinderblock-yard.is-capturing .cinderblock.is-selected::after {
-  display: none;
-}
-
 #cinderblock-yard::before {
   display: none;
 }
@@ -397,12 +393,37 @@ kbd {
   cursor: zoom-in;
 }
 
-.snapshot-card img {
-  display: block;
+.snapshot-stage {
+  position: relative;
+  overflow: hidden;
   width: 100%;
   aspect-ratio: 5 / 3;
-  object-fit: cover;
-  background: #b7b7b1;
+  container-type: inline-size;
+  background-color: #b7b7b1;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.07) 1px, transparent 1px);
+  background-size: 10px 10px;
+}
+
+.snapshot-yard {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1200px;
+  height: 720px;
+  transform: scale(calc(100cqw / 1200));
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.snapshot-block {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200px;
+  height: 96px;
+  transform-origin: center;
 }
 
 .snapshot-meta {
@@ -436,12 +457,8 @@ kbd {
   background: #f1f1ec;
 }
 
-.lightbox-dialog img {
-  display: block;
+.lightbox-stage {
   width: 100%;
-  max-height: min(70vh, 720px);
-  object-fit: contain;
-  background: #b7b7b1;
   border: 2px solid #000;
 }
 
