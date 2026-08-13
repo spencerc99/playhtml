@@ -75,6 +75,14 @@ describe('classifyPublicPage', () => {
     ).toMatchObject({ verdict: 'not_public', reason: 'noindex' });
   });
 
+  it('honors the robots none shorthand', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({ htmlHead: '<meta name="robots" content="none">' }),
+      ),
+    ).toMatchObject({ verdict: 'not_public', reason: 'noindex' });
+  });
+
   it.each([
     '<meta name="robots" content="nofollow, noindex">',
     "<meta content='NOINDEX' name='robots'>",

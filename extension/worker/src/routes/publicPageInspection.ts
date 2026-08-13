@@ -55,7 +55,10 @@ function hasAuthenticationPath(url: URL): boolean {
 }
 
 function hasNoindexDirective(value: string | null): boolean {
-  return value !== null && /(?:^|[\s,;])noindex(?:$|[\s,;])/i.test(value);
+  return (
+    value !== null &&
+    /(?:^|[\s,;])(?:noindex|none)(?:$|[\s,;])/i.test(value)
+  );
 }
 
 function getHtmlAttribute(tag: string, attribute: string): string | null {
