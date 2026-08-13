@@ -1,6 +1,8 @@
 // ABOUTME: Defines local Internet Commute curation decisions and their portable artifact.
 // ABOUTME: Normalizes submitted places and keeps serialization deterministic for review.
 
+import { getDomain } from "tldts";
+
 export const CURATION_STORAGE_KEY = "wwo-commute-curation-v1";
 
 export const CURATION_VERDICTS = [
@@ -10,21 +12,24 @@ export const CURATION_VERDICTS = [
 ] as const;
 
 export type CurationVerdict = (typeof CURATION_VERDICTS)[number];
+export type CurationScope = "page" | "hostname" | "site";
 
 export type CuratedPlace = {
   id: string;
   place: string;
   domain: string;
+  scope: CurationScope;
   verdict: CurationVerdict;
   comment: string;
   updatedAt: string;
 };
 
 export type CurationArtifact = {
-  format: "internet-commute-curation/v1";
+  format: "internet-commute-curation/v2";
   generatedAt: string;
   decisions: Array<{
     place: string;
+    scope: CurationScope;
     verdict: CurationVerdict;
     comment?: string;
   }>;
@@ -96,8 +101,11 @@ export function parseCommuteReviewResponse(
   };
 }
 
-export function getReviewTarget(item: CommuteReviewItem): string {
-  return normalizePlace(item.url ?? item.domain).place;
+export function getReviewTarget(
+  item: CommuteReviewItem,
+  scope: CurationScope,
+): string {
+  return getScopedPlace(item.url ?? item.domain, scope).place;
 }
 
 export function normalizePlace(value: string): {
@@ -139,24 +147,65 @@ export function normalizePlace(value: string): {
   };
 }
 
+export function getScopedPlace(
+  value: string,
+  scope: CurationScope,
+): { place: string; domain: string } {
+  const normalized = normalizePlace(value);
+  if (scope === "page") return normalized;
+  if (scope === "hostname") {
+    return { place: normalized.domain, domain: normalized.domain };
+  }
+
+  const site = getDomain(normalized.domain, { allowPrivateDomains: true });
+  if (!site) throw new Error("The site boundary could not be determined.");
+  return { place: site, domain: normalized.domain };
+}
+
+export function getDecisionKey(scope: CurationScope, place: string): string {
+  return `${scope}:${place}`;
+}
+
+export function getDecisionForReviewItem(
+  places: CuratedPlace[],
+  item: CommuteReviewItem,
+): CuratedPlace | undefined {
+  const scopes: CurationScope[] = item.url
+    ? ["page", "hostname", "site"]
+    : ["hostname", "site"];
+  for (const scope of scopes) {
+    const target = getReviewTarget(item, scope);
+    const decision = places.find(
+      (place) =>
+        getDecisionKey(place.scope, place.place) ===
+        getDecisionKey(scope, target),
+    );
+    if (decision) return decision;
+  }
+  return undefined;
+}
+
 export function createCuratedPlace({
   id,
   input,
+  scope,
   verdict,
   comment,
   updatedAt,
 }: {
   id: string;
   input: string;
+  scope: CurationScope;
   verdict: CurationVerdict;
   comment: string;
   updatedAt: string;
 }): CuratedPlace {
-  const normalized = normalizePlace(input);
+  const normalized = getScopedPlace(input, scope);
 
   return {
     id,
     ...normalized,
+    scope,
     verdict,
     comment: comment.trim(),
     updatedAt,
@@ -168,7 +217,9 @@ export function upsertCuratedPlace(
   place: CuratedPlace,
 ): CuratedPlace[] {
   const matchingIndex = places.findIndex(
-    (candidate) => candidate.place === place.place,
+    (candidate) =>
+      getDecisionKey(candidate.scope, candidate.place) ===
+      getDecisionKey(place.scope, place.place),
   );
   if (matchingIndex === -1) {
     return [place, ...places];
@@ -186,7 +237,7 @@ export function parseStoredCuration(value: string | null): CuratedPlace[] {
     const parsed: unknown = JSON.parse(value);
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.filter(isCuratedPlace);
+    return parsed.flatMap((value) => migrateCuratedPlace(value));
   } catch {
     return [];
   }
@@ -205,14 +256,15 @@ export function serializeCurationArtifact(
         (verdictOrder.get(a.verdict) ?? 0) - (verdictOrder.get(b.verdict) ?? 0);
       return verdictDifference || a.place.localeCompare(b.place);
     })
-    .map(({ place, verdict, comment }) => ({
+    .map(({ place, scope, verdict, comment }) => ({
       place,
+      scope,
       verdict,
       ...(comment ? { comment } : {}),
     }));
 
   const artifact: CurationArtifact = {
-    format: "internet-commute-curation/v1",
+    format: "internet-commute-curation/v2",
     generatedAt,
     decisions,
   };
@@ -220,17 +272,35 @@ export function serializeCurationArtifact(
   return JSON.stringify(artifact, null, 2);
 }
 
-function isCuratedPlace(value: unknown): value is CuratedPlace {
-  if (!value || typeof value !== "object") return false;
+function migrateCuratedPlace(value: unknown): CuratedPlace[] {
+  if (!value || typeof value !== "object") return [];
   const candidate = value as Record<string, unknown>;
-  return (
+  const isStoredPlace =
     typeof candidate.id === "string" &&
     typeof candidate.place === "string" &&
     typeof candidate.domain === "string" &&
     CURATION_VERDICTS.includes(candidate.verdict as CurationVerdict) &&
     typeof candidate.comment === "string" &&
-    typeof candidate.updatedAt === "string"
-  );
+    typeof candidate.updatedAt === "string";
+  if (!isStoredPlace) return [];
+
+  const scope: CurationScope =
+    candidate.scope === "page" ||
+    candidate.scope === "hostname" ||
+    candidate.scope === "site"
+      ? candidate.scope
+      : "hostname";
+  const normalized = getScopedPlace(candidate.place, scope);
+  return [
+    {
+      id: candidate.id as string,
+      ...normalized,
+      scope,
+      verdict: candidate.verdict as CurationVerdict,
+      comment: candidate.comment as string,
+      updatedAt: candidate.updatedAt as string,
+    },
+  ];
 }
 
 type CommuteDestination = {

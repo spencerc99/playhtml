@@ -4,7 +4,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createCuratedPlace,
+  getDecisionForReviewItem,
   getReviewTarget,
+  getScopedPlace,
   normalizePlace,
   parseCommuteReviewResponse,
   parseStoredCuration,
@@ -15,6 +17,7 @@ import {
 const PROMOTED = createCuratedPlace({
   id: "one",
   input: "https://www.example.com/an-essay?view=full#notes",
+  scope: "page",
   verdict: "promoted",
   comment: "A public essay.",
   updatedAt: "2026-08-12T12:00:00.000Z",
@@ -44,6 +47,25 @@ describe("normalizePlace", () => {
   });
 });
 
+describe("decision scope", () => {
+  it("separates a page, hostname, and registrable site", () => {
+    const input = "https://notes.example.co.uk/an-essay";
+    expect(getScopedPlace(input, "page").place).toBe(
+      "https://notes.example.co.uk/an-essay",
+    );
+    expect(getScopedPlace(input, "hostname").place).toBe(
+      "notes.example.co.uk",
+    );
+    expect(getScopedPlace(input, "site").place).toBe("example.co.uk");
+  });
+
+  it("treats private hosting suffixes as site boundaries", () => {
+    expect(
+      getScopedPlace("bright-tanuki.netlify.app", "site").place,
+    ).toBe("bright-tanuki.netlify.app");
+  });
+});
+
 describe("curation queue", () => {
   it("updates an existing place instead of duplicating it", () => {
     const replacement = { ...PROMOTED, verdict: "blocked" as const };
@@ -55,6 +77,17 @@ describe("curation queue", () => {
       PROMOTED,
     ]);
     expect(parseStoredCuration("not json")).toEqual([]);
+  });
+
+  it("preserves prior prototype decisions as hostname decisions", () => {
+    const oldPlace = Object.fromEntries(
+      Object.entries(PROMOTED).filter(([key]) => key !== "scope"),
+    );
+    expect(parseStoredCuration(JSON.stringify([oldPlace]))[0]).toMatchObject({
+      place: "example.com",
+      domain: "example.com",
+      scope: "hostname",
+    });
   });
 });
 
@@ -107,13 +140,34 @@ describe("parseCommuteReviewResponse", () => {
 describe("getReviewTarget", () => {
   it("uses the same normalized identity as stored decisions", () => {
     expect(
-      getReviewTarget({
-        id: "https://www.example.com/essay",
-        domain: "example.com",
-        url: "https://www.example.com/essay",
-        currentDisposition: "stop",
-      }),
+      getReviewTarget(
+        {
+          id: "https://www.example.com/essay",
+          domain: "example.com",
+          url: "https://www.example.com/essay",
+          currentDisposition: "stop",
+        },
+        "page",
+      ),
     ).toBe("https://example.com/essay");
+  });
+
+  it("finds a site-wide decision for a subdomain candidate", () => {
+    const decision = createCuratedPlace({
+      id: "site",
+      input: "example.com",
+      scope: "site",
+      verdict: "blocked",
+      comment: "",
+      updatedAt: "2026-08-12T12:00:00.000Z",
+    });
+    expect(
+      getDecisionForReviewItem([decision], {
+        id: "notes.example.com",
+        domain: "notes.example.com",
+        currentDisposition: "scenery",
+      }),
+    ).toEqual(decision);
   });
 });
 
@@ -122,6 +176,7 @@ describe("serializeCurationArtifact", () => {
     const blocked = createCuratedPlace({
       id: "two",
       input: "login.example.net/account",
+      scope: "hostname",
       verdict: "blocked",
       comment: " ",
       updatedAt: "2026-08-12T12:01:00.000Z",
@@ -134,16 +189,18 @@ describe("serializeCurationArtifact", () => {
     );
 
     expect(artifact).toEqual({
-      format: "internet-commute-curation/v1",
+      format: "internet-commute-curation/v2",
       generatedAt: "2026-08-12T13:00:00.000Z",
       decisions: [
         {
           place: "https://example.com/an-essay?view=full",
+          scope: "page",
           verdict: "promoted",
           comment: "A public essay.",
         },
         {
-          place: "https://login.example.net/account",
+          place: "login.example.net",
+          scope: "hostname",
           verdict: "blocked",
         },
       ],

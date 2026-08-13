@@ -423,6 +423,64 @@ fieldset {
   border: 0;
 }
 
+.scope-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.scope-option {
+  display: grid;
+  min-width: 0;
+  min-height: 76px;
+  align-content: space-between;
+  margin-left: -1px;
+  padding: 9px;
+  border: 1px solid $line;
+  cursor: pointer;
+}
+
+.scope-option:first-child {
+  margin-left: 0;
+}
+
+.scope-option input {
+  width: 12px;
+  height: 12px;
+  margin: 0 0 9px;
+  accent-color: $blue;
+}
+
+.scope-option span {
+  margin: 0;
+  font-family: $body;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.scope-option small {
+  overflow: hidden;
+  margin-top: 4px;
+  color: rgba($ink, 0.5);
+  font-family: $mono;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-option:has(input:checked) {
+  z-index: 1;
+  border-color: $ink;
+  background: rgba($blue, 0.1);
+  box-shadow: inset 0 -5px 0 $blue;
+}
+
+.scope-option--disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .verdict-options {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

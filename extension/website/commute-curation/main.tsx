@@ -22,7 +22,9 @@ import {
   type CommuteReviewItem,
   type CommuteReviewResponse,
   type CuratedPlace,
+  type CurationScope,
   type CurationVerdict,
+  getDecisionForReviewItem,
   getReviewTarget,
   parseCommuteReviewResponse,
   parseStoredCuration,
@@ -37,6 +39,13 @@ const VERDICT_LABELS: Record<CurationVerdict, string> = {
   "scenery-only": "Scenery only",
   blocked: "Blocked",
 };
+
+const SCOPE_LABELS: Record<CurationScope, string> = {
+  page: "Exact page",
+  hostname: "This hostname",
+  site: "Entire site",
+};
+const CURATION_SCOPES: CurationScope[] = ["page", "hostname", "site"];
 
 const INSPECTION_LABELS: Record<PublicPageInspection["verdict"], string> = {
   public: "Public page",
@@ -77,6 +86,7 @@ export function App() {
     "loading",
   );
   const [queueGeneratedAt, setQueueGeneratedAt] = useState<number | null>(null);
+  const [scope, setScope] = useState<CurationScope>("hostname");
   const [verdict, setVerdict] = useState<CurationVerdict>("promoted");
   const [comment, setComment] = useState("");
   const [inspectionById, setInspectionById] = useState(
@@ -86,18 +96,12 @@ export function App() {
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
 
-  const decisionsByPlace = useMemo(
-    () => new Map(places.map((place) => [place.place, place])),
-    [places],
-  );
   const visibleItems = useMemo(
     () =>
       showReviewed
         ? reviewItems
-        : reviewItems.filter(
-            (item) => !decisionsByPlace.has(getReviewTarget(item)),
-          ),
-    [decisionsByPlace, reviewItems, showReviewed],
+        : reviewItems.filter((item) => !getDecisionForReviewItem(places, item)),
+    [places, reviewItems, showReviewed],
   );
   const selectedItem = useMemo(
     () =>
@@ -151,7 +155,8 @@ export function App() {
 
   useEffect(() => {
     if (!selectedItem) return;
-    const priorDecision = decisionsByPlace.get(getReviewTarget(selectedItem));
+    const priorDecision = getDecisionForReviewItem(places, selectedItem);
+    setScope(priorDecision?.scope ?? "hostname");
     setVerdict(
       priorDecision?.verdict ??
         (selectedItem.currentDisposition === "stop"
@@ -159,7 +164,7 @@ export function App() {
           : "scenery-only"),
     );
     setComment(priorDecision?.comment ?? "");
-  }, [decisionsByPlace, selectedItem]);
+  }, [places, selectedItem]);
 
   useEffect(() => {
     if (
@@ -209,16 +214,20 @@ export function App() {
   function fileDecision(event: FormEvent) {
     event.preventDefault();
     if (!selectedItem) return;
-    const target = getReviewTarget(selectedItem);
-    const priorDecision = decisionsByPlace.get(target);
+    const target = getReviewTarget(selectedItem, scope);
+    const priorDecision = getDecisionForReviewItem(places, selectedItem);
     const decision = createCuratedPlace({
       id: priorDecision?.id ?? crypto.randomUUID(),
       input: target,
+      scope,
       verdict,
       comment,
       updatedAt: new Date().toISOString(),
     });
-    savePlaces(upsertCuratedPlace(places, decision));
+    const otherPlaces = priorDecision
+      ? places.filter((place) => place.id !== priorDecision.id)
+      : places;
+    savePlaces(upsertCuratedPlace(otherPlaces, decision));
 
     const currentIndex = visibleItems.findIndex(
       (item) => item.id === selectedItem.id,
@@ -228,7 +237,7 @@ export function App() {
   }
 
   function removeDecision(item: CommuteReviewItem) {
-    const priorDecision = decisionsByPlace.get(getReviewTarget(item));
+    const priorDecision = getDecisionForReviewItem(places, item);
     if (!priorDecision) return;
     savePlaces(places.filter((place) => place.id !== priorDecision.id));
   }
@@ -389,6 +398,35 @@ export function App() {
               </div>
 
               <fieldset>
+                <legend>Decision scope</legend>
+                <div className="scope-options">
+                  {CURATION_SCOPES.map((value) => {
+                    const disabled = value === "page" && !selectedItem.url;
+                    return (
+                      <label
+                        className={`scope-option${disabled ? " scope-option--disabled" : ""}`}
+                        key={value}
+                      >
+                        <input
+                          type="radio"
+                          name="scope"
+                          checked={scope === value}
+                          disabled={disabled}
+                          onChange={() => setScope(value)}
+                        />
+                        <span>{SCOPE_LABELS[value]}</span>
+                        <small>
+                          {disabled
+                            ? "No page path exposed"
+                            : getReviewTarget(selectedItem, value)}
+                        </small>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              <fieldset>
                 <legend>Your decision</legend>
                 <div className="verdict-options">
                   {CURATION_VERDICTS.map((value) => (
@@ -465,7 +503,7 @@ export function App() {
 
           <ol className="place-list live-place-list">
             {visibleItems.map((item, index) => {
-              const priorDecision = decisionsByPlace.get(getReviewTarget(item));
+              const priorDecision = getDecisionForReviewItem(places, item);
               return (
                 <li
                   className={`place-card ${selectedItem?.id === item.id ? "place-card--selected" : ""}`}
