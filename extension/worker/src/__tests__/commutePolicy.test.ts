@@ -3,10 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { CollectionEvent } from '@playhtml/extension-types';
-import {
-  buildCommuteResponse,
-  buildCommuteReviewResponse,
-} from '../routes/commutePolicy';
+import { buildCommuteResponse } from '../routes/commutePolicy';
 
 function event(
   id: string,
@@ -1310,46 +1307,34 @@ describe('buildCommuteResponse', () => {
   });
 });
 
-describe('buildCommuteReviewResponse', () => {
-  it('uses cursor activity to mirror the live scenery quantity', () => {
-    const navigationEvents = Array.from({ length: 30 }, (_, index) =>
+describe('review candidate generation', () => {
+  it('can apply larger limits without changing the live defaults', () => {
+    const navigationEvents = Array.from({ length: 80 }, (_, index) =>
       event(
         `navigation-${index}`,
         'navigation',
-        `https://small-site-${index}.com/`,
+        `https://small-site-${index}.com/essay`,
         900 - index,
         `rider-${index}`,
         `Essay ${index}`,
       ),
     );
-    const cursorEvents = Array.from({ length: 100 }, (_, index) =>
-      event(
-        `cursor-${index}`,
-        'cursor',
-        'https://wewere.online/',
-        950 - index,
-        `browser-${index}`,
-      ),
-    );
-    const commute = buildCommuteResponse(navigationEvents, cursorEvents, 1_000);
-    const review = buildCommuteReviewResponse(
-      navigationEvents,
-      cursorEvents,
-      1_000,
-    );
+    const live = buildCommuteResponse(navigationEvents, [], 1_000);
+    const review = buildCommuteResponse(navigationEvents, [], 1_000, {
+      destinations: 80,
+      scenery: 80,
+    });
 
-    const reviewDomains = new Set(review.items.map((item) => item.domain));
-    expect(commute.scenery).toHaveLength(30);
-    expect(
-      commute.scenery.every((item) => reviewDomains.has(item.domain)),
-    ).toBe(true);
+    expect(live.destinations).toHaveLength(50);
+    expect(review.destinations).toHaveLength(80);
+    expect(review.scenery).toHaveLength(80);
   });
 
-  it('grounds stop reviews in sanitized destinations and capped visit history', () => {
-    const response = buildCommuteReviewResponse(
+  it('uses the same privacy policy for a larger candidate set', () => {
+    const response = buildCommuteResponse(
       [
         event(
-          'latest',
+          'public',
           'navigation',
           'https://garden.example/essay?utm_source=feed',
           500,
@@ -1357,76 +1342,27 @@ describe('buildCommuteReviewResponse', () => {
           'A garden essay',
         ),
         event(
-          'earlier',
-          'navigation',
-          'https://garden.example/essay',
-          400,
-          'rider-two',
-          'A garden essay',
-        ),
-        event(
           'private-query',
           'navigation',
-          'https://garden.example/private?token=secret',
-          300,
-          'rider-three',
+          'https://private.example/draft?token=secret',
+          400,
+          'rider-two',
           'Private draft',
         ),
       ],
       [],
       1_000,
+      { destinations: 200, scenery: 200 },
     );
 
-    expect(response.items[0]).toEqual({
-      id: 'https://garden.example/essay',
-      domain: 'garden.example',
-      url: 'https://garden.example/essay',
-      title: 'A garden essay',
-      currentDisposition: 'stop',
-      recentVisitCount: 2,
-      recentVisits: [
-        { visitedAt: 500, title: 'A garden essay' },
-        { visitedAt: 400, title: 'A garden essay' },
-      ],
-    });
-    expect(JSON.stringify(response)).not.toContain('token=secret');
-    expect(JSON.stringify(response)).not.toContain('Private draft');
-  });
-
-  it('keeps scenery history domain-only', () => {
-    const response = buildCommuteReviewResponse(
-      [
-        event(
-          'scenery-latest',
-          'navigation',
-          'https://docs.google.com/document/d/private-id/edit',
-          500,
-          'rider-one',
-          'Private document',
-        ),
-        event(
-          'scenery-earlier',
-          'navigation',
-          'https://docs.google.com/spreadsheets/d/other-private-id/edit',
-          400,
-          'rider-two',
-          'Private spreadsheet',
-        ),
-      ],
-      [],
-      1_000,
-    );
-
-    expect(response.items).toEqual([
+    expect(response.destinations).toMatchObject([
       {
-        id: 'docs.google.com',
-        domain: 'docs.google.com',
-        currentDisposition: 'scenery',
-        recentVisitCount: 2,
-        recentVisits: [{ visitedAt: 500 }, { visitedAt: 400 }],
+        domain: 'garden.example',
+        url: 'https://garden.example/essay',
+        title: 'A garden essay',
       },
     ]);
-    expect(JSON.stringify(response)).not.toContain('private-id');
-    expect(JSON.stringify(response)).not.toContain('Private document');
+    expect(JSON.stringify(response)).not.toContain('token=secret');
+    expect(JSON.stringify(response)).not.toContain('Private draft');
   });
 });

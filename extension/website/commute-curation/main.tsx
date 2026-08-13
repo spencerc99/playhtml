@@ -77,7 +77,6 @@ export function App() {
     "loading",
   );
   const [queueGeneratedAt, setQueueGeneratedAt] = useState<number | null>(null);
-  const [queueMode, setQueueMode] = useState<"history" | "snapshot">("history");
   const [verdict, setVerdict] = useState<CurationVerdict>("promoted");
   const [comment, setComment] = useState("");
   const [inspectionById, setInspectionById] = useState(
@@ -125,71 +124,14 @@ export function App() {
   const loadQueue = useCallback(async () => {
     setQueueStatus("loading");
     try {
-      let response = COMMUTE_REVIEW_URL
-        ? await fetch(COMMUTE_REVIEW_URL, {
-            headers: { Accept: "application/json" },
-          })
-        : null;
-      let payload: CommuteReviewResponse;
-      if (response?.ok) {
-        payload = parseCommuteReviewResponse(await response.json());
-        setQueueMode("history");
-      } else if (!response || response.status === 404) {
-        response = await fetch(COMMUTE_RECENT_URL, {
-          headers: { Accept: "application/json" },
-        });
-        if (!response.ok)
-          throw new Error(`Commute route returned ${response.status}`);
-        const snapshot = (await response.json()) as {
-          generatedAt: number;
-          destinations: Array<{
-            id: string;
-            domain: string;
-            url: string;
-            title: string | null;
-            visitedAt: number;
-          }>;
-          scenery: Array<{
-            id: string;
-            domain: string;
-            visitedAt: number;
-          }>;
-        };
-        const destinationDomains = new Set(
-          snapshot.destinations.map((item) => item.domain),
-        );
-        payload = parseCommuteReviewResponse({
-          generatedAt: snapshot.generatedAt,
-          items: [
-            ...snapshot.destinations.map((item) => ({
-              id: item.url,
-              domain: item.domain,
-              url: item.url,
-              ...(item.title ? { title: item.title } : {}),
-              currentDisposition: "stop",
-              recentVisitCount: 1,
-              recentVisits: [
-                {
-                  visitedAt: item.visitedAt,
-                  ...(item.title ? { title: item.title } : {}),
-                },
-              ],
-            })),
-            ...snapshot.scenery
-              .filter((item) => !destinationDomains.has(item.domain))
-              .map((item) => ({
-                id: item.domain,
-                domain: item.domain,
-                currentDisposition: "scenery",
-                recentVisitCount: 1,
-                recentVisits: [{ visitedAt: item.visitedAt }],
-              })),
-          ],
-        });
-        setQueueMode("snapshot");
-      } else {
-        throw new Error(`Commute review returned ${response.status}`);
-      }
+      const response = await fetch(COMMUTE_REVIEW_URL ?? COMMUTE_RECENT_URL, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok)
+        throw new Error(`Commute route returned ${response.status}`);
+      const payload: CommuteReviewResponse = parseCommuteReviewResponse(
+        await response.json(),
+      );
       setReviewItems(payload.items);
       setQueueGeneratedAt(payload.generatedAt);
       setSelectedId((current) =>
@@ -380,7 +322,7 @@ export function App() {
                       ? "CURRENT STOP"
                       : "CURRENT SCENERY"}
                   </span>
-                  <span>{selectedItem.recentVisitCount} recent visits</span>
+                  <span>FROM RECENT BROWSING</span>
                 </div>
                 <div className="candidate-card__identity">
                   <img
@@ -392,14 +334,19 @@ export function App() {
                     {selectedItem.title && <p>{selectedItem.title}</p>}
                   </div>
                 </div>
-                {selectedItem.url ? (
-                  <a href={selectedItem.url} target="_blank" rel="noreferrer">
-                    {selectedItem.url} ↗
-                  </a>
-                ) : (
+                <a
+                  href={
+                    selectedItem.url ?? `https://${selectedItem.domain}/`
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {selectedItem.url ?? `https://${selectedItem.domain}/`} ↗
+                </a>
+                {!selectedItem.url && (
                   <p className="domain-only-note">
-                    Domain-only by current privacy policy; no page URL is
-                    exposed.
+                    The observed path stays private; this opens the domain
+                    homepage.
                   </p>
                 )}
               </div>
@@ -439,20 +386,6 @@ export function App() {
                 {selectedItem.url && selectedInspection?.status === "error" && (
                   <p>Inspection failed; the result remains unknown.</p>
                 )}
-              </div>
-
-              <div className="history">
-                <span>
-                  RECENT SIGHTINGS / {selectedItem.recentVisits.length} SHOWN
-                </span>
-                <ol>
-                  {selectedItem.recentVisits.map((visit, index) => (
-                    <li key={`${visit.visitedAt}:${index}`}>
-                      <time>{relativeTime(visit.visitedAt)}</time>
-                      {visit.title && <span>{visit.title}</span>}
-                    </li>
-                  ))}
-                </ol>
               </div>
 
               <fieldset>
@@ -552,7 +485,7 @@ export function App() {
                         <span>{item.currentDisposition}</span>
                       </span>
                       <span className="place-card__subtitle">
-                        {item.title ?? `${item.recentVisitCount} recent visits`}
+                        {item.title ?? "Scenery domain"}
                       </span>
                       {priorDecision && (
                         <b
@@ -584,12 +517,6 @@ export function App() {
             </span>
             <span>{reviewItems.length} sanitized places</span>
           </div>
-          {queueMode === "snapshot" && (
-            <p className="queue-mode-note">
-              Snapshot fallback: full four-sighting history appears after the
-              review route is deployed.
-            </p>
-          )}
         </section>
       </div>
 

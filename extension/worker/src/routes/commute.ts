@@ -3,14 +3,14 @@
 
 import type { CollectionEvent } from '@playhtml/extension-types';
 import type { Env } from '../lib/supabase';
-import {
-  buildCommuteResponse,
-  buildCommuteReviewResponse,
-} from './commutePolicy';
+import { buildCommuteResponse } from './commutePolicy';
 import { handleRecent } from './recent';
 
 const NAVIGATION_LIMIT = 2000;
 const CURSOR_LIMIT = 1000;
+const REVIEW_NAVIGATION_LIMIT = 10_000;
+const REVIEW_DESTINATION_LIMIT = 200;
+const REVIEW_SCENERY_LIMIT = 200;
 
 async function fetchRecentEvents(
   request: Request,
@@ -78,14 +78,20 @@ export async function handleCommuteReview(
   env: Env,
 ): Promise<Response> {
   try {
-    const [navigationEvents, cursorEvents] = await Promise.all([
-      fetchRecentEvents(request, env, 'navigation', NAVIGATION_LIMIT),
-      fetchRecentEvents(request, env, 'cursor', CURSOR_LIMIT),
-    ]);
-    const response = buildCommuteReviewResponse(
+    const navigationEvents = await fetchRecentEvents(
+      request,
+      env,
+      'navigation',
+      REVIEW_NAVIGATION_LIMIT,
+    );
+    const response = buildCommuteResponse(
       navigationEvents,
-      cursorEvents,
+      [],
       Date.now(),
+      {
+        destinations: REVIEW_DESTINATION_LIMIT,
+        scenery: REVIEW_SCENERY_LIMIT,
+      },
     );
 
     return new Response(JSON.stringify(response), {

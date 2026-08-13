@@ -30,19 +30,12 @@ export type CurationArtifact = {
   }>;
 };
 
-export type CommuteReviewVisit = {
-  visitedAt: number;
-  title?: string;
-};
-
 export type CommuteReviewItem = {
   id: string;
   domain: string;
   url?: string;
   title?: string;
   currentDisposition: "stop" | "scenery";
-  recentVisitCount: number;
-  recentVisits: CommuteReviewVisit[];
 };
 
 export type CommuteReviewResponse = {
@@ -65,16 +58,42 @@ export function parseCommuteReviewResponse(
   const candidate = value as Record<string, unknown>;
   if (
     typeof candidate.generatedAt !== "number" ||
-    !Array.isArray(candidate.items)
+    !Array.isArray(candidate.destinations) ||
+    !Array.isArray(candidate.scenery)
   ) {
     throw new Error("The Commute review response is malformed.");
   }
 
-  const items = candidate.items.filter(isCommuteReviewItem);
-  if (items.length !== candidate.items.length) {
-    throw new Error("The Commute review response contains an invalid item.");
+  const destinations = candidate.destinations.filter(isCommuteDestination);
+  const scenery = candidate.scenery.filter(isCommuteSceneryItem);
+  if (
+    destinations.length !== candidate.destinations.length ||
+    scenery.length !== candidate.scenery.length
+  ) {
+    throw new Error("The Commute review response contains an invalid place.");
   }
-  return { generatedAt: candidate.generatedAt, items };
+  const destinationDomains = new Set(
+    destinations.map((destination) => destination.domain),
+  );
+  return {
+    generatedAt: candidate.generatedAt,
+    items: [
+      ...destinations.map((destination) => ({
+        id: destination.url,
+        domain: destination.domain,
+        url: destination.url,
+        ...(destination.title ? { title: destination.title } : {}),
+        currentDisposition: "stop" as const,
+      })),
+      ...scenery
+        .filter((item) => !destinationDomains.has(item.domain))
+        .map((item) => ({
+          id: item.domain,
+          domain: item.domain,
+          currentDisposition: "scenery" as const,
+        })),
+    ],
+  };
 }
 
 export function getReviewTarget(item: CommuteReviewItem): string {
@@ -214,25 +233,29 @@ function isCuratedPlace(value: unknown): value is CuratedPlace {
   );
 }
 
-function isCommuteReviewItem(value: unknown): value is CommuteReviewItem {
+type CommuteDestination = {
+  domain: string;
+  url: string;
+  title?: string | null;
+};
+
+type CommuteSceneryItem = {
+  domain: string;
+};
+
+function isCommuteDestination(value: unknown): value is CommuteDestination {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   return (
-    typeof candidate.id === "string" &&
     typeof candidate.domain === "string" &&
-    (candidate.url === undefined || typeof candidate.url === "string") &&
-    (candidate.title === undefined || typeof candidate.title === "string") &&
-    (candidate.currentDisposition === "stop" ||
-      candidate.currentDisposition === "scenery") &&
-    typeof candidate.recentVisitCount === "number" &&
-    Array.isArray(candidate.recentVisits) &&
-    candidate.recentVisits.every((visit) => {
-      if (!visit || typeof visit !== "object") return false;
-      const record = visit as Record<string, unknown>;
-      return (
-        typeof record.visitedAt === "number" &&
-        (record.title === undefined || typeof record.title === "string")
-      );
-    })
+    typeof candidate.url === "string" &&
+    (candidate.title === undefined ||
+      candidate.title === null ||
+      typeof candidate.title === "string")
   );
+}
+
+function isCommuteSceneryItem(value: unknown): value is CommuteSceneryItem {
+  if (!value || typeof value !== "object") return false;
+  return typeof (value as Record<string, unknown>).domain === "string";
 }

@@ -63,31 +63,44 @@ describe("parseCommuteReviewResponse", () => {
     expect(
       parseCommuteReviewResponse({
         generatedAt: 1_000,
-        items: [
+        activePeople: 0,
+        destinations: [
           {
             id: "https://example.com/essay",
             domain: "example.com",
             url: "https://example.com/essay",
             title: "An essay",
-            currentDisposition: "stop",
-            recentVisitCount: 2,
-            recentVisits: [
-              { visitedAt: 900, title: "An essay" },
-              { visitedAt: 800, title: "An essay" },
-            ],
           },
         ],
+        scenery: [{ id: "elsewhere.example", domain: "elsewhere.example" }],
       }),
-    ).toMatchObject({ generatedAt: 1_000 });
+    ).toEqual({
+      generatedAt: 1_000,
+      items: [
+        {
+          id: "https://example.com/essay",
+          domain: "example.com",
+          url: "https://example.com/essay",
+          title: "An essay",
+          currentDisposition: "stop",
+        },
+        {
+          id: "elsewhere.example",
+          domain: "elsewhere.example",
+          currentDisposition: "scenery",
+        },
+      ],
+    });
   });
 
   it("rejects a queue containing raw or malformed items", () => {
     expect(() =>
       parseCommuteReviewResponse({
         generatedAt: 1_000,
-        items: [{ id: "private-event", domain: "example.com" }],
+        destinations: [{ id: "private-event", domain: "example.com" }],
+        scenery: [],
       }),
-    ).toThrow("invalid item");
+    ).toThrow("invalid place");
   });
 });
 
@@ -99,8 +112,6 @@ describe("getReviewTarget", () => {
         domain: "example.com",
         url: "https://www.example.com/essay",
         currentDisposition: "stop",
-        recentVisitCount: 1,
-        recentVisits: [{ visitedAt: 1_000 }],
       }),
     ).toBe("https://example.com/essay");
   });

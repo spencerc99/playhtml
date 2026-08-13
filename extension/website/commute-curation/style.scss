@@ -227,16 +227,6 @@ h1 {
   font-size: 9px;
 }
 
-.queue-mode-note {
-  margin: 0;
-  padding: 8px 12px;
-  border-top: 1px dashed $line;
-  color: rgba($ink, 0.58);
-  font-family: $mono;
-  font-size: 8px;
-  line-height: 1.45;
-}
-
 .queue-controls {
   display: flex;
   gap: 12px;
@@ -377,40 +367,6 @@ h1 {
   color: rgba($ink, 0.54);
   font-family: $mono;
   font-size: 9px;
-}
-
-.history > span {
-  font-family: $mono;
-  font-size: 9px;
-}
-
-.history ol {
-  margin: 7px 0 0;
-  padding: 0;
-  border-top: 1px solid $line;
-  list-style: none;
-}
-
-.history li {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: 10px;
-  padding: 6px 2px;
-  border-bottom: 1px solid $line;
-  font-size: 11px;
-}
-
-.history time {
-  color: rgba($ink, 0.5);
-  font-family: $mono;
-  font-size: 9px;
-}
-
-.history li > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 label > span,

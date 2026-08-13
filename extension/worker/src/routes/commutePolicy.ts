@@ -15,7 +15,6 @@ const DESTINATION_LIMIT = 50;
 const BASE_SCENERY_LIMIT = 100;
 const MAX_SCENERY_LIMIT = 200;
 const NAVIGATION_EVENTS_PER_SCENERY_ITEM = 5;
-const REVIEW_HISTORY_LIMIT = 4;
 
 const MOVIE_TV_STREAMING_DOMAINS = [
   'amcplus.com',
@@ -343,26 +342,6 @@ interface NavigationCandidate {
   title: string | null;
   url: string;
   visitedAt: number;
-}
-
-export interface CommuteReviewVisit {
-  visitedAt: number;
-  title?: string;
-}
-
-export interface CommuteReviewItem {
-  id: string;
-  domain: string;
-  url?: string;
-  title?: string;
-  currentDisposition: 'stop' | 'scenery';
-  recentVisitCount: number;
-  recentVisits: CommuteReviewVisit[];
-}
-
-export interface CommuteReviewResponse {
-  generatedAt: number;
-  items: CommuteReviewItem[];
 }
 
 interface PlatformRoutePolicy {
@@ -854,6 +833,7 @@ function buildScenery(
 
 function buildDestinations(
   candidates: NavigationCandidate[],
+  limit = DESTINATION_LIMIT,
 ): CommuteDestination[] {
   const destinations: CommuteDestination[] = [];
   const seenRegistrableDomains = new Set<string>();
@@ -894,7 +874,7 @@ function buildDestinations(
     });
     seenRegistrableDomains.add(candidate.registrableDomain);
     stopsByRider.set(candidate.pid, riderStopCount + 1);
-    if (destinations.length === DESTINATION_LIMIT) break;
+    if (destinations.length === limit) break;
   }
 
   return destinations;
@@ -925,6 +905,7 @@ export function buildCommuteResponse(
   navigationEvents: CollectionEvent[],
   cursorEvents: CollectionEvent[],
   now = Date.now(),
+  limits?: { destinations?: number; scenery?: number },
 ): CommuteResponse {
   const newestFirst = navigationEvents
     .map(toCandidate)
@@ -947,66 +928,10 @@ export function buildCommuteResponse(
   return {
     generatedAt: now,
     activePeople: countActivePeople(cursorEvents, now),
-    scenery: buildScenery(candidates, getSceneryLimit(candidates.length)),
-    destinations: buildDestinations(candidates),
-  };
-}
-
-export function buildCommuteReviewResponse(
-  navigationEvents: CollectionEvent[],
-  cursorEvents: CollectionEvent[] = [],
-  now = Date.now(),
-): CommuteReviewResponse {
-  const commute = buildCommuteResponse(navigationEvents, cursorEvents, now);
-  const candidates = navigationEvents
-    .map(toCandidate)
-    .filter((candidate): candidate is NavigationCandidate => candidate !== null)
-    .sort((first, second) => second.visitedAt - first.visitedAt);
-  const destinationDomains = new Set(
-    commute.destinations.map((destination) => destination.domain),
-  );
-
-  const destinationItems = commute.destinations.map((destination) => {
-    const visits = candidates.filter(
-      (candidate) =>
-        sanitizePublicDestinationUrl(candidate.url) === destination.url,
-    );
-    return {
-      id: destination.url,
-      domain: destination.domain,
-      url: destination.url,
-      ...(destination.title ? { title: destination.title } : {}),
-      currentDisposition: 'stop' as const,
-      recentVisitCount: visits.length,
-      recentVisits: visits.slice(0, REVIEW_HISTORY_LIMIT).map((visit) => {
-        const title = getMeaningfulTitle(visit.title, visit.domain);
-        return {
-          visitedAt: visit.visitedAt,
-          ...(title ? { title } : {}),
-        };
-      }),
-    };
-  });
-
-  const sceneryItems = commute.scenery
-    .filter((item) => !destinationDomains.has(item.domain))
-    .map((item) => {
-      const visits = candidates.filter(
-        (candidate) => candidate.domain === item.domain,
-      );
-      return {
-        id: item.domain,
-        domain: item.domain,
-        currentDisposition: 'scenery' as const,
-        recentVisitCount: visits.length,
-        recentVisits: visits.slice(0, REVIEW_HISTORY_LIMIT).map((visit) => ({
-          visitedAt: visit.visitedAt,
-        })),
-      };
-    });
-
-  return {
-    generatedAt: now,
-    items: [...destinationItems, ...sceneryItems],
+    scenery: buildScenery(
+      candidates,
+      limits?.scenery ?? getSceneryLimit(candidates.length),
+    ),
+    destinations: buildDestinations(candidates, limits?.destinations),
   };
 }
