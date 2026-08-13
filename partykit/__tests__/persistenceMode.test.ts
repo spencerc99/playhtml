@@ -80,6 +80,27 @@ describe("retryWithTimeout", () => {
     expect(failures).toEqual([1]);
   });
 
+  test("can recover on the final configured attempt", async () => {
+    const attempts: number[] = [];
+
+    const result = await retryWithTimeout(
+      (_signal, attempt) => {
+        attempts.push(attempt);
+        if (attempt < 3) throw new Error(`failure ${attempt}`);
+        return Promise.resolve("loaded");
+      },
+      {
+        attempts: 3,
+        timeoutMs: 100,
+        retryDelayMs: 1,
+        errorMessage: "timed out",
+      }
+    );
+
+    expect(result).toBe("loaded");
+    expect(attempts).toEqual([1, 2, 3]);
+  });
+
   test("throws only after every attempt fails", async () => {
     const attempts: number[] = [];
 

@@ -137,7 +137,7 @@ export class AdminHandler {
   }
 
   private checkPersistenceWriteAvailable(): Response | null {
-    return this.context.getPersistenceUnavailableResponse();
+    return this.context.getSharedDataWriteUnavailableResponse();
   }
 
   private async loadDatabasePlayData(): Promise<{

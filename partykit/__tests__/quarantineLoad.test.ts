@@ -1,8 +1,15 @@
 // ABOUTME: Drives the real PartyServer load and alarm paths to verify breaker behavior.
 // ABOUTME: Asserts rooms stay available while failed work backs off or is disabled.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as encoding from "lib0/encoding";
+import * as awarenessProtocol from "y-protocols/awareness";
+import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 import { Buffer } from "node:buffer";
+import {
+  parseSharedElementsFromUrl,
+  parseSharedReferencesFromUrl,
+} from "../sharing";
 
 // PartyServer imports Cloudflare-only modules and constructs a Supabase client at
 // module scope. Stub both so the real class can be exercised under bun test.
@@ -345,6 +352,85 @@ describe("hydration write guards", () => {
     expect(room.isReadOnly({})).toBe(true);
   });
 
+  test("awareness messages still apply while shared-data writes are read-only", () => {
+    const { room } = createRoom();
+    const sourceDoc = new Y.Doc();
+    const sourceAwareness = new awarenessProtocol.Awareness(sourceDoc);
+    sourceAwareness.setLocalState({ online: true });
+    const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(
+      sourceAwareness,
+      [sourceDoc.clientID]
+    );
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, 1);
+    encoding.writeVarUint8Array(encoder, awarenessUpdate);
+    const connectionState: Record<string, unknown> = {};
+    const connection = {
+      id: "awareness-client",
+      send: () => {},
+      state: connectionState,
+      setState: (next: unknown) => {
+        Object.assign(
+          connectionState,
+          typeof next === "function" ? next(connectionState) : next
+        );
+      },
+    };
+    room.document.awareness = new awarenessProtocol.Awareness(room.document);
+
+    room.handleMessage(connection, encoding.toUint8Array(encoder));
+
+    expect(room.isReadOnly(connection)).toBe(true);
+    expect(room.document.awareness.getStates().get(sourceDoc.clientID)).toEqual({
+      online: true,
+    });
+    sourceAwareness.destroy();
+    room.document.awareness.destroy();
+    sourceDoc.destroy();
+  });
+
+  test("Yjs document updates are rejected while awareness remains available", () => {
+    const { room } = createRoom();
+    const sourceDoc = new Y.Doc();
+    sourceDoc.getMap("play").set("danger", "must not be applied");
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, 0);
+    syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(sourceDoc));
+    const connection = {
+      id: "document-client",
+      send: () => {},
+      state: {},
+      setState: () => {},
+    };
+
+    room.handleMessage(connection, encoding.toUint8Array(encoder));
+
+    expect(room.isReadOnly(connection)).toBe(true);
+    expect(room.document.getMap("play").has("danger")).toBe(false);
+    sourceDoc.destroy();
+  });
+
+  test("admin writes remain blocked when persistence recovers before hydration", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+    room.markPersistenceAvailable();
+
+    const response = await room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/force-save-live",
+        { method: "POST" }
+      )
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      error: "shared_data_unavailable",
+      roomId: "example-room",
+    });
+    expect(upsertCalls).toEqual([]);
+    expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
   test("bridge subscription and apply writes return 503 before hydration", async () => {
     const { room, storage } = createRoom();
 
@@ -411,6 +497,42 @@ describe("hydration write guards", () => {
       "[Bridge] Ignoring add-shared-reference for room example-room: document hydration or persistence unavailable.",
       "[Bridge] Ignoring register-shared-element for room example-room: document hydration or persistence unavailable.",
     ]);
+  });
+
+  test("connection URL bridge metadata is not stored before hydration", async () => {
+    const { room, storage } = createRoom();
+    room.getResetEpoch = async () => null;
+    room.clearEmptyRoomCompactAfter = async () => {};
+    room.ensureAlarmScheduled = async () => {};
+    room.waitForEmptyRoomCompaction = async () => {};
+    room.document.awareness = new awarenessProtocol.Awareness(room.document);
+    const connection = {
+      id: "bridge-client",
+      send: () => {},
+      setState: () => {},
+      state: {},
+    };
+    const params = new URLSearchParams({
+      sharedReferences: JSON.stringify([
+        { domain: "source.example", path: "/", elementId: "shared" },
+      ]),
+      sharedElements: JSON.stringify([
+        { elementId: "shared", permissions: "read-write" },
+      ]),
+    });
+    const requestUrl =
+      `https://example.com/parties/main/example-room?${params.toString()}`;
+
+    expect(parseSharedReferencesFromUrl(requestUrl)).toHaveLength(1);
+    expect(parseSharedElementsFromUrl(requestUrl)).toHaveLength(1);
+
+    await room.onConnect(connection, {
+      request: new Request(requestUrl),
+    });
+
+    expect(storage.values.get("sharedReferences")).toBeUndefined();
+    expect(storage.values.get("sharedPermissions")).toBeUndefined();
+    room.document.awareness.destroy();
   });
 });
 
@@ -1283,6 +1405,9 @@ describe("admin quarantine endpoints", () => {
     expect(body.ok).toBe(true);
     expect(body.quarantineCleared).toBe(false);
     expect(body.cleanupError).toContain("kv down");
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
+    expect(room.isPersistenceAvailable()).toBe(false);
+    expect(room.isReadOnly({})).toBe(true);
   });
 
   test("the response reports whether the external flag was written", async () => {
@@ -1548,6 +1673,7 @@ describe("quarantine data safety", () => {
     persistedRow.document = COMPACT_LETHAL_DOCUMENT;
     const storage = new FakeStorage();
     const room = buildRoom(storage, "example-room", COMPACT_LETHAL_DOC);
+    room.documentLoadCompleted = true;
 
     const response = await room.onRequest(
       new Request(

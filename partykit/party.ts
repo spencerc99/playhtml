@@ -532,12 +532,26 @@ export class PartyServer extends YServer {
     this.markPersistenceAvailable();
   }
 
-  getPersistenceUnavailableResponse(): Response | null {
-    if (this.persistenceMode.kind !== "transient") return null;
-    return createPersistenceUnavailableResponse({
-      ...this.persistenceMode,
-      roomName: this.name,
-    });
+  getSharedDataWriteUnavailableResponse(): Response | null {
+    if (this.canWriteSharedData()) return null;
+    if (this.persistenceMode.kind === "transient") {
+      return createPersistenceUnavailableResponse({
+        ...this.persistenceMode,
+        roomName: this.name,
+      });
+    }
+    return new Response(
+      JSON.stringify({
+        error: "shared_data_unavailable",
+        message:
+          "Shared-data and admin writes are unavailable until the room document has loaded.",
+        roomId: this.name,
+      }),
+      {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      }
+    );
   }
 
   private enterTransientPersistenceMode(error: unknown): void {
