@@ -76,8 +76,37 @@ export function getCustomSiteSettingsForHostname(
   return resolveCustomSiteSettingsForHostname(hostname, CUSTOM_SITE_POLICIES);
 }
 
+export function getCustomSiteSettingsForLocation(
+  hostname: string,
+  pathname: string,
+  search: string,
+): CustomSiteSettings | null {
+  const settings = getCustomSiteSettingsForHostname(hostname);
+  if (!settings) return null;
+  if (!isWikipediaHostname(hostname)) {
+    return settings;
+  }
+  const isArticleRoute = pathname === "/w/index.php" || pathname.startsWith("/wiki/");
+  if (!isArticleRoute) return settings;
+  const searchParams = new URLSearchParams(search);
+  const isEditing =
+    searchParams.get("action") === "edit" || searchParams.has("veaction");
+  if (!isEditing) return settings;
+  return {
+    ...settings,
+    defaultRoomOptions: {
+      ...settings.defaultRoomOptions,
+      includeSearch: true,
+    },
+  };
+}
+
 export function getCustomSiteSettings(): CustomSiteSettings | null {
-  return getCustomSiteSettingsForHostname(location.hostname);
+  return getCustomSiteSettingsForLocation(
+    location.hostname,
+    location.pathname,
+    location.search,
+  );
 }
 
 // Returns true if the current domain should have collaborative cursors enabled.
