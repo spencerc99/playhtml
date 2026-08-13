@@ -1,7 +1,7 @@
 // ABOUTME: Verifies the Experiment 8 opening scroll animation.
 // ABOUTME: Covers its starting point, eased midpoint, and destination.
 import { describe, expect, it } from "vitest";
-import { canStartIntroScroll, getIntroScrollY } from "../intro";
+import { canStartIntroScroll, getIntroScrollY, isPlayhtmlHostReady } from "../intro";
 
 describe("experiment 8 introduction", () => {
   it("starts at the top of the paper", () => {
@@ -51,5 +51,13 @@ describe("experiment 8 introduction", () => {
         hasSettledContent: true,
       }),
     ).toBe(true);
+  });
+
+  it("detects when the paper host has finished playhtml setup", () => {
+    expect(isPlayhtmlHostReady(null)).toBe(false);
+    const host = document.createElement("div");
+    expect(isPlayhtmlHostReady(host)).toBe(false);
+    host.classList.add("__playhtml-element");
+    expect(isPlayhtmlHostReady(host)).toBe(true);
   });
 });

@@ -45,3 +45,8 @@ export function canStartIntroScroll({
 }): boolean {
   return !isLoading && hasMeasuredGrid && hasSettledContent;
 }
+
+/** True once playhtml has finished setupPlayElement for the paper host. */
+export function isPlayhtmlHostReady(host: Element | null): boolean {
+  return Boolean(host?.classList.contains("__playhtml-element"));
+}

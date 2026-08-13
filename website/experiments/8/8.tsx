@@ -25,6 +25,7 @@ import {
   INTRO_CONTENT_SETTLE_MS,
   INTRO_FADE_DURATION_MS,
   INTRO_SCROLL_DURATION_MS,
+  isPlayhtmlHostReady,
 } from "./intro";
 
 interface CellData {
@@ -137,6 +138,10 @@ const Main = withSharedState(
 
     useEffect(() => {
       const updateScrollEndState = () => {
+        // Ignore scroll-end pinning until the intro finishes. On first paint the
+        // empty grid fits in one viewport so we would look "at end", then jump
+        // when letters arrive after the intro.
+        if (introState !== "hidden") return;
         shouldFollowScrollEndRef.current = isScrollAtEnd({
           scrollY: window.scrollY,
           scrollHeight: document.documentElement.scrollHeight,
@@ -152,7 +157,7 @@ const Main = withSharedState(
         window.removeEventListener("scroll", updateScrollEndState);
         window.removeEventListener("resize", updateScrollEndState);
       };
-    }, []);
+    }, [introState]);
 
     // Minimum cells to fill the page
     const minCells = gridDimensions.cols * gridDimensions.rows;
@@ -165,21 +170,39 @@ const Main = withSharedState(
 
     const cursorPosition = getTypingCursorPosition(data.letters.length);
 
-    // Wait until synced letter data has been applied and the grid height is
-    // quiet. Starting earlier animates a short empty page, then jumps to the
-    // real bottom once letters hydrate (can-play setup is a parent effect and
-    // may hash the element id asynchronously before applying store data).
+    // Wait until the can-play host is set up (synced data applied) and the grid
+    // height is quiet. Starting earlier animates a short empty page, then jumps
+    // once letters hydrate.
     useEffect(() => {
       if (isLoading || !hasMeasuredGrid) {
         setHasSettledContent(false);
         return;
       }
 
-      const settleTimeout = window.setTimeout(() => {
-        setHasSettledContent(true);
-      }, INTRO_CONTENT_SETTLE_MS);
+      let cancelled = false;
+      let settleTimeout = 0;
+      let raf = 0;
+
+      const armSettleTimer = () => {
+        settleTimeout = window.setTimeout(() => {
+          if (!cancelled) setHasSettledContent(true);
+        }, INTRO_CONTENT_SETTLE_MS);
+      };
+
+      const waitForHost = () => {
+        if (cancelled) return;
+        if (!isPlayhtmlHostReady(document.getElementById("experiment-8"))) {
+          raf = window.requestAnimationFrame(waitForHost);
+          return;
+        }
+        armSettleTimer();
+      };
+
+      waitForHost();
 
       return () => {
+        cancelled = true;
+        window.cancelAnimationFrame(raf);
         window.clearTimeout(settleTimeout);
       };
     }, [isLoading, hasMeasuredGrid, data.letters.length, totalCells]);
@@ -216,20 +239,18 @@ const Main = withSharedState(
       ).matches;
       const durationMs = reducedMotion ? 0 : INTRO_SCROLL_DURATION_MS;
       let animationFrame = 0;
-      let fadeTimeout = 0;
       let startTime: number | undefined;
+      let cancelled = false;
 
       const finishIntro = () => {
+        if (cancelled) return;
         window.scrollTo(0, destinationY);
         shouldFollowScrollEndRef.current = true;
         setIntroState("fading");
-        fadeTimeout = window.setTimeout(() => {
-          shouldFollowScrollEndRef.current = true;
-          setIntroState("hidden");
-        }, reducedMotion ? 800 : INTRO_FADE_DURATION_MS);
       };
 
       const animateScroll = (timestamp: number) => {
+        if (cancelled) return;
         startTime ??= timestamp;
         const elapsedMs = timestamp - startTime;
         window.scrollTo(
@@ -255,7 +276,28 @@ const Main = withSharedState(
       }
 
       return () => {
+        cancelled = true;
         window.cancelAnimationFrame(animationFrame);
+        // Allow a remount/re-run to restart the animation instead of leaving
+        // the intro stuck on "scrolling".
+        introStartedRef.current = false;
+      };
+    }, [introState]);
+
+    // Keep fade timing in its own effect so changing introState to "fading"
+    // does not clear the hide timeout via the scroll effect's cleanup.
+    useEffect(() => {
+      if (introState !== "fading") return;
+
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+      const fadeTimeout = window.setTimeout(() => {
+        shouldFollowScrollEndRef.current = true;
+        setIntroState("hidden");
+      }, reducedMotion ? 800 : INTRO_FADE_DURATION_MS);
+
+      return () => {
         window.clearTimeout(fadeTimeout);
       };
     }, [introState]);
