@@ -6,6 +6,15 @@ export const WORLD_HEIGHT = 720;
 export const BLOCK_WIDTH = 200;
 export const BLOCK_HEIGHT = 96;
 
+/** Shared site-diary saves must wait this long between captures. */
+export const SNAPSHOT_COOLDOWN_MS = 15 * 60 * 1000;
+/** Keep the diary from growing without bound in the synced room. */
+export const MAX_SNAPSHOTS = 48;
+/** JPEG quality for diary thumbnails stored in shared state. */
+export const SNAPSHOT_JPEG_QUALITY = 0.62;
+/** Capture scale relative to the 1200×720 physics surface. */
+export const SNAPSHOT_CAPTURE_SCALE = 0.42;
+
 const POSITION_SYNC_THRESHOLD = 0.35;
 const ANGLE_SYNC_THRESHOLD = 0.004;
 
@@ -29,7 +38,81 @@ export function createDefaultYard() {
         { x, y, angle: 0, style: "photo" },
       ]),
     ),
+    // New field: rooms that already have blocks hydrate without this key.
+    snapshots: {},
   };
+}
+
+export function getSnapshots(data) {
+  if (!data || typeof data !== "object" || !data.snapshots) return {};
+  if (typeof data.snapshots !== "object" || Array.isArray(data.snapshots)) {
+    return {};
+  }
+  return data.snapshots;
+}
+
+export function listSnapshotsNewestFirst(data) {
+  return Object.values(getSnapshots(data)).sort(
+    (a, b) => (b?.createdAt ?? 0) - (a?.createdAt ?? 0),
+  );
+}
+
+export function getLatestSnapshotTime(data) {
+  let latest = 0;
+  for (const snapshot of Object.values(getSnapshots(data))) {
+    const createdAt = Number(snapshot?.createdAt) || 0;
+    if (createdAt > latest) latest = createdAt;
+  }
+  return latest;
+}
+
+export function getSnapshotCooldownRemainingMs(data, now = Date.now()) {
+  const latest = getLatestSnapshotTime(data);
+  if (!latest) return 0;
+  return Math.max(0, SNAPSHOT_COOLDOWN_MS - (now - latest));
+}
+
+export function canSaveSnapshot(data, now = Date.now()) {
+  return getSnapshotCooldownRemainingMs(data, now) === 0;
+}
+
+export function formatCooldown(ms) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+export function createSnapshotRecord({
+  id,
+  imageDataUrl,
+  createdAt = Date.now(),
+  blockCount = 0,
+}) {
+  return {
+    id,
+    createdAt,
+    imageDataUrl,
+    blockCount,
+  };
+}
+
+/**
+ * Apply a new snapshot into a draft snapshots map, pruning oldest when over cap.
+ * Mutates `snapshots` in place for SyncedStore draft writes.
+ */
+export function applySnapshotToDraft(snapshots, record) {
+  snapshots[record.id] = record;
+
+  const idsByAge = Object.values(snapshots)
+    .sort((a, b) => (a?.createdAt ?? 0) - (b?.createdAt ?? 0))
+    .map((snapshot) => snapshot.id);
+
+  while (idsByAge.length > MAX_SNAPSHOTS) {
+    const oldestId = idsByAge.shift();
+    if (oldestId) delete snapshots[oldestId];
+  }
 }
 
 export function createBlock(id, blockCount) {
