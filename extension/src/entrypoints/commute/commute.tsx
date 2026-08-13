@@ -1153,7 +1153,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             onBoard={() => {
               pendingSeatId.current = null;
               clickDestination.current = null;
-              updateAvatarPosition(COMMUTE_AVATAR_START);
+              updateAvatarPosition(initialAvatarPosition);
               onMobileBoardStateChange(true);
             }}
             onMove={updateMovement}
