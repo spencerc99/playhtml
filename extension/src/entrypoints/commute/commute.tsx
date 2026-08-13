@@ -57,10 +57,11 @@ import {
 import { CommuteStage } from "./CommuteStage";
 import { useCommuteDebug } from "./commuteDebug";
 import {
-  COMMUTE_AVATAR_START,
   COMMUTE_CLICK_WALK_SPEED,
+  COMMUTE_JOIN_ENTRY_POSITION,
   COMMUTE_WALK_SPEED,
   findNearbyCommuteSeat,
+  getCommuteAvatarStart,
   getCommutePointFromClient,
   getCommutePointFromZone,
   getCommuteRiderStart,
@@ -618,8 +619,9 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const { configureCursors, cursorPresences, cursors, isLoading } =
       usePlayContext();
     const [toast, setToast] = useState<string | null>(null);
+    const initialAvatarPosition = getCommuteAvatarStart(props.isJoining);
     const [avatarPosition, setAvatarPosition] =
-      useState<CommutePoint>(COMMUTE_AVATAR_START);
+      useState<CommutePoint>(initialAvatarPosition);
     const [avatarWalking, setAvatarWalking] = useState(false);
     const [showJoiningAnimation, setShowJoiningAnimation] = useState(
       props.isJoining,
@@ -628,7 +630,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const lastRiderPositions = useRef(new Map<string, CommutePoint>());
     const toastTimer = useRef<number | undefined>(undefined);
     const movementVector = useRef<CommutePoint>({ x: 0, y: 0 });
-    const avatarPositionRef = useRef<CommutePoint>(COMMUTE_AVATAR_START);
+    const avatarPositionRef = useRef<CommutePoint>(initialAvatarPosition);
     const clickDestination = useRef<CommutePoint | null>(null);
     const pendingSeatId = useRef<number | null>(null);
     const pressedKeys = useRef(new Set<string>());
@@ -690,12 +692,13 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         return;
       }
 
+      updateAvatarPosition(COMMUTE_JOIN_ENTRY_POSITION);
       setShowJoiningAnimation(true);
       const timer = window.setTimeout(() => {
         setShowJoiningAnimation(false);
       }, 1_400);
       return () => window.clearTimeout(timer);
-    }, [props.isJoining]);
+    }, [props.isJoining, updateAvatarPosition]);
 
     const standingRiders = useMemo(() => {
       const activeRiderIds = new Set<string>();
