@@ -398,7 +398,6 @@ kbd {
   overflow: hidden;
   width: 100%;
   aspect-ratio: 5 / 3;
-  container-type: inline-size;
   background-color: #b7b7b1;
   background-image:
     linear-gradient(rgba(0, 0, 0, 0.07) 1px, transparent 1px),
@@ -412,7 +411,8 @@ kbd {
   left: 0;
   width: 1200px;
   height: 720px;
-  transform: scale(calc(100cqw / 1200));
+  /* --preview-scale is set from JS (card/lightbox width ÷ 1200). */
+  transform: scale(var(--preview-scale, 0.2));
   transform-origin: top left;
   pointer-events: none;
 }

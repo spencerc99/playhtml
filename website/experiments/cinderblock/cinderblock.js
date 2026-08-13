@@ -278,13 +278,35 @@ class CinderblockYard {
       piece.style.transform = `translate(${block.x - BLOCK_WIDTH / 2}px, ${
         block.y - BLOCK_HEIGHT / 2
       }px) rotate(${block.angle}rad)`;
+      // Eager load: lazy + overflow/scale made thumbs look empty (blocks sit near
+      // the bottom of the 1200×720 surface and never entered the tiny clip).
       piece.innerHTML =
-        '<img src="/cinderblock-realistic.png" alt="" draggable="false" loading="lazy" />';
+        '<img src="/cinderblock-realistic.png" alt="" draggable="false" />';
       yard.appendChild(piece);
     }
 
     stage.appendChild(yard);
+    this.bindFrozenStageScale(stage);
     return stage;
+  }
+
+  /**
+   * Fit the fixed 1200×720 freeze-frame into whatever card/lightbox width we get.
+   * container-query `cqw` inside `transform: scale()` was unreliable here and left
+   * thumbs showing only the empty top of the unscaled yard.
+   */
+  bindFrozenStageScale(stage) {
+    const syncScale = () => {
+      const width = stage.clientWidth;
+      if (width <= 0) return;
+      stage.style.setProperty("--preview-scale", String(width / WORLD_WIDTH));
+    };
+
+    syncScale();
+    const observer = new ResizeObserver(syncScale);
+    observer.observe(stage);
+    stage._previewScaleObserver = observer;
+    requestAnimationFrame(syncScale);
   }
 
   openLightbox(snapshot) {
@@ -294,6 +316,15 @@ class CinderblockYard {
     stageHost.replaceChildren(this.createFrozenStage(snapshot));
     meta.textContent = this.formatSnapshotLabel(snapshot);
     this.lightbox.hidden = false;
+    // Scale after unhiding so clientWidth is non-zero.
+    requestAnimationFrame(() => {
+      const stage = stageHost.querySelector(".snapshot-stage");
+      if (!stage) return;
+      const width = stage.clientWidth;
+      if (width > 0) {
+        stage.style.setProperty("--preview-scale", String(width / WORLD_WIDTH));
+      }
+    });
   }
 
   closeLightbox() {
