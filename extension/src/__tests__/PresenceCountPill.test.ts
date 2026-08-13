@@ -62,6 +62,7 @@ describe("PresenceCountPill", () => {
           {
             isMe: false,
             playerIdentity: identity("peer"),
+            online: true,
             page: {
               url: "https://en.wikipedia.org/wiki/Stale",
               title: "Stale",
@@ -103,6 +104,7 @@ describe("PresenceCountPill", () => {
           {
             isMe: false,
             playerIdentity: identity("peer"),
+            online: true,
             page: {
               url: "https://en.wikipedia.org/wiki/Hidden",
               title: "Hidden",
@@ -144,6 +146,7 @@ describe("PresenceCountPill", () => {
           {
             isMe: false,
             playerIdentity: identity("peer"),
+            online: true,
             page: {
               url: "https://en.wikipedia.org/wiki/Octopus#/media/File:Octopus.jpg",
               title: "Octopus",
@@ -186,6 +189,7 @@ describe("PresenceCountPill", () => {
           {
             isMe: false,
             playerIdentity: identity("stale-peer"),
+            online: true,
             page: {
               url: "https://en.wikipedia.org/wiki/Stale",
               title: "Stale",
@@ -199,6 +203,7 @@ describe("PresenceCountPill", () => {
           {
             isMe: false,
             playerIdentity: identity("fresh-peer"),
+            online: true,
             page: {
               url: "https://en.wikipedia.org/wiki/Fresh",
               title: "Fresh",
@@ -236,6 +241,7 @@ describe("PresenceCountPill", () => {
       ["peer", {
         isMe: false,
         playerIdentity: identity("peer"),
+        online: true,
         page: {
           url: "https://en.wikipedia.org/wiki/Elsewhere",
           title: "Elsewhere",
@@ -262,9 +268,9 @@ describe("PresenceCountPill", () => {
     ]));
     const lobbyPresence = presenceApi("me", new Map([
       ["me", { isMe: true, playerIdentity: identity("me") }],
-      ["peer-here", { isMe: false, playerIdentity: identity("peer-here") }],
-      ["peer-a", { isMe: false, playerIdentity: identity("peer-a") }],
-      ["peer-b", { isMe: false, playerIdentity: identity("peer-b") }],
+      ["peer-here", { isMe: false, playerIdentity: identity("peer-here"), online: true }],
+      ["peer-a", { isMe: false, playerIdentity: identity("peer-a"), online: true }],
+      ["peer-b-connection", { isMe: false, online: true }],
     ]));
 
     const pill = new PresenceCountPill(pagePresence, lobbyPresence);
@@ -272,6 +278,24 @@ describe("PresenceCountPill", () => {
 
     expect(document.body.textContent).toContain("2 here");
     expect(document.body.textContent).toContain("2 elsewhere");
+
+    pill.destroy();
+  });
+
+  it("does not count an identity after its stamped online presence expires", () => {
+    setLocation("https://en.wikipedia.org/wiki/Current");
+    const pagePresence = presenceApi("me", new Map([
+      ["me", { isMe: true, playerIdentity: identity("me") }],
+    ]));
+    const lobbyPresence = presenceApi("me", new Map([
+      ["me", { isMe: true, playerIdentity: identity("me"), online: true }],
+      ["ghost", { isMe: false, playerIdentity: identity("ghost") }],
+    ]));
+
+    const pill = new PresenceCountPill(pagePresence, lobbyPresence);
+    pill.init();
+
+    expect(document.body.textContent).not.toContain("elsewhere");
 
     pill.destroy();
   });

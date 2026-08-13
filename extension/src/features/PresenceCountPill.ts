@@ -136,7 +136,13 @@ export class PresenceCountPill {
     myKey: string | null,
     pageOtherKeys: Set<string>,
   ): Set<string> {
-    const keys = this.uniqueOtherKeys(presences, myKey);
+    const keys = new Set<string>();
+    presences.forEach((presence, connectionId) => {
+      if (presence.isMe || presence.online !== true) return;
+      const key = this.pidOf(presence);
+      if (key && myKey && key === myKey) return;
+      keys.add(key ?? `conn:${connectionId}`);
+    });
     pageOtherKeys.forEach((key) => keys.delete(key));
     return keys;
   }
