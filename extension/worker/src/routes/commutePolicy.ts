@@ -48,8 +48,42 @@ const MOVIE_TV_STREAMING_DOMAINS = [
   'watch.plex.tv',
 ];
 
+const AI_SCENERY_ONLY_DOMAINS = [
+  'anthropic.com',
+  'bolt.new',
+  'character.ai',
+  'chat.deepseek.com',
+  'chatgpt.com',
+  'claude.ai',
+  'cognition.ai',
+  'copilot.microsoft.com',
+  'cursor.com',
+  'deepwiki.com',
+  'devin.ai',
+  'gemini.google.com',
+  'grok.com',
+  'janitorai.com',
+  'lovable.dev',
+  'manus.im',
+  'meta.ai',
+  'midjourney.com',
+  'mistral.ai',
+  'openai.com',
+  'perplexity.ai',
+  'pi.ai',
+  'poe.com',
+  'runwayml.com',
+  'spicychat.ai',
+  'stability.ai',
+  'suno.com',
+  'v0.dev',
+  'x.ai',
+  'you.com',
+];
+
 const SCENERY_ONLY_DOMAINS = [
   'accounts.google.com',
+  ...AI_SCENERY_ONLY_DOMAINS,
   'ai.joinhandshake.com',
   'airtable.com',
   'app.flourish.studio',
@@ -60,9 +94,6 @@ const SCENERY_ONLY_DOMAINS = [
   'bing.com',
   'bsky.app',
   'calendar.google.com',
-  'chat.deepseek.com',
-  'chatgpt.com',
-  'claude.ai',
   'discord.com',
   'docs.google.com',
   'docs.superhuman.com',
@@ -73,8 +104,6 @@ const SCENERY_ONLY_DOMAINS = [
   'facebook.com',
   'figma.com',
   'form.typeform.com',
-  'gemini.google.com',
-  'grok.com',
   'joinoasis.com',
   'jotform.com',
   'linkedin.com',
@@ -102,7 +131,6 @@ const SCENERY_ONLY_DOMAINS = [
   'search.brave.com',
   'smartapply.indeed.com',
   'snapchat.com',
-  'spicychat.ai',
   'startpage.com',
   'stoat.chat',
   'tally.so',
@@ -114,6 +142,22 @@ const SCENERY_ONLY_DOMAINS = [
   'vk.com',
   'web.telegram.org',
   'x.com',
+];
+
+const GENERIC_BUSINESS_HOMEPAGE_DOMAINS = [
+  'adobe.com',
+  'airbnb.com',
+  'apple.com',
+  'bestbuy.com',
+  'canva.com',
+  'garmin.com',
+  'microsoft.com',
+  'ouraring.com',
+  'paypal.com',
+  'shopify.com',
+  'stripe.com',
+  'vercel.com',
+  'wayfair.com',
 ];
 
 const MEANINGFUL_TITLE_REQUIRED_DOMAINS = ['itch.io', 'wordpress.com'];
@@ -154,8 +198,12 @@ const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'login',
   'mail',
   'my',
+  'mysignin',
+  'mysignins',
   'portal',
   'profile',
+  'signin',
+  'signins',
   'sso',
 ]);
 
@@ -647,6 +695,30 @@ function hasPersonBoundRoute(url: URL, domain: string): boolean {
   );
 }
 
+function isGenericBusinessHomepage(url: URL, domain: string): boolean {
+  return (
+    url.pathname === '/' &&
+    GENERIC_BUSINESS_HOMEPAGE_DOMAINS.some((candidate) =>
+      domainMatches(domain, candidate),
+    )
+  );
+}
+
+function isVercelPreviewDomain(domain: string): boolean {
+  if (!domain.endsWith('.vercel.app')) return false;
+
+  const deploymentName = domain.slice(0, -'.vercel.app'.length);
+  if (deploymentName.includes('-git-')) return true;
+
+  const hasGeneratedHash = deploymentName
+    .split('-')
+    .some(
+      (part) =>
+        part.length >= 8 && /[a-z]/.test(part) && /\d/.test(part),
+    );
+  return deploymentName.length >= 40 && hasGeneratedHash;
+}
+
 function isExcludedDestinationSurface(url: URL, domain: string): boolean {
   return (
     Boolean(url.username || url.password) ||
@@ -654,6 +726,8 @@ function isExcludedDestinationSurface(url: URL, domain: string): boolean {
       domainMatches(domain, candidate),
     ) ||
     hasSubdomainLabel(domain, SCENERY_ONLY_SUBDOMAIN_LABELS) ||
+    isGenericBusinessHomepage(url, domain) ||
+    isVercelPreviewDomain(domain) ||
     hasBlockedPath(url.pathname || '/', domain) ||
     hasPrivateRouteShape(url.pathname) ||
     hasPersonBoundRoute(url, domain) ||

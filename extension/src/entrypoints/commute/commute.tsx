@@ -51,16 +51,24 @@ import {
 import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import {
   CommuteMobileControls,
-  keepMobileCursorOnAvatar,
+  keepCommuteCursorInCar,
   type CommuteMobileAction,
 } from "./CommuteMobileControls";
 import { CommuteStage } from "./CommuteStage";
+import { useCommuteDebug } from "./commuteDebug";
 import {
   COMMUTE_AVATAR_START,
+  COMMUTE_CLICK_WALK_SPEED,
+  COMMUTE_WALK_SPEED,
   findNearbyCommuteSeat,
+  getCommutePointFromClient,
+  getCommutePointFromZone,
+  getCommuteRiderStart,
   getStandingPosition,
   isNearCommuteDoor,
   moveCommuteAvatar,
+  moveCommuteAvatarToward,
+  shouldExitCommuteThroughDoor,
   type CommutePoint,
   type CommuteSeatGeometry,
 } from "./commuteMobile";
@@ -181,7 +189,10 @@ function useRecentRoute(): RecentRoute {
           : current,
       );
     }, COMMUTE_ROUTE_TIMEOUT_MS);
-    const refreshTimer = window.setInterval(() => void load(), COMMUTE_REFRESH_MS);
+    const refreshTimer = window.setInterval(
+      () => void load(),
+      COMMUTE_REFRESH_MS,
+    );
     return () => {
       controller.abort();
       window.clearTimeout(routeTimeout);
@@ -234,12 +245,11 @@ function useCommuteService(
       const serverNow = Date.now() + (serverTimeOffsetMs ?? 0);
       const visited = new Set(visitedDomains);
       const existingService = selectCommuteService(
-        getCommuteServicesFromPresences(
-          presencesRef.current.values(),
-        ).filter((service) =>
-          getCommuteServiceDomains(service).every(
-            (domain) => !visited.has(domain),
-          ),
+        getCommuteServicesFromPresences(presencesRef.current.values()).filter(
+          (service) =>
+            getCommuteServiceDomains(service).every(
+              (domain) => !visited.has(domain),
+            ),
         ),
         serverNow,
       );
@@ -283,9 +293,7 @@ function useCommuteService(
     const candidates = getCommuteServicesFromPresences(
       presences.values(),
     ).filter((service) =>
-      getCommuteServiceDomains(service).every(
-        (domain) => !visited.has(domain),
-      ),
+      getCommuteServiceDomains(service).every((domain) => !visited.has(domain)),
     );
     if (connection.service) {
       candidates.push(connection.service);
@@ -294,12 +302,7 @@ function useCommuteService(
       candidates,
       Date.now() + (serverTimeOffsetMs ?? 0),
     );
-  }, [
-    connection.service,
-    presences,
-    serverTimeOffsetMs,
-    visitedDomains,
-  ]);
+  }, [connection.service, presences, serverTimeOffsetMs, visitedDomains]);
 
   useEffect(() => {
     if (
@@ -318,11 +321,7 @@ function useCommuteService(
       service: canonicalService,
     });
     setMyPresence(presence);
-  }, [
-    canonicalService,
-    connection.service,
-    setMyPresence,
-  ]);
+  }, [canonicalService, connection.service, setMyPresence]);
 
   useEffect(() => {
     const service = connection.service;
@@ -390,7 +389,7 @@ function CursorRider({
   ariaLabel,
 }: {
   color: string;
-  label: string;
+  label?: string;
   isYou: boolean;
   ariaLabel?: string;
 }) {
@@ -400,7 +399,7 @@ function CursorRider({
       style={{ "--cursor-color": color } as React.CSSProperties}
       aria-label={
         ariaLabel ??
-        (isYou ? "Your cursor is sitting here" : `${label}'s cursor`)
+        (isYou ? "Your cursor is sitting here" : "Another rider's cursor")
       }
     >
       <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden>
@@ -413,7 +412,7 @@ function CursorRider({
           fill="var(--cursor-color)"
         />
       </svg>
-      <span>{isYou ? "you" : label}</span>
+      {(isYou || label) && <span>{isYou ? "you" : label}</span>}
     </span>
   );
 }
@@ -426,15 +425,14 @@ function Seat({
   onSelect,
 }: {
   seat: SeatDefinition;
-  occupant?: { color: string; label: string };
+  occupant?: { color: string; label?: string };
   isMine: boolean;
   isNearby: boolean;
   onSelect: () => void;
 }) {
   const unavailable = Boolean(occupant && !isMine);
   const isPriority =
-    (seat.bank === 0 && seat.x === 44) ||
-    (seat.bank === 2 && seat.x === 1008);
+    (seat.bank === 0 && seat.x === 44) || (seat.bank === 2 && seat.x === 1008);
   const fabric = isPriority ? "plum" : seat.bank === 1 ? "gold" : "teal";
 
   return (
@@ -449,7 +447,7 @@ function Seat({
         isMine
           ? "Stand up"
           : unavailable
-            ? `Seat occupied by ${occupant?.label ?? "another rider"}`
+            ? "Seat occupied by another rider"
             : "Sit here"
       }
       aria-pressed={isMine}
@@ -480,7 +478,11 @@ function Platform({
   return (
     <div
       className={`station-platform ${visible ? "station-platform--visible" : ""}`}
-      style={{ "--station-hue": atOrigin ? "#4a9a8a" : currentStop.hue } as React.CSSProperties}
+      style={
+        {
+          "--station-hue": atOrigin ? "#4a9a8a" : currentStop.hue,
+        } as React.CSSProperties
+      }
       aria-hidden
     >
       <span className="station-platform__stripe" />
@@ -493,9 +495,7 @@ function Platform({
           <strong>
             {atOrigin ? "home station" : getStopDisplayName(currentStop)}
           </strong>
-          {!atOrigin && (
-            <small>{getStopDisplayDetail(currentStop)}</small>
-          )}
+          {!atOrigin && <small>{getStopDisplayDetail(currentStop)}</small>}
         </span>
       </span>
     </div>
@@ -530,11 +530,7 @@ function LandscapeWindow({
     <div
       className={`landscape-window landscape-window--${edge} landscape-window--${phase}`}
     >
-      <ProceduralLandscape
-        seed={currentStop.id}
-        phase={phase}
-        edge={edge}
-      />
+      <ProceduralLandscape seed={currentStop.id} phase={phase} edge={edge} />
       {edge === "upper" &&
         passingSites.map((stop, index) => (
           <span
@@ -619,23 +615,36 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const { mobileBoarded, onMobileBoardStateChange, onSeatStateChange } =
       props;
     const users = useUsers();
-    const {
-      configureCursors,
-      cursors,
-      getMyPlayerIdentity,
-      isLoading,
-    } = usePlayContext();
+    const { configureCursors, cursorPresences, cursors, isLoading } =
+      usePlayContext();
     const [toast, setToast] = useState<string | null>(null);
     const [avatarPosition, setAvatarPosition] =
       useState<CommutePoint>(COMMUTE_AVATAR_START);
     const [avatarWalking, setAvatarWalking] = useState(false);
+    const [showJoiningAnimation, setShowJoiningAnimation] = useState(
+      props.isJoining,
+    );
+    const carRef = useRef<HTMLElement | null>(null);
+    const lastRiderPositions = useRef(new Map<string, CommutePoint>());
     const toastTimer = useRef<number | undefined>(undefined);
     const movementVector = useRef<CommutePoint>({ x: 0, y: 0 });
+    const avatarPositionRef = useRef<CommutePoint>(COMMUTE_AVATAR_START);
+    const clickDestination = useRef<CommutePoint | null>(null);
+    const pendingSeatId = useRef<number | null>(null);
     const pressedKeys = useRef(new Set<string>());
     const mobileActionRef = useRef<CommuteMobileAction | null>(null);
+    const exitPending = useRef(false);
+    const exitTrainRef = useRef<(navigateCurrentTab?: boolean) => void>(
+      () => {},
+    );
     const setMyAwarenessRef = useRef(setMyAwareness);
     setMyAwarenessRef.current = setMyAwareness;
     useCursorZone(ref);
+
+    const updateAvatarPosition = useCallback((position: CommutePoint) => {
+      avatarPositionRef.current = position;
+      setAvatarPosition(position);
+    }, []);
 
     const usersById = useMemo(
       () => new Map(users.map((user) => [user.pid, user])),
@@ -643,12 +652,11 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     );
 
     const ridersBySeat = useMemo(() => {
-      const riders = new Map<number, { label: string; color: string }>();
+      const riders = new Map<number, { label?: string; color: string }>();
       for (const [stableId, awareness] of awarenessByStableId) {
         if (awareness.seatId === null) continue;
         const user = usersById.get(stableId);
         riders.set(awareness.seatId, {
-          label: user?.name ?? "rider",
           color: user?.color ?? "#5b8db8",
         });
       }
@@ -661,27 +669,69 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       for (const [stableId, awareness] of awarenessByStableId) {
         if (awareness.seatId !== null) riderIds.add(stableId);
       }
-      if (mySeatId !== null) {
-        const myPlayerId = getMyPlayerIdentity()?.publicKey;
-        if (myPlayerId) riderIds.add(myPlayerId);
-      }
       return riderIds;
-    }, [awarenessByStableId, getMyPlayerIdentity, mySeatId]);
+    }, [awarenessByStableId]);
 
     useEffect(() => {
       if (isLoading) return;
 
       configureCursors({
-        shouldRenderCursor: (presence) => {
-          const playerId = presence.playerIdentity?.publicKey;
-          return playerId === undefined || !seatedRiderIds.has(playerId);
-        },
+        shouldRenderCursor: () => false,
       });
 
       return () => {
         configureCursors({ shouldRenderCursor: () => true });
       };
-    }, [configureCursors, isLoading, seatedRiderIds]);
+    }, [configureCursors, isLoading]);
+
+    useEffect(() => {
+      if (!props.isJoining) {
+        setShowJoiningAnimation(false);
+        return;
+      }
+
+      setShowJoiningAnimation(true);
+      const timer = window.setTimeout(() => {
+        setShowJoiningAnimation(false);
+      }, 1_400);
+      return () => window.clearTimeout(timer);
+    }, [props.isJoining]);
+
+    const standingRiders = useMemo(() => {
+      const activeRiderIds = new Set<string>();
+      const riders: Array<{
+        id: string;
+        color: string;
+        position: CommutePoint;
+      }> = [];
+
+      for (const user of users) {
+        if (user.isMe || seatedRiderIds.has(user.pid)) continue;
+        activeRiderIds.add(user.pid);
+
+        const zone = cursorPresences.get(user.pid)?.zone;
+        let position = lastRiderPositions.current.get(user.pid);
+        if (zone?.zoneId === props.id) {
+          position = getCommutePointFromZone(zone.relX, zone.relY);
+          lastRiderPositions.current.set(user.pid, position);
+        }
+        position ??= getCommuteRiderStart(user.pid);
+
+        riders.push({
+          id: user.pid,
+          color: user.color,
+          position,
+        });
+      }
+
+      for (const stableId of lastRiderPositions.current.keys()) {
+        if (!activeRiderIds.has(stableId)) {
+          lastRiderPositions.current.delete(stableId);
+        }
+      }
+
+      return riders;
+    }, [cursorPresences, props.id, seatedRiderIds, users]);
 
     const displayedRiders = useMemo(() => {
       const riders = new Map(ridersBySeat);
@@ -730,12 +780,51 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       const occupant = displayedRiders.get(seatId);
       if (occupant && mySeatId !== seatId) return;
 
-      setMyAwareness({
-        seatId: mySeatId === seatId ? null : seatId,
-      });
+      pendingSeatId.current = null;
+      clickDestination.current = null;
+      if (mySeatId === seatId) {
+        const seat = SEATS.find((candidate) => candidate.id === seatId);
+        setMyAwareness({ seatId: null });
+        if (seat) updateAvatarPosition(getStandingPosition(seat));
+        return;
+      }
+
+      const seat = SEATS.find((candidate) => candidate.id === seatId);
+      if (!seat) return;
+
+      if (mySeatId !== null) {
+        const currentSeat = SEATS.find(
+          (candidate) => candidate.id === mySeatId,
+        );
+        if (currentSeat) {
+          updateAvatarPosition(getStandingPosition(currentSeat));
+        }
+      }
+      setMyAwareness({ seatId: null });
+      pendingSeatId.current = seatId;
+      clickDestination.current = getStandingPosition(seat);
+      setAvatarWalking(true);
     };
 
-    const exitTrain = () => {
+    const moveCursorToClick = (event: React.MouseEvent<HTMLElement>) => {
+      if ((event.target as HTMLElement).closest("button")) return;
+
+      const car = carRef.current;
+      if (!car) return;
+      const bounds = car.getBoundingClientRect();
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+
+      setMyAwareness({ seatId: null });
+      pendingSeatId.current = null;
+      clickDestination.current = getCommutePointFromClient(
+        { x: event.clientX, y: event.clientY },
+        bounds,
+      );
+      setAvatarWalking(true);
+    };
+
+    const exitTrain = (navigateCurrentTab = false) => {
+      if (exitPending.current) return;
       if (props.phase !== "stopped") {
         showToast("the doors are closed — wait for the next stop");
         return;
@@ -745,17 +834,30 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         return;
       }
 
+      exitPending.current = true;
       showToast(`doors open — see you at ${props.currentStop.domain}`);
-      window.setTimeout(() => {
-        window.open(props.currentStop.url, "_blank", "noopener,noreferrer");
-      }, 600);
+      window.setTimeout(
+        () => {
+          if (navigateCurrentTab) {
+            window.location.assign(props.currentStop.url);
+          } else {
+            window.open(props.currentStop.url, "_blank", "noopener,noreferrer");
+            exitPending.current = false;
+          }
+        },
+        navigateCurrentTab ? 250 : 600,
+      );
     };
+    exitTrainRef.current = exitTrain;
 
     const standUp = () => {
       if (mySeatId === null) return;
+      pendingSeatId.current = null;
+      clickDestination.current = null;
       const seat = SEATS.find((candidate) => candidate.id === mySeatId);
       setMyAwareness({ seatId: null });
-      if (seat) setAvatarPosition(getStandingPosition(seat));
+      setAvatarWalking(false);
+      if (seat) updateAvatarPosition(getStandingPosition(seat));
     };
 
     let mobileAction: CommuteMobileAction | null = null;
@@ -769,19 +871,13 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       mobileAction = {
         label: `step off at ${props.currentStop.domain}`,
         tone: "exit",
-        onSelect: exitTrain,
+        onSelect: () => exitTrain(true),
       };
     } else if (nearbySeat) {
       mobileAction = {
         label: "sit down",
         tone: "sit",
-        onSelect: () => {
-          setAvatarPosition({
-            x: nearbySeat.x + 25,
-            y: nearbySeat.y + 18,
-          });
-          chooseSeat(nearbySeat.id);
-        },
+        onSelect: () => chooseSeat(nearbySeat.id),
       };
     }
     mobileActionRef.current = mobileAction;
@@ -833,44 +929,104 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     }, [mobileBoarded]);
 
     useEffect(() => {
-      if (!mobileBoarded) return;
+      let lastFrameTime = performance.now();
+      let movementFrame = 0;
 
-      const movementTimer = window.setInterval(() => {
+      const moveAvatar = (frameTime: number) => {
+        const elapsed = Math.min(50, frameTime - lastFrameTime);
+        lastFrameTime = frameTime;
+        movementFrame = window.requestAnimationFrame(moveAvatar);
+
         const vector = { ...movementVector.current };
         if (pressedKeys.current.has("left")) vector.x -= 1;
         if (pressedKeys.current.has("right")) vector.x += 1;
         if (pressedKeys.current.has("up")) vector.y -= 1;
         if (pressedKeys.current.has("down")) vector.y += 1;
 
-        if (Math.hypot(vector.x, vector.y) < 0.15) {
-          setAvatarWalking(false);
+        const hasManualMovement = Math.hypot(vector.x, vector.y) >= 0.15;
+        if (hasManualMovement) {
+          pendingSeatId.current = null;
+          clickDestination.current = null;
+          if (mySeatId !== null) {
+            const seat = SEATS.find((candidate) => candidate.id === mySeatId);
+            setMyAwarenessRef.current({ seatId: null });
+            if (seat) updateAvatarPosition(getStandingPosition(seat));
+          } else {
+            const nextPosition = moveCommuteAvatar(
+              avatarPositionRef.current,
+              vector,
+              COMMUTE_WALK_SPEED * (elapsed / 50),
+            );
+            updateAvatarPosition(nextPosition);
+            if (
+              shouldExitCommuteThroughDoor(
+                nextPosition,
+                vector,
+                DOOR_GEOMETRY,
+                mobileBoarded && props.phase === "stopped" && !props.atOrigin,
+              )
+            ) {
+              movementVector.current = { x: 0, y: 0 };
+              setAvatarWalking(false);
+              exitTrainRef.current(true);
+              return;
+            }
+          }
+          setAvatarWalking(true);
           return;
         }
 
+        const destination = clickDestination.current;
+        if (destination === null) {
+          setAvatarWalking(false);
+          return;
+        }
         if (mySeatId !== null) {
           const seat = SEATS.find((candidate) => candidate.id === mySeatId);
           setMyAwarenessRef.current({ seatId: null });
-          if (seat) setAvatarPosition(getStandingPosition(seat));
+          if (seat) updateAvatarPosition(getStandingPosition(seat));
           setAvatarWalking(true);
           return;
         }
 
         setAvatarWalking(true);
-        setAvatarPosition((current) => moveCommuteAvatar(current, vector));
-      }, 50);
+        const movement = moveCommuteAvatarToward(
+          avatarPositionRef.current,
+          destination,
+          COMMUTE_CLICK_WALK_SPEED * (elapsed / 50),
+        );
+        updateAvatarPosition(movement.position);
+        if (movement.arrived) {
+          const seatId = pendingSeatId.current;
+          pendingSeatId.current = null;
+          clickDestination.current = null;
+          setAvatarWalking(false);
+          if (seatId !== null) {
+            setMyAwarenessRef.current({ seatId });
+          }
+        }
+      };
 
-      return () => window.clearInterval(movementTimer);
-    }, [mobileBoarded, mySeatId]);
+      movementFrame = window.requestAnimationFrame(moveAvatar);
+
+      return () => window.cancelAnimationFrame(movementFrame);
+    }, [
+      mobileBoarded,
+      mySeatId,
+      props.atOrigin,
+      props.phase,
+      updateAvatarPosition,
+    ]);
 
     useEffect(() => {
-      const car = ref.current;
-      if (!mobileBoarded || mySeatId !== null || !car) return;
+      const car = carRef.current;
+      if (isLoading || mySeatId !== null || !car) return;
 
       const bounds = car.getBoundingClientRect();
       if (car.offsetWidth === 0 || car.offsetHeight === 0) return;
 
-      // Feed joystick movement through the cursor client's paced transport so
-      // remote riders see the train avatar instead of the finger on the joystick.
+      // Feed carriage movement through the cursor client's paced transport so
+      // desktop clicks and joystick walking share one presence path.
       document.dispatchEvent(
         new MouseEvent("mousemove", {
           bubbles: true,
@@ -880,7 +1036,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             bounds.top + avatarPosition.y * (bounds.height / car.offsetHeight),
         }),
       );
-    }, [avatarPosition, mobileBoarded, mySeatId, ref]);
+    }, [avatarPosition, isLoading, mySeatId]);
 
     const doorOpen = props.phase === "stopped";
     const canExit = doorOpen && !props.atOrigin;
@@ -890,6 +1046,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         <section
           className={`train-car train-car--${props.phase}`}
           aria-label="Internet commute carriage"
+          ref={carRef}
+          onClick={moveCursorToClick}
         >
           <span className="train-car__edge train-car__edge--top" />
           <span className="train-car__edge train-car__edge--bottom" />
@@ -897,11 +1055,11 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           <span className="train-car__edge train-car__edge--right" />
           <span
             className={`train-car__side-door train-car__side-door--left ${
-              props.isJoining ? "train-car__side-door--joining" : ""
+              showJoiningAnimation ? "train-car__side-door--joining" : ""
             }`}
           />
           <span className="train-car__side-door train-car__side-door--right" />
-          {props.isJoining && (
+          {showJoiningAnimation && (
             <span className="train-joiner" aria-hidden>
               <CursorRider
                 color={cursors.color || "#5b8db8"}
@@ -944,10 +1102,27 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             />
           ))}
 
-          {mobileBoarded && mySeatId === null && (
+          {standingRiders.map((rider) => (
             <span
-              className={`commute-mobile-avatar ${
-                avatarWalking ? "commute-mobile-avatar--walking" : ""
+              className="commute-avatar commute-avatar--remote"
+              style={{
+                left: rider.position.x,
+                top: rider.position.y,
+              }}
+              key={rider.id}
+            >
+              <CursorRider
+                color={rider.color}
+                isYou={false}
+                ariaLabel="Another rider's cursor is aboard the train"
+              />
+            </span>
+          ))}
+
+          {mySeatId === null && !showJoiningAnimation && (
+            <span
+              className={`commute-avatar ${
+                avatarWalking ? "commute-avatar--walking" : ""
               }`}
               style={{
                 left: avatarPosition.x,
@@ -958,7 +1133,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
                 color={cursors.color || "#3d3833"}
                 label="you"
                 isYou
-                ariaLabel="Your cursor is walking through the train"
+                ariaLabel="Your cursor is aboard the train"
               />
             </span>
           )}
@@ -973,7 +1148,9 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             action={mobileAction}
             boarded={mobileBoarded}
             onBoard={() => {
-              setAvatarPosition(COMMUTE_AVATAR_START);
+              pendingSeatId.current = null;
+              clickDestination.current = null;
+              updateAvatarPosition(COMMUTE_AVATAR_START);
               onMobileBoardStateChange(true);
             }}
             onMove={updateMovement}
@@ -1003,6 +1180,7 @@ function Banner({
   waitingForFreshStops: boolean;
 }) {
   let message: React.ReactNode;
+  let mobileMessage: React.ReactNode;
   let aside: React.ReactNode;
   let instruction = "";
   const stopName = getStopDisplayName(currentStop);
@@ -1016,47 +1194,137 @@ function Banner({
   );
 
   if (routeComplete) {
-    message = "route complete — returning home";
-    aside = "a fresh train is forming";
-    instruction = "this train will not repeat its route";
+    if (phase === "riding") {
+      message = "route complete — returning home";
+      aside = `${secondsLeft}s until home station`;
+    } else {
+      message = "now arriving at home station";
+      aside = "a fresh route is forming";
+    }
+    instruction =
+      "the next train will use new sites — this route will not repeat";
+    mobileMessage = phase === "riding" ? "returning home" : "home station";
   } else if (waitingForFreshStops) {
     message = "waiting for a new destination";
     aside = "checking the recent web";
     instruction = "the next train will depart when an unseen stop appears";
+    mobileMessage = "waiting for a stop";
   } else if (atOrigin) {
     message = destinationLabel("next train to");
-    aside = `doors close in ${secondsLeft}s`;
-    instruction = "find a seat — click any empty seat to sit down";
+    aside = `route starts in ${secondsLeft}s`;
+    instruction = "click the carriage to move or an empty seat to sit";
+    mobileMessage = `${secondsLeft}s · departure`;
   } else if (phase === "stopped") {
     message = `now stopped at ${stopName}`;
     aside = `doors close in ${secondsLeft}s`;
-    instruction = `the doors are open — click one to step off at ${currentStop.domain}`;
+    instruction = `click a door to step off at ${currentStop.domain}`;
+    mobileMessage = `stopped · ${secondsLeft}s`;
   } else if (phase === "arriving") {
     message = `now arriving at ${stopName}`;
     aside = `last visited ${formatStopAge(currentStop)} ago`;
+    mobileMessage = "arriving";
   } else {
     message = `${secondsLeft} ${
       secondsLeft === 1 ? "second" : "seconds"
     } until next stop`;
     aside = destinationLabel("next stop");
-    if (!hasSeat) instruction = "click an empty seat to sit";
+    if (!hasSeat) instruction = "click the carriage to move or a seat to sit";
+    mobileMessage = `${secondsLeft}s · next stop`;
   }
 
   return (
     <>
       <div className="commute-banner" aria-live="polite">
         <span className="commute-line-number">1</span>
-        <strong>{message}</strong>
+        <strong className="commute-banner__message">{message}</strong>
+        <strong className="commute-banner__mobile-message">
+          {mobileMessage}
+        </strong>
         <span className="commute-banner__rule" />
         <span className="commute-banner__aside">{aside}</span>
       </div>
-      <p className="commute-instruction">{instruction}</p>
+      <p className="commute-instruction">{instruction || "\u00a0"}</p>
     </>
+  );
+}
+
+function CommuteDebugPanel({
+  elapsedSeconds,
+  joinedExistingService,
+  phase,
+  riders,
+  routeStatus,
+  secondsLeft,
+  serviceId,
+  stopIndex,
+  stops,
+  onClose,
+}: {
+  elapsedSeconds: number;
+  joinedExistingService: boolean;
+  phase: CommutePhase;
+  riders: number;
+  routeStatus: RecentRoute["status"];
+  secondsLeft: number;
+  serviceId: string | undefined;
+  stopIndex: number;
+  stops: CommuteStop[];
+  onClose: () => void;
+}) {
+  return (
+    <aside className="commute-debug" aria-label="Internet commute debug panel">
+      <header>
+        <strong>commute debug</strong>
+        <button type="button" onClick={onClose} aria-label="Close debug panel">
+          ×
+        </button>
+      </header>
+      <dl>
+        <div>
+          <dt>route</dt>
+          <dd>{serviceId ?? "forming"}</dd>
+        </div>
+        <div>
+          <dt>clock</dt>
+          <dd>
+            {elapsedSeconds}s · {phase} · {secondsLeft}s left
+          </dd>
+        </div>
+        <div>
+          <dt>source</dt>
+          <dd>
+            {routeStatus} · {joinedExistingService ? "joined" : "originated"}
+          </dd>
+        </div>
+        <div>
+          <dt>riders</dt>
+          <dd>{riders}</dd>
+        </div>
+      </dl>
+      <ol>
+        {stops.map((stop, index) => (
+          <li
+            className={
+              index === stopIndex ? "commute-debug__stop--current" : ""
+            }
+            key={`${stop.id}-${index}`}
+          >
+            <span className="commute-debug__stop-index">{index + 1}</span>
+            <StopFavicon stop={stop} />
+            <span className="commute-debug__stop-details">
+              <strong>{stop.domain}</strong>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <small>press D twice to toggle</small>
+    </aside>
   );
 }
 
 function InternetCommute() {
   const riders = useUsers();
+  const [debugVisible, setDebugVisible] = useCommuteDebug();
   const recentRoute = useRecentRoute();
   const availableStops =
     recentRoute.status === "live" ? recentRoute.stops : SAMPLE_STOPS;
@@ -1127,8 +1395,8 @@ function InternetCommute() {
           ? serviceConnection.service?.id
           : undefined
       }
-      onMouseMove={mobileBoarded ? keepMobileCursorOnAvatar : undefined}
-      onTouchMove={mobileBoarded ? keepMobileCursorOnAvatar : undefined}
+      onMouseMove={keepCommuteCursorInCar}
+      onTouchMove={keepCommuteCursorInCar}
     >
       <div className="commute-shell">
         <header className="commute-header">
@@ -1141,12 +1409,8 @@ function InternetCommute() {
             we were online
           </a>
           <h1>internet commute</h1>
-          <span>LINE 1 · LOCAL · EVERY STOP</span>
         </header>
-        <p className="commute-subtitle">
-          a slow train through the recent web — stops are pages other riders
-          visited lately
-        </p>
+        <p className="commute-subtitle">a slow train through the recent web</p>
 
         <CommuteInstallPrompt />
 
@@ -1159,6 +1423,21 @@ function InternetCommute() {
           routeComplete={timing.complete}
           waitingForFreshStops={waitingForFreshStops}
         />
+
+        {debugVisible && (
+          <CommuteDebugPanel
+            elapsedSeconds={elapsedSeconds}
+            joinedExistingService={serviceConnection.joinedExistingService}
+            phase={timing.phase}
+            riders={riders.length}
+            routeStatus={recentRoute.status}
+            secondsLeft={timing.secondsLeft}
+            serviceId={serviceConnection.service?.id}
+            stopIndex={timing.stopIndex}
+            stops={stops}
+            onClose={() => setDebugVisible(false)}
+          />
+        )}
 
         <CommuteStage>
           <LandscapeWindow
@@ -1195,7 +1474,7 @@ function InternetCommute() {
           <strong>
             {riders.length} {riders.length === 1 ? "person" : "people"} riding
           </strong>
-          <span>LOCAL LINE · EVERY STOP</span>
+          <span></span>
           <strong>
             {browsingCount} {browsingCount === 1 ? "person" : "people"} browsing
           </strong>
@@ -1205,11 +1484,8 @@ function InternetCommute() {
           {recentRoute.status === "live"
             ? "destinations are recent pages visited by people using the extension"
             : recentRoute.status === "loading"
-              ? "finding recent destinations — preview route shown while the train boards"
+              ? "finding recent destinations"
               : "recent destinations unavailable — running the preview route"}
-          {" · "}
-          recent browsing activity
-          {" · "}you only appear while you ride
         </p>
       </div>
     </main>

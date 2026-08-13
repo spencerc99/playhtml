@@ -28,7 +28,7 @@ interface CommuteMobileControlsProps {
   onMove: (vector: CommutePoint) => void;
 }
 
-export function keepMobileCursorOnAvatar(event: SyntheticEvent) {
+export function keepCommuteCursorInCar(event: SyntheticEvent) {
   event.stopPropagation();
 }
 
@@ -128,8 +128,8 @@ export function CommuteMobileControls({
         <span className="commute-mobile-rotate__phone" aria-hidden>
           <span />
         </span>
-        <strong>rotate your phone</strong>
-        <p>the train runs sideways — turn to landscape to board</p>
+        <strong>rotate to board</strong>
+        <p>the train runs best sideways</p>
       </aside>
 
       {!boarded && (
@@ -137,7 +137,7 @@ export function CommuteMobileControls({
           <span className="commute-mobile-board__wordmark">we were online</span>
           <strong>internet commute</strong>
           <p>
-            a slow train through the recent web — ride with the joystick, sit
+            A slow train through the recent web. Ride with the joystick, sit
             anywhere, step off wherever it stops
           </p>
           <button type="button" onClick={board}>

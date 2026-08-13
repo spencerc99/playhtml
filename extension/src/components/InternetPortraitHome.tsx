@@ -182,7 +182,7 @@ export function InternetPortraitHome({
               </span>
               <span className="commute-entry__copy">
                 <span className="commute-entry__eyebrow">
-                  LINE 1 · BOARDING NOW
+                  BOARDING NOW
                 </span>
                 <strong>
                   {commuteIsOpen
