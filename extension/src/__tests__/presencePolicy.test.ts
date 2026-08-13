@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getCustomSiteSettingsForHostname,
+  getCustomSiteSettingsForLocation,
   initCustomSite,
   resolveCustomSiteSettingsForHostname,
   shouldEnableCursorsForHostname,
@@ -88,6 +89,24 @@ describe("shouldEnableCursors", () => {
 describe("custom site settings", () => {
   it("uses default supported-site settings for Wikipedia", () => {
     expect(getCustomSiteSettingsForHostname("en.wikipedia.org")).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: false },
+    });
+  });
+
+  it("preserves query parameters for Wikipedia index.php editing rooms", () => {
+    expect(
+      getCustomSiteSettingsForLocation("en.wikipedia.org", "/w/index.php"),
+    ).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: true },
+    });
+    expect(
+      getCustomSiteSettingsForLocation(
+        "en.wikipedia.org",
+        "/wiki/Max_Polyakov",
+      ),
+    ).toEqual({
       cursorsEnabled: true,
       defaultRoomOptions: { includeSearch: false },
     });

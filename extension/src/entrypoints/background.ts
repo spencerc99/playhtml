@@ -37,6 +37,11 @@ import {
 import { getSessionId } from '../storage/participant'
 import { recordAnnouncementInstall } from '../announcements/announcement-storage'
 import { isUserActive } from '../utils/userActivity'
+import {
+  getOrCreateWikipediaHandle,
+  rerollWikipediaHandle,
+  setWikipediaHandle,
+} from '../storage/wikipediaHandle'
 
 interface ScrapRecordBase {
   id: string
@@ -517,6 +522,21 @@ export default defineBackground(() => {
     if (message.type === 'GET_PLAYER_PROFILE') {
       getPlayerProfile().then(reply)
       return true // Will respond asynchronously
+    }
+
+    if (message.type === 'GET_OR_CREATE_WIKIPEDIA_HANDLE') {
+      getOrCreateWikipediaHandle().then((handle) => reply({ handle }))
+      return true
+    }
+
+    if (message.type === 'REROLL_WIKIPEDIA_HANDLE') {
+      rerollWikipediaHandle().then((handle) => reply({ handle }))
+      return true
+    }
+
+    if (message.type === 'SET_WIKIPEDIA_HANDLE') {
+      setWikipediaHandle(message.title).then((handle) => reply({ handle }))
+      return true
     }
 
     if (message.type === 'UPDATE_SITE_DISCOVERY') {

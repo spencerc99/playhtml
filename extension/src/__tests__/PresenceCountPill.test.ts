@@ -221,4 +221,58 @@ describe("PresenceCountPill", () => {
 
     pill.destroy();
   });
+
+  it("does not count someone elsewhere when they are already on this page", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-30T12:00:00Z"));
+    setLocation("https://en.wikipedia.org/wiki/Current");
+
+    const pagePresence = presenceApi("me", new Map([
+      ["me", { isMe: true, playerIdentity: identity("me") }],
+      ["peer", { isMe: false, playerIdentity: identity("peer") }],
+    ]));
+    const lobbyPresence = presenceApi("me", new Map([
+      ["me", { isMe: true, playerIdentity: identity("me") }],
+      ["peer", {
+        isMe: false,
+        playerIdentity: identity("peer"),
+        page: {
+          url: "https://en.wikipedia.org/wiki/Elsewhere",
+          title: "Elsewhere",
+          visible: true,
+          lastSeenAt: Date.now(),
+        },
+      }],
+    ]));
+
+    const pill = new PresenceCountPill(pagePresence, lobbyPresence);
+    pill.init();
+
+    expect(document.body.textContent).toContain("2 here");
+    expect(document.body.textContent).not.toContain("elsewhere");
+
+    pill.destroy();
+  });
+
+  it("counts each connected lobby identity once without requiring a page payload", () => {
+    setLocation("https://en.wikipedia.org/wiki/Current");
+    const pagePresence = presenceApi("me", new Map([
+      ["me", { isMe: true, playerIdentity: identity("me") }],
+      ["peer-here", { isMe: false, playerIdentity: identity("peer-here") }],
+    ]));
+    const lobbyPresence = presenceApi("me", new Map([
+      ["me", { isMe: true, playerIdentity: identity("me") }],
+      ["peer-here", { isMe: false, playerIdentity: identity("peer-here") }],
+      ["peer-a", { isMe: false, playerIdentity: identity("peer-a") }],
+      ["peer-b", { isMe: false, playerIdentity: identity("peer-b") }],
+    ]));
+
+    const pill = new PresenceCountPill(pagePresence, lobbyPresence);
+    pill.init();
+
+    expect(document.body.textContent).toContain("2 here");
+    expect(document.body.textContent).toContain("2 elsewhere");
+
+    pill.destroy();
+  });
 });

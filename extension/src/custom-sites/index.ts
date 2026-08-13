@@ -76,8 +76,26 @@ export function getCustomSiteSettingsForHostname(
   return resolveCustomSiteSettingsForHostname(hostname, CUSTOM_SITE_POLICIES);
 }
 
+export function getCustomSiteSettingsForLocation(
+  hostname: string,
+  pathname: string,
+): CustomSiteSettings | null {
+  const settings = getCustomSiteSettingsForHostname(hostname);
+  if (!settings) return null;
+  if (!isWikipediaHostname(hostname) || pathname !== "/w/index.php") {
+    return settings;
+  }
+  return {
+    ...settings,
+    defaultRoomOptions: {
+      ...settings.defaultRoomOptions,
+      includeSearch: true,
+    },
+  };
+}
+
 export function getCustomSiteSettings(): CustomSiteSettings | null {
-  return getCustomSiteSettingsForHostname(location.hostname);
+  return getCustomSiteSettingsForLocation(location.hostname, location.pathname);
 }
 
 // Returns true if the current domain should have collaborative cursors enabled.

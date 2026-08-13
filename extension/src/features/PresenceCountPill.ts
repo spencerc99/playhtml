@@ -38,15 +38,16 @@ export class PresenceCountPill {
 
       const myKey = this.getMyPublicKey(pagePresences, lobbyPresences);
       const pageOtherKeys = this.uniqueOtherKeys(pagePresences, myKey);
-      const lobbyOtherPageKeys = this.uniqueOtherPageKeys(lobbyPresences, myKey);
+      const elsewhereKeys = this.uniqueElsewhereKeys(lobbyPresences, myKey, pageOtherKeys);
 
       const pageOthers = pageOtherKeys.size;
-      const elsewhere = lobbyOtherPageKeys.size;
-      const fingerprint = `${pageOthers}:${elsewhere}`;
+      const elsewhere = elsewhereKeys.size;
+      const hasJumpTarget = this.hasJumpTarget(lobbyPresences, myKey, pageOtherKeys);
+      const fingerprint = `${pageOthers}:${elsewhere}:${hasJumpTarget}`;
 
       if (fingerprint !== this.lastFingerprint) {
         this.lastFingerprint = fingerprint;
-        this.render(pageOthers, elsewhere, pagePresences, pageOtherKeys, myKey);
+        this.render(pageOthers, elsewhere, hasJumpTarget, pagePresences, myKey);
       }
     };
 
@@ -131,17 +132,30 @@ export class PresenceCountPill {
     }
   }
 
-  private uniqueOtherPageKeys(presences: Map<string, any>, myKey: string | null): Set<string> {
-    const keys = new Set<string>();
-    presences.forEach((p, connectionId) => {
-      if (p.isMe) return;
-      const key = this.pidOf(p);
-      if (key && myKey && key === myKey) return;
-      const page = (p as WikiPresenceView).page;
-      if (!this.isFreshLobbyPage(page) || this.isCurrentPageUrl(page.url)) return;
-      keys.add(key ?? `conn:${connectionId}`);
-    });
+  private uniqueElsewhereKeys(
+    presences: Map<string, any>,
+    myKey: string | null,
+    pageOtherKeys: Set<string>,
+  ): Set<string> {
+    const keys = this.uniqueOtherKeys(presences, myKey);
+    pageOtherKeys.forEach((key) => keys.delete(key));
     return keys;
+  }
+
+  private hasJumpTarget(
+    presences: Map<string, any>,
+    myKey: string | null,
+    pageOtherKeys: Set<string>,
+  ): boolean {
+    for (const p of presences.values()) {
+      if (p.isMe) continue;
+      const key = this.pidOf(p);
+      if (key && myKey && key === myKey) continue;
+      if (key && pageOtherKeys.has(key)) continue;
+      const page = (p as WikiPresenceView).page;
+      if (this.isFreshLobbyPage(page) && !this.isCurrentPageUrl(page.url)) return true;
+    }
+    return false;
   }
 
   destroy(): void {
@@ -155,8 +169,8 @@ export class PresenceCountPill {
   private render(
     pageOthers: number,
     elsewhere: number,
+    hasJumpTarget: boolean,
     pagePresences: Map<string, any>,
-    pageOtherKeys: Set<string>,
     myKey: string | null,
   ): void {
     const totalOthers = pageOthers + elsewhere;
@@ -222,9 +236,12 @@ export class PresenceCountPill {
       elsewhereLabel.textContent = `\u00b7 ${elsewhere} elsewhere`;
       this.element.appendChild(elsewhereLabel);
 
-      // Jump button
-      this.jumpBtn = this.createJumpButton();
-      this.element.appendChild(this.jumpBtn);
+      if (hasJumpTarget) {
+        this.jumpBtn = this.createJumpButton();
+        this.element.appendChild(this.jumpBtn);
+      } else {
+        this.jumpBtn = null;
+      }
     } else {
       this.jumpBtn = null;
     }
@@ -307,11 +324,12 @@ export class PresenceCountPill {
     const lobbyPresences = this.lobbyPresence.getPresences();
     const myKey = this.getMyPublicKey(pagePresences, lobbyPresences);
     const pageOtherKeys = this.uniqueOtherKeys(pagePresences, myKey);
-    const lobbyOtherPageKeys = this.uniqueOtherPageKeys(lobbyPresences, myKey);
+    const elsewhereKeys = this.uniqueElsewhereKeys(lobbyPresences, myKey, pageOtherKeys);
     const pageOthers = pageOtherKeys.size;
-    const elsewhere = lobbyOtherPageKeys.size;
+    const elsewhere = elsewhereKeys.size;
+    const hasJumpTarget = this.hasJumpTarget(lobbyPresences, myKey, pageOtherKeys);
     this.lastFingerprint = "";
-    this.render(pageOthers, elsewhere, pagePresences, pageOtherKeys, myKey);
+    this.render(pageOthers, elsewhere, hasJumpTarget, pagePresences, myKey);
   }
 
   private createDot(color: string): HTMLElement {

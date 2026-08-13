@@ -1,70 +1,53 @@
-// ABOUTME: Random Wikipedia-article handle for chat. Persists to browser.storage.local.
-// ABOUTME: Filters profane rolls; falls back to "Anonymous" on persistent failure.
+// ABOUTME: Reads and changes the background-owned Wikipedia chat article-name.
+// ABOUTME: Relays storage changes so every open Wikipedia tab stays in sync.
 
 import browser from "webextension-polyfill";
-import { containsProfanity } from "@movement/profanity";
 
 const STORAGE_KEY = "wiki_chat_handle";
-const RANDOM_URL = "https://en.wikipedia.org/api/rest_v1/page/random/summary";
-const MAX_ROLL_RETRIES = 5;
-const FALLBACK = "Anonymous";
 
-let cached: string | null = null;
-
-export function _resetForTest(): void {
-  cached = null;
-}
-
-async function rollOnce(): Promise<string | null> {
-  try {
-    const res = await fetch(RANDOM_URL);
-    if (!res.ok) return null;
-    const data = (await res.json()) as { title?: string };
-    if (typeof data.title !== "string" || data.title.length === 0) return null;
-    return data.title;
-  } catch {
-    return null;
+function readHandleResponse(response: unknown): string {
+  if (
+    !response ||
+    typeof response !== "object" ||
+    typeof (response as { handle?: unknown }).handle !== "string"
+  ) {
+    throw new Error("Wikipedia article-name response is missing a handle.");
   }
-}
-
-async function rollHandle(): Promise<string> {
-  for (let i = 0; i < MAX_ROLL_RETRIES; i++) {
-    const title = await rollOnce();
-    if (title && !containsProfanity(title)) return title;
-  }
-  return FALLBACK;
+  return (response as { handle: string }).handle;
 }
 
 export async function getOrCreateHandle(): Promise<string> {
-  if (cached) return cached;
-  const stored = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
-  const existing = stored[STORAGE_KEY];
-  if (typeof existing === "string" && existing.length > 0) {
-    cached = existing;
-    return existing;
-  }
-  const fresh = await rollHandle();
-  cached = fresh;
-  await browser.storage.local.set({ [STORAGE_KEY]: fresh });
-  return fresh;
+  return readHandleResponse(
+    await browser.runtime.sendMessage({
+      type: "GET_OR_CREATE_WIKIPEDIA_HANDLE",
+    }),
+  );
 }
 
 export async function rerollHandle(): Promise<string> {
-  const fresh = await rollHandle();
-  cached = fresh;
-  await browser.storage.local.set({ [STORAGE_KEY]: fresh });
-  return fresh;
+  return readHandleResponse(
+    await browser.runtime.sendMessage({ type: "REROLL_WIKIPEDIA_HANDLE" }),
+  );
 }
 
-// Adopt a specific article title as the handle (e.g. "be this page"). Falls
-// back to a reroll if the chosen title is empty or profane, so we never
-// persist an unusable name.
 export async function setHandle(title: string): Promise<string> {
-  const trimmed = title.trim();
-  if (trimmed.length === 0 || containsProfanity(trimmed)) {
-    return rerollHandle();
-  }
-  cached = trimmed;
-  await browser.storage.local.set({ [STORAGE_KEY]: trimmed });
-  return trimmed;
+  return readHandleResponse(
+    await browser.runtime.sendMessage({
+      type: "SET_WIKIPEDIA_HANDLE",
+      title,
+    }),
+  );
+}
+
+export function onHandleChange(listener: (handle: string) => void): () => void {
+  const handleStorageChange = (
+    changes: Record<string, { newValue?: unknown }>,
+    areaName: string,
+  ) => {
+    if (areaName !== "local") return;
+    const next = changes[STORAGE_KEY]?.newValue;
+    if (typeof next === "string" && next.length > 0) listener(next);
+  };
+  browser.storage.onChanged.addListener(handleStorageChange);
+  return () => browser.storage.onChanged.removeListener(handleStorageChange);
 }

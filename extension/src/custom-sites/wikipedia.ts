@@ -374,6 +374,11 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
     });
   }
 
+  const { WikipediaLiveSelections } = await import("../features/WikipediaLiveSelections");
+  const liveSelections = new WikipediaLiveSelections(deps.presence, deps.playerColor);
+  liveSelections.init();
+  cleanups.push(() => liveSelections.destroy());
+
   // === Chat: per-article live chat (manager first, pill wired to it) ===
   const { ChatManager } = await import("../features/ChatManager");
   const { ChatEchoRenderer } = await import("../features/chat-echo-renderer");
