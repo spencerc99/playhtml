@@ -18,6 +18,41 @@ body {
   padding-bottom: var(--bottom-scroll-clearance, 128px);
 }
 
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    repeating-linear-gradient(#e0e0e0 0 1px, transparent 1px 32px),
+    repeating-linear-gradient(90deg, #e0e0e0 0 1px, transparent 1px 32px),
+    #fff;
+
+  p {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid #c8c8c8;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #444;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    animation: loading-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes loading-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .intro-message {
   position: fixed;
   top: 50%;
