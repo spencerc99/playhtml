@@ -1,7 +1,12 @@
 // ABOUTME: GET /page-meta?url=… — fetches page title + favicon for a URL.
 // ABOUTME: Tries oEmbed for known providers, falls back to HTMLRewriter. Cached.
 
+import { parse } from 'tldts';
 import type { Env } from '../lib/supabase';
+import {
+  classifyPublicPage,
+  type PublicPageInspection,
+} from './publicPageInspection';
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json',
@@ -20,16 +25,17 @@ const RATE_LIMIT_MAX = 300;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_TRACKED_IPS = 10_000;
 
-// Cap body reads at 1 MB. Real pages have <title> in the first few KB; a
+// Cap body reads at 256 KiB. Real pages have <title> in the first few KB; a
 // hostile response that streams indefinitely would otherwise sit on a worker
 // slot until our 6s timeout fires.
-const MAX_BODY_BYTES = 1_024 * 1_024;
+const MAX_BODY_BYTES = 256 * 1_024;
+const MAX_REDIRECTS = 5;
 
 // Bump this whenever the title-normalization / favicon-resolution logic
 // changes in a way that should invalidate cached results. The edge cache
 // key includes this version, so a deploy with a new version effectively
 // resets the cache without us needing to manually purge.
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v6';
 const ipHits = new Map<string, number[]>();
 
 function rateLimited(ip: string, now: number): boolean {
@@ -98,45 +104,64 @@ function canonicalizeUrl(url: URL): URL {
 
 // Refuse internal / loopback / link-local destinations to prevent the worker
 // from being used to probe internal infra. We only allow http(s).
-function isPublicHttpUrl(raw: string): URL | null {
+const RESERVED_HOST_SUFFIXES = [
+  '.home',
+  '.internal',
+  '.invalid',
+  '.lan',
+  '.local',
+  '.localhost',
+  '.onion',
+  '.test',
+];
+
+const RESERVED_HOSTS = new Set(['home.arpa', 'localhost']);
+
+export function isPublicHttpUrl(raw: string): URL | null {
   let parsed: URL;
   try {
     parsed = new URL(raw);
   } catch {
     return null;
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-  const host = parsed.hostname.toLowerCase();
   if (
-    host === 'localhost' ||
-    host.endsWith('.localhost') ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    host === '[::1]'
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    parsed.username ||
+    parsed.password ||
+    (parsed.port && parsed.port !== '80' && parsed.port !== '443')
   ) {
     return null;
   }
-  // IPv4 literal: block private + loopback + link-local + reserved ranges.
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const [a, b] = ipv4.slice(1).map(Number);
-    if (
-      a === 10 ||
-      a === 127 ||
-      a === 0 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      a >= 224 // multicast + reserved
-    ) {
-      return null;
-    }
+  const host = parsed.hostname.toLowerCase();
+  if (
+    RESERVED_HOSTS.has(host) ||
+    host.endsWith('.localhost') ||
+    RESERVED_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))
+  ) {
+    return null;
   }
-  // IPv6 literal in brackets: anything not unicast is unsafe; easier to deny
-  // all IPv6 literals than to safely parse them. Real public addresses
-  // resolve through DNS hostnames so this rejects only edge cases.
-  if (host.startsWith('[') && host.endsWith(']')) return null;
+  const hostParts = parse(host, { allowPrivateDomains: true });
+  if (
+    hostParts.isIp ||
+    (!hostParts.domain && !hostParts.publicSuffix) ||
+    !host.includes('.')
+  ) {
+    return null;
+  }
   return parsed;
+}
+
+export function resolvePublicRedirect(
+  currentUrl: URL,
+  location: string,
+): URL | null {
+  try {
+    const redirectUrl = new URL(location, currentUrl);
+    const validated = isPublicHttpUrl(redirectUrl.toString());
+    return validated ? canonicalizeUrl(validated) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── oEmbed providers ────────────────────────────────────────────────────────
@@ -189,6 +214,7 @@ interface PageMeta {
   title?: string;
   favicon?: string;
   source: 'oembed' | 'html' | 'none';
+  inspection: PublicPageInspection;
 }
 
 // Titles that look like a generic anonymous shell of the app rather than a
@@ -302,7 +328,16 @@ async function tryOEmbed(url: URL, provider: OEmbedProvider): Promise<PageMeta |
     // domain favicon as a sensible default — Google's s2 favicon service
     // resolves it without us needing to do another fetch.
     const favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
-    return { title, favicon, source: 'oembed' };
+    return {
+      title,
+      favicon,
+      source: 'oembed',
+      inspection: {
+        verdict: 'unknown',
+        reason: 'metadata_only',
+        finalUrl: url.toString(),
+      },
+    };
   } catch {
     return null;
   }
@@ -314,20 +349,109 @@ async function tryOEmbed(url: URL, provider: OEmbedProvider): Promise<PageMeta |
 const USER_AGENT =
   'Mozilla/5.0 (compatible; wewere-online/1.0; +https://wewere.online)';
 
+type PublicFetchResult =
+  | { response: Response; finalUrl: URL }
+  | { inspection: PublicPageInspection };
+
+function unknownInspection(
+  reason: PublicPageInspection['reason'],
+  finalUrl: URL,
+): PublicPageInspection {
+  return {
+    verdict: 'unknown',
+    reason,
+    finalUrl: finalUrl.toString(),
+  };
+}
+
+async function fetchPublicPage(initialUrl: URL): Promise<PublicFetchResult> {
+  let currentUrl = initialUrl;
+  const visited = new Set<string>();
+  const startedAt = Date.now();
+
+  for (
+    let redirectCount = 0;
+    redirectCount <= MAX_REDIRECTS;
+    redirectCount += 1
+  ) {
+    const normalizedUrl = currentUrl.toString();
+    if (visited.has(normalizedUrl)) {
+      return { inspection: unknownInspection('redirect_loop', currentUrl) };
+    }
+    visited.add(normalizedUrl);
+
+    const remainingTime = 10_000 - (Date.now() - startedAt);
+    if (remainingTime <= 0) {
+      return { inspection: unknownInspection('network_error', currentUrl) };
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(normalizedUrl, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,*/*;q=0.5' },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(Math.min(6_000, remainingTime)),
+        cf: { cacheTtl: CACHE_TTL_SECONDS, cacheEverything: true },
+      });
+    } catch {
+      return { inspection: unknownInspection('network_error', currentUrl) };
+    }
+
+    if (response.status < 300 || response.status >= 400) {
+      return { response, finalUrl: currentUrl };
+    }
+
+    const location = response.headers.get('location');
+    if (!location) return { response, finalUrl: currentUrl };
+    if (redirectCount === MAX_REDIRECTS) {
+      await response.body?.cancel();
+      return {
+        inspection: unknownInspection('too_many_redirects', currentUrl),
+      };
+    }
+
+    const redirectUrl = resolvePublicRedirect(currentUrl, location);
+    if (!redirectUrl) {
+      await response.body?.cancel();
+      return { inspection: unknownInspection('unsafe_redirect', currentUrl) };
+    }
+
+    await response.body?.cancel();
+    currentUrl = redirectUrl;
+  }
+
+  return { inspection: unknownInspection('too_many_redirects', currentUrl) };
+}
+
 async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
   let title: string | undefined;
   let favicon: string | undefined;
+  let bodyTruncated = false;
+  let headComplete = false;
+  let hasPasswordInput = false;
+  const robotsDirectives: string[] = [];
   try {
-    const resp = await fetch(url.toString(), {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,*/*;q=0.5' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(6000),
-      cf: { cacheTtl: CACHE_TTL_SECONDS, cacheEverything: true },
-    });
-    if (!resp.ok) return null;
+    const fetched = await fetchPublicPage(url);
+    if ('inspection' in fetched) {
+      return { source: 'none', inspection: fetched.inspection };
+    }
+    const { response: resp, finalUrl } = fetched;
     const contentType = resp.headers.get('content-type') || '';
-    if (!contentType.includes('text/html') && !contentType.includes('xhtml')) {
-      return null;
+    if (
+      !resp.ok ||
+      (!contentType.includes('text/html') && !contentType.includes('xhtml'))
+    ) {
+      return {
+        source: 'none',
+        inspection: classifyPublicPage({
+          requestedUrl: url.toString(),
+          finalUrl: finalUrl.toString(),
+          status: resp.status,
+          contentType,
+          xRobotsTag: resp.headers.get('x-robots-tag'),
+          htmlHead: '',
+        }),
+      };
     }
 
     // Cap body bytes so a slowly-streaming or oversized response can't pin
@@ -339,15 +463,14 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
       transform(chunk, controller) {
         bytesRead += chunk.byteLength;
         if (bytesRead > MAX_BODY_BYTES) {
+          bodyTruncated = true;
           controller.terminate();
           return;
         }
         controller.enqueue(chunk);
       },
     });
-    const cappedBody = resp.body
-      ? resp.body.pipeThrough(capStream)
-      : null;
+    const cappedBody = resp.body ? resp.body.pipeThrough(capStream) : null;
     const cappedResp = new Response(cappedBody, {
       status: resp.status,
       headers: resp.headers,
@@ -359,6 +482,13 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
     let inTitle = false;
     let titleBuf = '';
     const rewriter = new HTMLRewriter()
+      .on('head', {
+        element(element) {
+          element.onEndTag(() => {
+            headComplete = true;
+          });
+        },
+      })
       .on('title', {
         element() {
           inTitle = true;
@@ -378,12 +508,24 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
       })
       .on('meta', {
         element(el) {
+          const name = (el.getAttribute('name') || '').toLowerCase();
+          if (name === 'robots' || name === 'wewere-online') {
+            const content = el.getAttribute('content');
+            if (content) robotsDirectives.push(content);
+          }
           // og:title is often nicer (cleaner trailing branding) than <title>.
           if (title) return;
           const property = (el.getAttribute('property') || '').toLowerCase();
           if (property !== 'og:title') return;
           const content = el.getAttribute('content');
           if (content) title = content.trim();
+        },
+      })
+      .on('input', {
+        element(el) {
+          if ((el.getAttribute('type') || '').toLowerCase() === 'password') {
+            hasPasswordInput = true;
+          }
         },
       });
 
@@ -394,21 +536,47 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
       // so far (in titleBuf / title / favicon vars) is still usable.
     }
     const rawTitle = title || titleBuf || undefined;
-    title = normalizeTitle(rawTitle, url) ?? undefined;
+    const inspectionHead = [
+      rawTitle ? `<title>${rawTitle}</title>` : '',
+      ...robotsDirectives.map(
+        (directive) => `<meta name="robots" content="${directive}">`,
+      ),
+      hasPasswordInput ? '<input type="password">' : '',
+    ].join('');
+    let inspection = classifyPublicPage({
+      requestedUrl: url.toString(),
+      finalUrl: finalUrl.toString(),
+      status: resp.status,
+      contentType,
+      xRobotsTag: resp.headers.get('x-robots-tag'),
+      htmlHead: inspectionHead,
+    });
+    if (bodyTruncated && !headComplete && inspection.verdict === 'public') {
+      inspection = unknownInspection('incomplete_head', finalUrl);
+    }
+
+    title = normalizeTitle(rawTitle, finalUrl) ?? undefined;
     if (favicon) {
       try {
-        favicon = new URL(favicon, url).toString();
+        favicon = new URL(favicon, finalUrl).toString();
       } catch {
         favicon = undefined;
       }
     }
     if (!favicon) {
-      favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
+      favicon = `https://www.google.com/s2/favicons?domain=${finalUrl.hostname}&sz=64`;
     }
-    if (!title) return null;
-    return { title, favicon, source: 'html' };
+    return {
+      ...(title ? { title } : {}),
+      favicon,
+      source: title ? 'html' : 'none',
+      inspection,
+    };
   } catch {
-    return null;
+    return {
+      source: 'none',
+      inspection: unknownInspection('network_error', url),
+    };
   }
 }
 
@@ -443,7 +611,12 @@ export async function handlePageMeta(request: Request, _env: Env): Promise<Respo
   let meta: PageMeta | null = null;
   if (provider) meta = await tryOEmbed(target, provider);
   if (!meta) meta = await tryHtmlScrape(target);
-  if (!meta) meta = { source: 'none' };
+  if (!meta) {
+    meta = {
+      source: 'none',
+      inspection: unknownInspection('network_error', target),
+    };
+  }
 
   const body = JSON.stringify(meta);
   const resp = new Response(body, {

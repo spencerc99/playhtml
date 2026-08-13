@@ -210,10 +210,184 @@ h1 {
   font-size: 9px;
 }
 
+.review-heading {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.queue-position,
+.queue-controls,
+.queue-footer {
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.queue-mode-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 1px dashed $line;
+  color: rgba($ink, 0.58);
+  font-family: $mono;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.queue-controls {
+  display: flex;
+  gap: 12px;
+}
+
+.queue-controls button,
+.empty-state button {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+}
+
 .intake form {
   display: grid;
   gap: 20px;
   padding: 18px 16px 20px;
+}
+
+.candidate-card {
+  padding: 14px;
+  border: 1px solid $ink;
+  background: #fffef8;
+}
+
+.candidate-card__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.source {
+  padding: 3px 5px;
+  color: $paper-light;
+  background: $green;
+}
+
+.source--scenery {
+  background: $blue;
+}
+
+.candidate-card__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.candidate-card__identity img {
+  width: 38px;
+  height: 38px;
+  image-rendering: auto;
+}
+
+.candidate-card h3 {
+  margin: 0;
+  font-family: $mono;
+  font-size: 17px;
+}
+
+.candidate-card__identity p {
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.candidate-card > a {
+  display: block;
+  margin-top: 14px;
+  overflow: hidden;
+  color: rgba($ink, 0.62);
+  font-family: $mono;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-only-note {
+  margin-top: 14px;
+  color: rgba($ink, 0.58);
+  font-size: 12px;
+}
+
+.inspection-card {
+  padding: 12px 14px;
+  border: 1px solid rgba($blue, 0.55);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba($blue, 0.04) 0 7px,
+      transparent 7px 14px
+    ),
+    #fffef8;
+}
+
+.inspection-card > div {
+  display: flex;
+  justify-content: space-between;
+  color: $blue;
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.inspection-card > small {
+  display: block;
+  margin-top: 4px;
+  color: rgba($ink, 0.48);
+  font-family: $mono;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.inspection-card p {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.inspection-card p span {
+  color: rgba($ink, 0.54);
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.history > span {
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.history ol {
+  margin: 7px 0 0;
+  padding: 0;
+  border-top: 1px solid $line;
+  list-style: none;
+}
+
+.history li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  padding: 6px 2px;
+  border-bottom: 1px solid $line;
+  font-size: 11px;
+}
+
+.history time {
+  color: rgba($ink, 0.5);
+  font-family: $mono;
+  font-size: 9px;
 }
 
 label > span,
@@ -398,6 +572,72 @@ fieldset {
   min-height: 102px;
   border-bottom: 1px solid $line;
   box-shadow: inset 5px 0 0 var(--verdict-color);
+}
+
+.live-place-list {
+  max-height: 724px;
+  overflow: auto;
+}
+
+.live-place-list .place-card {
+  --verdict-color: transparent;
+  position: relative;
+  display: flex;
+  min-height: 78px;
+  box-shadow: inset 5px 0 0 transparent;
+}
+
+.live-place-list .place-card--selected {
+  background: rgba($blue, 0.07);
+  box-shadow: inset 5px 0 0 $blue;
+}
+
+.place-card__select {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 42px minmax(0, 1fr);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.place-card__subtitle {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: rgba($ink, 0.58);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decision-mark {
+  display: inline-block;
+  margin-top: 7px;
+  color: var(--verdict-color);
+  font-family: $mono;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.place-card__remove {
+  align-self: flex-start;
+  margin: 13px 12px 0 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  font-family: $mono;
+  font-size: 8px;
+}
+
+.queue-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-top: 1px solid $ink;
+  color: rgba($ink, 0.58);
 }
 
 .place-card:last-child {

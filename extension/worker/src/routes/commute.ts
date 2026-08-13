@@ -3,7 +3,10 @@
 
 import type { CollectionEvent } from '@playhtml/extension-types';
 import type { Env } from '../lib/supabase';
-import { buildCommuteResponse } from './commutePolicy';
+import {
+  buildCommuteResponse,
+  buildCommuteReviewResponse,
+} from './commutePolicy';
 import { handleRecent } from './recent';
 
 const NAVIGATION_LIMIT = 2000;
@@ -59,6 +62,42 @@ export async function handleCommute(
     console.error('[commute] recent route failed:', error);
     return new Response(
       JSON.stringify({ error: 'Failed to build recent commute route' }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      },
+    );
+  }
+}
+
+export async function handleCommuteReview(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  try {
+    const [navigationEvents, cursorEvents] = await Promise.all([
+      fetchRecentEvents(request, env, 'navigation', NAVIGATION_LIMIT),
+      fetchRecentEvents(request, env, 'cursor', CURSOR_LIMIT),
+    ]);
+    const response = buildCommuteReviewResponse(
+      navigationEvents,
+      cursorEvents,
+      Date.now(),
+    );
+
+    return new Response(JSON.stringify(response), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (error) {
+    console.error('[commute] review route failed:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to build commute review queue' }),
       {
         status: 500,
         headers: {

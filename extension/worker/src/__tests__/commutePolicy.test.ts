@@ -3,7 +3,10 @@
 
 import { describe, expect, it } from 'vitest';
 import type { CollectionEvent } from '@playhtml/extension-types';
-import { buildCommuteResponse } from '../routes/commutePolicy';
+import {
+  buildCommuteResponse,
+  buildCommuteReviewResponse,
+} from '../routes/commutePolicy';
 
 function event(
   id: string,
@@ -1304,5 +1307,126 @@ describe('buildCommuteResponse', () => {
     expect(response.activePeople).toBe(2);
     expect(JSON.stringify(response)).not.toContain('person-one');
     expect(JSON.stringify(response)).not.toContain('private.example/one');
+  });
+});
+
+describe('buildCommuteReviewResponse', () => {
+  it('uses cursor activity to mirror the live scenery quantity', () => {
+    const navigationEvents = Array.from({ length: 30 }, (_, index) =>
+      event(
+        `navigation-${index}`,
+        'navigation',
+        `https://small-site-${index}.com/`,
+        900 - index,
+        `rider-${index}`,
+        `Essay ${index}`,
+      ),
+    );
+    const cursorEvents = Array.from({ length: 100 }, (_, index) =>
+      event(
+        `cursor-${index}`,
+        'cursor',
+        'https://wewere.online/',
+        950 - index,
+        `browser-${index}`,
+      ),
+    );
+    const commute = buildCommuteResponse(navigationEvents, cursorEvents, 1_000);
+    const review = buildCommuteReviewResponse(
+      navigationEvents,
+      cursorEvents,
+      1_000,
+    );
+
+    const reviewDomains = new Set(review.items.map((item) => item.domain));
+    expect(commute.scenery).toHaveLength(30);
+    expect(
+      commute.scenery.every((item) => reviewDomains.has(item.domain)),
+    ).toBe(true);
+  });
+
+  it('grounds stop reviews in sanitized destinations and capped visit history', () => {
+    const response = buildCommuteReviewResponse(
+      [
+        event(
+          'latest',
+          'navigation',
+          'https://garden.example/essay?utm_source=feed',
+          500,
+          'rider-one',
+          'A garden essay',
+        ),
+        event(
+          'earlier',
+          'navigation',
+          'https://garden.example/essay',
+          400,
+          'rider-two',
+          'A garden essay',
+        ),
+        event(
+          'private-query',
+          'navigation',
+          'https://garden.example/private?token=secret',
+          300,
+          'rider-three',
+          'Private draft',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.items[0]).toEqual({
+      id: 'https://garden.example/essay',
+      domain: 'garden.example',
+      url: 'https://garden.example/essay',
+      title: 'A garden essay',
+      currentDisposition: 'stop',
+      recentVisitCount: 2,
+      recentVisits: [
+        { visitedAt: 500, title: 'A garden essay' },
+        { visitedAt: 400, title: 'A garden essay' },
+      ],
+    });
+    expect(JSON.stringify(response)).not.toContain('token=secret');
+    expect(JSON.stringify(response)).not.toContain('Private draft');
+  });
+
+  it('keeps scenery history domain-only', () => {
+    const response = buildCommuteReviewResponse(
+      [
+        event(
+          'scenery-latest',
+          'navigation',
+          'https://docs.google.com/document/d/private-id/edit',
+          500,
+          'rider-one',
+          'Private document',
+        ),
+        event(
+          'scenery-earlier',
+          'navigation',
+          'https://docs.google.com/spreadsheets/d/other-private-id/edit',
+          400,
+          'rider-two',
+          'Private spreadsheet',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.items).toEqual([
+      {
+        id: 'docs.google.com',
+        domain: 'docs.google.com',
+        currentDisposition: 'scenery',
+        recentVisitCount: 2,
+        recentVisits: [{ visitedAt: 500 }, { visitedAt: 400 }],
+      },
+    ]);
+    expect(JSON.stringify(response)).not.toContain('private-id');
+    expect(JSON.stringify(response)).not.toContain('Private document');
   });
 });

@@ -16,7 +16,7 @@ import {
   handleQuarantineStrip,
   handleQuarantineRip,
 } from './routes/quarantine';
-import { handleCommute } from './routes/commute';
+import { handleCommute, handleCommuteReview } from './routes/commute';
 import {
   handleAccessRequest,
   handleAdminAccessOverview,
@@ -71,6 +71,11 @@ export default {
       // This response is reduced to public destinations, domain-only scenery,
       // and aggregate counts. Extension-page GETs can omit Origin and Referer.
       return handleCommute(request, env);
+    }
+
+    if (path === '/commute/review' && request.method === 'GET') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleCommuteReview(request, env);
     }
 
     if (path === '/events/daily-counts' && request.method === 'GET') {

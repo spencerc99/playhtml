@@ -18,6 +18,12 @@ export type PublicPageReason =
   | 'rate_limited'
   | 'server_error'
   | 'unresolved_redirect'
+  | 'unsafe_redirect'
+  | 'redirect_loop'
+  | 'too_many_redirects'
+  | 'network_error'
+  | 'incomplete_head'
+  | 'metadata_only'
   | 'unexpected_status';
 
 export interface PublicPageEvidence {

@@ -4,7 +4,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createCuratedPlace,
+  getReviewTarget,
   normalizePlace,
+  parseCommuteReviewResponse,
   parseStoredCuration,
   serializeCurationArtifact,
   upsertCuratedPlace,
@@ -53,6 +55,54 @@ describe("curation queue", () => {
       PROMOTED,
     ]);
     expect(parseStoredCuration("not json")).toEqual([]);
+  });
+});
+
+describe("parseCommuteReviewResponse", () => {
+  it("accepts a sanitized live review queue", () => {
+    expect(
+      parseCommuteReviewResponse({
+        generatedAt: 1_000,
+        items: [
+          {
+            id: "https://example.com/essay",
+            domain: "example.com",
+            url: "https://example.com/essay",
+            title: "An essay",
+            currentDisposition: "stop",
+            recentVisitCount: 2,
+            recentVisits: [
+              { visitedAt: 900, title: "An essay" },
+              { visitedAt: 800, title: "An essay" },
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({ generatedAt: 1_000 });
+  });
+
+  it("rejects a queue containing raw or malformed items", () => {
+    expect(() =>
+      parseCommuteReviewResponse({
+        generatedAt: 1_000,
+        items: [{ id: "private-event", domain: "example.com" }],
+      }),
+    ).toThrow("invalid item");
+  });
+});
+
+describe("getReviewTarget", () => {
+  it("uses the same normalized identity as stored decisions", () => {
+    expect(
+      getReviewTarget({
+        id: "https://www.example.com/essay",
+        domain: "example.com",
+        url: "https://www.example.com/essay",
+        currentDisposition: "stop",
+        recentVisitCount: 1,
+        recentVisits: [{ visitedAt: 1_000 }],
+      }),
+    ).toBe("https://example.com/essay");
   });
 });
 

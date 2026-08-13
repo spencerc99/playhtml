@@ -30,6 +30,57 @@ export type CurationArtifact = {
   }>;
 };
 
+export type CommuteReviewVisit = {
+  visitedAt: number;
+  title?: string;
+};
+
+export type CommuteReviewItem = {
+  id: string;
+  domain: string;
+  url?: string;
+  title?: string;
+  currentDisposition: "stop" | "scenery";
+  recentVisitCount: number;
+  recentVisits: CommuteReviewVisit[];
+};
+
+export type CommuteReviewResponse = {
+  generatedAt: number;
+  items: CommuteReviewItem[];
+};
+
+export type PublicPageInspection = {
+  verdict: "public" | "gated" | "not_public" | "unavailable" | "unknown";
+  reason: string;
+  finalUrl: string;
+};
+
+export function parseCommuteReviewResponse(
+  value: unknown,
+): CommuteReviewResponse {
+  if (!value || typeof value !== "object") {
+    throw new Error("The Commute review response is malformed.");
+  }
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.generatedAt !== "number" ||
+    !Array.isArray(candidate.items)
+  ) {
+    throw new Error("The Commute review response is malformed.");
+  }
+
+  const items = candidate.items.filter(isCommuteReviewItem);
+  if (items.length !== candidate.items.length) {
+    throw new Error("The Commute review response contains an invalid item.");
+  }
+  return { generatedAt: candidate.generatedAt, items };
+}
+
+export function getReviewTarget(item: CommuteReviewItem): string {
+  return normalizePlace(item.url ?? item.domain).place;
+}
+
 export function normalizePlace(value: string): {
   place: string;
   domain: string;
@@ -160,5 +211,28 @@ function isCuratedPlace(value: unknown): value is CuratedPlace {
     CURATION_VERDICTS.includes(candidate.verdict as CurationVerdict) &&
     typeof candidate.comment === "string" &&
     typeof candidate.updatedAt === "string"
+  );
+}
+
+function isCommuteReviewItem(value: unknown): value is CommuteReviewItem {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.domain === "string" &&
+    (candidate.url === undefined || typeof candidate.url === "string") &&
+    (candidate.title === undefined || typeof candidate.title === "string") &&
+    (candidate.currentDisposition === "stop" ||
+      candidate.currentDisposition === "scenery") &&
+    typeof candidate.recentVisitCount === "number" &&
+    Array.isArray(candidate.recentVisits) &&
+    candidate.recentVisits.every((visit) => {
+      if (!visit || typeof visit !== "object") return false;
+      const record = visit as Record<string, unknown>;
+      return (
+        typeof record.visitedAt === "number" &&
+        (record.title === undefined || typeof record.title === "string")
+      );
+    })
   );
 }
