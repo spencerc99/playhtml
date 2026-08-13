@@ -19,21 +19,11 @@ type RecipeExampleProps = {
   frameHeight?: string;
 };
 
-function makeRoomId(recipeId: string): string {
-  return `example-${recipeId}-${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
-}
-
-export function resolveExampleRoomId(
-  url: URL,
-  recipeId: string,
-  compact: boolean,
-): string {
-  if (compact) return url.pathname;
-
+export function resolveExampleRoomId(url: URL): string {
   const existingRoom = url.searchParams.get("room");
   return existingRoom && isValidRoomId(existingRoom)
     ? existingRoom
-    : makeRoomId(recipeId);
+    : url.pathname;
 }
 
 export function RecipeExample({
@@ -47,16 +37,8 @@ export function RecipeExample({
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    const existingRoom = url.searchParams.get("room");
-    const nextRoom = resolveExampleRoomId(url, recipe.id, compact);
-
-    if (!compact && existingRoom !== nextRoom) {
-      url.searchParams.set("room", nextRoom);
-      history.replaceState(null, "", url);
-    }
-
-    setRoomId(nextRoom);
-  }, [compact, recipe.id]);
+    setRoomId(resolveExampleRoomId(url));
+  }, [recipe.id]);
 
   useEffect(() => {
     if (!roomId || !iframeHostRef.current) return;
