@@ -3,9 +3,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import browser from "webextension-polyfill";
+import { getOrCreateHandle as requestWikipediaHandle } from "../features/chat-handle";
 import {
   getOrCreateWikipediaHandle,
   rerollWikipediaHandle,
+  setWikipediaHandle,
   _resetWikipediaHandleForTest,
 } from "../storage/wikipediaHandle";
 
@@ -137,5 +139,21 @@ describe("chat-handle", () => {
       "Stable Name",
       "Stable Name",
     ]);
+  });
+
+  it("handles a missing title without rejecting", async () => {
+    globalThis.fetch = mockFetchOnce("Fallback Name") as typeof fetch;
+
+    await expect(setWikipediaHandle(undefined)).resolves.toBe("Fallback Name");
+  });
+
+  it("surfaces background storage errors to the caller", async () => {
+    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({
+      error: "Storage unavailable",
+    });
+
+    await expect(requestWikipediaHandle()).rejects.toThrow(
+      "Storage unavailable",
+    );
   });
 });

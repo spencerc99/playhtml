@@ -7,7 +7,7 @@ const CHANNEL = "selection";
 const CONTENT_SELECTOR = "#mw-content-text";
 const HIGHLIGHT_PREFIX = "wwo-live-selection-";
 const FALLBACK_COLOR = "#8a8279";
-const PUBLISH_INTERVAL_MS = 50;
+const PUBLISH_INTERVAL_MS = 250;
 
 type SelectionPoint = {
   path: number[];
@@ -130,6 +130,7 @@ export class WikipediaLiveSelections {
   private highlightNames = new Set<string>();
   private unsubscribe: (() => void) | null = null;
   private selectionTimer: number | null = null;
+  private lastPublishedSelection: string | null | undefined;
 
   constructor(
     private presence: PresenceAPI,
@@ -159,6 +160,7 @@ export class WikipediaLiveSelections {
     this.unsubscribe?.();
     this.unsubscribe = null;
     if (this.root) this.presence.setMyPresence(CHANNEL, null);
+    this.lastPublishedSelection = undefined;
     this.clearRemoteSelections();
     this.styleElement?.remove();
     this.styleElement = null;
@@ -180,6 +182,9 @@ export class WikipediaLiveSelections {
       selection && selection.rangeCount > 0
         ? serializeSelectionRange(this.root, selection.getRangeAt(0))
         : null;
+    const serialized = range ? JSON.stringify(range) : null;
+    if (serialized === this.lastPublishedSelection) return;
+    this.lastPublishedSelection = serialized;
     this.presence.setMyPresence(CHANNEL, range);
   }
 

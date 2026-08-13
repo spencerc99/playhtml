@@ -88,11 +88,13 @@ export class ChatManager {
   }
 
   async init(): Promise<void> {
-    const handle = await getOrCreateHandle();
-    this.setState({ handle });
+    let handleChanged = false;
     this.unsubHandle = onHandleChange((nextHandle) => {
+      handleChanged = true;
       if (nextHandle !== this.state.handle) this.setState({ handle: nextHandle });
     });
+    const handle = await getOrCreateHandle();
+    if (!handleChanged) this.setState({ handle });
     this.unsubPresence = this.presence.onPresenceChange(CHAT_CHANNEL, (presences) => {
       this.onPresences(presences);
     });

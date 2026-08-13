@@ -123,6 +123,23 @@ describe("ChatManager", () => {
     mgr.destroy();
   });
 
+  it("does not overwrite a rename that arrives during initialization", async () => {
+    let resolveInitialHandle!: (value: unknown) => void;
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(
+      () => new Promise((resolve) => { resolveInitialHandle = resolve; }),
+    );
+    const fake = makeFakePresence();
+    const mgr = new ChatManager(fake.api, "Octopus");
+
+    const initializing = mgr.init();
+    emitHandleChange("Shared Name");
+    resolveInitialHandle({ handle: "Stale Name" });
+    await initializing;
+
+    expect(mgr.getState().handle).toBe("Shared Name");
+    mgr.destroy();
+  });
+
   it("send broadcasts via setMyPresence and appends locally", async () => {
     const fake = makeFakePresence();
     const mgr = new ChatManager(fake.api, "Octopus");

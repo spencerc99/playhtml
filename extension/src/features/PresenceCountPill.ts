@@ -90,9 +90,8 @@ export class PresenceCountPill {
     return null;
   }
 
-  // Lobby presences don't carry __playhtml_cursors__ for remote peers, so
-  // playerIdentity is undefined there. We piggy-back the pid on the `page`
-  // payload (set in wikipedia.ts) and read it back here.
+  // PresenceClient supplies the public identity when available. The page pid
+  // also keeps identity stable when a lobby payload arrives without it.
   private pidOf(p: any): string | null {
     return p?.playerIdentity?.publicKey ?? p?.page?.pid ?? null;
   }

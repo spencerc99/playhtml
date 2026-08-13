@@ -43,6 +43,17 @@ import {
   setWikipediaHandle,
 } from '../storage/wikipediaHandle'
 
+function replyWithWikipediaHandle(
+  request: Promise<string>,
+  reply: (response: { handle?: string; error?: string }) => void,
+): void {
+  request
+    .then((handle) => reply({ handle }))
+    .catch((error: unknown) =>
+      reply({ error: error instanceof Error ? error.message : String(error) }),
+    )
+}
+
 interface ScrapRecordBase {
   id: string
   key: string
@@ -525,17 +536,17 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_OR_CREATE_WIKIPEDIA_HANDLE') {
-      getOrCreateWikipediaHandle().then((handle) => reply({ handle }))
+      replyWithWikipediaHandle(getOrCreateWikipediaHandle(), reply)
       return true
     }
 
     if (message.type === 'REROLL_WIKIPEDIA_HANDLE') {
-      rerollWikipediaHandle().then((handle) => reply({ handle }))
+      replyWithWikipediaHandle(rerollWikipediaHandle(), reply)
       return true
     }
 
     if (message.type === 'SET_WIKIPEDIA_HANDLE') {
-      setWikipediaHandle(message.title).then((handle) => reply({ handle }))
+      replyWithWikipediaHandle(setWikipediaHandle(message.title), reply)
       return true
     }
 

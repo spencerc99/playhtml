@@ -65,9 +65,9 @@ export function rerollWikipediaHandle(): Promise<string> {
   return enqueue(async () => persistHandle(await rollHandle()));
 }
 
-export function setWikipediaHandle(title: string): Promise<string> {
+export function setWikipediaHandle(title: unknown): Promise<string> {
   return enqueue(async () => {
-    const trimmed = title.trim();
+    const trimmed = typeof title === "string" ? title.trim() : "";
     if (trimmed.length === 0 || containsProfanity(trimmed)) {
       return persistHandle(await rollHandle());
     }

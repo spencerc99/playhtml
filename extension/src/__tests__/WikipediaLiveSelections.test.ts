@@ -77,6 +77,7 @@ describe("WikipediaLiveSelections", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     window.getSelection()?.removeAllRanges();
     Object.defineProperty(globalThis, "CSS", {
       configurable: true,
@@ -127,6 +128,39 @@ describe("WikipediaLiveSelections", () => {
     selection.removeAllRanges();
     document.dispatchEvent(new Event("selectionchange"));
     await vi.waitFor(() => expect(presence.writes.at(-1)?.data).toBeNull());
+    liveSelections.destroy();
+  });
+
+  it("publishes at most every 250ms and skips unchanged selections", async () => {
+    vi.useFakeTimers();
+    const presence = setupPresence();
+    const liveSelections = new WikipediaLiveSelections(presence.api, "#c4724e");
+    liveSelections.init();
+    const text = document.querySelector("p")!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 7);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    for (let index = 0; index < 5; index++) {
+      document.dispatchEvent(new Event("selectionchange"));
+    }
+    await vi.advanceTimersByTimeAsync(249);
+    expect(presence.writes).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(presence.writes).toHaveLength(2);
+
+    document.dispatchEvent(new Event("selectionchange"));
+    await vi.advanceTimersByTimeAsync(250);
+    expect(presence.writes).toHaveLength(2);
+
+    range.setEnd(text, 8);
+    document.dispatchEvent(new Event("selectionchange"));
+    await vi.advanceTimersByTimeAsync(250);
+    expect(presence.writes).toHaveLength(3);
+
     liveSelections.destroy();
   });
 

@@ -7,6 +7,13 @@ const STORAGE_KEY = "wiki_chat_handle";
 
 function readHandleResponse(response: unknown): string {
   if (
+    response &&
+    typeof response === "object" &&
+    typeof (response as { error?: unknown }).error === "string"
+  ) {
+    throw new Error((response as { error: string }).error);
+  }
+  if (
     !response ||
     typeof response !== "object" ||
     typeof (response as { handle?: unknown }).handle !== "string"

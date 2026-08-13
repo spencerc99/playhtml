@@ -94,9 +94,13 @@ describe("custom site settings", () => {
     });
   });
 
-  it("preserves query parameters for Wikipedia index.php editing rooms", () => {
+  it("preserves query parameters for Wikipedia editing rooms", () => {
     expect(
-      getCustomSiteSettingsForLocation("en.wikipedia.org", "/w/index.php"),
+      getCustomSiteSettingsForLocation(
+        "en.wikipedia.org",
+        "/w/index.php",
+        "?title=Max_Polyakov&gesuggestededit=1&veaction=edit",
+      ),
     ).toEqual({
       cursorsEnabled: true,
       defaultRoomOptions: { includeSearch: true },
@@ -105,6 +109,27 @@ describe("custom site settings", () => {
       getCustomSiteSettingsForLocation(
         "en.wikipedia.org",
         "/wiki/Max_Polyakov",
+        "?veaction=edit",
+      ),
+    ).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: true },
+    });
+    expect(
+      getCustomSiteSettingsForLocation(
+        "en.wikipedia.org",
+        "/wiki/Max_Polyakov",
+        "?action=edit",
+      ),
+    ).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: true },
+    });
+    expect(
+      getCustomSiteSettingsForLocation(
+        "en.wikipedia.org",
+        "/w/index.php",
+        "?title=Max_Polyakov&oldid=123",
       ),
     ).toEqual({
       cursorsEnabled: true,
