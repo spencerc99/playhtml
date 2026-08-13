@@ -9,12 +9,12 @@ type CounterData = { count: number };
 
 const SharedCounter = withSharedState<CounterData>(
   {
-    id: "shared-counter",
+    id: "ph-docs-counter",
     defaultData: { count: 0 },
   },
   ({ data, setData }) => (
     <button
-      id="shared-counter"
+      id="ph-docs-counter"
       className="counter"
       type="button"
       onClick={() => {
@@ -23,9 +23,8 @@ const SharedCounter = withSharedState<CounterData>(
         });
       }}
     >
-      <span aria-hidden="true">heart</span>
-      <strong>{data.count}</strong>
-      <span>shared clicks</span>
+      <span aria-hidden="true">❤️</span>
+      <span className="count">{data.count}</span>
     </button>
   ),
 );
@@ -34,8 +33,6 @@ export default function App() {
   return (
     <PlayProvider initOptions={{ developmentMode: true }}>
       <main>
-        <h1>Shared counter</h1>
-        <p>Click the counter. Every connected browser increments the same value.</p>
         <SharedCounter />
       </main>
 
@@ -44,22 +41,22 @@ export default function App() {
         * { box-sizing: border-box; }
         body { margin: 0; }
         #root { display: grid; min-height: 100vh; padding: 1.5rem; place-items: center; }
-        main { width: min(30rem, 100%); text-align: center; }
-        h1 { margin: 0 0 0.35rem; font-size: clamp(2rem, 9vw, 3.5rem); }
-        p { margin: 0 0 1.25rem; line-height: 1.5; }
+        main { text-align: center; }
         .counter {
-          display: grid;
-          width: 100%;
-          gap: 0.45rem;
-          padding: 1.4rem;
-          border: 2px solid #1c1c1c;
-          background: #f2a7b7;
-          box-shadow: 5px 5px 0 #1c1c1c;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 1rem;
+          border: 1.5px solid #65795d;
+          border-radius: 6px;
+          background: #f4efe5;
+          color: #1c1c1c;
           cursor: pointer;
-          font: 700 1rem/1 system-ui, sans-serif;
+          font: 1.1rem/1 ui-monospace, monospace;
         }
-        .counter strong { font-size: 4rem; line-height: 1; }
-        .counter:active { translate: 5px 5px; box-shadow: none; }
+        .counter:hover { box-shadow: 2px 2px 0 #1c1c1c; }
+        .counter:active { transform: translateY(1px); }
+        .count { color: #65795d; font-weight: 600; }
       \`}</style>
     </PlayProvider>
   );
@@ -73,7 +70,7 @@ import { PlayProvider, withSharedState } from "@playhtml/react";
 import words from "profane-words";
 
 type Prompt = "building" | "learned";
-type Entry = { id: string; prompt: Prompt; text: string };
+type Entry = { id: string; prompt: Prompt; text: string; at: number };
 type GuestbookData = { entries: Entry[] };
 
 const MAX_ENTRIES = 20;
@@ -91,7 +88,7 @@ function isProfane(text: string): boolean {
 
 const SharedGuestbook = withSharedState<GuestbookData>(
   {
-    id: "shared-guestbook",
+    id: "ph-cap-docs-guestbook",
     defaultData: { entries: [] },
   },
   function SharedGuestbookView({ data, setData }) {
@@ -111,6 +108,7 @@ const SharedGuestbook = withSharedState<GuestbookData>(
           id: crypto.randomUUID(),
           prompt,
           text,
+          at: Date.now(),
         });
         if (shared.entries.length > MAX_ENTRIES) {
           shared.entries.splice(0, shared.entries.length - MAX_ENTRIES);
@@ -120,7 +118,7 @@ const SharedGuestbook = withSharedState<GuestbookData>(
     }
 
     return (
-      <section id="shared-guestbook" className="guestbook">
+      <section id="ph-cap-docs-guestbook" className="guestbook">
         <form onSubmit={submit}>
           <label>
             Prompt
@@ -192,7 +190,11 @@ export default function App() {
         li { display: grid; gap: 0.25rem; padding: 0.65rem; background: #fffdf8; }
         li + li { margin-top: 0.55rem; }
         li strong { color: #274b9e; font-size: 0.78rem; }
-        @media (max-width: 36rem) { .guestbook { grid-template-columns: 1fr; } }
+        @media (max-width: 36rem) {
+          #root { padding: 1rem; }
+          .guestbook { grid-template-columns: 1fr; }
+          ul { min-height: 6rem; }
+        }
       \`}</style>
     </PlayProvider>
   );

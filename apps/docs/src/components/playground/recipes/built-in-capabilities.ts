@@ -14,10 +14,8 @@ const sharedStyles = `    :root {
       font-family: ui-sans-serif, system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
-    body { display: grid; min-height: 100vh; margin: 0; padding: 1.5rem; place-items: center; }
-    main { width: min(36rem, 100%); }
-    h1 { margin: 0 0 0.35rem; font-size: clamp(2rem, 8vw, 3.5rem); line-height: 1; }
-    .intro { margin: 0 0 1.25rem; line-height: 1.5; }`;
+    body { display: grid; min-height: 100vh; margin: 0; padding: 1rem; place-items: center; }
+    main { width: min(40rem, 100%); }`;
 
 export const canMoveRecipe: ExampleRecipe = {
   id: "can-move",
@@ -37,44 +35,56 @@ export const canMoveRecipe: ExampleRecipe = {
     styles: `${sharedStyles}
     .arena {
       position: relative;
-      height: 20rem;
+      width: 100%;
+      height: min(14.75rem, calc(100vh - 2rem));
       overflow: hidden;
-      border: 2px solid #1c1c1c;
-      background: #dce8cf;
-      box-shadow: 5px 5px 0 #1c1c1c;
+      border: 1.5px solid #1c1c1c;
+      border-radius: 8px;
+      background: #f1f2e9;
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
     }
     .piece {
       position: absolute;
-      display: grid;
-      width: 8rem;
-      height: 8rem;
-      place-items: center;
-      font-size: 6rem;
+      top: 0;
+      left: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      cursor: grab;
       touch-action: none;
       user-select: none;
     }
-    .hat { top: 2rem; left: 2rem; }
-    .cat { right: 2rem; bottom: 1.5rem; }`,
+    .piece:active { cursor: grabbing; }
+    .hat { width: 4.5rem; height: 4.5rem; }
+    .cat { width: 5.25rem; height: 9.5rem; }
+    .piece img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+    }`,
     body: `  <main>
-    <h1>Drag together</h1>
-    <p class="intro">Move either sticker. Its position updates in every connected browser.</p>
-    <div id="move-arena" class="arena">
+    <div id="ph-cap-move-arena" class="arena" aria-label="Drag the hat and cat">
       <div
-        id="move-hat"
+        id="ph-cap-hat"
         class="piece hat"
         can-move
-        can-move-bounds="move-arena"
-        role="img"
-        aria-label="A draggable baseball cap"
-      >🧢</div>
+        can-move-bounds="ph-cap-move-arena"
+      >
+        <img src="https://playhtml.fun/docs/yankees-hat.png" alt="" draggable="false" />
+      </div>
       <div
-        id="move-cat"
+        id="ph-cap-cat"
         class="piece cat"
         can-move
-        can-move-bounds="move-arena"
-        role="img"
-        aria-label="A draggable cat"
-      >🐈</div>
+        can-move-bounds="ph-cap-move-arena"
+      >
+        <img src="https://playhtml.fun/docs/long-cat.png" alt="" draggable="false" />
+      </div>
     </div>
   </main>`,
     script: "    // Built-in capabilities need no custom handlers.",
@@ -98,40 +108,39 @@ export const canToggleRecipe: ExampleRecipe = {
     title: "Switch with can-toggle",
     styles: `${sharedStyles}
     main { text-align: center; }
-    .switch {
+    .toggle {
       display: inline-flex;
       align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
+      gap: 0.55rem;
+      padding: 0.55rem 1rem;
       border: 2px solid #1c1c1c;
+      border-radius: 6px;
       background: #ebe4d5;
-      box-shadow: 4px 4px 0 #1c1c1c;
+      box-shadow: 2px 2px 0 #1c1c1c;
+      color: #1c1c1c;
       cursor: pointer;
-      font: 700 1rem/1 ui-sans-serif, system-ui, sans-serif;
+      font: 700 0.8rem/1 ui-monospace, monospace;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      transition: transform 120ms, box-shadow 120ms, background 120ms, color 120ms;
     }
-    .track {
-      display: flex;
-      width: 3.5rem;
-      padding: 0.2rem;
-      border: 2px solid #1c1c1c;
-      background: #d7cfc0;
+    .toggle:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 #1c1c1c; }
+    .toggle:active { transform: translate(2px, 2px); box-shadow: none; }
+    .toggle.toggled { background: #274b9e; color: #f4efe5; }
+    .dot {
+      width: 0.625rem;
+      height: 0.625rem;
+      border: 1px solid rgba(0, 0, 0, 0.35);
+      border-radius: 999px;
+      background: #79766f;
     }
-    .thumb {
-      width: 1.25rem;
-      height: 1.25rem;
-      background: #1c1c1c;
-      transition: translate 150ms;
-    }
+    .toggle.toggled .dot { background: #e8a63a; box-shadow: 0 0 0 3px rgba(232, 166, 58, 0.25); }
     .on-label { display: none; }
-    .switch.toggled { background: #b9dfad; }
-    .switch.toggled .thumb { translate: 1.55rem 0; }
-    .switch.toggled .off-label { display: none; }
-    .switch.toggled .on-label { display: inline; }`,
+    .toggle.toggled .off-label { display: none; }
+    .toggle.toggled .on-label { display: inline; }`,
     body: `  <main>
-    <h1>Shared switch</h1>
-    <p class="intro">Click the switch. Everyone sees the same state.</p>
-    <button id="shared-switch" class="switch" type="button" can-toggle>
-      <span class="track"><span class="thumb"></span></span>
+    <button id="ph-docs-toggle-demo" class="toggle" type="button" can-toggle>
+      <span class="dot" aria-hidden="true"></span>
       <span class="off-label">off</span>
       <span class="on-label">on</span>
     </button>
@@ -156,27 +165,27 @@ export const canHoverRecipe: ExampleRecipe = {
   html: recipeDocument({
     title: "Presence with can-hover",
     styles: `${sharedStyles}
-    main { text-align: center; }
-    .hover-card {
+    .hover-pad {
       display: grid;
-      min-height: 12rem;
+      width: min(22.5rem, 100%);
+      min-height: 7.5rem;
+      margin: 0 auto;
+      padding: 1rem 1.1rem;
       place-items: center;
-      border: 2px solid #1c1c1c;
-      background: #dce8cf;
-      box-shadow: 5px 5px 0 #1c1c1c;
-      font-size: 1.4rem;
-      font-weight: 800;
+      border: 1.5px solid #1c1c1c;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #ebe4d5, #ded6c7);
+      box-shadow: 2px 2px 0 #1c1c1c;
       transition: background 150ms, transform 150ms;
     }
-    .hover-card[data-playhtml-hover] {
-      background: #f3cf58;
-      transform: scale(1.03);
-    }`,
+    .hover-pad[data-playhtml-hover] {
+      background: linear-gradient(135deg, #e8a63a, #ded6c7);
+      transform: translateY(-2px);
+    }
+    p { margin: 0; font-size: 0.92rem; line-height: 1.45; }`,
     body: `  <main>
-    <h1>Shared hover</h1>
-    <p class="intro">Hover over the card. It lights up for everyone currently connected.</p>
-    <div id="shared-hover-card" class="hover-card" can-hover>
-      hover here
+    <div id="ph-cap-hover-pad" class="hover-pad" can-hover>
+      <p>Hover here with a friend - the pad lights up for everyone.</p>
     </div>
   </main>`,
     script: "    // can-hover manages the data-playhtml-hover attribute.",
