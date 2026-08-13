@@ -20,7 +20,9 @@ import {
   type TypingCursorAwareness,
 } from "./layout";
 import {
+  canStartIntroScroll,
   getIntroScrollY,
+  INTRO_CONTENT_SETTLE_MS,
   INTRO_FADE_DURATION_MS,
   INTRO_SCROLL_DURATION_MS,
 } from "./intro";
@@ -31,7 +33,7 @@ interface CellData {
   timestamp: number;
 }
 
-type IntroState = "scrolling" | "fading" | "hidden";
+type IntroState = "loading" | "scrolling" | "fading" | "hidden";
 
 const PLAYER_COLORS = [
   { name: "red", value: "hsl(0, 70%, 60%)" },
@@ -50,7 +52,7 @@ const Main = withSharedState(
     myDefaultAwareness: undefined as undefined | TypingCursorAwareness,
   },
   ({ data, setData, awareness, myAwareness, setMyAwareness }) => {
-    const { cursors } = usePlayContext();
+    const { cursors, isLoading } = usePlayContext();
     const myColor = cursors.color;
     const gridRef = useRef<HTMLDivElement>(null);
     const bottomBarRef = useRef<HTMLDivElement>(null);
@@ -61,13 +63,32 @@ const Main = withSharedState(
       rows: 40,
     });
     const [hasMeasuredGrid, setHasMeasuredGrid] = useState(false);
-    const [introState, setIntroState] = useState<IntroState>("scrolling");
+    const [hasSettledContent, setHasSettledContent] = useState(false);
+    const [introState, setIntroState] = useState<IntroState>("loading");
     const [bottomBarHeightPx, setBottomBarHeightPx] =
       useState(BOTTOM_BAR_HEIGHT_PX);
 
     useLayoutEffect(() => {
       window.scrollTo(0, 0);
     }, []);
+
+    // Keep the viewport pinned while the loading cover is up so the tall paper
+    // can lay out underneath without the user scrolling ahead of the intro.
+    useEffect(() => {
+      if (introState !== "loading") return;
+
+      const { body, documentElement } = document;
+      const previousBodyOverflow = body.style.overflow;
+      const previousHtmlOverflow = documentElement.style.overflow;
+      body.style.overflow = "hidden";
+      documentElement.style.overflow = "hidden";
+      window.scrollTo(0, 0);
+
+      return () => {
+        body.style.overflow = previousBodyOverflow;
+        documentElement.style.overflow = previousHtmlOverflow;
+      };
+    }, [introState]);
 
     // Calculate grid dimensions based on window size
     useEffect(() => {
@@ -144,10 +165,48 @@ const Main = withSharedState(
 
     const cursorPosition = getTypingCursorPosition(data.letters.length);
 
+    // Wait until synced letter data has been applied and the grid height is
+    // quiet. Starting earlier animates a short empty page, then jumps to the
+    // real bottom once letters hydrate (can-play setup is a parent effect and
+    // may hash the element id asynchronously before applying store data).
     useEffect(() => {
-      if (!hasMeasuredGrid || introStartedRef.current) return;
+      if (isLoading || !hasMeasuredGrid) {
+        setHasSettledContent(false);
+        return;
+      }
+
+      const settleTimeout = window.setTimeout(() => {
+        setHasSettledContent(true);
+      }, INTRO_CONTENT_SETTLE_MS);
+
+      return () => {
+        window.clearTimeout(settleTimeout);
+      };
+    }, [isLoading, hasMeasuredGrid, data.letters.length, totalCells]);
+
+    // Leave the loading cover only after content has settled so the scroll
+    // animation effect below measures the full paper with overflow unlocked.
+    useEffect(() => {
+      if (introState !== "loading") return;
+      if (
+        !canStartIntroScroll({
+          isLoading,
+          hasMeasuredGrid,
+          hasSettledContent,
+        })
+      ) {
+        return;
+      }
+
+      setIntroState("scrolling");
+    }, [hasMeasuredGrid, hasSettledContent, introState, isLoading]);
+
+    useEffect(() => {
+      if (introState !== "scrolling" || introStartedRef.current) return;
 
       introStartedRef.current = true;
+
+      // Content has settled; capture the destination once so easing stays smooth.
       const destinationY = getScrollEndY({
         scrollHeight: document.documentElement.scrollHeight,
         viewportHeight: window.innerHeight,
@@ -199,7 +258,7 @@ const Main = withSharedState(
         window.cancelAnimationFrame(animationFrame);
         window.clearTimeout(fadeTimeout);
       };
-    }, [hasMeasuredGrid]);
+    }, [introState]);
 
     useLayoutEffect(() => {
       if (introState !== "hidden") return;
@@ -317,7 +376,17 @@ const Main = withSharedState(
           } as React.CSSProperties
         }
       >
-        {introState !== "hidden" && (
+        {introState === "loading" && (
+          <div
+            className="loading-screen"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <p>loading the paper…</p>
+          </div>
+        )}
+        {(introState === "scrolling" || introState === "fading") && (
           <section
             className={`intro-message ${
               introState === "fading" ? "fading" : ""
@@ -336,6 +405,7 @@ const Main = withSharedState(
         <div
           ref={gridRef}
           className="grid-container"
+          aria-hidden={introState === "loading"}
           style={{
             gridTemplateColumns: `repeat(${gridDimensions.cols}, ${GRID_CELL_SIZE_PX}px)`,
             gridAutoRows: `${getGridRowHeightPx({

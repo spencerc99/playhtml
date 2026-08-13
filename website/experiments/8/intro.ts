@@ -2,6 +2,11 @@
 // ABOUTME: Keeps the grid-paper introduction timing deterministic and testable.
 export const INTRO_SCROLL_DURATION_MS = 2200;
 export const INTRO_FADE_DURATION_MS = 500;
+// After playhtml sync, React can-play may still be applying letter data (setup
+// runs in a parent effect, and missing element ids are hashed asynchronously).
+// Wait this quiet period after the last content change before measuring the
+// intro destination so we scroll the full paper instead of jumping later.
+export const INTRO_CONTENT_SETTLE_MS = 150;
 
 export function getIntroScrollY({
   destinationY,
@@ -27,4 +32,16 @@ export function getIntroScrollY({
       : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 
   return destinationY * easedProgress;
+}
+
+export function canStartIntroScroll({
+  isLoading,
+  hasMeasuredGrid,
+  hasSettledContent,
+}: {
+  isLoading: boolean;
+  hasMeasuredGrid: boolean;
+  hasSettledContent: boolean;
+}): boolean {
+  return !isLoading && hasMeasuredGrid && hasSettledContent;
 }
