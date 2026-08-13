@@ -64,6 +64,7 @@ type StatusIconKind =
   | CurationVerdict
   | CommuteReviewItem["currentDisposition"]
   | PublicPageInspection["verdict"]
+  | "note"
   | "loading";
 
 function StatusIcon({ kind }: { kind: StatusIconKind }) {
@@ -116,6 +117,12 @@ function StatusIcon({ kind }: { kind: StatusIconKind }) {
         <>
           <circle cx="12" cy="12" r="9" />
           <path d="M9.5 9a2.6 2.6 0 1 1 3.2 2.5c-.7.3-.7.8-.7 1.5M12 17h.01" />
+        </>
+      )}
+      {iconKind === "note" && (
+        <>
+          <path d="M5 4h14v12H9l-4 4V4Z" />
+          <path d="M8 8h8M8 12h5" />
         </>
       )}
       {iconKind === "loading" && (
@@ -172,7 +179,7 @@ export function App() {
   );
   const [queueGeneratedAt, setQueueGeneratedAt] = useState<number | null>(null);
   const [scope, setScope] = useState<CurationScope>("hostname");
-  const [verdict, setVerdict] = useState<CurationVerdict>("promoted");
+  const [verdict, setVerdict] = useState<CurationVerdict | undefined>();
   const [comment, setComment] = useState("");
   const [inspectionById, setInspectionById] = useState(
     new Map<string, InspectionState>(),
@@ -242,12 +249,7 @@ export function App() {
     if (!selectedItem) return;
     const priorDecision = getDecisionForReviewItem(places, selectedItem);
     setScope(priorDecision?.scope ?? "hostname");
-    setVerdict(
-      priorDecision?.verdict ??
-        (selectedItem.currentDisposition === "stop"
-          ? "promoted"
-          : "scenery-only"),
-    );
+    setVerdict(priorDecision?.verdict);
     setComment(priorDecision?.comment ?? "");
   }, [places, selectedItem]);
 
@@ -299,6 +301,7 @@ export function App() {
   function fileDecision(event: FormEvent) {
     event.preventDefault();
     if (!selectedItem) return;
+    if (!verdict && !comment.trim()) return;
     const target = getReviewTarget(selectedItem, scope);
     const priorDecision = getDecisionForReviewItem(places, selectedItem);
     const decision = createCuratedPlace({
@@ -542,7 +545,9 @@ export function App() {
               </fieldset>
 
               <fieldset>
-                <legend>Your decision</legend>
+                <legend>
+                  Your decision <i>optional</i>
+                </legend>
                 <div className="verdict-options">
                   {CURATION_VERDICTS.map((value) => (
                     <label
@@ -560,11 +565,20 @@ export function App() {
                     </label>
                   ))}
                 </div>
+                <p className="decision-help">
+                  {verdict ? (
+                    <button type="button" onClick={() => setVerdict(undefined)}>
+                      Clear classification
+                    </button>
+                  ) : (
+                    "No classification selected — your note can stand on its own."
+                  )}
+                </p>
               </fieldset>
 
               <label>
                 <span>
-                  Reviewer note <i>optional</i>
+                  Reviewer note <i>{verdict ? "optional" : "note only"}</i>
                 </span>
                 <textarea
                   value={comment}
@@ -574,8 +588,12 @@ export function App() {
               </label>
 
               <div className="form-actions">
-                <button className="primary-action" type="submit">
-                  File decision →
+                <button
+                  className="primary-action"
+                  type="submit"
+                  disabled={!verdict && !comment.trim()}
+                >
+                  {verdict ? "File decision" : "Save note"} →
                 </button>
                 <button
                   className="text-action"
@@ -648,10 +666,18 @@ export function App() {
                       </span>
                       {priorDecision && (
                         <b
-                          className={`decision-mark status-tone--${verdictTone(priorDecision.verdict)}`}
+                          className={`decision-mark ${
+                            priorDecision.verdict
+                              ? `status-tone--${verdictTone(priorDecision.verdict)}`
+                              : "status-tone--neutral"
+                          }`}
                         >
-                          <StatusIcon kind={priorDecision.verdict} />
-                          {VERDICT_LABELS[priorDecision.verdict]}
+                          <StatusIcon
+                            kind={priorDecision.verdict ?? "note"}
+                          />
+                          {priorDecision.verdict
+                            ? VERDICT_LABELS[priorDecision.verdict]
+                            : "Note only"}
                         </b>
                       )}
                     </span>

@@ -621,6 +621,24 @@ fieldset {
   box-shadow: inset 0 -5px 0 var(--verdict-color);
 }
 
+.decision-help {
+  margin-top: 7px;
+  color: rgba($ink, 0.55);
+  font-family: $mono;
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.decision-help button {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+}
+
 .form-actions {
   display: flex;
   align-items: center;
@@ -642,6 +660,15 @@ fieldset {
 .primary-action:hover,
 .export-panel button:hover {
   background: $blue;
+}
+
+.primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.primary-action:disabled:hover {
+  background: $ink;
 }
 
 .text-action,

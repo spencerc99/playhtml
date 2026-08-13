@@ -89,6 +89,19 @@ describe("curation queue", () => {
       scope: "hostname",
     });
   });
+
+  it("stores a note without inventing a verdict", () => {
+    const note = createCuratedPlace({
+      id: "note",
+      input: "example.com",
+      scope: "hostname",
+      comment: "Needs a broader policy discussion.",
+      updatedAt: "2026-08-12T12:00:00.000Z",
+    });
+
+    expect(note.verdict).toBeUndefined();
+    expect(parseStoredCuration(JSON.stringify([note]))).toEqual([note]);
+  });
 });
 
 describe("parseCommuteReviewResponse", () => {
@@ -189,7 +202,7 @@ describe("serializeCurationArtifact", () => {
     );
 
     expect(artifact).toEqual({
-      format: "internet-commute-curation/v2",
+      format: "internet-commute-curation/v3",
       generatedAt: "2026-08-12T13:00:00.000Z",
       decisions: [
         {
@@ -204,6 +217,25 @@ describe("serializeCurationArtifact", () => {
           verdict: "blocked",
         },
       ],
+    });
+  });
+
+  it("exports note-only entries without a verdict", () => {
+    const note = createCuratedPlace({
+      id: "note",
+      input: "notes.example.com",
+      scope: "hostname",
+      comment: "Review this family of pages later.",
+      updatedAt: "2026-08-12T12:00:00.000Z",
+    });
+    const artifact = JSON.parse(
+      serializeCurationArtifact([note], "2026-08-12T13:00:00.000Z"),
+    );
+
+    expect(artifact.decisions[0]).toEqual({
+      place: "notes.example.com",
+      scope: "hostname",
+      comment: "Review this family of pages later.",
     });
   });
 });

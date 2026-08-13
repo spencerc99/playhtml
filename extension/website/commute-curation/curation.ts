@@ -19,18 +19,18 @@ export type CuratedPlace = {
   place: string;
   domain: string;
   scope: CurationScope;
-  verdict: CurationVerdict;
+  verdict?: CurationVerdict;
   comment: string;
   updatedAt: string;
 };
 
 export type CurationArtifact = {
-  format: "internet-commute-curation/v2";
+  format: "internet-commute-curation/v3";
   generatedAt: string;
   decisions: Array<{
     place: string;
     scope: CurationScope;
-    verdict: CurationVerdict;
+    verdict?: CurationVerdict;
     comment?: string;
   }>;
 };
@@ -196,7 +196,7 @@ export function createCuratedPlace({
   id: string;
   input: string;
   scope: CurationScope;
-  verdict: CurationVerdict;
+  verdict?: CurationVerdict;
   comment: string;
   updatedAt: string;
 }): CuratedPlace {
@@ -253,18 +253,23 @@ export function serializeCurationArtifact(
   const decisions = [...places]
     .sort((a, b) => {
       const verdictDifference =
-        (verdictOrder.get(a.verdict) ?? 0) - (verdictOrder.get(b.verdict) ?? 0);
+        (a.verdict === undefined
+          ? CURATION_VERDICTS.length
+          : (verdictOrder.get(a.verdict) ?? 0)) -
+        (b.verdict === undefined
+          ? CURATION_VERDICTS.length
+          : (verdictOrder.get(b.verdict) ?? 0));
       return verdictDifference || a.place.localeCompare(b.place);
     })
     .map(({ place, scope, verdict, comment }) => ({
       place,
       scope,
-      verdict,
+      ...(verdict ? { verdict } : {}),
       ...(comment ? { comment } : {}),
     }));
 
   const artifact: CurationArtifact = {
-    format: "internet-commute-curation/v2",
+    format: "internet-commute-curation/v3",
     generatedAt,
     decisions,
   };
@@ -279,10 +284,13 @@ function migrateCuratedPlace(value: unknown): CuratedPlace[] {
     typeof candidate.id === "string" &&
     typeof candidate.place === "string" &&
     typeof candidate.domain === "string" &&
-    CURATION_VERDICTS.includes(candidate.verdict as CurationVerdict) &&
+    (candidate.verdict === undefined ||
+      CURATION_VERDICTS.includes(candidate.verdict as CurationVerdict)) &&
     typeof candidate.comment === "string" &&
     typeof candidate.updatedAt === "string";
-  if (!isStoredPlace) return [];
+  if (!isStoredPlace || (candidate.verdict === undefined && !candidate.comment)) {
+    return [];
+  }
 
   const scope: CurationScope =
     candidate.scope === "page" ||
@@ -296,7 +304,9 @@ function migrateCuratedPlace(value: unknown): CuratedPlace[] {
       id: candidate.id as string,
       ...normalized,
       scope,
-      verdict: candidate.verdict as CurationVerdict,
+      ...(candidate.verdict
+        ? { verdict: candidate.verdict as CurationVerdict }
+        : {}),
       comment: candidate.comment as string,
       updatedAt: candidate.updatedAt as string,
     },
