@@ -1308,6 +1308,50 @@ describe('buildCommuteResponse', () => {
 });
 
 describe('review candidate generation', () => {
+  it('uses the rider limit as a diversity preference instead of an exclusion', () => {
+    const navigationEvents = Array.from({ length: 8 }, (_, index) =>
+      event(
+        `navigation-${index}`,
+        'navigation',
+        `https://one-rider-${index}.com/essay`,
+        900 - index,
+        'one-rider',
+        `Essay ${index}`,
+      ),
+    );
+
+    const response = buildCommuteResponse(navigationEvents, [], 1_000);
+
+    expect(response.destinations).toHaveLength(8);
+  });
+
+  it('prioritizes another rider before filling from a frequent contributor', () => {
+    const response = buildCommuteResponse(
+      [
+        event('a-one', 'navigation', 'https://a-one.com/', 500, 'rider-a', 'A1'),
+        event('a-two', 'navigation', 'https://a-two.com/', 490, 'rider-a', 'A2'),
+        event(
+          'a-three',
+          'navigation',
+          'https://a-three.com/',
+          480,
+          'rider-a',
+          'A3',
+        ),
+        event('b-one', 'navigation', 'https://b-one.com/', 470, 'rider-b', 'B1'),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'a-one.com',
+      'a-two.com',
+      'b-one.com',
+      'a-three.com',
+    ]);
+  });
+
   it('can apply larger limits without changing the live defaults', () => {
     const navigationEvents = Array.from({ length: 80 }, (_, index) =>
       event(

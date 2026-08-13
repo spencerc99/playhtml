@@ -12,6 +12,7 @@ import { getDomain, getDomainWithoutSuffix, getSubdomain } from 'tldts';
 
 const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
 const DESTINATION_LIMIT = 50;
+const PREFERRED_STOPS_PER_RIDER = 2;
 const BASE_SCENERY_LIMIT = 100;
 const MAX_SCENERY_LIMIT = 200;
 const NAVIGATION_EVENTS_PER_SCENERY_ITEM = 5;
@@ -838,6 +839,10 @@ function buildDestinations(
   const destinations: CommuteDestination[] = [];
   const seenRegistrableDomains = new Set<string>();
   const stopsByRider = new Map<string, number>();
+  const deferredCandidates: Array<{
+    candidate: NavigationCandidate;
+    destination: CommuteDestination;
+  }> = [];
   const rankedCandidates = [...candidates].sort((first, second) => {
     const visitDifference =
       first.recentDomainVisits - second.recentDomainVisits;
@@ -861,20 +866,31 @@ function buildDestinations(
       continue;
     }
 
-    const riderStopCount = stopsByRider.get(candidate.pid) ?? 0;
-    if (riderStopCount >= 2) continue;
-
-    destinations.push({
+    const destination = {
       id: url,
       url,
       domain: candidate.domain,
       title,
       visitedAt: candidate.visitedAt,
       hue: candidate.hue,
-    });
+    };
+    const riderStopCount = stopsByRider.get(candidate.pid) ?? 0;
+    if (riderStopCount >= PREFERRED_STOPS_PER_RIDER) {
+      deferredCandidates.push({ candidate, destination });
+      continue;
+    }
+
+    destinations.push(destination);
     seenRegistrableDomains.add(candidate.registrableDomain);
     stopsByRider.set(candidate.pid, riderStopCount + 1);
     if (destinations.length === limit) break;
+  }
+
+  for (const { candidate, destination } of deferredCandidates) {
+    if (destinations.length === limit) break;
+    if (seenRegistrableDomains.has(candidate.registrableDomain)) continue;
+    destinations.push(destination);
+    seenRegistrableDomains.add(candidate.registrableDomain);
   }
 
   return destinations;
