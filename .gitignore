@@ -42,6 +42,7 @@ dist-ssr
 .output
 extension/dist
 extension/publish
+extension/website/public/commute-audit-data.json
 
 internal-docs
 
