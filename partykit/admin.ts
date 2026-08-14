@@ -478,15 +478,7 @@ export class AdminHandler {
     try {
       const liveYDoc = this.context.document;
       const base64 = encodeDocToBase64(liveYDoc);
-      const { error } = await supabase.from("documents").upsert(
-        {
-          name: this.context.name,
-          document: base64,
-        },
-        { onConflict: "name" }
-      );
-      if (error) throw new Error(error.message);
-      this.context.markDocumentPersisted(base64);
+      await this.context.saveDocumentBase64(base64);
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "content-type": "application/json" },
       });

@@ -57,6 +57,7 @@ mock.module("cloudflare:workers", () => ({
 type PersistedRow = { document: string | null };
 const persistedRow: PersistedRow = { document: null };
 let upsertCalls: Array<{ name: string; document: string }> = [];
+let upsertError: Error | null = null;
 
 // Counts reads of the documents row. The load-backoff contract requires that a
 // deferred room never touches Supabase at all, which this makes observable.
@@ -99,6 +100,9 @@ const supabaseStub = {
       },
       async upsert(row: { name: string; document: string }) {
         upsertCalls.push(row);
+        if (upsertError) {
+          return { error: { message: upsertError.message } };
+        }
         persistedRow.document = row.document;
         return { error: null };
       },
@@ -233,6 +237,7 @@ const COMPACT_LETHAL_DOCUMENT = encodeDoc(COMPACT_LETHAL_DOC);
 beforeEach(() => {
   persistedRow.document = null;
   upsertCalls = [];
+  upsertError = null;
   documentReadCount = 0;
   documentReadErrors = [];
   kvStore.clear();
@@ -240,6 +245,34 @@ beforeEach(() => {
 });
 
 describe("hydration write guards", () => {
+  test("room state has one precedence order for every write guard", async () => {
+    const { room } = createRoom();
+
+    expect(room.roomState()).toBe("loading");
+
+    room.documentLoadCompleted = true;
+    expect(room.roomState()).toBe("ready");
+
+    room.isSkippingSave = true;
+    expect(room.roomState()).toBe("save-paused");
+
+    room.isSkippingSave = false;
+    room.persistenceMode = {
+      kind: "transient",
+      reason: "database unavailable",
+      failedAt: Date.now(),
+    };
+    expect(room.roomState()).toBe("transient");
+
+    await room.circuitBreaker.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+    expect(room.roomState()).toBe("quarantined");
+  });
+
   test("a delayed autosave after hydration failure performs zero database writes", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     documentReadErrors = [
@@ -293,7 +326,7 @@ describe("hydration write guards", () => {
       "[PartyServer] Supabase persistence restored for room=example-room; leaving transient mode.",
     ]);
     expect(autosaveWarnings).toEqual([
-      "[PartyServer] Autosave skipped for room example-room: room document has not completed hydration or persistence is unavailable.",
+      "[PartyServer] Autosave skipped for room example-room: room state is loading.",
     ]);
     expect(upsertCalls).toEqual([]);
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
@@ -427,6 +460,28 @@ describe("hydration write guards", () => {
       error: "shared_data_unavailable",
       roomId: "example-room",
     });
+    expect(upsertCalls).toEqual([]);
+    expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
+  test("the reset lock blocks autosave and admin writes until finally releases it", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    room.isSkippingSave = true;
+
+    const autosaveResult = await room.persistLiveDocument({
+      allowCompaction: false,
+    });
+    const adminResponse = await room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/force-save-live",
+        { method: "POST" }
+      )
+    );
+
+    expect(autosaveResult).toBe(false);
+    expect(adminResponse.status).toBe(503);
     expect(upsertCalls).toEqual([]);
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
   });
@@ -1621,6 +1676,29 @@ describe("manual quarantine", () => {
 });
 
 describe("quarantine data safety", () => {
+  test("force-save-live cannot bypass quarantine protection", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    await room.circuitBreaker.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+
+    const response = await room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/force-save-live",
+        { method: "POST" }
+      )
+    );
+
+    expect(response.status).toBe(503);
+    expect(upsertCalls).toEqual([]);
+    expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
   test("autosave cannot overwrite the persisted document while quarantined", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
@@ -1651,6 +1729,44 @@ describe("quarantine data safety", () => {
       /Refusing to persist document for quarantined room/
     );
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
+  test("the document write helper refuses unhydrated shared-data writes", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+
+    await expect(room.saveDocumentBase64("overwrite-me")).rejects.toThrow(
+      /Cannot persist document while room state is loading/
+    );
+    expect(upsertCalls).toEqual([]);
+    expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
+  test("snapshot restore releases the save lock before returning", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+
+    await room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true });
+
+    expect(room.isSkippingSave).toBe(false);
+  });
+
+  test("snapshot restore releases the save lock when persistence fails", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    upsertError = new Error("database unavailable");
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await expect(
+        room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true })
+      ).rejects.toThrow("database unavailable");
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(room.isSkippingSave).toBe(false);
   });
 
   test("a hard reset refuses to run while quarantined", async () => {
@@ -1689,6 +1805,30 @@ describe("quarantine data safety", () => {
     });
     expect(upsertCalls).toHaveLength(1);
     expect(persistedRow.document).not.toBe(COMPACT_LETHAL_DOCUMENT);
+    expect(room.isSkippingSave).toBe(false);
+  });
+
+  test("a hard reset releases the save lock when persistence fails", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    Y.applyUpdate(
+      room.document,
+      new Uint8Array(Buffer.from(SMALL_DOCUMENT, "base64"))
+    );
+    upsertError = new Error("database unavailable");
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await expect(room.performHardReset()).rejects.toThrow(
+        "database unavailable"
+      );
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(room.isSkippingSave).toBe(false);
   });
 
   test("loading a committed reset repairs a stale server epoch", async () => {

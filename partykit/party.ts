@@ -132,6 +132,17 @@ type PersistLiveDocumentOptions = {
   allowCompaction: boolean;
 };
 
+type RoomState =
+  | "quarantined"
+  | "loading"
+  | "transient"
+  | "save-paused"
+  | "ready";
+
+type SaveDocumentOptions = {
+  operation?: "shared-data" | "reset" | "quarantine-repair";
+};
+
 type UsefulCompactedDocumentOptions = {
   sourceBase64?: string;
   documentSize: number;
@@ -506,8 +517,16 @@ export class PartyServer extends YServer {
     return this.persistenceMode.kind === "available";
   }
 
+  private roomState(): RoomState {
+    if (this.circuitBreaker.isQuarantined()) return "quarantined";
+    if (!this.documentLoadCompleted) return "loading";
+    if (!this.isPersistenceAvailable()) return "transient";
+    if (this.isSkippingSave) return "save-paused";
+    return "ready";
+  }
+
   private canWriteSharedData(): boolean {
-    return this.documentLoadCompleted && this.isPersistenceAvailable();
+    return this.roomState() === "ready";
   }
 
   override isReadOnly(_connection: Party.Connection): boolean {
@@ -533,7 +552,8 @@ export class PartyServer extends YServer {
   }
 
   getSharedDataWriteUnavailableResponse(): Response | null {
-    if (this.canWriteSharedData()) return null;
+    const state = this.roomState();
+    if (state === "ready") return null;
     if (this.persistenceMode.kind === "transient") {
       return createPersistenceUnavailableResponse({
         ...this.persistenceMode,
@@ -729,8 +749,25 @@ export class PartyServer extends YServer {
     return typeof data?.document === "string" ? data.document : null;
   }
 
-  private async saveDocumentBase64(documentBase64: string): Promise<void> {
-    this.circuitBreaker.assertNotQuarantined("persist document");
+  async saveDocumentBase64(
+    documentBase64: string,
+    options: SaveDocumentOptions = {}
+  ): Promise<void> {
+    const operation = options.operation ?? "shared-data";
+    const state = this.roomState();
+
+    if (operation !== "quarantine-repair") {
+      this.circuitBreaker.assertNotQuarantined("persist document");
+    }
+    const stateAllowsSave =
+      operation === "quarantine-repair" ||
+      state === "ready" ||
+      (operation === "reset" && state === "save-paused");
+    if (!stateAllowsSave) {
+      throw new Error(
+        `Cannot persist document while room state is ${state} (operation=${operation})`
+      );
+    }
 
     const { error } = await supabase.from("documents").upsert(
       {
@@ -743,6 +780,8 @@ export class PartyServer extends YServer {
     if (error) {
       throw new Error(error.message);
     }
+
+    this.markDocumentPersisted(documentBase64);
   }
 
   private async commitCompactedDocument({
@@ -795,12 +834,13 @@ export class PartyServer extends YServer {
       }
 
       await this.setResetEpoch(compactedDocument.resetEpoch);
-      await this.saveDocumentBase64(compactedDocument.base64);
+      await this.saveDocumentBase64(compactedDocument.base64, {
+        operation: "reset",
+      });
 
       this.compactionAutosaveSnapshot = compactedDocument.base64;
       replaceDocFromSnapshot(this.document, compactedDocument.base64);
       liveDocumentReplaced = true;
-      this.markDocumentPersisted(compactedDocument.base64);
       await afterReplace?.();
       return true;
     } catch (error) {
@@ -1015,24 +1055,21 @@ export class PartyServer extends YServer {
 
       // Save to database
       console.log(`[Restore Snapshot] Saving snapshot to database...`);
-      const { error: saveError } = await supabase.from("documents").upsert(
-        {
-          name: this.name,
-          document: updatedBase64,
-        },
-        { onConflict: "name" }
-      );
-
-      if (saveError) {
+      try {
+        await this.saveDocumentBase64(updatedBase64, {
+          operation: options?.allowQuarantined
+            ? "quarantine-repair"
+            : "reset",
+        });
+      } catch (saveError) {
         console.error(
           `[Restore Snapshot] Database save failed:`,
-          saveError.message,
+          getErrorMessage(saveError),
           saveError
         );
-        throw new Error(`Failed to save snapshot: ${saveError.message}`);
+        throw new Error(`Failed to save snapshot: ${getErrorMessage(saveError)}`);
       }
       console.log(`[Restore Snapshot] Successfully saved snapshot to database`);
-      this.markDocumentPersisted(updatedBase64);
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -1083,11 +1120,8 @@ export class PartyServer extends YServer {
 
       throw error;
     } finally {
-      // Re-enable autosave after a short delay
-      setTimeout(() => {
-        this.isSkippingSave = false;
-        console.log("[Restore Snapshot] Autosave re-enabled");
-      }, 1000);
+      this.isSkippingSave = false;
+      console.log("[Restore Snapshot] Autosave re-enabled");
     }
   }
 
@@ -1136,7 +1170,6 @@ export class PartyServer extends YServer {
   }
 
   private async scheduleEmptyRoomCompaction(): Promise<void> {
-    if (this.isSkippingSave) return;
     if (!this.canWriteSharedData()) return;
     if (this.getOpenConnectionCount() !== 0) return;
     if ((await this.circuitBreaker.getCompactionDisabledAt()) !== null) return;
@@ -1947,17 +1980,10 @@ export class PartyServer extends YServer {
   }: PersistLiveDocumentOptions): Promise<boolean> {
     const doc = this.document;
 
-    if (!this.canWriteSharedData()) {
+    const state = this.roomState();
+    if (state !== "ready") {
       console.warn(
-        `[PartyServer] Autosave skipped for room ${this.name}: room document has not completed hydration or persistence is unavailable.`
-      );
-      return false;
-    }
-
-    // Skip autosave if we are performing a reset operation
-    if (this.isSkippingSave) {
-      console.log(
-        "[PartyServer] Skipping autosave due to active reset operation"
+        `[PartyServer] Autosave skipped for room ${this.name}: room state is ${state}.`
       );
       return false;
     }
@@ -2070,8 +2096,6 @@ export class PartyServer extends YServer {
       );
       return false;
     }
-    this.markDocumentPersisted(documentBase64);
-
     if (allowCompaction && activeConnectionCount > 0) {
       const compacted = await this.maybeCompactLargeConnectedRoom({
         documentSize,
@@ -2630,24 +2654,19 @@ export class PartyServer extends YServer {
 
       // Save to database
       console.log(`[Hard Reset] Saving fresh doc to database...`);
-      const { error: saveError } = await supabase.from("documents").upsert(
-        {
-          name: this.name,
-          document: freshBase64,
-        },
-        { onConflict: "name" }
-      );
-
-      if (saveError) {
+      try {
+        await this.saveDocumentBase64(freshBase64, { operation: "reset" });
+      } catch (saveError) {
         console.error(
           `[Hard Reset] Database save failed:`,
-          saveError.message,
+          getErrorMessage(saveError),
           saveError
         );
-        throw new Error(`Failed to save reset document: ${saveError.message}`);
+        throw new Error(
+          `Failed to save reset document: ${getErrorMessage(saveError)}`
+        );
       }
       console.log(`[Hard Reset] Successfully saved fresh doc to database`);
-      this.markDocumentPersisted(freshBase64);
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -2699,12 +2718,8 @@ export class PartyServer extends YServer {
 
       throw error;
     } finally {
-      // Re-enable autosave after a short delay to let the dust settle
-      // Use setTimeout to ensure any pending callbacks have been processed
-      setTimeout(() => {
-        this.isSkippingSave = false;
-        console.log("[Hard Reset] Autosave re-enabled");
-      }, 1000);
+      this.isSkippingSave = false;
+      console.log("[Hard Reset] Autosave re-enabled");
     }
   }
 
@@ -2757,7 +2772,6 @@ export class PartyServer extends YServer {
       return;
     }
 
-    if (this.isSkippingSave) return;
     if (!this.canWriteSharedData()) return;
     if (this.getOpenConnectionCount() !== 0) return;
 
