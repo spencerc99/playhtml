@@ -37,6 +37,8 @@ import {
   DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
   DEFAULT_FAILURE_BACKOFF_MS,
   DEFAULT_FAILURE_BACKOFF_MAX_MS,
+  DEFAULT_SUPABASE_LOAD_ATTEMPTS,
+  DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
@@ -92,7 +94,7 @@ import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
   getErrorMessage,
-  withTimeout,
+  retryWithTimeout,
   type PersistenceMode,
 } from "./persistenceMode";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
@@ -128,6 +130,17 @@ type CommitCompactedDocumentOptions = {
 
 type PersistLiveDocumentOptions = {
   allowCompaction: boolean;
+};
+
+type RoomState =
+  | "quarantined"
+  | "loading"
+  | "transient"
+  | "save-paused"
+  | "ready";
+
+type SaveDocumentOptions = {
+  operation?: "shared-data" | "reset" | "quarantine-repair";
 };
 
 type UsefulCompactedDocumentOptions = {
@@ -481,8 +494,43 @@ export class PartyServer extends YServer {
     );
   }
 
+  private getSupabaseLoadAttempts(): number {
+    return Math.max(
+      1,
+      Math.floor(
+        readPositiveNumberEnv(
+          "SUPABASE_LOAD_ATTEMPTS",
+          DEFAULT_SUPABASE_LOAD_ATTEMPTS
+        )
+      )
+    );
+  }
+
+  private getSupabaseLoadRetryDelayMs(): number {
+    return readPositiveNumberEnv(
+      "SUPABASE_LOAD_RETRY_DELAY_MS",
+      DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS
+    );
+  }
+
   isPersistenceAvailable(): boolean {
     return this.persistenceMode.kind === "available";
+  }
+
+  private roomState(): RoomState {
+    if (this.circuitBreaker.isQuarantined()) return "quarantined";
+    if (!this.documentLoadCompleted) return "loading";
+    if (!this.isPersistenceAvailable()) return "transient";
+    if (this.isSkippingSave) return "save-paused";
+    return "ready";
+  }
+
+  private canWriteSharedData(): boolean {
+    return this.roomState() === "ready";
+  }
+
+  override isReadOnly(_connection: Party.Connection): boolean {
+    return !this.canWriteSharedData();
   }
 
   markPersistenceAvailable(): void {
@@ -498,16 +546,37 @@ export class PartyServer extends YServer {
     this.persistenceMode = { kind: "available" };
   }
 
-  getPersistenceUnavailableResponse(): Response | null {
-    if (this.persistenceMode.kind !== "transient") return null;
-    return createPersistenceUnavailableResponse({
-      ...this.persistenceMode,
-      roomName: this.name,
-    });
+  markDocumentHydrated(): void {
+    this.documentLoadCompleted = true;
+    this.markPersistenceAvailable();
+  }
+
+  getSharedDataWriteUnavailableResponse(): Response | null {
+    const state = this.roomState();
+    if (state === "ready") return null;
+    if (this.persistenceMode.kind === "transient") {
+      return createPersistenceUnavailableResponse({
+        ...this.persistenceMode,
+        roomName: this.name,
+      });
+    }
+    return new Response(
+      JSON.stringify({
+        error: "shared_data_unavailable",
+        message:
+          "Shared-data and admin writes are unavailable until the room document has loaded.",
+        roomId: this.name,
+      }),
+      {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      }
+    );
   }
 
   private enterTransientPersistenceMode(error: unknown): void {
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
+    const attempts = this.getSupabaseLoadAttempts();
     this.persistenceMode = {
       kind: "transient",
       reason: getErrorMessage(error),
@@ -517,6 +586,7 @@ export class PartyServer extends YServer {
       formatPersistenceFailureLog({
         roomName: this.name,
         timeoutMs,
+        attempts,
         error,
       })
     );
@@ -679,8 +749,25 @@ export class PartyServer extends YServer {
     return typeof data?.document === "string" ? data.document : null;
   }
 
-  private async saveDocumentBase64(documentBase64: string): Promise<void> {
-    this.circuitBreaker.assertNotQuarantined("persist document");
+  async saveDocumentBase64(
+    documentBase64: string,
+    options: SaveDocumentOptions = {}
+  ): Promise<void> {
+    const operation = options.operation ?? "shared-data";
+    const state = this.roomState();
+
+    if (operation !== "quarantine-repair") {
+      this.circuitBreaker.assertNotQuarantined("persist document");
+    }
+    const stateAllowsSave =
+      operation === "quarantine-repair" ||
+      state === "ready" ||
+      (operation === "reset" && state === "save-paused");
+    if (!stateAllowsSave) {
+      throw new Error(
+        `Cannot persist document while room state is ${state} (operation=${operation})`
+      );
+    }
 
     const { error } = await supabase.from("documents").upsert(
       {
@@ -693,6 +780,8 @@ export class PartyServer extends YServer {
     if (error) {
       throw new Error(error.message);
     }
+
+    this.markDocumentPersisted(documentBase64);
   }
 
   private async commitCompactedDocument({
@@ -745,12 +834,13 @@ export class PartyServer extends YServer {
       }
 
       await this.setResetEpoch(compactedDocument.resetEpoch);
-      await this.saveDocumentBase64(compactedDocument.base64);
+      await this.saveDocumentBase64(compactedDocument.base64, {
+        operation: "reset",
+      });
 
       this.compactionAutosaveSnapshot = compactedDocument.base64;
       replaceDocFromSnapshot(this.document, compactedDocument.base64);
       liveDocumentReplaced = true;
-      this.markDocumentPersisted(compactedDocument.base64);
       await afterReplace?.();
       return true;
     } catch (error) {
@@ -965,24 +1055,21 @@ export class PartyServer extends YServer {
 
       // Save to database
       console.log(`[Restore Snapshot] Saving snapshot to database...`);
-      const { error: saveError } = await supabase.from("documents").upsert(
-        {
-          name: this.name,
-          document: updatedBase64,
-        },
-        { onConflict: "name" }
-      );
-
-      if (saveError) {
+      try {
+        await this.saveDocumentBase64(updatedBase64, {
+          operation: options?.allowQuarantined
+            ? "quarantine-repair"
+            : "reset",
+        });
+      } catch (saveError) {
         console.error(
           `[Restore Snapshot] Database save failed:`,
-          saveError.message,
+          getErrorMessage(saveError),
           saveError
         );
-        throw new Error(`Failed to save snapshot: ${saveError.message}`);
+        throw new Error(`Failed to save snapshot: ${getErrorMessage(saveError)}`);
       }
       console.log(`[Restore Snapshot] Successfully saved snapshot to database`);
-      this.markDocumentPersisted(updatedBase64);
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -1008,6 +1095,7 @@ export class PartyServer extends YServer {
       const liveYDoc = this.document;
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
+      this.markDocumentHydrated();
       console.log(`[Restore Snapshot] Successfully reloaded live server`);
 
       console.log(
@@ -1032,11 +1120,8 @@ export class PartyServer extends YServer {
 
       throw error;
     } finally {
-      // Re-enable autosave after a short delay
-      setTimeout(() => {
-        this.isSkippingSave = false;
-        console.log("[Restore Snapshot] Autosave re-enabled");
-      }, 1000);
+      this.isSkippingSave = false;
+      console.log("[Restore Snapshot] Autosave re-enabled");
     }
   }
 
@@ -1085,8 +1170,7 @@ export class PartyServer extends YServer {
   }
 
   private async scheduleEmptyRoomCompaction(): Promise<void> {
-    if (this.isSkippingSave) return;
-    if (!this.isPersistenceAvailable()) return;
+    if (!this.canWriteSharedData()) return;
     if (this.getOpenConnectionCount() !== 0) return;
     if ((await this.circuitBreaker.getCompactionDisabledAt()) !== null) return;
 
@@ -1100,9 +1184,9 @@ export class PartyServer extends YServer {
   }
 
   async retryAutomaticCompaction() {
-    if (!this.isPersistenceAvailable()) {
+    if (!this.canWriteSharedData()) {
       throw new Error(
-        "Cannot retry automatic compaction while persistence is unavailable"
+        "Cannot retry automatic compaction until the room document has loaded and persistence is available"
       );
     }
     if (this.getOpenConnectionCount() !== 0) {
@@ -1325,6 +1409,12 @@ export class PartyServer extends YServer {
         const parsed = JSON.parse(message);
 
         if (parsed.type === "add-shared-reference") {
+          if (!this.canWriteSharedData()) {
+            console.warn(
+              `[Bridge] Ignoring add-shared-reference for room ${this.name}: document hydration or persistence unavailable.`
+            );
+            return;
+          }
           // Handle dynamic addition of shared reference
           // TODO: this MIGHT still has some data inconsistencies when a source renders a dynamic element and changes it and then when we add the shared reference, it doesn't get the updated data
           await this.handleAddSharedReference(parsed.reference, sender);
@@ -1332,6 +1422,12 @@ export class PartyServer extends YServer {
           // Handle individual permission requests
           await this.handleExportPermissions(parsed.elementIds, sender);
         } else if (parsed.type === "register-shared-element") {
+          if (!this.canWriteSharedData()) {
+            console.warn(
+              `[Bridge] Ignoring register-shared-element for room ${this.name}: document hydration or persistence unavailable.`
+            );
+            return;
+          }
           // Handle dynamic registration of shared source element
           // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
           await this.handleRegisterSharedElement(parsed.element, sender);
@@ -1500,8 +1596,9 @@ export class PartyServer extends YServer {
     // Parse from the WebSocket request URL
     const sharedReferences = parseSharedReferencesFromUrl(ctx.request.url);
 
-    // Persist consumer interest mapping for later pulls/mirroring
-    if (sharedReferences.length) {
+    // Persist consumer interest mapping for later pulls/mirroring only after
+    // the room has loaded. Transient rooms remain awareness-only.
+    if (this.canWriteSharedData() && sharedReferences.length) {
       const entries = this.groupRefsToEntries(sharedReferences);
       const { entries: merged } = await this.mergeAndStoreSharedRefs(entries);
       await this.subscribeAndHydrate(merged);
@@ -1509,7 +1606,7 @@ export class PartyServer extends YServer {
 
     // Persist source-declared permissions for simple global read-only
     const sharedElements = parseSharedElementsFromUrl(ctx.request.url);
-    if (sharedElements.length) {
+    if (this.canWriteSharedData() && sharedElements.length) {
       const permissionsByElementId: Record<string, SharedElementPermissions> =
         {};
       for (const el of sharedElements) {
@@ -1655,15 +1752,36 @@ export class PartyServer extends YServer {
 
     // Load the document from Supabase on first connection
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
-    const query = supabase
-      .from("documents")
-      .select("document")
-      .eq("name", this.name)
-      .maybeSingle();
-    const result = await withTimeout(Promise.resolve(query), {
-      timeoutMs,
-      errorMessage: `Supabase document load timed out after ${timeoutMs}ms`,
-    }).catch((error) => {
+    const attempts = this.getSupabaseLoadAttempts();
+    const retryDelayMs = this.getSupabaseLoadRetryDelayMs();
+    let successfulAttempt = 1;
+    const result = await retryWithTimeout(
+      async (signal, attempt) => {
+        successfulAttempt = attempt;
+        const queryResult = await supabase
+          .from("documents")
+          .select("document")
+          .eq("name", this.name)
+          .abortSignal(signal)
+          .maybeSingle();
+        if (queryResult.error) {
+          throw new Error(queryResult.error.message);
+        }
+        return queryResult;
+      },
+      {
+        attempts,
+        timeoutMs,
+        retryDelayMs,
+        errorMessage: `Supabase document load timed out after ${timeoutMs}ms`,
+        onRetry: ({ attempt, retryAfterMs, error }) => {
+          console.warn(
+            `[PartyServer] Supabase document load attempt ${attempt}/${attempts} failed for room=${this.name}; ` +
+              `retrying in ${retryAfterMs}ms: ${getErrorMessage(error)}`
+          );
+        },
+      }
+    ).catch((error) => {
       this.enterTransientPersistenceMode(error);
       return null;
     });
@@ -1676,10 +1794,10 @@ export class PartyServer extends YServer {
       return;
     }
 
-    if (result.error) {
-      this.enterTransientPersistenceMode(new Error(result.error.message));
-      await this.releaseLoadAttempt(loadAttempts);
-      return;
+    if (successfulAttempt > 1) {
+      console.log(
+        `[PartyServer] Supabase document load recovered for room=${this.name} after ${successfulAttempt} attempts.`
+      );
     }
 
     this.markPersistenceAvailable();
@@ -1721,7 +1839,7 @@ export class PartyServer extends YServer {
     // Hydration completed without killing the isolate, so the failure history
     // and any pending backoff are cleared.
     await this.circuitBreaker.completeRiskyOperation("load");
-    this.documentLoadCompleted = true;
+    this.markDocumentHydrated();
   }
 
   // Undoes this start's increment when the load ended before hydration could be
@@ -1862,17 +1980,10 @@ export class PartyServer extends YServer {
   }: PersistLiveDocumentOptions): Promise<boolean> {
     const doc = this.document;
 
-    if (!this.isPersistenceAvailable()) {
+    const state = this.roomState();
+    if (state !== "ready") {
       console.warn(
-        `[PartyServer] Autosave skipped for room ${this.name}: Supabase persistence unavailable, room is in transient mode.`
-      );
-      return false;
-    }
-
-    // Skip autosave if we are performing a reset operation
-    if (this.isSkippingSave) {
-      console.log(
-        "[PartyServer] Skipping autosave due to active reset operation"
+        `[PartyServer] Autosave skipped for room ${this.name}: room state is ${state}.`
       );
       return false;
     }
@@ -1985,8 +2096,6 @@ export class PartyServer extends YServer {
       );
       return false;
     }
-    this.markDocumentPersisted(documentBase64);
-
     if (allowCompaction && activeConnectionCount > 0) {
       const compacted = await this.maybeCompactLargeConnectedRoom({
         documentSize,
@@ -2147,6 +2256,24 @@ export class PartyServer extends YServer {
         return body;
       }
 
+      if (
+        !this.canWriteSharedData() &&
+        (isSubscribeRequest(body) || isApplySubtreesImmediateRequest(body))
+      ) {
+        return new Response(
+          JSON.stringify({
+            error: "shared_data_unavailable",
+            message:
+              "Shared-data writes are unavailable until the room document has loaded and persistence is available.",
+            roomId: this.name,
+          }),
+          {
+            status: 503,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
+
       if (isSubscribeRequest(body)) {
         // Called on SOURCE room; registers a consumer room id
         const {
@@ -2229,9 +2356,9 @@ export class PartyServer extends YServer {
       }
 
       if (isApplySubtreesImmediateRequest(body)) {
-        if (!this.isPersistenceAvailable()) {
+        if (!this.canWriteSharedData()) {
           console.warn(
-            `[Bridge] Ignoring apply-subtrees for transient room ${this.name}: Supabase persistence unavailable.`
+            `[Bridge] Ignoring apply-subtrees for room ${this.name}: document hydration or persistence unavailable.`
           );
           const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
@@ -2527,24 +2654,19 @@ export class PartyServer extends YServer {
 
       // Save to database
       console.log(`[Hard Reset] Saving fresh doc to database...`);
-      const { error: saveError } = await supabase.from("documents").upsert(
-        {
-          name: this.name,
-          document: freshBase64,
-        },
-        { onConflict: "name" }
-      );
-
-      if (saveError) {
+      try {
+        await this.saveDocumentBase64(freshBase64, { operation: "reset" });
+      } catch (saveError) {
         console.error(
           `[Hard Reset] Database save failed:`,
-          saveError.message,
+          getErrorMessage(saveError),
           saveError
         );
-        throw new Error(`Failed to save reset document: ${saveError.message}`);
+        throw new Error(
+          `Failed to save reset document: ${getErrorMessage(saveError)}`
+        );
       }
       console.log(`[Hard Reset] Successfully saved fresh doc to database`);
-      this.markDocumentPersisted(freshBase64);
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -2596,12 +2718,8 @@ export class PartyServer extends YServer {
 
       throw error;
     } finally {
-      // Re-enable autosave after a short delay to let the dust settle
-      // Use setTimeout to ensure any pending callbacks have been processed
-      setTimeout(() => {
-        this.isSkippingSave = false;
-        console.log("[Hard Reset] Autosave re-enabled");
-      }, 1000);
+      this.isSkippingSave = false;
+      console.log("[Hard Reset] Autosave re-enabled");
     }
   }
 
@@ -2654,8 +2772,7 @@ export class PartyServer extends YServer {
       return;
     }
 
-    if (this.isSkippingSave) return;
-    if (!this.isPersistenceAvailable()) return;
+    if (!this.canWriteSharedData()) return;
     if (this.getOpenConnectionCount() !== 0) return;
 
     const run = async () => {
@@ -2743,9 +2860,9 @@ export class PartyServer extends YServer {
 
   // Flush batched bridge updates to subscribers and source rooms
   private async flushBridgeUpdates(yDoc: Y.Doc): Promise<void> {
-    if (!this.isPersistenceAvailable()) {
+    if (!this.canWriteSharedData()) {
       console.warn(
-        `[PartyServer] Bridge flush skipped for room ${this.name}: Supabase persistence unavailable, room is in transient mode.`
+        `[PartyServer] Bridge flush skipped for room ${this.name}: document hydration or persistence unavailable.`
       );
       return;
     }
