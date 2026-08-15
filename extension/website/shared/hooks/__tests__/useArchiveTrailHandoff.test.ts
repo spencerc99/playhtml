@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { TrailState } from "../../types";
 import {
   createCompletedTrailResidue,
+  getArchiveTrailHandoffOutput,
   selectArchiveTrailHandoffAction,
 } from "../useArchiveTrailHandoff";
 
@@ -78,6 +79,9 @@ describe("archive trail handoff", () => {
         false,
       ),
     ).toBe("clear-and-wait");
+    expect(
+      getArchiveTrailHandoffOutput([trailState("old-query", 100)], [], true),
+    ).toEqual([]);
     expect(
       selectArchiveTrailHandoffAction(
         "1:1:second",

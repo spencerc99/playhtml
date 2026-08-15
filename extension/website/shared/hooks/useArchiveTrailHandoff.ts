@@ -45,6 +45,15 @@ export function createCompletedTrailResidue(
     }));
 }
 
+export function getArchiveTrailHandoffOutput(
+  trailStates: TrailState[],
+  residue: TrailState[],
+  contextResetPending: boolean,
+): TrailState[] {
+  if (contextResetPending) return [];
+  return residue.length > 0 ? [...residue, ...trailStates] : trailStates;
+}
+
 export function useArchiveTrailHandoff(
   trailStates: TrailState[],
   cycleKey: string,
@@ -98,11 +107,11 @@ export function useArchiveTrailHandoff(
     }
   }
 
+  const residue = residueRef.current;
+  const contextResetPending = contextResetPendingRef.current;
   return useMemo(
     () =>
-      residueRef.current.length > 0
-        ? [...residueRef.current, ...trailStates]
-        : trailStates,
-    [contextKey, cycleKey, enabled, trailStates],
+      getArchiveTrailHandoffOutput(trailStates, residue, contextResetPending),
+    [contextResetPending, residue, trailStates],
   );
 }
