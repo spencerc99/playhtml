@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 import {
-  flushMicrotasks,
+  flushPresencePublishes,
   getPresenceSocketForRoom,
   getPresenceSockets,
   sentChannelUpdates,
@@ -92,7 +92,7 @@ describe("element awareness sync", () => {
       .get("room-scoped-presence")!;
     handler.setMyAwareness({ active: true } as any);
     // Publishing is coalesced onto a microtask.
-    await flushMicrotasks();
+    await flushPresencePublishes();
 
     const pageSocket = getPresenceSocketForRoom(playhtml.roomId);
     const cursorSocket = getPresenceSockets().find(
@@ -223,7 +223,7 @@ describe("element awareness sync", () => {
       document.body.appendChild(el);
     }
     playhtml.setupPlayElements();
-    await flushMicrotasks();
+    await flushPresencePublishes();
 
     const socket = getPresenceSocketForRoom(playhtml.roomId);
     const updates = sentChannelUpdates(socket, "element:shard:0");
