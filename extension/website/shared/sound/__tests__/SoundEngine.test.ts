@@ -94,6 +94,7 @@ class TestAudioContext {
   destination = new TestAudioNode();
   sampleRate = 100;
   state: AudioContextState = "running";
+  gains: TestGainNode[] = [];
   oscillators: TestOscillatorNode[] = [];
 
   createBiquadFilter(): BiquadFilterNode {
@@ -115,7 +116,9 @@ class TestAudioContext {
   }
 
   createGain(): GainNode {
-    return new TestGainNode() as unknown as GainNode;
+    const gain = new TestGainNode();
+    this.gains.push(gain);
+    return gain as unknown as GainNode;
   }
 
   createOscillator(): OscillatorNode {
@@ -154,6 +157,74 @@ afterEach(() => {
 });
 
 describe("SoundEngine cursor instruments", () => {
+  it("does not restart the master gain ramp when trail count is unchanged", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const frame = {
+      trailIndex: 0,
+      x: 0,
+      y: 0,
+      prevX: 0,
+      prevY: 0,
+      cursorType: "pointer",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: true,
+    };
+    engine.tick(0, [frame]);
+    const masterGainEvents = context.gains[0].gain.events;
+    const eventCount = masterGainEvents.length;
+
+    context.currentTime += 1 / 60;
+    engine.tick(100, [frame]);
+
+    expect(masterGainEvents).toHaveLength(eventCount);
+  });
+
+  it("updates continuous voice parameters at audio control rate", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+
+    const frame = (x: number) => ({
+      trailIndex: 0,
+      x,
+      y: 0,
+      prevX: 0,
+      prevY: 0,
+      cursorType: "pointer",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: false,
+    });
+    engine.tick(0, [frame(0)]);
+    context.currentTime += 1 / 60;
+    engine.tick(100, [frame(10)]);
+
+    const state = engine as unknown as {
+      voices: Map<
+        number,
+        { gainNode: TestGainNode; panNode: TestStereoPannerNode }
+      >;
+    };
+    const voice = state.voices.get(0)!;
+    const gainEventCount = voice.gainNode.gain.events.length;
+    const panEventCount = voice.panNode.pan.events.length;
+
+    context.currentTime += 1 / 60;
+    engine.tick(200, [frame(20)]);
+
+    expect(voice.gainNode.gain.events).toHaveLength(gainEventCount);
+    expect(voice.panNode.pan.events).toHaveLength(panEventCount);
+
+    context.currentTime += 0.05;
+    engine.tick(300, [frame(30)]);
+
+    expect(voice.gainNode.gain.events.length).toBeGreaterThan(gainEventCount);
+    expect(voice.panNode.pan.events.length).toBeGreaterThan(panEventCount);
+  });
+
   it("crossfades both oscillators when the cursor timbre changes", async () => {
     const engine = new SoundEngine();
     await engine.init();
@@ -228,7 +299,7 @@ describe("SoundEngine cursor instruments", () => {
     }
   });
 
-  it("recreates a released voice when a live trail resumes", async () => {
+  it("reuses a faded voice when a live trail resumes", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(100);
@@ -274,9 +345,28 @@ describe("SoundEngine cursor instruments", () => {
       },
     ]);
 
-    expect(context.oscillators).toHaveLength(4);
-    expect(context.oscillators[2].startTimes).toEqual([context.currentTime]);
-    expect(context.oscillators[3].startTimes).toEqual([context.currentTime]);
+    for (let cycle = 0; cycle < 100; cycle++) {
+      context.currentTime += 0.1;
+      engine.tick(400 + cycle * 200, []);
+      context.currentTime += 0.1;
+      engine.tick(500 + cycle * 200, [
+        {
+          trailIndex: 0,
+          x: 21 + cycle,
+          y: 0,
+          prevX: 20 + cycle,
+          prevY: 0,
+          cursorType: "pointer",
+          progress: 0.6,
+          color: "#000",
+          isNewlyActive: false,
+        },
+      ]);
+    }
+
+    expect(context.oscillators).toHaveLength(2);
+    expect(context.oscillators[0].stopTimes).toEqual([]);
+    expect(context.oscillators[1].stopTimes).toEqual([]);
   });
 
   it("retires all state for a finished live trail", async () => {
@@ -330,6 +420,105 @@ describe("SoundEngine cursor instruments", () => {
     expect(state.crossingCooldowns).toEqual(new Map());
     expect(primaryLevel.connections).not.toEqual([]);
 
+    context.oscillators[0].onended?.();
+
+    expect(primaryLevel.connections).toEqual([]);
+  });
+
+  it("normalizes movement gain across delayed animation frames", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+
+    engine.tick(0, [
+      {
+        trailIndex: 0,
+        x: 0,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0,
+        color: "#000",
+        isNewlyActive: true,
+      },
+    ]);
+
+    context.currentTime += 1 / 60;
+    engine.tick(100, [
+      {
+        trailIndex: 0,
+        x: 4,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0.1,
+        color: "#000",
+        isNewlyActive: false,
+      },
+    ]);
+
+    const state = engine as unknown as {
+      voices: Map<number, { gainNode: TestGainNode }>;
+    };
+    const gain = state.voices.get(0)!.gainNode.gain;
+    const regularFrameTarget = gain.events.at(-1)?.value;
+
+    context.currentTime += 0.25;
+    engine.tick(350, [
+      {
+        trailIndex: 0,
+        x: 8,
+        y: 0,
+        prevX: 4,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0.2,
+        color: "#000",
+        isNewlyActive: false,
+      },
+    ]);
+
+    const delayedFrameTarget = gain.events.at(-1)?.value;
+    expect(delayedFrameTarget).toBeLessThan(regularFrameTarget! / 2);
+  });
+
+  it("disconnects voice graphs after a playback reset", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+
+    engine.tick(0, [
+      {
+        trailIndex: 0,
+        x: 0,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0,
+        color: "#000",
+        isNewlyActive: true,
+      },
+    ]);
+    context.currentTime += 1 / 60;
+    engine.tick(100, [
+      {
+        trailIndex: 0,
+        x: 10,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "pointer",
+        progress: 0.1,
+        color: "#000",
+        isNewlyActive: false,
+      },
+    ]);
+
+    const primaryLevel = context.oscillators[0].connections[0];
+    engine.reset();
     context.oscillators[0].onended?.();
 
     expect(primaryLevel.connections).toEqual([]);
