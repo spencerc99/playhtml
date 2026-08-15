@@ -523,6 +523,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         engine.init().then(() => {
           engine.setCanvasWidth(viewportSize.width);
           engine.setConfig({
+            mode: settings.soundMode,
             chordVoicing: settings.soundChordVoicing,
             cursorInstruments: settings.soundCursorInstruments,
             crossingDissonance: settings.soundCrossingDissonance,
@@ -552,11 +553,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // Sync sound config settings to the engine
   useEffect(() => {
     soundEngineRef.current?.setConfig({
+      mode: settings.soundMode,
       chordVoicing: settings.soundChordVoicing,
       cursorInstruments: settings.soundCursorInstruments,
       crossingDissonance: settings.soundCrossingDissonance,
     });
   }, [
+    settings.soundMode,
     settings.soundChordVoicing,
     settings.soundCursorInstruments,
     settings.soundCrossingDissonance,

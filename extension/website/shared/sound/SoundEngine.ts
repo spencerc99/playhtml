@@ -15,6 +15,9 @@ import { NotesEngine } from "./NotesEngine";
 /** Minimum time between note changes for a single voice (ms) */
 const MIN_NOTE_INTERVAL_MS = 80;
 
+/** Nominal frame interval, used to rate-limit per-frame smoothing. */
+const FRAME_MS = 16;
+
 /** Duration of cursor-instrument timbre crossfades (seconds). */
 const OSCILLATOR_CROSSFADE_SECONDS = 0.03;
 
@@ -46,10 +49,12 @@ const MIN_POLYPHONY_GAIN_SCALE = 0.35;
 /**
  * How trail motion becomes sound.
  * "sustained" holds one continuous oscillator per trail whose pitch and gain
- * follow the cursor. "notes" emits discrete plucked events as a trail travels,
- * so movement reads as rhythm and melody rather than a drone.
+ * follow the cursor. "spotlight" is that same sustained sound with the
+ * relative-velocity soloist treatment layered on. "notes" emits discrete
+ * plucked events as a trail travels, so movement reads as rhythm and melody
+ * rather than a drone.
  */
-export type SoundMode = "sustained" | "notes";
+export type SoundMode = "sustained" | "spotlight" | "notes";
 
 /** Configurable sound modes */
 export interface SoundConfig {
@@ -57,6 +62,11 @@ export interface SoundConfig {
   chordVoicing: boolean;
   cursorInstruments: boolean;
   crossingDissonance: boolean;
+  /**
+   * Relative-velocity spotlight over the sustained voices: the fastest clear
+   * outlier is lifted and brightened while the rest duck behind it.
+   */
+  spotlight: boolean;
 }
 
 const DEFAULT_CONFIG: SoundConfig = {
@@ -64,6 +74,34 @@ const DEFAULT_CONFIG: SoundConfig = {
   chordVoicing: false,
   cursorInstruments: false,
   crossingDissonance: false,
+  spotlight: false,
+};
+
+/**
+ * Spotlight tuning. Detection thresholds mirror the discrete-note engine's
+ * soloist rules so the two modes promote the same trails, but the treatment
+ * here is gain/brightness on continuous voices rather than note selection.
+ */
+const SPOTLIGHT_TUNING = {
+  /** Seconds of velocity history behind the rolling scene average. */
+  velocityWindowMs: 3000,
+  /** Velocity ratio vs the scene average that promotes a trail to soloist. */
+  velocityRatio: 2.5,
+  /** Absolute floor so a calm scene never promotes near-still noise. */
+  minVelocity: 6,
+  /** Gain multiplier applied to the soloist. */
+  soloistGain: 1.35,
+  /** Gain multiplier applied to every other voice while a soloist holds. */
+  duckedGain: 0.4,
+  /** Ramp onto the soloist/ducked targets — fast enough to feel like a cue. */
+  attackSeconds: 0.25,
+  /** Recovery back to unity once the outlier subsides. */
+  releaseSeconds: 1,
+  /** Filter cutoff range the soloist's brightness sweeps across. */
+  filterMinHz: 800,
+  filterMaxHz: 6000,
+  /** Velocity that maps to fully-open brightness. */
+  filterFullVelocity: 40,
 };
 
 /** Cursor types that use repeating pluck instead of sustained tone */
@@ -110,6 +148,13 @@ export class SoundEngine {
   private crossingCooldowns: Map<string, number> = new Map();
   /** Discrete-note path, used only while config.mode is "notes". */
   private notesEngine: NotesEngine = new NotesEngine();
+  /** Rolling velocity samples across all trails: [timestampMs, velocity]. */
+  private spotlightVelocitySamples: Array<[number, number]> = [];
+  /** Trail currently held by the sustained spotlight, or null. */
+  private spotlightTrailIndex: number | null = null;
+  private spotlightSceneAverage = 0;
+  /** Per-trail smoothed spotlight gain multiplier, so ramps stay continuous. */
+  private spotlightGains: Map<number, number> = new Map();
 
   async init(): Promise<void> {
     if (this.ctx) return;
@@ -193,6 +238,12 @@ export class SoundEngine {
     const prevMode = this.config.mode;
     Object.assign(this.config, config);
 
+    // "spotlight" is the sustained engine with the soloist treatment on, so
+    // the mode drives the flag unless a caller sets `spotlight` explicitly.
+    if (config.mode !== undefined && config.spotlight === undefined) {
+      this.config.spotlight = config.mode === "spotlight";
+    }
+
     this.notesEngine.setCursorInstruments(this.config.cursorInstruments);
 
     // Switching modes mid-session must not leave the other path sounding.
@@ -202,6 +253,11 @@ export class SoundEngine {
       } else {
         this.notesEngine.reset();
       }
+      // Drop smoothing state so the new mode does not inherit a stale duck.
+      this.spotlightGains.clear();
+      this.spotlightVelocitySamples = [];
+      this.spotlightTrailIndex = null;
+      this.spotlightSceneAverage = 0;
     }
 
     // If chord voicing was toggled, update existing voices
@@ -233,6 +289,10 @@ export class SoundEngine {
       this.lastActiveTrailCount = activeTrails.length;
       this.updateMasterGainForPolyphony(activeTrails.length);
     }
+
+    // Resolve the soloist before touching any voice, so every trail in this
+    // frame is judged against the same scene average.
+    this.updateSpotlight(elapsedMs, activeTrails);
 
     for (const [idx, voice] of this.voices) {
       if (!activeIndices.has(idx) && voice.active) {
@@ -321,11 +381,16 @@ export class SoundEngine {
         !voice.active ||
         sampleTimeMs - voice.lastControlTimeMs >= VOICE_CONTROL_INTERVAL_MS;
 
+      // Multiplies the existing gain, so the spotlight rides on top of the
+      // normal velocity mapping instead of replacing it. Exactly 1 when the
+      // spotlight is off, which keeps plain sustained mode bit-for-bit the same.
+      const spotlightGain = this.spotlightGainFor(frame.trailIndex);
+
       if (isPercussive) {
         if (elapsedMs - voice.lastPluckMs > PLUCK_REPEAT_INTERVAL_MS) {
           voice.lastPluckMs = elapsedMs;
           const now = this.ctx.currentTime;
-          const pluckGain = gain * instrument.gain;
+          const pluckGain = gain * instrument.gain * spotlightGain;
           // Sharp attack, quick decay — percussive envelope
           this.holdParam(voice.gainNode.gain, now);
           // Hold the current automation value, then ramp up quickly.
@@ -336,12 +401,22 @@ export class SoundEngine {
           );
         }
       } else if (shouldUpdateContinuousParams) {
-        this.rampParam(voice.gainNode.gain, gain * instrument.gain, 0.05);
+        this.rampParam(
+          voice.gainNode.gain,
+          gain * instrument.gain * spotlightGain,
+          0.05,
+        );
       }
 
       if (shouldUpdateContinuousParams) {
         this.rampParam(voice.panNode.pan, pan, 0.05);
         voice.lastControlTimeMs = sampleTimeMs;
+      }
+
+      // Brightness follows velocity for the soloist only; everyone else stays
+      // on their instrument's own cutoff.
+      if (this.config.spotlight) {
+        this.applySpotlightBrightness(voice, frame.trailIndex, velocity, instrument);
       }
 
       voice.active = true;
@@ -719,6 +794,7 @@ export class SoundEngine {
 
   /** Permanently remove a trail's audio graph and cached motion state. */
   retireTrail(trailIndex: number): void {
+    this.notesEngine.retireTrail(trailIndex);
     const voice = this.voices.get(trailIndex);
     if (voice) {
       const disconnect = () => this.disconnectVoice(voice);
@@ -752,6 +828,10 @@ export class SoundEngine {
     this.prevPositions.delete(trailIndex);
     this.prevSampleTimesMs.delete(trailIndex);
     this.trailPaths.delete(trailIndex);
+    this.spotlightGains.delete(trailIndex);
+    if (this.spotlightTrailIndex === trailIndex) {
+      this.spotlightTrailIndex = null;
+    }
     for (const key of this.crossingCooldowns.keys()) {
       if (
         key.startsWith(`${trailIndex}-path-`) ||
@@ -760,6 +840,141 @@ export class SoundEngine {
         this.crossingCooldowns.delete(key);
       }
     }
+  }
+
+  /**
+   * Pick this frame's soloist: the fastest trail that is both a clear outlier
+   * against the rolling scene average and above an absolute floor. Runs only
+   * while the spotlight is on; otherwise all spotlight state is cleared so
+   * turning it back on starts from a neutral scene.
+   */
+  private updateSpotlight(
+    elapsedMs: number,
+    activeTrails: TrailSoundFrame[],
+  ): void {
+    if (!this.config.spotlight) {
+      if (this.spotlightTrailIndex !== null || this.spotlightGains.size > 0) {
+        this.spotlightTrailIndex = null;
+        this.spotlightSceneAverage = 0;
+        this.spotlightVelocitySamples = [];
+        this.spotlightGains.clear();
+      }
+      return;
+    }
+
+    const cutoff = elapsedMs - SPOTLIGHT_TUNING.velocityWindowMs;
+
+    let soloistIndex: number | null = null;
+    let soloistVelocity = 0;
+    for (const frame of activeTrails) {
+      const prev = this.prevPositions.get(frame.trailIndex);
+      // A trail with no previous position has no measurable velocity yet; it
+      // is sampled next frame rather than counted as still.
+      if (!prev) continue;
+      const velocity = computeVelocity(prev.x, prev.y, frame.x, frame.y);
+      this.spotlightVelocitySamples.push([elapsedMs, velocity]);
+      if (velocity > soloistVelocity) {
+        soloistIndex = frame.trailIndex;
+        soloistVelocity = velocity;
+      }
+    }
+
+    let dropCount = 0;
+    while (
+      dropCount < this.spotlightVelocitySamples.length &&
+      this.spotlightVelocitySamples[dropCount][0] < cutoff
+    ) {
+      dropCount++;
+    }
+    if (dropCount > 0) this.spotlightVelocitySamples.splice(0, dropCount);
+
+    let sum = 0;
+    for (const [, velocity] of this.spotlightVelocitySamples) sum += velocity;
+    const average =
+      this.spotlightVelocitySamples.length > 0
+        ? sum / this.spotlightVelocitySamples.length
+        : 0;
+    this.spotlightSceneAverage = average;
+
+    const qualifies =
+      soloistIndex !== null &&
+      soloistVelocity >= SPOTLIGHT_TUNING.minVelocity &&
+      soloistVelocity > average * SPOTLIGHT_TUNING.velocityRatio;
+
+    this.spotlightTrailIndex = qualifies ? soloistIndex : null;
+
+    // Advance smoothing for every active trail, including ones too slow to
+    // voice this frame. Doing it lazily in the voice loop would freeze a
+    // stopped trail at its last multiplier and resurrect a stale boost when
+    // it moves again.
+    for (const frame of activeTrails) {
+      this.advanceSpotlightGain(frame.trailIndex);
+    }
+    for (const index of this.spotlightGains.keys()) {
+      if (!activeTrails.some((f) => f.trailIndex === index)) {
+        this.spotlightGains.delete(index);
+      }
+    }
+  }
+
+  /** Step one trail's spotlight multiplier toward its target for this frame. */
+  private advanceSpotlightGain(trailIndex: number): number {
+    const hasSoloist = this.spotlightTrailIndex !== null;
+    const isSoloist = this.spotlightTrailIndex === trailIndex;
+    const target = !hasSoloist
+      ? 1
+      : isSoloist
+        ? SPOTLIGHT_TUNING.soloistGain
+        : SPOTLIGHT_TUNING.duckedGain;
+
+    const current = this.spotlightGains.get(trailIndex) ?? 1;
+    // Ducking engages faster than it recovers, so the soloist reads clearly
+    // but the scene does not pump back up the instant they slow.
+    const durationSeconds =
+      target < current
+        ? SPOTLIGHT_TUNING.attackSeconds
+        : SPOTLIGHT_TUNING.releaseSeconds;
+    const rate = Math.min(1, FRAME_MS / (durationSeconds * 1000));
+    const next = current + (target - current) * rate;
+    this.spotlightGains.set(trailIndex, next);
+    return next;
+  }
+
+  /**
+   * This frame's smoothed gain multiplier for a trail, already advanced by
+   * `updateSpotlight`. Exactly 1 when the spotlight is off.
+   */
+  private spotlightGainFor(trailIndex: number): number {
+    if (!this.config.spotlight) return 1;
+    return this.spotlightGains.get(trailIndex) ?? 1;
+  }
+
+  /**
+   * Open the soloist's filter with velocity; everyone else eases back to their
+   * instrument's own cutoff so ducked voices also darken slightly.
+   */
+  private applySpotlightBrightness(
+    voice: Voice,
+    trailIndex: number,
+    velocity: number,
+    instrument: InstrumentConfig,
+  ): void {
+    if (!this.ctx) return;
+
+    let target = instrument.filterFrequency;
+    if (this.spotlightTrailIndex === trailIndex) {
+      const normalized = Math.min(
+        1,
+        velocity / SPOTLIGHT_TUNING.filterFullVelocity,
+      );
+      const open =
+        SPOTLIGHT_TUNING.filterMinHz +
+        Math.pow(normalized, 0.6) *
+          (SPOTLIGHT_TUNING.filterMaxHz - SPOTLIGHT_TUNING.filterMinHz);
+      target = Math.max(instrument.filterFrequency, open);
+    }
+
+    this.rampParam(voice.filterNode.frequency, target, 0.12);
   }
 
   private disconnectVoice(voice: Voice): void {
@@ -782,14 +997,18 @@ export class SoundEngine {
     return this.notesEngine.getActiveNoteCount();
   }
 
-  /** Trail index currently soloing, or null (notes mode diagnostics). */
+  /** Trail index currently soloing, or null. */
   getSoloistTrailIndex(): number | null {
-    return this.notesEngine.getSoloistTrailIndex();
+    return this.config.spotlight
+      ? this.spotlightTrailIndex
+      : this.notesEngine.getSoloistTrailIndex();
   }
 
-  /** Rolling scene-average velocity (notes mode diagnostics). */
+  /** Rolling scene-average velocity behind the soloist decision. */
   getSceneAverageVelocity(): number {
-    return this.notesEngine.getSceneAverageVelocity();
+    return this.config.spotlight
+      ? this.spotlightSceneAverage
+      : this.notesEngine.getSceneAverageVelocity();
   }
 
   private updateMasterGainForPolyphony(activeTrailCount: number): void {
@@ -888,6 +1107,10 @@ export class SoundEngine {
     this.prevSampleTimesMs.clear();
     this.crossingCooldowns.clear();
     this.trailPaths.clear();
+    this.spotlightGains.clear();
+    this.spotlightVelocitySamples = [];
+    this.spotlightTrailIndex = null;
+    this.spotlightSceneAverage = 0;
   }
 
   isEnabled(): boolean {

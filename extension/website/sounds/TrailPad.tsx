@@ -390,13 +390,14 @@ export const TrailPad = () => {
           fontSize: "11px",
         }}
       >
-        Trail Pad — sustained vs notes
+        Trail Pad — sustained vs spotlight vs notes
       </div>
       <div style={{ ...labelStyle, marginBottom: "12px" }}>
         Start the pad, then move your cursor over it. Add wandering trails to
-        hear how a dense scene behaves. In notes mode the fastest outlier
-        becomes the soloist (ringed on canvas) and the crowd drops to a darker,
-        sparser register.
+        hear how a dense scene behaves. The fastest outlier becomes the soloist
+        (ringed on canvas): in spotlight mode it lifts and brightens while the
+        rest of the sustained voices duck behind it; in notes mode the crowd
+        drops to a darker, sparser register.
       </div>
 
       <div
@@ -419,6 +420,12 @@ export const TrailPad = () => {
           style={mode === "sustained" ? buttonActiveStyle : buttonStyle}
         >
           sustained (current)
+        </button>
+        <button
+          onClick={() => setMode("spotlight")}
+          style={mode === "spotlight" ? buttonActiveStyle : buttonStyle}
+        >
+          sustained + spotlight
         </button>
         <button
           onClick={() => setMode("notes")}
@@ -491,7 +498,13 @@ export const TrailPad = () => {
           ? `notes sounding: ${readout.notes} | soloist: ${
               readout.soloist === null ? "none" : `trail ${readout.soloist}`
             } | scene avg velocity: ${readout.avgVelocity.toFixed(2)} px/frame`
-          : "sustained mode — one continuous voice per trail"}
+          : mode === "spotlight"
+            ? `sustained voices + spotlight | soloist: ${
+                readout.soloist === null ? "none" : `trail ${readout.soloist}`
+              } | scene avg velocity: ${readout.avgVelocity.toFixed(
+                2,
+              )} px/frame`
+            : "sustained mode — one continuous voice per trail"}
       </div>
     </div>
   );

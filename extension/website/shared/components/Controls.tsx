@@ -2260,6 +2260,26 @@ export const Controls: React.FC<ControlsProps> = memo(
           onToggle={() => toggleSection("sound")}
         >
           <div className="control-group">
+            <label htmlFor="sound-mode">Sound Mode</label>
+            <select
+              id="sound-mode"
+              value={settings.soundMode ?? "sustained"}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  soundMode: e.target.value as
+                    | "sustained"
+                    | "spotlight"
+                    | "notes",
+                }))
+              }
+            >
+              <option value="sustained">Sustained Voices</option>
+              <option value="spotlight">Sustained + Spotlight</option>
+              <option value="notes">Discrete Notes</option>
+            </select>
+          </div>
+          <div className="control-group">
             <label htmlFor="sound-chord-voicing">
               <input
                 id="sound-chord-voicing"

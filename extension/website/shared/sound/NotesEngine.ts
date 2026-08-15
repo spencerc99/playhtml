@@ -456,6 +456,17 @@ export class NotesEngine {
     }
   }
 
+  /**
+   * Drop one trail's accumulated state. Notes already sounding are one-shots
+   * that finish on their own envelope, so only the per-trail bookkeeping goes.
+   */
+  retireTrail(trailIndex: number): void {
+    this.trails.delete(trailIndex);
+    if (this.soloistTrailIndex === trailIndex) {
+      this.soloistTrailIndex = null;
+    }
+  }
+
   /** Silence everything and drop per-trail state, keeping the graph attached. */
   reset(): void {
     for (const note of [...this.activeNotes]) {

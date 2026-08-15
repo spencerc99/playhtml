@@ -3,6 +3,7 @@
 
 import { CLICK_DEFAULTS } from "./clickDefaults";
 import type { FilterChip } from "../utils/eventUtils";
+import type { SoundMode } from "../sound/SoundEngine";
 
 /** Settings defaults — extracted so the share-URL builder can compare
  * against them and only emit params that diverge. Keep this in sync with
@@ -101,6 +102,9 @@ export const DEFAULT_SETTINGS = {
   navigationRadialBlobValleyDepth: 0.05,
   navigationRadialSegmentByDay: true,
   trailVisualStyle: "color",
+  /** How trail motion becomes sound. "sustained" holds a continuous voice per
+   * trail; "notes" emits discrete plucks as a trail travels. */
+  soundMode: "sustained" as SoundMode,
   soundChordVoicing: true,
   soundCursorInstruments: true,
   soundCrossingDissonance: false,
