@@ -93,6 +93,8 @@ export interface ArchiveEventsState {
   advanceBatch: () => boolean;
   /** Stable identity for restarting finite archive playback after a swap. */
   batchKey: string;
+  /** Stable identity for batches fetched from the same archive query. */
+  batchContextKey: string;
 }
 
 /** Owns browsing-event fetches for archive surfaces. Fixed mode keeps missing
@@ -525,5 +527,6 @@ export function useArchiveEvents(params: {
     refresh,
     advanceBatch,
     batchKey,
+    batchContextKey: String(batchQueue.generation),
   };
 }

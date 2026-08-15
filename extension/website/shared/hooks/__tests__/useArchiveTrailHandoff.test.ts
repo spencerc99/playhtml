@@ -3,7 +3,10 @@
 
 import { describe, expect, it } from "vitest";
 import type { TrailState } from "../../types";
-import { createCompletedTrailResidue } from "../useArchiveTrailHandoff";
+import {
+  createCompletedTrailResidue,
+  selectArchiveTrailHandoffAction,
+} from "../useArchiveTrailHandoff";
 
 function trailState(id: string, startOffsetMs: number): TrailState {
   return {
@@ -29,7 +32,7 @@ function trailState(id: string, startOffsetMs: number): TrailState {
   };
 }
 
-describe("createCompletedTrailResidue", () => {
+describe("archive trail handoff", () => {
   it("keeps the latest trails as already-dimmed completed paths", () => {
     const residue = createCompletedTrailResidue(
       [
@@ -51,5 +54,38 @@ describe("createCompletedTrailResidue", () => {
     expect(
       createCompletedTrailResidue([trailState("trail", 0)], 0, 3000),
     ).toEqual([]);
+  });
+
+  it("retains an automatic batch advance in the same query", () => {
+    expect(
+      selectArchiveTrailHandoffAction(
+        "1:0:first",
+        "1:1:second",
+        "1",
+        "1",
+        false,
+      ),
+    ).toBe("retain");
+  });
+
+  it("clears trails while a new query waits for its first batch", () => {
+    expect(
+      selectArchiveTrailHandoffAction(
+        "1:1:second",
+        "1:1:second",
+        "1",
+        "2",
+        false,
+      ),
+    ).toBe("clear-and-wait");
+    expect(
+      selectArchiveTrailHandoffAction(
+        "1:1:second",
+        "2:0:new-query",
+        "2",
+        "2",
+        true,
+      ),
+    ).toBe("clear");
   });
 });
