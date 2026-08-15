@@ -18,4 +18,3 @@ extension/website/public/changelog/media/ and reference them here:
 - Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
 - Wikipedia shows other readers' live text selections in their cursor colors.
 - Wikipedia editing sessions now stay separate from article-reading rooms.
-- Sound on live and archive portraits now stays smooth during playback slowdowns and longer sessions.
