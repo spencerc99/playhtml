@@ -3,6 +3,11 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SoundEngine } from "../SoundEngine";
+import {
+  bellScaleForChord,
+  CHORD_DWELL_MS,
+  CHORD_PROGRESSION,
+} from "../scales";
 
 type ParamEvent = {
   method: "cancelAndHold" | "exponentialRamp" | "linearRamp" | "set";
@@ -658,6 +663,39 @@ describe("SoundEngine cursor instruments", () => {
       const gapSeconds = holds[i].time - holds[i - 1].time;
       expect(gapSeconds).toBeLessThan(0.12);
     }
+  });
+
+  it("rings click bells from the fixed scale when rotation is off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const before = context.oscillators.length;
+    engine.triggerClick({ x: 10, y: 0, holdDuration: 0 });
+
+    // Top of the pad maps to the top of the scale, unchanged from before the
+    // progression existed.
+    expect(context.oscillators[before].frequency.value).toBe(587.33);
+  });
+
+  it("rings click bells from the active chord while rotation is on", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ chordRotation: true });
+
+    const dmBells = bellScaleForChord(CHORD_PROGRESSION[0]);
+    let before = context.oscillators.length;
+    engine.triggerClick({ x: 10, y: 0, holdDuration: 0 });
+    expect(context.oscillators[before].frequency.value).toBe(dmBells.at(-1));
+
+    // Advance past the dwell so the progression moves to the next chord.
+    engine.tick(CHORD_DWELL_MS + 1, []);
+
+    const bbBells = bellScaleForChord(CHORD_PROGRESSION[1]);
+    before = context.oscillators.length;
+    engine.triggerClick({ x: 10, y: 0, holdDuration: 0 });
+    const rung = context.oscillators[before].frequency.value;
+    expect(rung).toBe(bbBells.at(-1));
+    expect(rung).not.toBe(dmBells.at(-1));
   });
 
   it("disconnects voice graphs after a playback reset", async () => {

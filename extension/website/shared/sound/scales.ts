@@ -18,41 +18,75 @@ const D_MINOR_PENTATONIC = [
 ];
 
 /**
- * A harmonic centre the pitch palette can sit on. `semitonesFromD` transposes
- * the base pentatonic set, keeping the same register span and interval shape
- * so only the tonal colour changes.
+ * Every pitch the engine can play, drawn from D natural minor
+ * (D E F G A Bb C) across the D3-C5 span the base palette already occupies.
+ * Chord palettes select from this set, so the harmony never leaves the key.
+ */
+export const D_NATURAL_MINOR_PITCHES: Record<string, number> = {
+  D3: 146.83,
+  E3: 164.81,
+  F3: 174.61,
+  G3: 196.0,
+  A3: 220.0,
+  Bb3: 233.08,
+  C4: 261.63,
+  D4: 293.66,
+  E4: 329.63,
+  F4: 349.23,
+  G4: 392.0,
+  A4: 440.0,
+  Bb4: 466.16,
+  C5: 523.25,
+};
+
+/**
+ * A harmonic centre the pitch palette can sit on. `pitches` is the palette the
+ * compass directions map onto — eight notes, all diatonic to D natural minor,
+ * with the chord's own tones on the directions cursors travel most.
  */
 export interface Chord {
   name: string;
-  semitonesFromD: number;
+  pitches: number[];
 }
 
+const P = D_NATURAL_MINOR_PITCHES;
+
 /**
- * The rotation, i -> VI -> III -> VII in D minor. Edit freely: any list of
- * chords works, and the engine simply cycles it.
+ * The rotation, i -> VI -> III -> VII in D minor.
+ *
+ * Each palette is built from D natural minor only, so no chord introduces an
+ * accidental against the others — transposing the pentatonic shape onto each
+ * root (the earlier approach) produced Db/Eb/Ab against a D minor context and
+ * read as chromatic rather than as a progression. Every palette also spans the
+ * same D3-C5 register, so the rotation changes colour without dropping the
+ * whole scene into a lower octave.
+ *
+ * Edit freely: any list of chords works, and the engine simply cycles it.
  */
 export const CHORD_PROGRESSION: Chord[] = [
-  { name: "Dm", semitonesFromD: 0 },
-  { name: "Bb", semitonesFromD: -4 },
-  { name: "F", semitonesFromD: 3 },
-  { name: "C", semitonesFromD: -2 },
+  // Dm — chord tones D F A, coloured with G and C.
+  { name: "Dm", pitches: [P.D3, P.F3, P.A3, P.G3, P.C4, P.D4, P.F4, P.A4] },
+  // Bb — chord tones Bb D F, coloured with C and G.
+  { name: "Bb", pitches: [P.D3, P.F3, P.Bb3, P.G3, P.C4, P.D4, P.F4, P.Bb4] },
+  // F — chord tones F A C, coloured with D and G.
+  { name: "F", pitches: [P.F3, P.A3, P.C4, P.G3, P.D4, P.F4, P.A4, P.C5] },
+  // C — chord tones C E G, coloured with D and A.
+  { name: "C", pitches: [P.E3, P.G3, P.C4, P.A3, P.D4, P.E4, P.G4, P.C5] },
 ];
 
 /** How long each chord holds before the progression advances (ms). */
 export const CHORD_DWELL_MS = 20000;
 
-const SEMITONE_RATIO = Math.pow(2, 1 / 12);
-
-/** Transpose the base palette onto a chord, memoized per semitone offset. */
-const transposedCache = new Map<number, number[]>();
-
 export function scaleForChord(chord: Chord): number[] {
-  const cached = transposedCache.get(chord.semitonesFromD);
-  if (cached) return cached;
-  const ratio = Math.pow(SEMITONE_RATIO, chord.semitonesFromD);
-  const scale = D_MINOR_PENTATONIC.map((hz) => hz * ratio);
-  transposedCache.set(chord.semitonesFromD, scale);
-  return scale;
+  return chord.pitches;
+}
+
+/**
+ * The upper reaches of a chord's palette, used for click bells so they ring
+ * above the sustained voices while staying inside the current harmony.
+ */
+export function bellScaleForChord(chord: Chord): number[] {
+  return [...chord.pitches].sort((a, b) => a - b).slice(-6);
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   velocityToGain,
   positionToPan,
   scaleForChord,
+  bellScaleForChord,
   CHORD_PROGRESSION,
   CHORD_DWELL_MS,
 } from "./scales";
@@ -159,6 +160,16 @@ const SPOTLIGHT_TUNING = {
    */
   filterRampSeconds: 0.12,
 };
+
+/** Click-bell pitches used whenever the chord progression is not rotating. */
+const FIXED_BELL_SCALE = [
+  293.66, // D4
+  349.23, // F4
+  392.0,  // G4
+  440.0,  // A4
+  523.25, // C5
+  587.33, // D5
+];
 
 /** Cursor types that use repeating pluck instead of sustained tone */
 const PERCUSSIVE_CURSOR_TYPES = new Set(["text"]);
@@ -641,20 +652,13 @@ export class SoundEngine {
     const osc = this.ctx.createOscillator();
     osc.type = instrument.oscillatorType;
 
-    const BELL_SCALE = [
-      293.66, // D4
-      349.23, // F4
-      392.0,  // G4
-      440.0,  // A4
-      523.25, // C5
-      587.33, // D5
-    ];
+    const bellScale = this.currentBellScale();
     const pitchRatio = 1 - (click.y / (window.innerHeight || 800));
     const scaleIndex = Math.min(
-      BELL_SCALE.length - 1,
-      Math.floor(pitchRatio * BELL_SCALE.length),
+      bellScale.length - 1,
+      Math.floor(pitchRatio * bellScale.length),
     );
-    const baseFreq = BELL_SCALE[scaleIndex];
+    const baseFreq = bellScale[scaleIndex];
     osc.frequency.value = baseFreq;
 
     const osc2 = this.ctx.createOscillator();
@@ -1044,6 +1048,17 @@ export class SoundEngine {
   private currentScale(): number[] | undefined {
     if (!this.config.chordRotation) return undefined;
     return scaleForChord(CHORD_PROGRESSION[this.chordIndex]);
+  }
+
+  /**
+   * Pitch set for click bells. While the progression rotates, bells draw from
+   * the current chord's upper register so a click always lands consonant with
+   * whatever the sustained voices are holding. With rotation off the bells
+   * keep their original fixed D minor ring.
+   */
+  private currentBellScale(): number[] {
+    if (!this.config.chordRotation) return FIXED_BELL_SCALE;
+    return bellScaleForChord(CHORD_PROGRESSION[this.chordIndex]);
   }
 
   /** Name of the chord currently in force (diagnostics). */
