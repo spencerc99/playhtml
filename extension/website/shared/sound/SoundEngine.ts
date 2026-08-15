@@ -23,6 +23,9 @@ const SILENCE_VELOCITY_THRESHOLD = 0.05;
 /** Reference frame duration used to make cursor velocity independent of rAF lag. */
 const REFERENCE_FRAME_DURATION_MS = 1000 / 60;
 
+/** Interval between continuous gain and pan updates for each voice. */
+const VOICE_CONTROL_INTERVAL_MS = 50;
+
 /** Interval between repeated plucks for percussive cursor types like text (ms) */
 const PLUCK_REPEAT_INTERVAL_MS = 120;
 
@@ -72,6 +75,7 @@ interface Voice {
   lastCursorType: string | undefined;
   /** Last time a percussive pluck was triggered (ms) */
   lastPluckMs: number;
+  lastControlTimeMs: number;
   active: boolean;
 }
 
@@ -187,8 +191,10 @@ export class SoundEngine {
     }
 
     const activeIndices = new Set(activeTrails.map((t) => t.trailIndex));
-    this.lastActiveTrailCount = activeTrails.length;
-    this.updateMasterGainForPolyphony(activeTrails.length);
+    if (activeTrails.length !== this.lastActiveTrailCount) {
+      this.lastActiveTrailCount = activeTrails.length;
+      this.updateMasterGainForPolyphony(activeTrails.length);
+    }
 
     for (const [idx, voice] of this.voices) {
       if (!activeIndices.has(idx) && voice.active) {
@@ -273,6 +279,9 @@ export class SoundEngine {
       // a sustained tone — like typing rhythm
       const isPercussive = this.config.cursorInstruments &&
         PERCUSSIVE_CURSOR_TYPES.has(frame.cursorType ?? "");
+      const shouldUpdateContinuousParams =
+        !voice.active ||
+        sampleTimeMs - voice.lastControlTimeMs >= VOICE_CONTROL_INTERVAL_MS;
 
       if (isPercussive) {
         if (elapsedMs - voice.lastPluckMs > PLUCK_REPEAT_INTERVAL_MS) {
@@ -288,11 +297,14 @@ export class SoundEngine {
             now + 0.005 + instrument.attack + instrument.decay + instrument.release,
           );
         }
-      } else {
+      } else if (shouldUpdateContinuousParams) {
         this.rampParam(voice.gainNode.gain, gain * instrument.gain, 0.05);
       }
 
-      this.rampParam(voice.panNode.pan, pan, 0.05);
+      if (shouldUpdateContinuousParams) {
+        this.rampParam(voice.panNode.pan, pan, 0.05);
+        voice.lastControlTimeMs = sampleTimeMs;
+      }
 
       voice.active = true;
     }
@@ -527,6 +539,7 @@ export class SoundEngine {
       lastNoteTimeMs: 0,
       lastCursorType: undefined,
       lastPluckMs: 0,
+      lastControlTimeMs: Number.NEGATIVE_INFINITY,
       active: false,
     };
   }

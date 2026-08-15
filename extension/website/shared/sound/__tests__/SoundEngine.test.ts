@@ -94,6 +94,7 @@ class TestAudioContext {
   destination = new TestAudioNode();
   sampleRate = 100;
   state: AudioContextState = "running";
+  gains: TestGainNode[] = [];
   oscillators: TestOscillatorNode[] = [];
 
   createBiquadFilter(): BiquadFilterNode {
@@ -115,7 +116,9 @@ class TestAudioContext {
   }
 
   createGain(): GainNode {
-    return new TestGainNode() as unknown as GainNode;
+    const gain = new TestGainNode();
+    this.gains.push(gain);
+    return gain as unknown as GainNode;
   }
 
   createOscillator(): OscillatorNode {
@@ -154,6 +157,74 @@ afterEach(() => {
 });
 
 describe("SoundEngine cursor instruments", () => {
+  it("does not restart the master gain ramp when trail count is unchanged", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const frame = {
+      trailIndex: 0,
+      x: 0,
+      y: 0,
+      prevX: 0,
+      prevY: 0,
+      cursorType: "pointer",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: true,
+    };
+    engine.tick(0, [frame]);
+    const masterGainEvents = context.gains[0].gain.events;
+    const eventCount = masterGainEvents.length;
+
+    context.currentTime += 1 / 60;
+    engine.tick(100, [frame]);
+
+    expect(masterGainEvents).toHaveLength(eventCount);
+  });
+
+  it("updates continuous voice parameters at audio control rate", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+
+    const frame = (x: number) => ({
+      trailIndex: 0,
+      x,
+      y: 0,
+      prevX: 0,
+      prevY: 0,
+      cursorType: "pointer",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: false,
+    });
+    engine.tick(0, [frame(0)]);
+    context.currentTime += 1 / 60;
+    engine.tick(100, [frame(10)]);
+
+    const state = engine as unknown as {
+      voices: Map<
+        number,
+        { gainNode: TestGainNode; panNode: TestStereoPannerNode }
+      >;
+    };
+    const voice = state.voices.get(0)!;
+    const gainEventCount = voice.gainNode.gain.events.length;
+    const panEventCount = voice.panNode.pan.events.length;
+
+    context.currentTime += 1 / 60;
+    engine.tick(200, [frame(20)]);
+
+    expect(voice.gainNode.gain.events).toHaveLength(gainEventCount);
+    expect(voice.panNode.pan.events).toHaveLength(panEventCount);
+
+    context.currentTime += 0.05;
+    engine.tick(300, [frame(30)]);
+
+    expect(voice.gainNode.gain.events.length).toBeGreaterThan(gainEventCount);
+    expect(voice.panNode.pan.events.length).toBeGreaterThan(panEventCount);
+  });
+
   it("crossfades both oscillators when the cursor timbre changes", async () => {
     const engine = new SoundEngine();
     await engine.init();
