@@ -39,11 +39,32 @@ describe("basic canonical recipes", () => {
 
   it("keeps built-in capability markup in the runnable source", () => {
     expect(canMoveRecipe.html).toContain("can-move");
-    expect(canMoveRecipe.html).toContain('can-move-bounds="move-arena"');
+    expect(canMoveRecipe.html).toContain(
+      'can-move-bounds="ph-cap-move-arena"',
+    );
     expect(canToggleRecipe.html).toContain("can-toggle");
     expect(canHoverRecipe.html).toContain("can-hover");
     expect(emojiMirrorRecipe.html).toContain("can-mirror");
     expect(growingListMirrorRecipe.html).toContain("can-mirror");
+  });
+
+  it("keeps the established element ids and example assets", () => {
+    expect(canMoveRecipe.html).toContain('id="ph-cap-hat"');
+    expect(canMoveRecipe.html).toContain('id="ph-cap-cat"');
+    expect(canMoveRecipe.html).toContain(
+      'https://playhtml.fun/docs/yankees-hat.png',
+    );
+    expect(canMoveRecipe.html).toContain(
+      'https://playhtml.fun/docs/long-cat.png',
+    );
+    expect(canToggleRecipe.html).toContain('id="ph-docs-toggle-demo"');
+    expect(canHoverRecipe.html).toContain('id="ph-cap-hover-pad"');
+    expect(emojiMirrorRecipe.html).toContain('id="emoji-pad"');
+    expect(growingListMirrorRecipe.html).toContain('id="guestbook"');
+    expect(sharedCounterRecipe.html).toContain('id="ph-docs-counter"');
+    expect(sharedGuestbookRecipe.html).toContain(
+      'id="ph-cap-docs-guestbook"',
+    );
   });
 
   it("configures can-play elements before initialization", () => {
@@ -81,5 +102,6 @@ describe("basic canonical recipes", () => {
     expect(sharedGuestbookRecipe.html).toContain(
       "draft.entries.splice(0, draft.entries.length - MAX_ENTRIES)",
     );
+    expect(sharedGuestbookRecipe.html).toContain("at: Date.now()");
   });
 });

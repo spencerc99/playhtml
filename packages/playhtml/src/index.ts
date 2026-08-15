@@ -70,6 +70,7 @@ import { PresenceClient } from "./presence-client";
 import { PresenceFacade } from "./presence-facade";
 import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
+import { resolveRoomHost } from "./roomHost";
 
 export {
   formatStateLeafValue,
@@ -151,7 +152,7 @@ function normalizePathname(pathname: string): string {
  */
 function resolveCursorRoom(room: CursorRoom): string {
   const context = {
-    domain: window.location.host,
+    domain: getCurrentRoomHost(),
     pathname: window.location.pathname,
     search: window.location.search,
   };
@@ -197,6 +198,10 @@ function normalizeRoomId(host: string, roomString: string): string {
   // Otherwise use host + "-" + roomString format to match main room construction
   const normalized = roomString === "" ? h : `${h}-${roomString}`;
   return encodeURIComponent(normalized);
+}
+
+function getCurrentRoomHost(): string {
+  return resolveRoomHost(window.location, document.referrer);
 }
 
 let yprovider: YProvider;
@@ -1162,7 +1167,7 @@ function buildCursors(args: {
 
   if (cursorOptions.room) {
     const cursorRoomString = resolveCursorRoom(cursorOptions.room);
-    const cursorRoom = normalizeRoomId(window.location.host, cursorRoomString);
+    const cursorRoom = normalizeRoomId(getCurrentRoomHost(), cursorRoomString);
 
     if (cursorRoom !== mainRoom) {
       const cursorDoc = new Y.Doc();
@@ -1374,7 +1379,7 @@ async function runHandleNavigation(): Promise<void> {
     getDefaultRoom(
       configuredOptions?.defaultRoomOptions ?? { includeSearch: false },
     );
-  const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
+  const newMainRoom = normalizeRoomId(getCurrentRoomHost(), nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
 
   const cursorOptions = configuredOptions?.cursors;
@@ -1388,7 +1393,7 @@ async function runHandleNavigation(): Promise<void> {
   if (cursorOptions?.enabled) {
     if (cursorOptions.room) {
       const resolved = resolveCursorRoom(cursorOptions.room);
-      const normalized = normalizeRoomId(window.location.host, resolved);
+      const normalized = normalizeRoomId(getCurrentRoomHost(), resolved);
       cursorRoomChanged = normalized !== currentCursorRoomId;
     } else {
       cursorRoomChanged = mainRoomChanged;
@@ -1578,7 +1583,7 @@ async function initPlayHTMLOnce() {
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   // TODO: We want to normalize here but we can't without losing data.
-  const room = normalizeRoomId(window.location.host, inputRoom);
+  const room = normalizeRoomId(getCurrentRoomHost(), inputRoom);
 
   const partykitHost = getPartykitHost(host);
   __currentRoomId = room;
@@ -2176,7 +2181,7 @@ function createPresenceRoom(name: string): PresenceRoom {
     throw new Error("playhtml.createPresenceRoom is not available before init()");
   }
 
-  const roomId = normalizeRoomId(window.location.host, name);
+  const roomId = normalizeRoomId(getCurrentRoomHost(), name);
 
   // Transport path: an isolated presence socket to the named room. Its traffic
   // never touches the page room, and reconnects replay join+state on their own.

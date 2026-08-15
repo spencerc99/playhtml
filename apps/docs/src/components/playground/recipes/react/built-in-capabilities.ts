@@ -1,37 +1,25 @@
 // ABOUTME: Provides copy-paste React sources for the basic built-in capability recipes.
 // ABOUTME: Covers persistent movement and toggles plus presence-based shared hover.
 
-export const canMoveReactSource = `// ABOUTME: Constrains two shared draggable stickers to one arena.
+export const canMoveReactSource = `// ABOUTME: Constrains two shared draggable images to one arena.
 // ABOUTME: Uses stable ids so positions persist and synchronize across browsers.
 import { PlayProvider, CanMoveElement } from "@playhtml/react";
 
-const ARENA_ID = "move-arena";
+const ARENA_ID = "ph-cap-move-arena";
 
 export default function App() {
   return (
     <PlayProvider initOptions={{ developmentMode: true }}>
       <main>
-        <h1>Drag together</h1>
-        <p>Move either sticker. Its position updates in every connected browser.</p>
-        <div id={ARENA_ID} className="arena">
+        <div id={ARENA_ID} className="arena" aria-label="Drag the hat and cat">
           <CanMoveElement bounds={ARENA_ID}>
-            <div
-              id="move-hat"
-              className="piece hat"
-              role="img"
-              aria-label="A draggable baseball cap"
-            >
-              🧢
+            <div id="ph-cap-hat" className="piece hat">
+              <img src="https://playhtml.fun/docs/yankees-hat.png" alt="" draggable={false} />
             </div>
           </CanMoveElement>
           <CanMoveElement bounds={ARENA_ID}>
-            <div
-              id="move-cat"
-              className="piece cat"
-              role="img"
-              aria-label="A draggable cat"
-            >
-              🐈
+            <div id="ph-cap-cat" className="piece cat">
+              <img src="https://playhtml.fun/docs/long-cat.png" alt="" draggable={false} />
             </div>
           </CanMoveElement>
         </div>
@@ -41,55 +29,58 @@ export default function App() {
         :root { color: #1c1c1c; background: #f4efe5; font-family: system-ui, sans-serif; }
         * { box-sizing: border-box; }
         body { margin: 0; }
-        #root { display: grid; min-height: 100vh; padding: 1.5rem; place-items: center; }
-        main { width: min(38rem, 100%); }
-        h1 { margin: 0 0 0.35rem; font-size: clamp(2rem, 8vw, 3.5rem); }
-        p { margin: 0 0 1rem; line-height: 1.5; }
+        #root { display: grid; min-height: 100vh; padding: 1rem; place-items: center; }
+        main { width: min(40rem, 100%); }
         .arena {
           position: relative;
-          height: 20rem;
+          width: 100%;
+          height: min(14.75rem, calc(100vh - 2rem));
           overflow: hidden;
-          border: 2px solid #1c1c1c;
-          background: #dce8cf;
-          box-shadow: 5px 5px 0 #1c1c1c;
+          border: 1.5px solid #1c1c1c;
+          border-radius: 8px;
+          background: #f1f2e9;
+          box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
         }
         .piece {
           position: absolute;
-          display: grid;
-          width: 8rem;
-          height: 8rem;
-          place-items: center;
-          font-size: 6rem;
+          top: 0;
+          left: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 0;
+          background: transparent;
+          cursor: grab;
           touch-action: none;
           user-select: none;
         }
-        .hat { top: 2rem; left: 2rem; }
-        .cat { right: 2rem; bottom: 1.5rem; }
+        .piece:active { cursor: grabbing; }
+        .hat { width: 4.5rem; height: 4.5rem; }
+        .cat { width: 5.25rem; height: 9.5rem; }
+        .piece img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
       \`}</style>
     </PlayProvider>
   );
 }
 `;
 
-export const canToggleReactSource = `// ABOUTME: Shares one persistent on or off switch across browsers.
-// ABOUTME: Renders the switch directly from CanToggleElement data.
+export const canToggleReactSource = `// ABOUTME: Shares one persistent on or off button across browsers.
+// ABOUTME: Renders the established docs toggle from CanToggleElement data.
 import { PlayProvider, CanToggleElement } from "@playhtml/react";
 
 export default function App() {
   return (
     <PlayProvider initOptions={{ developmentMode: true }}>
       <main>
-        <h1>Shared switch</h1>
-        <p>Click the switch. Everyone sees the same state.</p>
         <CanToggleElement>
           {({ data }) => (
             <button
-              id="shared-switch"
+              id="ph-docs-toggle-demo"
               type="button"
-              className={data.on ? "switch is-on" : "switch"}
+              className={data.on ? "toggle is-on" : "toggle"}
               aria-pressed={data.on}
             >
-              <span className="track"><span className="thumb" /></span>
+              <span className="dot" aria-hidden="true" />
               <span>{data.on ? "on" : "off"}</span>
             </button>
           )}
@@ -100,31 +91,28 @@ export default function App() {
         :root { color: #1c1c1c; background: #f4efe5; font-family: system-ui, sans-serif; }
         * { box-sizing: border-box; }
         body { margin: 0; }
-        #root { display: grid; min-height: 100vh; padding: 1.5rem; place-items: center; }
-        main { width: min(28rem, 100%); text-align: center; }
-        h1 { margin: 0 0 0.35rem; font-size: clamp(2rem, 9vw, 3.5rem); }
-        p { margin: 0 0 1.25rem; }
-        .switch {
+        #root { display: grid; min-height: 100vh; padding: 1rem; place-items: center; }
+        main { text-align: center; }
+        .toggle {
           display: inline-flex;
           align-items: center;
-          gap: 0.75rem;
-          padding: 0.75rem 1rem;
+          gap: 0.55rem;
+          padding: 0.55rem 1rem;
           border: 2px solid #1c1c1c;
+          border-radius: 6px;
           background: #ebe4d5;
-          box-shadow: 4px 4px 0 #1c1c1c;
+          box-shadow: 2px 2px 0 #1c1c1c;
+          color: #1c1c1c;
           cursor: pointer;
-          font: 700 1rem/1 system-ui, sans-serif;
+          font: 700 0.8rem/1 ui-monospace, monospace;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
         }
-        .track {
-          display: flex;
-          width: 3.5rem;
-          padding: 0.2rem;
-          border: 2px solid #1c1c1c;
-          background: #d7cfc0;
-        }
-        .thumb { width: 1.25rem; height: 1.25rem; background: #1c1c1c; transition: translate 150ms; }
-        .is-on { background: #b9dfad; }
-        .is-on .thumb { translate: 1.55rem 0; }
+        .toggle:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 #1c1c1c; }
+        .toggle:active { transform: translate(2px, 2px); box-shadow: none; }
+        .toggle.is-on { background: #274b9e; color: #f4efe5; }
+        .dot { width: 0.625rem; height: 0.625rem; border: 1px solid rgba(0, 0, 0, 0.35); border-radius: 999px; background: #79766f; }
+        .toggle.is-on .dot { background: #e8a63a; box-shadow: 0 0 0 3px rgba(232, 166, 58, 0.25); }
       \`}</style>
     </PlayProvider>
   );
@@ -132,18 +120,16 @@ export default function App() {
 `;
 
 export const canHoverReactSource = `// ABOUTME: Shares ephemeral hover state across connected browsers.
-// ABOUTME: Styles the element from the data-playhtml-hover attribute.
+// ABOUTME: Styles the established docs hover pad from the PlayHTML attribute.
 import { PlayProvider, CanHoverElement } from "@playhtml/react";
 
 export default function App() {
   return (
     <PlayProvider initOptions={{ developmentMode: true }}>
       <main>
-        <h1>Shared hover</h1>
-        <p>Hover over the card. It lights up for everyone currently connected.</p>
         <CanHoverElement>
-          <div id="shared-hover-card" className="hover-card">
-            hover here
+          <div id="ph-cap-hover-pad" className="hover-pad">
+            <p>Hover here with a friend - the pad lights up for everyone.</p>
           </div>
         </CanHoverElement>
       </main>
@@ -152,22 +138,23 @@ export default function App() {
         :root { color: #1c1c1c; background: #f4efe5; font-family: system-ui, sans-serif; }
         * { box-sizing: border-box; }
         body { margin: 0; }
-        #root { display: grid; min-height: 100vh; padding: 1.5rem; place-items: center; }
-        main { width: min(32rem, 100%); text-align: center; }
-        h1 { margin: 0 0 0.35rem; font-size: clamp(2rem, 9vw, 3.5rem); }
-        p { margin: 0 0 1.25rem; line-height: 1.5; }
-        .hover-card {
+        #root { display: grid; min-height: 100vh; padding: 1rem; place-items: center; }
+        main { width: min(40rem, 100%); }
+        .hover-pad {
           display: grid;
-          min-height: 12rem;
+          width: min(22.5rem, 100%);
+          min-height: 7.5rem;
+          margin: 0 auto;
+          padding: 1rem 1.1rem;
           place-items: center;
-          border: 2px solid #1c1c1c;
-          background: #dce8cf;
-          box-shadow: 5px 5px 0 #1c1c1c;
-          font-size: 1.4rem;
-          font-weight: 800;
+          border: 1.5px solid #1c1c1c;
+          border-radius: 8px;
+          background: linear-gradient(135deg, #ebe4d5, #ded6c7);
+          box-shadow: 2px 2px 0 #1c1c1c;
           transition: background 150ms, transform 150ms;
         }
-        .hover-card[data-playhtml-hover] { background: #f3cf58; transform: scale(1.03); }
+        .hover-pad[data-playhtml-hover] { background: linear-gradient(135deg, #e8a63a, #ded6c7); transform: translateY(-2px); }
+        p { margin: 0; font-size: 0.92rem; line-height: 1.45; }
       \`}</style>
     </PlayProvider>
   );
