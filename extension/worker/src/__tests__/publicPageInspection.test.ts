@@ -30,10 +30,24 @@ describe('classifyPublicPage', () => {
     });
   });
 
-  it.each([401, 403])('marks a %i response as gated', (status) => {
-    expect(classifyPublicPage(pageEvidence({ status }))).toMatchObject({
+  it('marks a 401 response as gated', () => {
+    expect(classifyPublicPage(pageEvidence({ status: 401 }))).toMatchObject({
       verdict: 'gated',
       reason: 'authentication_required',
+    });
+  });
+
+  it('keeps a 403 response unknown because it may be bot protection', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({
+          status: 403,
+          htmlHead: '<title>Just a moment...</title>',
+        }),
+      ),
+    ).toMatchObject({
+      verdict: 'unknown',
+      reason: 'access_restricted',
     });
   });
 
@@ -65,6 +79,26 @@ describe('classifyPublicPage', () => {
         }),
       ),
     ).toMatchObject({ verdict: 'gated', reason: 'authentication_required' });
+  });
+
+  it('marks a password form posting to an authentication route as gated', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({
+          htmlHead:
+            '<title>Ormond Spirit</title><input name="password" type=password>',
+          formActions: ['/auth/login'],
+        }),
+      ),
+    ).toMatchObject({ verdict: 'gated', reason: 'authentication_required' });
+  });
+
+  it('marks a meta refresh to an authentication route as gated', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({ metaRefreshes: ['0; URL=/account/signin'] }),
+      ),
+    ).toMatchObject({ verdict: 'gated', reason: 'login_redirect' });
   });
 
   it('honors noindex in an X-Robots-Tag header', () => {

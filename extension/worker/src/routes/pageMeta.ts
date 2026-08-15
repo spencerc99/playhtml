@@ -429,6 +429,8 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
   let bodyTruncated = false;
   let headComplete = false;
   let hasPasswordInput = false;
+  const formActions: string[] = [];
+  const metaRefreshes: string[] = [];
   const robotsDirectives: string[] = [];
   try {
     const fetched = await fetchPublicPage(url);
@@ -513,6 +515,12 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
             const content = el.getAttribute('content');
             if (content) robotsDirectives.push(content);
           }
+          if (
+            (el.getAttribute('http-equiv') || '').toLowerCase() === 'refresh'
+          ) {
+            const content = el.getAttribute('content');
+            if (content) metaRefreshes.push(content);
+          }
           // og:title is often nicer (cleaner trailing branding) than <title>.
           if (title) return;
           const property = (el.getAttribute('property') || '').toLowerCase();
@@ -526,6 +534,12 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
           if ((el.getAttribute('type') || '').toLowerCase() === 'password') {
             hasPasswordInput = true;
           }
+        },
+      })
+      .on('form', {
+        element(el) {
+          const action = el.getAttribute('action');
+          if (action) formActions.push(action);
         },
       });
 
@@ -550,6 +564,8 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
       contentType,
       xRobotsTag: resp.headers.get('x-robots-tag'),
       htmlHead: inspectionHead,
+      formActions,
+      metaRefreshes,
     });
     if (bodyTruncated && !headComplete && inspection.verdict === 'public') {
       inspection = unknownInspection('incomplete_head', finalUrl);

@@ -116,6 +116,7 @@ const SCENERY_ONLY_DOMAINS = [
   'myaccount.google.com',
   'mygju.gju.edu.jo',
   'myjobs.indeed.com',
+  'myworkdayjobs.com',
   'notion.so',
   'onedrive.live.com',
   'onlyfans.com',
@@ -154,9 +155,12 @@ const GENERIC_BUSINESS_HOMEPAGE_DOMAINS = [
   'garmin.com',
   'microsoft.com',
   'ouraring.com',
+  'netsuite.com',
   'paypal.com',
+  'phcode.io',
   'shopify.com',
   'stripe.com',
+  'threads.com',
   'vercel.com',
   'wayfair.com',
 ];
@@ -189,9 +193,11 @@ const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'auth',
   'candidate',
   'dashboard',
+  'docs',
   'file',
   'files',
   'fs',
+  'help',
   'idp',
   'idpproxy',
   'inside',
@@ -206,6 +212,7 @@ const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'signin',
   'signins',
   'sso',
+  'support',
 ]);
 
 const SCENERY_ONLY_PATH_SEGMENTS = new Set([
@@ -496,6 +503,18 @@ function getMeaningfulTitle(
   return comparableDomains.has(comparableLabel(normalizedTitle))
     ? null
     : normalizedTitle;
+}
+
+function hasUtilitySurfaceTitle(title: string | null): boolean {
+  const normalizedTitle = title?.replace(/\s+/g, ' ').trim() ?? '';
+  return (
+    /^(?:log[ -]?in|sign[ -]?in|authentication required|single sign[ -]?on)(?:\s*[-–—|].*)?$/i.test(
+      normalizedTitle,
+    ) ||
+    /\b(?:help cent(?:er|re)|help for existing users|support & learning|support portal|developer documentation)\b/i.test(
+      normalizedTitle,
+    )
+  );
 }
 
 function sanitizeContentUrl(url: URL): string {
@@ -852,7 +871,11 @@ function buildDestinations(
 
   for (const candidate of rankedCandidates) {
     const url = sanitizePublicDestinationUrl(candidate.url);
-    if (!url || seenRegistrableDomains.has(candidate.registrableDomain)) {
+    if (
+      !url ||
+      hasUtilitySurfaceTitle(candidate.title) ||
+      seenRegistrableDomains.has(candidate.registrableDomain)
+    ) {
       continue;
     }
 

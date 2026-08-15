@@ -11,6 +11,7 @@ export type PublicPageVerdict =
 export type PublicPageReason =
   | 'public_html'
   | 'authentication_required'
+  | 'access_restricted'
   | 'login_redirect'
   | 'noindex'
   | 'not_html'
@@ -33,6 +34,8 @@ export interface PublicPageEvidence {
   contentType: string | null;
   xRobotsTag: string | null;
   htmlHead: string;
+  formActions?: string[];
+  metaRefreshes?: string[];
 }
 
 export interface PublicPageInspection {
@@ -58,6 +61,19 @@ function hasAuthenticationPath(url: URL): boolean {
     .split('/')
     .filter(Boolean)
     .some((segment) => AUTHENTICATION_PATH_SEGMENTS.has(segment.toLowerCase()));
+}
+
+function resolvesToAuthenticationPath(value: string, baseUrl: URL): boolean {
+  try {
+    return hasAuthenticationPath(new URL(value, baseUrl));
+  } catch {
+    return false;
+  }
+}
+
+function getMetaRefreshUrl(value: string): string | null {
+  const match = value.match(/(?:^|;)\s*url\s*=\s*["']?([^"']+?)["']?\s*$/i);
+  return match?.[1]?.trim() ?? null;
 }
 
 function hasNoindexDirective(value: string | null): boolean {
@@ -92,7 +108,11 @@ function getMetaRobotsContent(htmlHead: string): string[] {
   return directives;
 }
 
-function isLoginDocument(htmlHead: string): boolean {
+function isLoginDocument(
+  htmlHead: string,
+  formActions: string[],
+  finalUrl: URL,
+): boolean {
   if (
     !/<input\b[^>]*\btype\s*=\s*(?:["']password["']|password)\b[^>]*>/i.test(
       htmlHead,
@@ -106,8 +126,11 @@ function isLoginDocument(htmlHead: string): boolean {
       .match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]
       ?.replace(/\s+/g, ' ')
       .trim() ?? '';
-  return /^(?:log[ -]?in|sign[ -]?in|authentication required|single sign[ -]?on)(?:\s*[-–—|].*)?$/i.test(
-    title,
+  return (
+    /^(?:log[ -]?in|sign[ -]?in|authentication required|single sign[ -]?on)(?:\s*[-–—|].*)?$/i.test(
+      title,
+    ) ||
+    formActions.some((action) => resolvesToAuthenticationPath(action, finalUrl))
   );
 }
 
@@ -116,10 +139,18 @@ export function classifyPublicPage(
 ): PublicPageInspection {
   const finalUrl = new URL(evidence.finalUrl);
 
-  if (evidence.status === 401 || evidence.status === 403) {
+  if (evidence.status === 401) {
     return {
       verdict: 'gated',
       reason: 'authentication_required',
+      finalUrl: finalUrl.toString(),
+    };
+  }
+
+  if (evidence.status === 403) {
+    return {
+      verdict: 'unknown',
+      reason: 'access_restricted',
       finalUrl: finalUrl.toString(),
     };
   }
@@ -175,6 +206,18 @@ export function classifyPublicPage(
     };
   }
 
+  if (
+    (evidence.metaRefreshes ?? [])
+      .map(getMetaRefreshUrl)
+      .some((url) => url !== null && resolvesToAuthenticationPath(url, finalUrl))
+  ) {
+    return {
+      verdict: 'gated',
+      reason: 'login_redirect',
+      finalUrl: finalUrl.toString(),
+    };
+  }
+
   if (hasNoindexDirective(evidence.xRobotsTag)) {
     return {
       verdict: 'not_public',
@@ -203,7 +246,7 @@ export function classifyPublicPage(
     };
   }
 
-  if (isLoginDocument(evidence.htmlHead)) {
+  if (isLoginDocument(evidence.htmlHead, evidence.formActions ?? [], finalUrl)) {
     return {
       verdict: 'gated',
       reason: 'authentication_required',

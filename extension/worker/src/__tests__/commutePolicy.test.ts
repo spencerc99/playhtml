@@ -191,6 +191,76 @@ describe('buildCommuteResponse', () => {
     ).toEqual(['garden.example']);
   });
 
+  it('applies reusable utility rules without excluding content communities', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'support-subdomain',
+          'navigation',
+          'https://support.smalltool.example/guides/shortcuts',
+          700,
+          'support-rider',
+          'Keyboard shortcuts',
+        ),
+        event(
+          'support-title',
+          'navigation',
+          'https://affinity.studio/learn',
+          600,
+          'affinity-rider',
+          'Affinity Support & Learning | Help for Existing Users',
+        ),
+        event(
+          'hosted-job',
+          'navigation',
+          'https://capitalone.wd12.myworkdayjobs.com/Capital_One/job/example',
+          500,
+          'job-rider',
+          'A job listing',
+        ),
+        event(
+          'generic-platform-home',
+          'navigation',
+          'https://threads.com/',
+          400,
+          'threads-rider',
+          'Threads',
+        ),
+        event(
+          'community-forum',
+          'navigation',
+          'https://forum.frutigeraeroarchive.org/t/community-thread/42',
+          300,
+          'forum-rider',
+          'A community thread',
+        ),
+        event(
+          'museum',
+          'navigation',
+          'https://themorgan.org/exhibitions/example',
+          200,
+          'museum-rider',
+          'A museum exhibition',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.destinations).toEqual([
+      expect.objectContaining({ domain: 'forum.frutigeraeroarchive.org' }),
+      expect.objectContaining({ domain: 'themorgan.org' }),
+    ]);
+    expect(response.scenery.map((item) => item.domain)).toEqual(
+      expect.arrayContaining([
+        'support.smalltool.example',
+        'affinity.studio',
+        'capitalone.wd12.myworkdayjobs.com',
+        'threads.com',
+      ]),
+    );
+  });
+
   it('keeps IMDb entity pages while removing tracking queries', () => {
     const response = buildCommuteResponse(
       [
