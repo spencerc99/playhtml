@@ -156,6 +156,20 @@ afterEach(() => {
   globalThis.AudioContext = originalAudioContext;
 });
 
+function soloFrame(trailIndex: number, x: number, y: number) {
+  return {
+    trailIndex,
+    x,
+    y,
+    prevX: x,
+    prevY: y,
+    cursorType: "default",
+    progress: 0,
+    color: "#000",
+    isNewlyActive: false,
+  };
+}
+
 describe("SoundEngine cursor instruments", () => {
   it("does not restart the master gain ramp when trail count is unchanged", async () => {
     const engine = new SoundEngine();
@@ -482,6 +496,168 @@ describe("SoundEngine cursor instruments", () => {
 
     const delayedFrameTarget = gain.events.at(-1)?.value;
     expect(delayedFrameTarget).toBeLessThan(regularFrameTarget! / 2);
+  });
+
+  it("promotes a lone fast trail with no other trail to compare against", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    // A single cursor sweeping steadily. The candidate must not be measured
+    // against a scene average that includes its own samples, or the bar rises
+    // with the very speed being measured and nothing is ever promoted.
+    for (let step = 0; step < 20; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, step * 12, 0)]);
+    }
+
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+  });
+
+  it("promotes one fast trail among slower ones", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, 10 + step * 12, 10),
+        soloFrame(1, 10 + step * 2, 50),
+        soloFrame(2, 10 + step * 2, 90),
+        soloFrame(3, 10 + step * 2, 130),
+      ]);
+    }
+
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+  });
+
+  it("leaves non-soloist filters on their instrument default", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, 10 + step * 12, 10),
+        soloFrame(1, 10 + step * 2, 50),
+        soloFrame(2, 10 + step * 2, 90),
+        soloFrame(3, 10 + step * 2, 130),
+      ]);
+    }
+
+    const state = engine as unknown as {
+      voices: Map<number, { filterNode: TestBiquadFilterNode }>;
+    };
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+
+    // Ducked voices keep their timbre — only their gain moves. Any automation
+    // on their cutoff is the "muffled everything" bug.
+    for (const index of [1, 2, 3]) {
+      expect(state.voices.get(index)!.filterNode.frequency.events).toEqual([]);
+    }
+    expect(
+      state.voices.get(0)!.filterNode.frequency.events.length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("never darkens the soloist below its instrument cutoff", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    // Fast enough to promote, slow enough that a low mapping floor would pull
+    // the cutoff down rather than open it.
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, step * 5, 0)]);
+    }
+
+    const state = engine as unknown as {
+      voices: Map<number, { filterNode: TestBiquadFilterNode }>;
+    };
+    const events = state.voices.get(0)!.filterNode.frequency.events;
+    const ramps = events.filter((event) => event.method === "linearRamp");
+    expect(ramps.length).toBeGreaterThan(0);
+    for (const ramp of ramps) {
+      expect(ramp.value).toBeGreaterThanOrEqual(2000);
+    }
+  });
+
+  it("restores the instrument cutoff once a soloist is demoted", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, 10 + step * 12, 10),
+        soloFrame(1, 10 + step * 2, 50),
+        soloFrame(2, 10 + step * 2, 90),
+        soloFrame(3, 10 + step * 2, 130),
+      ]);
+    }
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+
+    const state = engine as unknown as {
+      voices: Map<number, { filterNode: TestBiquadFilterNode }>;
+    };
+    const events = state.voices.get(0)!.filterNode.frequency.events;
+    const promotedCount = events.length;
+
+    // Trail 0 slows to match the crowd, so it stops being an outlier.
+    for (let step = 40; step < 90; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, 490 + (step - 40) * 2, 10),
+        soloFrame(1, 10 + step * 2, 50),
+        soloFrame(2, 10 + step * 2, 90),
+        soloFrame(3, 10 + step * 2, 130),
+      ]);
+    }
+
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+    // Exactly one ramp back to the default instrument cutoff (2000 Hz), not a
+    // fresh ramp every frame while demoted.
+    const afterDemotion = events.slice(promotedCount);
+    const ramps = afterDemotion.filter(
+      (event) => event.method === "linearRamp",
+    );
+    expect(ramps).toHaveLength(1);
+    expect(ramps[0].value).toBe(2000);
+  });
+
+  it("keeps spotlight filter ramps longer than the control interval", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, step * 12, 0)]);
+    }
+
+    const state = engine as unknown as {
+      voices: Map<number, { filterNode: TestBiquadFilterNode }>;
+    };
+    const events = state.voices.get(0)!.filterNode.frequency.events;
+    const holds = events.filter((event) => event.method === "cancelAndHold");
+
+    // Consecutive ramps must still be in flight when the next is scheduled.
+    // A ramp that lands before its successor is scheduled leaves a held step,
+    // and a staircase of held steps is the audible crackle.
+    for (let i = 1; i < holds.length; i++) {
+      const gapSeconds = holds[i].time - holds[i - 1].time;
+      expect(gapSeconds).toBeLessThan(0.12);
+    }
   });
 
   it("disconnects voice graphs after a playback reset", async () => {
