@@ -58,52 +58,11 @@ import {
   DEFAULT_CINEMATIC_CONFIG,
   type CinematicConfig,
 } from "../utils/cinematicCamera";
+import { formatWordmarkTimestamp } from "./WordmarkClock";
 
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
 const EMPTY_EVENTS: CollectionEvent[] = [];
-
-const READOUT_WRAPPER_STYLE: React.CSSProperties = {
-  position: "absolute",
-  top: "20px",
-  left: "50%",
-  transform: "translateX(-50%)",
-  zIndex: 100,
-  padding: "10px 16px",
-  background: "#faf9f6",
-  border: "1px solid rgba(0, 0, 0, 0.12)",
-  boxShadow:
-    "inset 1px 1px 2px rgba(255, 255, 255, 0.8), inset -1px -1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08)",
-  fontFamily: '"Martian Mono", "Space Mono", "Courier New", monospace',
-  fontSize: "11px",
-  fontWeight: 600,
-  color: "#333",
-  letterSpacing: "0.5px",
-  textTransform: "uppercase",
-  overflow: "hidden",
-};
-
-const ReadoutNoise: React.FC<{ id: string }> = ({ id }) => (
-  <svg
-    style={{
-      position: "absolute",
-      inset: 0,
-      width: "100%",
-      height: "100%",
-      opacity: 0.15,
-      pointerEvents: "none",
-    }}
-  >
-    <filter id={id}>
-      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" />
-      <feColorMatrix type="saturate" values="0" />
-      <feComponentTransfer>
-        <feFuncA type="discrete" tableValues="0 0.3 0.5 0.7" />
-      </feComponentTransfer>
-    </filter>
-    <rect width="100%" height="100%" filter={`url(#${id})`} />
-  </svg>
-);
 
 /** Live clock readout shown when trails play in their natural-timestamp order.
  * Mirrors AnimatedTrails' `(realElapsed * speed) % duration` math so the time
@@ -126,20 +85,13 @@ const NaturalTimeReadout: React.FC<{
     let timeout = 0;
     let startedAt: number | null = null;
 
-    const formatter = new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    });
-
     const tick = (ts: number) => {
       if (startedAt === null) startedAt = ts;
       const realElapsed = ts - startedAt;
       const looped = (realElapsed * speedRef.current) % durationMs;
       const node = textRef.current;
       if (node) {
-        node.textContent = formatter.format(
+        node.textContent = formatWordmarkTimestamp(
           new Date(startTimestampMs + looped),
         );
       }
@@ -162,10 +114,24 @@ const NaturalTimeReadout: React.FC<{
   }, [startTimestampMs, durationMs]);
 
   return (
-    <div style={{ ...READOUT_WRAPPER_STYLE, pointerEvents: "none" }}>
-      <ReadoutNoise id="timeNoise" />
-      <span ref={textRef} style={{ position: "relative", zIndex: 1 }} />
-    </div>
+    <span
+      ref={textRef}
+      style={{
+        position: "absolute",
+        bottom: 16,
+        right: 20,
+        zIndex: 200,
+        fontFamily: "'Source Serif 4', 'Lora', Georgia, serif",
+        fontStyle: "italic",
+        fontWeight: 200,
+        fontSize: "20px",
+        letterSpacing: "-0.01em",
+        color: "#3d3833",
+        pointerEvents: "none",
+        userSelect: "none",
+        whiteSpace: "nowrap",
+      }}
+    />
   );
 };
 
