@@ -59,6 +59,8 @@ import {
   type CinematicConfig,
 } from "../utils/cinematicCamera";
 import { formatWordmarkTimestamp } from "./WordmarkClock";
+import { useArchiveTrailHandoff } from "../hooks/useArchiveTrailHandoff";
+import { COMPLETION_FADE_MS } from "./trailPrimitives";
 
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
@@ -934,6 +936,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
   } = useCursorTrails(activeTrailEvents, viewportSize, cursorSettings);
+  const renderedTrailStates = useArchiveTrailHandoff(
+    trailStates,
+    playbackKey,
+    onPlaybackCycleComplete !== undefined,
+    settings.maxConcurrentTrails * 2,
+    COMPLETION_FADE_MS,
+  );
 
   // Recent activity (live mode) from the raw event stream, not the capped drawn
   // trails: how many people + the geographic spread of their timezones.
@@ -1579,8 +1588,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           ) : (
             <AnimatedTrails
-              key={`trails-${playbackKey}-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
-              trailStates={trailStates}
+              key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              trailStates={renderedTrailStates}
               timeRange={timeRange}
               showClickRipples={!showClicks}
               windowSize={settings.maxConcurrentTrails * 2}
