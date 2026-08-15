@@ -105,6 +105,10 @@ export const DEFAULT_SETTINGS = {
   /** How trail motion becomes sound. "sustained" holds a continuous voice per
    * trail; "notes" emits discrete plucks as a trail travels. */
   soundMode: "sustained" as SoundMode,
+  /** Rotate the harmonic root through a slow chord progression. */
+  soundChordRotation: false,
+  /** Let accumulated scene motion swell and relax the whole mix. */
+  soundEnergyArc: false,
   soundChordVoicing: true,
   soundCursorInstruments: true,
   soundCrossingDissonance: false,

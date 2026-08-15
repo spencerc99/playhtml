@@ -102,6 +102,8 @@ export class NotesEngine {
   /** Rolling velocity samples across all trails: [timestampMs, velocity]. */
   private velocitySamples: Array<[number, number]> = [];
   private cursorInstruments = false;
+  /** Pitch palette for new notes; undefined uses the default D minor set. */
+  private scale: number[] | undefined = undefined;
   private soloistTrailIndex: number | null = null;
   private sceneAverageVelocity = 0;
 
@@ -140,6 +142,15 @@ export class NotesEngine {
 
   setCursorInstruments(enabled: boolean): void {
     this.cursorInstruments = enabled;
+  }
+
+  /**
+   * Set the pitch palette new notes are drawn from. Notes already sounding
+   * are one-shots and finish on their old pitch, so the harmony drifts over
+   * rather than snapping on a chord boundary.
+   */
+  setScale(scale: number[] | undefined): void {
+    this.scale = scale;
   }
 
   setVolume(volume: number): void {
@@ -308,7 +319,7 @@ export class NotesEngine {
       ? getInstrument(frame.cursorType)
       : getInstrument(undefined);
 
-    const basePitch = directionToPitch(direction);
+    const basePitch = directionToPitch(direction, this.scale);
     // Crowd trails sit below the soloist; roleWeight blends between the two
     // registers so a handoff glides rather than steps.
     const velocityOctave = velocityToOctaveMultiplier(velocity);

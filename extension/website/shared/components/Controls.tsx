@@ -2280,6 +2280,40 @@ export const Controls: React.FC<ControlsProps> = memo(
             </select>
           </div>
           <div className="control-group">
+            <label htmlFor="sound-chord-rotation">
+              <input
+                id="sound-chord-rotation"
+                type="checkbox"
+                checked={!!settings.soundChordRotation}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    soundChordRotation: e.target.checked,
+                  }))
+                }
+                style={{ marginRight: "8px" }}
+              />
+              Chord Rotation (Dm → Bb → F → C)
+            </label>
+          </div>
+          <div className="control-group">
+            <label htmlFor="sound-energy-arc">
+              <input
+                id="sound-energy-arc"
+                type="checkbox"
+                checked={!!settings.soundEnergyArc}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    soundEnergyArc: e.target.checked,
+                  }))
+                }
+                style={{ marginRight: "8px" }}
+              />
+              Energy Arc (build and release)
+            </label>
+          </div>
+          <div className="control-group">
             <label htmlFor="sound-chord-voicing">
               <input
                 id="sound-chord-voicing"

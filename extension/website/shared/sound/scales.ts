@@ -18,11 +18,55 @@ const D_MINOR_PENTATONIC = [
 ];
 
 /**
+ * A harmonic centre the pitch palette can sit on. `semitonesFromD` transposes
+ * the base pentatonic set, keeping the same register span and interval shape
+ * so only the tonal colour changes.
+ */
+export interface Chord {
+  name: string;
+  semitonesFromD: number;
+}
+
+/**
+ * The rotation, i -> VI -> III -> VII in D minor. Edit freely: any list of
+ * chords works, and the engine simply cycles it.
+ */
+export const CHORD_PROGRESSION: Chord[] = [
+  { name: "Dm", semitonesFromD: 0 },
+  { name: "Bb", semitonesFromD: -4 },
+  { name: "F", semitonesFromD: 3 },
+  { name: "C", semitonesFromD: -2 },
+];
+
+/** How long each chord holds before the progression advances (ms). */
+export const CHORD_DWELL_MS = 20000;
+
+const SEMITONE_RATIO = Math.pow(2, 1 / 12);
+
+/** Transpose the base palette onto a chord, memoized per semitone offset. */
+const transposedCache = new Map<number, number[]>();
+
+export function scaleForChord(chord: Chord): number[] {
+  const cached = transposedCache.get(chord.semitonesFromD);
+  if (cached) return cached;
+  const ratio = Math.pow(SEMITONE_RATIO, chord.semitonesFromD);
+  const scale = D_MINOR_PENTATONIC.map((hz) => hz * ratio);
+  transposedCache.set(chord.semitonesFromD, scale);
+  return scale;
+}
+
+/**
  * Map a direction angle (radians) to a scale degree.
  * 0 = right, PI/2 = down, PI = left, -PI/2 = up.
  * Quantizes to 8 compass directions, each mapped to a scale degree.
+ *
+ * Passing a `scale` draws from a transposed palette instead of the default
+ * D minor pentatonic; the direction-to-degree mapping is identical either way.
  */
-export function directionToPitch(angleRadians: number): number {
+export function directionToPitch(
+  angleRadians: number,
+  scale: number[] = D_MINOR_PENTATONIC,
+): number {
   // Normalize to 0-2PI
   const normalized = ((angleRadians % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
@@ -35,7 +79,7 @@ export function directionToPitch(angleRadians: number): number {
   // Left=C4, DownLeft=D4, Down=F4, DownRight=G4
   const DIRECTION_TO_SCALE_INDEX = [0, 1, 2, 3, 4, 5, 6, 7];
 
-  return D_MINOR_PENTATONIC[DIRECTION_TO_SCALE_INDEX[directionIndex]];
+  return scale[DIRECTION_TO_SCALE_INDEX[directionIndex]];
 }
 
 /**

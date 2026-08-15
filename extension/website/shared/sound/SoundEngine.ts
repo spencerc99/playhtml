@@ -8,6 +8,9 @@ import {
   computeVelocity,
   velocityToGain,
   positionToPan,
+  scaleForChord,
+  CHORD_PROGRESSION,
+  CHORD_DWELL_MS,
 } from "./scales";
 import { getInstrument, CLICK_BELL } from "./instruments";
 import { NotesEngine } from "./NotesEngine";
@@ -17,6 +20,9 @@ const MIN_NOTE_INTERVAL_MS = 80;
 
 /** Nominal frame interval, used to rate-limit per-frame smoothing. */
 const FRAME_MS = 16;
+
+/** Fixed reverb send used whenever the energy arc is not driving it. */
+const DEFAULT_REVERB_SEND = 0.3;
 
 /** Duration of cursor-instrument timbre crossfades (seconds). */
 const OSCILLATOR_CROSSFADE_SECONDS = 0.03;
@@ -67,6 +73,10 @@ export interface SoundConfig {
    * outlier is lifted and brightened while the rest duck behind it.
    */
   spotlight: boolean;
+  /** Rotate the harmonic root through a slow chord progression. */
+  chordRotation: boolean;
+  /** Let accumulated scene motion swell and relax the whole mix. */
+  energyArc: boolean;
 }
 
 const DEFAULT_CONFIG: SoundConfig = {
@@ -75,6 +85,35 @@ const DEFAULT_CONFIG: SoundConfig = {
   cursorInstruments: false,
   crossingDissonance: false,
   spotlight: false,
+  chordRotation: false,
+  energyArc: false,
+};
+
+/**
+ * Energy-arc tuning. Energy is a slow leaky integral of total scene motion,
+ * normalized to 0-1, driving master swell and reverb depth.
+ */
+const ENERGY_TUNING = {
+  /** Time constant of the energy follower (ms). */
+  timeConstantMs: 10000,
+  /** Scene motion (summed px/frame) that reads as fully energized. */
+  fullScaleMotion: 120,
+  /** Master gain multiplier at zero energy and at full energy. */
+  minGain: 0.7,
+  maxGain: 1.15,
+  /** Reverb send at zero energy and at full energy. */
+  minReverb: 0.12,
+  maxReverb: 0.55,
+  /**
+   * Below this energy the mix is treated as a lull and decays toward silence,
+   * so the next burst of activity lands with contrast.
+   */
+  lullThreshold: 0.12,
+  /** Master multiplier at the very bottom of a lull. */
+  lullFloorGain: 0.12,
+  /** Chord dwell scaling when energyArc rides chordRotation. */
+  dwellAtLowEnergy: 1.6,
+  dwellAtHighEnergy: 0.55,
 };
 
 /**
@@ -155,6 +194,16 @@ export class SoundEngine {
   private spotlightSceneAverage = 0;
   /** Per-trail smoothed spotlight gain multiplier, so ramps stay continuous. */
   private spotlightGains: Map<number, number> = new Map();
+  /** Index into CHORD_PROGRESSION, and when the current chord started. */
+  private chordIndex = 0;
+  private chordStartedMs = 0;
+  /** Smoothed 0-1 scene energy driving the swell. */
+  private energy = 0;
+  private lastEnergyTickMs: number | null = null;
+  /** Last reverb target actually scheduled, so ramps are not restarted. */
+  private lastReverbTarget = DEFAULT_REVERB_SEND;
+  /** Last master gain target actually scheduled, for the same reason. */
+  private lastMasterGainTarget = Number.NaN;
 
   async init(): Promise<void> {
     if (this.ctx) return;
@@ -163,12 +212,13 @@ export class SoundEngine {
 
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = this.baseVolume;
+    this.lastMasterGainTarget = Number.NaN;
 
     this.convolver = this.ctx.createConvolver();
     this.convolver.buffer = this.createReverbImpulse(this.ctx, 3.0, 2.0);
 
     this.reverbGain = this.ctx.createGain();
-    this.reverbGain.gain.value = 0.3;
+    this.reverbGain.gain.value = DEFAULT_REVERB_SEND;
 
     this.compressor = this.ctx.createDynamicsCompressor();
     this.compressor.threshold.value = -24;
@@ -246,6 +296,15 @@ export class SoundEngine {
 
     this.notesEngine.setCursorInstruments(this.config.cursorInstruments);
 
+    // Turning the arc off must hand the reverb back to its fixed default,
+    // otherwise it stays frozen at whatever the last energy value set.
+    if (config.energyArc === false && this.reverbGain) {
+      this.energy = 0;
+      this.lastEnergyTickMs = null;
+      this.lastReverbTarget = DEFAULT_REVERB_SEND;
+      this.rampParam(this.reverbGain.gain, DEFAULT_REVERB_SEND, 0.3);
+    }
+
     // Switching modes mid-session must not leave the other path sounding.
     if (prevMode !== this.config.mode) {
       if (this.config.mode === "notes") {
@@ -280,19 +339,37 @@ export class SoundEngine {
     }
 
     if (this.config.mode === "notes") {
+      // Notes runs its own graph, so it needs the arc and progression applied
+      // here rather than through the sustained voice loop below.
+      this.updateEnergy(elapsedMs, activeTrails);
+      this.updateChord(elapsedMs);
+      this.updateEnergyReverb();
+      this.notesEngine.setScale(this.currentScale());
+      this.notesEngine.setVolume(this.baseVolume * this.energyGainScale());
       this.notesEngine.tick(elapsedMs, activeTrails);
+      // prevPositions feeds the energy measurement above; the sustained loop
+      // that normally maintains it is skipped in this mode.
+      this.prevPositions.clear();
+      for (const frame of activeTrails) {
+        this.prevPositions.set(frame.trailIndex, { x: frame.x, y: frame.y });
+      }
       return;
     }
 
     const activeIndices = new Set(activeTrails.map((t) => t.trailIndex));
-    if (activeTrails.length !== this.lastActiveTrailCount) {
-      this.lastActiveTrailCount = activeTrails.length;
-      this.updateMasterGainForPolyphony(activeTrails.length);
-    }
+    this.lastActiveTrailCount = activeTrails.length;
 
+    // These run before the voice loop overwrites prevPositions, so they
+    // measure this frame's motion rather than the next one's. Energy leads,
+    // since the master gain below folds in its swell.
+    this.updateEnergy(elapsedMs, activeTrails);
+    this.updateChord(elapsedMs);
+    this.updateEnergyReverb();
+    this.updateMasterGainForPolyphony(activeTrails.length);
     // Resolve the soloist before touching any voice, so every trail in this
     // frame is judged against the same scene average.
     this.updateSpotlight(elapsedMs, activeTrails);
+    const scale = this.currentScale();
 
     for (const [idx, voice] of this.voices) {
       if (!activeIndices.has(idx) && voice.active) {
@@ -343,7 +420,10 @@ export class SoundEngine {
       }
 
       const direction = computeDirection(prevX, prevY, frame.x, frame.y);
-      const frequency = directionToPitch(direction);
+      // Only newly-selected pitches use the current chord, so voices already
+      // sounding drift into the new harmony at their own next note change
+      // rather than all retuning together on the chord boundary.
+      const frequency = directionToPitch(direction, scale);
       const pan = positionToPan(frame.x, this.canvasWidth);
 
       // When cursor instruments are off, use the default instrument for all
@@ -843,6 +923,110 @@ export class SoundEngine {
   }
 
   /**
+   * Advance the energy follower from this frame's total scene motion. Energy
+   * is a leaky integral, so a burst of activity swells the mix over seconds
+   * and a lull drains it back down rather than cutting out.
+   */
+  private updateEnergy(
+    elapsedMs: number,
+    activeTrails: TrailSoundFrame[],
+  ): void {
+    if (!this.config.energyArc) {
+      this.energy = 0;
+      this.lastEnergyTickMs = null;
+      return;
+    }
+
+    const deltaMs =
+      this.lastEnergyTickMs === null
+        ? FRAME_MS
+        : Math.max(0, Math.min(500, elapsedMs - this.lastEnergyTickMs));
+    this.lastEnergyTickMs = elapsedMs;
+
+    let motion = 0;
+    for (const frame of activeTrails) {
+      const prev = this.prevPositions.get(frame.trailIndex);
+      if (!prev) continue;
+      motion += computeVelocity(prev.x, prev.y, frame.x, frame.y);
+    }
+
+    const target = Math.min(1, motion / ENERGY_TUNING.fullScaleMotion);
+    const rate = Math.min(1, deltaMs / ENERGY_TUNING.timeConstantMs);
+    this.energy += (target - this.energy) * rate;
+  }
+
+  /**
+   * Master multiplier from current energy. Above the lull threshold this is a
+   * gentle swell; below it the mix drains toward near-silence so the next
+   * burst of activity arrives against an empty canvas.
+   */
+  private energyGainScale(): number {
+    if (!this.config.energyArc) return 1;
+    const { minGain, maxGain, lullThreshold, lullFloorGain } = ENERGY_TUNING;
+    if (this.energy <= lullThreshold) {
+      const t = lullThreshold > 0 ? this.energy / lullThreshold : 0;
+      return lullFloorGain + (minGain - lullFloorGain) * t;
+    }
+    const t = (this.energy - lullThreshold) / (1 - lullThreshold);
+    return minGain + (maxGain - minGain) * t;
+  }
+
+  /** Reverb send follows energy: drier when quiet, lusher as activity builds. */
+  private updateEnergyReverb(): void {
+    if (!this.reverbGain || !this.config.energyArc) return;
+    const { minReverb, maxReverb } = ENERGY_TUNING;
+    const target = minReverb + (maxReverb - minReverb) * this.energy;
+    // Re-ramping every frame would restart the glide before it ever arrived,
+    // pinning the value near its start. Only schedule on a real move; the
+    // energy follower is already slow, so this stays smooth.
+    if (Math.abs(target - this.lastReverbTarget) < 0.01) return;
+    this.lastReverbTarget = target;
+    this.rampParam(this.reverbGain.gain, target, 0.5);
+  }
+
+  /**
+   * Advance the chord progression. Dwell time shortens as energy rises when
+   * the energy arc is also on, so a busy scene moves harmonically faster.
+   */
+  private updateChord(elapsedMs: number): void {
+    if (!this.config.chordRotation) {
+      this.chordIndex = 0;
+      this.chordStartedMs = elapsedMs;
+      return;
+    }
+
+    let dwell = CHORD_DWELL_MS;
+    if (this.config.energyArc) {
+      const { dwellAtLowEnergy, dwellAtHighEnergy } = ENERGY_TUNING;
+      dwell *=
+        dwellAtLowEnergy + (dwellAtHighEnergy - dwellAtLowEnergy) * this.energy;
+    }
+
+    if (elapsedMs - this.chordStartedMs >= dwell) {
+      this.chordIndex = (this.chordIndex + 1) % CHORD_PROGRESSION.length;
+      this.chordStartedMs = elapsedMs;
+    }
+  }
+
+  /** The pitch palette for this frame — the base scale unless rotating. */
+  private currentScale(): number[] | undefined {
+    if (!this.config.chordRotation) return undefined;
+    return scaleForChord(CHORD_PROGRESSION[this.chordIndex]);
+  }
+
+  /** Name of the chord currently in force (diagnostics). */
+  getCurrentChordName(): string {
+    return this.config.chordRotation
+      ? CHORD_PROGRESSION[this.chordIndex].name
+      : "Dm";
+  }
+
+  /** Current 0-1 scene energy (diagnostics). */
+  getEnergy(): number {
+    return this.energy;
+  }
+
+  /**
    * Pick this frame's soloist: the fastest trail that is both a clear outlier
    * against the rolling scene average and above an absolute floor. Runs only
    * while the spotlight is on; otherwise all spotlight state is cleared so
@@ -1018,11 +1202,15 @@ export class SoundEngine {
       MIN_POLYPHONY_GAIN_SCALE,
       1 / Math.sqrt(Math.max(1, activeTrailCount / 3)),
     );
-    this.rampParam(
-      this.masterGain.gain,
-      this.baseVolume * polyphonyScale,
-      0.08,
-    );
+    // The energy swell rides on top of the polyphony ducking rather than
+    // replacing it, so dense scenes still avoid clipping.
+    const target = this.baseVolume * polyphonyScale * this.energyGainScale();
+    // Re-ramping every frame would restart the glide before it arrived, so
+    // only schedule on a real move. Both inputs are slow — trail count is
+    // discrete and energy is a long follower — so this stays smooth.
+    if (Math.abs(target - this.lastMasterGainTarget) < 0.001) return;
+    this.lastMasterGainTarget = target;
+    this.rampParam(this.masterGain.gain, target, 0.08);
   }
 
   private rampParam(

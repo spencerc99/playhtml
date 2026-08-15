@@ -527,6 +527,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             chordVoicing: settings.soundChordVoicing,
             cursorInstruments: settings.soundCursorInstruments,
             crossingDissonance: settings.soundCrossingDissonance,
+            chordRotation: settings.soundChordRotation,
+            energyArc: settings.soundEnergyArc,
           });
           soundEngineRef.current = engine;
           setSoundEngineReady(engine);
@@ -557,12 +559,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       chordVoicing: settings.soundChordVoicing,
       cursorInstruments: settings.soundCursorInstruments,
       crossingDissonance: settings.soundCrossingDissonance,
+      chordRotation: settings.soundChordRotation,
+      energyArc: settings.soundEnergyArc,
     });
   }, [
     settings.soundMode,
     settings.soundChordVoicing,
     settings.soundCursorInstruments,
     settings.soundCrossingDissonance,
+    settings.soundChordRotation,
+    settings.soundEnergyArc,
   ]);
 
   // Derive which visualization categories are active

@@ -179,22 +179,34 @@ export const TrailPad = () => {
   const rafRef = useRef<number | null>(null);
   const startedAtRef = useRef<number>(0);
   const modeRef = useRef<SoundMode>("notes");
+  const chordRotationRef = useRef(false);
+  const energyArcRef = useRef(false);
   const nextTrailIndexRef = useRef(1);
 
   const [running, setRunning] = useState(false);
   const [mode, setMode] = useState<SoundMode>("notes");
   const [volume, setVolume] = useState(0.5);
   const [agentCount, setAgentCount] = useState(0);
+  const [chordRotation, setChordRotation] = useState(false);
+  const [energyArc, setEnergyArc] = useState(false);
   const [readout, setReadout] = useState({
     notes: 0,
     soloist: null as number | null,
     avgVelocity: 0,
+    chord: "Dm",
+    energy: 0,
   });
 
   useEffect(() => {
     modeRef.current = mode;
     engineRef.current?.setConfig({ mode });
   }, [mode]);
+
+  useEffect(() => {
+    chordRotationRef.current = chordRotation;
+    energyArcRef.current = energyArc;
+    engineRef.current?.setConfig({ chordRotation, energyArc });
+  }, [chordRotation, energyArc]);
 
   useEffect(() => {
     engineRef.current?.setVolume(volume);
@@ -204,7 +216,11 @@ export const TrailPad = () => {
     if (!engineRef.current) {
       const engine = new SoundEngine();
       await engine.init();
-      engine.setConfig({ mode: modeRef.current });
+      engine.setConfig({
+        mode: modeRef.current,
+        chordRotation: chordRotationRef.current,
+        energyArc: energyArcRef.current,
+      });
       engine.setVolume(volume);
       const canvas = canvasRef.current;
       engine.setCanvasWidth(canvas?.clientWidth ?? window.innerWidth);
@@ -302,6 +318,8 @@ export const TrailPad = () => {
       notes: engine.getActiveNoteCount(),
       soloist: engine.getSoloistTrailIndex(),
       avgVelocity: engine.getSceneAverageVelocity(),
+      chord: engine.getCurrentChordName(),
+      energy: engine.getEnergy(),
     });
 
     rafRef.current = requestAnimationFrame(frame);
@@ -444,6 +462,32 @@ export const TrailPad = () => {
           marginBottom: "12px",
         }}
       >
+        <button
+          onClick={() => setChordRotation((v) => !v)}
+          style={chordRotation ? buttonActiveStyle : buttonStyle}
+        >
+          chord rotation
+        </button>
+        <button
+          onClick={() => setEnergyArc((v) => !v)}
+          style={energyArc ? buttonActiveStyle : buttonStyle}
+        >
+          energy arc
+        </button>
+        <span style={labelStyle}>
+          each composes with any mode above
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginBottom: "12px",
+        }}
+      >
         <button onClick={handleAddAgent} style={buttonStyle}>
           + trail
         </button>
@@ -505,6 +549,11 @@ export const TrailPad = () => {
                 2,
               )} px/frame`
             : "sustained mode — one continuous voice per trail"}
+      </div>
+      <div style={labelStyle}>
+        chord: {readout.chord}
+        {chordRotation ? "" : " (fixed)"} | energy:{" "}
+        {energyArc ? readout.energy.toFixed(3) : "off"}
       </div>
     </div>
   );
