@@ -21,20 +21,24 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 
 ## Development Commands
 
-- `bun install` at the root installs all workspaces
+- `bun run setup`: install locked dependencies, prepare WXT metadata, build packages, and verify workspace readiness
+- `bun run doctor`: check whether dependencies, WXT metadata, and package build outputs are ready
 - `bun dev`: Website dev server (Vite)
 - `bun dev-server`: PartyKit dev server for real-time sync
+- `PLAYHTML_PARTYKIT_PORT=2000 bun dev-server`: PartyKit dev server on a non-default port
 - `bun dev-extension`: Extension dev server (WXT hot reload)
 - `bun build-packages`: Build all library packages
 - `bun run lint`: Type-check all packages
+- `bun run smoke:extension-worker`: bundle the extension Worker without deploying or starting a watcher
 
 Per-package and deploy scripts are in the root `package.json`.
 
 ### Testing
 
-- `bun run --cwd packages/playhtml test` / `packages/react` / `extension`
+- `bun run test:common` / `test:playhtml` / `test:react` / `test:extension` / `test:docs` / `test:extension-worker`
+- `bun run check:playhtml` / `check:react` / `check:extension` / `check:docs` / `check:extension-website` / `check:extension-worker`
 
-**Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. CI never hits this because `pr-validation.yml` runs `bun build-packages` before every test job (and does not run the extension suite at all).
+**Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. `bun run setup` performs the required build, and `bun run doctor` reports missing outputs. CI runs the same setup and test commands.
 
 ### Supabase
 
