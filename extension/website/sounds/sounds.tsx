@@ -7,6 +7,7 @@ import { CURSOR_INSTRUMENTS, getInstrument } from "../shared/sound/instruments";
 import { SoundEngine } from "../shared/sound/SoundEngine";
 import { RippleEffect, RippleSettings } from "../shared/components/ClickRipple";
 import { ClickEffect } from "../shared/types";
+import { TrailPad } from "./TrailPad";
 
 const RANDOM_RIPPLE_COLORS = [
   "#4a9a8a", // teal
@@ -401,6 +402,8 @@ const SoundPlayground = () => {
       <div style={styles.subtitle}>
         experiment with cursor instruments in D minor pentatonic
       </div>
+
+      <TrailPad />
 
       <div style={styles.section}>
         <div style={styles.sectionTitle}>Instruments by Cursor Type</div>

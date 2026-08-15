@@ -10,6 +10,7 @@ import {
   positionToPan,
 } from "./scales";
 import { getInstrument, CLICK_BELL } from "./instruments";
+import { NotesEngine } from "./NotesEngine";
 
 /** Minimum time between note changes for a single voice (ms) */
 const MIN_NOTE_INTERVAL_MS = 80;
@@ -42,14 +43,24 @@ const DEFAULT_MASTER_VOLUME = 0.5;
  */
 const MIN_POLYPHONY_GAIN_SCALE = 0.35;
 
+/**
+ * How trail motion becomes sound.
+ * "sustained" holds one continuous oscillator per trail whose pitch and gain
+ * follow the cursor. "notes" emits discrete plucked events as a trail travels,
+ * so movement reads as rhythm and melody rather than a drone.
+ */
+export type SoundMode = "sustained" | "notes";
+
 /** Configurable sound modes */
 export interface SoundConfig {
+  mode: SoundMode;
   chordVoicing: boolean;
   cursorInstruments: boolean;
   crossingDissonance: boolean;
 }
 
 const DEFAULT_CONFIG: SoundConfig = {
+  mode: "sustained",
   chordVoicing: false,
   cursorInstruments: false,
   crossingDissonance: false,
@@ -97,6 +108,8 @@ export class SoundEngine {
   private config: SoundConfig = { ...DEFAULT_CONFIG };
   /** Tracks recent crossing events to prevent rapid re-triggering */
   private crossingCooldowns: Map<string, number> = new Map();
+  /** Discrete-note path, used only while config.mode is "notes". */
+  private notesEngine: NotesEngine = new NotesEngine();
 
   async init(): Promise<void> {
     if (this.ctx) return;
@@ -124,6 +137,13 @@ export class SoundEngine {
     this.reverbGain.connect(this.convolver);
     this.convolver.connect(this.compressor);
     this.compressor.connect(this.ctx.destination);
+
+    // Notes mode runs its own gain/compressor chain straight to the
+    // destination, so it never inherits the sustained path's polyphony
+    // ducking or 12:1 compression.
+    this.notesEngine.attach(this.ctx, this.ctx.destination, this.convolver);
+    this.notesEngine.setVolume(this.baseVolume);
+    this.notesEngine.setCursorInstruments(this.config.cursorInstruments);
 
     this.enabled = true;
 
@@ -164,12 +184,25 @@ export class SoundEngine {
 
   setCanvasWidth(width: number): void {
     this.canvasWidth = width;
+    this.notesEngine.setCanvasWidth(width);
   }
 
-  /** Update sound configuration (chord voicing, cursor instruments, crossings) */
+  /** Update sound configuration (mode, chord voicing, instruments, crossings) */
   setConfig(config: Partial<SoundConfig>): void {
     const prevChord = this.config.chordVoicing;
+    const prevMode = this.config.mode;
     Object.assign(this.config, config);
+
+    this.notesEngine.setCursorInstruments(this.config.cursorInstruments);
+
+    // Switching modes mid-session must not leave the other path sounding.
+    if (prevMode !== this.config.mode) {
+      if (this.config.mode === "notes") {
+        this.releaseAllVoices();
+      } else {
+        this.notesEngine.reset();
+      }
+    }
 
     // If chord voicing was toggled, update existing voices
     if (prevChord !== this.config.chordVoicing) {
@@ -188,6 +221,11 @@ export class SoundEngine {
 
     if (this.ctx.state === "suspended") {
       this.ctx.resume();
+    }
+
+    if (this.config.mode === "notes") {
+      this.notesEngine.tick(elapsedMs, activeTrails);
+      return;
     }
 
     const activeIndices = new Set(activeTrails.map((t) => t.trailIndex));
@@ -657,6 +695,13 @@ export class SoundEngine {
     return { oscillator: currentOscillator, level: currentLevel };
   }
 
+  /** Release every sustained voice, e.g. when handing off to notes mode. */
+  private releaseAllVoices(): void {
+    for (const [, voice] of this.voices) {
+      if (voice.active || voice.oscillator) this.releaseVoice(voice);
+    }
+  }
+
   private fadeVoice(voice: Voice, duration: number): void {
     if (!this.ctx) return;
     voice.gainNode.gain.linearRampToValueAtTime(
@@ -729,6 +774,22 @@ export class SoundEngine {
   setVolume(volume: number): void {
     this.baseVolume = Math.max(0, Math.min(1, volume));
     this.updateMasterGainForPolyphony(this.lastActiveTrailCount);
+    this.notesEngine.setVolume(this.baseVolume);
+  }
+
+  /** Number of one-shot notes currently sounding (notes mode diagnostics). */
+  getActiveNoteCount(): number {
+    return this.notesEngine.getActiveNoteCount();
+  }
+
+  /** Trail index currently soloing, or null (notes mode diagnostics). */
+  getSoloistTrailIndex(): number | null {
+    return this.notesEngine.getSoloistTrailIndex();
+  }
+
+  /** Rolling scene-average velocity (notes mode diagnostics). */
+  getSceneAverageVelocity(): number {
+    return this.notesEngine.getSceneAverageVelocity();
   }
 
   private updateMasterGainForPolyphony(activeTrailCount: number): void {
@@ -774,6 +835,7 @@ export class SoundEngine {
 
   dispose(): void {
     this.enabled = false;
+    this.notesEngine.detach();
     for (const [, voice] of this.voices) {
       if (voice.oscillator) {
         try { voice.oscillator.stop(); } catch { /* already stopped */ }
@@ -794,6 +856,7 @@ export class SoundEngine {
   }
 
   reset(): void {
+    this.notesEngine.reset();
     // Fast-cut fade (30ms) — releaseVoice uses a 500ms ramp that audibly
     // overlaps with newly-created voices on data changes like day swaps.
     const now = this.ctx?.currentTime ?? 0;

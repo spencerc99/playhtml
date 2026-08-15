@@ -80,6 +80,69 @@ export function velocityToGain(velocity: number): number {
 }
 
 /**
+ * Map a velocity value to a gain (0-1) for discrete note events.
+ *
+ * Unlike velocityToGain, this does not saturate at 5 px/frame — the usable
+ * range extends to NOTE_MAX_VELOCITY so genuinely fast sweeps are audibly
+ * louder than medium ones. The curve is gentler than sqrt (pow 0.7) so slow
+ * movement stays audible without flattening the top of the range.
+ */
+export const NOTE_MIN_VELOCITY = 0.3;
+export const NOTE_MAX_VELOCITY = 25;
+
+export function velocityToNoteGain(velocity: number): number {
+  if (velocity < NOTE_MIN_VELOCITY) return 0;
+  const normalized = Math.min(
+    1,
+    (velocity - NOTE_MIN_VELOCITY) / (NOTE_MAX_VELOCITY - NOTE_MIN_VELOCITY),
+  );
+  return 0.15 + Math.pow(normalized, 0.7) * 0.85;
+}
+
+/** Velocity above which notes jump an octave, and two octaves. */
+export const OCTAVE_UP_VELOCITY = 8;
+export const OCTAVE_UP_TWO_VELOCITY = 18;
+
+/**
+ * Multiply a base pitch by an octave shift determined by velocity.
+ * Fast gestures sit in a higher register, so a sweep reads as a run upward
+ * rather than a louder version of the same note.
+ */
+export function velocityToOctaveMultiplier(velocity: number): number {
+  if (velocity >= OCTAVE_UP_TWO_VELOCITY) return 4;
+  if (velocity >= OCTAVE_UP_VELOCITY) return 2;
+  return 1;
+}
+
+/** Lowpass cutoff range for note brightness (Hz). */
+export const NOTE_FILTER_MIN_HZ = 800;
+export const NOTE_FILTER_MAX_HZ = 6000;
+
+/**
+ * Map velocity to a lowpass cutoff so faster movement sounds brighter.
+ */
+export function velocityToFilterFrequency(velocity: number): number {
+  const normalized = Math.min(
+    1,
+    Math.max(0, velocity / NOTE_MAX_VELOCITY),
+  );
+  return (
+    NOTE_FILTER_MIN_HZ +
+    Math.pow(normalized, 0.6) * (NOTE_FILTER_MAX_HZ - NOTE_FILTER_MIN_HZ)
+  );
+}
+
+/**
+ * Smallest signed difference between two angles (radians), in [-PI, PI].
+ */
+export function angleDelta(a: number, b: number): number {
+  let delta = b - a;
+  while (delta > Math.PI) delta -= 2 * Math.PI;
+  while (delta < -Math.PI) delta += 2 * Math.PI;
+  return delta;
+}
+
+/**
  * Map x position to stereo pan (-1 = left, 1 = right).
  * canvasWidth is needed to normalize.
  */

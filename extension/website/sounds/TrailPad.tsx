@@ -1,0 +1,498 @@
+// ABOUTME: A/B trail pad for auditioning sustained vs discrete-note sonification
+// ABOUTME: Drives SoundEngine.tick from the real cursor plus simulated wandering agents
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { SoundEngine, SoundMode } from "../shared/sound/SoundEngine";
+import { TrailSoundFrame } from "../shared/sound/types";
+
+const PAD_HEIGHT = 300;
+/** Trail points kept per agent for the on-canvas ribbon. */
+const TRAIL_LENGTH = 60;
+/** Reserved trail index for the user's own cursor. */
+const CURSOR_TRAIL_INDEX = 0;
+
+const AGENT_COLORS = [
+  "#4a9a8a",
+  "#c4724e",
+  "#5b8db8",
+  "#d4b85c",
+  "#8a6fa8",
+  "#6f8a4a",
+];
+
+/**
+ * A random-walk cursor. Most of the time it drifts; occasionally it commits to
+ * a fast dart across the pad, which is the gesture the soloist logic should
+ * pick out of a busy scene.
+ */
+interface Agent {
+  trailIndex: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: string;
+  /** Frames remaining in the current dart, 0 when wandering. */
+  dartFrames: number;
+  points: Array<{ x: number; y: number }>;
+}
+
+const WANDER_ACCEL = 0.35;
+const WANDER_DAMPING = 0.92;
+const WANDER_MAX_SPEED = 3.5;
+const DART_SPEED = 22;
+const DART_DURATION_FRAMES = 28;
+/** Per-frame chance an idle agent starts a dart. */
+const DART_CHANCE = 0.004;
+
+function createAgent(
+  trailIndex: number,
+  width: number,
+  height: number,
+): Agent {
+  return {
+    trailIndex,
+    x: Math.random() * width,
+    y: Math.random() * height,
+    vx: 0,
+    vy: 0,
+    color: AGENT_COLORS[trailIndex % AGENT_COLORS.length],
+    dartFrames: 0,
+    points: [],
+  };
+}
+
+function stepAgent(agent: Agent, width: number, height: number): void {
+  if (agent.dartFrames > 0) {
+    agent.dartFrames--;
+  } else {
+    if (Math.random() < DART_CHANCE) {
+      const angle = Math.random() * Math.PI * 2;
+      agent.vx = Math.cos(angle) * DART_SPEED;
+      agent.vy = Math.sin(angle) * DART_SPEED;
+      agent.dartFrames = DART_DURATION_FRAMES;
+    } else {
+      agent.vx =
+        (agent.vx + (Math.random() * 2 - 1) * WANDER_ACCEL) * WANDER_DAMPING;
+      agent.vy =
+        (agent.vy + (Math.random() * 2 - 1) * WANDER_ACCEL) * WANDER_DAMPING;
+      const speed = Math.hypot(agent.vx, agent.vy);
+      if (speed > WANDER_MAX_SPEED) {
+        agent.vx = (agent.vx / speed) * WANDER_MAX_SPEED;
+        agent.vy = (agent.vy / speed) * WANDER_MAX_SPEED;
+      }
+    }
+  }
+
+  agent.x += agent.vx;
+  agent.y += agent.vy;
+
+  // Bounce off the pad edges so agents stay in view and in the pan field.
+  if (agent.x < 0) {
+    agent.x = 0;
+    agent.vx = Math.abs(agent.vx);
+  } else if (agent.x > width) {
+    agent.x = width;
+    agent.vx = -Math.abs(agent.vx);
+  }
+  if (agent.y < 0) {
+    agent.y = 0;
+    agent.vy = Math.abs(agent.vy);
+  } else if (agent.y > height) {
+    agent.y = height;
+    agent.vy = -Math.abs(agent.vy);
+  }
+
+  agent.points.push({ x: agent.x, y: agent.y });
+  if (agent.points.length > TRAIL_LENGTH) agent.points.shift();
+}
+
+function drawTrail(
+  ctx: CanvasRenderingContext2D,
+  points: Array<{ x: number; y: number }>,
+  color: string,
+  isSoloist: boolean,
+): void {
+  if (points.length < 2) return;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (let i = 1; i < points.length; i++) {
+    const t = i / points.length;
+    ctx.beginPath();
+    ctx.moveTo(points[i - 1].x, points[i - 1].y);
+    ctx.lineTo(points[i].x, points[i].y);
+    ctx.globalAlpha = t * (isSoloist ? 0.95 : 0.45);
+    ctx.lineWidth = isSoloist ? 1 + t * 3 : 1 + t * 1.5;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const head = points[points.length - 1];
+  ctx.beginPath();
+  ctx.arc(head.x, head.y, isSoloist ? 5 : 3, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  if (isSoloist) {
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 11, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+const labelStyle: React.CSSProperties = {
+  fontFamily: "'Martian Mono', monospace",
+  fontSize: "11px",
+  color: "#8a8279",
+};
+
+const buttonStyle: React.CSSProperties = {
+  padding: "8px 14px",
+  border: "1px solid #e0dbd4",
+  background: "#f5f0e8",
+  cursor: "pointer",
+  fontFamily: "'Martian Mono', monospace",
+  fontSize: "11px",
+  color: "#3d3833",
+};
+
+const buttonActiveStyle: React.CSSProperties = {
+  ...buttonStyle,
+  background: "#3d3833",
+  color: "#faf7f2",
+  border: "1px solid #3d3833",
+};
+
+export const TrailPad = () => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const engineRef = useRef<SoundEngine | null>(null);
+  const agentsRef = useRef<Agent[]>([]);
+  const cursorRef = useRef<{
+    x: number;
+    y: number;
+    inside: boolean;
+    points: Array<{ x: number; y: number }>;
+  }>({ x: 0, y: 0, inside: false, points: [] });
+  const rafRef = useRef<number | null>(null);
+  const startedAtRef = useRef<number>(0);
+  const modeRef = useRef<SoundMode>("notes");
+  const nextTrailIndexRef = useRef(1);
+
+  const [running, setRunning] = useState(false);
+  const [mode, setMode] = useState<SoundMode>("notes");
+  const [volume, setVolume] = useState(0.5);
+  const [agentCount, setAgentCount] = useState(0);
+  const [readout, setReadout] = useState({
+    notes: 0,
+    soloist: null as number | null,
+    avgVelocity: 0,
+  });
+
+  useEffect(() => {
+    modeRef.current = mode;
+    engineRef.current?.setConfig({ mode });
+  }, [mode]);
+
+  useEffect(() => {
+    engineRef.current?.setVolume(volume);
+  }, [volume]);
+
+  const ensureEngine = useCallback(async () => {
+    if (!engineRef.current) {
+      const engine = new SoundEngine();
+      await engine.init();
+      engine.setConfig({ mode: modeRef.current });
+      engine.setVolume(volume);
+      const canvas = canvasRef.current;
+      engine.setCanvasWidth(canvas?.clientWidth ?? window.innerWidth);
+      engineRef.current = engine;
+    } else {
+      await engineRef.current.resume();
+    }
+    return engineRef.current;
+  }, [volume]);
+
+  const frame = useCallback(() => {
+    const canvas = canvasRef.current;
+    const engine = engineRef.current;
+    if (!canvas || !engine) return;
+
+    const ctx = canvas.getContext("2d");
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    const elapsedMs = performance.now() - startedAtRef.current;
+
+    const frames: TrailSoundFrame[] = [];
+
+    const cursor = cursorRef.current;
+    if (cursor.inside) {
+      const prev = cursor.points[cursor.points.length - 1];
+      frames.push({
+        trailIndex: CURSOR_TRAIL_INDEX,
+        x: cursor.x,
+        y: cursor.y,
+        prevX: prev?.x ?? cursor.x,
+        prevY: prev?.y ?? cursor.y,
+        cursorType: "default",
+        progress: 0,
+        color: "#3d3833",
+        isNewlyActive: cursor.points.length === 0,
+      });
+      cursor.points.push({ x: cursor.x, y: cursor.y });
+      if (cursor.points.length > TRAIL_LENGTH) cursor.points.shift();
+    }
+
+    for (const agent of agentsRef.current) {
+      const prevX = agent.x;
+      const prevY = agent.y;
+      stepAgent(agent, width, height);
+      frames.push({
+        trailIndex: agent.trailIndex,
+        x: agent.x,
+        y: agent.y,
+        prevX,
+        prevY,
+        cursorType: "default",
+        progress: 0,
+        color: agent.color,
+        isNewlyActive: agent.points.length <= 1,
+      });
+    }
+
+    engine.tick(elapsedMs, frames);
+
+    if (ctx) {
+      const dpr = window.devicePixelRatio || 1;
+      if (
+        canvas.width !== Math.round(width * dpr) ||
+        canvas.height !== Math.round(height * dpr)
+      ) {
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        engine.setCanvasWidth(width);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#f5f0e8";
+      ctx.fillRect(0, 0, width, height);
+
+      const soloist = engine.getSoloistTrailIndex();
+      for (const agent of agentsRef.current) {
+        drawTrail(
+          ctx,
+          agent.points,
+          agent.color,
+          soloist === agent.trailIndex,
+        );
+      }
+      if (cursor.inside) {
+        drawTrail(
+          ctx,
+          cursor.points,
+          "#3d3833",
+          soloist === CURSOR_TRAIL_INDEX,
+        );
+      }
+    }
+
+    setReadout({
+      notes: engine.getActiveNoteCount(),
+      soloist: engine.getSoloistTrailIndex(),
+      avgVelocity: engine.getSceneAverageVelocity(),
+    });
+
+    rafRef.current = requestAnimationFrame(frame);
+  }, []);
+
+  const handleStart = useCallback(async () => {
+    await ensureEngine();
+    if (rafRef.current !== null) return;
+    startedAtRef.current = performance.now();
+    setRunning(true);
+    rafRef.current = requestAnimationFrame(frame);
+  }, [ensureEngine, frame]);
+
+  const handleStop = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setRunning(false);
+    engineRef.current?.reset();
+  }, []);
+
+  const handleAddAgent = useCallback(() => {
+    const canvas = canvasRef.current;
+    const width = canvas?.clientWidth ?? 800;
+    const agent = createAgent(
+      nextTrailIndexRef.current++,
+      width,
+      PAD_HEIGHT,
+    );
+    agentsRef.current.push(agent);
+    setAgentCount(agentsRef.current.length);
+  }, []);
+
+  const handleAddMany = useCallback(() => {
+    for (let i = 0; i < 5; i++) handleAddAgent();
+  }, [handleAddAgent]);
+
+  const handleRemoveAgent = useCallback(() => {
+    const removed = agentsRef.current.pop();
+    if (removed) engineRef.current?.retireTrail(removed.trailIndex);
+    setAgentCount(agentsRef.current.length);
+  }, []);
+
+  const handleClearAgents = useCallback(() => {
+    for (const agent of agentsRef.current) {
+      engineRef.current?.retireTrail(agent.trailIndex);
+    }
+    agentsRef.current = [];
+    setAgentCount(0);
+  }, []);
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      cursorRef.current.x = e.clientX - rect.left;
+      cursorRef.current.y = e.clientY - rect.top;
+      cursorRef.current.inside = true;
+    },
+    [],
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    cursorRef.current.inside = false;
+    cursorRef.current.points = [];
+    engineRef.current?.retireTrail(CURSOR_TRAIL_INDEX);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      engineRef.current?.dispose();
+      engineRef.current = null;
+    };
+  }, []);
+
+  return (
+    <div style={{ marginBottom: "32px" }}>
+      <div
+        style={{
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+          marginBottom: "12px",
+          fontFamily: "'Martian Mono', monospace",
+          fontSize: "11px",
+        }}
+      >
+        Trail Pad — sustained vs notes
+      </div>
+      <div style={{ ...labelStyle, marginBottom: "12px" }}>
+        Start the pad, then move your cursor over it. Add wandering trails to
+        hear how a dense scene behaves. In notes mode the fastest outlier
+        becomes the soloist (ringed on canvas) and the crowd drops to a darker,
+        sparser register.
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginBottom: "12px",
+        }}
+      >
+        <button
+          onClick={running ? handleStop : handleStart}
+          style={running ? buttonActiveStyle : buttonStyle}
+        >
+          {running ? "stop" : "start pad"}
+        </button>
+        <button
+          onClick={() => setMode("sustained")}
+          style={mode === "sustained" ? buttonActiveStyle : buttonStyle}
+        >
+          sustained (current)
+        </button>
+        <button
+          onClick={() => setMode("notes")}
+          style={mode === "notes" ? buttonActiveStyle : buttonStyle}
+        >
+          notes (prototype)
+        </button>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginBottom: "12px",
+        }}
+      >
+        <button onClick={handleAddAgent} style={buttonStyle}>
+          + trail
+        </button>
+        <button onClick={handleAddMany} style={buttonStyle}>
+          + 5 trails
+        </button>
+        <button onClick={handleRemoveAgent} style={buttonStyle}>
+          − trail
+        </button>
+        <button onClick={handleClearAgents} style={buttonStyle}>
+          clear
+        </button>
+        <span style={labelStyle}>{agentCount} wandering</span>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label style={labelStyle}>
+          volume {volume.toFixed(2)}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={(e) => setVolume(Number(e.target.value))}
+            style={{
+              marginLeft: "12px",
+              verticalAlign: "middle",
+              width: "200px",
+            }}
+          />
+        </label>
+      </div>
+
+      <canvas
+        ref={canvasRef}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+        style={{
+          width: "100%",
+          height: `${PAD_HEIGHT}px`,
+          border: "1px solid #e0dbd4",
+          background: "#f5f0e8",
+          display: "block",
+          cursor: "crosshair",
+          touchAction: "none",
+        }}
+      />
+
+      <div style={{ ...labelStyle, marginTop: "8px" }}>
+        {mode === "notes"
+          ? `notes sounding: ${readout.notes} | soloist: ${
+              readout.soloist === null ? "none" : `trail ${readout.soloist}`
+            } | scene avg velocity: ${readout.avgVelocity.toFixed(2)} px/frame`
+          : "sustained mode — one continuous voice per trail"}
+      </div>
+    </div>
+  );
+};
