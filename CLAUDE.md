@@ -27,6 +27,10 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun dev-extension`: Extension dev server (WXT hot reload)
 - `bun build-packages`: Build all library packages
 - `bun run lint`: Type-check all packages
+- `bun run format:check -- <file...>`: Check up to 50 explicit source files
+- `bun run format:write -- <file...>`: Format up to 50 explicit source files
+
+The formatter rejects directories, generated files, asset trees, environment files, and unsupported configuration formats. The repository has pre-existing formatting drift. Keep formatting commands scoped to files changed for the current task.
 
 Per-package and deploy scripts are in the root `package.json`.
 
