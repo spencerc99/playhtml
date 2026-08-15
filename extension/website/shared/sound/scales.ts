@@ -2,7 +2,7 @@
 // ABOUTME: Maps cursor movement direction to notes in a shared pentatonic scale
 
 /** D minor pentatonic across two octaves (Hz values) */
-const D_MINOR_PENTATONIC = [
+export const D_MINOR_PENTATONIC = [
   // Octave 3
   146.83, // D3
   174.61, // F3

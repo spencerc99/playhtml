@@ -12,6 +12,7 @@ import {
   bellScaleForChord,
   CHORD_PROGRESSION,
   CHORD_DWELL_MS,
+  D_MINOR_PENTATONIC,
 } from "./scales";
 import { getInstrument, CLICK_BELL } from "./instruments";
 import { NotesEngine } from "./NotesEngine";
@@ -137,8 +138,12 @@ const SPOTLIGHT_TUNING = {
   velocityRatio: 2.5,
   /** Absolute floor so a calm scene never promotes near-still noise. */
   minVelocity: 4,
-  /** Gain multiplier applied to the soloist. */
-  soloistGain: 1.35,
+  /**
+   * Gain multiplier applied to the soloist's sustained voice. Deliberately
+   * mild — the flourish notes carry the drama, so a big boost here just makes
+   * a louder drone.
+   */
+  soloistGain: 1.1,
   /** Gain multiplier applied to every other voice while a soloist holds. */
   duckedGain: 0.4,
   /** Ramp onto the soloist/ducked targets — fast enough to feel like a cue. */
@@ -159,6 +164,53 @@ const SPOTLIGHT_TUNING = {
    * targets connect into one continuous glide instead of a stair-step.
    */
   filterRampSeconds: 0.12,
+};
+
+/**
+ * Soloist flourish tuning. While a trail holds the spotlight its sustained
+ * voice steps back and it plays a run of discrete bell notes along its path,
+ * so the promotion reads as an event rather than a louder drone.
+ */
+const FLOURISH_TUNING = {
+  /** Pixels of travel between flourish notes. */
+  distancePerNotePx: 50,
+  /** Floor on the gap between one trail's notes, so a sprint stays musical. */
+  minNoteIntervalMs: 70,
+  /**
+   * Silence between promotion and the first note. A beat of nothing makes the
+   * run read as an entrance rather than a continuation.
+   */
+  anticipationMs: 80,
+  /**
+   * Multiplier on the soloist's sustained voice while it is flourishing. It
+   * ducks toward the bed rather than disappearing — the drone is still the
+   * trail's body, the notes are its gesture.
+   */
+  sustainedDuck: 0.5,
+  /** Seconds over which the sustained voice returns to normal after demotion. */
+  sustainedRecoverySeconds: 1,
+  /** Bell envelope (seconds). Fast strike, exponential ring-out. */
+  attackSeconds: 0.005,
+  decayMinSeconds: 0.8,
+  decayMaxSeconds: 1.5,
+  /** Peak gain, kept under CLICK_BELL.gain so real clicks stay the accent. */
+  noteGain: 0.055,
+  /** Level of the 3x partial relative to the fundamental. */
+  partialGain: 0.3,
+  /** Cap on simultaneously-sounding flourish notes. */
+  maxConcurrentNotes: 16,
+  /** Velocity that maps to the top of the register range. */
+  registerFullVelocity: 30,
+  /**
+   * Register window the flourish selects across, as octave multipliers on the
+   * chosen palette pitch. The palettes sit in D3-C5, so 1x-2x covers D3-C6
+   * without ever leaving the key.
+   */
+  registerMinMultiplier: 1,
+  registerMaxMultiplier: 2,
+  /** The resolving note played once on demotion. */
+  resolveDecaySeconds: 2.2,
+  resolveGainScale: 0.8,
 };
 
 /** Click-bell pitches used whenever the chord progression is not rotating. */
@@ -197,6 +249,28 @@ interface Voice {
   active: boolean;
 }
 
+/** Bookkeeping for the run of notes a soloist plays along its path. */
+interface FlourishState {
+  /** When this trail was promoted, so the anticipation gap can be measured. */
+  promotedAtMs: number;
+  /** Travel accumulated since the last note fired. */
+  distanceSinceNote: number;
+  lastNoteTimeMs: number;
+  /** Last position the soloist's palette index was drawn from. */
+  paletteStep: number;
+}
+
+/** A single self-disconnecting flourish note. */
+interface FlourishNote {
+  oscillator: OscillatorNode;
+  partial: OscillatorNode;
+  gainNode: GainNode;
+  partialGainNode: GainNode;
+  panNode: StereoPannerNode;
+  peakGain: number;
+  startedAtMs: number;
+}
+
 export class SoundEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -229,6 +303,10 @@ export class SoundEngine {
   private spotlightSceneAverage = 0;
   /** Per-trail smoothed spotlight gain multiplier, so ramps stay continuous. */
   private spotlightGains: Map<number, number> = new Map();
+  /** Flourish bookkeeping for the trail currently soloing. */
+  private flourish: FlourishState | null = null;
+  /** One-shot flourish notes still ringing. */
+  private flourishNotes: Set<FlourishNote> = new Set();
   /** Index into CHORD_PROGRESSION, and when the current chord started. */
   private chordIndex = 0;
   private chordStartedMs = 0;
@@ -352,6 +430,7 @@ export class SoundEngine {
       this.spotlightVelocitySamples.clear();
       this.spotlightTrailIndex = null;
       this.spotlightSceneAverage = 0;
+      this.clearFlourish();
     }
 
     // If chord voicing was toggled, update existing voices
@@ -421,10 +500,19 @@ export class SoundEngine {
       const sampleIntervalMs = prevSampleTimeMs === undefined
         ? REFERENCE_FRAME_DURATION_MS
         : Math.max(1, sampleTimeMs - prevSampleTimeMs);
+      const distance = computeVelocity(prevX, prevY, frame.x, frame.y);
       const velocity =
-        computeVelocity(prevX, prevY, frame.x, frame.y) *
-        (REFERENCE_FRAME_DURATION_MS / sampleIntervalMs);
+        distance * (REFERENCE_FRAME_DURATION_MS / sampleIntervalMs);
       const gain = velocityToGain(velocity);
+
+      // Fires before the silence check below: a soloist coasting to a stop
+      // still owes its listener the notes it has already traveled for.
+      if (
+        this.config.spotlight &&
+        this.spotlightTrailIndex === frame.trailIndex
+      ) {
+        this.advanceFlourish(elapsedMs, frame, distance, velocity);
+      }
 
       this.prevPositions.set(frame.trailIndex, { x: frame.x, y: frame.y });
       this.prevSampleTimesMs.set(frame.trailIndex, sampleTimeMs);
@@ -947,6 +1035,9 @@ export class SoundEngine {
     this.spotlightVelocitySamples.delete(trailIndex);
     if (this.spotlightTrailIndex === trailIndex) {
       this.spotlightTrailIndex = null;
+      // No resolving note: the trail is gone rather than slowing, so there is
+      // nothing left for the phrase to resolve on.
+      this.flourish = null;
     }
     for (const key of this.crossingCooldowns.keys()) {
       if (
@@ -1089,6 +1180,7 @@ export class SoundEngine {
         this.spotlightSceneAverage = 0;
         this.spotlightVelocitySamples.clear();
         this.spotlightGains.clear();
+        this.clearFlourish();
       }
       return;
     }
@@ -1148,7 +1240,11 @@ export class SoundEngine {
       (restCount === 0 ||
         soloistVelocity > restAverage * SPOTLIGHT_TUNING.velocityRatio);
 
-    this.spotlightTrailIndex = qualifies ? soloistIndex : null;
+    const nextSoloist = qualifies ? soloistIndex : null;
+    if (nextSoloist !== this.spotlightTrailIndex) {
+      this.handleSoloistChange(this.spotlightTrailIndex, nextSoloist, elapsedMs);
+    }
+    this.spotlightTrailIndex = nextSoloist;
 
     // Advance smoothing for every active trail, including ones too slow to
     // voice this frame. Doing it lazily in the voice loop would freeze a
@@ -1171,16 +1267,26 @@ export class SoundEngine {
     const target = !hasSoloist
       ? 1
       : isSoloist
-        ? SPOTLIGHT_TUNING.soloistGain
+        ? // The soloist's sustained voice steps back while it flourishes, so
+          // the discrete notes carry the promotion instead of competing with a
+          // louder drone from the same trail.
+          SPOTLIGHT_TUNING.soloistGain * FLOURISH_TUNING.sustainedDuck
         : SPOTLIGHT_TUNING.duckedGain;
 
     const current = this.spotlightGains.get(trailIndex) ?? 1;
     // Ducking engages faster than it recovers, so the soloist reads clearly
-    // but the scene does not pump back up the instant they slow.
+    // but the scene does not pump back up the instant they slow. A demoted
+    // soloist gets its own, slower walk back so the drone swells in behind
+    // the resolving note rather than snapping back.
     const durationSeconds =
       target < current
         ? SPOTLIGHT_TUNING.attackSeconds
-        : SPOTLIGHT_TUNING.releaseSeconds;
+        : isSoloist || target === 1
+          ? Math.max(
+              SPOTLIGHT_TUNING.releaseSeconds,
+              FLOURISH_TUNING.sustainedRecoverySeconds,
+            )
+          : SPOTLIGHT_TUNING.releaseSeconds;
     const rate = Math.min(1, FRAME_MS / (durationSeconds * 1000));
     const next = current + (target - current) * rate;
     this.spotlightGains.set(trailIndex, next);
@@ -1244,6 +1350,253 @@ export class SoundEngine {
     );
   }
 
+  /**
+   * Handle the spotlight passing from one trail to another. The outgoing
+   * soloist resolves on the chord root; the incoming one starts a fresh
+   * flourish, silent until the anticipation gap has elapsed.
+   */
+  private handleSoloistChange(
+    previous: number | null,
+    next: number | null,
+    elapsedMs: number,
+  ): void {
+    if (previous !== null) {
+      this.triggerResolvingNote(previous);
+    }
+    this.flourish =
+      next === null
+        ? null
+        : {
+            promotedAtMs: elapsedMs,
+            distanceSinceNote: 0,
+            lastNoteTimeMs: Number.NEGATIVE_INFINITY,
+            paletteStep: 0,
+          };
+  }
+
+  /** Palette flourish notes are drawn from this frame. */
+  private flourishPalette(): number[] {
+    return this.currentScale() ?? D_MINOR_PENTATONIC;
+  }
+
+  /**
+   * Advance the soloist's flourish by this frame's travel, firing a bell when
+   * enough ground has been covered. Called only for the trail holding the
+   * spotlight; every other trail is untouched.
+   */
+  private advanceFlourish(
+    elapsedMs: number,
+    frame: TrailSoundFrame,
+    distance: number,
+    velocity: number,
+  ): void {
+    const state = this.flourish;
+    if (!state) return;
+
+    state.distanceSinceNote += distance;
+
+    if (elapsedMs - state.promotedAtMs < FLOURISH_TUNING.anticipationMs) return;
+    if (state.distanceSinceNote < FLOURISH_TUNING.distancePerNotePx) return;
+    if (
+      elapsedMs - state.lastNoteTimeMs < FLOURISH_TUNING.minNoteIntervalMs
+    ) {
+      return;
+    }
+
+    state.distanceSinceNote = 0;
+    state.lastNoteTimeMs = elapsedMs;
+
+    const palette = this.flourishPalette();
+    // Walking the palette rather than re-deriving from direction keeps the run
+    // reading as a melodic line instead of a jitter of repeated notes.
+    const pitch = palette[state.paletteStep % palette.length];
+    state.paletteStep++;
+
+    // Faster movement selects a higher register, so an accelerating sweep
+    // climbs rather than just getting louder.
+    const normalized = Math.min(
+      1,
+      velocity / FLOURISH_TUNING.registerFullVelocity,
+    );
+    const {
+      registerMinMultiplier: registerMin,
+      registerMaxMultiplier: registerMax,
+    } = FLOURISH_TUNING;
+    // Octave selection is quantized, so the run lands on real octaves of the
+    // palette pitch rather than sliding between them.
+    const octaves = Math.round(
+      Math.log2(registerMin) +
+        normalized * (Math.log2(registerMax) - Math.log2(registerMin)),
+    );
+
+    const decay =
+      FLOURISH_TUNING.decayMinSeconds +
+      normalized *
+        (FLOURISH_TUNING.decayMaxSeconds - FLOURISH_TUNING.decayMinSeconds);
+
+    this.triggerFlourishNote(
+      pitch * Math.pow(2, octaves),
+      frame.x,
+      FLOURISH_TUNING.noteGain,
+      decay,
+    );
+  }
+
+  /**
+   * One closing note as the spotlight leaves a trail: the chord root in a
+   * mid register with a longer ring, so the run has an ending rather than
+   * just stopping.
+   */
+  private triggerResolvingNote(trailIndex: number): void {
+    const palette = this.flourishPalette();
+    const root = palette[0];
+    const position = this.prevPositions.get(trailIndex);
+    this.triggerFlourishNote(
+      root * 2,
+      position?.x ?? this.canvasWidth / 2,
+      FLOURISH_TUNING.noteGain * FLOURISH_TUNING.resolveGainScale,
+      FLOURISH_TUNING.resolveDecaySeconds,
+    );
+  }
+
+  /**
+   * Fire one bell-family note: a sine fundamental plus a 3x partial, fast
+   * attack and exponential ring-out, on a graph that disconnects itself when
+   * the oscillators stop. Same shape as the click bell but quieter, so a real
+   * click still reads as the strongest accent in the scene.
+   */
+  private triggerFlourishNote(
+    frequency: number,
+    x: number,
+    peakGain: number,
+    decaySeconds: number,
+  ): void {
+    if (!this.ctx || !this.masterGain) return;
+
+    this.enforceFlourishBudget();
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const { attackSeconds, partialGain } = FLOURISH_TUNING;
+
+    const osc = ctx.createOscillator();
+    osc.type = CLICK_BELL.oscillatorType;
+    osc.frequency.value = frequency;
+
+    const partial = ctx.createOscillator();
+    partial.type = "sine";
+    partial.frequency.value = frequency * 3;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(peakGain, now + attackSeconds);
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + attackSeconds + decaySeconds,
+    );
+
+    const partialLevel = ctx.createGain();
+    partialLevel.gain.setValueAtTime(0, now);
+    partialLevel.gain.linearRampToValueAtTime(
+      peakGain * partialGain,
+      now + attackSeconds,
+    );
+    // The partial dies first, so the note softens from struck to hummed.
+    partialLevel.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + attackSeconds + decaySeconds / 2,
+    );
+
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = positionToPan(x, this.canvasWidth);
+
+    osc.connect(gain);
+    partial.connect(partialLevel);
+    gain.connect(pan);
+    partialLevel.connect(pan);
+    pan.connect(this.masterGain);
+
+    const note: FlourishNote = {
+      oscillator: osc,
+      partial,
+      gainNode: gain,
+      partialGainNode: partialLevel,
+      panNode: pan,
+      peakGain,
+      startedAtMs: now * 1000,
+    };
+    this.flourishNotes.add(note);
+
+    osc.onended = () => {
+      this.disconnectFlourishNote(note);
+      this.flourishNotes.delete(note);
+    };
+
+    const stopTime = now + attackSeconds + decaySeconds + 0.05;
+    osc.start(now);
+    partial.start(now);
+    osc.stop(stopTime);
+    partial.stop(stopTime);
+  }
+
+  /**
+   * Keep the flourish note count bounded. At the cap the quietest note is cut
+   * (ties broken by age) rather than refusing the new one — dropping a note
+   * that is already ringing out is far less noticeable than a missing attack.
+   */
+  private enforceFlourishBudget(): void {
+    while (this.flourishNotes.size >= FLOURISH_TUNING.maxConcurrentNotes) {
+      let victim: FlourishNote | null = null;
+      for (const note of this.flourishNotes) {
+        if (
+          !victim ||
+          note.peakGain < victim.peakGain ||
+          (note.peakGain === victim.peakGain &&
+            note.startedAtMs < victim.startedAtMs)
+        ) {
+          victim = note;
+        }
+      }
+      if (!victim) return;
+      this.stopFlourishNote(victim);
+    }
+  }
+
+  private stopFlourishNote(note: FlourishNote): void {
+    const now = this.ctx?.currentTime ?? 0;
+    try {
+      this.holdParam(note.gainNode.gain, now);
+      note.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.02);
+      note.oscillator.stop(now + 0.03);
+      note.partial.stop(now + 0.03);
+    } catch {
+      /* already stopped */
+    }
+    this.flourishNotes.delete(note);
+  }
+
+  private disconnectFlourishNote(note: FlourishNote): void {
+    try {
+      note.oscillator.disconnect();
+      note.partial.disconnect();
+      note.gainNode.disconnect();
+      note.partialGainNode.disconnect();
+      note.panNode.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+  }
+
+  /** Silence and tear down every ringing flourish note. */
+  private clearFlourish(): void {
+    for (const note of [...this.flourishNotes]) {
+      this.stopFlourishNote(note);
+      this.disconnectFlourishNote(note);
+    }
+    this.flourishNotes.clear();
+    this.flourish = null;
+  }
+
   private disconnectVoice(voice: Voice): void {
     voice.oscillatorLevel?.disconnect();
     voice.fifthOscillatorLevel?.disconnect();
@@ -1262,6 +1615,11 @@ export class SoundEngine {
   /** Number of one-shot notes currently sounding (notes mode diagnostics). */
   getActiveNoteCount(): number {
     return this.notesEngine.getActiveNoteCount();
+  }
+
+  /** Flourish notes currently ringing (spotlight mode diagnostics). */
+  getActiveFlourishNoteCount(): number {
+    return this.flourishNotes.size;
   }
 
   /** Trail index currently soloing, or null. */
@@ -1326,6 +1684,7 @@ export class SoundEngine {
   dispose(): void {
     this.enabled = false;
     this.notesEngine.detach();
+    this.clearFlourish();
     for (const [, voice] of this.voices) {
       if (voice.oscillator) {
         try { voice.oscillator.stop(); } catch { /* already stopped */ }
@@ -1382,6 +1741,7 @@ export class SoundEngine {
     this.spotlightVelocitySamples.clear();
     this.spotlightTrailIndex = null;
     this.spotlightSceneAverage = 0;
+    this.clearFlourish();
   }
 
   isEnabled(): boolean {

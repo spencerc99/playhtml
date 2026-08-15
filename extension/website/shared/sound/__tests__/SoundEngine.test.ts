@@ -698,6 +698,119 @@ describe("SoundEngine cursor instruments", () => {
     expect(rung).not.toBe(dmBells.at(-1));
   });
 
+  it("starts a note flourish and ducks the sustained voice on promotion", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, step * 12, 0)]);
+    }
+
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+    // The promotion is carried by discrete notes, not by a louder drone.
+    expect(engine.getActiveFlourishNoteCount()).toBeGreaterThan(0);
+
+    const state = engine as unknown as {
+      spotlightGains: Map<number, number>;
+    };
+    // Sustained voice sits below unity while flourishing rather than boosted.
+    expect(state.spotlightGains.get(0)!).toBeLessThan(1);
+    expect(state.spotlightGains.get(0)!).toBeGreaterThan(0.3);
+  });
+
+  it("draws flourish notes from the active chord palette under rotation", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight", chordRotation: true });
+
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, step * 12, 0)]);
+    }
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+    };
+    const palette = CHORD_PROGRESSION[0].pitches;
+    const pitches = [...state.flourishNotes].map(
+      (note) => note.oscillator.frequency.value,
+    );
+
+    expect(pitches.length).toBeGreaterThan(0);
+    // Every note is a palette pitch, possibly shifted an octave for register.
+    for (const pitch of pitches) {
+      const inPalette = palette.some(
+        (p) => Math.abs(p - pitch) < 0.01 || Math.abs(p * 2 - pitch) < 0.01,
+      );
+      expect(inPalette).toBe(true);
+    }
+  });
+
+  it("resolves and restores the sustained voice on demotion", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, 10 + step * 12, 10),
+        soloFrame(1, 10 + step * 2, 50),
+        soloFrame(2, 10 + step * 2, 90),
+        soloFrame(3, 10 + step * 2, 130),
+      ]);
+    }
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+
+    const state = engine as unknown as {
+      spotlightGains: Map<number, number>;
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+    };
+    // Clear the run's notes so the only survivor is the demotion's own note.
+    state.flourishNotes.clear();
+
+    for (let step = 40; step < 90; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, 490 + (step - 40) * 2, 10),
+        soloFrame(1, 10 + step * 2, 50),
+        soloFrame(2, 10 + step * 2, 90),
+        soloFrame(3, 10 + step * 2, 130),
+      ]);
+    }
+
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+
+    // Demotion fires exactly one resolving note, on the chord root an octave
+    // up from the palette's lowest pitch (D3 -> D4 = 293.66).
+    const resolving = [...state.flourishNotes];
+    expect(resolving).toHaveLength(1);
+    expect(resolving[0].oscillator.frequency.value).toBeCloseTo(293.66, 2);
+
+    // The sustained voice walks back toward unity once the flourish ends.
+    expect(state.spotlightGains.get(0)!).toBeGreaterThan(0.55);
+  });
+
+  it("caps concurrent flourish notes under sustained fast movement", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(4000);
+    engine.setConfig({ mode: "spotlight" });
+
+    // A long, fast sweep: far more note triggers than the budget allows, so
+    // the cap is what keeps the graph bounded.
+    for (let step = 0; step < 400; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, step * 40, 0)]);
+      expect(engine.getActiveFlourishNoteCount()).toBeLessThanOrEqual(16);
+    }
+  });
+
   it("disconnects voice graphs after a playback reset", async () => {
     const engine = new SoundEngine();
     await engine.init();
