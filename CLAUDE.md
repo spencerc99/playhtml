@@ -126,7 +126,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 
 | If you… | Then… |
 | --- | --- |
-| Touched `packages/` | Add a changeset + audit `apps/docs/` |
+| Changed published package behavior | Add a changeset + audit `apps/docs/` |
 | Changed the public core API | Update both starter templates |
 | Changed package deps or exports | Run the tarball install simulation |
 | Changed what extension users see | Add a bullet to `extension/PENDING.md` |
@@ -135,7 +135,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 - **PRs:** Include summary, rationale, screenshots for UI/site/extension changes, reproduction for fixes, and link issues.
 - **Releases:** `bun run version-packages` then `bun run release` (builds + publishes via changesets).
 
-- **Changesets:** ALWAYS add a changeset whenever you modify code under `packages/` (core libraries: `playhtml`, `@playhtml/react`, `@playhtml/common`). Create the file directly in `.changeset/<short-slug>.md` with the standard frontmatter (`"<package>": patch|minor|major`) and a one-paragraph user-facing description of the change and why. `bun run changeset` is the interactive equivalent. Config in `.changeset/config.json` (public access, patch for internal deps). Skip changesets only for changes outside `packages/` (website, extension, docs, internal-docs).
+- **Changesets:** Add a changeset when a change under `packages/` affects published runtime behavior, public APIs or types, published dependencies, or package output. Do not add a changeset for tests, CI, development-only scripts, documentation, or internal refactors with no observable package behavior. If the qualification is uncertain, stop and ask Spencer. Create the file directly in `.changeset/<short-slug>.md` with the standard frontmatter (`"<package>": patch|minor|major`) and a one-paragraph user-facing description of the change and why. `bun run changeset` is the interactive equivalent. Config in `.changeset/config.json` (public access, patch for internal deps).
 
 - **Docs audit for package changes:** Whenever you change code under `packages/`, check whether public documentation in `apps/docs/` needs to change. Update the relevant user-facing docs in the same PR when behavior, APIs, attributes, classes, examples, or gotchas change. Common places to check are `apps/docs/src/content/docs/capabilities.mdx`, `apps/docs/src/content/docs/getting-started.mdx`, `apps/docs/src/content/docs/reference/react-api.md`, and the `data/`, `advanced/`, and `integrations/` docs. If no docs change is needed, mention why in the PR summary.
 
