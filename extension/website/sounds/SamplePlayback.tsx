@@ -1,7 +1,7 @@
 // ABOUTME: Replays a slice of real browsing events through the sound engine
 // ABOUTME: Drives trails, clicks and navigations from live worker data or a bundled fixture
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundEngine } from "../shared/sound/SoundEngine";
 import { TrailSoundFrame } from "../shared/sound/types";
 import { RECENT_EVENTS_URL } from "../shared/config";
@@ -57,7 +57,7 @@ function cursorKeyword(value: unknown): string | undefined {
   return undefined;
 }
 
-const SPEEDS = [1, 2, 4] as const;
+const SPEEDS = [0.5, 1, 2, 4] as const;
 type Speed = (typeof SPEEDS)[number];
 
 /** Colours cycled across participants so trails stay tellable apart. */
@@ -70,8 +70,29 @@ const SAMPLE_COLORS = [
   "#6f8a4a",
 ];
 
-/** How much of a live fetch is kept, matched to the bundled sample's span. */
-export const LIVE_WINDOW_MS = 180_000;
+/**
+ * Selectable replay windows. The archive page fetches whole days and animates
+ * a batch at a time; the playground needs a span long enough to hear a scene
+ * build and thin out, which the old fixed three minutes was not.
+ */
+export const WINDOW_OPTIONS = [
+  { label: "5 min", ms: 300_000 },
+  { label: "15 min", ms: 900_000 },
+  { label: "30 min", ms: 1_800_000 },
+  { label: "60 min", ms: 3_600_000 },
+] as const;
+
+export const DEFAULT_WINDOW_MS = 900_000;
+
+/**
+ * Per-type fetch ceiling. The archive page asks the worker for 20000 rows per
+ * event type (its hard ceiling) for a broad no-day fetch, and animates the
+ * result; the playground matches that so a loaded sample is as dense as the
+ * page it is meant to represent. Memory is the only real constraint here —
+ * 20000 rows per type is roughly 20MB of JSON, which the archive page already
+ * carries.
+ */
+export const FETCH_LIMIT = 20000;
 
 /**
  * The `windowMs` slice containing the most events. A plain "most recent N"
@@ -99,14 +120,53 @@ export function densestWindow<T extends { ts: number }>(
   return sorted.slice(bestStart, bestStart + bestCount);
 }
 
+/** What a loaded sample contains, for the readout above the pad. */
+export interface SampleSummary {
+  events: number;
+  participants: number;
+  moves: number;
+  clicks: number;
+  navigations: number;
+  domains: number;
+  /** Wall time the sample spans, in ms. */
+  spanMs: number;
+}
+
+/** Count what a sample holds, so the readout describes what is being auditioned. */
+export function summarizeSample(events: SampleEvent[]): SampleSummary {
+  const participants = new Set<string>();
+  const domains = new Set<string>();
+  let moves = 0;
+  let clicks = 0;
+  let navigations = 0;
+  for (const event of events) {
+    participants.add(event.pid);
+    domains.add(event.domain);
+    if (event.type === "navigation") navigations++;
+    else if (event.event === "move") moves++;
+    else if (event.event === "click" || event.event === "hold") clicks++;
+  }
+  return {
+    events: events.length,
+    participants: participants.size,
+    moves,
+    clicks,
+    navigations,
+    domains: domains.size,
+    spanMs: events.length > 0 ? events[events.length - 1].t : 0,
+  };
+}
+
 /**
- * Pull a small live slice from the worker: one window of cursor and navigation
- * events, capped hard. Anything that fails here falls back to the bundled
- * fixture, so the playground still works offline.
+ * Pull a live slice from the worker, matching the archive page's fetch shape:
+ * one broad request per event type at the worker's ceiling, then the densest
+ * window of the requested length. Anything that fails here falls back to the
+ * bundled fixture, so the playground still works offline.
  */
 export async function fetchSampleEvents(
   domain: string,
-  limit = 1200,
+  windowMs: number = DEFAULT_WINDOW_MS,
+  limit = FETCH_LIMIT,
 ): Promise<SampleEvent[]> {
   const load = async (type: "cursor" | "navigation") => {
     const params = new URLSearchParams({ type, limit: String(limit) });
@@ -133,11 +193,11 @@ export async function fetchSampleEvents(
   if (all.length === 0) return [];
 
   // Keep the densest window rather than the whole fetch. A quiet half-hour
-  // loops as mostly silence; a few busy minutes is what there is to listen to.
-  const raw = densestWindow(all, LIVE_WINDOW_MS);
+  // loops as mostly silence; the busy stretch is what there is to listen to.
+  const raw = densestWindow(all, windowMs);
 
-  // The playground only ever needs a short window, and the identities never
-  // leave this function — participants are renumbered on the way through.
+  // Identities never leave this function — participants are renumbered on the
+  // way through, so nothing downstream can carry a real id.
   const pids = new Map<string, string>();
   const anonymize = (pid: string) => {
     let id = pids.get(pid);
@@ -171,6 +231,100 @@ export async function fetchSampleEvents(
   });
 }
 
+/**
+ * A participant's cursor moves in replay order, with the sample clock each was
+ * recorded at. Playback walks this rather than the flat event list so a
+ * position can be interpolated between two samples.
+ */
+export interface MoveTrack {
+  pid: string;
+  points: Array<{ t: number; x: number; y: number; cursor?: string }>;
+}
+
+/** Group cursor moves per participant, preserving order. */
+export function buildMoveTracks(events: SampleEvent[]): Map<string, MoveTrack> {
+  const tracks = new Map<string, MoveTrack>();
+  for (const event of events) {
+    if (event.type !== "cursor" || event.event !== "move") continue;
+    if (event.x === undefined || event.y === undefined) continue;
+    let track = tracks.get(event.pid);
+    if (!track) {
+      track = { pid: event.pid, points: [] };
+      tracks.set(event.pid, track);
+    }
+    track.points.push({
+      t: event.t,
+      x: event.x,
+      y: event.y,
+      cursor: event.cursor,
+    });
+  }
+  return tracks;
+}
+
+/**
+ * Longest gap between consecutive samples that is still treated as one
+ * continuous stroke. Archival cursor sampling is ~250ms, so a gap far beyond
+ * that means the participant stopped and started again somewhere else —
+ * interpolating across it would draw a line they never travelled.
+ */
+export const MAX_INTERPOLATION_GAP_MS = 1200;
+
+/**
+ * The interpolated position of a track at a sample-clock time, in normalized
+ * 0-1 coordinates, or null when the track is not live at that moment.
+ *
+ * This is what makes replay match the archive page. Archival cursor events are
+ * sparse (~250ms sampling behind a 15px movement threshold), so replaying them
+ * as discrete jumps teleports the cursor between samples. The archive page
+ * animates a trail by walking its points on a playback clock and lerping
+ * between the two bracketing points; doing the same here matters doubly for
+ * sound, because the engine derives velocity from per-frame position deltas —
+ * a teleport reads as one enormous velocity spike followed by zero, which
+ * distorts gain, soloist promotion, swell onset and note density. Lerping
+ * gives the engine the continuous velocity a live page would produce.
+ *
+ * `searchFrom` is the caller's cached index into `points`; playback advances
+ * monotonically, so passing the previous result keeps this O(1) per frame
+ * rather than re-scanning the track.
+ */
+export function interpolateTrackPosition(
+  track: MoveTrack,
+  timeMs: number,
+  searchFrom = 0,
+): { x: number; y: number; cursor?: string; index: number } | null {
+  const points = track.points;
+  if (points.length === 0) return null;
+  if (timeMs < points[0].t) return null;
+
+  let index = Math.min(Math.max(searchFrom, 0), points.length - 1);
+  // The clock may have rewound (a loop), so walk back before walking forward.
+  while (index > 0 && points[index].t > timeMs) index--;
+  while (index < points.length - 1 && points[index + 1].t <= timeMs) index++;
+
+  const current = points[index];
+  const next = index < points.length - 1 ? points[index + 1] : undefined;
+
+  if (!next) {
+    return { x: current.x, y: current.y, cursor: current.cursor, index };
+  }
+
+  const gap = next.t - current.t;
+  if (gap <= 0 || gap > MAX_INTERPOLATION_GAP_MS) {
+    // Too long a gap to be one stroke: hold the last known position rather
+    // than sliding across a jump the participant never made.
+    return { x: current.x, y: current.y, cursor: current.cursor, index };
+  }
+
+  const fraction = (timeMs - current.t) / gap;
+  return {
+    x: current.x + (next.x - current.x) * fraction,
+    y: current.y + (next.y - current.y) * fraction,
+    cursor: current.cursor,
+    index,
+  };
+}
+
 /** What one participant looks like on the pad while the sample plays. */
 interface SampleTrail {
   trailIndex: number;
@@ -178,9 +332,13 @@ interface SampleTrail {
   color: string;
   x: number;
   y: number;
+  prevX: number;
+  prevY: number;
   cursorType: string | undefined;
   lastEventMs: number;
   firstSeen: boolean;
+  /** Cached cursor into the participant's move track. */
+  searchIndex: number;
   points: Array<{ x: number; y: number }>;
 }
 
@@ -207,6 +365,11 @@ const buttonActiveStyle: React.CSSProperties = {
   border: "1px solid #3d3833",
 };
 
+const selectStyle: React.CSSProperties = {
+  ...buttonStyle,
+  padding: "8px 10px",
+};
+
 interface SamplePlaybackProps {
   /**
    * The engine the pad already owns, so the sample plays through whatever
@@ -224,6 +387,9 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
   const engineRef = useRef<SoundEngine | null>(null);
   const rafRef = useRef<number | null>(null);
   const eventsRef = useRef<SampleEvent[]>(bundledSample as SampleEvent[]);
+  const tracksRef = useRef<Map<string, MoveTrack>>(
+    buildMoveTracks(bundledSample as SampleEvent[]),
+  );
   const trailsRef = useRef<Map<string, SampleTrail>>(new Map());
   const nextTrailIndexRef = useRef(0);
   const cursorRef = useRef(0);
@@ -233,9 +399,13 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
 
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState<Speed>(1);
+  const [windowMs, setWindowMs] = useState<number>(DEFAULT_WINDOW_MS);
   const [source, setSource] = useState<"bundled" | "live">("bundled");
   const [loadState, setLoadState] = useState<"idle" | "loading" | "error">(
     "idle",
+  );
+  const [summary, setSummary] = useState<SampleSummary>(() =>
+    summarizeSample(bundledSample as SampleEvent[]),
   );
   const [readout, setReadout] = useState({ position: 0, active: 0, loops: 0 });
 
@@ -243,10 +413,7 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
     speedRef.current = speed;
   }, [speed]);
 
-  const sampleDurationMs =
-    eventsRef.current.length > 0
-      ? eventsRef.current[eventsRef.current.length - 1].t
-      : 0;
+  const sampleDurationMs = summary.spanMs;
 
   /** Drop every trail and rewind to the top of the sample. */
   const rewind = useCallback(() => {
@@ -257,6 +424,19 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
     cursorRef.current = 0;
     nextTrailIndexRef.current = 0;
   }, []);
+
+  /** Swap in a freshly loaded sample and restart playback from its top. */
+  const adoptSample = useCallback(
+    (events: SampleEvent[]) => {
+      eventsRef.current = events;
+      tracksRef.current = buildMoveTracks(events);
+      setSummary(summarizeSample(events));
+      rewind();
+      startedAtRef.current = performance.now();
+      loopCountRef.current = 0;
+    },
+    [rewind],
+  );
 
   const frame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -269,9 +449,10 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
     const wallElapsed = performance.now() - startedAtRef.current;
     const sampleMs = wallElapsed * speedRef.current;
 
-    // Fire every event whose moment has arrived since the last frame. Cursor
-    // moves reposition a trail; clicks and navigations go straight to the
-    // engine's own one-shot triggers.
+    // Fire every discrete event whose moment has arrived since the last frame.
+    // Moves only mark a participant as present — their drawn position comes
+    // from interpolating the move track below, so the cursor glides between
+    // sparse samples instead of teleporting to each one.
     while (
       cursorRef.current < events.length &&
       events[cursorRef.current].t <= sampleMs
@@ -297,9 +478,12 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
           color: SAMPLE_COLORS[trailIndex % SAMPLE_COLORS.length],
           x,
           y,
+          prevX: x,
+          prevY: y,
           cursorType: event.cursor,
           lastEventMs: sampleMs,
           firstSeen: true,
+          searchIndex: 0,
           points: [],
         };
         trailsRef.current.set(event.pid, trail);
@@ -310,13 +494,26 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
 
       if (event.event === "click" || event.event === "hold") {
         engine.triggerClick({ x, y, holdDuration: event.duration });
-        continue;
       }
-      if (event.event !== "move") continue;
+    }
 
-      trail.x = x;
-      trail.y = y;
-      trail.points.push({ x, y });
+    // Advance every live trail to its interpolated position for this instant.
+    for (const trail of trailsRef.current.values()) {
+      const track = tracksRef.current.get(trail.pid);
+      if (!track) continue;
+      const position = interpolateTrackPosition(
+        track,
+        sampleMs,
+        trail.searchIndex,
+      );
+      if (!position) continue;
+      trail.searchIndex = position.index;
+      trail.prevX = trail.x;
+      trail.prevY = trail.y;
+      trail.x = position.x * width;
+      trail.y = position.y * height;
+      if (position.cursor) trail.cursorType = position.cursor;
+      trail.points.push({ x: trail.x, y: trail.y });
       if (trail.points.length > TRAIL_LENGTH) trail.points.shift();
     }
 
@@ -335,8 +532,10 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         trailIndex: trail.trailIndex,
         x: trail.x,
         y: trail.y,
-        prevX: trail.x,
-        prevY: trail.y,
+        // The real previous frame position, so the engine derives a continuous
+        // velocity rather than reading every frame as stationary.
+        prevX: trail.prevX,
+        prevY: trail.prevY,
         cursorType: trail.cursorType,
         progress: 0,
         color: trail.color,
@@ -431,36 +630,37 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
   const handleLoadLive = useCallback(async () => {
     setLoadState("loading");
     try {
-      const fetched = await fetchSampleEvents("");
+      const fetched = await fetchSampleEvents("", windowMs);
       if (fetched.length === 0) throw new Error("no events returned");
-      eventsRef.current = fetched;
+      adoptSample(fetched);
       setSource("live");
       setLoadState("idle");
     } catch (err) {
       console.warn("Falling back to the bundled sample:", err);
-      eventsRef.current = bundledSample as SampleEvent[];
+      adoptSample(bundledSample as SampleEvent[]);
       setSource("bundled");
       setLoadState("error");
     }
-    rewind();
-    startedAtRef.current = performance.now();
-    loopCountRef.current = 0;
-  }, [rewind]);
+  }, [adoptSample, windowMs]);
 
   const handleUseBundled = useCallback(() => {
-    eventsRef.current = bundledSample as SampleEvent[];
+    adoptSample(bundledSample as SampleEvent[]);
     setSource("bundled");
     setLoadState("idle");
-    rewind();
-    startedAtRef.current = performance.now();
-    loopCountRef.current = 0;
-  }, [rewind]);
+  }, [adoptSample]);
 
   useEffect(() => {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, []);
+
+  const spanLabel = useMemo(() => {
+    const seconds = summary.spanMs / 1000;
+    return seconds >= 120
+      ? `${(seconds / 60).toFixed(1)}min`
+      : `${seconds.toFixed(0)}s`;
+  }, [summary.spanMs]);
 
   return (
     <div style={{ marginBottom: "32px" }}>
@@ -477,10 +677,11 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         Real Event Sample
       </div>
       <div style={{ ...labelStyle, marginBottom: "12px" }}>
-        Replays a few minutes of real browsing through the same engine the pad
-        drives, so settings can be judged against genuine cursor motion. Every
-        toggle above applies. Ships with a bundled anonymized sample; loading
-        live events pulls a fresh slice and falls back to the bundle offline.
+        Replays real browsing through the same engine the pad drives, so
+        settings can be judged against genuine cursor motion at the density the
+        archive page actually shows. Every toggle above applies. Ships with a
+        bundled anonymized sample; loading live events pulls a fresh window and
+        falls back to the bundle offline.
       </div>
 
       <div
@@ -507,6 +708,20 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
             {option}x
           </button>
         ))}
+        <label style={labelStyle}>
+          window{" "}
+          <select
+            value={windowMs}
+            onChange={(event) => setWindowMs(Number(event.target.value))}
+            style={selectStyle}
+          >
+            {WINDOW_OPTIONS.map((option) => (
+              <option key={option.ms} value={option.ms}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           onClick={handleUseBundled}
           style={source === "bundled" ? buttonActiveStyle : buttonStyle}
@@ -534,13 +749,17 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
 
       <div style={{ ...labelStyle, marginTop: "8px" }}>
         {source === "bundled" ? "bundled sample" : "live sample"} |{" "}
-        {eventsRef.current.length} events over{" "}
-        {(sampleDurationMs / 1000).toFixed(0)}s | position{" "}
-        {(readout.position / 1000).toFixed(1)}s | {readout.active} trails |{" "}
-        {readout.loops} loops
+        {summary.events} events | {summary.participants} participants |{" "}
+        {summary.moves} moves | {summary.clicks} clicks |{" "}
+        {summary.navigations} navigations | {summary.domains} domains |{" "}
+        {spanLabel} span
         {loadState === "error"
           ? " | live fetch failed, using the bundled sample"
           : ""}
+      </div>
+      <div style={{ ...labelStyle, marginTop: "4px" }}>
+        position {(readout.position / 1000).toFixed(1)}s | {readout.active}{" "}
+        trails live | {readout.loops} loops
       </div>
     </div>
   );
