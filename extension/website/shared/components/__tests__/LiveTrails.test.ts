@@ -12,9 +12,11 @@ import {
   advanceDrawState,
   createLiveSoundFrame,
   getDrawClockTime,
+  getLiveTrailOpacity,
   LiveTrails,
   shouldDepartTrail,
 } from "../LiveTrails";
+import { COMPLETED_OPACITY } from "../trailPrimitives";
 import {
   collectDueClickEffects,
   retainClickEffectsForActiveTrails,
@@ -28,6 +30,7 @@ describe("advanceDrawState", () => {
       grewAt: 1000,
       settled: true,
       settledAt: 9000,
+      dimmedAt: 9000,
     };
 
     advanceDrawState(draw, 4, 10_000, 4000);
@@ -38,7 +41,10 @@ describe("advanceDrawState", () => {
       grewAt: 10_000,
       settled: false,
       settledAt: null,
+      dimmedAt: 9000,
     });
+
+    expect(getLiveTrailOpacity(draw, 11_000)).toBe(COMPLETED_OPACITY);
   });
 });
 
@@ -49,6 +55,7 @@ describe("shouldDepartTrail", () => {
     grewAt: 1000,
     settled: true,
     settledAt: 10_000,
+    dimmedAt: 10_000,
   };
 
   it("keeps a settled trail for 60 seconds before departure", () => {

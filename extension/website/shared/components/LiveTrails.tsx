@@ -54,6 +54,7 @@ export interface LiveTrailDrawState {
   grewAt: number;
   settled: boolean;
   settledAt: number | null;
+  dimmedAt: number | null;
 }
 
 export function shouldDepartTrail(
@@ -67,6 +68,16 @@ export function shouldDepartTrail(
       draw.settledAt !== null &&
       clockMs - draw.settledAt >= REMOVE_AFTER_DIM_MS,
   );
+}
+
+export function getLiveTrailOpacity(
+  draw: LiveTrailDrawState,
+  clockMs: number,
+): number {
+  if (draw.dimmedAt === null) return 1;
+
+  const dimProgress = Math.min(1, (clockMs - draw.dimmedAt) / DIM_FADE_MS);
+  return 1 - (1 - COMPLETED_OPACITY) * dimProgress;
 }
 
 export function advanceDrawState(
@@ -482,6 +493,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               grewAt: clockMs,
               settled: false,
               settledAt: null,
+              dimmedAt: null,
             };
             drawMap.set(key, draw);
           } else {
@@ -504,6 +516,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           if (!draw.settled && caughtUp && clockMs - draw.grewAt >= SETTLE_MS) {
             draw.settled = true;
             draw.settledAt = clockMs;
+            draw.dimmedAt ??= clockMs;
           }
           // A settled trail always shows its full current geometry (dimmed); a
           // live one draws progressively toward its tip.
@@ -519,14 +532,9 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             );
           }
 
-          // Live (tracing) trails are full opacity; settled ones ease down to
-          // COMPLETED_OPACITY over DIM_FADE_MS (no jarring snap). Depart fade
-          // multiplies on top.
-          let settleOpacity = 1;
-          if (draw.settled && draw.settledAt !== null) {
-            const dimT = Math.min(1, (clockMs - draw.settledAt) / DIM_FADE_MS);
-            settleOpacity = 1 - (1 - COMPLETED_OPACITY) * dimT;
-          }
+          // Trails ease to COMPLETED_OPACITY after first settling and remain dim
+          // if later points resume their draw. Depart fade multiplies on top.
+          const settleOpacity = getLiveTrailOpacity(draw, clockMs);
           const groupFade = settleOpacity * departFade;
 
           const result = handle.update(
