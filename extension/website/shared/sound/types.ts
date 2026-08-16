@@ -28,6 +28,12 @@ export interface ClickSoundEvent {
   holdDuration: number | undefined;
 }
 
+/** A page navigation to be sonified as one deep resonant note */
+export interface NavigationSoundEvent {
+  /** Canvas x of the arriving node, used for stereo placement. Centred if omitted. */
+  x?: number;
+}
+
 /** Configuration for an instrument voice */
 export interface InstrumentConfig {
   /** Web Audio oscillator type */

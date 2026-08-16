@@ -59,6 +59,7 @@ class TestGainNode extends TestAudioNode {
 class TestOscillatorNode extends TestAudioNode {
   type: OscillatorType = "sine";
   frequency = new TestAudioParam();
+  detune = new TestAudioParam();
   startTimes: number[] = [];
   stopTimes: Array<number | undefined> = [];
   onended: (() => void) | null = null;
@@ -992,6 +993,202 @@ describe("SoundEngine cursor instruments", () => {
       engine.tick(step * 16, [soloFrame(0, step * 40, 0)]);
       expect(engine.getActiveFlourishNoteCount()).toBeLessThanOrEqual(16);
     }
+  });
+
+  it("sounds one arrival per trail and debounces a flickering trail", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    const state = engine as unknown as { flourishNotes: Set<unknown> };
+
+    // A trail appearing sounds a two-note figure.
+    engine.tick(0, [soloFrame(0, 10, 10)]);
+    expect(state.flourishNotes.size).toBe(2);
+
+    // Staying present does not retrigger.
+    for (let step = 1; step < 20; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, 10 + step, 10)]);
+    }
+    expect(state.flourishNotes.size).toBe(2);
+
+    // Dropping out and back inside the debounce window stays silent, even
+    // though the frame reports itself as newly active.
+    context.currentTime += 1 / 60;
+    engine.tick(400, []);
+    context.currentTime += 1 / 60;
+    engine.tick(500, [{ ...soloFrame(0, 40, 10), isNewlyActive: true }]);
+    expect(state.flourishNotes.size).toBe(2);
+
+    // Past the 2s debounce it counts as a genuine new arrival.
+    context.currentTime += 1 / 60;
+    engine.tick(3000, [{ ...soloFrame(0, 40, 10), isNewlyActive: true }]);
+    expect(state.flourishNotes.size).toBe(4);
+  });
+
+  it("caps a batch of arrivals rather than firing a volley", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    const state = engine as unknown as { flourishNotes: Set<unknown> };
+
+    // Thirty trails appearing on one frame, as on a day swap. Only the global
+    // per-second budget worth of arrivals may sound; the rest drop silently.
+    const batch = Array.from({ length: 30 }, (_, i) => soloFrame(i, i * 10, 10));
+    engine.tick(0, batch);
+
+    // Two arrivals per second, two notes each.
+    expect(state.flourishNotes.size).toBe(4);
+  });
+
+  it("stays silent on arrivals during and just after a reset", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    engine.tick(1000, [soloFrame(0, 10, 10)]);
+    const state = engine as unknown as { flourishNotes: Set<unknown> };
+
+    engine.reset();
+    state.flourishNotes.clear();
+
+    // The rebuilt scene repopulates immediately; none of it should sound.
+    engine.tick(1100, [soloFrame(0, 10, 10), soloFrame(1, 20, 10)]);
+    expect(state.flourishNotes.size).toBe(0);
+
+    // Once the suppression window lapses, genuine arrivals resume.
+    context.currentTime += 1 / 60;
+    engine.tick(3000, [soloFrame(2, 30, 10)]);
+    expect(state.flourishNotes.size).toBeGreaterThan(0);
+  });
+
+  it("sounds a departure when an arrived trail is retired", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    const state = engine as unknown as { flourishNotes: Set<unknown> };
+    engine.tick(0, [soloFrame(0, 10, 10)]);
+    state.flourishNotes.clear();
+
+    engine.retireTrail(0);
+    expect(state.flourishNotes.size).toBe(2);
+
+    // A trail that never arrived has nothing to depart from.
+    state.flourishNotes.clear();
+    engine.retireTrail(99);
+    expect(state.flourishNotes.size).toBe(0);
+  });
+
+  it("makes no arrival sound while the toggle is off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const state = engine as unknown as { flourishNotes: Set<unknown> };
+    engine.tick(0, [soloFrame(0, 10, 10)]);
+    engine.retireTrail(0);
+    expect(state.flourishNotes.size).toBe(0);
+  });
+
+  it("rings the navigation note on the chord root and rate-limits it", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ navigationSounds: true });
+
+    engine.tick(0, []);
+    let before = context.oscillators.length;
+    engine.triggerNavigation({ x: 500 });
+
+    // Fundamental plus two detuned partials plus an octave shimmer, on D3
+    // dropped an octave to D2.
+    const rung = context.oscillators.slice(before);
+    expect(rung).toHaveLength(4);
+    expect(rung[0].frequency.value).toBeCloseTo(146.83 / 2, 2);
+    expect(rung[1].detune.value).toBeLessThan(0);
+    expect(rung[2].detune.value).toBeGreaterThan(0);
+    expect(rung[3].frequency.value).toBeCloseTo(146.83, 2);
+
+    // A second navigation inside the rate limit is dropped entirely.
+    before = context.oscillators.length;
+    engine.tick(500, []);
+    engine.triggerNavigation({ x: 500 });
+    expect(context.oscillators).toHaveLength(before);
+
+    // Past the limit it sounds again.
+    engine.tick(2000, []);
+    engine.triggerNavigation({ x: 500 });
+    expect(context.oscillators.length).toBeGreaterThan(before);
+  });
+
+  it("makes no navigation sound while the toggle is off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const before = context.oscillators.length;
+    engine.tick(0, []);
+    engine.triggerNavigation({ x: 10 });
+    expect(context.oscillators).toHaveLength(before);
+  });
+
+  it("holds one bass pedal voice and crossfades it on a chord change", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ bassPedal: true, chordRotation: true });
+
+    engine.tick(0, []);
+    expect(engine.getBassPedalVoiceCount()).toBe(1);
+
+    const state = engine as unknown as {
+      bassPedalVoices: Array<{
+        oscillator: TestOscillatorNode;
+        frequency: number;
+      }>;
+    };
+    const firstVoice = state.bassPedalVoices[0];
+    // Dm root D3, dropped an octave into D2.
+    expect(firstVoice.frequency).toBeCloseTo(146.83 / 2, 2);
+
+    // Advance past the dwell so the progression moves to Bb, whose palette
+    // still roots on D3 — the pedal must not move for that.
+    engine.tick(CHORD_DWELL_MS + 1, []);
+    expect(state.bassPedalVoices[0].frequency).toBeCloseTo(146.83 / 2, 2);
+
+    // F roots on F3, so the pedal does move, and does it by crossfading to a
+    // fresh voice rather than sliding the pitch of the one already sounding.
+    engine.tick(CHORD_DWELL_MS * 2 + 2, []);
+    expect(engine.getBassPedalVoiceCount()).toBe(1);
+    const movedVoice = state.bassPedalVoices[0];
+    expect(movedVoice.frequency).toBeCloseTo(174.61 / 2, 2);
+    expect(movedVoice.oscillator).not.toBe(firstVoice.oscillator);
+    // The outgoing voice fades rather than being cut, and never glides.
+    expect(firstVoice.oscillator.stopTimes.length).toBe(1);
+    expect(firstVoice.oscillator.frequency.events).toHaveLength(0);
+  });
+
+  it("stays silent and holds no pedal voice while the toggle is off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    engine.tick(0, []);
+    expect(engine.getBassPedalVoiceCount()).toBe(0);
+
+    // Turning it on and back off releases the voice immediately, without
+    // waiting for a tick that a paused canvas would never send.
+    engine.setConfig({ bassPedal: true });
+    engine.tick(100, []);
+    expect(engine.getBassPedalVoiceCount()).toBe(1);
+
+    engine.setConfig({ bassPedal: false });
+    expect(engine.getBassPedalVoiceCount()).toBe(0);
   });
 
   it("disconnects voice graphs after a playback reset", async () => {

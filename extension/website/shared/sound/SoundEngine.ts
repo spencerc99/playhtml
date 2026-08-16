@@ -1,7 +1,12 @@
 // ABOUTME: Core generative sound engine driven by cursor trail animation data
 // ABOUTME: Manages Web Audio voices, maps trail frames to musical parameters each animation frame
 
-import { TrailSoundFrame, ClickSoundEvent, InstrumentConfig } from "./types";
+import {
+  TrailSoundFrame,
+  ClickSoundEvent,
+  InstrumentConfig,
+  NavigationSoundEvent,
+} from "./types";
 import {
   directionToPitch,
   computeDirection,
@@ -87,6 +92,12 @@ export interface SoundConfig {
   chordRotation: boolean;
   /** Let accumulated scene motion swell and relax the whole mix. */
   energyArc: boolean;
+  /** Soft two-note figures as trails enter and leave the scene. */
+  trailArrivals: boolean;
+  /** A deep resonant note on each animated page navigation. */
+  navigationSounds: boolean;
+  /** A sustained low drone on the current chord root, under everything. */
+  bassPedal: boolean;
 }
 
 const DEFAULT_CONFIG: SoundConfig = {
@@ -97,6 +108,94 @@ const DEFAULT_CONFIG: SoundConfig = {
   spotlight: false,
   chordRotation: false,
   energyArc: false,
+  trailArrivals: false,
+  navigationSounds: false,
+  bassPedal: false,
+};
+
+/**
+ * Trail arrival/departure tuning. A trail entering the scene rises through two
+ * notes, one leaving falls through them, so the population of the canvas is
+ * audible without needing to watch it.
+ */
+const ARRIVAL_TUNING = {
+  /** Root and the fifth above it, as multipliers on the chord root. */
+  intervalRatio: 1.5,
+  /** Octave multiplier placing the figure in a mid register above the bed. */
+  registerMultiplier: 2,
+  /** Gap between the two notes of the figure (seconds). */
+  noteSpacingSeconds: 0.16,
+  /** Peak gain, kept under the flourish so arrivals stay background texture. */
+  noteGain: 0.03,
+  /** Level of the 3x partial relative to the fundamental. */
+  partialGain: 0.22,
+  attackSeconds: 0.01,
+  decaySeconds: 1.1,
+  /** Departure sits slightly quieter and rings a touch longer than arrival. */
+  departureGainScale: 0.8,
+  departureDecaySeconds: 1.4,
+  /**
+   * Minimum gap between arrival sounds for the same trail, so a trail
+   * flickering in and out of the active set does not retrigger.
+   */
+  perTrailDebounceMs: 2000,
+  /**
+   * Global ceiling on arrival sounds. A day swap or a data load makes dozens
+   * of trails appear at once; without a cap that lands as a volley rather than
+   * as arrivals, so anything over the rate is dropped silently.
+   */
+  maxPerSecond: 2,
+  /**
+   * How long arrivals stay silent after a reset. Long enough for the rebuilt
+   * scene's initial population to land without sounding, short enough that
+   * genuinely new trails afterwards still announce themselves.
+   */
+  resetSuppressionMs: 1500,
+};
+
+/**
+ * Navigation-note tuning. One deep resonant strike per animated navigation,
+ * far below the click bells so a page change reads as structural.
+ */
+const NAVIGATION_TUNING = {
+  /** Octave multiplier on the chord root, placing the note in D2-D3. */
+  registerMultiplier: 0.5,
+  /** Detune of the two supporting partials, in cents either side. */
+  detuneCents: 7,
+  /** Level of the detuned partials relative to the fundamental. */
+  partialGain: 0.35,
+  /** Level of the octave-up shimmer that gives the strike its edge. */
+  octaveGain: 0.12,
+  peakGain: 0.14,
+  attackSeconds: 0.008,
+  decaySeconds: 3.5,
+  /** Lowpass cutoff, so the note is felt more than heard (Hz). */
+  filterHz: 900,
+  /** Minimum gap between navigation notes; extras are dropped. */
+  minIntervalMs: 1500,
+};
+
+/**
+ * Bass-pedal tuning. A single very quiet low voice on the chord root, held
+ * under the whole scene and crossfaded rather than pitch-slid when the
+ * progression moves.
+ */
+const BASS_PEDAL_TUNING = {
+  /** Octave multiplier on the chord root, placing the drone in D2. */
+  registerMultiplier: 0.5,
+  /** Steady gain. Well under the crowd bed — felt as floor, not as a part. */
+  gain: 0.055,
+  /** Seconds to fade the pedal in when it is switched on. */
+  fadeInSeconds: 1.5,
+  /** Seconds to fade the pedal out when it is switched off. */
+  fadeOutSeconds: 0.8,
+  /** Overlap when the chord moves: the old root fades as the new one rises. */
+  crossfadeSeconds: 2,
+  /** Lowpass cutoff, keeping the drone dark under the mix (Hz). */
+  filterHz: 220,
+  filterQ: 0.7,
+  /** Extra gain at full energy when the energy arc is driving it. */
+  energyGainBoost: 0.6,
 };
 
 /**
@@ -282,6 +381,14 @@ interface FlourishState {
   paletteStep: number;
 }
 
+/** One low drone voice of the bass pedal. Two exist only mid-crossfade. */
+interface BassPedalVoice {
+  oscillator: OscillatorNode;
+  gainNode: GainNode;
+  filterNode: BiquadFilterNode;
+  frequency: number;
+}
+
 /** A single self-disconnecting flourish note. */
 interface FlourishNote {
   oscillator: OscillatorNode;
@@ -343,6 +450,23 @@ export class SoundEngine {
   /** Smoothed 0-1 scene energy driving the swell. */
   private energy = 0;
   private lastEnergyTickMs: number | null = null;
+  /** Trails that have already sounded an arrival, and when they last did. */
+  private arrivalTimesMs: Map<number, number> = new Map();
+  /** Timestamps of recent arrival sounds, for the global rate cap. */
+  private recentArrivalsMs: number[] = [];
+  /** Latest tick time, so retireTrail can rate-limit without its own clock. */
+  private lastTickMs = 0;
+  /**
+   * Tick time until which arrivals stay silent. A reset tears the scene down
+   * and rebuilds it, and sounding every trail in the new scene is a volley.
+   */
+  private arrivalsSuppressedUntilMs = Number.NEGATIVE_INFINITY;
+  /** When the last navigation note fired, for the global rate limit. */
+  private lastNavigationNoteMs = Number.NEGATIVE_INFINITY;
+  /** The bass pedal voices currently sounding — two only while crossfading. */
+  private bassPedalVoices: BassPedalVoice[] = [];
+  /** Chord root the pedal is currently holding, so it only moves on a change. */
+  private bassPedalFrequency: number | null = null;
   /** Last reverb target actually scheduled, so ramps are not restarted. */
   private lastReverbTarget = DEFAULT_REVERB_SEND;
   /** Last master gain target actually scheduled, for the same reason. */
@@ -448,6 +572,16 @@ export class SoundEngine {
       this.rampParam(this.reverbGain.gain, DEFAULT_REVERB_SEND, 0.3);
     }
 
+    // Toggling an accent instrument off must silence it now rather than
+    // waiting for the next tick, which may never come on a paused canvas.
+    if (config.bassPedal === false) {
+      this.releaseBassPedal();
+    }
+    if (config.trailArrivals === false) {
+      this.arrivalTimesMs.clear();
+      this.recentArrivalsMs.length = 0;
+    }
+
     // Switching modes mid-session must not leave the other path sounding.
     if (prevMode !== this.config.mode) {
       if (this.config.mode === "notes") {
@@ -483,12 +617,18 @@ export class SoundEngine {
       this.ctx.resume();
     }
 
+    this.lastTickMs = elapsedMs;
+
     if (this.config.mode === "notes") {
       // Notes runs its own graph, so it needs the arc and progression applied
       // here rather than through the sustained voice loop below.
       this.updateEnergy(elapsedMs, activeTrails);
       this.updateChord(elapsedMs);
       this.updateEnergyReverb();
+      // The accent instruments sit outside the mode split — they mark scene
+      // and structure, not trail motion, so they sound the same either way.
+      this.updateBassPedal();
+      this.updateArrivals(elapsedMs, activeTrails);
       this.notesEngine.setScale(this.currentScale());
       this.notesEngine.setVolume(this.baseVolume * this.energyGainScale());
       this.notesEngine.tick(elapsedMs, activeTrails);
@@ -510,6 +650,8 @@ export class SoundEngine {
     this.updateEnergy(elapsedMs, activeTrails);
     this.updateChord(elapsedMs);
     this.updateEnergyReverb();
+    this.updateBassPedal();
+    this.updateArrivals(elapsedMs, activeTrails);
     this.updateMasterGainForPolyphony(activeTrails.length);
     // Resolve the soloist before touching any voice, so every trail in this
     // frame is judged against the same scene average.
@@ -1029,6 +1171,17 @@ export class SoundEngine {
   /** Permanently remove a trail's audio graph and cached motion state. */
   retireTrail(trailIndex: number): void {
     this.notesEngine.retireTrail(trailIndex);
+    // Only a trail that announced itself gets a departure, so a trail retired
+    // during a suppressed batch does not leave without ever having arrived.
+    if (
+      this.config.trailArrivals &&
+      this.lastTickMs >= this.arrivalsSuppressedUntilMs &&
+      this.arrivalTimesMs.has(trailIndex)
+    ) {
+      const position = this.prevPositions.get(trailIndex);
+      this.triggerArrivalFigure(position?.x ?? this.canvasWidth / 2, false);
+    }
+    this.arrivalTimesMs.delete(trailIndex);
     const voice = this.voices.get(trailIndex);
     if (voice) {
       const disconnect = () => this.disconnectVoice(voice);
@@ -1488,6 +1641,300 @@ export class SoundEngine {
     return this.currentScale() ?? D_MINOR_PENTATONIC;
   }
 
+  /** The chord root this frame — the pitch every accent instrument sits on. */
+  private currentRoot(): number {
+    return this.flourishPalette()[0];
+  }
+
+  /**
+   * Sound an arrival for each trail entering the scene. A trail counts as
+   * arriving the first time its index is seen, or when it reappears after the
+   * debounce, so a trail flickering across the active-set boundary stays
+   * silent.
+   */
+  private updateArrivals(
+    elapsedMs: number,
+    activeTrails: TrailSoundFrame[],
+  ): void {
+    if (!this.config.trailArrivals) {
+      if (this.arrivalTimesMs.size > 0) this.arrivalTimesMs.clear();
+      this.recentArrivalsMs.length = 0;
+      return;
+    }
+    if (elapsedMs < this.arrivalsSuppressedUntilMs) return;
+
+    for (const frame of activeTrails) {
+      const lastArrival = this.arrivalTimesMs.get(frame.trailIndex);
+      if (
+        lastArrival !== undefined &&
+        elapsedMs - lastArrival < ARRIVAL_TUNING.perTrailDebounceMs
+      ) {
+        continue;
+      }
+      // A trail already known and outside its debounce is only arriving if it
+      // says so; otherwise it is simply still here.
+      if (lastArrival !== undefined && !frame.isNewlyActive) continue;
+
+      this.arrivalTimesMs.set(frame.trailIndex, elapsedMs);
+      if (!this.claimArrivalSlot(elapsedMs)) continue;
+      this.triggerArrivalFigure(frame.x, true);
+    }
+  }
+
+  /**
+   * Take one slot from the global arrival budget, or report that the budget is
+   * spent. A day swap makes dozens of trails appear on one frame; letting them
+   * all sound turns an arrival into a volley.
+   */
+  private claimArrivalSlot(elapsedMs: number): boolean {
+    const windowStart = elapsedMs - 1000;
+    while (
+      this.recentArrivalsMs.length > 0 &&
+      this.recentArrivalsMs[0] < windowStart
+    ) {
+      this.recentArrivalsMs.shift();
+    }
+    if (this.recentArrivalsMs.length >= ARRIVAL_TUNING.maxPerSecond) {
+      return false;
+    }
+    this.recentArrivalsMs.push(elapsedMs);
+    return true;
+  }
+
+  /**
+   * A two-note figure on the chord root and the fifth above it: rising for an
+   * arrival, falling for a departure.
+   */
+  private triggerArrivalFigure(x: number, rising: boolean): void {
+    if (!this.ctx) return;
+
+    const root = this.currentRoot() * ARRIVAL_TUNING.registerMultiplier;
+    const fifth = root * ARRIVAL_TUNING.intervalRatio;
+    const pitches = rising ? [root, fifth] : [fifth, root];
+    const gain =
+      ARRIVAL_TUNING.noteGain *
+      (rising ? 1 : ARRIVAL_TUNING.departureGainScale);
+    const decay = rising
+      ? ARRIVAL_TUNING.decaySeconds
+      : ARRIVAL_TUNING.departureDecaySeconds;
+
+    pitches.forEach((pitch, order) => {
+      this.triggerFlourishNote(
+        pitch,
+        x,
+        gain,
+        decay,
+        {
+          delaySeconds: order * ARRIVAL_TUNING.noteSpacingSeconds,
+          attackSeconds: ARRIVAL_TUNING.attackSeconds,
+          partialGain: ARRIVAL_TUNING.partialGain,
+        },
+      );
+    });
+  }
+
+  /**
+   * A deep resonant note marking one page navigation. Rate-limited globally —
+   * a burst of navigations should read as one structural event, not a run.
+   */
+  triggerNavigation(event: NavigationSoundEvent = {}): void {
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    if (!this.config.navigationSounds) return;
+
+    const now = this.lastTickMs;
+    if (now - this.lastNavigationNoteMs < NAVIGATION_TUNING.minIntervalMs) {
+      return;
+    }
+    this.lastNavigationNoteMs = now;
+
+    const ctx = this.ctx;
+    const startTime = ctx.currentTime;
+    const {
+      registerMultiplier,
+      detuneCents,
+      partialGain,
+      octaveGain,
+      peakGain,
+      attackSeconds,
+      decaySeconds,
+      filterHz,
+    } = NAVIGATION_TUNING;
+
+    const frequency = this.currentRoot() * registerMultiplier;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = filterHz;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(peakGain, startTime + attackSeconds);
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      startTime + attackSeconds + decaySeconds,
+    );
+
+    const pan = ctx.createStereoPanner();
+    pan.pan.value =
+      event.x === undefined ? 0 : positionToPan(event.x, this.canvasWidth);
+
+    filter.connect(gain);
+    gain.connect(pan);
+    pan.connect(this.masterGain);
+
+    // The fundamental plus two partials detuned either side of it. The slow
+    // beating between them is what gives the note its struck, resonant body.
+    const stopTime = startTime + attackSeconds + decaySeconds + 0.1;
+    const voices: Array<{ frequency: number; detune: number; level: number }> = [
+      { frequency, detune: 0, level: 1 },
+      { frequency, detune: -detuneCents, level: partialGain },
+      { frequency, detune: detuneCents, level: partialGain },
+      { frequency: frequency * 2, detune: 0, level: octaveGain },
+    ];
+
+    const oscillators: OscillatorNode[] = [];
+    for (const voice of voices) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = voice.frequency;
+      osc.detune.value = voice.detune;
+
+      const level = ctx.createGain();
+      level.gain.setValueAtTime(voice.level, startTime);
+
+      osc.connect(level);
+      level.connect(filter);
+      osc.start(startTime);
+      osc.stop(stopTime);
+      oscillators.push(osc);
+    }
+
+    oscillators[0].onended = () => {
+      for (const osc of oscillators) {
+        try {
+          osc.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      }
+      try {
+        filter.disconnect();
+        gain.disconnect();
+        pan.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
+  }
+
+  /**
+   * Hold the bass pedal on the current chord root. Chord changes crossfade to
+   * a second voice rather than sliding the pitch, so the floor moves without
+   * an audible glide.
+   */
+  private updateBassPedal(): void {
+    if (!this.ctx || !this.masterGain) return;
+
+    if (!this.config.bassPedal) {
+      if (this.bassPedalVoices.length > 0) this.releaseBassPedal();
+      return;
+    }
+
+    const target = this.currentRoot() * BASS_PEDAL_TUNING.registerMultiplier;
+    if (this.bassPedalFrequency !== target) {
+      const isFirstVoice = this.bassPedalVoices.length === 0;
+      // Switching the pedal on fades in from silence; a chord change overlaps
+      // the outgoing root with the incoming one.
+      const fadeSeconds = isFirstVoice
+        ? BASS_PEDAL_TUNING.fadeInSeconds
+        : BASS_PEDAL_TUNING.crossfadeSeconds;
+      for (const voice of this.bassPedalVoices) {
+        this.retireBassPedalVoice(voice, fadeSeconds);
+      }
+      this.bassPedalVoices = [this.createBassPedalVoice(target, fadeSeconds)];
+      this.bassPedalFrequency = target;
+      return;
+    }
+
+    // Level tracks the energy arc so the floor swells with a busy scene.
+    for (const voice of this.bassPedalVoices) {
+      this.rampParam(voice.gainNode.gain, this.bassPedalGain(), 0.5);
+    }
+  }
+
+  /** Steady pedal level, lifted modestly by energy when the arc is running. */
+  private bassPedalGain(): number {
+    const { gain, energyGainBoost } = BASS_PEDAL_TUNING;
+    if (!this.config.energyArc) return gain;
+    return gain * (1 + energyGainBoost * this.energy);
+  }
+
+  private createBassPedalVoice(
+    frequency: number,
+    fadeSeconds: number,
+  ): BassPedalVoice {
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = frequency;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = BASS_PEDAL_TUNING.filterHz;
+    filter.Q.value = BASS_PEDAL_TUNING.filterQ;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(this.bassPedalGain(), now + fadeSeconds);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain!);
+    osc.start(now);
+
+    return { oscillator: osc, gainNode: gain, filterNode: filter, frequency };
+  }
+
+  /** Fade one pedal voice out and tear it down once it is silent. */
+  private retireBassPedalVoice(
+    voice: BassPedalVoice,
+    fadeSeconds: number,
+  ): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.rampParam(voice.gainNode.gain, 0, fadeSeconds);
+    voice.oscillator.onended = () => {
+      try {
+        voice.oscillator.disconnect();
+        voice.filterNode.disconnect();
+        voice.gainNode.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
+    try {
+      voice.oscillator.stop(now + fadeSeconds + 0.05);
+    } catch {
+      /* already stopped */
+    }
+  }
+
+  /** Silence the pedal entirely, e.g. when it is switched off or on reset. */
+  private releaseBassPedal(): void {
+    for (const voice of this.bassPedalVoices) {
+      this.retireBassPedalVoice(voice, BASS_PEDAL_TUNING.fadeOutSeconds);
+    }
+    this.bassPedalVoices = [];
+    this.bassPedalFrequency = null;
+  }
+
+  /** Low drone voices currently sounding (diagnostics). */
+  getBassPedalVoiceCount(): number {
+    return this.bassPedalVoices.length;
+  }
+
   /**
    * Advance the soloist's flourish by this frame's travel, firing a bell when
    * enough ground has been covered. Called only for the trail holding the
@@ -1579,14 +2026,22 @@ export class SoundEngine {
     x: number,
     peakGain: number,
     decaySeconds: number,
+    options: {
+      /** Start the note this far in the future, for multi-note figures. */
+      delaySeconds?: number;
+      attackSeconds?: number;
+      partialGain?: number;
+    } = {},
   ): void {
     if (!this.ctx || !this.masterGain) return;
 
     this.enforceFlourishBudget();
 
     const ctx = this.ctx;
-    const now = ctx.currentTime;
-    const { attackSeconds, partialGain } = FLOURISH_TUNING;
+    const now = ctx.currentTime + (options.delaySeconds ?? 0);
+    const attackSeconds =
+      options.attackSeconds ?? FLOURISH_TUNING.attackSeconds;
+    const partialGain = options.partialGain ?? FLOURISH_TUNING.partialGain;
 
     const osc = ctx.createOscillator();
     osc.type = CLICK_BELL.oscillatorType;
@@ -1794,6 +2249,9 @@ export class SoundEngine {
     this.enabled = false;
     this.notesEngine.detach();
     this.clearFlourish();
+    this.releaseBassPedal();
+    this.arrivalTimesMs.clear();
+    this.recentArrivalsMs.length = 0;
     for (const [, voice] of this.voices) {
       if (voice.oscillator) {
         try { voice.oscillator.stop(); } catch { /* already stopped */ }
@@ -1815,6 +2273,14 @@ export class SoundEngine {
 
   reset(): void {
     this.notesEngine.reset();
+    // A reset tears the scene down and immediately rebuilds it. Every trail in
+    // the new scene is technically arriving, but sounding that is a volley, so
+    // arrivals stay suppressed until the rebuilt scene has settled.
+    this.arrivalsSuppressedUntilMs =
+      this.lastTickMs + ARRIVAL_TUNING.resetSuppressionMs;
+    this.arrivalTimesMs.clear();
+    this.recentArrivalsMs.length = 0;
+    this.releaseBassPedal();
     // Fast-cut fade (30ms) — releaseVoice uses a 500ms ramp that audibly
     // overlaps with newly-created voices on data changes like day swaps.
     const now = this.ctx?.currentTime ?? 0;

@@ -112,6 +112,12 @@ export const DEFAULT_SETTINGS = {
   soundChordVoicing: true,
   soundCursorInstruments: true,
   soundCrossingDissonance: false,
+  /** Soft two-note figures as trails enter and leave the scene. */
+  soundTrailArrivals: false,
+  /** A deep resonant note on each animated page navigation. */
+  soundNavigationSounds: false,
+  /** A sustained low drone on the chord root, under everything. */
+  soundBassPedal: false,
   // Debug-mode hover: when on, viz items become hoverable and the canvas
   // shows a tooltip with details about the data point under the cursor.
   // Session-only by default — handy when poking at a configuration, not a

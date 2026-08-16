@@ -529,6 +529,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             crossingDissonance: settings.soundCrossingDissonance,
             chordRotation: settings.soundChordRotation,
             energyArc: settings.soundEnergyArc,
+            trailArrivals: settings.soundTrailArrivals,
+            navigationSounds: settings.soundNavigationSounds,
+            bassPedal: settings.soundBassPedal,
           });
           soundEngineRef.current = engine;
           setSoundEngineReady(engine);
@@ -561,6 +564,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       crossingDissonance: settings.soundCrossingDissonance,
       chordRotation: settings.soundChordRotation,
       energyArc: settings.soundEnergyArc,
+      trailArrivals: settings.soundTrailArrivals,
+      navigationSounds: settings.soundNavigationSounds,
+      bassPedal: settings.soundBassPedal,
     });
   }, [
     settings.soundMode,
@@ -569,6 +575,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     settings.soundCrossingDissonance,
     settings.soundChordRotation,
     settings.soundEnergyArc,
+    settings.soundTrailArrivals,
+    settings.soundNavigationSounds,
+    settings.soundBassPedal,
   ]);
 
   // Derive which visualization categories are active
@@ -1695,6 +1704,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
                   valleyDepth: settings.navigationRadialBlobValleyDepth,
                 },
               }}
+              soundEngine={soundEnabled ? soundEngineReady : null}
             />
           )}
 

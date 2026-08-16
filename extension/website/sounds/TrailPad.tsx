@@ -181,6 +181,9 @@ export const TrailPad = () => {
   const modeRef = useRef<SoundMode>("notes");
   const chordRotationRef = useRef(false);
   const energyArcRef = useRef(false);
+  const trailArrivalsRef = useRef(false);
+  const navigationSoundsRef = useRef(false);
+  const bassPedalRef = useRef(false);
   const nextTrailIndexRef = useRef(1);
 
   const [running, setRunning] = useState(false);
@@ -189,6 +192,9 @@ export const TrailPad = () => {
   const [agentCount, setAgentCount] = useState(0);
   const [chordRotation, setChordRotation] = useState(false);
   const [energyArc, setEnergyArc] = useState(false);
+  const [trailArrivals, setTrailArrivals] = useState(false);
+  const [navigationSounds, setNavigationSounds] = useState(false);
+  const [bassPedal, setBassPedal] = useState(false);
   const [readout, setReadout] = useState({
     notes: 0,
     soloist: null as number | null,
@@ -209,6 +215,17 @@ export const TrailPad = () => {
   }, [chordRotation, energyArc]);
 
   useEffect(() => {
+    trailArrivalsRef.current = trailArrivals;
+    navigationSoundsRef.current = navigationSounds;
+    bassPedalRef.current = bassPedal;
+    engineRef.current?.setConfig({
+      trailArrivals,
+      navigationSounds,
+      bassPedal,
+    });
+  }, [trailArrivals, navigationSounds, bassPedal]);
+
+  useEffect(() => {
     engineRef.current?.setVolume(volume);
   }, [volume]);
 
@@ -220,6 +237,9 @@ export const TrailPad = () => {
         mode: modeRef.current,
         chordRotation: chordRotationRef.current,
         energyArc: energyArcRef.current,
+        trailArrivals: trailArrivalsRef.current,
+        navigationSounds: navigationSoundsRef.current,
+        bassPedal: bassPedalRef.current,
       });
       engine.setVolume(volume);
       const canvas = canvasRef.current;
@@ -473,6 +493,30 @@ export const TrailPad = () => {
           style={energyArc ? buttonActiveStyle : buttonStyle}
         >
           energy arc
+        </button>
+        <button
+          onClick={() => setTrailArrivals((v) => !v)}
+          style={trailArrivals ? buttonActiveStyle : buttonStyle}
+        >
+          trail arrivals
+        </button>
+        <button
+          onClick={() => setBassPedal((v) => !v)}
+          style={bassPedal ? buttonActiveStyle : buttonStyle}
+        >
+          bass pedal
+        </button>
+        <button
+          onClick={() => setNavigationSounds((v) => !v)}
+          style={navigationSounds ? buttonActiveStyle : buttonStyle}
+        >
+          navigation notes
+        </button>
+        <button
+          onClick={() => engineRef.current?.triggerNavigation({})}
+          style={buttonStyle}
+        >
+          test navigation note
         </button>
         <span style={labelStyle}>
           each composes with any mode above

@@ -2364,6 +2364,57 @@ export const Controls: React.FC<ControlsProps> = memo(
               Trail Crossing Dissonance
             </label>
           </div>
+          <div className="control-group">
+            <label htmlFor="sound-trail-arrivals">
+              <input
+                id="sound-trail-arrivals"
+                type="checkbox"
+                checked={!!settings.soundTrailArrivals}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    soundTrailArrivals: e.target.checked,
+                  }))
+                }
+                style={{ marginRight: "8px" }}
+              />
+              Trail Arrivals (enter and leave)
+            </label>
+          </div>
+          <div className="control-group">
+            <label htmlFor="sound-navigation">
+              <input
+                id="sound-navigation"
+                type="checkbox"
+                checked={!!settings.soundNavigationSounds}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    soundNavigationSounds: e.target.checked,
+                  }))
+                }
+                style={{ marginRight: "8px" }}
+              />
+              Navigation Notes (deep, on page changes)
+            </label>
+          </div>
+          <div className="control-group">
+            <label htmlFor="sound-bass-pedal">
+              <input
+                id="sound-bass-pedal"
+                type="checkbox"
+                checked={!!settings.soundBassPedal}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    soundBassPedal: e.target.checked,
+                  }))
+                }
+                style={{ marginRight: "8px" }}
+              />
+              Bass Pedal (low drone on the root)
+            </label>
+          </div>
         </CollapsibleSection>
 
         <CollapsibleSection
