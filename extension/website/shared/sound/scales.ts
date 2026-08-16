@@ -516,28 +516,127 @@ export const REGISTER_BAND_RANGES: Record<
 };
 
 /**
+ * Which mechanism assigns a trail its register band.
+ *
+ * "hue" reads the band off the colour wheel; "luminance" reads it off how
+ * bright the colour looks. Both are cross-modal mappings from the same colour,
+ * so switching between them changes which visual property the ear tracks.
+ */
+export type RegisterMappingMode = "hue" | "luminance";
+
+/**
  * Which register a trail sings in, from the hue of the colour it is drawn in.
  *
- * The cross-modal mapping, so the colour you see tells you the register you
- * hear. Hue is split into four quadrants and each takes one choral part, warm
- * to cool, low to high:
+ * Hue is split into four quadrants and each takes one choral part, cool to
+ * warm, low to high:
  *
- *   red/orange   (hue   0-89)  -> bass     (D2-D3)
- *   yellow/green (hue  90-179) -> tenor    (D3-D4)
- *   cyan/blue    (hue 180-269) -> alto     (D4-D5)
- *   purple/pink  (hue 270-359) -> soprano  (D5-D6)
+ *   blue/purple  (hue 200-289) -> bass     (D2-D3)
+ *   cyan/green   (hue 110-199) -> tenor    (D3-D4)
+ *   yellow/lime  (hue  50-109) -> alto     (D4-D5)
+ *   red/pink     (hue 290-49)  -> soprano  (D5-D6)
  *
- * Warm colours sit low and cool colours sit high, which is the association
- * most listeners already carry — a red trail sounds like a red trail. Because
- * the RISO palette spreads its eight colours evenly around the wheel, a mixed
- * crowd lands roughly two trails per part rather than crowding one octave.
+ * Cool colours sit low and warm colours sit high: a blue trail rumbles, a red
+ * one rings out on top. The boundaries are rotated off the multiples of 90 so
+ * each quadrant is centred on a colour you would name — bass on blue (~245),
+ * tenor on green (~155), alto on yellow (~80), soprano on red (~350) — rather
+ * than straddling two of them. Soprano wraps through 0, which is what puts the
+ * whole red-through-pink arc in one part instead of splitting it.
  *
  * Unparseable colours fall to alto, the middle of the range, so a trail with a
  * colour the parser does not recognise still sings somewhere sensible.
  */
 export function registerBandForHue(hue: number): RegisterBand {
   const normalized = ((hue % 360) + 360) % 360;
-  return REGISTER_BANDS[Math.min(3, Math.floor(normalized / 90))];
+  if (normalized >= 200 && normalized < 290) return "bass";
+  if (normalized >= 110 && normalized < 200) return "tenor";
+  if (normalized >= 50 && normalized < 110) return "alto";
+  return "soprano";
+}
+
+/**
+ * Perceived brightness of a colour, 0 (black) to 1 (white).
+ *
+ * Rec. 709 luma weights on the rendered RGB: green carries most of the
+ * perceived light, blue almost none, which is why a saturated blue and a
+ * saturated yellow at the same HSL lightness look nothing alike.
+ */
+export function perceivedLuminance(rgb: {
+  r: number;
+  g: number;
+  b: number;
+}): number {
+  return 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+}
+
+/** Convert HSL (h 0-360, s/l 0-100) to RGB with each channel in 0-1. */
+export function hslToRgb(
+  h: number,
+  s: number,
+  l: number,
+): { r: number; g: number; b: number } {
+  const hue = (((h % 360) + 360) % 360) / 360;
+  const sat = s / 100;
+  const light = l / 100;
+  if (sat === 0) return { r: light, g: light, b: light };
+  const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+  const p = 2 * light - q;
+  const channel = (t: number): number => {
+    let position = t;
+    if (position < 0) position += 1;
+    if (position > 1) position -= 1;
+    if (position < 1 / 6) return p + (q - p) * 6 * position;
+    if (position < 1 / 2) return q;
+    if (position < 2 / 3) return p + (q - p) * (2 / 3 - position) * 6;
+    return p;
+  };
+  return {
+    r: channel(hue + 1 / 3),
+    g: channel(hue),
+    b: channel(hue - 1 / 3),
+  };
+}
+
+/**
+ * Luminance cut points separating the four bands, dark to bright.
+ *
+ * Chosen as the quartiles of the perceived brightness of the colours the
+ * cursors actually wear — random hue at 65-80% saturation and 55-70%
+ * lightness — so a mixed crowd spreads across all four parts rather than
+ * piling into one. Fixed thresholds rather than a running percentile: a band
+ * should mean the same thing from one scene to the next, and a scene of five
+ * blue trails should sound like five bass trails, not like a whole choir.
+ */
+export const REGISTER_LUMINANCE_THRESHOLDS = [0.49, 0.63, 0.77];
+
+/**
+ * Which register a trail sings in, from how bright its colour looks.
+ *
+ * The darkest quarter of the colour space sings bass and the brightest sings
+ * soprano, which is the association a listener reaches for without being told:
+ * dark is heavy, bright is light. Unlike the hue mapping this cuts across the
+ * colour wheel — a dark red and a dark blue share a part.
+ */
+export function registerBandForLuminance(luminance: number): RegisterBand {
+  const [low, mid, high] = REGISTER_LUMINANCE_THRESHOLDS;
+  if (luminance < low) return "bass";
+  if (luminance < mid) return "tenor";
+  if (luminance < high) return "alto";
+  return "soprano";
+}
+
+/**
+ * The band a colour assigns a trail under the mapping currently in force.
+ */
+export function registerBandForColor(
+  hsl: { h: number; s: number; l: number },
+  mode: RegisterMappingMode,
+): RegisterBand {
+  if (mode === "luminance") {
+    return registerBandForLuminance(
+      perceivedLuminance(hslToRgb(hsl.h, hsl.s, hsl.l)),
+    );
+  }
+  return registerBandForHue(hsl.h);
 }
 
 /**

@@ -23,6 +23,11 @@ import {
   REGISTER_BANDS,
   REGISTER_BAND_RANGES,
   registerBandForHue,
+  registerBandForColor,
+  registerBandForLuminance,
+  REGISTER_LUMINANCE_THRESHOLDS,
+  perceivedLuminance,
+  hslToRgb,
   scaleForChord,
   semitonesBetween,
 } from "../scales";
@@ -272,16 +277,29 @@ describe("chord palettes", () => {
 });
 
 describe("register bands", () => {
-  it("maps each hue quadrant to its choral part, warm low to cool high", () => {
+  it("maps each hue quadrant to its choral part, cool low to warm high", () => {
     // The cross-modal contract: the colour you see is the register you hear.
-    expect(registerBandForHue(0)).toBe("bass");
-    expect(registerBandForHue(45)).toBe("bass");
-    expect(registerBandForHue(90)).toBe("tenor");
-    expect(registerBandForHue(179)).toBe("tenor");
-    expect(registerBandForHue(180)).toBe("alto");
-    expect(registerBandForHue(269)).toBe("alto");
-    expect(registerBandForHue(270)).toBe("soprano");
-    expect(registerBandForHue(359)).toBe("soprano");
+    expect(registerBandForHue(200)).toBe("bass");
+    expect(registerBandForHue(245)).toBe("bass");
+    expect(registerBandForHue(289)).toBe("bass");
+    expect(registerBandForHue(110)).toBe("tenor");
+    expect(registerBandForHue(155)).toBe("tenor");
+    expect(registerBandForHue(199)).toBe("tenor");
+    expect(registerBandForHue(50)).toBe("alto");
+    expect(registerBandForHue(80)).toBe("alto");
+    expect(registerBandForHue(109)).toBe("alto");
+    expect(registerBandForHue(290)).toBe("soprano");
+    expect(registerBandForHue(350)).toBe("soprano");
+    expect(registerBandForHue(0)).toBe("soprano");
+    expect(registerBandForHue(49)).toBe("soprano");
+  });
+
+  it("keeps the whole red-through-pink arc in one part across the wrap", () => {
+    // Soprano is the one band that spans hue 0; splitting it would put pink
+    // and red in different octaves despite reading as the same colour.
+    for (const hue of [290, 320, 355, 0, 20, 49]) {
+      expect(registerBandForHue(hue)).toBe("soprano");
+    }
   });
 
   it("wraps hues outside 0-360 rather than falling off an end", () => {
@@ -339,6 +357,97 @@ describe("register bands", () => {
     // into one octave.
     const hues = [10, 60, 100, 150, 200, 250, 290, 340];
     expect(new Set(hues.map(registerBandForHue)).size).toBe(4);
+  });
+});
+
+describe("luminance register mapping", () => {
+  /** The colours the cursors actually wear: random hue, mid saturation/lightness. */
+  const randomCursorHsl = (
+    random: () => number,
+  ): { h: number; s: number; l: number } => ({
+    h: random() * 360,
+    s: 65 + random() * 15,
+    l: 55 + random() * 15,
+  });
+
+  /** Deterministic 0-1 stream, so the distribution check is reproducible. */
+  const seededRandom = (seed: number): (() => number) => {
+    let state = seed >>> 0;
+    return () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 0x100000000;
+    };
+  };
+
+  it("weights green over blue, the way the eye does", () => {
+    const green = perceivedLuminance(hslToRgb(120, 100, 50));
+    const blue = perceivedLuminance(hslToRgb(240, 100, 50));
+    // Identical HSL lightness, wildly different perceived brightness — the
+    // reason this mapping is not just a reading of the L channel.
+    expect(green).toBeGreaterThan(blue * 3);
+  });
+
+  it("puts black at the bottom and white at the top of the range", () => {
+    expect(perceivedLuminance({ r: 0, g: 0, b: 0 })).toBeCloseTo(0, 6);
+    expect(perceivedLuminance({ r: 1, g: 1, b: 1 })).toBeCloseTo(1, 6);
+  });
+
+  it("maps darkest to bass and brightest to soprano", () => {
+    expect(registerBandForLuminance(0)).toBe("bass");
+    expect(registerBandForLuminance(0.55)).toBe("tenor");
+    expect(registerBandForLuminance(0.7)).toBe("alto");
+    expect(registerBandForLuminance(1)).toBe("soprano");
+  });
+
+  it("orders the thresholds and covers every band", () => {
+    const [low, mid, high] = REGISTER_LUMINANCE_THRESHOLDS;
+    expect(low).toBeLessThan(mid);
+    expect(mid).toBeLessThan(high);
+    const bands = [low - 0.01, mid - 0.01, high - 0.01, high + 0.01].map(
+      registerBandForLuminance,
+    );
+    expect(bands).toEqual(REGISTER_BANDS);
+  });
+
+  it("is deterministic for a given colour", () => {
+    const random = seededRandom(7);
+    for (let i = 0; i < 20; i++) {
+      const hsl = randomCursorHsl(random);
+      const first = registerBandForColor(hsl, "luminance");
+      expect(registerBandForColor(hsl, "luminance")).toBe(first);
+      expect(registerBandForColor(hsl, "luminance")).toBe(
+        registerBandForLuminance(perceivedLuminance(hslToRgb(hsl.h, hsl.s, hsl.l))),
+      );
+    }
+  });
+
+  it("spreads random cursor colours across all four bands", () => {
+    // The thresholds are only worth anything if a real crowd lands in more
+    // than one part. Nothing rarer than a tenth of the crowd, nothing over
+    // half of it.
+    const random = seededRandom(42);
+    const counts: Record<string, number> = {
+      bass: 0,
+      tenor: 0,
+      alto: 0,
+      soprano: 0,
+    };
+    const sampleCount = 100;
+    for (let i = 0; i < sampleCount; i++) {
+      counts[registerBandForColor(randomCursorHsl(random), "luminance")] += 1;
+    }
+    for (const band of REGISTER_BANDS) {
+      expect(counts[band] / sampleCount).toBeGreaterThanOrEqual(0.1);
+      expect(counts[band] / sampleCount).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it("routes through the hue mapping when the mode says hue", () => {
+    // Red is the clearest case where the two disagree: warmest hue, so the
+    // hue mapping puts it on top, but a dim colour, so luminance sinks it.
+    const red = { h: 0, s: 70, l: 60 };
+    expect(registerBandForColor(red, "hue")).toBe("soprano");
+    expect(registerBandForColor(red, "luminance")).toBe("bass");
   });
 });
 

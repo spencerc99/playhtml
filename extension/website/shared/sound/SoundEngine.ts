@@ -24,7 +24,9 @@ import {
   leadHomeTone,
   foldPitchIntoBand,
   registerBandForHue,
+  registerBandForColor,
   RegisterBand,
+  RegisterMappingMode,
   ATTACK_SALT,
   DETUNE_SALT,
   VIBRATO_DEPTH_SALT,
@@ -348,6 +350,17 @@ const CROSSING_TENSION_TUNING = {
  * scene energy, not at random, so the flavor tracks the room.
  */
 export type CrossingTensionVariant = "shimmer" | "suspension" | "harsh";
+
+/**
+ * Which colour property assigns a trail its choral part.
+ *
+ * "hue" is the shipped mapping: cool colours low, warm colours high. Switch to
+ * "luminance" to have the ear track how bright a trail looks instead of where
+ * it sits on the wheel — dark trails sing bass, bright ones soprano. Kept as a
+ * constant rather than a config toggle because it is a question to settle by
+ * ear once, not a per-scene setting.
+ */
+export const REGISTER_MAPPING: RegisterMappingMode = "hue";
 
 /**
  * Trail arrival/departure tuning. A trail entering the scene rises through two
@@ -1965,13 +1978,14 @@ export class SoundEngine {
   }
 
   /**
-   * The choral part a trail sings, read off the hue of the colour it is drawn
-   * in. A colour the parser does not recognise falls to alto — the middle of
-   * the range — rather than silently dropping the trail into the bass.
+   * The choral part a trail sings, read off the colour it is drawn in under
+   * whichever mapping `REGISTER_MAPPING` selects. A colour the parser does not
+   * recognise falls to alto — the middle of the range — rather than silently
+   * dropping the trail into the bass.
    */
   private bandForFrame(frame: TrailSoundFrame): RegisterBand {
     const hsl = parseColorToHsl(frame.color);
-    return hsl === null ? "alto" : registerBandForHue(hsl.h);
+    return hsl === null ? "alto" : registerBandForColor(hsl, REGISTER_MAPPING);
   }
 
   /** The chord tone this trail calls home in the palette currently in force. */
@@ -3350,8 +3364,8 @@ export class SoundEngine {
    * holds for a couple of seconds on its own home tone, with its own detune
    * and vibrato, panned apart.
    *
-   * The pair is deliberately drawn from two different register bands — a warm
-   * colour and a cool one — because that spread is now the loudest thing a
+   * The pair is deliberately drawn from two different register bands — a cool
+   * colour and a warm one — because that spread is now the loudest thing a
    * fingerprint does. Comparing two trails in the same octave would understate
    * it.
    */
@@ -3367,10 +3381,10 @@ export class SoundEngine {
     // colour that puts it in a different part; the live engine derives both
     // the same way from a real trail's identity and colour.
     const examples: Array<{ key: string; band: RegisterBand }> = [
-      // A red trail, low.
-      { key: "audition-voice-a", band: registerBandForHue(10) },
-      // A blue trail, high.
-      { key: "audition-voice-b", band: registerBandForHue(210) },
+      // A blue trail, low.
+      { key: "audition-voice-a", band: registerBandForHue(210) },
+      // A red trail, high.
+      { key: "audition-voice-b", band: registerBandForHue(10) },
     ];
     examples.forEach(({ key, band }, order) => {
       const hash = hashIdentity(key);

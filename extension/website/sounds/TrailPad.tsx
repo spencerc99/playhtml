@@ -245,7 +245,7 @@ const AUDITION_CARDS: Array<{
     accent: "trailVoicePair",
     label: "two trail voices",
     description:
-      "Two example fingerprints in turn, two seconds each — one warm-coloured trail low, one cool-coloured trail high, so the colour-to-register mapping is audible.",
+      "Two example fingerprints in turn, two seconds each — one cool-coloured trail low, one warm-coloured trail high, so the colour-to-register mapping is audible.",
   },
 ];
 
@@ -722,7 +722,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         </button>
         <span style={labelStyle}>
           each composes with any mode above — trail voices also sets each
-          trail's register from its colour (warm low, cool high)
+          trail's register from its colour (cool low, warm high)
         </span>
       </div>
 

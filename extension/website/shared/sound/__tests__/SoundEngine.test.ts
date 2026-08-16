@@ -1694,10 +1694,10 @@ describe("SoundEngine cursor instruments", () => {
       color: string;
       expected: RegisterBand;
     }> = [
-      { index: 0, color: "#e04a2f", expected: "bass" },
+      { index: 0, color: "#0078bf", expected: "bass" },
       { index: 1, color: "rgb(0, 169, 92)", expected: "tenor" },
-      { index: 2, color: "hsl(210, 60%, 50%)", expected: "alto" },
-      { index: 3, color: "#92378d", expected: "soprano" },
+      { index: 2, color: "hsl(80, 60%, 50%)", expected: "alto" },
+      { index: 3, color: "#e04a2f", expected: "soprano" },
     ];
 
     const framesAt = (step: number) =>
@@ -1852,19 +1852,16 @@ describe("SoundEngine cursor instruments", () => {
     );
     expect(pitches.length).toBeGreaterThan(0);
 
-    // Every ringing pitch is a palette tone (possibly octave-shifted for
-    // register) — a dissonant crossing rings a continuous baseFreq derived
-    // from screen position and would essentially never land on one.
+    // Every ringing pitch is a palette tone, in some octave (the dyad is
+    // folded into the trail's band) and possibly as the 3x partial — a
+    // dissonant crossing rings a continuous baseFreq derived from screen
+    // position and would essentially never land on one.
     const palette = CHORD_PROGRESSION[0].pitches;
     for (const pitch of pitches) {
-      const inPalette = palette.some(
-        (p) =>
-          Math.abs(p - pitch) < 0.01 ||
-          Math.abs(p * 2 - pitch) < 0.01 ||
-          Math.abs(p * 3 - pitch) < 0.01 ||
-          Math.abs(p * 6 - pitch) < 0.01,
-      );
-      expect(inPalette, `${pitch} should be a palette pitch`).toBe(true);
+      expectPitchClassInPalette(pitch, [
+        ...palette,
+        ...palette.map((tone) => tone * 3),
+      ]);
     }
   });
 
