@@ -453,6 +453,107 @@ const ARRIVAL_TUNING = {
 };
 
 /**
+ * Unpitched percussion candidates, currently reachable only from the sound
+ * playground's audition buttons.
+ *
+ * Every other accent in the engine is pitched and therefore tied to whatever
+ * chord is in force. These are not: a tap is a tap regardless of the harmony,
+ * which is the whole reason to try them — the pitched accents have to be
+ * rationed because too many of them turn the scene into a chord, and
+ * percussion has no such ceiling. The gains sit deliberately under
+ * `CLICK_BELL.gain`, so if any of these graduates to a real trigger it lands
+ * beneath the bells rather than in front of them.
+ */
+const PERCUSSION_TUNING = {
+  /**
+   * The click tap: a filtered noise burst over a fast pitch drop, the two
+   * halves of how a struck woodblock actually reads — a bright edge on the
+   * attack and a body that falls away underneath it.
+   */
+  clickTap: {
+    /** Length of the noise burst. Past ~60ms it stops reading as a tap. */
+    noiseDurationSeconds: 0.045,
+    /** Bandpass centre for the noise edge, and how tight the band is. */
+    noiseFilterHz: 1800,
+    noiseFilterQ: 1.2,
+    noiseGain: 0.05,
+    /** The thump under the edge: a sine falling fast through its range. */
+    thumpStartHz: 180,
+    thumpEndHz: 80,
+    thumpDurationSeconds: 0.08,
+    thumpGain: 0.07,
+    attackSeconds: 0.002,
+    /**
+     * Level of the bell ghost in the hybrid variant, relative to the shipped
+     * click bell, and how much of its ring-out is kept. Quiet and short: the
+     * point of the hybrid is a tap with a hint of pitch behind it, not a bell
+     * with a tap stuck on the front.
+     */
+    ghostGainScale: 0.25,
+    ghostDecaySeconds: 0.5,
+    /** Pitch of the bell ghost. Fixed, so the hybrid stays unpitched in feel. */
+    ghostHz: 880,
+  },
+  /**
+   * The typing tick: the smallest sound in the set. A keystroke happens often
+   * enough that anything with a tail would smear into the next one.
+   */
+  typing: {
+    durationSeconds: 0.004,
+    filterHz: 3000,
+    filterQ: 3,
+    gain: 0.022,
+    /** Notes in the demo burst, and the human-ish gap between them. */
+    minBurstTicks: 6,
+    maxBurstTicks: 10,
+    minGapSeconds: 0.06,
+    maxGapSeconds: 0.14,
+    /**
+     * Per-tick gain and filter jitter, either side. Identical ticks read as a
+     * machine; a typist's hand varies both how hard and how squarely each key
+     * is hit.
+     */
+    gainJitter: 0.35,
+    filterJitterHz: 700,
+  },
+  /**
+   * The scroll brush: lowpassed noise swelling and fading, with the pan
+   * drifting across the swell — a brush dragged over a drumhead rather than
+   * struck.
+   */
+  scroll: {
+    durationSeconds: 0.4,
+    filterHz: 900,
+    filterQ: 0.7,
+    gain: 0.03,
+    /** Fraction of the duration spent swelling before the fade begins. */
+    swellFraction: 0.35,
+    /** How far the pan travels across the swish, either side of centre. */
+    panTravel: 0.35,
+  },
+  /**
+   * The hold roll: a quiet low tremolo building while a click is held, then
+   * stopping. Candidate for click-and-hold, where the bell currently just
+   * stretches.
+   */
+  hold: {
+    durationSeconds: 1,
+    toneHz: 110,
+    filterHz: 500,
+    filterQ: 1,
+    gain: 0.035,
+    /** Tremolo rate, and how deeply it cuts into the tone. */
+    tremoloHz: 14,
+    tremoloDepth: 0.7,
+    /** Fraction of the roll spent building to full before the cut-off. */
+    buildFraction: 0.8,
+    releaseSeconds: 0.08,
+  },
+  /** Seconds of noise generated per buffer, reused by every noise source. */
+  noiseBufferSeconds: 1,
+};
+
+/**
  * Navigation-note tuning. One deep resonant strike per animated navigation,
  * far below the click bells so a page change reads as structural.
  */
@@ -841,6 +942,13 @@ export class SoundEngine {
   private flourish: FlourishState | null = null;
   /** One-shot flourish notes still ringing. */
   private flourishNotes: Set<FlourishNote> = new Set();
+  /**
+   * A buffer of white noise, the source every percussion sound filters. Built
+   * once and shared: each playback gets its own BufferSourceNode, but they all
+   * read the same samples, so a burst of ticks does not allocate a buffer per
+   * keystroke.
+   */
+  private noiseBuffer: AudioBuffer | null = null;
   /** Index into CHORD_PROGRESSION, and when the current chord started. */
   private chordIndex = 0;
   private chordStartedMs = 0;
@@ -3345,7 +3453,377 @@ export class SoundEngine {
       case "choralSwell":
         this.auditionChoralSwell();
         return;
+      case "clickTap":
+        this.triggerClickTap(centre, false);
+        return;
+      case "clickTapHybrid":
+        this.triggerClickTap(centre, true);
+        return;
+      case "typingTick":
+        this.triggerTypingTick(centre);
+        return;
+      case "typingBurst":
+        this.triggerTypingBurst(centre, hashIdentity("audition-typing"));
+        return;
+      case "scrollBrush":
+        this.triggerScrollBrush(centre);
+        return;
+      case "holdRoll":
+        this.triggerHoldRoll(centre);
+        return;
     }
+  }
+
+  private getNoiseBuffer(ctx: AudioContext): AudioBuffer {
+    if (this.noiseBuffer) return this.noiseBuffer;
+    const length = Math.max(
+      1,
+      Math.floor(ctx.sampleRate * PERCUSSION_TUNING.noiseBufferSeconds),
+    );
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const samples = buffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) {
+      samples[i] = Math.random() * 2 - 1;
+    }
+    this.noiseBuffer = buffer;
+    return buffer;
+  }
+
+  /**
+   * One filtered burst of noise, the shared body of every percussion sound
+   * here. Returns the gain node so the caller shapes its own envelope; the
+   * graph disconnects itself when the source ends.
+   */
+  private startNoiseBurst(
+    startAt: number,
+    durationSeconds: number,
+    filter: { type: BiquadFilterType; frequency: number; Q: number },
+    pan: number,
+  ): { gain: GainNode; panNode: StereoPannerNode } | null {
+    if (!this.ctx) return null;
+    const ctx = this.ctx;
+
+    const source = ctx.createBufferSource();
+    source.buffer = this.getNoiseBuffer(ctx);
+    // Looped so a burst longer than the buffer still reads as continuous
+    // noise rather than stopping partway through.
+    source.loop = true;
+
+    const biquad = ctx.createBiquadFilter();
+    biquad.type = filter.type;
+    biquad.frequency.value = filter.frequency;
+    biquad.Q.value = filter.Q;
+
+    const gain = ctx.createGain();
+    const panNode = ctx.createStereoPanner();
+    panNode.pan.value = pan;
+
+    source.connect(biquad);
+    biquad.connect(gain);
+    gain.connect(panNode);
+    panNode.connect(this.busFor("clickBell"));
+
+    source.start(startAt);
+    source.stop(startAt + durationSeconds);
+    source.onended = () => {
+      try {
+        source.disconnect();
+        biquad.disconnect();
+        gain.disconnect();
+        panNode.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
+
+    return { gain, panNode };
+  }
+
+  /**
+   * An unpitched percussive tap for a click: a short filtered noise edge over
+   * a sine falling fast from 180Hz to 80Hz. Woodblock rather than bell — no
+   * ring-out, so it can fire as often as a click does without accumulating.
+   *
+   * With `withBellGhost` a faint, short bell sits underneath at a quarter of
+   * the shipped click-bell level, so the pure tap and the hybrid can be
+   * compared back to back.
+   */
+  private triggerClickTap(x: number, withBellGhost: boolean): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const {
+      noiseDurationSeconds,
+      noiseFilterHz,
+      noiseFilterQ,
+      noiseGain,
+      thumpStartHz,
+      thumpEndHz,
+      thumpDurationSeconds,
+      thumpGain,
+      attackSeconds,
+      ghostGainScale,
+      ghostDecaySeconds,
+      ghostHz,
+    } = PERCUSSION_TUNING.clickTap;
+    const pan = positionToPan(x, this.canvasWidth);
+
+    const burst = this.startNoiseBurst(
+      now,
+      noiseDurationSeconds,
+      { type: "bandpass", frequency: noiseFilterHz, Q: noiseFilterQ },
+      pan,
+    );
+    if (burst) {
+      burst.gain.gain.setValueAtTime(0, now);
+      burst.gain.gain.linearRampToValueAtTime(noiseGain, now + attackSeconds);
+      burst.gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        now + noiseDurationSeconds,
+      );
+    }
+
+    // The thump. An exponential fall rather than linear, so the pitch drops
+    // away the way a struck body does instead of sliding.
+    const thump = ctx.createOscillator();
+    thump.type = "sine";
+    thump.frequency.setValueAtTime(thumpStartHz, now);
+    thump.frequency.exponentialRampToValueAtTime(
+      thumpEndHz,
+      now + thumpDurationSeconds,
+    );
+
+    const thumpLevel = ctx.createGain();
+    thumpLevel.gain.setValueAtTime(0, now);
+    thumpLevel.gain.linearRampToValueAtTime(thumpGain, now + attackSeconds);
+    thumpLevel.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + thumpDurationSeconds,
+    );
+
+    const thumpPan = ctx.createStereoPanner();
+    thumpPan.pan.value = pan;
+
+    thump.connect(thumpLevel);
+    thumpLevel.connect(thumpPan);
+    thumpPan.connect(this.busFor("clickBell"));
+    thump.start(now);
+    thump.stop(now + thumpDurationSeconds + 0.02);
+    thump.onended = () => {
+      try {
+        thump.disconnect();
+        thumpLevel.disconnect();
+        thumpPan.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
+
+    if (!withBellGhost) return;
+
+    this.triggerFlourishNote(
+      ghostHz,
+      x,
+      CLICK_BELL.gain * ghostGainScale,
+      ghostDecaySeconds,
+      { attackSeconds, layer: "clickBell" },
+    );
+  }
+
+  /**
+   * One keystroke: a noise transient a few milliseconds long through a narrow
+   * bandpass. Small enough that a fast typist's run of them reads as cadence
+   * rather than as a sound effect firing repeatedly.
+   *
+   * `jitter` varies the level and the filter centre a little, so a burst does
+   * not sound like the same sample retriggered.
+   */
+  private triggerTypingTick(
+    x: number,
+    options: { startAt?: number; jitter?: number } = {},
+  ): void {
+    if (!this.ctx) return;
+    const {
+      durationSeconds,
+      filterHz,
+      filterQ,
+      gain,
+      gainJitter,
+      filterJitterHz,
+    } = PERCUSSION_TUNING.typing;
+    const startAt = options.startAt ?? this.ctx.currentTime;
+    // 0 means dead centre: a single tick auditioned on its own should be the
+    // nominal sound, not a random one.
+    const jitter = options.jitter ?? 0;
+
+    const burst = this.startNoiseBurst(
+      startAt,
+      durationSeconds,
+      {
+        type: "bandpass",
+        frequency: filterHz + jitter * filterJitterHz,
+        Q: filterQ,
+      },
+      positionToPan(x, this.canvasWidth),
+    );
+    if (!burst) return;
+
+    const peak = gain * (1 + jitter * gainJitter);
+    burst.gain.gain.setValueAtTime(0, startAt);
+    burst.gain.gain.linearRampToValueAtTime(peak, startAt + durationSeconds / 3);
+    burst.gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      startAt + durationSeconds,
+    );
+  }
+
+  /**
+   * A short run of keystrokes at a human cadence — uneven gaps, uneven weight
+   * — so the tick can be judged as rhythm rather than as one isolated sound.
+   * Seeded, so the same burst plays every time the button is pressed.
+   */
+  private triggerTypingBurst(x: number, seed: number): void {
+    if (!this.ctx) return;
+    const {
+      minBurstTicks,
+      maxBurstTicks,
+      minGapSeconds,
+      maxGapSeconds,
+    } = PERCUSSION_TUNING.typing;
+
+    const tickCount =
+      minBurstTicks +
+      Math.floor(hashUnit(seed, 1) * (maxBurstTicks - minBurstTicks + 1));
+
+    let at = this.ctx.currentTime;
+    for (let i = 0; i < tickCount; i++) {
+      this.triggerTypingTick(x, {
+        startAt: at,
+        jitter: hashUnit(seed, 30 + i) * 2 - 1,
+      });
+      at +=
+        minGapSeconds +
+        hashUnit(seed, 60 + i) * (maxGapSeconds - minGapSeconds);
+    }
+  }
+
+  /**
+   * A soft noise swish for a scroll: lowpassed noise swelling then fading,
+   * with the pan drifting across it. Continuous rather than struck, which is
+   * what separates a scroll from a click in the ear.
+   */
+  private triggerScrollBrush(x: number): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const {
+      durationSeconds,
+      filterHz,
+      filterQ,
+      gain,
+      swellFraction,
+      panTravel,
+    } = PERCUSSION_TUNING.scroll;
+    const pan = positionToPan(x, this.canvasWidth);
+
+    const burst = this.startNoiseBurst(
+      now,
+      durationSeconds,
+      { type: "lowpass", frequency: filterHz, Q: filterQ },
+      pan - panTravel,
+    );
+    if (!burst) return;
+
+    const peakAt = now + durationSeconds * swellFraction;
+    burst.gain.gain.setValueAtTime(0, now);
+    burst.gain.gain.linearRampToValueAtTime(gain, peakAt);
+    burst.gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSeconds);
+
+    // The drift is what makes it a brush stroke rather than a wash — the
+    // sound travels the way the page does.
+    burst.panNode.pan.setValueAtTime(pan - panTravel, now);
+    burst.panNode.pan.linearRampToValueAtTime(
+      pan + panTravel,
+      now + durationSeconds,
+    );
+  }
+
+  /**
+   * A quiet low tremolo building for a second and then stopping — a roll under
+   * a held click, where the bell currently only stretches. The build is what
+   * makes the hold legible as duration rather than as a longer note.
+   */
+  private triggerHoldRoll(x: number): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const {
+      durationSeconds,
+      toneHz,
+      filterHz,
+      filterQ,
+      gain,
+      tremoloHz,
+      tremoloDepth,
+      buildFraction,
+      releaseSeconds,
+    } = PERCUSSION_TUNING.hold;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = toneHz;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = filterHz;
+    filter.Q.value = filterQ;
+
+    // The roll: an LFO cutting into the tone's own gain. Depth short of 1, so
+    // the tone pulses rather than switching on and off.
+    const tremolo = ctx.createOscillator();
+    tremolo.type = "sine";
+    tremolo.frequency.value = tremoloHz;
+    const tremoloDepthGain = ctx.createGain();
+    tremoloDepthGain.gain.value = tremoloDepth / 2;
+
+    const tremoloLevel = ctx.createGain();
+    tremoloLevel.gain.value = 1 - tremoloDepth / 2;
+    tremolo.connect(tremoloDepthGain);
+    tremoloDepthGain.connect(tremoloLevel.gain);
+
+    const level = ctx.createGain();
+    const peakAt = now + durationSeconds * buildFraction;
+    level.gain.setValueAtTime(0, now);
+    level.gain.linearRampToValueAtTime(gain, peakAt);
+    level.gain.setValueAtTime(gain, now + durationSeconds - releaseSeconds);
+    level.gain.exponentialRampToValueAtTime(0.0001, now + durationSeconds);
+
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = positionToPan(x, this.canvasWidth);
+
+    osc.connect(filter);
+    filter.connect(tremoloLevel);
+    tremoloLevel.connect(level);
+    level.connect(pan);
+    pan.connect(this.busFor("clickBell"));
+
+    const stopAt = now + durationSeconds + 0.05;
+    osc.start(now);
+    tremolo.start(now);
+    osc.stop(stopAt);
+    tremolo.stop(stopAt);
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        tremolo.disconnect();
+        tremoloDepthGain.disconnect();
+        tremoloLevel.disconnect();
+        filter.disconnect();
+        level.disconnect();
+        pan.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
   }
 
   /**

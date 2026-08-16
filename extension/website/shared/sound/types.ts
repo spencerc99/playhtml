@@ -66,7 +66,18 @@ export type AuditionAccent =
   /** Two contrasting trail fingerprints, side by side, to hear the difference. */
   | "trailVoicePair"
   /** One sustained voice through its full swell, in the choral timbre. */
-  | "choralSwell";
+  | "choralSwell"
+  /**
+   * Unpitched percussion candidates, auditionable only. Nothing in the engine
+   * triggers these yet — they exist so the character can be judged in
+   * isolation before any of them is wired to a real event.
+   */
+  | "clickTap"
+  | "clickTapHybrid"
+  | "typingTick"
+  | "typingBurst"
+  | "scrollBrush"
+  | "holdRoll";
 
 /**
  * One mixable family of sounds. Every source in the engine routes through

@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SoundEngine } from "../SoundEngine";
+import { CLICK_BELL } from "../instruments";
 import {
   bellScaleForChord,
   CHORD_DWELL_MS,
@@ -109,6 +110,22 @@ class TestConvolverNode extends TestAudioNode {
   buffer: AudioBuffer | null = null;
 }
 
+class TestBufferSourceNode extends TestAudioNode {
+  buffer: AudioBuffer | null = null;
+  loop = false;
+  startTimes: number[] = [];
+  stopTimes: Array<number | undefined> = [];
+  onended: (() => void) | null = null;
+
+  start(time = 0): void {
+    this.startTimes.push(time);
+  }
+
+  stop(time?: number): void {
+    this.stopTimes.push(time);
+  }
+}
+
 class TestAudioContext {
   currentTime = 1;
   destination = new TestAudioNode();
@@ -116,6 +133,13 @@ class TestAudioContext {
   state: AudioContextState = "running";
   gains: TestGainNode[] = [];
   oscillators: TestOscillatorNode[] = [];
+  bufferSources: TestBufferSourceNode[] = [];
+
+  createBufferSource(): AudioBufferSourceNode {
+    const source = new TestBufferSourceNode();
+    this.bufferSources.push(source);
+    return source as unknown as AudioBufferSourceNode;
+  }
 
   get nodes(): TestAudioNode[] {
     return createdNodes;
@@ -125,9 +149,14 @@ class TestAudioContext {
     return new TestBiquadFilterNode() as unknown as BiquadFilterNode;
   }
 
-  createBuffer(_channels: number, length: number): AudioBuffer {
+  createBuffer(channels: number, length: number): AudioBuffer {
+    // One array per channel, retained — the percussion noise buffer is filled
+    // after creation, so a throwaway array would hide whether it was written.
+    const data = Array.from({ length: channels }, () => new Float32Array(length));
     return {
-      getChannelData: () => new Float32Array(length),
+      length,
+      numberOfChannels: channels,
+      getChannelData: (channel: number) => data[channel],
     } as unknown as AudioBuffer;
   }
 
@@ -2702,5 +2731,204 @@ describe("SoundEngine layer mixer", () => {
 
     expect(feederCount(navBus)).toBeGreaterThan(navBefore);
     expect(feederCount(clickBus)).toBe(clickBefore);
+  });
+});
+
+describe("percussion candidates", () => {
+  /** An engine up and running, which is what every audition goes through. */
+  const startedEngine = async (): Promise<SoundEngine> => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(800);
+    return engine;
+  };
+
+  it("schedules a filtered noise burst and a falling thump for a click tap", async () => {
+    const engine = await startedEngine();
+    engine.audition("clickTap");
+
+    // The noise edge: one looped buffer source through a bandpass, started
+    // and given an explicit stop so it cannot run on.
+    expect(context.bufferSources.length).toBe(1);
+    const source = context.bufferSources[0];
+    expect(source.buffer).not.toBeNull();
+    expect(source.loop).toBe(true);
+    expect(source.startTimes.length).toBe(1);
+    expect(source.stopTimes.length).toBe(1);
+
+    const bandpass = createdNodes.find(
+      (node): node is TestBiquadFilterNode =>
+        node instanceof TestBiquadFilterNode && node.type === "bandpass",
+    );
+    expect(bandpass).toBeDefined();
+
+    // The thump: a sine ramping down in pitch, which is what separates the tap
+    // from a plain noise click.
+    const thump = context.oscillators[context.oscillators.length - 1];
+    const ramps = thump.frequency.events.filter(
+      (event) => event.method === "exponentialRamp",
+    );
+    expect(ramps.length).toBe(1);
+    expect(ramps[0].value!).toBeLessThan(thump.frequency.events[0].value!);
+  });
+
+  it("adds a quiet bell under the tap only in the hybrid variant", async () => {
+    const gainsOf = async (accent: "clickTap" | "clickTapHybrid") => {
+      const engine = await startedEngine();
+      const state = engine as unknown as {
+        flourishNotes: Set<{ peakGain: number }>;
+      };
+      engine.audition(accent);
+      return [...state.flourishNotes].map((note) => note.peakGain);
+    };
+
+    // The pure tap has no pitched content at all; the hybrid's ghost is well
+    // under the shipped click bell, so it reads as a hint rather than a bell.
+    expect(await gainsOf("clickTap")).toEqual([]);
+    const hybrid = await gainsOf("clickTapHybrid");
+    expect(hybrid.length).toBe(1);
+    expect(hybrid[0]).toBeLessThan(CLICK_BELL.gain);
+  });
+
+  it("keeps a typing tick short and a burst irregular", async () => {
+    const single = await startedEngine();
+    single.audition("typingTick");
+    expect(context.bufferSources.length).toBe(1);
+    const tick = context.bufferSources[0];
+    const duration = tick.stopTimes[0]! - tick.startTimes[0];
+    // A keystroke has to be over before the next one lands.
+    expect(duration).toBeGreaterThan(0);
+    expect(duration).toBeLessThanOrEqual(0.005);
+
+    createdNodes = [];
+    context = new TestAudioContext();
+    const burst = await startedEngine();
+    burst.audition("typingBurst");
+    const starts = context.bufferSources.map((source) => source.startTimes[0]);
+    expect(starts.length).toBeGreaterThanOrEqual(6);
+    expect(starts.length).toBeLessThanOrEqual(10);
+
+    // Human cadence: the gaps vary rather than sitting on a grid, and each
+    // falls inside the range a typist's hand actually produces.
+    const gaps = starts.slice(1).map((start, i) => start - starts[i]);
+    expect(new Set(gaps.map((gap) => gap.toFixed(4))).size).toBeGreaterThan(1);
+    for (const gap of gaps) {
+      expect(gap).toBeGreaterThanOrEqual(0.06);
+      expect(gap).toBeLessThanOrEqual(0.14);
+    }
+  });
+
+  it("plays the same typing burst every time it is auditioned", async () => {
+    const burstStarts = async () => {
+      createdNodes = [];
+      context = new TestAudioContext();
+      const engine = await startedEngine();
+      engine.audition("typingBurst");
+      return context.bufferSources.map((source) => source.startTimes[0]);
+    };
+    expect(await burstStarts()).toEqual(await burstStarts());
+  });
+
+  it("swells and drifts the scroll brush across the stereo field", async () => {
+    const engine = await startedEngine();
+    engine.audition("scrollBrush");
+
+    const lowpass = createdNodes.find(
+      (node): node is TestBiquadFilterNode =>
+        node instanceof TestBiquadFilterNode && node.type === "lowpass",
+    );
+    expect(lowpass).toBeDefined();
+
+    // The pan travels rather than sitting still — that motion is what makes
+    // it a brush stroke instead of a wash of noise.
+    const panner = createdNodes.find(
+      (node): node is TestStereoPannerNode =>
+        node instanceof TestStereoPannerNode &&
+        node.pan.events.some((event) => event.method === "linearRamp"),
+    );
+    expect(panner).toBeDefined();
+    const [from, to] = panner!.pan.events
+      .filter((event) => event.value !== undefined)
+      .map((event) => event.value!);
+    expect(to).toBeGreaterThan(from);
+  });
+
+  it("builds the hold roll on a tremolo and stops it", async () => {
+    const engine = await startedEngine();
+    engine.audition("holdRoll");
+
+    // Two oscillators: the low tone and the LFO cutting into its gain.
+    const started = context.oscillators.filter(
+      (osc) => osc.startTimes.length > 0,
+    );
+    expect(started.length).toBe(2);
+    for (const osc of started) {
+      expect(osc.stopTimes.length).toBe(1);
+    }
+
+    // A build rather than a flat drone: the level ramps up before it is cut.
+    const level = context.gains.find((gain) =>
+      gain.gain.events.some(
+        (event) => event.method === "linearRamp" && (event.value ?? 0) > 0,
+      ),
+    );
+    expect(level).toBeDefined();
+  });
+
+  it("self-disconnects every percussion graph when its source ends", async () => {
+    for (const accent of [
+      "clickTap",
+      "clickTapHybrid",
+      "typingTick",
+      "scrollBrush",
+      "holdRoll",
+    ] as const) {
+      createdNodes = [];
+      context = new TestAudioContext();
+      const engine = await startedEngine();
+      engine.audition(accent);
+
+      // Firing every onended is what the browser does when the sources stop;
+      // nothing in the graph should still be wired up afterwards.
+      for (const source of context.bufferSources) source.onended?.();
+      for (const osc of context.oscillators) osc.onended?.();
+
+      const stillConnected = createdNodes.filter(
+        (node) => node.connections.length > 0,
+      );
+      // Only the permanent mix graph (master, layer buses, reverb) survives,
+      // and it is built during init rather than by the audition.
+      for (const node of stillConnected) {
+        expect(
+          node instanceof TestBufferSourceNode,
+          `${accent} left a buffer source connected`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("never fires a percussion candidate from a live event path", async () => {
+    const engine = await startedEngine();
+    engine.setConfig({ trailArrivals: true, navigationSounds: true });
+
+    const before = context.bufferSources.length;
+
+    // Everything the engine reacts to on its own: trails moving, a trail
+    // arriving and leaving, a click, a hold, a navigation. None of these is
+    // wired to the percussion candidates yet.
+    for (let step = 0; step < 30; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        { ...soloFrame(0, 100 + step * 6, 100), identityKey: "person-a" },
+        { ...soloFrame(1, 460 - step * 6, 140), identityKey: "person-b" },
+      ]);
+    }
+    engine.triggerClick({ x: 100, y: 100, holdDuration: undefined });
+    engine.triggerClick({ x: 100, y: 100, holdDuration: 900 });
+    engine.triggerNavigation({ x: 200 });
+    engine.retireTrail(0);
+    engine.retireTrail(1);
+
+    expect(context.bufferSources.length).toBe(before);
   });
 });

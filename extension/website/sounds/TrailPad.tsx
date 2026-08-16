@@ -251,6 +251,54 @@ const AUDITION_CARDS: Array<{
 ];
 
 /**
+ * Unpitched percussion candidates. Nothing in the engine triggers these — they
+ * are here to be judged in isolation before any of them is wired to a real
+ * event, so each description names the event it would map to.
+ */
+const PERCUSSION_CARDS: Array<{
+  accent: AuditionAccent;
+  label: string;
+  description: string;
+}> = [
+  {
+    accent: "clickTap",
+    label: "click tap (pure percussion)",
+    description:
+      "For a click. A filtered noise edge over a fast pitch drop — woodblock, no ring-out.",
+  },
+  {
+    accent: "clickTapHybrid",
+    label: "click tap + bell ghost (hybrid)",
+    description:
+      "The same tap with a faint short bell underneath, at a quarter of the current click-bell level. Pure vs hybrid, back to back.",
+  },
+  {
+    accent: "typingTick",
+    label: "typing tick",
+    description:
+      "For one keystroke. A few milliseconds of bandpassed noise, small enough to fire as often as typing does.",
+  },
+  {
+    accent: "typingBurst",
+    label: "typing burst",
+    description:
+      "The same tick as a run of six to ten, at a human cadence, so it can be judged as rhythm.",
+  },
+  {
+    accent: "scrollBrush",
+    label: "scroll brush",
+    description:
+      "For a scroll. Lowpassed noise swelling and fading with the pan drifting across it, like a brush on a drumhead.",
+  },
+  {
+    accent: "holdRoll",
+    label: "hold roll",
+    description:
+      "For a click held down. A quiet low tremolo building for a second, then stopping.",
+  },
+];
+
+/**
  * The arrangement the pad opens on — the combination Spencer settled on by
  * ear. Playground-only: the live pages read their own settings defaults and
  * keep every experimental toggle off.
@@ -269,6 +317,54 @@ const PAD_DEFAULTS = {
   choralTimbre: false,
   crossings: "off" as CrossingFlavor,
 };
+
+/** One titled grid of audition buttons, each with the event it stands for. */
+const AuditionSection = ({
+  title,
+  blurb,
+  cards,
+  onAudition,
+}: {
+  title: string;
+  blurb: string;
+  cards: Array<{ accent: AuditionAccent; label: string; description: string }>;
+  onAudition: (accent: AuditionAccent) => void;
+}) => (
+  <div style={{ marginTop: "20px" }}>
+    <div style={{ ...labelStyle, marginBottom: "4px", color: "#3d3833" }}>
+      {title}
+    </div>
+    <div style={{ ...labelStyle, marginBottom: "10px" }}>{blurb}</div>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
+        gap: "8px",
+      }}
+    >
+      {cards.map((card) => (
+        <div
+          key={card.accent}
+          style={{
+            border: "1px solid #e0dbd4",
+            background: "#faf7f2",
+            padding: "10px",
+          }}
+        >
+          <button
+            onClick={() => onAudition(card.accent)}
+            style={{ ...buttonStyle, width: "100%" }}
+          >
+            {card.label}
+          </button>
+          <div style={{ ...labelStyle, marginTop: "8px", lineHeight: 1.4 }}>
+            {card.description}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 interface TrailPadProps {
   /**
@@ -787,45 +883,19 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         </span>
       </div>
 
-      <div style={{ marginTop: "20px" }}>
-        <div style={{ ...labelStyle, marginBottom: "4px", color: "#3d3833" }}>
-          Accent Sounds
-        </div>
-        <div style={{ ...labelStyle, marginBottom: "10px" }}>
-          Hear each accent on its own, at the current chord. Does not require
-          the matching toggle above.
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
-            gap: "8px",
-          }}
-        >
-          {AUDITION_CARDS.map((card) => (
-            <div
-              key={card.accent}
-              style={{
-                border: "1px solid #e0dbd4",
-                background: "#faf7f2",
-                padding: "10px",
-              }}
-            >
-              <button
-                onClick={() => handleAudition(card.accent)}
-                style={{ ...buttonStyle, width: "100%" }}
-              >
-                {card.label}
-              </button>
-              <div
-                style={{ ...labelStyle, marginTop: "8px", lineHeight: 1.4 }}
-              >
-                {card.description}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <AuditionSection
+        title="Accent Sounds"
+        blurb="Hear each accent on its own, at the current chord. Does not require the matching toggle above."
+        cards={AUDITION_CARDS}
+        onAudition={handleAudition}
+      />
+
+      <AuditionSection
+        title="Percussion (candidates)"
+        blurb="Unpitched, so none of these depends on the chord. Nothing in the engine plays them yet — they are here to be judged before any is wired to a real event."
+        cards={PERCUSSION_CARDS}
+        onAudition={handleAudition}
+      />
 
       <div
         style={{
