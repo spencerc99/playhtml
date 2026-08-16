@@ -8,6 +8,7 @@ import { CollectionEvent, Trail, TrailState } from "../types";
 // Replace with the minimum hold threshold so the event still renders as a hold.
 const MAX_REASONABLE_HOLD_MS = 3_600_000;
 const MIN_HOLD_THRESHOLD_MS = 250;
+const LIVE_SEGMENT_SEPARATOR = "|segment:";
 
 function sanitizeHoldDuration(duration: number | undefined): number | undefined {
   if (duration === undefined) return undefined;
@@ -49,9 +50,8 @@ export interface CursorTrailSettings {
   // so movements across a long scrollable page are shown relative to the full document.
   documentSpace: boolean;
   // When true, each participant+url group contributes only its most recent
-  // segment (the in-progress trail), so a group never yields two trails sharing
-  // the same id. Required for the live view, where trail id must be both unique
-  // and stable as the event window slides; the archive shows every segment.
+  // segment. The segment keeps a stable id while its accumulated points grow,
+  // and a replacement segment gets a distinct id.
   singleSegmentPerGroup?: boolean;
 }
 
@@ -80,6 +80,34 @@ export function buildTrailSchedulePositionLookup(
     positions[orderedIndices[position]] = position;
   }
   return positions;
+}
+
+export function buildLiveTrailId(
+  groupId: string,
+  segmentStartTime: number,
+): string {
+  return `${groupId}${LIVE_SEGMENT_SEPARATOR}${segmentStartTime}`;
+}
+
+export function getLiveTrailGroupId(trailId: string): string {
+  const separatorIndex = trailId.lastIndexOf(LIVE_SEGMENT_SEPARATOR);
+  if (separatorIndex === -1) {
+    throw new Error(`Live trail id is missing its segment identity: ${trailId}`);
+  }
+  return trailId.slice(0, separatorIndex);
+}
+
+export function getAccumulationEvictions(
+  removedTrailIds: string[],
+  activeTrailIds: ReadonlySet<string>,
+): string[] {
+  const groupIds = new Set<string>();
+  for (const trailId of removedTrailIds) {
+    if (activeTrailIds.has(trailId)) {
+      groupIds.add(getLiveTrailGroupId(trailId));
+    }
+  }
+  return Array.from(groupIds);
 }
 
 export interface UseCursorTrailsResult {
@@ -341,7 +369,9 @@ export function useCursorTrails(
           points: currentTrail,
           color: getTrailColor(startTime),
           opacity: 1,
-          id: groupKey,
+          id: settings.singleSegmentPerGroup
+            ? buildLiveTrailId(groupKey, startTime)
+            : groupKey,
           startTime,
           endTime,
           clicks: [...currentClicks],

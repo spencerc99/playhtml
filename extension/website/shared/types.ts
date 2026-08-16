@@ -33,11 +33,9 @@ export interface Trail {
   color: string;
   opacity: number;
   angle?: number;
-  /** Stable identity for this trail across re-derivations: participant + url.
-   * Deliberately excludes any timestamp — a person+page is one trail, so the
-   * live animator tracks it as ONE evolving trail instead of re-snapshotting it
-   * (as overlapping copies) each time the sliding event window drops the trail's
-   * earliest points and shifts its derived start. */
+  /** Stable identity for this trail's geometry across re-derivations. Live
+   * trails include their segment start so a replacement segment does not reuse
+   * the completed draw state of the previous segment. */
   id: string;
   startTime: number;
   endTime: number;
