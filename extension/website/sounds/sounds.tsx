@@ -8,6 +8,7 @@ import { SoundEngine } from "../shared/sound/SoundEngine";
 import { RippleEffect, RippleSettings } from "../shared/components/ClickRipple";
 import { ClickEffect } from "../shared/types";
 import { TrailPad } from "./TrailPad";
+import { SamplePlayback } from "./SamplePlayback";
 
 const RANDOM_RIPPLE_COLORS = [
   "#4a9a8a", // teal
@@ -242,6 +243,26 @@ const SoundPlayground = () => {
   const [activeNote, setActiveNote] = useState<string | null>(null);
   const [bellHoldMs, setBellHoldMs] = useState(0);
   const [ripples, setRipples] = useState<ClickEffect[]>([]);
+  /**
+   * The pad's engine getter. The sample replay drives the same engine as the
+   * pad so it inherits whatever toggles are set rather than needing its own.
+   */
+  const padEngineRef = useRef<(() => Promise<SoundEngine>) | null>(null);
+
+  const handlePadEngineReady = useCallback(
+    (getEngine: () => Promise<SoundEngine>) => {
+      padEngineRef.current = getEngine;
+    },
+    [],
+  );
+
+  const getPadEngine = useCallback(async () => {
+    const getEngine = padEngineRef.current;
+    if (!getEngine) {
+      throw new Error("Trail pad engine is not ready yet");
+    }
+    return getEngine();
+  }, []);
 
   const ensureAudio = useCallback(() => {
     if (!ctxRef.current) {
@@ -403,7 +424,9 @@ const SoundPlayground = () => {
         experiment with cursor instruments in D minor pentatonic
       </div>
 
-      <TrailPad />
+      <TrailPad onEngineReady={handlePadEngineReady} />
+
+      <SamplePlayback getEngine={getPadEngine} />
 
       <div style={styles.section}>
         <div style={styles.sectionTitle}>Instruments by Cursor Type</div>

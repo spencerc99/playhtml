@@ -228,7 +228,16 @@ const AUDITION_CARDS: Array<{
   },
 ];
 
-export const TrailPad = () => {
+interface TrailPadProps {
+  /**
+   * Hands the pad's engine getter to the owner, so other sections of the
+   * playground can drive the same engine — and therefore the same toggles —
+   * rather than standing up a second one with its own configuration.
+   */
+  onEngineReady?: (getEngine: () => Promise<SoundEngine>) => void;
+}
+
+export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SoundEngine | null>(null);
   const agentsRef = useRef<Agent[]>([]);
@@ -337,6 +346,10 @@ export const TrailPad = () => {
     }
     return engineRef.current;
   }, [volume]);
+
+  useEffect(() => {
+    onEngineReady?.(ensureEngine);
+  }, [onEngineReady, ensureEngine]);
 
   const handleAudition = useCallback(
     async (accent: AuditionAccent) => {
