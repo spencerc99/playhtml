@@ -2256,60 +2256,6 @@ export const Controls: React.FC<ControlsProps> = memo(
           onToggle={() => toggleSection("sound")}
         >
           <div className="control-group">
-            <label htmlFor="sound-mode">Sound Mode</label>
-            <select
-              id="sound-mode"
-              value={settings.soundMode ?? "sustained"}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  soundMode: e.target.value as
-                    | "sustained"
-                    | "spotlight"
-                    | "notes",
-                }))
-              }
-            >
-              <option value="sustained">Sustained Voices</option>
-              <option value="spotlight">Sustained + Spotlight</option>
-              <option value="notes">Discrete Notes</option>
-            </select>
-          </div>
-          <div className="control-group">
-            <label htmlFor="sound-chord-rotation">
-              <input
-                id="sound-chord-rotation"
-                type="checkbox"
-                checked={!!settings.soundChordRotation}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    soundChordRotation: e.target.checked,
-                  }))
-                }
-                style={{ marginRight: "8px" }}
-              />
-              Chord Rotation (Dm → Bb → F → C)
-            </label>
-          </div>
-          <div className="control-group">
-            <label htmlFor="sound-energy-arc">
-              <input
-                id="sound-energy-arc"
-                type="checkbox"
-                checked={!!settings.soundEnergyArc}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    soundEnergyArc: e.target.checked,
-                  }))
-                }
-                style={{ marginRight: "8px" }}
-              />
-              Energy Arc (build and release)
-            </label>
-          </div>
-          <div className="control-group">
             <label htmlFor="sound-chord-voicing">
               <input
                 id="sound-chord-voicing"
@@ -2358,57 +2304,6 @@ export const Controls: React.FC<ControlsProps> = memo(
                 style={{ marginRight: "8px" }}
               />
               Trail Crossing Dissonance
-            </label>
-          </div>
-          <div className="control-group">
-            <label htmlFor="sound-trail-arrivals">
-              <input
-                id="sound-trail-arrivals"
-                type="checkbox"
-                checked={!!settings.soundTrailArrivals}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    soundTrailArrivals: e.target.checked,
-                  }))
-                }
-                style={{ marginRight: "8px" }}
-              />
-              Trail Arrivals (enter and leave)
-            </label>
-          </div>
-          <div className="control-group">
-            <label htmlFor="sound-navigation">
-              <input
-                id="sound-navigation"
-                type="checkbox"
-                checked={!!settings.soundNavigationSounds}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    soundNavigationSounds: e.target.checked,
-                  }))
-                }
-                style={{ marginRight: "8px" }}
-              />
-              Navigation Notes (deep, on page changes)
-            </label>
-          </div>
-          <div className="control-group">
-            <label htmlFor="sound-bass-pedal">
-              <input
-                id="sound-bass-pedal"
-                type="checkbox"
-                checked={!!settings.soundBassPedal}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    soundBassPedal: e.target.checked,
-                  }))
-                }
-                style={{ marginRight: "8px" }}
-              />
-              Bass Pedal (low drone on the root)
             </label>
           </div>
         </CollapsibleSection>
