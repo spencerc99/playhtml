@@ -14,6 +14,7 @@ function trailState(): TrailState {
   return {
     trail: {
       points,
+      id: "test-trail",
       color: "#000",
       opacity: 1,
       startTime: 0,

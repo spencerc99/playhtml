@@ -3,7 +3,7 @@
 // ABOUTME: Nodes appear when visible, edges connect with organic wobbly lines
 
 import React, { useState, useEffect, useRef, memo } from "react";
-import { TimelineState, TimelineNode, TimelineEdge, TimelineSession } from "../types";
+import { TimelineState, TimelineNode, TimelineEdge } from "../types";
 
 interface AnimatedNavigationProps {
   timelineState: TimelineState;

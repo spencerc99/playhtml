@@ -14,7 +14,6 @@ import { CLICK_DEFAULTS } from "./clickDefaults";
 import {
   collectEventCategories,
   computeHotspots,
-  pickStripBucketMs,
   rankSustainedWindows,
 } from "../utils/hotspots";
 import { buildShareUrl } from "../utils/shareUrl";
@@ -404,7 +403,7 @@ const FilterChipInput: React.FC<{
     items,
     initialInputValue: "",
     itemToString: (item) => item ?? "",
-    stateReducer: (state, { type, changes }) => {
+    stateReducer: (_state, { type, changes }) => {
       const t = comboboxStateChangeTypes;
       if (type === t.InputClick) {
         return { ...changes, isOpen: true };
@@ -717,11 +716,8 @@ export const Controls: React.FC<ControlsProps> = memo(
     loading,
     error,
     events,
-    filteredEventCount,
-    trails,
     availableDomains,
     fetchEvents,
-    timeRange,
     activeVisualizations,
     onSetActiveVisualizations,
     selectedTimeRange,

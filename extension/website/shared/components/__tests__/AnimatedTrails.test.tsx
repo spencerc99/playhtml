@@ -60,7 +60,7 @@ describe("AnimatedTrails sound", () => {
       root.render(
         React.createElement(AnimatedTrails, {
           trailStates: [trailState],
-          timeRange: { duration: 3000 },
+          timeRange: { min: 0, max: 3000, duration: 3000 },
           showClickRipples: false,
           soundEngine,
           settings: DEFAULT_SETTINGS,
