@@ -33,6 +33,7 @@ dist-ssr
 .env
 .dev.vars
 /.dev.vars.supabase
+/private-data/
 
 .claude
 .codex/
