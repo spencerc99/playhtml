@@ -1270,6 +1270,12 @@ describe("SoundEngine cursor instruments", () => {
       "navigation",
       "soloistFlourish",
       "soloistResolve",
+      "crossingShimmer",
+      "crossingSuspension",
+      "crossingHarsh",
+      "crossingMerge",
+      "trailVoicePair",
+      "choralSwell",
     ] as const;
 
     for (const accent of accents) {
@@ -1936,6 +1942,160 @@ describe("SoundEngine cursor instruments", () => {
         state.fingerprints.get(trailIndex)!.detuneCents,
         5,
       );
+    }
+  });
+
+  it("resolves a suspension stepwise down onto a chord tone", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const before = context.oscillators.length;
+    engine.audition("crossingSuspension");
+    const tones = context.oscillators.slice(before);
+    expect(tones).toHaveLength(2);
+
+    const [lower, upper] = tones;
+    // The suspended voice starts a step above the chord tone under it. A step,
+    // not a leap: more than a whole tone would be a chord tone rather than a
+    // suspension.
+    const startedAbove = upper.frequency.value;
+    expect(startedAbove).toBeGreaterThan(lower.frequency.value);
+    const openingInterval = 12 * Math.log2(startedAbove / lower.frequency.value);
+    expect(openingInterval).toBeGreaterThan(0.5);
+    expect(openingInterval).toBeLessThanOrEqual(2.5);
+
+    // Then it falls onto the tone below, which is the release the whole figure
+    // exists for. The old version never resolved, which is why it just sounded
+    // wrong rather than tense.
+    const resolution = upper.frequency.events.find(
+      (event) => event.method === "linearRamp",
+    );
+    expect(resolution).toBeDefined();
+    expect(resolution!.value).toBeCloseTo(lower.frequency.value, 5);
+    // Downward: resolving upward would read as a new note, not a settling.
+    expect(resolution!.value!).toBeLessThan(startedAbove);
+  });
+
+  it("draws the suspension from the current progression's collection", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ chordRotation: true, progression: "dorian" });
+    engine.tick(0, [soloFrame(0, 0, 0)]);
+
+    const before = context.oscillators.length;
+    engine.audition("crossingSuspension");
+    const [lower, upper] = context.oscillators.slice(before);
+
+    // Both voices stay in the key. Folding back out of the crossing register
+    // is what the engine does internally to find the neighbour.
+    for (const tone of [lower, upper]) {
+      expect(isPitchInCollection(tone.frequency.value / 2, "dorian")).toBe(true);
+    }
+  });
+
+  it("sounds a beating shimmer rather than an interval when the scene is quiet", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const before = context.oscillators.length;
+    engine.audition("crossingShimmer");
+    const [a, b] = context.oscillators.slice(before);
+
+    // Same chord tone, a few Hz apart — no interval at all, just the beat
+    // between them. That is what a near-empty canvas can carry.
+    const beatHz = Math.abs(b.frequency.value - a.frequency.value);
+    expect(beatHz).toBeGreaterThanOrEqual(4);
+    expect(beatHz).toBeLessThanOrEqual(6);
+    // Neither voice glides: a shimmer has nothing to resolve.
+    for (const tone of [a, b]) {
+      expect(
+        tone.frequency.events.some((event) => event.method === "linearRamp"),
+      ).toBe(false);
+    }
+  });
+
+  it("picks the crossing variant from how busy the scene is", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ crossings: "dissonance", energyArc: true });
+
+    const state = engine as unknown as {
+      energy: number;
+      lastTickMs: number;
+      lastHarshCrossingMs: number;
+      crossingTensionVariant(): string;
+    };
+
+    // A still canvas gets the gentlest figure.
+    state.energy = 0.05;
+    expect(state.crossingTensionVariant()).toBe("shimmer");
+
+    // An ordinary scene gets the suspension.
+    state.energy = 0.5;
+    expect(state.crossingTensionVariant()).toBe("suspension");
+
+    // Only a genuinely busy one earns the harsh version.
+    state.energy = 0.9;
+    state.lastTickMs = 100000;
+    state.lastHarshCrossingMs = Number.NEGATIVE_INFINITY;
+    expect(state.crossingTensionVariant()).toBe("harsh");
+
+    // And it is rate-limited far harder than the per-pair cooldown, so it
+    // stays an occasional strain rather than becoming the texture.
+    state.lastTickMs = 101000;
+    expect(state.crossingTensionVariant()).toBe("suspension");
+    state.lastTickMs = 120000;
+    expect(state.crossingTensionVariant()).toBe("harsh");
+  });
+
+  it("falls back to recent motion when the energy arc is off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ crossings: "dissonance", energyArc: false });
+
+    const state = engine as unknown as { crossingTensionVariant(): string };
+
+    // A barely-moving scene reads as quiet even with the arc switched off.
+    for (let step = 0; step < 20; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, 100 + step * 0.05, 0)]);
+    }
+    expect(state.crossingTensionVariant()).toBe("shimmer");
+
+    // A fast sweep pushes it past the gentle threshold.
+    for (let step = 20; step < 60; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, (step % 10) * 90, 0)]);
+    }
+    expect(state.crossingTensionVariant()).not.toBe("shimmer");
+  });
+
+  it("keeps crossing tension quieter than a click bell", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const before = context.gains.length;
+    engine.audition("crossingSuspension");
+    const peaks = context.gains
+      .slice(before)
+      .flatMap((gain) =>
+        gain.gain.events
+          .filter((event) => event.method === "linearRamp")
+          .map((event) => event.value!),
+      )
+      .filter((value) => value > 0);
+
+    expect(peaks.length).toBeGreaterThan(0);
+    // A crossing is an inflection, not an event — the click bell stays the
+    // strongest accent in the scene.
+    for (const peak of peaks) {
+      expect(peak).toBeLessThan(0.1);
     }
   });
 

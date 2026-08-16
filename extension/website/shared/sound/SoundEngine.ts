@@ -35,6 +35,7 @@ import {
   Progression,
   progressionById,
   ProgressionId,
+  upperNeighbor,
   D_MINOR_PENTATONIC,
 } from "./scales";
 import { parseColorToHsl } from "../utils/eventUtils";
@@ -287,6 +288,66 @@ const CROSSING_MERGE_TUNING = {
   /** Register multiplier placing the dyad above the sustained bed. */
   registerMultiplier: 2,
 };
+
+/**
+ * Crossing-tension tuning. The dissonance flavor is a suspension rather than a
+ * raw clash: a step above a chord tone, held, then falling onto it. Tension
+ * that resolves reads as harmony under strain; tension that never resolves
+ * just reads as a wrong note, which is what the earlier sine-dyad version was.
+ *
+ * Three variants, selected by how much is happening in the scene, so the same
+ * gesture scales with the room rather than landing identically on an empty
+ * canvas and a crowded one.
+ */
+const CROSSING_TENSION_TUNING = {
+  /** Register multiplier placing the figure above the sustained bed. */
+  registerMultiplier: 2,
+  /** Peak gain. Quiet: a crossing is an inflection, not an event. */
+  gain: 0.05,
+  attackSeconds: 0.05,
+  /** How long the two tones are held together before the upper one falls. */
+  suspensionSeconds: 0.7,
+  /** Ring-out of the resolved tone. Soft, so the release is a settling. */
+  resolutionDecaySeconds: 1.5,
+  /** Level of the suspended upper voice against the chord tone under it. */
+  upperVoiceGain: 0.8,
+  /**
+   * Below this scene energy, the interval is dropped for a beating shimmer:
+   * two tones a few Hz apart on the same chord tone. On a near-empty canvas
+   * even a resolving second is more incident than the moment carries.
+   */
+  gentleEnergyThreshold: 0.18,
+  /** Beat rate of the shimmer, in Hz — slow enough to read as a pulse. */
+  shimmerMinBeatHz: 4,
+  shimmerMaxBeatHz: 6,
+  /** The shimmer is longer and quieter than the suspension it replaces. */
+  shimmerGainScale: 0.7,
+  shimmerDecaySeconds: 2.5,
+  /**
+   * Above this energy a crossing may sound the harsh version — the tritone the
+   * flavor used to fire unconditionally. Kept because Spencer suspects promise
+   * in real dissonance, but reserved for scenes busy enough to carry it.
+   */
+  harshEnergyThreshold: 0.75,
+  /** Minimum gap between harsh crossings. Far harder than the pair cooldown. */
+  harshMinIntervalMs: 8000,
+  /** The harsh interval, and how long it grinds before decaying. */
+  harshDecaySeconds: 1.2,
+  harshGainScale: 0.9,
+  /**
+   * Recent-motion window used to stand in for scene energy when the energy arc
+   * is off, so the variant choice still tracks how busy the canvas is.
+   */
+  motionWindowMs: 2000,
+  /** Summed px/frame across the window that reads as a fully busy scene. */
+  motionFullScale: 60,
+};
+
+/**
+ * Which of the three crossing-tension figures a crossing sounds. Chosen from
+ * scene energy, not at random, so the flavor tracks the room.
+ */
+export type CrossingTensionVariant = "shimmer" | "suspension" | "harsh";
 
 /**
  * Trail arrival/departure tuning. A trail entering the scene rises through two
@@ -685,6 +746,14 @@ export class SoundEngine {
   private config: SoundConfig = { ...DEFAULT_CONFIG };
   /** Tracks recent crossing events to prevent rapid re-triggering */
   private crossingCooldowns: Map<string, number> = new Map();
+  /** When the harsh crossing variant last fired, for its own hard rate limit. */
+  private lastHarshCrossingMs = Number.NEGATIVE_INFINITY;
+  /**
+   * Recent total scene motion as [tickMs, summed px/frame]. Stands in for the
+   * energy arc when it is off, so the crossing variant still tracks how busy
+   * the canvas is.
+   */
+  private recentSceneMotion: Array<[number, number]> = [];
   /** Per-trail sonic fingerprints, derived once from each trail's identity. */
   private fingerprints: Map<number, TrailFingerprint> = new Map();
   /** Identity key each fingerprint was derived from, to detect a re-key. */
@@ -879,6 +948,7 @@ export class SoundEngine {
       this.trailPaths.clear();
       this.crossingCooldowns.clear();
       this.mergePullsUntilMs.clear();
+      this.lastHarshCrossingMs = Number.NEGATIVE_INFINITY;
     }
 
     // "spotlight" is the sustained engine with the soloist treatment on, so
@@ -1289,52 +1359,309 @@ export class SoundEngine {
     }
   }
 
-  /** Trigger a brief dissonant tone at the crossing point */
+  /**
+   * Sound a crossing as tension that resolves. The chord tone the two trails
+   * meet on is held against the step above it, and the upper voice then falls
+   * onto it — a suspension, drawn from the harmony in force rather than from a
+   * fixed ratio against nothing.
+   *
+   * How much tension the moment can carry is decided by the scene: a quiet
+   * canvas gets a beating shimmer instead of an interval, and only a genuinely
+   * busy one earns the harsh tritone.
+   */
   private triggerCrossingDissonance(
     trailIndexA: number,
     trailIndexB: number,
     x: number,
     y: number,
     distance: number,
+    forcedVariant?: CrossingTensionVariant,
   ): void {
     if (!this.ctx || !this.masterGain) return;
 
-    const now = this.ctx.currentTime;
+    const variant = forcedVariant ?? this.crossingTensionVariant();
+    // Closer crossings press harder, the same proximity weighting the old
+    // dissonance used.
+    const proximity =
+      distance >= CROSSING_DISTANCE_THRESHOLD
+        ? 1
+        : 1 - distance / CROSSING_DISTANCE_THRESHOLD;
 
-    // Dissonant intervals: minor second (16/15) and tritone (Math.sqrt(2))
-    // Pick based on which trails are crossing
-    const baseFreq = 220 + (y / (window.innerHeight || 800)) * 440;
-    const dissonantRatio = (trailIndexA + trailIndexB) % 2 === 0
-      ? 16 / 15  // minor second — tense, close
-      : Math.SQRT2; // tritone — unstable, eerie
+    // The chord tone the figure sits on. With fingerprints on this is one of
+    // the crossing trails' own home tones, so the tension is between the two
+    // voices that actually met; otherwise it is the chord root.
+    const home = this.homeToneFor(trailIndexA) ?? this.homeToneFor(trailIndexB);
+    const base =
+      (home ?? this.currentRoot()) *
+      CROSSING_TENSION_TUNING.registerMultiplier;
 
-    const osc1 = this.ctx.createOscillator();
-    osc1.type = "sine";
-    osc1.frequency.value = baseFreq;
+    if (variant === "shimmer") {
+      this.triggerCrossingShimmer(base, x, proximity, trailIndexA + trailIndexB);
+      return;
+    }
+    if (variant === "harsh") {
+      this.triggerCrossingHarsh(base, x, y, proximity);
+      return;
+    }
+    this.triggerCrossingSuspension(base, x, proximity);
+  }
 
-    const osc2 = this.ctx.createOscillator();
-    osc2.type = "sine";
-    osc2.frequency.value = baseFreq * dissonantRatio;
+  /**
+   * The suspension: a chord tone and the step above it held together, then the
+   * upper voice falling onto the chord tone with a soft decay. Tension, then
+   * release, both inside the current pitch collection.
+   */
+  private triggerCrossingSuspension(
+    base: number,
+    x: number,
+    proximity: number,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
 
-    // Closer crossing = louder dissonance
-    const proximityGain = 1 - distance / CROSSING_DISTANCE_THRESHOLD;
-    const gain = this.ctx.createGain();
+    const {
+      gain,
+      attackSeconds,
+      suspensionSeconds,
+      resolutionDecaySeconds,
+      upperVoiceGain,
+    } = CROSSING_TENSION_TUNING;
+    const peak = gain * proximity;
+    const now = ctx.currentTime;
+    const endsAt = now + attackSeconds + suspensionSeconds + resolutionDecaySeconds;
+
+    // The chord tone underneath, held plainly through the whole figure.
+    const lower = this.buildCrossingTone(base, x, peak, {
+      attackSeconds,
+      holdSeconds: suspensionSeconds,
+      decaySeconds: resolutionDecaySeconds,
+    });
+
+    // The suspended voice: the step above, falling onto the chord tone at the
+    // end of the hold. Stepwise and downward — a suspension that resolved
+    // upward would read as a new note rather than as a release.
+    const suspended = this.suspensionPitch(base);
+    const upper = this.buildCrossingTone(
+      suspended,
+      x,
+      peak * upperVoiceGain,
+      {
+        attackSeconds,
+        holdSeconds: suspensionSeconds,
+        decaySeconds: resolutionDecaySeconds,
+      },
+    );
+    if (upper) {
+      // The resolution itself: the upper voice glides down onto the tone below
+      // it once the suspension has been held.
+      upper.oscillator.frequency.setValueAtTime(
+        suspended,
+        now + attackSeconds + suspensionSeconds,
+      );
+      upper.oscillator.frequency.linearRampToValueAtTime(
+        base,
+        now + attackSeconds + suspensionSeconds + 0.12,
+      );
+    }
+
+    for (const tone of [lower, upper]) {
+      tone?.oscillator.stop(endsAt + 0.05);
+    }
+  }
+
+  /**
+   * The gentle variant: two tones a few Hz apart on the same chord tone. No
+   * interval at all — the tension is the beating between them, which a quiet
+   * canvas can carry where a second could not.
+   */
+  private triggerCrossingShimmer(
+    base: number,
+    x: number,
+    proximity: number,
+    seed: number,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    const {
+      gain,
+      attackSeconds,
+      shimmerMinBeatHz,
+      shimmerMaxBeatHz,
+      shimmerGainScale,
+      shimmerDecaySeconds,
+    } = CROSSING_TENSION_TUNING;
+    const peak = gain * shimmerGainScale * proximity;
+    // Beat rate from the pair, so the same two trails shimmer the same way.
+    const beatHz =
+      shimmerMinBeatHz +
+      hashUnit(hashIdentity(`crossing-${seed}`), 13) *
+        (shimmerMaxBeatHz - shimmerMinBeatHz);
+
+    const envelope = {
+      attackSeconds,
+      holdSeconds: 0,
+      decaySeconds: shimmerDecaySeconds,
+    };
+    const tones = [
+      this.buildCrossingTone(base, x, peak, envelope),
+      this.buildCrossingTone(base + beatHz, x, peak, envelope),
+    ];
+    const endsAt = ctx.currentTime + attackSeconds + shimmerDecaySeconds;
+    for (const tone of tones) tone?.oscillator.stop(endsAt + 0.05);
+  }
+
+  /**
+   * The harsh variant, reserved for busy scenes and rate-limited hard: the
+   * tritone the flavor used to fire on every crossing. It still does not
+   * resolve, which is the point — at high energy an unresolved clash reads as
+   * the scene straining rather than as a wrong note.
+   */
+  private triggerCrossingHarsh(
+    base: number,
+    x: number,
+    y: number,
+    proximity: number,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    const { gain, attackSeconds, harshGainScale, harshDecaySeconds } =
+      CROSSING_TENSION_TUNING;
+    const peak = gain * harshGainScale * proximity;
+    // Height on the canvas still colours the strike, as it did before.
+    const lift = 1 + (1 - Math.min(1, y / (window.innerHeight || 800))) * 0.5;
+    const envelope = {
+      attackSeconds,
+      holdSeconds: 0,
+      decaySeconds: harshDecaySeconds,
+    };
+    const tones = [
+      this.buildCrossingTone(base * lift, x, peak, envelope),
+      this.buildCrossingTone(base * lift * Math.SQRT2, x, peak, envelope),
+    ];
+    const endsAt = ctx.currentTime + attackSeconds + harshDecaySeconds;
+    for (const tone of tones) tone?.oscillator.stop(endsAt + 0.05);
+  }
+
+  /**
+   * The pitch a suspension hangs on: the diatonic step above the chord tone,
+   * drawn from the collection the current progression uses so dorian
+   * crossings hang on B natural where natural-minor ones hang on Bb.
+   */
+  private suspensionPitch(base: number): number {
+    const collection = this.currentProgression().collection;
+    // The base has been lifted into the crossing register, so fold it back to
+    // find its neighbour in the collection's own octave, then lift the result
+    // by the same amount.
+    const register = CROSSING_TENSION_TUNING.registerMultiplier;
+    const neighbor = upperNeighbor(base / register, collection);
+    // Nothing above it in the collection means the tone is already at the top;
+    // a whole tone up is still a step, and still lands inside the key an
+    // octave higher.
+    return neighbor === null ? base * Math.pow(2, 2 / 12) : neighbor * register;
+  }
+
+  /**
+   * One sine voice of a crossing figure, on an attack/hold/decay envelope,
+   * panned at the crossing and routed to the crossing bus. Returns the nodes
+   * so a caller can schedule pitch moves on it (the suspension's resolution)
+   * and stop it.
+   */
+  private buildCrossingTone(
+    frequency: number,
+    x: number,
+    peakGain: number,
+    envelope: {
+      attackSeconds: number;
+      holdSeconds: number;
+      decaySeconds: number;
+    },
+  ): { oscillator: OscillatorNode; gainNode: GainNode } | null {
+    const ctx = this.ctx;
+    if (!ctx) return null;
+
+    const now = ctx.currentTime;
+    const { attackSeconds, holdSeconds, decaySeconds } = envelope;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = frequency;
+
+    const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.06 * proximityGain, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+    gain.gain.linearRampToValueAtTime(peakGain, now + attackSeconds);
+    if (holdSeconds > 0) {
+      gain.gain.setValueAtTime(peakGain, now + attackSeconds + holdSeconds);
+    }
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + attackSeconds + holdSeconds + decaySeconds,
+    );
 
-    const pan = this.ctx.createStereoPanner();
+    const pan = ctx.createStereoPanner();
     pan.pan.value = positionToPan(x, this.canvasWidth);
 
-    osc1.connect(gain);
-    osc2.connect(gain);
+    osc.connect(gain);
     gain.connect(pan);
     pan.connect(this.busFor("crossing"));
+    osc.start(now);
 
-    osc1.start(now);
-    osc2.start(now);
-    osc1.stop(now + 1.6);
-    osc2.stop(now + 1.6);
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+        pan.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
+
+    return { oscillator: osc, gainNode: gain };
+  }
+
+  /**
+   * Which tension figure this crossing sounds, from how busy the scene is.
+   *
+   * Reads the energy arc's own value when it is running, and otherwise falls
+   * back to a rolling average of recent scene motion — the variant choice
+   * should track the room whether or not the arc happens to be switched on.
+   */
+  private crossingTensionVariant(): CrossingTensionVariant {
+    const energy = this.crossingSceneEnergy();
+    const {
+      gentleEnergyThreshold,
+      harshEnergyThreshold,
+      harshMinIntervalMs,
+    } = CROSSING_TENSION_TUNING;
+
+    if (energy < gentleEnergyThreshold) return "shimmer";
+    if (energy >= harshEnergyThreshold) {
+      // Rate-limited far harder than the per-pair cooldown: the harsh variant
+      // is an occasional strain in a busy scene, not its texture.
+      const sinceHarsh = this.lastTickMs - this.lastHarshCrossingMs;
+      if (sinceHarsh >= harshMinIntervalMs) {
+        this.lastHarshCrossingMs = this.lastTickMs;
+        return "harsh";
+      }
+    }
+    return "suspension";
+  }
+
+  /** 0-1 scene busyness behind the crossing variant choice. */
+  private crossingSceneEnergy(): number {
+    if (this.config.energyArc) return this.energy;
+    const { motionWindowMs, motionFullScale } = CROSSING_TENSION_TUNING;
+    const cutoff = this.lastTickMs - motionWindowMs;
+    let sum = 0;
+    let count = 0;
+    for (const [time, motion] of this.recentSceneMotion) {
+      if (time < cutoff) continue;
+      sum += motion;
+      count++;
+    }
+    if (count === 0) return 0;
+    return Math.min(1, sum / count / motionFullScale);
   }
 
   /**
@@ -2071,6 +2398,25 @@ export class SoundEngine {
     elapsedMs: number,
     activeTrails: TrailSoundFrame[],
   ): void {
+    let motion = 0;
+    for (const frame of activeTrails) {
+      const prev = this.prevPositions.get(frame.trailIndex);
+      if (!prev) continue;
+      motion += computeVelocity(prev.x, prev.y, frame.x, frame.y);
+    }
+
+    // Recorded whether or not the arc is running: crossings read this as their
+    // fallback measure of how busy the scene is.
+    this.recentSceneMotion.push([elapsedMs, motion]);
+    const motionCutoff =
+      elapsedMs - CROSSING_TENSION_TUNING.motionWindowMs;
+    while (
+      this.recentSceneMotion.length > 0 &&
+      this.recentSceneMotion[0][0] < motionCutoff
+    ) {
+      this.recentSceneMotion.shift();
+    }
+
     if (!this.config.energyArc) {
       this.energy = 0;
       this.lastEnergyTickMs = null;
@@ -2082,13 +2428,6 @@ export class SoundEngine {
         ? FRAME_MS
         : Math.max(0, Math.min(500, elapsedMs - this.lastEnergyTickMs));
     this.lastEnergyTickMs = elapsedMs;
-
-    let motion = 0;
-    for (const frame of activeTrails) {
-      const prev = this.prevPositions.get(frame.trailIndex);
-      if (!prev) continue;
-      motion += computeVelocity(prev.x, prev.y, frame.x, frame.y);
-    }
 
     const target = Math.min(1, motion / ENERGY_TUNING.fullScaleMotion);
     const rate = Math.min(1, deltaMs / ENERGY_TUNING.timeConstantMs);
@@ -2887,10 +3226,19 @@ export class SoundEngine {
           FLOURISH_TUNING.resolveDecaySeconds,
         );
         return;
-      case "crossingDissonance":
-        // Mid-canvas, at the closest distance the detector accepts, so the
-        // audition is the loudest version of what a crossing actually sounds.
-        this.triggerCrossingDissonance(0, 1, centre, 0, 0);
+      // Mid-canvas, at the closest distance the detector accepts, so each
+      // audition is the loudest version of what a crossing actually sounds.
+      // The variant is forced rather than read from scene energy: the point of
+      // three buttons is to hear all three without having to arrange for the
+      // scene to be quiet or busy enough to trigger them.
+      case "crossingShimmer":
+        this.triggerCrossingDissonance(0, 1, centre, 0, 0, "shimmer");
+        return;
+      case "crossingSuspension":
+        this.triggerCrossingDissonance(0, 1, centre, 0, 0, "suspension");
+        return;
+      case "crossingHarsh":
+        this.triggerCrossingDissonance(0, 1, centre, 0, 0, "harsh");
         return;
       case "crossingMerge": {
         // The live merge draws its two pitches from the crossing trails'
@@ -3624,6 +3972,8 @@ export class SoundEngine {
     this.prevPositions.clear();
     this.prevSampleTimesMs.clear();
     this.crossingCooldowns.clear();
+    this.lastHarshCrossingMs = Number.NEGATIVE_INFINITY;
+    this.recentSceneMotion.length = 0;
     this.trailPaths.clear();
     this.fingerprints.clear();
     this.fingerprintKeys.clear();
@@ -3680,6 +4030,8 @@ export class SoundEngine {
     this.prevPositions.clear();
     this.prevSampleTimesMs.clear();
     this.crossingCooldowns.clear();
+    this.lastHarshCrossingMs = Number.NEGATIVE_INFINITY;
+    this.recentSceneMotion.length = 0;
     this.trailPaths.clear();
     // Fingerprints deliberately survive a reset: a reset rebuilds the same
     // scene, and a participant who sounded one way before it should sound the

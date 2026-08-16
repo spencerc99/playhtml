@@ -10,6 +10,8 @@ import {
   D_NATURAL_MINOR_PITCHES,
   directionToPitch,
   isPitchInCollection,
+  PITCH_COLLECTIONS,
+  upperNeighbor,
   progressionById,
   PROGRESSION_IDS,
   PROGRESSIONS,
@@ -337,6 +339,42 @@ describe("register bands", () => {
     // into one octave.
     const hues = [10, 60, 100, 150, 200, 250, 290, 340];
     expect(new Set(hues.map(registerBandForHue)).size).toBe(4);
+  });
+});
+
+describe("diatonic upper neighbour", () => {
+  it("finds the next step up inside the collection", () => {
+    expect(upperNeighbor(P("D3"), "naturalMinor")).toBe(P("E3"));
+    expect(upperNeighbor(P("A3"), "naturalMinor")).toBe(P("Bb3"));
+    expect(upperNeighbor(P("G4"), "naturalMinor")).toBe(P("A4"));
+  });
+
+  it("takes the sixth from the collection in force", () => {
+    // The one note that separates the two collections, and the reason the
+    // suspension has to know which one it is drawing from.
+    expect(upperNeighbor(P("A3"), "naturalMinor")).toBe(P("Bb3"));
+    expect(upperNeighbor(D_DORIAN_PITCHES.A3, "dorian")).toBe(
+      D_DORIAN_PITCHES.B3,
+    );
+  });
+
+  it("never returns a leap — every neighbour is a step", () => {
+    for (const collection of ["naturalMinor", "dorian"] as const) {
+      for (const pitch of Object.values(PITCH_COLLECTIONS[collection])) {
+        const neighbor = upperNeighbor(pitch, collection);
+        if (neighbor === null) continue;
+        const step = semitonesBetween(pitch, neighbor);
+        expect(step).toBeGreaterThan(0);
+        // A step is a semitone or a whole tone; anything wider would be a
+        // chord tone, and the figure would stop being a suspension.
+        expect(step).toBeLessThanOrEqual(2.5);
+      }
+    }
+  });
+
+  it("returns null at the top of the collection", () => {
+    expect(upperNeighbor(P("C5"), "naturalMinor")).toBeNull();
+    expect(upperNeighbor(P("C5") * 4, "naturalMinor")).toBeNull();
   });
 });
 

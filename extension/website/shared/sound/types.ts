@@ -55,8 +55,14 @@ export type AuditionAccent =
   | "soloistResolve"
   /** The consonant dyad two trails sound when their paths merge. */
   | "crossingMerge"
-  /** The dissonant interval two trails sound when their paths cross. */
-  | "crossingDissonance"
+  /**
+   * The three tension figures a crossing can sound, quiet scene to busy one:
+   * a beating shimmer, a suspension that resolves, and the harsh tritone the
+   * flavor reserves for a genuinely busy canvas.
+   */
+  | "crossingShimmer"
+  | "crossingSuspension"
+  | "crossingHarsh"
   /** Two contrasting trail fingerprints, side by side, to hear the difference. */
   | "trailVoicePair"
   /** One sustained voice through its full swell, in the choral timbre. */

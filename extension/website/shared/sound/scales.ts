@@ -558,6 +558,30 @@ export function foldPitchIntoBand(
   return folded < minHz ? folded * 2 : folded;
 }
 
+/**
+ * The next tone up from `pitch` inside a collection — its diatonic upper
+ * neighbour. Used to build a suspension: the neighbour is held against the
+ * chord tone below it, then falls onto it.
+ *
+ * Searching the collection rather than the chord palette is deliberate. A
+ * palette holds only eight of the collection's notes, so the "next one up" in
+ * a palette can be a third away, which is a chord tone rather than a
+ * suspension. The collection's next note is always a step.
+ *
+ * Returns null when nothing in the collection sits above the pitch.
+ */
+export function upperNeighbor(
+  pitch: number,
+  collection: PitchCollection,
+): number | null {
+  let best: number | null = null;
+  for (const member of Object.values(PITCH_COLLECTIONS[collection])) {
+    if (member <= pitch + 1e-6) continue;
+    if (best === null || member < best) best = member;
+  }
+  return best;
+}
+
 /** Salts separating the independent parameters drawn from one identity hash. */
 export const HOME_TONE_SALT = 0;
 export const DETUNE_SALT = 1;

@@ -212,9 +212,22 @@ const AUDITION_CARDS: Array<{
     description: "The closing note as the spotlight leaves a trail.",
   },
   {
-    accent: "crossingDissonance",
-    label: "crossing dissonance",
-    description: "The tense interval two trails sound where their paths cross.",
+    accent: "crossingShimmer",
+    label: "crossing — shimmer",
+    description:
+      "The gentle variant, for a quiet scene: two tones a few Hz apart on one chord tone, beating slowly.",
+  },
+  {
+    accent: "crossingSuspension",
+    label: "crossing — suspension",
+    description:
+      "The usual variant: a step above a chord tone, held, then falling onto it. Tension, then release.",
+  },
+  {
+    accent: "crossingHarsh",
+    label: "crossing — harsh",
+    description:
+      "The tritone, reserved for busy scenes and rate-limited hard. Does not resolve.",
   },
   {
     accent: "crossingMerge",
@@ -737,7 +750,9 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         ))}
         <span style={labelStyle}>
           merge rings the two trails' home tones and briefly pulls their
-          timbres together — needs trail voices on to hear the pull
+          timbres together — needs trail voices on to hear the pull. dissonance
+          sounds tension that resolves, picking a shimmer, a suspension or the
+          harsh tritone depending on how busy the scene is.
         </span>
       </div>
 
