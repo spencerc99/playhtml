@@ -249,6 +249,26 @@ const AUDITION_CARDS: Array<{
   },
 ];
 
+/**
+ * The arrangement the pad opens on — the combination Spencer settled on by
+ * ear. Playground-only: the live pages read their own settings defaults and
+ * keep every experimental toggle off.
+ */
+const PAD_DEFAULTS = {
+  mode: "spotlight" as SoundMode,
+  volume: 0.5,
+  chordRotation: true,
+  progression: DEFAULT_PROGRESSION_ID,
+  energyArc: true,
+  trailArrivals: true,
+  navigationSounds: true,
+  trailVoices: true,
+  swells: true,
+  bassPedal: false,
+  choralTimbre: false,
+  crossings: "off" as CrossingFlavor,
+};
+
 interface TrailPadProps {
   /**
    * Hands the pad's engine getter to the owner, so other sections of the
@@ -270,35 +290,45 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   }>({ x: 0, y: 0, inside: false, points: [] });
   const rafRef = useRef<number | null>(null);
   const startedAtRef = useRef<number>(0);
-  const modeRef = useRef<SoundMode>("notes");
-  const chordRotationRef = useRef(false);
-  const progressionRef = useRef<ProgressionId>(DEFAULT_PROGRESSION_ID);
-  const energyArcRef = useRef(false);
-  const trailArrivalsRef = useRef(false);
-  const navigationSoundsRef = useRef(false);
-  const bassPedalRef = useRef(false);
-  const trailVoicesRef = useRef(false);
-  const crossingsRef = useRef<CrossingFlavor>("off");
-  const swellsRef = useRef(false);
-  const choralTimbreRef = useRef(false);
+  const modeRef = useRef<SoundMode>(PAD_DEFAULTS.mode);
+  const chordRotationRef = useRef(PAD_DEFAULTS.chordRotation);
+  const progressionRef = useRef<ProgressionId>(PAD_DEFAULTS.progression);
+  const energyArcRef = useRef(PAD_DEFAULTS.energyArc);
+  const trailArrivalsRef = useRef(PAD_DEFAULTS.trailArrivals);
+  const navigationSoundsRef = useRef(PAD_DEFAULTS.navigationSounds);
+  const bassPedalRef = useRef(PAD_DEFAULTS.bassPedal);
+  const trailVoicesRef = useRef(PAD_DEFAULTS.trailVoices);
+  const crossingsRef = useRef<CrossingFlavor>(PAD_DEFAULTS.crossings);
+  const swellsRef = useRef(PAD_DEFAULTS.swells);
+  const choralTimbreRef = useRef(PAD_DEFAULTS.choralTimbre);
   const nextTrailIndexRef = useRef(1);
 
   const [running, setRunning] = useState(false);
-  const [mode, setMode] = useState<SoundMode>("notes");
-  const [volume, setVolume] = useState(0.5);
+  const [mode, setMode] = useState<SoundMode>(PAD_DEFAULTS.mode);
+  const [volume, setVolume] = useState(PAD_DEFAULTS.volume);
   const [agentCount, setAgentCount] = useState(0);
-  const [chordRotation, setChordRotation] = useState(false);
-  const [progression, setProgression] = useState<ProgressionId>(
-    DEFAULT_PROGRESSION_ID,
+  const [chordRotation, setChordRotation] = useState(
+    PAD_DEFAULTS.chordRotation,
   );
-  const [energyArc, setEnergyArc] = useState(false);
-  const [trailArrivals, setTrailArrivals] = useState(false);
-  const [navigationSounds, setNavigationSounds] = useState(false);
-  const [bassPedal, setBassPedal] = useState(false);
-  const [trailVoices, setTrailVoices] = useState(false);
-  const [crossings, setCrossings] = useState<CrossingFlavor>("off");
-  const [swells, setSwells] = useState(false);
-  const [choralTimbre, setChoralTimbre] = useState(false);
+  const [progression, setProgression] = useState<ProgressionId>(
+    PAD_DEFAULTS.progression,
+  );
+  const [energyArc, setEnergyArc] = useState(PAD_DEFAULTS.energyArc);
+  const [trailArrivals, setTrailArrivals] = useState(
+    PAD_DEFAULTS.trailArrivals,
+  );
+  const [navigationSounds, setNavigationSounds] = useState(
+    PAD_DEFAULTS.navigationSounds,
+  );
+  const [bassPedal, setBassPedal] = useState(PAD_DEFAULTS.bassPedal);
+  const [trailVoices, setTrailVoices] = useState(PAD_DEFAULTS.trailVoices);
+  const [crossings, setCrossings] = useState<CrossingFlavor>(
+    PAD_DEFAULTS.crossings,
+  );
+  const [swells, setSwells] = useState(PAD_DEFAULTS.swells);
+  const [choralTimbre, setChoralTimbre] = useState(
+    PAD_DEFAULTS.choralTimbre,
+  );
   const [readout, setReadout] = useState({
     notes: 0,
     soloist: null as number | null,

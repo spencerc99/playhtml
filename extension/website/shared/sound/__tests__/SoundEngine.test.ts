@@ -12,6 +12,7 @@ import {
   isPitchInCollection,
   leadHomeTone,
   PROGRESSIONS,
+  RegisterBand,
   REGISTER_BAND_RANGES,
 } from "../scales";
 
@@ -1688,7 +1689,11 @@ describe("SoundEngine cursor instruments", () => {
 
     // One trail per hue quadrant, in the colour formats real trails carry:
     // hex, rgb() from the RISO palette, and hsl() from a participant colour.
-    const trails = [
+    const trails: Array<{
+      index: number;
+      color: string;
+      expected: RegisterBand;
+    }> = [
       { index: 0, color: "#e04a2f", expected: "bass" },
       { index: 1, color: "rgb(0, 169, 92)", expected: "tenor" },
       { index: 2, color: "hsl(210, 60%, 50%)", expected: "alto" },
