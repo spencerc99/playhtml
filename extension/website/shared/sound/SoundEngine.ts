@@ -136,8 +136,30 @@ const SPOTLIGHT_TUNING = {
   velocityWindowMs: 3000,
   /** Velocity ratio vs the rest of the scene that promotes a trail to soloist. */
   velocityRatio: 2.5,
+  /**
+   * Ratio the soloist must fall below to be demoted. Well under the promote
+   * ratio: real cursor velocity oscillates within a single sweep, so a shared
+   * threshold makes a trail promote and demote several times a second, and
+   * every one of those flaps costs a resolving note plus a fresh anticipation
+   * silence. That alternation is the audible interrupt.
+   */
+  demoteVelocityRatio: 1.4,
   /** Absolute floor so a calm scene never promotes near-still noise. */
   minVelocity: 4,
+  /** Absolute floor the soloist must drop below to be demoted. */
+  demoteMinVelocity: 2.2,
+  /**
+   * Shortest a promotion can last. A flourish needs room to read as a phrase,
+   * so once a trail has the spotlight it keeps it for at least this long even
+   * if it dips.
+   */
+  minSoloDurationMs: 1000,
+  /**
+   * Time constant of the smoothed velocity the soloist test runs on. Raw
+   * per-frame velocity is dominated by rAF jitter and within-sweep speed
+   * changes; the decision needs the shape of the gesture, not the frame.
+   */
+  velocitySmoothingMs: 120,
   /**
    * Gain multiplier applied to the soloist's sustained voice. Deliberately
    * mild — the flourish notes carry the drama, so a big boost here just makes
@@ -300,6 +322,14 @@ export class SoundEngine {
     new Map();
   /** Trail currently held by the sustained spotlight, or null. */
   private spotlightTrailIndex: number | null = null;
+  /** When the current soloist was promoted, for the minimum-hold check. */
+  private spotlightPromotedAtMs = 0;
+  /**
+   * Per-trail EMA of velocity. The soloist decision reads this rather than raw
+   * per-frame velocity so a single slow frame inside a fast sweep cannot
+   * demote the trail that is mid-flourish.
+   */
+  private spotlightSmoothedVelocities: Map<number, number> = new Map();
   private spotlightSceneAverage = 0;
   /** Per-trail smoothed spotlight gain multiplier, so ramps stay continuous. */
   private spotlightGains: Map<number, number> = new Map();
@@ -428,6 +458,7 @@ export class SoundEngine {
       // Drop smoothing state so the new mode does not inherit a stale duck.
       this.spotlightGains.clear();
       this.spotlightVelocitySamples.clear();
+      this.spotlightSmoothedVelocities.clear();
       this.spotlightTrailIndex = null;
       this.spotlightSceneAverage = 0;
       this.clearFlourish();
@@ -1033,6 +1064,7 @@ export class SoundEngine {
     this.trailPaths.delete(trailIndex);
     this.spotlightGains.delete(trailIndex);
     this.spotlightVelocitySamples.delete(trailIndex);
+    this.spotlightSmoothedVelocities.delete(trailIndex);
     if (this.spotlightTrailIndex === trailIndex) {
       this.spotlightTrailIndex = null;
       // No resolving note: the trail is gone rather than slowing, so there is
@@ -1179,6 +1211,7 @@ export class SoundEngine {
         this.spotlightTrailIndex = null;
         this.spotlightSceneAverage = 0;
         this.spotlightVelocitySamples.clear();
+        this.spotlightSmoothedVelocities.clear();
         this.spotlightGains.clear();
         this.clearFlourish();
       }
@@ -1189,11 +1222,13 @@ export class SoundEngine {
 
     let soloistIndex: number | null = null;
     let soloistVelocity = 0;
+    const present = new Set<number>();
     for (const frame of activeTrails) {
       const prev = this.prevPositions.get(frame.trailIndex);
       // A trail with no previous position has no measurable velocity yet; it
       // is sampled next frame rather than counted as still.
       if (!prev) continue;
+      present.add(frame.trailIndex);
       const velocity = computeVelocity(prev.x, prev.y, frame.x, frame.y);
       let samples = this.spotlightVelocitySamples.get(frame.trailIndex);
       if (!samples) {
@@ -1201,10 +1236,27 @@ export class SoundEngine {
         this.spotlightVelocitySamples.set(frame.trailIndex, samples);
       }
       samples.push([elapsedMs, velocity]);
-      if (velocity > soloistVelocity) {
+
+      const previousSmoothed = this.spotlightSmoothedVelocities.get(
+        frame.trailIndex,
+      );
+      const rate = Math.min(
+        1,
+        FRAME_MS / SPOTLIGHT_TUNING.velocitySmoothingMs,
+      );
+      const smoothed =
+        previousSmoothed === undefined
+          ? velocity
+          : previousSmoothed + (velocity - previousSmoothed) * rate;
+      this.spotlightSmoothedVelocities.set(frame.trailIndex, smoothed);
+
+      if (smoothed > soloistVelocity) {
         soloistIndex = frame.trailIndex;
-        soloistVelocity = velocity;
+        soloistVelocity = smoothed;
       }
+    }
+    for (const index of this.spotlightSmoothedVelocities.keys()) {
+      if (!present.has(index)) this.spotlightSmoothedVelocities.delete(index);
     }
 
     for (const [index, samples] of this.spotlightVelocitySamples) {
@@ -1216,33 +1268,70 @@ export class SoundEngine {
       if (samples.length === 0) this.spotlightVelocitySamples.delete(index);
     }
 
-    // The candidate is judged against the rest of the scene, not against a
-    // pool that includes itself. Pooling makes the bar rise with the very
-    // speed being measured, so a lone fast cursor — the commonest case — can
-    // never clear 2.5x its own average and nothing is ever promoted.
-    let restSum = 0;
-    let restCount = 0;
-    for (const [index, samples] of this.spotlightVelocitySamples) {
-      if (index === soloistIndex) continue;
-      for (const [, velocity] of samples) {
-        restSum += velocity;
-        restCount++;
-      }
-    }
-    const restAverage = restCount > 0 ? restSum / restCount : 0;
-    this.spotlightSceneAverage = restAverage;
+    this.spotlightSceneAverage =
+      this.velocityAverageExcluding(soloistIndex) ?? 0;
 
-    const qualifies =
-      soloistIndex !== null &&
-      soloistVelocity >= SPOTLIGHT_TUNING.minVelocity &&
+    // Promotion and demotion run off different thresholds, and an incumbent is
+    // additionally held for a minimum duration. Judging both directions on one
+    // instantaneous test makes a normal sweep flap several times a second.
+    const current = this.spotlightTrailIndex;
+    const clears = (
+      candidate: number,
+      velocity: number,
+      ratio: number,
+      floor: number,
+    ) => {
+      if (velocity < floor) return false;
+      const rest = this.velocityAverageExcluding(candidate);
       // With no other trail to compare against, clearing the absolute floor is
       // enough: a single fast mover is by definition the scene's outlier.
-      (restCount === 0 ||
-        soloistVelocity > restAverage * SPOTLIGHT_TUNING.velocityRatio);
+      return rest === null || velocity > rest * ratio;
+    };
 
-    const nextSoloist = qualifies ? soloistIndex : null;
-    if (nextSoloist !== this.spotlightTrailIndex) {
-      this.handleSoloistChange(this.spotlightTrailIndex, nextSoloist, elapsedMs);
+    let nextSoloist: number | null;
+    if (current !== null) {
+      const incumbentVelocity =
+        this.spotlightSmoothedVelocities.get(current) ?? 0;
+      const heldLongEnough =
+        elapsedMs - this.spotlightPromotedAtMs >=
+        SPOTLIGHT_TUNING.minSoloDurationMs;
+      const stillQualifies = clears(
+        current,
+        incumbentVelocity,
+        SPOTLIGHT_TUNING.demoteVelocityRatio,
+        SPOTLIGHT_TUNING.demoteMinVelocity,
+      );
+      // The incumbent keeps the spotlight until it has both held it long
+      // enough and genuinely fallen off, so the flourish always gets a phrase.
+      nextSoloist =
+        heldLongEnough && !stillQualifies
+          ? soloistIndex !== null &&
+            soloistIndex !== current &&
+            clears(
+              soloistIndex,
+              soloistVelocity,
+              SPOTLIGHT_TUNING.velocityRatio,
+              SPOTLIGHT_TUNING.minVelocity,
+            )
+            ? soloistIndex
+            : null
+          : current;
+    } else {
+      nextSoloist =
+        soloistIndex !== null &&
+        clears(
+          soloistIndex,
+          soloistVelocity,
+          SPOTLIGHT_TUNING.velocityRatio,
+          SPOTLIGHT_TUNING.minVelocity,
+        )
+          ? soloistIndex
+          : null;
+    }
+
+    if (nextSoloist !== current) {
+      this.handleSoloistChange(current, nextSoloist, elapsedMs);
+      if (nextSoloist !== null) this.spotlightPromotedAtMs = elapsedMs;
     }
     this.spotlightTrailIndex = nextSoloist;
 
@@ -1258,6 +1347,26 @@ export class SoundEngine {
         this.spotlightGains.delete(index);
       }
     }
+  }
+
+  /**
+   * Rolling velocity average of every trail except `candidate`. A candidate is
+   * judged against the rest of the scene, not against a pool that includes
+   * itself — pooling makes the bar rise with the very speed being measured, so
+   * a lone fast cursor could never clear the ratio. Null when the candidate is
+   * the only trail with samples.
+   */
+  private velocityAverageExcluding(candidate: number | null): number | null {
+    let sum = 0;
+    let count = 0;
+    for (const [index, samples] of this.spotlightVelocitySamples) {
+      if (index === candidate) continue;
+      for (const [, velocity] of samples) {
+        sum += velocity;
+        count++;
+      }
+    }
+    return count > 0 ? sum / count : null;
   }
 
   /** Step one trail's spotlight multiplier toward its target for this frame. */
@@ -1739,6 +1848,7 @@ export class SoundEngine {
     this.trailPaths.clear();
     this.spotlightGains.clear();
     this.spotlightVelocitySamples.clear();
+    this.spotlightSmoothedVelocities.clear();
     this.spotlightTrailIndex = null;
     this.spotlightSceneAverage = 0;
     this.clearFlourish();

@@ -615,10 +615,13 @@ describe("SoundEngine cursor instruments", () => {
       voices: Map<number, { filterNode: TestBiquadFilterNode }>;
     };
     const events = state.voices.get(0)!.filterNode.frequency.events;
-    const promotedCount = events.length;
 
-    // Trail 0 slows to match the crowd, so it stops being an outlier.
+    // Trail 0 slows to match the crowd, so it stops being an outlier. The
+    // hysteresis holds the spotlight through the deceleration, so the ramp
+    // count is measured from the frame the demotion actually lands on.
+    let demotedCount: number | null = null;
     for (let step = 40; step < 90; step++) {
+      const beforeTick = events.length;
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
         soloFrame(0, 490 + (step - 40) * 2, 10),
@@ -626,12 +629,15 @@ describe("SoundEngine cursor instruments", () => {
         soloFrame(2, 10 + step * 2, 90),
         soloFrame(3, 10 + step * 2, 130),
       ]);
+      if (demotedCount === null && engine.getSoloistTrailIndex() === null) {
+        demotedCount = beforeTick;
+      }
     }
 
     expect(engine.getSoloistTrailIndex()).toBeNull();
     // Exactly one ramp back to the default instrument cutoff (2000 Hz), not a
     // fresh ramp every frame while demoted.
-    const afterDemotion = events.slice(promotedCount);
+    const afterDemotion = events.slice(demotedCount!);
     const ramps = afterDemotion.filter(
       (event) => event.method === "linearRamp",
     );
@@ -721,6 +727,181 @@ describe("SoundEngine cursor instruments", () => {
     expect(state.spotlightGains.get(0)!).toBeGreaterThan(0.3);
   });
 
+  it("promotes once through velocity oscillating around the threshold", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(4000);
+    engine.setConfig({ mode: "spotlight" });
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+    };
+
+    // Velocity alternating fast/slow across the promote threshold every frame.
+    // Without hysteresis this promotes and demotes repeatedly, and every one of
+    // those flaps fires a resolving note and re-pays the anticipation gap.
+    let x = 0;
+    let promotions = 0;
+    let demotions = 0;
+    let previousSoloist: number | null = null;
+    let resolvingNotes = 0;
+
+    for (let step = 0; step < 120; step++) {
+      x += step % 2 === 0 ? 14 : 3;
+      context.currentTime += 1 / 60;
+      const before = state.flourishNotes.size;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+
+      const soloist = engine.getSoloistTrailIndex();
+      if (soloist !== previousSoloist) {
+        if (soloist === null) {
+          demotions++;
+          // A demotion adds its resolving note in the same tick.
+          if (state.flourishNotes.size > before) resolvingNotes++;
+        } else {
+          promotions++;
+        }
+      }
+      previousSoloist = soloist;
+    }
+
+    expect(promotions).toBe(1);
+    expect(demotions).toBe(0);
+    expect(resolvingNotes).toBe(0);
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+  });
+
+  it("holds the spotlight through a jittery accelerate-and-decelerate sweep", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(6000);
+    engine.setConfig({ mode: "spotlight" });
+
+    // Deterministic +/-30% jitter so the sweep looks like a real cursor rather
+    // than a clean ramp.
+    let seed = 12345;
+    const jitter = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return 0.7 + 0.6 * (seed / 2147483648);
+    };
+
+    const frames = 90; // ~1.5s at 60fps
+    let x = 0;
+    let promotions = 0;
+    let demotions = 0;
+    let previousSoloist: number | null = null;
+    let demotedAtFrame: number | null = null;
+
+    for (let step = 0; step < frames; step++) {
+      // 2 -> 20 -> 2 px/frame across the sweep.
+      const ramp = 2 + 18 * Math.sin(Math.PI * (step / frames));
+      x += ramp * jitter();
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+
+      const soloist = engine.getSoloistTrailIndex();
+      if (soloist !== previousSoloist) {
+        if (soloist === null) {
+          demotions++;
+          demotedAtFrame ??= step;
+        } else {
+          promotions++;
+        }
+      }
+      previousSoloist = soloist;
+    }
+
+    // One entrance, and no demotion while the sweep is still under way.
+    expect(promotions).toBe(1);
+    expect(demotions).toBe(0);
+    expect(demotedAtFrame).toBeNull();
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+  });
+
+  it("emits a continuous note stream across an oscillating sweep", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(4000);
+    engine.setConfig({ mode: "spotlight" });
+
+    const state = engine as unknown as {
+      flourishNotes: Set<unknown>;
+    };
+
+    let x = 0;
+    let notes = 0;
+    let longestGapFrames = 0;
+    let framesSinceNote = 0;
+    let promoted = false;
+
+    for (let step = 0; step < 120; step++) {
+      x += step % 2 === 0 ? 14 : 3;
+      context.currentTime += 1 / 60;
+      const before = state.flourishNotes.size;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+
+      if (!promoted) {
+        promoted = engine.getSoloistTrailIndex() !== null;
+        continue;
+      }
+      if (state.flourishNotes.size > before) {
+        notes++;
+        longestGapFrames = Math.max(longestGapFrames, framesSinceNote);
+        framesSinceNote = 0;
+      } else {
+        framesSinceNote++;
+      }
+    }
+
+    // ~8.5px per frame of travel and a note every 50px means a note roughly
+    // every 6 frames; a flap would open a much longer hole than that.
+    expect(notes).toBeGreaterThan(10);
+    expect(longestGapFrames).toBeLessThan(12);
+  });
+
+  it("carries blocked-interval distance over to the next note", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(8000);
+    engine.setConfig({ mode: "spotlight" });
+
+    const state = engine as unknown as {
+      flourish: { distanceSinceNote: number } | null;
+      flourishNotes: Set<unknown>;
+    };
+
+    // Promote on a steady sweep first.
+    let x = 0;
+    for (let step = 0; step < 40; step++) {
+      x += 12;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+    }
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+
+    // A single frame covering far more than one note's worth of distance while
+    // the 70ms interval gate is closed. The travel must be banked, not
+    // discarded — dropping it would open an audible hole in the run.
+    const elapsedAtNote = 40 * 16;
+    engine.tick(elapsedAtNote, [soloFrame(0, x, 0)]);
+    const bankedBefore = state.flourish!.distanceSinceNote;
+
+    x += 300;
+    context.currentTime += 1 / 60;
+    // Same elapsed time, so the interval gate is still shut for this travel.
+    engine.tick(elapsedAtNote, [soloFrame(0, x, 0)]);
+
+    expect(state.flourish!.distanceSinceNote).toBeGreaterThan(
+      bankedBefore + 290,
+    );
+
+    // Once the gate opens the banked distance immediately fires a note.
+    const before = state.flourishNotes.size;
+    context.currentTime += 1 / 60;
+    engine.tick(elapsedAtNote + 100, [soloFrame(0, x, 0)]);
+    expect(state.flourishNotes.size).toBeGreaterThan(before);
+  });
+
   it("draws flourish notes from the active chord palette under rotation", async () => {
     const engine = new SoundEngine();
     await engine.init();
@@ -771,10 +952,11 @@ describe("SoundEngine cursor instruments", () => {
       spotlightGains: Map<number, number>;
       flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
     };
-    // Clear the run's notes so the only survivor is the demotion's own note.
-    state.flourishNotes.clear();
-
     for (let step = 40; step < 90; step++) {
+      // The hysteresis holds the spotlight through the deceleration, so the
+      // run keeps playing until the demotion actually lands. Clearing before
+      // every tick leaves the demotion's own note as the only survivor.
+      state.flourishNotes.clear();
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
         soloFrame(0, 490 + (step - 40) * 2, 10),
@@ -782,6 +964,7 @@ describe("SoundEngine cursor instruments", () => {
         soloFrame(2, 10 + step * 2, 90),
         soloFrame(3, 10 + step * 2, 130),
       ]);
+      if (engine.getSoloistTrailIndex() === null) break;
     }
 
     expect(engine.getSoloistTrailIndex()).toBeNull();
