@@ -8,7 +8,9 @@ import {
   CHORD_DWELL_MS,
   CHORD_PROGRESSION,
   D_MINOR_PENTATONIC,
+  foldPitchIntoBand,
   leadHomeTone,
+  REGISTER_BAND_RANGES,
 } from "../scales";
 
 type ParamEvent = {
@@ -178,6 +180,22 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.AudioContext = originalAudioContext;
 });
+
+/**
+ * Assert a pitch is some octave transposition of a palette tone. Register
+ * bands voice a chord tone in the part a trail's colour assigns it, so the
+ * pitch class is what stays inside the chord, not the literal frequency.
+ */
+function expectPitchClassInPalette(pitch: number, palette: number[]): void {
+  const matches = palette.some((tone) => {
+    const octaves = Math.log2(pitch / tone);
+    return Math.abs(octaves - Math.round(octaves)) < 1e-6;
+  });
+  expect(
+    matches,
+    `${pitch}Hz is not an octave of any tone in [${palette.join(", ")}]`,
+  ).toBe(true);
+}
 
 function soloFrame(trailIndex: number, x: number, y: number) {
   return {
@@ -1457,21 +1475,22 @@ describe("SoundEngine cursor instruments", () => {
       engine.tick(step * 16, framesAt(step));
     }
 
+    // Home tones are voiced in the trail's own register band, so a seat is an
+    // octave transposition of a palette tone rather than the palette tone
+    // itself — the pitch class is what has to stay inside the chord.
     const dmPalette = CHORD_PROGRESSION[0].pitches;
-    const dmHomes = [0, 1].map((i) => engine.getHomeTone(i)!);
-    for (const home of dmHomes) {
-      expect(dmPalette).toContain(home);
+    for (const home of [0, 1].map((i) => engine.getHomeTone(i)!)) {
+      expectPitchClassInPalette(home, dmPalette);
     }
 
-    // Past the dwell the progression moves; a trail's seat is re-derived
-    // against the new palette rather than holding a pitch outside it.
+    // Past the dwell the progression moves; a trail's seat moves with it
+    // rather than holding a pitch outside the new chord.
     context.currentTime += 1 / 60;
     engine.tick(CHORD_DWELL_MS + 1, framesAt(5));
 
     const bbPalette = CHORD_PROGRESSION[1].pitches;
-    const bbHomes = [0, 1].map((i) => engine.getHomeTone(i)!);
-    for (const home of bbHomes) {
-      expect(bbPalette).toContain(home);
+    for (const home of [0, 1].map((i) => engine.getHomeTone(i)!)) {
+      expectPitchClassInPalette(home, bbPalette);
     }
   });
 
@@ -1492,6 +1511,7 @@ describe("SoundEngine cursor instruments", () => {
     // Walk the whole progression and check each move is a step, not a leap.
     // Re-hashing against every palette is what made a trail jump register on
     // each chord change; leading keeps it as one slowly-gliding line.
+    const band = engine.getRegisterBand(0)!;
     let previous = engine.getHomeTone(0)!;
     for (let turn = 1; turn <= CHORD_PROGRESSION.length; turn++) {
       context.currentTime += 1 / 60;
@@ -1499,8 +1519,11 @@ describe("SoundEngine cursor instruments", () => {
 
       const palette = CHORD_PROGRESSION[turn % CHORD_PROGRESSION.length].pitches;
       const home = engine.getHomeTone(0)!;
-      expect(palette).toContain(home);
-      expect(leadHomeTone(previous, palette)).toBe(home);
+      expectPitchClassInPalette(home, palette);
+      // The engine leads within the palette folded into the trail's own band,
+      // so "nearest" is measured among the tones it can actually sing.
+      const inBand = palette.map((pitch) => foldPitchIntoBand(pitch, band));
+      expect(leadHomeTone(previous, inBand)).toBe(home);
       previous = home;
     }
   });
@@ -1556,6 +1579,117 @@ describe("SoundEngine cursor instruments", () => {
       (event) => event.method === "exponentialRamp",
     )!;
     expect(firstRamp.time).toBeLessThan(context.currentTime + 0.5);
+  });
+
+  it("assigns each trail a register band from its colour", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true });
+
+    // One trail per hue quadrant, in the colour formats real trails carry:
+    // hex, rgb() from the RISO palette, and hsl() from a participant colour.
+    const trails = [
+      { index: 0, color: "#e04a2f", expected: "bass" },
+      { index: 1, color: "rgb(0, 169, 92)", expected: "tenor" },
+      { index: 2, color: "hsl(210, 60%, 50%)", expected: "alto" },
+      { index: 3, color: "#92378d", expected: "soprano" },
+    ];
+
+    const framesAt = (step: number) =>
+      trails.map(({ index, color }) => ({
+        ...soloFrame(index, index * 100 + step * 8, 0),
+        color,
+        identityKey: `person-${index}`,
+      }));
+    for (let step = 0; step < 3; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, framesAt(step));
+    }
+
+    for (const { index, expected } of trails) {
+      expect(engine.getRegisterBand(index)).toBe(expected);
+    }
+
+    // The spread is the point: four trails, four parts, rather than four
+    // voices stacked in one octave.
+    for (const { index, expected } of trails) {
+      const home = engine.getHomeTone(index)!;
+      const { minHz, maxHz } = REGISTER_BAND_RANGES[expected];
+      expect(home).toBeGreaterThanOrEqual(minHz);
+      expect(home).toBeLessThanOrEqual(maxHz);
+    }
+  });
+
+  it("falls back to the middle band for an unparseable colour", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true });
+
+    const framesAt = (step: number) => [
+      {
+        ...soloFrame(0, step * 8, 0),
+        color: "not-a-colour",
+        identityKey: "person-a",
+      },
+    ];
+    for (let step = 0; step < 3; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, framesAt(step));
+    }
+
+    // Alto, the middle of the range — not a silent drop into the bass.
+    expect(engine.getRegisterBand(0)).toBe("alto");
+  });
+
+  it("voices a trail's direction-derived pitches inside its band", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true });
+
+    // A soprano-coloured trail circling the pad, so every compass direction
+    // gets selected at some point in the run.
+    const framesAt = (step: number) => [
+      {
+        ...soloFrame(
+          0,
+          500 + Math.cos(step * 0.7) * 200,
+          150 + Math.sin(step * 0.7) * 120,
+        ),
+        color: "hsl(300, 60%, 50%)",
+        identityKey: "person-a",
+      },
+    ];
+    for (let step = 0; step < 40; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 100, framesAt(step));
+    }
+
+    expect(engine.getRegisterBand(0)).toBe("soprano");
+
+    const { minHz, maxHz } = REGISTER_BAND_RANGES.soprano;
+    const pitches = context.oscillators[0].frequency.events
+      .filter((event) => event.method === "exponentialRamp")
+      .map((event) => event.value!);
+    expect(pitches.length).toBeGreaterThan(2);
+    for (const pitch of pitches) {
+      expect(pitch).toBeGreaterThanOrEqual(minHz);
+      expect(pitch).toBeLessThanOrEqual(maxHz);
+    }
+  });
+
+  it("reports no register band while trail voices are off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    engine.tick(0, [{ ...soloFrame(0, 0, 0), identityKey: "person-a" }]);
+    context.currentTime += 1 / 60;
+    engine.tick(16, [{ ...soloFrame(0, 8, 0), identityKey: "person-a" }]);
+
+    expect(engine.getRegisterBand(0)).toBeNull();
   });
 
   it("reports no home tone while trail voices are off", async () => {

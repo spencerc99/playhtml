@@ -10,7 +10,11 @@ import {
   hashIdentity,
   hashUnit,
   homeToneForHash,
+  foldPitchIntoBand,
   leadHomeTone,
+  REGISTER_BANDS,
+  REGISTER_BAND_RANGES,
+  registerBandForHue,
   scaleForChord,
   semitonesBetween,
 } from "../scales";
@@ -129,6 +133,77 @@ describe("chord palettes", () => {
     );
     // A crowd should collectively voice the chord, so every seat gets taken.
     expect(homes.size).toBe(palette.length);
+  });
+});
+
+describe("register bands", () => {
+  it("maps each hue quadrant to its choral part, warm low to cool high", () => {
+    // The cross-modal contract: the colour you see is the register you hear.
+    expect(registerBandForHue(0)).toBe("bass");
+    expect(registerBandForHue(45)).toBe("bass");
+    expect(registerBandForHue(90)).toBe("tenor");
+    expect(registerBandForHue(179)).toBe("tenor");
+    expect(registerBandForHue(180)).toBe("alto");
+    expect(registerBandForHue(269)).toBe("alto");
+    expect(registerBandForHue(270)).toBe("soprano");
+    expect(registerBandForHue(359)).toBe("soprano");
+  });
+
+  it("wraps hues outside 0-360 rather than falling off an end", () => {
+    expect(registerBandForHue(360)).toBe(registerBandForHue(0));
+    expect(registerBandForHue(-10)).toBe(registerBandForHue(350));
+    expect(registerBandForHue(730)).toBe(registerBandForHue(10));
+  });
+
+  it("is deterministic for a given hue", () => {
+    for (const hue of [0, 37, 120, 200, 300]) {
+      expect(registerBandForHue(hue)).toBe(registerBandForHue(hue));
+    }
+  });
+
+  it("orders the bands low to high without gaps", () => {
+    // Adjacent bands overlap the way real voice parts do; a hard split at the
+    // octave makes the crowd read as four instruments rather than one choir.
+    for (let i = 1; i < REGISTER_BANDS.length; i++) {
+      const lower = REGISTER_BAND_RANGES[REGISTER_BANDS[i - 1]];
+      const upper = REGISTER_BAND_RANGES[REGISTER_BANDS[i]];
+      expect(upper.minHz).toBeGreaterThan(lower.minHz);
+      expect(upper.minHz).toBeLessThan(lower.maxHz);
+    }
+  });
+
+  it("folds every palette tone into every band and keeps it there", () => {
+    for (const band of REGISTER_BANDS) {
+      const { minHz, maxHz } = REGISTER_BAND_RANGES[band];
+      for (const chord of CHORD_PROGRESSION) {
+        for (const pitch of chord.pitches) {
+          const folded = foldPitchIntoBand(pitch, band);
+          expect(folded).toBeGreaterThanOrEqual(minHz);
+          expect(folded).toBeLessThanOrEqual(maxHz);
+        }
+      }
+    }
+  });
+
+  it("folds by octave, so a tone keeps its pitch class", () => {
+    for (const band of REGISTER_BANDS) {
+      for (const pitch of CHORD_PROGRESSION[0].pitches) {
+        const octaves = Math.log2(foldPitchIntoBand(pitch, band) / pitch);
+        expect(Math.abs(octaves - Math.round(octaves))).toBeLessThan(1e-9);
+      }
+    }
+  });
+
+  it("leaves a pitch already inside its band untouched", () => {
+    // D4 sits inside alto, so folding is a no-op rather than an octave move.
+    expect(foldPitchIntoBand(P("D4"), "alto")).toBe(P("D4"));
+  });
+
+  it("spreads a mixed-hue crowd across all four parts", () => {
+    // The point of the whole feature: a crowd arranged rather than crowded
+    // into one octave.
+    const hues = [10, 60, 100, 150, 200, 250, 290, 340];
+    expect(new Set(hues.map(registerBandForHue)).size).toBe(4);
   });
 });
 

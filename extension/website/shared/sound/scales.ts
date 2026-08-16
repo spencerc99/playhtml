@@ -294,6 +294,83 @@ export function leadHomeTone(currentHome: number, scale: number[]): number {
   return best;
 }
 
+/**
+ * A register the trails sing in, named for the choral part it occupies.
+ *
+ * The four bands span roughly D2-D6 and overlap by a little, the way real
+ * voice parts do — a hard split at the octave makes the crowd sound like four
+ * separate instruments rather than one choir.
+ */
+export type RegisterBand = "bass" | "tenor" | "alto" | "soprano";
+
+/** Every band, low to high. */
+export const REGISTER_BANDS: RegisterBand[] = [
+  "bass",
+  "tenor",
+  "alto",
+  "soprano",
+];
+
+/**
+ * The pitch window each band voices in (Hz), low bound inclusive.
+ *
+ * Anchored on D so the bounds land on octaves of the key's root: D2 ~73Hz,
+ * D3 ~147Hz, D4 ~294Hz, D5 ~587Hz, D6 ~1175Hz. Each band is a little over an
+ * octave wide, which is enough room for a palette's worth of tones.
+ */
+export const REGISTER_BAND_RANGES: Record<
+  RegisterBand,
+  { minHz: number; maxHz: number }
+> = {
+  bass: { minHz: 73.42, maxHz: 155.56 },
+  tenor: { minHz: 146.83, maxHz: 311.13 },
+  alto: { minHz: 293.66, maxHz: 622.25 },
+  soprano: { minHz: 587.33, maxHz: 1244.51 },
+};
+
+/**
+ * Which register a trail sings in, from the hue of the colour it is drawn in.
+ *
+ * The cross-modal mapping, so the colour you see tells you the register you
+ * hear. Hue is split into four quadrants and each takes one choral part, warm
+ * to cool, low to high:
+ *
+ *   red/orange   (hue   0-89)  -> bass     (D2-D3)
+ *   yellow/green (hue  90-179) -> tenor    (D3-D4)
+ *   cyan/blue    (hue 180-269) -> alto     (D4-D5)
+ *   purple/pink  (hue 270-359) -> soprano  (D5-D6)
+ *
+ * Warm colours sit low and cool colours sit high, which is the association
+ * most listeners already carry — a red trail sounds like a red trail. Because
+ * the RISO palette spreads its eight colours evenly around the wheel, a mixed
+ * crowd lands roughly two trails per part rather than crowding one octave.
+ *
+ * Unparseable colours fall to alto, the middle of the range, so a trail with a
+ * colour the parser does not recognise still sings somewhere sensible.
+ */
+export function registerBandForHue(hue: number): RegisterBand {
+  const normalized = ((hue % 360) + 360) % 360;
+  return REGISTER_BANDS[Math.min(3, Math.floor(normalized / 90))];
+}
+
+/**
+ * Fold a pitch into a band by octave, so it keeps its pitch class — the note
+ * is still in the chord, just sung by the part that owns that register.
+ */
+export function foldPitchIntoBand(
+  frequency: number,
+  band: RegisterBand,
+): number {
+  const { minHz, maxHz } = REGISTER_BAND_RANGES[band];
+  if (frequency <= 0) return frequency;
+  let folded = frequency;
+  while (folded < minHz) folded *= 2;
+  while (folded > maxHz) folded /= 2;
+  // A band narrower than an octave could push a pitch back below the floor;
+  // the ranges are all wider than an octave, so this only guards the edge.
+  return folded < minHz ? folded * 2 : folded;
+}
+
 /** Salts separating the independent parameters drawn from one identity hash. */
 export const HOME_TONE_SALT = 0;
 export const DETUNE_SALT = 1;

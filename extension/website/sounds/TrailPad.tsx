@@ -8,6 +8,7 @@ import {
   SoundMode,
 } from "../shared/sound/SoundEngine";
 import { AuditionAccent, TrailSoundFrame } from "../shared/sound/types";
+import { RegisterBand } from "../shared/sound/scales";
 
 const PAD_HEIGHT = 300;
 /** Trail points kept per agent for the on-canvas ribbon. */
@@ -225,7 +226,7 @@ const AUDITION_CARDS: Array<{
     accent: "trailVoicePair",
     label: "two trail voices",
     description:
-      "Two example fingerprints in turn, two seconds each, to hear how trails differ.",
+      "Two example fingerprints in turn, two seconds each — one warm-coloured trail low, one cool-coloured trail high, so the colour-to-register mapping is audible.",
   },
 ];
 
@@ -281,7 +282,11 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
     avgVelocity: 0,
     chord: "Dm",
     energy: 0,
-    homeTones: [] as Array<{ trailIndex: number; hz: number }>,
+    homeTones: [] as Array<{
+      trailIndex: number;
+      hz: number;
+      band: RegisterBand | null;
+    }>,
   });
 
   useEffect(() => {
@@ -459,9 +464,16 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         .map(({ trailIndex }) => ({
           trailIndex,
           hz: engine.getHomeTone(trailIndex),
+          band: engine.getRegisterBand(trailIndex),
         }))
-        .filter((entry): entry is { trailIndex: number; hz: number } =>
-          entry.hz !== null,
+        .filter(
+          (
+            entry,
+          ): entry is {
+            trailIndex: number;
+            hz: number;
+            band: RegisterBand | null;
+          } => entry.hz !== null,
         ),
     });
 
@@ -654,7 +666,8 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
           choral timbre
         </button>
         <span style={labelStyle}>
-          each composes with any mode above
+          each composes with any mode above — trail voices also sets each
+          trail's register from its colour (warm low, cool high)
         </span>
       </div>
 
@@ -803,7 +816,10 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         <div style={labelStyle}>
           home tones:{" "}
           {readout.homeTones
-            .map(({ trailIndex, hz }) => `${trailIndex}:${hz.toFixed(1)}Hz`)
+            .map(
+              ({ trailIndex, hz, band }) =>
+                `${trailIndex}:${hz.toFixed(1)}Hz${band ? `/${band}` : ""}`,
+            )
             .join(" ")}
         </div>
       )}

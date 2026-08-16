@@ -22,6 +22,9 @@ import {
   hashUnit,
   homeToneForHash,
   leadHomeTone,
+  foldPitchIntoBand,
+  registerBandForHue,
+  RegisterBand,
   ATTACK_SALT,
   DETUNE_SALT,
   VIBRATO_DEPTH_SALT,
@@ -30,6 +33,7 @@ import {
   CHORD_DWELL_MS,
   D_MINOR_PENTATONIC,
 } from "./scales";
+import { parseColorToHsl } from "../utils/eventUtils";
 import { getInstrument, CLICK_BELL } from "./instruments";
 import { NotesEngine } from "./NotesEngine";
 
@@ -547,6 +551,12 @@ interface TrailFingerprint {
   homeTone: number;
   /** Palette the home tone was last led onto, so a rotation is detected once. */
   homeToneScale: number[] | null;
+  /**
+   * The choral part this trail sings, from the hue of its colour. Constrains
+   * both its home tone and its direction-derived pitches, so the crowd spreads
+   * into an arrangement instead of crowding one octave.
+   */
+  band: RegisterBand;
   detuneCents: number;
   vibratoRateHz: number;
   vibratoDepthCents: number;
@@ -1584,12 +1594,15 @@ export class SoundEngine {
       maxAttackScale,
     } = TRAIL_VOICE_TUNING;
     const scale = this.flourishPalette();
+    const band = this.bandForFrame(frame);
     const fingerprint: TrailFingerprint = {
       hash,
       // A brand-new trail takes its seat from its identity; only trails already
-      // sounding are led from where they are.
-      homeTone: homeToneForHash(hash, scale),
+      // sounding are led from where they are. The seat is then voiced in the
+      // part its colour assigns it.
+      homeTone: foldPitchIntoBand(homeToneForHash(hash, scale), band),
       homeToneScale: scale,
+      band,
       detuneCents: (hashUnit(hash, DETUNE_SALT) * 2 - 1) * maxDetuneCents,
       vibratoRateHz:
         vibratoMinRateHz +
@@ -1603,6 +1616,16 @@ export class SoundEngine {
     this.fingerprints.set(frame.trailIndex, fingerprint);
     this.fingerprintKeys.set(frame.trailIndex, key);
     return fingerprint;
+  }
+
+  /**
+   * The choral part a trail sings, read off the hue of the colour it is drawn
+   * in. A colour the parser does not recognise falls to alto — the middle of
+   * the range — rather than silently dropping the trail into the bass.
+   */
+  private bandForFrame(frame: TrailSoundFrame): RegisterBand {
+    const hsl = parseColorToHsl(frame.color);
+    return hsl === null ? "alto" : registerBandForHue(hsl.h);
   }
 
   /** The chord tone this trail calls home in the palette currently in force. */
@@ -1621,7 +1644,14 @@ export class SoundEngine {
   private resolveHomeTone(fingerprint: TrailFingerprint): number {
     const scale = this.flourishPalette();
     if (fingerprint.homeToneScale === scale) return fingerprint.homeTone;
-    fingerprint.homeTone = leadHomeTone(fingerprint.homeTone, scale);
+    // Lead against the palette folded into this trail's band, so "nearest" is
+    // measured among the tones the trail can actually sing. Leading in the raw
+    // palette and folding afterwards would let a one-step move in D3-C5 come
+    // out as an octave leap once folded.
+    const inBand = scale.map((pitch) =>
+      foldPitchIntoBand(pitch, fingerprint.band),
+    );
+    fingerprint.homeTone = leadHomeTone(fingerprint.homeTone, inBand);
     fingerprint.homeToneScale = scale;
     return fingerprint.homeTone;
   }
@@ -1637,7 +1667,11 @@ export class SoundEngine {
   ): number {
     const home = this.resolveHomeTone(fingerprint);
     const roll = hashUnit(fingerprint.hash ^ Math.round(frequency * 100), 7);
-    return roll < TRAIL_VOICE_TUNING.homeToneBias ? home : frequency;
+    // Both branches are voiced in the trail's own part: the melody a trail
+    // sings still comes from its motion, but it sings it in its own register.
+    return roll < TRAIL_VOICE_TUNING.homeToneBias
+      ? home
+      : foldPitchIntoBand(frequency, fingerprint.band);
   }
 
   /**
@@ -2131,6 +2165,16 @@ export class SoundEngine {
   getHomeTone(trailIndex: number): number | null {
     if (!this.config.trailVoices) return null;
     return this.homeToneFor(trailIndex);
+  }
+
+  /**
+   * The choral part a trail is singing, or null when it has no fingerprint.
+   * The TrailPad shows this beside the home tone so the colour-to-register
+   * mapping can be checked by eye against what is being heard.
+   */
+  getRegisterBand(trailIndex: number): RegisterBand | null {
+    if (!this.config.trailVoices) return null;
+    return this.fingerprints.get(trailIndex)?.band ?? null;
   }
 
   /**
@@ -2921,6 +2965,11 @@ export class SoundEngine {
    * makes is audible without needing two real trails to cross the canvas. Each
    * holds for a couple of seconds on its own home tone, with its own detune
    * and vibrato, panned apart.
+   *
+   * The pair is deliberately drawn from two different register bands — a warm
+   * colour and a cool one — because that spread is now the loudest thing a
+   * fingerprint does. Comparing two trails in the same octave would understate
+   * it.
    */
   private auditionVoicePair(): void {
     if (!this.ctx || !this.masterGain) return;
@@ -2930,10 +2979,16 @@ export class SoundEngine {
     const scale = this.flourishPalette();
     const holdSeconds = 2;
 
-    // Two fixed keys chosen so their fingerprints differ audibly; the live
-    // engine hashes real participant ids the same way.
-    const keys = ["audition-voice-a", "audition-voice-b"];
-    keys.forEach((key, order) => {
+    // Two fixed keys chosen so their fingerprints differ audibly, each with a
+    // colour that puts it in a different part; the live engine derives both
+    // the same way from a real trail's identity and colour.
+    const examples: Array<{ key: string; band: RegisterBand }> = [
+      // A red trail, low.
+      { key: "audition-voice-a", band: registerBandForHue(10) },
+      // A blue trail, high.
+      { key: "audition-voice-b", band: registerBandForHue(210) },
+    ];
+    examples.forEach(({ key, band }, order) => {
       const hash = hashIdentity(key);
       const {
         maxDetuneCents,
@@ -2952,7 +3007,12 @@ export class SoundEngine {
 
       const osc = ctx.createOscillator();
       osc.type = "sine";
-      osc.frequency.value = homeToneForHash(hash, scale) * 2;
+      // Voiced in its own band rather than a fixed octave up, so the audition
+      // demonstrates the spread the live crowd actually gets.
+      osc.frequency.value = foldPitchIntoBand(
+        homeToneForHash(hash, scale),
+        band,
+      );
       osc.detune.value = detuneCents;
 
       const lfo = ctx.createOscillator();
