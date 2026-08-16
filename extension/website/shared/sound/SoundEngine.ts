@@ -7,6 +7,8 @@ import {
   InstrumentConfig,
   NavigationSoundEvent,
   AuditionAccent,
+  SoundLayer,
+  SOUND_LAYERS,
 } from "./types";
 import {
   directionToPitch,
@@ -702,6 +704,16 @@ export class SoundEngine {
   private lastReverbTarget = DEFAULT_REVERB_SEND;
   /** Last master gain target actually scheduled, for the same reason. */
   private lastMasterGainTarget = Number.NaN;
+  /**
+   * One gain node per sound family, sitting between that family's sources and
+   * the master bus. Every source connects to its family's bus rather than to
+   * master directly, so a family can be silenced without unpicking the graph.
+   */
+  private layerBuses: Map<SoundLayer, GainNode> = new Map();
+  /** Layers explicitly muted from the playground's mixer strip. */
+  private mutedLayers: Set<SoundLayer> = new Set();
+  /** Layers explicitly soloed. Any entry here silences every other layer. */
+  private soloedLayers: Set<SoundLayer> = new Set();
 
   async init(): Promise<void> {
     if (this.ctx) return;
@@ -724,6 +736,17 @@ export class SoundEngine {
     this.compressor.ratio.value = 12;
     this.compressor.attack.value = 0.003;
     this.compressor.release.value = 0.2;
+
+    // One bus per family, feeding master. Sources connect to these rather than
+    // to master, which is what lets the playground's mixer solo or mute a
+    // family without touching anything downstream.
+    this.layerBuses.clear();
+    for (const layer of SOUND_LAYERS) {
+      const bus = this.ctx.createGain();
+      bus.gain.value = this.layerGainValue(layer);
+      bus.connect(this.masterGain);
+      this.layerBuses.set(layer, bus);
+    }
 
     this.masterGain.connect(this.compressor);
     this.masterGain.connect(this.reverbGain);
@@ -1238,7 +1261,7 @@ export class SoundEngine {
     osc1.connect(gain);
     osc2.connect(gain);
     gain.connect(pan);
-    pan.connect(this.masterGain);
+    pan.connect(this.busFor("crossing"));
 
     osc1.start(now);
     osc2.start(now);
@@ -1268,6 +1291,7 @@ export class SoundEngine {
       this.triggerFlourishNote(pitch, x, dyadGain, decaySeconds, {
         attackSeconds,
         partialGain,
+        layer: "crossing",
       });
     }
 
@@ -1411,7 +1435,7 @@ export class SoundEngine {
     osc2.connect(gain2);
     gain.connect(pan);
     gain2.connect(pan);
-    pan.connect(this.masterGain);
+    pan.connect(this.busFor("clickBell"));
 
     osc.start(now);
     osc2.start(now);
@@ -1444,7 +1468,7 @@ export class SoundEngine {
     oscillatorLevel.connect(filter);
     filter.connect(gain);
     gain.connect(pan);
-    pan.connect(this.masterGain!);
+    pan.connect(this.busFor("bed"));
 
     osc.start(now);
 
@@ -2541,6 +2565,7 @@ export class SoundEngine {
         // A few cents either side, so the cluster shimmers rather than
         // sounding like one pitch struck repeatedly.
         detuneCents: (hashUnit(seed, 60 + order) * 2 - 1) * detuneCents,
+        layer: "chime",
       });
       // Jittered spacing, so the notes land like struck tubes rather than on
       // a grid.
@@ -2602,7 +2627,7 @@ export class SoundEngine {
 
     filter.connect(gain);
     gain.connect(pan);
-    pan.connect(this.masterGain);
+    pan.connect(this.busFor("navigation"));
 
     // The fundamental plus two partials detuned either side of it. The slow
     // beating between them is what gives the note its struck, resonant body.
@@ -2735,6 +2760,7 @@ export class SoundEngine {
           this.triggerFlourishNote(pitch, centre, dyadGain, decaySeconds, {
             attackSeconds,
             partialGain,
+            layer: "crossing",
           });
         }
         return;
@@ -2809,7 +2835,7 @@ export class SoundEngine {
     mix.connect(gain);
 
     gain.connect(pan);
-    pan.connect(this.masterGain);
+    pan.connect(this.busFor("bed"));
 
     osc.start(now);
     osc.stop(now + totalSeconds + 0.1);
@@ -2891,7 +2917,7 @@ export class SoundEngine {
 
       osc.connect(gain);
       gain.connect(pan);
-      pan.connect(this.masterGain!);
+      pan.connect(this.busFor("bed"));
       osc.start(startAt);
       lfo.start(startAt);
       osc.stop(stopAt);
@@ -2974,7 +3000,7 @@ export class SoundEngine {
 
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(this.masterGain!);
+    gain.connect(this.busFor("bassPedal"));
     osc.start(now);
 
     return { oscillator: osc, gainNode: gain, filterNode: filter, frequency };
@@ -3116,6 +3142,12 @@ export class SoundEngine {
       partialGain?: number;
       /** Fixed pitch offset in cents, used to make chime clusters shimmer. */
       detuneCents?: number;
+      /**
+       * Which mixer family this note belongs to. The same synthesis serves the
+       * soloist's flourish, the arrival/departure chimes and the merged
+       * crossing dyad, so the caller says which one it is sounding.
+       */
+      layer?: SoundLayer;
     } = {},
   ): void {
     if (!this.ctx || !this.masterGain) return;
@@ -3167,7 +3199,7 @@ export class SoundEngine {
     partial.connect(partialLevel);
     gain.connect(pan);
     partialLevel.connect(pan);
-    pan.connect(this.masterGain);
+    pan.connect(this.busFor(options.layer ?? "flourish"));
 
     const note: FlourishNote = {
       oscillator: osc,
@@ -3265,6 +3297,75 @@ export class SoundEngine {
     this.baseVolume = Math.max(0, Math.min(1, volume));
     this.updateMasterGainForPolyphony(this.lastActiveTrailCount);
     this.notesEngine.setVolume(this.baseVolume);
+  }
+
+  // ── Layer mixer ───────────────────────────────────────────────────────────
+  // A diagnostic for the sound playground: solo or mute one family of sounds
+  // to hear what it contributes. Live pages never touch these, so every layer
+  // stays audible unless something explicitly asks otherwise.
+
+  /**
+   * Whether a layer should currently sound, under standard mixer semantics:
+   * any solo anywhere silences every layer that is not soloed, and solo wins
+   * over mute on the same layer.
+   */
+  isLayerAudible(layer: SoundLayer): boolean {
+    if (this.soloedLayers.size > 0) return this.soloedLayers.has(layer);
+    return !this.mutedLayers.has(layer);
+  }
+
+  /** 1 when a layer should sound, 0 when the mixer is holding it silent. */
+  private layerGainValue(layer: SoundLayer): number {
+    return this.isLayerAudible(layer) ? 1 : 0;
+  }
+
+  /** Mute or unmute one layer. Ignored while that layer is soloed. */
+  setLayerMuted(layer: SoundLayer, muted: boolean): void {
+    if (muted) this.mutedLayers.add(layer);
+    else this.mutedLayers.delete(layer);
+    this.applyLayerGains();
+  }
+
+  /** Solo or unsolo one layer. Any solo silences every layer without one. */
+  setLayerSoloed(layer: SoundLayer, soloed: boolean): void {
+    if (soloed) this.soloedLayers.add(layer);
+    else this.soloedLayers.delete(layer);
+    this.applyLayerGains();
+  }
+
+  /** Clear every solo and mute, so the whole mix is audible again. */
+  clearLayerMix(): void {
+    this.mutedLayers.clear();
+    this.soloedLayers.clear();
+    this.applyLayerGains();
+  }
+
+  /** The mixer state, for rendering the strip. */
+  getLayerMix(): { muted: SoundLayer[]; soloed: SoundLayer[] } {
+    return {
+      muted: [...this.mutedLayers],
+      soloed: [...this.soloedLayers],
+    };
+  }
+
+  /** Push the resolved audibility of every layer onto its bus. */
+  private applyLayerGains(): void {
+    if (!this.ctx) return;
+    for (const layer of SOUND_LAYERS) {
+      const bus = this.layerBuses.get(layer);
+      if (!bus) continue;
+      // A short ramp rather than a hard step, so toggling a sustained layer
+      // does not click.
+      this.rampParam(bus.gain, this.layerGainValue(layer), 0.02);
+    }
+  }
+
+  /**
+   * The node a family's sources should connect to. Falls back to master when
+   * the bus is missing, so synthesis never depends on the mixer existing.
+   */
+  private busFor(layer: SoundLayer): AudioNode {
+    return this.layerBuses.get(layer) ?? this.masterGain!;
   }
 
   /** Number of one-shot notes currently sounding (notes mode diagnostics). */
@@ -3369,6 +3470,10 @@ export class SoundEngine {
     this.fingerprintKeys.clear();
     this.mergePullsUntilMs.clear();
     this.swells.clear();
+    for (const bus of this.layerBuses.values()) {
+      try { bus.disconnect(); } catch { /* already disconnected */ }
+    }
+    this.layerBuses.clear();
     if (this.ctx) {
       this.ctx.close();
       this.ctx = null;

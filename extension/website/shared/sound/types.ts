@@ -62,6 +62,39 @@ export type AuditionAccent =
   /** One sustained voice through its full swell, in the choral timbre. */
   | "choralSwell";
 
+/**
+ * One mixable family of sounds. Every source in the engine routes through
+ * exactly one of these, so a family can be silenced without touching the rest
+ * of the graph. Used only by the sound playground's mixer strip — live pages
+ * leave every family audible.
+ */
+export type SoundLayer =
+  /** The sustained trail voices: the bed the whole scene rests on. */
+  | "bed"
+  /** The soloist's flourish and its resolving note. */
+  | "flourish"
+  /** Percussive bells from clicks and holds. */
+  | "clickBell"
+  /** The chime figures marking a trail arriving or departing. */
+  | "chime"
+  /** The deep struck note marking a page navigation. */
+  | "navigation"
+  /** The low drone holding the chord root. */
+  | "bassPedal"
+  /** Both crossing accents: the dissonant interval and the merged dyad. */
+  | "crossing";
+
+/** Every layer, in the order a mixer strip should present them. */
+export const SOUND_LAYERS: SoundLayer[] = [
+  "bed",
+  "flourish",
+  "clickBell",
+  "chime",
+  "navigation",
+  "bassPedal",
+  "crossing",
+];
+
 /** Configuration for an instrument voice */
 export interface InstrumentConfig {
   /** Web Audio oscillator type */

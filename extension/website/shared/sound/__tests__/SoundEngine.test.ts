@@ -40,8 +40,15 @@ class TestAudioParam {
   }
 }
 
+/** Every node built during a test, so a test can inspect the whole graph. */
+let createdNodes: TestAudioNode[] = [];
+
 class TestAudioNode {
   connections: TestAudioNode[] = [];
+
+  constructor() {
+    createdNodes.push(this);
+  }
 
   connect(destination: TestAudioNode): TestAudioNode {
     this.connections.push(destination);
@@ -104,6 +111,10 @@ class TestAudioContext {
   gains: TestGainNode[] = [];
   oscillators: TestOscillatorNode[] = [];
 
+  get nodes(): TestAudioNode[] {
+    return createdNodes;
+  }
+
   createBiquadFilter(): BiquadFilterNode {
     return new TestBiquadFilterNode() as unknown as BiquadFilterNode;
   }
@@ -154,6 +165,7 @@ const originalAudioContext = globalThis.AudioContext;
 let context: TestAudioContext;
 
 beforeEach(() => {
+  createdNodes = [];
   context = new TestAudioContext();
   globalThis.AudioContext = class {
     constructor() {
@@ -1944,5 +1956,195 @@ describe("SoundEngine cursor instruments", () => {
     context.oscillators[0].onended?.();
 
     expect(primaryLevel.connections).toEqual([]);
+  });
+});
+
+describe("SoundEngine layer mixer", () => {
+  /**
+   * The mixer is a playground diagnostic, so the semantics that matter are the
+   * standard ones a mixing desk has: solo overrides everything, mute silences,
+   * and clearing restores the whole mix.
+   */
+  const ALL_LAYERS = [
+    "bed",
+    "flourish",
+    "clickBell",
+    "chime",
+    "navigation",
+    "bassPedal",
+    "crossing",
+  ] as const;
+
+  it("leaves every layer audible by default", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    for (const layer of ALL_LAYERS) {
+      expect(engine.isLayerAudible(layer)).toBe(true);
+    }
+    expect(engine.getLayerMix()).toEqual({ muted: [], soloed: [] });
+  });
+
+  it("silences only the muted layer", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    engine.setLayerMuted("clickBell", true);
+
+    expect(engine.isLayerAudible("clickBell")).toBe(false);
+    expect(engine.isLayerAudible("bed")).toBe(true);
+    expect(engine.getLayerMix().muted).toEqual(["clickBell"]);
+  });
+
+  it("unmutes a layer again", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    engine.setLayerMuted("clickBell", true);
+    engine.setLayerMuted("clickBell", false);
+
+    expect(engine.isLayerAudible("clickBell")).toBe(true);
+    expect(engine.getLayerMix().muted).toEqual([]);
+  });
+
+  it("silences every layer that is not soloed", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    engine.setLayerSoloed("navigation", true);
+
+    expect(engine.isLayerAudible("navigation")).toBe(true);
+    for (const layer of ALL_LAYERS) {
+      if (layer === "navigation") continue;
+      expect(engine.isLayerAudible(layer)).toBe(false);
+    }
+  });
+
+  it("sounds the union of multiple solos", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    engine.setLayerSoloed("navigation", true);
+    engine.setLayerSoloed("chime", true);
+
+    expect(engine.isLayerAudible("navigation")).toBe(true);
+    expect(engine.isLayerAudible("chime")).toBe(true);
+    expect(engine.isLayerAudible("bed")).toBe(false);
+  });
+
+  it("lets solo win over mute on the same layer", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    engine.setLayerMuted("bed", true);
+    engine.setLayerSoloed("bed", true);
+
+    expect(engine.isLayerAudible("bed")).toBe(true);
+    // The mute is remembered, so dropping the solo restores it rather than
+    // silently discarding what the user set.
+    engine.setLayerSoloed("bed", false);
+    expect(engine.isLayerAudible("bed")).toBe(false);
+  });
+
+  it("restores the muted layers when the last solo is released", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    engine.setLayerMuted("chime", true);
+    engine.setLayerSoloed("navigation", true);
+    expect(engine.isLayerAudible("bed")).toBe(false);
+
+    engine.setLayerSoloed("navigation", false);
+
+    expect(engine.isLayerAudible("bed")).toBe(true);
+    expect(engine.isLayerAudible("chime")).toBe(false);
+  });
+
+  it("clears every solo and mute at once", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    engine.setLayerMuted("chime", true);
+    engine.setLayerSoloed("navigation", true);
+    engine.clearLayerMix();
+
+    for (const layer of ALL_LAYERS) {
+      expect(engine.isLayerAudible(layer)).toBe(true);
+    }
+    expect(engine.getLayerMix()).toEqual({ muted: [], soloed: [] });
+  });
+
+  /**
+   * The buses are the gain nodes wired straight into master, in SOUND_LAYERS
+   * order. Finding them by graph position rather than creation index keeps
+   * this from breaking when unrelated nodes are added to init().
+   */
+  function layerBuses(master: TestGainNode): TestGainNode[] {
+    return context.gains.filter(
+      (gain) => gain !== master && gain.connections.includes(master),
+    );
+  }
+
+  it("drives each layer's bus gain to zero and back", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const master = context.gains[0];
+    const buses = layerBuses(master);
+    expect(buses).toHaveLength(ALL_LAYERS.length);
+
+    const bus = buses[ALL_LAYERS.indexOf("clickBell")];
+    expect(bus.gain.value).toBe(1);
+
+    engine.setLayerMuted("clickBell", true);
+    expect(bus.gain.events.at(-1)).toMatchObject({ value: 0 });
+
+    engine.setLayerMuted("clickBell", false);
+    expect(bus.gain.events.at(-1)).toMatchObject({ value: 1 });
+  });
+
+  /** How many nodes in the graph currently feed `target`. */
+  function feederCount(target: TestGainNode): number {
+    return context.nodes.filter((node) => node.connections.includes(target))
+      .length;
+  }
+
+  it("routes a click bell through its own bus rather than straight to master", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const master = context.gains[0];
+    const clickBus = layerBuses(master)[ALL_LAYERS.indexOf("clickBell")];
+    const busBefore = feederCount(clickBus);
+    const masterBefore = feederCount(master);
+
+    engine.setCanvasWidth(800);
+    engine.triggerClick({ x: 100, y: 100, holdDuration: undefined });
+
+    // The bell's panner must land on the click bus. If it reached master
+    // directly, muting the layer would do nothing.
+    expect(feederCount(clickBus)).toBeGreaterThan(busBefore);
+    expect(feederCount(master)).toBe(masterBefore);
+  });
+
+  it("routes the navigation note to the navigation bus, not the bell bus", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const master = context.gains[0];
+    const buses = layerBuses(master);
+    const navBus = buses[ALL_LAYERS.indexOf("navigation")];
+    const clickBus = buses[ALL_LAYERS.indexOf("clickBell")];
+    const navBefore = feederCount(navBus);
+    const clickBefore = feederCount(clickBus);
+
+    // The navigation note is off by default, so the routing can only be
+    // observed with the feature switched on.
+    engine.setConfig({ navigationSounds: true });
+    engine.setCanvasWidth(800);
+    engine.triggerNavigation({ x: 400 });
+
+    expect(feederCount(navBus)).toBeGreaterThan(navBefore);
+    expect(feederCount(clickBus)).toBe(clickBefore);
   });
 });

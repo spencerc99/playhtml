@@ -9,6 +9,7 @@ import { RippleEffect, RippleSettings } from "../shared/components/ClickRipple";
 import { ClickEffect } from "../shared/types";
 import { TrailPad } from "./TrailPad";
 import { SamplePlayback } from "./SamplePlayback";
+import { LayerMixer } from "./LayerMixer";
 
 const RANDOM_RIPPLE_COLORS = [
   "#4a9a8a", // teal
@@ -425,6 +426,8 @@ const SoundPlayground = () => {
       </div>
 
       <TrailPad onEngineReady={handlePadEngineReady} />
+
+      <LayerMixer getEngine={getPadEngine} />
 
       <SamplePlayback getEngine={getPadEngine} />
 
