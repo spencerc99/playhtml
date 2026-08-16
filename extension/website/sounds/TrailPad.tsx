@@ -181,12 +181,13 @@ const AUDITION_CARDS: Array<{
   {
     accent: "trailArrival",
     label: "trail arrival",
-    description: "Rising two-note figure as a trail enters the scene.",
+    description:
+      "A door-chime scatter of high notes as a trail enters the scene.",
   },
   {
     accent: "trailDeparture",
     label: "trail departure",
-    description: "The same figure falling, as a trail leaves.",
+    description: "A shorter falling chime, as a trail leaves.",
   },
   {
     accent: "navigation",

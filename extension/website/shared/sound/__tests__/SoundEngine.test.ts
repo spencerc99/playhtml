@@ -7,6 +7,7 @@ import {
   bellScaleForChord,
   CHORD_DWELL_MS,
   CHORD_PROGRESSION,
+  D_MINOR_PENTATONIC,
 } from "../scales";
 
 type ParamEvent = {
@@ -1006,16 +1007,18 @@ describe("SoundEngine cursor instruments", () => {
 
     const state = engine as unknown as { flourishNotes: Set<unknown> };
 
-    // A trail appearing sounds a two-note figure.
+    // A trail appearing sounds a chime cluster.
     engine.tick(0, [soloFrame(0, 10, 10)]);
-    expect(state.flourishNotes.size).toBe(2);
+    const chimeNotes = state.flourishNotes.size;
+    expect(chimeNotes).toBeGreaterThanOrEqual(3);
+    expect(chimeNotes).toBeLessThanOrEqual(5);
 
     // Staying present does not retrigger.
     for (let step = 1; step < 20; step++) {
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [soloFrame(0, 10 + step, 10)]);
     }
-    expect(state.flourishNotes.size).toBe(2);
+    expect(state.flourishNotes.size).toBe(chimeNotes);
 
     // Dropping out and back inside the debounce window stays silent, even
     // though the frame reports itself as newly active.
@@ -1023,12 +1026,13 @@ describe("SoundEngine cursor instruments", () => {
     engine.tick(400, []);
     context.currentTime += 1 / 60;
     engine.tick(500, [{ ...soloFrame(0, 40, 10), isNewlyActive: true }]);
-    expect(state.flourishNotes.size).toBe(2);
+    expect(state.flourishNotes.size).toBe(chimeNotes);
 
-    // Past the 2s debounce it counts as a genuine new arrival.
+    // Past the 2s debounce it counts as a genuine new arrival. The same trail
+    // chimes the same pattern, so the count doubles exactly.
     context.currentTime += 1 / 60;
     engine.tick(3000, [{ ...soloFrame(0, 40, 10), isNewlyActive: true }]);
-    expect(state.flourishNotes.size).toBe(4);
+    expect(state.flourishNotes.size).toBe(chimeNotes * 2);
   });
 
   it("caps a batch of arrivals rather than firing a volley", async () => {
@@ -1044,8 +1048,9 @@ describe("SoundEngine cursor instruments", () => {
     const batch = Array.from({ length: 30 }, (_, i) => soloFrame(i, i * 10, 10));
     engine.tick(0, batch);
 
-    // Two arrivals per second, two notes each.
-    expect(state.flourishNotes.size).toBe(4);
+    // Two arrivals per second, one chime cluster each — not thirty chimes.
+    expect(state.flourishNotes.size).toBeGreaterThanOrEqual(2 * 3);
+    expect(state.flourishNotes.size).toBeLessThanOrEqual(2 * 5);
   });
 
   it("stays silent on arrivals during and just after a reset", async () => {
@@ -1081,12 +1086,102 @@ describe("SoundEngine cursor instruments", () => {
     state.flourishNotes.clear();
 
     engine.retireTrail(0);
-    expect(state.flourishNotes.size).toBe(2);
+    expect(state.flourishNotes.size).toBe(3);
 
     // A trail that never arrived has nothing to depart from.
     state.flourishNotes.clear();
     engine.retireTrail(99);
     expect(state.flourishNotes.size).toBe(0);
+  });
+
+  it("chimes an arrival from the top of the palette, high and detuned", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+    };
+
+    engine.tick(0, [{ ...soloFrame(0, 10, 10), identityKey: "person-a" }]);
+    const notes = [...state.flourishNotes];
+    expect(notes.length).toBeGreaterThanOrEqual(3);
+
+    // The chime draws only from the top of the palette, doubled — so it rings
+    // above the sustained bed rather than inside it, and stays in key. With
+    // rotation off the palette is the base D minor pentatonic.
+    const top = [...D_MINOR_PENTATONIC]
+      .sort((a, b) => a - b)
+      .slice(-5)
+      .map((hz) => hz * 2);
+    for (const note of notes) {
+      const hz = note.oscillator.frequency.value;
+      const isChimeTone = top.some(
+        (pitch) => Math.abs(pitch - hz) < 0.5 || Math.abs(pitch * 3 - hz) < 1.5,
+      );
+      expect(isChimeTone, `${hz} should be a chime tone or its partial`).toBe(
+        true,
+      );
+      // Every note carries its own small detune, so the cluster shimmers.
+      expect(Math.abs(note.oscillator.detune.value)).toBeLessThanOrEqual(5);
+    }
+
+    // Struck in sequence, not all at once — that spread is what makes it read
+    // as a chime rather than as a chord.
+    const starts = notes.map((note) => note.oscillator.startTimes[0]);
+    expect(new Set(starts).size).toBeGreaterThan(1);
+  });
+
+  it("chimes the same pattern for the same trail and differs across trails", async () => {
+    const patternFor = async (identityKey: string) => {
+      const engine = new SoundEngine();
+      await engine.init();
+      engine.setCanvasWidth(1000);
+      engine.setConfig({ trailArrivals: true });
+      const state = engine as unknown as {
+        flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+      };
+      engine.tick(0, [{ ...soloFrame(0, 10, 10), identityKey }]);
+      return [...state.flourishNotes]
+        .map((note) => note.oscillator.frequency.value)
+        .sort((a, b) => a - b);
+    };
+
+    const first = await patternFor("person-a");
+    const again = await patternFor("person-a");
+    const other = await patternFor("person-b");
+
+    expect(again).toEqual(first);
+    expect(other).not.toEqual(first);
+  });
+
+  it("falls rather than scatters on a departure", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+    };
+    engine.tick(0, [{ ...soloFrame(0, 10, 10), identityKey: "person-a" }]);
+    state.flourishNotes.clear();
+
+    engine.retireTrail(0);
+    const notes = [...state.flourishNotes].sort(
+      (a, b) => a.oscillator.startTimes[0] - b.oscillator.startTimes[0],
+    );
+    expect(notes).toHaveLength(3);
+
+    // Each note in the departure sits below the one before it, so the figure
+    // reads as leaving. Fundamentals only — the 3x partials ride above.
+    const fundamentals = notes
+      .map((note) => note.oscillator.frequency.value)
+      .filter((hz) => hz < 2000);
+    for (let i = 1; i < fundamentals.length; i++) {
+      expect(fundamentals[i]).toBeLessThan(fundamentals[i - 1]);
+    }
   });
 
   it("makes no arrival sound while the toggle is off", async () => {

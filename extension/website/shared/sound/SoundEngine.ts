@@ -267,20 +267,33 @@ const CROSSING_MERGE_TUNING = {
  * audible without needing to watch it.
  */
 const ARRIVAL_TUNING = {
-  /** Root and the fifth above it, as multipliers on the chord root. */
-  intervalRatio: 1.5,
-  /** Octave multiplier placing the figure in a mid register above the bed. */
+  /**
+   * Octave multiplier placing the chime above the bed. The palettes sit in
+   * D3-C5, so the top of the palette doubled lands the cluster around C5-D6 —
+   * the register a door chime actually occupies.
+   */
   registerMultiplier: 2,
-  /** Gap between the two notes of the figure (seconds). */
-  noteSpacingSeconds: 0.16,
-  /** Peak gain, kept under the flourish so arrivals stay background texture. */
-  noteGain: 0.03,
+  /** How many notes an arrival chime scatters. */
+  minNotes: 3,
+  maxNotes: 5,
+  /** Gap between consecutive chime notes (seconds), jittered per note. */
+  minSpacingSeconds: 0.06,
+  maxSpacingSeconds: 0.12,
+  /** Peak gain, kept under the click bell so a real click stays the accent. */
+  noteGain: 0.026,
   /** Level of the 3x partial relative to the fundamental. */
   partialGain: 0.22,
-  attackSeconds: 0.01,
-  decaySeconds: 1.1,
-  /** Departure sits slightly quieter and rings a touch longer than arrival. */
+  attackSeconds: 0.006,
+  /** Light shimmering ring-out, varied per note. */
+  minDecaySeconds: 1.2,
+  maxDecaySeconds: 2,
+  /** Per-note detune spread, in cents either side, so the cluster shimmers. */
+  detuneCents: 5,
+  /** How many pitches from the top of the palette the chime draws from. */
+  paletteTopCount: 5,
+  /** Departure sits quieter, shorter and falling. */
   departureGainScale: 0.8,
+  departureNotes: 3,
   departureDecaySeconds: 1.4,
   /**
    * Minimum gap between arrival sounds for the same trail, so a trail
@@ -668,6 +681,8 @@ export class SoundEngine {
   private lastEnergyTickMs: number | null = null;
   /** Trails that have already sounded an arrival, and when they last did. */
   private arrivalTimesMs: Map<number, number> = new Map();
+  /** Chime seed per trail, so its arrival and departure share one pattern. */
+  private arrivalSeeds: Map<number, number> = new Map();
   /** Timestamps of recent arrival sounds, for the global rate cap. */
   private recentArrivalsMs: number[] = [];
   /** Latest tick time, so retireTrail can rate-limit without its own clock. */
@@ -811,6 +826,7 @@ export class SoundEngine {
     }
     if (config.trailArrivals === false) {
       this.arrivalTimesMs.clear();
+      this.arrivalSeeds.clear();
       this.recentArrivalsMs.length = 0;
     }
 
@@ -1840,9 +1856,16 @@ export class SoundEngine {
       this.arrivalTimesMs.has(trailIndex)
     ) {
       const position = this.prevPositions.get(trailIndex);
-      this.triggerArrivalFigure(position?.x ?? this.canvasWidth / 2, false);
+      // Departure reuses the arrival's seed, so a trail leaves in the same
+      // voice it arrived in.
+      this.triggerArrivalFigure(
+        position?.x ?? this.canvasWidth / 2,
+        false,
+        this.arrivalSeeds.get(trailIndex) ?? hashIdentity(String(trailIndex)),
+      );
     }
     this.arrivalTimesMs.delete(trailIndex);
+    this.arrivalSeeds.delete(trailIndex);
     const voice = this.voices.get(trailIndex);
     if (voice) {
       const disconnect = () => this.disconnectVoice(voice);
@@ -2403,6 +2426,7 @@ export class SoundEngine {
   ): void {
     if (!this.config.trailArrivals) {
       if (this.arrivalTimesMs.size > 0) this.arrivalTimesMs.clear();
+      this.arrivalSeeds.clear();
       this.recentArrivalsMs.length = 0;
       return;
     }
@@ -2422,7 +2446,17 @@ export class SoundEngine {
 
       this.arrivalTimesMs.set(frame.trailIndex, elapsedMs);
       if (!this.claimArrivalSlot(elapsedMs)) continue;
-      this.triggerArrivalFigure(frame.x, true);
+      // Seeded from the trail's own identity, so a participant's chime is
+      // recognisably theirs every time they appear.
+      this.arrivalSeeds.set(
+        frame.trailIndex,
+        hashIdentity(this.identityKeyFor(frame)),
+      );
+      this.triggerArrivalFigure(
+        frame.x,
+        true,
+        this.arrivalSeeds.get(frame.trailIndex)!,
+      );
     }
   }
 
@@ -2447,34 +2481,72 @@ export class SoundEngine {
   }
 
   /**
-   * A two-note figure on the chord root and the fifth above it: rising for an
-   * arrival, falling for a departure.
+   * A door-chime cluster from the top of the current palette: a scatter of
+   * quick high notes for an arrival, a shorter falling one for a departure.
+   * The pattern is drawn from `seed`, so the same trail chimes the same way
+   * every time it appears while different trails sound distinct.
    */
-  private triggerArrivalFigure(x: number, rising: boolean): void {
+  private triggerArrivalFigure(x: number, rising: boolean, seed: number): void {
     if (!this.ctx) return;
 
-    const root = this.currentRoot() * ARRIVAL_TUNING.registerMultiplier;
-    const fifth = root * ARRIVAL_TUNING.intervalRatio;
-    const pitches = rising ? [root, fifth] : [fifth, root];
-    const gain =
-      ARRIVAL_TUNING.noteGain *
-      (rising ? 1 : ARRIVAL_TUNING.departureGainScale);
-    const decay = rising
-      ? ARRIVAL_TUNING.decaySeconds
-      : ARRIVAL_TUNING.departureDecaySeconds;
+    const {
+      registerMultiplier,
+      minNotes,
+      maxNotes,
+      minSpacingSeconds,
+      maxSpacingSeconds,
+      noteGain,
+      partialGain,
+      attackSeconds,
+      minDecaySeconds,
+      maxDecaySeconds,
+      detuneCents,
+      paletteTopCount,
+      departureGainScale,
+      departureNotes,
+      departureDecaySeconds,
+    } = ARRIVAL_TUNING;
 
+    // The top of the palette, so the chime rings above the sustained bed
+    // while staying inside whatever harmony is in force.
+    const palette = [...this.flourishPalette()].sort((a, b) => a - b);
+    const top = palette.slice(-paletteTopCount);
+
+    const noteCount = rising
+      ? minNotes + Math.floor(hashUnit(seed, 11) * (maxNotes - minNotes + 1))
+      : departureNotes;
+
+    // A departure falls: the highest tones first, descending. An arrival
+    // scatters, which is what makes a chime read as a chime rather than a run.
+    const pitches: number[] = [];
+    for (let i = 0; i < noteCount; i++) {
+      const index = rising
+        ? Math.floor(hashUnit(seed, 20 + i) * top.length)
+        : top.length - 1 - (i % top.length);
+      pitches.push(top[Math.min(top.length - 1, Math.max(0, index))]);
+    }
+
+    const gain = noteGain * (rising ? 1 : departureGainScale);
+
+    let delaySeconds = 0;
     pitches.forEach((pitch, order) => {
-      this.triggerFlourishNote(
-        pitch,
-        x,
-        gain,
-        decay,
-        {
-          delaySeconds: order * ARRIVAL_TUNING.noteSpacingSeconds,
-          attackSeconds: ARRIVAL_TUNING.attackSeconds,
-          partialGain: ARRIVAL_TUNING.partialGain,
-        },
-      );
+      const decay = rising
+        ? minDecaySeconds +
+          hashUnit(seed, 40 + order) * (maxDecaySeconds - minDecaySeconds)
+        : departureDecaySeconds;
+      this.triggerFlourishNote(pitch * registerMultiplier, x, gain, decay, {
+        delaySeconds,
+        attackSeconds,
+        partialGain,
+        // A few cents either side, so the cluster shimmers rather than
+        // sounding like one pitch struck repeatedly.
+        detuneCents: (hashUnit(seed, 60 + order) * 2 - 1) * detuneCents,
+      });
+      // Jittered spacing, so the notes land like struck tubes rather than on
+      // a grid.
+      delaySeconds +=
+        minSpacingSeconds +
+        hashUnit(seed, 80 + order) * (maxSpacingSeconds - minSpacingSeconds);
     });
   }
 
@@ -2591,10 +2663,16 @@ export class SoundEngine {
     const centre = this.canvasWidth / 2;
     switch (accent) {
       case "trailArrival":
-        this.triggerArrivalFigure(centre, true);
+        // No trail to key off, so the audition uses a fixed seed: pressing
+        // the button twice should sound the same chime, not a new one.
+        this.triggerArrivalFigure(centre, true, hashIdentity("audition-chime"));
         return;
       case "trailDeparture":
-        this.triggerArrivalFigure(centre, false);
+        this.triggerArrivalFigure(
+          centre,
+          false,
+          hashIdentity("audition-chime"),
+        );
         return;
       case "navigation": {
         // The navigation note is the one accent whose production trigger is
@@ -3036,6 +3114,8 @@ export class SoundEngine {
       delaySeconds?: number;
       attackSeconds?: number;
       partialGain?: number;
+      /** Fixed pitch offset in cents, used to make chime clusters shimmer. */
+      detuneCents?: number;
     } = {},
   ): void {
     if (!this.ctx || !this.masterGain) return;
@@ -3048,13 +3128,17 @@ export class SoundEngine {
       options.attackSeconds ?? FLOURISH_TUNING.attackSeconds;
     const partialGain = options.partialGain ?? FLOURISH_TUNING.partialGain;
 
+    const detuneCents = options.detuneCents ?? 0;
+
     const osc = ctx.createOscillator();
     osc.type = CLICK_BELL.oscillatorType;
     osc.frequency.value = frequency;
+    osc.detune.value = detuneCents;
 
     const partial = ctx.createOscillator();
     partial.type = "sine";
     partial.frequency.value = frequency * 3;
+    partial.detune.value = detuneCents;
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, now);
@@ -3264,6 +3348,7 @@ export class SoundEngine {
     this.clearFlourish();
     this.releaseBassPedal();
     this.arrivalTimesMs.clear();
+    this.arrivalSeeds.clear();
     this.recentArrivalsMs.length = 0;
     for (const [, voice] of this.voices) {
       this.stopVibrato(voice);
@@ -3298,6 +3383,7 @@ export class SoundEngine {
     this.arrivalsSuppressedUntilMs =
       this.lastTickMs + ARRIVAL_TUNING.resetSuppressionMs;
     this.arrivalTimesMs.clear();
+    this.arrivalSeeds.clear();
     this.recentArrivalsMs.length = 0;
     this.releaseBassPedal();
     // Fast-cut fade (30ms) — releaseVoice uses a 500ms ramp that audibly
