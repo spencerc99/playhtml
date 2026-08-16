@@ -40,6 +40,46 @@ export const D_NATURAL_MINOR_PITCHES: Record<string, number> = {
 };
 
 /**
+ * D dorian (D E F G A B C) across the same D3-C5 span. Identical to D natural
+ * minor but for the sixth: B natural in place of Bb. That one note is what
+ * gives dorian its lift, and it is why a dorian progression needs its own
+ * collection — a G major chord over a natural-minor collection would be
+ * spelled with a Bb and stop being G major.
+ */
+export const D_DORIAN_PITCHES: Record<string, number> = {
+  D3: 146.83,
+  E3: 164.81,
+  F3: 174.61,
+  G3: 196.0,
+  A3: 220.0,
+  B3: 246.94,
+  C4: 261.63,
+  D4: 293.66,
+  E4: 329.63,
+  F4: 349.23,
+  G4: 392.0,
+  A4: 440.0,
+  B4: 493.88,
+  C5: 523.25,
+};
+
+/**
+ * The pitch collection a progression's palettes are drawn from. Every palette
+ * note must be a member of its progression's collection, which is what keeps a
+ * rotation sounding like a progression rather than like chromatic drift.
+ */
+export type PitchCollection = "naturalMinor" | "dorian";
+
+/** The pitches each collection admits, keyed by note name. */
+export const PITCH_COLLECTIONS: Record<
+  PitchCollection,
+  Record<string, number>
+> = {
+  naturalMinor: D_NATURAL_MINOR_PITCHES,
+  dorian: D_DORIAN_PITCHES,
+};
+
+/**
  * A harmonic centre the pitch palette can sit on. `pitches` is the palette the
  * compass directions map onto — eight notes, all diatonic to D natural minor,
  * with the chord's own tones on the directions cursors travel most.
@@ -50,31 +90,178 @@ export interface Chord {
 }
 
 const P = D_NATURAL_MINOR_PITCHES;
+const O = D_DORIAN_PITCHES;
 
 /**
- * The rotation, i -> VI -> III -> VII in D minor.
+ * A named rotation the scene can be set to. Chords cycle in order, each held
+ * for `CHORD_DWELL_MS * dwellScale`.
+ */
+export interface Progression {
+  id: ProgressionId;
+  /** Short name, shown in the playground's dropdown. */
+  label: string;
+  /** One line on what this rotation feels like, for the same dropdown. */
+  description: string;
+  /** Which pitch collection every palette here is drawn from. */
+  collection: PitchCollection;
+  chords: Chord[];
+  /**
+   * Multiplier on the base dwell. Progressions with fewer chords can afford to
+   * sit on each one longer without the rotation feeling static.
+   */
+  dwellScale: number;
+}
+
+export type ProgressionId =
+  | "circular"
+  | "drifter"
+  | "lament"
+  | "dorian"
+  | "breath";
+
+/**
+ * The rotations available to the scene.
  *
- * Each palette is built from D natural minor only, so no chord introduces an
- * accidental against the others — transposing the pentatonic shape onto each
- * root (the earlier approach) produced Db/Eb/Ab against a D minor context and
- * read as chromatic rather than as a progression. Every palette also spans the
- * same D3-C5 register, so the rotation changes colour without dropping the
- * whole scene into a lower octave.
+ * Every palette in a progression is built from that progression's own
+ * collection, so no chord introduces an accidental against the others —
+ * transposing a pentatonic shape onto each root (the earliest approach)
+ * produced Db/Eb/Ab against a D minor context and read as chromatic rather
+ * than as a progression. Every palette also spans the same D3-C5 register, so
+ * a rotation changes colour without dropping the whole scene into a lower
+ * octave, and each puts the chord's own tones on the first compass directions
+ * so a typical gesture lands on the harmony.
  *
  * Edit freely: any list of chords works, and the engine simply cycles it.
  */
-export const CHORD_PROGRESSION: Chord[] = [
-  // Dm — chord tones D F A, coloured with G and C.
-  { name: "Dm", pitches: [P.D3, P.F3, P.A3, P.G3, P.C4, P.D4, P.F4, P.A4] },
-  // Bb — chord tones Bb D F, coloured with C and G.
-  { name: "Bb", pitches: [P.D3, P.F3, P.Bb3, P.G3, P.C4, P.D4, P.F4, P.Bb4] },
-  // F — chord tones F A C, coloured with D and G.
-  { name: "F", pitches: [P.F3, P.A3, P.C4, P.G3, P.D4, P.F4, P.A4, P.C5] },
-  // C — chord tones C E G, coloured with D and A.
-  { name: "C", pitches: [P.E3, P.G3, P.C4, P.A3, P.D4, P.E4, P.G4, P.C5] },
+export const PROGRESSIONS: Record<ProgressionId, Progression> = {
+  // i -> VI -> III -> VII. Turns and returns; the rotation everything else
+  // was tuned against.
+  circular: {
+    id: "circular",
+    label: "circular",
+    description: "Dm Bb F C — turns and returns.",
+    collection: "naturalMinor",
+    dwellScale: 1,
+    chords: [
+      // Dm — chord tones D F A, coloured with G and C.
+      { name: "Dm", pitches: [P.D3, P.F3, P.A3, P.G3, P.C4, P.D4, P.F4, P.A4] },
+      // Bb — chord tones Bb D F, coloured with C and G.
+      { name: "Bb", pitches: [P.D3, P.F3, P.Bb3, P.G3, P.C4, P.D4, P.F4, P.Bb4] },
+      // F — chord tones F A C, coloured with D and G.
+      { name: "F", pitches: [P.F3, P.A3, P.C4, P.G3, P.D4, P.F4, P.A4, P.C5] },
+      // C — chord tones C E G, coloured with D and A.
+      { name: "C", pitches: [P.E3, P.G3, P.C4, P.A3, P.D4, P.E4, P.G4, P.C5] },
+    ],
+  },
+
+  // i -> VII -> VI -> VII. Never resolves downward past Bb; the C either side
+  // keeps pulling it back, so the rotation reads as wandering.
+  drifter: {
+    id: "drifter",
+    label: "drifter",
+    description: "Dm C Bb C — never quite settles.",
+    collection: "naturalMinor",
+    dwellScale: 1,
+    chords: [
+      { name: "Dm", pitches: [P.D3, P.F3, P.A3, P.G3, P.C4, P.D4, P.F4, P.A4] },
+      { name: "C", pitches: [P.E3, P.G3, P.C4, P.A3, P.D4, P.E4, P.G4, P.C5] },
+      { name: "Bb", pitches: [P.D3, P.F3, P.Bb3, P.G3, P.C4, P.D4, P.F4, P.Bb4] },
+      { name: "C", pitches: [P.E3, P.G3, P.C4, P.A3, P.D4, P.E4, P.G4, P.C5] },
+    ],
+  },
+
+  // i -> iv -> VI -> v. Two minor chords either side of Bb; the Am at the end
+  // falls back into the Dm rather than lifting out of it.
+  lament: {
+    id: "lament",
+    label: "lament",
+    description: "Dm Gm Bb Am — falls and falls again.",
+    collection: "naturalMinor",
+    dwellScale: 1,
+    chords: [
+      { name: "Dm", pitches: [P.D3, P.F3, P.A3, P.G3, P.C4, P.D4, P.F4, P.A4] },
+      // Gm — chord tones G Bb D, coloured with C and F.
+      { name: "Gm", pitches: [P.G3, P.Bb3, P.D4, P.C4, P.F3, P.G4, P.Bb4, P.D3] },
+      { name: "Bb", pitches: [P.D3, P.F3, P.Bb3, P.G3, P.C4, P.D4, P.F4, P.Bb4] },
+      // Am — chord tones A C E, coloured with D and G.
+      { name: "Am", pitches: [P.A3, P.C4, P.E4, P.D4, P.G3, P.A4, P.C5, P.E3] },
+    ],
+  },
+
+  // i -> IV -> VII -> i, in dorian. The G is major here, not minor, which is
+  // the whole point: the B natural lifts the rotation out of the lament.
+  dorian: {
+    id: "dorian",
+    label: "dorian",
+    description: "Dm G C Dm — the major fourth lifts it.",
+    collection: "dorian",
+    dwellScale: 1,
+    chords: [
+      { name: "Dm", pitches: [O.D3, O.F3, O.A3, O.G3, O.C4, O.D4, O.F4, O.A4] },
+      // G — chord tones G B D, coloured with A and E. The B natural is what
+      // separates dorian from natural minor.
+      { name: "G", pitches: [O.G3, O.B3, O.D4, O.A3, O.E4, O.G4, O.B4, O.D3] },
+      { name: "C", pitches: [O.E3, O.G3, O.C4, O.A3, O.D4, O.E4, O.G4, O.C5] },
+      { name: "Dm", pitches: [O.D3, O.F3, O.A3, O.G3, O.C4, O.D4, O.F4, O.A4] },
+    ],
+  },
+
+  // i -> VI, held twice as long. Two chords breathing in and out; the least
+  // eventful rotation, for scenes where the harmony should be weather.
+  breath: {
+    id: "breath",
+    label: "breath",
+    description: "Dm Bb — two chords, held twice as long.",
+    collection: "naturalMinor",
+    dwellScale: 2,
+    chords: [
+      { name: "Dm", pitches: [P.D3, P.F3, P.A3, P.G3, P.C4, P.D4, P.F4, P.A4] },
+      { name: "Bb", pitches: [P.D3, P.F3, P.Bb3, P.G3, P.C4, P.D4, P.F4, P.Bb4] },
+    ],
+  },
+};
+
+/** Every progression, in the order a picker should present them. */
+export const PROGRESSION_IDS: ProgressionId[] = [
+  "circular",
+  "drifter",
+  "lament",
+  "dorian",
+  "breath",
 ];
 
-/** How long each chord holds before the progression advances (ms). */
+/** The rotation used unless a caller picks another. */
+export const DEFAULT_PROGRESSION_ID: ProgressionId = "circular";
+
+/**
+ * The chords of the default rotation. Kept as a named export because it is the
+ * palette anything not choosing a progression falls back to.
+ */
+export const CHORD_PROGRESSION: Chord[] =
+  PROGRESSIONS[DEFAULT_PROGRESSION_ID].chords;
+
+/** Look up a progression, falling back to the default for an unknown id. */
+export function progressionById(id: ProgressionId | undefined): Progression {
+  return PROGRESSIONS[id ?? DEFAULT_PROGRESSION_ID] ??
+    PROGRESSIONS[DEFAULT_PROGRESSION_ID];
+}
+
+/**
+ * Whether a pitch belongs to a collection. The membership test a progression's
+ * palettes are checked against — dorian palettes are measured against D dorian,
+ * everything else against D natural minor, so B natural is legal in exactly one
+ * of them.
+ */
+export function isPitchInCollection(
+  pitch: number,
+  collection: PitchCollection,
+): boolean {
+  return Object.values(PITCH_COLLECTIONS[collection]).some(
+    (member) => Math.abs(member - pitch) < 1e-6,
+  );
+}
+
+/** Base time each chord holds before the progression advances (ms). */
 export const CHORD_DWELL_MS = 20000;
 
 export function scaleForChord(chord: Chord): number[] {

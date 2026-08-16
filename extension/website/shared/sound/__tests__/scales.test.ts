@@ -5,8 +5,14 @@ import { describe, expect, it } from "vitest";
 import {
   bellScaleForChord,
   CHORD_PROGRESSION,
+  DEFAULT_PROGRESSION_ID,
+  D_DORIAN_PITCHES,
   D_NATURAL_MINOR_PITCHES,
   directionToPitch,
+  isPitchInCollection,
+  progressionById,
+  PROGRESSION_IDS,
+  PROGRESSIONS,
   hashIdentity,
   hashUnit,
   homeToneForHash,
@@ -25,10 +31,137 @@ const DIATONIC_PITCHES = new Set(Object.values(D_NATURAL_MINOR_PITCHES));
 const LOWEST_HZ = D_NATURAL_MINOR_PITCHES.D3;
 const HIGHEST_HZ = D_NATURAL_MINOR_PITCHES.C5;
 
+describe("progression library", () => {
+  it("keeps every palette inside its own progression's collection", () => {
+    // Transposing a pentatonic shape onto each root is what made a rotation
+    // sound chromatic: Bb yielded Db/Eb/Ab against a D minor context. The
+    // collection is per-progression, so B natural is legal in dorian and
+    // nowhere else.
+    for (const id of PROGRESSION_IDS) {
+      const { chords, collection } = PROGRESSIONS[id];
+      for (const chord of chords) {
+        for (const pitch of chord.pitches) {
+          expect(
+            isPitchInCollection(pitch, collection),
+            `${id}/${chord.name}: ${pitch}Hz is outside ${collection}`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("admits B natural in dorian and rejects it everywhere else", () => {
+    const bNatural = D_DORIAN_PITCHES.B3;
+    expect(isPitchInCollection(bNatural, "dorian")).toBe(true);
+    expect(isPitchInCollection(bNatural, "naturalMinor")).toBe(false);
+    // And the converse: Bb belongs to natural minor, not to dorian.
+    expect(isPitchInCollection(P("Bb3"), "naturalMinor")).toBe(true);
+    expect(isPitchInCollection(P("Bb3"), "dorian")).toBe(false);
+  });
+
+  it("spells the dorian G chord with a B natural", () => {
+    // The whole point of the dorian rotation: a major fourth, which needs the
+    // raised sixth of the mode to exist at all.
+    const g = PROGRESSIONS.dorian.chords.find((c) => c.name === "G")!;
+    expect(g.pitches).toContain(D_DORIAN_PITCHES.B3);
+    expect(g.pitches).not.toContain(P("Bb3"));
+  });
+
+  it("keeps every progression inside the base register", () => {
+    for (const id of PROGRESSION_IDS) {
+      for (const chord of PROGRESSIONS[id].chords) {
+        for (const pitch of chord.pitches) {
+          expect(pitch).toBeGreaterThanOrEqual(LOWEST_HZ);
+          expect(pitch).toBeLessThanOrEqual(HIGHEST_HZ);
+        }
+      }
+    }
+  });
+
+  it("gives every progression eight pitches per palette", () => {
+    // The compass mapping reads eight scale degrees, so a short palette would
+    // leave some directions silent.
+    for (const id of PROGRESSION_IDS) {
+      for (const chord of PROGRESSIONS[id].chords) {
+        expect(chord.pitches).toHaveLength(8);
+      }
+    }
+  });
+
+  it("matches the named chord sequence Spencer picked", () => {
+    const names = (id: (typeof PROGRESSION_IDS)[number]) =>
+      PROGRESSIONS[id].chords.map((c) => c.name);
+    expect(names("circular")).toEqual(["Dm", "Bb", "F", "C"]);
+    expect(names("drifter")).toEqual(["Dm", "C", "Bb", "C"]);
+    expect(names("lament")).toEqual(["Dm", "Gm", "Bb", "Am"]);
+    expect(names("dorian")).toEqual(["Dm", "G", "C", "Dm"]);
+    expect(names("breath")).toEqual(["Dm", "Bb"]);
+  });
+
+  it("holds the two-chord rotation twice as long", () => {
+    expect(PROGRESSIONS.breath.dwellScale).toBe(2);
+    for (const id of PROGRESSION_IDS) {
+      if (id === "breath") continue;
+      expect(PROGRESSIONS[id].dwellScale).toBe(1);
+    }
+  });
+
+  it("defaults to circular and resolves an unknown id back to it", () => {
+    expect(DEFAULT_PROGRESSION_ID).toBe("circular");
+    expect(CHORD_PROGRESSION).toBe(PROGRESSIONS.circular.chords);
+    expect(progressionById(undefined)).toBe(PROGRESSIONS.circular);
+    expect(progressionById("lament")).toBe(PROGRESSIONS.lament);
+    expect(
+      progressionById("nonexistent" as (typeof PROGRESSION_IDS)[number]),
+    ).toBe(PROGRESSIONS.circular);
+  });
+
+  it("supplies a pitch for every compass direction in every progression", () => {
+    for (const id of PROGRESSION_IDS) {
+      for (const chord of PROGRESSIONS[id].chords) {
+        const scale = scaleForChord(chord);
+        for (let step = 0; step < 8; step++) {
+          const angle = (step / 8) * Math.PI * 2;
+          expect(directionToPitch(angle, scale)).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it("rings bells from the top of every progression's chords", () => {
+    for (const id of PROGRESSION_IDS) {
+      for (const chord of PROGRESSIONS[id].chords) {
+        const bells = bellScaleForChord(chord);
+        expect(bells).toHaveLength(6);
+        for (const pitch of bells) {
+          expect(chord.pitches).toContain(pitch);
+        }
+        for (let i = 1; i < bells.length; i++) {
+          expect(bells[i]).toBeGreaterThan(bells[i - 1]);
+        }
+      }
+    }
+  });
+
+  it("leads home tones across every progression without leaping", () => {
+    // Voice leading has to work in all of them, including the dorian one whose
+    // collection differs.
+    for (const id of PROGRESSION_IDS) {
+      const { chords } = PROGRESSIONS[id];
+      let home = homeToneForHash(hashIdentity("person-a"), chords[0].pitches);
+      for (let turn = 1; turn <= chords.length * 2; turn++) {
+        const next = chords[turn % chords.length];
+        const led = leadHomeTone(home, next.pitches);
+        expect(next.pitches).toContain(led);
+        expect(Math.abs(semitonesBetween(home, led))).toBeLessThanOrEqual(4);
+        home = led;
+      }
+    }
+  });
+});
+
 describe("chord palettes", () => {
   it("draws every pitch from D natural minor", () => {
-    // Transposing a pentatonic shape onto each root is what made the rotation
-    // sound chromatic: Bb yielded Db/Eb/Ab against a D minor context.
     for (const chord of CHORD_PROGRESSION) {
       for (const pitch of chord.pitches) {
         expect(DIATONIC_PITCHES).toContain(pitch);

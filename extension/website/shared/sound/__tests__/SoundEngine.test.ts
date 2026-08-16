@@ -9,7 +9,9 @@ import {
   CHORD_PROGRESSION,
   D_MINOR_PENTATONIC,
   foldPitchIntoBand,
+  isPitchInCollection,
   leadHomeTone,
+  PROGRESSIONS,
   REGISTER_BAND_RANGES,
 } from "../scales";
 
@@ -1579,6 +1581,97 @@ describe("SoundEngine cursor instruments", () => {
       (event) => event.method === "exponentialRamp",
     )!;
     expect(firstRamp.time).toBeLessThan(context.currentTime + 0.5);
+  });
+
+  it("cycles whichever progression is selected", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ chordRotation: true, progression: "lament" });
+
+    const frames = (step: number) => [soloFrame(0, step * 8, 0)];
+    const seen: string[] = [];
+    for (let turn = 0; turn < PROGRESSIONS.lament.chords.length; turn++) {
+      context.currentTime += 1 / 60;
+      engine.tick(turn * (CHORD_DWELL_MS + 1), frames(turn));
+      seen.push(engine.getCurrentChordName());
+    }
+
+    expect(engine.getProgressionId()).toBe("lament");
+    expect(seen).toEqual(["Dm", "Gm", "Bb", "Am"]);
+  });
+
+  it("holds each chord twice as long in the two-chord rotation", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ chordRotation: true, progression: "breath" });
+
+    const frames = (step: number) => [soloFrame(0, step * 8, 0)];
+    engine.tick(0, frames(0));
+    expect(engine.getCurrentChordName()).toBe("Dm");
+
+    // A single base dwell is not enough to turn this rotation.
+    context.currentTime += 1 / 60;
+    engine.tick(CHORD_DWELL_MS + 1, frames(1));
+    expect(engine.getCurrentChordName()).toBe("Dm");
+
+    context.currentTime += 1 / 60;
+    engine.tick(CHORD_DWELL_MS * 2 + 1, frames(2));
+    expect(engine.getCurrentChordName()).toBe("Bb");
+  });
+
+  it("restarts on the home chord when the progression is switched", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ chordRotation: true, progression: "circular" });
+
+    const frames = (step: number) => [soloFrame(0, step * 8, 0)];
+    engine.tick(0, frames(0));
+    context.currentTime += 1 / 60;
+    engine.tick(CHORD_DWELL_MS + 1, frames(1));
+    expect(engine.getCurrentChordName()).toBe("Bb");
+
+    // The index into the old rotation means nothing in the new one, so the
+    // switch begins on the new rotation's home chord rather than mid-sequence.
+    engine.setConfig({ progression: "dorian" });
+    context.currentTime += 1 / 60;
+    engine.tick(CHORD_DWELL_MS + 100, frames(2));
+    expect(engine.getCurrentChordName()).toBe("Dm");
+
+    context.currentTime += 1 / 60;
+    engine.tick(CHORD_DWELL_MS * 2 + 200, frames(3));
+    expect(engine.getCurrentChordName()).toBe("G");
+  });
+
+  it("draws voices from the dorian collection under the dorian rotation", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ chordRotation: true, progression: "dorian" });
+
+    // Advance onto the G chord, the one carrying the B natural.
+    const frames = (step: number) => [
+      soloFrame(
+        0,
+        500 + Math.cos(step * 0.8) * 150,
+        150 + Math.sin(step * 0.8) * 100,
+      ),
+    ];
+    for (let step = 0; step < 20; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(CHORD_DWELL_MS + 1 + step * 100, frames(step));
+    }
+    expect(engine.getCurrentChordName()).toBe("G");
+
+    const pitches = context.oscillators[0].frequency.events
+      .filter((event) => event.method === "exponentialRamp")
+      .map((event) => event.value!);
+    expect(pitches.length).toBeGreaterThan(0);
+    for (const pitch of pitches) {
+      expect(isPitchInCollection(pitch, "dorian")).toBe(true);
+    }
   });
 
   it("assigns each trail a register band from its colour", async () => {

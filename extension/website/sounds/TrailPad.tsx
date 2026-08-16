@@ -8,7 +8,13 @@ import {
   SoundMode,
 } from "../shared/sound/SoundEngine";
 import { AuditionAccent, TrailSoundFrame } from "../shared/sound/types";
-import { RegisterBand } from "../shared/sound/scales";
+import {
+  DEFAULT_PROGRESSION_ID,
+  PROGRESSION_IDS,
+  PROGRESSIONS,
+  ProgressionId,
+  RegisterBand,
+} from "../shared/sound/scales";
 
 const PAD_HEIGHT = 300;
 /** Trail points kept per agent for the on-canvas ribbon. */
@@ -253,6 +259,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   const startedAtRef = useRef<number>(0);
   const modeRef = useRef<SoundMode>("notes");
   const chordRotationRef = useRef(false);
+  const progressionRef = useRef<ProgressionId>(DEFAULT_PROGRESSION_ID);
   const energyArcRef = useRef(false);
   const trailArrivalsRef = useRef(false);
   const navigationSoundsRef = useRef(false);
@@ -268,6 +275,9 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   const [volume, setVolume] = useState(0.5);
   const [agentCount, setAgentCount] = useState(0);
   const [chordRotation, setChordRotation] = useState(false);
+  const [progression, setProgression] = useState<ProgressionId>(
+    DEFAULT_PROGRESSION_ID,
+  );
   const [energyArc, setEnergyArc] = useState(false);
   const [trailArrivals, setTrailArrivals] = useState(false);
   const [navigationSounds, setNavigationSounds] = useState(false);
@@ -297,8 +307,9 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   useEffect(() => {
     chordRotationRef.current = chordRotation;
     energyArcRef.current = energyArc;
-    engineRef.current?.setConfig({ chordRotation, energyArc });
-  }, [chordRotation, energyArc]);
+    progressionRef.current = progression;
+    engineRef.current?.setConfig({ chordRotation, energyArc, progression });
+  }, [chordRotation, energyArc, progression]);
 
   useEffect(() => {
     trailArrivalsRef.current = trailArrivals;
@@ -334,6 +345,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
       engine.setConfig({
         mode: modeRef.current,
         chordRotation: chordRotationRef.current,
+        progression: progressionRef.current,
         energyArc: energyArcRef.current,
         trailArrivals: trailArrivalsRef.current,
         navigationSounds: navigationSoundsRef.current,
@@ -680,6 +692,39 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
           marginBottom: "12px",
         }}
       >
+        <span style={labelStyle}>progression</span>
+        <select
+          value={progression}
+          onChange={(e) => setProgression(e.target.value as ProgressionId)}
+          style={{
+            ...buttonStyle,
+            // Native select arrow, so the control reads as a picker rather
+            // than as another one of the toggle buttons beside it.
+            appearance: "auto",
+          }}
+        >
+          {PROGRESSION_IDS.map((id) => (
+            <option key={id} value={id}>
+              {PROGRESSIONS[id].label} — {PROGRESSIONS[id].description}
+            </option>
+          ))}
+        </select>
+        <span style={labelStyle}>
+          {chordRotation
+            ? PROGRESSIONS[progression].description
+            : "turn chord rotation on to hear it cycle"}
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginBottom: "12px",
+        }}
+      >
         <span style={labelStyle}>crossings</span>
         {(["off", "dissonance", "merge"] as const).map((flavor) => (
           <button
@@ -809,7 +854,10 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
       </div>
       <div style={labelStyle}>
         chord: {readout.chord}
-        {chordRotation ? "" : " (fixed)"} | energy:{" "}
+        {chordRotation
+          ? ` (${PROGRESSIONS[progression].label})`
+          : " (fixed)"}{" "}
+        | energy:{" "}
         {energyArc ? readout.energy.toFixed(3) : "off"}
       </div>
       {trailVoices && readout.homeTones.length > 0 && (

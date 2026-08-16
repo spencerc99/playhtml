@@ -29,8 +29,12 @@ import {
   DETUNE_SALT,
   VIBRATO_DEPTH_SALT,
   VIBRATO_RATE_SALT,
-  CHORD_PROGRESSION,
   CHORD_DWELL_MS,
+  Chord,
+  DEFAULT_PROGRESSION_ID,
+  Progression,
+  progressionById,
+  ProgressionId,
   D_MINOR_PENTATONIC,
 } from "./scales";
 import { parseColorToHsl } from "../utils/eventUtils";
@@ -140,6 +144,11 @@ export interface SoundConfig {
   spotlight: boolean;
   /** Rotate the harmonic root through a slow chord progression. */
   chordRotation: boolean;
+  /**
+   * Which named rotation `chordRotation` cycles. Only takes effect while
+   * rotation is on; with it off the scene holds the default's first chord.
+   */
+  progression: ProgressionId;
   /** Let accumulated scene motion swell and relax the whole mix. */
   energyArc: boolean;
   /** Soft two-note figures as trails enter and leave the scene. */
@@ -169,6 +178,7 @@ const DEFAULT_CONFIG: SoundConfig = {
   choralTimbre: false,
   spotlight: false,
   chordRotation: false,
+  progression: DEFAULT_PROGRESSION_ID,
   energyArc: false,
   trailArrivals: false,
   navigationSounds: false,
@@ -845,8 +855,17 @@ export class SoundEngine {
     const prevChord = this.config.chordVoicing;
     const prevMode = this.config.mode;
     const prevTrailVoices = this.config.trailVoices;
+    const prevProgression = this.config.progression;
     const { crossingDissonance, ...rest } = config;
     Object.assign(this.config, rest);
+
+    // A different rotation is a different set of chords, so the index into the
+    // old one means nothing. Starting from the top also means switching
+    // progressions always begins on that rotation's home chord.
+    if (this.config.progression !== prevProgression) {
+      this.chordIndex = 0;
+      this.chordStartedMs = this.lastTickMs;
+    }
 
     // Callers predating the three-way flavor pass a boolean. An explicit
     // `crossings` always wins, so a caller can send both during a migration.
@@ -2116,7 +2135,10 @@ export class SoundEngine {
       return;
     }
 
-    let dwell = CHORD_DWELL_MS;
+    const progression = this.currentProgression();
+    // Progressions with fewer chords hold each one longer, so a two-chord
+    // rotation is weather rather than a fast alternation.
+    let dwell = CHORD_DWELL_MS * progression.dwellScale;
     if (this.config.energyArc) {
       const { dwellAtLowEnergy, dwellAtHighEnergy } = ENERGY_TUNING;
       dwell *=
@@ -2124,15 +2146,26 @@ export class SoundEngine {
     }
 
     if (elapsedMs - this.chordStartedMs >= dwell) {
-      this.chordIndex = (this.chordIndex + 1) % CHORD_PROGRESSION.length;
+      this.chordIndex = (this.chordIndex + 1) % progression.chords.length;
       this.chordStartedMs = elapsedMs;
     }
+  }
+
+  /** The rotation currently selected. */
+  private currentProgression(): Progression {
+    return progressionById(this.config.progression);
+  }
+
+  /** The chord in force this frame. */
+  private currentChord(): Chord {
+    const chords = this.currentProgression().chords;
+    return chords[this.chordIndex % chords.length];
   }
 
   /** The pitch palette for this frame — the base scale unless rotating. */
   private currentScale(): number[] | undefined {
     if (!this.config.chordRotation) return undefined;
-    return scaleForChord(CHORD_PROGRESSION[this.chordIndex]);
+    return scaleForChord(this.currentChord());
   }
 
   /**
@@ -2143,14 +2176,17 @@ export class SoundEngine {
    */
   private currentBellScale(): number[] {
     if (!this.config.chordRotation) return FIXED_BELL_SCALE;
-    return bellScaleForChord(CHORD_PROGRESSION[this.chordIndex]);
+    return bellScaleForChord(this.currentChord());
   }
 
   /** Name of the chord currently in force (diagnostics). */
   getCurrentChordName(): string {
-    return this.config.chordRotation
-      ? CHORD_PROGRESSION[this.chordIndex].name
-      : "Dm";
+    return this.config.chordRotation ? this.currentChord().name : "Dm";
+  }
+
+  /** The rotation currently selected (diagnostics, and the pad's readout). */
+  getProgressionId(): ProgressionId {
+    return this.config.progression;
   }
 
   /** Current 0-1 scene energy (diagnostics). */
