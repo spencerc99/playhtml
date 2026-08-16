@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SoundEngine, SoundMode } from "../shared/sound/SoundEngine";
-import { TrailSoundFrame } from "../shared/sound/types";
+import { AuditionAccent, TrailSoundFrame } from "../shared/sound/types";
 
 const PAD_HEIGHT = 300;
 /** Trail points kept per agent for the on-canvas ribbon. */
@@ -166,6 +166,38 @@ const buttonActiveStyle: React.CSSProperties = {
   border: "1px solid #3d3833",
 };
 
+const AUDITION_CARDS: Array<{
+  accent: AuditionAccent;
+  label: string;
+  description: string;
+}> = [
+  {
+    accent: "trailArrival",
+    label: "trail arrival",
+    description: "Rising two-note figure as a trail enters the scene.",
+  },
+  {
+    accent: "trailDeparture",
+    label: "trail departure",
+    description: "The same figure falling, as a trail leaves.",
+  },
+  {
+    accent: "navigation",
+    label: "navigation gong",
+    description: "One deep resonant note marking a page change.",
+  },
+  {
+    accent: "soloistFlourish",
+    label: "soloist flourish",
+    description: "A single bell from the soloist run, at mid velocity.",
+  },
+  {
+    accent: "soloistResolve",
+    label: "soloist resolve",
+    description: "The closing note as the spotlight leaves a trail.",
+  },
+];
+
 export const TrailPad = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SoundEngine | null>(null);
@@ -250,6 +282,16 @@ export const TrailPad = () => {
     }
     return engineRef.current;
   }, [volume]);
+
+  const handleAudition = useCallback(
+    async (accent: AuditionAccent) => {
+      // Auditioning is often the first thing pressed on a cold page, so the
+      // engine may not exist yet and its context may still be suspended.
+      const engine = await ensureEngine();
+      engine.audition(accent);
+    },
+    [ensureEngine],
+  );
 
   const frame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -512,15 +554,49 @@ export const TrailPad = () => {
         >
           navigation notes
         </button>
-        <button
-          onClick={() => engineRef.current?.triggerNavigation({})}
-          style={buttonStyle}
-        >
-          test navigation note
-        </button>
         <span style={labelStyle}>
           each composes with any mode above
         </span>
+      </div>
+
+      <div style={{ marginTop: "20px" }}>
+        <div style={{ ...labelStyle, marginBottom: "4px", color: "#3d3833" }}>
+          Accent Sounds
+        </div>
+        <div style={{ ...labelStyle, marginBottom: "10px" }}>
+          Hear each accent on its own, at the current chord. Does not require
+          the matching toggle above.
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
+            gap: "8px",
+          }}
+        >
+          {AUDITION_CARDS.map((card) => (
+            <div
+              key={card.accent}
+              style={{
+                border: "1px solid #e0dbd4",
+                background: "#faf7f2",
+                padding: "10px",
+              }}
+            >
+              <button
+                onClick={() => handleAudition(card.accent)}
+                style={{ ...buttonStyle, width: "100%" }}
+              >
+                {card.label}
+              </button>
+              <div
+                style={{ ...labelStyle, marginTop: "8px", lineHeight: 1.4 }}
+              >
+                {card.description}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div

@@ -6,6 +6,7 @@ import {
   ClickSoundEvent,
   InstrumentConfig,
   NavigationSoundEvent,
+  AuditionAccent,
 } from "./types";
 import {
   directionToPitch,
@@ -158,19 +159,27 @@ const ARRIVAL_TUNING = {
  * far below the click bells so a page change reads as structural.
  */
 const NAVIGATION_TUNING = {
-  /** Octave multiplier on the chord root, placing the note in D2-D3. */
-  registerMultiplier: 0.5,
+  /**
+   * Octave multiplier on the chord root, placing the note at the root itself
+   * (D3). An octave lower put the fundamental near 73Hz, under the point where
+   * laptop speakers reproduce anything, so the note was inaudible outside
+   * headphones. D3 still sits well below the click bells.
+   */
+  registerMultiplier: 1,
   /** Detune of the two supporting partials, in cents either side. */
   detuneCents: 7,
   /** Level of the detuned partials relative to the fundamental. */
   partialGain: 0.35,
-  /** Level of the octave-up shimmer that gives the strike its edge. */
-  octaveGain: 0.12,
-  peakGain: 0.14,
+  /**
+   * Level of the octave-up shimmer that gives the strike its edge. Carries the
+   * note on speakers that roll off the fundamental.
+   */
+  octaveGain: 0.3,
+  peakGain: 0.32,
   attackSeconds: 0.008,
   decaySeconds: 3.5,
-  /** Lowpass cutoff, so the note is felt more than heard (Hz). */
-  filterHz: 900,
+  /** Lowpass cutoff, high enough to pass the octave partial's harmonics. */
+  filterHz: 1800,
   /** Minimum gap between navigation notes; extras are dropped. */
   minIntervalMs: 1500,
 };
@@ -1741,14 +1750,19 @@ export class SoundEngine {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
     if (!this.config.navigationSounds) return;
 
-    const now = this.lastTickMs;
-    if (now - this.lastNavigationNoteMs < NAVIGATION_TUNING.minIntervalMs) {
-      return;
-    }
-    this.lastNavigationNoteMs = now;
-
     const ctx = this.ctx;
     const startTime = ctx.currentTime;
+
+    // Rate-limit against the audio clock rather than the render tick. The
+    // navigation views draw no trails, so tick() never runs there and
+    // lastTickMs would stay frozen at 0 — every note after the first would
+    // measure a zero-length gap and be dropped. ctx.currentTime always
+    // advances, whichever view is on screen.
+    const nowMs = startTime * 1000;
+    if (nowMs - this.lastNavigationNoteMs < NAVIGATION_TUNING.minIntervalMs) {
+      return;
+    }
+    this.lastNavigationNoteMs = nowMs;
     const {
       registerMultiplier,
       detuneCents,
@@ -1825,6 +1839,73 @@ export class SoundEngine {
         /* already disconnected */
       }
     };
+  }
+
+  /**
+   * Play one accent in isolation, on demand, at the current chord.
+   *
+   * These route straight to the same private synthesis the live features call,
+   * bypassing only the gating that makes sense for a scene — the enable
+   * toggles, the rate limiters, the arrival debounce. Auditioning a sound is
+   * an explicit request for exactly one note, so nothing should swallow it.
+   */
+  audition(accent: AuditionAccent): void {
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+
+    const centre = this.canvasWidth / 2;
+    switch (accent) {
+      case "trailArrival":
+        this.triggerArrivalFigure(centre, true);
+        return;
+      case "trailDeparture":
+        this.triggerArrivalFigure(centre, false);
+        return;
+      case "navigation": {
+        // The navigation note is the one accent whose production trigger is
+        // public and rate-limited. Clear the limiter so repeated presses of
+        // the audition button each sound.
+        this.lastNavigationNoteMs = Number.NEGATIVE_INFINITY;
+        const wasEnabled = this.config.navigationSounds;
+        this.config.navigationSounds = true;
+        this.triggerNavigation({ x: centre });
+        this.config.navigationSounds = wasEnabled;
+        return;
+      }
+      case "soloistFlourish": {
+        // A representative mid-velocity note: the same palette walk and
+        // quantized octave selection the soloist uses, at half the velocity
+        // that reaches the top register.
+        const palette = this.flourishPalette();
+        const normalized = 0.5;
+        const {
+          registerMinMultiplier: registerMin,
+          registerMaxMultiplier: registerMax,
+        } = FLOURISH_TUNING;
+        const octaves = Math.round(
+          Math.log2(registerMin) +
+            normalized * (Math.log2(registerMax) - Math.log2(registerMin)),
+        );
+        const decay =
+          FLOURISH_TUNING.decayMinSeconds +
+          normalized *
+            (FLOURISH_TUNING.decayMaxSeconds - FLOURISH_TUNING.decayMinSeconds);
+        this.triggerFlourishNote(
+          palette[0] * Math.pow(2, octaves),
+          centre,
+          FLOURISH_TUNING.noteGain,
+          decay,
+        );
+        return;
+      }
+      case "soloistResolve":
+        this.triggerFlourishNote(
+          this.flourishPalette()[0] * 2,
+          centre,
+          FLOURISH_TUNING.noteGain * FLOURISH_TUNING.resolveGainScale,
+          FLOURISH_TUNING.resolveDecaySeconds,
+        );
+        return;
+    }
   }
 
   /**

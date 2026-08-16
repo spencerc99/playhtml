@@ -1107,23 +1107,82 @@ describe("SoundEngine cursor instruments", () => {
     let before = context.oscillators.length;
     engine.triggerNavigation({ x: 500 });
 
-    // Fundamental plus two detuned partials plus an octave shimmer, on D3
-    // dropped an octave to D2.
+    // Fundamental plus two detuned partials plus an octave shimmer, on the
+    // chord root D3 with the octave above it.
     const rung = context.oscillators.slice(before);
     expect(rung).toHaveLength(4);
-    expect(rung[0].frequency.value).toBeCloseTo(146.83 / 2, 2);
+    expect(rung[0].frequency.value).toBeCloseTo(146.83, 2);
     expect(rung[1].detune.value).toBeLessThan(0);
     expect(rung[2].detune.value).toBeGreaterThan(0);
-    expect(rung[3].frequency.value).toBeCloseTo(146.83, 2);
+    expect(rung[3].frequency.value).toBeCloseTo(146.83 * 2, 2);
 
     // A second navigation inside the rate limit is dropped entirely.
     before = context.oscillators.length;
-    engine.tick(500, []);
+    context.currentTime += 0.5;
     engine.triggerNavigation({ x: 500 });
     expect(context.oscillators).toHaveLength(before);
 
     // Past the limit it sounds again.
-    engine.tick(2000, []);
+    context.currentTime += 2;
+    engine.triggerNavigation({ x: 500 });
+    expect(context.oscillators.length).toBeGreaterThan(before);
+  });
+
+  it("auditions every accent with its toggle off and without rate limiting", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const accents = [
+      "trailArrival",
+      "trailDeparture",
+      "navigation",
+      "soloistFlourish",
+      "soloistResolve",
+    ] as const;
+
+    for (const accent of accents) {
+      const before = context.oscillators.length;
+      engine.audition(accent);
+      expect(
+        context.oscillators.length,
+        `${accent} should sound while its toggle is off`,
+      ).toBeGreaterThan(before);
+    }
+
+    // Auditioning the navigation gong twice in a row must sound twice — the
+    // rate limiter guards scenes, not explicit button presses.
+    const beforeRepeat = context.oscillators.length;
+    engine.audition("navigation");
+    expect(context.oscillators.length).toBeGreaterThan(beforeRepeat);
+
+    // Auditioning must not leave the instrument switched on behind it.
+    const config = engine as unknown as {
+      config: { navigationSounds?: boolean };
+    };
+    expect(config.config.navigationSounds).toBeFalsy();
+  });
+
+  it("keeps ringing navigation notes in views that never call tick", async () => {
+    // The navigation views draw no trails, so tick() never runs there. The
+    // rate limiter must read the audio clock rather than the render tick, or
+    // every note after the first measures a zero-length gap and is dropped.
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ navigationSounds: true });
+
+    let before = context.oscillators.length;
+    engine.triggerNavigation({ x: 500 });
+    expect(context.oscillators.length).toBeGreaterThan(before);
+
+    before = context.oscillators.length;
+    context.currentTime += 2;
+    engine.triggerNavigation({ x: 500 });
+    expect(context.oscillators.length).toBeGreaterThan(before);
+
+    before = context.oscillators.length;
+    context.currentTime += 2;
     engine.triggerNavigation({ x: 500 });
     expect(context.oscillators.length).toBeGreaterThan(before);
   });

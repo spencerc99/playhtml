@@ -34,6 +34,17 @@ export interface NavigationSoundEvent {
   x?: number;
 }
 
+/**
+ * One accent sound playable in isolation, on demand, for auditioning. Each
+ * maps to the same synthesis the corresponding live feature uses.
+ */
+export type AuditionAccent =
+  | "trailArrival"
+  | "trailDeparture"
+  | "navigation"
+  | "soloistFlourish"
+  | "soloistResolve";
+
 /** Configuration for an instrument voice */
 export interface InstrumentConfig {
   /** Web Audio oscillator type */

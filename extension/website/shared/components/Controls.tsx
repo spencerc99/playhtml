@@ -2393,6 +2393,20 @@ export const Controls: React.FC<ControlsProps> = memo(
               />
               Navigation Notes (deep, on page changes)
             </label>
+            {!!settings.soundNavigationSounds &&
+              (settings.navigationViewMode ?? "timeline") !== "radial" && (
+                <div
+                  style={{
+                    fontSize: "11px",
+                    opacity: 0.75,
+                    marginLeft: "24px",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Only sounds in the radial navigation view — the timeline and
+                  graph views don't animate one page change at a time.
+                </div>
+              )}
           </div>
           <div className="control-group">
             <label htmlFor="sound-bass-pedal">
