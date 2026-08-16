@@ -2348,11 +2348,11 @@ export const Controls: React.FC<ControlsProps> = memo(
               <input
                 id="sound-crossing-dissonance"
                 type="checkbox"
-                checked={settings.soundCrossingDissonance}
+                checked={settings.soundCrossings === "dissonance"}
                 onChange={(e) =>
                   setSettings((s: any) => ({
                     ...s,
-                    soundCrossingDissonance: e.target.checked,
+                    soundCrossings: e.target.checked ? "dissonance" : "off",
                   }))
                 }
                 style={{ marginRight: "8px" }}

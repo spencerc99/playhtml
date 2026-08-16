@@ -16,6 +16,13 @@ import {
   positionToPan,
   scaleForChord,
   bellScaleForChord,
+  hashIdentity,
+  hashUnit,
+  homeToneForHash,
+  ATTACK_SALT,
+  DETUNE_SALT,
+  VIBRATO_DEPTH_SALT,
+  VIBRATO_RATE_SALT,
   CHORD_PROGRESSION,
   CHORD_DWELL_MS,
   D_MINOR_PENTATONIC,
@@ -78,12 +85,26 @@ const MIN_POLYPHONY_GAIN_SCALE = 0.35;
  */
 export type SoundMode = "sustained" | "spotlight" | "notes";
 
+/**
+ * What happens when one trail crosses another's path.
+ * "dissonance" sounds a tense interval at the crossing point; "merge" sounds
+ * the two trails' home chord tones as a consonant dyad and briefly pulls their
+ * timbres together, so a crossing reads as recognition rather than friction.
+ */
+export type CrossingFlavor = "off" | "dissonance" | "merge";
+
 /** Configurable sound modes */
 export interface SoundConfig {
   mode: SoundMode;
   chordVoicing: boolean;
   cursorInstruments: boolean;
-  crossingDissonance: boolean;
+  crossings: CrossingFlavor;
+  /**
+   * Give each trail a stable sonic fingerprint — a home chord tone it biases
+   * toward, plus its own detune, vibrato and attack. Identity, not novelty:
+   * the crowd should still voice one chord.
+   */
+  trailVoices: boolean;
   /**
    * Relative-velocity spotlight over the sustained voices: the fastest clear
    * outlier is lifted and brightened while the rest duck behind it.
@@ -101,17 +122,71 @@ export interface SoundConfig {
   bassPedal: boolean;
 }
 
+/**
+ * What `setConfig` accepts. `crossingDissonance` is the boolean this setting
+ * used to be, kept so existing callers keep working; it maps onto `crossings`.
+ */
+export type SoundConfigInput = Partial<SoundConfig> & {
+  /** @deprecated Pass `crossings: "dissonance" | "off"` instead. */
+  crossingDissonance?: boolean;
+};
+
 const DEFAULT_CONFIG: SoundConfig = {
   mode: "sustained",
   chordVoicing: false,
   cursorInstruments: false,
-  crossingDissonance: false,
+  crossings: "off",
+  trailVoices: false,
   spotlight: false,
   chordRotation: false,
   energyArc: false,
   trailArrivals: false,
   navigationSounds: false,
   bassPedal: false,
+};
+
+/**
+ * Per-trail fingerprint tuning. Every value here is deliberately small: the
+ * point is that a listener can tell two trails apart when they are side by
+ * side, not that any one trail sounds like a different instrument.
+ */
+const TRAIL_VOICE_TUNING = {
+  /**
+   * How often a direction-derived note change is overruled in favour of the
+   * trail's home tone. High enough that a crowd audibly settles onto the
+   * chord, low enough that motion still drives the melody.
+   */
+  homeToneBias: 0.4,
+  /** Per-trail pitch offset, in cents either side of true. */
+  maxDetuneCents: 8,
+  /** Personal vibrato: a slow LFO on the voice's frequency. */
+  vibratoMinRateHz: 3,
+  vibratoMaxRateHz: 6,
+  /** Vibrato depth in cents. Under 4 reads as warmth rather than as wobble. */
+  maxVibratoDepthCents: 4,
+  /**
+   * Multiplier range on the instrument's attack, so some trails speak a touch
+   * more promptly than others.
+   */
+  minAttackScale: 0.7,
+  maxAttackScale: 1.4,
+};
+
+/**
+ * Crossing-merge tuning. Two trails meeting sound their own home tones
+ * together and briefly pull toward each other before drifting back apart.
+ */
+const CROSSING_MERGE_TUNING = {
+  /** Peak gain of the dyad, matched to the dissonance it replaces. */
+  dyadGain: 0.06,
+  attackSeconds: 0.02,
+  decaySeconds: 1.5,
+  /** Level of the 3x partial that gives the dyad its bell body. */
+  partialGain: 0.25,
+  /** How long the two sustained voices stay pulled together (ms). */
+  pullDurationMs: 1500,
+  /** Register multiplier placing the dyad above the sustained bed. */
+  registerMultiplier: 2,
 };
 
 /**
@@ -356,6 +431,28 @@ const FIXED_BELL_SCALE = [
 /** Cursor types that use repeating pluck instead of sustained tone */
 const PERCUSSIVE_CURSOR_TYPES = new Set(["text"]);
 
+/**
+ * A trail's stable sonic identity, derived once from its identity key. Every
+ * field is a pure function of the hash, so the same participant sounds the
+ * same across reloads, and re-deriving after a chord change moves only the
+ * home tone.
+ */
+interface TrailFingerprint {
+  /** The hash itself, kept so the home tone can be re-derived on rotation. */
+  hash: number;
+  detuneCents: number;
+  vibratoRateHz: number;
+  vibratoDepthCents: number;
+  /** Multiplier on the instrument's own attack time. */
+  attackScale: number;
+}
+
+/** The LFO pair giving one voice its personal vibrato. */
+interface VibratoNodes {
+  oscillator: OscillatorNode;
+  depth: GainNode;
+}
+
 /** Per-trail voice state */
 interface Voice {
   oscillator: OscillatorNode | null;
@@ -376,6 +473,10 @@ interface Voice {
   lastControlTimeMs: number;
   /** True while spotlight brightness owns this voice's filter cutoff. */
   spotlightBrightened: boolean;
+  /** Personal vibrato LFO, present only while trail voices are on. */
+  vibrato: VibratoNodes | null;
+  /** Detune in cents currently applied, so a merge can pull it and restore it. */
+  appliedDetuneCents: number;
   active: boolean;
 }
 
@@ -427,6 +528,15 @@ export class SoundEngine {
   private config: SoundConfig = { ...DEFAULT_CONFIG };
   /** Tracks recent crossing events to prevent rapid re-triggering */
   private crossingCooldowns: Map<string, number> = new Map();
+  /** Per-trail sonic fingerprints, derived once from each trail's identity. */
+  private fingerprints: Map<number, TrailFingerprint> = new Map();
+  /** Identity key each fingerprint was derived from, to detect a re-key. */
+  private fingerprintKeys: Map<number, string> = new Map();
+  /**
+   * Trails currently pulled toward unison by a merge, and the tick time the
+   * pull expires. While pulled, a voice's detune and vibrato are overridden.
+   */
+  private mergePullsUntilMs: Map<number, number> = new Map();
   /** Discrete-note path, used only while config.mode is "notes". */
   private notesEngine: NotesEngine = new NotesEngine();
   /**
@@ -559,10 +669,26 @@ export class SoundEngine {
   }
 
   /** Update sound configuration (mode, chord voicing, instruments, crossings) */
-  setConfig(config: Partial<SoundConfig>): void {
+  setConfig(config: SoundConfigInput): void {
     const prevChord = this.config.chordVoicing;
     const prevMode = this.config.mode;
-    Object.assign(this.config, config);
+    const prevTrailVoices = this.config.trailVoices;
+    const { crossingDissonance, ...rest } = config;
+    Object.assign(this.config, rest);
+
+    // Callers predating the three-way flavor pass a boolean. An explicit
+    // `crossings` always wins, so a caller can send both during a migration.
+    if (crossingDissonance !== undefined && config.crossings === undefined) {
+      this.config.crossings = crossingDissonance ? "dissonance" : "off";
+    }
+
+    // Path history and cooldowns only mean anything while crossings are on;
+    // leaving them behind would fire a stale crossing when it is switched back.
+    if (this.config.crossings === "off") {
+      this.trailPaths.clear();
+      this.crossingCooldowns.clear();
+      this.mergePullsUntilMs.clear();
+    }
 
     // "spotlight" is the sustained engine with the soloist treatment on, so
     // the mode drives the flag unless a caller sets `spotlight` explicitly.
@@ -589,6 +715,23 @@ export class SoundEngine {
     if (config.trailArrivals === false) {
       this.arrivalTimesMs.clear();
       this.recentArrivalsMs.length = 0;
+    }
+
+    // Fingerprints are audible on the voices already sounding, so a toggle has
+    // to reach them now rather than waiting for each voice to be recreated.
+    if (prevTrailVoices !== this.config.trailVoices) {
+      this.mergePullsUntilMs.clear();
+      for (const [trailIndex, voice] of this.voices) {
+        if (this.config.trailVoices) {
+          this.applyFingerprintToVoice(voice, this.fingerprints.get(trailIndex));
+        } else {
+          this.clearFingerprintFromVoice(voice);
+        }
+      }
+      if (!this.config.trailVoices) {
+        this.fingerprints.clear();
+        this.fingerprintKeys.clear();
+      }
     }
 
     // Switching modes mid-session must not leave the other path sounding.
@@ -700,7 +843,7 @@ export class SoundEngine {
       this.prevSampleTimesMs.set(frame.trailIndex, sampleTimeMs);
 
       // Accumulate path history for crossing detection (sample every few pixels)
-      if (this.config.crossingDissonance) {
+      if (this.config.crossings !== "off") {
         let path = this.trailPaths.get(frame.trailIndex);
         if (!path) {
           path = [];
@@ -728,7 +871,16 @@ export class SoundEngine {
       // Only newly-selected pitches use the current chord, so voices already
       // sounding drift into the new harmony at their own next note change
       // rather than all retuning together on the chord boundary.
-      const frequency = directionToPitch(direction, scale);
+      const directionPitch = directionToPitch(direction, scale);
+      // With trail voices on, a share of note changes land on the trail's own
+      // chord tone instead, so the crowd collectively voices the chord while
+      // motion still steers the line.
+      const fingerprint = this.config.trailVoices
+        ? this.fingerprintFor(frame)
+        : null;
+      const frequency = fingerprint
+        ? this.applyHomeToneBias(directionPitch, fingerprint)
+        : directionPitch;
       const pan = positionToPan(frame.x, this.canvasWidth);
 
       // When cursor instruments are off, use the default instrument for all
@@ -741,6 +893,23 @@ export class SoundEngine {
       if (!voice || !voice.oscillator) {
         voice = this.createVoice(instrument);
         this.voices.set(frame.trailIndex, voice);
+      }
+
+      // Also covers the toggle being switched on mid-scene: the fingerprint is
+      // derived here, so a voice already sounding picks up its identity on the
+      // very next frame rather than waiting to be recreated.
+      if (fingerprint && !voice.vibrato) {
+        this.applyFingerprintToVoice(voice, fingerprint);
+      }
+
+      // A merge holds this voice at unison for its duration; once it lapses the
+      // trail drifts back to its own detune.
+      if (fingerprint) {
+        const pullUntil = this.mergePullsUntilMs.get(frame.trailIndex);
+        if (pullUntil !== undefined && elapsedMs >= pullUntil) {
+          this.mergePullsUntilMs.delete(frame.trailIndex);
+          this.releaseMergePull(voice, fingerprint);
+        }
       }
 
       // Update instrument if cursor type changed and cursor instruments mode is on
@@ -813,8 +982,8 @@ export class SoundEngine {
       voice.active = true;
     }
 
-    // Detect trail crossings and trigger dissonance
-    if (this.config.crossingDissonance && activeTrails.length >= 2) {
+    // Detect trail crossings and sound them in the configured flavor
+    if (this.config.crossings !== "off" && activeTrails.length >= 2) {
       this.detectCrossings(elapsedMs, activeTrails);
     }
   }
@@ -852,31 +1021,44 @@ export class SoundEngine {
         if (closestDist >= CROSSING_DISTANCE_THRESHOLD) continue;
 
         this.crossingCooldowns.set(pairKey, elapsedMs);
-        this.triggerCrossingDissonance(
-          frame,
-          { trailIndex: otherIdx, x: frame.x, y: frame.y, prevX: frame.x, prevY: frame.y, cursorType: undefined, progress: 0, color: "", isNewlyActive: false },
-          closestDist,
-        );
+        // The crossing happens where the moving cursor is, so that point is
+        // both trails' position for the purposes of placing the sound.
+        if (this.config.crossings === "merge") {
+          this.triggerCrossingMerge(
+            elapsedMs,
+            frame.trailIndex,
+            otherIdx,
+            frame.x,
+          );
+        } else {
+          this.triggerCrossingDissonance(
+            frame.trailIndex,
+            otherIdx,
+            frame.x,
+            frame.y,
+            closestDist,
+          );
+        }
       }
     }
   }
 
   /** Trigger a brief dissonant tone at the crossing point */
   private triggerCrossingDissonance(
-    a: TrailSoundFrame,
-    b: TrailSoundFrame,
+    trailIndexA: number,
+    trailIndexB: number,
+    x: number,
+    y: number,
     distance: number,
   ): void {
     if (!this.ctx || !this.masterGain) return;
 
     const now = this.ctx.currentTime;
-    const midX = (a.x + b.x) / 2;
-    const midY = (a.y + b.y) / 2;
 
     // Dissonant intervals: minor second (16/15) and tritone (Math.sqrt(2))
     // Pick based on which trails are crossing
-    const baseFreq = 220 + (midY / (window.innerHeight || 800)) * 440;
-    const dissonantRatio = (a.trailIndex + b.trailIndex) % 2 === 0
+    const baseFreq = 220 + (y / (window.innerHeight || 800)) * 440;
+    const dissonantRatio = (trailIndexA + trailIndexB) % 2 === 0
       ? 16 / 15  // minor second — tense, close
       : Math.SQRT2; // tritone — unstable, eerie
 
@@ -896,7 +1078,7 @@ export class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
 
     const pan = this.ctx.createStereoPanner();
-    pan.pan.value = positionToPan(midX, this.canvasWidth);
+    pan.pan.value = positionToPan(x, this.canvasWidth);
 
     osc1.connect(gain);
     osc2.connect(gain);
@@ -907,6 +1089,112 @@ export class SoundEngine {
     osc2.start(now);
     osc1.stop(now + 1.6);
     osc2.stop(now + 1.6);
+  }
+
+  /**
+   * Sound two trails meeting as recognition rather than friction: their two
+   * home chord tones ring together as a consonant dyad, and for the length of
+   * that ring their sustained voices are pulled to unison so the pair briefly
+   * sounds like one voice before drifting apart again.
+   */
+  private triggerCrossingMerge(
+    elapsedMs: number,
+    trailIndexA: number,
+    trailIndexB: number,
+    x: number,
+  ): void {
+    if (!this.ctx || !this.masterGain) return;
+
+    const [lower, upper] = this.mergeDyadPitches(trailIndexA, trailIndexB);
+    const { dyadGain, attackSeconds, decaySeconds, partialGain } =
+      CROSSING_MERGE_TUNING;
+
+    for (const pitch of [lower, upper]) {
+      this.triggerFlourishNote(pitch, x, dyadGain, decaySeconds, {
+        attackSeconds,
+        partialGain,
+      });
+    }
+
+    // Without fingerprints there is nothing personal to pull together, so the
+    // merge is the dyad alone.
+    if (!this.config.trailVoices) return;
+
+    const pullUntil = elapsedMs + CROSSING_MERGE_TUNING.pullDurationMs;
+    for (const trailIndex of [trailIndexA, trailIndexB]) {
+      const voice = this.voices.get(trailIndex);
+      if (!voice) continue;
+      this.mergePullsUntilMs.set(trailIndex, pullUntil);
+      this.applyMergePull(voice);
+    }
+  }
+
+  /**
+   * The two pitches a merge rings. With fingerprints on these are the trails'
+   * own home tones, so a listener hears exactly the two voices that met; two
+   * trails sharing a home tone (or fingerprints being off) fall back to root
+   * and fifth of the current chord so the dyad is never a bare unison.
+   */
+  private mergeDyadPitches(
+    trailIndexA: number,
+    trailIndexB: number,
+  ): [number, number] {
+    const register = CROSSING_MERGE_TUNING.registerMultiplier;
+    const homeA = this.homeToneFor(trailIndexA);
+    const homeB = this.homeToneFor(trailIndexB);
+
+    if (this.config.trailVoices && homeA !== null && homeB !== null) {
+      if (Math.abs(homeA - homeB) > 0.01) {
+        const lower = Math.min(homeA, homeB) * register;
+        const upper = Math.max(homeA, homeB) * register;
+        return [lower, upper];
+      }
+      return [homeA * register, homeA * register * 1.5];
+    }
+
+    const root = this.currentRoot() * register;
+    return [root, root * 1.5];
+  }
+
+  /** Hold a voice at unison — no detune, no vibrato — for a merge. */
+  private applyMergePull(voice: Voice): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const glideSeconds = CROSSING_MERGE_TUNING.attackSeconds * 10;
+    voice.appliedDetuneCents = 0;
+    voice.oscillator?.detune.linearRampToValueAtTime(0, now + glideSeconds);
+    voice.fifthOscillator?.detune.linearRampToValueAtTime(0, now + glideSeconds);
+    if (voice.vibrato) {
+      // Depth to zero rather than stopping the LFO: when the pull lapses both
+      // voices resume from the same phase, which is what makes them read as
+      // having been briefly aligned.
+      voice.vibrato.depth.gain.linearRampToValueAtTime(0, now + glideSeconds);
+    }
+  }
+
+  /** Let a merged voice drift back to its own fingerprint. */
+  private releaseMergePull(
+    voice: Voice,
+    fingerprint: TrailFingerprint,
+  ): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    // Slower than the pull onto unison: coming together is an event, drifting
+    // apart is a settling.
+    const driftSeconds = 1.2;
+    voice.appliedDetuneCents = fingerprint.detuneCents;
+    voice.oscillator?.detune.linearRampToValueAtTime(
+      fingerprint.detuneCents,
+      now + driftSeconds,
+    );
+    voice.fifthOscillator?.detune.linearRampToValueAtTime(
+      fingerprint.detuneCents,
+      now + driftSeconds,
+    );
+    voice.vibrato?.depth.gain.linearRampToValueAtTime(
+      fingerprint.vibratoDepthCents,
+      now + driftSeconds,
+    );
   }
 
   triggerClick(click: ClickSoundEvent): void {
@@ -1038,8 +1326,150 @@ export class SoundEngine {
       lastPluckMs: 0,
       lastControlTimeMs: Number.NEGATIVE_INFINITY,
       spotlightBrightened: false,
+      vibrato: null,
+      appliedDetuneCents: 0,
       active: false,
     };
+  }
+
+  /**
+   * The identity a trail's fingerprint is hashed from. `identityKey` is a
+   * participant-scoped id and is by far the most stable thing available — trail
+   * indices are positions in a re-derived array and shuffle as the data window
+   * slides. Colour plus index is the fallback: colour alone collides across
+   * participants sharing a palette entry, and index alone is unstable.
+   */
+  private identityKeyFor(frame: TrailSoundFrame): string {
+    return frame.identityKey ?? `${frame.color}#${frame.trailIndex}`;
+  }
+
+  /**
+   * This trail's fingerprint, derived on first sight and re-derived if its
+   * identity key ever changes underneath the same index.
+   */
+  private fingerprintFor(frame: TrailSoundFrame): TrailFingerprint {
+    const key = this.identityKeyFor(frame);
+    const existing = this.fingerprints.get(frame.trailIndex);
+    if (existing && this.fingerprintKeys.get(frame.trailIndex) === key) {
+      return existing;
+    }
+
+    const hash = hashIdentity(key);
+    const {
+      maxDetuneCents,
+      vibratoMinRateHz,
+      vibratoMaxRateHz,
+      maxVibratoDepthCents,
+      minAttackScale,
+      maxAttackScale,
+    } = TRAIL_VOICE_TUNING;
+    const fingerprint: TrailFingerprint = {
+      hash,
+      detuneCents: (hashUnit(hash, DETUNE_SALT) * 2 - 1) * maxDetuneCents,
+      vibratoRateHz:
+        vibratoMinRateHz +
+        hashUnit(hash, VIBRATO_RATE_SALT) * (vibratoMaxRateHz - vibratoMinRateHz),
+      vibratoDepthCents:
+        hashUnit(hash, VIBRATO_DEPTH_SALT) * maxVibratoDepthCents,
+      attackScale:
+        minAttackScale +
+        hashUnit(hash, ATTACK_SALT) * (maxAttackScale - minAttackScale),
+    };
+    this.fingerprints.set(frame.trailIndex, fingerprint);
+    this.fingerprintKeys.set(frame.trailIndex, key);
+    return fingerprint;
+  }
+
+  /** The chord tone this trail calls home in the palette currently in force. */
+  private homeToneFor(trailIndex: number): number | null {
+    const fingerprint = this.fingerprints.get(trailIndex);
+    if (!fingerprint) return null;
+    return homeToneForHash(fingerprint.hash, this.flourishPalette());
+  }
+
+  /**
+   * Bias a direction-derived pitch toward the trail's home tone. The choice is
+   * deterministic in the pitch being replaced rather than random, so a trail
+   * held on one heading does not flicker between two notes.
+   */
+  private applyHomeToneBias(
+    frequency: number,
+    fingerprint: TrailFingerprint,
+  ): number {
+    const home = homeToneForHash(fingerprint.hash, this.flourishPalette());
+    const roll = hashUnit(fingerprint.hash ^ Math.round(frequency * 100), 7);
+    return roll < TRAIL_VOICE_TUNING.homeToneBias ? home : frequency;
+  }
+
+  /**
+   * Give a voice its fingerprint: a fixed detune and a personal vibrato LFO on
+   * the oscillator frequency. Passing no fingerprint strips both.
+   */
+  private applyFingerprintToVoice(
+    voice: Voice,
+    fingerprint: TrailFingerprint | undefined,
+  ): void {
+    if (!this.ctx || !voice.oscillator) return;
+    if (!fingerprint) {
+      this.clearFingerprintFromVoice(voice);
+      return;
+    }
+
+    this.setVoiceDetune(voice, fingerprint.detuneCents);
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    if (!voice.vibrato) {
+      const lfo = ctx.createOscillator();
+      lfo.type = "sine";
+      const depth = ctx.createGain();
+      // The LFO drives detune rather than frequency, so its depth is in cents
+      // and stays musically constant as the voice changes pitch.
+      lfo.connect(depth);
+      depth.connect(voice.oscillator.detune);
+      lfo.start(now);
+      voice.vibrato = { oscillator: lfo, depth };
+    }
+    voice.vibrato.oscillator.frequency.setValueAtTime(
+      fingerprint.vibratoRateHz,
+      now,
+    );
+    voice.vibrato.depth.gain.setValueAtTime(fingerprint.vibratoDepthCents, now);
+  }
+
+  /** Return a voice to the shared, unfingerprinted timbre. */
+  private clearFingerprintFromVoice(voice: Voice): void {
+    if (!this.ctx) return;
+    this.setVoiceDetune(voice, 0);
+    this.stopVibrato(voice);
+  }
+
+  /** Stop and detach a voice's vibrato LFO, if it has one. */
+  private stopVibrato(voice: Voice): void {
+    if (!voice.vibrato) return;
+    try {
+      voice.vibrato.oscillator.stop(
+        this.ctx ? this.ctx.currentTime + 0.02 : undefined,
+      );
+    } catch {
+      /* already stopped */
+    }
+    try {
+      voice.vibrato.oscillator.disconnect();
+      voice.vibrato.depth.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    voice.vibrato = null;
+  }
+
+  /** Set the fixed pitch offset on both of a voice's oscillators. */
+  private setVoiceDetune(voice: Voice, cents: number): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    voice.appliedDetuneCents = cents;
+    voice.oscillator?.detune.setValueAtTime(cents, now);
+    voice.fifthOscillator?.detune.setValueAtTime(cents, now);
   }
 
   /** Enable the fifth oscillator on an existing voice */
@@ -1117,6 +1547,23 @@ export class SoundEngine {
         );
         voice.fifthOscillator = fifth.oscillator;
         voice.fifthOscillatorLevel = fifth.level;
+      }
+
+      // The crossfade builds fresh oscillators, so the detune offset and the
+      // vibrato LFO's destination both belong to nodes that no longer exist.
+      // Re-attaching here is what keeps a trail's voice its own across a
+      // cursor-type change.
+      if (voice.appliedDetuneCents !== 0 || voice.vibrato) {
+        const now = this.ctx.currentTime;
+        voice.oscillator?.detune.setValueAtTime(voice.appliedDetuneCents, now);
+        voice.fifthOscillator?.detune.setValueAtTime(
+          voice.appliedDetuneCents,
+          now,
+        );
+        if (voice.vibrato && voice.oscillator) {
+          voice.vibrato.depth.disconnect();
+          voice.vibrato.depth.connect(voice.oscillator.detune);
+        }
       }
     }
   }
@@ -1224,6 +1671,9 @@ export class SoundEngine {
     this.prevPositions.delete(trailIndex);
     this.prevSampleTimesMs.delete(trailIndex);
     this.trailPaths.delete(trailIndex);
+    this.fingerprints.delete(trailIndex);
+    this.fingerprintKeys.delete(trailIndex);
+    this.mergePullsUntilMs.delete(trailIndex);
     this.spotlightGains.delete(trailIndex);
     this.spotlightVelocitySamples.delete(trailIndex);
     this.spotlightSmoothedVelocities.delete(trailIndex);
@@ -1356,6 +1806,15 @@ export class SoundEngine {
   /** Current 0-1 scene energy (diagnostics). */
   getEnergy(): number {
     return this.energy;
+  }
+
+  /**
+   * The chord tone a trail is currently biased toward, or null when it has no
+   * fingerprint (diagnostics, and how the TrailPad labels each trail).
+   */
+  getHomeTone(trailIndex: number): number | null {
+    if (!this.config.trailVoices) return null;
+    return this.homeToneFor(trailIndex);
   }
 
   /**
@@ -1905,7 +2364,113 @@ export class SoundEngine {
           FLOURISH_TUNING.resolveDecaySeconds,
         );
         return;
+      case "crossingDissonance":
+        // Mid-canvas, at the closest distance the detector accepts, so the
+        // audition is the loudest version of what a crossing actually sounds.
+        this.triggerCrossingDissonance(0, 1, centre, 0, 0);
+        return;
+      case "crossingMerge": {
+        // The live merge draws its two pitches from the crossing trails'
+        // fingerprints. Auditioning has no trails, so this sounds the fallback
+        // dyad — root and fifth of the current chord.
+        const { dyadGain, attackSeconds, decaySeconds, partialGain } =
+          CROSSING_MERGE_TUNING;
+        const root = this.currentRoot() * CROSSING_MERGE_TUNING.registerMultiplier;
+        for (const pitch of [root, root * 1.5]) {
+          this.triggerFlourishNote(pitch, centre, dyadGain, decaySeconds, {
+            attackSeconds,
+            partialGain,
+          });
+        }
+        return;
+      }
+      case "trailVoicePair":
+        this.auditionVoicePair();
+        return;
     }
+  }
+
+  /**
+   * Two example fingerprints side by side, so the difference a trail voice
+   * makes is audible without needing two real trails to cross the canvas. Each
+   * holds for a couple of seconds on its own home tone, with its own detune
+   * and vibrato, panned apart.
+   */
+  private auditionVoicePair(): void {
+    if (!this.ctx || !this.masterGain) return;
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const scale = this.flourishPalette();
+    const holdSeconds = 2;
+
+    // Two fixed keys chosen so their fingerprints differ audibly; the live
+    // engine hashes real participant ids the same way.
+    const keys = ["audition-voice-a", "audition-voice-b"];
+    keys.forEach((key, order) => {
+      const hash = hashIdentity(key);
+      const {
+        maxDetuneCents,
+        vibratoMinRateHz,
+        vibratoMaxRateHz,
+        maxVibratoDepthCents,
+      } = TRAIL_VOICE_TUNING;
+      const detuneCents =
+        (hashUnit(hash, DETUNE_SALT) * 2 - 1) * maxDetuneCents;
+      const vibratoRateHz =
+        vibratoMinRateHz +
+        hashUnit(hash, VIBRATO_RATE_SALT) *
+          (vibratoMaxRateHz - vibratoMinRateHz);
+      const vibratoDepthCents =
+        hashUnit(hash, VIBRATO_DEPTH_SALT) * maxVibratoDepthCents;
+
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = homeToneForHash(hash, scale) * 2;
+      osc.detune.value = detuneCents;
+
+      const lfo = ctx.createOscillator();
+      lfo.type = "sine";
+      lfo.frequency.value = vibratoRateHz;
+      const lfoDepth = ctx.createGain();
+      lfoDepth.gain.value = vibratoDepthCents;
+      lfo.connect(lfoDepth);
+      lfoDepth.connect(osc.detune);
+
+      // Sequential rather than simultaneous: the point is to compare them, and
+      // two sustained tones a few cents apart just sound like one beating tone.
+      const startAt = now + order * holdSeconds;
+      const stopAt = startAt + holdSeconds + 0.05;
+
+      const gain = ctx.createGain();
+      const attackSeconds = 0.08;
+      gain.gain.setValueAtTime(0, startAt);
+      gain.gain.linearRampToValueAtTime(0.1, startAt + attackSeconds);
+      gain.gain.setValueAtTime(0.1, startAt + holdSeconds - 0.3);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + holdSeconds);
+
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = order === 0 ? -0.5 : 0.5;
+
+      osc.connect(gain);
+      gain.connect(pan);
+      pan.connect(this.masterGain!);
+      osc.start(startAt);
+      lfo.start(startAt);
+      osc.stop(stopAt);
+      lfo.stop(stopAt);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          lfo.disconnect();
+          lfoDepth.disconnect();
+          gain.disconnect();
+          pan.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      };
+    });
   }
 
   /**
@@ -2243,6 +2808,7 @@ export class SoundEngine {
   }
 
   private disconnectVoice(voice: Voice): void {
+    this.stopVibrato(voice);
     voice.oscillatorLevel?.disconnect();
     voice.fifthOscillatorLevel?.disconnect();
     voice.fifthGainNode?.disconnect();
@@ -2334,6 +2900,7 @@ export class SoundEngine {
     this.arrivalTimesMs.clear();
     this.recentArrivalsMs.length = 0;
     for (const [, voice] of this.voices) {
+      this.stopVibrato(voice);
       if (voice.oscillator) {
         try { voice.oscillator.stop(); } catch { /* already stopped */ }
       }
@@ -2346,6 +2913,9 @@ export class SoundEngine {
     this.prevSampleTimesMs.clear();
     this.crossingCooldowns.clear();
     this.trailPaths.clear();
+    this.fingerprints.clear();
+    this.fingerprintKeys.clear();
+    this.mergePullsUntilMs.clear();
     if (this.ctx) {
       this.ctx.close();
       this.ctx = null;
@@ -2393,6 +2963,10 @@ export class SoundEngine {
     this.prevSampleTimesMs.clear();
     this.crossingCooldowns.clear();
     this.trailPaths.clear();
+    // Fingerprints deliberately survive a reset: a reset rebuilds the same
+    // scene, and a participant who sounded one way before it should sound the
+    // same way after. Only the merge pulls, which are moment-scoped, are cleared.
+    this.mergePullsUntilMs.clear();
     this.spotlightGains.clear();
     this.spotlightVelocitySamples.clear();
     this.spotlightSmoothedVelocities.clear();

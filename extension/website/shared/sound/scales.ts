@@ -211,6 +211,55 @@ export function velocityToFilterFrequency(velocity: number): number {
 }
 
 /**
+ * Deterministic 32-bit hash of an identity string. Trails need a stable sonic
+ * fingerprint, so every derived parameter is drawn from this one value rather
+ * than from randomness that would change on every reload.
+ */
+export function hashIdentity(key: string): number {
+  // FNV-1a. Cheap, and spreads short keys (a pid, a colour) well enough that
+  // neighbouring trails do not land on the same fingerprint.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * One deterministic 0-1 value from an identity hash. `salt` separates the
+ * independent parameters of a fingerprint so detune, vibrato rate, vibrato
+ * depth and attack do not all move together.
+ */
+export function hashUnit(hash: number, salt: number): number {
+  let mixed = (hash ^ Math.imul(salt + 1, 0x9e3779b9)) >>> 0;
+  mixed = Math.imul(mixed ^ (mixed >>> 16), 0x85ebca6b) >>> 0;
+  mixed = Math.imul(mixed ^ (mixed >>> 13), 0xc2b2ae35) >>> 0;
+  return ((mixed ^ (mixed >>> 16)) >>> 0) / 0x100000000;
+}
+
+/**
+ * The chord tone a trail calls home, chosen from the current palette by its
+ * identity hash. Re-derived against each new palette as the progression turns,
+ * so a trail keeps the same relative seat in every chord.
+ */
+export function homeToneForHash(hash: number, scale: number[]): number {
+  if (scale.length === 0) return D_MINOR_PENTATONIC[0];
+  const index = Math.min(
+    scale.length - 1,
+    Math.floor(hashUnit(hash, HOME_TONE_SALT) * scale.length),
+  );
+  return scale[index];
+}
+
+/** Salts separating the independent parameters drawn from one identity hash. */
+export const HOME_TONE_SALT = 0;
+export const DETUNE_SALT = 1;
+export const VIBRATO_RATE_SALT = 2;
+export const VIBRATO_DEPTH_SALT = 3;
+export const ATTACK_SALT = 4;
+
+/**
  * Smallest signed difference between two angles (radians), in [-PI, PI].
  */
 export function angleDelta(a: number, b: number): number {

@@ -575,6 +575,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               progress: result.trailProgress,
               color: rendererRef.current.getClickColor(ts.trail.color),
               isNewlyActive: false,
+              // Participant + url, so a trail's sonic fingerprint survives the
+              // array renumbering that comes with every re-derivation.
+              identityKey: ts.trail.id,
             });
           }
 

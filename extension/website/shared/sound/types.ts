@@ -18,6 +18,15 @@ export interface TrailSoundFrame {
   color: string;
   /** Whether this trail just became active this frame */
   isNewlyActive: boolean;
+  /**
+   * Stable identity for the participant behind this trail, used to derive a
+   * per-trail sonic fingerprint. Trail indices are positions in a re-derived
+   * array and shuffle as the data window slides, so a trail keyed only by
+   * index would change voice underneath the listener. Producers that have a
+   * participant-scoped id (`Trail.id`) pass it; the engine falls back to
+   * colour plus index when it is absent.
+   */
+  identityKey?: string;
 }
 
 /** A click/hold event to be sonified as a percussive bell */
@@ -43,7 +52,13 @@ export type AuditionAccent =
   | "trailDeparture"
   | "navigation"
   | "soloistFlourish"
-  | "soloistResolve";
+  | "soloistResolve"
+  /** The consonant dyad two trails sound when their paths merge. */
+  | "crossingMerge"
+  /** The dissonant interval two trails sound when their paths cross. */
+  | "crossingDissonance"
+  /** Two contrasting trail fingerprints, side by side, to hear the difference. */
+  | "trailVoicePair";
 
 /** Configuration for an instrument voice */
 export interface InstrumentConfig {

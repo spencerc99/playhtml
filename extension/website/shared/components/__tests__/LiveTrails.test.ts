@@ -356,6 +356,9 @@ describe("createLiveSoundFrame", () => {
       progress: 1,
       color: "#123456",
       isNewlyActive: false,
+      // Participant + url, so the sound engine can give this trail a voice
+      // that survives the array being renumbered around it.
+      identityKey: "participant|https://example.com",
     });
   });
 });

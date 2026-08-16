@@ -7,6 +7,9 @@ import {
   CHORD_PROGRESSION,
   D_NATURAL_MINOR_PITCHES,
   directionToPitch,
+  hashIdentity,
+  hashUnit,
+  homeToneForHash,
   scaleForChord,
 } from "../scales";
 
@@ -76,6 +79,54 @@ describe("chord palettes", () => {
         expect(bells[i]).toBeGreaterThan(bells[i - 1]);
       }
     }
+  });
+
+  it("hashes an identity deterministically and spreads distinct keys", () => {
+    expect(hashIdentity("person-a")).toBe(hashIdentity("person-a"));
+    expect(hashIdentity("person-a")).not.toBe(hashIdentity("person-b"));
+
+    // A realistic identity population must not collapse onto a few values, or
+    // whole groups of trails would share one voice.
+    const keys = Array.from({ length: 200 }, (_, i) => `pk_${i}#https://a.b/c`);
+    const hashes = new Set(keys.map(hashIdentity));
+    expect(hashes.size).toBe(keys.length);
+  });
+
+  it("derives independent unit values from one hash", () => {
+    const hash = hashIdentity("person-a");
+    const values = [0, 1, 2, 3, 4].map((salt) => hashUnit(hash, salt));
+
+    for (const value of values) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
+    }
+    // Different salts must not move together, or detune, vibrato and attack
+    // would all be the same knob wearing different names.
+    expect(new Set(values).size).toBe(values.length);
+    expect(hashUnit(hash, 2)).toBe(hashUnit(hash, 2));
+  });
+
+  it("picks a home tone inside whichever palette is in force", () => {
+    const hash = hashIdentity("person-a");
+    for (const chord of CHORD_PROGRESSION) {
+      const home = homeToneForHash(hash, chord.pitches);
+      expect(chord.pitches).toContain(home);
+    }
+    // Stable within one palette.
+    expect(homeToneForHash(hash, CHORD_PROGRESSION[0].pitches)).toBe(
+      homeToneForHash(hash, CHORD_PROGRESSION[0].pitches),
+    );
+  });
+
+  it("spreads home tones across the palette rather than crowding one seat", () => {
+    const palette = CHORD_PROGRESSION[0].pitches;
+    const homes = new Set(
+      Array.from({ length: 200 }, (_, i) =>
+        homeToneForHash(hashIdentity(`pk_${i}`), palette),
+      ),
+    );
+    // A crowd should collectively voice the chord, so every seat gets taken.
+    expect(homes.size).toBe(palette.length);
   });
 });
 

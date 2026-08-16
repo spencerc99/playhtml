@@ -2,7 +2,11 @@
 // ABOUTME: Drives SoundEngine.tick from the real cursor plus simulated wandering agents
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { SoundEngine, SoundMode } from "../shared/sound/SoundEngine";
+import {
+  CrossingFlavor,
+  SoundEngine,
+  SoundMode,
+} from "../shared/sound/SoundEngine";
 import { AuditionAccent, TrailSoundFrame } from "../shared/sound/types";
 
 const PAD_HEIGHT = 300;
@@ -27,6 +31,8 @@ const AGENT_COLORS = [
  */
 interface Agent {
   trailIndex: number;
+  /** Stands in for a real trail's participant id when deriving its voice. */
+  identityKey: string;
   x: number;
   y: number;
   vx: number;
@@ -52,6 +58,7 @@ function createAgent(
 ): Agent {
   return {
     trailIndex,
+    identityKey: `pad-agent-${trailIndex}`,
     x: Math.random() * width,
     y: Math.random() * height,
     vx: 0,
@@ -196,6 +203,23 @@ const AUDITION_CARDS: Array<{
     label: "soloist resolve",
     description: "The closing note as the spotlight leaves a trail.",
   },
+  {
+    accent: "crossingDissonance",
+    label: "crossing dissonance",
+    description: "The tense interval two trails sound where their paths cross.",
+  },
+  {
+    accent: "crossingMerge",
+    label: "crossing merge",
+    description:
+      "The consonant dyad two trails sound instead, when crossings merge.",
+  },
+  {
+    accent: "trailVoicePair",
+    label: "two trail voices",
+    description:
+      "Two example fingerprints in turn, two seconds each, to hear how trails differ.",
+  },
 ];
 
 export const TrailPad = () => {
@@ -216,6 +240,8 @@ export const TrailPad = () => {
   const trailArrivalsRef = useRef(false);
   const navigationSoundsRef = useRef(false);
   const bassPedalRef = useRef(false);
+  const trailVoicesRef = useRef(false);
+  const crossingsRef = useRef<CrossingFlavor>("off");
   const nextTrailIndexRef = useRef(1);
 
   const [running, setRunning] = useState(false);
@@ -227,12 +253,15 @@ export const TrailPad = () => {
   const [trailArrivals, setTrailArrivals] = useState(false);
   const [navigationSounds, setNavigationSounds] = useState(false);
   const [bassPedal, setBassPedal] = useState(false);
+  const [trailVoices, setTrailVoices] = useState(false);
+  const [crossings, setCrossings] = useState<CrossingFlavor>("off");
   const [readout, setReadout] = useState({
     notes: 0,
     soloist: null as number | null,
     avgVelocity: 0,
     chord: "Dm",
     energy: 0,
+    homeTones: [] as Array<{ trailIndex: number; hz: number }>,
   });
 
   useEffect(() => {
@@ -258,6 +287,12 @@ export const TrailPad = () => {
   }, [trailArrivals, navigationSounds, bassPedal]);
 
   useEffect(() => {
+    trailVoicesRef.current = trailVoices;
+    crossingsRef.current = crossings;
+    engineRef.current?.setConfig({ trailVoices, crossings });
+  }, [trailVoices, crossings]);
+
+  useEffect(() => {
     engineRef.current?.setVolume(volume);
   }, [volume]);
 
@@ -272,6 +307,8 @@ export const TrailPad = () => {
         trailArrivals: trailArrivalsRef.current,
         navigationSounds: navigationSoundsRef.current,
         bassPedal: bassPedalRef.current,
+        trailVoices: trailVoicesRef.current,
+        crossings: crossingsRef.current,
       });
       engine.setVolume(volume);
       const canvas = canvasRef.current;
@@ -318,6 +355,7 @@ export const TrailPad = () => {
         progress: 0,
         color: "#3d3833",
         isNewlyActive: cursor.points.length === 0,
+        identityKey: "pad-cursor",
       });
       cursor.points.push({ x: cursor.x, y: cursor.y });
       if (cursor.points.length > TRAIL_LENGTH) cursor.points.shift();
@@ -337,6 +375,9 @@ export const TrailPad = () => {
         progress: 0,
         color: agent.color,
         isNewlyActive: agent.points.length <= 1,
+        // Stands in for the participant id real trails carry, so each pad
+        // agent gets its own fingerprint rather than sharing one by colour.
+        identityKey: agent.identityKey,
       });
     }
 
@@ -382,6 +423,14 @@ export const TrailPad = () => {
       avgVelocity: engine.getSceneAverageVelocity(),
       chord: engine.getCurrentChordName(),
       energy: engine.getEnergy(),
+      homeTones: frames
+        .map(({ trailIndex }) => ({
+          trailIndex,
+          hz: engine.getHomeTone(trailIndex),
+        }))
+        .filter((entry): entry is { trailIndex: number; hz: number } =>
+          entry.hz !== null,
+        ),
     });
 
     rafRef.current = requestAnimationFrame(frame);
@@ -554,8 +603,39 @@ export const TrailPad = () => {
         >
           navigation notes
         </button>
+        <button
+          onClick={() => setTrailVoices((v) => !v)}
+          style={trailVoices ? buttonActiveStyle : buttonStyle}
+        >
+          trail voices
+        </button>
         <span style={labelStyle}>
           each composes with any mode above
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginBottom: "12px",
+        }}
+      >
+        <span style={labelStyle}>crossings</span>
+        {(["off", "dissonance", "merge"] as const).map((flavor) => (
+          <button
+            key={flavor}
+            onClick={() => setCrossings(flavor)}
+            style={crossings === flavor ? buttonActiveStyle : buttonStyle}
+          >
+            {flavor}
+          </button>
+        ))}
+        <span style={labelStyle}>
+          merge rings the two trails' home tones and briefly pulls their
+          timbres together — needs trail voices on to hear the pull
         </span>
       </div>
 
@@ -675,6 +755,14 @@ export const TrailPad = () => {
         {chordRotation ? "" : " (fixed)"} | energy:{" "}
         {energyArc ? readout.energy.toFixed(3) : "off"}
       </div>
+      {trailVoices && readout.homeTones.length > 0 && (
+        <div style={labelStyle}>
+          home tones:{" "}
+          {readout.homeTones
+            .map(({ trailIndex, hz }) => `${trailIndex}:${hz.toFixed(1)}Hz`)
+            .join(" ")}
+        </div>
+      )}
     </div>
   );
 };

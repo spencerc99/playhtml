@@ -3,7 +3,7 @@
 
 import { CLICK_DEFAULTS } from "./clickDefaults";
 import type { FilterChip } from "../utils/eventUtils";
-import type { SoundMode } from "../sound/SoundEngine";
+import type { CrossingFlavor, SoundMode } from "../sound/SoundEngine";
 
 /** Settings defaults — extracted so the share-URL builder can compare
  * against them and only emit params that diverge. Keep this in sync with
@@ -111,7 +111,12 @@ export const DEFAULT_SETTINGS = {
   soundEnergyArc: false,
   soundChordVoicing: true,
   soundCursorInstruments: true,
-  soundCrossingDissonance: false,
+  /** What a trail crossing another's path sounds like. The live pages expose
+   * this as an on/off checkbox, which maps to "dissonance"/"off"; the sounds
+   * playground drives the full three-way choice. */
+  soundCrossings: "off" as CrossingFlavor,
+  /** Give each trail a stable home chord tone and its own detune/vibrato. */
+  soundTrailVoices: false,
   /** Soft two-note figures as trails enter and leave the scene. */
   soundTrailArrivals: false,
   /** A deep resonant note on each animated page navigation. */

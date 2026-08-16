@@ -192,6 +192,9 @@ export function createLiveSoundFrame(
     progress: trailProgress,
     color: trailState.trail.color,
     isNewlyActive: false,
+    // Trail.id is participant + url, so a person keeps one sonic fingerprint
+    // even as the sliding window renumbers the trail array underneath them.
+    identityKey: trailState.trail.id,
   };
 }
 

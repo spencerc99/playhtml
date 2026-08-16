@@ -1250,6 +1250,332 @@ describe("SoundEngine cursor instruments", () => {
     expect(engine.getBassPedalVoiceCount()).toBe(0);
   });
 
+  it("derives a stable fingerprint per identity key and differs across keys", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true });
+
+    const state = engine as unknown as {
+      fingerprints: Map<
+        number,
+        {
+          hash: number;
+          detuneCents: number;
+          vibratoRateHz: number;
+          vibratoDepthCents: number;
+          attackScale: number;
+        }
+      >;
+    };
+
+    const move = (trailIndex: number, identityKey: string, x: number) => ({
+      ...soloFrame(trailIndex, x, 0),
+      identityKey,
+    });
+
+    engine.tick(0, [move(0, "person-a", 0), move(1, "person-b", 100)]);
+    context.currentTime += 1 / 60;
+    engine.tick(16, [move(0, "person-a", 8), move(1, "person-b", 108)]);
+
+    const first = { ...state.fingerprints.get(0)! };
+    const other = state.fingerprints.get(1)!;
+
+    // Same key, many frames later: still exactly the same voice.
+    for (let step = 2; step < 30; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        move(0, "person-a", step * 8),
+        move(1, "person-b", 100 + step * 8),
+      ]);
+    }
+    expect(state.fingerprints.get(0)).toEqual(first);
+
+    // Different keys land on different fingerprints.
+    expect(other.hash).not.toBe(first.hash);
+    expect(other.detuneCents).not.toBeCloseTo(first.detuneCents, 5);
+
+    // Every derived value stays inside its declared range.
+    for (const print of [first, other]) {
+      expect(Math.abs(print.detuneCents)).toBeLessThanOrEqual(8);
+      expect(print.vibratoRateHz).toBeGreaterThanOrEqual(3);
+      expect(print.vibratoRateHz).toBeLessThanOrEqual(6);
+      expect(print.vibratoDepthCents).toBeGreaterThanOrEqual(0);
+      expect(print.vibratoDepthCents).toBeLessThanOrEqual(4);
+      expect(print.attackScale).toBeGreaterThanOrEqual(0.7);
+      expect(print.attackScale).toBeLessThanOrEqual(1.4);
+    }
+  });
+
+  it("keeps a fingerprint keyed to identity rather than to trail index", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true });
+
+    const state = engine as unknown as {
+      fingerprints: Map<number, { hash: number }>;
+    };
+
+    // The same participant arriving at a different index — what a re-derived
+    // trail array does — must sound the same, not take on a new voice.
+    engine.tick(0, [{ ...soloFrame(0, 0, 0), identityKey: "person-a" }]);
+    context.currentTime += 1 / 60;
+    engine.tick(16, [{ ...soloFrame(0, 8, 0), identityKey: "person-a" }]);
+    const atIndexZero = state.fingerprints.get(0)!.hash;
+
+    engine.tick(32, [{ ...soloFrame(5, 0, 0), identityKey: "person-a" }]);
+    context.currentTime += 1 / 60;
+    engine.tick(48, [{ ...soloFrame(5, 8, 0), identityKey: "person-a" }]);
+
+    expect(state.fingerprints.get(5)!.hash).toBe(atIndexZero);
+  });
+
+  it("draws each trail's home tone from the palette and re-derives on rotation", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true, chordRotation: true });
+
+    const framesAt = (step: number) => [
+      { ...soloFrame(0, step * 8, 0), identityKey: "person-a" },
+      { ...soloFrame(1, 100 + step * 8, 0), identityKey: "person-b" },
+    ];
+    for (let step = 0; step < 4; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, framesAt(step));
+    }
+
+    const dmPalette = CHORD_PROGRESSION[0].pitches;
+    const dmHomes = [0, 1].map((i) => engine.getHomeTone(i)!);
+    for (const home of dmHomes) {
+      expect(dmPalette).toContain(home);
+    }
+
+    // Past the dwell the progression moves; a trail's seat is re-derived
+    // against the new palette rather than holding a pitch outside it.
+    context.currentTime += 1 / 60;
+    engine.tick(CHORD_DWELL_MS + 1, framesAt(5));
+
+    const bbPalette = CHORD_PROGRESSION[1].pitches;
+    const bbHomes = [0, 1].map((i) => engine.getHomeTone(i)!);
+    for (const home of bbHomes) {
+      expect(bbPalette).toContain(home);
+    }
+  });
+
+  it("reports no home tone while trail voices are off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    engine.tick(0, [{ ...soloFrame(0, 0, 0), identityKey: "person-a" }]);
+    context.currentTime += 1 / 60;
+    engine.tick(16, [{ ...soloFrame(0, 8, 0), identityKey: "person-a" }]);
+
+    expect(engine.getHomeTone(0)).toBeNull();
+  });
+
+  it("maps the legacy crossing boolean onto the crossing flavor", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const state = engine as unknown as {
+      config: { crossings: string };
+    };
+
+    engine.setConfig({ crossingDissonance: true });
+    expect(state.config.crossings).toBe("dissonance");
+
+    engine.setConfig({ crossingDissonance: false });
+    expect(state.config.crossings).toBe("off");
+
+    // An explicit flavor wins over the legacy boolean when both are sent.
+    engine.setConfig({ crossingDissonance: true, crossings: "merge" });
+    expect(state.config.crossings).toBe("merge");
+  });
+
+  it("sounds a consonant dyad rather than a dissonant interval on a merge", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ crossings: "merge", trailVoices: true });
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+    };
+
+    // Two trails converging on the same point, so one crosses the other's
+    // accumulated path.
+    for (let step = 0; step < 60; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        { ...soloFrame(0, 100 + step * 6, 100), identityKey: "person-a" },
+        { ...soloFrame(1, 460 - step * 6, 100), identityKey: "person-b" },
+      ]);
+    }
+
+    const pitches = [...state.flourishNotes].map(
+      (note) => note.oscillator.frequency.value,
+    );
+    expect(pitches.length).toBeGreaterThan(0);
+
+    // Every ringing pitch is a palette tone (possibly octave-shifted for
+    // register) — a dissonant crossing rings a continuous baseFreq derived
+    // from screen position and would essentially never land on one.
+    const palette = CHORD_PROGRESSION[0].pitches;
+    for (const pitch of pitches) {
+      const inPalette = palette.some(
+        (p) =>
+          Math.abs(p - pitch) < 0.01 ||
+          Math.abs(p * 2 - pitch) < 0.01 ||
+          Math.abs(p * 3 - pitch) < 0.01 ||
+          Math.abs(p * 6 - pitch) < 0.01,
+      );
+      expect(inPalette, `${pitch} should be a palette pitch`).toBe(true);
+    }
+  });
+
+  it("falls back to root and fifth when merging without trail voices", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ crossings: "merge" });
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+      mergePullsUntilMs: Map<number, number>;
+    };
+
+    for (let step = 0; step < 60; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, 100 + step * 6, 100),
+        soloFrame(1, 460 - step * 6, 100),
+      ]);
+    }
+
+    const fundamentals = [...state.flourishNotes]
+      .map((note) => note.oscillator.frequency.value)
+      // Each dyad note carries a 3x partial; keep only the fundamentals.
+      .filter((hz) => hz < 1000);
+    expect(fundamentals.length).toBeGreaterThan(0);
+
+    // Dm root D3 doubled into D4, and the fifth above it.
+    const root = 146.83 * 2;
+    for (const hz of fundamentals) {
+      const isRootOrFifth =
+        Math.abs(hz - root) < 0.5 || Math.abs(hz - root * 1.5) < 0.5;
+      expect(isRootOrFifth, `${hz} should be the root or its fifth`).toBe(true);
+    }
+
+    // With no fingerprints there is nothing personal to pull together.
+    expect(state.mergePullsUntilMs.size).toBe(0);
+  });
+
+  it("pulls merged voices to unison and lets them drift back", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ crossings: "merge", trailVoices: true });
+
+    const state = engine as unknown as {
+      voices: Map<number, { appliedDetuneCents: number }>;
+      mergePullsUntilMs: Map<number, number>;
+      fingerprints: Map<number, { detuneCents: number }>;
+    };
+
+    for (let step = 0; step < 60; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        { ...soloFrame(0, 100 + step * 6, 100), identityKey: "person-a" },
+        { ...soloFrame(1, 460 - step * 6, 100), identityKey: "person-b" },
+      ]);
+    }
+
+    expect(state.mergePullsUntilMs.size).toBeGreaterThan(0);
+    const pulled = [...state.mergePullsUntilMs.keys()];
+    for (const trailIndex of pulled) {
+      expect(state.voices.get(trailIndex)!.appliedDetuneCents).toBe(0);
+    }
+
+    // Past the pull duration each voice is handed back its own detune. Both
+    // trails move well off the paths they laid down, so this frame is a plain
+    // continuation rather than another crossing that would re-arm the pull.
+    const elapsedAfterPull = Math.max(...state.mergePullsUntilMs.values()) + 1;
+    context.currentTime += 2;
+    engine.tick(elapsedAfterPull, [
+      { ...soloFrame(0, 400, 900), identityKey: "person-a" },
+      { ...soloFrame(1, 500, 950), identityKey: "person-b" },
+    ]);
+
+    expect(state.mergePullsUntilMs.size).toBe(0);
+    for (const trailIndex of pulled) {
+      expect(state.voices.get(trailIndex)!.appliedDetuneCents).toBeCloseTo(
+        state.fingerprints.get(trailIndex)!.detuneCents,
+        5,
+      );
+    }
+  });
+
+  it("makes no crossing sound while crossings are off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const state = engine as unknown as {
+      flourishNotes: Set<unknown>;
+      trailPaths: Map<number, unknown>;
+    };
+
+    for (let step = 0; step < 60; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, 100 + step * 6, 100),
+        soloFrame(1, 460 - step * 6, 100),
+      ]);
+    }
+
+    expect(state.flourishNotes.size).toBe(0);
+    // No path history is accumulated either, so switching crossings on later
+    // cannot fire a crossing against a stale path.
+    expect(state.trailPaths.size).toBe(0);
+  });
+
+  it("gives every voice a vibrato LFO only while trail voices are on", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const state = engine as unknown as {
+      voices: Map<
+        number,
+        { vibrato: { oscillator: TestOscillatorNode } | null }
+      >;
+    };
+
+    const frame = (x: number) => ({
+      ...soloFrame(0, x, 0),
+      identityKey: "person-a",
+    });
+    engine.tick(0, [frame(0)]);
+    context.currentTime += 1 / 60;
+    engine.tick(16, [frame(8)]);
+    expect(state.voices.get(0)!.vibrato).toBeNull();
+
+    // Toggling on reaches the voice already sounding on the next frame,
+    // without waiting for it to be torn down and recreated.
+    engine.setConfig({ trailVoices: true });
+    context.currentTime += 1 / 60;
+    engine.tick(32, [frame(16)]);
+    expect(state.voices.get(0)!.vibrato).not.toBeNull();
+
+    // Toggling off strips it immediately — a paused canvas may never tick
+    // again, and the voice must not keep wobbling after the switch.
+    engine.setConfig({ trailVoices: false });
+    expect(state.voices.get(0)!.vibrato).toBeNull();
+  });
+
   it("disconnects voice graphs after a playback reset", async () => {
     const engine = new SoundEngine();
     await engine.init();
