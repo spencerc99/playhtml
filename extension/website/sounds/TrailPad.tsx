@@ -189,12 +189,13 @@ const AUDITION_CARDS: Array<{
     accent: "trailArrival",
     label: "trail arrival",
     description:
-      "A door-chime scatter of high notes as a trail enters the scene.",
+      "A door-chime scatter as a trail enters, in the register its colour buys it — a bass trail's woody knock, then a soprano trail's high shimmer.",
   },
   {
     accent: "trailDeparture",
     label: "trail departure",
-    description: "A shorter falling chime, as a trail leaves.",
+    description:
+      "A shorter falling chime as a trail leaves, in that trail's own register — bass first, then soprano.",
   },
   {
     accent: "navigation",

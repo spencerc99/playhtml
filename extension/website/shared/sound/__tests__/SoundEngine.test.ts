@@ -1128,7 +1128,7 @@ describe("SoundEngine cursor instruments", () => {
     expect(state.flourishNotes.size).toBe(0);
   });
 
-  it("chimes an arrival from the top of the palette, high and detuned", async () => {
+  it("chimes a soprano trail's arrival from the top of the palette, high and detuned", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(1000);
@@ -1138,7 +1138,11 @@ describe("SoundEngine cursor instruments", () => {
       flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
     };
 
-    engine.tick(0, [{ ...soloFrame(0, 10, 10), identityKey: "person-a" }]);
+    // Soprano is the reference register the chime was tuned in, so this is
+    // the shipped high shimmer, unchanged by the per-band voicing.
+    engine.tick(0, [
+      { ...soloFrame(0, 10, 10), color: "#e04a2f", identityKey: "person-a" },
+    ]);
     const notes = [...state.flourishNotes];
     expect(notes.length).toBeGreaterThanOrEqual(3);
 
@@ -1165,6 +1169,85 @@ describe("SoundEngine cursor instruments", () => {
     // as a chime rather than as a chord.
     const starts = notes.map((note) => note.oscillator.startTimes[0]);
     expect(new Set(starts).size).toBeGreaterThan(1);
+  });
+
+  it("chimes a bass trail's arrival down in its own band, darker and longer", async () => {
+    const chimeFor = async (color: string) => {
+      const engine = new SoundEngine();
+      await engine.init();
+      engine.setCanvasWidth(1000);
+      engine.setConfig({ trailArrivals: true });
+      const state = engine as unknown as {
+        flourishNotes: Set<{
+          oscillator: TestOscillatorNode;
+          peakGain: number;
+          partialGainNode: TestGainNode;
+        }>;
+      };
+      engine.tick(0, [
+        { ...soloFrame(0, 10, 10), color, identityKey: "person-a" },
+      ]);
+      return [...state.flourishNotes];
+    };
+
+    // A blue trail sings bass, a red one soprano — same seed, same figure,
+    // three octaves apart.
+    const bass = await chimeFor("#0078bf");
+    const soprano = await chimeFor("#e04a2f");
+    expect(bass.length).toBe(soprano.length);
+
+    const { minHz, maxHz } = REGISTER_BAND_RANGES.bass;
+    for (const note of bass) {
+      const hz = note.oscillator.frequency.value;
+      // The chime's own notes land in the band; each also rings a 3x partial
+      // above it, which is the timbre rather than the register.
+      const fundamental = hz > maxHz ? hz / 3 : hz;
+      expect(fundamental).toBeGreaterThanOrEqual(minHz);
+      expect(fundamental).toBeLessThanOrEqual(maxHz);
+    }
+
+    // Same pitch classes as the soprano chime, dropped by whole octaves — the
+    // same chime sung lower, not a different figure.
+    const pitchClass = (hz: number) => {
+      const octaves = Math.log2(hz / D_MINOR_PENTATONIC[0]);
+      return Math.round((octaves - Math.floor(octaves)) * 1000);
+    };
+    expect(bass.map((n) => pitchClass(n.oscillator.frequency.value)).sort()).toEqual(
+      soprano.map((n) => pitchClass(n.oscillator.frequency.value)).sort(),
+    );
+
+    // Duller and quieter: the 3x partial is stripped back and the peak pulled
+    // down, so a low strike reads as woody rather than as a thin bell.
+    expect(bass[0].peakGain).toBeLessThan(soprano[0].peakGain);
+  });
+
+  it("departs in the band it arrived in, after the trail's colour is gone", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+    };
+    engine.tick(0, [
+      { ...soloFrame(0, 10, 10), color: "#0078bf", identityKey: "person-a" },
+    ]);
+    state.flourishNotes.clear();
+
+    // Retirement has no frame and therefore no colour: the band has to come
+    // from what the trail chimed on the way in.
+    engine.retireTrail(0);
+    const notes = [...state.flourishNotes];
+    expect(notes.length).toBeGreaterThan(0);
+
+    const { minHz, maxHz } = REGISTER_BAND_RANGES.bass;
+    for (const note of notes) {
+      const hz = note.oscillator.frequency.value;
+      const fundamental = hz > maxHz ? hz / 3 : hz;
+      expect(fundamental).toBeGreaterThanOrEqual(minHz);
+      expect(fundamental).toBeLessThanOrEqual(maxHz);
+    }
   });
 
   it("chimes the same pattern for the same trail and differs across trails", async () => {

@@ -27,6 +27,7 @@ import {
   registerBandForColor,
   RegisterBand,
   RegisterMappingMode,
+  REGISTER_BANDS,
   ATTACK_SALT,
   DETUNE_SALT,
   VIBRATO_DEPTH_SALT,
@@ -396,6 +397,42 @@ const ARRIVAL_TUNING = {
   departureGainScale: 0.8,
   departureNotes: 3,
   departureDecaySeconds: 1.4,
+  /**
+   * How the chime shifts across the register bands, soprano to bass.
+   *
+   * A chime at a fixed high register makes every arrival sound like the same
+   * person walking in. Folding the cluster into the arriving trail's own band
+   * makes the door announce who opened it: you hear the register before you
+   * find the trail on the canvas.
+   *
+   * Soprano keeps the shipped sound exactly — it is the register the chime was
+   * tuned in. The others darken toward the bass by interpolating on band
+   * index, which is the only way a low chime reads as a woody knock rather
+   * than as the bright chime played wrong: a bell struck low with its full 3x
+   * partial intact sounds thin and electronic, and a short decay at that pitch
+   * is barely audible at all.
+   */
+  bandTimbre: {
+    /**
+     * Level of the 3x partial relative to the soprano value, bass to soprano.
+     * Stripping most of the partial is what turns the strike woody.
+     */
+    partialScale: { bass: 0.35, tenor: 0.55, alto: 0.8, soprano: 1 },
+    /** Decay multiplier, bass to soprano. Low notes need room to speak. */
+    decayScale: { bass: 1.6, tenor: 1.35, alto: 1.15, soprano: 1 },
+    /**
+     * Gain multiplier, bass to soprano. A low note carries further through a
+     * mix at equal amplitude, so the bass chime is pulled back to sit at the
+     * same apparent level as the soprano one.
+     */
+    gainScale: { bass: 0.8, tenor: 0.88, alto: 0.95, soprano: 1 },
+  } satisfies Record<string, Record<RegisterBand, number>>,
+  /**
+   * Gap between the two chimes of the audition pair. Long enough for the bass
+   * chime's stretched decay to clear, so the two are heard in comparison
+   * rather than piled on top of each other.
+   */
+  auditionPairGapSeconds: 3,
   /**
    * Minimum gap between arrival sounds for the same trail, so a trail
    * flickering in and out of the active set does not retrigger.
@@ -814,6 +851,12 @@ export class SoundEngine {
   private arrivalTimesMs: Map<number, number> = new Map();
   /** Chime seed per trail, so its arrival and departure share one pattern. */
   private arrivalSeeds: Map<number, number> = new Map();
+  /**
+   * Band a trail chimed in on arrival, so its departure leaves in the same
+   * register. Read at retirement, when the trail's frame — and with it the
+   * colour the band came from — is already gone.
+   */
+  private arrivalBands: Map<number, RegisterBand> = new Map();
   /** Timestamps of recent arrival sounds, for the global rate cap. */
   private recentArrivalsMs: number[] = [];
   /** Latest tick time, so retireTrail can rate-limit without its own clock. */
@@ -989,6 +1032,7 @@ export class SoundEngine {
     if (config.trailArrivals === false) {
       this.arrivalTimesMs.clear();
       this.arrivalSeeds.clear();
+      this.arrivalBands.clear();
       this.recentArrivalsMs.length = 0;
     }
 
@@ -2337,16 +2381,18 @@ export class SoundEngine {
       this.arrivalTimesMs.has(trailIndex)
     ) {
       const position = this.prevPositions.get(trailIndex);
-      // Departure reuses the arrival's seed, so a trail leaves in the same
-      // voice it arrived in.
+      // Departure reuses the arrival's seed and band, so a trail leaves in the
+      // same voice and the same register it arrived in.
       this.triggerArrivalFigure(
         position?.x ?? this.canvasWidth / 2,
         false,
         this.arrivalSeeds.get(trailIndex) ?? hashIdentity(String(trailIndex)),
+        this.arrivalBands.get(trailIndex) ?? "alto",
       );
     }
     this.arrivalTimesMs.delete(trailIndex);
     this.arrivalSeeds.delete(trailIndex);
+    this.arrivalBands.delete(trailIndex);
     const voice = this.voices.get(trailIndex);
     if (voice) {
       const disconnect = () => this.disconnectVoice(voice);
@@ -2947,6 +2993,7 @@ export class SoundEngine {
     if (!this.config.trailArrivals) {
       if (this.arrivalTimesMs.size > 0) this.arrivalTimesMs.clear();
       this.arrivalSeeds.clear();
+      this.arrivalBands.clear();
       this.recentArrivalsMs.length = 0;
       return;
     }
@@ -2972,10 +3019,16 @@ export class SoundEngine {
         frame.trailIndex,
         hashIdentity(this.identityKeyFor(frame)),
       );
+      // The band comes off the frame's colour rather than off the trail-voice
+      // register map, so an arrival is voiced correctly even when the
+      // sustained voices are switched off and no band has been assigned.
+      const band = this.bandForFrame(frame);
+      this.arrivalBands.set(frame.trailIndex, band);
       this.triggerArrivalFigure(
         frame.x,
         true,
         this.arrivalSeeds.get(frame.trailIndex)!,
+        band,
       );
     }
   }
@@ -3002,11 +3055,22 @@ export class SoundEngine {
 
   /**
    * A door-chime cluster from the top of the current palette: a scatter of
-   * quick high notes for an arrival, a shorter falling one for a departure.
+   * quick notes for an arrival, a shorter falling one for a departure, voiced
+   * in the arriving trail's own register band.
+   *
    * The pattern is drawn from `seed`, so the same trail chimes the same way
-   * every time it appears while different trails sound distinct.
+   * every time it appears while different trails sound distinct. The band
+   * decides the register and the timbre, so a bass trail knocks and a soprano
+   * one rings.
    */
-  private triggerArrivalFigure(x: number, rising: boolean, seed: number): void {
+  private triggerArrivalFigure(
+    x: number,
+    rising: boolean,
+    seed: number,
+    band: RegisterBand,
+    /** Push the whole cluster into the future, for auditioning two in a row. */
+    startDelaySeconds = 0,
+  ): void {
     if (!this.ctx) return;
 
     const {
@@ -3025,6 +3089,7 @@ export class SoundEngine {
       departureGainScale,
       departureNotes,
       departureDecaySeconds,
+      bandTimbre,
     } = ARRIVAL_TUNING;
 
     // The top of the palette, so the chime rings above the sustained bed
@@ -3046,18 +3111,28 @@ export class SoundEngine {
       pitches.push(top[Math.min(top.length - 1, Math.max(0, index))]);
     }
 
-    const gain = noteGain * (rising ? 1 : departureGainScale);
+    // Soprano is the register the chime was tuned in, so it is the reference:
+    // the doubled palette top, unchanged. The lower parts drop from there by
+    // whole octaves, which keeps every chime note the same pitch class as the
+    // soprano one — the same chime, sung lower, rather than a different figure.
+    const octavesBelowSoprano =
+      REGISTER_BANDS.length - 1 - REGISTER_BANDS.indexOf(band);
+    const bandMultiplier = registerMultiplier / 2 ** octavesBelowSoprano;
 
-    let delaySeconds = 0;
+    const gain =
+      noteGain * (rising ? 1 : departureGainScale) * bandTimbre.gainScale[band];
+
+    let delaySeconds = startDelaySeconds;
     pitches.forEach((pitch, order) => {
-      const decay = rising
-        ? minDecaySeconds +
-          hashUnit(seed, 40 + order) * (maxDecaySeconds - minDecaySeconds)
-        : departureDecaySeconds;
-      this.triggerFlourishNote(pitch * registerMultiplier, x, gain, decay, {
+      const decay =
+        (rising
+          ? minDecaySeconds +
+            hashUnit(seed, 40 + order) * (maxDecaySeconds - minDecaySeconds)
+          : departureDecaySeconds) * bandTimbre.decayScale[band];
+      this.triggerFlourishNote(pitch * bandMultiplier, x, gain, decay, {
         delaySeconds,
         attackSeconds,
-        partialGain,
+        partialGain: partialGain * bandTimbre.partialScale[band],
         // A few cents either side, so the cluster shimmers rather than
         // sounding like one pitch struck repeatedly.
         detuneCents: (hashUnit(seed, 60 + order) * 2 - 1) * detuneCents,
@@ -3184,16 +3259,10 @@ export class SoundEngine {
     const centre = this.canvasWidth / 2;
     switch (accent) {
       case "trailArrival":
-        // No trail to key off, so the audition uses a fixed seed: pressing
-        // the button twice should sound the same chime, not a new one.
-        this.triggerArrivalFigure(centre, true, hashIdentity("audition-chime"));
+        this.auditionChimePair(true);
         return;
       case "trailDeparture":
-        this.triggerArrivalFigure(
-          centre,
-          false,
-          hashIdentity("audition-chime"),
-        );
+        this.auditionChimePair(false);
         return;
       case "navigation": {
         // The navigation note is the one accent whose production trigger is
@@ -3356,6 +3425,32 @@ export class SoundEngine {
         /* already disconnected */
       }
     };
+  }
+
+  /**
+   * The same chime figure in two contrasting bands, one after the other, so
+   * the register the arriving trail's colour buys it is audible without
+   * needing two real trails to walk on and off the canvas.
+   *
+   * Bass first, then soprano — the two ends of the range, panned apart the way
+   * the voice-pair audition does it. The seed is fixed and shared between the
+   * two, so what changes between them is only the register and the timbre;
+   * pressing the button twice sounds the same pair, not a new one.
+   */
+  private auditionChimePair(rising: boolean): void {
+    if (!this.ctx) return;
+    const seed = hashIdentity("audition-chime");
+    const width = this.canvasWidth;
+    // Scheduled on the audio clock rather than a timer: the gap has to be
+    // exact for the two to read as a comparison, and a timer would drift.
+    this.triggerArrivalFigure(width * 0.25, rising, seed, "bass");
+    this.triggerArrivalFigure(
+      width * 0.75,
+      rising,
+      seed,
+      "soprano",
+      ARRIVAL_TUNING.auditionPairGapSeconds,
+    );
   }
 
   /**
@@ -3971,6 +4066,7 @@ export class SoundEngine {
     this.releaseBassPedal();
     this.arrivalTimesMs.clear();
     this.arrivalSeeds.clear();
+    this.arrivalBands.clear();
     this.recentArrivalsMs.length = 0;
     for (const [, voice] of this.voices) {
       this.stopVibrato(voice);
@@ -4012,6 +4108,7 @@ export class SoundEngine {
       this.lastTickMs + ARRIVAL_TUNING.resetSuppressionMs;
     this.arrivalTimesMs.clear();
     this.arrivalSeeds.clear();
+    this.arrivalBands.clear();
     this.recentArrivalsMs.length = 0;
     this.releaseBassPedal();
     // Fast-cut fade (30ms) — releaseVoice uses a 500ms ramp that audibly
