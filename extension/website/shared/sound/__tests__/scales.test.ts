@@ -10,7 +10,9 @@ import {
   hashIdentity,
   hashUnit,
   homeToneForHash,
+  leadHomeTone,
   scaleForChord,
+  semitonesBetween,
 } from "../scales";
 
 const DIATONIC_PITCHES = new Set(Object.values(D_NATURAL_MINOR_PITCHES));
@@ -127,6 +129,53 @@ describe("chord palettes", () => {
     );
     // A crowd should collectively voice the chord, so every seat gets taken.
     expect(homes.size).toBe(palette.length);
+  });
+});
+
+describe("voice leading", () => {
+  it("measures distance in semitones, not in Hz", () => {
+    expect(semitonesBetween(P("D3"), P("D4"))).toBeCloseTo(12, 5);
+    expect(semitonesBetween(P("D4"), P("D3"))).toBeCloseTo(-12, 5);
+    expect(semitonesBetween(P("D3"), P("E3"))).toBeCloseTo(2, 1);
+  });
+
+  it("moves a home tone to the nearest tone of the new palette", () => {
+    // A3 is not in the Bb palette; the nearest tones are G3 (2 semitones down)
+    // and Bb3 (1 semitone up), so the lead takes Bb3.
+    const bb = CHORD_PROGRESSION.find((c) => c.name === "Bb")!;
+    expect(leadHomeTone(P("A3"), bb.pitches)).toBe(P("Bb3"));
+  });
+
+  it("holds still when the tone is already in the new palette", () => {
+    const f = CHORD_PROGRESSION.find((c) => c.name === "F")!;
+    expect(leadHomeTone(P("F3"), f.pitches)).toBe(P("F3"));
+  });
+
+  it("breaks an equal-distance tie downward", () => {
+    // D4 sits exactly two semitones from C4 below and E4 above, so the tie
+    // must resolve down: the ensemble should settle rather than climb.
+    const scale = [P("C4"), P("E4")];
+    expect(leadHomeTone(P("D4"), scale)).toBe(P("C4"));
+    // Order-independent — the lower tone wins whichever way the palette is
+    // listed, so a palette that is not sorted still leads the same way.
+    expect(leadHomeTone(P("D4"), [P("E4"), P("C4")])).toBe(P("C4"));
+  });
+
+  it("moves by small steps rather than leaping across the register", () => {
+    // The point of leading: a trail's home tone walks, so no single chord
+    // change should throw it more than a few semitones.
+    let home = homeToneForHash(hashIdentity("person-a"), CHORD_PROGRESSION[0].pitches);
+    for (let turn = 0; turn < 12; turn++) {
+      const next = CHORD_PROGRESSION[(turn + 1) % CHORD_PROGRESSION.length];
+      const led = leadHomeTone(home, next.pitches);
+      expect(Math.abs(semitonesBetween(home, led))).toBeLessThanOrEqual(3);
+      expect(next.pitches).toContain(led);
+      home = led;
+    }
+  });
+
+  it("leaves an empty palette alone rather than inventing a pitch", () => {
+    expect(leadHomeTone(P("D4"), [])).toBe(P("D4"));
   });
 });
 

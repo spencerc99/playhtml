@@ -8,6 +8,7 @@ import {
   CHORD_DWELL_MS,
   CHORD_PROGRESSION,
   D_MINOR_PENTATONIC,
+  leadHomeTone,
 } from "../scales";
 
 type ParamEvent = {
@@ -1472,6 +1473,89 @@ describe("SoundEngine cursor instruments", () => {
     for (const home of bbHomes) {
       expect(bbPalette).toContain(home);
     }
+  });
+
+  it("leads a home tone to the nearest new chord tone rather than re-hashing", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true, chordRotation: true });
+
+    const frames = (step: number) => [
+      { ...soloFrame(0, step * 8, 0), identityKey: "person-a" },
+    ];
+    for (let step = 0; step < 3; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, frames(step));
+    }
+
+    // Walk the whole progression and check each move is a step, not a leap.
+    // Re-hashing against every palette is what made a trail jump register on
+    // each chord change; leading keeps it as one slowly-gliding line.
+    let previous = engine.getHomeTone(0)!;
+    for (let turn = 1; turn <= CHORD_PROGRESSION.length; turn++) {
+      context.currentTime += 1 / 60;
+      engine.tick(turn * (CHORD_DWELL_MS + 1), frames(3 + turn));
+
+      const palette = CHORD_PROGRESSION[turn % CHORD_PROGRESSION.length].pitches;
+      const home = engine.getHomeTone(0)!;
+      expect(palette).toContain(home);
+      expect(leadHomeTone(previous, palette)).toBe(home);
+      previous = home;
+    }
+  });
+
+  it("glides a sounding voice into the new chord instead of snapping", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true, chordRotation: true });
+
+    // Circle the pad rather than tracking a straight line: direction drives
+    // pitch selection, so a fixed heading would hold one note and never
+    // schedule the ramp this test is about.
+    const frames = (step: number) => [
+      {
+        ...soloFrame(
+          0,
+          500 + Math.cos(step * 0.9) * 120,
+          150 + Math.sin(step * 0.9) * 120,
+        ),
+        identityKey: "person-a",
+      },
+    ];
+    for (let step = 0; step < 6; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 100, frames(step));
+    }
+
+    const oscillator = context.oscillators[0];
+    const beforeRotation = oscillator.frequency.events.length;
+
+    // Past the dwell, then keep moving so the voice takes a fresh pitch.
+    for (let step = 6; step < 12; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(CHORD_DWELL_MS + step * 100, frames(step));
+    }
+
+    const rampsAfter = oscillator.frequency.events
+      .slice(beforeRotation)
+      .filter((event) => event.method === "exponentialRamp");
+    expect(rampsAfter.length).toBeGreaterThan(0);
+
+    // The first pitch taken from the new palette is the voice-leading move, so
+    // it rides a ~1s glide rather than the 80ms note ramp. Every ramp is
+    // scheduled at ctx.currentTime + glide, and the clock only ever advances,
+    // so a ramp landing more than half a second past the final clock reading
+    // can only have come from the long glide.
+    const longestGlide = Math.max(...rampsAfter.map((event) => event.time));
+    expect(longestGlide).toBeGreaterThan(context.currentTime + 0.5);
+    // Ordinary note moves stay short: the very first ramp of the run (before
+    // any rotation) is an 80ms move, not a glide.
+    const firstRamp = oscillator.frequency.events.find(
+      (event) => event.method === "exponentialRamp",
+    )!;
+    expect(firstRamp.time).toBeLessThan(context.currentTime + 0.5);
   });
 
   it("reports no home tone while trail voices are off", async () => {

@@ -239,9 +239,10 @@ export function hashUnit(hash: number, salt: number): number {
 }
 
 /**
- * The chord tone a trail calls home, chosen from the current palette by its
- * identity hash. Re-derived against each new palette as the progression turns,
- * so a trail keeps the same relative seat in every chord.
+ * The chord tone a trail calls home when it first appears, chosen from the
+ * palette in force by its identity hash. Only the initial seat comes from the
+ * hash — once a trail is sounding, `leadHomeTone` moves it from wherever it
+ * already sits rather than re-rolling it against each new palette.
  */
 export function homeToneForHash(hash: number, scale: number[]): number {
   if (scale.length === 0) return D_MINOR_PENTATONIC[0];
@@ -250,6 +251,47 @@ export function homeToneForHash(hash: number, scale: number[]): number {
     Math.floor(hashUnit(hash, HOME_TONE_SALT) * scale.length),
   );
   return scale[index];
+}
+
+/** Distance between two pitches in semitones, signed (positive = target higher). */
+export function semitonesBetween(from: number, to: number): number {
+  return 12 * Math.log2(to / from);
+}
+
+/**
+ * Move a home tone onto the nearest tone of a new palette.
+ *
+ * Re-hashing against every palette makes a trail leap around the register on
+ * each chord change — the crowd re-seats itself all at once and the rotation
+ * reads as a cut rather than as harmony moving. Choosing the nearest tone
+ * instead gives each trail a slowly-gliding line: over a session its home tone
+ * walks by a step or two at a time, which is what voice leading is.
+ *
+ * Distance is measured in semitones so the choice is musical rather than
+ * linear-in-Hz (a fixed Hz gap is a much wider interval down low than up high).
+ * Ties go downward: an exact tritone either way resolves to the lower tone, so
+ * the ensemble as a whole drifts to settle rather than to climb.
+ */
+export function leadHomeTone(currentHome: number, scale: number[]): number {
+  if (scale.length === 0) return currentHome;
+  let best = scale[0];
+  let bestDistance = Math.abs(semitonesBetween(currentHome, best));
+  for (const candidate of scale.slice(1)) {
+    const distance = Math.abs(semitonesBetween(currentHome, candidate));
+    // Strictly-less keeps the first-seen on a tie, so scanning a palette that
+    // is not sorted would be order-dependent — hence the explicit lower-wins
+    // branch below rather than relying on iteration order.
+    if (distance < bestDistance - 1e-9) {
+      best = candidate;
+      bestDistance = distance;
+    } else if (
+      Math.abs(distance - bestDistance) <= 1e-9 &&
+      candidate < best
+    ) {
+      best = candidate;
+    }
+  }
+  return best;
 }
 
 /** Salts separating the independent parameters drawn from one identity hash. */

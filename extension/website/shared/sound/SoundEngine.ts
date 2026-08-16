@@ -21,6 +21,7 @@ import {
   hashIdentity,
   hashUnit,
   homeToneForHash,
+  leadHomeTone,
   ATTACK_SALT,
   DETUNE_SALT,
   VIBRATO_DEPTH_SALT,
@@ -34,6 +35,16 @@ import { NotesEngine } from "./NotesEngine";
 
 /** Minimum time between note changes for a single voice (ms) */
 const MIN_NOTE_INTERVAL_MS = 80;
+
+/** Ordinary pitch move: fast enough that motion still reads as note changes. */
+const NOTE_GLIDE_SECONDS = 0.08;
+
+/**
+ * Pitch move onto a newly-led home tone. Long, so a sounding voice slides into
+ * the new chord rather than snapping — the rotation should be heard as the
+ * ensemble leaning, not as everyone retuning on a downbeat.
+ */
+const VOICE_LEADING_GLIDE_SECONDS = 1;
 
 /** Nominal frame interval, used to rate-limit per-frame smoothing. */
 const FRAME_MS = 16;
@@ -525,8 +536,17 @@ const PERCUSSIVE_CURSOR_TYPES = new Set(["text"]);
  * home tone.
  */
 interface TrailFingerprint {
-  /** The hash itself, kept so the home tone can be re-derived on rotation. */
+  /** The hash itself, kept so the initial home tone can be derived. */
   hash: number;
+  /**
+   * The chord tone this trail currently calls home. Seeded from the hash on
+   * first sight, then led to the nearest tone of each new palette rather than
+   * re-hashed — see `leadHomeTone`. This is the one field of a fingerprint
+   * that is not a pure function of the hash.
+   */
+  homeTone: number;
+  /** Palette the home tone was last led onto, so a rotation is detected once. */
+  homeToneScale: number[] | null;
   detuneCents: number;
   vibratoRateHz: number;
   vibratoDepthCents: number;
@@ -587,6 +607,13 @@ interface Voice {
   formants: FormantNodes | null;
   /** Detune in cents currently applied, so a merge can pull it and restore it. */
   appliedDetuneCents: number;
+  /**
+   * Palette this voice last took a pitch from. When it differs from the one in
+   * force, the voice has not yet moved into the new chord, so its next pitch
+   * update is a voice-leading move and glides over `VOICE_LEADING_GLIDE_SECONDS`
+   * rather than snapping.
+   */
+  lastPitchScale: number[] | null;
   active: boolean;
 }
 
@@ -1081,7 +1108,19 @@ export class SoundEngine {
         frequency !== voice.currentFrequency &&
         elapsedMs - voice.lastNoteTimeMs > MIN_NOTE_INTERVAL_MS
       ) {
-        this.setVoiceFrequency(voice, frequency);
+        // The first pitch this voice takes from a new palette is its move into
+        // the new chord, so it slides rather than snapping. A voice that has
+        // already spoken in this palette moves at the ordinary note rate.
+        const isVoiceLeadingMove =
+          voice.lastPitchScale !== null && voice.lastPitchScale !== scale;
+        this.setVoiceFrequency(
+          voice,
+          frequency,
+          isVoiceLeadingMove
+            ? VOICE_LEADING_GLIDE_SECONDS
+            : NOTE_GLIDE_SECONDS,
+        );
+        voice.lastPitchScale = scale ?? null;
         voice.lastNoteTimeMs = elapsedMs;
         voice.currentFrequency = frequency;
       }
@@ -1508,6 +1547,7 @@ export class SoundEngine {
       vibrato: null,
       formants: null,
       appliedDetuneCents: 0,
+      lastPitchScale: null,
       active: false,
     };
   }
@@ -1543,8 +1583,13 @@ export class SoundEngine {
       minAttackScale,
       maxAttackScale,
     } = TRAIL_VOICE_TUNING;
+    const scale = this.flourishPalette();
     const fingerprint: TrailFingerprint = {
       hash,
+      // A brand-new trail takes its seat from its identity; only trails already
+      // sounding are led from where they are.
+      homeTone: homeToneForHash(hash, scale),
+      homeToneScale: scale,
       detuneCents: (hashUnit(hash, DETUNE_SALT) * 2 - 1) * maxDetuneCents,
       vibratoRateHz:
         vibratoMinRateHz +
@@ -1564,7 +1609,21 @@ export class SoundEngine {
   private homeToneFor(trailIndex: number): number | null {
     const fingerprint = this.fingerprints.get(trailIndex);
     if (!fingerprint) return null;
-    return homeToneForHash(fingerprint.hash, this.flourishPalette());
+    return this.resolveHomeTone(fingerprint);
+  }
+
+  /**
+   * This trail's home tone in the palette currently in force, leading it onto
+   * the nearest tone of a new palette when the progression has turned. Called
+   * from the read paths rather than from `updateChord`, so a trail that was not
+   * sounding across a rotation still resolves correctly the moment it returns.
+   */
+  private resolveHomeTone(fingerprint: TrailFingerprint): number {
+    const scale = this.flourishPalette();
+    if (fingerprint.homeToneScale === scale) return fingerprint.homeTone;
+    fingerprint.homeTone = leadHomeTone(fingerprint.homeTone, scale);
+    fingerprint.homeToneScale = scale;
+    return fingerprint.homeTone;
   }
 
   /**
@@ -1576,7 +1635,7 @@ export class SoundEngine {
     frequency: number,
     fingerprint: TrailFingerprint,
   ): number {
-    const home = homeToneForHash(fingerprint.hash, this.flourishPalette());
+    const home = this.resolveHomeTone(fingerprint);
     const roll = hashUnit(fingerprint.hash ^ Math.round(frequency * 100), 7);
     return roll < TRAIL_VOICE_TUNING.homeToneBias ? home : frequency;
   }
@@ -1735,18 +1794,22 @@ export class SoundEngine {
     );
   }
 
-  private setVoiceFrequency(voice: Voice, frequency: number): void {
+  private setVoiceFrequency(
+    voice: Voice,
+    frequency: number,
+    glideSeconds: number = NOTE_GLIDE_SECONDS,
+  ): void {
     if (!this.ctx) return;
     if (voice.oscillator) {
       voice.oscillator.frequency.exponentialRampToValueAtTime(
         frequency,
-        this.ctx.currentTime + 0.08,
+        this.ctx.currentTime + glideSeconds,
       );
     }
     if (voice.fifthOscillator) {
       voice.fifthOscillator.frequency.exponentialRampToValueAtTime(
         frequency * 1.5, // Perfect fifth
-        this.ctx.currentTime + 0.08,
+        this.ctx.currentTime + glideSeconds,
       );
     }
   }
