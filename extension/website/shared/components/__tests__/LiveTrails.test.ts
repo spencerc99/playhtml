@@ -27,7 +27,7 @@ import {
 } from "../trailVisibility";
 import {
   collectDueClickEffects,
-  retainClickEffectsForActiveTrails,
+  removeCompletedClickEffect,
 } from "../clickEffects";
 
 describe("advanceDrawState", () => {
@@ -250,15 +250,16 @@ describe("collectDueClickEffects", () => {
       ),
     ).toEqual([]);
 
+    const secondEffect = {
+      ...firstEffects[0],
+      id: "second-effect",
+    };
     expect(
-      retainClickEffectsForActiveTrails(firstEffects, new Set(["other-trail"])),
-    ).toBe(firstEffects);
-    expect(
-      retainClickEffectsForActiveTrails(
-        firstEffects,
-        new Set(["participant|https://example.com"]),
+      removeCompletedClickEffect(
+        [...firstEffects, secondEffect],
+        firstEffects[0].id,
       ),
-    ).toEqual([]);
+    ).toEqual([secondEffect]);
 
     random.mockRestore();
   });

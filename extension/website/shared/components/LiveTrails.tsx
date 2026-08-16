@@ -9,7 +9,7 @@ import { getTrailRenderer } from "../styles/trailRenderers";
 import { RippleEffect, type RippleSettings } from "./ClickRipple";
 import {
   collectDueClickEffects,
-  retainClickEffectsForActiveTrails,
+  removeCompletedClickEffect,
   type LiveClickEffect,
 } from "./clickEffects";
 import {
@@ -215,7 +215,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     >([]);
     const handleClickEffectComplete = useCallback((id: string) => {
       setActiveClickEffects((effects) =>
-        effects.filter((effect) => effect.id !== id),
+        removeCompletedClickEffect(effects, id),
       );
     }, []);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -307,10 +307,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       if (removedIdsRef.current.length > 0) {
         const ids = removedIdsRef.current;
         removedIdsRef.current = [];
-        const removed = new Set(ids);
-        setActiveClickEffects((effects) =>
-          retainClickEffectsForActiveTrails(effects, removed),
-        );
         onRemovedRef.current?.(ids);
       }
     }, [kept]);
