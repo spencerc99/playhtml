@@ -1,6 +1,6 @@
 // ABOUTME: Shared ripple effect for click/hold visualization
 // ABOUTME: Used by AnimatedTrails and AnimatedClicks so ripple logic stays DRY
-import { useState, useEffect, useMemo, useRef, memo } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { ClickEffect } from "../types";
 
 export interface RippleSettings {
@@ -20,6 +20,44 @@ export interface RippleSettings {
   clickAnimationStopPoint: number;
 }
 
+const MAX_HOLD_MULTIPLIER = 3;
+export const RIPPLE_FADE_MS = 3000;
+
+export function getRippleLifecycle(
+  effect: ClickEffect,
+  rippleSettings: RippleSettings,
+  now: number,
+) {
+  const holdMultiplier = effect.holdDuration
+    ? Math.min(MAX_HOLD_MULTIPLIER, 1 + effect.holdDuration / 1000)
+    : 1;
+  const baseTotalDuration =
+    rippleSettings.clickMinDuration +
+    effect.durationFactor *
+      (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
+  const effectTotalDuration = baseTotalDuration * holdMultiplier;
+  const expansionDuration =
+    rippleSettings.clickExpansionDuration * holdMultiplier;
+  const outerRingStartDelay =
+    Math.max(0, rippleSettings.clickNumRings - 1) *
+    rippleSettings.clickRingDelayMs;
+  const fadeStartedAt =
+    effect.startTime +
+    Math.min(effectTotalDuration, outerRingStartDelay + expansionDuration);
+  const fadeProgress = Math.min(
+    1,
+    Math.max(0, (now - fadeStartedAt) / RIPPLE_FADE_MS),
+  );
+
+  return {
+    holdMultiplier,
+    effectTotalDuration,
+    expansionDuration,
+    opacity: rippleSettings.clickOpacity * (1 - fadeProgress),
+    complete: fadeProgress >= 1,
+  };
+}
+
 export const RippleEffect = memo(
   ({
     effect,
@@ -35,11 +73,8 @@ export const RippleEffect = memo(
     /** Ensures onComplete runs once — render-phase callbacks can run twice in Strict Mode. */
     const completionFiredRef = useRef(false);
 
-    // Scale by hold duration if present.
-    // 250ms = 1.25x, 1000ms = 2x, 2000ms = 3x
-    const holdMultiplier = effect.holdDuration
-      ? 1 + effect.holdDuration / 1000
-      : 1;
+    const lifecycle = getRippleLifecycle(effect, rippleSettings, now);
+    const { holdMultiplier, expansionDuration } = lifecycle;
 
     const baseMaxRadius =
       rippleSettings.clickMinRadius +
@@ -47,39 +82,11 @@ export const RippleEffect = memo(
         (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
     const effectMaxRadius = baseMaxRadius * holdMultiplier;
 
-    const baseTotalDuration =
-      rippleSettings.clickMinDuration +
-      effect.durationFactor *
-        (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
-    const effectTotalDuration = baseTotalDuration * holdMultiplier;
-
-    const expansionDuration =
-      rippleSettings.clickExpansionDuration * holdMultiplier;
-
     // Honor the configured ring delay directly — staggering is when each ring
     // BEGINS expanding. The visual density comes from each ring freezing at
     // a different target radius (see ring rendering below), not time stagger.
     const ringStaggerMs = rippleSettings.clickRingDelayMs;
     const numRings = Math.max(1, rippleSettings.clickNumRings);
-
-    // The outermost ring travels the farthest, so it dictates when the whole
-    // ripple has finished animating.
-    const allRingsComplete = useMemo(() => {
-      const totalElapsed = now - effect.startTime;
-      if (totalElapsed >= effectTotalDuration) return true;
-
-      const outerIndex = numRings - 1;
-      const outerStartTime = effect.startTime + outerIndex * ringStaggerMs;
-      const outerElapsed = now - outerStartTime;
-      return outerElapsed >= expansionDuration;
-    }, [
-      now,
-      effect.startTime,
-      effectTotalDuration,
-      expansionDuration,
-      numRings,
-      ringStaggerMs,
-    ]);
 
     useEffect(() => {
       let animationFrameId: number;
@@ -105,11 +112,11 @@ export const RippleEffect = memo(
     }, [effect.id]);
 
     useEffect(() => {
-      if (!allRingsComplete || completionFiredRef.current) return;
+      if (!lifecycle.complete || completionFiredRef.current) return;
       completionFiredRef.current = true;
       onComplete?.(effect.id);
       setIsAnimating(false);
-    }, [allRingsComplete, effect.id, onComplete]);
+    }, [effect.id, lifecycle.complete, onComplete]);
 
     const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
@@ -160,7 +167,7 @@ export const RippleEffect = memo(
           fill="none"
           stroke={effect.color}
           strokeWidth={rippleSettings.clickStrokeWidth}
-          opacity={Math.max(0, rippleSettings.clickOpacity)}
+          opacity={Math.max(0, lifecycle.opacity)}
           style={{ mixBlendMode: "multiply" }}
         />
       );

@@ -1,7 +1,7 @@
 // ABOUTME: Animates id-keyed live cursor trails and their click ripples.
 // ABOUTME: React owns trail lifetimes while one frame loop draws current progress.
 
-import React, { useEffect, useRef, useState, memo } from "react";
+import React, { useCallback, useEffect, useRef, useState, memo } from "react";
 import type { TrailState } from "../types";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
@@ -52,9 +52,12 @@ export interface LiveTrailDrawState {
   seenAt: number;
   total: number;
   grewAt: number;
+  caughtUpAt: number | null;
   settled: boolean;
   settledAt: number | null;
   dimmedAt: number | null;
+  activeFromPoint: number | null;
+  activeDimmedAt: number | null;
 }
 
 export function shouldDepartTrail(
@@ -80,6 +83,16 @@ export function getLiveTrailOpacity(
   return 1 - (1 - COMPLETED_OPACITY) * dimProgress;
 }
 
+export function getActiveTrailOpacity(
+  draw: LiveTrailDrawState,
+  clockMs: number,
+): number {
+  if (draw.activeFromPoint === null) return 0;
+  if (draw.activeDimmedAt === null) return 1;
+
+  return Math.max(0, 1 - (clockMs - draw.activeDimmedAt) / DIM_FADE_MS);
+}
+
 export function advanceDrawState(
   draw: LiveTrailDrawState,
   pointCount: number,
@@ -91,12 +104,37 @@ export function advanceDrawState(
   if (draw.settled) {
     const completedProgress = Math.min(1, draw.total / pointCount);
     draw.seenAt = clockMs - completedProgress * drawDuration;
+    draw.activeFromPoint = Math.max(0, draw.total - 1);
+    draw.activeDimmedAt = null;
     draw.settled = false;
     draw.settledAt = null;
   }
 
   draw.total = pointCount;
   draw.grewAt = clockMs;
+  draw.caughtUpAt = null;
+}
+
+export function advanceSettlingState(
+  draw: LiveTrailDrawState,
+  caughtUp: boolean,
+  clockMs: number,
+): void {
+  if (!caughtUp) {
+    draw.caughtUpAt = null;
+    return;
+  }
+
+  draw.caughtUpAt ??= clockMs;
+  if (draw.settled || clockMs - draw.caughtUpAt < SETTLE_MS) return;
+
+  draw.settled = true;
+  draw.settledAt = clockMs;
+  if (draw.activeFromPoint === null) {
+    draw.dimmedAt ??= clockMs;
+  } else {
+    draw.activeDimmedAt = clockMs;
+  }
 }
 
 export function getDrawClockTime(
@@ -175,6 +213,11 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const [activeClickEffects, setActiveClickEffects] = useState<
       LiveClickEffect[]
     >([]);
+    const handleClickEffectComplete = useCallback((id: string) => {
+      setActiveClickEffects((effects) =>
+        effects.filter((effect) => effect.id !== id),
+      );
+    }, []);
     const svgRef = useRef<SVGSVGElement>(null);
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
@@ -508,9 +551,12 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               seenAt: clockMs,
               total: pts,
               grewAt: clockMs,
+              caughtUpAt: null,
               settled: false,
               settledAt: null,
               dimmedAt: null,
+              activeFromPoint: null,
+              activeDimmedAt: null,
             };
             drawMap.set(key, draw);
           } else {
@@ -527,31 +573,37 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           );
           const caughtUp = drawProgress >= 1;
 
-          // Latch "settled" once a trail has fully drawn and gone quiet for
-          // SETTLE_MS. Settling is one-way: a settled trail stays dimmed for the
-          // rest of its life (it never un-dims), per the design.
-          if (!draw.settled && caughtUp && clockMs - draw.grewAt >= SETTLE_MS) {
-            draw.settled = true;
-            draw.settledAt = clockMs;
-            draw.dimmedAt ??= clockMs;
-          }
+          advanceSettlingState(draw, caughtUp, clockMs);
           // A settled trail always shows its full current geometry (dimmed); a
           // live one draws progressively toward its tip.
           const progress = draw.settled ? 1 : drawProgress;
 
-          // Trails ease to COMPLETED_OPACITY after first settling and remain dim
-          // if later points resume their draw. Visibility transitions multiply
-          // on top for smooth departure and return.
+          // Completed ink remains dim while a resumed portion draws at the live
+          // opacity. When that portion settles, it fades into the dim base.
           const settleOpacity = getLiveTrailOpacity(draw, clockMs);
+          const activeOpacity = getActiveTrailOpacity(draw, clockMs);
           const visibility = getTrailVisibility(entry.visibility, clockMs);
-          const groupFade = settleOpacity * visibility;
+          const activeStartProgress =
+            draw.activeFromPoint === null || pts < 2
+              ? null
+              : draw.activeFromPoint / (pts - 1);
 
           const result = handle.update(
             0,
-            trailOpacity,
+            trailOpacity * settleOpacity,
             strokeWidth,
-            groupFade,
+            visibility,
             progress,
+            activeStartProgress === null || activeOpacity <= 0
+              ? undefined
+              : {
+                  startProgress: activeStartProgress,
+                  baseProgress:
+                    draw.activeDimmedAt === null
+                      ? activeStartProgress
+                      : progress,
+                  opacity: trailOpacity * activeOpacity,
+                },
           );
 
           const activelyTracing =
@@ -623,7 +675,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               ts.trail.points[cpIdx]?.cursor,
               false,
               progress,
-              groupFade,
+              visibility,
             );
           } else {
             cursorHandle?.hide();
@@ -665,6 +717,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               key={effect.id}
               effect={effect}
               settings={settings}
+              onComplete={handleClickEffectComplete}
             />
           ))}
         <g ref={pathLayerRef}>

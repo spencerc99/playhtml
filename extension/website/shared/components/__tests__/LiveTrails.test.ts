@@ -10,7 +10,9 @@ import type { SoundEngine } from "../../sound/SoundEngine";
 import { DEFAULT_SETTINGS } from "../settingsDefaults";
 import {
   advanceDrawState,
+  advanceSettlingState,
   createLiveSoundFrame,
+  getActiveTrailOpacity,
   getDrawClockTime,
   getLiveTrailOpacity,
   LiveTrails,
@@ -34,9 +36,12 @@ describe("advanceDrawState", () => {
       seenAt: 0,
       total: 2,
       grewAt: 1000,
+      caughtUpAt: 5000,
       settled: true,
       settledAt: 9000,
       dimmedAt: 9000,
+      activeFromPoint: null,
+      activeDimmedAt: null,
     };
 
     advanceDrawState(draw, 4, 10_000, 4000);
@@ -45,12 +50,65 @@ describe("advanceDrawState", () => {
       seenAt: 8000,
       total: 4,
       grewAt: 10_000,
+      caughtUpAt: null,
       settled: false,
       settledAt: null,
       dimmedAt: 9000,
+      activeFromPoint: 1,
+      activeDimmedAt: null,
     });
 
     expect(getLiveTrailOpacity(draw, 11_000)).toBe(COMPLETED_OPACITY);
+    expect(getActiveTrailOpacity(draw, 11_000)).toBe(1);
+  });
+});
+
+describe("advanceSettlingState", () => {
+  it("waits until a trail has been fully drawn for eight seconds", () => {
+    const draw = {
+      seenAt: 0,
+      total: 20,
+      grewAt: 0,
+      caughtUpAt: null,
+      settled: false,
+      settledAt: null,
+      dimmedAt: null,
+      activeFromPoint: null,
+      activeDimmedAt: null,
+    };
+
+    advanceSettlingState(draw, false, 20_000);
+    advanceSettlingState(draw, true, 30_000);
+    expect(draw.settled).toBe(false);
+
+    advanceSettlingState(draw, true, 37_999);
+    expect(draw.settled).toBe(false);
+
+    advanceSettlingState(draw, true, 38_000);
+    expect(draw.settled).toBe(true);
+    expect(draw.settledAt).toBe(38_000);
+    expect(draw.dimmedAt).toBe(38_000);
+  });
+
+  it("fades only the resumed portion when an active trail settles again", () => {
+    const draw = {
+      seenAt: 0,
+      total: 4,
+      grewAt: 0,
+      caughtUpAt: 10_000,
+      settled: false,
+      settledAt: null,
+      dimmedAt: 1000,
+      activeFromPoint: 1,
+      activeDimmedAt: null,
+    };
+
+    advanceSettlingState(draw, true, 18_000);
+
+    expect(draw.activeFromPoint).toBe(1);
+    expect(draw.activeDimmedAt).toBe(18_000);
+    expect(getActiveTrailOpacity(draw, 18_000)).toBe(1);
+    expect(getActiveTrailOpacity(draw, 19_200)).toBe(0);
   });
 });
 
@@ -59,9 +117,12 @@ describe("shouldDepartTrail", () => {
     seenAt: 0,
     total: 2,
     grewAt: 1000,
+    caughtUpAt: 1000,
     settled: true,
     settledAt: 10_000,
     dimmedAt: 10_000,
+    activeFromPoint: null,
+    activeDimmedAt: null,
   };
 
   it("keeps a settled trail for 60 seconds before departure", () => {
