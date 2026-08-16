@@ -1,5 +1,5 @@
-// ABOUTME: Verifies the navigation accent fires off the playback clock in any view
-// ABOUTME: including loop retriggering and staying silent without an engine
+// ABOUTME: Verifies the navigation accent fires off the playback clock when the
+// ABOUTME: trails view is active, and stays silent otherwise or without an engine
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -18,7 +18,7 @@ const schedule: ScheduledNavigation[] = [
 
 let frames: FrameRequestCallback[] = [];
 
-function renderDriver(soundEngine: SoundEngine | null) {
+function renderDriver(soundEngine: SoundEngine | null, active = true) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -29,6 +29,7 @@ function renderDriver(soundEngine: SoundEngine | null) {
         durationMs: CYCLE_MS,
         animationSpeed: 1,
         soundEngine,
+        active,
       }),
     );
   });
@@ -112,6 +113,66 @@ describe("NavigationSoundDriver", () => {
     const { root, container } = renderDriver(null);
     // With no engine the effect returns before scheduling any frame.
     expect(frames).toHaveLength(0);
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("stays silent when the trails view is not active", () => {
+    const engine = fakeEngine();
+    const { root, container } = renderDriver(engine, false);
+    // Inactive: the effect returns before scheduling any frame.
+    expect(frames).toHaveLength(0);
+
+    advanceTo(0);
+    advanceTo(9500);
+    expect(engine.triggerNavigation).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("stops scheduling frames once the trails view is deactivated", () => {
+    const engine = fakeEngine();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        React.createElement(NavigationSoundDriver, {
+          schedule,
+          durationMs: CYCLE_MS,
+          animationSpeed: 1,
+          soundEngine: engine,
+          active: true,
+        }),
+      );
+    });
+
+    advanceTo(0);
+    advanceTo(1500);
+    expect(engine.triggerNavigation).toHaveBeenCalledTimes(1);
+    expect(frames.length).toBeGreaterThan(0);
+
+    act(() => {
+      root.render(
+        React.createElement(NavigationSoundDriver, {
+          schedule,
+          durationMs: CYCLE_MS,
+          animationSpeed: 1,
+          soundEngine: engine,
+          active: false,
+        }),
+      );
+    });
+
+    // The inactive effect's cleanup cancels the in-flight frame and the new
+    // effect returns before scheduling a replacement, so nothing is pending.
+    frames = [];
+    advanceTo(9500);
+    expect(engine.triggerNavigation).toHaveBeenCalledTimes(1);
+    expect(frames).toHaveLength(0);
+
     act(() => root.unmount());
     container.remove();
   });

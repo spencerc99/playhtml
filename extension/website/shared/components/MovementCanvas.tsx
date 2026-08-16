@@ -83,20 +83,27 @@ const EMPTY_EVENTS: CollectionEvent[] = [];
  * from a schedule of navigation moments on its own playback clock, the same
  * `(realElapsed * speed) % duration` math the readout and trail loop use, makes
  * it sound wherever playback runs. Renders nothing.
+ *
+ * Gated on `active` (the caller passes whether the trails view is showing):
+ * the gong is a cursor-trail accent, not a navigation-view one, so it should
+ * stay silent in the timeline/radial navigation views even though the
+ * schedule itself is view-independent.
  */
 export const NavigationSoundDriver: React.FC<{
   schedule: ScheduledNavigation[];
   durationMs: number;
   animationSpeed: number;
   soundEngine: SoundEngine | null;
-}> = ({ schedule, durationMs, animationSpeed, soundEngine }) => {
+  active: boolean;
+}> = ({ schedule, durationMs, animationSpeed, soundEngine, active }) => {
   const speedRef = useRef(animationSpeed);
   useEffect(() => {
     speedRef.current = animationSpeed;
   }, [animationSpeed]);
 
   useEffect(() => {
-    if (!soundEngine || durationMs <= 0 || schedule.length === 0) return;
+    if (!active || !soundEngine || durationMs <= 0 || schedule.length === 0)
+      return;
 
     let raf = 0;
     let startedAt: number | null = null;
@@ -124,7 +131,7 @@ export const NavigationSoundDriver: React.FC<{
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [schedule, durationMs, soundEngine]);
+  }, [schedule, durationMs, soundEngine, active]);
 
   return null;
 };
@@ -1708,14 +1715,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           ))}
 
-        {/* Not gated on a view or on showTrails — the accent marks page
-            changes in the data, so it plays wherever playback runs. */}
+        {/* The schedule itself is view-independent (built from the data, not
+            any view's rendering), but the gong is a trails-view accent: gate
+            playback on showTrails so it stays silent in the navigation
+            timeline/radial views and other view modes. */}
         {!paused && (
           <NavigationSoundDriver
             schedule={navigationSchedule}
             durationMs={timeRange.duration}
             animationSpeed={settings.animationSpeed}
             soundEngine={soundEnabled ? soundEngineReady : null}
+            active={showTrails}
           />
         )}
 
