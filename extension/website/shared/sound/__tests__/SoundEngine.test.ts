@@ -146,6 +146,9 @@ class TestAudioContext {
   }
 }
 
+/** Mirrors SWELL_TUNING.onsetMs, which is private to the engine. */
+const SWELL_ONSET_MS = 800;
+
 const originalAudioContext = globalThis.AudioContext;
 let context: TestAudioContext;
 
@@ -1574,6 +1577,238 @@ describe("SoundEngine cursor instruments", () => {
     // again, and the voice must not keep wobbling after the switch.
     engine.setConfig({ trailVoices: false });
     expect(state.voices.get(0)!.vibrato).toBeNull();
+  });
+
+  it("swells only after sustained motion, not on a short gesture", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(4000);
+    engine.setConfig({ swells: true });
+
+    const state = engine as unknown as {
+      swells: Map<number, { progress: number }>;
+    };
+
+    // A gesture shorter than the onset window: fast, but over before the
+    // crescendo is allowed to start, so it must stay at the plain multiplier.
+    let x = 0;
+    let step = 0;
+    for (; step * 16 < SWELL_ONSET_MS - 100; step++) {
+      x += 8;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+    }
+    expect(state.swells.get(0)!.progress).toBe(0);
+
+    // Keeping the same motion going past the onset starts the crescendo.
+    for (; step < 200; step++) {
+      x += 8;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+    }
+    const swelled = state.swells.get(0)!.progress;
+    expect(swelled).toBeGreaterThan(0.5);
+  });
+
+  it("releases the swell once a trail stops", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(4000);
+    engine.setConfig({ swells: true });
+
+    const state = engine as unknown as {
+      swells: Map<number, { progress: number }>;
+    };
+
+    let x = 0;
+    let step = 0;
+    for (; step < 200; step++) {
+      x += 8;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+    }
+    const peak = state.swells.get(0)!.progress;
+    expect(peak).toBeGreaterThan(0.5);
+
+    // The trail stops. The release runs over its own duration rather than
+    // cutting, so the swell is well down but not instantly zero.
+    for (let i = 0; i < 20; i++) {
+      step++;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+    }
+    const shortlyAfter = state.swells.get(0)!.progress;
+    expect(shortlyAfter).toBeLessThan(peak);
+    expect(shortlyAfter).toBeGreaterThan(0);
+
+    for (let i = 0; i < 300; i++) {
+      step++;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+    }
+    expect(state.swells.get(0)!.progress).toBeLessThan(0.05);
+  });
+
+  it("holds a swell through the short pauses of real cursor motion", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(8000);
+    engine.setConfig({ swells: true });
+
+    const state = engine as unknown as {
+      swells: Map<number, { progress: number }>;
+    };
+
+    // Motion with a still frame every fourth tick — roughly what a real
+    // cursor does. Without the grace window each gap would reset the onset
+    // and the bed would never actually lean in.
+    let x = 0;
+    for (let step = 0; step < 250; step++) {
+      if (step % 4 !== 3) x += 9;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+    }
+
+    expect(state.swells.get(0)!.progress).toBeGreaterThan(0.5);
+  });
+
+  it("keeps the ensemble breath bounded and centred on unity", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ swells: true });
+
+    const state = engine as unknown as { breathGainScale(): number };
+
+    let min = Infinity;
+    let max = -Infinity;
+    let sum = 0;
+    const samples = 400;
+    // Walk the audio clock across several full breath periods.
+    for (let i = 0; i < samples; i++) {
+      context.currentTime += 21 / 100;
+      const value = state.breathGainScale();
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+      sum += value;
+    }
+
+    expect(min).toBeGreaterThanOrEqual(0.85 - 1e-9);
+    expect(max).toBeLessThanOrEqual(1.15 + 1e-9);
+    // It really does traverse the range rather than sitting near one end.
+    expect(min).toBeLessThan(0.9);
+    expect(max).toBeGreaterThan(1.1);
+    // A breath, not a bias: the mean over whole periods stays at unity.
+    expect(sum / samples).toBeCloseTo(1, 1);
+  });
+
+  it("leaves gain and master untouched while swells are off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(4000);
+
+    const state = engine as unknown as {
+      swells: Map<number, unknown>;
+      breathGainScale(): number;
+      swellGainFor(trailIndex: number, elapsedMs: number, v: number): number;
+    };
+
+    let x = 0;
+    for (let step = 0; step < 200; step++) {
+      x += 8;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+    }
+
+    // No state accumulated, and both multipliers are exactly 1, so the plain
+    // gain path is arithmetically identical to what it was before swells.
+    expect(state.swells.size).toBe(0);
+    expect(state.breathGainScale()).toBe(1);
+    expect(state.swellGainFor(0, 5000, 10)).toBe(1);
+  });
+
+  it("morphs the choral vowel between its closed and open endpoints", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(8000);
+    engine.setConfig({ choralTimbre: true });
+
+    const state = engine as unknown as {
+      voices: Map<number, { formants: { filters: TestBiquadFilterNode[] } | null }>;
+    };
+
+    // Slow drift first: the vowel should sit closed.
+    let x = 0;
+    for (let step = 0; step < 20; step++) {
+      x += 1;
+      context.currentTime += 0.05;
+      engine.tick(step * 50, [soloFrame(0, x, 0)]);
+    }
+
+    const formants = state.voices.get(0)!.formants!;
+    expect(formants.filters).toHaveLength(2);
+
+    const lastRamp = (filter: TestBiquadFilterNode) =>
+      [...filter.frequency.events]
+        .reverse()
+        .find((event) => event.method === "linearRamp")?.value ??
+      filter.frequency.events.at(-1)!.value!;
+
+    // Closed "ooh" sits at 300/870; slow motion must stay near it.
+    expect(lastRamp(formants.filters[0])).toBeLessThan(420);
+    expect(lastRamp(formants.filters[1])).toBeLessThan(950);
+
+    // Now a fast sweep: the vowel opens toward "ahh" at 700/1220.
+    for (let step = 20; step < 60; step++) {
+      x += 40;
+      context.currentTime += 0.05;
+      engine.tick(step * 50, [soloFrame(0, x, 0)]);
+    }
+
+    expect(lastRamp(formants.filters[0])).toBeCloseTo(700, 0);
+    expect(lastRamp(formants.filters[1])).toBeCloseTo(1220, 0);
+  });
+
+  it("builds no formant filters while the choral timbre is off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const state = engine as unknown as {
+      voices: Map<number, { formants: unknown | null }>;
+    };
+
+    const frame = (x: number) => soloFrame(0, x, 0);
+    engine.tick(0, [frame(0)]);
+    context.currentTime += 1 / 60;
+    engine.tick(16, [frame(8)]);
+    expect(state.voices.get(0)!.formants).toBeNull();
+
+    // Switching on attaches the bank; switching back off tears it down at
+    // once, without waiting for a tick a paused canvas may never send.
+    engine.setConfig({ choralTimbre: true });
+    context.currentTime += 1 / 60;
+    engine.tick(32, [frame(16)]);
+    expect(state.voices.get(0)!.formants).not.toBeNull();
+
+    engine.setConfig({ choralTimbre: false });
+    expect(state.voices.get(0)!.formants).toBeNull();
+  });
+
+  it("auditions the choral swell across its full envelope", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    const before = context.oscillators.length;
+    engine.audition("choralSwell");
+    const rung = context.oscillators.slice(before);
+
+    expect(rung).toHaveLength(1);
+    // Onset, crescendo and release together run past four seconds, so the
+    // envelope can actually be heard rather than flashing past.
+    const stopAt = rung[0].stopTimes[0]!;
+    expect(stopAt - rung[0].startTimes[0]).toBeGreaterThan(4);
   });
 
   it("disconnects voice graphs after a playback reset", async () => {

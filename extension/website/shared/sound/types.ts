@@ -58,7 +58,9 @@ export type AuditionAccent =
   /** The dissonant interval two trails sound when their paths cross. */
   | "crossingDissonance"
   /** Two contrasting trail fingerprints, side by side, to hear the difference. */
-  | "trailVoicePair";
+  | "trailVoicePair"
+  /** One sustained voice through its full swell, in the choral timbre. */
+  | "choralSwell";
 
 /** Configuration for an instrument voice */
 export interface InstrumentConfig {

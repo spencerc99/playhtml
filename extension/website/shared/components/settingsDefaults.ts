@@ -117,6 +117,10 @@ export const DEFAULT_SETTINGS = {
   soundCrossings: "off" as CrossingFlavor,
   /** Give each trail a stable home chord tone and its own detune/vibrato. */
   soundTrailVoices: false,
+  /** Breathing dynamics: per-trail crescendo plus a slow ensemble breath. */
+  soundSwells: false,
+  /** Vowel formant colour over the sustained crowd, for a choir-like bed. */
+  soundChoralTimbre: false,
   /** Soft two-note figures as trails enter and leave the scene. */
   soundTrailArrivals: false,
   /** A deep resonant note on each animated page navigation. */

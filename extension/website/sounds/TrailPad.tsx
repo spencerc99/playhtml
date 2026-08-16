@@ -215,6 +215,12 @@ const AUDITION_CARDS: Array<{
       "The consonant dyad two trails sound instead, when crossings merge.",
   },
   {
+    accent: "choralSwell",
+    label: "choral swell",
+    description:
+      "One voice through the whole swell — onset, crescendo, release — in the choral vowel.",
+  },
+  {
     accent: "trailVoicePair",
     label: "two trail voices",
     description:
@@ -242,6 +248,8 @@ export const TrailPad = () => {
   const bassPedalRef = useRef(false);
   const trailVoicesRef = useRef(false);
   const crossingsRef = useRef<CrossingFlavor>("off");
+  const swellsRef = useRef(false);
+  const choralTimbreRef = useRef(false);
   const nextTrailIndexRef = useRef(1);
 
   const [running, setRunning] = useState(false);
@@ -255,6 +263,8 @@ export const TrailPad = () => {
   const [bassPedal, setBassPedal] = useState(false);
   const [trailVoices, setTrailVoices] = useState(false);
   const [crossings, setCrossings] = useState<CrossingFlavor>("off");
+  const [swells, setSwells] = useState(false);
+  const [choralTimbre, setChoralTimbre] = useState(false);
   const [readout, setReadout] = useState({
     notes: 0,
     soloist: null as number | null,
@@ -293,6 +303,12 @@ export const TrailPad = () => {
   }, [trailVoices, crossings]);
 
   useEffect(() => {
+    swellsRef.current = swells;
+    choralTimbreRef.current = choralTimbre;
+    engineRef.current?.setConfig({ swells, choralTimbre });
+  }, [swells, choralTimbre]);
+
+  useEffect(() => {
     engineRef.current?.setVolume(volume);
   }, [volume]);
 
@@ -309,6 +325,8 @@ export const TrailPad = () => {
         bassPedal: bassPedalRef.current,
         trailVoices: trailVoicesRef.current,
         crossings: crossingsRef.current,
+        swells: swellsRef.current,
+        choralTimbre: choralTimbreRef.current,
       });
       engine.setVolume(volume);
       const canvas = canvasRef.current;
@@ -608,6 +626,18 @@ export const TrailPad = () => {
           style={trailVoices ? buttonActiveStyle : buttonStyle}
         >
           trail voices
+        </button>
+        <button
+          onClick={() => setSwells((v) => !v)}
+          style={swells ? buttonActiveStyle : buttonStyle}
+        >
+          swells
+        </button>
+        <button
+          onClick={() => setChoralTimbre((v) => !v)}
+          style={choralTimbre ? buttonActiveStyle : buttonStyle}
+        >
+          choral timbre
         </button>
         <span style={labelStyle}>
           each composes with any mode above

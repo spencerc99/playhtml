@@ -106,6 +106,17 @@ export interface SoundConfig {
    */
   trailVoices: boolean;
   /**
+   * Breathing dynamics over the sustained bed: a trail that keeps moving
+   * crescendos like a bowed string leaning in, releases slowly when it stops,
+   * and the whole bed rises and falls on a slow ensemble breath.
+   */
+  swells: boolean;
+  /**
+   * Colour the sustained crowd with vowel formants, so the bed reads as voices
+   * rather than as oscillators. The vowel opens from "ooh" to "ahh" with speed.
+   */
+  choralTimbre: boolean;
+  /**
    * Relative-velocity spotlight over the sustained voices: the fastest clear
    * outlier is lifted and brightened while the rest duck behind it.
    */
@@ -137,6 +148,8 @@ const DEFAULT_CONFIG: SoundConfig = {
   cursorInstruments: false,
   crossings: "off",
   trailVoices: false,
+  swells: false,
+  choralTimbre: false,
   spotlight: false,
   chordRotation: false,
   energyArc: false,
@@ -170,6 +183,65 @@ const TRAIL_VOICE_TUNING = {
    */
   minAttackScale: 0.7,
   maxAttackScale: 1.4,
+};
+
+/**
+ * Swell tuning. Loudness stops tracking velocity instantly and instead
+ * breathes: a trail that keeps moving leans in over seconds, and one that
+ * stops falls away rather than cutting.
+ */
+const SWELL_TUNING = {
+  /**
+   * How long a trail must move continuously before the crescendo begins. Short
+   * gestures finish inside this window and so keep the responsive, unswelled
+   * behaviour — the swell is for sustained motion, not for flicks.
+   */
+  onsetMs: 800,
+  /** Seconds the crescendo takes to reach its peak once it starts. */
+  crescendoSeconds: 2.5,
+  /** Gain multiplier at the top of a full crescendo. */
+  peakScale: 1.4,
+  /** Seconds a voice takes to fall away once its trail stops. */
+  releaseSeconds: 1.5,
+  /**
+   * Motion below this (px/frame) counts as stopped for swell purposes. Above
+   * the silence threshold, so a barely-drifting cursor releases rather than
+   * holding a crescendo it is no longer earning.
+   */
+  movingVelocity: 0.6,
+  /**
+   * How long a trail may pause without losing its accumulated crescendo. Real
+   * cursor motion has gaps in it; without this every one of them would reset
+   * the swell and the bed would never actually lean in.
+   */
+  motionGraceMs: 250,
+  /** The ensemble breath: one slow sine over the whole bed. */
+  breathPeriodSeconds: 21,
+  /** Breath depth as a fraction either side of unity. */
+  breathDepth: 0.15,
+};
+
+/**
+ * Choral tuning. Two vowel formant pairs, morphed by velocity, so the bed
+ * reads as voices: closed and dark when slow, open and bright when fast.
+ */
+const CHORAL_TUNING = {
+  /** "ooh" — the closed vowel a slow trail sits on. */
+  closedFormantsHz: [300, 870],
+  /** "ahh" — the open vowel a fast trail reaches. */
+  openFormantsHz: [700, 1220],
+  /** Resonance of each formant band. High enough to colour, low enough to sing. */
+  formantQ: 6,
+  /**
+   * Level of the formant bands against the voice's own filtered tone. The
+   * fundamental stays present underneath — the formants are a colour over it,
+   * not a replacement.
+   */
+  formantMix: 0.55,
+  /** Velocity that maps to the fully open vowel. */
+  fullOpenVelocity: 12,
+  /** Ramp length for formant moves, matched to the voice control throttle. */
+  morphSeconds: 0.12,
 };
 
 /**
@@ -453,6 +525,27 @@ interface VibratoNodes {
   depth: GainNode;
 }
 
+/**
+ * One voice's formant bank: parallel bandpass filters tapped off the voice's
+ * own filtered tone and mixed back in beside it.
+ */
+interface FormantNodes {
+  filters: BiquadFilterNode[];
+  mix: GainNode;
+  /** Last vowel openness scheduled, so an unchanged morph is not re-ramped. */
+  lastOpenness: number;
+}
+
+/** How long a trail has been moving, and where its swell has got to. */
+interface SwellState {
+  /** Tick time continuous motion began, or null while the trail is stopped. */
+  movingSinceMs: number | null;
+  /** Tick time motion was last observed, for the pause grace window. */
+  lastMovingMs: number;
+  /** Smoothed 0-1 crescendo progress, so the multiplier never jumps. */
+  progress: number;
+}
+
 /** Per-trail voice state */
 interface Voice {
   oscillator: OscillatorNode | null;
@@ -475,6 +568,8 @@ interface Voice {
   spotlightBrightened: boolean;
   /** Personal vibrato LFO, present only while trail voices are on. */
   vibrato: VibratoNodes | null;
+  /** Vowel formant bank, present only while the choral timbre is on. */
+  formants: FormantNodes | null;
   /** Detune in cents currently applied, so a merge can pull it and restore it. */
   appliedDetuneCents: number;
   active: boolean;
@@ -537,6 +632,8 @@ export class SoundEngine {
    * pull expires. While pulled, a voice's detune and vibrato are overridden.
    */
   private mergePullsUntilMs: Map<number, number> = new Map();
+  /** Per-trail crescendo bookkeeping, maintained only while swells are on. */
+  private swells: Map<number, SwellState> = new Map();
   /** Discrete-note path, used only while config.mode is "notes". */
   private notesEngine: NotesEngine = new NotesEngine();
   /**
@@ -734,6 +831,21 @@ export class SoundEngine {
       }
     }
 
+    // Both of these are audible on voices already sounding, and a paused
+    // canvas may never tick again, so switching them off has to land now.
+    if (config.swells === false) {
+      this.swells.clear();
+      if (this.masterGain) {
+        // Hand the master gain back a breath-free target rather than leaving
+        // it frozen wherever the breath happened to be.
+        this.lastMasterGainTarget = Number.NaN;
+        this.updateMasterGainForPolyphony(this.lastActiveTrailCount);
+      }
+    }
+    if (config.choralTimbre === false) {
+      for (const [, voice] of this.voices) this.detachFormants(voice);
+    }
+
     // Switching modes mid-session must not leave the other path sounding.
     if (prevMode !== this.config.mode) {
       if (this.config.mode === "notes") {
@@ -862,8 +974,16 @@ export class SoundEngine {
       if (velocity < SILENCE_VELOCITY_THRESHOLD) {
         const voice = this.voices.get(frame.trailIndex);
         if (voice?.active) {
-          this.fadeVoice(voice, 0.05);
+          // With swells on a stopped trail is released rather than cut, so the
+          // bed thins out as breath running out rather than as a gate closing.
+          this.fadeVoice(
+            voice,
+            this.config.swells ? SWELL_TUNING.releaseSeconds : 0.05,
+          );
         }
+        // Keep advancing the crescendo so a stopped trail decays toward zero
+        // instead of freezing at whatever it had reached.
+        this.swellGainFor(frame.trailIndex, elapsedMs, 0);
         continue;
       }
 
@@ -939,6 +1059,18 @@ export class SoundEngine {
       // normal velocity mapping instead of replacing it. Exactly 1 when the
       // spotlight is off, which keeps plain sustained mode bit-for-bit the same.
       const spotlightGain = this.spotlightGainFor(frame.trailIndex);
+      // Same idea: exactly 1 when swells are off, so the plain gain path is
+      // untouched. Percussive voices are excluded — a pluck is a transient,
+      // and there is nothing there to lean into.
+      const swellGain = isPercussive
+        ? 1
+        : this.swellGainFor(frame.trailIndex, elapsedMs, velocity);
+
+      if (this.config.choralTimbre) {
+        this.attachFormants(voice);
+      } else if (voice.formants) {
+        this.detachFormants(voice);
+      }
 
       if (isPercussive) {
         if (elapsedMs - voice.lastPluckMs > PLUCK_REPEAT_INTERVAL_MS) {
@@ -957,13 +1089,20 @@ export class SoundEngine {
       } else if (shouldUpdateContinuousParams) {
         this.rampParam(
           voice.gainNode.gain,
-          gain * instrument.gain * spotlightGain,
-          VOICE_CONTROL_RAMP_SECONDS,
+          gain * instrument.gain * spotlightGain * swellGain,
+          // A swelling voice rides a longer ramp so the crescendo glides
+          // rather than advancing as a staircase of control-rate steps.
+          this.config.swells
+            ? SWELL_TUNING.releaseSeconds / 2
+            : VOICE_CONTROL_RAMP_SECONDS,
         );
       }
 
       if (shouldUpdateContinuousParams) {
         this.rampParam(voice.panNode.pan, pan, VOICE_CONTROL_RAMP_SECONDS);
+        if (this.config.choralTimbre) {
+          this.updateFormants(voice, velocity);
+        }
         // Brightness rides the same throttle as gain and pan. Re-ramping the
         // filter every animation frame restarts a 120ms glide every ~16ms, so
         // the cutoff advances as a staircase of held values rather than a
@@ -1327,6 +1466,7 @@ export class SoundEngine {
       lastControlTimeMs: Number.NEGATIVE_INFINITY,
       spotlightBrightened: false,
       vibrato: null,
+      formants: null,
       appliedDetuneCents: 0,
       active: false,
     };
@@ -1470,6 +1610,71 @@ export class SoundEngine {
     voice.appliedDetuneCents = cents;
     voice.oscillator?.detune.setValueAtTime(cents, now);
     voice.fifthOscillator?.detune.setValueAtTime(cents, now);
+  }
+
+  /**
+   * Tap a voice's filtered tone into a bank of parallel bandpass formants and
+   * mix them back in beside it. Two extra filters plus one gain per voice, and
+   * only while the choral timbre is on.
+   */
+  private attachFormants(voice: Voice): void {
+    if (!this.ctx || voice.formants) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    const mix = ctx.createGain();
+    mix.gain.setValueAtTime(CHORAL_TUNING.formantMix, now);
+
+    const filters = CHORAL_TUNING.closedFormantsHz.map((hz) => {
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(hz, now);
+      filter.Q.setValueAtTime(CHORAL_TUNING.formantQ, now);
+      // Tapped off the voice's own lowpass so the formants sing the same tone
+      // the voice is already making, then summed back into its gain stage.
+      voice.filterNode.connect(filter);
+      filter.connect(mix);
+      return filter;
+    });
+
+    mix.connect(voice.gainNode);
+    voice.formants = { filters, mix, lastOpenness: 0 };
+  }
+
+  /** Remove a voice's formant bank, returning it to its plain lowpass tone. */
+  private detachFormants(voice: Voice): void {
+    if (!voice.formants) return;
+    try {
+      for (const filter of voice.formants.filters) filter.disconnect();
+      voice.formants.mix.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    voice.formants = null;
+  }
+
+  /**
+   * Morph a voice's vowel with its speed: closed and dark when slow, open and
+   * bright when fast. Called on the same throttle as gain and pan, and skipped
+   * entirely when the vowel has not meaningfully moved — re-ramping an
+   * unchanged target every frame is what turns a morph into zipper noise.
+   */
+  private updateFormants(voice: Voice, velocity: number): void {
+    if (!this.ctx || !voice.formants) return;
+
+    const openness = Math.min(
+      1,
+      Math.max(0, velocity / CHORAL_TUNING.fullOpenVelocity),
+    );
+    if (Math.abs(openness - voice.formants.lastOpenness) < 0.02) return;
+    voice.formants.lastOpenness = openness;
+
+    const { closedFormantsHz, openFormantsHz, morphSeconds } = CHORAL_TUNING;
+    voice.formants.filters.forEach((filter, i) => {
+      const closed = closedFormantsHz[i];
+      const open = openFormantsHz[i];
+      this.rampParam(filter.frequency, closed + (open - closed) * openness, morphSeconds);
+    });
   }
 
   /** Enable the fifth oscillator on an existing voice */
@@ -1674,6 +1879,7 @@ export class SoundEngine {
     this.fingerprints.delete(trailIndex);
     this.fingerprintKeys.delete(trailIndex);
     this.mergePullsUntilMs.delete(trailIndex);
+    this.swells.delete(trailIndex);
     this.spotlightGains.delete(trailIndex);
     this.spotlightVelocitySamples.delete(trailIndex);
     this.spotlightSmoothedVelocities.delete(trailIndex);
@@ -2033,6 +2239,77 @@ export class SoundEngine {
   }
 
   /**
+   * Advance one trail's crescendo and return its gain multiplier for this
+   * frame. Sustained motion leans in over seconds; stopping falls away over a
+   * slower release than the plain velocity mapping would give. Exactly 1 when
+   * swells are off, which leaves the unswelled gain path untouched.
+   */
+  private swellGainFor(
+    trailIndex: number,
+    elapsedMs: number,
+    velocity: number,
+  ): number {
+    if (!this.config.swells) return 1;
+
+    const {
+      onsetMs,
+      crescendoSeconds,
+      peakScale,
+      releaseSeconds,
+      movingVelocity,
+      motionGraceMs,
+    } = SWELL_TUNING;
+
+    let state = this.swells.get(trailIndex);
+    if (!state) {
+      state = { movingSinceMs: null, lastMovingMs: elapsedMs, progress: 0 };
+      this.swells.set(trailIndex, state);
+    }
+
+    if (velocity >= movingVelocity) {
+      // A gap shorter than the grace window is treated as continuous motion,
+      // so the ordinary stutter of a real cursor does not reset the swell.
+      if (
+        state.movingSinceMs === null ||
+        elapsedMs - state.lastMovingMs > motionGraceMs
+      ) {
+        state.movingSinceMs = elapsedMs;
+      }
+      state.lastMovingMs = elapsedMs;
+    } else if (elapsedMs - state.lastMovingMs > motionGraceMs) {
+      state.movingSinceMs = null;
+    }
+
+    const sustained =
+      state.movingSinceMs !== null &&
+      elapsedMs - state.movingSinceMs >= onsetMs;
+    const target = sustained ? 1 : 0;
+    // Rising and falling use their own durations: leaning in is slower than
+    // the release, so a trail that stops does not hang at full swell.
+    const durationSeconds = sustained ? crescendoSeconds : releaseSeconds;
+    const rate = Math.min(1, FRAME_MS / (durationSeconds * 1000));
+    state.progress += (target - state.progress) * rate;
+
+    // Ease-in on the way up so the lean is felt as a build rather than as a
+    // linear fade; the release rides the same curve back down.
+    const eased = state.progress * state.progress;
+    return 1 + (peakScale - 1) * eased;
+  }
+
+  /**
+   * The ensemble breath: one slow sine over the whole bed, so even a static
+   * busy scene rises and falls. Runs off the audio clock rather than the tick,
+   * so it keeps its period regardless of frame pacing.
+   */
+  private breathGainScale(): number {
+    if (!this.config.swells || !this.ctx) return 1;
+    const { breathPeriodSeconds, breathDepth } = SWELL_TUNING;
+    const phase =
+      (this.ctx.currentTime / breathPeriodSeconds) * 2 * Math.PI;
+    return 1 + breathDepth * Math.sin(phase);
+  }
+
+  /**
    * Open the soloist's filter with velocity. Non-soloists are left entirely
    * alone on their instrument's own cutoff — touching every voice's filter is
    * what turns the spotlight into a blanket muffle over the whole scene, and
@@ -2387,7 +2664,89 @@ export class SoundEngine {
       case "trailVoicePair":
         this.auditionVoicePair();
         return;
+      case "choralSwell":
+        this.auditionChoralSwell();
+        return;
     }
+  }
+
+  /**
+   * One voice through the whole swell shape — onset, crescendo, release — in
+   * the choral timbre, so the envelope and the vowel can be judged on their
+   * own rather than picked out of a moving scene.
+   */
+  private auditionChoralSwell(): void {
+    if (!this.ctx || !this.masterGain) return;
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const { onsetMs, crescendoSeconds, peakScale, releaseSeconds } =
+      SWELL_TUNING;
+    const onsetSeconds = onsetMs / 1000;
+    const totalSeconds = onsetSeconds + crescendoSeconds + releaseSeconds;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = this.currentRoot() * 2;
+
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.frequency.value = 2000;
+
+    const gain = ctx.createGain();
+    // The full shape: a level onset while the swell has not yet started, the
+    // crescendo leaning in, then the slow release.
+    const baseGain = 0.09;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(baseGain, now + 0.15);
+    gain.gain.setValueAtTime(baseGain, now + onsetSeconds);
+    gain.gain.linearRampToValueAtTime(
+      baseGain * peakScale,
+      now + onsetSeconds + crescendoSeconds,
+    );
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + totalSeconds);
+
+    const pan = ctx.createStereoPanner();
+    osc.connect(tone);
+    tone.connect(gain);
+
+    // The same formant bank the live voices use, opening from "ooh" to "ahh"
+    // across the crescendo so the vowel morph is audible too.
+    const mix = ctx.createGain();
+    mix.gain.setValueAtTime(CHORAL_TUNING.formantMix, now);
+    const { closedFormantsHz, openFormantsHz, formantQ } = CHORAL_TUNING;
+    const formants = closedFormantsHz.map((hz, i) => {
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(hz, now);
+      filter.frequency.linearRampToValueAtTime(
+        openFormantsHz[i],
+        now + onsetSeconds + crescendoSeconds,
+      );
+      filter.Q.setValueAtTime(formantQ, now);
+      tone.connect(filter);
+      filter.connect(mix);
+      return filter;
+    });
+    mix.connect(gain);
+
+    gain.connect(pan);
+    pan.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + totalSeconds + 0.1);
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        tone.disconnect();
+        for (const filter of formants) filter.disconnect();
+        mix.disconnect();
+        gain.disconnect();
+        pan.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
   }
 
   /**
@@ -2809,6 +3168,7 @@ export class SoundEngine {
 
   private disconnectVoice(voice: Voice): void {
     this.stopVibrato(voice);
+    this.detachFormants(voice);
     voice.oscillatorLevel?.disconnect();
     voice.fifthOscillatorLevel?.disconnect();
     voice.fifthGainNode?.disconnect();
@@ -2855,8 +3215,14 @@ export class SoundEngine {
       1 / Math.sqrt(Math.max(1, activeTrailCount / 3)),
     );
     // The energy swell rides on top of the polyphony ducking rather than
-    // replacing it, so dense scenes still avoid clipping.
-    const target = this.baseVolume * polyphonyScale * this.energyGainScale();
+    // replacing it, so dense scenes still avoid clipping. The ensemble breath
+    // multiplies in beside it, so the two compose rather than one overriding
+    // the other.
+    const target =
+      this.baseVolume *
+      polyphonyScale *
+      this.energyGainScale() *
+      this.breathGainScale();
     // Re-ramping every frame would restart the glide before it arrived, so
     // only schedule on a real move. Both inputs are slow — trail count is
     // discrete and energy is a long follower — so this stays smooth.
@@ -2901,6 +3267,7 @@ export class SoundEngine {
     this.recentArrivalsMs.length = 0;
     for (const [, voice] of this.voices) {
       this.stopVibrato(voice);
+      this.detachFormants(voice);
       if (voice.oscillator) {
         try { voice.oscillator.stop(); } catch { /* already stopped */ }
       }
@@ -2916,6 +3283,7 @@ export class SoundEngine {
     this.fingerprints.clear();
     this.fingerprintKeys.clear();
     this.mergePullsUntilMs.clear();
+    this.swells.clear();
     if (this.ctx) {
       this.ctx.close();
       this.ctx = null;
@@ -2967,6 +3335,7 @@ export class SoundEngine {
     // scene, and a participant who sounded one way before it should sound the
     // same way after. Only the merge pulls, which are moment-scoped, are cleared.
     this.mergePullsUntilMs.clear();
+    this.swells.clear();
     this.spotlightGains.clear();
     this.spotlightVelocitySamples.clear();
     this.spotlightSmoothedVelocities.clear();
