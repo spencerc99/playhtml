@@ -42,7 +42,7 @@ const MAX_DRAW_MS = 30000;
 // before removing it, so finished trails persist as a dim backdrop rather than
 // vanishing. After this it depart-fades out. (The maxGroups cap upstream also
 // bounds how many accumulate regardless.)
-const REMOVE_AFTER_DIM_MS = 20_000;
+const REMOVE_AFTER_DIM_MS = 60_000;
 
 // A removed trail fades out over this long instead of popping — matches the
 // archive's eviction fade (EVICTION_FADE_MS).
@@ -54,6 +54,19 @@ export interface LiveTrailDrawState {
   grewAt: number;
   settled: boolean;
   settledAt: number | null;
+}
+
+export function shouldDepartTrail(
+  draw: LiveTrailDrawState | undefined,
+  clockMs: number,
+  resumed = false,
+): boolean {
+  return Boolean(
+    !resumed &&
+      draw?.settled &&
+      draw.settledAt !== null &&
+      clockMs - draw.settledAt >= REMOVE_AFTER_DIM_MS,
+  );
 }
 
 export function advanceDrawState(
@@ -271,11 +284,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             live !== undefined &&
             d !== undefined &&
             live.trail.points.length > d.total;
-          const dimExpired =
-            !resumed &&
-            d?.settled &&
-            d.settledAt !== null &&
-            now - d.settledAt >= REMOVE_AFTER_DIM_MS;
+          const dimExpired = shouldDepartTrail(d, now, resumed);
           if (live && !dimExpired) {
             // Still live — refresh geometry, clear any departed mark.
             next.push({ trail: live, departedAt: null });
@@ -319,10 +328,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           for (const entry of prev) {
             const tid = entry.trail.trail.id;
             const d = draws.get(tid);
-            const dimExpired =
-              d?.settled &&
-              d.settledAt !== null &&
-              now - d.settledAt >= REMOVE_AFTER_DIM_MS;
+            const dimExpired = shouldDepartTrail(d, now);
             if (entry.departedAt === null) {
               if (dimExpired) {
                 next.push({ trail: entry.trail, departedAt: now });

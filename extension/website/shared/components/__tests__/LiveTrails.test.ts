@@ -13,6 +13,7 @@ import {
   createLiveSoundFrame,
   getDrawClockTime,
   LiveTrails,
+  shouldDepartTrail,
 } from "../LiveTrails";
 import {
   collectDueClickEffects,
@@ -38,6 +39,25 @@ describe("advanceDrawState", () => {
       settled: false,
       settledAt: null,
     });
+  });
+});
+
+describe("shouldDepartTrail", () => {
+  const settledDraw = {
+    seenAt: 0,
+    total: 2,
+    grewAt: 1000,
+    settled: true,
+    settledAt: 10_000,
+  };
+
+  it("keeps a settled trail for 60 seconds before departure", () => {
+    expect(shouldDepartTrail(settledDraw, 69_999)).toBe(false);
+    expect(shouldDepartTrail(settledDraw, 70_000)).toBe(true);
+  });
+
+  it("does not depart a trail that has resumed", () => {
+    expect(shouldDepartTrail(settledDraw, 70_000, true)).toBe(false);
   });
 });
 
