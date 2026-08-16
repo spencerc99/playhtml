@@ -3,7 +3,6 @@
 
 import React, { useState, useEffect, useRef, memo } from "react";
 import { RadialState, RadialNode } from "../types";
-import type { SoundEngine } from "../sound/SoundEngine";
 
 export interface RadialBlobSettings {
   samples?: number;
@@ -25,7 +24,6 @@ interface AnimatedNavigationRadialProps {
     playbackMode?: "cycle" | "loop";
     blob?: RadialBlobSettings;
   };
-  soundEngine?: SoundEngine | null;
 }
 
 const STEP_DURATION = 800; // ms per step (edge draw + node appear/grow)
@@ -409,14 +407,7 @@ type ActiveEdge = {
 };
 
 export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
-  memo(({ radialState, canvasSize, settings, soundEngine }) => {
-    // The rAF loop below is closed over by an effect with a narrow dep list,
-    // so it reads the engine through a ref rather than capturing a stale one.
-    const soundEngineRef = useRef(soundEngine);
-    useEffect(() => {
-      soundEngineRef.current = soundEngine;
-    }, [soundEngine]);
-
+  memo(({ radialState, canvasSize, settings }) => {
     const [currentSessionIndex, setCurrentSessionIndex] = useState(0);
     const [activeEdges, setActiveEdges] = useState<ActiveEdge[]>([]);
     const [currentTime, setCurrentTime] = useState(0);
@@ -660,13 +651,6 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
               { from: edge.fromId, to: edge.toId, color: edge.color },
             ]);
             setVisibleNodeIds((prev) => new Set(prev).add(edge.toId));
-            // One deep note as the destination node lands. This branch runs
-            // exactly once per edge — the edge is dropped from the active list
-            // below — so it mirrors the once-per-click triggerClick path. The
-            // engine rate-limits, so a dense burst still reads as one event.
-            soundEngineRef.current?.triggerNavigation({
-              x: radialState.nodes.get(edge.toId)?.x,
-            });
             setDisplayVisitCounts((prev) => {
               const next = new Map(prev);
               next.set(edge.toId, (next.get(edge.toId) ?? 0) + 1);

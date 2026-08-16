@@ -46,6 +46,11 @@ import {
   type FilterChip,
 } from "../utils/eventUtils";
 import { buildShareUrl } from "../utils/shareUrl";
+import {
+  buildNavigationSchedule,
+  navigationsCrossed,
+  type ScheduledNavigation,
+} from "../utils/navigationSchedule";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import {
   parseSettingsFromUrl,
@@ -68,6 +73,61 @@ import { COMPLETION_FADE_MS } from "./trailPrimitives";
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
 const EMPTY_EVENTS: CollectionEvent[] = [];
+
+/**
+ * Sounds the navigation accent from the data rather than from any one view's
+ * rendering.
+ *
+ * The accent used to hang off the radial view's edge-completion branch, so it
+ * was silent in every other view — including the default timeline. Driving it
+ * from a schedule of navigation moments on its own playback clock, the same
+ * `(realElapsed * speed) % duration` math the readout and trail loop use, makes
+ * it sound wherever playback runs. Renders nothing.
+ */
+export const NavigationSoundDriver: React.FC<{
+  schedule: ScheduledNavigation[];
+  durationMs: number;
+  animationSpeed: number;
+  soundEngine: SoundEngine | null;
+}> = ({ schedule, durationMs, animationSpeed, soundEngine }) => {
+  const speedRef = useRef(animationSpeed);
+  useEffect(() => {
+    speedRef.current = animationSpeed;
+  }, [animationSpeed]);
+
+  useEffect(() => {
+    if (!soundEngine || durationMs <= 0 || schedule.length === 0) return;
+
+    let raf = 0;
+    let startedAt: number | null = null;
+    // Start just before zero so a moment sitting exactly at offset 0 is
+    // crossed on the first frame rather than skipped.
+    let prevLooped = -1;
+
+    const tick = (ts: number) => {
+      if (startedAt === null) startedAt = ts;
+      const looped = ((ts - startedAt) * speedRef.current) % durationMs;
+      const crossed = navigationsCrossed(
+        schedule,
+        prevLooped,
+        looped,
+        durationMs,
+      );
+      for (const _nav of crossed) {
+        // The engine's own rate limiter decides whether a dense run of hops
+        // reads as one structural event or several.
+        soundEngine.triggerNavigation({});
+      }
+      prevLooped = looped;
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [schedule, durationMs, soundEngine]);
+
+  return null;
+};
 
 /** Live clock readout shown when trails play in their natural-timestamp order.
  * Mirrors AnimatedTrails' `(realElapsed * speed) % duration` math so the time
@@ -1055,6 +1115,19 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     keyboardCycleDuration,
   ]);
 
+  /** Navigation moments for the current dataset, on the playback timeline.
+   * Rebuilt whenever the events or the range change, so a day swap can't leave
+   * moments from the previous dataset scheduled. */
+  const navigationSchedule = useMemo(
+    () =>
+      buildNavigationSchedule(
+        filteredEvents,
+        timeRange.min,
+        timeRange.duration,
+      ),
+    [filteredEvents, timeRange.min, timeRange.duration],
+  );
+
   const { scheduledClicks, clickCycleDuration } = useMemo(() => {
     if (!showClicks) {
       return { scheduledClicks: [], clickCycleDuration: 0 };
@@ -1635,6 +1708,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           ))}
 
+        {/* Not gated on a view or on showTrails — the accent marks page
+            changes in the data, so it plays wherever playback runs. */}
+        {!paused && (
+          <NavigationSoundDriver
+            schedule={navigationSchedule}
+            durationMs={timeRange.duration}
+            animationSpeed={settings.animationSpeed}
+            soundEngine={soundEnabled ? soundEngineReady : null}
+          />
+        )}
+
         {showClicks && !paused && (
           <AnimatedClicks
             key={`clicks-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
@@ -1704,7 +1788,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
                   valleyDepth: settings.navigationRadialBlobValleyDepth,
                 },
               }}
-              soundEngine={soundEnabled ? soundEngineReady : null}
             />
           )}
 
