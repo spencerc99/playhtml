@@ -16,10 +16,14 @@ import {
   TrailPath,
   TrailCursor,
   COMPLETED_OPACITY,
-  EVICTION_FADE_MS,
   type ImperativeTrailHandle,
   type ImperativeTrailCursorHandle,
 } from "./trailPrimitives";
+import {
+  getTrailVisibility,
+  startTrailVisibilityTransition,
+  type TrailVisibilityTransition,
+} from "./trailVisibility";
 
 // A trail that hasn't gained a point in this long (and has drawn up to its tip)
 // has finished tracing and settles from the live full opacity to the completed
@@ -43,10 +47,6 @@ const MAX_DRAW_MS = 30000;
 // vanishing. After this it depart-fades out. (The maxGroups cap upstream also
 // bounds how many accumulate regardless.)
 const REMOVE_AFTER_DIM_MS = 60_000;
-
-// A removed trail fades out over this long instead of popping — matches the
-// archive's eviction fade (EVICTION_FADE_MS).
-const KEEP_AFTER_DEPART_MS = EVICTION_FADE_MS;
 
 export interface LiveTrailDrawState {
   seenAt: number;
@@ -140,12 +140,11 @@ function hashKey(key: string): number {
   return Math.abs(h);
 }
 
-/** A trail LiveTrails is keeping on screen. `departedAt` is null while the trail
- * is still in the live window; once it leaves, it's the wall-clock time the fade
- * started. */
+/** A trail LiveTrails is keeping on screen, including its current arrival or
+ * departure transition. */
 interface KeptTrail {
   trail: TrailState;
-  departedAt: number | null;
+  visibility: TrailVisibilityTransition | null;
 }
 
 interface LiveTrailsProps {
@@ -237,10 +236,10 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     // Trails LiveTrails keeps on screen — the current live trails plus recently
     // departed ones still fading out. Owned here (not just `trailStates`) so a
     // trail's lifetime is decoupled from the churning event window. Each entry
-    // tracks `departedAt` (null while still live). Updated ONLY in the effect
-    // below (never during render) so the rendered keys are always unique.
+    // tracks its current visibility transition. Updated ONLY in the effect below
+    // (never during render) so the rendered keys are always unique.
     const [kept, setKept] = useState<KeptTrail[]>(() =>
-      trailStates.map((trail) => ({ trail, departedAt: null })),
+      trailStates.map((trail) => ({ trail, visibility: null })),
     );
     const keptRef = useRef<KeptTrail[]>(kept);
 
@@ -297,12 +296,23 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             live.trail.points.length > d.total;
           const dimExpired = shouldDepartTrail(d, now, resumed);
           if (live && !dimExpired) {
-            // Still live — refresh geometry, clear any departed mark.
-            next.push({ trail: live, departedAt: null });
-          } else if (entry.departedAt === null) {
+            // Still live — refresh geometry and ease back if it was departing.
+            const visibility =
+              entry.visibility?.toOpacity === 0
+                ? startTrailVisibilityTransition(entry.visibility, now, true)
+                : entry.visibility;
+            next.push({ trail: live, visibility });
+          } else if (entry.visibility?.toOpacity !== 0) {
             // Left, or dimmed long enough — start its fade.
-            next.push({ trail: live ?? entry.trail, departedAt: now });
-          } else if (now - entry.departedAt < KEEP_AFTER_DEPART_MS) {
+            next.push({
+              trail: live ?? entry.trail,
+              visibility: startTrailVisibilityTransition(
+                entry.visibility,
+                now,
+                false,
+              ),
+            });
+          } else if (getTrailVisibility(entry.visibility, now) > 0) {
             // Still fading — keep.
             next.push(entry);
           } else {
@@ -315,7 +325,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         // Brand-new live trails not already in `kept`.
         for (const t of trailStates) {
           if (!handled.has(t.trail.id)) {
-            next.push({ trail: t, departedAt: null });
+            next.push({ trail: t, visibility: null });
           }
         }
         return next;
@@ -340,14 +350,21 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             const tid = entry.trail.trail.id;
             const d = draws.get(tid);
             const dimExpired = shouldDepartTrail(d, now);
-            if (entry.departedAt === null) {
-              if (dimExpired) {
-                next.push({ trail: entry.trail, departedAt: now });
-                changed = true;
-              } else {
-                next.push(entry);
-              }
-            } else if (now - entry.departedAt < KEEP_AFTER_DEPART_MS) {
+            const departing = entry.visibility?.toOpacity === 0;
+            if (dimExpired && !departing) {
+              next.push({
+                trail: entry.trail,
+                visibility: startTrailVisibilityTransition(
+                  entry.visibility,
+                  now,
+                  false,
+                ),
+              });
+              changed = true;
+            } else if (
+              !departing ||
+              getTrailVisibility(entry.visibility, now) > 0
+            ) {
               next.push(entry);
             } else {
               // Fully faded — drop, and report so its events can be freed.
@@ -522,20 +539,12 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           // live one draws progressively toward its tip.
           const progress = draw.settled ? 1 : drawProgress;
 
-          // Departed trails fade from their current opacity to 0 over the keep
-          // window, then the reconcile effect drops them.
-          let departFade = 1;
-          if (entry.departedAt !== null) {
-            departFade = Math.max(
-              0,
-              1 - (clockMs - entry.departedAt) / KEEP_AFTER_DEPART_MS,
-            );
-          }
-
           // Trails ease to COMPLETED_OPACITY after first settling and remain dim
-          // if later points resume their draw. Depart fade multiplies on top.
+          // if later points resume their draw. Visibility transitions multiply
+          // on top for smooth departure and return.
           const settleOpacity = getLiveTrailOpacity(draw, clockMs);
-          const groupFade = settleOpacity * departFade;
+          const visibility = getTrailVisibility(entry.visibility, clockMs);
+          const groupFade = settleOpacity * visibility;
 
           const result = handle.update(
             0,
@@ -549,7 +558,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             result &&
             !caughtUp &&
             !draw.settled &&
-            entry.departedAt === null;
+            entry.visibility?.toOpacity !== 0;
           if (soundEngine && activelyTracing) {
             let soundTrailIndex = soundTrailIndicesRef.current.get(key);
             if (soundTrailIndex === undefined) {
@@ -603,7 +612,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             result.cursorPosition &&
             !caughtUp &&
             !draw.settled &&
-            entry.departedAt === null
+            entry.visibility?.toOpacity !== 0
           ) {
             const cpIdx = Math.min(
               Math.floor((pts - 1) * (result.trailProgress ?? progress)),

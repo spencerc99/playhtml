@@ -18,6 +18,12 @@ import {
 } from "../LiveTrails";
 import { COMPLETED_OPACITY } from "../trailPrimitives";
 import {
+  DEPART_FADE_MS,
+  getTrailVisibility,
+  RETURN_FADE_MS,
+  startTrailVisibilityTransition,
+} from "../trailVisibility";
+import {
   collectDueClickEffects,
   retainClickEffectsForActiveTrails,
 } from "../clickEffects";
@@ -65,6 +71,28 @@ describe("shouldDepartTrail", () => {
 
   it("does not depart a trail that has resumed", () => {
     expect(shouldDepartTrail(settledDraw, 70_000, true)).toBe(false);
+  });
+});
+
+describe("trail visibility transitions", () => {
+  it("fades a departing trail over eight seconds", () => {
+    const transition = startTrailVisibilityTransition(null, 1000, false);
+
+    expect(transition.durationMs).toBe(DEPART_FADE_MS);
+    expect(getTrailVisibility(transition, 1000)).toBe(1);
+    expect(getTrailVisibility(transition, 5000)).toBe(0.5);
+    expect(getTrailVisibility(transition, 9000)).toBe(0);
+  });
+
+  it("eases a returning trail from its current opacity without a jump", () => {
+    const departure = startTrailVisibilityTransition(null, 1000, false);
+    const visibilityAtReturn = getTrailVisibility(departure, 5000);
+    const returning = startTrailVisibilityTransition(departure, 5000, true);
+
+    expect(returning.durationMs).toBe(RETURN_FADE_MS);
+    expect(getTrailVisibility(returning, 5000)).toBe(visibilityAtReturn);
+    expect(getTrailVisibility(returning, 7000)).toBe(0.75);
+    expect(getTrailVisibility(returning, 9000)).toBe(1);
   });
 });
 
