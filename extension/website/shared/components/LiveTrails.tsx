@@ -48,6 +48,33 @@ const REMOVE_AFTER_DIM_MS = 20_000;
 // archive's eviction fade (EVICTION_FADE_MS).
 const KEEP_AFTER_DEPART_MS = EVICTION_FADE_MS;
 
+export interface LiveTrailDrawState {
+  seenAt: number;
+  total: number;
+  grewAt: number;
+  settled: boolean;
+  settledAt: number | null;
+}
+
+export function advanceDrawState(
+  draw: LiveTrailDrawState,
+  pointCount: number,
+  clockMs: number,
+  drawDuration: number,
+): void {
+  if (pointCount <= draw.total) return;
+
+  if (draw.settled) {
+    const completedProgress = Math.min(1, draw.total / pointCount);
+    draw.seenAt = clockMs - completedProgress * drawDuration;
+    draw.settled = false;
+    draw.settledAt = null;
+  }
+
+  draw.total = pointCount;
+  draw.grewAt = clockMs;
+}
+
 export function getDrawClockTime(
   performanceNow: number,
   pausedAccumMs: number,
@@ -181,18 +208,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     // draw keeps going (catches up) instead of snapping to the end. `total` and
     // `grewAt` track the latest point count and when it last grew, to decide when
     // a caught-up trail has settled.
-    const drawRef = useRef<
-      Map<
-        string,
-        {
-          seenAt: number;
-          total: number;
-          grewAt: number;
-          settled: boolean;
-          settledAt: number | null;
-        }
-      >
-    >(new Map());
+    const drawRef = useRef<Map<string, LiveTrailDrawState>>(new Map());
 
     // Trails LiveTrails keeps on screen — the current live trails plus recently
     // departed ones still fading out. Owned here (not just `trailStates`) so a
@@ -251,7 +267,12 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           // A trail that has been dimmed (settled) for REMOVE_AFTER_DIM_MS starts
           // departing even though it is still in the live data.
           const d = draws.get(id);
+          const resumed =
+            live !== undefined &&
+            d !== undefined &&
+            live.trail.points.length > d.total;
           const dimExpired =
+            !resumed &&
             d?.settled &&
             d.settledAt !== null &&
             now - d.settledAt >= REMOVE_AFTER_DIM_MS;
@@ -443,6 +464,10 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
           const pts = ts.trail.points.length;
           let draw = drawMap.get(key);
+          const drawDuration = Math.min(
+            MAX_DRAW_MS,
+            Math.max(MIN_DRAW_MS, ts.durationMs),
+          );
           if (draw === undefined) {
             // New trail: anchor its draw clock to now.
             draw = {
@@ -453,22 +478,14 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               settledAt: null,
             };
             drawMap.set(key, draw);
-          } else if (pts > draw.total && !draw.settled) {
-            // Gained points while still live — there's more to draw, so refresh
-            // the activity clock. Once settled we IGNORE new points for liveness
-            // (a dimmed trail never brightens again, even if the person resumes).
-            draw.total = pts;
-            draw.grewAt = clockMs;
+          } else {
+            advanceDrawState(draw, pts, clockMs, drawDuration);
           }
 
           // Draw over the trail's real duration (clamped), like the archive: a
           // trail spanning 20s of activity traces over ~20s. As points arrive the
           // duration grows, so progress doesn't snap to the end — the draw keeps
           // going and naturally catches up to live.
-          const drawDuration = Math.min(
-            MAX_DRAW_MS,
-            Math.max(MIN_DRAW_MS, ts.durationMs),
-          );
           const drawProgress = Math.min(
             1,
             (clockMs - draw.seenAt) / drawDuration,

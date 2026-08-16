@@ -1,5 +1,6 @@
 // ABOUTME: Tests click spawning and lifecycle timing for the live cursor-trail renderer.
 // ABOUTME: Covers one-shot effects and clock pauses while the document is hidden.
+// @vitest-environment jsdom
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -8,6 +9,7 @@ import type { TrailState } from "../../types";
 import type { SoundEngine } from "../../sound/SoundEngine";
 import { DEFAULT_SETTINGS } from "../settingsDefaults";
 import {
+  advanceDrawState,
   createLiveSoundFrame,
   getDrawClockTime,
   LiveTrails,
@@ -16,6 +18,28 @@ import {
   collectDueClickEffects,
   retainClickEffectsForActiveTrails,
 } from "../clickEffects";
+
+describe("advanceDrawState", () => {
+  it("continues a settled trail from its already-drawn portion when it grows", () => {
+    const draw = {
+      seenAt: 0,
+      total: 2,
+      grewAt: 1000,
+      settled: true,
+      settledAt: 9000,
+    };
+
+    advanceDrawState(draw, 4, 10_000, 4000);
+
+    expect(draw).toEqual({
+      seenAt: 8000,
+      total: 4,
+      grewAt: 10_000,
+      settled: false,
+      settledAt: null,
+    });
+  });
+});
 
 function trailState(): TrailState {
   return {

@@ -4,6 +4,7 @@
 import { describe, it, expect } from "vitest";
 import {
   accumulateEvents,
+  collectFinishedEventIds,
   type AccumulatedGroups,
 } from "../useAccumulatedEvents";
 import type { CollectionEvent } from "../../types";
@@ -66,6 +67,63 @@ describe("accumulateEvents", () => {
     acc = accumulateEvents(acc, [], ["p1|u1"]);
     expect(acc.has("p1|u1")).toBe(false);
     expect(acc.has("p2|u2")).toBe(true);
+  });
+
+  it("does not rebuild an evicted group from events still in the incoming window", () => {
+    const buffered = [
+      ev("a", "p1", "u1", 100),
+      ev("b", "p1", "u1", 200),
+      ev("c", "p2", "u2", 300),
+    ];
+    let acc: AccumulatedGroups = accumulateEvents(new Map(), buffered);
+    let finishedEventIds = collectFinishedEventIds(
+      new Set(),
+      acc,
+      buffered,
+      ["p1|u1"],
+    );
+
+    acc = accumulateEvents(
+      acc,
+      buffered,
+      ["p1|u1"],
+      undefined,
+      finishedEventIds,
+    );
+
+    expect(acc.has("p1|u1")).toBe(false);
+    expect(acc.has("p2|u2")).toBe(true);
+
+    const nextWindow = buffered.concat(ev("d", "p2", "u2", 400));
+    finishedEventIds = collectFinishedEventIds(
+      finishedEventIds,
+      acc,
+      nextWindow,
+    );
+    acc = accumulateEvents(
+      acc,
+      nextWindow,
+      undefined,
+      undefined,
+      finishedEventIds,
+    );
+    expect(acc.has("p1|u1")).toBe(false);
+
+    const freshEvent = ev("e", "p1", "u1", 500);
+    const freshWindow = nextWindow.concat(freshEvent);
+    finishedEventIds = collectFinishedEventIds(
+      finishedEventIds,
+      acc,
+      freshWindow,
+    );
+    acc = accumulateEvents(
+      acc,
+      freshWindow,
+      undefined,
+      undefined,
+      finishedEventIds,
+    );
+    expect(acc.get("p1|u1")?.events).toEqual([freshEvent]);
   });
 
   it("keeps each group's events sorted by ts", () => {
