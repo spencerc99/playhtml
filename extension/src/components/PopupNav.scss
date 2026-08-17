@@ -1,16 +1,16 @@
 // ABOUTME: Styles for the popup's page navigation
-// ABOUTME: Segmented bar plus bare-link, compressed-text, and icon-only variants
+// ABOUTME: Bare mono links with an external-tab arrow, sized for the header row
 
 @use "../styles/variables" as *;
 
 .popup-nav {
   display: flex;
   align-items: center;
+  gap: 10px;
 
   &__item {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: 4px;
     padding: 0;
     background: none;
@@ -20,7 +20,7 @@
     text-transform: lowercase;
     color: $text-muted;
     cursor: pointer;
-    transition: color 0.12s, background 0.12s;
+    transition: color 0.12s;
 
     &:hover {
       color: $accent-teal;
@@ -32,7 +32,7 @@
 
     &:focus-visible {
       outline: 2px solid $accent-teal;
-      outline-offset: -2px;
+      outline-offset: 2px;
     }
   }
 
@@ -40,72 +40,5 @@
     font-size: 9px;
     color: $text-faint;
     transition: color 0.12s;
-  }
-
-  // Full-width segmented bar, hairline dividers between items.
-  &--bar {
-    width: 100%;
-    margin: 10px 0 12px;
-    background: $surface;
-    border: 1px solid $border;
-    border-radius: 8px;
-    overflow: hidden;
-
-    .popup-nav__item {
-      flex: 1;
-      height: 30px;
-
-      & + .popup-nav__item {
-        border-left: 1px solid $border;
-      }
-
-      &:hover {
-        background: rgba($accent-teal, 0.06);
-      }
-    }
-  }
-
-  // Bare links for a tight header row: no chrome, hug content.
-  &--inline {
-    gap: 10px;
-
-    .popup-nav__item:focus-visible {
-      outline-offset: 2px;
-    }
-  }
-
-  // Compressed text: arrows dropped, type tightened to fit three items.
-  &--compact {
-    gap: 8px;
-
-    .popup-nav__item {
-      font-size: 10px;
-      letter-spacing: -0.03em;
-
-      &:focus-visible {
-        outline-offset: 2px;
-      }
-    }
-  }
-
-  // Glyph-only buttons — scales past three items.
-  &--icon {
-    gap: 2px;
-
-    .popup-nav__item {
-      width: 24px;
-      height: 24px;
-      border-radius: 6px;
-      color: $text;
-
-      &:hover {
-        color: $accent-teal;
-        background: rgba($accent-teal, 0.08);
-      }
-
-      &:focus-visible {
-        outline-offset: 0;
-      }
-    }
   }
 }

@@ -19,4 +19,5 @@ extension/website/public/changelog/media/ and reference them here:
 - Wikipedia shows other readers' live text selections in their cursor colors.
 - Wikipedia editing sessions now stay separate from article-reading rooms.
 - Opening a new tab shows your browser's normal new tab page again, and your browsing-history record is still one click away in the extension popup.
-- The popup now has a navigation bar at the top with quick links to your portrait and history pages.
+- The popup now has quick links to your portrait and history pages at the top, in a shorter header.
+- The popup leads with your portrait preview, with your collection status below it.

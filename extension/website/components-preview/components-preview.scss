@@ -163,43 +163,19 @@ body {
   margin-bottom: 8px;
 }
 
-/* A4: nav on its own line inside the header block */
+/* Nav sits on its own line inside the header block */
 .popup-frame__navrow {
-  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-/* Density experiments: shave the vertical rhythm */
 .popup-frame__row--tight {
   margin-bottom: 4px;
 }
 
 .popup-frame__navrow--tight {
   margin-bottom: 0;
-}
-
-/* "wwo" — same Source Serif italic, sized up to hold presence */
-.popup-frame__wordmark--short {
-  font-size: 22px;
-  letter-spacing: 0.01em;
-}
-
-/* A5: subtitle and nav share a line */
-.popup-frame__subtitle-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-
-  .popup-frame__subtitle {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .popup-nav {
-    flex-shrink: 0;
-  }
 }
 
 .popup-frame {
@@ -220,13 +196,6 @@ body {
   margin-bottom: 6px;
 }
 
-.popup-frame__row-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
 .popup-frame__wordmark {
   font-family: 'Source Serif 4', Georgia, serif;
   font-style: italic;
@@ -234,19 +203,6 @@ body {
   font-size: 18px;
   color: #3d3833;
   white-space: nowrap;
-}
-
-.popup-frame__subtitle {
-  font-size: 12px;
-  color: #8a8279;
-}
-
-/* Density experiments keep the subtitle on one line so heights are comparable */
-[data-variant="a9"] .popup-frame__subtitle,
-[data-variant="a8"] .popup-frame__subtitle {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Measurement boundary: wordmark top to last header line bottom */
