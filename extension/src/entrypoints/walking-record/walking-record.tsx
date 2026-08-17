@@ -29,9 +29,18 @@ import {
   WALKING_RECORD_LOAD_STEP_COUNT,
   type WalkingRecordLoadProgress,
 } from "../../history/loadWalkingRecord";
+import {
+  readWalkingRecordCache,
+  walkingRecordCacheKey,
+  writeWalkingRecordCache,
+} from "../../history/walkingRecordCache";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
 import { NEWTAB_TAKEOVER_KEY } from "../../features/newtab/takeover";
+import {
+  createMovementLoadingPreview,
+  isMovementLoadingPreview,
+} from "./loadingPreview";
 
 const DEFAULT_CURSOR_COLOR = "#4a9a8a";
 const PERIOD_RAIL_COUNT = 12;
@@ -42,15 +51,25 @@ interface ScreenTimeResponse {
   sessions?: ScreenTimeSession[];
 }
 
-function NewTabPage() {
+function WalkingRecordEntryPage() {
+  const previewMovementLoading = isMovementLoadingPreview(
+    window.location.search,
+  );
   const [period, setPeriod] = useState<WalkingRecordPeriod>("week");
   const [periodOffset, setPeriodOffset] = useState(0);
   const [records, setRecords] = useState<Record<string, WalkingRecord>>({});
+  const [previewRecord, setPreviewRecord] = useState<{
+    key: string;
+    record: WalkingRecord;
+  } | null>(null);
   const [periodSummaries, setPeriodSummaries] = useState<
     Partial<Record<WalkingRecordPeriod, WalkingRecordPeriodSummary[]>>
   >({});
   const [baseColor, setBaseColor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [movementLoadingKey, setMovementLoadingKey] = useState<string | null>(
+    null,
+  );
   const [loadingProgress, setLoadingProgress] =
     useState<WalkingRecordLoadProgress>({
       completed: 0,
@@ -60,7 +79,13 @@ function NewTabPage() {
   const [error, setError] = useState<string | null>(null);
   const range = getWalkingRecordPeriodRange(period, periodOffset);
   const recordKey = `${period}:${range.startTs}`;
-  const record = records[recordKey] ?? null;
+  const record =
+    records[recordKey] ??
+    (previewRecord?.key === recordKey ? previewRecord.record : null);
+  const displayedRecord =
+    previewMovementLoading && record
+      ? createMovementLoadingPreview(record)
+      : record;
   const emptyPeriodSummaries = summarizeWalkingRecordPeriods(
     period,
     [],
@@ -86,41 +111,123 @@ function NewTabPage() {
   }, []);
 
   useEffect(() => {
-    if (!baseColor || record) return;
+    if (!baseColor) return;
+
+    const existingRecord = records[recordKey];
+    if (existingRecord) {
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
-    setLoading(true);
-    setLoadingProgress({
-      completed: 0,
-      total: WALKING_RECORD_LOAD_STEP_COUNT,
-      message: `opening this ${period}’s record…`,
-    });
-    setError(null);
-    loadWalkingRecord(period, range, baseColor, (progress) => {
-      if (!cancelled) setLoadingProgress(progress);
-    })
-      .then((walkingRecord) => {
+    const visiblePreview =
+      previewRecord?.key === recordKey ? previewRecord.record : null;
+    let baseRecordShown = Boolean(visiblePreview);
+    const cacheKey = walkingRecordCacheKey(period, range, baseColor);
+
+    const openRecord = async () => {
+      let cachedRecord = null;
+      try {
+        cachedRecord = await readWalkingRecordCache(cacheKey);
+      } catch (cacheError) {
+        console.error(
+          "[WalkingRecord] Could not read the recent record cache:",
+          cacheError,
+        );
+      }
+      if (cancelled) return;
+
+      if (cachedRecord) {
+        if (cachedRecord.fresh) {
+          setRecords((current) => ({
+            ...current,
+            [recordKey]: cachedRecord.record,
+          }));
+          setPreviewRecord((current) =>
+            current?.key === recordKey ? null : current,
+          );
+        } else {
+          setPreviewRecord({ key: recordKey, record: cachedRecord.record });
+        }
+        setLoading(false);
+        setError(null);
+        if (cachedRecord.fresh) return;
+      } else if (visiblePreview) {
+        setLoading(false);
+        setError(null);
+        setMovementLoadingKey(recordKey);
+      } else {
+        setLoading(true);
+        setLoadingProgress({
+          completed: 0,
+          total: WALKING_RECORD_LOAD_STEP_COUNT,
+          message: `opening this ${period}’s record…`,
+        });
+        setError(null);
+      }
+
+      try {
+        const walkingRecord = await loadWalkingRecord(
+          period,
+          range,
+          baseColor,
+          (progress) => {
+            if (!cancelled && !cachedRecord && !visiblePreview) {
+              setLoadingProgress(progress);
+            }
+          },
+          (baseRecord) => {
+            if (cancelled || cachedRecord || visiblePreview) return;
+            baseRecordShown = true;
+            setPreviewRecord({ key: recordKey, record: baseRecord });
+            setLoading(false);
+            setMovementLoadingKey(recordKey);
+          },
+        );
         if (cancelled) return;
+
         setRecords((current) => ({
           ...current,
           [recordKey]: walkingRecord,
         }));
-      })
-      .catch((loadError: unknown) => {
+        setPreviewRecord((current) =>
+          current?.key === recordKey ? null : current,
+        );
+        setMovementLoadingKey((current) =>
+          current === recordKey ? null : current,
+        );
+        try {
+          await writeWalkingRecordCache(cacheKey, walkingRecord);
+        } catch (cacheError) {
+          console.error(
+            "[WalkingRecord] Could not save the recent record cache:",
+            cacheError,
+          );
+        }
+      } catch (loadError: unknown) {
         if (cancelled) return;
         console.error(
           "[WalkingRecord] Could not load local activity:",
           loadError,
         );
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "The local activity record is unavailable.",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        if (!cachedRecord && !baseRecordShown) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "The local activity record is unavailable.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setMovementLoadingKey((current) =>
+            current === recordKey ? null : current,
+          );
+        }
+      }
+    };
+
+    void openRecord();
 
     return () => {
       cancelled = true;
@@ -130,7 +237,6 @@ function NewTabPage() {
     period,
     range.endTs,
     range.startTs,
-    record,
     recordKey,
   ]);
 
@@ -179,7 +285,9 @@ function NewTabPage() {
   const selectPeriod = (nextPeriod: WalkingRecordPeriod) => {
     const nextRange = getWalkingRecordPeriodRange(nextPeriod);
     const nextRecordKey = `${nextPeriod}:${nextRange.startTs}`;
-    const nextRecord = records[nextRecordKey];
+    const nextRecord =
+      records[nextRecordKey] ??
+      (previewRecord?.key === nextRecordKey ? previewRecord.record : null);
     setError(null);
     if (!nextRecord) {
       setLoadingProgress({
@@ -197,7 +305,10 @@ function NewTabPage() {
     if (nextOffset < EARLIEST_PERIOD_OFFSET || nextOffset > 0) return;
 
     const nextRange = getWalkingRecordPeriodRange(period, nextOffset);
-    const nextRecord = records[`${period}:${nextRange.startTs}`];
+    const nextRecordKey = `${period}:${nextRange.startTs}`;
+    const nextRecord =
+      records[nextRecordKey] ??
+      (previewRecord?.key === nextRecordKey ? previewRecord.record : null);
     setError(null);
     if (!nextRecord) {
       setLoadingProgress({
@@ -213,13 +324,16 @@ function NewTabPage() {
   return (
     <>
       <WalkingRecordPage
-        record={record}
+        record={displayedRecord}
         period={period}
         periodOffset={periodOffset}
         periodSummaries={visiblePeriodSummaries}
         onPeriodChange={selectPeriod}
         onPeriodOffsetChange={selectPeriodOffset}
         loading={loading}
+        movementLoading={
+          previewMovementLoading || movementLoadingKey === recordKey
+        }
         loadingProgress={loadingProgress}
         error={error}
       />
@@ -228,7 +342,7 @@ function NewTabPage() {
   );
 }
 
-/** Prototype control: opt this page in as the browser's new tab. */
+/** Controls whether new browser tabs open this walking record. */
 function NewTabTakeoverToggle() {
   const [enabled, setEnabled] = useState(false);
 
@@ -279,4 +393,4 @@ if (!container) {
   throw new Error("Walking record root element is missing.");
 }
 
-createRoot(container).render(<NewTabPage />);
+createRoot(container).render(<WalkingRecordEntryPage />);

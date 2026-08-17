@@ -1,4 +1,4 @@
-// ABOUTME: Renders the phase-one walking record for the extension new-tab page.
+// ABOUTME: Renders the extension's standalone browsing-history record page.
 // ABOUTME: Presents period-specific exploration, settled places, and time spent from local data.
 
 import React from "react";
@@ -8,6 +8,7 @@ import { buildFreehandPathSegment } from "@movement/utils/trailAnimation";
 import { roundPathCorners } from "@movement/utils/styleUtils";
 import {
   type DayPlate,
+  formatCompactDuration,
   type WalkingRecord,
   type WalkingRecordPeriod,
   type WalkingRecordPeriodSummary,
@@ -28,6 +29,7 @@ interface WalkingRecordPageProps {
   onPeriodChange: (period: WalkingRecordPeriod) => void;
   onPeriodOffsetChange: (offset: number) => void;
   loading: boolean;
+  movementLoading: boolean;
   loadingProgress: {
     completed: number;
     total: number;
@@ -159,7 +161,13 @@ function TraceGraphic({
   );
 }
 
-function DayPlateGraphic({ plate }: { plate: DayPlate }) {
+function DayPlateGraphic({
+  plate,
+  loading,
+}: {
+  plate: DayPlate;
+  loading: boolean;
+}) {
   if (plate.future) {
     return (
       <svg
@@ -172,6 +180,16 @@ function DayPlateGraphic({ plate }: { plate: DayPlate }) {
           d="M 8 45 C 20 30, 31 33, 43 29 S 60 31, 72 14"
         />
       </svg>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="walking-record__day-plate-skeleton" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
     );
   }
 
@@ -419,7 +437,10 @@ function HowBrowsedSection({ record }: { record: WalkingRecord }) {
       <div className="walking-record__section-heading">
         <h1>how you browsed</h1>
         <span>
-          {record.totalTimeLabel} online this {record.period}
+          {formatCompactDuration(record.totalTimeMs, "")} online this{
+            " "
+          }
+          {record.period}
         </span>
       </div>
 
@@ -536,11 +557,18 @@ function SettledPlacesSection({ record }: { record: WalkingRecord }) {
   );
 }
 
-function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
+function BrowsingPortraitsSection({
+  record,
+  movementLoading,
+}: {
+  record: WalkingRecord;
+  movementLoading: boolean;
+}) {
   return (
     <section className="walking-record__section">
       <div className="walking-record__section-heading">
         <h2>browsing portraits</h2>
+        {movementLoading && <span role="status">restoring portrait trails…</span>}
       </div>
       <p className="walking-record__section-intro">
         one small portrait from each {record.period === "week" ? "day" : "part"}
@@ -553,7 +581,7 @@ function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
           }`;
           const content = (
             <>
-              <DayPlateGraphic plate={plate} />
+              <DayPlateGraphic plate={plate} loading={movementLoading} />
               <strong>{plate.day}</strong>
               <span>{plate.vignette}</span>
             </>
@@ -579,18 +607,36 @@ function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
   );
 }
 
-function MovementLandscapeSection({ record }: { record: WalkingRecord }) {
-  if (record.landscapePaths.length === 0) return null;
+function MovementLandscapeSection({
+  record,
+  movementLoading,
+}: {
+  record: WalkingRecord;
+  movementLoading: boolean;
+}) {
+  if (record.landscapePaths.length === 0 && !movementLoading) return null;
 
   return (
     <section className="walking-record__section walking-record__movement-section">
       <div className="walking-record__section-heading">
         <h2>movement from this {record.period}</h2>
+        {movementLoading && <span role="status">restoring movement…</span>}
       </div>
-      <MovementLandscape
-        paths={record.landscapePaths}
-        label={`Real cursor movements from this ${record.period}`}
-      />
+      {record.landscapePaths.length > 0 ? (
+        <MovementLandscape
+          paths={record.landscapePaths}
+          label={`Real cursor movements from this ${record.period}`}
+        />
+      ) : (
+        <div
+          className="walking-record__movement-landscape walking-record__movement-skeleton"
+          aria-hidden="true"
+        >
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
     </section>
   );
 }
@@ -603,6 +649,7 @@ export function WalkingRecordPage({
   onPeriodChange,
   onPeriodOffsetChange,
   loading,
+  movementLoading,
   loadingProgress,
   error,
 }: WalkingRecordPageProps) {
@@ -695,8 +742,14 @@ export function WalkingRecordPage({
             record={record}
           />
           <SettledPlacesSection record={record} />
-          <BrowsingPortraitsSection record={record} />
-          <MovementLandscapeSection record={record} />
+          <BrowsingPortraitsSection
+            record={record}
+            movementLoading={movementLoading}
+          />
+          <MovementLandscapeSection
+            record={record}
+            movementLoading={movementLoading}
+          />
         </>
       )}
     </main>
