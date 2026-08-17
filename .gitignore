@@ -59,3 +59,4 @@ tools/playwright/videos
 .playwright-mcp/
 
 .env.submit
+test-results/
