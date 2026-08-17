@@ -364,6 +364,61 @@
     align-items: center;
   }
 
+  // Faux browser window around the history-page preview, so the step reads as
+  // "this is what the new tab becomes".
+  &__newtab-preview {
+    margin: 20px 0 16px;
+    border: 1px solid $border;
+    border-radius: 10px;
+    overflow: hidden;
+    background: $bg;
+    box-shadow: 0 2px 10px $shadow;
+  }
+
+  &__newtab-chrome {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    background: $surface-hover;
+  }
+
+  &__newtab-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+
+    &--close {
+      background: $accent-rust;
+    }
+    &--min {
+      background: $accent-gold;
+    }
+    &--expand {
+      background: $accent-teal;
+    }
+  }
+
+  &__newtab-shot {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  &__newtab-optin {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    font-family: $font-mono;
+    font-size: 12px;
+    color: $text;
+    cursor: pointer;
+
+    input {
+      cursor: pointer;
+    }
+  }
+
   &__btn-primary {
     @include btn-primary;
   }

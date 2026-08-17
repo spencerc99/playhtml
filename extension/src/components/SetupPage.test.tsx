@@ -99,6 +99,7 @@ describe("SetupPage", () => {
     });
     window.history.replaceState({}, "", "/");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null)));
+    vi.mocked(browser.storage.local.get).mockResolvedValue({});
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
@@ -124,6 +125,7 @@ describe("SetupPage", () => {
       expect(container.querySelector('input[type="email"]')).not.toBeNull();
 
       await click(container, "Get started");
+      await click(container, "Continue");
       await click(container, "Continue");
 
       expect(container.textContent).toContain("All set!");
@@ -171,6 +173,7 @@ describe("SetupPage", () => {
       await fillEmail(container, "person@example.com");
       await click(container, "Get started");
       await click(container, "Continue");
+      await click(container, "Continue");
       await click(container, "Finish setup");
 
       await vi.waitFor(() => {
@@ -201,6 +204,7 @@ describe("SetupPage", () => {
     try {
       await fillEmail(container, "person@example.com");
       await click(container, "Get started");
+      await click(container, "Continue");
       await click(container, "Continue");
       await click(container, "Finish setup");
 

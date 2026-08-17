@@ -77,7 +77,9 @@ export function ProfilePage({
   return (
     <div className="profile-page">
       <header className="profile-page__header">
-        <button onClick={onBack} className="profile-page__back">← Back</button>
+        <button onClick={onBack} className="profile-page__back">
+          ← back
+        </button>
         <h2 className="profile-page__title">Profile</h2>
       </header>
 

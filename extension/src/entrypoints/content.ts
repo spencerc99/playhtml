@@ -19,6 +19,10 @@ import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { ScrapCollector } from "../collectors/ScrapCollector";
+import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+} from "../collectors/modes";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { FLAGS } from "../flags";
@@ -35,11 +39,16 @@ async function internalDevFeaturesEnabled(): Promise<boolean> {
   }
 }
 
+// Scraps default to local and never support sharing, so a stored mode the
+// collector doesn't support (an "element" mode saved as "shared" before sharing
+// was removed) is repaired here before the collector starts.
 async function ensureScrapCollectionMode(): Promise<void> {
-  const key = "collection_mode_element";
+  const key = collectionModeStorageKey("element");
   const result = await browser.storage.local.get(key);
-  if (result[key] === undefined) {
-    await browser.storage.local.set({ [key]: "local" });
+  const stored = result[key];
+  const normalized = normalizeCollectionMode("element", stored);
+  if (stored !== normalized) {
+    await browser.storage.local.set({ [key]: normalized });
   }
 }
 

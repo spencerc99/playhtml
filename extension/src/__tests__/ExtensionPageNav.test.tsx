@@ -45,17 +45,17 @@ describe("ExtensionPageNav", () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
       internalDevFeaturesEnabled: false,
     });
-    const { container, root } = await renderNavigation("time");
+    const { container, root } = await renderNavigation("portrait");
 
     try {
       expect(container.textContent).toContain("portrait");
-      expect(container.textContent).toContain("time");
       expect(container.textContent).toContain("history");
+      expect(container.textContent).not.toContain("time");
       expect(container.textContent).not.toContain("walking record");
       expect(container.textContent).not.toContain("scraps");
       expect(
         container.querySelector('[aria-current="page"]')?.textContent,
-      ).toBe("time");
+      ).toBe("portrait");
     } finally {
       cleanup(root, container);
     }

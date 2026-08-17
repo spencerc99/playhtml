@@ -12,6 +12,11 @@ import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData } from '../collectors/types'
 import { getCanonicalScrapKey, getScrapKey } from '../collectors/scrapUtils'
 import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+  supportsSharedCollection,
+} from '../collectors/modes'
+import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
@@ -37,6 +42,8 @@ import {
 import { getSessionId } from '../storage/participant'
 import { recordAnnouncementInstall } from '../announcements/announcement-storage'
 import { isUserActive } from '../utils/userActivity'
+import { initNewTabTakeover } from '../features/newtab/takeover'
+import { grandfatherNewTabTakeover } from '../features/newtab/grandfather'
 import {
   getOrCreateWikipediaHandle,
   rerollWikipediaHandle,
@@ -318,15 +325,16 @@ async function flushPendingUploads(): Promise<void> {
     if (pending.length === 0) return
 
     const types = Array.from(new Set(pending.map((e) => e.type)))
-    const keys = types.map((t) => `collection_mode_${t}`)
+    const keys = types.map((t) => collectionModeStorageKey(t))
     const result = await browser.storage.local.get(keys)
 
     const uploadable = pending.filter((e) => {
-      if (e.type === 'element') return false
-      const mode = result[`collection_mode_${e.type}`]
-      const normalized: 'off' | 'local' | 'shared' =
-        mode === 'off' || mode === 'shared' || mode === 'local' ? mode : 'local'
-      return normalized === 'shared'
+      if (!supportsSharedCollection(e.type)) return false
+      const mode = normalizeCollectionMode(
+        e.type,
+        result[collectionModeStorageKey(e.type)],
+      )
+      return mode === 'shared'
     })
 
     if (uploadable.length > 0) {
@@ -391,6 +399,10 @@ export default defineBackground(() => {
   // false in extensions regardless of actual protection status (known
   // Chromium issue #357622670), so it's a misleading signal to rely on.
 
+  // Opt-in: send new browser tabs to the walking record instead of the
+  // default new tab page. Off unless the user turns it on.
+  initNewTabTakeover()
+
   // Forward the manifest "open-inventory" command to the active tab's content script.
   // Manifest commands are browser-routed, so this works reliably on every page.
   // (browser.commands is absent in some environments — e.g. the test runner — so guard it.)
@@ -422,8 +434,13 @@ export default defineBackground(() => {
       browser.tabs.create({ url }).catch((e) => {
         console.warn('Failed to open setup page on install', e)
       })
-    } else {
+    } else if (details.reason === 'update') {
       // Extension updated — ensure key is upgraded, then sync
+      initializePlayerIdentity().then(() => syncIdentityToServer())
+      grandfatherNewTabTakeover(details.previousVersion).catch((e) => {
+        console.warn('Failed to carry over the new tab preference', e)
+      })
+    } else {
       initializePlayerIdentity().then(() => syncIdentityToServer())
     }
   })
@@ -899,18 +916,10 @@ export default defineBackground(() => {
 
     if (message.type === 'GET_WALKING_RECORD_MOVEMENT') {
       const targets = (message.targets || []) as WalkingRecordTraceTarget[]
-      const faviconDomains = Array.isArray(message.faviconDomains)
-        ? message.faviconDomains.filter(
-            (domain: unknown): domain is string => typeof domain === 'string',
-          )
-        : []
-      Promise.all([
-        store.getWalkingRecordMovement(targets),
-        store.getWalkingRecordFavicons(faviconDomains),
-      ])
-        .then(async ([movement, favicons]) => ({
+      store
+        .getWalkingRecordMovement(targets)
+        .then(async (movement) => ({
           ...movement,
-          favicons,
           landscapePaths: await Promise.all(
             movement.landscapePaths.map(hydrateCursorColor),
           ),
@@ -922,7 +931,6 @@ export default defineBackground(() => {
             success: false,
             traces: [],
             landscapePaths: [],
-            favicons: {},
           })
         })
       return true

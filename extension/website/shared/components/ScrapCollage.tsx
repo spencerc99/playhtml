@@ -3,6 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hashString, seededRandom } from "../utils/styleUtils";
+import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
 import {
   canonicalButtonKey,
   canonicalCursorKey,
@@ -65,6 +66,8 @@ interface ScrapCollageProps {
 
 interface ScrapLayout {
   item: ScrapItem;
+  /** Position in the tide's slot array, so a departing scrap keeps its place. */
+  slotIndex: number;
   x: number;
   y: number;
   width: number;
@@ -77,6 +80,23 @@ interface ScrapLayout {
 
 const DEFAULT_PER_DOMAIN_CAP = 4;
 const DEFAULT_TARGET_COUNT = 200;
+const TIDE_WASH_OUT_MS = 1400;
+/** Bounds of the jittered gap between tide events. */
+const TIDE_GAP_MIN_MS = 1000;
+const TIDE_GAP_MAX_MS = 7000;
+/** Share of events that arrive as a wave rather than a single scrap. */
+const TIDE_WAVE_CHANCE = 1 / 6;
+const TIDE_WAVE_MIN_COUNT = 2;
+const TIDE_WAVE_MAX_COUNT = 4;
+/** Spacing between the individual wash-outs inside one wave. */
+const TIDE_WAVE_STAGGER_MIN_MS = 100;
+const TIDE_WAVE_STAGGER_MAX_MS = 300;
+/**
+ * How far below the target the ashore count is allowed to drift before the
+ * tide starts insisting on wash-ins, and how far above it may sit at all.
+ */
+const TIDE_BAND_BELOW = 0.15;
+const TIDE_BAND_ABOVE = 0.05;
 const LONG_EDGE_BY_TIER = [96, 152, 208] as const;
 const CURSOR_TILE_SIZE = 48;
 const SCRAP_KIND_OPTIONS = [
@@ -202,6 +222,178 @@ export function curateScraps(
   }
 
   return curated;
+}
+
+/**
+ * Rotating window over the curated pool. `ashore` is the slot array currently
+ * rendered; a `null` slot is bare sand a scrap has washed off and nothing has
+ * yet washed into, so departures never reflow the scraps around them.
+ * `offshore` is the queue of keys waiting to wash in. Both hold `item.key`
+ * rather than the items themselves so the state survives re-derivation of the
+ * pool.
+ */
+export interface TideState {
+  ashore: (string | null)[];
+  offshore: string[];
+}
+
+/** A tide event: one scrap in, one scrap out, or a wave taking several out. */
+export type TideEventKind = "in" | "out" | "wave";
+
+export interface TideEvent {
+  kind: TideEventKind;
+  /** Scraps this event moves; always 1 for "in" and "out". */
+  count: number;
+  /** Jittered wait before the event fires. */
+  delayMs: number;
+  /** Gap between the individual wash-outs of a wave; 0 for single events. */
+  staggerMs: number;
+}
+
+function tideAshoreCount(state: TideState): number {
+  return state.ashore.reduce((count, key) => (key === null ? count : count + 1), 0);
+}
+
+function randomBetween(rand: () => number, minimum: number, maximum: number): number {
+  return minimum + rand() * (maximum - minimum);
+}
+
+/**
+ * Decides what the tide does next, given only the current state and a source of
+ * randomness, so the rhythm is testable without timers. The ashore count is
+ * allowed to breathe inside a band below the target: under the floor the tide
+ * insists on bringing scraps back, at or above the target it can only shed, and
+ * inside the band it goes either way. Waves only happen on the shedding side,
+ * so a burst of departures is always followed by a slow, single-file refill.
+ */
+export function nextTideEvent(
+  state: TideState,
+  targetCount: number,
+  rand: () => number,
+): TideEvent {
+  const ashoreCount = tideAshoreCount(state);
+  const floor = Math.max(0, Math.floor(targetCount * (1 - TIDE_BAND_BELOW)));
+  const ceiling = Math.max(1, Math.round(targetCount * (1 + TIDE_BAND_ABOVE)));
+  const canWashIn = state.offshore.length > 0 && ashoreCount < ceiling;
+  const canWashOut = ashoreCount > 0;
+
+  const wantsWashIn = ashoreCount < floor
+    ? true
+    : ashoreCount >= targetCount
+      ? false
+      : rand() < 0.5;
+  const kind: TideEventKind =
+    wantsWashIn && canWashIn ? "in" : canWashOut ? "out" : "in";
+
+  const delayMs = Math.round(
+    randomBetween(rand, TIDE_GAP_MIN_MS, TIDE_GAP_MAX_MS),
+  );
+
+  if (kind === "out" && ashoreCount > TIDE_WAVE_MIN_COUNT && rand() < TIDE_WAVE_CHANCE) {
+    const count = Math.min(
+      ashoreCount,
+      Math.floor(
+        randomBetween(rand, TIDE_WAVE_MIN_COUNT, TIDE_WAVE_MAX_COUNT + 1),
+      ),
+    );
+    return {
+      kind: "wave",
+      count,
+      delayMs,
+      staggerMs: Math.round(
+        randomBetween(rand, TIDE_WAVE_STAGGER_MIN_MS, TIDE_WAVE_STAGGER_MAX_MS),
+      ),
+    };
+  }
+
+  return { kind, count: 1, delayMs, staggerMs: 0 };
+}
+
+/**
+ * Re-derives the tide from a pool, preserving the current ashore/offshore
+ * ordering for keys that are still present. Keys that disappeared from the pool
+ * (filter change, failed load) drop out; new keys join the back of the offshore
+ * queue. Bare slots are dropped so a re-derivation starts from a full shore.
+ * Used both for the initial tide and whenever the pool changes.
+ */
+export function deriveTideState(
+  poolKeys: string[],
+  targetCount: number,
+  previous?: TideState,
+): TideState {
+  const poolKeySet = new Set(poolKeys);
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  if (previous) {
+    for (const key of [...previous.ashore, ...previous.offshore]) {
+      if (key === null || !poolKeySet.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      ordered.push(key);
+    }
+  }
+  for (const key of poolKeys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(key);
+  }
+
+  const ashoreCount = Math.min(Math.max(0, targetCount), ordered.length);
+  return {
+    ashore: ordered.slice(0, ashoreCount),
+    offshore: ordered.slice(ashoreCount),
+  };
+}
+
+/**
+ * The scrap in `slotIndex` washes out: its slot goes bare and the key joins the
+ * back of the offshore queue, so it takes its turn behind everything else
+ * waiting. Returns the same state when the slot is already bare or invalid.
+ */
+export function washOutTide(state: TideState, slotIndex: number): TideState {
+  if (slotIndex < 0 || slotIndex >= state.ashore.length) return state;
+  const outgoing = state.ashore[slotIndex];
+  if (outgoing === null) return state;
+
+  const ashore = state.ashore.slice();
+  ashore[slotIndex] = null;
+  return { ashore, offshore: [...state.offshore, outgoing] };
+}
+
+/**
+ * The head of the offshore queue washes into the given bare slot. When
+ * `slotIndex` is omitted (or its slot is already occupied) the tide picks the
+ * first bare slot, and with no bare slot at all the scrap takes a new slot at
+ * the end of the shore. Returns the same state when nothing is offshore.
+ */
+export function washInTide(state: TideState, slotIndex?: number): TideState {
+  if (state.offshore.length === 0) return state;
+
+  const [incoming, ...restOffshore] = state.offshore;
+  const ashore = state.ashore.slice();
+  const target =
+    slotIndex !== undefined &&
+    slotIndex >= 0 &&
+    slotIndex < ashore.length &&
+    ashore[slotIndex] === null
+      ? slotIndex
+      : ashore.indexOf(null);
+
+  if (target === -1) {
+    ashore.push(incoming);
+  } else {
+    ashore[target] = incoming;
+  }
+  return { ashore, offshore: restOffshore };
+}
+
+/** Slot indices holding a scrap, for picking which one the tide takes next. */
+export function occupiedTideSlots(state: TideState): number[] {
+  const slots: number[] = [];
+  state.ashore.forEach((key, index) => {
+    if (key !== null) slots.push(index);
+  });
+  return slots;
 }
 
 function placeholderColor(domain: string): string {
@@ -343,25 +535,35 @@ function computeEverythingFieldHeight(
   return rowCount * averageCellHeight;
 }
 
+/**
+ * Lays out one scrap per slot. Slots are positional, so passing `null` for a
+ * bare slot keeps every other scrap exactly where it was -- the grid is sized
+ * from the slot count, not from how many slots currently hold a scrap, and bare
+ * slots simply render nothing.
+ */
 function buildLayout(
-  items: ScrapItem[],
+  slots: (ScrapItem | null)[],
   width: number,
   height: number,
   seed: number,
 ): ScrapLayout[] {
-  if (items.length === 0 || width === 0 || height === 0) return [];
+  if (slots.length === 0 || width === 0 || height === 0) return [];
+
+  const items = slots.filter((item): item is ScrapItem => item !== null);
+  if (items.length === 0) return [];
 
   const { lowerArea, upperArea } = tierBounds(items);
   const aspectRatio = width / height;
   const columnCount = Math.max(
     1,
-    Math.ceil(Math.sqrt(items.length * aspectRatio)),
+    Math.ceil(Math.sqrt(slots.length * aspectRatio)),
   );
-  const rowCount = Math.ceil(items.length / columnCount);
+  const rowCount = Math.ceil(slots.length / columnCount);
   const cellWidth = width / columnCount;
   const cellHeight = height / rowCount;
 
-  return items.map((item, index) => {
+  return slots.flatMap((item, index) => {
+    if (item === null) return [];
     const tier = tierForItem(item, lowerArea, upperArea);
     const itemSeed = seed + hashString(item.key);
     const itemDimensions = itemSize(item, tier, itemSeed);
@@ -382,17 +584,20 @@ function buildLayout(
       Math.min(height - itemDimensions.height - 4, unclampedY),
     );
 
-    return {
-      item,
-      x,
-      y,
-      width: itemDimensions.width,
-      height: itemDimensions.height,
-      rotation: seededRandom(itemSeed, 4) * 12 - 6,
-      zIndex: Math.floor(seededRandom(itemSeed, 5) * 80) + 1,
-      cardAbove: y > height * 0.58,
-      cardRightAligned: x > width * 0.68,
-    };
+    return [
+      {
+        item,
+        slotIndex: index,
+        x,
+        y,
+        width: itemDimensions.width,
+        height: itemDimensions.height,
+        rotation: seededRandom(itemSeed, 4) * 12 - 6,
+        zIndex: Math.floor(seededRandom(itemSeed, 5) * 80) + 1,
+        cardAbove: y > height * 0.58,
+        cardRightAligned: x > width * 0.68,
+      },
+    ];
   });
 }
 
@@ -476,6 +681,21 @@ const COLLAGE_STYLES = `
     outline-color: rgba(196, 114, 78, 0.45);
   }
 
+  .scrap-collage__filter--tide[aria-pressed="true"] {
+    border-color: #5b8db8;
+    background: rgba(91, 141, 184, 0.1);
+    color: #5b8db8;
+  }
+
+  .scrap-collage__filter--tide:hover,
+  .scrap-collage__filter--tide:focus-visible {
+    border-color: #5b8db8;
+  }
+
+  .scrap-collage__filter--tide:focus-visible {
+    outline-color: rgba(91, 141, 184, 0.45);
+  }
+
   .scrap-collage__scroll {
     position: absolute;
     inset: 0;
@@ -514,6 +734,79 @@ const COLLAGE_STYLES = `
     height: 100%;
     display: block;
     object-fit: contain;
+  }
+
+  .scrap-collage__swatch {
+    position: absolute;
+    inset: 0;
+    display: block;
+    pointer-events: none;
+    transition: opacity 420ms ease;
+  }
+
+  .scrap-collage__swatch--settled {
+    opacity: 0;
+  }
+
+  .scrap-collage__developing {
+    filter: blur(10px) saturate(0.35);
+    opacity: 0;
+    transition:
+      filter 760ms ease,
+      opacity 760ms ease;
+  }
+
+  .scrap-collage__developing.scrap-collage__developed {
+    filter: blur(0) saturate(1);
+    opacity: 1;
+  }
+
+  .scrap-collage__tile--washing-in {
+    animation: scrap-collage-wash-in 900ms ease forwards;
+  }
+
+  .scrap-collage__tile--washing-out {
+    animation: scrap-collage-wash-out ${TIDE_WASH_OUT_MS}ms ease forwards;
+    pointer-events: none;
+  }
+
+  @keyframes scrap-collage-wash-in {
+    from {
+      opacity: 0;
+      transform: rotate(var(--scrap-rotation)) translateY(-18px);
+    }
+    to {
+      opacity: 1;
+      transform: rotate(var(--scrap-rotation)) translateY(0);
+    }
+  }
+
+  @keyframes scrap-collage-wash-out {
+    from {
+      opacity: 1;
+      transform: rotate(var(--scrap-rotation)) translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: rotate(var(--scrap-rotation)) translateY(30px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scrap-collage__swatch,
+    .scrap-collage__developing {
+      transition: none;
+    }
+
+    .scrap-collage__developing {
+      filter: none;
+      opacity: 1;
+    }
+
+    .scrap-collage__tile--washing-in,
+    .scrap-collage__tile--washing-out {
+      animation: none;
+    }
   }
 
   .scrap-collage__button {
@@ -658,21 +951,52 @@ function isRenderableScrap(item: ScrapItem): boolean {
 
 interface ScrapContentProps {
   item: ScrapItem;
+  loaded: boolean;
   onError: () => void;
+  onLoad: () => void;
 }
 
-function ScrapContent({ item, onError }: ScrapContentProps) {
+/**
+ * Tinted stand-in occupying the exact box the remote image will fill, so the
+ * scrap holds its footprint from first paint and the image develops in over it
+ * rather than popping into an empty slot.
+ */
+function ScrapSwatch({
+  domain,
+  loaded,
+  style,
+}: {
+  domain: string;
+  loaded: boolean;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <span
+      className={`scrap-collage__swatch${loaded ? " scrap-collage__swatch--settled" : ""}`}
+      aria-hidden="true"
+      style={{ backgroundColor: placeholderColor(domain), ...style }}
+    />
+  );
+}
+
+function ScrapContent({ item, loaded, onError, onLoad }: ScrapContentProps) {
   switch (item.kind) {
     case "image":
       return (
-        <img
-          className="scrap-collage__image"
-          src={item.src}
-          alt={item.alt ?? ""}
-          loading="lazy"
-          draggable={false}
-          onError={onError}
-        />
+        <>
+          <ScrapSwatch domain={item.domain} loaded={loaded} />
+          <img
+            className={`scrap-collage__image scrap-collage__developing${
+              loaded ? " scrap-collage__developed" : ""
+            }`}
+            src={item.src}
+            alt={item.alt ?? ""}
+            loading="lazy"
+            draggable={false}
+            onLoad={onLoad}
+            onError={onError}
+          />
+        </>
       );
     case "button":
       return (
@@ -706,16 +1030,63 @@ function ScrapContent({ item, onError }: ScrapContentProps) {
       );
     case "cursor":
       return (
-        <img
-          className="scrap-collage__cursor"
-          src={item.url}
-          alt=""
-          loading="lazy"
-          draggable={false}
-          onError={onError}
-        />
+        <>
+          <ScrapSwatch
+            domain={item.domain}
+            loaded={loaded}
+            style={{
+              inset: "auto",
+              left: "50%",
+              top: "50%",
+              width: 32,
+              height: 32,
+              transform: "translate(-50%, -50%)",
+            }}
+          />
+          <img
+            className={`scrap-collage__cursor scrap-collage__developing${
+              loaded ? " scrap-collage__developed" : ""
+            }`}
+            src={item.url}
+            alt=""
+            loading="lazy"
+            draggable={false}
+            onLoad={onLoad}
+            onError={onError}
+          />
+        </>
       );
   }
+}
+
+/**
+ * A scrap that has left the tide but is still on screen for the duration of its
+ * wash-out animation. It keeps the layout it had in its old slot so it drifts
+ * away from where it sat rather than jumping.
+ */
+interface WashingOutScrap {
+  layout: ScrapLayout;
+  washOutId: number;
+  /** When the wash-out animation began, so removal survives a paused tide. */
+  startedAt: number;
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setPrefersReducedMotion(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return prefersReducedMotion;
 }
 
 export function ScrapCollage({
@@ -736,6 +1107,31 @@ export function ScrapCollage({
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(
     () => new Set(),
   );
+  const [loadedScraps, setLoadedScraps] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [tidePaused, setTidePaused] = useState(prefersReducedMotion);
+  const [tide, setTide] = useState<TideState | null>(null);
+  const tideRef = useRef(tide);
+  tideRef.current = tide;
+  const [washingOut, setWashingOut] = useState<WashingOutScrap[]>([]);
+  const washOutIdRef = useRef(0);
+  /**
+   * The scrap being examined, plus the collage tile geometry it was lifted from
+   * so the lightbox can animate out of and back into its slot.
+   */
+  const [examining, setExamining] = useState<{
+    key: string;
+    origin: ScrapOrigin;
+  } | null>(null);
+  // Tide state to restore when the examine view closes; the tide holds still
+  // while a scrap is being looked at.
+  const tidePausedBeforeExamineRef = useRef<boolean | null>(null);
+  const examineTriggerRef = useRef<HTMLElement | null>(null);
+  // Rendered tile elements by scrap key, so arrow-key navigation can re-anchor
+  // the examine view on the next scrap's actual slot.
+  const tileElementsRef = useRef(new Map<string, HTMLElement>());
 
   const kindCounts = useMemo(() => {
     const counts: Record<ScrapKind, number> = {
@@ -769,38 +1165,208 @@ export function ScrapCollage({
       }),
     [filteredItems, seed],
   );
-  const curated = useMemo(
-    () =>
-      everythingMode
-        ? everythingScraps
-        : curateScraps(filteredItems, { seed, targetCount, perDomainCap }),
-    [everythingMode, everythingScraps, filteredItems, perDomainCap, seed, targetCount],
+  const curatedScraps = useMemo(
+    () => curateScraps(filteredItems, { seed, targetCount, perDomainCap }),
+    [filteredItems, perDomainCap, seed, targetCount],
   );
+  /**
+   * Every scrap the tide can reach, ordered so the front of the queue is the
+   * day-seeded curated selection: those wash ashore first, and everything else
+   * waits its turn in the order `curateScraps` would have reached it.
+   */
+  const tidePool = useMemo(() => {
+    const byKey = new Map(everythingScraps.map((item) => [item.key, item]));
+    const ordered: ScrapItem[] = [];
+    for (const item of curatedScraps) {
+      if (byKey.delete(item.key)) ordered.push(item);
+    }
+    return [...ordered, ...byKey.values()];
+  }, [curatedScraps, everythingScraps]);
+  const tideCapacity = Math.min(curatedScraps.length, tidePool.length);
+  const tideAvailable = !everythingMode && tidePool.length > tideCapacity;
+  const poolByKey = useMemo(
+    () => new Map(tidePool.map((item) => [item.key, item])),
+    [tidePool],
+  );
+
+  useEffect(() => {
+    setTide((current) =>
+      deriveTideState(
+        tidePool.map((item) => item.key),
+        tideCapacity,
+        current ?? undefined,
+      ),
+    );
+  }, [tideCapacity, tidePool]);
+
+  /**
+   * The shore as slots: one entry per position, `null` where a scrap has washed
+   * off and nothing has yet washed back in.
+   */
+  const slots = useMemo<(ScrapItem | null)[]>(() => {
+    if (everythingMode) return everythingScraps;
+    if (!tide) return curatedScraps;
+    return tide.ashore.map((key) =>
+      key === null ? null : poolByKey.get(key) ?? null,
+    );
+  }, [curatedScraps, everythingMode, everythingScraps, poolByKey, tide]);
   const fieldHeight = useMemo(
     () =>
       everythingMode
         ? Math.max(
             containerSize.height,
             computeEverythingFieldHeight(
-              curated,
+              slots.filter((item): item is ScrapItem => item !== null),
               containerSize.width,
               containerSize.height,
               seed,
             ),
           )
         : containerSize.height,
-    [containerSize.height, containerSize.width, curated, everythingMode, seed],
+    [containerSize.height, containerSize.width, slots, everythingMode, seed],
   );
   const layout = useMemo(
-    () => buildLayout(curated, containerSize.width, fieldHeight, seed),
-    [containerSize.width, curated, fieldHeight, seed],
+    () => buildLayout(slots, containerSize.width, fieldHeight, seed),
+    [containerSize.width, slots, fieldHeight, seed],
   );
+
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  // Keys rendered on the previous pass, so the render below can tell a scrap
+  // that just washed in from one that was already ashore.
+  const renderedKeysRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     if (selectedKind !== "all" && kindCounts[selectedKind] === 0) {
       setSelectedKind("all");
     }
   }, [kindCounts, selectedKind]);
+
+  /**
+   * Drives the tide as a chain of self-scheduling events rather than a metronome:
+   * each event decides its own kind and how long the tide rests before the next
+   * one, so wash-outs and wash-ins are independent and the gaps are irregular.
+   */
+  useEffect(() => {
+    if (!tideAvailable || tidePaused) return;
+
+    let cancelled = false;
+    const timeouts = new Set<number>();
+    const wait = (delayMs: number, run: () => void) => {
+      const timeout = window.setTimeout(() => {
+        timeouts.delete(timeout);
+        if (!cancelled) run();
+      }, delayMs);
+      timeouts.add(timeout);
+    };
+
+    const washOutOneScrap = () => {
+      const current = tideRef.current;
+      if (!current) return;
+      const occupied = occupiedTideSlots(current);
+      if (occupied.length === 0) return;
+      const slotIndex = occupied[Math.floor(Math.random() * occupied.length)];
+      const outgoingLayout = prefersReducedMotion
+        ? undefined
+        : layoutRef.current.find((scrap) => scrap.slotIndex === slotIndex);
+      setTide(washOutTide(current, slotIndex));
+      if (!outgoingLayout) return;
+
+      washOutIdRef.current += 1;
+      const washOutId = washOutIdRef.current;
+      setWashingOut((currentWashingOut) => [
+        ...currentWashingOut,
+        { layout: outgoingLayout, washOutId, startedAt: Date.now() },
+      ]);
+    };
+
+    const runEvent = () => {
+      // Read through the ref so the scheduler stays off the effect's dependency
+      // list and a rest is never cut short by an unrelated re-render.
+      const current = tideRef.current;
+      if (!current) return;
+
+      const event = nextTideEvent(current, tideCapacity, Math.random);
+      if (event.kind === "in") {
+        setTide(washInTide(current));
+      } else {
+        washOutOneScrap();
+        for (let index = 1; index < event.count; index += 1) {
+          wait(index * event.staggerMs, washOutOneScrap);
+        }
+      }
+      wait(event.delayMs, runEvent);
+    };
+
+    wait(
+      Math.round(
+        TIDE_GAP_MIN_MS + Math.random() * (TIDE_GAP_MAX_MS - TIDE_GAP_MIN_MS),
+      ),
+      runEvent,
+    );
+
+    return () => {
+      cancelled = true;
+      for (const timeout of timeouts) window.clearTimeout(timeout);
+    };
+  }, [prefersReducedMotion, tideAvailable, tideCapacity, tidePaused]);
+
+  /**
+   * Retires wash-out ghosts once their animation has played out. This is owned
+   * separately from the scheduler so pausing the tide — which restarts the
+   * scheduler effect — never strands an invisible ghost on the page.
+   */
+  useEffect(() => {
+    if (washingOut.length === 0) return;
+
+    const now = Date.now();
+    const expired = washingOut.filter(
+      (scrap) => now - scrap.startedAt >= TIDE_WASH_OUT_MS,
+    );
+    if (expired.length > 0) {
+      const expiredIds = new Set(expired.map((scrap) => scrap.washOutId));
+      setWashingOut((current) =>
+        current.filter((scrap) => !expiredIds.has(scrap.washOutId)),
+      );
+      return;
+    }
+
+    const soonest = Math.min(
+      ...washingOut.map((scrap) => scrap.startedAt + TIDE_WASH_OUT_MS - now),
+    );
+    const timeout = window.setTimeout(() => {
+      const cutoff = Date.now();
+      setWashingOut((current) =>
+        current.filter(
+          (scrap) => cutoff - scrap.startedAt < TIDE_WASH_OUT_MS,
+        ),
+      );
+    }, Math.max(soonest, 0));
+    return () => window.clearTimeout(timeout);
+  }, [washingOut]);
+
+  useEffect(() => {
+    if (!tideAvailable) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        (active.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(active.tagName))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setTidePaused((current) => !current);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [tideAvailable]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -835,7 +1401,103 @@ export function ScrapCollage({
     });
   };
 
-  const tiles = layout.map((scrap) => {
+  const markScrapLoaded = (key: string) => {
+    setLoadedScraps((current) => {
+      if (current.has(key)) return current;
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+  };
+
+  /**
+   * Scraps the examine view can step through with the arrow keys: the order
+   * they are currently laid out in, so left/right follow what the eye sees.
+   */
+  const examinableScraps = layout
+    .map((scrap) => scrap.item)
+    .filter(
+      (item) => !failedScraps.has(item.key) && isRenderableScrap(item),
+    );
+  const examineIndex = examining
+    ? examinableScraps.findIndex((item) => item.key === examining.key)
+    : -1;
+  const examinedItem = examineIndex >= 0 ? examinableScraps[examineIndex] : null;
+
+  const openExamine = (item: ScrapItem, element: HTMLElement) => {
+    const bounds = element.getBoundingClientRect();
+    const layoutEntry = layout.find((scrap) => scrap.item.key === item.key);
+    examineTriggerRef.current = element;
+    if (tidePausedBeforeExamineRef.current === null) {
+      tidePausedBeforeExamineRef.current = tidePaused;
+      setTidePaused(true);
+    }
+    setExamining({
+      key: item.key,
+      origin: {
+        left: bounds.left,
+        top: bounds.top,
+        width: bounds.width,
+        height: bounds.height,
+        rotation: layoutEntry?.rotation ?? 0,
+      },
+    });
+  };
+
+  const closeExamine = () => {
+    setExamining(null);
+    if (tidePausedBeforeExamineRef.current !== null) {
+      setTidePaused(tidePausedBeforeExamineRef.current);
+      tidePausedBeforeExamineRef.current = null;
+    }
+    // The origin tile can be gone (a filter change, a wash-out); fall back to
+    // the collage itself so focus never escapes to the top of the document.
+    const trigger = examineTriggerRef.current;
+    if (trigger?.isConnected) {
+      trigger.focus();
+    } else {
+      const fallback =
+        containerRef.current?.querySelector<HTMLElement>("[data-scrap-key]");
+      fallback?.focus();
+    }
+    examineTriggerRef.current = null;
+  };
+  const closeExamineRef = useRef(closeExamine);
+  closeExamineRef.current = closeExamine;
+
+  /**
+   * The examined scrap can vanish from the visible set while the lightbox is
+   * open (a kind filter is pressed, the scrap fails to load). Run the full close
+   * path rather than letting the dialog unmount with the tide still held.
+   */
+  useEffect(() => {
+    if (examining && !examinedItem) closeExamineRef.current();
+  }, [examinedItem, examining]);
+
+  /**
+   * Steps to a neighbouring scrap, re-anchoring the lightbox on that scrap's
+   * own tile so closing puts it back where it actually lives.
+   */
+  const stepExamine = (delta: number) => {
+    const next = examinableScraps[examineIndex + delta];
+    if (!next) return;
+    const layoutEntry = layout.find((scrap) => scrap.item.key === next.key);
+    const bounds = tileElementsRef.current.get(next.key)?.getBoundingClientRect();
+    setExamining({
+      key: next.key,
+      origin: bounds
+        ? {
+            left: bounds.left,
+            top: bounds.top,
+            width: bounds.width,
+            height: bounds.height,
+            rotation: layoutEntry?.rotation ?? 0,
+          }
+        : { left: 0, top: 0, width: 0, height: 0, rotation: 0 },
+    });
+  };
+
+  const renderTile = (scrap: ScrapLayout, modifier: string) => {
     if (failedScraps.has(scrap.item.key) || !isRenderableScrap(scrap.item)) {
       return null;
     }
@@ -857,15 +1519,41 @@ export function ScrapCollage({
     return (
       <a
         key={scrap.item.key}
-        className="scrap-collage__tile"
+        className={`scrap-collage__tile${modifier}`}
         href={scrap.item.pageUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={`Open source page for ${title}`}
+        data-scrap-key={scrap.item.key}
+        ref={(element) => {
+          // A washing-out tile is a departing copy of a scrap that may already
+          // be ashore again elsewhere, so it never claims the key.
+          if (modifier.includes("washing-out")) return;
+          if (element) {
+            tileElementsRef.current.set(scrap.item.key, element);
+          } else {
+            tileElementsRef.current.delete(scrap.item.key);
+          }
+        }}
+        aria-label={`Examine ${title}`}
+        aria-haspopup="dialog"
         style={tileStyle}
+        onClick={(event) => {
+          // Plain clicks open the examine view; modifier clicks keep the
+          // anchor's normal "open the source page" behaviour.
+          if (
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey
+          ) {
+            return;
+          }
+          event.preventDefault();
+          openExamine(scrap.item, event.currentTarget);
+        }}
       >
         <ScrapContent
           item={scrap.item}
+          loaded={loadedScraps.has(scrap.item.key)}
+          onLoad={() => markScrapLoaded(scrap.item.key)}
           onError={() => removeScrap(scrap.item.key)}
         />
         <div
@@ -903,7 +1591,26 @@ export function ScrapCollage({
         </div>
       </a>
     );
-  });
+  };
+
+  const washInKeys = new Set<string>();
+  if (!everythingMode && !prefersReducedMotion && renderedKeysRef.current) {
+    for (const scrap of layout) {
+      if (!renderedKeysRef.current.has(scrap.item.key)) {
+        washInKeys.add(scrap.item.key);
+      }
+    }
+  }
+  renderedKeysRef.current = new Set(layout.map((scrap) => scrap.item.key));
+
+  const tiles = layout.map((scrap) =>
+    renderTile(
+      scrap,
+      washInKeys.has(scrap.item.key)
+        ? " scrap-collage__tile--washing-in"
+        : "",
+    ),
+  );
 
   return (
     <div
@@ -949,8 +1656,24 @@ export function ScrapCollage({
               {everythingScraps.length}
             </span>
           </button>
+          {tideAvailable && (
+            <button
+              type="button"
+              className="scrap-collage__filter scrap-collage__filter--tide"
+              aria-pressed={!tidePaused}
+              title="Pause or resume the tide (spacebar)"
+              onClick={() => setTidePaused((current) => !current)}
+            >
+              {tidePaused ? "◼ tide paused" : "◆ tide"}
+            </button>
+          )}
         </div>
       )}
+      {washingOut.map((scrap) => (
+        <React.Fragment key={`washing-out-${scrap.washOutId}`}>
+          {renderTile(scrap.layout, " scrap-collage__tile--washing-out")}
+        </React.Fragment>
+      ))}
       {everythingMode ? (
         <div className="scrap-collage__scroll">
           <div
@@ -962,6 +1685,43 @@ export function ScrapCollage({
         </div>
       ) : (
         tiles
+      )}
+      {examining && examinedItem && (
+        <ScrapLightbox
+          key={examinedItem.key}
+          item={examinedItem}
+          origin={examining.origin}
+          faviconSrc={
+            examinedItem.faviconUrl ||
+            `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+              examinedItem.domain,
+            )}&sz=64`
+          }
+          faviconAvailable={!failedFavicons.has(examinedItem.domain)}
+          onFaviconError={() => markFaviconFailed(examinedItem.domain)}
+          placeholderColor={placeholderColor(examinedItem.domain)}
+          hasPrevious={examineIndex > 0}
+          hasNext={examineIndex < examinableScraps.length - 1}
+          prefersReducedMotion={prefersReducedMotion}
+          currentOrigin={() => {
+            const element = tileElementsRef.current.get(examinedItem.key);
+            if (!element?.isConnected) return null;
+            const bounds = element.getBoundingClientRect();
+            const layoutEntry = layoutRef.current.find(
+              (scrap) => scrap.item.key === examinedItem.key,
+            );
+            return {
+              left: bounds.left,
+              top: bounds.top,
+              width: bounds.width,
+              height: bounds.height,
+              rotation: layoutEntry?.rotation ?? 0,
+            };
+          }}
+          onClose={closeExamine}
+          onPrevious={() => stepExamine(-1)}
+          onNext={() => stepExamine(1)}
+        />
       )}
     </div>
   );
