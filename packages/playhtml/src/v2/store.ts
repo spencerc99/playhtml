@@ -1,0 +1,259 @@
+// ABOUTME: Maintains authoritative and optimistic version 2 room snapshots.
+// ABOUTME: Rebases pending client operations after server updates and rejections.
+
+import type {
+  ClientOperationMessage,
+  JsonValue,
+  RoomGeneration,
+  RoomSnapshot,
+  SequencedOperation,
+  ServerOperationRejectedMessage,
+  ServerSnapshotMessage,
+} from "@playhtml/common";
+import { PROTOCOL_VERSION } from "@playhtml/common";
+import { applyOperation } from "@playhtml/common";
+import {
+  recordMutation,
+  type MutationCallback,
+} from "@playhtml/common";
+
+export type V2StoreTransport = {
+  send(message: ClientOperationMessage): void;
+  requestSnapshot(): void;
+};
+
+export type V2StoreStatusEvent = {
+  readonly type: "write-rejected";
+  readonly rejection: ServerOperationRejectedMessage;
+};
+
+export type V2StoreOptions = {
+  readonly snapshot: RoomSnapshot;
+  readonly generation: RoomGeneration;
+  readonly transport: V2StoreTransport;
+  readonly clientId?: string;
+  readonly sequence?: number;
+};
+
+type ElementListener = (value: JsonValue | undefined) => void;
+type RoomListener = (snapshot: RoomSnapshot) => void;
+type StatusListener = (event: V2StoreStatusEvent) => void;
+
+const valuesEqual = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const getElementValue = (
+  snapshot: RoomSnapshot,
+  capability: string,
+  elementId: string,
+): JsonValue | undefined => snapshot.state[capability]?.[elementId];
+
+const withLastMutationId = (
+  snapshot: RoomSnapshot,
+  clientId: string,
+  mutationId: number,
+): RoomSnapshot => ({
+  ...snapshot,
+  lastMutationIds: {
+    ...snapshot.lastMutationIds,
+    [clientId]: Math.max(snapshot.lastMutationIds[clientId] ?? 0, mutationId),
+  },
+});
+
+export class V2Store {
+  readonly clientId: string;
+
+  private authoritative: RoomSnapshot;
+  private view: RoomSnapshot;
+  private generation: RoomGeneration;
+  private serverSequence: number;
+  private nextMutationId: number;
+  private pending: ClientOperationMessage[] = [];
+  private readonly transport: V2StoreTransport;
+  private readonly elementListeners = new Map<string, Set<ElementListener>>();
+  private readonly roomListeners = new Set<RoomListener>();
+  private readonly statusListeners = new Set<StatusListener>();
+
+  constructor(options: V2StoreOptions) {
+    this.clientId = options.clientId ?? crypto.randomUUID();
+    this.authoritative = structuredClone(options.snapshot);
+    this.view = this.authoritative;
+    this.generation = options.generation;
+    this.serverSequence = options.sequence ?? 0;
+    this.nextMutationId =
+      (this.authoritative.lastMutationIds[this.clientId] ?? 0) + 1;
+    this.transport = options.transport;
+  }
+
+  getSnapshot(): RoomSnapshot {
+    return this.view;
+  }
+
+  getGeneration(): RoomGeneration {
+    return this.generation;
+  }
+
+  getPendingOperations(): readonly ClientOperationMessage[] {
+    return this.pending;
+  }
+
+  mutate<Value extends JsonValue>(
+    capability: string,
+    elementId: string,
+    mutatorOrValue: Value | MutationCallback<Value>,
+  ): readonly ClientOperationMessage[] {
+    const previous = this.view;
+    const recorded = recordMutation(
+      this.view,
+      capability,
+      elementId,
+      mutatorOrValue as Value | MutationCallback<Value>,
+    );
+    const messages = recorded.ops.map((operation) => ({
+      type: "operation" as const,
+      protocolVersion: PROTOCOL_VERSION,
+      generation: this.generation,
+      clientId: this.clientId,
+      mutationId: this.nextMutationId++,
+      operation,
+    }));
+
+    this.pending.push(...messages);
+    this.view = recorded.next;
+    this.notifyChanges(previous, this.view);
+    for (const message of messages) this.transport.send(message);
+    return messages;
+  }
+
+  applyServerOperation(envelope: SequencedOperation): void {
+    if (
+      envelope.generation !== this.generation ||
+      envelope.sequence <= this.serverSequence
+    ) {
+      return;
+    }
+
+    const previous = this.view;
+    const applied = applyOperation(this.authoritative, envelope.operation);
+    if (!applied.ok) {
+      // The server accepted this operation, so a local failure means the
+      // authoritative copies have diverged. Resync rather than drift.
+      console.warn(
+        `[playhtml] Server operation failed locally for ${envelope.operation.capability}/${envelope.operation.elementId}; requesting fresh snapshot: ${applied.message}`,
+      );
+      this.transport.requestSnapshot();
+      return;
+    }
+
+    this.serverSequence = envelope.sequence;
+    this.authoritative = withLastMutationId(
+      applied.snapshot,
+      envelope.clientId,
+      envelope.mutationId,
+    );
+    if (envelope.clientId === this.clientId) {
+      this.pending = this.pending.filter(
+        (message) => message.mutationId !== envelope.mutationId,
+      );
+    }
+    this.rederiveView();
+    this.notifyChanges(previous, this.view);
+  }
+
+  applyServerSnapshot(message: ServerSnapshotMessage): void {
+    const previous = this.view;
+    const generationChanged = message.generation !== this.generation;
+    this.authoritative = structuredClone(message.snapshot);
+    this.generation = message.generation;
+    this.serverSequence = message.sequence;
+    const confirmedMutationId =
+      message.snapshot.lastMutationIds[this.clientId] ?? 0;
+    this.pending = generationChanged
+      ? []
+      : this.pending.filter(
+          (pending) => pending.mutationId > confirmedMutationId,
+        );
+    this.rederiveView();
+    this.notifyChanges(previous, this.view);
+  }
+
+  handleRejection(message: ServerOperationRejectedMessage): void {
+    const previous = this.view;
+    if (message.code === "stale-generation") {
+      this.pending = [];
+      this.rederiveView();
+      this.transport.requestSnapshot();
+    } else if (
+      message.mutationId !== undefined &&
+      (message.clientId === undefined || message.clientId === this.clientId)
+    ) {
+      this.pending = this.pending.filter(
+        (pending) => pending.mutationId !== message.mutationId,
+      );
+      this.rederiveView();
+    }
+    this.notifyChanges(previous, this.view);
+    const event = { type: "write-rejected", rejection: message } as const;
+    for (const listener of this.statusListeners) listener(event);
+  }
+
+  subscribe(
+    capability: string,
+    elementId: string,
+    listener: ElementListener,
+  ): () => void {
+    const key = this.elementKey(capability, elementId);
+    const listeners = this.elementListeners.get(key) ?? new Set();
+    listeners.add(listener);
+    this.elementListeners.set(key, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.elementListeners.delete(key);
+    };
+  }
+
+  subscribeRoom(listener: RoomListener): () => void {
+    this.roomListeners.add(listener);
+    return () => this.roomListeners.delete(listener);
+  }
+
+  subscribeStatus(listener: StatusListener): () => void {
+    this.statusListeners.add(listener);
+    return () => this.statusListeners.delete(listener);
+  }
+
+  private rederiveView(): void {
+    let next = this.authoritative;
+    for (const pending of this.pending) {
+      const applied = applyOperation(next, pending.operation);
+      if (applied.ok) next = applied.snapshot;
+    }
+    this.view = next;
+  }
+
+  private notifyChanges(previous: RoomSnapshot, next: RoomSnapshot): void {
+    for (const [key, listeners] of this.elementListeners) {
+      const [capability, elementId] = this.parseElementKey(key);
+      const previousValue = getElementValue(previous, capability, elementId);
+      const nextValue = getElementValue(next, capability, elementId);
+      if (valuesEqual(previousValue, nextValue)) continue;
+      for (const listener of listeners) listener(nextValue);
+    }
+
+    if (
+      valuesEqual(previous.state, next.state) &&
+      valuesEqual(previous.arrays, next.arrays)
+    ) {
+      return;
+    }
+    for (const listener of this.roomListeners) listener(next);
+  }
+
+  private elementKey(capability: string, elementId: string): string {
+    return JSON.stringify([capability, elementId]);
+  }
+
+  private parseElementKey(key: string): [string, string] {
+    return JSON.parse(key) as [string, string];
+  }
+}

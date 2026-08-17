@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "playhtml",
-  "main": "party.ts",
+  "main": "worker.ts",
   "compatibility_flags": ["nodejs_compat"],
   "compatibility_date": "2024-09-23",
   "workers_dev": true,
@@ -39,6 +39,10 @@
       {
         "name": "Presence",
         "class_name": "PresenceServer"
+      },
+      {
+        "name": "V2",
+        "class_name": "PartyServerV2"
       }
     ]
   },
@@ -50,6 +54,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["PresenceServer"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["PartyServerV2"]
     }
   ],
   "env": {
@@ -88,6 +96,10 @@
           {
             "name": "Presence",
             "class_name": "PresenceServer"
+          },
+          {
+            "name": "V2",
+            "class_name": "PartyServerV2"
           }
         ]
       },
@@ -99,6 +111,10 @@
         {
           "tag": "v2",
           "new_sqlite_classes": ["PresenceServer"]
+        },
+        {
+          "tag": "v3",
+          "new_sqlite_classes": ["PartyServerV2"]
         }
       ]
     }

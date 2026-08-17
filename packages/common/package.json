@@ -37,6 +37,7 @@
     "immer": "^10.1.1"
   },
   "devDependencies": {
+    "fast-check": "^4.9.0",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
     "vite-plugin-dts": "^4.5.4",

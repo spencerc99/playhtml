@@ -111,6 +111,10 @@ export const DEFAULT_SUPABASE_LOAD_ATTEMPTS = (() => {
 export const DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS = (() => {
   return 250;
 })();
+export const DEFAULT_V2_AUTOSAVE_DEBOUNCE_MS = 3000;
+export const DEFAULT_V2_AUTOSAVE_MAX_WAIT_MS = 15000;
+export const DEFAULT_V2_MAX_OPERATION_BYTES = 64 * 1024;
+export const DEFAULT_V2_DOCUMENT_WARNING_BYTES = 5 * 1024 * 1024;
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 
