@@ -147,6 +147,13 @@
     max-width: 280px;
   }
 
+  &__field-help {
+    max-width: 320px;
+    color: $text-faint;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
   // ── Preset tabs ─────────────────────────────────────────────────────────────
 
   &__preset-tabs {

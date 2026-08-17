@@ -1,5 +1,5 @@
 // ABOUTME: Full-page setup wizard for first-time extension configuration
-// ABOUTME: Handles consent choices, cursor color, and the three-step product tour
+// ABOUTME: Handles consent choices, cursor color, completion tips, and update signup
 import React, { useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import { getValidEventTypes } from "@playhtml/extension-types";
@@ -14,6 +14,7 @@ import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
 import { PortraitCard } from "./PortraitCard";
 import { isSafariExtensionPageUrl } from "../utils/extensionPage";
+import { WORKER_URL } from "@movement/config";
 import {
   hasSafariWebsiteAccess,
   requestSafariWebsiteAccess,
@@ -94,6 +95,7 @@ function presetConfigs(): Record<Preset, PresetConfig> {
 export default function SetupPage() {
   const [step, setStep] = useState<Step>("welcome");
   const showDevStepNav = new URLSearchParams(window.location.search).has("dev");
+  const [email, setEmail] = useState("");
   const [color, setColor] = useState<string>("");
   const presets = presetConfigs();
   const [preset, setPreset] = useState<Preset>("participate");
@@ -208,8 +210,35 @@ export default function SetupPage() {
   const finishOnboarding = async () => {
     setBusy(true);
     setSaveError(null);
+    const trimmedEmail = email.trim();
+
     try {
-      await browser.storage.local.set({ onboarding_complete: "true" });
+      if (trimmedEmail) {
+        try {
+          const response = await fetch(`${WORKER_URL}/subscribe`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: trimmedEmail,
+              source: "extension-setup",
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Subscription failed with status ${response.status}`);
+          }
+        } catch {
+          setSaveError(
+            "We couldn’t sign you up for updates. Try again, or clear the field to finish without signing up.",
+          );
+          return;
+        }
+      }
+
+      await browser.storage.local.set({
+        onboarding_complete: "true",
+        ...(trimmedEmail ? { setup_email: trimmedEmail } : {}),
+      });
       await closeSetupTab();
     } catch {
       setSaveError(setupStorageError(isSafari));
@@ -533,26 +562,60 @@ export default function SetupPage() {
               </button>
             </div>
 
-            <div className="setup-step__actions">
-              <button
-                onClick={() => setStep("configure")}
-                className="setup-step__btn-secondary"
-              >
-                Back
-              </button>
-              <button
-                onClick={finishOnboarding}
-                className="setup-step__btn-primary"
-                disabled={busy}
-              >
-                {saveError ? "Try again" : "Finish setup"}
-              </button>
-            </div>
-            {saveError && (
-              <p className="setup-step__save-error" role="alert">
-                {saveError}
-              </p>
-            )}
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void finishOnboarding();
+              }}
+            >
+              <div className="setup-step__field">
+                <label
+                  className="setup-step__field-label"
+                  htmlFor="updates-email"
+                >
+                  Email for project updates (optional)
+                </label>
+                <input
+                  id="updates-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  aria-describedby="updates-email-help"
+                  className="setup-step__input"
+                />
+                <span
+                  id="updates-email-help"
+                  className="setup-step__field-help"
+                >
+                  Get occasional updates about we were online and related
+                  projects.
+                </span>
+              </div>
+
+              <div className="setup-step__actions">
+                <button
+                  type="button"
+                  onClick={() => setStep("configure")}
+                  className="setup-step__btn-secondary"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  className="setup-step__btn-primary"
+                  disabled={busy}
+                >
+                  {saveError ? "Try again" : "Finish setup"}
+                </button>
+              </div>
+              {saveError && (
+                <p className="setup-step__save-error" role="alert">
+                  {saveError}
+                </p>
+              )}
+            </form>
           </section>
         )}
       </div>
