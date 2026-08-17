@@ -436,12 +436,14 @@ export default function SetupPage() {
         {step === "newTab" && (
           <section className="setup-step">
             <h2 className="setup-step__heading">
-              Your new tab becomes your history
+              See your browsing evolve
             </h2>
             <p className="setup-step__desc">
-              Each new tab opens your browsing record — where your time went,
-              the places you explored, and a cursor portrait from each day. You
-              can turn this off any time from the history page.
+              The places you explored, where your time went, and how your
+              cursor traveled. By default, it opens in your new tab so you can
+              stay in touch with your browsing. This is also where new ways of
+              making the web shared and alive will slowly appear. You can
+              revert your new tab any time from the history page.
             </p>
 
             <div className="setup-step__newtab-preview">

@@ -188,7 +188,7 @@ it("offers recovery when Safari cannot save setup choices", async () => {
     await Promise.resolve();
   });
 
-  expect(container.textContent).toContain("Your new tab becomes your history");
+  expect(container.textContent).toContain("See your browsing evolve");
 
   act(() => root.unmount());
   container.remove();
@@ -221,7 +221,7 @@ it("takes over the new tab by default when setup continues", async () => {
 
   await advanceToNewTabStep(container);
 
-  expect(container.textContent).toContain("Your new tab becomes your history");
+  expect(container.textContent).toContain("See your browsing evolve");
   const optIn = container.querySelector<HTMLInputElement>(
     'input[type="checkbox"]',
   );
