@@ -14,6 +14,7 @@ import { FeedbackForm } from "./FeedbackForm";
 import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
 import { FeatureGate } from "./FeatureGate";
 import { useFeatureState } from "../features/useFeatureAccess";
+import { PopupNav, WALKING_RECORD_PAGE } from "./PopupNav";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -148,10 +149,23 @@ export function InternetPortraitHome({
             />
           )}
         </div>
-        <div className="portrait-home__subtitle-row">
-          <p className="portrait-home__subtitle">
-            An evolving portrait from your time on the internet
-          </p>
+        <div className="portrait-home__nav-row">
+          <PopupNav
+            onNavigate={(path) => {
+              if (path === WALKING_RECORD_PAGE) {
+                onViewBrowsingHistory();
+                return;
+              }
+              if (path === "scraps.html" && onViewScraps) {
+                onViewScraps();
+                return;
+              }
+              void (async () => {
+                await browser.tabs.create({ url: browser.runtime.getURL(path) });
+                window.close();
+              })();
+            }}
+          />
           {copresenceEnabled && presenceCount !== null && presenceCount > 0 && (
             <span className="portrait-home__presence">
               {presenceCount} {presenceCount === 1 ? "person" : "people"} here
@@ -201,41 +215,6 @@ export function InternetPortraitHome({
             </button>
           )}
         </FeatureGate>
-        <section className="collection-status">
-          <div className="collection-status__header-row">
-            <h3>Your Collection Status</h3>
-            <button
-              onClick={onViewCollections}
-              title="Data settings"
-              className="collection-status__settings-link"
-            >
-              Settings →
-            </button>
-          </div>
-          {error && <p className="collection-status__error">{error}</p>}
-          {collectors && (
-            <div className="collection-status__grid">
-              {collectors.map((c) => (
-                <div key={c.type} className="collector-pill">
-                  <div className="collector-pill__name-row">
-                    <span aria-hidden className="collector-pill__icon">
-                      <CollectorIcon type={c.type} />
-                    </span>
-                    <span className="collector-pill__name">{c.type}</span>
-                  </div>
-                  <span
-                    className={`collector-pill__state collector-pill__state--${
-                      c.enabled ? "on" : "off"
-                    }`}
-                  >
-                    {c.enabled ? "On" : "Off"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
         <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div
             role="button"
@@ -272,61 +251,6 @@ export function InternetPortraitHome({
               <div className="preview-card__label">Open Portrait Overlay</div>
             </div>
           </div>
-          <div className="portrait-home__nav-links">
-            <button
-              className="portrait-home__nav-link"
-              onClick={async (e) => {
-                e.stopPropagation();
-                const url = browser.runtime.getURL("portrait.html");
-                await browser.tabs.create({ url });
-                window.close();
-              }}
-            >
-              portrait
-            </button>
-            <button
-              className="portrait-home__nav-link"
-              onClick={async (e) => {
-                e.stopPropagation();
-                const url = browser.runtime.getURL("stats.html");
-                await browser.tabs.create({ url });
-                window.close();
-              }}
-            >
-              time
-            </button>
-            <FeatureGate feature="SCRAPS">
-              {onViewScraps && (
-                <button
-                  className="portrait-home__nav-link"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onViewScraps();
-                  }}
-                >
-                  scraps
-                </button>
-              )}
-            </FeatureGate>
-            <button
-              className="portrait-home__nav-link"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewBrowsingHistory();
-              }}
-            >
-              history
-            </button>
-            <button
-              className="portrait-home__nav-link"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewChangelog();
-              }}
-            >
-              changelog
-            </button>
-          </div>
           <FeatureGate feature="BAG_SETTINGS">
             {onViewBagSettings && (
               <button
@@ -337,6 +261,41 @@ export function InternetPortraitHome({
               </button>
             )}
           </FeatureGate>
+        </section>
+
+        <section className="collection-status">
+          <div className="collection-status__header-row">
+            <h3>Your Collection Status</h3>
+            <button
+              onClick={onViewCollections}
+              title="Data settings"
+              className="collection-status__settings-link"
+            >
+              Settings →
+            </button>
+          </div>
+          {error && <p className="collection-status__error">{error}</p>}
+          {collectors && (
+            <div className="collection-status__grid">
+              {collectors.map((c) => (
+                <div key={c.type} className="collector-pill">
+                  <div className="collector-pill__name-row">
+                    <span aria-hidden className="collector-pill__icon">
+                      <CollectorIcon type={c.type} />
+                    </span>
+                    <span className="collector-pill__name">{c.type}</span>
+                  </div>
+                  <span
+                    className={`collector-pill__state collector-pill__state--${
+                      c.enabled ? "on" : "off"
+                    }`}
+                  >
+                    {c.enabled ? "On" : "Off"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </main>
 
@@ -350,6 +309,13 @@ export function InternetPortraitHome({
             experiments
           </button>
         )}
+        <button
+          type="button"
+          className="portrait-home__changelog-link"
+          onClick={onViewChangelog}
+        >
+          changelog
+        </button>
         <FeedbackForm />
       </footer>
     </div>

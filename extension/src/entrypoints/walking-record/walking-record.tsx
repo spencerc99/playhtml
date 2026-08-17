@@ -1,4 +1,4 @@
-// ABOUTME: Mounts the walking record as both a standalone extension page and the new-tab override.
+// ABOUTME: Mounts the walking record as a standalone extension page reachable from the popup.
 // ABOUTME: Loads navigable calendar week, month, or year records without network requests.
 
 import "@fontsource/atkinson-hyperlegible/latin-400.css";

@@ -25,7 +25,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
     popupOnly: true,
     cta: {
       label: "open history →",
-      extensionPath: "newtab.html",
+      extensionPath: "walking-record.html",
     },
   },
   {

@@ -10,6 +10,9 @@ import {
 } from "@extension/components/MilestoneToast";
 import { MILESTONE_TOAST_CSS } from "@extension/entrypoints/content/milestone-toast-styles";
 import { MILESTONE_COPY } from "@extension/milestones/copy";
+import { PopupNav } from "@extension/components/PopupNav";
+import { PlayerIdentityCard } from "@extension/components/PlayerIdentityCard";
+import type { PlayerIdentity } from "@extension/types";
 const Agentation = import.meta.env.DEV
   ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
   : null;
@@ -2562,9 +2565,87 @@ function MilestonesSection() {
   );
 }
 
+// ── Popup nav ─────────────────────────────────────────────────────────────────
+
+const MOCK_IDENTITY: PlayerIdentity = {
+  publicKey: "pk_preview",
+  name: "spencer",
+  playerStyle: { colorPalette: ["#4a9a8a", "#c4724e", "#5b8db8"] },
+};
+
+const noop = () => {};
+
+/**
+ * The popup header as it ships: wordmark + identity on row 1, nav links on
+ * row 2, no subtitle. `extraItem` stands in for a third gated page (scraps)
+ * so the layout can be checked before that flag ships.
+ */
+function PopupHeaderFrame({ extraItem }: { extraItem: boolean }) {
+  return (
+    <div className="popup-frame" data-items={extraItem ? 3 : 2}>
+      <div className="popup-frame__count">{extraItem ? 3 : 2} items</div>
+      <div className="popup-frame__header">
+        <div className="popup-frame__row popup-frame__row--tight">
+          <div className="popup-frame__wordmark">we were online</div>
+          <PlayerIdentityCard
+            playerIdentity={MOCK_IDENTITY}
+            compact
+            discoveredSites={[]}
+          />
+        </div>
+        <div className="popup-frame__navrow popup-frame__navrow--tight">
+          <PopupNav onNavigate={noop} />
+          {extraItem && (
+            <button type="button" className="popup-nav__item" onClick={noop}>
+              scraps
+              <span className="popup-nav__arrow" aria-hidden>
+                {"\u2197"}
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="popup-frame__body">popup content</div>
+    </div>
+  );
+}
+
+function PopupNavSection() {
+  return (
+    <div
+      id="section-popup-nav"
+      style={{ padding: "0 40px 40px", maxWidth: "1200px" }}
+    >
+      <div className="popup-variant-row">
+        <div className="popup-variant__label">popup header</div>
+        <div className="popup-variant__note">
+          Row 1 wordmark + identity card, row 2 nav links, no subtitle. Shown
+          with the two shipping pages and with a third gated page added.
+        </div>
+        <div className="popup-variant-row__frames">
+          <PopupHeaderFrame extraItem={false} />
+          <PopupHeaderFrame extraItem />
+        </div>
+      </div>
+
+      <div className="popup-variant-row">
+        <div className="popup-variant__label">actual size</div>
+        <div className="popup-variant__note">
+          The same header at the popup's real 350px width with no zoom. Judge
+          legibility here — screenshots of the frames above are usually scaled
+          up, which makes small type look more present than it is on screen.
+        </div>
+        <div className="popup-variant-row__frames">
+          <PopupHeaderFrame extraItem />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar navigation ────────────────────────────────────────────────────────
 
-type Section = "portrait-card" | "link-patina" | "milestones";
+type Section = "portrait-card" | "link-patina" | "milestones" | "popup-nav";
 
 const PORTRAIT_NAV = [
   { id: "section-density", label: "density" },
@@ -2590,6 +2671,8 @@ const MILESTONES_NAV = [
   { id: "section-ms-domain", label: "domain visits" },
 ];
 
+const POPUP_NAV_NAV = [{ id: "section-popup-nav", label: "top nav" }];
+
 function SidebarNav({
   activeSection,
   onSectionChange,
@@ -2603,7 +2686,9 @@ function SidebarNav({
       ? PORTRAIT_NAV
       : activeSection === "milestones"
         ? MILESTONES_NAV
-        : LINK_PATINA_NAV;
+        : activeSection === "popup-nav"
+          ? POPUP_NAV_NAV
+          : LINK_PATINA_NAV;
 
   useEffect(() => {
     setActiveId("");
@@ -2624,7 +2709,9 @@ function SidebarNav({
 
   return (
     <nav className="sidebar-nav">
-      {(["portrait-card", "link-patina", "milestones"] as Section[]).map((s) => (
+      {(
+        ["portrait-card", "link-patina", "milestones", "popup-nav"] as Section[]
+      ).map((s) => (
         <a
           key={s}
           href="#"
@@ -2633,7 +2720,7 @@ function SidebarNav({
           }`}
           style={{
             fontWeight: activeSection === s ? 700 : undefined,
-            marginBottom: s !== "milestones" ? "6px" : undefined,
+            marginBottom: s !== "popup-nav" ? "6px" : undefined,
           }}
           onClick={(e) => {
             e.preventDefault();
@@ -2646,7 +2733,9 @@ function SidebarNav({
             ? "portrait card"
             : s === "link-patina"
               ? "link patina"
-              : "milestones"}
+              : s === "milestones"
+                ? "milestones"
+                : "popup nav"}
         </a>
       ))}
       {activeSection !== "portrait-card" && (
@@ -2694,6 +2783,7 @@ function PreviewPage() {
     const hash = window.location.hash.slice(1);
     if (hash === "link-patina") return "link-patina";
     if (hash === "milestones") return "milestones";
+    if (hash === "popup-nav") return "popup-nav";
     return "portrait-card";
   });
 
@@ -2719,14 +2809,18 @@ function PreviewPage() {
                   ? "portrait card — design directions"
                   : activeSection === "milestones"
                     ? "milestones — copy & visuals"
-                    : "link patina — design directions"}
+                    : activeSection === "popup-nav"
+                      ? "popup nav — top navigation bar"
+                      : "link patina — design directions"}
               </div>
               <div className="page-subtitle">
                 {activeSection === "portrait-card"
                   ? "six layout directions · same data across all variants"
                   : activeSection === "milestones"
                     ? "five milestone types · full copy pool for each"
-                    : "three visual treatments · links carry varied visit counts"}
+                    : activeSection === "popup-nav"
+                      ? "the real component inside a mock 350px popup frame"
+                      : "three visual treatments · links carry varied visit counts"}
               </div>
               {activeSection === "portrait-card" && (
                 <div className="mock-note">
@@ -2860,6 +2954,8 @@ function PreviewPage() {
         {activeSection === "link-patina" && <LinkTracesSection />}
 
         {activeSection === "milestones" && <MilestonesSection />}
+
+        {activeSection === "popup-nav" && <PopupNavSection />}
       </div>
     </div>
   );
