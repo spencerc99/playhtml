@@ -267,7 +267,6 @@ beforeEach(() => {
 
 describe("PartyServerV2 shared-element bridge", () => {
   test("keeps consumer writes out of the client view until the source echo", () => {
-    const sent: ClientOperationMessage[] = [];
     const store = new V2Store({
       snapshot: {
         state: { "can-play": { counter: { count: 1 } } },
@@ -279,14 +278,12 @@ describe("PartyServerV2 shared-element bridge", () => {
       clientId: "consumer-writer",
       echoWaitElementIds: ["counter"],
       transport: {
-        send(message) {
-          sent.push(message);
-        },
+        send() {},
         requestSnapshot() {},
       },
     });
 
-    store.mutate("can-play", "counter", (draft) => {
+    const [message] = store.mutate("can-play", "counter", (draft) => {
       (draft as { count: number }).count = 2;
     });
     expect(store.getSnapshot().state["can-play"].counter).toEqual({ count: 1 });
@@ -296,7 +293,7 @@ describe("PartyServerV2 shared-element bridge", () => {
       generation: 0,
       clientId: "consumer-writer",
       mutationId: 1,
-      operation: sent[0].operation,
+      operation: message.operation,
     });
     expect(store.getSnapshot().state["can-play"].counter).toEqual({ count: 2 });
   });
