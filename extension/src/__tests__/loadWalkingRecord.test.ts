@@ -61,6 +61,7 @@ describe("loadWalkingRecord", () => {
             sessionCount: 1,
             activeDayCount: 1,
             eventCounts: { navigation: 1 },
+            latestFaviconUrl: "https://example.com/favicon.png",
           },
         ],
       },
@@ -68,9 +69,6 @@ describe("loadWalkingRecord", () => {
         success: true,
         traces: [],
         landscapePaths: [],
-        favicons: {
-          "example.com": "https://example.com/favicon.png",
-        },
       },
     };
     vi.mocked(browser.runtime.sendMessage).mockImplementation(
@@ -81,7 +79,7 @@ describe("loadWalkingRecord", () => {
 
     const record = await loadWalkingRecord("week", range, "#4a9a8a", progress);
 
-    expect(progress).toHaveBeenCalledTimes(4);
+    expect(progress).toHaveBeenCalledTimes(5);
     expect(
       progress.mock.calls.slice(0, 2).map(([update]) => update.message),
     ).toEqual(["gathering browsing activity…", "mapping familiar roads…"]);
@@ -90,10 +88,15 @@ describe("loadWalkingRecord", () => {
       total: 4,
       message: "arranging this week’s record…",
     });
+    expect(progress).toHaveBeenNthCalledWith(4, {
+      completed: 3,
+      total: 4,
+      message: "restoring cursor trails…",
+    });
     expect(progress).toHaveBeenLastCalledWith({
       completed: 4,
       total: 4,
-      message: "restoring cursor trails…",
+      message: "finishing this week’s record…",
     });
     expect(record.timeSpent[0].faviconUrl).toBe(
       "https://example.com/favicon.png",
@@ -101,8 +104,10 @@ describe("loadWalkingRecord", () => {
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "GET_WALKING_RECORD_MOVEMENT",
-        faviconDomains: ["example.com"],
       }),
+    );
+    expect(browser.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ faviconDomains: expect.anything() }),
     );
     expect(browser.runtime.sendMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "GET_SCREEN_TIME" }),

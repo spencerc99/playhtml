@@ -94,6 +94,7 @@ export interface WalkingRecordDomain {
   sessionCount: number;
   activeDayCount: number;
   eventCounts: Record<string, number>;
+  latestFaviconUrl?: string;
 }
 
 export interface Departure {

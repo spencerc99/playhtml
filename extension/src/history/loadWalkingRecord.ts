@@ -13,7 +13,6 @@ import {
   attachWalkingRecordLandscape,
   attachWalkingRecordTraces,
   deriveWalkingRecord,
-  getWalkingRecordFaviconDomains,
   getWalkingRecordTraceTargets,
   type WalkingRecord,
   type WalkingRecordDomain,
@@ -46,7 +45,6 @@ interface MovementResponse {
   success?: boolean;
   traces?: WalkingRecordTrace[];
   landscapePaths?: CollectionEvent[][];
-  favicons?: Record<string, string>;
 }
 
 export const WALKING_RECORD_LOAD_STEP_COUNT = 4;
@@ -125,19 +123,27 @@ export async function loadWalkingRecord(
     total: WALKING_RECORD_LOAD_STEP_COUNT,
     message: `arranging this ${period}’s record…`,
   });
-  const record = deriveWalkingRecord({
-    period,
-    baseColor,
-    events: eventsResponse.events,
-    activity: eventsResponse.activity ?? [],
-    sessions: eventsResponse.sessions,
-    domains: domainsResponse.domains,
-    range,
-    cursorDistancePx: eventsResponse.cursorDistancePx,
-  });
+  const record = attachWalkingRecordFavicons(
+    deriveWalkingRecord({
+      period,
+      baseColor,
+      events: eventsResponse.events,
+      activity: eventsResponse.activity ?? [],
+      sessions: eventsResponse.sessions,
+      domains: domainsResponse.domains,
+      range,
+      cursorDistancePx: eventsResponse.cursorDistancePx,
+    }),
+    Object.fromEntries(
+      domainsResponse.domains.flatMap((domain) =>
+        domain.latestFaviconUrl
+          ? [[domain.domain, domain.latestFaviconUrl]]
+          : [],
+      ),
+    ),
+  );
   const targets = getWalkingRecordTraceTargets(record);
-  const faviconDomains = getWalkingRecordFaviconDomains(record);
-  if (targets.length === 0 && faviconDomains.length === 0) {
+  if (targets.length === 0) {
     onProgress({
       completed: WALKING_RECORD_LOAD_STEP_COUNT,
       total: WALKING_RECORD_LOAD_STEP_COUNT,
@@ -146,10 +152,14 @@ export async function loadWalkingRecord(
     return record;
   }
 
+  onProgress({
+    completed: 3,
+    total: WALKING_RECORD_LOAD_STEP_COUNT,
+    message: "restoring cursor trails…",
+  });
   const movementResponse = (await browser.runtime.sendMessage({
     type: "GET_WALKING_RECORD_MOVEMENT",
     targets,
-    faviconDomains,
   })) as MovementResponse;
   if (!movementResponse.success || !movementResponse.traces) {
     onProgress({
@@ -163,13 +173,10 @@ export async function loadWalkingRecord(
   onProgress({
     completed: WALKING_RECORD_LOAD_STEP_COUNT,
     total: WALKING_RECORD_LOAD_STEP_COUNT,
-    message: "restoring cursor trails…",
+    message: `finishing this ${period}’s record…`,
   });
-  return attachWalkingRecordFavicons(
-    attachWalkingRecordLandscape(
-      attachWalkingRecordTraces(record, movementResponse.traces),
-      movementResponse.landscapePaths ?? [],
-    ),
-    movementResponse.favicons ?? {},
+  return attachWalkingRecordLandscape(
+    attachWalkingRecordTraces(record, movementResponse.traces),
+    movementResponse.landscapePaths ?? [],
   );
 }
