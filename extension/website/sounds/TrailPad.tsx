@@ -251,9 +251,9 @@ const AUDITION_CARDS: Array<{
 ];
 
 /**
- * Unpitched percussion candidates. Nothing in the engine triggers these — they
- * are here to be judged in isolation before any of them is wired to a real
- * event, so each description names the event it would map to.
+ * Unpitched percussion candidates, in isolation. The sample replay below
+ * plays the same sounds against real events; these buttons are for judging
+ * one on its own, so each description names the event it maps to.
  */
 const PERCUSSION_CARDS: Array<{
   accent: AuditionAccent;
@@ -265,6 +265,12 @@ const PERCUSSION_CARDS: Array<{
     label: "click tap (pure percussion)",
     description:
       "For a click. A filtered noise edge over a fast pitch drop — woodblock, no ring-out.",
+  },
+  {
+    accent: "clickTapNoThump",
+    label: "click tap (no thump)",
+    description:
+      "The same tap with the falling sine removed — the noise edge alone. Reach for this if a run of taps reads as too heavy in the low end.",
   },
   {
     accent: "clickTapHybrid",
@@ -892,7 +898,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
 
       <AuditionSection
         title="Percussion (candidates)"
-        blurb="Unpitched, so none of these depends on the chord. Nothing in the engine plays them yet — they are here to be judged before any is wired to a real event."
+        blurb="Unpitched, so none of these depends on the chord. No live page plays them; the sample replay below can, once its percussion toggles are on."
         cards={PERCUSSION_CARDS}
         onAudition={handleAudition}
       />

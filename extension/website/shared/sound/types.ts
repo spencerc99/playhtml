@@ -44,6 +44,23 @@ export interface NavigationSoundEvent {
 }
 
 /**
+ * How a click is voiced when percussion is driving the replay.
+ *
+ * "bells" is what ships: the pitched click bell, no percussion. The other
+ * three are the candidates, and they differ only in what sits under the noise
+ * edge — nothing, a falling sine, or a falling sine plus a faint bell.
+ */
+export type ClickPercussionVariant =
+  /** Noise edge plus the falling sine thump. */
+  | "tap"
+  /** Noise edge alone — the variant for judging whether the thump earns itself. */
+  | "tapNoThump"
+  /** The full tap with a quiet bell ghost underneath. */
+  | "hybrid"
+  /** No percussion: the shipped pitched bell. */
+  | "bells";
+
+/**
  * One accent sound playable in isolation, on demand, for auditioning. Each
  * maps to the same synthesis the corresponding live feature uses.
  */
@@ -68,11 +85,12 @@ export type AuditionAccent =
   /** One sustained voice through its full swell, in the choral timbre. */
   | "choralSwell"
   /**
-   * Unpitched percussion candidates, auditionable only. Nothing in the engine
-   * triggers these yet — they exist so the character can be judged in
-   * isolation before any of them is wired to a real event.
+   * Unpitched percussion candidates. The playground's replay driver plays
+   * these against real events when its percussion toggles are on; no live page
+   * path triggers any of them.
    */
   | "clickTap"
+  | "clickTapNoThump"
   | "clickTapHybrid"
   | "typingTick"
   | "typingBurst"
@@ -99,7 +117,15 @@ export type SoundLayer =
   /** The low drone holding the chord root. */
   | "bassPedal"
   /** Both crossing accents: the dissonant interval and the merged dyad. */
-  | "crossing";
+  | "crossing"
+  /** Keystroke ticks. Percussion, so only the playground's replay feeds it. */
+  | "typing"
+  /**
+   * The scroll brush. Its own family rather than part of `typing`, because a
+   * swish and a tick are the two percussion textures most worth hearing
+   * against each other.
+   */
+  | "brush";
 
 /** Every layer, in the order a mixer strip should present them. */
 export const SOUND_LAYERS: SoundLayer[] = [
@@ -110,6 +136,8 @@ export const SOUND_LAYERS: SoundLayer[] = [
   "navigation",
   "bassPedal",
   "crossing",
+  "typing",
+  "brush",
 ];
 
 /** Configuration for an instrument voice */

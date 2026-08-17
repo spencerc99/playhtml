@@ -14,6 +14,8 @@ const LAYER_LABELS: Record<SoundLayer, { name: string; hint: string }> = {
   navigation: { name: "navigation", hint: "the deep gong on a page arrival" },
   bassPedal: { name: "bass pedal", hint: "low drone on the chord root" },
   crossing: { name: "crossings", hint: "dissonance and merged dyads" },
+  typing: { name: "typing", hint: "keystroke ticks, from the sample replay" },
+  brush: { name: "brush", hint: "scroll swishes, from the sample replay" },
 };
 
 const labelStyle: React.CSSProperties = {

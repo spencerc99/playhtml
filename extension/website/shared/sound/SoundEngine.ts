@@ -7,6 +7,7 @@ import {
   InstrumentConfig,
   NavigationSoundEvent,
   AuditionAccent,
+  ClickPercussionVariant,
   SoundLayer,
   SOUND_LAYERS,
 } from "./types";
@@ -453,8 +454,9 @@ const ARRIVAL_TUNING = {
 };
 
 /**
- * Unpitched percussion candidates, currently reachable only from the sound
- * playground's audition buttons.
+ * Unpitched percussion candidates, reachable from the sound playground's
+ * audition buttons and from its replay driver. No live page path triggers any
+ * of them.
  *
  * Every other accent in the engine is pitched and therefore tied to whatever
  * chord is in force. These are not: a tap is a tap regardless of the harmony,
@@ -477,7 +479,13 @@ const PERCUSSION_TUNING = {
     noiseFilterHz: 1800,
     noiseFilterQ: 1.2,
     noiseGain: 0.05,
-    /** The thump under the edge: a sine falling fast through its range. */
+    /**
+     * The thump under the edge: a sine falling fast through its range.
+     *
+     * `thumpGain` is the value to reach for when the taps read as too heavy —
+     * it is the whole low half of the sound, and the "tap (no thump)" variant
+     * is the same sound with this removed entirely rather than turned down.
+     */
     thumpStartHz: 180,
     thumpEndHz: 80,
     thumpDurationSeconds: 0.08,
@@ -3454,10 +3462,13 @@ export class SoundEngine {
         this.auditionChoralSwell();
         return;
       case "clickTap":
-        this.triggerClickTap(centre, false);
+        this.triggerClickTap(centre, "tap");
+        return;
+      case "clickTapNoThump":
+        this.triggerClickTap(centre, "tapNoThump");
         return;
       case "clickTapHybrid":
-        this.triggerClickTap(centre, true);
+        this.triggerClickTap(centre, "hybrid");
         return;
       case "typingTick":
         this.triggerTypingTick(centre);
@@ -3499,6 +3510,7 @@ export class SoundEngine {
     durationSeconds: number,
     filter: { type: BiquadFilterType; frequency: number; Q: number },
     pan: number,
+    layer: SoundLayer,
   ): { gain: GainNode; panNode: StereoPannerNode } | null {
     if (!this.ctx) return null;
     const ctx = this.ctx;
@@ -3521,7 +3533,7 @@ export class SoundEngine {
     source.connect(biquad);
     biquad.connect(gain);
     gain.connect(panNode);
-    panNode.connect(this.busFor("clickBell"));
+    panNode.connect(this.busFor(layer));
 
     source.start(startAt);
     source.stop(startAt + durationSeconds);
@@ -3544,11 +3556,12 @@ export class SoundEngine {
    * a sine falling fast from 180Hz to 80Hz. Woodblock rather than bell — no
    * ring-out, so it can fire as often as a click does without accumulating.
    *
-   * With `withBellGhost` a faint, short bell sits underneath at a quarter of
-   * the shipped click-bell level, so the pure tap and the hybrid can be
-   * compared back to back.
+   * The variant decides what sits under the edge. "tapNoThump" drops the
+   * falling sine entirely, which is the version to reach for when a run of
+   * taps reads as too heavy in the low end; "hybrid" adds a faint, short bell
+   * at a quarter of the shipped click-bell level.
    */
-  private triggerClickTap(x: number, withBellGhost: boolean): void {
+  private triggerClickTap(x: number, variant: ClickPercussionVariant): void {
     if (!this.ctx) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
@@ -3573,6 +3586,7 @@ export class SoundEngine {
       noiseDurationSeconds,
       { type: "bandpass", frequency: noiseFilterHz, Q: noiseFilterQ },
       pan,
+      "clickBell",
     );
     if (burst) {
       burst.gain.gain.setValueAtTime(0, now);
@@ -3582,6 +3596,8 @@ export class SoundEngine {
         now + noiseDurationSeconds,
       );
     }
+
+    if (variant === "tapNoThump") return;
 
     // The thump. An exponential fall rather than linear, so the pitch drops
     // away the way a struck body does instead of sliding.
@@ -3619,7 +3635,7 @@ export class SoundEngine {
       }
     };
 
-    if (!withBellGhost) return;
+    if (variant !== "hybrid") return;
 
     this.triggerFlourishNote(
       ghostHz,
@@ -3665,6 +3681,7 @@ export class SoundEngine {
         Q: filterQ,
       },
       positionToPan(x, this.canvasWidth),
+      "typing",
     );
     if (!burst) return;
 
@@ -3730,6 +3747,7 @@ export class SoundEngine {
       durationSeconds,
       { type: "lowpass", frequency: filterHz, Q: filterQ },
       pan - panTravel,
+      "brush",
     );
     if (!burst) return;
 
@@ -3824,6 +3842,48 @@ export class SoundEngine {
         /* already disconnected */
       }
     };
+  }
+
+  // ── Percussion, for the playground's replay driver ────────────────────────
+  //
+  // These are the only public doors onto the percussion candidates, and they
+  // exist so real recorded events can drive them in the sound playground. The
+  // engine itself never calls them: no `tick`, `triggerClick`, `triggerNavigation`
+  // or `retireTrail` path reaches percussion, so a live page stays pitched
+  // whatever it does. If percussion graduates, it graduates by the live paths
+  // calling these deliberately.
+
+  /**
+   * A click, voiced as percussion. "bells" is a no-op here — the caller rings
+   * the shipped `triggerClick` bell for that variant instead, so the two never
+   * double up.
+   */
+  triggerClickPercussion(x: number, variant: ClickPercussionVariant): void {
+    if (!this.enabled || variant === "bells") return;
+    this.triggerClickTap(x, variant);
+  }
+
+  /**
+   * One keystroke. The replay fires these at the cadence the recorded typing
+   * actually had, so a burst is the participant's own rhythm rather than a
+   * synthetic one. `jitter` (-1..1) varies weight and filter centre so a run
+   * does not read as one sample retriggered.
+   */
+  triggerKeystroke(x: number, jitter = 0): void {
+    if (!this.enabled) return;
+    this.triggerTypingTick(x, { jitter });
+  }
+
+  /** A scroll, voiced as a brush stroke across the stereo field. */
+  triggerScroll(x: number): void {
+    if (!this.enabled) return;
+    this.triggerScrollBrush(x);
+  }
+
+  /** A held click, voiced as the building tremolo roll. */
+  triggerHold(x: number): void {
+    if (!this.enabled) return;
+    this.triggerHoldRoll(x);
   }
 
   /**

@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SoundEngine } from "../SoundEngine";
 import { CLICK_BELL } from "../instruments";
+import { SOUND_LAYERS } from "../types";
 import {
   bellScaleForChord,
   CHORD_DWELL_MS,
@@ -2550,15 +2551,9 @@ describe("SoundEngine layer mixer", () => {
    * standard ones a mixing desk has: solo overrides everything, mute silences,
    * and clearing restores the whole mix.
    */
-  const ALL_LAYERS = [
-    "bed",
-    "flourish",
-    "clickBell",
-    "chime",
-    "navigation",
-    "bassPedal",
-    "crossing",
-  ] as const;
+  // The engine's own list rather than a copy, so adding a family cannot leave
+  // this suite testing a stale subset of the buses.
+  const ALL_LAYERS = SOUND_LAYERS;
 
   it("leaves every layer audible by default", async () => {
     const engine = new SoundEngine();
@@ -2772,6 +2767,26 @@ describe("percussion candidates", () => {
     expect(ramps[0].value!).toBeLessThan(thump.frequency.events[0].value!);
   });
 
+  it("drops the falling thump in the no-thump variant, keeping the noise edge", async () => {
+    const engine = await startedEngine();
+    engine.audition("clickTapNoThump");
+
+    // The edge survives: the whole point of the variant is the same tap
+    // without its low half.
+    expect(context.bufferSources.length).toBe(1);
+    const bandpass = createdNodes.find(
+      (node): node is TestBiquadFilterNode =>
+        node instanceof TestBiquadFilterNode && node.type === "bandpass",
+    );
+    expect(bandpass).toBeDefined();
+
+    // No falling sine anywhere, which is what separates this from "clickTap".
+    const falling = context.oscillators.filter((osc) =>
+      osc.frequency.events.some((event) => event.method === "exponentialRamp"),
+    );
+    expect(falling).toEqual([]);
+  });
+
   it("adds a quiet bell under the tap only in the hybrid variant", async () => {
     const gainsOf = async (accent: "clickTap" | "clickTapHybrid") => {
       const engine = await startedEngine();
@@ -2878,6 +2893,7 @@ describe("percussion candidates", () => {
   it("self-disconnects every percussion graph when its source ends", async () => {
     for (const accent of [
       "clickTap",
+      "clickTapNoThump",
       "clickTapHybrid",
       "typingTick",
       "scrollBrush",
@@ -2913,9 +2929,11 @@ describe("percussion candidates", () => {
 
     const before = context.bufferSources.length;
 
-    // Everything the engine reacts to on its own: trails moving, a trail
-    // arriving and leaving, a click, a hold, a navigation. None of these is
-    // wired to the percussion candidates yet.
+    // Everything a live page (MovementCanvas, AnimatedTrails, LiveTrails) can
+    // make the engine do: trails moving, a trail arriving and leaving, a
+    // click, a hold, a navigation. None of these reaches percussion — the only
+    // doors onto it are `audition` and the explicit `trigger*` calls below,
+    // and no live page calls either.
     for (let step = 0; step < 30; step++) {
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
@@ -2930,5 +2948,42 @@ describe("percussion candidates", () => {
     engine.retireTrail(1);
 
     expect(context.bufferSources.length).toBe(before);
+  });
+
+  it("plays percussion when the replay driver asks for it explicitly", async () => {
+    // The playground's replay calls these against real recorded events, which
+    // is the whole reason they are public. Each has to actually sound, or the
+    // guard above would be passing for the wrong reason.
+    const engine = await startedEngine();
+
+    engine.triggerClickPercussion(100, "tap");
+    engine.triggerKeystroke(200, 0.5);
+    engine.triggerScroll(300);
+    expect(context.bufferSources.length).toBe(3);
+
+    const oscillatorsBefore = context.oscillators.length;
+    engine.triggerHold(400);
+    // The roll is a tone plus its tremolo LFO, neither of them noise.
+    expect(context.oscillators.length).toBe(oscillatorsBefore + 2);
+  });
+
+  it("treats the bells variant as a request for no percussion at all", async () => {
+    // "bells" means the shipped pitched bell, which the caller rings through
+    // `triggerClick` instead — this must not also lay a tap under it.
+    const engine = await startedEngine();
+    engine.triggerClickPercussion(100, "bells");
+    expect(context.bufferSources.length).toBe(0);
+  });
+
+  it("routes typing and brush to their own mixer families", async () => {
+    // Each percussion family needs its own bus, or the mixer strip cannot
+    // silence ticks without also silencing the click bells.
+    const engine = await startedEngine();
+    engine.setLayerMuted("typing", true);
+    engine.setLayerMuted("brush", true);
+
+    const mix = engine.getLayerMix();
+    expect(mix.muted).toContain("typing");
+    expect(mix.muted).toContain("brush");
   });
 });

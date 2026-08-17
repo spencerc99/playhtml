@@ -3,7 +3,10 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundEngine } from "../shared/sound/SoundEngine";
-import { TrailSoundFrame } from "../shared/sound/types";
+import {
+  ClickPercussionVariant,
+  TrailSoundFrame,
+} from "../shared/sound/types";
 import { RECENT_EVENTS_URL } from "../shared/config";
 import bundledSample from "./sampleEvents.json";
 
@@ -21,7 +24,7 @@ const TRAIL_IDLE_TIMEOUT_MS = 4000;
 export interface SampleEvent {
   /** Milliseconds from the start of the sample. */
   t: number;
-  type: "cursor" | "navigation";
+  type: SampleEventType;
   /** Generic participant id — the bundled fixture carries no real identity. */
   pid: string;
   event: string;
@@ -30,6 +33,64 @@ export interface SampleEvent {
   y?: number;
   cursor?: string;
   duration?: number;
+  /**
+   * A keyboard event's cadence, and nothing else: one entry per keystroke
+   * group, holding when it happened relative to the start of the event and
+   * how many characters it moved. What was typed never gets this far — see
+   * `keystrokeCadence`.
+   */
+  keys?: KeystrokeBeat[];
+  /**
+   * How far a viewport scroll travelled, in pixels. Drives the brush's weight;
+   * the normalized scroll position itself is not needed to hear it.
+   */
+  scrollDistancePx?: number;
+}
+
+/** Every event family the replay knows how to drive. */
+export type SampleEventType = "cursor" | "navigation" | "keyboard" | "viewport";
+
+/**
+ * One keystroke group, reduced to timing and size. `count` is a character
+ * count — how many keys the group represents — and carries no information
+ * about which ones they were.
+ */
+export interface KeystrokeBeat {
+  /** Milliseconds from the start of the keyboard event. */
+  dt: number;
+  count: number;
+}
+
+/**
+ * The cadence of a recorded typing sequence, with every trace of its content
+ * removed.
+ *
+ * Keyboard events carry the text a person typed (redacted to their legibility
+ * setting, but still their words), the selector of the field they typed into,
+ * and the field's dimensions. None of that means anything to a percussion
+ * tick, which needs only when keys were pressed and how many. So this keeps
+ * `timestamp` and a character count and drops the rest — no text, redacted or
+ * otherwise, ever reaches a `SampleEvent`, which is what makes the fixture
+ * safe to commit.
+ */
+export function keystrokeCadence(data: Record<string, unknown>): KeystrokeBeat[] {
+  const sequence = data.sequence;
+  if (!Array.isArray(sequence)) return [];
+  const beats: KeystrokeBeat[] = [];
+  for (const entry of sequence) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const action = entry as Record<string, unknown>;
+    const dt = typeof action.timestamp === "number" ? action.timestamp : 0;
+    // A typed run is as many keystrokes as it has characters; a backspace is
+    // as many as it deleted. Only the count survives either way.
+    const typed = typeof action.text === "string" ? action.text.length : 0;
+    const deleted =
+      typeof action.deletedCount === "number" ? action.deletedCount : 0;
+    const count = Math.max(typed, deleted);
+    if (count <= 0) continue;
+    beats.push({ dt: Math.max(0, Math.round(dt)), count });
+  }
+  return beats;
 }
 
 /**
@@ -127,6 +188,9 @@ export interface SampleSummary {
   moves: number;
   clicks: number;
   navigations: number;
+  /** Individual keystrokes across every keyboard event, not event count. */
+  keypresses: number;
+  scrolls: number;
   domains: number;
   /** Wall time the sample spans, in ms. */
   spanMs: number;
@@ -139,11 +203,17 @@ export function summarizeSample(events: SampleEvent[]): SampleSummary {
   let moves = 0;
   let clicks = 0;
   let navigations = 0;
+  let keypresses = 0;
+  let scrolls = 0;
   for (const event of events) {
     participants.add(event.pid);
     domains.add(event.domain);
     if (event.type === "navigation") navigations++;
-    else if (event.event === "move") moves++;
+    else if (event.type === "keyboard") {
+      for (const beat of event.keys ?? []) keypresses += beat.count;
+    } else if (event.type === "viewport") {
+      if (event.event === "scroll") scrolls++;
+    } else if (event.event === "move") moves++;
     else if (event.event === "click" || event.event === "hold") clicks++;
   }
   return {
@@ -152,10 +222,20 @@ export function summarizeSample(events: SampleEvent[]): SampleSummary {
     moves,
     clicks,
     navigations,
+    keypresses,
+    scrolls,
     domains: domains.size,
     spanMs: events.length > 0 ? events[events.length - 1].t : 0,
   };
 }
+
+/** The event types the replay asks the worker for, one request each. */
+const FETCHED_TYPES: SampleEventType[] = [
+  "cursor",
+  "navigation",
+  "keyboard",
+  "viewport",
+];
 
 /**
  * Pull a live slice from the worker, matching the archive page's fetch shape:
@@ -168,7 +248,7 @@ export async function fetchSampleEvents(
   windowMs: number = DEFAULT_WINDOW_MS,
   limit = FETCH_LIMIT,
 ): Promise<SampleEvent[]> {
-  const load = async (type: "cursor" | "navigation") => {
+  const load = async (type: SampleEventType) => {
     const params = new URLSearchParams({ type, limit: String(limit) });
     if (domain) params.set("domain", domain);
     const response = await fetch(`${RECENT_EVENTS_URL}?${params}`);
@@ -185,11 +265,8 @@ export async function fetchSampleEvents(
     >;
   };
 
-  const [cursor, navigation] = await Promise.all([
-    load("cursor"),
-    load("navigation"),
-  ]);
-  const all = [...cursor, ...navigation].sort((a, b) => a.ts - b.ts);
+  const byType = await Promise.all(FETCHED_TYPES.map(load));
+  const all = byType.flat().sort((a, b) => a.ts - b.ts);
   if (all.length === 0) return [];
 
   // Keep the densest window rather than the whole fetch. A quiet half-hour
@@ -217,9 +294,14 @@ export async function fetchSampleEvents(
     } catch {
       /* keep the fallback */
     }
+    const type: SampleEventType = FETCHED_TYPES.includes(
+      event.type as SampleEventType,
+    )
+      ? (event.type as SampleEventType)
+      : "cursor";
     return {
       t: event.ts - startTs,
-      type: event.type === "navigation" ? "navigation" : "cursor",
+      type,
       pid: anonymize(event.meta.pid),
       event: String(data.event ?? ""),
       domain: domainName,
@@ -227,6 +309,12 @@ export async function fetchSampleEvents(
       y: typeof data.y === "number" ? data.y : undefined,
       cursor: cursorKeyword(data.cursor),
       duration: typeof data.duration === "number" ? data.duration : undefined,
+      // Keyboard events carry the typed text and the field's selector. Only
+      // the cadence crosses this boundary; see `keystrokeCadence`.
+      ...(type === "keyboard" ? { keys: keystrokeCadence(data) } : {}),
+      ...(type === "viewport" && typeof data.scrollDistancePx === "number"
+        ? { scrollDistancePx: data.scrollDistancePx }
+        : {}),
     } satisfies SampleEvent;
   });
 }
@@ -370,6 +458,99 @@ const selectStyle: React.CSSProperties = {
   padding: "8px 10px",
 };
 
+/**
+ * How the replay voices each family of event when percussion is on.
+ *
+ * Pad-only, and off by default: with `enabled` false the replay behaves
+ * exactly as it always has (pitched bells for clicks, the gong for
+ * navigations, nothing at all for keyboard and viewport events).
+ */
+export interface PercussionSettings {
+  enabled: boolean;
+  click: ClickPercussionVariant;
+  typing: boolean;
+  scroll: boolean;
+  /** Hold roll under a held click, in place of the stretched bell. */
+  hold: boolean;
+}
+
+const PERCUSSION_DEFAULTS: PercussionSettings = {
+  enabled: false,
+  click: "bells",
+  typing: true,
+  scroll: true,
+  hold: true,
+};
+
+const CLICK_VARIANTS: Array<{
+  variant: ClickPercussionVariant;
+  label: string;
+}> = [
+  { variant: "bells", label: "bells (current)" },
+  { variant: "tap", label: "tap" },
+  { variant: "tapNoThump", label: "tap, no thump" },
+  { variant: "hybrid", label: "tap + bell ghost" },
+];
+
+/**
+ * Longest a recorded typing sequence may be stretched over before its ticks
+ * are compressed. A sequence's own timestamps span the whole 5s debounce
+ * window the collector batches on, and scheduling ticks that far out would let
+ * them outlive a loop; past this the cadence is squeezed to fit.
+ */
+export const MAX_KEYSTROKE_SPREAD_MS = 3000;
+
+/**
+ * How late a queued keystroke may be and still sound. A backgrounded tab
+ * stops the rAF loop while the sample clock keeps running, so returning to it
+ * finds a backlog; firing that as one volley would be a burst of static rather
+ * than typing.
+ */
+export const LATE_KEYSTROKE_MS = 250;
+
+/**
+ * When each keystroke of a recorded typing event should sound, in ms from the
+ * event itself, and how hard.
+ *
+ * A recorded group is "these N characters, starting at this offset", so its
+ * keys are spread evenly across the gap to the next group — which is what
+ * turns a stored batch back into something with a typist's rhythm rather than
+ * N ticks stacked on one instant. The final group has no following gap, so it
+ * borrows the previous one's pace.
+ */
+export function keystrokeSchedule(
+  beats: KeystrokeBeat[],
+): Array<{ at: number; jitter: number }> {
+  if (beats.length === 0) return [];
+
+  const span = beats[beats.length - 1].dt;
+  const squeeze = span > MAX_KEYSTROKE_SPREAD_MS ? MAX_KEYSTROKE_SPREAD_MS / span : 1;
+
+  const schedule: Array<{ at: number; jitter: number }> = [];
+  for (let i = 0; i < beats.length; i++) {
+    const beat = beats[i];
+    const next = beats[i + 1];
+    const previous = beats[i - 1];
+    const groupSpan = next
+      ? next.dt - beat.dt
+      : previous
+        ? beat.dt - previous.dt
+        : // A lone group: give it a plain typist's pace to spread over.
+          beat.count * 120;
+    const perKey = beat.count > 0 ? groupSpan / beat.count : 0;
+    for (let k = 0; k < beat.count; k++) {
+      schedule.push({
+        at: (beat.dt + perKey * k) * squeeze,
+        // Deterministic weight variation across the run, so a burst does not
+        // read as one sample retriggered. No randomness: the same recorded
+        // event must sound the same on every loop.
+        jitter: Math.sin((beat.dt + k) * 12.9898) * 0.8,
+      });
+    }
+  }
+  return schedule;
+}
+
 interface SamplePlaybackProps {
   /**
    * The engine the pad already owns, so the sample plays through whatever
@@ -396,6 +577,16 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
   const startedAtRef = useRef(0);
   const speedRef = useRef<Speed>(1);
   const loopCountRef = useRef(0);
+  const percussionRef = useRef<PercussionSettings>(PERCUSSION_DEFAULTS);
+  /**
+   * Keystrokes waiting for their moment on the sample clock. A recorded typing
+   * event holds a whole sequence, so its ticks are queued here and drained as
+   * playback reaches each one rather than fired together when the event lands.
+   * Kept sorted by `at`, which is how it is built.
+   */
+  const keystrokeQueueRef = useRef<Array<{ at: number; x: number; jitter: number }>>(
+    [],
+  );
 
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState<Speed>(1);
@@ -408,10 +599,22 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
     summarizeSample(bundledSample as SampleEvent[]),
   );
   const [readout, setReadout] = useState({ position: 0, active: 0, loops: 0 });
+  const [percussion, setPercussion] = useState<PercussionSettings>(
+    PERCUSSION_DEFAULTS,
+  );
 
   useEffect(() => {
     speedRef.current = speed;
   }, [speed]);
+
+  useEffect(() => {
+    percussionRef.current = percussion;
+    // Queued ticks belong to the settings that queued them; turning typing off
+    // mid-replay should stop it now rather than after the backlog drains.
+    if (!percussion.enabled || !percussion.typing) {
+      keystrokeQueueRef.current = [];
+    }
+  }, [percussion]);
 
   const sampleDurationMs = summary.spanMs;
 
@@ -423,6 +626,7 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
     trailsRef.current.clear();
     cursorRef.current = 0;
     nextTrailIndexRef.current = 0;
+    keystrokeQueueRef.current = [];
   }, []);
 
   /** Swap in a freshly loaded sample and restart playback from its top. */
@@ -460,12 +664,36 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
       const event = events[cursorRef.current++];
       const x = (event.x ?? 0.5) * width;
       const y = (event.y ?? 0.5) * height;
+      const percussion = percussionRef.current;
 
       if (event.type === "navigation") {
         // Only real page arrivals sound; blur and beforeunload are departures.
         if (event.event === "focus" || event.event === "popstate") {
           engine.triggerNavigation({ x });
         }
+        continue;
+      }
+
+      if (event.type === "keyboard") {
+        if (!percussion.enabled || !percussion.typing) continue;
+        // Queue the sequence's ticks rather than firing them here: they are
+        // spread over the seconds the person actually spent typing.
+        for (const tick of keystrokeSchedule(event.keys ?? [])) {
+          keystrokeQueueRef.current.push({
+            at: event.t + tick.at,
+            x,
+            jitter: tick.jitter,
+          });
+        }
+        keystrokeQueueRef.current.sort((a, b) => a.at - b.at);
+        continue;
+      }
+
+      if (event.type === "viewport") {
+        if (!percussion.enabled || !percussion.scroll) continue;
+        // Resizes and zooms are not motion through a page, so only scrolls
+        // get a brush stroke.
+        if (event.event === "scroll") engine.triggerScroll(x);
         continue;
       }
 
@@ -493,8 +721,35 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
       if (event.cursor) trail.cursorType = event.cursor;
 
       if (event.event === "click" || event.event === "hold") {
-        engine.triggerClick({ x, y, holdDuration: event.duration });
+        const isHold = event.event === "hold" || event.duration !== undefined;
+        const rollThisHold =
+          percussion.enabled && percussion.hold && isHold;
+        if (rollThisHold) engine.triggerHold(x);
+
+        if (percussion.enabled && percussion.click !== "bells") {
+          engine.triggerClickPercussion(x, percussion.click);
+        } else if (!rollThisHold) {
+          // The shipped bell, unless the hold roll has already taken this
+          // event — the roll replaces the stretched bell rather than layering
+          // on top of it.
+          engine.triggerClick({ x, y, holdDuration: event.duration });
+        }
       }
+    }
+
+    // Drain every keystroke whose moment has arrived. Ticks are tiny, but a
+    // long stall (a background tab) could leave a large backlog, so anything
+    // more than a beat late is dropped rather than fired as a volley.
+    if (keystrokeQueueRef.current.length > 0) {
+      const queue = keystrokeQueueRef.current;
+      let drained = 0;
+      while (drained < queue.length && queue[drained].at <= sampleMs) {
+        const tick = queue[drained++];
+        if (sampleMs - tick.at <= LATE_KEYSTROKE_MS) {
+          engine.triggerKeystroke(tick.x, tick.jitter);
+        }
+      }
+      if (drained > 0) queue.splice(0, drained);
     }
 
     // Advance every live trail to its interpolated position for this instant.
@@ -681,7 +936,8 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         settings can be judged against genuine cursor motion at the density the
         archive page actually shows. Every toggle above applies. Ships with a
         bundled anonymized sample; loading live events pulls a fresh window and
-        falls back to the bundle offline.
+        falls back to the bundle offline. Cursor, navigation, keyboard and
+        viewport events all replay — turn percussion on to hear the last two.
       </div>
 
       <div
@@ -736,6 +992,117 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         </button>
       </div>
 
+      <div
+        style={{
+          border: "1px solid #e0dbd4",
+          background: "#faf7f2",
+          padding: "10px",
+          marginBottom: "12px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <button
+            onClick={() =>
+              setPercussion((current) => ({
+                ...current,
+                enabled: !current.enabled,
+              }))
+            }
+            style={percussion.enabled ? buttonActiveStyle : buttonStyle}
+          >
+            percussion
+          </button>
+          <span style={labelStyle}>
+            drives the unpitched candidates from this sample's real events.
+            Pad-only — no live page plays them.
+          </span>
+        </div>
+
+        {percussion.enabled ? (
+          <div style={{ marginTop: "10px" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap",
+                alignItems: "center",
+                marginBottom: "8px",
+              }}
+            >
+              <span style={labelStyle}>click</span>
+              {CLICK_VARIANTS.map(({ variant, label }) => (
+                <button
+                  key={variant}
+                  onClick={() =>
+                    setPercussion((current) => ({ ...current, click: variant }))
+                  }
+                  style={
+                    percussion.click === variant
+                      ? buttonActiveStyle
+                      : buttonStyle
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <button
+                onClick={() =>
+                  setPercussion((current) => ({
+                    ...current,
+                    typing: !current.typing,
+                  }))
+                }
+                style={percussion.typing ? buttonActiveStyle : buttonStyle}
+              >
+                typing ticks
+              </button>
+              <button
+                onClick={() =>
+                  setPercussion((current) => ({
+                    ...current,
+                    scroll: !current.scroll,
+                  }))
+                }
+                style={percussion.scroll ? buttonActiveStyle : buttonStyle}
+              >
+                scroll brush
+              </button>
+              <button
+                onClick={() =>
+                  setPercussion((current) => ({
+                    ...current,
+                    hold: !current.hold,
+                  }))
+                }
+                style={percussion.hold ? buttonActiveStyle : buttonStyle}
+              >
+                hold roll
+              </button>
+              <span style={labelStyle}>
+                ticks follow each recorded typing sequence's own cadence; the
+                roll replaces the stretched bell on a held click
+              </span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
       <canvas
         ref={canvasRef}
         style={{
@@ -751,8 +1118,8 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         {source === "bundled" ? "bundled sample" : "live sample"} |{" "}
         {summary.events} events | {summary.participants} participants |{" "}
         {summary.moves} moves | {summary.clicks} clicks |{" "}
-        {summary.navigations} navigations | {summary.domains} domains |{" "}
-        {spanLabel} span
+        {summary.navigations} navigations | {summary.keypresses} keypresses |{" "}
+        {summary.scrolls} scrolls | {summary.domains} domains | {spanLabel} span
         {loadState === "error"
           ? " | live fetch failed, using the bundled sample"
           : ""}
