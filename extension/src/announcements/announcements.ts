@@ -7,6 +7,9 @@ export interface Announcement {
   title: string;
   body: string;
   popupOnly?: boolean;
+  // Announcements for a feature that is still dark only surface once that
+  // feature is reachable for this user.
+  requiresFeature?: "scraps";
   cta?: {
     label: string;
   } & (
@@ -17,6 +20,18 @@ export interface Announcement {
 }
 
 export const ANNOUNCEMENTS: Announcement[] = [
+  {
+    id: "scraps-2026-08",
+    shippedAt: Date.parse("2026-08-16T00:00:00Z"),
+    title: "internet scraps",
+    body: "the little things you pass while wandering - images, buttons, icons, cursors - now wash up on a shore of your own.",
+    popupOnly: true,
+    requiresFeature: "scraps",
+    cta: {
+      label: "visit your shore →",
+      extensionPath: "scraps.html",
+    },
+  },
   {
     id: "history-2026-08",
     shippedAt: Date.parse("2026-08-06T00:00:00Z"),

@@ -56,11 +56,22 @@ export function ViewportSvg({ size = 14 }: SizeProps) {
   );
 }
 
+export function ElementSvg({ size = 14 }: SizeProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="6" width="10" height="11" rx="1" fill={SURFACE_COLOR} stroke={TEXT_COLOR} />
+      <rect x="10" y="4" width="10" height="9" rx="1" fill={SURFACE_COLOR} stroke={TEXT_COLOR} />
+      <circle cx="6" cy="19" r="2" fill={TEXT_COLOR} />
+    </svg>
+  );
+}
+
 /** Returns the collector icon for a given type, or null for unknown types */
 export function CollectorIcon({ type, size = 14 }: { type: string; size?: number }) {
   if (type === "cursor") return <CursorSvg size={size} />;
   if (type === "keyboard") return <KeyboardSvg size={size} />;
   if (type === "navigation") return <NavigationSvg size={size} />;
   if (type === "viewport") return <ViewportSvg size={size} />;
+  if (type === "element") return <ElementSvg size={size} />;
   return null;
 }

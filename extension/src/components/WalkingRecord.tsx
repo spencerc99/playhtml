@@ -16,6 +16,7 @@ import {
 } from "../history/walkingRecord";
 import type { WalkingRecordTracePoint } from "../storage/LocalEventStore";
 import { portraitDayPath } from "../utils/portraitDay";
+import { ScrapsLaunchCard } from "../announcements/ScrapsLaunchCard";
 import { ExtensionPageNav } from "./ExtensionPageNav";
 import { MovementLandscape } from "./MovementLandscape";
 import { PortraitCard } from "./PortraitCard";
@@ -736,6 +737,8 @@ export function WalkingRecordPage({
               onSelect={onPeriodOffsetChange}
             />
           </div>
+
+          <ScrapsLaunchCard />
 
           <HowBrowsedSection
             key={`${record.period}:${record.range.startTs}`}
