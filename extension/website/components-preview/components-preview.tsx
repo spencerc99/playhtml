@@ -11,6 +11,8 @@ import {
 import { MILESTONE_TOAST_CSS } from "@extension/entrypoints/content/milestone-toast-styles";
 import { MILESTONE_COPY } from "@extension/milestones/copy";
 import { PopupNav } from "@extension/components/PopupNav";
+import { PlayerIdentityCard } from "@extension/components/PlayerIdentityCard";
+import type { PlayerIdentity } from "@extension/types";
 const Agentation = import.meta.env.DEV
   ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
   : null;
@@ -2565,21 +2567,93 @@ function MilestonesSection() {
 
 // ── Popup nav ─────────────────────────────────────────────────────────────────
 
+const MOCK_IDENTITY: PlayerIdentity = {
+  publicKey: "pk_preview",
+  name: "spencer",
+  playerStyle: { colorPalette: ["#4a9a8a", "#c4724e", "#5b8db8"] },
+};
+
+const noop = () => {};
+
+function IdentityCard() {
+  return (
+    <PlayerIdentityCard playerIdentity={MOCK_IDENTITY} compact discoveredSites={[]} />
+  );
+}
+
+function PopupSubtitle() {
+  return (
+    <div className="popup-frame__subtitle">
+      An evolving portrait from your time on the internet
+    </div>
+  );
+}
+
+function PopupFrame({
+  label,
+  note,
+  children,
+}: {
+  label: string;
+  note: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="popup-variant">
+      <div className="popup-variant__label">{label}</div>
+      <div className="popup-variant__note">{note}</div>
+      <div className="popup-frame">
+        {children}
+        <div className="popup-frame__body">popup content</div>
+      </div>
+    </div>
+  );
+}
+
 function PopupNavSection() {
   return (
     <div
       id="section-popup-nav"
-      style={{ padding: "0 40px 40px", maxWidth: "1200px" }}
+      style={{ padding: "0 40px 40px", maxWidth: "1400px" }}
     >
-      <div className="popup-frame">
-        <div className="popup-frame__header">
-          <div className="popup-frame__wordmark">we were online</div>
-          <div className="popup-frame__subtitle">
-            An evolving portrait from your time on the internet
+      <div className="popup-variants">
+        <PopupFrame
+          label="variant A — integrated"
+          note="one header row: wordmark, nav as bare links, identity card"
+        >
+          <div className="popup-frame__row">
+            <div className="popup-frame__wordmark">we were online</div>
+            <div className="popup-frame__row-right">
+              <PopupNav onNavigate={noop} inline />
+              <IdentityCard />
+            </div>
           </div>
-        </div>
-        <PopupNav onNavigate={() => {}} />
-        <div className="popup-frame__body">popup content</div>
+          <PopupSubtitle />
+        </PopupFrame>
+
+        <PopupFrame
+          label="variant B — above"
+          note="segmented nav first, then wordmark + identity, then subtitle"
+        >
+          <PopupNav onNavigate={noop} />
+          <div className="popup-frame__row">
+            <div className="popup-frame__wordmark">we were online</div>
+            <IdentityCard />
+          </div>
+          <PopupSubtitle />
+        </PopupFrame>
+
+        <PopupFrame
+          label="current"
+          note="nav below the full header block (what ships today)"
+        >
+          <div className="popup-frame__row">
+            <div className="popup-frame__wordmark">we were online</div>
+            <IdentityCard />
+          </div>
+          <PopupSubtitle />
+          <PopupNav onNavigate={noop} />
+        </PopupFrame>
       </div>
     </div>
   );

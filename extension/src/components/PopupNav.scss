@@ -53,4 +53,33 @@
     color: $text-faint;
     transition: color 0.12s;
   }
+
+  // Bare links for a tight header row: no chrome, no dividers, hug content.
+  &--inline {
+    width: auto;
+    margin: 0;
+    gap: 10px;
+    background: none;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+
+    .popup-nav__item {
+      flex: 0 0 auto;
+      height: auto;
+      gap: 2px;
+
+      & + .popup-nav__item {
+        border-left: none;
+      }
+
+      &:hover {
+        background: none;
+      }
+
+      &:focus-visible {
+        outline-offset: 2px;
+      }
+    }
+  }
 }

@@ -9,6 +9,8 @@ export const WALKING_RECORD_PAGE = "walking-record.html";
 
 interface Props {
   onNavigate: (path: string) => void;
+  /** Bare inline links instead of the full-width segmented bar, for tight rows. */
+  inline?: boolean;
 }
 
 function NavItem({
@@ -37,9 +39,12 @@ function NavItem({
   );
 }
 
-export function PopupNav({ onNavigate }: Props) {
+export function PopupNav({ onNavigate, inline = false }: Props) {
   return (
-    <nav className="popup-nav" aria-label="Extension pages">
+    <nav
+      className={`popup-nav${inline ? " popup-nav--inline" : ""}`}
+      aria-label="Extension pages"
+    >
       <NavItem label="portrait" path="portrait.html" onNavigate={onNavigate} />
       <NavItem
         label="history"

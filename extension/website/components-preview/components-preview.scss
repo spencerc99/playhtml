@@ -126,7 +126,30 @@ body {
 
 .wiki-excerpt a { color: #0645ad; text-decoration: none; }
 
-/* Mock popup frame — approximates the 350px extension popup around PopupNav */
+/* Mock popup frames — approximate the 350px extension popup around PopupNav */
+.popup-variants {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.popup-variant__label {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  font-size: 15px;
+  color: #3d3833;
+  margin-bottom: 2px;
+}
+
+.popup-variant__note {
+  font-size: 11px;
+  color: #8a8279;
+  margin-bottom: 10px;
+  max-width: 350px;
+  line-height: 1.4;
+}
+
 .popup-frame {
   width: 350px;
   padding: 16px;
@@ -136,8 +159,20 @@ body {
   box-shadow: 0 6px 20px rgba(90, 78, 65, 0.08);
 }
 
-.popup-frame__header {
-  margin-bottom: 12px;
+/* Mirrors .portrait-home__header-row in the real popup */
+.popup-frame__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.popup-frame__row-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .popup-frame__wordmark {
@@ -146,7 +181,7 @@ body {
   font-weight: 200;
   font-size: 18px;
   color: #3d3833;
-  margin-bottom: 6px;
+  white-space: nowrap;
 }
 
 .popup-frame__subtitle {
@@ -155,6 +190,7 @@ body {
 }
 
 .popup-frame__body {
+  margin-top: 12px;
   height: 120px;
   display: flex;
   align-items: center;
