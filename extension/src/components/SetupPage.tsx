@@ -108,6 +108,9 @@ export default function SetupPage() {
     presets.participate.legibilityPct,
   );
   const [customized, setCustomized] = useState(false);
+  // Opt-out: the step presents the takeover as the default and the checkbox
+  // is how you decline it.
+  const [newTabTakeover, setNewTabTakeover] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
@@ -433,29 +436,45 @@ export default function SetupPage() {
         {step === "newTab" && (
           <section className="setup-step">
             <h2 className="setup-step__heading">
-              Make your history your new tab?
+              Your new tab becomes your history
             </h2>
             <p className="setup-step__desc">
-              Every new tab can open your browsing record instead of the
-              browser's default page — where your time went, the places you
-              explored, and a cursor portrait from each day. You can turn this
-              off any time from the history page.
+              Each new tab opens your browsing record — where your time went,
+              the places you explored, and a cursor portrait from each day. You
+              can turn this off any time from the history page.
             </p>
+
+            <div className="setup-step__newtab-preview">
+              <div className="setup-step__newtab-chrome">
+                <span className="setup-step__newtab-dot setup-step__newtab-dot--close" />
+                <span className="setup-step__newtab-dot setup-step__newtab-dot--min" />
+                <span className="setup-step__newtab-dot setup-step__newtab-dot--expand" />
+              </div>
+              <img
+                src={browser.runtime.getURL(
+                  "setup/walking-record-preview.png",
+                )}
+                alt="Your history page: a week of browsing time, the sites you spent it on, and a portrait from each day."
+                className="setup-step__newtab-shot"
+              />
+            </div>
+
+            <label className="setup-step__newtab-optin">
+              <input
+                type="checkbox"
+                checked={newTabTakeover}
+                onChange={(e) => setNewTabTakeover(e.target.checked)}
+              />
+              <span>make this my new tab</span>
+            </label>
 
             <div className="setup-step__actions">
               <button
-                onClick={() => void chooseNewTabTakeover(false)}
-                className="setup-step__btn-secondary"
-                disabled={busy}
-              >
-                Keep my normal new tab
-              </button>
-              <button
-                onClick={() => void chooseNewTabTakeover(true)}
+                onClick={() => void chooseNewTabTakeover(newTabTakeover)}
                 className="setup-step__btn-primary"
                 disabled={busy}
               >
-                Use my history
+                {saveError ? "Try again" : "Continue"}
               </button>
             </div>
             {saveError && (

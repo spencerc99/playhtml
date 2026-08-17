@@ -122,7 +122,7 @@ it("closes the setup tab after onboarding", async () => {
   });
   await act(async () => {
     [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Keep my normal new tab")
+      .find((element) => element.textContent === "Continue")
       ?.click();
     await Promise.resolve();
   });
@@ -188,23 +188,13 @@ it("offers recovery when Safari cannot save setup choices", async () => {
     await Promise.resolve();
   });
 
-  expect(container.textContent).toContain("Make your history your new tab?");
+  expect(container.textContent).toContain("Your new tab becomes your history");
 
   act(() => root.unmount());
   container.remove();
 });
 
-it("records the new tab choice before completing setup", async () => {
-  const { default: SetupPage } = await import("../components/SetupPage");
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-
-  await act(async () => {
-    root.render(<SetupPage />);
-    await Promise.resolve();
-  });
-
+async function advanceToNewTabStep(container: HTMLElement) {
   await act(async () => {
     [...container.querySelectorAll("button")]
       .find((element) => element.textContent === "Get started")
@@ -216,12 +206,30 @@ it("records the new tab choice before completing setup", async () => {
       ?.click();
     await Promise.resolve();
   });
+}
 
-  expect(container.textContent).toContain("Make your history your new tab?");
+it("takes over the new tab by default when setup continues", async () => {
+  const { default: SetupPage } = await import("../components/SetupPage");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<SetupPage />);
+    await Promise.resolve();
+  });
+
+  await advanceToNewTabStep(container);
+
+  expect(container.textContent).toContain("Your new tab becomes your history");
+  const optIn = container.querySelector<HTMLInputElement>(
+    'input[type="checkbox"]',
+  );
+  expect(optIn?.checked).toBe(true);
 
   await act(async () => {
     [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Use my history")
+      .find((element) => element.textContent === "Continue")
       ?.click();
     await Promise.resolve();
   });
@@ -235,7 +243,7 @@ it("records the new tab choice before completing setup", async () => {
   container.remove();
 });
 
-it("leaves the new tab page alone when setup declines the takeover", async () => {
+it("leaves the new tab page alone when the opt-in is unchecked", async () => {
   const { default: SetupPage } = await import("../components/SetupPage");
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -246,20 +254,20 @@ it("leaves the new tab page alone when setup declines the takeover", async () =>
     await Promise.resolve();
   });
 
+  await advanceToNewTabStep(container);
+
+  const optIn = container.querySelector<HTMLInputElement>(
+    'input[type="checkbox"]',
+  );
   await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Get started")
-      ?.click();
+    optIn?.click();
+    await Promise.resolve();
   });
+  expect(optIn?.checked).toBe(false);
+
   await act(async () => {
     [...container.querySelectorAll("button")]
       .find((element) => element.textContent === "Continue")
-      ?.click();
-    await Promise.resolve();
-  });
-  await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Keep my normal new tab")
       ?.click();
     await Promise.resolve();
   });
@@ -307,7 +315,7 @@ it("offers recovery when Safari cannot finish setup", async () => {
   });
   await act(async () => {
     [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Keep my normal new tab")
+      .find((element) => element.textContent === "Continue")
       ?.click();
     await Promise.resolve();
   });
