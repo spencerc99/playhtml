@@ -37,6 +37,7 @@ import {
 import { getSessionId } from '../storage/participant'
 import { recordAnnouncementInstall } from '../announcements/announcement-storage'
 import { isUserActive } from '../utils/userActivity'
+import { initNewTabTakeover } from '../features/newtab/takeover'
 import {
   getOrCreateWikipediaHandle,
   rerollWikipediaHandle,
@@ -390,6 +391,10 @@ export default defineBackground(() => {
   // navigator.storage.persist() is deliberately NOT called here: it returns
   // false in extensions regardless of actual protection status (known
   // Chromium issue #357622670), so it's a misleading signal to rely on.
+
+  // Opt-in: send new browser tabs to the walking record instead of the
+  // default new tab page. Off unless the user turns it on.
+  initNewTabTakeover()
 
   // Forward the manifest "open-inventory" command to the active tab's content script.
   // Manifest commands are browser-routed, so this works reliably on every page.
