@@ -448,6 +448,14 @@ interface ToolboxProps {
   currentPan?: { x: number; y: number };
 }
 
+// Isolated so the per-tick cursor-presence updates re-render only this span.
+// Calling useCursorPresences inside WordControls re-rendered the entire word
+// list (~3,000 components) on every presence tick.
+function OnlineCount() {
+  const onlineCount = useCursorPresences().size;
+  return <>{onlineCount} online</>;
+}
+
 const WordControls = withSharedState<FridgeWordType[]>(
   {
     defaultData: [] as FridgeWordType[],
@@ -473,7 +481,6 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
-    const onlineCount = useCursorPresences().size;
 
     // Convert screen coordinates to fridge-relative content coordinates,
     // accounting for the zoom/pan transform on .content
@@ -842,7 +849,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
                     display: "inline-block",
                   }}
                 />
-                {onlineCount} online
+                <OnlineCount />
               </span>
               <span
                 title="contributors"
