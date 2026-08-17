@@ -107,17 +107,17 @@ describe("WWO visualization metadata", () => {
 });
 
 describe("docs metadata", () => {
-  test("uses an absolute site URL and the PlayHTML overview image", () => {
+  test("uses an absolute site URL and the docs homepage image", () => {
     const config = readRepoFile("apps/docs/astro.config.mjs");
     const head = readRepoFile("apps/docs/src/components/HeadOverride.astro");
 
     expect(config).toContain('site: "https://playhtml.fun"');
     expect(head).toContain('property="og:image"');
     expect(head).toContain(
-      "https://playhtml.fun/docs/how-playhtml-works-overview.png",
+      "https://playhtml.fun/docs/social/playhtml-docs.jpg",
     );
     expect(head).toContain('name="twitter:image"');
     expectPublicAsset("apps/docs/public/icon.png");
-    expectPublicAsset("apps/docs/public/how-playhtml-works-overview.png");
+    expectPublicAsset("apps/docs/public/social/playhtml-docs.jpg");
   });
 });
