@@ -3,6 +3,25 @@ const { head } = Astro.locals.starlightRoute;
 ---
 {head.map(({ tag: Tag, attrs, content }) => <Tag {...attrs} set:html={content} />)}
 
+<meta
+  property="og:image"
+  content="https://playhtml.fun/docs/how-playhtml-works-overview.png"
+/>
+<meta property="og:image:width" content="1944" />
+<meta property="og:image:height" content="1128" />
+<meta
+  property="og:image:alt"
+  content="A diagram showing element data, page data, presence, and events in a shared playhtml room."
+/>
+<meta
+  name="twitter:image"
+  content="https://playhtml.fun/docs/how-playhtml-works-overview.png"
+/>
+<meta
+  name="twitter:image:alt"
+  content="A diagram showing element data, page data, presence, and events in a shared playhtml room."
+/>
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
