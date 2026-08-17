@@ -8,7 +8,7 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import { CollectionEvent, Trail } from "../types";
+import { CollectionEvent } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
 import { LiveTrails } from "./LiveTrails";
@@ -24,7 +24,10 @@ import { DaySelector } from "./DaySelector";
 import { ActivityStrip } from "./ActivityStrip";
 import { StatsConsole } from "./StatsConsole";
 import { DebugHoverProvider } from "./DebugHover";
-import { useCursorTrails } from "../hooks/useCursorTrails";
+import {
+  getAccumulationEvictions,
+  useCursorTrails,
+} from "../hooks/useCursorTrails";
 import { useAccumulatedEvents } from "../hooks/useAccumulatedEvents";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
 import { useViewportScroll } from "../hooks/useViewportScroll";
@@ -494,7 +497,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       ? settings.filters
       : [];
     if (filtersKey(filtersProp) !== filtersKey(cur)) {
-      setSettings((s: any) => ({ ...s, filters: filtersProp }));
+      setSettings((s) => ({ ...s, filters: filtersProp }));
     }
   }, [filtersProp]);
 
@@ -844,7 +847,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     const allowed = new Set(availableDomains);
     const next = cur.filter((c) => !c.domain || allowed.has(c.domain));
     if (next.length !== cur.length) {
-      setSettings((s: any) => ({ ...s, filters: next }));
+      setSettings((s) => ({ ...s, filters: next }));
     }
   }, [events.length]);
 
@@ -886,9 +889,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // archive's event set is fixed, so it bypasses accumulation. A group's events
   // are freed when its trail has fully faded out (LiveTrails reports the id).
   const evictIdsRef = useRef<Set<string>>(new Set());
-  const handleTrailsRemoved = useCallback((ids: string[]) => {
-    for (const id of ids) evictIdsRef.current.add(id);
-  }, []);
   const trailEvents = useAccumulatedEvents(filteredEvents, {
     enabled: live,
     maxGroups: 60,
@@ -912,9 +912,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       overlapFactor: settings.overlapFactor,
       minGapBetweenTrails: settings.minGapBetweenTrails,
       documentSpace: settings.documentSpace,
-      // Live mode collapses each participant+url to one trail so ids stay
-      // unique/stable as the event window slides (the archive shows every
-      // segment). Prevents duplicate React keys and disappearing trails.
+      // Live mode renders only the latest segment for each participant+url.
+      // Each segment keeps its own identity while its accumulated points grow.
       singleSegmentPerGroup: live,
     }),
     [
@@ -939,6 +938,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
   } = useCursorTrails(activeTrailEvents, viewportSize, cursorSettings);
+  const activeTrailIds = useMemo(
+    () => new Set(trailStates.map(({ trail }) => trail.id)),
+    [trailStates],
+  );
+  const handleTrailsRemoved = useCallback(
+    (ids: string[]) => {
+      for (const groupId of getAccumulationEvictions(ids, activeTrailIds)) {
+        evictIdsRef.current.add(groupId);
+      }
+    },
+    [activeTrailIds],
+  );
   const renderedTrailStates = useArchiveTrailHandoff(
     trailStates,
     playbackKey,
