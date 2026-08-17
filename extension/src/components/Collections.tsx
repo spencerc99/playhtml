@@ -14,6 +14,7 @@ import {
   parseLegibility,
   redactWithLegibility,
 } from "../utils/keyboardRedaction";
+import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
 import "./Collections.scss";
 
 interface CollectionsProps {
@@ -144,7 +145,7 @@ export function CollectorList({
   keyboardLegibilityPct,
   onKeyboardLegibilityChange,
 }: CollectorListProps) {
-  const types = getValidEventTypes();
+  const types = useVisibleCollectorTypes();
   return (
     <div className="collections__collector-list">
       {types.map((type) => {
@@ -334,6 +335,8 @@ export function Collections({ onBack }: CollectionsProps) {
   const loadModes = async () => {
     try {
       const types = getValidEventTypes();
+      // Every valid type is read so a dev-enabled collector keeps its saved
+      // mode, but only the visible ones are rendered.
       const keys = types.map((t) => `collection_mode_${t}`);
       const result = await browser.storage.local.get(keys);
       const next: Record<string, "off" | "local" | "shared"> = {};

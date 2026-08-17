@@ -78,6 +78,7 @@ describe("SetupPage", () => {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
     });
     window.history.replaceState({}, "", "/");
+    vi.mocked(browser.storage.local.get).mockResolvedValue({});
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
@@ -92,6 +93,7 @@ describe("SetupPage", () => {
 
     try {
       await click(container, "Get started");
+      await click(container, "Continue");
       await click(container, "Continue");
 
       expect(container.textContent).toContain("All set!");

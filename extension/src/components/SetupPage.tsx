@@ -1,10 +1,11 @@
 // ABOUTME: Full-page setup wizard for first-time extension configuration
-// ABOUTME: Handles consent choices, cursor color, and the three-step product tour
+// ABOUTME: Handles consent choices, cursor color, the new tab choice, and the product tour
 import React, { useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import { getValidEventTypes } from "@playhtml/extension-types";
 import { CursorSvg } from "./icons";
 import { CollectorList } from "./Collections";
+import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
 import { TrailsHero } from "./TrailsHero";
 import { savePlayerColor } from "../storage/playerColor";
 import { getPublicPlayerIdentity } from "../storage/playerIdentity";
@@ -18,8 +19,9 @@ import {
   hasSafariWebsiteAccess,
   requestSafariWebsiteAccess,
 } from "../utils/safariWebsiteAccess";
+import { NEWTAB_TAKEOVER_KEY } from "../features/newtab/takeover";
 
-type Step = "welcome" | "configure" | "done";
+type Step = "welcome" | "configure" | "newTab" | "done";
 type Preset = "abstain" | "participate" | "allIn";
 type CollectorMode = "off" | "local" | "shared";
 type WebsiteAccess = "checking" | "needed" | "requesting" | "granted" | "error";
@@ -27,6 +29,7 @@ type WebsiteAccess = "checking" | "needed" | "requesting" | "granted" | "error";
 const SETUP_STEPS: Array<{ id: Step; label: string }> = [
   { id: "welcome", label: "welcome" },
   { id: "configure", label: "consent" },
+  { id: "newTab", label: "new tab" },
   { id: "done", label: "complete" },
 ];
 
@@ -94,6 +97,7 @@ function presetConfigs(): Record<Preset, PresetConfig> {
 export default function SetupPage() {
   const [step, setStep] = useState<Step>("welcome");
   const showDevStepNav = new URLSearchParams(window.location.search).has("dev");
+  const visibleTypes = useVisibleCollectorTypes();
   const [color, setColor] = useState<string>("");
   const presets = presetConfigs();
   const [preset, setPreset] = useState<Preset>("participate");
@@ -104,6 +108,9 @@ export default function SetupPage() {
     presets.participate.legibilityPct,
   );
   const [customized, setCustomized] = useState(false);
+  // Opt-out: the step presents the takeover as the default and the checkbox
+  // is how you decline it.
+  const [newTabTakeover, setNewTabTakeover] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
@@ -181,14 +188,26 @@ export default function SetupPage() {
     setBusy(true);
     setSaveError(null);
     try {
-      const types = getValidEventTypes();
       const toSet: Record<string, unknown> = {};
-      for (const t of types)
+      for (const t of visibleTypes)
         toSet[`collection_mode_${t}`] = collectorModes[t] || "local";
       toSet[LEGIBILITY_KEY] = legibilityPct;
 
       await browser.storage.local.set(toSet);
       await savePlayerColor(color);
+      setStep("newTab");
+    } catch {
+      setSaveError(setupStorageError(isSafari));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const chooseNewTabTakeover = async (enabled: boolean) => {
+    setBusy(true);
+    setSaveError(null);
+    try {
+      await browser.storage.local.set({ [NEWTAB_TAKEOVER_KEY]: enabled });
       setStep("done");
     } catch {
       setSaveError(setupStorageError(isSafari));
@@ -414,6 +433,60 @@ export default function SetupPage() {
           </section>
         )}
 
+        {step === "newTab" && (
+          <section className="setup-step">
+            <h2 className="setup-step__heading">
+              See your browsing evolve
+            </h2>
+            <p className="setup-step__desc">
+              The places you explored, where your time went, and how your
+              cursor traveled. By default, it opens in your new tab so you can
+              stay in touch with your browsing. This is also where new ways of
+              making the web shared and alive will slowly appear. You can
+              revert your new tab any time from the history page.
+            </p>
+
+            <div className="setup-step__newtab-preview">
+              <div className="setup-step__newtab-chrome">
+                <span className="setup-step__newtab-dot setup-step__newtab-dot--close" />
+                <span className="setup-step__newtab-dot setup-step__newtab-dot--min" />
+                <span className="setup-step__newtab-dot setup-step__newtab-dot--expand" />
+              </div>
+              <img
+                src={browser.runtime.getURL(
+                  "setup/walking-record-preview.png",
+                )}
+                alt="Your history page: a week of browsing time, the sites you spent it on, and a portrait from each day."
+                className="setup-step__newtab-shot"
+              />
+            </div>
+
+            <label className="setup-step__newtab-optin">
+              <input
+                type="checkbox"
+                checked={newTabTakeover}
+                onChange={(e) => setNewTabTakeover(e.target.checked)}
+              />
+              <span>make this my new tab</span>
+            </label>
+
+            <div className="setup-step__actions">
+              <button
+                onClick={() => void chooseNewTabTakeover(newTabTakeover)}
+                className="setup-step__btn-primary"
+                disabled={busy}
+              >
+                {saveError ? "Try again" : "Continue"}
+              </button>
+            </div>
+            {saveError && (
+              <p className="setup-step__save-error" role="alert">
+                {saveError}
+              </p>
+            )}
+          </section>
+        )}
+
         {step === "done" && (
           <section className="setup-step setup-step--complete">
             <h2 className="setup-step__heading">All set!</h2>
@@ -471,9 +544,9 @@ export default function SetupPage() {
                 2. Review your browsing
               </h3>
               <p className="setup-step__desc">
-                Every new tab reviews where your time went, the smaller places
-                you explored, and a cursor portrait from each day. You can also
-                open <strong>history</strong> from the popup.
+                Your history page reviews where your time went, the smaller
+                places you explored, and a cursor portrait from each day. Open{" "}
+                <strong>history</strong> from the popup any time.
               </p>
               <button
                 type="button"
@@ -535,7 +608,7 @@ export default function SetupPage() {
 
             <div className="setup-step__actions">
               <button
-                onClick={() => setStep("configure")}
+                onClick={() => setStep("newTab")}
                 className="setup-step__btn-secondary"
               >
                 Back
