@@ -1198,6 +1198,12 @@ function Main() {
     <PlayProvider
       initOptions={{
         room: wall,
+        // Opt into the v2 op protocol via ?v2 for migration testing; a value
+        // (?v2=localhost:2000) overrides the host.
+        v2: new URLSearchParams(window.location.search).has("v2"),
+        ...(new URLSearchParams(window.location.search).get("v2")
+          ? { host: new URLSearchParams(window.location.search).get("v2")! }
+          : {}),
         onError: () => {
           setHasError(true);
         },
