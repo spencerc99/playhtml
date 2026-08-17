@@ -916,18 +916,10 @@ export default defineBackground(() => {
 
     if (message.type === 'GET_WALKING_RECORD_MOVEMENT') {
       const targets = (message.targets || []) as WalkingRecordTraceTarget[]
-      const faviconDomains = Array.isArray(message.faviconDomains)
-        ? message.faviconDomains.filter(
-            (domain: unknown): domain is string => typeof domain === 'string',
-          )
-        : []
-      Promise.all([
-        store.getWalkingRecordMovement(targets),
-        store.getWalkingRecordFavicons(faviconDomains),
-      ])
-        .then(async ([movement, favicons]) => ({
+      store
+        .getWalkingRecordMovement(targets)
+        .then(async (movement) => ({
           ...movement,
-          favicons,
           landscapePaths: await Promise.all(
             movement.landscapePaths.map(hydrateCursorColor),
           ),
@@ -939,7 +931,6 @@ export default defineBackground(() => {
             success: false,
             traces: [],
             landscapePaths: [],
-            favicons: {},
           })
         })
       return true
