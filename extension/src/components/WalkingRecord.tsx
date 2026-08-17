@@ -8,6 +8,7 @@ import { buildFreehandPathSegment } from "@movement/utils/trailAnimation";
 import { roundPathCorners } from "@movement/utils/styleUtils";
 import {
   type DayPlate,
+  formatCompactDuration,
   type WalkingRecord,
   type WalkingRecordPeriod,
   type WalkingRecordPeriodSummary,
@@ -420,7 +421,10 @@ function HowBrowsedSection({ record }: { record: WalkingRecord }) {
       <div className="walking-record__section-heading">
         <h1>how you browsed</h1>
         <span>
-          {record.totalTimeLabel} online this {record.period}
+          {formatCompactDuration(record.totalTimeMs, "")} online this{
+            " "
+          }
+          {record.period}
         </span>
       </div>
 

@@ -302,6 +302,29 @@ describe("WalkingRecordPage calendar navigation", () => {
     }
   });
 
+  it("shows a compact total beside how you browsed", async () => {
+    const callbacks = {
+      onPeriodChange: vi.fn(),
+      onPeriodOffsetChange: vi.fn(),
+    };
+    const { container, root } = await renderWalkingRecord(
+      0,
+      callbacks,
+      false,
+      {
+        ...record,
+        totalTimeMs: 62 * 60_000,
+        totalTimeLabel: "1 hr 2 min",
+      },
+    );
+
+    try {
+      expect(container.textContent).toContain("1h2m online this week");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
   it("selects another scope and allows stepping toward the current period", async () => {
     const callbacks = {
       onPeriodChange: vi.fn(),

@@ -263,7 +263,10 @@ export function formatDuration(ms: number): string {
   return minutes === 0 ? hourLabel : `${hourLabel} ${minutes} min`;
 }
 
-function formatCompactDuration(ms: number, unitSeparator = " "): string {
+export function formatCompactDuration(
+  ms: number,
+  unitSeparator = " ",
+): string {
   if (ms <= 0) return "0m";
   const totalMinutes = Math.floor(ms / 60_000);
   if (totalMinutes < 1) return "<1m";
