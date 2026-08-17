@@ -19,3 +19,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Wikipedia shows other readers' live text selections in their cursor colors.
 - Wikipedia editing sessions now stay separate from article-reading rooms.
 - Browser history now opens faster, especially for people with large local records.
+- Browser history now shows hour-and-minute totals without extra spacing.
