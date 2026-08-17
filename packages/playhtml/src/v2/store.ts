@@ -12,10 +12,7 @@ import type {
 } from "@playhtml/common";
 import { PROTOCOL_VERSION } from "@playhtml/common";
 import { applyOperation } from "@playhtml/common";
-import {
-  recordMutation,
-  type MutationCallback,
-} from "@playhtml/common";
+import { recordMutation, type MutationCallback } from "@playhtml/common";
 
 export type V2StoreTransport = {
   send(message: ClientOperationMessage): void;
@@ -33,6 +30,7 @@ export type V2StoreOptions = {
   readonly transport: V2StoreTransport;
   readonly clientId?: string;
   readonly sequence?: number;
+  readonly echoWaitElementIds?: readonly string[];
 };
 
 type ElementListener = (value: JsonValue | undefined) => void;
@@ -69,6 +67,8 @@ export class V2Store {
   private serverSequence: number;
   private nextMutationId: number;
   private pending: ClientOperationMessage[] = [];
+  private readonly echoWaitElementIds: Set<string>;
+  private readonly echoWaitMutationIds = new Set<number>();
   private readonly transport: V2StoreTransport;
   private readonly elementListeners = new Map<string, Set<ElementListener>>();
   private readonly roomListeners = new Set<RoomListener>();
@@ -83,6 +83,7 @@ export class V2Store {
     this.nextMutationId =
       (this.authoritative.lastMutationIds[this.clientId] ?? 0) + 1;
     this.transport = options.transport;
+    this.echoWaitElementIds = new Set(options.echoWaitElementIds ?? []);
   }
 
   getSnapshot(): RoomSnapshot {
@@ -119,7 +120,13 @@ export class V2Store {
     }));
 
     this.pending.push(...messages);
-    this.view = recorded.next;
+    if (this.echoWaitElementIds.has(elementId)) {
+      for (const message of messages) {
+        this.echoWaitMutationIds.add(message.mutationId);
+      }
+    } else {
+      this.view = recorded.next;
+    }
     this.notifyChanges(previous, this.view);
     for (const message of messages) this.transport.send(message);
     return messages;
@@ -155,6 +162,7 @@ export class V2Store {
       this.pending = this.pending.filter(
         (message) => message.mutationId !== envelope.mutationId,
       );
+      this.echoWaitMutationIds.delete(envelope.mutationId);
     }
     this.rederiveView();
     this.notifyChanges(previous, this.view);
@@ -173,6 +181,15 @@ export class V2Store {
       : this.pending.filter(
           (pending) => pending.mutationId > confirmedMutationId,
         );
+    if (generationChanged) {
+      this.echoWaitMutationIds.clear();
+    } else {
+      for (const mutationId of this.echoWaitMutationIds) {
+        if (mutationId <= confirmedMutationId) {
+          this.echoWaitMutationIds.delete(mutationId);
+        }
+      }
+    }
     this.rederiveView();
     this.notifyChanges(previous, this.view);
   }
@@ -181,6 +198,7 @@ export class V2Store {
     const previous = this.view;
     if (message.code === "stale-generation") {
       this.pending = [];
+      this.echoWaitMutationIds.clear();
       this.rederiveView();
       this.transport.requestSnapshot();
     } else if (
@@ -190,6 +208,7 @@ export class V2Store {
       this.pending = this.pending.filter(
         (pending) => pending.mutationId !== message.mutationId,
       );
+      this.echoWaitMutationIds.delete(message.mutationId);
       this.rederiveView();
     }
     this.notifyChanges(previous, this.view);
@@ -225,6 +244,7 @@ export class V2Store {
   private rederiveView(): void {
     let next = this.authoritative;
     for (const pending of this.pending) {
+      if (this.echoWaitMutationIds.has(pending.mutationId)) continue;
       const applied = applyOperation(next, pending.operation);
       if (applied.ok) next = applied.snapshot;
     }

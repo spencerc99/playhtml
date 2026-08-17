@@ -103,9 +103,14 @@
     <script type="module">
       import { playhtml } from "../../packages/playhtml/src";
 
+      const partyHost =
+        new URLSearchParams(window.location.search).get("party") ??
+        "localhost:2000";
+
       playhtml.init({
         v2: true,
-        host: "localhost:2000",
+        host: partyHost,
+        defaultRoomOptions: { includeSearch: true },
       });
     </script>
   </body>

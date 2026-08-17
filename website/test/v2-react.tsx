@@ -9,6 +9,10 @@ import {
   withSharedState,
 } from "@playhtml/react";
 
+const partyHost =
+  new URLSearchParams(window.location.search).get("party") ??
+  "localhost:2000";
+
 const Counter = withSharedState(
   { defaultData: { count: 0 } },
   ({ data, setData }) => (
@@ -26,7 +30,13 @@ const Counter = withSharedState(
 );
 
 ReactDOM.createRoot(document.getElementById("app") as HTMLElement).render(
-  <PlayProvider initOptions={{ v2: true, host: "localhost:2000" }}>
+  <PlayProvider
+    initOptions={{
+      v2: true,
+      host: partyHost,
+      defaultRoomOptions: { includeSearch: true },
+    }}
+  >
     <section>
       <h2>withSharedState</h2>
       <p>Open this page in two tabs and click the counter in either tab.</p>

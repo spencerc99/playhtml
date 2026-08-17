@@ -3,12 +3,14 @@
 
 import { env } from "cloudflare:workers";
 import type { Connection, ConnectionContext, WSMessage } from "partyserver";
+import { getServerByName } from "partyserver";
 import {
   PROTOCOL_VERSION,
   type ClientOperationMessage,
   type Operation,
   type OperationRejectionCode,
   type RoomSnapshot,
+  type SequencedOperation,
   type ServerOperationMessage,
   type ServerOperationRejectedMessage,
   type ServerSnapshotMessage,
@@ -27,9 +29,31 @@ import {
   DEFAULT_V2_AUTOSAVE_MAX_WAIT_MS,
   DEFAULT_V2_DOCUMENT_WARNING_BYTES,
   DEFAULT_V2_MAX_OPERATION_BYTES,
+  DEFAULT_SUBSCRIBER_LEASE_MS,
 } from "./const";
 import { getErrorMessage, retryWithTimeout } from "./persistenceMode";
 import { PresenceServer } from "./presenceServer";
+import {
+  V2_BRIDGE_STORAGE_KEYS,
+  createBridge2Request,
+  extractBridge2Snapshot,
+  isBridge2Request,
+  mergeBridge2Snapshot,
+  pruneBridge2Leases,
+  type Bridge2ApplyResponse,
+  type Bridge2ConsumerOperationRequest,
+  type Bridge2ForwardOperationRequest,
+  type Bridge2PermissionMap,
+  type Bridge2Reference,
+  type Bridge2SubscribeRequest,
+  type Bridge2SubscribeResponse,
+  type Bridge2Subscriber,
+} from "./bridge2";
+import {
+  getSourceRoomId,
+  parseSharedElementsFromUrl,
+  parseSharedReferencesFromUrl,
+} from "./sharing";
 
 type PersistedRoomDocument = {
   snapshot: RoomSnapshot;
@@ -148,6 +172,7 @@ export class PartyServerV2 extends PresenceServer {
   private dirty = false;
   private savePromise: Promise<void> | null = null;
   private hasWarnedDocumentSize = false;
+  private bridgeForwardPromise: Promise<void> = Promise.resolve();
 
   override async onStart(): Promise<void> {
     await this.hydrate();
@@ -157,6 +182,7 @@ export class PartyServerV2 extends PresenceServer {
     connection: Connection,
     ctx: ConnectionContext,
   ): Promise<void> {
+    await this.registerBridgeDeclarations(ctx.request.url);
     await super.onConnect(connection, ctx);
     connection.send(JSON.stringify(this.createSnapshotMessage()));
   }
@@ -193,7 +219,7 @@ export class PartyServerV2 extends PresenceServer {
       return;
     }
 
-    this.handleOperationMessage(connection, parsed);
+    await this.handleOperationMessage(connection, parsed);
   }
 
   override async onClose(
@@ -216,6 +242,524 @@ export class PartyServerV2 extends PresenceServer {
         );
       }
     }
+  }
+
+  override async onRequest(request: Request): Promise<Response> {
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("Bad Request", { status: 400 });
+    }
+    if (!isBridge2Request(body)) {
+      return new Response("Bad Request", { status: 400 });
+    }
+
+    if (body.action === "bridge2-subscribe") {
+      return this.handleBridgeSubscribe(body);
+    }
+    if (body.action === "bridge2-forward-operation") {
+      return this.handleForwardedBridgeOperation(body);
+    }
+    return this.handleBridgeConsumerOperation(body);
+  }
+
+  override async onAlarm(): Promise<void> {
+    await this.pruneBridgeLeases();
+    await this.scheduleBridgeAlarm();
+  }
+
+  private async registerBridgeDeclarations(url: string): Promise<void> {
+    if (!this.hydrated || this.transient) return;
+
+    const sharedElements = parseSharedElementsFromUrl(url);
+    if (sharedElements.length > 0) {
+      const permissions: Bridge2PermissionMap = {};
+      for (const element of sharedElements) {
+        if (!element.elementId) continue;
+        permissions[element.elementId] = element.permissions?.includes(
+          "read-only",
+        )
+          ? "read-only"
+          : "read-write";
+      }
+      await this.setBridgePermissions(permissions);
+    }
+
+    const references = parseSharedReferencesFromUrl(url);
+    if (references.length === 0) return;
+    const bySource = new Map<string, Set<string>>();
+    for (const reference of references) {
+      const sourceRoomId = getSourceRoomId(reference.domain, reference.path);
+      const elementIds = bySource.get(sourceRoomId) ?? new Set<string>();
+      elementIds.add(reference.elementId);
+      bySource.set(sourceRoomId, elementIds);
+    }
+
+    const now = new Date().toISOString();
+    const existing = await this.getBridgeReferences();
+    for (const [sourceRoomId, elementIds] of bySource) {
+      const reference = existing.find(
+        (candidate) => candidate.sourceRoomId === sourceRoomId,
+      );
+      if (reference) {
+        reference.elementIds = Array.from(
+          new Set([...reference.elementIds, ...elementIds]),
+        );
+        reference.lastSeen = now;
+        reference.leaseMs = DEFAULT_SUBSCRIBER_LEASE_MS;
+      } else {
+        existing.push({
+          sourceRoomId,
+          elementIds: Array.from(elementIds),
+          lastSeen: now,
+          leaseMs: DEFAULT_SUBSCRIBER_LEASE_MS,
+        });
+      }
+    }
+    await this.setBridgeReferences(existing);
+    await this.scheduleBridgeAlarm();
+    for (const sourceRoomId of bySource.keys()) {
+      const reference = existing.find(
+        (candidate) => candidate.sourceRoomId === sourceRoomId,
+      );
+      if (reference) await this.subscribeToBridgeSource(reference);
+    }
+  }
+
+  private async subscribeToBridgeSource(
+    reference: Bridge2Reference,
+  ): Promise<void> {
+    try {
+      const sourceRoom = await getServerByName(env.V2, reference.sourceRoomId);
+      const request: Bridge2SubscribeRequest = {
+        action: "bridge2-subscribe",
+        consumerRoomId: this.name,
+        elementIds: reference.elementIds,
+      };
+      const response = await sourceRoom.fetch(
+        createBridge2Request("/subscribe", request),
+      );
+      if (!response.ok) return;
+      const subscription = (await response.json()) as Bridge2SubscribeResponse;
+      if (!subscription.ok) return;
+
+      const previousSnapshot = this.snapshot;
+      this.snapshot = mergeBridge2Snapshot(
+        this.snapshot,
+        subscription.snapshot,
+        Object.keys(subscription.permissions),
+      );
+      const references = await this.getBridgeReferences();
+      const storedReference = references.find(
+        (candidate) => candidate.sourceRoomId === reference.sourceRoomId,
+      );
+      if (storedReference) {
+        storedReference.sourceGeneration = subscription.sourceGeneration;
+        storedReference.lastSourceSequence = subscription.sourceSequence;
+        await this.setBridgeReferences(references);
+      }
+      if (JSON.stringify(previousSnapshot) !== JSON.stringify(this.snapshot)) {
+        this.broadcast(JSON.stringify(this.createSnapshotMessage()));
+        this.scheduleAutosave();
+      }
+    } catch {
+      // The persisted mirror remains authoritative for the consumer while the
+      // source is temporarily unavailable.
+    }
+  }
+
+  private async handleBridgeSubscribe(
+    request: Bridge2SubscribeRequest,
+  ): Promise<Response> {
+    if (!this.hydrated || this.transient) {
+      return this.bridgeUnavailableResponse();
+    }
+    const requestedIds = Array.from(new Set(request.elementIds));
+    const subscribers = await this.getBridgeSubscribers();
+    const now = new Date().toISOString();
+    const existing = subscribers.find(
+      (subscriber) => subscriber.consumerRoomId === request.consumerRoomId,
+    );
+    if (existing) {
+      existing.elementIds = requestedIds;
+      existing.lastSeen = now;
+      existing.leaseMs = DEFAULT_SUBSCRIBER_LEASE_MS;
+    } else {
+      subscribers.push({
+        consumerRoomId: request.consumerRoomId,
+        elementIds: requestedIds,
+        createdAt: now,
+        lastSeen: now,
+        leaseMs: DEFAULT_SUBSCRIBER_LEASE_MS,
+      });
+    }
+    await this.setBridgeSubscribers(subscribers);
+    await this.scheduleBridgeAlarm();
+
+    const permissions = await this.getBridgePermissions();
+    const filteredPermissions = Object.fromEntries(
+      requestedIds
+        .filter((elementId) => permissions[elementId])
+        .map((elementId) => [elementId, permissions[elementId]]),
+    );
+    const body: Bridge2SubscribeResponse = {
+      ok: true,
+      sourceSequence: this.sequence,
+      sourceGeneration: this.generation,
+      snapshot: extractBridge2Snapshot(
+        this.snapshot,
+        requestedIds,
+        permissions,
+      ),
+      permissions: filteredPermissions,
+    };
+    return Response.json(body);
+  }
+
+  private async handleBridgeConsumerOperation(
+    request: Bridge2ConsumerOperationRequest,
+  ): Promise<Response> {
+    if (!this.hydrated || this.transient) {
+      return this.bridgeUnavailableResponse();
+    }
+    const subscribers = await this.pruneBridgeLeases();
+    const subscriber = subscribers.find(
+      (candidate) => candidate.consumerRoomId === request.consumerRoomId,
+    );
+    if (
+      !subscriber ||
+      !isOperationMessage(request.message) ||
+      !subscriber.elementIds.includes(request.message.operation.elementId)
+    ) {
+      return Response.json(
+        {
+          ok: false,
+          code: "permission-denied",
+          message: "Consumer is not subscribed to this shared element",
+        } satisfies Bridge2ApplyResponse,
+        { status: 403 },
+      );
+    }
+    const permission = (await this.getBridgePermissions())[
+      request.message.operation.elementId
+    ];
+    if (permission !== "read-write") {
+      return Response.json(
+        {
+          ok: false,
+          code: "permission-denied",
+          message: "Shared element is read-only",
+        } satisfies Bridge2ApplyResponse,
+        { status: 403 },
+      );
+    }
+    const existing =
+      this.snapshot.state[request.message.operation.capability]?.[
+        request.message.operation.elementId
+      ];
+    if (existing === undefined) {
+      return Response.json(
+        {
+          ok: false,
+          code: "invalid-operation",
+          message: "Shared source element does not exist",
+        } satisfies Bridge2ApplyResponse,
+        { status: 422 },
+      );
+    }
+
+    const lastMutationId =
+      this.snapshot.lastMutationIds[request.message.clientId] ?? 0;
+    if (request.message.mutationId <= lastMutationId) {
+      return Response.json({
+        ok: true,
+        applied: false,
+      } satisfies Bridge2ApplyResponse);
+    }
+    const result = applyOperation(this.snapshot, request.message.operation);
+    if (!result.ok) {
+      return Response.json(
+        {
+          ok: false,
+          code: result.code,
+          message: result.message,
+        } satisfies Bridge2ApplyResponse,
+        { status: 422 },
+      );
+    }
+
+    this.sequence += 1;
+    this.snapshot = {
+      ...result.snapshot,
+      lastMutationIds: {
+        ...result.snapshot.lastMutationIds,
+        [request.message.clientId]: request.message.mutationId,
+      },
+    };
+    const payload: SequencedOperation = {
+      sequence: this.sequence,
+      generation: this.generation,
+      clientId: request.message.clientId,
+      mutationId: request.message.mutationId,
+      operation: request.message.operation,
+    };
+    const response: ServerOperationMessage = {
+      type: "operation",
+      protocolVersion: PROTOCOL_VERSION,
+      payload,
+    };
+    this.broadcast(JSON.stringify(response));
+    this.scheduleAutosave();
+    await this.forwardAcceptedBridgeOperation(payload);
+    return Response.json({
+      ok: true,
+      applied: true,
+    } satisfies Bridge2ApplyResponse);
+  }
+
+  private async handleForwardedBridgeOperation(
+    request: Bridge2ForwardOperationRequest,
+  ): Promise<Response> {
+    if (!this.hydrated || this.transient) {
+      return this.bridgeUnavailableResponse();
+    }
+    const references = await this.getBridgeReferences();
+    const reference = references.find(
+      (candidate) => candidate.sourceRoomId === request.sourceRoomId,
+    );
+    if (
+      !reference ||
+      !reference.elementIds.includes(request.payload.operation.elementId)
+    ) {
+      return Response.json(
+        {
+          ok: false,
+          code: "permission-denied",
+          message: "Room is not subscribed to this shared element",
+        } satisfies Bridge2ApplyResponse,
+        { status: 403 },
+      );
+    }
+    if (
+      reference.sourceGeneration !== undefined &&
+      reference.sourceGeneration !== request.sourceGeneration
+    ) {
+      return Response.json(
+        {
+          ok: false,
+          code: "room-unavailable",
+          message: "Shared source generation changed; resubscribe required",
+        } satisfies Bridge2ApplyResponse,
+        { status: 503 },
+      );
+    }
+    if (request.sourceSequence <= (reference.lastSourceSequence ?? -1)) {
+      return Response.json({
+        ok: true,
+        applied: false,
+      } satisfies Bridge2ApplyResponse);
+    }
+    const result = applyOperation(this.snapshot, request.payload.operation);
+    if (!result.ok) {
+      return Response.json(
+        {
+          ok: false,
+          code: result.code,
+          message: result.message,
+        } satisfies Bridge2ApplyResponse,
+        { status: 422 },
+      );
+    }
+
+    this.sequence += 1;
+    this.snapshot = {
+      ...result.snapshot,
+      lastMutationIds: {
+        ...result.snapshot.lastMutationIds,
+        [request.payload.clientId]: request.payload.mutationId,
+      },
+    };
+    reference.sourceGeneration = request.sourceGeneration;
+    reference.lastSourceSequence = request.sourceSequence;
+    await this.setBridgeReferences(references);
+    const response: ServerOperationMessage = {
+      type: "operation",
+      protocolVersion: PROTOCOL_VERSION,
+      payload: {
+        ...request.payload,
+        sequence: this.sequence,
+        generation: this.generation,
+      },
+    };
+    this.broadcast(JSON.stringify(response));
+    this.scheduleAutosave();
+    return Response.json({
+      ok: true,
+      applied: true,
+    } satisfies Bridge2ApplyResponse);
+  }
+
+  private async forwardConsumerOperation(
+    connection: Connection,
+    reference: Bridge2Reference,
+    message: ClientOperationMessage,
+  ): Promise<void> {
+    try {
+      const sourceRoom = await getServerByName(env.V2, reference.sourceRoomId);
+      const request: Bridge2ConsumerOperationRequest = {
+        action: "bridge2-consumer-operation",
+        consumerRoomId: this.name,
+        message,
+      };
+      const response = await sourceRoom.fetch(
+        createBridge2Request("/operation", request),
+      );
+      const result = (await response.json()) as Bridge2ApplyResponse;
+      if (response.ok && result.ok) return;
+      this.reject(
+        connection,
+        result.ok ? "room-unavailable" : result.code,
+        result.ok ? "Shared source room is unavailable" : result.message,
+        message.clientId,
+        message.mutationId,
+      );
+    } catch {
+      this.reject(
+        connection,
+        "room-unavailable",
+        "Shared source room is unavailable",
+        message.clientId,
+        message.mutationId,
+      );
+    }
+  }
+
+  private async forwardAcceptedBridgeOperation(
+    payload: SequencedOperation,
+  ): Promise<void> {
+    const run = async () => {
+      const subscribers = await this.pruneBridgeLeases();
+      const permissions = await this.getBridgePermissions();
+      if (!permissions[payload.operation.elementId]) return;
+      const targets = subscribers.filter((subscriber) =>
+        subscriber.elementIds.includes(payload.operation.elementId),
+      );
+      await Promise.all(
+        targets.map(async (subscriber) => {
+          try {
+            const consumerRoom = await getServerByName(
+              env.V2,
+              subscriber.consumerRoomId,
+            );
+            const request: Bridge2ForwardOperationRequest = {
+              action: "bridge2-forward-operation",
+              sourceRoomId: this.name,
+              sourceSequence: payload.sequence,
+              sourceGeneration: this.generation,
+              payload,
+            };
+            await consumerRoom.fetch(createBridge2Request("/forward", request));
+          } catch {
+            // Subscribers retain their last mirrored state and renew later.
+          }
+        }),
+      );
+    };
+    this.bridgeForwardPromise = this.bridgeForwardPromise.then(run, run);
+    await this.bridgeForwardPromise;
+  }
+
+  private async findBridgeReference(
+    elementId: string,
+  ): Promise<Bridge2Reference | undefined> {
+    return (await this.getBridgeReferences()).find((reference) =>
+      reference.elementIds.includes(elementId),
+    );
+  }
+
+  private bridgeUnavailableResponse(): Response {
+    return Response.json(
+      {
+        ok: false,
+        code: "room-unavailable",
+        message: "Room persistence is unavailable",
+      } satisfies Bridge2ApplyResponse,
+      { status: 503 },
+    );
+  }
+
+  private async getBridgeSubscribers(): Promise<Bridge2Subscriber[]> {
+    return (
+      (await this.ctx.storage.get<Bridge2Subscriber[]>(
+        V2_BRIDGE_STORAGE_KEYS.subscribers,
+      )) ?? []
+    );
+  }
+
+  private async setBridgeSubscribers(
+    subscribers: Bridge2Subscriber[],
+  ): Promise<void> {
+    await this.ctx.storage.put(V2_BRIDGE_STORAGE_KEYS.subscribers, subscribers);
+  }
+
+  private async getBridgeReferences(): Promise<Bridge2Reference[]> {
+    return (
+      (await this.ctx.storage.get<Bridge2Reference[]>(
+        V2_BRIDGE_STORAGE_KEYS.references,
+      )) ?? []
+    );
+  }
+
+  private async setBridgeReferences(
+    references: Bridge2Reference[],
+  ): Promise<void> {
+    await this.ctx.storage.put(V2_BRIDGE_STORAGE_KEYS.references, references);
+  }
+
+  private async getBridgePermissions(): Promise<Bridge2PermissionMap> {
+    return (
+      (await this.ctx.storage.get<Bridge2PermissionMap>(
+        V2_BRIDGE_STORAGE_KEYS.permissions,
+      )) ?? {}
+    );
+  }
+
+  private async setBridgePermissions(
+    permissions: Bridge2PermissionMap,
+  ): Promise<void> {
+    await this.ctx.storage.put(V2_BRIDGE_STORAGE_KEYS.permissions, permissions);
+  }
+
+  private async pruneBridgeLeases(): Promise<Bridge2Subscriber[]> {
+    const now = Date.now();
+    const subscribers = await this.getBridgeSubscribers();
+    const references = await this.getBridgeReferences();
+    const liveSubscribers = pruneBridge2Leases(subscribers, now);
+    const liveReferences = pruneBridge2Leases(references, now);
+    if (liveSubscribers.length !== subscribers.length) {
+      await this.setBridgeSubscribers(liveSubscribers);
+    }
+    if (liveReferences.length !== references.length) {
+      await this.setBridgeReferences(liveReferences);
+    }
+    return liveSubscribers;
+  }
+
+  private async scheduleBridgeAlarm(): Promise<void> {
+    const leases = [
+      ...(await this.getBridgeSubscribers()),
+      ...(await this.getBridgeReferences()),
+    ];
+    if (leases.length === 0) return;
+    const nextExpiry = Math.min(
+      ...leases.map((lease) => Date.parse(lease.lastSeen) + lease.leaseMs),
+    );
+    await this.ctx.storage.setAlarm(nextExpiry);
   }
 
   private async hydrate(): Promise<void> {
@@ -317,10 +861,10 @@ export class PartyServerV2 extends PresenceServer {
     connection.send(JSON.stringify(this.createSnapshotMessage()));
   }
 
-  private handleOperationMessage(
+  private async handleOperationMessage(
     connection: Connection,
     parsed: Record<string, unknown>,
-  ): void {
+  ): Promise<void> {
     const clientId =
       typeof parsed.clientId === "string" ? parsed.clientId : undefined;
     const mutationId = Number.isSafeInteger(parsed.mutationId)
@@ -388,6 +932,14 @@ export class PartyServerV2 extends PresenceServer {
       return;
     }
 
+    const sharedReference = await this.findBridgeReference(
+      parsed.operation.elementId,
+    );
+    if (sharedReference) {
+      await this.forwardConsumerOperation(connection, sharedReference, parsed);
+      return;
+    }
+
     const lastMutationId = this.snapshot.lastMutationIds[parsed.clientId] ?? 0;
     if (parsed.mutationId <= lastMutationId) return;
 
@@ -424,6 +976,7 @@ export class PartyServerV2 extends PresenceServer {
     };
     this.broadcast(JSON.stringify(response));
     this.scheduleAutosave();
+    await this.forwardAcceptedBridgeOperation(response.payload);
   }
 
   private createSnapshotMessage(): ServerSnapshotMessage {

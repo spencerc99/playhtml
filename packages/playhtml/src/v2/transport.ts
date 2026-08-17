@@ -32,6 +32,8 @@ export type V2SocketFactory = (options: PartySocketOptions) => V2Socket;
 export type V2TransportConnectOptions = {
   readonly clientId: string;
   readonly generation: number;
+  readonly sharedElements?: string;
+  readonly sharedReferences?: string;
 };
 
 export type V2TransportStatusEvent =
@@ -274,6 +276,14 @@ export class V2Transport {
       room,
       party: "v2",
       maxEnqueuedMessages: 0,
+      query: {
+        ...(options.sharedElements
+          ? { sharedElements: options.sharedElements }
+          : {}),
+        ...(options.sharedReferences
+          ? { sharedReferences: options.sharedReferences }
+          : {}),
+      },
     });
     this.attachSocket();
   }
