@@ -19,6 +19,10 @@ import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { ScrapCollector } from "../collectors/ScrapCollector";
+import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+} from "../collectors/modes";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { isFeatureEnabled } from "../features/featureAccess";
@@ -26,11 +30,15 @@ import { shouldStartExtensionPresence } from "./content/presencePolicy";
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 
+// Scraps are local-only, so normalize any unsupported stored mode before the
+// collector starts.
 async function ensureScrapCollectionMode(): Promise<void> {
-  const key = "collection_mode_element";
+  const key = collectionModeStorageKey("element");
   const result = await browser.storage.local.get(key);
-  if (result[key] === undefined) {
-    await browser.storage.local.set({ [key]: "local" });
+  const stored = result[key];
+  const normalized = normalizeCollectionMode("element", stored);
+  if (stored !== normalized) {
+    await browser.storage.local.set({ [key]: normalized });
   }
 }
 

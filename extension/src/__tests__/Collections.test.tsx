@@ -153,6 +153,67 @@ describe("Collections", () => {
     }
   });
 
+  it("offers no shared mode for the scrap collector", async () => {
+    vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
+      if (keys === "wwoInternalAccess") {
+        return { wwoInternalAccess: { enabled: true, checkedAt: 1 } };
+      }
+      return {};
+    });
+
+    const { container, root } = await renderCollections();
+
+    try {
+      const scrapModes = Array.from(
+        container.querySelectorAll<HTMLInputElement>(
+          'input[name="mode-element"]',
+        ),
+      ).map((input) => input.value);
+      const cursorModes = Array.from(
+        container.querySelectorAll<HTMLInputElement>(
+          'input[name="mode-cursor"]',
+        ),
+      ).map((input) => input.value);
+
+      expect(scrapModes).toEqual(["off", "local"]);
+      expect(cursorModes).toEqual(["off", "local", "shared"]);
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
+  it("shows a stored shared scrap mode as local and repairs storage", async () => {
+    vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
+      if (keys === "wwoInternalAccess") {
+        return { wwoInternalAccess: { enabled: true, checkedAt: 1 } };
+      }
+      if (
+        Array.isArray(keys) &&
+        keys.every((key) => key.startsWith("collection_mode_"))
+      ) {
+        return { collection_mode_element: "shared" };
+      }
+      return {};
+    });
+
+    const { container, root } = await renderCollections();
+
+    try {
+      const checked = Array.from(
+        container.querySelectorAll<HTMLInputElement>(
+          'input[name="mode-element"]',
+        ),
+      ).filter((input) => input.checked);
+
+      expect(checked.map((input) => input.value)).toEqual(["local"]);
+      expect(browser.storage.local.set).toHaveBeenCalledWith(
+        expect.objectContaining({ collection_mode_element: "local" }),
+      );
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
   it("does not message content scripts on Safari extension pages", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(browser.tabs.query).mockResolvedValue([

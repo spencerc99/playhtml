@@ -69,9 +69,12 @@ function PreviewPage() {
         </p>
       </header>
       <div style={{ position: "absolute", inset: "74px 20px 18px", zIndex: 2 }}>
+        {/* Small target count so the preview pool exceeds what fits ashore and
+            the tide rotation is exercisable here. */}
         <ScrapCollage
           items={buildItems()}
           seed={seed}
+          targetCount={14}
           showKindFilter={true}
         />
       </div>

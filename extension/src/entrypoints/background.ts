@@ -12,6 +12,11 @@ import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData } from '../collectors/types'
 import { getCanonicalScrapKey, getScrapKey } from '../collectors/scrapUtils'
 import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+  supportsSharedCollection,
+} from '../collectors/modes'
+import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
@@ -330,15 +335,16 @@ async function flushPendingUploads(): Promise<void> {
     if (pending.length === 0) return
 
     const types = Array.from(new Set(pending.map((e) => e.type)))
-    const keys = types.map((t) => `collection_mode_${t}`)
+    const keys = types.map((t) => collectionModeStorageKey(t))
     const result = await browser.storage.local.get(keys)
 
     const uploadable = pending.filter((e) => {
-      if (e.type === 'element') return false
-      const mode = result[`collection_mode_${e.type}`]
-      const normalized: 'off' | 'local' | 'shared' =
-        mode === 'off' || mode === 'shared' || mode === 'local' ? mode : 'local'
-      return normalized === 'shared'
+      if (!supportsSharedCollection(e.type)) return false
+      const mode = normalizeCollectionMode(
+        e.type,
+        result[collectionModeStorageKey(e.type)],
+      )
+      return mode === 'shared'
     })
 
     if (uploadable.length > 0) {
