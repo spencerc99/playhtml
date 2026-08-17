@@ -329,6 +329,43 @@ describe("LocalEventStore aggregates", () => {
     });
   });
 
+  it("keeps compact daily activity when an older day arrives later", async () => {
+    const store = createStore();
+
+    await store.addEvents([
+      {
+        ...event("current-day-first", "cursor"),
+        ts: Date.UTC(2026, 7, 11, 10),
+        data: { event: "move", x: 0.1, y: 0.1 },
+        meta: { ...event("current-day-first", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("current-day-second", "cursor"),
+        ts: Date.UTC(2026, 7, 11, 10, 1),
+        data: { event: "move", x: 0.2, y: 0.1 },
+        meta: { ...event("current-day-second", "cursor").meta, tz: "UTC" },
+      },
+    ]);
+    await store.addEvents([
+      {
+        ...event("older-day", "cursor"),
+        ts: Date.UTC(2026, 7, 10, 10),
+        data: { event: "move", x: 0.9, y: 0.9 },
+        meta: { ...event("older-day", "cursor").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-11",
+      cursorDistancePx: 192,
+      lastCursorPosition: { x: 0.2, y: 0.1 },
+      screenTimeMs: 0,
+      pendingFocusTs: null,
+    });
+  });
+
   it("fails with reload guidance instead of hanging when an upgrade is blocked", async () => {
     const existingConnection = await openVersion8Database();
     const consoleError = vi
