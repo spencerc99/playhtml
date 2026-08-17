@@ -36,6 +36,7 @@ import {
 } from "../../history/walkingRecordCache";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
+import { NEWTAB_TAKEOVER_KEY } from "../../features/newtab/takeover";
 import {
   createMovementLoadingPreview,
   isMovementLoadingPreview,
@@ -321,20 +322,69 @@ function WalkingRecordEntryPage() {
   };
 
   return (
-    <WalkingRecordPage
-      record={displayedRecord}
-      period={period}
-      periodOffset={periodOffset}
-      periodSummaries={visiblePeriodSummaries}
-      onPeriodChange={selectPeriod}
-      onPeriodOffsetChange={selectPeriodOffset}
-      loading={loading}
-      movementLoading={
-        previewMovementLoading || movementLoadingKey === recordKey
-      }
-      loadingProgress={loadingProgress}
-      error={error}
-    />
+    <>
+      <WalkingRecordPage
+        record={displayedRecord}
+        period={period}
+        periodOffset={periodOffset}
+        periodSummaries={visiblePeriodSummaries}
+        onPeriodChange={selectPeriod}
+        onPeriodOffsetChange={selectPeriodOffset}
+        loading={loading}
+        movementLoading={
+          previewMovementLoading || movementLoadingKey === recordKey
+        }
+        loadingProgress={loadingProgress}
+        error={error}
+      />
+      <NewTabTakeoverToggle />
+    </>
+  );
+}
+
+/** Controls whether new browser tabs open this walking record. */
+function NewTabTakeoverToggle() {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    browser.storage.local
+      .get([NEWTAB_TAKEOVER_KEY])
+      .then((result) => setEnabled(Boolean(result[NEWTAB_TAKEOVER_KEY])))
+      .catch(() => setEnabled(false));
+  }, []);
+
+  const toggle = (next: boolean) => {
+    setEnabled(next);
+    browser.storage.local.set({ [NEWTAB_TAKEOVER_KEY]: next }).catch(() => {});
+  };
+
+  return (
+    <label
+      style={{
+        position: "fixed",
+        right: "16px",
+        bottom: "16px",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "8px 12px",
+        borderRadius: "8px",
+        background: "rgba(250, 247, 242, 0.92)",
+        border: "1px solid rgba(90, 78, 65, 0.25)",
+        fontFamily: "'Martian Mono', monospace",
+        fontSize: "11px",
+        color: "#3d3833",
+        cursor: "pointer",
+        zIndex: 50,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={enabled}
+        onChange={(e) => toggle(e.target.checked)}
+      />
+      make this my new tab
+    </label>
   );
 }
 

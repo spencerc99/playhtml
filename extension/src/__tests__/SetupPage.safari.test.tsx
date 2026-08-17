@@ -52,6 +52,8 @@ beforeEach(() => {
   vi.mocked(browser.tabs.remove).mockResolvedValue(undefined);
   vi.mocked(browser.storage.local.set).mockReset();
   vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
+  vi.mocked(browser.storage.local.get).mockReset();
+  vi.mocked(browser.storage.local.get).mockResolvedValue({});
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -111,6 +113,12 @@ it("closes the setup tab after onboarding", async () => {
     [...container.querySelectorAll("button")]
       .find((element) => element.textContent === "Get started")
       ?.click();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
   });
   await act(async () => {
     [...container.querySelectorAll("button")]
@@ -180,6 +188,93 @@ it("offers recovery when Safari cannot save setup choices", async () => {
     await Promise.resolve();
   });
 
+  expect(container.textContent).toContain("See your browsing evolve");
+
+  act(() => root.unmount());
+  container.remove();
+});
+
+async function advanceToNewTabStep(container: HTMLElement) {
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Get started")
+      ?.click();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+}
+
+it("takes over the new tab by default when setup continues", async () => {
+  const { default: SetupPage } = await import("../components/SetupPage");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<SetupPage />);
+    await Promise.resolve();
+  });
+
+  await advanceToNewTabStep(container);
+
+  expect(container.textContent).toContain("See your browsing evolve");
+  const optIn = container.querySelector<HTMLInputElement>(
+    'input[type="checkbox"]',
+  );
+  expect(optIn?.checked).toBe(true);
+
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+
+  expect(browser.storage.local.set).toHaveBeenCalledWith({
+    newtab_takeover_enabled: true,
+  });
+  expect(container.textContent).toContain("All set!");
+
+  act(() => root.unmount());
+  container.remove();
+});
+
+it("leaves the new tab page alone when the opt-in is unchecked", async () => {
+  const { default: SetupPage } = await import("../components/SetupPage");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<SetupPage />);
+    await Promise.resolve();
+  });
+
+  await advanceToNewTabStep(container);
+
+  const optIn = container.querySelector<HTMLInputElement>(
+    'input[type="checkbox"]',
+  );
+  await act(async () => {
+    optIn?.click();
+    await Promise.resolve();
+  });
+  expect(optIn?.checked).toBe(false);
+
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+
+  expect(browser.storage.local.set).toHaveBeenCalledWith({
+    newtab_takeover_enabled: false,
+  });
   expect(container.textContent).toContain("All set!");
 
   act(() => root.unmount());
@@ -188,6 +283,8 @@ it("offers recovery when Safari cannot save setup choices", async () => {
 
 it("offers recovery when Safari cannot finish setup", async () => {
   vi.mocked(browser.storage.local.set)
+    // consent choices, then the new tab choice, then the failing finish
+    .mockResolvedValueOnce(undefined)
     .mockResolvedValueOnce(undefined)
     .mockRejectedValueOnce(
       new Error(
@@ -209,6 +306,12 @@ it("offers recovery when Safari cannot finish setup", async () => {
     [...container.querySelectorAll("button")]
       .find((element) => element.textContent === "Get started")
       ?.click();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
   });
   await act(async () => {
     [...container.querySelectorAll("button")]
