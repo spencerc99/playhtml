@@ -15,6 +15,10 @@ const SETTLE_ROTATION_RANGE_DEG = 2;
  */
 const BUTTON_LIFT_SCALE = 3;
 
+/** Elements Tab may reach while the examine dialog holds focus. */
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /** Geometry of the collage tile a lightbox was opened from, for the FLIP transform. */
 export interface ScrapOrigin {
   left: number;
@@ -424,6 +428,12 @@ interface ScrapLightboxProps {
   hasPrevious: boolean;
   hasNext: boolean;
   prefersReducedMotion: boolean;
+  /**
+   * The origin tile's geometry as it stands right now, for the put-down. The
+   * tile may have moved (a resize relaid out the collage) or gone entirely
+   * since the lift, in which case the mount-time `origin` is used.
+   */
+  currentOrigin?: () => ScrapOrigin | null;
   onClose: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -514,10 +524,12 @@ export function ScrapLightbox({
   hasPrevious,
   hasNext,
   prefersReducedMotion,
+  currentOrigin,
   onClose,
   onPrevious,
   onNext,
 }: ScrapLightboxProps) {
+  const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [lifted, setLifted] = useState(prefersReducedMotion);
@@ -532,6 +544,14 @@ export function ScrapLightbox({
     height: typeof window === "undefined" ? 768 : window.innerHeight,
   }));
 
+  /**
+   * The tile geometry the scrap collapses back onto. Seeded from the tile it
+   * was lifted from, and refreshed from the live tile when the scrap is put
+   * back down, so a resize since the lift does not send it to a stale place.
+   */
+  const [collapseOrigin, setCollapseOrigin] = useState(origin);
+  useEffect(() => setCollapseOrigin(origin), [origin]);
+
   const size = useMemo(() => liftedSize(origin, viewport), [origin, viewport]);
   const rotation = settledRotation(origin.rotation);
 
@@ -542,22 +562,27 @@ export function ScrapLightbox({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Start from the collage tile's exact box, then release on the next frame so
-  // the browser animates the difference (FLIP).
+  // The resting centre follows the stage, so it must be re-measured whenever the
+  // lifted box changes size (including on resize).
   useLayoutEffect(() => {
     const stage = stageRef.current;
-    if (stage) {
-      const bounds = stage.getBoundingClientRect();
-      setRestingCenter({
-        x: bounds.left + bounds.width / 2,
-        y: bounds.top + bounds.height / 2,
-      });
-    }
+    if (!stage) return;
+    const bounds = stage.getBoundingClientRect();
+    setRestingCenter({
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + bounds.height / 2,
+    });
+  }, [item.key, size.height, size.width]);
+
+  // Start from the collage tile's exact box, then release on the next frame so
+  // the browser animates the difference (FLIP). Keyed on the scrap alone: a
+  // resize must not replay the pick-up from geometry that has since moved.
+  useLayoutEffect(() => {
     if (prefersReducedMotion) return;
     setLifted(false);
     const frame = window.requestAnimationFrame(() => setLifted(true));
     return () => window.cancelAnimationFrame(frame);
-  }, [item.key, prefersReducedMotion, size.height, size.width]);
+  }, [item.key, prefersReducedMotion]);
 
   useEffect(() => {
     dialogRef.current?.focus();
@@ -570,6 +595,8 @@ export function ScrapLightbox({
       onClose();
       return;
     }
+    const live = currentOrigin?.();
+    if (live) setCollapseOrigin(live);
     setLifted(false);
     window.setTimeout(onClose, LIFT_DURATION_MS);
   };
@@ -578,6 +605,29 @@ export function ScrapLightbox({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        const overlay = overlayRef.current;
+        if (!overlay) return;
+        const focusable = Array.from(
+          overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+        ).filter((element) => element.tabIndex !== -1);
+        event.preventDefault();
+        if (focusable.length === 0) {
+          dialogRef.current?.focus();
+          return;
+        }
+        const active = document.activeElement;
+        const index = focusable.findIndex((element) => element === active);
+        const step = event.shiftKey ? -1 : 1;
+        const nextIndex =
+          index === -1
+            ? event.shiftKey
+              ? focusable.length - 1
+              : 0
+            : (index + step + focusable.length) % focusable.length;
+        focusable[nextIndex].focus();
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         requestCloseRef.current();
@@ -611,7 +661,7 @@ export function ScrapLightbox({
     height: size.height,
     transform: lifted
       ? `rotate(${rotation}deg)`
-      : collapseTransform(origin, size, restingCenter),
+      : collapseTransform(collapseOrigin, size, restingCenter),
   };
   if (!lifted) {
     scrapStyle.filter = "drop-shadow(0 4px 6px rgba(61, 56, 51, 0.16))";
@@ -625,6 +675,7 @@ export function ScrapLightbox({
 
   return (
     <div
+      ref={overlayRef}
       className={`scrap-lightbox${lifted ? " scrap-lightbox--visible" : ""}`}
       onClick={(event) => {
         if (event.target === event.currentTarget) requestClose();

@@ -226,9 +226,12 @@ export function ScrapsLaunchCard() {
         getState(SCRAPS_LAUNCH_CARD_ID),
       ]);
       if (cancelled) return;
+      const isDismissed = seenState === "dismissed";
       setAvailable(featureOn);
-      setDismissed(seenState === "dismissed");
-      if (!featureOn) return;
+      setDismissed(isDismissed);
+      // A card that can never render should not pay for a scrap query, so the
+      // fetch waits until both the feature state and the dismissal are known.
+      if (!featureOn || isDismissed) return;
 
       try {
         const response = (await browser.runtime.sendMessage({

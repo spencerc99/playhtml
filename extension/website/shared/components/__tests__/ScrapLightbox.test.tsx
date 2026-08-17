@@ -272,9 +272,11 @@ describe("ScrapCollage examine view", () => {
     });
   };
 
-  const pressKey = (key: string) => {
+  const pressKey = (key: string, init: KeyboardEventInit = {}) => {
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key, bubbles: true, ...init }),
+      );
     });
   };
 
@@ -289,6 +291,43 @@ describe("ScrapCollage examine view", () => {
 
   const panelHeading = () =>
     document.querySelector(".scrap-lightbox__heading")?.textContent;
+
+  it("keeps Tab focus cycling inside the dialog", () => {
+    render();
+    clickTile(0);
+    const overlay = document.querySelector<HTMLElement>(".scrap-lightbox");
+    expect(overlay).not.toBeNull();
+
+    // Enough presses to run past the dialog's own focusable count, so a leak
+    // out to the collage tiles behind the overlay would show up.
+    for (let press = 0; press < 8; press += 1) {
+      pressKey("Tab");
+      expect(overlay?.contains(document.activeElement)).toBe(true);
+    }
+    pressKey("Tab", { shiftKey: true });
+    expect(overlay?.contains(document.activeElement)).toBe(true);
+  });
+
+  it("returns focus to the tile it was opened from when it closes", () => {
+    vi.useFakeTimers();
+    try {
+      render();
+      const trigger = tiles()[0];
+      clickTile(0);
+      expect(document.activeElement).not.toBe(trigger);
+
+      pressKey("Escape");
+      // The put-down animation runs before the dialog unmounts and focus goes
+      // back to the tile.
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(dialog()).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("shows the clicked scrap's provenance in the panel", () => {
     render();

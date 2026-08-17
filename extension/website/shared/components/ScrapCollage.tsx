@@ -1067,6 +1067,8 @@ function ScrapContent({ item, loaded, onError, onLoad }: ScrapContentProps) {
 interface WashingOutScrap {
   layout: ScrapLayout;
   washOutId: number;
+  /** When the wash-out animation began, so removal survives a paused tide. */
+  startedAt: number;
 }
 
 function usePrefersReducedMotion(): boolean {
@@ -1274,13 +1276,8 @@ export function ScrapCollage({
       const washOutId = washOutIdRef.current;
       setWashingOut((currentWashingOut) => [
         ...currentWashingOut,
-        { layout: outgoingLayout, washOutId },
+        { layout: outgoingLayout, washOutId, startedAt: Date.now() },
       ]);
-      wait(TIDE_WASH_OUT_MS, () => {
-        setWashingOut((currentWashingOut) =>
-          currentWashingOut.filter((scrap) => scrap.washOutId !== washOutId),
-        );
-      });
     };
 
     const runEvent = () => {
@@ -1313,6 +1310,40 @@ export function ScrapCollage({
       for (const timeout of timeouts) window.clearTimeout(timeout);
     };
   }, [prefersReducedMotion, tideAvailable, tideCapacity, tidePaused]);
+
+  /**
+   * Retires wash-out ghosts once their animation has played out. This is owned
+   * separately from the scheduler so pausing the tide — which restarts the
+   * scheduler effect — never strands an invisible ghost on the page.
+   */
+  useEffect(() => {
+    if (washingOut.length === 0) return;
+
+    const now = Date.now();
+    const expired = washingOut.filter(
+      (scrap) => now - scrap.startedAt >= TIDE_WASH_OUT_MS,
+    );
+    if (expired.length > 0) {
+      const expiredIds = new Set(expired.map((scrap) => scrap.washOutId));
+      setWashingOut((current) =>
+        current.filter((scrap) => !expiredIds.has(scrap.washOutId)),
+      );
+      return;
+    }
+
+    const soonest = Math.min(
+      ...washingOut.map((scrap) => scrap.startedAt + TIDE_WASH_OUT_MS - now),
+    );
+    const timeout = window.setTimeout(() => {
+      const cutoff = Date.now();
+      setWashingOut((current) =>
+        current.filter(
+          (scrap) => cutoff - scrap.startedAt < TIDE_WASH_OUT_MS,
+        ),
+      );
+    }, Math.max(soonest, 0));
+    return () => window.clearTimeout(timeout);
+  }, [washingOut]);
 
   useEffect(() => {
     if (!tideAvailable) return;
@@ -1419,9 +1450,29 @@ export function ScrapCollage({
       setTidePaused(tidePausedBeforeExamineRef.current);
       tidePausedBeforeExamineRef.current = null;
     }
-    examineTriggerRef.current?.focus();
+    // The origin tile can be gone (a filter change, a wash-out); fall back to
+    // the collage itself so focus never escapes to the top of the document.
+    const trigger = examineTriggerRef.current;
+    if (trigger?.isConnected) {
+      trigger.focus();
+    } else {
+      const fallback =
+        containerRef.current?.querySelector<HTMLElement>("[data-scrap-key]");
+      fallback?.focus();
+    }
     examineTriggerRef.current = null;
   };
+  const closeExamineRef = useRef(closeExamine);
+  closeExamineRef.current = closeExamine;
+
+  /**
+   * The examined scrap can vanish from the visible set while the lightbox is
+   * open (a kind filter is pressed, the scrap fails to load). Run the full close
+   * path rather than letting the dialog unmount with the tide still held.
+   */
+  useEffect(() => {
+    if (examining && !examinedItem) closeExamineRef.current();
+  }, [examinedItem, examining]);
 
   /**
    * Steps to a neighbouring scrap, re-anchoring the lightbox on that scrap's
@@ -1652,6 +1703,21 @@ export function ScrapCollage({
           hasPrevious={examineIndex > 0}
           hasNext={examineIndex < examinableScraps.length - 1}
           prefersReducedMotion={prefersReducedMotion}
+          currentOrigin={() => {
+            const element = tileElementsRef.current.get(examinedItem.key);
+            if (!element?.isConnected) return null;
+            const bounds = element.getBoundingClientRect();
+            const layoutEntry = layoutRef.current.find(
+              (scrap) => scrap.item.key === examinedItem.key,
+            );
+            return {
+              left: bounds.left,
+              top: bounds.top,
+              width: bounds.width,
+              height: bounds.height,
+              rotation: layoutEntry?.rotation ?? 0,
+            };
+          }}
           onClose={closeExamine}
           onPrevious={() => stepExamine(-1)}
           onNext={() => stepExamine(1)}
