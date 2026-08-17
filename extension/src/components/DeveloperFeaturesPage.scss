@@ -1,0 +1,119 @@
+// ABOUTME: Styles the extension's internal experiment controls.
+// ABOUTME: Uses a compact office-console treatment sized for the browser popup.
+
+@use "../styles/variables" as *;
+
+.developer-features {
+  height: 100%;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  background: $bg;
+  color: $text;
+
+  &__header {
+    padding-bottom: 12px;
+    border-bottom: 1px solid $border;
+
+    h1 {
+      margin: 3px 0 4px;
+      font-family: $font-heading;
+      font-size: 20px;
+    }
+
+    p {
+      margin: 0;
+      color: $text-muted;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+  }
+
+  &__back {
+    padding: 0;
+    margin-bottom: 10px;
+    border: 0;
+    background: none;
+    color: $text-muted;
+    font: 10px $font-mono;
+    cursor: pointer;
+  }
+
+  &__eyebrow {
+    color: $accent-rust;
+    font: 700 9px $font-mono;
+    letter-spacing: 0.09em;
+  }
+
+  &__list {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  &__row {
+    padding: 11px 2px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid $border;
+    cursor: pointer;
+
+    input {
+      width: 17px;
+      height: 17px;
+      flex: 0 0 auto;
+      accent-color: $accent-teal;
+    }
+  }
+
+  &__copy {
+    min-width: 0;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+
+    strong {
+      font-family: $font-heading;
+      font-size: 13px;
+    }
+
+    > span {
+      color: $text-muted;
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    small {
+      color: $text-faint;
+      font: 8px $font-mono;
+      text-transform: uppercase;
+    }
+  }
+
+  &__footer {
+    padding-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: $text-faint;
+    font: 9px $font-mono;
+
+    button {
+      padding: 6px 8px;
+      border: 1px solid $border;
+      border-radius: 5px;
+      background: $surface;
+      color: $text-muted;
+      font: 9px $font-mono;
+      cursor: pointer;
+
+      &:disabled {
+        cursor: default;
+        opacity: 0.45;
+      }
+    }
+  }
+}

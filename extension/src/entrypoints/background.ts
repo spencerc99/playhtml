@@ -42,6 +42,14 @@ import {
   rerollWikipediaHandle,
   setWikipediaHandle,
 } from '../storage/wikipediaHandle'
+import {
+  FEATURE_OVERRIDES_STORAGE_KEY,
+  INTERNAL_ACCESS_STORAGE_KEY,
+  getAllFeatureStates,
+  getInternalAccess,
+  refreshInternalAccess,
+} from '../features/featureAccess'
+import { FEATURE_CATALOG, FEATURE_IDS } from '../flags'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -416,7 +424,7 @@ export default defineBackground(() => {
         console.warn('Failed to record extension install time', e)
       })
       // First time installation - setup default identity
-      initializePlayerIdentity().then(() => syncIdentityToServer())
+      initializePlayerIdentity().then(() => initializeIdentityServices())
       // Open setup page in a new tab
       const url = browser.runtime.getURL('options.html')
       browser.tabs.create({ url }).catch((e) => {
@@ -424,7 +432,7 @@ export default defineBackground(() => {
       })
     } else {
       // Extension updated — ensure key is upgraded, then sync
-      initializePlayerIdentity().then(() => syncIdentityToServer())
+      initializePlayerIdentity().then(() => initializeIdentityServices())
     }
   })
 
@@ -500,6 +508,50 @@ export default defineBackground(() => {
       await syncStoredPlayerColor()
     } catch {}
   }
+
+  async function updateInternalAccessBadge() {
+    if (!browser.action) return
+    const enabled = await getInternalAccess()
+    const states = await getAllFeatureStates()
+    const experimentsActive = enabled && FEATURE_IDS.some(
+      (feature) =>
+        !FEATURE_CATALOG[feature].released && states[feature].enabled,
+    )
+    await browser.action.setBadgeText({ text: experimentsActive ? 'LAB' : '' })
+    if (experimentsActive) {
+      await browser.action.setBadgeBackgroundColor({ color: '#b85c38' })
+      await browser.action.setTitle({ title: 'we were online · experiments active' })
+    } else {
+      await browser.action.setTitle({ title: 'we were online' })
+    }
+  }
+
+  async function refreshInternalFeatureAccess() {
+    const identity = await getPublicPlayerIdentity()
+    if (import.meta.env.MODE !== 'development' && identity?.publicKey) {
+      await refreshInternalAccess(identity.publicKey)
+    }
+    await updateInternalAccessBadge()
+  }
+
+  async function initializeIdentityServices() {
+    await Promise.all([
+      syncIdentityToServer(),
+      refreshInternalFeatureAccess().catch(() => updateInternalAccessBadge()),
+    ])
+  }
+
+  updateInternalAccessBadge().catch(() => {})
+
+  browser.storage.onChanged?.addListener((changes, areaName) => {
+    if (
+      areaName === 'local' &&
+      (changes[INTERNAL_ACCESS_STORAGE_KEY] ||
+        changes[FEATURE_OVERRIDES_STORAGE_KEY])
+    ) {
+      updateInternalAccessBadge().catch(() => {})
+    }
+  })
 
   // Hydrate cursor_color onto locally-stored events from the user's identity.
   // All events in the local store are from this user (possibly under different

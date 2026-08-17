@@ -34,10 +34,6 @@ vi.mock("webextension-polyfill", () => ({
   },
 }));
 
-vi.mock("../flags", () => ({
-  FLAGS: { COPRESENCE: true },
-}));
-
 vi.mock("../collectors/CollectorManager", () => ({
   CollectorManager: class {
     registerCollector = vi.fn();
@@ -80,9 +76,6 @@ describe("content internal development features", () => {
     storageGet.mockReset();
     storageGet.mockImplementation((keys: string | string[]) => {
       if (!Array.isArray(keys)) return Promise.resolve({});
-      if (keys.includes("internalDevFeaturesEnabled")) {
-        return Promise.resolve({ internalDevFeaturesEnabled: false });
-      }
       if (keys.includes("gameInventory")) {
         return Promise.resolve({
           gameInventory: { items: [], totalItems: 0, lastUpdated: 0 },
@@ -136,7 +129,7 @@ describe("content internal development features", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(storageGet).toHaveBeenCalledWith(["internalDevFeaturesEnabled"]);
+    expect(storageGet).toHaveBeenCalledWith("wwoInternalAccess");
     expect(storageGet).not.toHaveBeenCalledWith(["gameInventory"]);
     expect(mutationObserver).not.toHaveBeenCalled();
   });
@@ -157,14 +150,7 @@ describe("content internal development features", () => {
 
       contentScript.main();
 
-      await vi.waitFor(() => {
-        expect(storageGet).toHaveBeenCalledWith([
-          "internalDevFeaturesEnabled",
-        ]);
-      });
-      await Promise.resolve();
-
-      expect(injected).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(injected).toHaveBeenCalledOnce());
       const event = injected.mock.calls[0][0] as CustomEvent;
       expect(event.detail).toEqual({
         playerIdentity: {

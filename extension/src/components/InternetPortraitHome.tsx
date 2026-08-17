@@ -9,11 +9,11 @@ import { TinyMovementPreview } from "./TinyMovementPreview";
 import { PortraitCard } from "./PortraitCard";
 import { CollectorIcon } from "./icons";
 import "./InternetPortraitHome.scss";
-import { FLAGS } from "../flags";
 import { PostcardStack } from "../announcements/PostcardStack";
 import { FeedbackForm } from "./FeedbackForm";
 import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
-import { ReleasedFeature } from "./ReleasedFeature";
+import { FeatureGate } from "./FeatureGate";
+import { useFeatureState } from "../features/useFeatureAccess";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -22,6 +22,7 @@ interface Props {
   onViewHistory: () => void;
   onViewProfile?: () => void;
   onViewBagSettings?: () => void;
+  onViewDeveloperFeatures?: () => void;
   onViewCommute?: () => void;
   commuteIsOpen?: boolean;
   onViewBrowsingHistory: () => void;
@@ -48,6 +49,7 @@ export function InternetPortraitHome({
   onViewHistory,
   onViewProfile,
   onViewBagSettings,
+  onViewDeveloperFeatures,
   onViewCommute,
   commuteIsOpen = false,
   onViewBrowsingHistory,
@@ -63,6 +65,7 @@ export function InternetPortraitHome({
     null,
   );
   const [portraitStatsLoaded, setPortraitStatsLoaded] = useState(false);
+  const copresenceEnabled = useFeatureState("COPRESENCE").enabled;
 
   useEffect(() => {
     const loadStatuses = async () => {
@@ -119,7 +122,7 @@ export function InternetPortraitHome({
     })();
   }, []);
   useEffect(() => {
-    if (!FLAGS.COPRESENCE) return;
+    if (!copresenceEnabled) return;
     (async () => {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) return;
@@ -128,7 +131,7 @@ export function InternetPortraitHome({
         setPresenceCount(count);
       } catch {} // content script may not be ready
     })();
-  }, []);
+  }, [copresenceEnabled]);
 
   return (
     <div className="portrait-home">
@@ -149,7 +152,7 @@ export function InternetPortraitHome({
           <p className="portrait-home__subtitle">
             An evolving portrait from your time on the internet
           </p>
-          {FLAGS.COPRESENCE && presenceCount !== null && presenceCount > 0 && (
+          {copresenceEnabled && presenceCount !== null && presenceCount > 0 && (
             <span className="portrait-home__presence">
               {presenceCount} {presenceCount === 1 ? "person" : "people"} here
             </span>
@@ -164,7 +167,7 @@ export function InternetPortraitHome({
             onShowSatchel={onShowSatchel}
           />
         )}
-        <ReleasedFeature feature="COMMUTE">
+        <FeatureGate feature="COMMUTE">
           {onViewCommute && (
             <button
               className="commute-entry"
@@ -197,7 +200,7 @@ export function InternetPortraitHome({
               </span>
             </button>
           )}
-        </ReleasedFeature>
+        </FeatureGate>
         <section className="collection-status">
           <div className="collection-status__header-row">
             <h3>Your Collection Status</h3>
@@ -292,7 +295,7 @@ export function InternetPortraitHome({
             >
               time
             </button>
-            <ReleasedFeature feature="SCRAPS">
+            <FeatureGate feature="SCRAPS">
               {onViewScraps && (
                 <button
                   className="portrait-home__nav-link"
@@ -304,7 +307,7 @@ export function InternetPortraitHome({
                   scraps
                 </button>
               )}
-            </ReleasedFeature>
+            </FeatureGate>
             <button
               className="portrait-home__nav-link"
               onClick={(e) => {
@@ -324,7 +327,7 @@ export function InternetPortraitHome({
               changelog
             </button>
           </div>
-          <ReleasedFeature feature="BAG_SETTINGS">
+          <FeatureGate feature="BAG_SETTINGS">
             {onViewBagSettings && (
               <button
                 className="portrait-home__nav-link portrait-home__bag-settings-link"
@@ -333,12 +336,20 @@ export function InternetPortraitHome({
                 bag settings
               </button>
             )}
-          </ReleasedFeature>
+          </FeatureGate>
         </section>
       </main>
 
       <footer className="portrait-home__footer">
         <span>Beta</span>
+        {onViewDeveloperFeatures && (
+          <button
+            className="portrait-home__internal-link"
+            onClick={onViewDeveloperFeatures}
+          >
+            experiments
+          </button>
+        )}
         <FeedbackForm />
       </footer>
     </div>
