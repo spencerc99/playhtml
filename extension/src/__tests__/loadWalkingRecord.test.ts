@@ -137,4 +137,69 @@ describe("loadWalkingRecord", () => {
       loadWalkingRecord("week", range, "#4a9a8a", vi.fn()),
     ).rejects.toThrow("Reload the extension and open a new tab.");
   });
+
+  it("delivers the base record before cursor movement finishes", async () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      0,
+      new Date(2026, 6, 30, 14),
+    );
+    let finishMovement: ((response: unknown) => void) | undefined;
+    const movementResponse = new Promise((resolve) => {
+      finishMovement = resolve;
+    });
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(
+      async (message: { type: string }) => {
+        if (message.type === "GET_ALL_DOMAINS") {
+          return { success: true, domains: [] };
+        }
+        if (message.type === "GET_WALKING_RECORD_EVENTS") {
+          const focusTs = range.startTs + 60_000;
+          return {
+            success: true,
+            events: [
+              {
+                id: "focus",
+                type: "navigation",
+                ts: focusTs,
+                data: { event: "focus" },
+                meta: {
+                  pid: "pk_test",
+                  sid: "sid_test",
+                  url: "https://example.com/page",
+                  vw: 1_000,
+                  vh: 800,
+                  tz: "America/Los_Angeles",
+                },
+              },
+            ],
+            sessions: [
+              {
+                url: "https://example.com/page",
+                focusTs,
+                blurTs: focusTs + 60_000,
+                durationMs: 60_000,
+              },
+            ],
+          };
+        }
+        return movementResponse;
+      },
+    );
+    const onBaseRecord = vi.fn();
+
+    const loading = loadWalkingRecord(
+      "week",
+      range,
+      "#4a9a8a",
+      vi.fn(),
+      onBaseRecord,
+    );
+
+    await vi.waitFor(() => expect(onBaseRecord).toHaveBeenCalledOnce());
+    expect(onBaseRecord.mock.calls[0][0].landscapePaths).toEqual([]);
+
+    finishMovement?.({ success: true, traces: [], landscapePaths: [] });
+    await loading;
+  });
 });

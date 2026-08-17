@@ -28,6 +28,7 @@ interface WalkingRecordPageProps {
   onPeriodChange: (period: WalkingRecordPeriod) => void;
   onPeriodOffsetChange: (offset: number) => void;
   loading: boolean;
+  movementLoading: boolean;
   loadingProgress: {
     completed: number;
     total: number;
@@ -536,11 +537,18 @@ function SettledPlacesSection({ record }: { record: WalkingRecord }) {
   );
 }
 
-function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
+function BrowsingPortraitsSection({
+  record,
+  movementLoading,
+}: {
+  record: WalkingRecord;
+  movementLoading: boolean;
+}) {
   return (
     <section className="walking-record__section">
       <div className="walking-record__section-heading">
         <h2>browsing portraits</h2>
+        {movementLoading && <span role="status">restoring portrait trails…</span>}
       </div>
       <p className="walking-record__section-intro">
         one small portrait from each {record.period === "week" ? "day" : "part"}
@@ -579,18 +587,27 @@ function BrowsingPortraitsSection({ record }: { record: WalkingRecord }) {
   );
 }
 
-function MovementLandscapeSection({ record }: { record: WalkingRecord }) {
-  if (record.landscapePaths.length === 0) return null;
+function MovementLandscapeSection({
+  record,
+  movementLoading,
+}: {
+  record: WalkingRecord;
+  movementLoading: boolean;
+}) {
+  if (record.landscapePaths.length === 0 && !movementLoading) return null;
 
   return (
     <section className="walking-record__section walking-record__movement-section">
       <div className="walking-record__section-heading">
         <h2>movement from this {record.period}</h2>
+        {movementLoading && <span role="status">restoring movement…</span>}
       </div>
-      <MovementLandscape
-        paths={record.landscapePaths}
-        label={`Real cursor movements from this ${record.period}`}
-      />
+      {record.landscapePaths.length > 0 && (
+        <MovementLandscape
+          paths={record.landscapePaths}
+          label={`Real cursor movements from this ${record.period}`}
+        />
+      )}
     </section>
   );
 }
@@ -603,6 +620,7 @@ export function WalkingRecordPage({
   onPeriodChange,
   onPeriodOffsetChange,
   loading,
+  movementLoading,
   loadingProgress,
   error,
 }: WalkingRecordPageProps) {
@@ -695,8 +713,14 @@ export function WalkingRecordPage({
             record={record}
           />
           <SettledPlacesSection record={record} />
-          <BrowsingPortraitsSection record={record} />
-          <MovementLandscapeSection record={record} />
+          <BrowsingPortraitsSection
+            record={record}
+            movementLoading={movementLoading}
+          />
+          <MovementLandscapeSection
+            record={record}
+            movementLoading={movementLoading}
+          />
         </>
       )}
     </main>

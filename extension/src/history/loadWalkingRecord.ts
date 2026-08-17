@@ -73,6 +73,7 @@ export async function loadWalkingRecord(
   range: WalkingRecordRange,
   baseColor: string,
   onProgress: (progress: WalkingRecordLoadProgress) => void,
+  onBaseRecord?: (record: WalkingRecord) => void,
 ): Promise<WalkingRecord> {
   let completedDataSteps = 0;
   const trackDataRequest = async <Response>(
@@ -142,6 +143,7 @@ export async function loadWalkingRecord(
       ),
     ),
   );
+  onBaseRecord?.(record);
   const targets = getWalkingRecordTraceTargets(record);
   if (targets.length === 0) {
     onProgress({

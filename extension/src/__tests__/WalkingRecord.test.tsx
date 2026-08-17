@@ -134,6 +134,7 @@ async function renderWalkingRecord(
   },
   loading = false,
   visibleRecord = record,
+  movementLoading = false,
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -149,6 +150,7 @@ async function renderWalkingRecord(
         onPeriodChange={callbacks.onPeriodChange}
         onPeriodOffsetChange={callbacks.onPeriodOffsetChange}
         loading={loading}
+        movementLoading={movementLoading}
         loadingProgress={{
           completed: 3,
           total: 5,
@@ -363,6 +365,29 @@ describe("WalkingRecordPage calendar navigation", () => {
           .querySelector(".walking-record__movement-landscape")
           ?.getAttribute("aria-label"),
       ).toBe("Real cursor movements from this week");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("localizes cursor movement loading after the base record is visible", async () => {
+    const callbacks = {
+      onPeriodChange: vi.fn(),
+      onPeriodOffsetChange: vi.fn(),
+    };
+    const { container, root } = await renderWalkingRecord(
+      0,
+      callbacks,
+      false,
+      record,
+      true,
+    );
+
+    try {
+      expect(container.querySelector(".walking-record__portrait")).not.toBeNull();
+      expect(container.querySelector(".walking-record__loading")).toBeNull();
+      expect(container.textContent).toContain("restoring portrait trails…");
+      expect(container.textContent).toContain("restoring movement…");
     } finally {
       cleanup(root, container);
     }

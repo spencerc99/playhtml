@@ -29,6 +29,11 @@ import {
   WALKING_RECORD_LOAD_STEP_COUNT,
   type WalkingRecordLoadProgress,
 } from "../../history/loadWalkingRecord";
+import {
+  readWalkingRecordCache,
+  walkingRecordCacheKey,
+  writeWalkingRecordCache,
+} from "../../history/walkingRecordCache";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
 
@@ -50,6 +55,9 @@ function NewTabPage() {
   >({});
   const [baseColor, setBaseColor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [movementLoadingKey, setMovementLoadingKey] = useState<string | null>(
+    null,
+  );
   const [loadingProgress, setLoadingProgress] =
     useState<WalkingRecordLoadProgress>({
       completed: 0,
@@ -85,41 +93,106 @@ function NewTabPage() {
   }, []);
 
   useEffect(() => {
-    if (!baseColor || record) return;
+    if (!baseColor) return;
+
+    const existingRecord = records[recordKey];
+    if (existingRecord) {
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
-    setLoading(true);
-    setLoadingProgress({
-      completed: 0,
-      total: WALKING_RECORD_LOAD_STEP_COUNT,
-      message: `opening this ${period}’s record…`,
-    });
-    setError(null);
-    loadWalkingRecord(period, range, baseColor, (progress) => {
-      if (!cancelled) setLoadingProgress(progress);
-    })
-      .then((walkingRecord) => {
+    const cacheKey = walkingRecordCacheKey(period, range, baseColor);
+
+    const openRecord = async () => {
+      let cachedRecord = null;
+      try {
+        cachedRecord = await readWalkingRecordCache(cacheKey);
+      } catch (cacheError) {
+        console.error(
+          "[WalkingRecord] Could not read the recent record cache:",
+          cacheError,
+        );
+      }
+      if (cancelled) return;
+
+      if (cachedRecord) {
+        setRecords((current) => ({
+          ...current,
+          [recordKey]: cachedRecord.record,
+        }));
+        setLoading(false);
+        setError(null);
+        if (cachedRecord.fresh) return;
+      } else {
+        setLoading(true);
+        setLoadingProgress({
+          completed: 0,
+          total: WALKING_RECORD_LOAD_STEP_COUNT,
+          message: `opening this ${period}’s record…`,
+        });
+        setError(null);
+      }
+
+      try {
+        const walkingRecord = await loadWalkingRecord(
+          period,
+          range,
+          baseColor,
+          (progress) => {
+            if (!cancelled && !cachedRecord) setLoadingProgress(progress);
+          },
+          (baseRecord) => {
+            if (cancelled || cachedRecord) return;
+            setRecords((current) => ({
+              ...current,
+              [recordKey]: baseRecord,
+            }));
+            setLoading(false);
+            setMovementLoadingKey(recordKey);
+          },
+        );
         if (cancelled) return;
+
         setRecords((current) => ({
           ...current,
           [recordKey]: walkingRecord,
         }));
-      })
-      .catch((loadError: unknown) => {
+        setMovementLoadingKey((current) =>
+          current === recordKey ? null : current,
+        );
+        try {
+          await writeWalkingRecordCache(cacheKey, walkingRecord);
+        } catch (cacheError) {
+          console.error(
+            "[WalkingRecord] Could not save the recent record cache:",
+            cacheError,
+          );
+        }
+      } catch (loadError: unknown) {
         if (cancelled) return;
         console.error(
           "[WalkingRecord] Could not load local activity:",
           loadError,
         );
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "The local activity record is unavailable.",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        if (!cachedRecord) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "The local activity record is unavailable.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setMovementLoadingKey((current) =>
+            current === recordKey ? null : current,
+          );
+        }
+      }
+    };
+
+    void openRecord();
 
     return () => {
       cancelled = true;
@@ -129,7 +202,6 @@ function NewTabPage() {
     period,
     range.endTs,
     range.startTs,
-    record,
     recordKey,
   ]);
 
@@ -218,6 +290,7 @@ function NewTabPage() {
       onPeriodChange={selectPeriod}
       onPeriodOffsetChange={selectPeriodOffset}
       loading={loading}
+      movementLoading={movementLoadingKey === recordKey}
       loadingProgress={loadingProgress}
       error={error}
     />
