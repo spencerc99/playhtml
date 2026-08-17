@@ -36,6 +36,10 @@ import {
 } from "../../history/walkingRecordCache";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
+import {
+  createMovementLoadingPreview,
+  isMovementLoadingPreview,
+} from "./loadingPreview";
 
 const DEFAULT_CURSOR_COLOR = "#4a9a8a";
 const PERIOD_RAIL_COUNT = 12;
@@ -47,6 +51,9 @@ interface ScreenTimeResponse {
 }
 
 function NewTabPage() {
+  const previewMovementLoading = isMovementLoadingPreview(
+    window.location.search,
+  );
   const [period, setPeriod] = useState<WalkingRecordPeriod>("week");
   const [periodOffset, setPeriodOffset] = useState(0);
   const [records, setRecords] = useState<Record<string, WalkingRecord>>({});
@@ -74,6 +81,10 @@ function NewTabPage() {
   const record =
     records[recordKey] ??
     (previewRecord?.key === recordKey ? previewRecord.record : null);
+  const displayedRecord =
+    previewMovementLoading && record
+      ? createMovementLoadingPreview(record)
+      : record;
   const emptyPeriodSummaries = summarizeWalkingRecordPeriods(
     period,
     [],
@@ -307,14 +318,16 @@ function NewTabPage() {
 
   return (
     <WalkingRecordPage
-      record={record}
+      record={displayedRecord}
       period={period}
       periodOffset={periodOffset}
       periodSummaries={visiblePeriodSummaries}
       onPeriodChange={selectPeriod}
       onPeriodOffsetChange={selectPeriodOffset}
       loading={loading}
-      movementLoading={movementLoadingKey === recordKey}
+      movementLoading={
+        previewMovementLoading || movementLoadingKey === recordKey
+      }
       loadingProgress={loadingProgress}
       error={error}
     />

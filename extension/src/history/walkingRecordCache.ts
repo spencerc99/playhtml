@@ -8,8 +8,8 @@ import type {
   WalkingRecordRange,
 } from "./walkingRecord";
 
-const STORAGE_KEY = "walking_record_cache_v1";
-const CACHE_VERSION = 1;
+const STORAGE_KEY = "walking_record_cache_v2";
+const CACHE_VERSION = 2;
 const CACHE_ENTRY_LIMIT = 6;
 export const WALKING_RECORD_CACHE_MAX_AGE_MS = 15 * 60_000;
 

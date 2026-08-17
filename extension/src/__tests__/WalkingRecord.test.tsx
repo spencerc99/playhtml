@@ -411,6 +411,12 @@ describe("WalkingRecordPage calendar navigation", () => {
       expect(container.querySelector(".walking-record__loading")).toBeNull();
       expect(container.textContent).toContain("restoring portrait trails…");
       expect(container.textContent).toContain("restoring movement…");
+      expect(
+        container.querySelectorAll(".walking-record__day-plate-skeleton"),
+      ).toHaveLength(1);
+      expect(
+        container.querySelector(".walking-record__movement-skeleton"),
+      ).not.toBeNull();
     } finally {
       cleanup(root, container);
     }

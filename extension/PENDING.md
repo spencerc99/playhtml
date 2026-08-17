@@ -18,5 +18,6 @@ extension/website/public/changelog/media/ and reference them here:
 - Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
 - Wikipedia shows other readers' live text selections in their cursor colors.
 - Wikipedia editing sessions now stay separate from article-reading rooms.
-- Browser history now reopens records viewed in the last 15 minutes immediately and refreshes older records without blocking the page.
+- Browser history now reopens records viewed in the last 15 minutes immediately, refreshes older records without blocking the page, and keeps sections steady while cursor trails load.
+- Browser history now restores domain icons from older local records.
 - Browser history now shows hour-and-minute totals without extra spacing.

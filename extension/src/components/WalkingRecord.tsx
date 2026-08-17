@@ -161,7 +161,13 @@ function TraceGraphic({
   );
 }
 
-function DayPlateGraphic({ plate }: { plate: DayPlate }) {
+function DayPlateGraphic({
+  plate,
+  loading,
+}: {
+  plate: DayPlate;
+  loading: boolean;
+}) {
   if (plate.future) {
     return (
       <svg
@@ -174,6 +180,16 @@ function DayPlateGraphic({ plate }: { plate: DayPlate }) {
           d="M 8 45 C 20 30, 31 33, 43 29 S 60 31, 72 14"
         />
       </svg>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="walking-record__day-plate-skeleton" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
     );
   }
 
@@ -565,7 +581,7 @@ function BrowsingPortraitsSection({
           }`;
           const content = (
             <>
-              <DayPlateGraphic plate={plate} />
+              <DayPlateGraphic plate={plate} loading={movementLoading} />
               <strong>{plate.day}</strong>
               <span>{plate.vignette}</span>
             </>
@@ -606,11 +622,20 @@ function MovementLandscapeSection({
         <h2>movement from this {record.period}</h2>
         {movementLoading && <span role="status">restoring movement…</span>}
       </div>
-      {record.landscapePaths.length > 0 && (
+      {record.landscapePaths.length > 0 ? (
         <MovementLandscape
           paths={record.landscapePaths}
           label={`Real cursor movements from this ${record.period}`}
         />
+      ) : (
+        <div
+          className="walking-record__movement-landscape walking-record__movement-skeleton"
+          aria-hidden="true"
+        >
+          <span />
+          <span />
+          <span />
+        </div>
       )}
     </section>
   );

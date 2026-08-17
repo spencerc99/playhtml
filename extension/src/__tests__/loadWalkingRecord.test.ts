@@ -36,7 +36,24 @@ describe("loadWalkingRecord", () => {
               tz: "America/Los_Angeles",
             },
           },
+          {
+            id: "other-focus",
+            type: "navigation",
+            ts: focusTs + 120_000,
+            data: { event: "focus" },
+            meta: {
+              pid: "pk_test",
+              sid: "sid_test",
+              url: "https://other.example/page",
+              vw: 1_000,
+              vh: 800,
+              tz: "America/Los_Angeles",
+            },
+          },
         ],
+        favicons: {
+          "other.example": "https://other.example/favicon.png",
+        },
         cursorDistancePx: 0,
         activity: [],
         sessions: [
@@ -45,6 +62,12 @@ describe("loadWalkingRecord", () => {
             focusTs,
             blurTs: focusTs + 60_000,
             durationMs: 60_000,
+          },
+          {
+            url: "https://other.example/page",
+            focusTs: focusTs + 120_000,
+            blurTs: focusTs + 150_000,
+            durationMs: 30_000,
           },
         ],
       },
@@ -62,6 +85,17 @@ describe("loadWalkingRecord", () => {
             activeDayCount: 1,
             eventCounts: { navigation: 1 },
             latestFaviconUrl: "https://example.com/favicon.png",
+          },
+          {
+            domain: "other.example",
+            eventCount: 1,
+            firstVisit: focusTs + 120_000,
+            lastVisit: focusTs + 120_000,
+            totalTimeMs: 30_000,
+            uniquePageCount: 1,
+            sessionCount: 1,
+            activeDayCount: 1,
+            eventCounts: { navigation: 1 },
           },
         ],
       },
@@ -101,6 +135,10 @@ describe("loadWalkingRecord", () => {
     expect(record.timeSpent[0].faviconUrl).toBe(
       "https://example.com/favicon.png",
     );
+    expect(
+      record.timeSpent.find((entry) => entry.site === "other.example")
+        ?.faviconUrl,
+    ).toBe("https://other.example/favicon.png");
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "GET_WALKING_RECORD_MOVEMENT",

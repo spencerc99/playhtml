@@ -33,6 +33,7 @@ interface EventsResponse {
   cursorDistancePx?: number;
   activity?: WalkingRecordActivity[];
   sessions?: ScreenTimeSession[];
+  favicons?: Record<string, string>;
 }
 
 interface DomainsResponse {
@@ -135,13 +136,16 @@ export async function loadWalkingRecord(
       range,
       cursorDistancePx: eventsResponse.cursorDistancePx,
     }),
-    Object.fromEntries(
-      domainsResponse.domains.flatMap((domain) =>
-        domain.latestFaviconUrl
-          ? [[domain.domain, domain.latestFaviconUrl]]
-          : [],
+    {
+      ...(eventsResponse.favicons ?? {}),
+      ...Object.fromEntries(
+        domainsResponse.domains.flatMap((domain) =>
+          domain.latestFaviconUrl
+            ? [[domain.domain, domain.latestFaviconUrl]]
+            : [],
+        ),
       ),
-    ),
+    },
   );
   onBaseRecord?.(record);
   const targets = getWalkingRecordTraceTargets(record);
