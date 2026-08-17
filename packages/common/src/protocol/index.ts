@@ -228,6 +228,7 @@ export type OperationRejectionCode =
   | "invalid-message"
   | "invalid-operation"
   | "permission-denied"
+  | "room-unavailable"
   | "size-limit"
   | "stale-generation"
   | "unsupported-protocol";
