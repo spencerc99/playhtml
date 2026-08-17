@@ -5,6 +5,12 @@ import browser from "webextension-polyfill";
 import { getValidEventTypes } from "@playhtml/extension-types";
 import { CursorSvg } from "./icons";
 import { CollectorList } from "./Collections";
+import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+  supportsSharedCollection,
+  type CollectionMode,
+} from "../collectors/modes";
 import { TrailsHero } from "./TrailsHero";
 import { savePlayerColor } from "../storage/playerColor";
 import { getPublicPlayerIdentity } from "../storage/playerIdentity";
@@ -21,7 +27,7 @@ import {
 
 type Step = "welcome" | "configure" | "done";
 type Preset = "abstain" | "participate" | "allIn";
-type CollectorMode = "off" | "local" | "shared";
+type CollectorMode = CollectionMode;
 type WebsiteAccess = "checking" | "needed" | "requesting" | "granted" | "error";
 
 const SETUP_STEPS: Array<{ id: Step; label: string }> = [
@@ -59,7 +65,7 @@ function presetConfigs(): Record<Preset, PresetConfig> {
   };
   const allShared = (): Record<string, CollectorMode> => {
     const r: Record<string, CollectorMode> = {};
-    for (const t of types) r[t] = "shared";
+    for (const t of types) r[t] = supportsSharedCollection(t) ? "shared" : "local";
     return r;
   };
   return {
@@ -184,7 +190,10 @@ export default function SetupPage() {
       const types = getValidEventTypes();
       const toSet: Record<string, unknown> = {};
       for (const t of types)
-        toSet[`collection_mode_${t}`] = collectorModes[t] || "local";
+        toSet[collectionModeStorageKey(t)] = normalizeCollectionMode(
+          t,
+          collectorModes[t],
+        );
       toSet[LEGIBILITY_KEY] = legibilityPct;
 
       await browser.storage.local.set(toSet);
