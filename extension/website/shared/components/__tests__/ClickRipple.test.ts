@@ -1,11 +1,8 @@
 // ABOUTME: Tests click and hold ripple timing independently from React animation scheduling.
-// ABOUTME: Covers bounded hold scaling and the visible fade at ripple completion.
+// ABOUTME: Covers bounded hold scaling and persistent residue after expansion.
 
 import { describe, expect, it } from "vitest";
-import {
-  RIPPLE_FADE_MS,
-  getRippleLifecycle,
-} from "../ClickRipple";
+import { getRippleLifecycle } from "../ClickRipple";
 import { CLICK_DEFAULTS } from "../clickDefaults";
 
 describe("getRippleLifecycle", () => {
@@ -32,7 +29,7 @@ describe("getRippleLifecycle", () => {
     );
   });
 
-  it("fades a completed ripple to transparent before removing it", () => {
+  it("keeps a completed ripple visible as trail residue", () => {
     const effect = {
       id: "click",
       x: 0,
@@ -43,24 +40,18 @@ describe("getRippleLifecycle", () => {
       startTime: 1000,
       trailIndex: 0,
     };
-    const completionTime = effect.startTime + CLICK_DEFAULTS.clickMinDuration;
+    const completionTime =
+      effect.startTime + CLICK_DEFAULTS.clickMinDuration + 10_000;
 
     expect(
-      getRippleLifecycle(effect, CLICK_DEFAULTS, completionTime).opacity,
-    ).toBe(CLICK_DEFAULTS.clickOpacity);
-    expect(
       getRippleLifecycle(
         effect,
         CLICK_DEFAULTS,
-        completionTime + RIPPLE_FADE_MS / 2,
-      ).opacity,
-    ).toBeCloseTo(CLICK_DEFAULTS.clickOpacity / 2);
-    expect(
-      getRippleLifecycle(
-        effect,
-        CLICK_DEFAULTS,
-        completionTime + RIPPLE_FADE_MS,
+        completionTime,
       ),
-    ).toMatchObject({ opacity: 0, complete: true });
+    ).toMatchObject({
+      opacity: CLICK_DEFAULTS.clickOpacity,
+      complete: true,
+    });
   });
 });

@@ -1,7 +1,7 @@
 // ABOUTME: Animates id-keyed live cursor trails and their click ripples.
 // ABOUTME: React owns trail lifetimes while one frame loop draws current progress.
 
-import React, { useCallback, useEffect, useRef, useState, memo } from "react";
+import React, { useEffect, useRef, useState, memo } from "react";
 import type { TrailState } from "../types";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
@@ -9,9 +9,10 @@ import { getTrailRenderer } from "../styles/trailRenderers";
 import { RippleEffect, type RippleSettings } from "./ClickRipple";
 import {
   collectDueClickEffects,
-  removeCompletedClickEffect,
+  retainClickEffectsForActiveTrails,
   type LiveClickEffect,
 } from "./clickEffects";
+import { pathLength } from "../utils/trailSequence";
 import {
   TrailPath,
   TrailCursor,
@@ -41,6 +42,7 @@ const DIM_FADE_MS = 1200;
 // so a flick still reads and a very long idle span doesn't take minutes to draw.
 const MIN_DRAW_MS = 600;
 const MAX_DRAW_MS = 30000;
+const MAX_DRAW_SPEED_PX_PER_SECOND = 600;
 
 // Once a trail has settled (dimmed, done tracing), keep it on screen this long
 // before removing it, so finished trails persist as a dim backdrop rather than
@@ -51,12 +53,14 @@ const REMOVE_AFTER_DIM_MS = 60_000;
 export interface LiveTrailDrawState {
   seenAt: number;
   total: number;
+  variedTotal: number;
+  drawProgress: number;
   grewAt: number;
   caughtUpAt: number | null;
   settled: boolean;
   settledAt: number | null;
   dimmedAt: number | null;
-  activeFromPoint: number | null;
+  activeFromVariedPoint: number | null;
   activeDimmedAt: number | null;
 }
 
@@ -87,7 +91,7 @@ export function getActiveTrailOpacity(
   draw: LiveTrailDrawState,
   clockMs: number,
 ): number {
-  if (draw.activeFromPoint === null) return 0;
+  if (draw.activeFromVariedPoint === null) return 0;
   if (draw.activeDimmedAt === null) return 1;
 
   return Math.max(0, 1 - (clockMs - draw.activeDimmedAt) / DIM_FADE_MS);
@@ -96,23 +100,39 @@ export function getActiveTrailOpacity(
 export function advanceDrawState(
   draw: LiveTrailDrawState,
   pointCount: number,
+  variedPointCount: number,
   clockMs: number,
   drawDuration: number,
 ): void {
   if (pointCount <= draw.total) return;
 
+  const priorLastIndex = Math.max(1, draw.variedTotal - 1);
+  const nextLastIndex = Math.max(1, variedPointCount - 1);
+  const preservedProgress =
+    (draw.drawProgress * priorLastIndex) / nextLastIndex;
+  draw.seenAt = clockMs - preservedProgress * drawDuration;
+  draw.drawProgress = preservedProgress;
+
   if (draw.settled) {
-    const completedProgress = Math.min(1, draw.total / pointCount);
-    draw.seenAt = clockMs - completedProgress * drawDuration;
-    draw.activeFromPoint = Math.max(0, draw.total - 1);
+    draw.activeFromVariedPoint = priorLastIndex;
     draw.activeDimmedAt = null;
     draw.settled = false;
     draw.settledAt = null;
   }
 
   draw.total = pointCount;
+  draw.variedTotal = variedPointCount;
   draw.grewAt = clockMs;
   draw.caughtUpAt = null;
+}
+
+export function getLiveDrawDuration(trailState: TrailState): number {
+  const spatialDuration =
+    (pathLength(trailState.variedPoints) / MAX_DRAW_SPEED_PX_PER_SECOND) * 1000;
+  return Math.min(
+    MAX_DRAW_MS,
+    Math.max(MIN_DRAW_MS, trailState.durationMs, spatialDuration),
+  );
 }
 
 export function advanceSettlingState(
@@ -130,7 +150,7 @@ export function advanceSettlingState(
 
   draw.settled = true;
   draw.settledAt = clockMs;
-  if (draw.activeFromPoint === null) {
+  if (draw.activeFromVariedPoint === null) {
     draw.dimmedAt ??= clockMs;
   } else {
     draw.activeDimmedAt = clockMs;
@@ -213,11 +233,10 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const [activeClickEffects, setActiveClickEffects] = useState<
       LiveClickEffect[]
     >([]);
-    const handleClickEffectComplete = useCallback((id: string) => {
-      setActiveClickEffects((effects) =>
-        removeCompletedClickEffect(effects, id),
-      );
-    }, []);
+    const activeClickEffectsRef = useRef(activeClickEffects);
+    useEffect(() => {
+      activeClickEffectsRef.current = activeClickEffects;
+    }, [activeClickEffects]);
     const svgRef = useRef<SVGSVGElement>(null);
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
@@ -307,6 +326,10 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       if (removedIdsRef.current.length > 0) {
         const ids = removedIdsRef.current;
         removedIdsRef.current = [];
+        const removed = new Set(ids);
+        setActiveClickEffects((effects) =>
+          retainClickEffectsForActiveTrails(effects, removed),
+        );
         onRemovedRef.current?.(ids);
       }
     }, [kept]);
@@ -433,6 +456,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const cursorHandles = useRef<Map<string, ImperativeTrailCursorHandle>>(
       new Map(),
     );
+    const rippleGroups = useRef<Map<string, SVGGElement>>(new Map());
 
     // Accumulated paused wall-clock, subtracted from the clock so trails don't
     // leap when resumed.
@@ -525,6 +549,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         const soundEngine = soundEngineRef.current;
         const soundFrames = soundFramesRef.current;
         soundFrames.length = 0;
+        const visibilityByTrail = new Map<string, number>();
 
         const present = new Set<string>();
 
@@ -537,26 +562,31 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
           const pts = ts.trail.points.length;
           let draw = drawMap.get(key);
-          const drawDuration = Math.min(
-            MAX_DRAW_MS,
-            Math.max(MIN_DRAW_MS, ts.durationMs),
-          );
+          const drawDuration = getLiveDrawDuration(ts);
           if (draw === undefined) {
             // New trail: anchor its draw clock to now.
             draw = {
               seenAt: clockMs,
               total: pts,
+              variedTotal: ts.variedPoints.length,
+              drawProgress: 0,
               grewAt: clockMs,
               caughtUpAt: null,
               settled: false,
               settledAt: null,
               dimmedAt: null,
-              activeFromPoint: null,
+              activeFromVariedPoint: null,
               activeDimmedAt: null,
             };
             drawMap.set(key, draw);
           } else {
-            advanceDrawState(draw, pts, clockMs, drawDuration);
+            advanceDrawState(
+              draw,
+              pts,
+              ts.variedPoints.length,
+              clockMs,
+              drawDuration,
+            );
           }
 
           // Draw over the trail's real duration (clamped), like the archive: a
@@ -573,16 +603,18 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           // A settled trail always shows its full current geometry (dimmed); a
           // live one draws progressively toward its tip.
           const progress = draw.settled ? 1 : drawProgress;
+          draw.drawProgress = progress;
 
           // Completed ink remains dim while a resumed portion draws at the live
           // opacity. When that portion settles, it fades into the dim base.
           const settleOpacity = getLiveTrailOpacity(draw, clockMs);
           const activeOpacity = getActiveTrailOpacity(draw, clockMs);
           const visibility = getTrailVisibility(entry.visibility, clockMs);
+          visibilityByTrail.set(key, visibility);
           const activeStartProgress =
-            draw.activeFromPoint === null || pts < 2
+            draw.activeFromVariedPoint === null || ts.variedPoints.length < 2
               ? null
-              : draw.activeFromPoint / (pts - 1);
+              : draw.activeFromVariedPoint / (ts.variedPoints.length - 1);
 
           const result = handle.update(
             0,
@@ -678,6 +710,15 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           }
         }
 
+        for (const effect of activeClickEffectsRef.current) {
+          const group = rippleGroups.current.get(effect.id);
+          if (!group) continue;
+          const opacity = String(visibilityByTrail.get(effect.trailId) ?? 0);
+          if (group.getAttribute("opacity") !== opacity) {
+            group.setAttribute("opacity", opacity);
+          }
+        }
+
         soundEngine?.tick(clockMs, soundFrames);
 
         // Prune draw tracking for trails that left so the map can't grow.
@@ -709,12 +750,15 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       >
         {showClickRipples &&
           activeClickEffects.map((effect) => (
-            <RippleEffect
+            <g
               key={effect.id}
-              effect={effect}
-              settings={settings}
-              onComplete={handleClickEffectComplete}
-            />
+              ref={(group) => {
+                if (group) rippleGroups.current.set(effect.id, group);
+                else rippleGroups.current.delete(effect.id);
+              }}
+            >
+              <RippleEffect effect={effect} settings={settings} />
+            </g>
           ))}
         <g ref={pathLayerRef}>
           {kept.map((entry) => {

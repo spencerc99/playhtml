@@ -540,23 +540,19 @@ export function useCursorTrails(
         seed,
         settings.chaosIntensity || 1.0,
       );
-      // Round sharp direction-reversals once, so the freehand stroke outline
-      // doesn't pinch into a knot at those corners (most visible when zoomed in
-      // for cinematic capture). Computed here on the fixed path — not per frame
-      // — so already-drawn ink stays put.
-      const roundedPoints = roundPathCorners(styledPoints);
-      // roundPathCorners returns the SAME array when no corner was sharp enough
-      // to touch (the common case). Only when it actually rounded something do
-      // we resample: rounding bunches points near corners, making them unevenly
-      // spaced by distance, and the animator advances the head by INDEX — so
-      // uneven spacing makes the head speed up/slow down (looks like it lags
-      // then catches up). Resampling to even arc-length spacing fixes that.
-      // Skipping both when nothing was rounded keeps the common case allocation
-      // -free and identical to the pre-rounding geometry.
-      const variedPoints =
-        roundedPoints === styledPoints
-          ? styledPoints
-          : resampleUniform(roundedPoints, roundedPoints.length);
+      // A growing live path must remain prefix-stable: appending points cannot
+      // reshape ink that is already on screen. Archive paths are fixed, so they
+      // can still round and resample their complete geometry before playback.
+      let variedPoints = styledPoints;
+      if (!settings.singleSegmentPerGroup) {
+        const roundedPoints = roundPathCorners(styledPoints);
+        // roundPathCorners returns the SAME array when no corner was sharp
+        // enough to touch. Only resample when rounding changed the geometry.
+        variedPoints =
+          roundedPoints === styledPoints
+            ? styledPoints
+            : resampleUniform(roundedPoints, roundedPoints.length);
+      }
 
       // Calculate click progress along the trail
       const clicksWithProgress = trail.clicks.map((click) => {

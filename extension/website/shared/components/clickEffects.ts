@@ -57,9 +57,12 @@ export function collectDueClickEffects(
   return effects;
 }
 
-export function removeCompletedClickEffect(
+export function retainClickEffectsForActiveTrails(
   effects: LiveClickEffect[],
-  completedId: string,
+  removedTrailIds: Set<string>,
 ): LiveClickEffect[] {
-  return effects.filter((effect) => effect.id !== completedId);
+  const retained = effects.filter(
+    (effect) => !removedTrailIds.has(effect.trailId),
+  );
+  return retained.length === effects.length ? effects : retained;
 }

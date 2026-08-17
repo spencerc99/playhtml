@@ -21,7 +21,6 @@ export interface RippleSettings {
 }
 
 const MAX_HOLD_MULTIPLIER = 3;
-export const RIPPLE_FADE_MS = 3000;
 
 export function getRippleLifecycle(
   effect: ClickEffect,
@@ -41,20 +40,16 @@ export function getRippleLifecycle(
   const outerRingStartDelay =
     Math.max(0, rippleSettings.clickNumRings - 1) *
     rippleSettings.clickRingDelayMs;
-  const fadeStartedAt =
+  const completedAt =
     effect.startTime +
     Math.min(effectTotalDuration, outerRingStartDelay + expansionDuration);
-  const fadeProgress = Math.min(
-    1,
-    Math.max(0, (now - fadeStartedAt) / RIPPLE_FADE_MS),
-  );
 
   return {
     holdMultiplier,
     effectTotalDuration,
     expansionDuration,
-    opacity: rippleSettings.clickOpacity * (1 - fadeProgress),
-    complete: fadeProgress >= 1,
+    opacity: rippleSettings.clickOpacity,
+    complete: now >= completedAt,
   };
 }
 

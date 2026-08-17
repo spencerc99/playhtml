@@ -14,6 +14,7 @@ import {
   createLiveSoundFrame,
   getActiveTrailOpacity,
   getDrawClockTime,
+  getLiveDrawDuration,
   getLiveTrailOpacity,
   LiveTrails,
   shouldDepartTrail,
@@ -27,7 +28,7 @@ import {
 } from "../trailVisibility";
 import {
   collectDueClickEffects,
-  removeCompletedClickEffect,
+  retainClickEffectsForActiveTrails,
 } from "../clickEffects";
 
 describe("advanceDrawState", () => {
@@ -35,31 +36,69 @@ describe("advanceDrawState", () => {
     const draw = {
       seenAt: 0,
       total: 2,
+      variedTotal: 5,
+      drawProgress: 1,
       grewAt: 1000,
       caughtUpAt: 5000,
       settled: true,
       settledAt: 9000,
       dimmedAt: 9000,
-      activeFromPoint: null,
+      activeFromVariedPoint: null,
       activeDimmedAt: null,
     };
 
-    advanceDrawState(draw, 4, 10_000, 4000);
+    advanceDrawState(draw, 4, 10, 10_000, 4000);
 
     expect(draw).toEqual({
-      seenAt: 8000,
+      seenAt: 8222.222222222223,
       total: 4,
+      variedTotal: 10,
+      drawProgress: 4 / 9,
       grewAt: 10_000,
       caughtUpAt: null,
       settled: false,
       settledAt: null,
       dimmedAt: 9000,
-      activeFromPoint: 1,
+      activeFromVariedPoint: 4,
       activeDimmedAt: null,
     });
 
     expect(getLiveTrailOpacity(draw, 11_000)).toBe(COMPLETED_OPACITY);
     expect(getActiveTrailOpacity(draw, 11_000)).toBe(1);
+  });
+
+  it("preserves the current draw head when an unfinished trail grows", () => {
+    const draw = {
+      seenAt: 0,
+      total: 6,
+      variedTotal: 11,
+      drawProgress: 0.5,
+      grewAt: 1000,
+      caughtUpAt: null,
+      settled: false,
+      settledAt: null,
+      dimmedAt: null,
+      activeFromVariedPoint: null,
+      activeDimmedAt: null,
+    };
+
+    advanceDrawState(draw, 11, 21, 10_000, 4000);
+
+    expect(draw.seenAt).toBe(9000);
+    expect(draw.variedTotal).toBe(21);
+  });
+});
+
+describe("getLiveDrawDuration", () => {
+  it("slows a spatially long trail to at most 600 pixels per second", () => {
+    const state = trailState();
+    state.durationMs = 600;
+    state.variedPoints = [
+      { x: 0, y: 0 },
+      { x: 1200, y: 0 },
+    ];
+
+    expect(getLiveDrawDuration(state)).toBe(2000);
   });
 });
 
@@ -73,7 +112,7 @@ describe("advanceSettlingState", () => {
       settled: false,
       settledAt: null,
       dimmedAt: null,
-      activeFromPoint: null,
+      activeFromVariedPoint: null,
       activeDimmedAt: null,
     };
 
@@ -99,13 +138,13 @@ describe("advanceSettlingState", () => {
       settled: false,
       settledAt: null,
       dimmedAt: 1000,
-      activeFromPoint: 1,
+      activeFromVariedPoint: 1,
       activeDimmedAt: null,
     };
 
     advanceSettlingState(draw, true, 18_000);
 
-    expect(draw.activeFromPoint).toBe(1);
+    expect(draw.activeFromVariedPoint).toBe(1);
     expect(draw.activeDimmedAt).toBe(18_000);
     expect(getActiveTrailOpacity(draw, 18_000)).toBe(1);
     expect(getActiveTrailOpacity(draw, 19_200)).toBe(0);
@@ -116,12 +155,14 @@ describe("shouldDepartTrail", () => {
   const settledDraw = {
     seenAt: 0,
     total: 2,
+    variedTotal: 2,
+    drawProgress: 1,
     grewAt: 1000,
     caughtUpAt: 1000,
     settled: true,
     settledAt: 10_000,
     dimmedAt: 10_000,
-    activeFromPoint: null,
+    activeFromVariedPoint: null,
     activeDimmedAt: null,
   };
 
@@ -250,16 +291,15 @@ describe("collectDueClickEffects", () => {
       ),
     ).toEqual([]);
 
-    const secondEffect = {
-      ...firstEffects[0],
-      id: "second-effect",
-    };
     expect(
-      removeCompletedClickEffect(
-        [...firstEffects, secondEffect],
-        firstEffects[0].id,
+      retainClickEffectsForActiveTrails(firstEffects, new Set(["other-trail"])),
+    ).toBe(firstEffects);
+    expect(
+      retainClickEffectsForActiveTrails(
+        firstEffects,
+        new Set(["participant|https://example.com"]),
       ),
-    ).toEqual([secondEffect]);
+    ).toEqual([]);
 
     random.mockRestore();
   });
