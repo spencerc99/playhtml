@@ -16,9 +16,9 @@
     background: none;
     border: none;
     font-family: $font-mono;
-    font-size: 11px;
+    font-size: 12px;
     text-transform: lowercase;
-    color: $text-muted;
+    color: $text;
     cursor: pointer;
     transition: color 0.12s;
 
@@ -37,8 +37,8 @@
   }
 
   &__arrow {
-    font-size: 9px;
-    color: $text-faint;
+    font-size: 10px;
+    color: $text-muted;
     transition: color 0.12s;
   }
 }

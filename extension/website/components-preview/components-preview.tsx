@@ -2627,6 +2627,18 @@ function PopupNavSection() {
           <PopupHeaderFrame extraItem />
         </div>
       </div>
+
+      <div className="popup-variant-row">
+        <div className="popup-variant__label">actual size</div>
+        <div className="popup-variant__note">
+          The same header at the popup's real 350px width with no zoom. Judge
+          legibility here — screenshots of the frames above are usually scaled
+          up, which makes small type look more present than it is on screen.
+        </div>
+        <div className="popup-variant-row__frames">
+          <PopupHeaderFrame extraItem />
+        </div>
+      </div>
     </div>
   );
 }
