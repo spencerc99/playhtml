@@ -50,6 +50,10 @@ function NewTabPage() {
   const [period, setPeriod] = useState<WalkingRecordPeriod>("week");
   const [periodOffset, setPeriodOffset] = useState(0);
   const [records, setRecords] = useState<Record<string, WalkingRecord>>({});
+  const [previewRecord, setPreviewRecord] = useState<{
+    key: string;
+    record: WalkingRecord;
+  } | null>(null);
   const [periodSummaries, setPeriodSummaries] = useState<
     Partial<Record<WalkingRecordPeriod, WalkingRecordPeriodSummary[]>>
   >({});
@@ -67,7 +71,9 @@ function NewTabPage() {
   const [error, setError] = useState<string | null>(null);
   const range = getWalkingRecordPeriodRange(period, periodOffset);
   const recordKey = `${period}:${range.startTs}`;
-  const record = records[recordKey] ?? null;
+  const record =
+    records[recordKey] ??
+    (previewRecord?.key === recordKey ? previewRecord.record : null);
   const emptyPeriodSummaries = summarizeWalkingRecordPeriods(
     period,
     [],
@@ -102,6 +108,9 @@ function NewTabPage() {
     }
 
     let cancelled = false;
+    const visiblePreview =
+      previewRecord?.key === recordKey ? previewRecord.record : null;
+    let baseRecordShown = Boolean(visiblePreview);
     const cacheKey = walkingRecordCacheKey(period, range, baseColor);
 
     const openRecord = async () => {
@@ -121,9 +130,16 @@ function NewTabPage() {
           ...current,
           [recordKey]: cachedRecord.record,
         }));
+        setPreviewRecord((current) =>
+          current?.key === recordKey ? null : current,
+        );
         setLoading(false);
         setError(null);
         if (cachedRecord.fresh) return;
+      } else if (visiblePreview) {
+        setLoading(false);
+        setError(null);
+        setMovementLoadingKey(recordKey);
       } else {
         setLoading(true);
         setLoadingProgress({
@@ -140,14 +156,14 @@ function NewTabPage() {
           range,
           baseColor,
           (progress) => {
-            if (!cancelled && !cachedRecord) setLoadingProgress(progress);
+            if (!cancelled && !cachedRecord && !visiblePreview) {
+              setLoadingProgress(progress);
+            }
           },
           (baseRecord) => {
-            if (cancelled || cachedRecord) return;
-            setRecords((current) => ({
-              ...current,
-              [recordKey]: baseRecord,
-            }));
+            if (cancelled || cachedRecord || visiblePreview) return;
+            baseRecordShown = true;
+            setPreviewRecord({ key: recordKey, record: baseRecord });
             setLoading(false);
             setMovementLoadingKey(recordKey);
           },
@@ -158,6 +174,9 @@ function NewTabPage() {
           ...current,
           [recordKey]: walkingRecord,
         }));
+        setPreviewRecord((current) =>
+          current?.key === recordKey ? null : current,
+        );
         setMovementLoadingKey((current) =>
           current === recordKey ? null : current,
         );
@@ -175,7 +194,7 @@ function NewTabPage() {
           "[WalkingRecord] Could not load local activity:",
           loadError,
         );
-        if (!cachedRecord) {
+        if (!cachedRecord && !baseRecordShown) {
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -250,7 +269,9 @@ function NewTabPage() {
   const selectPeriod = (nextPeriod: WalkingRecordPeriod) => {
     const nextRange = getWalkingRecordPeriodRange(nextPeriod);
     const nextRecordKey = `${nextPeriod}:${nextRange.startTs}`;
-    const nextRecord = records[nextRecordKey];
+    const nextRecord =
+      records[nextRecordKey] ??
+      (previewRecord?.key === nextRecordKey ? previewRecord.record : null);
     setError(null);
     if (!nextRecord) {
       setLoadingProgress({
@@ -268,7 +289,10 @@ function NewTabPage() {
     if (nextOffset < EARLIEST_PERIOD_OFFSET || nextOffset > 0) return;
 
     const nextRange = getWalkingRecordPeriodRange(period, nextOffset);
-    const nextRecord = records[`${period}:${nextRange.startTs}`];
+    const nextRecordKey = `${period}:${nextRange.startTs}`;
+    const nextRecord =
+      records[nextRecordKey] ??
+      (previewRecord?.key === nextRecordKey ? previewRecord.record : null);
     setError(null);
     if (!nextRecord) {
       setLoadingProgress({
