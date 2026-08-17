@@ -42,6 +42,8 @@ import {
 import { getSessionId } from '../storage/participant'
 import { recordAnnouncementInstall } from '../announcements/announcement-storage'
 import { isUserActive } from '../utils/userActivity'
+import { initNewTabTakeover } from '../features/newtab/takeover'
+import { grandfatherNewTabTakeover } from '../features/newtab/grandfather'
 import {
   getOrCreateWikipediaHandle,
   rerollWikipediaHandle,
@@ -397,6 +399,10 @@ export default defineBackground(() => {
   // false in extensions regardless of actual protection status (known
   // Chromium issue #357622670), so it's a misleading signal to rely on.
 
+  // Opt-in: send new browser tabs to the walking record instead of the
+  // default new tab page. Off unless the user turns it on.
+  initNewTabTakeover()
+
   // Forward the manifest "open-inventory" command to the active tab's content script.
   // Manifest commands are browser-routed, so this works reliably on every page.
   // (browser.commands is absent in some environments — e.g. the test runner — so guard it.)
@@ -428,8 +434,13 @@ export default defineBackground(() => {
       browser.tabs.create({ url }).catch((e) => {
         console.warn('Failed to open setup page on install', e)
       })
-    } else {
+    } else if (details.reason === 'update') {
       // Extension updated — ensure key is upgraded, then sync
+      initializePlayerIdentity().then(() => syncIdentityToServer())
+      grandfatherNewTabTakeover(details.previousVersion).catch((e) => {
+        console.warn('Failed to carry over the new tab preference', e)
+      })
+    } else {
       initializePlayerIdentity().then(() => syncIdentityToServer())
     }
   })

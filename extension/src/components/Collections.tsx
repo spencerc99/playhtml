@@ -20,6 +20,7 @@ import {
   parseLegibility,
   redactWithLegibility,
 } from "../utils/keyboardRedaction";
+import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
 import "./Collections.scss";
 
 interface CollectionsProps {
@@ -151,7 +152,7 @@ export function CollectorList({
   keyboardLegibilityPct,
   onKeyboardLegibilityChange,
 }: CollectorListProps) {
-  const types = getValidEventTypes();
+  const types = useVisibleCollectorTypes();
   return (
     <div className="collections__collector-list">
       {types.map((type) => {
@@ -342,6 +343,8 @@ export function Collections({ onBack }: CollectionsProps) {
   const loadModes = async () => {
     try {
       const types = getValidEventTypes();
+      // Every valid type is read so a dev-enabled collector keeps its saved
+      // mode, but only the visible ones are rendered.
       const keys = types.map((t) => collectionModeStorageKey(t));
       const result = await browser.storage.local.get(keys);
       const next: Record<string, CollectionMode> = {};
@@ -688,12 +691,10 @@ export function Collections({ onBack }: CollectionsProps) {
   return (
     <div className="collections">
       <header className="collections__header">
-        <div className="back-row">
-          <button onClick={onBack} className="back-btn">
-            ←
-          </button>
-          <h1>Data Collection Settings</h1>
-        </div>
+        <button onClick={onBack} className="back-btn">
+          ← back
+        </button>
+        <h1>Data Collection Settings</h1>
         <p className="collections__header-desc">
           Control what's collected and whether it's shared
         </p>

@@ -154,6 +154,16 @@ describe("Collections", () => {
   });
 
   it("offers no shared mode for the scrap collector", async () => {
+    vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
+      if (
+        Array.isArray(keys) &&
+        keys.includes("internalDevFeaturesEnabled")
+      ) {
+        return { internalDevFeaturesEnabled: true };
+      }
+      return {};
+    });
+
     const { container, root } = await renderCollections();
 
     try {
@@ -177,6 +187,9 @@ describe("Collections", () => {
 
   it("shows a stored shared scrap mode as local and repairs storage", async () => {
     vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
+      if (Array.isArray(keys) && keys.includes("internalDevFeaturesEnabled")) {
+        return { internalDevFeaturesEnabled: true };
+      }
       if (
         Array.isArray(keys) &&
         keys.every((key) => key.startsWith("collection_mode_"))
@@ -209,7 +222,7 @@ describe("Collections", () => {
     vi.mocked(browser.tabs.query).mockResolvedValue([
       {
         id: 1,
-        url: "safari-web-extension://test/newtab.html",
+        url: "safari-web-extension://test/walking-record.html",
       } as any,
     ]);
 
