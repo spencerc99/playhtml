@@ -38,6 +38,10 @@ import { getSessionId } from '../storage/participant'
 import { recordAnnouncementInstall } from '../announcements/announcement-storage'
 import { isUserActive } from '../utils/userActivity'
 import {
+  calculateCursorDistance,
+  queryCursorEventsForPortrait,
+} from '../utils/cursorDistance'
+import {
   getOrCreateWikipediaHandle,
   rerollWikipediaHandle,
   setWikipediaHandle,
@@ -674,7 +678,7 @@ export default defineBackground(() => {
           // expanded domain view (also pre-computed, key range scan).
           const [agg, cursorEvents, pageAggs] = await Promise.all([
             store.getSessionStats(domain, normalizedUrl).catch(() => null),
-            store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
+            queryCursorEventsForPortrait(store, domain, rawUrl),
             includePageSessions
               ? store.getPageStats(domain).catch(() => [] as never[])
               : Promise.resolve([] as never[]),
@@ -691,19 +695,7 @@ export default defineBackground(() => {
 
           const hourBuckets = agg?.hourBuckets ?? new Array(24).fill(0)
 
-          // Compute cursor distance: sum of Euclidean distances between consecutive move samples
-          // Normalized positions (0-1) are scaled by assumed 1920×1080 viewport
-          const moveEvents = cursorEvents
-            .filter((e) => (e.data as any).event === 'move')
-            .sort((a, b) => a.ts - b.ts)
-          let cursorDistancePx = 0
-          for (let i = 1; i < moveEvents.length; i++) {
-            const prev = moveEvents[i - 1].data as any
-            const curr = moveEvents[i].data as any
-            const dx = (curr.x - prev.x) * 1920
-            const dy = (curr.y - prev.y) * 1080
-            cursorDistancePx += Math.sqrt(dx * dx + dy * dy)
-          }
+          const cursorDistancePx = calculateCursorDistance(cursorEvents)
 
           // Build per-page breakdown from page-level aggregates for the stats
           // page's expanded domain view. Each page aggregate yields one entry

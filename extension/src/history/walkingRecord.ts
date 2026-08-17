@@ -15,6 +15,7 @@ import {
   type WalkingRecordTraceTarget,
 } from "../storage/LocalEventStore";
 import { risoInkColor } from "../utils/risoInk";
+import { calculateCursorDistance } from "../utils/cursorDistance";
 import { extractDomain, normalizeUrl } from "../utils/urlNormalization";
 import { parseColorToHsl } from "@movement/utils/eventUtils";
 
@@ -772,35 +773,6 @@ function buildSettledPlaces(
     }));
 }
 
-function cursorDistance(events: CollectionEvent[]): number {
-  const moves = events
-    .filter((event) => {
-      if (event.type !== "cursor") return false;
-      const data = event.data as CursorEventData;
-      return data.event === "move" || data.event === undefined;
-    })
-    .sort((a, b) => a.ts - b.ts);
-
-  let distance = 0;
-  for (let index = 1; index < moves.length; index++) {
-    const previousEvent = moves[index - 1];
-    const event = moves[index];
-    if (normalizeUrl(previousEvent.meta.url) !== normalizeUrl(event.meta.url))
-      continue;
-    if (event.ts - previousEvent.ts > 5_000) continue;
-
-    const previous = previousEvent.data as CursorEventData;
-    const current = event.data as CursorEventData;
-    const width = event.meta.vw || previousEvent.meta.vw;
-    const height = event.meta.vh || previousEvent.meta.vh;
-    const dx = (current.x - previous.x) * width;
-    const dy = (current.y - previous.y) * height;
-    distance += Math.sqrt(dx * dx + dy * dy);
-  }
-
-  return distance;
-}
-
 function cursorMovementByUrl(events: CollectionEvent[]): Map<string, number[]> {
   const movementByUrl = new Map<string, number[]>();
   for (const event of events) {
@@ -841,7 +813,8 @@ function deriveBrowsingPortrait({
 
   return {
     totalTimeMs: sessions.reduce((sum, session) => sum + session.durationMs, 0),
-    cursorDistancePx: measuredCursorDistance ?? cursorDistance(events),
+    cursorDistancePx:
+      measuredCursorDistance ?? calculateCursorDistance(events),
     pageCount: uniquePages.size,
     hourBuckets: hourBuckets(sessions),
   };
