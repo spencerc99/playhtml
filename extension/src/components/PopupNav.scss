@@ -1,24 +1,17 @@
-// ABOUTME: Styles for the popup's top navigation bar
-// ABOUTME: Equal-width mono links with hairline dividers and an external-tab arrow
+// ABOUTME: Styles for the popup's page navigation
+// ABOUTME: Segmented bar plus bare-link, compressed-text, and icon-only variants
 
 @use "../styles/variables" as *;
 
 .popup-nav {
   display: flex;
-  width: 100%;
-  margin: 10px 0 12px;
-  background: $surface;
-  border: 1px solid $border;
-  border-radius: 8px;
-  overflow: hidden;
+  align-items: center;
 
   &__item {
-    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    height: 30px;
     padding: 0;
     background: none;
     border: none;
@@ -29,13 +22,8 @@
     cursor: pointer;
     transition: color 0.12s, background 0.12s;
 
-    & + & {
-      border-left: 1px solid $border;
-    }
-
     &:hover {
       color: $accent-teal;
-      background: rgba($accent-teal, 0.06);
 
       .popup-nav__arrow {
         color: inherit;
@@ -54,31 +42,69 @@
     transition: color 0.12s;
   }
 
-  // Bare links for a tight header row: no chrome, no dividers, hug content.
-  &--inline {
-    width: auto;
-    margin: 0;
-    gap: 10px;
-    background: none;
-    border: none;
-    border-radius: 0;
-    overflow: visible;
+  // Full-width segmented bar, hairline dividers between items.
+  &--bar {
+    width: 100%;
+    margin: 10px 0 12px;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 8px;
+    overflow: hidden;
 
     .popup-nav__item {
-      flex: 0 0 auto;
-      height: auto;
-      gap: 2px;
+      flex: 1;
+      height: 30px;
 
       & + .popup-nav__item {
-        border-left: none;
+        border-left: 1px solid $border;
       }
 
       &:hover {
-        background: none;
+        background: rgba($accent-teal, 0.06);
       }
+    }
+  }
+
+  // Bare links for a tight header row: no chrome, hug content.
+  &--inline {
+    gap: 10px;
+
+    .popup-nav__item:focus-visible {
+      outline-offset: 2px;
+    }
+  }
+
+  // Compressed text: arrows dropped, type tightened to fit three items.
+  &--compact {
+    gap: 8px;
+
+    .popup-nav__item {
+      font-size: 10px;
+      letter-spacing: -0.03em;
 
       &:focus-visible {
         outline-offset: 2px;
+      }
+    }
+  }
+
+  // Glyph-only buttons — scales past three items.
+  &--icon {
+    gap: 2px;
+
+    .popup-nav__item {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      color: $text;
+
+      &:hover {
+        color: $accent-teal;
+        background: rgba($accent-teal, 0.08);
+      }
+
+      &:focus-visible {
+        outline-offset: 0;
       }
     }
   }

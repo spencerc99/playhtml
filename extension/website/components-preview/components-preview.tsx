@@ -2590,21 +2590,45 @@ function PopupSubtitle() {
 }
 
 function PopupFrame({
-  label,
-  note,
+  variantId,
+  items,
   children,
 }: {
-  label: string;
-  note: string;
+  variantId: string;
+  items: number;
   children: React.ReactNode;
 }) {
   return (
-    <div className="popup-variant">
+    <div className="popup-frame" data-variant={variantId} data-items={items}>
+      <div className="popup-frame__count">{items} items</div>
+      {children}
+      <div className="popup-frame__body">popup content</div>
+    </div>
+  );
+}
+
+/** Renders one layout at both item counts so the scaling story is visible. */
+function VariantRow({
+  id,
+  label,
+  note,
+  render,
+}: {
+  id: string;
+  label: string;
+  note: string;
+  render: (all: boolean) => React.ReactNode;
+}) {
+  return (
+    <div className="popup-variant-row">
       <div className="popup-variant__label">{label}</div>
       <div className="popup-variant__note">{note}</div>
-      <div className="popup-frame">
-        {children}
-        <div className="popup-frame__body">popup content</div>
+      <div className="popup-variant-row__frames">
+        {[false, true].map((all) => (
+          <PopupFrame key={String(all)} variantId={id} items={all ? 3 : 2}>
+            {render(all)}
+          </PopupFrame>
+        ))}
       </div>
     </div>
   );
@@ -2614,46 +2638,100 @@ function PopupNavSection() {
   return (
     <div
       id="section-popup-nav"
-      style={{ padding: "0 40px 40px", maxWidth: "1400px" }}
+      style={{ padding: "0 40px 40px", maxWidth: "1500px" }}
     >
       <div className="popup-variants">
-        <PopupFrame
-          label="variant A — integrated"
-          note="one header row: wordmark, nav as bare links, identity card"
-        >
-          <div className="popup-frame__row">
-            <div className="popup-frame__wordmark">we were online</div>
-            <div className="popup-frame__row-right">
-              <PopupNav onNavigate={noop} inline />
-              <IdentityCard />
-            </div>
-          </div>
-          <PopupSubtitle />
-        </PopupFrame>
+        <VariantRow
+          id="a"
+          label="A — integrated (original)"
+          note="wordmark + bare links with arrows + identity, one row. Overflows at 3."
+          render={(all) => (
+            <>
+              <div className="popup-frame__row">
+                <div className="popup-frame__wordmark">we were online</div>
+                <div className="popup-frame__row-right">
+                  <PopupNav onNavigate={noop} variant="inline" forceAllItems={all} />
+                  <IdentityCard />
+                </div>
+              </div>
+              <PopupSubtitle />
+            </>
+          )}
+        />
 
-        <PopupFrame
-          label="variant B — above"
-          note="segmented nav first, then wordmark + identity, then subtitle"
-        >
-          <PopupNav onNavigate={noop} />
-          <div className="popup-frame__row">
-            <div className="popup-frame__wordmark">we were online</div>
-            <IdentityCard />
-          </div>
-          <PopupSubtitle />
-        </PopupFrame>
+        <VariantRow
+          id="a2"
+          label="A2 — compressed text"
+          note="same row, arrows dropped, 10px type, tightened letter-spacing and gaps"
+          render={(all) => (
+            <>
+              <div className="popup-frame__row">
+                <div className="popup-frame__wordmark">we were online</div>
+                <div className="popup-frame__row-right">
+                  <PopupNav onNavigate={noop} variant="compact" forceAllItems={all} />
+                  <IdentityCard />
+                </div>
+              </div>
+              <PopupSubtitle />
+            </>
+          )}
+        />
 
-        <PopupFrame
-          label="current"
-          note="nav below the full header block (what ships today)"
-        >
-          <div className="popup-frame__row">
-            <div className="popup-frame__wordmark">we were online</div>
-            <IdentityCard />
-          </div>
-          <PopupSubtitle />
-          <PopupNav onNavigate={noop} />
-        </PopupFrame>
+        <VariantRow
+          id="a3"
+          label="A3 — icon nav"
+          note="24px glyph buttons with tooltips: framed picture, footprints, torn scrap"
+          render={(all) => (
+            <>
+              <div className="popup-frame__row">
+                <div className="popup-frame__wordmark">we were online</div>
+                <div className="popup-frame__row-right">
+                  <PopupNav onNavigate={noop} variant="icon" forceAllItems={all} />
+                  <IdentityCard />
+                </div>
+              </div>
+              <PopupSubtitle />
+            </>
+          )}
+        />
+
+        <VariantRow
+          id="a4"
+          label="A4 — two-row header"
+          note="row 1 untouched (wordmark + identity); nav as bare links above the subtitle"
+          render={(all) => (
+            <>
+              <div className="popup-frame__row">
+                <div className="popup-frame__wordmark">we were online</div>
+                <IdentityCard />
+              </div>
+              <div className="popup-frame__navrow">
+                <PopupNav onNavigate={noop} variant="inline" forceAllItems={all} />
+              </div>
+              <PopupSubtitle />
+            </>
+          )}
+        />
+
+        <VariantRow
+          id="a5"
+          label="A5 — subtitle row (mine)"
+          note="nav shares the subtitle line, right-aligned; subtitle shortened to make room"
+          render={(all) => (
+            <>
+              <div className="popup-frame__row">
+                <div className="popup-frame__wordmark">we were online</div>
+                <IdentityCard />
+              </div>
+              <div className="popup-frame__subtitle-row">
+                <div className="popup-frame__subtitle">
+                  Your evolving portrait
+                </div>
+                <PopupNav onNavigate={noop} variant="compact" forceAllItems={all} />
+              </div>
+            </>
+          )}
+        />
       </div>
     </div>
   );

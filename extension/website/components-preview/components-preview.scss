@@ -129,8 +129,14 @@ body {
 /* Mock popup frames — approximate the 350px extension popup around PopupNav */
 .popup-variants {
   display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+.popup-variant-row__frames {
+  display: flex;
   align-items: flex-start;
-  gap: 32px;
+  gap: 24px;
   flex-wrap: wrap;
 }
 
@@ -146,8 +152,39 @@ body {
   font-size: 11px;
   color: #8a8279;
   margin-bottom: 10px;
-  max-width: 350px;
+  max-width: 640px;
   line-height: 1.4;
+}
+
+.popup-frame__count {
+  font-family: 'Martian Mono', monospace;
+  font-size: 9px;
+  color: #b5aea5;
+  margin-bottom: 8px;
+}
+
+/* A4: nav on its own line inside the header block */
+.popup-frame__navrow {
+  margin-bottom: 6px;
+}
+
+/* A5: subtitle and nav share a line */
+.popup-frame__subtitle-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+
+  .popup-frame__subtitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .popup-nav {
+    flex-shrink: 0;
+  }
 }
 
 .popup-frame {
