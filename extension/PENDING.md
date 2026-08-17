@@ -18,9 +18,5 @@ extension/website/public/changelog/media/ and reference them here:
 - Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
 - Wikipedia shows other readers' live text selections in their cursor colors.
 - Wikipedia editing sessions now stay separate from article-reading rooms.
-- Collected scraps now stay on your own device — the sharing option has been removed from scrap collection settings.
-- During setup you can choose to make your browsing history your new tab page, and you can change that any time from the history page.
-- If your new tab already showed your browsing history, it still does, and you can now turn that off from the history page.
-- The popup now has quick links to your portrait and history pages at the top, in a shorter header.
-- The popup leads with your portrait preview, with your collection status below it.
-- Data collection settings no longer show a confusing extra row for something you can't use yet.
+- Browsing history performance improvements
+- Browsing history can be removed as the new tab page. Toggle it on/off at any time.
