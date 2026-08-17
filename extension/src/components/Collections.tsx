@@ -680,12 +680,10 @@ export function Collections({ onBack }: CollectionsProps) {
   return (
     <div className="collections">
       <header className="collections__header">
-        <div className="back-row">
-          <button onClick={onBack} className="back-btn">
-            ←
-          </button>
-          <h1>Data Collection Settings</h1>
-        </div>
+        <button onClick={onBack} className="back-btn">
+          ← back
+        </button>
+        <h1>Data Collection Settings</h1>
         <p className="collections__header-desc">
           Control what's collected and whether it's shared
         </p>
