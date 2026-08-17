@@ -1,4 +1,4 @@
-// ABOUTME: WWO Internal Office for granting beta access and navigating operator tools.
+// ABOUTME: WWO admin office for granting beta access and navigating operator tools.
 // ABOUTME: Keeps the admin credential in session storage and never places it in a URL.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -126,7 +126,7 @@ function InternalOffice() {
           <h1>Internal Office</h1>
         </div>
         <nav aria-label="Internal tools">
-          <a aria-current="page" href="/internal/">Beta access</a>
+          <a aria-current="page" href="/admin/">Beta access</a>
           <span title="The curation desk will join this office when its branch lands">
             Commute curation
           </span>

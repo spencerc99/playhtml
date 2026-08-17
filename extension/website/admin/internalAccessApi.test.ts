@@ -1,4 +1,4 @@
-// ABOUTME: Tests the WWO Internal Office beta-access API client.
+// ABOUTME: Tests the WWO admin office beta-access API client.
 // ABOUTME: Covers public-ID validation and authenticated mutation request shapes.
 
 import { afterEach, describe, expect, it, vi } from "vitest";

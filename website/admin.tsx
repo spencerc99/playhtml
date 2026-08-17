@@ -590,7 +590,7 @@ const LoginScreen: React.FC<{
         </h1>
         <a
           className="admin-office-link"
-          href="https://wewere.online/internal/"
+          href="https://wewere.online/admin/"
         >
           Open WWO Internal Office ↗
         </a>
@@ -2341,7 +2341,7 @@ const AdminConsole: React.FC = () => {
       <header className="admin-header">
         <div className="admin-header-title">
           <h1>🛠️ PlayHTML Admin Console</h1>
-          <a href="https://wewere.online/internal/">WWO Internal Office ↗</a>
+          <a href="https://wewere.online/admin/">WWO Internal Office ↗</a>
         </div>
         <div>
           <EnvironmentDisplay currentEnv={hostEnv} />

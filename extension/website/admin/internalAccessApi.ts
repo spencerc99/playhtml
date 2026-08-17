@@ -1,4 +1,4 @@
-// ABOUTME: Client contract for administering WWO extension beta access.
+// ABOUTME: Client contract for administering WWO extension beta access from the admin office.
 // ABOUTME: Validates public IDs and sends authenticated requests to the extension Worker.
 
 import { WORKER_URL } from "@movement/config";
