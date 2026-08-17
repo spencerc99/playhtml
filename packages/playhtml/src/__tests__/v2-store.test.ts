@@ -160,6 +160,9 @@ const createStore = (
 const element = <Value>(snapshot: RoomSnapshot, elementId: string): Value =>
   snapshot.state.play[elementId] as Value;
 
+const waitForOutgoingFlush = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 20));
+
 class FakeSocket implements V2Socket {
   readyState = WebSocket.CONNECTING;
   sent: string[] = [];
@@ -206,7 +209,7 @@ class FakeSocket implements V2Socket {
 }
 
 describe("V2Store", () => {
-  it("applies a mutation optimistically and retires it on its server echo", () => {
+  it("applies a mutation optimistically and retires it on its server echo", async () => {
     const server = new InProcessServer();
     const { store, transport } = createStore();
 
@@ -222,6 +225,7 @@ describe("V2Store", () => {
       1,
     );
     expect(store.getPendingOperations()).toHaveLength(1);
+    await waitForOutgoingFlush();
     const echo = server.receive(message);
     expect(echo?.type).toBe("operation");
     store.applyServerOperation((echo as ServerOperationMessage).payload);
@@ -237,7 +241,7 @@ describe("V2Store", () => {
     const server = new InProcessServer();
     const { store, transport } = createStore();
 
-    store.mutate<{ count: number; items: string[] }>(
+    const [local] = store.mutate<{ count: number; items: string[] }>(
       "play",
       "first",
       (draft) => {
@@ -259,7 +263,7 @@ describe("V2Store", () => {
       element<{ items: string[] }>(store.getSnapshot(), "first").items,
     ).toEqual(["base", "local", "remote"]);
 
-    const localEcho = server.receive(transport.sent[0]);
+    const localEcho = server.receive(local);
     store.applyServerOperation((localEcho as ServerOperationMessage).payload);
     expect(
       element<{ items: string[] }>(store.getSnapshot(), "first").items,
@@ -271,7 +275,7 @@ describe("V2Store", () => {
     const server = new InProcessServer();
     const { store, transport } = createStore();
 
-    store.mutate<{ count: number; items: string[] }>(
+    const [first] = store.mutate<{ count: number; items: string[] }>(
       "play",
       "first",
       (draft) => {
@@ -281,7 +285,7 @@ describe("V2Store", () => {
     store.mutate<{ count: number }>("play", "second", (draft) => {
       draft.count = 2;
     });
-    server.receive(transport.sent[0]);
+    server.receive(first);
 
     store.applyServerSnapshot(server.snapshotMessage());
 
@@ -391,10 +395,72 @@ describe("V2Store", () => {
     expect(firstListener).toHaveBeenCalledTimes(1);
     expect(secondListener).toHaveBeenCalledTimes(1);
   });
+
+  it("replaces only consecutive unsent sets to the same path", async () => {
+    vi.useFakeTimers();
+    try {
+      const { store, transport } = createStore();
+      const [first] = store.mutate<{ count: number }>(
+        "play",
+        "second",
+        (draft) => {
+          draft.count = 1;
+        },
+      );
+      const [replacement] = store.mutate<{ count: number }>(
+        "play",
+        "second",
+        (draft) => {
+          draft.count = 2;
+        },
+      );
+
+      expect(replacement.mutationId).toBe(first.mutationId);
+      expect(store.getPendingOperations()).toEqual([replacement]);
+      expect(transport.sent).toEqual([]);
+
+      store.mutate<{ count: number; items: string[] }>(
+        "play",
+        "first",
+        (draft) => {
+          draft.count = 3;
+        },
+      );
+      const [afterOtherPath] = store.mutate<{ count: number }>(
+        "play",
+        "second",
+        (draft) => {
+          draft.count = 4;
+        },
+      );
+      expect(afterOtherPath.mutationId).not.toBe(first.mutationId);
+
+      store.mutate<{ count: number }>("play", "second", (draft) => {
+        draft.count += 1;
+      });
+      expect(store.getPendingOperations()).toHaveLength(4);
+
+      vi.advanceTimersByTime(16);
+      expect(transport.sent).toEqual(store.getPendingOperations());
+
+      const [afterFlush] = store.mutate<{ count: number }>(
+        "play",
+        "second",
+        (draft) => {
+          draft.count = 9;
+        },
+      );
+      expect(afterFlush.mutationId).toBeGreaterThan(
+        transport.sent.at(-1)?.mutationId ?? 0,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("V2Transport", () => {
-  it("requests a snapshot then resends pending operations with original mutation IDs", () => {
+  it("requests a snapshot then resends pending operations with original mutation IDs", async () => {
     const server = new InProcessServer();
     const socket = new FakeSocket();
     let socketOptions: Parameters<V2SocketFactory>[0] | undefined;
@@ -436,13 +502,14 @@ describe("V2Transport", () => {
         draft.count = 1;
       },
     );
-    const [second] = store.mutate<{ count: number }>(
+    const [second] = store.mutate<{ count: number; items: string[] }>(
       "play",
-      "second",
+      "first",
       (draft) => {
         draft.count = 2;
       },
     );
+    await waitForOutgoingFlush();
     server.receive(first);
     server.receive(second);
     socket.disconnect();
@@ -472,6 +539,48 @@ describe("V2Transport", () => {
     expect(store.getPendingOperations()).toHaveLength(0);
     expect(
       element<{ count: number }>(store.getSnapshot(), "second").count,
-    ).toBe(2);
+    ).toBe(1);
+    expect(element<{ count: number }>(store.getSnapshot(), "first").count).toBe(
+      2,
+    );
+  });
+
+  it("replays an operation whose store queue flushed while disconnected", async () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new FakeSocket();
+      const transport = new V2Transport(() => socket);
+      transport.connect("example.com", "room-1", {
+        clientId: "local-client",
+        generation: 1,
+      });
+      socket.open();
+      socket.disconnect();
+      socket.sent = [];
+      const store = new V2Store({
+        snapshot: initialSnapshot(),
+        generation: 1,
+        transport,
+        clientId: "local-client",
+      });
+
+      const [message] = store.mutate<{ count: number }>(
+        "play",
+        "second",
+        (draft) => {
+          draft.count = 7;
+        },
+      );
+      vi.advanceTimersByTime(16);
+      expect(socket.sent).toEqual([]);
+
+      socket.open();
+      const replayed = socket.sent.map(
+        (value) => JSON.parse(value) as ClientToServerMessage,
+      );
+      expect(replayed.at(-1)).toEqual(message);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

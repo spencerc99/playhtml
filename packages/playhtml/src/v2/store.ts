@@ -37,8 +37,25 @@ type ElementListener = (value: JsonValue | undefined) => void;
 type RoomListener = (snapshot: RoomSnapshot) => void;
 type StatusListener = (event: V2StoreStatusEvent) => void;
 
+const OUTGOING_FLUSH_MS = 16;
+
 const valuesEqual = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
+
+const pathsEqual = (
+  left: ClientOperationMessage["operation"]["path"],
+  right: ClientOperationMessage["operation"]["path"],
+): boolean =>
+  left.length === right.length &&
+  left.every((segment, index) => {
+    const other = right[index];
+    return (
+      typeof segment === typeof other &&
+      (typeof segment === "string"
+        ? segment === other
+        : segment.itemId === (other as { readonly itemId: string }).itemId)
+    );
+  });
 
 const getElementValue = (
   snapshot: RoomSnapshot,
@@ -67,6 +84,8 @@ export class V2Store {
   private serverSequence: number;
   private nextMutationId: number;
   private pending: ClientOperationMessage[] = [];
+  private outgoing: ClientOperationMessage[] = [];
+  private outgoingFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly echoWaitElementIds: Set<string>;
   private readonly echoWaitMutationIds = new Set<number>();
   private readonly transport: V2StoreTransport;
@@ -110,16 +129,9 @@ export class V2Store {
       elementId,
       mutatorOrValue as Value | MutationCallback<Value>,
     );
-    const messages = recorded.ops.map((operation) => ({
-      type: "operation" as const,
-      protocolVersion: PROTOCOL_VERSION,
-      generation: this.generation,
-      clientId: this.clientId,
-      mutationId: this.nextMutationId++,
-      operation,
-    }));
-
-    this.pending.push(...messages);
+    const messages = recorded.ops.map((operation) =>
+      this.queueOperation(operation),
+    );
     if (this.echoWaitElementIds.has(elementId)) {
       for (const message of messages) {
         this.echoWaitMutationIds.add(message.mutationId);
@@ -128,7 +140,7 @@ export class V2Store {
       this.view = recorded.next;
     }
     this.notifyChanges(previous, this.view, this.changedKeysForOps(messages));
-    for (const message of messages) this.transport.send(message);
+    this.scheduleOutgoingFlush();
     return messages;
   }
 
@@ -162,6 +174,9 @@ export class V2Store {
       this.pending = this.pending.filter(
         (message) => message.mutationId !== envelope.mutationId,
       );
+      this.outgoing = this.outgoing.filter(
+        (message) => message.mutationId !== envelope.mutationId,
+      );
       this.echoWaitMutationIds.delete(envelope.mutationId);
     }
     this.rederiveView();
@@ -188,6 +203,11 @@ export class V2Store {
       : this.pending.filter(
           (pending) => pending.mutationId > confirmedMutationId,
         );
+    this.outgoing = generationChanged
+      ? []
+      : this.outgoing.filter(
+          (pending) => pending.mutationId > confirmedMutationId,
+        );
     if (generationChanged) {
       this.echoWaitMutationIds.clear();
     } else {
@@ -205,6 +225,7 @@ export class V2Store {
     const previous = this.view;
     if (message.code === "stale-generation") {
       this.pending = [];
+      this.outgoing = [];
       this.echoWaitMutationIds.clear();
       this.rederiveView();
       this.transport.requestSnapshot();
@@ -213,6 +234,9 @@ export class V2Store {
       (message.clientId === undefined || message.clientId === this.clientId)
     ) {
       this.pending = this.pending.filter(
+        (pending) => pending.mutationId !== message.mutationId,
+      );
+      this.outgoing = this.outgoing.filter(
         (pending) => pending.mutationId !== message.mutationId,
       );
       this.echoWaitMutationIds.delete(message.mutationId);
@@ -258,6 +282,49 @@ export class V2Store {
     this.view = next;
   }
 
+  private queueOperation(
+    operation: ClientOperationMessage["operation"],
+  ): ClientOperationMessage {
+    const queued = this.outgoing.at(-1);
+    if (
+      operation.type === "set" &&
+      queued?.operation.type === "set" &&
+      queued.operation.capability === operation.capability &&
+      queued.operation.elementId === operation.elementId &&
+      pathsEqual(queued.operation.path, operation.path)
+    ) {
+      const replacement = { ...queued, operation };
+      this.outgoing[this.outgoing.length - 1] = replacement;
+      const pendingIndex = this.pending.findIndex(
+        (message) => message.mutationId === queued.mutationId,
+      );
+      if (pendingIndex !== -1) this.pending[pendingIndex] = replacement;
+      return replacement;
+    }
+
+    const message = {
+      type: "operation" as const,
+      protocolVersion: PROTOCOL_VERSION,
+      generation: this.generation,
+      clientId: this.clientId,
+      mutationId: this.nextMutationId++,
+      operation,
+    };
+    this.outgoing.push(message);
+    this.pending.push(message);
+    return message;
+  }
+
+  private scheduleOutgoingFlush(): void {
+    if (this.outgoing.length === 0 || this.outgoingFlushTimer !== null) return;
+    this.outgoingFlushTimer = setTimeout(() => {
+      this.outgoingFlushTimer = null;
+      const outgoing = this.outgoing;
+      this.outgoing = [];
+      for (const message of outgoing) this.transport.send(message);
+    }, OUTGOING_FLUSH_MS);
+  }
+
   // With a changedKeys set (single-op paths), only those elements' listeners
   // are compared and notified: scanning every subscribed element with a
   // stringify comparison is O(room size) and made large rooms visibly lag on
@@ -294,7 +361,9 @@ export class V2Store {
   }
 
   private changedKeysForOps(
-    messages: readonly { operation: { capability: string; elementId: string } }[],
+    messages: readonly {
+      operation: { capability: string; elementId: string };
+    }[],
   ): Set<string> {
     const keys = new Set<string>();
     for (const message of messages) {

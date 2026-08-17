@@ -215,6 +215,7 @@ let v2TransportMessageUnsubscribe: (() => void) | null = null;
 let v2TransportStatusUnsubscribe: (() => void) | null = null;
 let v2StoreStatusUnsubscribe: (() => void) | null = null;
 const v2ElementUnsubscribeByKey = new Map<string, () => void>();
+const v2ElementApplyFrameByKey = new Map<string, number>();
 
 class LocalAwareness implements UsersAwarenessLike {
   readonly clientID = 1;
@@ -1067,6 +1068,10 @@ function mutateV2Element(
 function teardownV2Connection(): void {
   for (const unsubscribe of v2ElementUnsubscribeByKey.values()) unsubscribe();
   v2ElementUnsubscribeByKey.clear();
+  for (const frame of v2ElementApplyFrameByKey.values()) {
+    cancelAnimationFrame(frame);
+  }
+  v2ElementApplyFrameByKey.clear();
   v2StoreStatusUnsubscribe?.();
   v2StoreStatusUnsubscribe = null;
   v2TransportMessageUnsubscribe?.();
@@ -2954,9 +2959,17 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
 
   if (configuredOptions?.v2) {
     v2ElementUnsubscribeByKey.get(key)?.();
+    const pendingFrame = v2ElementApplyFrameByKey.get(key);
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+    v2ElementApplyFrameByKey.delete(key);
     if (!v2Store) return;
     const unsubscribe = v2Store.subscribe(tag, elementId, () => {
-      applySharedElementDataToHandler(tag, elementId, handler);
+      if (v2ElementApplyFrameByKey.has(key)) return;
+      const frame = requestAnimationFrame(() => {
+        v2ElementApplyFrameByKey.delete(key);
+        applySharedElementDataToHandler(tag, elementId, handler);
+      });
+      v2ElementApplyFrameByKey.set(key, frame);
     });
     v2ElementUnsubscribeByKey.set(key, unsubscribe);
     return;
@@ -3136,6 +3149,9 @@ function removePlayElement(element: Element | null) {
     if (configuredOptions?.v2) {
       v2ElementUnsubscribeByKey.get(key)?.();
       v2ElementUnsubscribeByKey.delete(key);
+      const pendingFrame = v2ElementApplyFrameByKey.get(key);
+      if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+      v2ElementApplyFrameByKey.delete(key);
     } else {
       const yVal = getYjsValue(store.play[tag]?.[elementId]);
       const observer = yObserverByKey.get(key);
@@ -3490,6 +3506,9 @@ function deleteElementData(tag: string, elementId: string): void {
   if (configuredOptions?.v2) {
     v2ElementUnsubscribeByKey.get(key)?.();
     v2ElementUnsubscribeByKey.delete(key);
+    const pendingFrame = v2ElementApplyFrameByKey.get(key);
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+    v2ElementApplyFrameByKey.delete(key);
     const handler = elementHandlers.get(tag)?.get(elementId);
     handler?.destroy();
     elementHandlers.get(tag)?.delete(elementId);

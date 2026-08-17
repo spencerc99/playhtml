@@ -70,6 +70,76 @@ describe("applyOperation", () => {
     expect(next).not.toBe(input);
   });
 
+  it("does not alias the touched element across any operation type", () => {
+    const operations: Operation[] = [
+      {
+        type: "set",
+        ...address,
+        path: ["label"],
+        value: "done",
+        arrays: [],
+      },
+      {
+        type: "insert",
+        ...address,
+        path: ["object"],
+        target: { kind: "object", key: "added" },
+        value: true,
+        arrays: [],
+      },
+      {
+        type: "remove",
+        ...address,
+        path: ["list"],
+        target: { kind: "array", itemId: "item-b" },
+      },
+      {
+        type: "increment",
+        ...address,
+        path: ["count"],
+        delta: 1,
+      },
+    ];
+
+    for (const operation of operations) {
+      const input = snapshot();
+      const before = structuredClone(input);
+      const next = apply(input, operation);
+      const nextObject = (
+        next.state.play.element as {
+          object: { occupied: { value: number } };
+        }
+      ).object;
+      nextObject.occupied.value = 99;
+
+      expect(input).toEqual(before);
+    }
+  });
+
+  it("preserves a retained snapshot through later operations", () => {
+    const retained = apply(snapshot(), {
+      type: "set",
+      ...address,
+      path: ["label"],
+      value: "retained",
+      arrays: [],
+    });
+    const retainedValue = structuredClone(retained);
+    let current = retained;
+
+    for (let index = 0; index < 10; index += 1) {
+      current = apply(current, {
+        type: "increment",
+        ...address,
+        path: ["count"],
+        delta: 1,
+      });
+    }
+
+    expect(retained).toEqual(retainedValue);
+    expect((current.state.play.element as { count: number }).count).toBe(12);
+  });
+
   it("replaces whole values and installs identities for every nested array", () => {
     const next = apply(snapshot(), {
       type: "set",

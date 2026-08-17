@@ -154,8 +154,47 @@ const getValueAtPath = (
   return value;
 };
 
-const cloneSnapshot = (snapshot: RoomSnapshot): MutableSnapshot =>
-  structuredClone(snapshot) as MutableSnapshot;
+const cloneSnapshotForOperation = (
+  snapshot: RoomSnapshot,
+  operation: Operation,
+): MutableSnapshot => {
+  const capability = snapshot.state[operation.capability];
+  const element = capability?.[operation.elementId];
+  return {
+    state: {
+      ...snapshot.state,
+      ...(capability
+        ? {
+            [operation.capability]: {
+              ...capability,
+              ...(element === undefined
+                ? {}
+                : { [operation.elementId]: structuredClone(element) }),
+            },
+          }
+        : {}),
+    },
+    arrays: [...snapshot.arrays] as MutableArrayIdentity[],
+    lastMutationIds: snapshot.lastMutationIds,
+  };
+};
+
+const getMutableArrayIdentity = (
+  snapshot: MutableSnapshot,
+  address: OperationAddress,
+): MutableArrayIdentity | undefined => {
+  const index = snapshot.arrays.findIndex(
+    (identity) =>
+      identity.capability === address.capability &&
+      identity.elementId === address.elementId &&
+      pathsEqual(identity.path, address.path),
+  );
+  if (index === -1) return undefined;
+  const identity = snapshot.arrays[index];
+  const mutable = { ...identity, itemIds: [...identity.itemIds] };
+  snapshot.arrays[index] = mutable;
+  return mutable;
+};
 
 const collectArrayPaths = (
   value: JsonValue,
@@ -441,7 +480,7 @@ const applyInsert = (
       "Array insert index must be a non-negative safe integer",
     );
   }
-  const identity = findArrayIdentity(snapshot.arrays, operation);
+  const identity = getMutableArrayIdentity(snapshot, operation);
   if (!identity)
     throw new OperationError(
       `Array identity is missing at ${formatPath(operation.path)}`,
@@ -497,7 +536,7 @@ const applyRemove = (
       `Remove target at ${formatPath(operation.path)} is not an array`,
     );
   }
-  const identity = findArrayIdentity(snapshot.arrays, operation);
+  const identity = getMutableArrayIdentity(snapshot, operation);
   if (!identity)
     throw new OperationError(
       `Array identity is missing at ${formatPath(operation.path)}`,
@@ -554,7 +593,7 @@ export const applyOperation = (
         );
       }
     }
-    const next = cloneSnapshot(snapshot);
+    const next = cloneSnapshotForOperation(snapshot, operation);
     switch (operation.type) {
       case "set":
         applySet(next, operation);

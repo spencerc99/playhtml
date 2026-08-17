@@ -79,13 +79,29 @@ type RecorderData = {
 };
 
 type MutationStep =
-  | { readonly type: "nested-assignment"; readonly label: string; readonly value: number }
+  | {
+      readonly type: "nested-assignment";
+      readonly label: string;
+      readonly value: number;
+    }
   | { readonly type: "push"; readonly items: readonly RecorderItem[] }
   | { readonly type: "unshift"; readonly item: RecorderItem }
-  | { readonly type: "splice-insert"; readonly index: number; readonly item: RecorderItem }
+  | {
+      readonly type: "splice-insert";
+      readonly index: number;
+      readonly item: RecorderItem;
+    }
   | { readonly type: "splice-remove"; readonly index: number }
-  | { readonly type: "splice-replace"; readonly index: number; readonly item: RecorderItem }
-  | { readonly type: "index-write"; readonly index: number; readonly item: RecorderItem }
+  | {
+      readonly type: "splice-replace";
+      readonly index: number;
+      readonly item: RecorderItem;
+    }
+  | {
+      readonly type: "index-write";
+      readonly index: number;
+      readonly item: RecorderItem;
+    }
   | { readonly type: "pop" }
   | { readonly type: "shift" }
   | { readonly type: "delete" }
@@ -294,7 +310,11 @@ const interleave = (
   const positions = queues.map(() => 0);
   const order: ClientMessage[] = [];
 
-  for (let step = 0; step < queues.reduce((sum, queue) => sum + queue.length, 0); step++) {
+  for (
+    let step = 0;
+    step < queues.reduce((sum, queue) => sum + queue.length, 0);
+    step++
+  ) {
     const available = queues.flatMap((queue, clientIndex) =>
       positions[clientIndex] < queue.length ? [clientIndex] : [],
     );
@@ -396,10 +416,13 @@ const clientCaseArb: fc.Arbitrary<ClientCase> = fc.record({
   programs: fc.array(
     fc.array(
       fc.oneof(
-        fc.integer({ min: -5, max: 5 }).filter((delta) => delta !== 0).map((delta) => ({
-          type: "increment" as const,
-          delta,
-        })),
+        fc
+          .integer({ min: -5, max: 5 })
+          .filter((delta) => delta !== 0)
+          .map((delta) => ({
+            type: "increment" as const,
+            delta,
+          })),
         fc.string({ maxLength: 6 }).map((value) => ({
           type: "set" as const,
           value,
@@ -420,10 +443,13 @@ const additiveCaseArb: fc.Arbitrary<AdditiveCase> = fc.record({
   programs: fc.array(
     fc.array(
       fc.oneof(
-        fc.integer({ min: -5, max: 5 }).filter((delta) => delta !== 0).map((delta) => ({
-          type: "increment" as const,
-          delta,
-        })),
+        fc
+          .integer({ min: -5, max: 5 })
+          .filter((delta) => delta !== 0)
+          .map((delta) => ({
+            type: "increment" as const,
+            delta,
+          })),
         fc.integer({ min: 0, max: 8 }).map((index) => ({
           type: "insert" as const,
           index,
@@ -492,7 +518,10 @@ const mutationStepArb: fc.Arbitrary<MutationStep> = fc.oneof(
   }),
 );
 
-const runProgram = (draft: RecorderData, program: readonly MutationStep[]): void => {
+const runProgram = (
+  draft: RecorderData,
+  program: readonly MutationStep[],
+): void => {
   for (const step of program) {
     switch (step.type) {
       case "nested-assignment":
@@ -551,7 +580,11 @@ const applyLog = (
     if (entry.mutationId <= (value.lastMutationIds[entry.clientId] ?? 0)) {
       continue;
     }
-    value = withLastMutationId(apply(value, entry.operation), entry.clientId, entry.mutationId);
+    value = withLastMutationId(
+      apply(value, entry.operation),
+      entry.clientId,
+      entry.mutationId,
+    );
   }
   return value;
 };
@@ -578,7 +611,9 @@ describe("version 2 protocol properties", () => {
           (entry) => entry.operation.type === "insert",
         );
         const acceptedIncrements = result.log.filter(
-          (entry): entry is SequencedOperation & { operation: IncrementOperation } =>
+          (
+            entry,
+          ): entry is SequencedOperation & { operation: IncrementOperation } =>
             entry.operation.type === "increment",
         );
         const items = result.server.state.play.element as {
@@ -591,7 +626,10 @@ describe("version 2 protocol properties", () => {
         if (!itemIds) throw new Error("Final item identity sidecar is missing");
 
         const acceptedItemIds = acceptedInserts.map((entry) => {
-          if (entry.operation.type !== "insert" || entry.operation.target.kind !== "array") {
+          if (
+            entry.operation.type !== "insert" ||
+            entry.operation.target.kind !== "array"
+          ) {
             throw new Error("Accepted addition is not an array insert");
           }
           return entry.operation.target.itemId;
@@ -600,7 +638,10 @@ describe("version 2 protocol properties", () => {
         expect(new Set(itemIds).size).toBe(itemIds.length);
         expect([...itemIds].sort()).toEqual([...acceptedItemIds].sort());
         expect(items.count).toBe(
-          acceptedIncrements.reduce((sum, entry) => sum + entry.operation.delta, 0),
+          acceptedIncrements.reduce(
+            (sum, entry) => sum + entry.operation.delta,
+            0,
+          ),
         );
       }),
       { numRuns: 100 },
@@ -614,11 +655,46 @@ describe("version 2 protocol properties", () => {
         const contenders = result.log.flatMap((entry) =>
           entry.operation.type === "set" ? [entry.operation.value] : [],
         );
-        const choice = (result.server.state.play.element as { choice: unknown }).choice;
+        const choice = (result.server.state.play.element as { choice: unknown })
+          .choice;
         expect(contenders).toContain(choice);
         expect(typeof choice).toBe("string");
-        for (const client of result.clients) expect(client.view).toEqual(result.server);
+        for (const client of result.clients)
+          expect(client.view).toEqual(result.server);
       }),
+      { numRuns: 100 },
+    );
+  });
+
+  it("converges identically when consecutive same-path sets are coalesced", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.string({ maxLength: 12 }), {
+          minLength: 2,
+          maxLength: 40,
+        }),
+        (values) => {
+          const operations: Operation[] = values.map((value) => ({
+            type: "set",
+            ...elementAddress,
+            path: ["choice"],
+            value,
+            arrays: [],
+          }));
+          let uncoalesced = snapshot();
+          for (const operation of operations) {
+            uncoalesced = apply(uncoalesced, operation);
+          }
+          const coalescedOperations = [operations[operations.length - 1]];
+          let coalesced = snapshot();
+          for (const operation of coalescedOperations) {
+            coalesced = apply(coalesced, operation);
+          }
+
+          expect(coalesced).toEqual(uncoalesced);
+          expect(coalescedOperations.length).toBeLessThan(operations.length);
+        },
+      ),
       { numRuns: 100 },
     );
   });
@@ -693,18 +769,27 @@ describe("version 2 protocol properties", () => {
     fc.assert(
       fc.property(
         fc.record({
-          after: fc.array(fc.integer({ min: -5, max: 5 }).filter((delta) => delta !== 0), {
-            minLength: 1,
-            maxLength: 5,
-          }),
-          before: fc.array(fc.integer({ min: -5, max: 5 }).filter((delta) => delta !== 0), {
-            minLength: 1,
-            maxLength: 5,
-          }),
-          fresh: fc.array(fc.integer({ min: -5, max: 5 }).filter((delta) => delta !== 0), {
-            minLength: 1,
-            maxLength: 5,
-          }),
+          after: fc.array(
+            fc.integer({ min: -5, max: 5 }).filter((delta) => delta !== 0),
+            {
+              minLength: 1,
+              maxLength: 5,
+            },
+          ),
+          before: fc.array(
+            fc.integer({ min: -5, max: 5 }).filter((delta) => delta !== 0),
+            {
+              minLength: 1,
+              maxLength: 5,
+            },
+          ),
+          fresh: fc.array(
+            fc.integer({ min: -5, max: 5 }).filter((delta) => delta !== 0),
+            {
+              minLength: 1,
+              maxLength: 5,
+            },
+          ),
         }),
         ({ after, before, fresh }) => {
           let current = snapshot();

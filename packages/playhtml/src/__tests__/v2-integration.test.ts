@@ -94,7 +94,9 @@ async function waitForV2Socket(): Promise<TestSocket> {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const sockets = (globalThis as any)
       .PLAYHTML_TEST_PRESENCE_SOCKETS as TestSocket[];
-    const socket = sockets.find((candidate) => candidate.options.party === "v2");
+    const socket = sockets.find(
+      (candidate) => candidate.options.party === "v2",
+    );
     if (socket) return socket;
     await Promise.resolve();
   }
@@ -106,15 +108,21 @@ function flushClientMessages(
   socket: TestSocket,
   offset: number,
 ): number {
-  const messages = socket.sent.slice(offset).map(
-    (message) => JSON.parse(message) as ClientToServerMessage,
-  );
+  const messages = socket.sent
+    .slice(offset)
+    .map((message) => JSON.parse(message) as ClientToServerMessage);
   for (const message of messages) {
     const response = server.receive(message);
     if (response) socket.receive(response);
   }
   return socket.sent.length;
 }
+
+const waitForOutgoingFlush = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 20));
+
+const waitForAnimationFrame = (): Promise<void> =>
+  new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
 describe("playhtml version 2 integration", () => {
   beforeEach(async () => {
@@ -160,14 +168,13 @@ describe("playhtml version 2 integration", () => {
     });
     expect((globalThis as any).PLAYHTML_TEST_PROVIDERS).toEqual([]);
     expect(statusEvents).toContain("connected");
-    expect(
-      server.snapshot.state["can-play"]?.["v2-counter"],
-    ).toBeUndefined();
+    expect(server.snapshot.state["can-play"]?.["v2-counter"]).toBeUndefined();
     expect(elementHandlers.get("can-play")?.get("v2-counter")?.data).toEqual({
       count: 0,
       entries: [],
     });
 
+    await waitForOutgoingFlush();
     let sentCount = flushClientMessages(server, socket, 0);
     expect(server.snapshot.state["can-play"]?.["v2-counter"]).toEqual({
       count: 0,
@@ -179,7 +186,9 @@ describe("playhtml version 2 integration", () => {
       draft.count += 1;
       draft.entries.push("local");
     });
+    await waitForOutgoingFlush();
     sentCount = flushClientMessages(server, socket, sentCount);
+    await waitForAnimationFrame();
 
     expect(handler?.data).toEqual({ count: 1, entries: ["local"] });
     expect(server.snapshot.state["can-play"]?.["v2-counter"]).toEqual({
@@ -187,7 +196,16 @@ describe("playhtml version 2 integration", () => {
       entries: ["local"],
     });
 
-    const remote = server.applyRemote({
+    const updateCountBeforeRemote = updateElement.mock.calls.length;
+    const remoteFirst = server.applyRemote({
+      type: "set",
+      capability: "can-play",
+      elementId: "v2-counter",
+      path: ["count"],
+      value: 8,
+      arrays: [],
+    });
+    const remoteSecond = server.applyRemote({
       type: "set",
       capability: "can-play",
       elementId: "v2-counter",
@@ -195,7 +213,11 @@ describe("playhtml version 2 integration", () => {
       value: 9,
       arrays: [],
     });
-    socket.receive(remote);
+    socket.receive(remoteFirst);
+    socket.receive(remoteSecond);
+
+    expect(updateElement).toHaveBeenCalledTimes(updateCountBeforeRemote);
+    await waitForAnimationFrame();
 
     expect(handler?.data).toEqual({ count: 9, entries: ["local"] });
     expect(element.textContent).toBe("9");
@@ -204,10 +226,12 @@ describe("playhtml version 2 integration", () => {
         data: { count: 9, entries: ["local"] },
       }),
     );
+    expect(updateElement).toHaveBeenCalledTimes(updateCountBeforeRemote + 1);
 
     handler?.setData((draft: { count: number; entries: string[] }) => {
       draft.count += 1;
     });
+    await waitForOutgoingFlush();
     const rejected = JSON.parse(
       socket.sent.at(-1) as string,
     ) as ClientToServerMessage;
@@ -223,10 +247,13 @@ describe("playhtml version 2 integration", () => {
       code: "permission-denied",
       message: "Read-only element",
     });
+    await waitForAnimationFrame();
 
     expect(statusEvents).toContain("write-rejected");
     expect(handler?.data).toEqual({ count: 9, entries: ["local"] });
-    expect(warn).toHaveBeenCalledWith("[playhtml] Version 2 transport connected");
+    expect(warn).toHaveBeenCalledWith(
+      "[playhtml] Version 2 transport connected",
+    );
     expect(warn).toHaveBeenCalledWith(
       "[playhtml] Version 2 write rejected (permission-denied): Read-only element",
     );
