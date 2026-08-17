@@ -132,17 +132,14 @@ describe("convertDocumentToSnapshot", () => {
     checkSnapshotIntegrity(snapshot);
   });
 
-  it("returns a typed error for an empty document", () => {
+  it("converts a document with no play data to an empty room", () => {
     const doc = new Y.Doc();
     try {
       const result = convertDocumentToSnapshot(encodeDocToBase64(doc));
 
       expect(result).toEqual({
-        ok: false,
-        error: {
-          code: "empty-document",
-          message: "The Yjs document contains no PlayHTML data.",
-        },
+        ok: true,
+        snapshot: { state: {}, arrays: [], lastMutationIds: {} },
       });
     } finally {
       doc.destroy();

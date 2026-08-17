@@ -129,12 +129,12 @@ export function convertDocumentToSnapshot(
     Y.applyUpdate(doc, update);
     const playData = docToJson(doc);
     if (playData === null) {
+      // A decodable document with no play data is an empty room, not an
+      // error: v1 serves nothing for it, so an empty snapshot loses nothing.
+      // 1,925 of 83,153 production rooms are in this state (2026-08-17 sweep).
       return {
-        ok: false,
-        error: {
-          code: "empty-document",
-          message: "The Yjs document contains no PlayHTML data.",
-        },
+        ok: true,
+        snapshot: { state: {}, arrays: [], lastMutationIds: {} },
       };
     }
 
