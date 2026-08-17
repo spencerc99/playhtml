@@ -138,16 +138,16 @@ describe("PlayHTMLPopup", () => {
     try {
       const historyButton = Array.from(
         container.querySelectorAll<HTMLButtonElement>("button"),
-      ).find((button) => button.textContent?.trim() === "history");
+      ).find((button) => button.textContent?.startsWith("history"));
       expect(historyButton).toBeDefined();
 
       await act(async () => {
         historyButton?.click();
       });
 
-      expect(browser.runtime.getURL).toHaveBeenCalledWith("newtab.html");
+      expect(browser.runtime.getURL).toHaveBeenCalledWith("walking-record.html");
       expect(browser.tabs.create).toHaveBeenCalledWith({
-        url: "chrome-extension://test/newtab.html",
+        url: "chrome-extension://test/walking-record.html",
       });
     } finally {
       cleanup(root, container);

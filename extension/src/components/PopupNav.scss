@@ -1,0 +1,56 @@
+// ABOUTME: Styles for the popup's top navigation bar
+// ABOUTME: Equal-width mono links with hairline dividers and an external-tab arrow
+
+@use "../styles/variables" as *;
+
+.popup-nav {
+  display: flex;
+  width: 100%;
+  margin: 10px 0 12px;
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 8px;
+  overflow: hidden;
+
+  &__item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 30px;
+    padding: 0;
+    background: none;
+    border: none;
+    font-family: $font-mono;
+    font-size: 11px;
+    text-transform: lowercase;
+    color: $text-muted;
+    cursor: pointer;
+    transition: color 0.12s, background 0.12s;
+
+    & + & {
+      border-left: 1px solid $border;
+    }
+
+    &:hover {
+      color: $accent-teal;
+      background: rgba($accent-teal, 0.06);
+
+      .popup-nav__arrow {
+        color: inherit;
+      }
+    }
+
+    &:focus-visible {
+      outline: 2px solid $accent-teal;
+      outline-offset: -2px;
+    }
+  }
+
+  &__arrow {
+    font-size: 9px;
+    color: $text-faint;
+    transition: color 0.12s;
+  }
+}

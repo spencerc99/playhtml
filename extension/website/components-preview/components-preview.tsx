@@ -10,6 +10,7 @@ import {
 } from "@extension/components/MilestoneToast";
 import { MILESTONE_TOAST_CSS } from "@extension/entrypoints/content/milestone-toast-styles";
 import { MILESTONE_COPY } from "@extension/milestones/copy";
+import { PopupNav } from "@extension/components/PopupNav";
 const Agentation = import.meta.env.DEV
   ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
   : null;
@@ -2562,9 +2563,31 @@ function MilestonesSection() {
   );
 }
 
+// ── Popup nav ─────────────────────────────────────────────────────────────────
+
+function PopupNavSection() {
+  return (
+    <div
+      id="section-popup-nav"
+      style={{ padding: "0 40px 40px", maxWidth: "1200px" }}
+    >
+      <div className="popup-frame">
+        <div className="popup-frame__header">
+          <div className="popup-frame__wordmark">we were online</div>
+          <div className="popup-frame__subtitle">
+            An evolving portrait from your time on the internet
+          </div>
+        </div>
+        <PopupNav onNavigate={() => {}} />
+        <div className="popup-frame__body">popup content</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar navigation ────────────────────────────────────────────────────────
 
-type Section = "portrait-card" | "link-patina" | "milestones";
+type Section = "portrait-card" | "link-patina" | "milestones" | "popup-nav";
 
 const PORTRAIT_NAV = [
   { id: "section-density", label: "density" },
@@ -2590,6 +2613,8 @@ const MILESTONES_NAV = [
   { id: "section-ms-domain", label: "domain visits" },
 ];
 
+const POPUP_NAV_NAV = [{ id: "section-popup-nav", label: "top nav" }];
+
 function SidebarNav({
   activeSection,
   onSectionChange,
@@ -2603,7 +2628,9 @@ function SidebarNav({
       ? PORTRAIT_NAV
       : activeSection === "milestones"
         ? MILESTONES_NAV
-        : LINK_PATINA_NAV;
+        : activeSection === "popup-nav"
+          ? POPUP_NAV_NAV
+          : LINK_PATINA_NAV;
 
   useEffect(() => {
     setActiveId("");
@@ -2624,7 +2651,9 @@ function SidebarNav({
 
   return (
     <nav className="sidebar-nav">
-      {(["portrait-card", "link-patina", "milestones"] as Section[]).map((s) => (
+      {(
+        ["portrait-card", "link-patina", "milestones", "popup-nav"] as Section[]
+      ).map((s) => (
         <a
           key={s}
           href="#"
@@ -2633,7 +2662,7 @@ function SidebarNav({
           }`}
           style={{
             fontWeight: activeSection === s ? 700 : undefined,
-            marginBottom: s !== "milestones" ? "6px" : undefined,
+            marginBottom: s !== "popup-nav" ? "6px" : undefined,
           }}
           onClick={(e) => {
             e.preventDefault();
@@ -2646,7 +2675,9 @@ function SidebarNav({
             ? "portrait card"
             : s === "link-patina"
               ? "link patina"
-              : "milestones"}
+              : s === "milestones"
+                ? "milestones"
+                : "popup nav"}
         </a>
       ))}
       {activeSection !== "portrait-card" && (
@@ -2694,6 +2725,7 @@ function PreviewPage() {
     const hash = window.location.hash.slice(1);
     if (hash === "link-patina") return "link-patina";
     if (hash === "milestones") return "milestones";
+    if (hash === "popup-nav") return "popup-nav";
     return "portrait-card";
   });
 
@@ -2719,14 +2751,18 @@ function PreviewPage() {
                   ? "portrait card — design directions"
                   : activeSection === "milestones"
                     ? "milestones — copy & visuals"
-                    : "link patina — design directions"}
+                    : activeSection === "popup-nav"
+                      ? "popup nav — top navigation bar"
+                      : "link patina — design directions"}
               </div>
               <div className="page-subtitle">
                 {activeSection === "portrait-card"
                   ? "six layout directions · same data across all variants"
                   : activeSection === "milestones"
                     ? "five milestone types · full copy pool for each"
-                    : "three visual treatments · links carry varied visit counts"}
+                    : activeSection === "popup-nav"
+                      ? "the real component inside a mock 350px popup frame"
+                      : "three visual treatments · links carry varied visit counts"}
               </div>
               {activeSection === "portrait-card" && (
                 <div className="mock-note">
@@ -2860,6 +2896,8 @@ function PreviewPage() {
         {activeSection === "link-patina" && <LinkTracesSection />}
 
         {activeSection === "milestones" && <MilestonesSection />}
+
+        {activeSection === "popup-nav" && <PopupNavSection />}
       </div>
     </div>
   );

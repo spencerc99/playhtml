@@ -14,6 +14,7 @@ import { PostcardStack } from "../announcements/PostcardStack";
 import { FeedbackForm } from "./FeedbackForm";
 import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
 import { ReleasedFeature } from "./ReleasedFeature";
+import { PopupNav, WALKING_RECORD_PAGE } from "./PopupNav";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -157,6 +158,23 @@ export function InternetPortraitHome({
         </div>
       </header>
 
+      <PopupNav
+        onNavigate={(path) => {
+          if (path === WALKING_RECORD_PAGE) {
+            onViewBrowsingHistory();
+            return;
+          }
+          if (path === "scraps.html" && onViewScraps) {
+            onViewScraps();
+            return;
+          }
+          void (async () => {
+            await browser.tabs.create({ url: browser.runtime.getURL(path) });
+            window.close();
+          })();
+        }}
+      />
+
       <main className="portrait-home__main">
         {hiddenSiteName && onShowSatchel && (
           <SiteVisibilityNotice
@@ -269,61 +287,6 @@ export function InternetPortraitHome({
               <div className="preview-card__label">Open Portrait Overlay</div>
             </div>
           </div>
-          <div className="portrait-home__nav-links">
-            <button
-              className="portrait-home__nav-link"
-              onClick={async (e) => {
-                e.stopPropagation();
-                const url = browser.runtime.getURL("portrait.html");
-                await browser.tabs.create({ url });
-                window.close();
-              }}
-            >
-              portrait
-            </button>
-            <button
-              className="portrait-home__nav-link"
-              onClick={async (e) => {
-                e.stopPropagation();
-                const url = browser.runtime.getURL("stats.html");
-                await browser.tabs.create({ url });
-                window.close();
-              }}
-            >
-              time
-            </button>
-            <ReleasedFeature feature="SCRAPS">
-              {onViewScraps && (
-                <button
-                  className="portrait-home__nav-link"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onViewScraps();
-                  }}
-                >
-                  scraps
-                </button>
-              )}
-            </ReleasedFeature>
-            <button
-              className="portrait-home__nav-link"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewBrowsingHistory();
-              }}
-            >
-              history
-            </button>
-            <button
-              className="portrait-home__nav-link"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewChangelog();
-              }}
-            >
-              changelog
-            </button>
-          </div>
           <ReleasedFeature feature="BAG_SETTINGS">
             {onViewBagSettings && (
               <button
@@ -339,6 +302,13 @@ export function InternetPortraitHome({
 
       <footer className="portrait-home__footer">
         <span>Beta</span>
+        <button
+          type="button"
+          className="portrait-home__changelog-link"
+          onClick={onViewChangelog}
+        >
+          changelog
+        </button>
         <FeedbackForm />
       </footer>
     </div>
