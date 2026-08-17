@@ -530,15 +530,29 @@ const applyIncrement = (
   setValueAtPath(snapshot, operation, next);
 };
 
+export type ApplyOperationOptions = {
+  /**
+   * Verify full snapshot integrity before and after the apply. The walk is
+   * O(room size), so production paths leave it off; tests turn it on.
+   */
+  readonly validate?: boolean;
+};
+
 /** Applies one operation without mutating either the input snapshot or operation. */
 export const applyOperation = (
   snapshot: RoomSnapshot,
   operation: Operation,
+  options?: ApplyOperationOptions,
 ): ApplyOperationResult => {
+  const validate = options?.validate ?? false;
   try {
-    const initialIntegrity = checkSnapshotIntegrity(snapshot);
-    if (!initialIntegrity.ok) {
-      throw new OperationError(`Invalid snapshot: ${initialIntegrity.message}`);
+    if (validate) {
+      const initialIntegrity = checkSnapshotIntegrity(snapshot);
+      if (!initialIntegrity.ok) {
+        throw new OperationError(
+          `Invalid snapshot: ${initialIntegrity.message}`,
+        );
+      }
     }
     const next = cloneSnapshot(snapshot);
     switch (operation.type) {
@@ -555,7 +569,9 @@ export const applyOperation = (
         applyIncrement(next, operation);
         break;
     }
-    const finalIntegrity = checkSnapshotIntegrity(next);
+    const finalIntegrity = validate
+      ? checkSnapshotIntegrity(next)
+      : ({ ok: true } as const);
     if (!finalIntegrity.ok) {
       throw new OperationError(
         `Operation broke snapshot integrity: ${finalIntegrity.message}`,

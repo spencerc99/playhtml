@@ -127,7 +127,7 @@ export class V2Store {
     } else {
       this.view = recorded.next;
     }
-    this.notifyChanges(previous, this.view);
+    this.notifyChanges(previous, this.view, this.changedKeysForOps(messages));
     for (const message of messages) this.transport.send(message);
     return messages;
   }
@@ -165,7 +165,14 @@ export class V2Store {
       this.echoWaitMutationIds.delete(envelope.mutationId);
     }
     this.rederiveView();
-    this.notifyChanges(previous, this.view);
+    const changed = this.changedKeysForOps(this.pending);
+    changed.add(
+      this.elementKey(
+        envelope.operation.capability,
+        envelope.operation.elementId,
+      ),
+    );
+    this.notifyChanges(previous, this.view, changed);
   }
 
   applyServerSnapshot(message: ServerSnapshotMessage): void {
@@ -251,7 +258,31 @@ export class V2Store {
     this.view = next;
   }
 
-  private notifyChanges(previous: RoomSnapshot, next: RoomSnapshot): void {
+  // With a changedKeys set (single-op paths), only those elements' listeners
+  // are compared and notified: scanning every subscribed element with a
+  // stringify comparison is O(room size) and made large rooms visibly lag on
+  // every operation. The full scan remains for snapshot replacement, where
+  // anything may have changed.
+  private notifyChanges(
+    previous: RoomSnapshot,
+    next: RoomSnapshot,
+    changedKeys?: ReadonlySet<string>,
+  ): void {
+    if (previous === next) return;
+    if (changedKeys !== undefined) {
+      for (const key of changedKeys) {
+        const listeners = this.elementListeners.get(key);
+        if (!listeners) continue;
+        const [capability, elementId] = this.parseElementKey(key);
+        const previousValue = getElementValue(previous, capability, elementId);
+        const nextValue = getElementValue(next, capability, elementId);
+        if (valuesEqual(previousValue, nextValue)) continue;
+        for (const listener of listeners) listener(nextValue);
+      }
+      for (const listener of this.roomListeners) listener(next);
+      return;
+    }
+
     for (const [key, listeners] of this.elementListeners) {
       const [capability, elementId] = this.parseElementKey(key);
       const previousValue = getElementValue(previous, capability, elementId);
@@ -259,14 +290,22 @@ export class V2Store {
       if (valuesEqual(previousValue, nextValue)) continue;
       for (const listener of listeners) listener(nextValue);
     }
-
-    if (
-      valuesEqual(previous.state, next.state) &&
-      valuesEqual(previous.arrays, next.arrays)
-    ) {
-      return;
-    }
     for (const listener of this.roomListeners) listener(next);
+  }
+
+  private changedKeysForOps(
+    messages: readonly { operation: { capability: string; elementId: string } }[],
+  ): Set<string> {
+    const keys = new Set<string>();
+    for (const message of messages) {
+      keys.add(
+        this.elementKey(
+          message.operation.capability,
+          message.operation.elementId,
+        ),
+      );
+    }
+    return keys;
   }
 
   private elementKey(capability: string, elementId: string): string {
