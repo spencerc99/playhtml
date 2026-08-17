@@ -38,16 +38,24 @@ export function parseFeatureOverrides(value: unknown): FeatureOverrides {
 
 export async function getInternalAccess(): Promise<boolean> {
   if (developmentBuildHasAccess()) return true;
-  const stored = await browser.storage.local.get(INTERNAL_ACCESS_STORAGE_KEY);
-  const cache = stored[INTERNAL_ACCESS_STORAGE_KEY] as
-    | InternalAccessCache
-    | undefined;
-  return cache?.enabled === true;
+  try {
+    const stored = await browser.storage.local.get(INTERNAL_ACCESS_STORAGE_KEY);
+    const cache = stored?.[INTERNAL_ACCESS_STORAGE_KEY] as
+      | InternalAccessCache
+      | undefined;
+    return cache?.enabled === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function getFeatureOverrides(): Promise<FeatureOverrides> {
-  const stored = await browser.storage.local.get(FEATURE_OVERRIDES_STORAGE_KEY);
-  return parseFeatureOverrides(stored[FEATURE_OVERRIDES_STORAGE_KEY]);
+  try {
+    const stored = await browser.storage.local.get(FEATURE_OVERRIDES_STORAGE_KEY);
+    return parseFeatureOverrides(stored?.[FEATURE_OVERRIDES_STORAGE_KEY]);
+  } catch {
+    return {};
+  }
 }
 
 export async function getFeatureState(feature: FeatureId): Promise<FeatureState> {

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import {
   INTERNAL_ACCESS_STORAGE_KEY,
+  getFeatureOverrides,
+  getInternalAccess,
   parseFeatureOverrides,
   refreshInternalAccess,
 } from "../features/featureAccess";
@@ -67,5 +69,21 @@ describe("refreshInternalAccess", () => {
       "Internal access check failed with 503",
     );
     expect(browser.storage.local.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("storage failures", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("fails closed when extension storage is unavailable", async () => {
+    vi.mocked(browser.storage.local.get).mockRejectedValueOnce(
+      new Error("extension context invalidated"),
+    );
+    await expect(getInternalAccess()).resolves.toBe(false);
+
+    vi.mocked(browser.storage.local.get).mockRejectedValueOnce(
+      new Error("extension context invalidated"),
+    );
+    await expect(getFeatureOverrides()).resolves.toEqual({});
   });
 });
