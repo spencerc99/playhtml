@@ -278,6 +278,27 @@ const createTrackingDraft = (
       const key = pathKey(mutationPath);
       const previousValue = Reflect.get(target, property, receiver) as unknown;
       const wasRead = intent.numericReads.delete(key);
+      if (
+        Array.isArray(target) &&
+        property === "length" &&
+        typeof nextValue === "number"
+      ) {
+        const structuralKey = pathKey(path);
+        let structuralMutation = intent.structuralArrays.get(structuralKey);
+        if (!structuralMutation && nextValue < Number(previousValue)) {
+          const itemIds = getInitialItemIds(path);
+          if (itemIds) {
+            structuralMutation = {
+              path,
+              tokens: itemIds.map((itemId) => ({ itemId, existing: true })),
+            };
+            intent.structuralArrays.set(structuralKey, structuralMutation);
+          }
+        }
+        if (structuralMutation && nextValue < structuralMutation.tokens.length) {
+          structuralMutation.tokens.length = nextValue;
+        }
+      }
       if (typeof previousValue === "number" && typeof nextValue === "number") {
         const increment = intent.increments.get(key) ?? {
           delta: 0,
