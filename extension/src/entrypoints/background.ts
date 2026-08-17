@@ -38,6 +38,7 @@ import { getSessionId } from '../storage/participant'
 import { recordAnnouncementInstall } from '../announcements/announcement-storage'
 import { isUserActive } from '../utils/userActivity'
 import { initNewTabTakeover } from '../features/newtab/takeover'
+import { grandfatherNewTabTakeover } from '../features/newtab/grandfather'
 import {
   getOrCreateWikipediaHandle,
   rerollWikipediaHandle,
@@ -427,8 +428,13 @@ export default defineBackground(() => {
       browser.tabs.create({ url }).catch((e) => {
         console.warn('Failed to open setup page on install', e)
       })
-    } else {
+    } else if (details.reason === 'update') {
       // Extension updated — ensure key is upgraded, then sync
+      initializePlayerIdentity().then(() => syncIdentityToServer())
+      grandfatherNewTabTakeover(details.previousVersion).catch((e) => {
+        console.warn('Failed to carry over the new tab preference', e)
+      })
+    } else {
       initializePlayerIdentity().then(() => syncIdentityToServer())
     }
   })
