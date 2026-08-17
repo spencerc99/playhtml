@@ -313,7 +313,7 @@ export async function fetchSampleEvents(
       // the cadence crosses this boundary; see `keystrokeCadence`.
       ...(type === "keyboard" ? { keys: keystrokeCadence(data) } : {}),
       ...(type === "viewport" && typeof data.scrollDistancePx === "number"
-        ? { scrollDistancePx: data.scrollDistancePx }
+        ? { scrollDistancePx: Math.round(data.scrollDistancePx) }
         : {}),
     } satisfies SampleEvent;
   });
@@ -693,7 +693,11 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         if (!percussion.enabled || !percussion.scroll) continue;
         // Resizes and zooms are not motion through a page, so only scrolls
         // get a brush stroke.
-        if (event.event === "scroll") engine.triggerScroll(x);
+        if (event.event !== "scroll") continue;
+        // A viewport event carries no coordinate of its own. Placing the brush
+        // where the same person's cursor is keeps their scroll and their
+        // motion in the same part of the stereo field.
+        engine.triggerScroll(trailsRef.current.get(event.pid)?.x ?? x);
         continue;
       }
 

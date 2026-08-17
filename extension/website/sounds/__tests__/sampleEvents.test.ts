@@ -7,8 +7,11 @@ import {
   buildMoveTracks,
   densestWindow,
   interpolateTrackPosition,
+  keystrokeCadence,
+  keystrokeSchedule,
   summarizeSample,
   MAX_INTERPOLATION_GAP_MS,
+  MAX_KEYSTROKE_SPREAD_MS,
   type MoveTrack,
   type SampleEvent,
 } from "../SamplePlayback";
@@ -48,6 +51,41 @@ describe("bundled sample events", () => {
     expect(kinds).toContain("cursor:click");
     expect(kinds).toContain("cursor:hold");
     expect(kinds).toContain("navigation:focus");
+    // The percussion families need their own events, or turning percussion on
+    // would change nothing audible in the replay.
+    expect(kinds).toContain("keyboard:type");
+    expect(kinds).toContain("viewport:scroll");
+  });
+
+  it("carries typing cadence and nothing that was typed", () => {
+    // Keyboard events record the text a person entered and the field they
+    // entered it into. Percussion needs neither, and the fixture is committed,
+    // so only timing and counts may survive the fetch.
+    const keyboard = events.filter((event) => event.type === "keyboard");
+    expect(keyboard.length).toBeGreaterThan(10);
+
+    for (const event of keyboard) {
+      // The keyboard payload's own field names. Any of them present would mean
+      // the content path leaked into the fixture.
+      for (const field of ["text", "sequence", "deletedCount", "style", "ce"]) {
+        expect(event).not.toHaveProperty(field);
+      }
+
+      expect(event.keys).toBeDefined();
+      for (const beat of event.keys!) {
+        expect(Object.keys(beat).sort()).toEqual(["count", "dt"]);
+        expect(beat.count).toBeGreaterThan(0);
+        expect(beat.dt).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it("holds enough keystrokes and scrolls to hear percussion as texture", () => {
+    // One tick or one swish proves the wiring but not the character. The point
+    // of replaying against real data is hearing how often these actually land.
+    const summary = summarizeSample(events);
+    expect(summary.keypresses).toBeGreaterThan(200);
+    expect(summary.scrolls).toBeGreaterThan(100);
   });
 
   it("keeps cursor coordinates normalized so any pad size replays it", () => {
@@ -93,22 +131,128 @@ describe("summarizeSample", () => {
       { t: 20, type: "cursor", pid: "p02", event: "hold", domain: "b.com", x: 0, y: 0 },
       { t: 30, type: "navigation", pid: "p02", event: "focus", domain: "b.com" },
       { t: 40, type: "cursor", pid: "p02", event: "cursor_change", domain: "b.com" },
+      {
+        t: 50,
+        type: "keyboard",
+        pid: "p01",
+        event: "type",
+        domain: "a.com",
+        keys: [
+          { dt: 0, count: 4 },
+          { dt: 300, count: 3 },
+        ],
+      },
+      { t: 60, type: "viewport", pid: "p02", event: "scroll", domain: "b.com" },
+      { t: 70, type: "viewport", pid: "p02", event: "resize", domain: "b.com" },
     ]);
 
     expect(summary).toMatchObject({
-      events: 5,
+      events: 8,
       participants: 2,
       moves: 1,
       // Clicks and holds both ring the bell, so they count together.
       clicks: 2,
       navigations: 1,
+      // Individual keystrokes rather than keyboard events: one event can be a
+      // whole sentence, and it is the keystrokes that each get a tick.
+      keypresses: 7,
+      // Resizes and zooms are not motion through a page, so only scrolls count.
+      scrolls: 1,
       domains: 2,
-      spanMs: 40,
+      spanMs: 70,
     });
   });
 
   it("reports an empty sample without throwing", () => {
     expect(summarizeSample([])).toMatchObject({ events: 0, spanMs: 0 });
+  });
+});
+
+describe("keystrokeCadence", () => {
+  it("keeps when keys were pressed and how many, and nothing else", () => {
+    const beats = keystrokeCadence({
+      t: "#search-input",
+      x: 0.5,
+      y: 0.2,
+      event: "type",
+      style: { w: 240, h: 32, br: 4, bg: 1, bs: 1 },
+      sequence: [
+        { action: "type", text: "hello", timestamp: 0 },
+        { action: "backspace", deletedCount: 2, timestamp: 400 },
+      ],
+    });
+
+    expect(beats).toEqual([
+      { dt: 0, count: 5 },
+      // A deletion is as many keystrokes as it removed.
+      { dt: 400, count: 2 },
+    ]);
+  });
+
+  it("drops actions that moved no characters", () => {
+    // An empty group is not a keystroke, and ticking for it would invent
+    // typing the participant never did.
+    expect(
+      keystrokeCadence({
+        sequence: [
+          { action: "type", text: "", timestamp: 0 },
+          { action: "type", text: "a", timestamp: 10 },
+        ],
+      }),
+    ).toEqual([{ dt: 10, count: 1 }]);
+  });
+
+  it("returns nothing for an event with no sequence at all", () => {
+    // The collector stores null when legibility leaves nothing to record.
+    expect(keystrokeCadence({ event: "type", sequence: null })).toEqual([]);
+    expect(keystrokeCadence({ event: "focus" })).toEqual([]);
+  });
+});
+
+describe("keystrokeSchedule", () => {
+  it("spreads a group's keys across the gap to the next one", () => {
+    // A stored group is "N characters, starting here". Firing them together
+    // would be a click, not typing — they belong across the time that passed.
+    const schedule = keystrokeSchedule([
+      { dt: 0, count: 4 },
+      { dt: 400, count: 1 },
+    ]);
+
+    expect(schedule.map((tick) => tick.at)).toEqual([0, 100, 200, 300, 400]);
+  });
+
+  it("gives the last group the pace of the one before it", () => {
+    // The final group has no following gap to divide, so it borrows one
+    // rather than stacking every remaining key on a single instant.
+    const schedule = keystrokeSchedule([
+      { dt: 0, count: 1 },
+      { dt: 200, count: 2 },
+    ]);
+    const [, first, second] = schedule;
+    expect(second.at).toBeGreaterThan(first.at);
+  });
+
+  it("compresses a sequence recorded over too long a span", () => {
+    // The collector batches over a 5s debounce, and ticks scheduled that far
+    // out would outlive a loop of the sample.
+    const schedule = keystrokeSchedule([
+      { dt: 0, count: 1 },
+      { dt: 20_000, count: 1 },
+    ]);
+    expect(schedule.at(-1)!.at).toBeLessThanOrEqual(MAX_KEYSTROKE_SPREAD_MS);
+  });
+
+  it("varies weight across a run without using randomness", () => {
+    // The same recorded event has to sound the same on every loop, so the
+    // jitter is derived from the beat rather than drawn fresh.
+    const beats = [{ dt: 0, count: 6 }];
+    const first = keystrokeSchedule(beats);
+    expect(keystrokeSchedule(beats)).toEqual(first);
+    expect(new Set(first.map((tick) => tick.jitter)).size).toBeGreaterThan(1);
+  });
+
+  it("has nothing to schedule for an event with no keystrokes", () => {
+    expect(keystrokeSchedule([])).toEqual([]);
   });
 });
 
