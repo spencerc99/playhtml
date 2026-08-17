@@ -137,13 +137,17 @@ function WalkingRecordEntryPage() {
       if (cancelled) return;
 
       if (cachedRecord) {
-        setRecords((current) => ({
-          ...current,
-          [recordKey]: cachedRecord.record,
-        }));
-        setPreviewRecord((current) =>
-          current?.key === recordKey ? null : current,
-        );
+        if (cachedRecord.fresh) {
+          setRecords((current) => ({
+            ...current,
+            [recordKey]: cachedRecord.record,
+          }));
+          setPreviewRecord((current) =>
+            current?.key === recordKey ? null : current,
+          );
+        } else {
+          setPreviewRecord({ key: recordKey, record: cachedRecord.record });
+        }
         setLoading(false);
         setError(null);
         if (cachedRecord.fresh) return;
