@@ -247,19 +247,33 @@ export function PlayProvider({
     name: undefined,
   });
 
-  const [cursorPresences, setCursorPresences] = useState<
-    Map<string, CursorPresenceView>
-  >(new Map());
+  // Live cursor positions are per-frame data. Every playhtml component reads
+  // this context, so putting them in state re-rendered every element on the
+  // page on every presence tick (~3,000 components x ~120 ticks during a
+  // one-second drag on a large room). The Map identity stays stable and is
+  // mutated in place; reactive consumers use the useCursorPresences hook,
+  // which subscribes to the cursor client directly.
+  const cursorPresencesRef = useRef<Map<string, CursorPresenceView>>(new Map());
 
   useEffect(() => {
     if (!hasSynced) return;
     return playhtml.users.onChange((users) => {
       const me = playhtml.users.me;
-      setCursorsState({
+      const next = {
         allColors: Array.from(new Set(users.map((user) => user.color))),
         color: me.color,
         name: me.name,
-      });
+      };
+      // Presence churn fires this on every tick with identical values; only
+      // re-render when the roster actually changed.
+      setCursorsState((prev) =>
+        prev.color === next.color &&
+        prev.name === next.name &&
+        prev.allColors.length === next.allColors.length &&
+        prev.allColors.every((color, i) => color === next.allColors[i])
+          ? prev
+          : next,
+      );
     });
   }, [hasSynced]);
 
@@ -267,33 +281,39 @@ export function PlayProvider({
     const client = playhtml.cursorClient;
     if (!client) return;
 
-    setCursorPresences(client.getCursorPresences());
-    const unsubPresences = client.onCursorPresencesChange((presences) => {
-      setCursorPresences(new Map(presences)); // New Map to trigger re-render
-    });
-    return unsubPresences;
+    const applyPresences = (presences: Map<string, CursorPresenceView>) => {
+      const target = cursorPresencesRef.current;
+      target.clear();
+      for (const [key, value] of presences) target.set(key, value);
+    };
+    applyPresences(client.getCursorPresences());
+    return client.onCursorPresencesChange(applyPresences);
   }, [hasSynced]);
 
+  const contextValue = useMemo<PlayContextInfo>(
+    () => ({
+      setupPlayElements: playhtml.setupPlayElements,
+      dispatchPlayEvent: playhtml.dispatchPlayEvent,
+      registerPlayEventListener: playhtml.registerPlayEventListener,
+      removePlayEventListener: playhtml.removePlayEventListener,
+      deleteElementData: playhtml.deleteElementData,
+      hasSynced,
+      isLoading: !hasSynced,
+      isProviderMissing: false,
+      configureCursors,
+      getMyPlayerIdentity,
+      triggerCursorAnimation,
+      registerCursorZone,
+      unregisterCursorZone,
+      cursors: cursorsState,
+      cursorPresences: cursorPresencesRef.current,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasSynced, cursorsState, registerCursorZone, unregisterCursorZone],
+  );
+
   return (
-    <PlayContext.Provider
-      value={{
-        setupPlayElements: playhtml.setupPlayElements,
-        dispatchPlayEvent: playhtml.dispatchPlayEvent,
-        registerPlayEventListener: playhtml.registerPlayEventListener,
-        removePlayEventListener: playhtml.removePlayEventListener,
-        deleteElementData: playhtml.deleteElementData,
-        hasSynced,
-        isLoading: !hasSynced,
-        isProviderMissing: false,
-        configureCursors,
-        getMyPlayerIdentity,
-        triggerCursorAnimation,
-        registerCursorZone,
-        unregisterCursorZone,
-        cursors: cursorsState,
-        cursorPresences,
-      }}
-    >
+    <PlayContext.Provider value={contextValue}>
       {children}
     </PlayContext.Provider>
   );

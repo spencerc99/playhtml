@@ -38,7 +38,7 @@ async function main() {
     client?.onCursorPresencesChange?.(() => { (window as any).__presenceCount++; });
     (window as any).playhtml?.users?.onChange?.(() => { (window as any).__usersCount++; });
   });
-  await a.evaluate(() => { (window as any).__cpeBase = (window as any).__cpeRenders ?? 0; (window as any).__ppBase = (window as any).__ppRenders ?? 0; (window as any).__b = {d: (window as any).__cDataSet ?? 0, r: (window as any).__cRender ?? 0, ac: (window as any).__cAwareCheck ?? 0, af: (window as any).__cAwareFire ?? 0}; });
+  await a.evaluate(() => { (window as any).__cpeBase = (window as any).__cpeRenders ?? 0; (window as any).__ppBase = (window as any).__ppRenders ?? 0; (window as any).__b2 = {pp: (window as any).__pp ?? 0, cpe: (window as any).__cpe ?? 0, main: (window as any).__main ?? 0, fwc: (window as any).__fwc ?? 0, srs: (window as any).__srs ?? 0, sd: (window as any).__srsData ?? 0, sa: (window as any).__srsAw ?? 0, si: (window as any).__srsAwId ?? 0, sm: (window as any).__srsMy ?? 0}; });
   // CPU-profile page A during the drag.
   const cdp = await ctxA.newCDPSession(a);
   await cdp.send("Profiler.enable");
@@ -49,13 +49,53 @@ async function main() {
     const els = [...document.querySelectorAll(sel)] as HTMLElement[];
     return els.find((e) => {
       const r = e.getBoundingClientRect();
-      return r.x > 40 && r.y > 260 && r.x + r.width < 1150 && r.y + r.height < 640 && r.width > 5;
+      return r.x > 40 && r.y > 200 && r.x < 1150 && r.y < 640;
     }) ?? null;
   }, SEL);
-  const el = handle.asElement()!;
+  let el = handle.asElement();
+  if (!el && !process.env.PROBE_EMPTY) {
+    // Pan the board so the first word lands mid-viewport, then retry.
+    await a.evaluate((sel) => {
+      const target = document.querySelector(sel) as HTMLElement | null;
+      if (!target) return;
+      const r = target.getBoundingClientRect();
+      const dx = r.x - 400;
+      const dy = r.y - 400;
+      const steps = 10;
+      for (let i = 0; i < steps; i++) {
+        document.dispatchEvent(
+          new WheelEvent("wheel", { deltaX: dx / steps, deltaY: dy / steps, bubbles: true, cancelable: true }),
+        );
+      }
+    }, SEL);
+    await a.waitForTimeout(300);
+    console.log("first word rect after pan:", await a.evaluate((sel) => {
+      const t = document.querySelector(sel) as HTMLElement | null;
+      return t ? JSON.stringify(t.getBoundingClientRect()) : "none";
+    }, SEL));
+    const retry = await a.evaluateHandle((sel) => {
+      const els = [...document.querySelectorAll(sel)] as HTMLElement[];
+      return els.find((e) => {
+        const r = e.getBoundingClientRect();
+        return r.x > 40 && r.y > 200 && r.x < 1150 && r.y < 640;
+      }) ?? null;
+    }, SEL);
+    el = retry.asElement();
+  }
+  if (!el && process.env.PROBE_EMPTY) el = await a.locator(SEL).first().elementHandle();
   if (!el) { console.log("NO VISIBLE TARGET FOUND"); await browser.close(); return; }
   const box = (await el.boundingBox())!;
   console.log("target box:", JSON.stringify(box));
+  const draggedId = await el.evaluate((node) => (node.closest("[can-move]") as HTMLElement | null)?.id ?? (node as HTMLElement).id);
+  console.log("dragged element id:", draggedId);
+  await b.evaluate((id) => {
+    const el = document.getElementById(id);
+    if (!el) { (window as any).__watchMissing = true; return; }
+    (window as any).__changes = [];
+    new MutationObserver(() => {
+      (window as any).__changes.push({ t: Date.now(), s: el.getAttribute("style") });
+    }).observe(el, { attributes: true, attributeFilter: ["style"] });
+  }, draggedId);
   const startX = process.env.PROBE_EMPTY ? 900 : box.x + box.width / 2;
   const startY = process.env.PROBE_EMPTY ? 140 : box.y + box.height / 2;
   await a.mouse.move(startX, startY);
@@ -75,7 +115,12 @@ async function main() {
     const n = (window as any).__cpeRenders ?? 0;
     return n - ((window as any).__cpeBase ?? 0);
   }));
-  console.log("core counters during drag:", await a.evaluate(() => { const b = (window as any).__b ?? {d:0,r:0,ac:0,af:0}; return JSON.stringify({dataSets: ((window as any).__cDataSet ?? 0) - b.d, renders: ((window as any).__cRender ?? 0) - b.r, awareChecks: ((window as any).__cAwareCheck ?? 0) - b.ac, awareFires: ((window as any).__cAwareFire ?? 0) - b.af}); }));
+  console.log("page census:", await a.evaluate(() => JSON.stringify({
+    canMoveElements: document.querySelectorAll("[can-move]").length,
+    fridgeWordHolders: document.querySelectorAll(".fridgeWordHolder").length,
+    cpeSinceLoad: (window as any).__cpe ?? 0,
+  })));
+  console.log("render counters during drag:", await a.evaluate(() => { const b = (window as any).__b2 ?? {pp:0,cpe:0,main:0,fwc:0,srs:0,sd:0,sa:0,si:0,sm:0}; return JSON.stringify({playProvider: ((window as any).__pp ?? 0) - b.pp, canPlayElement: ((window as any).__cpe ?? 0) - b.cpe, fridgeMain: ((window as any).__main ?? 0) - b.main, wordListContent: ((window as any).__fwc ?? 0) - b.fwc, syncCalls: ((window as any).__srs ?? 0) - b.srs, dataChanges: ((window as any).__srsData ?? 0) - b.sd, awarenessChanges: ((window as any).__srsAw ?? 0) - b.sa, awarenessByIdChanges: ((window as any).__srsAwId ?? 0) - b.si, myAwarenessChanges: ((window as any).__srsMy ?? 0) - b.sm}); }));
   console.log("PlayProvider renders during drag:", await a.evaluate(() => ((window as any).__ppRenders ?? 0) - ((window as any).__ppBase ?? 0)));
   console.log("A presence callbacks:", await a.evaluate(() => (window as any).__presenceCount), "users.onChange callbacks:", await a.evaluate(() => (window as any).__usersCount));
   const { profile } = (await cdp.send("Profiler.stop")) as any;
