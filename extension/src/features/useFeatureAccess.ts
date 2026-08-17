@@ -3,12 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import browser from "webextension-polyfill";
-import {
-  FEATURE_CATALOG,
-  resolveFeatureState,
-  type FeatureId,
-  type FeatureState,
-} from "../flags";
+import { resolveFeatureState, type FeatureId, type FeatureState } from "../flags";
 import {
   FEATURE_OVERRIDES_STORAGE_KEY,
   INTERNAL_ACCESS_STORAGE_KEY,
@@ -68,10 +63,4 @@ export function useInternalAccess(): boolean {
   }, [reload]);
 
   return enabled;
-}
-
-export function getInitialFeatureState(feature: FeatureId): FeatureState {
-  return FEATURE_CATALOG[feature].released
-    ? { enabled: true, source: "released" }
-    : { enabled: false, source: "unavailable" };
 }

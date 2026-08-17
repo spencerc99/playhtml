@@ -101,6 +101,8 @@ export type ScrapRecord = ScrapRecordBase &
       }
   )
 
+const INTERNAL_ACCESS_REFRESH_ALARM = 'refreshInternalAccess'
+
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
   if (
@@ -440,6 +442,7 @@ export default defineBackground(() => {
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
+  browser.alarms.create(INTERNAL_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -449,6 +452,11 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'checkMilestones') {
       await runMilestoneCheck()
+      return
+    }
+
+    if (alarm.name === INTERNAL_ACCESS_REFRESH_ALARM) {
+      await refreshInternalFeatureAccess().catch(() => {})
       return
     }
 

@@ -97,6 +97,36 @@ describe('internal access', () => {
     expect(response.status).toBe(401);
   });
 
+  it('fails closed when the Worker admin key is missing', async () => {
+    workerEnv.ADMIN_KEY = '';
+    const response = await handleAdminInternalAccessList(
+      new Request('https://worker.example/admin/internal-access', {
+        headers: { Authorization: 'Bearer ' },
+      }),
+      workerEnv,
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it('normalizes public IDs before storing and checking them', async () => {
+    const uppercasePublicId = PUBLIC_ID.toUpperCase();
+    const add = await handleAdminInternalAccessAdd(
+      adminRequest('https://worker.example/admin/internal-access', {
+        method: 'POST',
+        body: JSON.stringify({ publicId: uppercasePublicId }),
+      }),
+      workerEnv,
+    );
+
+    expect(await add.json()).toEqual({
+      publicId: PUBLIC_ID,
+      addedAt: expect.any(String),
+    });
+    const check = await handleInternalAccessCheck(workerEnv, PUBLIC_ID);
+    expect(await check.json()).toEqual({ enabled: true });
+  });
+
   it('adds, lists, and removes approved public IDs', async () => {
     const add = await handleAdminInternalAccessAdd(
       adminRequest('https://worker.example/admin/internal-access', {

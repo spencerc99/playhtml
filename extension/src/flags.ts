@@ -14,12 +14,6 @@ export const FEATURE_CATALOG = {
     released: false,
     requiresReload: true,
   },
-  QUARANTINE_TAPE: {
-    name: "Quarantine tape",
-    description: "Try the page-level quarantine tape social experiment.",
-    released: false,
-    requiresReload: true,
-  },
   INVENTORY: {
     name: "Satchel",
     description: "Collect and carry objects found on PlayHTML pages.",

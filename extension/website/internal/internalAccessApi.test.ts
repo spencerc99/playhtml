@@ -31,7 +31,7 @@ describe("internalAccessApi", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(addInternalAccess("secret", ` ${PUBLIC_ID} `)).resolves.toEqual({
+    await expect(addInternalAccess("secret", ` ${PUBLIC_ID.toUpperCase()} `)).resolves.toEqual({
       publicId: PUBLIC_ID,
       addedAt: "now",
     });

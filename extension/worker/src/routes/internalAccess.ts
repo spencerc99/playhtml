@@ -28,7 +28,7 @@ function isValidPublicId(publicId: string): boolean {
 }
 
 function accessKey(publicId: string): string {
-  return `${ACCESS_KEY_PREFIX}${publicId}`;
+  return `${ACCESS_KEY_PREFIX}${publicId.toLowerCase()}`;
 }
 
 export async function handleInternalAccessCheck(
@@ -94,11 +94,15 @@ export async function handleAdminInternalAccessAdd(
     return jsonResponse(400, { error: 'Invalid JSON body' });
   }
 
-  const publicId = (body as Record<string, unknown>).publicId;
-  if (typeof publicId !== 'string' || !isValidPublicId(publicId)) {
+  const requestedPublicId = (body as Record<string, unknown>).publicId;
+  if (
+    typeof requestedPublicId !== 'string' ||
+    !isValidPublicId(requestedPublicId)
+  ) {
     return jsonResponse(400, { error: 'Invalid public ID' });
   }
 
+  const publicId = requestedPublicId.toLowerCase();
   const addedAt = new Date().toISOString();
   await env.WWO_INTERNAL_ACCESS.put(accessKey(publicId), '1', {
     metadata: { addedAt } satisfies AccessMetadata,

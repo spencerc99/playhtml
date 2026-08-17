@@ -42,7 +42,7 @@ export async function addInternalAccess(
   token: string,
   publicId: string,
 ): Promise<InternalAccessEntry> {
-  const normalizedId = publicId.trim();
+  const normalizedId = publicId.trim().toLowerCase();
   if (!isValidPublicId(normalizedId)) throw new Error("Enter a valid public ID");
 
   const response = await fetch(`${WORKER_URL}/admin/internal-access`, {

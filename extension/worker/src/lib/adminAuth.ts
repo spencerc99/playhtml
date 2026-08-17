@@ -10,7 +10,7 @@ export function getAdminAuthError(
   adminKey: string,
 ): Response | null {
   const authorization = request.headers.get('Authorization');
-  if (authorization !== `Bearer ${adminKey}`) {
+  if (!adminKey || authorization !== `Bearer ${adminKey}`) {
     return new Response('Unauthorized', {
       status: 401,
       headers: ADMIN_CORS_HEADERS,
