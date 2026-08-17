@@ -168,6 +168,21 @@ body {
   margin-bottom: 6px;
 }
 
+/* Density experiments: shave the vertical rhythm */
+.popup-frame__row--tight {
+  margin-bottom: 4px;
+}
+
+.popup-frame__navrow--tight {
+  margin-bottom: 0;
+}
+
+/* "wwo" — same Source Serif italic, sized up to hold presence */
+.popup-frame__wordmark--short {
+  font-size: 22px;
+  letter-spacing: 0.01em;
+}
+
 /* A5: subtitle and nav share a line */
 .popup-frame__subtitle-row {
   display: flex;
@@ -224,6 +239,19 @@ body {
 .popup-frame__subtitle {
   font-size: 12px;
   color: #8a8279;
+}
+
+/* Density experiments keep the subtitle on one line so heights are comparable */
+[data-variant="a9"] .popup-frame__subtitle,
+[data-variant="a8"] .popup-frame__subtitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Measurement boundary: wordmark top to last header line bottom */
+.popup-frame__header > *:last-child {
+  margin-bottom: 0;
 }
 
 .popup-frame__body {
