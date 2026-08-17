@@ -274,10 +274,9 @@ export default function SetupPage() {
           >
             <h1 className="setup-step__title">we were online</h1>
             <p className="setup-step__desc">
-              This extension quietly records how you move through the internet —
-              your cursor trails, reading rhythm, time on pages — and turns it
-              into a living portrait of your digital presence. You choose how
-              it's used.
+              we were online turns the existing Internet into a living, shared
+              world. Let's get you set up in a few steps so we can respect your
+              preferences for privacy and share how the extension works.
             </p>
             {isSafari && websiteAccess !== "granted" && (
               <div className="setup-step__website-access">

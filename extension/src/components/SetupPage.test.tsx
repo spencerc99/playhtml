@@ -113,6 +113,9 @@ describe("SetupPage", () => {
 
     try {
       expect(container.textContent).toContain(
+        "we were online turns the existing Internet into a living, shared world. Let's get you set up in a few steps so we can respect your preferences for privacy and share how the extension works.",
+      );
+      expect(container.textContent).toContain(
         "Email for project updates (optional)",
       );
       expect(container.textContent).toContain(
