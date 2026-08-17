@@ -267,6 +267,48 @@ describe("LocalEventStore aggregates", () => {
     );
   });
 
+  it("closes compact milestone screen time on beforeunload", async () => {
+    const store = createStore();
+    const firstFocusTs = Date.UTC(2026, 7, 10, 10);
+
+    await store.addEvents([
+      {
+        ...event("first-focus", "navigation"),
+        ts: firstFocusTs,
+        data: { event: "focus" },
+        meta: { ...event("first-focus", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("beforeunload", "navigation"),
+        ts: firstFocusTs + 5_000,
+        data: { event: "beforeunload" },
+        meta: { ...event("beforeunload", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("second-focus", "navigation"),
+        ts: firstFocusTs + 10_000,
+        data: { event: "focus" },
+        meta: { ...event("second-focus", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: firstFocusTs + 13_000,
+        data: { event: "blur" },
+        meta: { ...event("blur", "navigation").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-10",
+      cursorDistancePx: 0,
+      lastCursorPosition: null,
+      screenTimeMs: 8_000,
+      pendingFocusTs: null,
+    });
+  });
+
   it("seeds recent visits from retained aggregate history", async () => {
     const store = createStore();
     const previousVisitTs = Date.UTC(2026, 0, 1, 10);

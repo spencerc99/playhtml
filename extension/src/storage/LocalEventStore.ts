@@ -2469,7 +2469,10 @@ export class LocalEventStore {
         const data = evt.data as NavigationEventData;
         if (data.event === "focus") {
           activity.pendingFocusTs = evt.ts;
-        } else if (data.event === "blur" && activity.pendingFocusTs !== null) {
+        } else if (
+          (data.event === "blur" || data.event === "beforeunload") &&
+          activity.pendingFocusTs !== null
+        ) {
           activity.screenTimeMs += Math.max(
             0,
             evt.ts - activity.pendingFocusTs,
