@@ -1,0 +1,112 @@
+<!-- ABOUTME: Exercises built-in and custom elements over the opt-in version 2 protocol. -->
+<!-- ABOUTME: Run with `bun dev-server` and `bun dev`, then open `/test/v2.html`. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>playhtml v2 protocol test</title>
+    <style>
+      body {
+        box-sizing: border-box;
+        display: grid;
+        gap: 2rem;
+        margin: 0 auto;
+        max-width: 52rem;
+        padding: 3rem 1.5rem;
+        font: 16px/1.5 system-ui, sans-serif;
+      }
+
+      section {
+        border: 1px solid #bbb;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+      }
+
+      #movable {
+        cursor: grab;
+        width: fit-content;
+      }
+
+      #toggle {
+        background: #222;
+        color: white;
+      }
+
+      #toggle.toggled {
+        background: #f2c94c;
+        color: #222;
+      }
+
+      #spinner {
+        display: inline-block;
+        cursor: ew-resize;
+        font-size: 2rem;
+      }
+
+      #guestbook-form {
+        display: flex;
+        gap: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Version 2 protocol test</h1>
+
+    <section>
+      <h2>Built-in capabilities</h2>
+      <button id="movable" can-move>Drag me</button>
+      <button id="toggle" can-toggle>Toggle me</button>
+      <div id="spinner" can-spin>Spin me</div>
+    </section>
+
+    <section id="guestbook" can-play>
+      <h2>Guestbook</h2>
+      <form id="guestbook-form">
+        <input id="guestbook-input" required placeholder="Write a message" />
+        <button type="submit">Add</button>
+      </form>
+      <ul id="guestbook-entries"></ul>
+    </section>
+
+    <script>
+      const guestbook = document.getElementById("guestbook");
+      const form = document.getElementById("guestbook-form");
+      const input = document.getElementById("guestbook-input");
+      const entries = document.getElementById("guestbook-entries");
+
+      guestbook.defaultData = { entries: [] };
+      guestbook.updateElement = ({ data }) => {
+        entries.replaceChildren(
+          ...data.entries.map((entry) => {
+            const item = document.createElement("li");
+            item.textContent = entry;
+            return item;
+          }),
+        );
+      };
+      guestbook.onMount = ({ setData }) => {
+        const submit = (event) => {
+          event.preventDefault();
+          const message = input.value.trim();
+          if (!message) return;
+          setData((draft) => {
+            draft.entries.push(message);
+          });
+          input.value = "";
+        };
+        form.addEventListener("submit", submit);
+        return () => form.removeEventListener("submit", submit);
+      };
+    </script>
+
+    <script type="module">
+      import { playhtml } from "../../packages/playhtml/src";
+
+      playhtml.init({
+        v2: true,
+        host: "localhost:2000",
+      });
+    </script>
+  </body>
+</html>

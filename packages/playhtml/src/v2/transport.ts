@@ -163,6 +163,20 @@ const isSnapshot = (value: unknown): value is RoomSnapshot => {
   return checkSnapshotIntegrity(value as unknown as RoomSnapshot).ok;
 };
 
+const isPresenceMessage = (input: unknown): boolean => {
+  if (typeof input !== "string") return false;
+  try {
+    const value = JSON.parse(input) as unknown;
+    return (
+      isRecord(value) &&
+      typeof value.type === "string" &&
+      value.type.startsWith("presence-")
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const parseServerMessage = (
   input: unknown,
 ): ServerToClientMessage | undefined => {
@@ -301,6 +315,9 @@ export class V2Transport {
   private onMessage = (event: MessageEvent): void => {
     const message = parseServerMessage(event.data);
     if (!message) {
+      // Presence rides the same room socket and has its own consumer; it is
+      // not part of the v2 op protocol, so it is not an invalid message.
+      if (isPresenceMessage(event.data)) return;
       console.warn("[playhtml] Ignored invalid version 2 server message");
       return;
     }

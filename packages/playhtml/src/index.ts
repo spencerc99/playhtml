@@ -71,6 +71,13 @@ import { PresenceFacade } from "./presence-facade";
 import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 import { resolveRoomHost } from "./roomHost";
+import { V2Store, type V2StoreStatusEvent } from "./v2/store";
+import {
+  V2Transport,
+  type V2TransportStatusEvent,
+} from "./v2/transport";
+import type { JsonValue } from "@playhtml/common";
+import type { UsersAwarenessLike } from "./users";
 
 export {
   formatStateLeafValue,
@@ -205,6 +212,47 @@ function getCurrentRoomHost(): string {
 }
 
 let yprovider: YProvider;
+let v2Transport: V2Transport | null = null;
+let v2Store: V2Store | null = null;
+let v2TransportMessageUnsubscribe: (() => void) | null = null;
+let v2TransportStatusUnsubscribe: (() => void) | null = null;
+let v2StoreStatusUnsubscribe: (() => void) | null = null;
+const v2ElementUnsubscribeByKey = new Map<string, () => void>();
+
+class LocalAwareness implements UsersAwarenessLike {
+  readonly clientID = 1;
+  private localState: Record<string, unknown> = {};
+  private readonly states = new Map<number, Record<string, unknown>>();
+  private readonly listeners = new Set<(...args: unknown[]) => void>();
+
+  getStates(): Map<number, Record<string, unknown>> {
+    return this.states;
+  }
+
+  getLocalState(): Record<string, unknown> {
+    return this.localState;
+  }
+
+  setLocalStateField(field: string, value: unknown): void {
+    this.localState = { ...this.localState, [field]: value };
+    this.states.set(this.clientID, this.localState);
+    for (const listener of this.listeners) {
+      listener({ added: [], updated: [this.clientID], removed: [] });
+    }
+  }
+
+  on(_event: string, callback: (...args: unknown[]) => void): void {
+    this.listeners.add(callback);
+  }
+
+  off(_event: string, callback: (...args: unknown[]) => void): void {
+    this.listeners.delete(callback);
+  }
+}
+
+let v2AwarenessProvider = {
+  awareness: new LocalAwareness(),
+} as unknown as YProvider;
 let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
 let currentCursorRoomId = "";
@@ -467,6 +515,17 @@ interface DefaultRoomOptions {
 
 export interface InitOptions<T = unknown> {
   /**
+   * Use the version 2 operation protocol for durable element data.
+   * Defaults to false.
+   */
+  v2?: boolean;
+
+  /**
+   * Receives version 2 connection and write-rejection status events.
+   */
+  onStatusChange?: (event: PlayHTMLStatusEvent) => void;
+
+  /**
    * The room to connect users to (this should be a string that matches the other users
    * that you want a given user to connect with).
    *
@@ -526,6 +585,10 @@ export interface InitOptions<T = unknown> {
    */
   playerIdentity?: PlayerIdentity;
 }
+
+export type PlayHTMLStatusEvent =
+  | Extract<V2TransportStatusEvent, { type: "connected" | "disconnected" }>
+  | V2StoreStatusEvent;
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
@@ -950,6 +1013,100 @@ function teardownMainProvider(): void {
   try { yprovider?.destroy?.(); } catch {}
 }
 
+function reportV2Status(event: PlayHTMLStatusEvent): void {
+  if (event.type === "connected") {
+    console.warn("[playhtml] Version 2 transport connected");
+  } else if (event.type === "disconnected") {
+    console.warn("[playhtml] Version 2 transport disconnected");
+  } else {
+    console.warn(
+      `[playhtml] Version 2 write rejected (${event.rejection.code}): ${event.rejection.message}`,
+    );
+  }
+  configuredOptions?.onStatusChange?.(event);
+}
+
+function mutateV2Element(
+  capability: string,
+  elementId: string,
+  value: JsonValue | ((draft: JsonValue) => void),
+): void {
+  if (!v2Store) {
+    throw new Error("playhtml version 2 store is unavailable after sync");
+  }
+  const mutate = v2Store.mutate as (
+    capability: string,
+    elementId: string,
+    value: JsonValue | ((draft: JsonValue) => void),
+  ) => unknown;
+  mutate.call(v2Store, capability, elementId, value);
+}
+
+function teardownV2Connection(): void {
+  for (const unsubscribe of v2ElementUnsubscribeByKey.values()) unsubscribe();
+  v2ElementUnsubscribeByKey.clear();
+  v2StoreStatusUnsubscribe?.();
+  v2StoreStatusUnsubscribe = null;
+  v2TransportMessageUnsubscribe?.();
+  v2TransportMessageUnsubscribe = null;
+  v2TransportStatusUnsubscribe?.();
+  v2TransportStatusUnsubscribe = null;
+  v2Transport?.close();
+  v2Transport = null;
+  v2Store = null;
+}
+
+function buildV2Connection(args: {
+  room: string;
+  partykitHost: string;
+}): Promise<void> {
+  const { room, partykitHost } = args;
+  const transport = new V2Transport();
+  const clientId = crypto.randomUUID();
+  v2Transport = transport;
+
+  return new Promise<void>((resolve, reject) => {
+    v2TransportStatusUnsubscribe = transport.subscribeStatus((event) => {
+      if (event.type === "connected" || event.type === "disconnected") {
+        reportV2Status(event);
+      }
+    });
+    v2TransportMessageUnsubscribe = transport.subscribeMessage((message) => {
+      if (message.type === "snapshot") {
+        if (!v2Store) {
+          v2Store = new V2Store({
+            snapshot: message.snapshot,
+            generation: message.generation,
+            sequence: message.sequence,
+            transport,
+            clientId,
+          });
+          transport.setGeneration(message.generation);
+          v2StoreStatusUnsubscribe = v2Store.subscribeStatus(reportV2Status);
+          hasSynced = true;
+          resolve();
+        } else {
+          v2Store.applyServerSnapshot(message);
+          transport.setGeneration(message.generation);
+        }
+        return;
+      }
+      if (!v2Store) {
+        reject(
+          new Error("playhtml received a version 2 message before its initial snapshot"),
+        );
+        return;
+      }
+      if (message.type === "operation") {
+        v2Store.applyServerOperation(message.payload);
+      } else {
+        v2Store.handleRejection(message);
+      }
+    });
+    transport.connect(partykitHost, room, { clientId, generation: 0 });
+  });
+}
+
 /**
  * Recreate the shared SyncedStore/Y.Doc from scratch. Called on a room change so
  * the new room starts from an empty doc — page AND element data reset to the new
@@ -1092,7 +1249,8 @@ function buildInnerPresenceAPI(): PresenceAPI {
   }
 
   return createPresenceAPI({
-    getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
+    getAwareness: () =>
+      (cursorClient?.getProvider() ?? getElementAwarenessProvider()).awareness,
     getPlayerIdentity: resolveMyIdentity,
     publishIdentity: false,
     getCursorPresences: () => cursorPresenceHub.getPresences(),
@@ -1163,23 +1321,25 @@ function buildCursors(args: {
 
   const cursorOptions: CursorOptions = { ...cursors };
 
-  let providerForCursors: YProvider = yprovider;
+  let providerForCursors: YProvider = getElementAwarenessProvider();
 
   if (cursorOptions.room) {
     const cursorRoomString = resolveCursorRoom(cursorOptions.room);
     const cursorRoom = normalizeRoomId(getCurrentRoomHost(), cursorRoomString);
 
     if (cursorRoom !== mainRoom) {
-      const cursorDoc = new Y.Doc();
-      cursorProvider = new YProvider(
-        partykitHost,
-        cursorRoom,
-        cursorDoc,
-      );
-      cursorProvider.on("error", () => {
-        onError?.();
-      });
-      providerForCursors = cursorProvider;
+      if (!configuredOptions?.v2) {
+        const cursorDoc = new Y.Doc();
+        cursorProvider = new YProvider(
+          partykitHost,
+          cursorRoom,
+          cursorDoc,
+        );
+        cursorProvider.on("error", () => {
+          onError?.();
+        });
+        providerForCursors = cursorProvider;
+      }
       currentCursorRoomId = cursorRoom;
     } else {
       currentCursorRoomId = mainRoom;
@@ -1426,7 +1586,11 @@ async function runHandleNavigation(): Promise<void> {
   }
 
   if (mainRoomChanged) {
-    teardownMainProvider();
+    if (configuredOptions?.v2) {
+      teardownV2Connection();
+    } else {
+      teardownMainProvider();
+    }
     teardownElementAwarenessClient();
     teardownPresenceClient();
     hasSynced = false;
@@ -1437,13 +1601,20 @@ async function runHandleNavigation(): Promise<void> {
     // room (like a page reload) without syncing a delete tombstone back to the
     // old room. Must happen before buildMainProvider so the new provider binds
     // the fresh doc.
-    recreateStore();
-    buildMainProvider({
-      room: newMainRoom,
-      partykitHost: __currentHost,
-      onError: configuredOptions?.onError,
-      onMessage,
-    });
+    if (configuredOptions?.v2) {
+      await buildV2Connection({
+        room: newMainRoom,
+        partykitHost: __currentHost,
+      });
+    } else {
+      recreateStore();
+      buildMainProvider({
+        room: newMainRoom,
+        partykitHost: __currentHost,
+        onError: configuredOptions?.onError,
+        onMessage,
+      });
+    }
     __currentRoomId = newMainRoom;
     buildElementAwarenessClient();
     // Retained handlers (still-mounted SPA/React elements) keep their
@@ -1483,8 +1654,10 @@ async function runHandleNavigation(): Promise<void> {
   markAllElementsAsLoading();
 
   if (mainRoomChanged) {
-    await waitForMainProviderSync();
-    refreshPageDataChannels(getPageDataDeps());
+    if (!configuredOptions?.v2) {
+      await waitForMainProviderSync();
+      refreshPageDataChannels(getPageDataDeps());
+    }
   }
 
   setupElements();
@@ -1598,12 +1771,17 @@ async function initPlayHTMLOnce() {
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`,
   );
 
-  const { sharedReferences } = buildMainProvider({
-    room,
-    partykitHost,
-    onError,
-    onMessage,
-  });
+  const sharedReferences = configuredOptions?.v2
+    ? []
+    : buildMainProvider({
+        room,
+        partykitHost,
+        onError,
+        onMessage,
+      }).sharedReferences;
+  if (configuredOptions?.v2) {
+    await buildV2Connection({ room, partykitHost });
+  }
 
   // Users module owns identity for the lifetime of this playhtml instance —
   // created unconditionally, before the cursor client, so `playhtml.users`
@@ -1614,7 +1792,7 @@ async function initPlayHTMLOnce() {
     configuredOptions?.playerIdentity ??
     resolveMyIdentity();
   usersAPI = createUsersAPI(seedIdentity, {
-    getAwareness: () => yprovider.awareness,
+    getAwareness: () => getElementAwarenessProvider().awareness,
     getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
     onCursorPresencesChange: (callback) =>
       cursorClient?.onCursorPresencesChange(callback),
@@ -1659,7 +1837,9 @@ async function initPlayHTMLOnce() {
   // Mark all discovered playhtml elements as loading before sync
   markAllElementsAsLoading();
 
-  await waitForMainProviderSync();
+  if (!configuredOptions?.v2) {
+    await waitForMainProviderSync();
+  }
   console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
 
   setupElements();
@@ -1670,7 +1850,7 @@ async function initPlayHTMLOnce() {
   readyResolve();
 
   // Fetch simple permissions for referenced shared elements so clients can block writes locally
-  if (sharedReferences.length > 0) {
+  if (!configuredOptions?.v2 && sharedReferences.length > 0) {
     try {
       const elementIds = sharedReferences.map((r) => r.elementId);
       yprovider.sendMessage(
@@ -1681,7 +1861,7 @@ async function initPlayHTMLOnce() {
     }
   }
 
-  return yprovider;
+  return getElementAwarenessProvider();
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
@@ -1695,7 +1875,7 @@ function getElementAwareness(tagType: TagType, elementId: string) {
 }
 
 function getElementAwarenessProvider(): YProvider {
-  return yprovider;
+  return configuredOptions?.v2 ? v2AwarenessProvider : yprovider;
 }
 
 function isHTMLElement(ele: any): ele is HTMLElement {
@@ -1820,10 +2000,26 @@ function createPlayElementData<T extends TagType, TData = any>(
       ? tagInfo.defaultData(element)
       : tagInfo.defaultData;
 
-  const dataProxy =
-    tagInfo.defaultData === undefined
-      ? undefined
-      : ensureElementProxy<TData>(tag, elementId, initialData as TData);
+  let dataProxy: TData | undefined;
+  let v2Data: TData | undefined;
+  if (tagInfo.defaultData !== undefined) {
+    if (configuredOptions?.v2) {
+      if (!v2Store) {
+        throw new Error("playhtml version 2 store is unavailable after sync");
+      }
+      const existing = v2Store.getSnapshot().state[tag]?.[elementId];
+      if (existing === undefined) {
+        mutateV2Element(
+          tag,
+          elementId,
+          clonePlain(initialData) as JsonValue,
+        );
+      }
+      v2Data = v2Store.getSnapshot().state[tag]?.[elementId] as TData;
+    } else {
+      dataProxy = ensureElementProxy<TData>(tag, elementId, initialData as TData);
+    }
+  }
   const initialAwareness = getElementAwareness(tag, elementId);
 
   const elementData: ElementData = {
@@ -1834,7 +2030,7 @@ function createPlayElementData<T extends TagType, TData = any>(
         : tagInfo.myDefaultAwareness,
     devMode: configuredOptions?.developmentMode ?? false,
     // Always provide a plain snapshot to render paths
-    data: clonePlain(dataProxy),
+    data: clonePlain(configuredOptions?.v2 ? v2Data : dataProxy),
     awareness:
       initialAwareness !== undefined
         ? [initialAwareness]
@@ -1843,7 +2039,7 @@ function createPlayElementData<T extends TagType, TData = any>(
           : undefined,
     element,
     onChange: (newData: TData) => {
-      if (dataProxy === undefined) {
+      if (tagInfo.defaultData === undefined) {
         console.error(
           `[playhtml] setData() was called for "${elementId}", but its initializer does not define \`defaultData\`.`,
         );
@@ -1854,8 +2050,20 @@ function createPlayElementData<T extends TagType, TData = any>(
         return;
       }
 
+      if (configuredOptions?.v2) {
+        if (!v2Store) {
+          throw new Error("playhtml version 2 store is unavailable after sync");
+        }
+        mutateV2Element(
+          tag,
+          elementId,
+          newData as JsonValue | ((draft: JsonValue) => void),
+        );
+        return;
+      }
+
       doc.transact(() => {
-        applyElementDataChange(elementId, dataProxy, newData);
+        applyElementDataChange(elementId, dataProxy as TData, newData);
       });
     },
     onAwarenessChange: (elementAwarenessData) => {
@@ -2351,7 +2559,11 @@ export async function resetPlayHTML(): Promise<void> {
     teardownElementAwarenessClient();
     teardownPresenceClient();
     teardownCursors();
-    teardownMainProvider();
+    if (configuredOptions?.v2) {
+      teardownV2Connection();
+    } else {
+      teardownMainProvider();
+    }
     try { usersAPI?.destroy(); } catch {}
     usersAPI = null;
 
@@ -2397,6 +2609,11 @@ export async function resetPlayHTML(): Promise<void> {
     cursorPresenceHub.subscribers.clear();
     roomResetPromise = null;
     pendingRoomResetEpoch = null;
+    if (configuredOptions?.v2) {
+      v2AwarenessProvider = {
+        awareness: new LocalAwareness(),
+      } as unknown as YProvider;
+    }
     configuredOptions = null;
     hasBootstrapped = false;
   } finally {
@@ -2481,7 +2698,9 @@ function maybeSetupTag(tag: TagType | string): void {
     elementHandlers.set(tag, new Map<string, ElementHandler>());
   }
 
-  store.play[tag] ??= {};
+  if (!configuredOptions?.v2) {
+    store.play[tag] ??= {};
+  }
 }
 
 /**
@@ -2658,7 +2877,9 @@ function applySharedElementDataToHandler(
   elementId: string,
   handler: ElementHandler,
 ): boolean {
-  const proxy = store.play[tag]?.[elementId];
+  const proxy = configuredOptions?.v2
+    ? v2Store?.getSnapshot().state[tag]?.[elementId]
+    : store.play[tag]?.[elementId];
   if (proxy === undefined) return false;
 
   // Push a plain snapshot into the handler for stable rendering.
@@ -2683,6 +2904,16 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
   if (!tagHandlers) return;
   const handler = tagHandlers.get(elementId);
   if (!handler) return;
+
+  if (configuredOptions?.v2) {
+    v2ElementUnsubscribeByKey.get(key)?.();
+    if (!v2Store) return;
+    const unsubscribe = v2Store.subscribe(tag, elementId, () => {
+      applySharedElementDataToHandler(tag, elementId, handler);
+    });
+    v2ElementUnsubscribeByKey.set(key, unsubscribe);
+    return;
+  }
 
   // Detach previous observer if present
   const yVal = getYjsValue(store.play[tag]?.[elementId]);
@@ -2852,17 +3083,22 @@ function removePlayElement(element: Element | null) {
     }
 
     const key = `${tag}:${elementId}`;
-    const yVal = getYjsValue(store.play[tag]?.[elementId]);
-    const observer = yObserverByKey.get(key);
-    if (
-      yVal &&
-      observer &&
-      typeof (yVal as any).unobserveDeep === "function"
-    ) {
-      // @ts-ignore
-      (yVal as any).unobserveDeep(observer);
+    if (configuredOptions?.v2) {
+      v2ElementUnsubscribeByKey.get(key)?.();
+      v2ElementUnsubscribeByKey.delete(key);
+    } else {
+      const yVal = getYjsValue(store.play[tag]?.[elementId]);
+      const observer = yObserverByKey.get(key);
+      if (
+        yVal &&
+        observer &&
+        typeof (yVal as any).unobserveDeep === "function"
+      ) {
+        // @ts-ignore
+        (yVal as any).unobserveDeep(observer);
+      }
+      yObserverByKey.delete(key);
     }
-    yObserverByKey.delete(key);
     sharedUpdateSeen.delete(key);
     const timerId = sharedHydrationTimers.get(key);
     if (timerId !== undefined) {
@@ -3201,6 +3437,18 @@ function deleteElementData(tag: string, elementId: string): void {
   }
 
   const key = `${tag}:${elementId}`;
+
+  if (configuredOptions?.v2) {
+    v2ElementUnsubscribeByKey.get(key)?.();
+    v2ElementUnsubscribeByKey.delete(key);
+    const handler = elementHandlers.get(tag)?.get(elementId);
+    handler?.destroy();
+    elementHandlers.get(tag)?.delete(elementId);
+    console.warn(
+      `[PLAYHTML] deleteElementData is not supported by the version 2 protocol: ${key}`,
+    );
+    return;
+  }
 
   // 1. Remove observer
   const yVal = getYjsValue(store.play[tag]?.[elementId]);
