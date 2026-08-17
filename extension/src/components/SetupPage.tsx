@@ -265,7 +265,13 @@ export default function SetupPage() {
         }
       >
         {step === "welcome" && (
-          <section className="setup-step">
+          <form
+            className="setup-step"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setStep("configure");
+            }}
+          >
             <h1 className="setup-step__title">we were online</h1>
             <p className="setup-step__desc">
               This extension quietly records how you move through the internet —
@@ -312,13 +318,38 @@ export default function SetupPage() {
                 Safari website access is on.
               </p>
             )}
+            <div className="setup-step__field">
+              <label
+                className="setup-step__field-label"
+                htmlFor="updates-email"
+              >
+                Email for project updates (optional)
+              </label>
+              <input
+                id="updates-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                aria-describedby="updates-email-help"
+                className="setup-step__input"
+              />
+              <span
+                id="updates-email-help"
+                className="setup-step__field-help"
+              >
+                Get occasional updates about we were online and have the
+                opportunity to beta test new features
+              </span>
+            </div>
             <button
-              onClick={() => setStep("configure")}
+              type="submit"
               className="setup-step__btn-primary"
             >
               Get started
             </button>
-          </section>
+          </form>
         )}
 
         {step === "configure" && (
@@ -568,32 +599,6 @@ export default function SetupPage() {
                 void finishOnboarding();
               }}
             >
-              <div className="setup-step__field">
-                <label
-                  className="setup-step__field-label"
-                  htmlFor="updates-email"
-                >
-                  Email for project updates (optional)
-                </label>
-                <input
-                  id="updates-email"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  aria-describedby="updates-email-help"
-                  className="setup-step__input"
-                />
-                <span
-                  id="updates-email-help"
-                  className="setup-step__field-help"
-                >
-                  Get occasional updates about we were online and related
-                  projects.
-                </span>
-              </div>
-
               <div className="setup-step__actions">
                 <button
                   type="button"

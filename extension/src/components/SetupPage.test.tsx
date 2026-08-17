@@ -112,6 +112,14 @@ describe("SetupPage", () => {
     const { container, root } = await renderSetup();
 
     try {
+      expect(container.textContent).toContain(
+        "Email for project updates (optional)",
+      );
+      expect(container.textContent).toContain(
+        "Get occasional updates about we were online and have the opportunity to beta test new features",
+      );
+      expect(container.querySelector('input[type="email"]')).not.toBeNull();
+
       await click(container, "Get started");
       await click(container, "Continue");
 
@@ -135,10 +143,7 @@ describe("SetupPage", () => {
         "We'll share some of your progress as you browse.",
       );
       expect(container.textContent).toContain("3. Wikipedia feels inhabited");
-      expect(container.textContent).toContain(
-        "Email for project updates (optional)",
-      );
-      expect(container.querySelector('input[type="email"]')).not.toBeNull();
+      expect(container.querySelector('input[type="email"]')).toBeNull();
       expect(browser.storage.local.set).toHaveBeenCalled();
       expect(browser.storage.local.set).not.toHaveBeenCalledWith(
         expect.objectContaining({ onboarding_complete: "true" }),
@@ -160,9 +165,9 @@ describe("SetupPage", () => {
     const { container, root } = await renderSetup();
 
     try {
+      await fillEmail(container, "person@example.com");
       await click(container, "Get started");
       await click(container, "Continue");
-      await fillEmail(container, " person@example.com ");
       await click(container, "Finish setup");
 
       await vi.waitFor(() => {
@@ -191,9 +196,9 @@ describe("SetupPage", () => {
     const { container, root } = await renderSetup();
 
     try {
+      await fillEmail(container, "person@example.com");
       await click(container, "Get started");
       await click(container, "Continue");
-      await fillEmail(container, "person@example.com");
       await click(container, "Finish setup");
 
       await vi.waitFor(() => {
