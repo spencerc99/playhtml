@@ -12,21 +12,22 @@
   &__header {
     margin-bottom: 16px;
 
-    .back-row {
-      display: flex;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
     .back-btn {
+      display: block;
       background: none;
       border: none;
       cursor: pointer;
-      font-size: 18px;
-      margin-right: 8px;
+      font-size: 12px;
+      font-family: $font-body;
+      margin-bottom: 8px;
       padding: 0;
-      color: $text;
+      color: $text-muted;
       line-height: 1;
+      transition: color 0.12s;
+
+      &:hover {
+        color: $accent-teal;
+      }
     }
 
     h1 {
