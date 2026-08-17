@@ -1,4 +1,4 @@
-// ABOUTME: Renders the phase-one walking record for the extension new-tab page.
+// ABOUTME: Renders the extension's standalone browsing-history record page.
 // ABOUTME: Presents period-specific exploration, settled places, and time spent from local data.
 
 import React from "react";
