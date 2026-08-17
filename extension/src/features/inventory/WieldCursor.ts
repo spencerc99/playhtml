@@ -32,6 +32,25 @@ export class WieldCursor {
     window.removeEventListener("pointermove", this.onMove);
   }
 
+  strike(motion: "snip" | "swing"): void {
+    const frames =
+      motion === "swing"
+        ? [
+            { transform: "rotate(-38deg) translate(-2px, -3px) scale(1.08)" },
+            { transform: "rotate(18deg) translate(3px, 4px) scale(.94)" },
+            { transform: "rotate(0deg) translate(0, 0) scale(1)" },
+          ]
+        : [
+            { transform: "rotate(-16deg) scale(1.08)" },
+            { transform: "rotate(12deg) scale(.92)" },
+            { transform: "rotate(0deg) scale(1)" },
+          ];
+    this.icon.animate?.(frames, {
+      duration: motion === "swing" ? 280 : 220,
+      easing: "cubic-bezier(.2,.8,.25,1)",
+    });
+  }
+
   destroy(): void {
     this.hide();
     this.el.remove();

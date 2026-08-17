@@ -70,17 +70,28 @@ const local = {
   },
 };
 
-const noopListener = {
-  addListener: () => {},
-  removeListener: () => {},
-  hasListener: () => false,
+type MessageListener = (message: unknown) => unknown;
+const runtimeMessageListeners = new Set<MessageListener>();
+const runtimeOnMessage = {
+  addListener(listener: MessageListener) {
+    runtimeMessageListeners.add(listener);
+  },
+  removeListener(listener: MessageListener) {
+    runtimeMessageListeners.delete(listener);
+  },
+  hasListener(listener: MessageListener) {
+    return runtimeMessageListeners.has(listener);
+  },
 };
 
 const browser = {
   runtime: {
     getURL,
-    onMessage: { ...noopListener },
-    sendMessage: async () => undefined,
+    onMessage: runtimeOnMessage,
+    async sendMessage(message: unknown) {
+      for (const listener of runtimeMessageListeners) listener(message);
+      return undefined;
+    },
   },
   storage: {
     local,

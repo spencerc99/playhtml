@@ -1,12 +1,26 @@
-// ABOUTME: Opens inventory from the manifest command or its direct page shortcut fallback.
-// ABOUTME: Keeps the shortcut working when a browser leaves the extension command unassigned.
+// ABOUTME: Opens or arms inventory from runtime messages and direct page shortcuts.
+// ABOUTME: Keeps development controls and browser shortcut fallbacks on one cleanup path.
 
 import browser from "webextension-polyfill";
 
-export function registerKeyboardSummon(onOpen: () => void): () => void {
+interface InventoryMessageHandlers {
+  onOpen(): void;
+  onArm(itemId: string): void;
+}
+
+export function registerInventoryMessages(
+  handlers: InventoryMessageHandlers,
+): () => void {
   const handler = (msg: unknown) => {
-    if (typeof msg === "object" && msg !== null && (msg as { type?: string }).type === "wwo:open-inventory") {
-      onOpen();
+    if (typeof msg !== "object" || msg === null) return;
+    const message = msg as { type?: string; itemId?: unknown };
+    if (message.type === "wwo:open-inventory") {
+      handlers.onOpen();
+    } else if (
+      message.type === "wwo:arm-inventory" &&
+      typeof message.itemId === "string"
+    ) {
+      handlers.onArm(message.itemId);
     }
   };
   const onKeyDown = (event: KeyboardEvent) => {
@@ -20,7 +34,7 @@ export function registerKeyboardSummon(onOpen: () => void): () => void {
       return;
     }
     event.preventDefault();
-    onOpen();
+    handlers.onOpen();
   };
   browser.runtime.onMessage.addListener(handler);
   window.addEventListener("keydown", onKeyDown, true);

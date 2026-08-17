@@ -1,0 +1,24 @@
+<!-- ABOUTME: Cut-out scissors icon for the extension inventory and wielded cursor. -->
+<!-- ABOUTME: Uses a compact warm-metal shape that stays legible at small sizes. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4eee2"/>
+      <stop offset=".45" stop-color="#a9adb0"/>
+      <stop offset="1" stop-color="#666b70"/>
+    </linearGradient>
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="#3d2f21" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)" stroke-linejoin="round">
+    <path d="M55 70 113 17 70 78Z" fill="url(#steel)" stroke="#585d61" stroke-width="4"/>
+    <path d="M57 75 116 107 69 66Z" fill="url(#steel)" stroke="#585d61" stroke-width="4"/>
+    <circle cx="61" cy="72" r="7" fill="#d59a43" stroke="#704b23" stroke-width="4"/>
+    <path d="M59 76 42 94" fill="none" stroke="#704b23" stroke-width="9" stroke-linecap="round"/>
+    <path d="M59 69 41 51" fill="none" stroke="#704b23" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="30" cy="105" r="17" fill="none" stroke="#bd5e50" stroke-width="10"/>
+    <circle cx="29" cy="40" r="17" fill="none" stroke="#4d9688" stroke-width="10"/>
+    <circle cx="61" cy="72" r="2.5" fill="#fff3c7"/>
+  </g>
+</svg>
