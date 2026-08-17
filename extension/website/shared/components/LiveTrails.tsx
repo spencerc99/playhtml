@@ -133,14 +133,11 @@ export function getLiveDrawDuration(trailState: TrailState): number {
   const segmentDuration =
     Math.max(0, trailState.variedPoints.length - 1) *
     MIN_DRAW_MS_PER_SEGMENT;
-  return Math.min(
-    MAX_DRAW_MS,
-    Math.max(
-      MIN_DRAW_MS,
-      trailState.durationMs,
-      spatialDuration,
-      segmentDuration,
-    ),
+  return Math.max(
+    MIN_DRAW_MS,
+    Math.min(MAX_DRAW_MS, trailState.durationMs),
+    spatialDuration,
+    segmentDuration,
   );
 }
 

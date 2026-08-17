@@ -111,6 +111,17 @@ describe("getLiveDrawDuration", () => {
 
     expect(getLiveDrawDuration(state)).toBe(3200);
   });
+
+  it("does not cap the perceptible segment duration for very long trails", () => {
+    const state = trailState();
+    state.durationMs = 600;
+    state.variedPoints = Array.from({ length: 1001 }, (_, index) => ({
+      x: index,
+      y: 0,
+    }));
+
+    expect(getLiveDrawDuration(state)).toBe(32000);
+  });
 });
 
 describe("advanceSettlingState", () => {
