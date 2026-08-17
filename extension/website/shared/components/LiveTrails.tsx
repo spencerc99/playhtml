@@ -43,6 +43,7 @@ const DIM_FADE_MS = 1200;
 const MIN_DRAW_MS = 600;
 const MAX_DRAW_MS = 30000;
 const MAX_DRAW_SPEED_PX_PER_SECOND = 600;
+const MIN_DRAW_MS_PER_SEGMENT = 32;
 
 // Once a trail has settled (dimmed, done tracing), keep it on screen this long
 // before removing it, so finished trails persist as a dim backdrop rather than
@@ -129,9 +130,17 @@ export function advanceDrawState(
 export function getLiveDrawDuration(trailState: TrailState): number {
   const spatialDuration =
     (pathLength(trailState.variedPoints) / MAX_DRAW_SPEED_PX_PER_SECOND) * 1000;
+  const segmentDuration =
+    Math.max(0, trailState.variedPoints.length - 1) *
+    MIN_DRAW_MS_PER_SEGMENT;
   return Math.min(
     MAX_DRAW_MS,
-    Math.max(MIN_DRAW_MS, trailState.durationMs, spatialDuration),
+    Math.max(
+      MIN_DRAW_MS,
+      trailState.durationMs,
+      spatialDuration,
+      segmentDuration,
+    ),
   );
 }
 

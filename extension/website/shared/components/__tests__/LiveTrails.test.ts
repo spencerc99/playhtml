@@ -100,6 +100,17 @@ describe("getLiveDrawDuration", () => {
 
     expect(getLiveDrawDuration(state)).toBe(2000);
   });
+
+  it("gives every rendered segment enough time to remain perceptible", () => {
+    const state = trailState();
+    state.durationMs = 600;
+    state.variedPoints = Array.from({ length: 101 }, (_, index) => ({
+      x: index,
+      y: 0,
+    }));
+
+    expect(getLiveDrawDuration(state)).toBe(3200);
+  });
 });
 
 describe("advanceSettlingState", () => {

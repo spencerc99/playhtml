@@ -9,6 +9,7 @@ import { CollectionEvent, Trail, TrailState } from "../types";
 const MAX_REASONABLE_HOLD_MS = 3_600_000;
 const MIN_HOLD_THRESHOLD_MS = 250;
 const LIVE_SEGMENT_SEPARATOR = "|segment:";
+const MAX_LIVE_SEGMENT_PX = 20;
 
 function sanitizeHoldDuration(duration: number | undefined): number | undefined {
   if (duration === undefined) return undefined;
@@ -108,6 +109,30 @@ export function getAccumulationEvictions(
     }
   }
   return Array.from(groupIds);
+}
+
+export function densifyGrowingTrail(
+  points: Array<{ x: number; y: number }>,
+): Array<{ x: number; y: number }> {
+  if (points.length < 2) return points;
+
+  const densified = [points[0]];
+  for (let index = 1; index < points.length; index++) {
+    const start = points[index - 1];
+    const end = points[index];
+    const distance = Math.hypot(end.x - start.x, end.y - start.y);
+    const segmentCount = Math.max(1, Math.ceil(distance / MAX_LIVE_SEGMENT_PX));
+
+    for (let segment = 1; segment <= segmentCount; segment++) {
+      const progress = segment / segmentCount;
+      densified.push({
+        x: start.x + (end.x - start.x) * progress,
+        y: start.y + (end.y - start.y) * progress,
+      });
+    }
+  }
+
+  return densified;
 }
 
 export interface UseCursorTrailsResult {
@@ -543,7 +568,9 @@ export function useCursorTrails(
       // A growing live path must remain prefix-stable: appending points cannot
       // reshape ink that is already on screen. Archive paths are fixed, so they
       // can still round and resample their complete geometry before playback.
-      let variedPoints = styledPoints;
+      let variedPoints = settings.singleSegmentPerGroup
+        ? densifyGrowingTrail(styledPoints)
+        : styledPoints;
       if (!settings.singleSegmentPerGroup) {
         const roundedPoints = roundPathCorners(styledPoints);
         // roundPathCorners returns the SAME array when no corner was sharp

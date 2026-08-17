@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildLiveTrailId,
   buildTrailSchedulePositionLookup,
+  densifyGrowingTrail,
   getAccumulationEvictions,
   getLiveTrailGroupId,
 } from "../useCursorTrails";
@@ -15,6 +16,30 @@ describe("buildTrailSchedulePositionLookup", () => {
     const positions = buildTrailSchedulePositionLookup(orderedIndices, 4);
 
     expect(Array.from(positions)).toEqual([1, 3, 0, 2]);
+  });
+});
+
+describe("densifyGrowingTrail", () => {
+  it("keeps existing geometry stable while limiting segment length", () => {
+    const initial = densifyGrowingTrail([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+    ]);
+    const appended = densifyGrowingTrail([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+    ]);
+
+    expect(appended.slice(0, initial.length)).toEqual(initial);
+    for (let index = 1; index < appended.length; index++) {
+      expect(
+        Math.hypot(
+          appended[index].x - appended[index - 1].x,
+          appended[index].y - appended[index - 1].y,
+        ),
+      ).toBeLessThanOrEqual(20);
+    }
   });
 });
 
