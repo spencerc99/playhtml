@@ -2515,6 +2515,8 @@ function createPresenceRoom(name: string): PresenceRoom {
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   configure: typeof configurePlayHTML;
+  /** Internal debugging handle for the v2 protocol store; not public API. */
+  readonly __v2Store?: unknown;
   readonly isLoading: boolean;
   readonly ready: Promise<void>;
   handleNavigation: () => Promise<void>;
@@ -2697,6 +2699,10 @@ export const playhtml: PlayHTMLComponents = {
   getHandle: createPlayElementHandle,
   get syncedStore() {
     return publicSyncedStore;
+  },
+  // Internal debugging handle for the v2 protocol path; not public API.
+  get __v2Store() {
+    return v2Store;
   },
   elementHandlers,
   dispatchPlayEvent,
@@ -2964,6 +2970,18 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
     v2ElementApplyFrameByKey.delete(key);
     if (!v2Store) return;
     const unsubscribe = v2Store.subscribe(tag, elementId, () => {
+      // A local write must be readable in the same tick: drag math reads
+      // `data` right after `setData`, and a frame-stale base means movement
+      // never accumulates. Update the handler's state silently now; the
+      // render (and React notification) still happens on the batched frame,
+      // which also avoids re-entrant write-backs during the mutation.
+      if (v2Store?.isNotifyingLocalMutation()) {
+        const value = v2Store.getSnapshot().state[tag]?.[elementId];
+        if (value !== undefined) {
+          // @ts-ignore private usage intended
+          handler.__dataSilent = clonePlain(value);
+        }
+      }
       if (v2ElementApplyFrameByKey.has(key)) return;
       const frame = requestAnimationFrame(() => {
         v2ElementApplyFrameByKey.delete(key);

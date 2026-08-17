@@ -139,10 +139,25 @@ export class V2Store {
     } else {
       this.view = recorded.next;
     }
-    this.notifyChanges(previous, this.view, this.changedKeysForOps(messages));
+    // Listeners fired during a local mutation must apply synchronously: the
+    // caller (e.g. drag math) reads the element's data right after setData,
+    // and a frame-delayed apply makes every step compute from a stale base.
+    this.notifyingLocalMutation = true;
+    try {
+      this.notifyChanges(previous, this.view, this.changedKeysForOps(messages));
+    } finally {
+      this.notifyingLocalMutation = false;
+    }
     this.scheduleOutgoingFlush();
     return messages;
   }
+
+  /** True while listeners for a local mutation are being notified. */
+  isNotifyingLocalMutation(): boolean {
+    return this.notifyingLocalMutation;
+  }
+
+  private notifyingLocalMutation = false;
 
   applyServerOperation(envelope: SequencedOperation): void {
     if (

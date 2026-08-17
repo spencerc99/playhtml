@@ -414,6 +414,18 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   /**
+   * // PRIVATE USE ONLY \\
+   *
+   * Updates the internal state without rendering or notifying listeners. Used
+   * by the sync code when a local write must be readable in the same tick
+   * (drag math reads `data` right after `setData`) while the render itself is
+   * deferred to the frame-batched apply.
+   */
+  set __dataSilent(data: T) {
+    this._data = data;
+  }
+
+  /**
    * Renders the element from current state: runs `view` and patches the
    * result into the DOM via lit-html, or falls back to imperative
    * `updateElement`. Safe to call repeatedly — lit-html diffs.
