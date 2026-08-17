@@ -8,6 +8,9 @@ import {
   NavigationSoundEvent,
   AuditionAccent,
   ClickPercussionVariant,
+  PizzicatoVariant,
+  TimpaniVariant,
+  CantusVariant,
   SoundLayer,
   SOUND_LAYERS,
 } from "./types";
@@ -539,26 +542,196 @@ const PERCUSSION_TUNING = {
     /** How far the pan travels across the swish, either side of centre. */
     panTravel: 0.35,
   },
-  /**
-   * The hold roll: a quiet low tremolo building while a click is held, then
-   * stopping. Candidate for click-and-hold, where the bell currently just
-   * stretches.
-   */
-  hold: {
-    durationSeconds: 1,
-    toneHz: 110,
-    filterHz: 500,
-    filterQ: 1,
-    gain: 0.035,
-    /** Tremolo rate, and how deeply it cuts into the tone. */
-    tremoloHz: 14,
-    tremoloDepth: 0.7,
-    /** Fraction of the roll spent building to full before the cut-off. */
-    buildFraction: 0.8,
-    releaseSeconds: 0.08,
-  },
   /** Seconds of noise generated per buffer, reused by every noise source. */
   noiseBufferSeconds: 1,
+};
+
+/**
+ * Pizzicato tuning: a plucked string for a click.
+ *
+ * Pitched, unlike the percussion above — the note comes from the same bell
+ * palette and the same click height the shipped click bell uses, so a pluck
+ * lands where a bell would have. What changes is the body: a pluck stops
+ * dead where a bell rings out, which is what makes a run of clicks read as
+ * rhythm inside the harmony rather than as a pile of overlapping bells.
+ *
+ * Levels sit under `CLICK_BELL.gain` for the same reason the percussion does.
+ */
+const PIZZICATO_TUNING = {
+  /**
+   * The warm variant. A triangle over a sine an octave down, with the filter
+   * sweeping from open to closed across the decay — the closing filter is what
+   * a nylon string does as its high partials die first.
+   */
+  soft: {
+    decaySeconds: 0.25,
+    gain: 0.055,
+    attackSeconds: 0.004,
+    /** Level of the sine an octave below the fundamental, for body. */
+    subGain: 0.5,
+    /** Filter travel across the decay: open on the pluck, closed at the end. */
+    filterStartHz: 2600,
+    filterEndHz: 500,
+    filterQ: 0.8,
+  },
+  /**
+   * The bright variant. Shorter, a sawtooth rather than a triangle, and with a
+   * few milliseconds of filtered noise on the attack — a fingernail rather than
+   * a fingertip. The noise is an attack component only, never a body: it is
+   * over before the string has finished sounding its first cycle.
+   */
+  crisp: {
+    decaySeconds: 0.15,
+    gain: 0.045,
+    attackSeconds: 0.002,
+    subGain: 0.25,
+    filterStartHz: 5000,
+    filterEndHz: 1200,
+    filterQ: 1,
+    /** The fingernail edge: short, high, and well under the string itself. */
+    edgeDurationSeconds: 0.012,
+    edgeFilterHz: 4500,
+    edgeFilterQ: 2,
+    edgeGain: 0.02,
+  },
+  /**
+   * The ornamented variant: a quieter grace note a chord tone away, then the
+   * soft pluck. The gap is short enough to read as one gesture with a flick in
+   * front of it rather than as two separate plucks.
+   */
+  double: {
+    graceLeadSeconds: 0.06,
+    graceGainScale: 0.55,
+    graceDecayScale: 0.5,
+    /**
+     * How far up the palette the grace note sits from the main note. One step,
+     * so the ornament is adjacent rather than a leap; it wraps down when the
+     * main note is already at the top of the palette.
+     */
+    graceScaleSteps: 1,
+  },
+};
+
+/**
+ * Timpani tuning: the pitched roll under a held click.
+ *
+ * Replaces the noise roll this used to be. The pitch is the current chord
+ * root dropped into D2-D3, and the sound is deliberately not a pure low sine:
+ * a fundamental down there is inaudible on a laptop speaker, so the note is
+ * built as a fundamental plus partials at 2x and 3x, the same trick that makes
+ * the navigation gong survive small speakers. The lowpass sits well above the
+ * fundamental so those partials get through.
+ */
+const TIMPANI_TUNING = {
+  /**
+   * Where the chord root is voiced. The palette's root is D3, so one octave
+   * down puts the drum in D2-D3 — timpani territory, and low enough that the
+   * partials are doing the work of making it audible.
+   */
+  registerMultiplier: 0.5,
+  /** Roll length when nothing says otherwise, and the bounds a hold maps into. */
+  durationSeconds: 1,
+  minDurationSeconds: 0.4,
+  maxDurationSeconds: 3,
+  gain: 0.06,
+  /**
+   * Partial levels relative to the fundamental. A drumhead is inharmonic, but
+   * plain 2x/3x is close enough to read as a struck skin while staying
+   * consonant with the chord — and it is what carries the pitch on a speaker
+   * that cannot reproduce the fundamental at all.
+   */
+  octavePartialGain: 0.45,
+  twelfthPartialGain: 0.22,
+  /** Lowpass, high enough to pass the partials that make the note audible. */
+  filterHz: 1400,
+  filterQ: 0.7,
+  /** Tremolo rate and depth for the rolled variants. */
+  tremoloHz: 13,
+  tremoloDepth: 0.7,
+  /** Fraction of the roll spent building to full before the cut-off. */
+  buildFraction: 0.8,
+  releaseSeconds: 0.09,
+  /**
+   * The root+fifth variant alternates between two pitches. This is how long
+   * each one is held before the swap — slow enough to hear as alternation
+   * rather than as a warble on top of the tremolo.
+   */
+  alternateSeconds: 0.22,
+  /**
+   * The swell variant has no tremolo at all: one tone crescendoing. Its build
+   * runs longer than the rolled variants' so the crescendo is the whole event.
+   */
+  swellBuildFraction: 0.9,
+  swellGainScale: 0.85,
+};
+
+/**
+ * Cantus firmus tuning: one slow autonomous voice, belonging to no trail.
+ *
+ * The only instrument here that is not triggered by an event. It sings on its
+ * own clock whenever it is switched on, drawing each note from the chord in
+ * force and moving to the nearest tone from the note before — the same voice
+ * leading a trail's home tone follows, which is what keeps it from leaping
+ * around when the progression turns over.
+ *
+ * Quiet but present: the notes overlap because the release is longer than the
+ * gap is short, so the line reads as one continuous voice rather than as
+ * separate pings.
+ */
+const CANTUS_TUNING = {
+  /** Gap between note onsets. Slow enough that the line is barely a melody. */
+  minIntervalSeconds: 8,
+  maxIntervalSeconds: 15,
+  /**
+   * Long either side, so the line never sounds struck and never fully stops.
+   * The release is what overlaps into the next note.
+   */
+  attackSeconds: 3,
+  releaseSeconds: 4,
+  /**
+   * How long the note holds at full before the release begins.
+   *
+   * Sized so that attack + sustain + release comfortably outlasts the longest
+   * gap between onsets: the previous note must still be releasing when the
+   * next one begins, or the line reads as separate tones rather than as one
+   * voice. Shortening this below `maxIntervalSeconds - attackSeconds` opens
+   * audible gaps at the slow end of the interval range.
+   */
+  sustainSeconds: 10,
+  /**
+   * The tenor register. The palette already sits at D3-C5, so the tenor sings
+   * it as written — that lower octave is C3-C4.
+   */
+  registerMultiplier: 1,
+  gain: 0.035,
+  /**
+   * Where the soprano variant sits relative to tenor, and how much quieter.
+   * Up an octave the same level reads as much louder, hence the trim.
+   */
+  sopranoOctaves: 1,
+  sopranoGainScale: 0.7,
+  /**
+   * The duet's second voice: a chord tone above the first, at half the level,
+   * and offset by half the interval so the two alternate rather than land
+   * together. Two notes in unison is one thicker note; offset, it is two
+   * voices.
+   */
+  duetScaleSteps: 2,
+  duetGainScale: 0.6,
+  duetPhaseOffset: 0.5,
+  /**
+   * Pan drift across each note, either side of centre. The voice wanders
+   * slowly rather than sitting in one place, which is most of what stops a
+   * sustained tone reading as a test tone.
+   */
+  panTravel: 0.4,
+  /** How far off centre a note may start. Kept inside `panTravel`. */
+  panSpread: 0.3,
+  /** Filter over the whole voice — warm, no top end. */
+  filterHz: 1800,
+  filterQ: 0.6,
+  /** Level of the fifth partial that gives the voice a little body. */
+  partialGain: 0.18,
 };
 
 /**
@@ -888,6 +1061,16 @@ interface FlourishNote {
 }
 
 export class SoundEngine {
+  /**
+   * A context supplied by the caller instead of one the engine opens itself.
+   *
+   * The only reason this exists is offline rendering: an `OfflineAudioContext`
+   * renders the whole graph to a buffer faster than real time, which is how a
+   * scene gets turned into a file without playing it. Nothing about the
+   * synthesis changes — the engine builds the same graph either way — so a
+   * caller that passes nothing gets exactly the live behaviour.
+   */
+  private readonly providedCtx: BaseAudioContext | null;
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private reverbGain: GainNode | null = null;
@@ -988,6 +1171,25 @@ export class SoundEngine {
   private bassPedalVoices: BassPedalVoice[] = [];
   /** Chord root the pedal is currently holding, so it only moves on a change. */
   private bassPedalFrequency: number | null = null;
+  /**
+   * The cantus firmus, when it is running. Null whenever it is switched off,
+   * which is also how it is stopped — nothing else holds a reference.
+   *
+   * `pitch` is the tone the line last sang, and it is the only state the voice
+   * leading needs: each new note is the nearest palette tone to it, so the
+   * line walks by a step at a time however the chords move underneath.
+   */
+  private cantus: {
+    variant: CantusVariant;
+    pitch: number | null;
+    /** Second voice's last tone, for the duet. Null for the single-voice variants. */
+    partnerPitch: number | null;
+    /** Tick time the next note is due, and the one after that for the duet. */
+    nextNoteMs: number;
+    nextPartnerNoteMs: number;
+    /** Counter feeding the pan and interval jitter, so the line is not on a grid. */
+    noteCount: number;
+  } | null = null;
   /** Last reverb target actually scheduled, so ramps are not restarted. */
   private lastReverbTarget = DEFAULT_REVERB_SEND;
   /** Last master gain target actually scheduled, for the same reason. */
@@ -1003,10 +1205,23 @@ export class SoundEngine {
   /** Layers explicitly soloed. Any entry here silences every other layer. */
   private soloedLayers: Set<SoundLayer> = new Set();
 
+  /**
+   * `ctx` lets a caller render the engine into a context it owns — an
+   * `OfflineAudioContext`, for turning a scene into a file. Omit it and the
+   * engine opens its own live `AudioContext`, which is what every page does.
+   */
+  constructor(ctx?: BaseAudioContext) {
+    this.providedCtx = ctx ?? null;
+  }
+
   async init(): Promise<void> {
     if (this.ctx) return;
 
-    this.ctx = new AudioContext();
+    // An offline context has no `resume` and never suspends, but every node
+    // factory the engine uses is on `BaseAudioContext`, so the graph below is
+    // identical either way. The cast keeps the rest of the class typed against
+    // the live context it usually holds.
+    this.ctx = (this.providedCtx ?? new AudioContext()) as AudioContext;
 
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = this.baseVolume;
@@ -1055,7 +1270,9 @@ export class SoundEngine {
     // here satisfies the browser autoplay policy. Without this, the context
     // stays suspended until tick() happens to fire from AnimatedTrails' rAF
     // loop, which can delay audible sound by seconds.
-    if (this.ctx.state === "suspended") {
+    // An offline context is rendered rather than played, so it has no resume
+    // to call and never reaches this state in the first place.
+    if (this.ctx.state === "suspended" && this.ctx.resume) {
       await this.ctx.resume();
     }
   }
@@ -1231,6 +1448,7 @@ export class SoundEngine {
       // and structure, not trail motion, so they sound the same either way.
       this.updateBassPedal();
       this.updateArrivals(elapsedMs, activeTrails);
+      this.updateCantus(elapsedMs);
       this.notesEngine.setScale(this.currentScale());
       this.notesEngine.setVolume(this.baseVolume * this.energyGainScale());
       this.notesEngine.tick(elapsedMs, activeTrails);
@@ -1254,6 +1472,7 @@ export class SoundEngine {
     this.updateEnergyReverb();
     this.updateBassPedal();
     this.updateArrivals(elapsedMs, activeTrails);
+    this.updateCantus(elapsedMs);
     this.updateMasterGainForPolyphony(activeTrails.length);
     // Resolve the soloist before touching any voice, so every trail in this
     // frame is judged against the same scene average.
@@ -3479,10 +3698,77 @@ export class SoundEngine {
       case "scrollBrush":
         this.triggerScrollBrush(centre);
         return;
-      case "holdRoll":
-        this.triggerHoldRoll(centre);
+      // Auditioned at mid-window height, which puts the pluck in the middle of
+      // the bell palette — the representative note rather than an extreme.
+      case "pizzicatoSoft":
+        this.triggerPizzicato(centre, this.auditionClickHeight(), "soft");
+        return;
+      case "pizzicatoCrisp":
+        this.triggerPizzicato(centre, this.auditionClickHeight(), "crisp");
+        return;
+      case "pizzicatoDouble":
+        this.triggerPizzicato(centre, this.auditionClickHeight(), "double");
+        return;
+      case "timpaniRoot":
+        this.triggerTimpani(centre, "root");
+        return;
+      case "timpaniRootFifth":
+        this.triggerTimpani(centre, "rootFifth");
+        return;
+      case "timpaniSwell":
+        this.triggerTimpani(centre, "swell");
+        return;
+      // The cantus is a running line rather than a one-shot, so auditioning it
+      // sounds a single note of it — the same synthesis, at the tone the line
+      // would next sing. Switching the voice on is what starts the line.
+      case "cantusTenor":
+        this.auditionCantusNote("tenor");
+        return;
+      case "cantusSoprano":
+        this.auditionCantusNote("soprano");
+        return;
+      case "cantusDuet":
+        this.auditionCantusNote("duet");
         return;
     }
+  }
+
+  /** Mid-window, the height an audition plucks at. */
+  private auditionClickHeight(): number {
+    return (window.innerHeight || 800) / 2;
+  }
+
+  /**
+   * One note of the cantus, in the variant's register. The duet sounds both
+   * its voices, offset, so the audition shows what makes it a duet rather than
+   * a thicker single voice.
+   */
+  private auditionCantusNote(variant: CantusVariant): void {
+    const palette = this.flourishPalette();
+    if (palette.length === 0) return;
+    const {
+      sopranoOctaves,
+      sopranoGainScale,
+      duetScaleSteps,
+      duetGainScale,
+    } = CANTUS_TUNING;
+
+    if (variant === "soprano") {
+      this.singCantusNote(
+        palette[0] * Math.pow(2, sopranoOctaves),
+        0,
+        sopranoGainScale,
+      );
+      return;
+    }
+
+    this.singCantusNote(palette[0], -0.2, 1);
+    if (variant !== "duet") return;
+    this.singCantusNote(
+      palette[Math.min(palette.length - 1, duetScaleSteps)],
+      0.2,
+      duetGainScale,
+    );
   }
 
   private getNoiseBuffer(ctx: AudioContext): AudioBuffer {
@@ -3766,78 +4052,507 @@ export class SoundEngine {
   }
 
   /**
-   * A quiet low tremolo building for a second and then stopping — a roll under
-   * a held click, where the bell currently only stretches. The build is what
-   * makes the hold legible as duration rather than as a longer note.
+   * The pitch a click is plucked or rung at: the current chord's bell palette,
+   * indexed by how high up the window the click landed. Shared with
+   * `triggerClick` so a pizzicato lands on the same note the bell would have.
    */
-  private triggerHoldRoll(x: number): void {
+  private clickPitchIndex(y: number, paletteLength: number): number {
+    const pitchRatio = 1 - y / (window.innerHeight || 800);
+    return Math.min(
+      paletteLength - 1,
+      Math.max(0, Math.floor(pitchRatio * paletteLength)),
+    );
+  }
+
+  /**
+   * One plucked string for a click: an oscillator through a filter that sweeps
+   * shut across the decay, with a sine an octave down for body. Short and dry
+   * — the note is over before the next click can land, which is what makes a
+   * run of them rhythmic rather than a pile of ringing bells.
+   *
+   * The variant decides the body: "soft" is a triangle with a slow sweep,
+   * "crisp" is a sawtooth with a fingernail of noise on the attack and half
+   * the length, and "double" is the soft pluck with a quieter grace note a
+   * palette step away in front of it.
+   */
+  private triggerPizzicato(
+    x: number,
+    y: number,
+    variant: PizzicatoVariant,
+  ): void {
+    if (!this.ctx) return;
+
+    const palette = this.currentBellScale();
+    const index = this.clickPitchIndex(y, palette.length);
+
+    if (variant === "double") {
+      const { graceLeadSeconds, graceGainScale, graceDecayScale, graceScaleSteps } =
+        PIZZICATO_TUNING.double;
+      // Wrap downward at the top of the palette so the ornament is always a
+      // neighbouring chord tone rather than a repeat of the main note.
+      const graceIndex =
+        index + graceScaleSteps < palette.length
+          ? index + graceScaleSteps
+          : Math.max(0, index - graceScaleSteps);
+      this.pluckString(palette[graceIndex], x, "soft", {
+        gainScale: graceGainScale,
+        decayScale: graceDecayScale,
+      });
+      this.pluckString(palette[index], x, "soft", {
+        delaySeconds: graceLeadSeconds,
+      });
+      return;
+    }
+
+    this.pluckString(palette[index], x, variant);
+  }
+
+  /**
+   * The string itself. Split out from `triggerPizzicato` because the "double"
+   * variant plucks twice, and both plucks are the same instrument at different
+   * levels rather than two different sounds.
+   */
+  private pluckString(
+    frequency: number,
+    x: number,
+    body: "soft" | "crisp",
+    options: {
+      delaySeconds?: number;
+      gainScale?: number;
+      decayScale?: number;
+    } = {},
+  ): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const tuning =
+      body === "crisp" ? PIZZICATO_TUNING.crisp : PIZZICATO_TUNING.soft;
+    const now = ctx.currentTime + (options.delaySeconds ?? 0);
+    const decaySeconds = tuning.decaySeconds * (options.decayScale ?? 1);
+    const peak = tuning.gain * (options.gainScale ?? 1);
+    const pan = positionToPan(x, this.canvasWidth);
+
+    // Filter shutting across the decay: high partials die before the
+    // fundamental does, which is the difference between a pluck and a beep.
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(tuning.filterStartHz, now);
+    filter.frequency.exponentialRampToValueAtTime(
+      tuning.filterEndHz,
+      now + tuning.attackSeconds + decaySeconds,
+    );
+    filter.Q.value = tuning.filterQ;
+
+    const level = ctx.createGain();
+    level.gain.setValueAtTime(0, now);
+    level.gain.linearRampToValueAtTime(peak, now + tuning.attackSeconds);
+    level.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + tuning.attackSeconds + decaySeconds,
+    );
+
+    const panNode = ctx.createStereoPanner();
+    panNode.pan.value = pan;
+
+    const string = ctx.createOscillator();
+    string.type = body === "crisp" ? "sawtooth" : "triangle";
+    string.frequency.value = frequency;
+
+    // The octave-down sine. A pluck this short has almost no time to establish
+    // a fundamental on its own, so the sub is what gives it weight.
+    const sub = ctx.createOscillator();
+    sub.type = "sine";
+    sub.frequency.value = frequency / 2;
+    const subLevel = ctx.createGain();
+    subLevel.gain.value = tuning.subGain;
+
+    string.connect(filter);
+    sub.connect(subLevel);
+    subLevel.connect(filter);
+    filter.connect(level);
+    level.connect(panNode);
+    panNode.connect(this.busFor("clickBell"));
+
+    const stopAt = now + tuning.attackSeconds + decaySeconds + 0.05;
+    string.start(now);
+    sub.start(now);
+    string.stop(stopAt);
+    sub.stop(stopAt);
+    string.onended = () => {
+      try {
+        string.disconnect();
+        sub.disconnect();
+        subLevel.disconnect();
+        filter.disconnect();
+        level.disconnect();
+        panNode.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
+
+    if (body !== "crisp") return;
+
+    // The fingernail: a few milliseconds of bandpassed noise on the attack
+    // only. An attack component, not a body — it is gone long before the
+    // string is, so the sound stays pitched.
+    const {
+      edgeDurationSeconds,
+      edgeFilterHz,
+      edgeFilterQ,
+      edgeGain,
+    } = PIZZICATO_TUNING.crisp;
+    const edge = this.startNoiseBurst(
+      now,
+      edgeDurationSeconds,
+      { type: "bandpass", frequency: edgeFilterHz, Q: edgeFilterQ },
+      pan,
+      "clickBell",
+    );
+    if (!edge) return;
+    edge.gain.gain.setValueAtTime(edgeGain, now);
+    edge.gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + edgeDurationSeconds,
+    );
+  }
+
+  /**
+   * The timpani roll under a held click, pitched on the current chord root.
+   *
+   * Built as a fundamental plus partials at 2x and 3x rather than a bare low
+   * sine: down in D2-D3 the fundamental alone is inaudible on a laptop
+   * speaker, and the partials are what carry the pitch through. The lowpass
+   * sits above them deliberately.
+   *
+   * "root" and "rootFifth" roll — an LFO cutting into the level, building
+   * across the hold. "swell" drops the tremolo for a single crescendoing tone.
+   * `holdSeconds` lets a real hold set the length; the audition uses the
+   * default.
+   */
+  private triggerTimpani(
+    x: number,
+    variant: TimpaniVariant,
+    holdSeconds?: number,
+  ): void {
     if (!this.ctx) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const {
-      durationSeconds,
-      toneHz,
+      registerMultiplier,
+      durationSeconds: defaultDuration,
+      minDurationSeconds,
+      maxDurationSeconds,
+      gain,
+      octavePartialGain,
+      twelfthPartialGain,
       filterHz,
       filterQ,
-      gain,
       tremoloHz,
       tremoloDepth,
       buildFraction,
       releaseSeconds,
-    } = PERCUSSION_TUNING.hold;
+      alternateSeconds,
+      swellBuildFraction,
+      swellGainScale,
+    } = TIMPANI_TUNING;
 
-    const osc = ctx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.value = toneHz;
+    const durationSeconds = Math.min(
+      maxDurationSeconds,
+      Math.max(minDurationSeconds, holdSeconds ?? defaultDuration),
+    );
+    const root = this.currentRoot() * registerMultiplier;
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
     filter.frequency.value = filterHz;
     filter.Q.value = filterQ;
 
-    // The roll: an LFO cutting into the tone's own gain. Depth short of 1, so
-    // the tone pulses rather than switching on and off.
-    const tremolo = ctx.createOscillator();
-    tremolo.type = "sine";
-    tremolo.frequency.value = tremoloHz;
-    const tremoloDepthGain = ctx.createGain();
-    tremoloDepthGain.gain.value = tremoloDepth / 2;
-
-    const tremoloLevel = ctx.createGain();
-    tremoloLevel.gain.value = 1 - tremoloDepth / 2;
-    tremolo.connect(tremoloDepthGain);
-    tremoloDepthGain.connect(tremoloLevel.gain);
-
     const level = ctx.createGain();
-    const peakAt = now + durationSeconds * buildFraction;
+    const peak = gain * (variant === "swell" ? swellGainScale : 1);
+    const build = variant === "swell" ? swellBuildFraction : buildFraction;
     level.gain.setValueAtTime(0, now);
-    level.gain.linearRampToValueAtTime(gain, peakAt);
-    level.gain.setValueAtTime(gain, now + durationSeconds - releaseSeconds);
+    level.gain.linearRampToValueAtTime(peak, now + durationSeconds * build);
+    level.gain.setValueAtTime(peak, now + durationSeconds - releaseSeconds);
     level.gain.exponentialRampToValueAtTime(0.0001, now + durationSeconds);
 
-    const pan = ctx.createStereoPanner();
-    pan.pan.value = positionToPan(x, this.canvasWidth);
-
-    osc.connect(filter);
-    filter.connect(tremoloLevel);
-    tremoloLevel.connect(level);
-    level.connect(pan);
-    pan.connect(this.busFor("clickBell"));
+    const panNode = ctx.createStereoPanner();
+    panNode.pan.value = positionToPan(x, this.canvasWidth);
 
     const stopAt = now + durationSeconds + 0.05;
+    const oscillators: OscillatorNode[] = [];
+    const scratch: AudioNode[] = [filter, level, panNode];
+
+    // The tremolo, for the two rolled variants. Depth short of 1, so the tone
+    // pulses rather than switching on and off.
+    let head: AudioNode = filter;
+    if (variant !== "swell") {
+      const tremolo = ctx.createOscillator();
+      tremolo.type = "sine";
+      tremolo.frequency.value = tremoloHz;
+      const tremoloDepthGain = ctx.createGain();
+      tremoloDepthGain.gain.value = tremoloDepth / 2;
+      const tremoloLevel = ctx.createGain();
+      tremoloLevel.gain.value = 1 - tremoloDepth / 2;
+      tremolo.connect(tremoloDepthGain);
+      tremoloDepthGain.connect(tremoloLevel.gain);
+      filter.connect(tremoloLevel);
+      head = tremoloLevel;
+      tremolo.start(now);
+      tremolo.stop(stopAt);
+      oscillators.push(tremolo);
+      scratch.push(tremoloDepthGain, tremoloLevel);
+    }
+
+    head.connect(level);
+    level.connect(panNode);
+    panNode.connect(this.busFor("clickBell"));
+
+    const partials: Array<{ ratio: number; level: number }> = [
+      { ratio: 1, level: 1 },
+      { ratio: 2, level: octavePartialGain },
+      { ratio: 3, level: twelfthPartialGain },
+    ];
+
+    for (const partial of partials) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(root * partial.ratio, now);
+
+      // The alternating variant steps the whole partial stack between root and
+      // fifth, so the drum reads as retuning between strokes rather than as
+      // two drums sounding at once.
+      if (variant === "rootFifth") {
+        let at = now + alternateSeconds;
+        let onFifth = true;
+        while (at < now + durationSeconds) {
+          osc.frequency.setValueAtTime(
+            root * partial.ratio * (onFifth ? 1.5 : 1),
+            at,
+          );
+          onFifth = !onFifth;
+          at += alternateSeconds;
+        }
+      }
+
+      const partialLevel = ctx.createGain();
+      partialLevel.gain.value = partial.level;
+      osc.connect(partialLevel);
+      partialLevel.connect(filter);
+      osc.start(now);
+      osc.stop(stopAt);
+      oscillators.push(osc);
+      scratch.push(partialLevel);
+    }
+
+    oscillators[oscillators.length - 1].onended = () => {
+      for (const node of [...oscillators, ...scratch]) {
+        try {
+          node.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      }
+    };
+  }
+
+  // ── Cantus firmus ─────────────────────────────────────────────────────────
+
+  /**
+   * Start the autonomous slow voice, or switch which variant it sings.
+   *
+   * Nothing else starts it: it runs off `tick`, so it sounds only while the
+   * scene is being driven — the pad and the replay both do that, and a live
+   * page would too if this ever graduated, which is why the toggle rather than
+   * the trigger is the gate.
+   */
+  setCantus(variant: CantusVariant | null): void {
+    if (variant === null) {
+      this.cantus = null;
+      return;
+    }
+    if (this.cantus?.variant === variant) return;
+    this.cantus = {
+      variant,
+      pitch: null,
+      partnerPitch: null,
+      // Due immediately, so switching it on is audible rather than a wait of
+      // up to fifteen seconds before anything happens.
+      nextNoteMs: Number.NEGATIVE_INFINITY,
+      nextPartnerNoteMs: Number.NEGATIVE_INFINITY,
+      noteCount: 0,
+    };
+  }
+
+  /** Which cantus variant is running, or null (diagnostics, and the pad's readout). */
+  getCantus(): CantusVariant | null {
+    return this.cantus?.variant ?? null;
+  }
+
+  /**
+   * Sound the cantus's next note when its moment arrives.
+   *
+   * The line is voice-led rather than re-drawn: each note is the palette tone
+   * nearest the one before, so when the chord turns over the voice steps to
+   * its neighbour instead of leaping. The first note has nothing to lead from,
+   * so it takes the palette root.
+   */
+  private updateCantus(elapsedMs: number): void {
+    const cantus = this.cantus;
+    if (!cantus || !this.ctx) return;
+
+    const {
+      minIntervalSeconds,
+      maxIntervalSeconds,
+      duetScaleSteps,
+      duetGainScale,
+      duetPhaseOffset,
+      sopranoOctaves,
+      sopranoGainScale,
+      panSpread,
+    } = CANTUS_TUNING;
+
+    const palette = this.flourishPalette();
+    if (palette.length === 0) return;
+
+    const intervalMsFor = (salt: number): number => {
+      const span = maxIntervalSeconds - minIntervalSeconds;
+      return (
+        (minIntervalSeconds + hashUnit(cantus.noteCount + 1, salt) * span) * 1000
+      );
+    };
+
+    if (elapsedMs >= cantus.nextNoteMs) {
+      const pitch =
+        cantus.pitch === null ? palette[0] : leadHomeTone(cantus.pitch, palette);
+      cantus.pitch = pitch;
+
+      const octaves = cantus.variant === "soprano" ? sopranoOctaves : 0;
+      const gainScale = cantus.variant === "soprano" ? sopranoGainScale : 1;
+      // Pan wanders note to note rather than sitting still, which is most of
+      // what stops a sustained tone reading as a test tone.
+      const pan = (hashUnit(cantus.noteCount, 11) * 2 - 1) * panSpread;
+      this.singCantusNote(pitch * Math.pow(2, octaves), pan, gainScale);
+
+      cantus.noteCount += 1;
+      cantus.nextNoteMs = elapsedMs + intervalMsFor(7);
+
+      // Seed the duet's partner half an interval behind, so the two voices
+      // alternate instead of landing together.
+      if (
+        cantus.variant === "duet" &&
+        cantus.nextPartnerNoteMs === Number.NEGATIVE_INFINITY
+      ) {
+        cantus.nextPartnerNoteMs =
+          elapsedMs + (cantus.nextNoteMs - elapsedMs) * duetPhaseOffset;
+      }
+    }
+
+    if (cantus.variant !== "duet") return;
+    if (elapsedMs < cantus.nextPartnerNoteMs) return;
+
+    // The partner sits a couple of palette steps above whatever the first
+    // voice last sang — a chord tone, so it is a third-ish rather than a
+    // fixed interval — and is voice-led from its own previous note.
+    const anchor = cantus.pitch ?? palette[0];
+    const anchorIndex = palette.indexOf(anchor);
+    const partnerIndex = Math.min(
+      palette.length - 1,
+      (anchorIndex < 0 ? 0 : anchorIndex) + duetScaleSteps,
+    );
+    const target = palette[partnerIndex];
+    const partnerPitch =
+      cantus.partnerPitch === null
+        ? target
+        : leadHomeTone(cantus.partnerPitch, palette);
+    cantus.partnerPitch = partnerPitch;
+
+    const partnerPan = (hashUnit(cantus.noteCount, 23) * 2 - 1) * panSpread;
+    this.singCantusNote(partnerPitch, partnerPan, duetGainScale);
+    cantus.nextPartnerNoteMs = elapsedMs + intervalMsFor(19);
+  }
+
+  /**
+   * One cantus note: a long soft swell in and out, with the pan drifting
+   * across it. The attack and release are both seconds long, so consecutive
+   * notes overlap and the line never fully stops — that overlap is what makes
+   * it read as a voice rather than as a sequence of tones.
+   */
+  private singCantusNote(
+    frequency: number,
+    pan: number,
+    gainScale: number,
+  ): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const {
+      attackSeconds,
+      sustainSeconds,
+      releaseSeconds,
+      registerMultiplier,
+      gain,
+      partialGain,
+      panTravel,
+      filterHz,
+      filterQ,
+    } = CANTUS_TUNING;
+
+    const pitch = frequency * registerMultiplier;
+    const peak = gain * gainScale;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = filterHz;
+    filter.Q.value = filterQ;
+
+    const level = ctx.createGain();
+    level.gain.setValueAtTime(0.0001, now);
+    level.gain.linearRampToValueAtTime(peak, now + attackSeconds);
+    level.gain.setValueAtTime(peak, now + attackSeconds + sustainSeconds);
+    level.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + attackSeconds + sustainSeconds + releaseSeconds,
+    );
+
+    const panNode = ctx.createStereoPanner();
+    const totalSeconds = attackSeconds + sustainSeconds + releaseSeconds;
+    const from = Math.max(-1, Math.min(1, pan - panTravel / 2));
+    const to = Math.max(-1, Math.min(1, pan + panTravel / 2));
+    panNode.pan.setValueAtTime(from, now);
+    panNode.pan.linearRampToValueAtTime(to, now + totalSeconds);
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = pitch;
+
+    // A triangle a fifth up rather than a second sine: just enough edge that
+    // the voice has a body without ever becoming bright.
+    const partial = ctx.createOscillator();
+    partial.type = "triangle";
+    partial.frequency.value = pitch * 1.5;
+    const partialLevel = ctx.createGain();
+    partialLevel.gain.value = partialGain;
+
+    osc.connect(filter);
+    partial.connect(partialLevel);
+    partialLevel.connect(filter);
+    filter.connect(level);
+    level.connect(panNode);
+    panNode.connect(this.busFor("cantus"));
+
+    const stopAt = now + totalSeconds + 0.1;
     osc.start(now);
-    tremolo.start(now);
+    partial.start(now);
     osc.stop(stopAt);
-    tremolo.stop(stopAt);
+    partial.stop(stopAt);
     osc.onended = () => {
       try {
         osc.disconnect();
-        tremolo.disconnect();
-        tremoloDepthGain.disconnect();
-        tremoloLevel.disconnect();
+        partial.disconnect();
+        partialLevel.disconnect();
         filter.disconnect();
         level.disconnect();
-        pan.disconnect();
+        panNode.disconnect();
       } catch {
         /* already disconnected */
       }
@@ -3880,10 +4595,29 @@ export class SoundEngine {
     this.triggerScrollBrush(x);
   }
 
-  /** A held click, voiced as the building tremolo roll. */
-  triggerHold(x: number): void {
+  /**
+   * A click, voiced as a plucked string on the current chord. Pitched, unlike
+   * `triggerClickPercussion` — the note comes from the click's height the same
+   * way the shipped bell's does, so this is a change of instrument rather than
+   * a change of what a click means.
+   */
+  triggerClickPizzicato(x: number, y: number, variant: PizzicatoVariant): void {
     if (!this.enabled) return;
-    this.triggerHoldRoll(x);
+    this.triggerPizzicato(x, y, variant);
+  }
+
+  /**
+   * A held click, voiced as a timpani roll on the current chord root.
+   * `holdSeconds` sets the roll's length, clamped to the tuning's bounds; the
+   * default is used when the caller has no duration.
+   */
+  triggerHold(
+    x: number,
+    variant: TimpaniVariant = "root",
+    holdSeconds?: number,
+  ): void {
+    if (!this.enabled) return;
+    this.triggerTimpani(x, variant, holdSeconds);
   }
 
   /**
@@ -4631,8 +5365,11 @@ export class SoundEngine {
       try { bus.disconnect(); } catch { /* already disconnected */ }
     }
     this.layerBuses.clear();
+    this.cantus = null;
     if (this.ctx) {
-      this.ctx.close();
+      // Only a context the engine opened is its to close. An injected one
+      // belongs to the caller, which may still be rendering from it.
+      if (!this.providedCtx) this.ctx.close();
       this.ctx = null;
     }
   }

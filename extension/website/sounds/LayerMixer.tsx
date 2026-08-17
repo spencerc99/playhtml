@@ -16,6 +16,10 @@ const LAYER_LABELS: Record<SoundLayer, { name: string; hint: string }> = {
   crossing: { name: "crossings", hint: "dissonance and merged dyads" },
   typing: { name: "typing", hint: "keystroke ticks, from the sample replay" },
   brush: { name: "brush", hint: "scroll swishes, from the sample replay" },
+  cantus: {
+    name: "cantus",
+    hint: "the slow autonomous voice, belonging to no trail",
+  },
 };
 
 const labelStyle: React.CSSProperties = {

@@ -5,6 +5,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { SoundEngine } from "../shared/sound/SoundEngine";
 import {
   ClickPercussionVariant,
+  PizzicatoVariant,
+  PIZZICATO_VARIANTS,
+  TimpaniVariant,
+  TIMPANI_VARIANTS,
   TrailSoundFrame,
 } from "../shared/sound/types";
 import { RECENT_EVENTS_URL } from "../shared/config";
@@ -467,12 +471,25 @@ const selectStyle: React.CSSProperties = {
  */
 export interface PercussionSettings {
   enabled: boolean;
-  click: ClickPercussionVariant;
+  click: ClickVoice;
   typing: boolean;
   scroll: boolean;
-  /** Hold roll under a held click, in place of the stretched bell. */
+  /** Timpani roll under a held click, in place of the stretched bell. */
   hold: boolean;
+  /** Which timpani variant the roll uses. */
+  timpani: TimpaniVariant;
 }
+
+/**
+ * How the replay voices a click. The percussion variants and the pizzicato
+ * variants sit in one list because they are alternatives to each other — a
+ * click gets exactly one voice, and "bells" is the shipped one.
+ */
+type ClickVoice = ClickPercussionVariant | PizzicatoVariant;
+
+/** The pizzicato half of that list, so the driver knows which call to make. */
+const isPizzicato = (voice: ClickVoice): voice is PizzicatoVariant =>
+  (PIZZICATO_VARIANTS as string[]).includes(voice);
 
 const PERCUSSION_DEFAULTS: PercussionSettings = {
   enabled: false,
@@ -480,17 +497,27 @@ const PERCUSSION_DEFAULTS: PercussionSettings = {
   typing: true,
   scroll: true,
   hold: true,
+  timpani: "root",
 };
 
 const CLICK_VARIANTS: Array<{
-  variant: ClickPercussionVariant;
+  variant: ClickVoice;
   label: string;
 }> = [
   { variant: "bells", label: "bells (current)" },
   { variant: "tap", label: "tap" },
   { variant: "tapNoThump", label: "tap, no thump" },
   { variant: "hybrid", label: "tap + bell ghost" },
+  { variant: "soft", label: "pizz. soft" },
+  { variant: "crisp", label: "pizz. crisp" },
+  { variant: "double", label: "pizz. double" },
 ];
+
+const TIMPANI_LABELS: Record<TimpaniVariant, string> = {
+  root: "root",
+  rootFifth: "root + fifth",
+  swell: "swell",
+};
 
 /**
  * Longest a recorded typing sequence may be stretched over before its ticks
@@ -728,9 +755,19 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         const isHold = event.event === "hold" || event.duration !== undefined;
         const rollThisHold =
           percussion.enabled && percussion.hold && isHold;
-        if (rollThisHold) engine.triggerHold(x);
+        if (rollThisHold) {
+          // The recorded hold's own length drives the roll, so a long press
+          // sounds long rather than every hold sounding the same.
+          engine.triggerHold(
+            x,
+            percussion.timpani,
+            event.duration === undefined ? undefined : event.duration / 1000,
+          );
+        }
 
-        if (percussion.enabled && percussion.click !== "bells") {
+        if (percussion.enabled && isPizzicato(percussion.click)) {
+          engine.triggerClickPizzicato(x, y, percussion.click);
+        } else if (percussion.enabled && percussion.click !== "bells") {
           engine.triggerClickPercussion(x, percussion.click);
         } else if (!rollThisHold) {
           // The shipped bell, unless the hold roll has already taken this
@@ -1096,11 +1133,31 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
                 }
                 style={percussion.hold ? buttonActiveStyle : buttonStyle}
               >
-                hold roll
+                timpani on holds
               </button>
+              {TIMPANI_VARIANTS.map((variant) => (
+                <button
+                  key={variant}
+                  onClick={() =>
+                    setPercussion((current) => ({
+                      ...current,
+                      hold: true,
+                      timpani: variant,
+                    }))
+                  }
+                  style={
+                    percussion.hold && percussion.timpani === variant
+                      ? buttonActiveStyle
+                      : buttonStyle
+                  }
+                >
+                  {TIMPANI_LABELS[variant]}
+                </button>
+              ))}
               <span style={labelStyle}>
                 ticks follow each recorded typing sequence's own cadence; the
-                roll replaces the stretched bell on a held click
+                timpani replaces the stretched bell on a held click, pitched on
+                the chord root and as long as the hold actually was
               </span>
             </div>
           </div>

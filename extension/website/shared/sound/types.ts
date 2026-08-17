@@ -61,6 +61,64 @@ export type ClickPercussionVariant =
   | "bells";
 
 /**
+ * How a pizzicato click is plucked.
+ *
+ * All three draw their pitch from the same place the click bell does — the
+ * current chord's bell palette, indexed by click height — so the difference
+ * between them is entirely in the attack and the decay, not the note.
+ */
+export type PizzicatoVariant =
+  /** Warm nylon-ish pluck: triangle over sine, filter sweeping down, ~250ms. */
+  | "soft"
+  /** Tighter and brighter, with a noise edge on the attack only, ~150ms. */
+  | "crisp"
+  /** The soft pluck preceded by a quieter grace note a chord tone away. */
+  | "double";
+
+/** Every pizzicato variant, in the order a selector should present them. */
+export const PIZZICATO_VARIANTS: PizzicatoVariant[] = [
+  "soft",
+  "crisp",
+  "double",
+];
+
+/**
+ * How a held click is voiced by the timpani.
+ *
+ * Pitched on the current chord root, low but with enough overtone content to
+ * survive a laptop speaker — a pure low sine disappears on one, which is what
+ * the navigation gong's partials exist to solve.
+ */
+export type TimpaniVariant =
+  /** Tremolo roll on the root, building with the hold. */
+  | "root"
+  /** The same roll, alternating softly between root and fifth. */
+  | "rootFifth"
+  /** One sustained tone crescendoing instead of a tremolo. */
+  | "swell";
+
+/** Every timpani variant, in the order a selector should present them. */
+export const TIMPANI_VARIANTS: TimpaniVariant[] = ["root", "rootFifth", "swell"];
+
+/**
+ * How the cantus firmus is voiced.
+ *
+ * The cantus belongs to no trail: it is one slow autonomous line drawn from
+ * whatever chord is in force, moving to the nearest tone each time the chord
+ * turns over, the way a trail's home tone does.
+ */
+export type CantusVariant =
+  /** One warm voice in C3-C4. */
+  | "tenor"
+  /** The same line an octave up, brighter and quieter. */
+  | "soprano"
+  /** Tenor plus a second voice a chord tone above, alternating rather than together. */
+  | "duet";
+
+/** Every cantus variant, in the order a selector should present them. */
+export const CANTUS_VARIANTS: CantusVariant[] = ["tenor", "soprano", "duet"];
+
+/**
  * One accent sound playable in isolation, on demand, for auditioning. Each
  * maps to the same synthesis the corresponding live feature uses.
  */
@@ -95,7 +153,20 @@ export type AuditionAccent =
   | "typingTick"
   | "typingBurst"
   | "scrollBrush"
-  | "holdRoll";
+  /**
+   * Pitched orchestral instruments, each in its variants. Same standing as the
+   * percussion above — the pad auditions them and the replay drives them, and
+   * no live page path reaches any of them.
+   */
+  | "pizzicatoSoft"
+  | "pizzicatoCrisp"
+  | "pizzicatoDouble"
+  | "timpaniRoot"
+  | "timpaniRootFifth"
+  | "timpaniSwell"
+  | "cantusTenor"
+  | "cantusSoprano"
+  | "cantusDuet";
 
 /**
  * One mixable family of sounds. Every source in the engine routes through
@@ -125,7 +196,13 @@ export type SoundLayer =
    * swish and a tick are the two percussion textures most worth hearing
    * against each other.
    */
-  | "brush";
+  | "brush"
+  /**
+   * The autonomous cantus firmus line. Its own family because it belongs to no
+   * trail and no event — it has to be silenceable on its own to judge whether
+   * the scene still holds together without it.
+   */
+  | "cantus";
 
 /** Every layer, in the order a mixer strip should present them. */
 export const SOUND_LAYERS: SoundLayer[] = [
@@ -138,6 +215,7 @@ export const SOUND_LAYERS: SoundLayer[] = [
   "crossing",
   "typing",
   "brush",
+  "cantus",
 ];
 
 /** Configuration for an instrument voice */

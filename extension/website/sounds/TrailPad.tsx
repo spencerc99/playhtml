@@ -7,7 +7,12 @@ import {
   SoundEngine,
   SoundMode,
 } from "../shared/sound/SoundEngine";
-import { AuditionAccent, TrailSoundFrame } from "../shared/sound/types";
+import {
+  AuditionAccent,
+  CantusVariant,
+  CANTUS_VARIANTS,
+  TrailSoundFrame,
+} from "../shared/sound/types";
 import {
   DEFAULT_PROGRESSION_ID,
   PROGRESSION_IDS,
@@ -296,11 +301,70 @@ const PERCUSSION_CARDS: Array<{
     description:
       "For a scroll. Lowpassed noise swelling and fading with the pan drifting across it, like a brush on a drumhead.",
   },
+];
+
+/**
+ * The pitched orchestral instruments. Unlike the percussion above, every one
+ * of these draws its notes from the chord in force, so what they sound depends
+ * on where the rotation currently is.
+ */
+const ORCHESTRAL_CARDS: Array<{
+  accent: AuditionAccent;
+  label: string;
+  description: string;
+}> = [
   {
-    accent: "holdRoll",
-    label: "hold roll",
+    accent: "pizzicatoSoft",
+    label: "pizzicato — soft",
     description:
-      "For a click held down. A quiet low tremolo building for a second, then stopping.",
+      "For a click. A warm nylon-ish pluck on a chord tone, the filter closing across a quarter-second decay. Pitched from the click's height, like the bells.",
+  },
+  {
+    accent: "pizzicatoCrisp",
+    label: "pizzicato — crisp",
+    description:
+      "The same pluck, brighter and half the length, with a fingernail of noise on the attack only.",
+  },
+  {
+    accent: "pizzicatoDouble",
+    label: "pizzicato — double",
+    description:
+      "A quieter grace note a chord tone away, then the soft pluck 60ms later. One ornamented gesture rather than two clicks.",
+  },
+  {
+    accent: "timpaniRoot",
+    label: "timpani — root",
+    description:
+      "For a click held down. A tremolo roll on the current chord root, down in D2-D3, building with the hold.",
+  },
+  {
+    accent: "timpaniRootFifth",
+    label: "timpani — root + fifth",
+    description:
+      "The same roll retuning between root and fifth every fifth of a second, so the drum reads as two strokes rather than one pitch.",
+  },
+  {
+    accent: "timpaniSwell",
+    label: "timpani — swell",
+    description:
+      "No tremolo: one sustained low tone crescendoing across the hold and cutting off.",
+  },
+  {
+    accent: "cantusTenor",
+    label: "cantus — tenor",
+    description:
+      "One note of the slow autonomous voice, C3-C4, three seconds in and four out. Switch the voice on below to hear it as a line.",
+  },
+  {
+    accent: "cantusSoprano",
+    label: "cantus — soprano",
+    description: "The same note an octave up, brighter and quieter.",
+  },
+  {
+    accent: "cantusDuet",
+    label: "cantus — duet",
+    description:
+      "Both duet voices at once, a chord tone apart. Running as a line they alternate rather than land together.",
   },
 ];
 
@@ -322,6 +386,12 @@ const PAD_DEFAULTS = {
   bassPedal: false,
   choralTimbre: false,
   crossings: "off" as CrossingFlavor,
+  /**
+   * The cantus is off until asked for. It is a whole extra voice with nothing
+   * in the scene prompting it, so it should be a deliberate addition rather
+   * than something already sounding when the pad opens.
+   */
+  cantus: null as CantusVariant | null,
 };
 
 /** One titled grid of audition buttons, each with the event it stands for. */
@@ -404,6 +474,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   const crossingsRef = useRef<CrossingFlavor>(PAD_DEFAULTS.crossings);
   const swellsRef = useRef(PAD_DEFAULTS.swells);
   const choralTimbreRef = useRef(PAD_DEFAULTS.choralTimbre);
+  const cantusRef = useRef<CantusVariant | null>(PAD_DEFAULTS.cantus);
   const nextTrailIndexRef = useRef(1);
 
   const [running, setRunning] = useState(false);
@@ -431,6 +502,9 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   const [swells, setSwells] = useState(PAD_DEFAULTS.swells);
   const [choralTimbre, setChoralTimbre] = useState(
     PAD_DEFAULTS.choralTimbre,
+  );
+  const [cantus, setCantus] = useState<CantusVariant | null>(
+    PAD_DEFAULTS.cantus,
   );
   const [readout, setReadout] = useState({
     notes: 0,
@@ -481,6 +555,11 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   }, [swells, choralTimbre]);
 
   useEffect(() => {
+    cantusRef.current = cantus;
+    engineRef.current?.setCantus(cantus);
+  }, [cantus]);
+
+  useEffect(() => {
     engineRef.current?.setVolume(volume);
   }, [volume]);
 
@@ -501,6 +580,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         swells: swellsRef.current,
         choralTimbre: choralTimbreRef.current,
       });
+      engine.setCantus(cantusRef.current);
       engine.setVolume(volume);
       const canvas = canvasRef.current;
       engine.setCanvasWidth(canvas?.clientWidth ?? window.innerWidth);
@@ -902,6 +982,40 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         cards={PERCUSSION_CARDS}
         onAudition={handleAudition}
       />
+
+      <AuditionSection
+        title="Orchestral (candidates)"
+        blurb="Pitched, so all of these sit inside whatever chord is in force. No live page plays them; the sample replay below drives the pizzicato and the timpani once its toggles are on, and the cantus runs from the selector below."
+        cards={ORCHESTRAL_CARDS}
+        onAudition={handleAudition}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginTop: "12px",
+          marginBottom: "12px",
+        }}
+      >
+        <span style={labelStyle}>cantus</span>
+        {([null, ...CANTUS_VARIANTS] as const).map((variant) => (
+          <button
+            key={variant ?? "off"}
+            onClick={() => setCantus(variant)}
+            style={cantus === variant ? buttonActiveStyle : buttonStyle}
+          >
+            {variant ?? "off"}
+          </button>
+        ))}
+        <span style={labelStyle}>
+          a slow voice belonging to no trail — one note every 8-15s from the
+          current chord, moving to the nearest tone each time. Runs whenever the
+          pad is playing.
+        </span>
+      </div>
 
       <div
         style={{

@@ -2868,28 +2868,6 @@ describe("percussion candidates", () => {
     expect(to).toBeGreaterThan(from);
   });
 
-  it("builds the hold roll on a tremolo and stops it", async () => {
-    const engine = await startedEngine();
-    engine.audition("holdRoll");
-
-    // Two oscillators: the low tone and the LFO cutting into its gain.
-    const started = context.oscillators.filter(
-      (osc) => osc.startTimes.length > 0,
-    );
-    expect(started.length).toBe(2);
-    for (const osc of started) {
-      expect(osc.stopTimes.length).toBe(1);
-    }
-
-    // A build rather than a flat drone: the level ramps up before it is cut.
-    const level = context.gains.find((gain) =>
-      gain.gain.events.some(
-        (event) => event.method === "linearRamp" && (event.value ?? 0) > 0,
-      ),
-    );
-    expect(level).toBeDefined();
-  });
-
   it("self-disconnects every percussion graph when its source ends", async () => {
     for (const accent of [
       "clickTap",
@@ -2897,7 +2875,6 @@ describe("percussion candidates", () => {
       "clickTapHybrid",
       "typingTick",
       "scrollBrush",
-      "holdRoll",
     ] as const) {
       createdNodes = [];
       context = new TestAudioContext();
@@ -2950,6 +2927,58 @@ describe("percussion candidates", () => {
     expect(context.bufferSources.length).toBe(before);
   });
 
+  it("never fires a pitched candidate instrument from a live event path", async () => {
+    // The same guard as above, for the orchestral instruments. They are
+    // pitched, so a stray one would not show up as a buffer source — count
+    // the notes each would leave behind instead.
+    const engine = await startedEngine();
+    engine.setConfig({ trailArrivals: true, navigationSounds: true });
+
+    const cantusBefore = engine.getCantus();
+    const oscillatorsBefore = context.oscillators.length;
+
+    for (let step = 0; step < 30; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        { ...soloFrame(0, 100 + step * 6, 100), identityKey: "person-a" },
+      ]);
+    }
+    engine.triggerClick({ x: 100, y: 100, holdDuration: 900 });
+    engine.retireTrail(0);
+
+    // The cantus stays off unless it is switched on: no live path starts it,
+    // and `tick` alone must not either.
+    expect(cantusBefore).toBeNull();
+    expect(engine.getCantus()).toBeNull();
+
+    // Whatever the scene did make (bed voices, the bell, arrival chimes), none
+    // of it is a pizzicato: a pluck's filter sweeps, and no shipped voice does.
+    const oscillatorsAfter = context.oscillators.length;
+    expect(oscillatorsAfter).toBeGreaterThan(oscillatorsBefore);
+    const sweptFilters = createdNodes.filter(
+      (node): node is TestBiquadFilterNode =>
+        node instanceof TestBiquadFilterNode &&
+        node.frequency.events.some(
+          (event) => event.method === "exponentialRamp",
+        ),
+    );
+    expect(sweptFilters).toEqual([]);
+  });
+
+  it("plays the pitched candidates when the replay driver asks explicitly", async () => {
+    const engine = await startedEngine();
+
+    const before = context.oscillators.length;
+    engine.triggerClickPizzicato(100, 200, "soft");
+    // A pluck is its string plus the sub an octave down.
+    expect(context.oscillators.length).toBe(before + 2);
+
+    const afterPluck = context.oscillators.length;
+    engine.triggerHold(200, "swell");
+    // The swell has no tremolo, so it is the three partials alone.
+    expect(context.oscillators.length).toBe(afterPluck + 3);
+  });
+
   it("plays percussion when the replay driver asks for it explicitly", async () => {
     // The playground's replay calls these against real recorded events, which
     // is the whole reason they are public. Each has to actually sound, or the
@@ -2963,8 +2992,9 @@ describe("percussion candidates", () => {
 
     const oscillatorsBefore = context.oscillators.length;
     engine.triggerHold(400);
-    // The roll is a tone plus its tremolo LFO, neither of them noise.
-    expect(context.oscillators.length).toBe(oscillatorsBefore + 2);
+    // The timpani roll is the tremolo LFO plus three partials, none of them
+    // noise.
+    expect(context.oscillators.length).toBe(oscillatorsBefore + 4);
   });
 
   it("treats the bells variant as a request for no percussion at all", async () => {
@@ -2985,5 +3015,458 @@ describe("percussion candidates", () => {
     const mix = engine.getLayerMix();
     expect(mix.muted).toContain("typing");
     expect(mix.muted).toContain("brush");
+  });
+});
+
+describe("pizzicato", () => {
+  const startedEngine = async (): Promise<SoundEngine> => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(800);
+    return engine;
+  };
+
+  /** The palette a click bell — and so a pluck — draws from this frame. */
+  const bellPalette = (engine: SoundEngine): number[] =>
+    bellScaleForChord(
+      PROGRESSIONS[engine.getProgressionId()].chords[0],
+    );
+
+  it("plucks a tone from the current chord's bell palette", async () => {
+    const engine = await startedEngine();
+    engine.setConfig({ chordRotation: true });
+    engine.triggerClickPizzicato(400, 300, "soft");
+
+    // The string is the first oscillator; the second is its sub an octave
+    // down, which is why the palette check is on the pitch class.
+    const string = context.oscillators[0];
+    expectPitchClassInPalette(string.frequency.value, bellPalette(engine));
+    expect(context.oscillators[1].frequency.value).toBeCloseTo(
+      string.frequency.value / 2,
+      6,
+    );
+  });
+
+  it("takes its pitch from the click's height, like the bell does", async () => {
+    const pitchAt = async (y: number): Promise<number> => {
+      createdNodes = [];
+      context = new TestAudioContext();
+      const engine = await startedEngine();
+      engine.setConfig({ chordRotation: true });
+      engine.triggerClickPizzicato(400, y, "soft");
+      return context.oscillators[0].frequency.value;
+    };
+
+    // Higher up the window is higher in the palette — the same mapping the
+    // shipped click bell uses, so swapping instrument does not move the note.
+    expect(await pitchAt(50)).toBeGreaterThan(await pitchAt(700));
+  });
+
+  it("sweeps the filter shut across the decay and stops dead", async () => {
+    const engine = await startedEngine();
+    engine.triggerClickPizzicato(400, 300, "soft");
+
+    const filter = createdNodes.find(
+      (node): node is TestBiquadFilterNode =>
+        node instanceof TestBiquadFilterNode &&
+        node.frequency.events.some(
+          (event) => event.method === "exponentialRamp",
+        ),
+    );
+    expect(filter).toBeDefined();
+    const [start, end] = filter!.frequency.events.map((event) => event.value!);
+    expect(end).toBeLessThan(start);
+
+    // Short and finite: every oscillator has an explicit stop, and the whole
+    // note is over well inside half a second.
+    for (const osc of context.oscillators) {
+      expect(osc.stopTimes.length).toBe(1);
+      expect(osc.stopTimes[0]! - osc.startTimes[0]).toBeLessThan(0.5);
+    }
+  });
+
+  it("makes the crisp variant shorter and brighter than the soft one", async () => {
+    const lengthAndType = async (variant: "soft" | "crisp") => {
+      createdNodes = [];
+      context = new TestAudioContext();
+      const engine = await startedEngine();
+      engine.triggerClickPizzicato(400, 300, variant);
+      const string = context.oscillators[0];
+      return {
+        length: string.stopTimes[0]! - string.startTimes[0],
+        type: string.type,
+        noiseBursts: context.bufferSources.length,
+      };
+    };
+
+    const soft = await lengthAndType("soft");
+    const crisp = await lengthAndType("crisp");
+    expect(crisp.length).toBeLessThan(soft.length);
+    expect(soft.type).toBe("triangle");
+    expect(crisp.type).toBe("sawtooth");
+
+    // The fingernail is an attack component only — the soft pluck has no
+    // noise at all, and the crisp one has exactly one very short burst.
+    expect(soft.noiseBursts).toBe(0);
+    expect(crisp.noiseBursts).toBe(1);
+    const edge = context.bufferSources[0];
+    expect(edge.stopTimes[0]! - edge.startTimes[0]).toBeLessThanOrEqual(0.02);
+  });
+
+  it("puts a quieter grace note in front of the double variant", async () => {
+    const engine = await startedEngine();
+    engine.setConfig({ chordRotation: true });
+    engine.triggerClickPizzicato(400, 300, "double");
+
+    // Two plucks, so four oscillators: the grace note's string and sub, then
+    // the main note's.
+    expect(context.oscillators.length).toBe(4);
+    const graceStart = context.oscillators[0].startTimes[0];
+    const mainStart = context.oscillators[2].startTimes[0];
+    expect(mainStart).toBeGreaterThan(graceStart);
+    // One gesture, not two clicks: the gap stays inside a tenth of a second.
+    expect(mainStart - graceStart).toBeLessThanOrEqual(0.1);
+
+    // The ornament is a different chord tone, and both are inside the palette.
+    const palette = bellPalette(engine);
+    expectPitchClassInPalette(context.oscillators[0].frequency.value, palette);
+    expectPitchClassInPalette(context.oscillators[2].frequency.value, palette);
+    expect(context.oscillators[0].frequency.value).not.toBe(
+      context.oscillators[2].frequency.value,
+    );
+
+    // And it is quieter, or it reads as the note rather than as its flick.
+    const peaks = context.gains
+      .map(
+        (gain) =>
+          gain.gain.events.find((event) => event.method === "linearRamp")
+            ?.value ?? 0,
+      )
+      .filter((value) => value > 0);
+    expect(Math.min(...peaks)).toBeLessThan(Math.max(...peaks));
+  });
+});
+
+describe("timpani", () => {
+  const startedEngine = async (): Promise<SoundEngine> => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(800);
+    return engine;
+  };
+
+  /** Every oscillator that is not the tremolo LFO, low to high. */
+  const partialsOf = (): TestOscillatorNode[] =>
+    context.oscillators
+      .filter((osc) => osc.frequency.value > 20)
+      .sort((a, b) => a.frequency.value - b.frequency.value);
+
+  it("pitches the roll on the current chord root, low", async () => {
+    const engine = await startedEngine();
+    engine.setConfig({ chordRotation: true });
+    engine.triggerHold(400, "root");
+
+    const root = PROGRESSIONS[engine.getProgressionId()].chords[0].pitches[0];
+    const partials = partialsOf();
+    // Timpani register: an octave below the palette's D3 root, so D2-D3.
+    expect(partials[0].frequency.value).toBeCloseTo(root * 0.5, 6);
+    expect(partials[0].frequency.value).toBeGreaterThan(60);
+    expect(partials[0].frequency.value).toBeLessThan(160);
+  });
+
+  it("carries the pitch on partials, so it survives a small speaker", async () => {
+    const engine = await startedEngine();
+    engine.triggerHold(400, "root");
+
+    // A bare low sine disappears on a laptop; the 2x and 3x partials are what
+    // make the note audible at all, so all three have to be there.
+    const partials = partialsOf();
+    expect(partials.length).toBe(3);
+    const fundamental = partials[0].frequency.value;
+    expect(partials[1].frequency.value).toBeCloseTo(fundamental * 2, 6);
+    expect(partials[2].frequency.value).toBeCloseTo(fundamental * 3, 6);
+
+    // And the lowpass has to sit above them, or it undoes the whole point.
+    const lowpass = createdNodes.find(
+      (node): node is TestBiquadFilterNode =>
+        node instanceof TestBiquadFilterNode &&
+        node.type === "lowpass" &&
+        node.frequency.value > fundamental,
+    );
+    expect(lowpass).toBeDefined();
+    expect(lowpass!.frequency.value).toBeGreaterThan(fundamental * 3);
+  });
+
+  it("alternates root and fifth only in the root+fifth variant", async () => {
+    const stepsOf = async (variant: "root" | "rootFifth") => {
+      createdNodes = [];
+      context = new TestAudioContext();
+      const engine = await startedEngine();
+      engine.triggerHold(400, variant);
+      return partialsOf()[0].frequency.events.map((event) => event.value!);
+    };
+
+    // The plain roll sets its pitch once and holds it.
+    expect(await stepsOf("root")).toHaveLength(1);
+
+    const alternating = await stepsOf("rootFifth");
+    expect(alternating.length).toBeGreaterThan(1);
+    // Every step is either the root or a perfect fifth above it.
+    const root = alternating[0];
+    for (const step of alternating) {
+      const ratio = step / root;
+      expect(Math.abs(ratio - 1) < 1e-6 || Math.abs(ratio - 1.5) < 1e-6).toBe(
+        true,
+      );
+    }
+  });
+
+  it("drops the tremolo for the swell variant", async () => {
+    const oscillatorCount = async (variant: "root" | "swell") => {
+      createdNodes = [];
+      context = new TestAudioContext();
+      const engine = await startedEngine();
+      engine.triggerHold(400, variant);
+      return context.oscillators.length;
+    };
+
+    // The rolled variant carries an LFO the swell does not.
+    expect(await oscillatorCount("root")).toBe(4);
+    expect(await oscillatorCount("swell")).toBe(3);
+  });
+
+  it("lets a longer hold sound longer, inside bounds", async () => {
+    const lengthFor = async (holdSeconds: number | undefined) => {
+      createdNodes = [];
+      context = new TestAudioContext();
+      const engine = await startedEngine();
+      engine.triggerHold(400, "root", holdSeconds);
+      const osc = partialsOf()[0];
+      return osc.stopTimes[0]! - osc.startTimes[0];
+    };
+
+    const short = await lengthFor(0.5);
+    const long = await lengthFor(2.5);
+    expect(long).toBeGreaterThan(short);
+
+    // Clamped either side, so a stray hold cannot leave a roll running.
+    expect(await lengthFor(30)).toBeLessThan(3.5);
+    expect(await lengthFor(0.01)).toBeGreaterThan(0.3);
+  });
+
+  it("self-disconnects the roll when its oscillators end", async () => {
+    const engine = await startedEngine();
+    engine.triggerHold(400, "rootFifth");
+    for (const osc of context.oscillators) osc.onended?.();
+
+    const stillConnected = createdNodes.filter(
+      (node) =>
+        node instanceof TestOscillatorNode && node.connections.length > 0,
+    );
+    expect(stillConnected).toEqual([]);
+  });
+});
+
+describe("cantus firmus", () => {
+  const startedEngine = async (): Promise<SoundEngine> => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(800);
+    return engine;
+  };
+
+  /**
+   * Run the engine's clock far enough forward to collect `count` cantus notes.
+   * The line sings every 8-15s, so this steps in whole seconds rather than
+   * frames — nothing in the cantus depends on frame rate.
+   */
+  const collectNotes = (
+    engine: SoundEngine,
+    count: number,
+    options: { fromSecond?: number } = {},
+  ): TestOscillatorNode[] => {
+    const notes: TestOscillatorNode[] = [];
+    // Only oscillators created from here on are this call's; a second call on
+    // the same engine must not re-collect the first call's notes.
+    let seen = context.oscillators.length;
+    const start = options.fromSecond ?? 0;
+    for (
+      let second = start;
+      second < start + 400 && notes.length < count;
+      second++
+    ) {
+      context.currentTime += 1;
+      engine.tick(second * 1000, []);
+      // Each note is a sine plus its triangle partial; the sine is the note.
+      for (const osc of context.oscillators.slice(seen)) {
+        if (osc.type === "sine" && osc.startTimes.length > 0) notes.push(osc);
+      }
+      seen = context.oscillators.length;
+    }
+    return notes;
+  };
+
+  it("stays silent until it is switched on", async () => {
+    const engine = await startedEngine();
+    expect(engine.getCantus()).toBeNull();
+    expect(collectNotes(engine, 1)).toEqual([]);
+  });
+
+  it("sings from the current chord, voice-led to the nearest tone", async () => {
+    const engine = await startedEngine();
+    engine.setConfig({ chordRotation: true });
+    engine.setCantus("tenor");
+
+    const notes = collectNotes(engine, 4);
+    expect(notes.length).toBeGreaterThanOrEqual(4);
+
+    // Every note belongs to some chord in the rotation — the line follows the
+    // harmony rather than sitting on a fixed scale.
+    const chords = PROGRESSIONS[engine.getProgressionId()].chords;
+    for (const note of notes) {
+      const inSomeChord = chords.some((chord) =>
+        chord.pitches.some((tone) => {
+          const octaves = Math.log2(note.frequency.value / tone);
+          return Math.abs(octaves - Math.round(octaves)) < 1e-6;
+        }),
+      );
+      expect(
+        inSomeChord,
+        `${note.frequency.value}Hz belongs to no chord in the rotation`,
+      ).toBe(true);
+    }
+
+    // Voice leading: consecutive notes step rather than leap. A tritone is the
+    // furthest `leadHomeTone` can ever move, so nothing should exceed it.
+    for (let i = 1; i < notes.length; i++) {
+      const semitones = Math.abs(
+        12 *
+          Math.log2(notes[i].frequency.value / notes[i - 1].frequency.value),
+      );
+      expect(semitones).toBeLessThanOrEqual(6 + 1e-6);
+    }
+  });
+
+  it("holds each note long enough that the line overlaps", async () => {
+    const engine = await startedEngine();
+    engine.setCantus("tenor");
+
+    const notes = collectNotes(engine, 2);
+    expect(notes.length).toBeGreaterThanOrEqual(2);
+
+    // A note runs at least eight seconds, and the next one starts before it
+    // has finished — that overlap is what makes it one voice.
+    const first = notes[0];
+    const length = first.stopTimes[0]! - first.startTimes[0];
+    expect(length).toBeGreaterThan(7);
+    expect(notes[1].startTimes[0]).toBeLessThan(first.stopTimes[0]!);
+  });
+
+  it("sits in a mid register and drifts its pan across each note", async () => {
+    const engine = await startedEngine();
+    engine.setCantus("tenor");
+    const notes = collectNotes(engine, 1);
+    expect(notes.length).toBe(1);
+
+    // Roughly C3-C4: below the bells, above the timpani.
+    expect(notes[0].frequency.value).toBeGreaterThan(100);
+    expect(notes[0].frequency.value).toBeLessThan(280);
+
+    const panner = createdNodes.find(
+      (node): node is TestStereoPannerNode =>
+        node instanceof TestStereoPannerNode &&
+        node.pan.events.some((event) => event.method === "linearRamp"),
+    );
+    expect(panner).toBeDefined();
+    const [from, to] = panner!.pan.events.map((event) => event.value!);
+    expect(from).not.toBe(to);
+    for (const value of [from, to]) {
+      expect(Math.abs(value)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("puts the soprano an octave above the tenor, and quieter", async () => {
+    const firstNote = async (variant: "tenor" | "soprano") => {
+      createdNodes = [];
+      context = new TestAudioContext();
+      const engine = await startedEngine();
+      engine.setCantus(variant);
+      const notes = collectNotes(engine, 1);
+      // The note's own level node: the one that starts at the floor value the
+      // cantus envelope opens from, rather than the master gain.
+      const level = context.gains.find((gain) =>
+        gain.gain.events.some(
+          (event) => event.method === "set" && event.value === 0.0001,
+        ),
+      );
+      expect(level).toBeDefined();
+      const peak = level!.gain.events.find(
+        (event) => event.method === "linearRamp",
+      )!.value!;
+      return { pitch: notes[0].frequency.value, peak };
+    };
+
+    const tenor = await firstNote("tenor");
+    const soprano = await firstNote("soprano");
+    expect(soprano.pitch).toBeCloseTo(tenor.pitch * 2, 6);
+    // Up an octave the same level reads louder, hence the trim.
+    expect(soprano.peak).toBeLessThan(tenor.peak);
+  });
+
+  it("offsets the duet's second voice rather than doubling the first", async () => {
+    const engine = await startedEngine();
+    engine.setCantus("duet");
+
+    const notes = collectNotes(engine, 4);
+    expect(notes.length).toBeGreaterThanOrEqual(4);
+
+    // Two voices alternating: no two notes start together, or the duet is one
+    // thicker voice rather than two.
+    const starts = notes.map((note) => note.startTimes[0]);
+    expect(new Set(starts).size).toBe(starts.length);
+  });
+
+  it("routes the line to its own mixer family", async () => {
+    // The cantus belongs to no trail and no event, so it has to be silenceable
+    // on its own to judge whether the scene holds together without it.
+    const engine = await startedEngine();
+    engine.setLayerMuted("cantus", true);
+    expect(engine.getLayerMix().muted).toContain("cantus");
+  });
+
+  it("stops when it is switched off", async () => {
+    const engine = await startedEngine();
+    engine.setCantus("tenor");
+    expect(collectNotes(engine, 1).length).toBe(1);
+
+    engine.setCantus(null);
+    expect(engine.getCantus()).toBeNull();
+    // Continue the same clock rather than rewinding it — the line's next note
+    // was already due, so a rewind would prove nothing.
+    expect(collectNotes(engine, 1, { fromSecond: 400 })).toEqual([]);
+  });
+});
+
+describe("offline rendering", () => {
+  it("uses a caller-supplied context and leaves it open on dispose", async () => {
+    // The offline render pipeline hands the engine an OfflineAudioContext and
+    // renders the graph faster than real time. Nothing about the synthesis
+    // changes; the engine must simply not open or close a context it was
+    // given.
+    const provided = new TestAudioContext();
+    const engine = new SoundEngine(provided as unknown as BaseAudioContext);
+    await engine.init();
+    engine.setCanvasWidth(800);
+
+    engine.triggerClickPizzicato(400, 300, "soft");
+    expect(provided.oscillators.length).toBeGreaterThan(0);
+
+    let closed = false;
+    provided.close = () => {
+      closed = true;
+      return Promise.resolve();
+    };
+    engine.dispose();
+    expect(closed).toBe(false);
   });
 });
