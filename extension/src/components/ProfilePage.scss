@@ -10,20 +10,24 @@
   flex-direction: column;
 
   &__header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
     margin-bottom: 16px;
   }
 
   &__back {
+    display: block;
     background: none;
     border: none;
     cursor: pointer;
-    color: $accent-blue;
+    color: $text-muted;
     font-size: 12px;
     font-family: $font-body;
     padding: 0;
+    margin-bottom: 8px;
+    transition: color 0.12s;
+
+    &:hover {
+      color: $accent-teal;
+    }
   }
 
   &__title {

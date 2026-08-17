@@ -1,4 +1,4 @@
-// ABOUTME: Mounts the walking record as both a standalone extension page and the new-tab override.
+// ABOUTME: Mounts the walking record as a standalone extension page reachable from the popup.
 // ABOUTME: Loads navigable calendar week, month, or year records without network requests.
 
 import "@fontsource/atkinson-hyperlegible/latin-400.css";
@@ -50,7 +50,7 @@ interface ScreenTimeResponse {
   sessions?: ScreenTimeSession[];
 }
 
-function NewTabPage() {
+function WalkingRecordEntryPage() {
   const previewMovementLoading = isMovementLoadingPreview(
     window.location.search,
   );
@@ -339,4 +339,4 @@ if (!container) {
   throw new Error("Walking record root element is missing.");
 }
 
-createRoot(container).render(<NewTabPage />);
+createRoot(container).render(<WalkingRecordEntryPage />);

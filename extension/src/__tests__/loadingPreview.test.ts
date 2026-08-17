@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   createMovementLoadingPreview,
   isMovementLoadingPreview,
-} from "../entrypoints/newtab/loadingPreview";
+} from "../entrypoints/walking-record/loadingPreview";
 import type { WalkingRecord } from "../history/walkingRecord";
 
 const cursorEvent = {
