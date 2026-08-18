@@ -34,8 +34,7 @@ describe("walking record cache", () => {
 
   it("returns matching snapshots as fresh for fifteen minutes", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      walking_record_cache_v2: {
-        version: 2,
+      walking_record_cache: {
         entries: [{ key: "week:1000:#4a9a8a", cachedAt: 10_000, record }],
       },
     });
@@ -50,8 +49,7 @@ describe("walking record cache", () => {
 
   it("returns an older matching snapshot while marking it stale", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      walking_record_cache_v2: {
-        version: 2,
+      walking_record_cache: {
         entries: [{ key: "week:1000:#4a9a8a", cachedAt: 10_000, record }],
       },
     });
@@ -64,11 +62,10 @@ describe("walking record cache", () => {
     ).resolves.toEqual({ record, fresh: false });
   });
 
-  it("ignores cache data from another schema", async () => {
+  it("ignores invalid cache data", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      walking_record_cache_v2: {
-        version: 1,
-        entries: [{ key: "week:1000:#4a9a8a", cachedAt: 10_000, record }],
+      walking_record_cache: {
+        entries: "invalid",
       },
     });
 
@@ -79,8 +76,7 @@ describe("walking record cache", () => {
 
   it("keeps only the six most recent snapshots", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      walking_record_cache_v2: {
-        version: 2,
+      walking_record_cache: {
         entries: Array.from({ length: 6 }, (_, index) => ({
           key: `week:${index}:#4a9a8a`,
           cachedAt: index,
@@ -95,15 +91,14 @@ describe("walking record cache", () => {
     await writeWalkingRecordCache("week:latest:#4a9a8a", record, 10_000);
 
     expect(browser.storage.local.set).toHaveBeenCalledWith({
-      walking_record_cache_v2: {
-        version: 2,
+      walking_record_cache: {
         entries: expect.arrayContaining([
           expect.objectContaining({ key: "week:latest:#4a9a8a" }),
         ]),
       },
     });
     const stored = vi.mocked(browser.storage.local.set).mock.calls[0][0]
-      .walking_record_cache_v2 as { entries: unknown[] };
+      .walking_record_cache as { entries: unknown[] };
     expect(stored.entries).toHaveLength(6);
   });
 });

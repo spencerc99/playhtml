@@ -1,5 +1,5 @@
 // ABOUTME: Persists recent walking records so new tabs can render them immediately.
-// ABOUTME: Keeps a bounded set of versioned snapshots with a fifteen-minute freshness window.
+// ABOUTME: Keeps a bounded set of snapshots with a fifteen-minute freshness window.
 
 import browser from "webextension-polyfill";
 import type {
@@ -8,8 +8,7 @@ import type {
   WalkingRecordRange,
 } from "./walkingRecord";
 
-const STORAGE_KEY = "walking_record_cache_v2";
-const CACHE_VERSION = 2;
+const STORAGE_KEY = "walking_record_cache";
 const CACHE_ENTRY_LIMIT = 6;
 export const WALKING_RECORD_CACHE_MAX_AGE_MS = 15 * 60_000;
 
@@ -20,7 +19,6 @@ interface WalkingRecordCacheEntry {
 }
 
 interface WalkingRecordCacheStore {
-  version: typeof CACHE_VERSION;
   entries: WalkingRecordCacheEntry[];
 }
 
@@ -61,9 +59,7 @@ function isWalkingRecord(value: unknown): value is WalkingRecord {
 function cacheEntries(value: unknown): WalkingRecordCacheEntry[] {
   if (!value || typeof value !== "object") return [];
   const store = value as Partial<WalkingRecordCacheStore>;
-  if (store.version !== CACHE_VERSION || !Array.isArray(store.entries)) {
-    return [];
-  }
+  if (!Array.isArray(store.entries)) return [];
 
   return store.entries.filter((entry): entry is WalkingRecordCacheEntry => {
     if (!entry || typeof entry !== "object") return false;
@@ -113,7 +109,6 @@ export async function writeWalkingRecordCache(
     .slice(0, CACHE_ENTRY_LIMIT);
 
   const cache: WalkingRecordCacheStore = {
-    version: CACHE_VERSION,
     entries,
   };
   await browser.storage.local.set({ [STORAGE_KEY]: cache });
