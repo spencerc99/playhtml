@@ -1,5 +1,5 @@
 // ABOUTME: Opt-in redirect from the browser's new tab page to the walking record.
-// ABOUTME: Caches the preference in memory, waiting on hydration only for the wake-up tab.
+// ABOUTME: Reads the preference from storage per new tab so a startup write can't be missed.
 
 import browser from 'webextension-polyfill'
 
@@ -7,13 +7,15 @@ export const NEWTAB_TAKEOVER_KEY = 'newtab_takeover_enabled'
 
 const WALKING_RECORD_PAGE = 'walking-record.html'
 
-// Chromium reports the pending new tab under several spellings depending on
-// version and profile settings.
+// Both engines report the new tab under several spellings depending on version
+// and profile settings. Firefox reports `about:newtab` on the created tab
+// itself, so the same match covers Chromium and Firefox.
 const NEW_TAB_URLS = new Set([
   'chrome://newtab/',
   'chrome://new-tab-page/',
   'chrome://new-tab-page-third-party/',
   'about:newtab',
+  'about:home',
   'edge://newtab/',
 ])
 
@@ -23,52 +25,101 @@ function isNewTabUrl(url: string | undefined): boolean {
 }
 
 /**
+ * How long after a tab is created its first navigation still counts as the new
+ * tab settling rather than the user going somewhere.
+ */
+const NEW_TAB_SETTLE_MS = 2_000
+
+/**
  * Redirects newly created browser new tabs to the walking record when the user
  * has opted in.
  *
- * The preference is cached in the worker and refreshed from storage.onChanged
- * rather than read per tab. The one exception is the tab whose creation wakes
- * a suspended service worker: that event fires before the cache has hydrated,
- * so the handler awaits the initial storage read once — otherwise the wake-up
- * tab would silently stay on the browser default for opted-in users.
+ * The preference is read from storage on each new tab rather than cached. A
+ * cached flag goes permanently stale when the key is written during background
+ * startup — the update path grandfathers the old forced new tab by writing it
+ * from `runtime.onInstalled`, which can both race the initial read and emit its
+ * `storage.onChanged` before this module attaches a listener. Storage reads are
+ * cheap and only happen once per new tab, so there is nothing to win by caching.
+ *
+ * Two events can identify the new tab because Firefox is inconsistent about
+ * which one carries the URL: sometimes `onCreated` already reports
+ * `about:newtab`, and sometimes it reports `about:blank` and the real URL only
+ * arrives in a following `onUpdated`. Both spellings were observed within a
+ * single browser session, so both paths are required.
  */
 export function initNewTabTakeover() {
-  let enabled = false
-  let hydrated = false
+  const redirectedTabIds = new Set<number>()
+  /** Tabs created blank, still within the window where they may become a new tab. */
+  const settlingTabIds = new Map<number, ReturnType<typeof setTimeout>>()
 
-  const hydration = browser.storage.local
-    .get([NEWTAB_TAKEOVER_KEY])
-    .then((result) => {
-      enabled = Boolean(result[NEWTAB_TAKEOVER_KEY])
-    })
-    .catch(() => {
+  async function isEnabled(): Promise<boolean> {
+    try {
+      const stored = await browser.storage.local.get([NEWTAB_TAKEOVER_KEY])
+      return Boolean(stored[NEWTAB_TAKEOVER_KEY])
+    } catch {
       // Storage unavailable — stay opted out rather than hijacking new tabs.
-    })
-    .finally(() => {
-      hydrated = true
-    })
+      return false
+    }
+  }
 
-  // These listeners are absent in some environments (e.g. the test runner).
-  browser.storage.onChanged?.addListener((changes, area) => {
-    if (area !== 'local') return
-    const change = changes[NEWTAB_TAKEOVER_KEY]
-    if (change) enabled = Boolean(change.newValue)
-  })
+  function stopSettling(tabId: number) {
+    const timeout = settlingTabIds.get(tabId)
+    if (timeout) clearTimeout(timeout)
+    settlingTabIds.delete(tabId)
+  }
 
-  browser.tabs.onCreated?.addListener(async (tab) => {
-    if (tab.id == null) return
-    // pendingUrl holds the destination before the tab commits; url is only
-    // populated once it has. A brand new tab usually only has the former.
-    const target = (tab as { pendingUrl?: string }).pendingUrl ?? tab.url
-    if (!isNewTabUrl(target)) return
+  async function redirect(tabId: number) {
+    if (redirectedTabIds.has(tabId)) return
+    redirectedTabIds.add(tabId)
+    stopSettling(tabId)
 
-    if (!hydrated) await hydration
-    if (!enabled) return
+    if (!(await isEnabled())) {
+      redirectedTabIds.delete(tabId)
+      return
+    }
 
     browser.tabs
-      .update(tab.id, { url: browser.runtime.getURL(WALKING_RECORD_PAGE) })
+      .update(tabId, { url: browser.runtime.getURL(WALKING_RECORD_PAGE) })
       .catch(() => {
         // Tab closed before the redirect landed — nothing to recover.
       })
+  }
+
+  browser.tabs.onCreated?.addListener(async (tab) => {
+    if (tab.id == null) return
+    const tabId = tab.id
+
+    // pendingUrl holds the destination before the tab commits; url is only
+    // populated once it has. Firefox populates url, Chromium pendingUrl.
+    const target = (tab as { pendingUrl?: string }).pendingUrl ?? tab.url
+    if (isNewTabUrl(target)) {
+      await redirect(tabId)
+      return
+    }
+
+    // A tab that starts blank may still be resolving into the new tab page.
+    if (target === undefined || target === 'about:blank') {
+      settlingTabIds.set(
+        tabId,
+        setTimeout(() => settlingTabIds.delete(tabId), NEW_TAB_SETTLE_MS),
+      )
+    }
+  })
+
+  browser.tabs.onUpdated?.addListener(async (tabId, changeInfo) => {
+    const url = (changeInfo as { url?: string }).url
+    if (!url || !settlingTabIds.has(tabId)) return
+    // Still blank — keep waiting for the tab to settle.
+    if (url === 'about:blank') return
+
+    // The first real URL decides: the new tab page gets redirected, anything
+    // else means the user navigated and the tab is no longer ours to touch.
+    stopSettling(tabId)
+    if (isNewTabUrl(url)) await redirect(tabId)
+  })
+
+  browser.tabs.onRemoved?.addListener((tabId) => {
+    stopSettling(tabId)
+    redirectedTabIds.delete(tabId)
   })
 }

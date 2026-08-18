@@ -20,3 +20,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Wikipedia editing sessions now stay separate from article-reading rooms.
 - Browsing history performance improvements
 - Browsing history can be removed as the new tab page. Toggle it on/off at any time.
+- In Firefox, turning on browsing history as your new tab page now works reliably.
