@@ -46,6 +46,10 @@ compatibility_date = "2024-01-01"
 name = "LIVE_EVENTS_HUB"
 class_name = "LiveEventsHub"
 
+[[kv_namespaces]]
+binding = "WWO_INTERNAL_ACCESS"
+id = "18926e14c023447889e3ad4ffeb9a05a"
+
 [[migrations]]
 tag = "v1"
 new_classes = ["LiveEventsHub"]

@@ -42,4 +42,5 @@ export interface Env {
   RESEND_SEGMENT_ID?: string;   // Optional: assign new contacts to this Resend segment
   CODA_API_TOKEN: string;       // Coda API token for extension feedback submissions
   LIVE_EVENTS_HUB: DurableObjectNamespace; // Live cursor-event stream hub
+  WWO_INTERNAL_ACCESS: KVNamespace; // Extension public IDs approved for beta features
 }

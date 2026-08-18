@@ -8,6 +8,20 @@ vi.mock("webextension-polyfill", () => ({
     storage: {
       local: {
         get: vi.fn().mockImplementation((keys: string | string[]) => {
+          if (keys === "wwoInternalAccess") {
+            return Promise.resolve({
+              wwoInternalAccess: { enabled: true, checkedAt: 123 },
+            });
+          }
+          if (keys === "wwoFeatureOverrides") {
+            return Promise.resolve({
+              wwoFeatureOverrides: {
+                COPRESENCE: false,
+                BOTTLES: false,
+                INVENTORY: false,
+              },
+            });
+          }
           if (!Array.isArray(keys)) return Promise.resolve({});
 
           return Promise.resolve(
@@ -36,10 +50,6 @@ vi.mock("webextension-polyfill", () => ({
       sendMessage: vi.fn().mockResolvedValue({ success: true }),
     },
   },
-}));
-
-vi.mock("../flags", () => ({
-  FLAGS: { COPRESENCE: false },
 }));
 
 vi.mock("playhtml", () => ({

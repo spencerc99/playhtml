@@ -47,9 +47,8 @@ describe("ScrapsLaunchCard", () => {
     Object.assign(browser.runtime, {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
     });
-    // The feature ships dark, so the card relies on the internal dev toggle.
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      internalDevFeaturesEnabled: true,
+      wwoInternalAccess: { enabled: true, checkedAt: 1 },
     });
     vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
   });
@@ -132,7 +131,7 @@ describe("ScrapsLaunchCard", () => {
   it("does not render while the scraps feature is unreachable", async () => {
     expect(FLAGS.SCRAPS).toBe(false);
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      internalDevFeaturesEnabled: false,
+      wwoInternalAccess: { enabled: false, checkedAt: 1 },
     });
     vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
     const { container, root } = await renderCard();

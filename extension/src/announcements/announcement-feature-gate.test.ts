@@ -21,11 +21,11 @@ describe("getPostcardCandidates", () => {
     expect(candidates.map((a) => a.id)).not.toContain("scraps-2026-08");
   });
 
-  it("includes the scraps postcard once internal dev features are on", async () => {
+  it("includes the scraps postcard for approved beta testers", async () => {
     vi.mocked(browser.storage.local.get).mockImplementation(
       async (keys: unknown) =>
-        keys === "internalDevFeaturesEnabled"
-          ? { internalDevFeaturesEnabled: true }
+        keys === "wwoInternalAccess"
+          ? { wwoInternalAccess: { enabled: true, checkedAt: 1 } }
           : {},
     );
     const candidates = await getPostcardCandidates();

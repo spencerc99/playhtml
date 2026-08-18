@@ -29,10 +29,6 @@ vi.mock("webextension-polyfill", () => ({
   },
 }));
 
-vi.mock("../flags", () => ({
-  FLAGS: { COPRESENCE: true },
-}));
-
 vi.mock("../collectors/CollectorManager", () => ({
   CollectorManager: class {
     registerCollector = vi.fn();
@@ -74,9 +70,6 @@ describe("content page-lifecycle wiring", () => {
     storageGet.mockReset();
     storageGet.mockImplementation((keys: string | string[]) => {
       if (!Array.isArray(keys)) return Promise.resolve({});
-      if (keys.includes("internalDevFeaturesEnabled")) {
-        return Promise.resolve({ internalDevFeaturesEnabled: false });
-      }
       return Promise.resolve(
         Object.fromEntries(
           keys
