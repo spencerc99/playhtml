@@ -204,7 +204,7 @@ export function ProfilePage({
         {!privateExperimentAccess && (
           <section className="profile-section profile-section--beta">
             <label className="profile-section__label" htmlFor="beta-email">Closed beta</label>
-            <p>Ask to try Internet Commute and Internet Scraps. Experiments stay off until you choose to enable them.</p>
+            <p>Request early access to new experimental features to make the internt feel more shared and alive. Experiments stay off until you choose to enable them.</p>
             {betaRequestStatus === "sent" ? (
               <strong className="profile-section__request-success">Request sent</strong>
             ) : (
