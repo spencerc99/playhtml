@@ -1,5 +1,5 @@
 // ABOUTME: Full-page setup wizard for first-time extension configuration
-// ABOUTME: Handles consent choices, cursor color, the new tab choice, and the product tour
+// ABOUTME: Handles consent, cursor color, new tab choice, product tour, and update signup
 import React, { useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import { getValidEventTypes } from "@playhtml/extension-types";
@@ -21,6 +21,7 @@ import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
 import { PortraitCard } from "./PortraitCard";
 import { isSafariExtensionPageUrl } from "../utils/extensionPage";
+import { WORKER_URL } from "@movement/config";
 import {
   hasSafariWebsiteAccess,
   requestSafariWebsiteAccess,
@@ -103,6 +104,7 @@ function presetConfigs(): Record<Preset, PresetConfig> {
 export default function SetupPage() {
   const [step, setStep] = useState<Step>("welcome");
   const showDevStepNav = new URLSearchParams(window.location.search).has("dev");
+  const [email, setEmail] = useState("");
   const visibleTypes = useVisibleCollectorTypes();
   const [color, setColor] = useState<string>("");
   const presets = presetConfigs();
@@ -236,8 +238,35 @@ export default function SetupPage() {
   const finishOnboarding = async () => {
     setBusy(true);
     setSaveError(null);
+    const trimmedEmail = email.trim();
+
     try {
-      await browser.storage.local.set({ onboarding_complete: "true" });
+      if (trimmedEmail) {
+        try {
+          const response = await fetch(`${WORKER_URL}/subscribe`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: trimmedEmail,
+              source: "extension-setup",
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Subscription failed with status ${response.status}`);
+          }
+        } catch {
+          setSaveError(
+            "We couldn’t sign you up for updates. Try again, or clear the field to finish without signing up.",
+          );
+          return;
+        }
+      }
+
+      await browser.storage.local.set({
+        onboarding_complete: "true",
+        ...(trimmedEmail ? { setup_email: trimmedEmail } : {}),
+      });
       await closeSetupTab();
     } catch {
       setSaveError(setupStorageError(isSafari));
@@ -264,13 +293,18 @@ export default function SetupPage() {
         }
       >
         {step === "welcome" && (
-          <section className="setup-step">
+          <form
+            className="setup-step"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setStep("configure");
+            }}
+          >
             <h1 className="setup-step__title">we were online</h1>
             <p className="setup-step__desc">
-              This extension quietly records how you move through the internet —
-              your cursor trails, reading rhythm, time on pages — and turns it
-              into a living portrait of your digital presence. You choose how
-              it's used.
+              we were online turns the existing Internet into a living, shared
+              world. Let's get you set up in a few steps so we can respect your
+              preferences for privacy and share how the extension works.
             </p>
             {isSafari && websiteAccess !== "granted" && (
               <div className="setup-step__website-access">
@@ -311,13 +345,38 @@ export default function SetupPage() {
                 Safari website access is on.
               </p>
             )}
+            <div className="setup-step__field">
+              <label
+                className="setup-step__field-label"
+                htmlFor="updates-email"
+              >
+                Email for project updates (optional)
+              </label>
+              <input
+                id="updates-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                aria-describedby="updates-email-help"
+                className="setup-step__input"
+              />
+              <span
+                id="updates-email-help"
+                className="setup-step__field-help"
+              >
+                Get occasional updates about we were online and have the
+                opportunity to beta test new features
+              </span>
+            </div>
             <button
-              onClick={() => setStep("configure")}
+              type="submit"
               className="setup-step__btn-primary"
             >
               Get started
             </button>
-          </section>
+          </form>
         )}
 
         {step === "configure" && (
@@ -615,26 +674,34 @@ export default function SetupPage() {
               </button>
             </div>
 
-            <div className="setup-step__actions">
-              <button
-                onClick={() => setStep("newTab")}
-                className="setup-step__btn-secondary"
-              >
-                Back
-              </button>
-              <button
-                onClick={finishOnboarding}
-                className="setup-step__btn-primary"
-                disabled={busy}
-              >
-                {saveError ? "Try again" : "Finish setup"}
-              </button>
-            </div>
-            {saveError && (
-              <p className="setup-step__save-error" role="alert">
-                {saveError}
-              </p>
-            )}
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void finishOnboarding();
+              }}
+            >
+              <div className="setup-step__actions">
+                <button
+                  type="button"
+                  onClick={() => setStep("newTab")}
+                  className="setup-step__btn-secondary"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  className="setup-step__btn-primary"
+                  disabled={busy}
+                >
+                  {saveError ? "Try again" : "Finish setup"}
+                </button>
+              </div>
+              {saveError && (
+                <p className="setup-step__save-error" role="alert">
+                  {saveError}
+                </p>
+              )}
+            </form>
           </section>
         )}
       </div>
