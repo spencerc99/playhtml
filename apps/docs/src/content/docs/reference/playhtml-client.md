@@ -5,15 +5,24 @@ sidebar:
   order: 4
 ---
 
-The `playhtml` object is the library entry point. Import it from the package, or use `window.playhtml` after a script tag loads.
+The `playhtml` object is the library entry point. Import it from the package or from a CDN.
+
+**npm with a bundler:**
 
 ```js
-// ES module
 import { playhtml } from "playhtml";
 
-// Script tag (CDN) — available as window.playhtml after the script loads
-// <script type="module" src="https://unpkg.com/playhtml/dist/index.js"></script>
-playhtml.init();
+await playhtml.init();
+```
+
+**CDN without a bundler:**
+
+```html
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml";
+
+  await playhtml.init();
+</script>
 ```
 
 **API groups at a glance:**
