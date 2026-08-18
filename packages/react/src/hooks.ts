@@ -283,7 +283,13 @@ export function usePlayerIdentity(): {
     }
     const readIdentity = () => {
       const me = playhtml.users.me;
-      setIdentity({ color: me.color, pid: me.pid, name: me.name });
+      // users.onChange fires on every presence tick; only re-render consumers
+      // when the identity itself changed.
+      setIdentity((prev) =>
+        prev.color === me.color && prev.pid === me.pid && prev.name === me.name
+          ? prev
+          : { color: me.color, pid: me.pid, name: me.name },
+      );
     };
     readIdentity();
     return playhtml.users.onChange(readIdentity);

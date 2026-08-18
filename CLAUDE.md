@@ -21,24 +21,27 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 
 ## Development Commands
 
-- `bun install` at the root installs all workspaces
+- `bun run setup`: install locked dependencies, prepare WXT metadata, build packages, and verify workspace readiness
+- `bun run doctor`: check whether dependencies, WXT metadata, and package build outputs are ready
 - `bun dev`: Website dev server (Vite)
 - `bun dev-server`: PartyKit dev server for real-time sync
+- `PLAYHTML_PARTYKIT_PORT=2000 bun dev-server`: PartyKit dev server on a non-default port
 - `bun dev-extension`: Extension dev server (WXT hot reload)
 - `bun build-packages`: Build all library packages
 - `bun run lint`: Type-check all packages
 - `bun run format:check -- <file...>`: Check up to 50 explicit source files
 - `bun run format:write -- <file...>`: Format up to 50 explicit source files
+- `bun run smoke:extension-worker`: bundle the extension Worker without deploying or starting a watcher
 
-The formatter rejects directories, generated files, asset trees, environment files, and unsupported configuration formats. The repository has pre-existing formatting drift. Keep formatting commands scoped to files changed for the current task.
 
 Per-package and deploy scripts are in the root `package.json`.
 
 ### Testing
 
-- `bun run --cwd packages/playhtml test` / `packages/react` / `extension`
+- `bun run test:common` / `test:playhtml` / `test:react` / `test:extension` / `test:docs` / `test:extension-worker`
+- `bun run check:playhtml` / `check:react` / `check:extension` / `check:docs` / `check:extension-website` / `check:extension-worker`
 
-**Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. CI never hits this because `pr-validation.yml` runs `bun build-packages` before every test job (and does not run the extension suite at all).
+**Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. `bun run setup` performs the required build, and `bun run doctor` reports missing outputs. CI runs the same setup and test commands.
 
 ### Supabase
 
@@ -126,7 +129,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 
 | If you… | Then… |
 | --- | --- |
-| Touched `packages/` | Add a changeset + audit `apps/docs/` |
+| Changed published package behavior | Add a changeset + audit `apps/docs/` |
 | Changed the public core API | Update both starter templates |
 | Changed package deps or exports | Run the tarball install simulation |
 | Changed what extension users see | Add a bullet to `extension/PENDING.md` |
@@ -135,7 +138,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 - **PRs:** Include summary, rationale, screenshots for UI/site/extension changes, reproduction for fixes, and link issues.
 - **Releases:** `bun run version-packages` then `bun run release` (builds + publishes via changesets).
 
-- **Changesets:** ALWAYS add a changeset whenever you modify code under `packages/` (core libraries: `playhtml`, `@playhtml/react`, `@playhtml/common`). Create the file directly in `.changeset/<short-slug>.md` with the standard frontmatter (`"<package>": patch|minor|major`) and a one-paragraph user-facing description of the change and why. `bun run changeset` is the interactive equivalent. Config in `.changeset/config.json` (public access, patch for internal deps). Skip changesets only for changes outside `packages/` (website, extension, docs, internal-docs).
+- **Changesets:** Add a changeset when a change under `packages/` affects published runtime behavior, public APIs or types, published dependencies, or package output. Do not add a changeset for tests, CI, development-only scripts, documentation, or internal refactors with no observable package behavior. If the qualification is uncertain, stop and ask Spencer. Create the file directly in `.changeset/<short-slug>.md` with the standard frontmatter (`"<package>": patch|minor|major`) and a one-paragraph user-facing description of the change and why. `bun run changeset` is the interactive equivalent. Config in `.changeset/config.json` (public access, patch for internal deps).
 
 - **Docs audit for package changes:** Whenever you change code under `packages/`, check whether public documentation in `apps/docs/` needs to change. Update the relevant user-facing docs in the same PR when behavior, APIs, attributes, classes, examples, or gotchas change. Common places to check are `apps/docs/src/content/docs/capabilities.mdx`, `apps/docs/src/content/docs/getting-started.mdx`, `apps/docs/src/content/docs/reference/react-api.md`, and the `data/`, `advanced/`, and `integrations/` docs. If no docs change is needed, mention why in the PR summary.
 

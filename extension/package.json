@@ -16,7 +16,8 @@
     "submit": "./release.sh",
     "submit:dry": "./release.sh --dry-run",
     "submit:refresh-chrome-token": "./scripts/refresh-chrome-token.sh",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

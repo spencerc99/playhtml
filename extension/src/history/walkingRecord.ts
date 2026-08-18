@@ -94,6 +94,7 @@ export interface WalkingRecordDomain {
   sessionCount: number;
   activeDayCount: number;
   eventCounts: Record<string, number>;
+  latestFaviconUrl?: string;
 }
 
 export interface Departure {
@@ -262,7 +263,10 @@ export function formatDuration(ms: number): string {
   return minutes === 0 ? hourLabel : `${hourLabel} ${minutes} min`;
 }
 
-function formatCompactDuration(ms: number): string {
+export function formatCompactDuration(
+  ms: number,
+  unitSeparator = " ",
+): string {
   if (ms <= 0) return "0m";
   const totalMinutes = Math.floor(ms / 60_000);
   if (totalMinutes < 1) return "<1m";
@@ -270,7 +274,9 @@ function formatCompactDuration(ms: number): string {
 
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+  return minutes === 0
+    ? `${hours}h`
+    : `${hours}h${unitSeparator}${minutes}m`;
 }
 
 export function formatRange(range: WalkingRecordRange): string {
@@ -1023,7 +1029,7 @@ function buildTimeSpent(
       rank: index + 1,
       site: row.domain,
       faviconUrl: faviconByDomain.get(row.domain),
-      time: formatCompactDuration(row.totalMs),
+      time: formatCompactDuration(row.totalMs, ""),
       percentage: (row.totalMs / Math.max(totalMs, 1)) * 100,
       hue: paletteColorForIndex(index),
       note: "",
@@ -1034,7 +1040,7 @@ function buildTimeSpent(
     entries.push({
       rank: entries.length + 1,
       site: `${remaining.length} other${remaining.length === 1 ? "" : "s"}`,
-      time: formatCompactDuration(remainingMs),
+      time: formatCompactDuration(remainingMs, ""),
       percentage: (remainingMs / Math.max(totalMs, 1)) * 100,
       hue: "#c8c3bb",
       note: "",

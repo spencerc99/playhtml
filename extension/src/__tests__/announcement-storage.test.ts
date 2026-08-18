@@ -85,7 +85,11 @@ describe("announcement-storage", () => {
   });
 
   it("getPostcardCandidates excludes only dismissed, includes toast-shown", async () => {
-    const first = ANNOUNCEMENTS[0];
+    // Announcements tied to a still-dark feature never surface, so pick one
+    // that is reachable for every user.
+    const first = ANNOUNCEMENTS.find(
+      (announcement) => announcement.requiresFeature === undefined,
+    );
     if (!first) return;
     expect((await getPostcardCandidates()).some((a) => a.id === first.id)).toBe(
       true,
@@ -102,7 +106,8 @@ describe("announcement-storage", () => {
 
   it("keeps popup-only announcements out of page toasts", async () => {
     const popupOnly = ANNOUNCEMENTS.find(
-      (announcement) => announcement.popupOnly,
+      (announcement) =>
+        announcement.popupOnly && announcement.requiresFeature === undefined,
     );
     expect(popupOnly).toBeDefined();
     expect(

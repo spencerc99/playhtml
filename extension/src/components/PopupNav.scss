@@ -1,0 +1,44 @@
+// ABOUTME: Styles for the popup's page navigation
+// ABOUTME: Bare mono links with an external-tab arrow, sized for the header row
+
+@use "../styles/variables" as *;
+
+.popup-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    background: none;
+    border: none;
+    font-family: $font-mono;
+    font-size: 12px;
+    text-transform: lowercase;
+    color: $text;
+    cursor: pointer;
+    transition: color 0.12s;
+
+    &:hover {
+      color: $accent-teal;
+
+      .popup-nav__arrow {
+        color: inherit;
+      }
+    }
+
+    &:focus-visible {
+      outline: 2px solid $accent-teal;
+      outline-offset: 2px;
+    }
+  }
+
+  &__arrow {
+    font-size: 10px;
+    color: $text-muted;
+    transition: color 0.12s;
+  }
+}

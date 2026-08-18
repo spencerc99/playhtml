@@ -8,7 +8,7 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import { CollectionEvent, Trail } from "../types";
+import { CollectionEvent } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
 import { LiveTrails } from "./LiveTrails";
@@ -24,7 +24,10 @@ import { DaySelector } from "./DaySelector";
 import { ActivityStrip } from "./ActivityStrip";
 import { StatsConsole } from "./StatsConsole";
 import { DebugHoverProvider } from "./DebugHover";
-import { useCursorTrails } from "../hooks/useCursorTrails";
+import {
+  getAccumulationEvictions,
+  useCursorTrails,
+} from "../hooks/useCursorTrails";
 import { useAccumulatedEvents } from "../hooks/useAccumulatedEvents";
 import { useKeyboardTyping } from "../hooks/useKeyboardTyping";
 import { useViewportScroll } from "../hooks/useViewportScroll";
@@ -58,52 +61,13 @@ import {
   DEFAULT_CINEMATIC_CONFIG,
   type CinematicConfig,
 } from "../utils/cinematicCamera";
+import { formatWordmarkTimestamp } from "./WordmarkClock";
+import { useArchiveTrailHandoff } from "../hooks/useArchiveTrailHandoff";
+import { COMPLETION_FADE_MS } from "./trailPrimitives";
 
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
 const EMPTY_EVENTS: CollectionEvent[] = [];
-
-const READOUT_WRAPPER_STYLE: React.CSSProperties = {
-  position: "absolute",
-  top: "20px",
-  left: "50%",
-  transform: "translateX(-50%)",
-  zIndex: 100,
-  padding: "10px 16px",
-  background: "#faf9f6",
-  border: "1px solid rgba(0, 0, 0, 0.12)",
-  boxShadow:
-    "inset 1px 1px 2px rgba(255, 255, 255, 0.8), inset -1px -1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08)",
-  fontFamily: '"Martian Mono", "Space Mono", "Courier New", monospace',
-  fontSize: "11px",
-  fontWeight: 600,
-  color: "#333",
-  letterSpacing: "0.5px",
-  textTransform: "uppercase",
-  overflow: "hidden",
-};
-
-const ReadoutNoise: React.FC<{ id: string }> = ({ id }) => (
-  <svg
-    style={{
-      position: "absolute",
-      inset: 0,
-      width: "100%",
-      height: "100%",
-      opacity: 0.15,
-      pointerEvents: "none",
-    }}
-  >
-    <filter id={id}>
-      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" />
-      <feColorMatrix type="saturate" values="0" />
-      <feComponentTransfer>
-        <feFuncA type="discrete" tableValues="0 0.3 0.5 0.7" />
-      </feComponentTransfer>
-    </filter>
-    <rect width="100%" height="100%" filter={`url(#${id})`} />
-  </svg>
-);
 
 /** Live clock readout shown when trails play in their natural-timestamp order.
  * Mirrors AnimatedTrails' `(realElapsed * speed) % duration` math so the time
@@ -126,20 +90,13 @@ const NaturalTimeReadout: React.FC<{
     let timeout = 0;
     let startedAt: number | null = null;
 
-    const formatter = new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    });
-
     const tick = (ts: number) => {
       if (startedAt === null) startedAt = ts;
       const realElapsed = ts - startedAt;
       const looped = (realElapsed * speedRef.current) % durationMs;
       const node = textRef.current;
       if (node) {
-        node.textContent = formatter.format(
+        node.textContent = formatWordmarkTimestamp(
           new Date(startTimestampMs + looped),
         );
       }
@@ -162,10 +119,24 @@ const NaturalTimeReadout: React.FC<{
   }, [startTimestampMs, durationMs]);
 
   return (
-    <div style={{ ...READOUT_WRAPPER_STYLE, pointerEvents: "none" }}>
-      <ReadoutNoise id="timeNoise" />
-      <span ref={textRef} style={{ position: "relative", zIndex: 1 }} />
-    </div>
+    <span
+      ref={textRef}
+      style={{
+        position: "absolute",
+        bottom: 16,
+        right: 20,
+        zIndex: 200,
+        fontFamily: "'Source Serif 4', 'Lora', Georgia, serif",
+        fontStyle: "italic",
+        fontWeight: 200,
+        fontSize: "20px",
+        letterSpacing: "-0.01em",
+        color: "#3d3833",
+        pointerEvents: "none",
+        userSelect: "none",
+        whiteSpace: "nowrap",
+      }}
+    />
   );
 };
 
@@ -394,6 +365,8 @@ interface MovementCanvasProps {
   getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   /** Restarts finite archive playback when the parent swaps event batches. */
   playbackKey?: string;
+  /** Identifies playback batches that belong to the same archive query. */
+  playbackContextKey?: string;
   /** Called when finite archive playback reaches the end of its batch. */
   onPlaybackCycleComplete?: () => boolean;
 }
@@ -418,6 +391,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   connected = false,
   getInstallationElapsedMs,
   playbackKey = "fixed",
+  playbackContextKey = playbackKey,
   onPlaybackCycleComplete,
 }) => {
   const settingsDefaults = useMemo(
@@ -523,7 +497,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       ? settings.filters
       : [];
     if (filtersKey(filtersProp) !== filtersKey(cur)) {
-      setSettings((s: any) => ({ ...s, filters: filtersProp }));
+      setSettings((s) => ({ ...s, filters: filtersProp }));
     }
   }, [filtersProp]);
 
@@ -873,7 +847,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     const allowed = new Set(availableDomains);
     const next = cur.filter((c) => !c.domain || allowed.has(c.domain));
     if (next.length !== cur.length) {
-      setSettings((s: any) => ({ ...s, filters: next }));
+      setSettings((s) => ({ ...s, filters: next }));
     }
   }, [events.length]);
 
@@ -915,9 +889,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // archive's event set is fixed, so it bypasses accumulation. A group's events
   // are freed when its trail has fully faded out (LiveTrails reports the id).
   const evictIdsRef = useRef<Set<string>>(new Set());
-  const handleTrailsRemoved = useCallback((ids: string[]) => {
-    for (const id of ids) evictIdsRef.current.add(id);
-  }, []);
   const trailEvents = useAccumulatedEvents(filteredEvents, {
     enabled: live,
     maxGroups: 60,
@@ -941,9 +912,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       overlapFactor: settings.overlapFactor,
       minGapBetweenTrails: settings.minGapBetweenTrails,
       documentSpace: settings.documentSpace,
-      // Live mode collapses each participant+url to one trail so ids stay
-      // unique/stable as the event window slides (the archive shows every
-      // segment). Prevents duplicate React keys and disappearing trails.
+      // Live mode renders only the latest segment for each participant+url.
+      // Each segment keeps its own identity while its accumulated points grow.
       singleSegmentPerGroup: live,
     }),
     [
@@ -968,6 +938,26 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
   } = useCursorTrails(activeTrailEvents, viewportSize, cursorSettings);
+  const activeTrailIds = useMemo(
+    () => new Set(trailStates.map(({ trail }) => trail.id)),
+    [trailStates],
+  );
+  const handleTrailsRemoved = useCallback(
+    (ids: string[]) => {
+      for (const groupId of getAccumulationEvictions(ids, activeTrailIds)) {
+        evictIdsRef.current.add(groupId);
+      }
+    },
+    [activeTrailIds],
+  );
+  const renderedTrailStates = useArchiveTrailHandoff(
+    trailStates,
+    playbackKey,
+    playbackContextKey,
+    onPlaybackCycleComplete !== undefined,
+    settings.maxConcurrentTrails * 2,
+    COMPLETION_FADE_MS,
+  );
 
   // Recent activity (live mode) from the raw event stream, not the capped drawn
   // trails: how many people + the geographic spread of their timezones.
@@ -1613,8 +1603,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             />
           ) : (
             <AnimatedTrails
-              key={`trails-${playbackKey}-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
-              trailStates={trailStates}
+              key={`trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
+              trailStates={renderedTrailStates}
               timeRange={timeRange}
               showClickRipples={!showClicks}
               windowSize={settings.maxConcurrentTrails * 2}

@@ -653,7 +653,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         }
 
         // Feed sound engine with collected trail frames
-        if (soundFrames.length > 0 && soundEngine) {
+        if (soundEngine) {
           soundEngine.tick(loopedElapsed, soundFrames);
         }
 
