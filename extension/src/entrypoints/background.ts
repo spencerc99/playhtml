@@ -51,12 +51,11 @@ import {
 } from '../storage/wikipediaHandle'
 import {
   FEATURE_OVERRIDES_STORAGE_KEY,
-  INTERNAL_ACCESS_STORAGE_KEY,
+  FEATURE_ACCESS_STORAGE_KEY,
   getAllFeatureStates,
-  getInternalAccess,
-  refreshInternalAccess,
+  refreshFeatureAccess,
 } from '../features/featureAccess'
-import { FEATURE_CATALOG, FEATURE_IDS } from '../flags'
+import { FEATURE_IDS } from '../flags'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -108,7 +107,7 @@ export type ScrapRecord = ScrapRecordBase &
       }
   )
 
-const INTERNAL_ACCESS_REFRESH_ALARM = 'refreshInternalAccess'
+const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -459,7 +458,7 @@ export default defineBackground(() => {
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
-  browser.alarms.create(INTERNAL_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
+  browser.alarms.create(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -472,8 +471,8 @@ export default defineBackground(() => {
       return
     }
 
-    if (alarm.name === INTERNAL_ACCESS_REFRESH_ALARM) {
-      await refreshInternalFeatureAccess().catch(() => {})
+    if (alarm.name === FEATURE_ACCESS_REFRESH_ALARM) {
+      await refreshExperimentAccess().catch(() => {})
       return
     }
 
@@ -534,13 +533,12 @@ export default defineBackground(() => {
     } catch {}
   }
 
-  async function updateInternalAccessBadge() {
+  async function updateExperimentBadge() {
     if (!browser.action) return
-    const enabled = await getInternalAccess()
     const states = await getAllFeatureStates()
-    const experimentsActive = enabled && FEATURE_IDS.some(
+    const experimentsActive = FEATURE_IDS.some(
       (feature) =>
-        !FEATURE_CATALOG[feature].released && states[feature].enabled,
+        states[feature].source !== 'released' && states[feature].enabled,
     )
     await browser.action.setBadgeText({ text: experimentsActive ? 'LAB' : '' })
     if (experimentsActive) {
@@ -551,30 +549,30 @@ export default defineBackground(() => {
     }
   }
 
-  async function refreshInternalFeatureAccess() {
+  async function refreshExperimentAccess() {
     const identity = await getPublicPlayerIdentity()
     if (import.meta.env.MODE !== 'development' && identity?.publicKey) {
-      await refreshInternalAccess(identity.publicKey)
+      await refreshFeatureAccess(identity.publicKey)
     }
-    await updateInternalAccessBadge()
+    await updateExperimentBadge()
   }
 
   async function initializeIdentityServices() {
     await Promise.all([
       syncIdentityToServer(),
-      refreshInternalFeatureAccess().catch(() => updateInternalAccessBadge()),
+      refreshExperimentAccess().catch(() => updateExperimentBadge()),
     ])
   }
 
-  updateInternalAccessBadge().catch(() => {})
+  updateExperimentBadge().catch(() => {})
 
   browser.storage.onChanged?.addListener((changes, areaName) => {
     if (
       areaName === 'local' &&
-      (changes[INTERNAL_ACCESS_STORAGE_KEY] ||
+      (changes[FEATURE_ACCESS_STORAGE_KEY] ||
         changes[FEATURE_OVERRIDES_STORAGE_KEY])
     ) {
-      updateInternalAccessBadge().catch(() => {})
+      updateExperimentBadge().catch(() => {})
     }
   })
 

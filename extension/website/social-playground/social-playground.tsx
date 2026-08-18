@@ -5,7 +5,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { playhtml } from "playhtml";
 import { FLAGS } from "@extension/flags";
-import { INTERNAL_ACCESS_STORAGE_KEY } from "@extension/features/featureAccess";
+import {
+  FEATURE_ACCESS_STORAGE_KEY,
+  FEATURE_OVERRIDES_STORAGE_KEY,
+} from "@extension/features/featureAccess";
 import {
   initGlobalFeatures,
   anyGlobalFeatureActive,
@@ -88,13 +91,24 @@ function buildSeededNotes(n: number): BottleNote[] {
  * initEmotes(deps) for the emote wheel. Cursors are enabled here (unlike the
  * extension's headless every-page path) so the emote wheel has a cursorClient
  * and peer positions to render on — matching the extension's cursor-site path.
- * Internal access is forced on so flag-off experiments still run here.
+ * Experiment access and choices are enabled so every social preview still runs here.
  */
 async function bootSocial(): Promise<() => void> {
-  // Force internal access on (shim-backed storage), so experiments
-  // run on the site even though their committed FLAGS are off.
+  // The playground uses shim-backed storage to expose and enable its preview features.
   await browser.storage.local.set({
-    [INTERNAL_ACCESS_STORAGE_KEY]: { enabled: true, checkedAt: Date.now() },
+    [FEATURE_ACCESS_STORAGE_KEY]: {
+      features: {
+        BOTTLES: { stage: "internal", available: true },
+        PAGE_COLLECTION: { stage: "internal", available: true },
+        EMOTES: { stage: "internal", available: true },
+      },
+      checkedAt: Date.now(),
+    },
+    [FEATURE_OVERRIDES_STORAGE_KEY]: {
+      BOTTLES: true,
+      PAGE_COLLECTION: true,
+      EMOTES: true,
+    },
   });
 
   await playhtml.init({

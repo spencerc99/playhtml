@@ -129,7 +129,7 @@ describe("content internal development features", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(storageGet).toHaveBeenCalledWith("wwoInternalAccess");
+    expect(storageGet).toHaveBeenCalledWith("wwoFeatureAccess");
     expect(storageGet).not.toHaveBeenCalledWith(["gameInventory"]);
     expect(mutationObserver).not.toHaveBeenCalled();
   });

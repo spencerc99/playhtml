@@ -13,11 +13,15 @@ import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
 import { handleCommute } from './routes/commute';
 import {
-  handleAdminInternalAccessAdd,
-  handleAdminInternalAccessList,
-  handleAdminInternalAccessRemove,
-  handleInternalAccessCheck,
-} from './routes/internalAccess';
+  handleAccessRequest,
+  handleAdminAccessOverview,
+  handleAdminAccessRequestReview,
+  handleAdminCohortFeaturesUpdate,
+  handleAdminFeatureStageUpdate,
+  handleAdminPeopleAdd,
+  handleAdminPersonCohortsUpdate,
+  handleFeatureAccessCheck,
+} from './routes/accessControl';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -85,31 +89,59 @@ export default {
       return handleFeedback(request, env);
     }
 
-    const internalAccessMatch = path.match(/^\/internal-access\/(.+)$/);
-    if (internalAccessMatch && request.method === 'GET') {
-      return handleInternalAccessCheck(
+    const featureAccessMatch = path.match(/^\/feature-access\/(.+)$/);
+    if (featureAccessMatch && request.method === 'GET') {
+      return handleFeatureAccessCheck(
         env,
-        decodeURIComponent(internalAccessMatch[1]),
+        decodeURIComponent(featureAccessMatch[1]),
       );
     }
 
-    if (path === '/admin/internal-access') {
-      if (request.method === 'GET') {
-        return handleAdminInternalAccessList(request, env);
-      }
-      if (request.method === 'POST') {
-        return handleAdminInternalAccessAdd(request, env);
-      }
+    if (path === '/access-requests' && request.method === 'POST') {
+      return handleAccessRequest(request, env);
     }
 
-    const adminInternalAccessMatch = path.match(
-      /^\/admin\/internal-access\/(.+)$/,
-    );
-    if (adminInternalAccessMatch && request.method === 'DELETE') {
-      return handleAdminInternalAccessRemove(
+    if (path === '/admin/access-control' && request.method === 'GET') {
+      return handleAdminAccessOverview(request, env);
+    }
+
+    if (path === '/admin/access-control/people' && request.method === 'POST') {
+      return handleAdminPeopleAdd(request, env);
+    }
+
+    const adminFeatureMatch = path.match(/^\/admin\/access-control\/features\/([^/]+)$/);
+    if (adminFeatureMatch && request.method === 'PUT') {
+      return handleAdminFeatureStageUpdate(
         request,
         env,
-        decodeURIComponent(adminInternalAccessMatch[1]),
+        decodeURIComponent(adminFeatureMatch[1]),
+      );
+    }
+
+    const adminCohortMatch = path.match(/^\/admin\/access-control\/cohorts\/([^/]+)$/);
+    if (adminCohortMatch && request.method === 'PUT') {
+      return handleAdminCohortFeaturesUpdate(
+        request,
+        env,
+        decodeURIComponent(adminCohortMatch[1]),
+      );
+    }
+
+    const adminPersonMatch = path.match(/^\/admin\/access-control\/people\/([^/]+)$/);
+    if (adminPersonMatch && request.method === 'PUT') {
+      return handleAdminPersonCohortsUpdate(
+        request,
+        env,
+        decodeURIComponent(adminPersonMatch[1]),
+      );
+    }
+
+    const adminRequestMatch = path.match(/^\/admin\/access-control\/requests\/(\d+)$/);
+    if (adminRequestMatch && request.method === 'PUT') {
+      return handleAdminAccessRequestReview(
+        request,
+        env,
+        Number(adminRequestMatch[1]),
       );
     }
 

@@ -59,9 +59,10 @@ describe("ExtensionPageNav", () => {
     }
   });
 
-  it("shows scraps when the user has internal access", async () => {
+  it("shows scraps when the tester has access and opts in", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      wwoInternalAccess: { enabled: true, checkedAt: 123 },
+      wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: true } }, checkedAt: 123 },
+      wwoFeatureOverrides: { SCRAPS: true },
     });
     const { container, root } = await renderNavigation("portrait");
 

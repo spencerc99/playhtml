@@ -1,20 +1,24 @@
-// ABOUTME: React hooks for feature eligibility and per-feature runtime state.
-// ABOUTME: Keeps extension surfaces synchronized when internal settings change in local storage.
+// ABOUTME: React hooks for experiment availability and effective runtime state.
+// ABOUTME: Keeps extension surfaces synchronized when server access or local choices change.
 
 import { useCallback, useEffect, useState } from "react";
 import browser from "webextension-polyfill";
-import { resolveFeatureState, type FeatureId, type FeatureState } from "../flags";
+import { type FeatureId, type FeatureState } from "../flags";
 import {
+  FEATURE_ACCESS_STORAGE_KEY,
   FEATURE_OVERRIDES_STORAGE_KEY,
-  INTERNAL_ACCESS_STORAGE_KEY,
   getFeatureState,
-  getInternalAccess,
+  hasExperimentAccess,
+  hasPrivateExperimentAccess,
 } from "./featureAccess";
 
 export function useFeatureState(feature: FeatureId): FeatureState {
-  const [state, setState] = useState<FeatureState>(() =>
-    resolveFeatureState(feature, { internalAccess: false }),
-  );
+  const [state, setState] = useState<FeatureState>({
+    enabled: false,
+    available: false,
+    stage: "internal",
+    source: "unavailable",
+  });
 
   const reload = useCallback(() => {
     getFeatureState(feature).then(setState).catch(() => {});
@@ -28,7 +32,7 @@ export function useFeatureState(feature: FeatureId): FeatureState {
     ) => {
       if (
         areaName === "local" &&
-        (changes[INTERNAL_ACCESS_STORAGE_KEY] ||
+        (changes[FEATURE_ACCESS_STORAGE_KEY] ||
           changes[FEATURE_OVERRIDES_STORAGE_KEY])
       ) {
         reload();
@@ -41,12 +45,12 @@ export function useFeatureState(feature: FeatureId): FeatureState {
   return state;
 }
 
-export function useInternalAccess(): boolean {
+function useExperimentAccessCheck(checkAccess: () => Promise<boolean>): boolean {
   const [enabled, setEnabled] = useState(import.meta.env.MODE === "development");
 
   const reload = useCallback(() => {
-    getInternalAccess().then(setEnabled).catch(() => {});
-  }, []);
+    checkAccess().then(setEnabled).catch(() => {});
+  }, [checkAccess]);
 
   useEffect(() => {
     reload();
@@ -54,7 +58,7 @@ export function useInternalAccess(): boolean {
       changes: Record<string, browser.Storage.StorageChange>,
       areaName: string,
     ) => {
-      if (areaName === "local" && changes[INTERNAL_ACCESS_STORAGE_KEY]) {
+      if (areaName === "local" && changes[FEATURE_ACCESS_STORAGE_KEY]) {
         reload();
       }
     };
@@ -63,4 +67,12 @@ export function useInternalAccess(): boolean {
   }, [reload]);
 
   return enabled;
+}
+
+export function useExperimentAccess(): boolean {
+  return useExperimentAccessCheck(hasExperimentAccess);
+}
+
+export function usePrivateExperimentAccess(): boolean {
+  return useExperimentAccessCheck(hasPrivateExperimentAccess);
 }

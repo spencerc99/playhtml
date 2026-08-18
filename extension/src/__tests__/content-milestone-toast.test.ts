@@ -8,9 +8,9 @@ vi.mock("webextension-polyfill", () => ({
     storage: {
       local: {
         get: vi.fn().mockImplementation((keys: string | string[]) => {
-          if (keys === "wwoInternalAccess") {
+          if (keys === "wwoFeatureAccess") {
             return Promise.resolve({
-              wwoInternalAccess: { enabled: true, checkedAt: 123 },
+              wwoFeatureAccess: { features: { BOTTLES: { stage: "internal", available: true } }, checkedAt: 123 },
             });
           }
           if (keys === "wwoFeatureOverrides") {

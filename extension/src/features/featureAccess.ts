@@ -1,5 +1,5 @@
-// ABOUTME: Resolves extension feature access from release state, server eligibility, and local overrides.
-// ABOUTME: Persists a resilient eligibility cache so beta access survives transient Worker failures.
+// ABOUTME: Resolves extension features from server policy and local opt-in choices.
+// ABOUTME: Persists the last valid entitlement snapshot so access survives transient Worker failures.
 
 import browser from "webextension-polyfill";
 import { WORKER_URL } from "@movement/config";
@@ -7,21 +7,60 @@ import {
   FEATURE_IDS,
   isFeatureId,
   resolveFeatureState,
+  type FeatureAccessSnapshot,
   type FeatureId,
   type FeatureOverrides,
+  type FeaturePolicy,
   type FeatureState,
 } from "../flags";
+import { FEATURE_CATALOG, isFeatureStage } from "../../shared/featureCatalog";
 
-export const INTERNAL_ACCESS_STORAGE_KEY = "wwoInternalAccess";
+export const FEATURE_ACCESS_STORAGE_KEY = "wwoFeatureAccess";
 export const FEATURE_OVERRIDES_STORAGE_KEY = "wwoFeatureOverrides";
 
-export type InternalAccessCache = {
-  enabled: boolean;
-  checkedAt: number;
-};
+function defaultFeatureAccess(availableToInternal: boolean): FeatureAccessSnapshot {
+  return {
+    features: Object.fromEntries(
+      FEATURE_IDS.map((feature) => {
+        const stage: FeaturePolicy["stage"] = FEATURE_CATALOG[feature].defaultStage;
+        return [
+          feature,
+          {
+            stage,
+            available: availableToInternal || stage === "released",
+          },
+        ];
+      }),
+    ) as Record<FeatureId, FeaturePolicy>,
+    checkedAt: 0,
+  };
+}
 
-function developmentBuildHasAccess(): boolean {
-  return import.meta.env.MODE === "development";
+export function parseFeatureAccess(value: unknown): FeatureAccessSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const rawFeatures = record.features;
+  if (!rawFeatures || typeof rawFeatures !== "object" || Array.isArray(rawFeatures)) {
+    return null;
+  }
+  const features = defaultFeatureAccess(false).features;
+  for (const [feature, policy] of Object.entries(rawFeatures)) {
+    if (!isFeatureId(feature) || !policy || typeof policy !== "object" || Array.isArray(policy)) {
+      continue;
+    }
+    const rawPolicy = policy as Record<string, unknown>;
+    if (typeof rawPolicy.stage === "string" && isFeatureStage(rawPolicy.stage) &&
+        typeof rawPolicy.available === "boolean") {
+      features[feature] = {
+        stage: rawPolicy.stage,
+        available: rawPolicy.available,
+      };
+    }
+  }
+  return {
+    features,
+    checkedAt: typeof record.checkedAt === "number" ? record.checkedAt : 0,
+  };
 }
 
 export function parseFeatureOverrides(value: unknown): FeatureOverrides {
@@ -36,17 +75,29 @@ export function parseFeatureOverrides(value: unknown): FeatureOverrides {
   return overrides;
 }
 
-export async function getInternalAccess(): Promise<boolean> {
-  if (developmentBuildHasAccess()) return true;
+export async function getFeatureAccess(): Promise<FeatureAccessSnapshot> {
+  if (import.meta.env.MODE === "development") return defaultFeatureAccess(true);
   try {
-    const stored = await browser.storage.local.get(INTERNAL_ACCESS_STORAGE_KEY);
-    const cache = stored?.[INTERNAL_ACCESS_STORAGE_KEY] as
-      | InternalAccessCache
-      | undefined;
-    return cache?.enabled === true;
+    const stored = await browser.storage.local.get(FEATURE_ACCESS_STORAGE_KEY);
+    return parseFeatureAccess(stored?.[FEATURE_ACCESS_STORAGE_KEY]) ?? defaultFeatureAccess(false);
   } catch {
-    return false;
+    return defaultFeatureAccess(false);
   }
+}
+
+export async function hasExperimentAccess(): Promise<boolean> {
+  const access = await getFeatureAccess();
+  return FEATURE_IDS.some((feature) =>
+    access.features[feature].stage !== "released" && access.features[feature].available,
+  );
+}
+
+export async function hasPrivateExperimentAccess(): Promise<boolean> {
+  const access = await getFeatureAccess();
+  return FEATURE_IDS.some((feature) => {
+    const policy = access.features[feature];
+    return policy.available && (policy.stage === "internal" || policy.stage === "beta");
+  });
 }
 
 export async function getFeatureOverrides(): Promise<FeatureOverrides> {
@@ -59,11 +110,11 @@ export async function getFeatureOverrides(): Promise<FeatureOverrides> {
 }
 
 export async function getFeatureState(feature: FeatureId): Promise<FeatureState> {
-  const [internalAccess, overrides] = await Promise.all([
-    getInternalAccess(),
+  const [access, overrides] = await Promise.all([
+    getFeatureAccess(),
     getFeatureOverrides(),
   ]);
-  return resolveFeatureState(feature, { internalAccess, overrides });
+  return resolveFeatureState(feature, { access, overrides });
 }
 
 export async function isFeatureEnabled(feature: FeatureId): Promise<boolean> {
@@ -71,14 +122,14 @@ export async function isFeatureEnabled(feature: FeatureId): Promise<boolean> {
 }
 
 export async function getAllFeatureStates(): Promise<Record<FeatureId, FeatureState>> {
-  const [internalAccess, overrides] = await Promise.all([
-    getInternalAccess(),
+  const [access, overrides] = await Promise.all([
+    getFeatureAccess(),
     getFeatureOverrides(),
   ]);
   return Object.fromEntries(
     FEATURE_IDS.map((feature) => [
       feature,
-      resolveFeatureState(feature, { internalAccess, overrides }),
+      resolveFeatureState(feature, { access, overrides }),
     ]),
   ) as Record<FeatureId, FeatureState>;
 }
@@ -97,24 +148,30 @@ export async function clearFeatureOverrides(): Promise<void> {
   await browser.storage.local.remove(FEATURE_OVERRIDES_STORAGE_KEY);
 }
 
-export async function refreshInternalAccess(publicId: string): Promise<boolean> {
+export async function refreshFeatureAccess(publicId: string): Promise<FeatureAccessSnapshot> {
   const response = await fetch(
-    `${WORKER_URL}/internal-access/${encodeURIComponent(publicId)}`,
+    `${WORKER_URL}/feature-access/${encodeURIComponent(publicId)}`,
   );
   if (!response.ok) {
-    throw new Error(`Internal access check failed with ${response.status}`);
+    throw new Error(`Feature access check failed with ${response.status}`);
   }
 
-  const result = (await response.json()) as { enabled?: unknown };
-  if (typeof result.enabled !== "boolean") {
-    throw new Error("Internal access check returned an invalid response");
+  const result = parseFeatureAccess(await response.json());
+  if (!result) {
+    throw new Error("Feature access check returned an invalid response");
   }
 
+  const snapshot = { ...result, checkedAt: Date.now() };
+  const overrides = await getFeatureOverrides();
+  const availableOverrides = Object.fromEntries(
+    Object.entries(overrides).filter(([feature]) => {
+      const policy = snapshot.features[feature as FeatureId];
+      return policy.available && policy.stage !== "released";
+    }),
+  ) as FeatureOverrides;
   await browser.storage.local.set({
-    [INTERNAL_ACCESS_STORAGE_KEY]: {
-      enabled: result.enabled,
-      checkedAt: Date.now(),
-    } satisfies InternalAccessCache,
+    [FEATURE_ACCESS_STORAGE_KEY]: snapshot,
+    [FEATURE_OVERRIDES_STORAGE_KEY]: availableOverrides,
   });
-  return result.enabled;
+  return snapshot;
 }

@@ -1,5 +1,5 @@
-// ABOUTME: Styles for the profile settings page
-// ABOUTME: Covers cursor color picker, public key display, and collection stats
+// ABOUTME: Styles the profile identity, cursor, collection, and beta access controls.
+// ABOUTME: Keeps optional contact details compact inside the extension popup.
 
 @use "../styles/variables" as *;
 
@@ -180,4 +180,51 @@
     font-size: 12px;
     color: $text-muted;
   }
+}
+
+.profile-section--beta {
+  padding: 12px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $surface;
+
+  p {
+    margin: 0;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  form {
+    display: flex;
+    gap: 7px;
+  }
+
+  input {
+    min-width: 0;
+    flex: 1;
+    padding: 7px 8px;
+    border: 1px solid $border;
+    border-radius: 5px;
+    background: $bg;
+    color: $text;
+    font: 11px $font-body;
+  }
+
+  button {
+    @include btn-teal;
+    padding: 7px 9px;
+    border-radius: 5px;
+    font-size: 10px;
+  }
+
+  small {
+    color: #a14431;
+    font-size: 10px;
+  }
+}
+
+.profile-section__request-success {
+  color: $accent-teal;
+  font-size: 11px;
 }

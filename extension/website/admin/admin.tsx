@@ -1,19 +1,30 @@
-// ABOUTME: WWO admin office for granting beta access and navigating operator tools.
-// ABOUTME: Keeps the admin credential in session storage and never places it in a URL.
+// ABOUTME: WWO admin office for feature stages, access cohorts, and beta testers.
+// ABOUTME: Supports bulk membership and pending access approvals through the Worker API.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { FEATURE_STAGES, type FeatureStage } from "../../shared/featureCatalog";
 import {
-  addInternalAccess,
-  isValidPublicId,
-  listInternalAccess,
-  removeInternalAccess,
-  type InternalAccessEntry,
-} from "./internalAccessApi";
+  addPeople,
+  getAccessOverview,
+  parsePeopleInput,
+  reviewAccessRequest,
+  updateCohortFeatures,
+  updateFeatureStage,
+  updatePersonCohorts,
+  type AccessOverview,
+} from "./accessControlApi";
 import "./style.scss";
 
 const TOKEN_STORAGE_KEY = "wwo-admin-token";
 const PLAYHTML_ADMIN_URL = "https://playhtml.fun/admin.html";
+
+const STAGE_LABELS: Record<FeatureStage, string> = {
+  internal: "Internal",
+  beta: "Closed beta",
+  lab: "Labs",
+  released: "Released",
+};
 
 function shortPublicId(publicId: string): string {
   return `${publicId.slice(0, 12)}…${publicId.slice(-10)}`;
@@ -21,31 +32,20 @@ function shortPublicId(publicId: string): string {
 
 function Login({ onLogin }: { onLogin: (token: string) => void }) {
   const [token, setToken] = useState("");
-
   return (
     <main className="office-login">
       <div className="office-login__card">
         <span className="office-kicker">WE WERE ONLINE</span>
         <h1>Internal Office</h1>
         <p>Use the Worker admin key to open WWO operator tools.</p>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (token.trim()) onLogin(token.trim());
-          }}
-        >
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          if (token.trim()) onLogin(token.trim());
+        }}>
           <label htmlFor="admin-token">Admin key</label>
-          <input
-            id="admin-token"
-            type="password"
-            autoComplete="current-password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            autoFocus
-          />
-          <button type="submit" disabled={!token.trim()}>
-            Enter office
-          </button>
+          <input id="admin-token" type="password" autoComplete="current-password" value={token}
+            onChange={(event) => setToken(event.target.value)} autoFocus />
+          <button type="submit" disabled={!token.trim()}>Enter office</button>
         </form>
         <a href={PLAYHTML_ADMIN_URL}>Open PlayHTML room admin →</a>
       </div>
@@ -54,204 +54,218 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
 }
 
 function InternalOffice() {
-  const [token, setToken] = useState(
-    () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
-  );
-  const [entries, setEntries] = useState<InternalAccessEntry[]>([]);
-  const [publicId, setPublicId] = useState("");
+  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+  const [overview, setOverview] = useState<AccessOverview | null>(null);
+  const [peopleInput, setPeopleInput] = useState("");
+  const [cohortId, setCohortId] = useState("closed-beta");
+  const [approvalCohortId, setApprovalCohortId] = useState("closed-beta");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const loadEntries = useCallback(async () => {
+  const loadOverview = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
-      setEntries(await listInternalAccess(token));
+      setOverview(await getAccessOverview(token));
     } catch (requestError) {
-      setError(
-        requestError instanceof Error ? requestError.message : String(requestError),
-      );
+      setError(requestError instanceof Error ? requestError.message : String(requestError));
     } finally {
       setLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
-    loadEntries().catch(() => {});
-  }, [loadEntries]);
+    loadOverview().catch(() => {});
+  }, [loadOverview]);
 
-  const filteredEntries = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return entries;
-    return entries.filter((entry) =>
-      entry.publicId.toLowerCase().includes(normalizedQuery),
-    );
-  }, [entries, query]);
-
-  if (!token) {
-    return (
-      <Login
-        onLogin={(nextToken) => {
-          sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
-          setToken(nextToken);
-        }}
-      />
-    );
-  }
-
-  const addEntry = async (event: FormEvent) => {
-    event.preventDefault();
+  const mutate = async (action: () => Promise<void>) => {
+    setSaving(true);
     setError("");
     try {
-      const entry = await addInternalAccess(token, publicId);
-      setEntries((current) => [
-        entry,
-        ...current.filter((item) => item.publicId !== entry.publicId),
-      ]);
-      setPublicId("");
+      await action();
+      await loadOverview();
     } catch (requestError) {
-      setError(
-        requestError instanceof Error ? requestError.message : String(requestError),
-      );
+      setError(requestError instanceof Error ? requestError.message : String(requestError));
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const filteredPeople = useMemo(() => {
+    if (!overview) return [];
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return overview.people;
+    return overview.people.filter((person) =>
+      person.publicId.toLowerCase().includes(normalizedQuery) ||
+      person.email?.toLowerCase().includes(normalizedQuery),
+    );
+  }, [overview, query]);
+
+  if (!token) {
+    return <Login onLogin={(nextToken) => {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+      setToken(nextToken);
+    }} />;
+  }
+
+  const submitPeople = async (event: FormEvent) => {
+    event.preventDefault();
+    await mutate(async () => {
+      const people = parsePeopleInput(peopleInput);
+      if (people.length === 0) throw new Error("Enter at least one public ID");
+      await addPeople(token, cohortId, people);
+      setPeopleInput("");
+    });
   };
 
   return (
     <div className="office-shell">
       <header className="office-header">
-        <div>
-          <span className="office-kicker">WE WERE ONLINE</span>
-          <h1>Internal Office</h1>
-        </div>
+        <div><span className="office-kicker">WE WERE ONLINE</span><h1>Internal Office</h1></div>
         <nav aria-label="Internal tools">
-          <a aria-current="page" href="/admin/">Beta access</a>
-          <span title="The curation desk will join this office when its branch lands">
-            Commute curation
-          </span>
+          <a aria-current="page" href="/admin/">Access control</a>
+          <span title="The curation desk will join this office when its branch lands">Commute curation</span>
           <a href={PLAYHTML_ADMIN_URL}>PlayHTML rooms ↗</a>
         </nav>
-        <button
-          className="office-header__logout"
-          onClick={() => {
-            sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-            setToken("");
-          }}
-        >
-          Lock office
-        </button>
+        <button className="office-header__logout" onClick={() => {
+          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+          setToken("");
+        }}>Lock office</button>
       </header>
 
       <main className="office-main">
         <section className="office-intro">
           <div>
-            <span className="office-section-number">DESK 01</span>
-            <h2>Beta access</h2>
-            <p>
-              Add an extension public ID to reveal the experiments screen and
-              enable every unfinished feature by default.
-            </p>
+            <span className="office-section-number">ACCESS CONTROL</span>
+            <h2>Experiments</h2>
+            <p>Choose who can discover each experiment. Access makes a feature available; testers still turn it on for themselves.</p>
           </div>
-          <div className="office-count">
-            <strong>{entries.length}</strong>
-            <span>approved testers</span>
-          </div>
+          <div className="office-count"><strong>{overview?.people.length ?? 0}</strong><span>approved people</span></div>
         </section>
 
-        <section className="office-panel">
-          <form className="office-add" onSubmit={addEntry}>
-            <label htmlFor="public-id">Extension public ID</label>
-            <div>
-              <input
-                id="public-id"
-                value={publicId}
-                onChange={(event) => setPublicId(event.target.value)}
-                placeholder="pk_…"
-                spellCheck={false}
-              />
-              <button type="submit" disabled={!isValidPublicId(publicId)}>
-                Grant access
-              </button>
-            </div>
-            <small>
-              The tester can copy this ID from their profile in the extension.
-            </small>
-          </form>
+        {error && <p className="office-error">{error}</p>}
+        {loading && !overview ? <p className="office-empty">Loading access policy…</p> : null}
 
-          <div className="office-list-header">
-            <h3>Approved extensions</h3>
-            <div>
-              <input
-                aria-label="Search approved public IDs"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search IDs"
-              />
-              <button onClick={() => loadEntries()} disabled={loading}>
-                {loading ? "Refreshing…" : "Refresh"}
-              </button>
+        {overview && <>
+          <section className="office-panel office-features">
+            <div className="office-list-header">
+              <div><span className="office-section-number">DESK 01</span><h3>Feature stages</h3></div>
+              <button onClick={() => loadOverview()} disabled={loading || saving}>{loading ? "Refreshing…" : "Refresh"}</button>
             </div>
-          </div>
-
-          {error && <p className="office-error">{error}</p>}
-          {!loading && filteredEntries.length === 0 ? (
-            <p className="office-empty">
-              {entries.length === 0
-                ? "No extension IDs have beta access yet."
-                : "No approved IDs match that search."}
-            </p>
-          ) : (
-            <ul className="office-list">
-              {filteredEntries.map((entry) => (
-                <li key={entry.publicId}>
-                  <div>
-                    <code title={entry.publicId}>{shortPublicId(entry.publicId)}</code>
-                    <time dateTime={entry.addedAt}>
-                      added {new Date(entry.addedAt).toLocaleString()}
-                    </time>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      if (!window.confirm(`Remove beta access for ${shortPublicId(entry.publicId)}?`)) {
-                        return;
-                      }
-                      setError("");
-                      try {
-                        await removeInternalAccess(token, entry.publicId);
-                        setEntries((current) =>
-                          current.filter((item) => item.publicId !== entry.publicId),
-                        );
-                      } catch (requestError) {
-                        setError(
-                          requestError instanceof Error
-                            ? requestError.message
-                            : String(requestError),
-                        );
-                      }
-                    }}
-                  >
-                    Remove
-                  </button>
-                </li>
+            <div className="office-card-grid">
+              {overview.features.map((feature) => (
+                <label className="office-feature-card" key={feature.id}>
+                  <span><strong>{feature.name}</strong><small>{feature.description}</small></span>
+                  <select aria-label={`${feature.name} stage`} value={feature.stage} disabled={saving}
+                    onChange={(event) => mutate(() => updateFeatureStage(token, feature.id, event.target.value as FeatureStage))}>
+                    {FEATURE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
+                  </select>
+                </label>
               ))}
+            </div>
+          </section>
+
+          <section className="office-panel office-cohorts">
+            <div className="office-list-header"><div><span className="office-section-number">DESK 02</span><h3>Cohort grants</h3></div></div>
+            <div className="office-card-grid">
+              {overview.cohorts.map((cohort) => (
+                <article className="office-cohort-card" key={cohort.id}>
+                  <header><strong>{cohort.name}</strong><code>{cohort.id}</code></header>
+                  {cohort.grantsAllUnreleased ? (
+                    <p>Receives every unreleased feature, including features added later.</p>
+                  ) : (
+                    <div className="office-check-list">
+                      {overview.features.filter((feature) => feature.stage !== "released").map((feature) => (
+                        <label key={feature.id}>
+                          <input type="checkbox" checked={cohort.featureIds.includes(feature.id)} disabled={saving}
+                            onChange={() => {
+                              const featureIds = cohort.featureIds.includes(feature.id)
+                                ? cohort.featureIds.filter((id) => id !== feature.id)
+                                : [...cohort.featureIds, feature.id];
+                              mutate(() => updateCohortFeatures(token, cohort.id, featureIds));
+                            }} />
+                          <span>{feature.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="office-panel">
+            <div className="office-list-header"><div><span className="office-section-number">DESK 03</span><h3>Add people</h3></div></div>
+            <form className="office-add office-add--bulk" onSubmit={submitPeople}>
+              <label htmlFor="people-input">Public IDs</label>
+              <textarea id="people-input" value={peopleInput} onChange={(event) => setPeopleInput(event.target.value)}
+                placeholder={`One per line, optionally followed by an email\npk_…\npk_…, tester@example.com`} spellCheck={false} />
+              <div>
+                <select value={cohortId} onChange={(event) => setCohortId(event.target.value)}>
+                  {overview.cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
+                </select>
+                <button type="submit" disabled={!peopleInput.trim() || saving}>Add to cohort</button>
+              </div>
+              <small>Paste up to 500 IDs or CSV rows. Email is optional and only stored when supplied.</small>
+            </form>
+          </section>
+
+          {overview.requests.length > 0 && <section className="office-panel">
+            <div className="office-list-header">
+              <div><span className="office-section-number">INBOX</span><h3>Pending requests</h3></div>
+              <select value={approvalCohortId} onChange={(event) => setApprovalCohortId(event.target.value)}>
+                {overview.cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
+              </select>
+            </div>
+            <ul className="office-list">
+              {overview.requests.map((accessRequest) => <li key={accessRequest.id}>
+                <div><code title={accessRequest.publicId}>{shortPublicId(accessRequest.publicId)}</code><span>{accessRequest.email ?? "No email shared"}</span></div>
+                <div className="office-row-actions">
+                  <button disabled={saving} onClick={() => mutate(() => reviewAccessRequest(token, accessRequest.id, "approved", approvalCohortId))}>Approve</button>
+                  <button className="office-button--quiet" disabled={saving} onClick={() => mutate(() => reviewAccessRequest(token, accessRequest.id, "denied"))}>Deny</button>
+                </div>
+              </li>)}
             </ul>
-          )}
-        </section>
+          </section>}
+
+          <section className="office-panel">
+            <div className="office-list-header">
+              <div><span className="office-section-number">DIRECTORY</span><h3>Approved people</h3></div>
+              <input aria-label="Search approved people" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ID or email" />
+            </div>
+            {filteredPeople.length === 0 ? <p className="office-empty">{overview.people.length === 0 ? "No people have access yet." : "No people match that search."}</p> : (
+              <ul className="office-list office-people-list">
+                {filteredPeople.map((person) => <li key={person.publicId}>
+                  <div><code title={person.publicId}>{shortPublicId(person.publicId)}</code><span>{person.email ?? "No email shared"}</span></div>
+                  <div className="office-memberships">
+                    {overview.cohorts.map((cohort) => <label key={cohort.id}>
+                      <input type="checkbox" checked={person.cohortIds.includes(cohort.id)} disabled={saving}
+                        onChange={() => {
+                          const cohortIds = person.cohortIds.includes(cohort.id)
+                            ? person.cohortIds.filter((id) => id !== cohort.id)
+                            : [...person.cohortIds, cohort.id];
+                          mutate(() => updatePersonCohorts(token, person.publicId, cohortIds));
+                        }} />
+                      <span>{cohort.name}</span>
+                    </label>)}
+                  </div>
+                </li>)}
+              </ul>
+            )}
+          </section>
+        </>}
 
         <aside className="office-roadmap">
           <span className="office-section-number">NEXT DESK</span>
           <h2>Commute curation</h2>
-          <p>
-            The commute stop review tool will use this same shell and navigation
-            once its branch is ready to merge.
-          </p>
+          <p>The commute stop review tool can use this same D1-backed office and navigation.</p>
         </aside>
       </main>
     </div>
   );
 }
 
-createRoot(document.getElementById("root") as HTMLElement).render(
-  <InternalOffice />,
-);
+createRoot(document.getElementById("root") as HTMLElement).render(<InternalOffice />);

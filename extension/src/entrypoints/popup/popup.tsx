@@ -17,10 +17,10 @@ import { Collections } from "../../components/Collections";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";
 import { ProfilePage } from "../../components/ProfilePage";
 import { DeveloperFeaturesPage } from "../../components/DeveloperFeaturesPage";
-import { refreshInternalAccess } from "../../features/featureAccess";
+import { refreshFeatureAccess } from "../../features/featureAccess";
 import {
   useFeatureState,
-  useInternalAccess,
+  useExperimentAccess,
 } from "../../features/useFeatureAccess";
 import {
   pageObjectsAreHiddenOnSite,
@@ -65,7 +65,7 @@ function PlayHTMLPopup() {
     | "bag-settings"
     | "developer-features"
   >("main");
-  const internalAccess = useInternalAccess();
+  const experimentAccess = useExperimentAccess();
   const commuteEnabled = useFeatureState("COMMUTE").enabled;
   const [commuteIsOpen, setCommuteIsOpen] = useState(false);
   const [hiddenSite, setHiddenSite] = useState<{
@@ -101,7 +101,7 @@ function PlayHTMLPopup() {
 
   useEffect(() => {
     if (import.meta.env.MODE === "development" || !playerIdentity?.publicKey) return;
-    refreshInternalAccess(playerIdentity.publicKey).catch(() => {});
+    refreshFeatureAccess(playerIdentity.publicKey).catch(() => {});
   }, [playerIdentity?.publicKey]);
 
   const loadPlayerData = async () => {
@@ -444,7 +444,7 @@ function PlayHTMLPopup() {
     );
   }
 
-  if (currentView === "developer-features" && internalAccess) {
+  if (currentView === "developer-features" && experimentAccess) {
     return <DeveloperFeaturesPage onBack={() => setCurrentView("main")} />;
   }
 
@@ -457,7 +457,7 @@ function PlayHTMLPopup() {
       onViewProfile={() => setCurrentView("profile")}
       onViewBagSettings={() => setCurrentView("bag-settings")}
       onViewDeveloperFeatures={
-        internalAccess ? () => setCurrentView("developer-features") : undefined
+        experimentAccess ? () => setCurrentView("developer-features") : undefined
       }
       onViewCommute={async () => {
         await openOrFocusCommute();
