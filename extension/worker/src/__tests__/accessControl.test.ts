@@ -77,12 +77,13 @@ afterEach(async () => {
 });
 
 describe('feature access control', () => {
-  it('exposes released features publicly and keeps beta features unavailable', async () => {
+  it('keeps every seeded experiment unavailable to the public', async () => {
     const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
     expect(response.status).toBe(200);
     const body = await response.json() as { features: Record<string, { stage: string; available: boolean }> };
 
-    expect(body.features.COPRESENCE).toEqual({ stage: 'released', available: true });
+    expect(body.features.COPRESENCE).toEqual({ stage: 'internal', available: false });
+    expect(body.features.INVENTORY).toEqual({ stage: 'internal', available: false });
     expect(body.features.COMMUTE).toEqual({ stage: 'beta', available: false });
     expect(body.features.BOTTLES).toEqual({ stage: 'internal', available: false });
   });

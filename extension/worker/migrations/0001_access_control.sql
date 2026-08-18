@@ -51,9 +51,9 @@ CREATE INDEX access_requests_status_created_at
   ON access_requests(status, created_at DESC);
 
 INSERT INTO features (feature_id, name, description, stage) VALUES
-  ('COPRESENCE', 'People here', 'Show shared cursors and the number of people on a page.', 'released'),
+  ('COPRESENCE', 'People here', 'Show shared cursors and the number of people on a page.', 'internal'),
   ('BOTTLES', 'Message bottles', 'Find and leave messages with other people across the web.', 'internal'),
-  ('INVENTORY', 'Satchel', 'Collect and carry objects found on PlayHTML pages.', 'released'),
+  ('INVENTORY', 'Satchel', 'Collect and carry objects found on PlayHTML pages.', 'internal'),
   ('SCRAPS', 'Internet scraps', 'Collect a local collage of distinctive things you encounter.', 'beta'),
   ('BAG_SETTINGS', 'Bag settings', 'Show controls for unfinished PlayHTML Bag features.', 'internal'),
   ('COMMUTE', 'Internet Commute', 'Ride a slow train through pages people found recently.', 'beta'),

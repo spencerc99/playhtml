@@ -105,7 +105,7 @@ describe("storage failures", () => {
     );
     const access = await getFeatureAccess();
     expect(access.features.COMMUTE.available).toBe(false);
-    expect(access.features.INVENTORY.available).toBe(true);
+    expect(access.features.INVENTORY.available).toBe(false);
 
     vi.mocked(browser.storage.local.get).mockRejectedValueOnce(
       new Error("extension context invalidated"),

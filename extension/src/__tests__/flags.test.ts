@@ -1,5 +1,5 @@
 // ABOUTME: Tests the extension feature catalog and access resolution rules.
-// ABOUTME: Verifies release, entitlement, and local opt-in precedence.
+// ABOUTME: Verifies stage, entitlement, and local opt-in precedence.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -32,12 +32,19 @@ describe("feature flags", () => {
     expect(isFeatureId("NOT_A_FEATURE")).toBe(false);
   });
 
-  it("only enables released features for public users", () => {
+  it("starts without any Released or Labs features", () => {
+    expect(FEATURE_IDS.every((feature) =>
+      FEATURE_CATALOG[feature].defaultStage === "internal" ||
+      FEATURE_CATALOG[feature].defaultStage === "beta",
+    )).toBe(true);
+  });
+
+  it("keeps every feature unavailable to public users", () => {
     expect(resolveFeatureState("INVENTORY", { access: access() })).toEqual({
-      enabled: true,
-      available: true,
-      stage: "released",
-      source: "released",
+      enabled: false,
+      available: false,
+      stage: "internal",
+      source: "unavailable",
     });
     expect(resolveFeatureState("COMMUTE", { access: access() })).toEqual({
       enabled: false,

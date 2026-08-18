@@ -135,6 +135,27 @@ describe("content internal development features", () => {
   });
 
   it("bounds public identity fields before injecting them", async () => {
+    storageGet.mockImplementation((keys: string | string[]) => {
+      if (keys === "wwoFeatureAccess") {
+        return Promise.resolve({
+          wwoFeatureAccess: {
+            features: { COPRESENCE: { stage: "internal", available: true } },
+            checkedAt: 1,
+          },
+        });
+      }
+      if (keys === "wwoFeatureOverrides") {
+        return Promise.resolve({ wwoFeatureOverrides: { COPRESENCE: true } });
+      }
+      if (!Array.isArray(keys)) return Promise.resolve({});
+      return Promise.resolve(
+        Object.fromEntries(
+          keys
+            .filter((key) => key.startsWith("migration_v1_done_"))
+            .map((key) => [key, true]),
+        ),
+      );
+    });
     publicIdentityResponse.value = {
       publicKey: "pk_test",
       name: "x".repeat(5000),

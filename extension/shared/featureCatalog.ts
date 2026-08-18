@@ -5,11 +5,18 @@ export const FEATURE_STAGES = ["internal", "beta", "lab", "released"] as const;
 
 export type FeatureStage = (typeof FEATURE_STAGES)[number];
 
-export const FEATURE_CATALOG = {
+type FeatureDefinition = {
+  name: string;
+  description: string;
+  defaultStage: FeatureStage;
+  requiresReload: boolean;
+};
+
+const FEATURE_DEFINITIONS = {
   COPRESENCE: {
     name: "People here",
     description: "Show shared cursors and the number of people on a page.",
-    defaultStage: "released",
+    defaultStage: "internal",
     requiresReload: true,
   },
   BOTTLES: {
@@ -21,7 +28,7 @@ export const FEATURE_CATALOG = {
   INVENTORY: {
     name: "Satchel",
     description: "Collect and carry objects found on PlayHTML pages.",
-    defaultStage: "released",
+    defaultStage: "internal",
     requiresReload: true,
   },
   SCRAPS: {
@@ -54,17 +61,11 @@ export const FEATURE_CATALOG = {
     defaultStage: "internal",
     requiresReload: true,
   },
-} as const satisfies Record<
-  string,
-  {
-    name: string;
-    description: string;
-    defaultStage: FeatureStage;
-    requiresReload: boolean;
-  }
->;
+} as const satisfies Record<string, FeatureDefinition>;
 
-export type FeatureId = keyof typeof FEATURE_CATALOG;
+export type FeatureId = keyof typeof FEATURE_DEFINITIONS;
+
+export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> = FEATURE_DEFINITIONS;
 
 export const FEATURE_IDS = Object.keys(FEATURE_CATALOG) as FeatureId[];
 
