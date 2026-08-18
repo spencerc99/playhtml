@@ -1,17 +1,8 @@
 // ABOUTME: Resolves whether the internet-scraps surfaces are reachable for this user.
-// ABOUTME: True when the SCRAPS flag ships or the developer has internal features enabled.
+// ABOUTME: Uses the same effective SCRAPS state as collection and popup surfaces.
 
-import browser from "webextension-polyfill";
-import { FLAGS } from "./flags";
+import { isFeatureEnabled } from "./features/featureAccess";
 
 export async function scrapsAvailable(): Promise<boolean> {
-  if (FLAGS.SCRAPS) return true;
-  try {
-    const stored = await browser.storage.local.get(
-      "internalDevFeaturesEnabled",
-    );
-    return Boolean(stored.internalDevFeaturesEnabled);
-  } catch {
-    return false;
-  }
+  return isFeatureEnabled("SCRAPS");
 }

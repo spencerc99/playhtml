@@ -12,6 +12,12 @@ import { handleFeedback } from './routes/feedback';
 import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
 import { handleCommute } from './routes/commute';
+import {
+  handleAdminInternalAccessAdd,
+  handleAdminInternalAccessList,
+  handleAdminInternalAccessRemove,
+  handleInternalAccessCheck,
+} from './routes/internalAccess';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -31,7 +37,7 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         },
       });
@@ -77,6 +83,34 @@ export default {
 
     if (path === '/feedback' && request.method === 'POST') {
       return handleFeedback(request, env);
+    }
+
+    const internalAccessMatch = path.match(/^\/internal-access\/(.+)$/);
+    if (internalAccessMatch && request.method === 'GET') {
+      return handleInternalAccessCheck(
+        env,
+        decodeURIComponent(internalAccessMatch[1]),
+      );
+    }
+
+    if (path === '/admin/internal-access') {
+      if (request.method === 'GET') {
+        return handleAdminInternalAccessList(request, env);
+      }
+      if (request.method === 'POST') {
+        return handleAdminInternalAccessAdd(request, env);
+      }
+    }
+
+    const adminInternalAccessMatch = path.match(
+      /^\/admin\/internal-access\/(.+)$/,
+    );
+    if (adminInternalAccessMatch && request.method === 'DELETE') {
+      return handleAdminInternalAccessRemove(
+        request,
+        env,
+        decodeURIComponent(adminInternalAccessMatch[1]),
+      );
     }
 
     if (path === '/page-meta' && request.method === 'GET') {

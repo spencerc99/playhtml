@@ -20,7 +20,7 @@ describe("visibleCollectorTypes", () => {
     ]);
   });
 
-  it("shows the scrap collector to internal dev builds", () => {
+  it("shows the scrap collector when effective feature access enables it", () => {
     expect(visibleCollectorTypes(true)).toContain("element");
   });
 });

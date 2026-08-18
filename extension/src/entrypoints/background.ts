@@ -49,6 +49,14 @@ import {
   rerollWikipediaHandle,
   setWikipediaHandle,
 } from '../storage/wikipediaHandle'
+import {
+  FEATURE_OVERRIDES_STORAGE_KEY,
+  INTERNAL_ACCESS_STORAGE_KEY,
+  getAllFeatureStates,
+  getInternalAccess,
+  refreshInternalAccess,
+} from '../features/featureAccess'
+import { FEATURE_CATALOG, FEATURE_IDS } from '../flags'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -99,6 +107,8 @@ export type ScrapRecord = ScrapRecordBase &
         hotspotY?: number
       }
   )
+
+const INTERNAL_ACCESS_REFRESH_ALARM = 'refreshInternalAccess'
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -428,7 +438,7 @@ export default defineBackground(() => {
         console.warn('Failed to record extension install time', e)
       })
       // First time installation - setup default identity
-      initializePlayerIdentity().then(() => syncIdentityToServer())
+      initializePlayerIdentity().then(() => initializeIdentityServices())
       // Open setup page in a new tab
       const url = browser.runtime.getURL('options.html')
       browser.tabs.create({ url }).catch((e) => {
@@ -436,12 +446,12 @@ export default defineBackground(() => {
       })
     } else if (details.reason === 'update') {
       // Extension updated — ensure key is upgraded, then sync
-      initializePlayerIdentity().then(() => syncIdentityToServer())
+      initializePlayerIdentity().then(() => initializeIdentityServices())
       grandfatherNewTabTakeover(details.previousVersion).catch((e) => {
         console.warn('Failed to carry over the new tab preference', e)
       })
     } else {
-      initializePlayerIdentity().then(() => syncIdentityToServer())
+      initializePlayerIdentity().then(() => initializeIdentityServices())
     }
   })
 
@@ -449,6 +459,7 @@ export default defineBackground(() => {
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
+  browser.alarms.create(INTERNAL_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -458,6 +469,11 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'checkMilestones') {
       await runMilestoneCheck()
+      return
+    }
+
+    if (alarm.name === INTERNAL_ACCESS_REFRESH_ALARM) {
+      await refreshInternalFeatureAccess().catch(() => {})
       return
     }
 
@@ -517,6 +533,50 @@ export default defineBackground(() => {
       await syncStoredPlayerColor()
     } catch {}
   }
+
+  async function updateInternalAccessBadge() {
+    if (!browser.action) return
+    const enabled = await getInternalAccess()
+    const states = await getAllFeatureStates()
+    const experimentsActive = enabled && FEATURE_IDS.some(
+      (feature) =>
+        !FEATURE_CATALOG[feature].released && states[feature].enabled,
+    )
+    await browser.action.setBadgeText({ text: experimentsActive ? 'LAB' : '' })
+    if (experimentsActive) {
+      await browser.action.setBadgeBackgroundColor({ color: '#b85c38' })
+      await browser.action.setTitle({ title: 'we were online · experiments active' })
+    } else {
+      await browser.action.setTitle({ title: 'we were online' })
+    }
+  }
+
+  async function refreshInternalFeatureAccess() {
+    const identity = await getPublicPlayerIdentity()
+    if (import.meta.env.MODE !== 'development' && identity?.publicKey) {
+      await refreshInternalAccess(identity.publicKey)
+    }
+    await updateInternalAccessBadge()
+  }
+
+  async function initializeIdentityServices() {
+    await Promise.all([
+      syncIdentityToServer(),
+      refreshInternalFeatureAccess().catch(() => updateInternalAccessBadge()),
+    ])
+  }
+
+  updateInternalAccessBadge().catch(() => {})
+
+  browser.storage.onChanged?.addListener((changes, areaName) => {
+    if (
+      areaName === 'local' &&
+      (changes[INTERNAL_ACCESS_STORAGE_KEY] ||
+        changes[FEATURE_OVERRIDES_STORAGE_KEY])
+    ) {
+      updateInternalAccessBadge().catch(() => {})
+    }
+  })
 
   // Hydrate cursor_color onto locally-stored events from the user's identity.
   // All events in the local store are from this user (possibly under different

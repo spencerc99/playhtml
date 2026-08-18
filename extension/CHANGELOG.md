@@ -3,6 +3,7 @@
 ## 0.1.22 (2026-08-11)
 
 - Open History from every new tab or the popup to see time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
+  ![Browsing history summary](/changelog/media/browsing-history.jpg)
 - Presence controls and remote cursors now appear reliably in Firefox.
 - Now available for Safari!
 - Reduced WWO's impact on browser performance during long browsing sessions.
@@ -21,7 +22,6 @@
 - Restored history no longer uploads again, while offline history in imported files stays queued to sync.
 - Send bugs, ideas, and other feedback directly from the extension popup.
   ![Feedback button in the extension popup](/changelog/media/feedback-popup-button.png)
-  ![Feedback submission confirmation](/changelog/media/feedback-popup-success.png)
 - Fix Wikipedia presence startup while keeping private identity keys out of page-facing payloads.
 - Return to a site you haven't visited in over a month and a toast welcomes you back, showing how long it's been and a few of your past visit dates.
 

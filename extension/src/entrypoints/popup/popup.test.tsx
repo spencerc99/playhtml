@@ -1,5 +1,5 @@
 // ABOUTME: Verifies beta feature visibility in the extension popup.
-// ABOUTME: Ensures internal development mode cannot bypass the commute flag.
+// ABOUTME: Ensures server-granted beta access exposes unfinished feature entries.
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -73,11 +73,11 @@ describe("PlayHTMLPopup", () => {
     ).IS_REACT_ACT_ENVIRONMENT = true;
     vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
       const requestedKeys = Array.isArray(keys) ? keys : [keys];
-      if (requestedKeys.includes("internalDevFeaturesEnabled")) {
-        return {
-          internalDevFeaturesEnabled: true,
-          onboarding_complete: true,
-        };
+      if (requestedKeys.includes("onboarding_complete")) {
+        return { onboarding_complete: true };
+      }
+      if (requestedKeys.includes("wwoInternalAccess")) {
+        return { wwoInternalAccess: { enabled: true, checkedAt: 123 } };
       }
       if (requestedKeys.includes("gameInventory")) {
         return {
@@ -119,14 +119,15 @@ describe("PlayHTMLPopup", () => {
     document.body.innerHTML = "";
   });
 
-  it("keeps unreleased entries hidden when development mode is enabled", async () => {
+  it("shows unreleased entries when beta access is enabled", async () => {
     const { container, root } = await renderPopup();
 
     try {
       expect(container.querySelector(".portrait-home")).not.toBeNull();
-      expect(container.querySelector(".commute-entry")).toBeNull();
-      expect(container.textContent).not.toContain("scraps");
-      expect(container.textContent).not.toContain("bag settings");
+      expect(container.querySelector(".commute-entry")).not.toBeNull();
+      expect(container.textContent).toContain("scraps");
+      expect(container.textContent).toContain("bag settings");
+      expect(container.textContent).toContain("experiments");
     } finally {
       cleanup(root, container);
     }

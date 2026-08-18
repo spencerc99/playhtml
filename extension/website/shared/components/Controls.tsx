@@ -27,6 +27,8 @@ import {
   type SavedConfig,
 } from "../utils/savedConfigs";
 
+const { stateChangeTypes: comboboxStateChangeTypes } = useCombobox;
+
 interface ControlsProps {
   visible: boolean;
   settings: any;
@@ -403,7 +405,7 @@ const FilterChipInput: React.FC<{
     initialInputValue: "",
     itemToString: (item) => item ?? "",
     stateReducer: (state, { type, changes }) => {
-      const t = useCombobox.stateChangeTypes;
+      const t = comboboxStateChangeTypes;
       if (type === t.InputClick) {
         return { ...changes, isOpen: true };
       }

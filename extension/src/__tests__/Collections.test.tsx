@@ -155,11 +155,8 @@ describe("Collections", () => {
 
   it("offers no shared mode for the scrap collector", async () => {
     vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
-      if (
-        Array.isArray(keys) &&
-        keys.includes("internalDevFeaturesEnabled")
-      ) {
-        return { internalDevFeaturesEnabled: true };
+      if (keys === "wwoInternalAccess") {
+        return { wwoInternalAccess: { enabled: true, checkedAt: 1 } };
       }
       return {};
     });
@@ -187,8 +184,8 @@ describe("Collections", () => {
 
   it("shows a stored shared scrap mode as local and repairs storage", async () => {
     vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
-      if (Array.isArray(keys) && keys.includes("internalDevFeaturesEnabled")) {
-        return { internalDevFeaturesEnabled: true };
+      if (keys === "wwoInternalAccess") {
+        return { wwoInternalAccess: { enabled: true, checkedAt: 1 } };
       }
       if (
         Array.isArray(keys) &&

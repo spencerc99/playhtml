@@ -1,0 +1,407 @@
+// ABOUTME: Styles the WWO admin office and beta-access management desk.
+// ABOUTME: Establishes the shared visual shell intended for future WWO operator tools.
+
+:root {
+  color: #202421;
+  background: #f4f1e9;
+  font-family: "Martian Mono", monospace;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(rgba(50, 67, 61, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(50, 67, 61, 0.045) 1px, transparent 1px),
+    #f4f1e9;
+  background-size: 24px 24px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.office-shell {
+  min-height: 100vh;
+}
+
+.office-header {
+  min-height: 84px;
+  padding: 16px clamp(20px, 4vw, 56px);
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) auto minmax(110px, 1fr);
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid #b9b7aa;
+  background: rgba(250, 248, 242, 0.92);
+
+  h1 {
+    margin: 2px 0 0;
+    font: 600 clamp(20px, 2vw, 28px) "Lora", serif;
+  }
+
+  nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px;
+    border: 1px solid #c9c6b9;
+    border-radius: 7px;
+    background: #eeece4;
+
+    a,
+    span {
+      padding: 7px 10px;
+      color: #62665f;
+      font-size: 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    a[aria-current="page"] {
+      border-radius: 4px;
+      background: #fffefa;
+      color: #236859;
+      box-shadow: 0 1px 3px rgba(31, 44, 39, 0.12);
+    }
+
+    span {
+      opacity: 0.5;
+    }
+  }
+
+  &__logout {
+    justify-self: end;
+    border: 0;
+    background: transparent;
+    color: #6f716b;
+    font-size: 10px;
+    cursor: pointer;
+  }
+}
+
+.office-kicker,
+.office-section-number {
+  color: #a34f32;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+}
+
+.office-main {
+  width: min(980px, calc(100% - 40px));
+  margin: 52px auto;
+}
+
+.office-intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 32px;
+
+  h2,
+  p {
+    margin: 0;
+  }
+
+  h2 {
+    margin-top: 5px;
+    font: 600 clamp(28px, 4vw, 44px) "Lora", serif;
+  }
+
+  p {
+    max-width: 620px;
+    margin-top: 8px;
+    color: #64665f;
+    font: 15px/1.6 "Lora", serif;
+  }
+}
+
+.office-count {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: #6d6e67;
+
+  strong {
+    color: #236859;
+    font: 600 34px "Lora", serif;
+  }
+
+  span {
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+}
+
+.office-panel,
+.office-roadmap,
+.office-login__card {
+  border: 1px solid #bbb8aa;
+  border-radius: 9px;
+  background: rgba(255, 254, 250, 0.92);
+  box-shadow: 0 12px 34px rgba(46, 51, 45, 0.07);
+}
+
+.office-panel {
+  margin-top: 28px;
+  overflow: hidden;
+}
+
+.office-add {
+  padding: 24px;
+  border-bottom: 1px solid #cbc8bb;
+  background: #e8eee9;
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    color: #35483f;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  > div {
+    display: flex;
+    gap: 10px;
+  }
+
+  input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  small {
+    display: block;
+    margin-top: 8px;
+    color: #71756e;
+    font-size: 9px;
+  }
+}
+
+input {
+  padding: 10px 11px;
+  border: 1px solid #aaa99f;
+  border-radius: 5px;
+  outline: none;
+  background: #fffefa;
+  color: #242824;
+  font-size: 11px;
+
+  &:focus {
+    border-color: #357768;
+    box-shadow: 0 0 0 3px rgba(53, 119, 104, 0.12);
+  }
+}
+
+button {
+  padding: 9px 13px;
+  border: 1px solid #236859;
+  border-radius: 5px;
+  background: #236859;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+.office-list-header {
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid #d8d5ca;
+
+  h3 {
+    margin: 0;
+    font: 600 17px "Lora", serif;
+  }
+
+  > div {
+    display: flex;
+    gap: 7px;
+  }
+
+  input {
+    width: 210px;
+    padding: 7px 9px;
+  }
+
+  button {
+    padding: 7px 10px;
+    border-color: #aaa99f;
+    background: #fffefa;
+    color: #51554f;
+  }
+}
+
+.office-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 15px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    border-bottom: 1px solid #e0ded5;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    > div {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    code {
+      overflow: hidden;
+      color: #2d483f;
+      font-size: 11px;
+      text-overflow: ellipsis;
+    }
+
+    time {
+      color: #85867f;
+      font-size: 8px;
+      text-transform: uppercase;
+    }
+
+    button {
+      border-color: #d3b1a4;
+      background: #fff7f3;
+      color: #9b4228;
+    }
+  }
+}
+
+.office-empty,
+.office-error {
+  margin: 0;
+  padding: 24px;
+  color: #75776f;
+  font: italic 14px "Lora", serif;
+}
+
+.office-error {
+  background: #fff1ec;
+  color: #9b4228;
+}
+
+.office-roadmap {
+  margin-top: 28px;
+  padding: 22px 24px;
+  border-style: dashed;
+  box-shadow: none;
+
+  h2 {
+    margin: 5px 0;
+    font: 600 18px "Lora", serif;
+  }
+
+  p {
+    margin: 0;
+    color: #71736c;
+    font: 14px/1.5 "Lora", serif;
+  }
+}
+
+.office-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+
+  &__card {
+    width: min(430px, 100%);
+    padding: 36px;
+
+    h1 {
+      margin: 4px 0 8px;
+      font: 600 34px "Lora", serif;
+    }
+
+    p {
+      margin: 0 0 24px;
+      color: #666960;
+      font: 15px/1.5 "Lora", serif;
+    }
+
+    form {
+      display: grid;
+      gap: 9px;
+    }
+
+    label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    a {
+      display: inline-block;
+      margin-top: 24px;
+      color: #236859;
+      font-size: 10px;
+    }
+  }
+}
+
+@media (max-width: 760px) {
+  .office-header {
+    grid-template-columns: 1fr auto;
+
+    nav {
+      grid-column: 1 / -1;
+      order: 3;
+      overflow-x: auto;
+    }
+  }
+
+  .office-main {
+    margin-top: 32px;
+  }
+
+  .office-intro {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .office-count {
+    align-items: flex-start;
+  }
+
+  .office-add > div,
+  .office-list-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .office-list-header input {
+    width: 100%;
+  }
+}

@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { playhtml } from "playhtml";
 import { FLAGS } from "@extension/flags";
+import { INTERNAL_ACCESS_STORAGE_KEY } from "@extension/features/featureAccess";
 import {
   initGlobalFeatures,
   anyGlobalFeatureActive,
@@ -87,12 +88,14 @@ function buildSeededNotes(n: number): BottleNote[] {
  * initEmotes(deps) for the emote wheel. Cursors are enabled here (unlike the
  * extension's headless every-page path) so the emote wheel has a cursorClient
  * and peer positions to render on — matching the extension's cursor-site path.
- * The dev override is forced on so flag-off experiments still run here.
+ * Internal access is forced on so flag-off experiments still run here.
  */
 async function bootSocial(): Promise<() => void> {
-  // Force the internal-dev override on (shim-backed storage), so experiments
+  // Force internal access on (shim-backed storage), so experiments
   // run on the site even though their committed FLAGS are off.
-  await browser.storage.local.set({ internalDevFeaturesEnabled: true });
+  await browser.storage.local.set({
+    [INTERNAL_ACCESS_STORAGE_KEY]: { enabled: true, checkedAt: Date.now() },
+  });
 
   await playhtml.init({
     cursors: { enabled: true, coordinateMode: "absolute" },
