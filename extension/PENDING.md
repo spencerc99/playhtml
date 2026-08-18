@@ -15,7 +15,6 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- You can optionally sign up for project updates when you finish extension setup.
 - Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
 - Wikipedia shows other readers' live text selections in their cursor colors.
 - Wikipedia editing sessions now stay separate from article-reading rooms.
