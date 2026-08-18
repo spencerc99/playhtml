@@ -1,7 +1,7 @@
 // ABOUTME: Shared catalog and access contract for WWO extension experiments.
 // ABOUTME: Keeps the extension, Worker, and admin dashboard aligned on known feature identifiers.
 
-export const FEATURE_STAGES = ["internal", "beta", "lab", "released"] as const;
+export const FEATURE_STAGES = ["internal", "beta", "released"] as const;
 
 export type FeatureStage = (typeof FEATURE_STAGES)[number];
 

@@ -32,7 +32,7 @@ describe("parseFeatureAccess", () => {
     const access = parseFeatureAccess({
       features: {
         COMMUTE: { stage: "beta", available: true },
-        UNKNOWN: { stage: "lab", available: true },
+        UNKNOWN: { stage: "released", available: true },
         SCRAPS: { stage: "beta", available: "yes" },
       },
       checkedAt: 123,
@@ -117,14 +117,14 @@ describe("storage failures", () => {
 describe("experiment access checks", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("keeps closed-beta requests available to people with labs-only access", async () => {
+  it("does not treat released features as private experiment access", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
       [FEATURE_ACCESS_STORAGE_KEY]: {
-        features: { EMOTES: { stage: "lab", available: true } },
+        features: { EMOTES: { stage: "released", available: true } },
       },
     });
 
-    await expect(hasExperimentAccess()).resolves.toBe(true);
+    await expect(hasExperimentAccess()).resolves.toBe(false);
     await expect(hasPrivateExperimentAccess()).resolves.toBe(false);
   });
 });

@@ -25,7 +25,6 @@ type Props = {
 const STAGE_LABELS: Record<FeatureStage, string> = {
   internal: "Internal",
   beta: "Closed beta",
-  lab: "Labs",
   released: "Released",
 };
 
@@ -60,7 +59,7 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
         <button className="developer-features__back" onClick={onBack}>
           ← back
         </button>
-        <span className="developer-features__eyebrow">WWO LABS</span>
+        <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
         <h1>Experiments</h1>
         <p>
           Turn on the experiments available to you. Your choices only affect

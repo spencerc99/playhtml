@@ -32,7 +32,7 @@ describe("feature flags", () => {
     expect(isFeatureId("NOT_A_FEATURE")).toBe(false);
   });
 
-  it("starts without any Released or Labs features", () => {
+  it("starts with only Internal and Closed beta features", () => {
     expect(FEATURE_IDS.every((feature) =>
       FEATURE_CATALOG[feature].defaultStage === "internal" ||
       FEATURE_CATALOG[feature].defaultStage === "beta",

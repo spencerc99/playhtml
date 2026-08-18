@@ -135,7 +135,7 @@ export async function handleFeatureAccessCheck(
          f.description,
          f.stage,
          CASE
-           WHEN f.stage IN ('released', 'lab') THEN 1
+           WHEN f.stage = 'released' THEN 1
            WHEN EXISTS (
              SELECT 1
              FROM cohort_memberships cm
@@ -162,7 +162,7 @@ export async function handleFeatureAccessCheck(
         featureId,
         {
           stage,
-          available: stage === 'released' || stage === 'lab' || row?.available === 1,
+          available: stage === 'released' || row?.available === 1,
         },
       ];
     }),

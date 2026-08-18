@@ -7,7 +7,7 @@ CREATE TABLE features (
   feature_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT NOT NULL,
-  stage TEXT NOT NULL CHECK (stage IN ('internal', 'beta', 'lab', 'released')),
+  stage TEXT NOT NULL CHECK (stage IN ('internal', 'beta', 'released')),
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

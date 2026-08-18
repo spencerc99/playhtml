@@ -23,7 +23,6 @@ const PLAYHTML_ADMIN_URL = "https://playhtml.fun/admin.html";
 const STAGE_LABELS: Record<FeatureStage, string> = {
   internal: "Internal",
   beta: "Closed beta",
-  lab: "Labs",
   released: "Released",
 };
 

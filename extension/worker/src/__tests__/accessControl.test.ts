@@ -123,7 +123,7 @@ describe('feature access control', () => {
     const stageUpdate = await handleAdminFeatureStageUpdate(
       adminRequest('/admin/access-control/features/EMOTES', {
         method: 'PUT',
-        body: JSON.stringify({ stage: 'lab' }),
+        body: JSON.stringify({ stage: 'released' }),
       }),
       workerEnv,
       'EMOTES',
@@ -139,6 +139,19 @@ describe('feature access control', () => {
     expect(memberBody.features.BOTTLES.available).toBe(true);
     expect(memberBody.features.COMMUTE.available).toBe(false);
     expect(publicBody.features.EMOTES.available).toBe(true);
+  });
+
+  it('rejects the removed Labs stage', async () => {
+    const response = await handleAdminFeatureStageUpdate(
+      adminRequest('/admin/access-control/features/EMOTES', {
+        method: 'PUT',
+        body: JSON.stringify({ stage: 'lab' }),
+      }),
+      workerEnv,
+      'EMOTES',
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Invalid feature stage' });
   });
 
   it('bulk-adds people and exposes optional contact emails only to admins', async () => {
