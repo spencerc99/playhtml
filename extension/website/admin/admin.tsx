@@ -1,5 +1,5 @@
 // ABOUTME: WWO admin office for feature stages, access cohorts, and beta testers.
-// ABOUTME: Supports bulk membership and pending access approvals through the Worker API.
+// ABOUTME: Supports direct and bulk membership plus pending access approvals.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -8,6 +8,7 @@ import {
   addPeople,
   getAccessOverview,
   parsePeopleInput,
+  parsePersonInput,
   reviewAccessRequest,
   updateCohortFeatures,
   updateFeatureStage,
@@ -56,11 +57,14 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
 function InternalOffice() {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
   const [overview, setOverview] = useState<AccessOverview | null>(null);
+  const [publicId, setPublicId] = useState("");
+  const [email, setEmail] = useState("");
   const [peopleInput, setPeopleInput] = useState("");
   const [cohortId, setCohortId] = useState("closed-beta");
   const [approvalCohortId, setApprovalCohortId] = useState("closed-beta");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -84,6 +88,7 @@ function InternalOffice() {
   const mutate = async (action: () => Promise<void>) => {
     setSaving(true);
     setError("");
+    setNotice("");
     try {
       await action();
       await loadOverview();
@@ -110,6 +115,19 @@ function InternalOffice() {
       setToken(nextToken);
     }} />;
   }
+
+  const submitPerson = async (event: FormEvent) => {
+    event.preventDefault();
+    await mutate(async () => {
+      const person = parsePersonInput(publicId, email);
+      const cohort = overview.cohorts.find((candidate) => candidate.id === cohortId);
+      if (!cohort) throw new Error("Selected cohort is unavailable");
+      await addPeople(token, cohortId, [person]);
+      setPublicId("");
+      setEmail("");
+      setNotice(`Added ${shortPublicId(person.publicId)} to ${cohort.name}.`);
+    });
+  };
 
   const submitPeople = async (event: FormEvent) => {
     event.preventDefault();
@@ -198,19 +216,33 @@ function InternalOffice() {
           </section>
 
           <section className="office-panel">
-            <div className="office-list-header"><div><span className="office-section-number">DESK 03</span><h3>Add people</h3></div></div>
-            <form className="office-add office-add--bulk" onSubmit={submitPeople}>
-              <label htmlFor="people-input">Public IDs</label>
-              <textarea id="people-input" value={peopleInput} onChange={(event) => setPeopleInput(event.target.value)}
-                placeholder={`One per line, optionally followed by an email\npk_…\npk_…, tester@example.com`} spellCheck={false} />
-              <div>
-                <select value={cohortId} onChange={(event) => setCohortId(event.target.value)}>
-                  {overview.cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
-                </select>
-                <button type="submit" disabled={!peopleInput.trim() || saving}>Add to cohort</button>
-              </div>
-              <small>Paste up to 500 IDs or CSV rows. Email is optional and only stored when supplied.</small>
+            <div className="office-list-header"><div><span className="office-section-number">DESK 03</span><h3>Add person</h3></div></div>
+            <form className="office-add office-add--person" onSubmit={submitPerson}>
+              <label><span>Public ID</span><input aria-label="Public ID" value={publicId}
+                onChange={(event) => setPublicId(event.target.value)} placeholder="pk_…" spellCheck={false} autoComplete="off" /></label>
+              <label><span>Email <small>optional</small></span><input aria-label="Email" type="email" value={email}
+                onChange={(event) => setEmail(event.target.value)} placeholder="tester@example.com" autoComplete="off" /></label>
+              <label><span>Cohort</span><select aria-label="Cohort" value={cohortId} onChange={(event) => setCohortId(event.target.value)}>
+                {overview.cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
+              </select></label>
+              <button type="submit" disabled={!publicId.trim() || saving}>Add person</button>
+              {notice && <p className="office-add__success" role="status">{notice}</p>}
             </form>
+            <details className="office-bulk-import">
+              <summary>Import multiple people</summary>
+              <form className="office-add office-add--bulk" onSubmit={submitPeople}>
+                <label htmlFor="people-input">Public IDs</label>
+                <textarea id="people-input" value={peopleInput} onChange={(event) => setPeopleInput(event.target.value)}
+                  placeholder={`One per line, optionally followed by an email\npk_…\npk_…, tester@example.com`} spellCheck={false} />
+                <div>
+                  <select aria-label="Bulk import cohort" value={cohortId} onChange={(event) => setCohortId(event.target.value)}>
+                    {overview.cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
+                  </select>
+                  <button type="submit" disabled={!peopleInput.trim() || saving}>Import people</button>
+                </div>
+                <small>Paste up to 500 IDs or CSV rows. Email is optional and only stored when supplied.</small>
+              </form>
+            </details>
           </section>
 
           {overview.requests.length > 0 && <section className="office-panel">

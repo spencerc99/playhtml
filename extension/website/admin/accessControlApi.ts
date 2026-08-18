@@ -1,5 +1,5 @@
 // ABOUTME: Client contract for WWO feature policy, cohort, and tester administration.
-// ABOUTME: Validates bulk public IDs and sends authenticated requests to the Worker.
+// ABOUTME: Validates individual and bulk public IDs before calling the Worker.
 
 import { WORKER_URL } from "@movement/config";
 import type { FeatureId, FeatureStage } from "../../shared/featureCatalog";
@@ -47,6 +47,14 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function isValidPublicId(publicId: string): boolean {
   return PUBLIC_ID_PATTERN.test(publicId.trim());
+}
+
+export function parsePersonInput(publicIdValue: string, emailValue: string): PersonInput {
+  const publicId = publicIdValue.trim().toLowerCase();
+  if (!isValidPublicId(publicId)) throw new Error("Enter a valid public ID");
+  const email = emailValue.trim().toLowerCase() || null;
+  if (email && !EMAIL_PATTERN.test(email)) throw new Error("Enter a valid email");
+  return { publicId, email };
 }
 
 export function parsePeopleInput(value: string): PersonInput[] {

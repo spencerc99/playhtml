@@ -167,13 +167,20 @@ a {
   border-bottom: 1px solid #cbc8bb;
   background: #e8eee9;
 
-  label {
+  > label,
+  > label > span {
     display: block;
     margin-bottom: 8px;
     color: #35483f;
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
+  }
+
+  > label > span small {
+    font-size: 8px;
+    font-weight: 400;
+    text-transform: none;
   }
 
   > div {
@@ -191,6 +198,50 @@ a {
     margin-top: 8px;
     color: #71756e;
     font-size: 9px;
+  }
+}
+
+.office-add--person {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) minmax(190px, 1.4fr) minmax(140px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+
+  label {
+    margin: 0;
+  }
+
+  input,
+  select {
+    width: 100%;
+  }
+
+  button {
+    min-height: 38px;
+  }
+
+  .office-add__success {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #236859;
+    font: 12px/1.4 "Lora", serif;
+  }
+}
+
+.office-bulk-import {
+  border-top: 1px solid #cbc8bb;
+
+  summary {
+    padding: 14px 24px;
+    color: #59645e;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .office-add {
+    border: 0;
+    border-top: 1px solid #d8d5ca;
+    background: #f2f3ed;
   }
 }
 
@@ -542,6 +593,10 @@ button {
   .office-list-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .office-add--person {
+    grid-template-columns: 1fr;
   }
 
   .office-list-header input {

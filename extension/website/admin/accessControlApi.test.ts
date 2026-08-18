@@ -1,10 +1,11 @@
 // ABOUTME: Tests WWO admin access-control parsing and authenticated request shapes.
-// ABOUTME: Covers bulk public-ID input and cohort feature updates.
+// ABOUTME: Covers individual and bulk people input plus cohort feature updates.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addPeople,
   parsePeopleInput,
+  parsePersonInput,
   updateCohortFeatures,
 } from "./accessControlApi";
 
@@ -15,6 +16,19 @@ const SECOND_PUBLIC_ID = `pk_${"b".repeat(130)}`;
 
 describe("accessControlApi", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it("normalizes one person's public ID and optional email", () => {
+    expect(parsePersonInput(`  ${PUBLIC_ID.toUpperCase()}  `, " TESTER@EXAMPLE.COM ")).toEqual({
+      publicId: PUBLIC_ID,
+      email: "tester@example.com",
+    });
+    expect(parsePersonInput(PUBLIC_ID, "")).toEqual({ publicId: PUBLIC_ID, email: null });
+  });
+
+  it("validates one person without bulk-import wording", () => {
+    expect(() => parsePersonInput("pk_short", "")).toThrow("Enter a valid public ID");
+    expect(() => parsePersonInput(PUBLIC_ID, "not-an-email")).toThrow("Enter a valid email");
+  });
 
   it("parses newline and CSV people input and removes duplicate IDs", () => {
     expect(parsePeopleInput(
