@@ -12,6 +12,7 @@ import {
   type DomainStatsAggregate,
 } from "../storage/LocalEventStore";
 import type { CollectionEvent } from "../collectors/types";
+import { queryCursorEventsForPortrait } from "../utils/cursorDistance";
 
 const DB_NAME = "collection_events_db";
 const STORE_NAME = "events";
@@ -1281,6 +1282,40 @@ describe("LocalEventStore pending uploads", () => {
     ]);
     expect(urlEvents.map((storedEvent) => storedEvent.id)).toEqual([
       "cursor-indexed",
+    ]);
+  });
+
+  it("scopes page portrait cursor events by URL while domain portraits keep the domain", async () => {
+    const store = createStore();
+    const siblingPage = {
+      ...contentScriptEvent("sibling-cursor", "cursor"),
+      meta: {
+        ...contentScriptEvent("sibling-cursor", "cursor").meta,
+        url: "https://example.com/sibling",
+      },
+    };
+    await store.addEvents([
+      contentScriptEvent("page-cursor", "cursor"),
+      contentScriptEvent("page-navigation", "navigation"),
+      siblingPage,
+    ]);
+
+    const pageEvents = await queryCursorEventsForPortrait(
+      store,
+      "example.com",
+      "https://example.com/page?ignored=true#section",
+    );
+    const domainEvents = await queryCursorEventsForPortrait(
+      store,
+      "example.com",
+    );
+
+    expect(pageEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "page-cursor",
+    ]);
+    expect(domainEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "page-cursor",
+      "sibling-cursor",
     ]);
   });
 
