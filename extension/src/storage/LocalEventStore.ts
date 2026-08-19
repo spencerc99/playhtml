@@ -194,6 +194,7 @@ export interface WalkingRecordEventResult {
   cursorDistancePx: number;
   activity: WalkingRecordActivity[];
   sessions: ScreenTimeSession[];
+  favicons: Record<string, string>;
 }
 
 export interface WalkingRecordActivity {
@@ -1756,6 +1757,7 @@ export class LocalEventStore {
       const sampledCursorWindows = new Set<string>();
       const activityWindowsByUrl = new Map<string, Set<number>>();
       const sessions: ScreenTimeSession[] = [];
+      const favicons = new Map<string, string>();
       let previousCursorEvent: CollectionEvent | null = null;
       let pendingFocus: { ts: number; url: string } | null = null;
       let cursorDistancePx = 0;
@@ -1775,6 +1777,9 @@ export class LocalEventStore {
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) {
+          const visitedDomains = new Set(
+            sessions.map((session) => extractDomain(session.url)),
+          );
           resolve({
             events,
             cursorDistancePx,
@@ -1783,6 +1788,9 @@ export class LocalEventStore {
               windowStarts: [...windowStarts].sort((a, b) => a - b),
             })),
             sessions,
+            favicons: Object.fromEntries(
+              [...favicons].filter(([domain]) => visitedDomains.has(domain)),
+            ),
           });
           return;
         }
@@ -1794,6 +1802,25 @@ export class LocalEventStore {
           const data = event.data as NavigationEventData;
           if (data.event === "focus") {
             pendingFocus = { ts: event.ts, url: event.meta.url };
+            const faviconUrl = data.favicon_url;
+            if (
+              typeof faviconUrl === "string" &&
+              faviconUrl.length > 0 &&
+              faviconUrl.length <= AGGREGATE_FAVICON_URL_LENGTH_LIMIT
+            ) {
+              try {
+                const parsed = new URL(faviconUrl);
+                if (
+                  parsed.protocol === "https:" ||
+                  parsed.protocol === "http:" ||
+                  parsed.protocol === "data:"
+                ) {
+                  favicons.set(extractDomain(event.meta.url), faviconUrl);
+                }
+              } catch {
+                // Ignore malformed favicon metadata from the visited page.
+              }
+            }
             events.push({
               ...event,
               data: { event: data.event },
@@ -2440,6 +2467,12 @@ export class LocalEventStore {
   ): void {
     for (const evt of [...events].sort((a, b) => a.ts - b.ts)) {
       const eventDay = localDayKey(evt.ts, evt.meta.tz);
+      if (
+        agg.milestoneActivity &&
+        eventDay < agg.milestoneActivity.localDayKey
+      ) {
+        continue;
+      }
       if (agg.milestoneActivity?.localDayKey !== eventDay) {
         agg.milestoneActivity = {
           localDayKey: eventDay,
@@ -2469,7 +2502,10 @@ export class LocalEventStore {
         const data = evt.data as NavigationEventData;
         if (data.event === "focus") {
           activity.pendingFocusTs = evt.ts;
-        } else if (data.event === "blur" && activity.pendingFocusTs !== null) {
+        } else if (
+          (data.event === "blur" || data.event === "beforeunload") &&
+          activity.pendingFocusTs !== null
+        ) {
           activity.screenTimeMs += Math.max(
             0,
             evt.ts - activity.pendingFocusTs,

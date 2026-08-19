@@ -5,7 +5,7 @@ import React from "react";
 import browser from "webextension-polyfill";
 import "@fontsource/martian-mono/latin-400.css";
 import "@fontsource/source-serif-4/latin-200-italic.css";
-import { isFeatureReleased } from "./ReleasedFeature";
+import { useFeatureState } from "../features/useFeatureAccess";
 import "./ExtensionPageNav.scss";
 
 export type ExtensionPageId = "portrait" | "time" | "walking-record" | "scraps";
@@ -16,8 +16,7 @@ const PAGE_LINKS: Array<{
   path: string;
 }> = [
   { id: "portrait", label: "portrait", path: "portrait.html" },
-  { id: "time", label: "time", path: "stats.html" },
-  { id: "walking-record", label: "history", path: "newtab.html" },
+  { id: "walking-record", label: "history", path: "walking-record.html" },
   { id: "scraps", label: "scraps", path: "scraps.html" },
 ];
 
@@ -26,8 +25,9 @@ export function ExtensionPageNav({
 }: {
   currentPage: ExtensionPageId;
 }) {
+  const scrapsEnabled = useFeatureState("SCRAPS").enabled;
   const visibleLinks = PAGE_LINKS.filter(
-    (link) => link.id !== "scraps" || isFeatureReleased("SCRAPS"),
+    (link) => link.id !== "scraps" || scrapsEnabled,
   );
 
   return (

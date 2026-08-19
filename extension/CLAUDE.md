@@ -26,8 +26,8 @@ changesets release-PR flow but on a separate cadence.
 released extension — `extension/src/**`, `extension/wxt.config.ts`,
 `extension/public/**`, or anything else that ships in the extension zip — add
 a bullet to `extension/PENDING.md` for each meaningful user-facing change.
-Changes that ship dark — behind a `FLAGS.*` feature flag or the
-`internalDevFeaturesEnabled` dev toggle — do NOT get a bullet; the public
+Changes that ship dark — behind an unreleased feature in `FEATURE_CATALOG` —
+do NOT get a bullet; the public
 changelog should never describe a feature users can't reach. Add the bullet in
 the PR that enables the feature for everyone.
 
