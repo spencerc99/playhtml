@@ -2,11 +2,7 @@
 // ABOUTME: Keeps native color selection compact and consistent with popup UI.
 
 @use "../styles/variables" as *;
-
-body {
-  margin: 0;
-  background: $bg;
-}
+@use "../styles/base";
 
 .color-picker-page {
   min-height: 100vh;
@@ -16,7 +12,7 @@ body {
   flex-direction: column;
   gap: 16px;
   font-family: $font-body;
-  color: $text;
+  color: var(--text);
 
   &__header {
     display: flex;
@@ -42,8 +38,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: $surface;
-    border: 1px solid $border;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
   }
 
@@ -56,16 +52,16 @@ body {
   &__label {
     font-size: 12px;
     font-weight: 600;
-    color: $text-muted;
+    color: var(--text-muted);
   }
 
   &__input {
     width: 96px;
     height: 44px;
     padding: 0;
-    border: 1px solid $border-strong;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: $surface;
+    background: var(--surface);
     cursor: pointer;
 
     &:disabled {

@@ -16,9 +16,9 @@
     gap: 8px;
   }
 
-  .btn-test-connection { @include btn-base; background: $accent-plum; color: white; width: 100%; }
+  .btn-test-connection { @include btn-base; background: var(--accent-plum); color: var(--btn-fg); width: 100%; }
   .btn-pick-element    { @include btn-secondary; width: 100%; }
-  .btn-inventory       { @include btn-base; background: $accent-plum; color: white; width: 100%; }
+  .btn-inventory       { @include btn-base; background: var(--accent-plum); color: var(--btn-fg); width: 100%; }
   .btn-collections     { @include btn-teal; width: 100%; }
-  .btn-history         { @include btn-base; background: $accent-gold; color: $text; width: 100%; }
+  .btn-history         { @include btn-base; background: var(--accent-gold); color: var(--btn-fg); width: 100%; }
 }

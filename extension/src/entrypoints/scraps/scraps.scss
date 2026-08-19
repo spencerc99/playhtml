@@ -1,0 +1,24 @@
+// ABOUTME: Styles the full-tab internet scraps extension page.
+// ABOUTME: Applies extension theme tokens to the collage room and page chrome.
+
+@use "../../styles/base";
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  .scraps-paper-texture {
+    opacity: 0.1 !important;
+    filter: invert(1) sepia(0.12);
+    mix-blend-mode: screen !important;
+  }
+}

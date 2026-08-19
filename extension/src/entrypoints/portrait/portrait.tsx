@@ -324,6 +324,7 @@ const PortraitPage = () => {
 
   return (
     <div
+      className="extension-portrait-page"
       style={{
         width: "100vw",
         height: "100vh",

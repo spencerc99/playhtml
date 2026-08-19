@@ -3,7 +3,7 @@
 /* All extension-owned UI (toasts, overlays) uses Shadow DOM with inline styles — see content.ts. */
 
 .playhtml-extension-element-picker {
-  outline: 2px dashed #6366f1 !important;
+  outline: 2px dashed #5b8db8 !important;
   background: rgba(99, 102, 241, 0.1) !important;
   cursor: pointer !important;
 }
