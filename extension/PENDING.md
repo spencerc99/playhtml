@@ -18,6 +18,7 @@ extension/website/public/changelog/media/ and reference them here:
 - Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
 - Wikipedia shows other readers' live text selections in their cursor colors.
 - Wikipedia editing sessions now stay separate from article-reading rooms.
+- Testers can request beta access from their profile and choose which approved experiments to enable.
 - Browsing history performance improvements
 - Browsing history can be removed as the new tab page. Toggle it on/off at any time. In Safari, where new tabs can't be replaced, the history page suggests bookmarking or pinning it instead.
 

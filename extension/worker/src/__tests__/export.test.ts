@@ -36,7 +36,7 @@ const ENV: Env = {
   RESEND_API_KEY: 'r',
   CODA_API_TOKEN: 'c',
   LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
-  WWO_INTERNAL_ACCESS: {} as KVNamespace,
+  WWO_ADMIN_DB: {} as D1Database,
 };
 
 function makeExportRequest(): Request {

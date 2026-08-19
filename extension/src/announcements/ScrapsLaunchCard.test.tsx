@@ -48,7 +48,8 @@ describe("ScrapsLaunchCard", () => {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
     });
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      wwoInternalAccess: { enabled: true, checkedAt: 1 },
+      wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: true } }, checkedAt: 1 },
+      wwoFeatureOverrides: { SCRAPS: true },
     });
     vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
   });
@@ -131,7 +132,8 @@ describe("ScrapsLaunchCard", () => {
   it("does not render while the scraps feature is unreachable", async () => {
     expect(FLAGS.SCRAPS).toBe(false);
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      wwoInternalAccess: { enabled: false, checkedAt: 1 },
+      wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: false } }, checkedAt: 1 },
+      wwoFeatureOverrides: { SCRAPS: true },
     });
     vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
     const { container, root } = await renderCard();

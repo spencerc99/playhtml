@@ -178,7 +178,7 @@ describe("WalkingRecordPage calendar navigation", () => {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
     });
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      wwoInternalAccess: { enabled: false, checkedAt: 1 },
+      wwoFeatureAccess: { features: {}, checkedAt: 1 },
     });
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
       fillStyle: "",

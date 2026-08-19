@@ -76,8 +76,20 @@ describe("PlayHTMLPopup", () => {
       if (requestedKeys.includes("onboarding_complete")) {
         return { onboarding_complete: true };
       }
-      if (requestedKeys.includes("wwoInternalAccess")) {
-        return { wwoInternalAccess: { enabled: true, checkedAt: 123 } };
+      if (requestedKeys.includes("wwoFeatureAccess")) {
+        return {
+          wwoFeatureAccess: {
+            features: {
+              COMMUTE: { stage: "beta", available: true },
+              SCRAPS: { stage: "beta", available: true },
+              BAG_SETTINGS: { stage: "internal", available: true },
+            },
+            checkedAt: 123,
+          },
+        };
+      }
+      if (requestedKeys.includes("wwoFeatureOverrides")) {
+        return { wwoFeatureOverrides: { COMMUTE: true, SCRAPS: true, BAG_SETTINGS: true } };
       }
       if (requestedKeys.includes("gameInventory")) {
         return {
@@ -119,7 +131,7 @@ describe("PlayHTMLPopup", () => {
     document.body.innerHTML = "";
   });
 
-  it("shows unreleased entries when beta access is enabled", async () => {
+  it("shows only the experiments the tester chose to enable", async () => {
     const { container, root } = await renderPopup();
 
     try {
