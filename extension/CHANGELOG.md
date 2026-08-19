@@ -7,7 +7,6 @@
 - Wikipedia editing sessions now stay separate from article-reading rooms.
 - Testers can request beta access from their profile and choose which approved experiments to enable.
 - Browsing history performance improvements
-  ![Browsing history summary](/changelog/media/browsing-history.jpg)
 - Browsing history can be removed as the new tab page. Toggle it on/off at any time. In Safari, where new tabs can't be replaced, the history page suggests bookmarking or pinning it instead.
   ![History new tab choice during setup](/changelog/media/new-tab-setup.png)
 
