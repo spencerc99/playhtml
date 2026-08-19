@@ -21,6 +21,9 @@ vi.mock("./MilestoneToastPreview", () => ({
 vi.mock("./PortraitCard", () => ({
   PortraitCard: () => <div>browsing portrait preview</div>,
 }));
+vi.mock("@movement/config", () => ({
+  WORKER_URL: "https://worker.example",
+}));
 vi.mock("../storage/playerColor", () => ({
   savePlayerColor: vi.fn().mockResolvedValue(undefined),
 }));
@@ -57,6 +60,22 @@ async function click(container: HTMLElement, label: string) {
   });
 }
 
+async function fillEmail(container: HTMLElement, value: string) {
+  const email = container.querySelector<HTMLInputElement>(
+    'input[type="email"]',
+  );
+  if (!email) throw new Error("Missing email input");
+
+  await act(async () => {
+    const setValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    setValue?.call(email, value);
+    email.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 function cleanup(root: Root, container: HTMLDivElement) {
   act(() => root.unmount());
   container.remove();
@@ -64,6 +83,7 @@ function cleanup(root: Root, container: HTMLDivElement) {
 
 describe("SetupPage", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -78,6 +98,8 @@ describe("SetupPage", () => {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
     });
     window.history.replaceState({}, "", "/");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null)));
+    vi.mocked(browser.storage.local.get).mockResolvedValue({});
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
@@ -91,7 +113,19 @@ describe("SetupPage", () => {
     const { container, root } = await renderSetup();
 
     try {
+      expect(container.textContent).toContain(
+        "we were online turns the existing Internet into a living, shared world. Let's get you set up in a few steps so we can respect your preferences for privacy and share how the extension works.",
+      );
+      expect(container.textContent).toContain(
+        "Email for project updates (optional)",
+      );
+      expect(container.textContent).toContain(
+        "Get occasional updates about we were online and have the opportunity to beta test new features",
+      );
+      expect(container.querySelector('input[type="email"]')).not.toBeNull();
+
       await click(container, "Get started");
+      await click(container, "Continue");
       await click(container, "Continue");
 
       expect(container.textContent).toContain("All set!");
@@ -126,6 +160,63 @@ describe("SetupPage", () => {
       expect(browser.storage.local.set).toHaveBeenCalledWith(
         expect.objectContaining({ onboarding_complete: "true" }),
       );
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("subscribes through the Worker before completing setup", async () => {
+    const { container, root } = await renderSetup();
+
+    try {
+      await fillEmail(container, "person@example.com");
+      await click(container, "Get started");
+      await click(container, "Continue");
+      await click(container, "Continue");
+      await click(container, "Finish setup");
+
+      await vi.waitFor(() => {
+        expect(fetch).toHaveBeenCalledWith(
+          "https://worker.example/subscribe",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({
+              email: "person@example.com",
+              source: "extension-setup",
+            }),
+          }),
+        );
+      });
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
+        onboarding_complete: "true",
+        setup_email: "person@example.com",
+      });
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("keeps setup open when the subscription request fails", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }));
+    const { container, root } = await renderSetup();
+
+    try {
+      await fillEmail(container, "person@example.com");
+      await click(container, "Get started");
+      await click(container, "Continue");
+      await click(container, "Continue");
+      await click(container, "Finish setup");
+
+      await vi.waitFor(() => {
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+          "couldn’t sign you up for updates",
+        );
+      });
+      expect(browser.storage.local.set).not.toHaveBeenCalledWith(
+        expect.objectContaining({ onboarding_complete: "true" }),
+      );
+      expect(browser.tabs.remove).not.toHaveBeenCalled();
     } finally {
       cleanup(root, container);
     }
