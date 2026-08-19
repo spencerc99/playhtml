@@ -1,5 +1,17 @@
 # @playhtml/extension
 
+## 0.1.23 (2026-08-19)
+
+- Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
+- Wikipedia shows other readers' live text selections in their cursor colors.
+- Wikipedia editing sessions now stay separate from article-reading rooms.
+- Testers can request beta access from their profile and choose which approved experiments to enable.
+- Browsing history performance improvements
+  ![Browsing history summary](/changelog/media/browsing-history.jpg)
+- Browsing history can be removed as the new tab page. Toggle it on/off at any time. In Safari, where new tabs can't be replaced, the history page suggests bookmarking or pinning it instead.
+  ![History new tab choice during setup](/changelog/media/new-tab-setup.png)
+
+
 ## 0.1.22 (2026-08-11)
 
 - Open History from every new tab or the popup to see time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
