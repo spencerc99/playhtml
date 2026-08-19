@@ -21,4 +21,3 @@ extension/website/public/changelog/media/ and reference them here:
 - Testers can request beta access from their profile and choose which approved experiments to enable.
 - Browsing history performance improvements
 - Browsing history can be removed as the new tab page. Toggle it on/off at any time. In Safari, where new tabs can't be replaced, the history page suggests bookmarking or pinning it instead.
-
