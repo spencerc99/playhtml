@@ -1,13 +1,15 @@
-// ABOUTME: Tests workspace readiness checks against complete and incomplete checkout fixtures.
-// ABOUTME: Verifies that each missing artifact reports a precise recovery command.
+// ABOUTME: Tests workspace readiness checks against real filesystem and Git fixtures.
+// ABOUTME: Verifies recovery messages for missing artifacts and shadowing JavaScript.
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import {
   findMissingWorkspaceArtifacts,
+  findShadowingJavaScript,
   formatWorkspaceReadinessFailure,
 } from "./check-workspace-readiness.mjs";
 
@@ -29,6 +31,10 @@ function writeArtifact(fixtureRoot, path) {
   const artifactPath = join(fixtureRoot, path);
   mkdirSync(join(artifactPath, ".."), { recursive: true });
   writeFileSync(artifactPath, "");
+}
+
+function initializeGitFixture(fixtureRoot) {
+  execFileSync("git", ["init", "--quiet", fixtureRoot]);
 }
 
 test("reports every missing workspace artifact with its repair command", () => {
@@ -66,4 +72,37 @@ test("passes when dependencies, WXT metadata, and package builds exist", () => {
   writeArtifact(fixtureRoot, "packages/react/dist/main.d.ts");
 
   assert.deepEqual(findMissingWorkspaceArtifacts(fixtureRoot), []);
+});
+
+test("reports ignored JavaScript that shadows tracked TypeScript sources", () => {
+  const fixtureRoot = createWorkspaceFixture();
+  initializeGitFixture(fixtureRoot);
+  writeFileSync(
+    join(fixtureRoot, ".gitignore"),
+    "packages/*/src/**/*.js\nextension/src/**/*.js\n",
+  );
+  writeArtifact(fixtureRoot, "packages/playhtml/src/index.ts");
+  writeArtifact(fixtureRoot, "extension/src/content.tsx");
+  execFileSync("git", [
+    "-C",
+    fixtureRoot,
+    "add",
+    ".gitignore",
+    "packages/playhtml/src/index.ts",
+    "extension/src/content.tsx",
+  ]);
+  writeArtifact(fixtureRoot, "packages/playhtml/src/index.js");
+  writeArtifact(fixtureRoot, "packages/playhtml/src/orphan.js");
+  writeArtifact(fixtureRoot, "extension/src/content.js");
+
+  const shadowingJavaScript = findShadowingJavaScript(fixtureRoot);
+
+  assert.deepEqual(shadowingJavaScript, [
+    "extension/src/content.js",
+    "packages/playhtml/src/index.js",
+  ]);
+  assert.match(
+    formatWorkspaceReadinessFailure([], shadowingJavaScript),
+    /packages\/playhtml\/src\/index\.js shadows a tracked TypeScript source\. Remove the emitted JavaScript file\./,
+  );
 });
