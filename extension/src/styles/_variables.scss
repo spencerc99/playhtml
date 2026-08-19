@@ -29,6 +29,7 @@ $error-text:     #9a5a3a;
 $gold-bg:        rgba(212, 184, 92, 0.12);
 $gold-text:      #7a6020;
 $btn-fg:         #ffffff;
+$gold-btn-fg:    #3d3833;
 $canvas-paper:   #faf9f6;
 
 // ─── Typography ──────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ $font-wordmark:  'Source Serif 4', 'Lora', Georgia, serif;
   --gold-bg:        #{$gold-bg};
   --gold-text:      #{$gold-text};
   --btn-fg:         #{$btn-fg};
+  --gold-btn-fg:    #{$gold-btn-fg};
   --canvas-paper:   #{$canvas-paper};
   --font-body:      #{$font-body};
   --font-heading:   #{$font-heading};
@@ -96,6 +98,7 @@ $font-wordmark:  'Source Serif 4', 'Lora', Georgia, serif;
   --gold-bg:        rgba(217, 194, 116, 0.16);
   --gold-text:      #dcc98a;
   --btn-fg:         #1f1b17;
+  --gold-btn-fg:    #1f1b17;
   --canvas-paper:   #faf9f6;
 }
 
