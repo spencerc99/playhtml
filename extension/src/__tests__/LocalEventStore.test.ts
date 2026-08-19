@@ -12,6 +12,7 @@ import {
   type DomainStatsAggregate,
 } from "../storage/LocalEventStore";
 import type { CollectionEvent } from "../collectors/types";
+import { queryCursorEventsForPortrait } from "../utils/cursorDistance";
 
 const DB_NAME = "collection_events_db";
 const STORE_NAME = "events";
@@ -265,6 +266,48 @@ describe("LocalEventStore aggregates", () => {
         recentFocusVisits: [focusTs],
       }),
     );
+  });
+
+  it("closes compact milestone screen time on beforeunload", async () => {
+    const store = createStore();
+    const firstFocusTs = Date.UTC(2026, 7, 10, 10);
+
+    await store.addEvents([
+      {
+        ...event("first-focus", "navigation"),
+        ts: firstFocusTs,
+        data: { event: "focus" },
+        meta: { ...event("first-focus", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("beforeunload", "navigation"),
+        ts: firstFocusTs + 5_000,
+        data: { event: "beforeunload" },
+        meta: { ...event("beforeunload", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("second-focus", "navigation"),
+        ts: firstFocusTs + 10_000,
+        data: { event: "focus" },
+        meta: { ...event("second-focus", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: firstFocusTs + 13_000,
+        data: { event: "blur" },
+        meta: { ...event("blur", "navigation").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-10",
+      cursorDistancePx: 0,
+      lastCursorPosition: null,
+      screenTimeMs: 8_000,
+      pendingFocusTs: null,
+    });
   });
 
   it("seeds recent visits from retained aggregate history", async () => {
@@ -1276,6 +1319,40 @@ describe("LocalEventStore pending uploads", () => {
     ]);
     expect(urlEvents.map((storedEvent) => storedEvent.id)).toEqual([
       "cursor-indexed",
+    ]);
+  });
+
+  it("scopes page portrait cursor events by URL while domain portraits keep the domain", async () => {
+    const store = createStore();
+    const siblingPage = {
+      ...contentScriptEvent("sibling-cursor", "cursor"),
+      meta: {
+        ...contentScriptEvent("sibling-cursor", "cursor").meta,
+        url: "https://example.com/sibling",
+      },
+    };
+    await store.addEvents([
+      contentScriptEvent("page-cursor", "cursor"),
+      contentScriptEvent("page-navigation", "navigation"),
+      siblingPage,
+    ]);
+
+    const pageEvents = await queryCursorEventsForPortrait(
+      store,
+      "example.com",
+      "https://example.com/page?ignored=true#section",
+    );
+    const domainEvents = await queryCursorEventsForPortrait(
+      store,
+      "example.com",
+    );
+
+    expect(pageEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "page-cursor",
+    ]);
+    expect(domainEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "page-cursor",
+      "sibling-cursor",
     ]);
   });
 
