@@ -36,7 +36,24 @@ describe("loadWalkingRecord", () => {
               tz: "America/Los_Angeles",
             },
           },
+          {
+            id: "other-focus",
+            type: "navigation",
+            ts: focusTs + 120_000,
+            data: { event: "focus" },
+            meta: {
+              pid: "pk_test",
+              sid: "sid_test",
+              url: "https://other.example/page",
+              vw: 1_000,
+              vh: 800,
+              tz: "America/Los_Angeles",
+            },
+          },
         ],
+        favicons: {
+          "other.example": "https://other.example/favicon.png",
+        },
         cursorDistancePx: 0,
         activity: [],
         sessions: [
@@ -45,6 +62,12 @@ describe("loadWalkingRecord", () => {
             focusTs,
             blurTs: focusTs + 60_000,
             durationMs: 60_000,
+          },
+          {
+            url: "https://other.example/page",
+            focusTs: focusTs + 120_000,
+            blurTs: focusTs + 150_000,
+            durationMs: 30_000,
           },
         ],
       },
@@ -61,6 +84,18 @@ describe("loadWalkingRecord", () => {
             sessionCount: 1,
             activeDayCount: 1,
             eventCounts: { navigation: 1 },
+            latestFaviconUrl: "https://example.com/favicon.png",
+          },
+          {
+            domain: "other.example",
+            eventCount: 1,
+            firstVisit: focusTs + 120_000,
+            lastVisit: focusTs + 120_000,
+            totalTimeMs: 30_000,
+            uniquePageCount: 1,
+            sessionCount: 1,
+            activeDayCount: 1,
+            eventCounts: { navigation: 1 },
           },
         ],
       },
@@ -68,9 +103,6 @@ describe("loadWalkingRecord", () => {
         success: true,
         traces: [],
         landscapePaths: [],
-        favicons: {
-          "example.com": "https://example.com/favicon.png",
-        },
       },
     };
     vi.mocked(browser.runtime.sendMessage).mockImplementation(
@@ -81,7 +113,7 @@ describe("loadWalkingRecord", () => {
 
     const record = await loadWalkingRecord("week", range, "#4a9a8a", progress);
 
-    expect(progress).toHaveBeenCalledTimes(4);
+    expect(progress).toHaveBeenCalledTimes(5);
     expect(
       progress.mock.calls.slice(0, 2).map(([update]) => update.message),
     ).toEqual(["gathering browsing activity…", "mapping familiar roads…"]);
@@ -90,19 +122,30 @@ describe("loadWalkingRecord", () => {
       total: 4,
       message: "arranging this week’s record…",
     });
+    expect(progress).toHaveBeenNthCalledWith(4, {
+      completed: 3,
+      total: 4,
+      message: "restoring cursor trails…",
+    });
     expect(progress).toHaveBeenLastCalledWith({
       completed: 4,
       total: 4,
-      message: "restoring cursor trails…",
+      message: "finishing this week’s record…",
     });
     expect(record.timeSpent[0].faviconUrl).toBe(
       "https://example.com/favicon.png",
     );
+    expect(
+      record.timeSpent.find((entry) => entry.site === "other.example")
+        ?.faviconUrl,
+    ).toBe("https://other.example/favicon.png");
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "GET_WALKING_RECORD_MOVEMENT",
-        faviconDomains: ["example.com"],
       }),
+    );
+    expect(browser.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ faviconDomains: expect.anything() }),
     );
     expect(browser.runtime.sendMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "GET_SCREEN_TIME" }),
@@ -131,5 +174,70 @@ describe("loadWalkingRecord", () => {
     await expect(
       loadWalkingRecord("week", range, "#4a9a8a", vi.fn()),
     ).rejects.toThrow("Reload the extension and open a new tab.");
+  });
+
+  it("delivers the base record before cursor movement finishes", async () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      0,
+      new Date(2026, 6, 30, 14),
+    );
+    let finishMovement: ((response: unknown) => void) | undefined;
+    const movementResponse = new Promise((resolve) => {
+      finishMovement = resolve;
+    });
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(
+      async (message: { type: string }) => {
+        if (message.type === "GET_ALL_DOMAINS") {
+          return { success: true, domains: [] };
+        }
+        if (message.type === "GET_WALKING_RECORD_EVENTS") {
+          const focusTs = range.startTs + 60_000;
+          return {
+            success: true,
+            events: [
+              {
+                id: "focus",
+                type: "navigation",
+                ts: focusTs,
+                data: { event: "focus" },
+                meta: {
+                  pid: "pk_test",
+                  sid: "sid_test",
+                  url: "https://example.com/page",
+                  vw: 1_000,
+                  vh: 800,
+                  tz: "America/Los_Angeles",
+                },
+              },
+            ],
+            sessions: [
+              {
+                url: "https://example.com/page",
+                focusTs,
+                blurTs: focusTs + 60_000,
+                durationMs: 60_000,
+              },
+            ],
+          };
+        }
+        return movementResponse;
+      },
+    );
+    const onBaseRecord = vi.fn();
+
+    const loading = loadWalkingRecord(
+      "week",
+      range,
+      "#4a9a8a",
+      vi.fn(),
+      onBaseRecord,
+    );
+
+    await vi.waitFor(() => expect(onBaseRecord).toHaveBeenCalledOnce());
+    expect(onBaseRecord.mock.calls[0][0].landscapePaths).toEqual([]);
+
+    finishMovement?.({ success: true, traces: [], landscapePaths: [] });
+    await loading;
   });
 });

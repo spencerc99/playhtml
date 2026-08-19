@@ -52,6 +52,8 @@ beforeEach(() => {
   vi.mocked(browser.tabs.remove).mockResolvedValue(undefined);
   vi.mocked(browser.storage.local.set).mockReset();
   vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
+  vi.mocked(browser.storage.local.get).mockReset();
+  vi.mocked(browser.storage.local.get).mockResolvedValue({});
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -111,6 +113,12 @@ it("closes the setup tab after onboarding", async () => {
     [...container.querySelectorAll("button")]
       .find((element) => element.textContent === "Get started")
       ?.click();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
   });
   await act(async () => {
     [...container.querySelectorAll("button")]
@@ -180,14 +188,30 @@ it("offers recovery when Safari cannot save setup choices", async () => {
     await Promise.resolve();
   });
 
-  expect(container.textContent).toContain("All set!");
+  expect(container.textContent).toContain("See your browsing evolve");
 
   act(() => root.unmount());
   container.remove();
 });
 
+async function advanceToNewTabStep(container: HTMLElement) {
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Get started")
+      ?.click();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+}
+
 it("offers recovery when Safari cannot finish setup", async () => {
   vi.mocked(browser.storage.local.set)
+    // consent choices, then the new tab choice, then the failing finish
+    .mockResolvedValueOnce(undefined)
     .mockResolvedValueOnce(undefined)
     .mockRejectedValueOnce(
       new Error(
@@ -218,6 +242,12 @@ it("offers recovery when Safari cannot finish setup", async () => {
   });
   await act(async () => {
     [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
       .find((element) => element.textContent === "Finish setup")
       ?.click();
     await Promise.resolve();
@@ -238,6 +268,44 @@ it("offers recovery when Safari cannot finish setup", async () => {
   });
 
   expect(browser.tabs.remove).toHaveBeenCalledWith(1);
+
+  act(() => root.unmount());
+  container.remove();
+});
+
+it("offers bookmarking instead of the new tab checkbox on Safari", async () => {
+  const { default: SetupPage } = await import("../components/SetupPage");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<SetupPage />);
+    await Promise.resolve();
+  });
+
+  await advanceToNewTabStep(container);
+
+  // The step and its preview still show, but the opt-in is replaced by advice.
+  expect(container.textContent).toContain("See your browsing evolve");
+  expect(container.querySelector("img")).toBeTruthy();
+  expect(container.textContent).toContain(
+    "Safari doesn't let extensions change the new tab",
+  );
+  expect(container.textContent).not.toContain("make this my new tab");
+  expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+
+  // Safari never opts in to a takeover the browser cannot honor.
+  expect(browser.storage.local.set).toHaveBeenCalledWith({
+    newtab_takeover_enabled: false,
+  });
 
   act(() => root.unmount());
   container.remove();

@@ -7,6 +7,12 @@ import { isExtensionPageUrl } from "../utils/extensionPage";
 import type { CollectorStatus } from "../collectors/types";
 import { getValidEventTypes } from "@playhtml/extension-types";
 import { CollectorIcon } from "./icons";
+import {
+  collectionModeStorageKey,
+  collectionModesFor,
+  normalizeCollectionMode,
+  type CollectionMode,
+} from "../collectors/modes";
 import { triggerDownload } from "../utils/portraitExport";
 import {
   LEGIBILITY_KEY,
@@ -14,6 +20,7 @@ import {
   parseLegibility,
   redactWithLegibility,
 } from "../utils/keyboardRedaction";
+import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
 import "./Collections.scss";
 
 interface CollectionsProps {
@@ -78,8 +85,8 @@ function getEventTypeCounts(countsByType: Record<string, number>) {
 // privacy level sub-setting. Used by both Collections and SetupPage.
 
 export interface CollectorListProps {
-  modes: Record<string, "off" | "local" | "shared">;
-  onModeChange: (type: string, mode: "off" | "local" | "shared") => void;
+  modes: Record<string, CollectionMode>;
+  onModeChange: (type: string, mode: CollectionMode) => void;
   keyboardLegibilityPct: number;
   onKeyboardLegibilityChange: (pct: number) => void;
 }
@@ -89,6 +96,7 @@ const COLLECTOR_DESCRIPTIONS: Record<string, string> = {
   keyboard: "Captures typing frequency and location",
   viewport: "Captures scroll position and viewport changes",
   navigation: "Captures page navigation and session timing",
+  element: "Captures small scraps like images, buttons, icons, and cursors from pages you visit",
 };
 
 // ── Keyboard legibility preview ──────────────────────────────────────────────
@@ -144,12 +152,13 @@ export function CollectorList({
   keyboardLegibilityPct,
   onKeyboardLegibilityChange,
 }: CollectorListProps) {
-  const types = getValidEventTypes();
+  const types = useVisibleCollectorTypes();
   return (
     <div className="collections__collector-list">
       {types.map((type) => {
         const mode = modes[type] ?? "off";
         const isActive = mode !== "off";
+        const availableModes = collectionModesFor(type);
         const modifier =
           mode === "shared"
             ? " collector-card--shared"
@@ -169,13 +178,15 @@ export function CollectorList({
                 <h3 className="collector-card__name">{type}</h3>
               </div>
               <div className="collector-card__modes">
-                {(["off", "local", "shared"] as const).map((opt) => (
+                {availableModes.map((opt) => (
                   <label key={opt}>
                     <input
                       type="radio"
                       name={`mode-${type}`}
                       value={opt}
-                      checked={(modes[type] ?? "local") === opt}
+                      checked={
+                        normalizeCollectionMode(type, modes[type]) === opt
+                      }
                       onChange={() => onModeChange(type, opt)}
                     />
                     {opt}
@@ -253,9 +264,7 @@ export function Collections({ onBack }: CollectionsProps) {
   );
   const [filterSubstrings, setFilterSubstrings] = useState<string[]>([]);
   const [newFilterSubstring, setNewFilterSubstring] = useState("");
-  const [modes, setModes] = useState<
-    Record<string, "off" | "local" | "shared">
-  >({});
+  const [modes, setModes] = useState<Record<string, CollectionMode>>({});
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [devMode, setDevMode] = useState(false);
   const [transferStatus, setTransferStatus] = useState<{
@@ -334,19 +343,19 @@ export function Collections({ onBack }: CollectionsProps) {
   const loadModes = async () => {
     try {
       const types = getValidEventTypes();
-      const keys = types.map((t) => `collection_mode_${t}`);
+      // Every valid type is read so a dev-enabled collector keeps its saved
+      // mode, but only the visible ones are rendered.
+      const keys = types.map((t) => collectionModeStorageKey(t));
       const result = await browser.storage.local.get(keys);
-      const next: Record<string, "off" | "local" | "shared"> = {};
+      const next: Record<string, CollectionMode> = {};
       for (const t of types) {
-        const val = result[`collection_mode_${t}`];
-        next[t] =
-          val === "off" || val === "shared" || val === "local" ? val : "local";
+        next[t] = normalizeCollectionMode(t, result[collectionModeStorageKey(t)]);
       }
       setModes(next);
       const toSet: Record<string, string> = {};
       for (const t of types) {
-        if (!result[`collection_mode_${t}`])
-          toSet[`collection_mode_${t}`] = next[t];
+        if (result[collectionModeStorageKey(t)] !== next[t])
+          toSet[collectionModeStorageKey(t)] = next[t];
       }
       if (Object.keys(toSet).length > 0) await browser.storage.local.set(toSet);
     } catch (e) {
@@ -354,9 +363,11 @@ export function Collections({ onBack }: CollectionsProps) {
     }
   };
 
-  const updateMode = async (type: string, mode: "off" | "local" | "shared") => {
+  const updateMode = async (type: string, mode: CollectionMode) => {
     try {
-      await browser.storage.local.set({ [`collection_mode_${type}`]: mode });
+      await browser.storage.local.set({
+        [collectionModeStorageKey(type)]: mode,
+      });
       setModes((prev) => ({ ...prev, [type]: mode }));
 
       const [tab] = await browser.tabs.query({
@@ -680,12 +691,10 @@ export function Collections({ onBack }: CollectionsProps) {
   return (
     <div className="collections">
       <header className="collections__header">
-        <div className="back-row">
-          <button onClick={onBack} className="back-btn">
-            ←
-          </button>
-          <h1>Data Collection Settings</h1>
-        </div>
+        <button onClick={onBack} className="back-btn">
+          ← back
+        </button>
+        <h1>Data Collection Settings</h1>
         <p className="collections__header-desc">
           Control what's collected and whether it's shared
         </p>

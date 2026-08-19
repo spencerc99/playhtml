@@ -12,6 +12,11 @@ import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData } from '../collectors/types'
 import { getCanonicalScrapKey, getScrapKey } from '../collectors/scrapUtils'
 import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+  supportsSharedCollection,
+} from '../collectors/modes'
+import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
@@ -37,6 +42,8 @@ import {
 import { getSessionId } from '../storage/participant'
 import { recordAnnouncementInstall } from '../announcements/announcement-storage'
 import { isUserActive } from '../utils/userActivity'
+import { initNewTabTakeover } from '../features/newtab/takeover'
+import { grandfatherNewTabTakeover } from '../features/newtab/grandfather'
 import {
   calculateCursorDistance,
   queryCursorEventsForPortrait,
@@ -46,6 +53,13 @@ import {
   rerollWikipediaHandle,
   setWikipediaHandle,
 } from '../storage/wikipediaHandle'
+import {
+  FEATURE_OVERRIDES_STORAGE_KEY,
+  FEATURE_ACCESS_STORAGE_KEY,
+  getAllFeatureStates,
+  refreshFeatureAccess,
+} from '../features/featureAccess'
+import { FEATURE_IDS } from '../flags'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -96,6 +110,8 @@ export type ScrapRecord = ScrapRecordBase &
         hotspotY?: number
       }
   )
+
+const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -322,15 +338,16 @@ async function flushPendingUploads(): Promise<void> {
     if (pending.length === 0) return
 
     const types = Array.from(new Set(pending.map((e) => e.type)))
-    const keys = types.map((t) => `collection_mode_${t}`)
+    const keys = types.map((t) => collectionModeStorageKey(t))
     const result = await browser.storage.local.get(keys)
 
     const uploadable = pending.filter((e) => {
-      if (e.type === 'element') return false
-      const mode = result[`collection_mode_${e.type}`]
-      const normalized: 'off' | 'local' | 'shared' =
-        mode === 'off' || mode === 'shared' || mode === 'local' ? mode : 'local'
-      return normalized === 'shared'
+      if (!supportsSharedCollection(e.type)) return false
+      const mode = normalizeCollectionMode(
+        e.type,
+        result[collectionModeStorageKey(e.type)],
+      )
+      return mode === 'shared'
     })
 
     if (uploadable.length > 0) {
@@ -395,6 +412,10 @@ export default defineBackground(() => {
   // false in extensions regardless of actual protection status (known
   // Chromium issue #357622670), so it's a misleading signal to rely on.
 
+  // Opt-in: send new browser tabs to the walking record instead of the
+  // default new tab page. Off unless the user turns it on.
+  initNewTabTakeover()
+
   // Forward the manifest "open-inventory" command to the active tab's content script.
   // Manifest commands are browser-routed, so this works reliably on every page.
   // (browser.commands is absent in some environments — e.g. the test runner — so guard it.)
@@ -420,15 +441,20 @@ export default defineBackground(() => {
         console.warn('Failed to record extension install time', e)
       })
       // First time installation - setup default identity
-      initializePlayerIdentity().then(() => syncIdentityToServer())
+      initializePlayerIdentity().then(() => initializeIdentityServices())
       // Open setup page in a new tab
       const url = browser.runtime.getURL('options.html')
       browser.tabs.create({ url }).catch((e) => {
         console.warn('Failed to open setup page on install', e)
       })
-    } else {
+    } else if (details.reason === 'update') {
       // Extension updated — ensure key is upgraded, then sync
-      initializePlayerIdentity().then(() => syncIdentityToServer())
+      initializePlayerIdentity().then(() => initializeIdentityServices())
+      grandfatherNewTabTakeover(details.previousVersion).catch((e) => {
+        console.warn('Failed to carry over the new tab preference', e)
+      })
+    } else {
+      initializePlayerIdentity().then(() => initializeIdentityServices())
     }
   })
 
@@ -436,6 +462,7 @@ export default defineBackground(() => {
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
+  browser.alarms.create(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -445,6 +472,11 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'checkMilestones') {
       await runMilestoneCheck()
+      return
+    }
+
+    if (alarm.name === FEATURE_ACCESS_REFRESH_ALARM) {
+      await refreshExperimentAccess().catch(() => {})
       return
     }
 
@@ -504,6 +536,49 @@ export default defineBackground(() => {
       await syncStoredPlayerColor()
     } catch {}
   }
+
+  async function updateExperimentBadge() {
+    if (!browser.action) return
+    const states = await getAllFeatureStates()
+    const experimentsActive = FEATURE_IDS.some(
+      (feature) =>
+        states[feature].source !== 'released' && states[feature].enabled,
+    )
+    await browser.action.setBadgeText({ text: experimentsActive ? 'LAB' : '' })
+    if (experimentsActive) {
+      await browser.action.setBadgeBackgroundColor({ color: '#b85c38' })
+      await browser.action.setTitle({ title: 'we were online · experiments active' })
+    } else {
+      await browser.action.setTitle({ title: 'we were online' })
+    }
+  }
+
+  async function refreshExperimentAccess() {
+    const identity = await getPublicPlayerIdentity()
+    if (import.meta.env.MODE !== 'development' && identity?.publicKey) {
+      await refreshFeatureAccess(identity.publicKey)
+    }
+    await updateExperimentBadge()
+  }
+
+  async function initializeIdentityServices() {
+    await Promise.all([
+      syncIdentityToServer(),
+      refreshExperimentAccess().catch(() => updateExperimentBadge()),
+    ])
+  }
+
+  updateExperimentBadge().catch(() => {})
+
+  browser.storage.onChanged?.addListener((changes, areaName) => {
+    if (
+      areaName === 'local' &&
+      (changes[FEATURE_ACCESS_STORAGE_KEY] ||
+        changes[FEATURE_OVERRIDES_STORAGE_KEY])
+    ) {
+      updateExperimentBadge().catch(() => {})
+    }
+  })
 
   // Hydrate cursor_color onto locally-stored events from the user's identity.
   // All events in the local store are from this user (possibly under different
@@ -891,18 +966,10 @@ export default defineBackground(() => {
 
     if (message.type === 'GET_WALKING_RECORD_MOVEMENT') {
       const targets = (message.targets || []) as WalkingRecordTraceTarget[]
-      const faviconDomains = Array.isArray(message.faviconDomains)
-        ? message.faviconDomains.filter(
-            (domain: unknown): domain is string => typeof domain === 'string',
-          )
-        : []
-      Promise.all([
-        store.getWalkingRecordMovement(targets),
-        store.getWalkingRecordFavicons(faviconDomains),
-      ])
-        .then(async ([movement, favicons]) => ({
+      store
+        .getWalkingRecordMovement(targets)
+        .then(async (movement) => ({
           ...movement,
-          favicons,
           landscapePaths: await Promise.all(
             movement.landscapePaths.map(hydrateCursorColor),
           ),
@@ -914,7 +981,6 @@ export default defineBackground(() => {
             success: false,
             traces: [],
             landscapePaths: [],
-            favicons: {},
           })
         })
       return true

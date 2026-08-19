@@ -16,7 +16,12 @@ import { QuickActions } from "../../components/QuickActions";
 import { Collections } from "../../components/Collections";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";
 import { ProfilePage } from "../../components/ProfilePage";
-import { FLAGS } from "../../flags";
+import { DeveloperFeaturesPage } from "../../components/DeveloperFeaturesPage";
+import { refreshFeatureAccess } from "../../features/featureAccess";
+import {
+  useFeatureState,
+  useExperimentAccess,
+} from "../../features/useFeatureAccess";
 import {
   pageObjectsAreHiddenOnSite,
   showPageObjectsOnSite,
@@ -53,9 +58,15 @@ function PlayHTMLPopup() {
     lastUpdated: 0,
   });
   const [currentView, setCurrentView] = useState<
-    "main" | "inventory" | "collections" | "profile" | "bag-settings"
+    | "main"
+    | "inventory"
+    | "collections"
+    | "profile"
+    | "bag-settings"
+    | "developer-features"
   >("main");
-  const [, setInternalDevFeaturesEnabled] = useState(false);
+  const experimentAccess = useExperimentAccess();
+  const commuteEnabled = useFeatureState("COMMUTE").enabled;
   const [commuteIsOpen, setCommuteIsOpen] = useState(false);
   const [hiddenSite, setHiddenSite] = useState<{
     origin: string;
@@ -67,50 +78,31 @@ function PlayHTMLPopup() {
 
   useEffect(() => {
     loadPlayerData();
-    // Load dev override and onboarding flags
+    // Load onboarding state
     (async () => {
       try {
-        const result = await browser.storage.local.get([
-          "internalDevFeaturesEnabled",
-          "onboarding_complete",
-        ]);
-        setInternalDevFeaturesEnabled(Boolean(result.internalDevFeaturesEnabled));
+        const result = await browser.storage.local.get("onboarding_complete");
         setOnboardingComplete(
           result.onboarding_complete === "true" ||
             result.onboarding_complete === true,
         );
       } catch {
-        setInternalDevFeaturesEnabled(false);
         setOnboardingComplete(false);
       }
     })();
-
-    // Dev hotkey: Cmd/Ctrl+Shift+. — Shift changes "." to ">" on US layouts,
-    // so accept either e.key value. Also accept e.code === "Period" as a layout-safe fallback.
-    const onKeyDown = async (e: KeyboardEvent) => {
-      const isToggleKey = e.key === "." || e.key === ">" || e.code === "Period";
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && isToggleKey) {
-        e.preventDefault();
-        setInternalDevFeaturesEnabled((prev) => {
-          const next = !prev;
-          browser.storage.local
-            .set({ internalDevFeaturesEnabled: next })
-            .catch(() => {});
-          console.log(`[we-were-online] internalDevFeaturesEnabled = ${next}`);
-          return next;
-        });
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
-    if (!FLAGS.COMMUTE) return;
+    if (!commuteEnabled) return;
     findOpenCommuteTab()
       .then((tab) => setCommuteIsOpen(tab !== null))
       .catch(() => setCommuteIsOpen(false));
-  }, []);
+  }, [commuteEnabled]);
+
+  useEffect(() => {
+    if (import.meta.env.MODE === "development" || !playerIdentity?.publicKey) return;
+    refreshFeatureAccess(playerIdentity.publicKey).catch(() => {});
+  }, [playerIdentity?.publicKey]);
 
   const loadPlayerData = async () => {
     try {
@@ -452,6 +444,10 @@ function PlayHTMLPopup() {
     );
   }
 
+  if (currentView === "developer-features" && experimentAccess) {
+    return <DeveloperFeaturesPage onBack={() => setCurrentView("main")} />;
+  }
+
   return (
     <InternetPortraitHome
       playerIdentity={playerIdentity}
@@ -460,13 +456,16 @@ function PlayHTMLPopup() {
       onViewHistory={toggleHistoricalOverlay}
       onViewProfile={() => setCurrentView("profile")}
       onViewBagSettings={() => setCurrentView("bag-settings")}
+      onViewDeveloperFeatures={
+        experimentAccess ? () => setCurrentView("developer-features") : undefined
+      }
       onViewCommute={async () => {
         await openOrFocusCommute();
         window.close();
       }}
       commuteIsOpen={commuteIsOpen}
       onViewBrowsingHistory={async () => {
-        const url = browser.runtime.getURL("newtab.html");
+        const url = browser.runtime.getURL("walking-record.html");
         await browser.tabs.create({ url });
         window.close();
       }}

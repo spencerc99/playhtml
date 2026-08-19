@@ -1,5 +1,6 @@
 // ABOUTME: Tests click spawning and lifecycle timing for the live cursor-trail renderer.
 // ABOUTME: Covers one-shot effects and clock pauses while the document is hidden.
+// @vitest-environment jsdom
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -8,14 +9,216 @@ import type { TrailState } from "../../types";
 import type { SoundEngine } from "../../sound/SoundEngine";
 import { DEFAULT_SETTINGS } from "../settingsDefaults";
 import {
+  advanceDrawState,
+  advanceSettlingState,
   createLiveSoundFrame,
+  getActiveTrailOpacity,
   getDrawClockTime,
+  getLiveDrawDuration,
+  getLiveTrailOpacity,
   LiveTrails,
+  shouldDepartTrail,
 } from "../LiveTrails";
+import { COMPLETED_OPACITY } from "../trailPrimitives";
+import {
+  DEPART_FADE_MS,
+  getTrailVisibility,
+  RETURN_FADE_MS,
+  startTrailVisibilityTransition,
+} from "../trailVisibility";
 import {
   collectDueClickEffects,
   retainClickEffectsForActiveTrails,
 } from "../clickEffects";
+
+describe("advanceDrawState", () => {
+  it("continues a settled trail from its already-drawn portion when it grows", () => {
+    const draw = {
+      seenAt: 0,
+      total: 2,
+      variedTotal: 5,
+      drawProgress: 1,
+      grewAt: 1000,
+      caughtUpAt: 5000,
+      settled: true,
+      settledAt: 9000,
+      dimmedAt: 9000,
+      activeFromVariedPoint: null,
+      activeDimmedAt: null,
+    };
+
+    advanceDrawState(draw, 4, 10, 10_000, 4000);
+
+    expect(draw).toEqual({
+      seenAt: 8222.222222222223,
+      total: 4,
+      variedTotal: 10,
+      drawProgress: 4 / 9,
+      grewAt: 10_000,
+      caughtUpAt: null,
+      settled: false,
+      settledAt: null,
+      dimmedAt: 9000,
+      activeFromVariedPoint: 4,
+      activeDimmedAt: null,
+    });
+
+    expect(getLiveTrailOpacity(draw, 11_000)).toBe(COMPLETED_OPACITY);
+    expect(getActiveTrailOpacity(draw, 11_000)).toBe(1);
+  });
+
+  it("preserves the current draw head when an unfinished trail grows", () => {
+    const draw = {
+      seenAt: 0,
+      total: 6,
+      variedTotal: 11,
+      drawProgress: 0.5,
+      grewAt: 1000,
+      caughtUpAt: null,
+      settled: false,
+      settledAt: null,
+      dimmedAt: null,
+      activeFromVariedPoint: null,
+      activeDimmedAt: null,
+    };
+
+    advanceDrawState(draw, 11, 21, 10_000, 4000);
+
+    expect(draw.seenAt).toBe(9000);
+    expect(draw.variedTotal).toBe(21);
+  });
+});
+
+describe("getLiveDrawDuration", () => {
+  it("slows a spatially long trail to at most 600 pixels per second", () => {
+    const state = trailState();
+    state.durationMs = 600;
+    state.variedPoints = [
+      { x: 0, y: 0 },
+      { x: 1200, y: 0 },
+    ];
+
+    expect(getLiveDrawDuration(state)).toBe(2000);
+  });
+
+  it("gives every rendered segment enough time to remain perceptible", () => {
+    const state = trailState();
+    state.durationMs = 600;
+    state.variedPoints = Array.from({ length: 101 }, (_, index) => ({
+      x: index,
+      y: 0,
+    }));
+
+    expect(getLiveDrawDuration(state)).toBe(3200);
+  });
+
+  it("does not cap the perceptible segment duration for very long trails", () => {
+    const state = trailState();
+    state.durationMs = 600;
+    state.variedPoints = Array.from({ length: 1001 }, (_, index) => ({
+      x: index,
+      y: 0,
+    }));
+
+    expect(getLiveDrawDuration(state)).toBe(32000);
+  });
+});
+
+describe("advanceSettlingState", () => {
+  it("waits until a trail has been fully drawn for eight seconds", () => {
+    const draw = {
+      seenAt: 0,
+      total: 20,
+      grewAt: 0,
+      caughtUpAt: null,
+      settled: false,
+      settledAt: null,
+      dimmedAt: null,
+      activeFromVariedPoint: null,
+      activeDimmedAt: null,
+    };
+
+    advanceSettlingState(draw, false, 20_000);
+    advanceSettlingState(draw, true, 30_000);
+    expect(draw.settled).toBe(false);
+
+    advanceSettlingState(draw, true, 37_999);
+    expect(draw.settled).toBe(false);
+
+    advanceSettlingState(draw, true, 38_000);
+    expect(draw.settled).toBe(true);
+    expect(draw.settledAt).toBe(38_000);
+    expect(draw.dimmedAt).toBe(38_000);
+  });
+
+  it("fades only the resumed portion when an active trail settles again", () => {
+    const draw = {
+      seenAt: 0,
+      total: 4,
+      grewAt: 0,
+      caughtUpAt: 10_000,
+      settled: false,
+      settledAt: null,
+      dimmedAt: 1000,
+      activeFromVariedPoint: 1,
+      activeDimmedAt: null,
+    };
+
+    advanceSettlingState(draw, true, 18_000);
+
+    expect(draw.activeFromVariedPoint).toBe(1);
+    expect(draw.activeDimmedAt).toBe(18_000);
+    expect(getActiveTrailOpacity(draw, 18_000)).toBe(1);
+    expect(getActiveTrailOpacity(draw, 19_200)).toBe(0);
+  });
+});
+
+describe("shouldDepartTrail", () => {
+  const settledDraw = {
+    seenAt: 0,
+    total: 2,
+    variedTotal: 2,
+    drawProgress: 1,
+    grewAt: 1000,
+    caughtUpAt: 1000,
+    settled: true,
+    settledAt: 10_000,
+    dimmedAt: 10_000,
+    activeFromVariedPoint: null,
+    activeDimmedAt: null,
+  };
+
+  it("keeps a settled trail for 60 seconds before departure", () => {
+    expect(shouldDepartTrail(settledDraw, 69_999)).toBe(false);
+    expect(shouldDepartTrail(settledDraw, 70_000)).toBe(true);
+  });
+
+  it("does not depart a trail that has resumed", () => {
+    expect(shouldDepartTrail(settledDraw, 70_000, true)).toBe(false);
+  });
+});
+
+describe("trail visibility transitions", () => {
+  it("fades a departing trail over eight seconds", () => {
+    const transition = startTrailVisibilityTransition(null, 1000, false);
+
+    expect(transition.durationMs).toBe(DEPART_FADE_MS);
+    expect(getTrailVisibility(transition, 1000)).toBe(1);
+    expect(getTrailVisibility(transition, 5000)).toBe(0.5);
+    expect(getTrailVisibility(transition, 9000)).toBe(0);
+  });
+
+  it("eases a returning trail from its current opacity without a jump", () => {
+    const departure = startTrailVisibilityTransition(null, 1000, false);
+    const visibilityAtReturn = getTrailVisibility(departure, 5000);
+    const returning = startTrailVisibilityTransition(departure, 5000, true);
+
+    expect(returning.durationMs).toBe(RETURN_FADE_MS);
+    expect(getTrailVisibility(returning, 5000)).toBe(visibilityAtReturn);
+    expect(getTrailVisibility(returning, 7000)).toBe(0.75);
+    expect(getTrailVisibility(returning, 9000)).toBe(1);
+  });
+});
 
 function trailState(): TrailState {
   return {
