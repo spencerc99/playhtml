@@ -2467,6 +2467,12 @@ export class LocalEventStore {
   ): void {
     for (const evt of [...events].sort((a, b) => a.ts - b.ts)) {
       const eventDay = localDayKey(evt.ts, evt.meta.tz);
+      if (
+        agg.milestoneActivity &&
+        eventDay < agg.milestoneActivity.localDayKey
+      ) {
+        continue;
+      }
       if (agg.milestoneActivity?.localDayKey !== eventDay) {
         agg.milestoneActivity = {
           localDayKey: eventDay,
