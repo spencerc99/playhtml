@@ -1,5 +1,6 @@
 // ABOUTME: Tests archive trail audio behavior across active and silent frames.
 // ABOUTME: Verifies inactive playback releases sustained sound-engine voices.
+// @vitest-environment jsdom
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";

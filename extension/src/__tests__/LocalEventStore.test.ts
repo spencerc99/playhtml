@@ -773,6 +773,35 @@ describe("LocalEventStore walking record events", () => {
     expect(JSON.stringify(result).length).toBeLessThan(10_000);
   });
 
+  it("returns one bounded favicon per visited walking-record domain", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("focus", "navigation"),
+        ts: 1_000,
+        data: {
+          event: "focus",
+          favicon_url: "https://example.com/favicon.png",
+        },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: 6_000,
+        data: { event: "blur" },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 10_000,
+    });
+
+    expect(result.favicons).toEqual({
+      "example.com": "https://example.com/favicon.png",
+    });
+    expect(result.events[0].data).toEqual({ event: "focus" });
+  });
+
   it("loads only the latest bounded favicon for requested walking record domains", async () => {
     const store = createStore();
     await store.addEvents([
