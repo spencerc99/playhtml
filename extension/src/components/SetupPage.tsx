@@ -19,7 +19,6 @@ import { LEGIBILITY_KEY } from "../utils/keyboardRedaction";
 import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
-import { PortraitCard } from "./PortraitCard";
 import { isSafariExtensionPageUrl } from "../utils/extensionPage";
 import { WORKER_URL } from "@movement/config";
 import {
@@ -295,22 +294,6 @@ export default function SetupPage() {
               preferences for privacy and share how the extension works.
             </p>
             <div className="setup-step__discord-card">
-              <span className="setup-step__discord-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M5 5.5h14v10H9l-4 3v-13Z"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M8 9h8M8 12h5"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </span>
               <span className="setup-step__discord-copy">
                 <strong>Help shape WWO</strong>
                 <span>
@@ -571,6 +554,37 @@ export default function SetupPage() {
                 <h3 className="setup-step__subheading">
                   See your trail, anywhere
                 </h3>
+                <div className="setup-step__trail-preview" aria-hidden="true">
+                  <div className="setup-step__trail-lines">
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                  <svg viewBox="0 0 420 140" fill="none" aria-hidden="true">
+                    <path
+                      d="M38 111 C84 94 78 43 132 50 S188 118 236 87 S286 28 340 47"
+                      stroke="#4a9a8a"
+                      strokeOpacity="0.5"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M22 68 C70 18 118 106 167 78 S228 31 275 71 S328 119 394 83"
+                      stroke="#c4724e"
+                      strokeOpacity="0.4"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M 4 3 L 14 9 L 9.5 10.5 L 8 15 Z"
+                      fill="#4a9a8a"
+                      transform="translate(336 41)"
+                    />
+                  </svg>
+                </div>
                 <p className="setup-step__desc">
                   Press{" "}
                   <kbd className="setup-step__kbd">
@@ -587,33 +601,15 @@ export default function SetupPage() {
 
               <div className="setup-step__tip">
                 <h3 className="setup-step__subheading">
-                  See your current portrait
+                  See your progress
                 </h3>
-                <div
-                  className="setup-step__portrait-preview"
-                  aria-label="Preview of your browsing portrait"
-                >
-                  <PortraitCard
-                    domain=""
-                    scopeLabel="your week"
-                    totalTimeMs={14 * 60 * 60_000 + 41 * 60_000}
-                    hourBuckets={[
-                      0, 0, 0, 0, 0, 0, 1, 4, 9, 12, 8, 5, 4, 7, 10, 8, 6, 5, 7,
-                      11, 9, 4, 1, 0,
-                    ]}
-                    cursorDistancePx={4_115_756}
-                    dateRange={null}
-                    dateLabel="jul 27 – aug 2"
-                    uniquePageCount={83}
-                  />
-                </div>
+                <MilestoneToastPreview />
                 <p className="setup-step__desc">
+                  We'll share some of your progress as you browse.
+                </p>
+                <p className="setup-step__progress-note">
                   Click the icon in your browser toolbar anytime to see your
                   current portrait.
-                </p>
-                <MilestoneToastPreview />
-                <p className="setup-step__progress-note">
-                  We'll share some of your progress as you browse.
                 </p>
               </div>
 

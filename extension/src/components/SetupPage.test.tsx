@@ -18,9 +18,6 @@ vi.mock("./Collections", () => ({
 vi.mock("./MilestoneToastPreview", () => ({
   MilestoneToastPreview: () => <div>milestone preview</div>,
 }));
-vi.mock("./PortraitCard", () => ({
-  PortraitCard: () => <div>browsing portrait preview</div>,
-}));
 vi.mock("@movement/config", () => ({
   WORKER_URL: "https://worker.example",
 }));
@@ -124,6 +121,9 @@ describe("SetupPage", () => {
       );
       expect(container.textContent).toContain("Help shape WWO");
       expect(container.textContent).toContain("takes about a minute");
+      expect(
+        container.querySelector(".setup-step__discord-card svg"),
+      ).toBeNull();
       expect(container.querySelector('input[type="email"]')).not.toBeNull();
 
       await click(container, "Get started");
@@ -135,10 +135,18 @@ describe("SetupPage", () => {
       ).not.toBeNull();
       expect(container.querySelector(".setup-step--complete")).not.toBeNull();
       expect(container.textContent).toContain("See your trail, anywhere");
+      expect(container.querySelector(".setup-step__trail-preview")).not.toBeNull();
+      expect(
+        container
+          .querySelector(".setup-step__trail-preview svg")
+          ?.getAttribute("aria-hidden"),
+      ).toBe("true");
+      expect(container.textContent).toContain("See your progress");
       expect(container.textContent).toContain(
         "Click the icon in your browser toolbar anytime",
       );
-      expect(container.textContent).toContain("browsing portrait preview");
+      expect(container.textContent).not.toContain("See your current portrait");
+      expect(container.querySelector(".setup-step__portrait-preview")).toBeNull();
       expect(container.textContent).toContain("Review your browsing");
       expect(container.textContent).toContain("milestone preview");
       expect(container.textContent).toContain(
