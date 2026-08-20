@@ -52,6 +52,15 @@ export function findNewCommuteRiders(
   return newRiderIds;
 }
 
+export function getMyCommuteRiderStart(
+  riders: Iterable<CommuteRiderIdentity>,
+): CommutePoint | null {
+  for (const rider of riders) {
+    if (rider.isMe) return getCommuteRiderStart(rider.pid);
+  }
+  return null;
+}
+
 export function getSharedCommutePosition(value: unknown): CommutePoint | null {
   if (
     value === null ||

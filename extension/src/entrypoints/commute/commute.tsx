@@ -63,6 +63,7 @@ import {
   findNearbyCommuteSeat,
   findNewCommuteRiders,
   getCommutePointFromClient,
+  getMyCommuteRiderStart,
   getCommuteRiderStart,
   getSharedCommutePosition,
   getStandingPosition,
@@ -618,8 +619,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     defaultData: {},
     myDefaultAwareness: {
       seatId: null,
-      position: COMMUTE_JOIN_ENTRY_POSITION,
-      positionSequence: 0,
     },
   }),
   ({ awarenessByStableId, myAwareness, setMyAwareness, ref }, props) => {
@@ -627,12 +626,10 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       props;
     const users = useUsers();
     const { configureCursors, cursors, isLoading } = usePlayContext();
-    const myRiderStart = useMemo(() => {
-      const me = users.find((user) => user.isMe);
-      return me
-        ? getCommuteRiderStart(me.pid)
-        : COMMUTE_JOIN_ENTRY_POSITION;
-    }, [users]);
+    const myRiderStart = useMemo(
+      () => getMyCommuteRiderStart(users),
+      [users],
+    );
     const [toast, setToast] = useState<string | null>(null);
     const initialAvatarPosition = COMMUTE_JOIN_ENTRY_POSITION;
     const [avatarPosition, setAvatarPosition] =
@@ -737,7 +734,13 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     }, [configureCursors, isLoading]);
 
     useEffect(() => {
-      if (!props.serviceReady || hasEnteredCarRef.current) return;
+      if (
+        !props.serviceReady ||
+        myRiderStart === null ||
+        hasEnteredCarRef.current
+      ) {
+        return;
+      }
       hasEnteredCarRef.current = true;
       updateAvatarPosition(myRiderStart);
       setHasEnteredCar(true);
@@ -1202,6 +1205,11 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
                 isYou={false}
                 ariaLabel="Another rider's cursor is aboard the train"
               />
+              {arrivingRiderIds.has(rider.id) && (
+                <span className="commute-avatar__arrival-message">
+                  joining from the next carriage
+                </span>
+              )}
             </span>
           ))}
 

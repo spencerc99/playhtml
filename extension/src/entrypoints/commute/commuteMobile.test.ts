@@ -8,6 +8,7 @@ import {
   findNewCommuteRiders,
   getCommutePointFromClient,
   getCommutePointFromZone,
+  getMyCommuteRiderStart,
   getCommuteRiderStart,
   getSharedCommutePosition,
   getStandingPosition,
@@ -35,6 +36,18 @@ describe("mobile commute geometry", () => {
       ]),
     ).toEqual(["rider-b"]);
     expect(previousRiderIds).toEqual(new Set(["me", "rider-a"]));
+  });
+
+  it("waits for the local rider identity before choosing an entry point", () => {
+    expect(
+      getMyCommuteRiderStart([{ pid: "rider-a", isMe: false }]),
+    ).toBeNull();
+    expect(
+      getMyCommuteRiderStart([
+        { pid: "rider-a", isMe: false },
+        { pid: "me", isMe: true },
+      ]),
+    ).toEqual(getCommuteRiderStart("me"));
   });
 
   it("accepts bounded shared positions and rejects malformed presence", () => {
