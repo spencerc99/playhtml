@@ -22,9 +22,13 @@ export interface CommuteBounds {
   height: number;
 }
 
+interface CommuteRiderIdentity {
+  pid: string;
+  isMe: boolean;
+}
+
 export const COMMUTE_CAR_WIDTH = 1100;
 export const COMMUTE_CAR_HEIGHT = 360;
-export const COMMUTE_AVATAR_START: CommutePoint = { x: 340, y: 70 };
 export const COMMUTE_JOIN_ENTRY_POSITION: CommutePoint = { x: 115, y: 154 };
 export const COMMUTE_WALK_SPEED = 5.5;
 export const COMMUTE_CLICK_WALK_SPEED = 12;
@@ -35,8 +39,33 @@ const CAR_MIN_Y = 32;
 const CAR_MAX_Y = 316;
 const SEAT_INTERACTION_RADIUS = 55;
 
-export function getCommuteAvatarStart(isJoining: boolean): CommutePoint {
-  return isJoining ? COMMUTE_JOIN_ENTRY_POSITION : COMMUTE_AVATAR_START;
+export function findNewCommuteRiders(
+  knownRiderIds: ReadonlySet<string>,
+  riders: Iterable<CommuteRiderIdentity>,
+): string[] {
+  const newRiderIds: string[] = [];
+  for (const rider of riders) {
+    if (!rider.isMe && !knownRiderIds.has(rider.pid)) {
+      newRiderIds.push(rider.pid);
+    }
+  }
+  return newRiderIds;
+}
+
+export function getSharedCommutePosition(value: unknown): CommutePoint | null {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    !("x" in value) ||
+    !("y" in value) ||
+    typeof value.x !== "number" ||
+    typeof value.y !== "number" ||
+    !Number.isFinite(value.x) ||
+    !Number.isFinite(value.y)
+  ) {
+    return null;
+  }
+  return clampCommuteAvatarPosition(value as CommutePoint);
 }
 
 export function clampCommuteAvatarPosition(

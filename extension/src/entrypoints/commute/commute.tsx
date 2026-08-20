@@ -12,7 +12,6 @@ import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   PlayProvider,
-  useCursorZone,
   usePlayContext,
   usePresence,
   useUsers,
@@ -33,6 +32,7 @@ import {
   COMMUTE_SERVICE_CHANNEL,
   COMMUTE_SERVICE_DISCOVERY_MS,
   createCommuteService,
+  estimateServerTimeOffset,
   getCommuteServiceDomains,
   getCommuteServiceEndTime,
   getCommuteServicesFromPresences,
@@ -61,10 +61,10 @@ import {
   COMMUTE_JOIN_ENTRY_POSITION,
   COMMUTE_WALK_SPEED,
   findNearbyCommuteSeat,
-  getCommuteAvatarStart,
+  findNewCommuteRiders,
   getCommutePointFromClient,
-  getCommutePointFromZone,
   getCommuteRiderStart,
+  getSharedCommutePosition,
   getStandingPosition,
   isNearCommuteDoor,
   moveCommuteAvatar,
@@ -80,6 +80,8 @@ type CarData = Record<string, never>;
 
 interface RiderAwareness {
   seatId: number | null;
+  position?: CommutePoint;
+  positionSequence?: number;
 }
 
 interface SeatDefinition extends CommuteSeatGeometry {
@@ -91,7 +93,7 @@ interface CommuteCarProps {
   currentStop: CommuteStop;
   phase: CommutePhase;
   atOrigin: boolean;
-  isJoining: boolean;
+  serviceReady: boolean;
   mobileBoarded: boolean;
   onMobileBoardStateChange: (boarded: boolean) => void;
   onSeatStateChange: (hasSeat: boolean) => void;
@@ -146,9 +148,11 @@ function useRecentRoute(): RecentRoute {
 
     const load = async () => {
       try {
+        const requestStartedAt = Date.now();
         const response = await fetch(COMMUTE_RECENT_URL, {
           signal: controller.signal,
         });
+        const responseReceivedAt = Date.now();
         if (!response.ok) {
           throw new Error(`Recent commute request failed: ${response.status}`);
         }
@@ -159,7 +163,11 @@ function useRecentRoute(): RecentRoute {
           stops: commute.stops,
           sceneryStops: commute.sceneryStops,
           activePeople: commute.activePeople,
-          serverTimeOffsetMs: commute.generatedAt - Date.now(),
+          serverTimeOffsetMs: estimateServerTimeOffset(
+            commute.generatedAt,
+            requestStartedAt,
+            responseReceivedAt,
+          ),
           status: commute.stops.length > 0 ? "live" : "empty",
         });
       } catch (error) {
@@ -610,25 +618,43 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     defaultData: {},
     myDefaultAwareness: {
       seatId: null,
+      position: COMMUTE_JOIN_ENTRY_POSITION,
+      positionSequence: 0,
     },
   }),
   ({ awarenessByStableId, myAwareness, setMyAwareness, ref }, props) => {
     const { mobileBoarded, onMobileBoardStateChange, onSeatStateChange } =
       props;
     const users = useUsers();
-    const { configureCursors, cursorPresences, cursors, isLoading } =
-      usePlayContext();
+    const { configureCursors, cursors, isLoading } = usePlayContext();
+    const myRiderStart = useMemo(() => {
+      const me = users.find((user) => user.isMe);
+      return me
+        ? getCommuteRiderStart(me.pid)
+        : COMMUTE_JOIN_ENTRY_POSITION;
+    }, [users]);
     const [toast, setToast] = useState<string | null>(null);
-    const initialAvatarPosition = getCommuteAvatarStart(props.isJoining);
+    const initialAvatarPosition = COMMUTE_JOIN_ENTRY_POSITION;
     const [avatarPosition, setAvatarPosition] =
       useState<CommutePoint>(initialAvatarPosition);
     const [avatarWalking, setAvatarWalking] = useState(false);
-    const [showJoiningAnimation, setShowJoiningAnimation] = useState(
-      props.isJoining,
+    const [hasEnteredCar, setHasEnteredCar] = useState(false);
+    const [isArriving, setIsArriving] = useState(false);
+    const [arrivingRiderIds, setArrivingRiderIds] = useState(
+      () => new Set<string>(),
     );
     const carRef = useRef<HTMLElement | null>(null);
+    const hasEnteredCarRef = useRef(false);
     const lastRiderPositions = useRef(new Map<string, CommutePoint>());
+    const knownRiderIds = useRef<Set<string> | null>(null);
+    const arrivalTimers = useRef(new Map<string, number>());
+    const mySeatIdRef = useRef<number | null>(null);
     const toastTimer = useRef<number | undefined>(undefined);
+    const positionPublishTimer = useRef<number | undefined>(undefined);
+    const positionSequence = useRef(0);
+    const pendingPublishedPosition = useRef<CommutePoint>(
+      initialAvatarPosition,
+    );
     const movementVector = useRef<CommutePoint>({ x: 0, y: 0 });
     const avatarPositionRef = useRef<CommutePoint>(initialAvatarPosition);
     const clickDestination = useRef<CommutePoint | null>(null);
@@ -641,11 +667,34 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     );
     const setMyAwarenessRef = useRef(setMyAwareness);
     setMyAwarenessRef.current = setMyAwareness;
-    useCursorZone(ref);
+
+    const publishPosition = useCallback(
+      (seatId: number | null, position: CommutePoint) => {
+        positionSequence.current += 1;
+        setMyAwarenessRef.current({
+          seatId,
+          position,
+          positionSequence: positionSequence.current,
+        });
+      },
+      [],
+    );
 
     const updateAvatarPosition = useCallback((position: CommutePoint) => {
       avatarPositionRef.current = position;
       setAvatarPosition(position);
+      pendingPublishedPosition.current = position;
+      if (positionPublishTimer.current !== undefined) return;
+      positionPublishTimer.current = window.setTimeout(() => {
+        positionPublishTimer.current = undefined;
+        publishPosition(null, pendingPublishedPosition.current);
+      }, 100);
+    }, [publishPosition]);
+
+    const cancelPositionPublish = useCallback(() => {
+      if (positionPublishTimer.current === undefined) return;
+      window.clearTimeout(positionPublishTimer.current);
+      positionPublishTimer.current = undefined;
     }, []);
 
     const usersById = useMemo(
@@ -666,6 +715,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     }, [awarenessByStableId, usersById]);
 
     const mySeatId = myAwareness?.seatId ?? null;
+    mySeatIdRef.current = mySeatId;
     const seatedRiderIds = useMemo(() => {
       const riderIds = new Set<string>();
       for (const [stableId, awareness] of awarenessByStableId) {
@@ -687,18 +737,65 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     }, [configureCursors, isLoading]);
 
     useEffect(() => {
-      if (!props.isJoining) {
-        setShowJoiningAnimation(false);
+      if (!props.serviceReady || hasEnteredCarRef.current) return;
+      hasEnteredCarRef.current = true;
+      updateAvatarPosition(myRiderStart);
+      setHasEnteredCar(true);
+      setIsArriving(true);
+    }, [myRiderStart, props.serviceReady, updateAvatarPosition]);
+
+    useEffect(() => {
+      if (!isArriving) return;
+      const timer = window.setTimeout(() => {
+        setIsArriving(false);
+      }, 1_400);
+      return () => window.clearTimeout(timer);
+    }, [isArriving]);
+
+    useEffect(() => {
+      if (isLoading) return;
+
+      if (knownRiderIds.current === null) {
+        knownRiderIds.current = new Set(users.map((user) => user.pid));
         return;
       }
 
-      updateAvatarPosition(COMMUTE_JOIN_ENTRY_POSITION);
-      setShowJoiningAnimation(true);
-      const timer = window.setTimeout(() => {
-        setShowJoiningAnimation(false);
-      }, 1_400);
-      return () => window.clearTimeout(timer);
-    }, [props.isJoining, updateAvatarPosition]);
+      const currentRiderIds = new Set(users.map((user) => user.pid));
+      for (const riderId of knownRiderIds.current) {
+        if (!currentRiderIds.has(riderId)) knownRiderIds.current.delete(riderId);
+      }
+      const newRiderIds = findNewCommuteRiders(knownRiderIds.current, users);
+      knownRiderIds.current = currentRiderIds;
+      if (newRiderIds.length === 0) return;
+
+      publishPosition(mySeatId, avatarPositionRef.current);
+      setArrivingRiderIds((current) =>
+        new Set([...current, ...newRiderIds]),
+      );
+      for (const riderId of newRiderIds) {
+        const existingTimer = arrivalTimers.current.get(riderId);
+        if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+        const timer = window.setTimeout(() => {
+          publishPosition(mySeatIdRef.current, avatarPositionRef.current);
+          arrivalTimers.current.delete(riderId);
+          setArrivingRiderIds((current) => {
+            const next = new Set(current);
+            next.delete(riderId);
+            return next;
+          });
+        }, 1_400);
+        arrivalTimers.current.set(riderId, timer);
+      }
+    }, [isLoading, mySeatId, publishPosition, users]);
+
+    useEffect(
+      () => () => {
+        for (const timer of arrivalTimers.current.values()) {
+          window.clearTimeout(timer);
+        }
+      },
+      [],
+    );
 
     const standingRiders = useMemo(() => {
       const activeRiderIds = new Set<string>();
@@ -712,11 +809,13 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         if (user.isMe || seatedRiderIds.has(user.pid)) continue;
         activeRiderIds.add(user.pid);
 
-        const zone = cursorPresences.get(user.pid)?.zone;
+        const sharedPosition = getSharedCommutePosition(
+          awarenessByStableId.get(user.pid)?.position,
+        );
         let position = lastRiderPositions.current.get(user.pid);
-        if (zone?.zoneId === props.id) {
-          position = getCommutePointFromZone(zone.relX, zone.relY);
-          lastRiderPositions.current.set(user.pid, position);
+        if (sharedPosition) {
+          position = sharedPosition;
+          lastRiderPositions.current.set(user.pid, sharedPosition);
         }
         position ??= getCommuteRiderStart(user.pid);
 
@@ -734,7 +833,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       }
 
       return riders;
-    }, [cursorPresences, props.id, seatedRiderIds, users]);
+    }, [awarenessByStableId, seatedRiderIds, users]);
 
     const displayedRiders = useMemo(() => {
       const riders = new Map(ridersBySeat);
@@ -787,7 +886,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       clickDestination.current = null;
       if (mySeatId === seatId) {
         const seat = SEATS.find((candidate) => candidate.id === seatId);
-        setMyAwareness({ seatId: null });
+        publishPosition(null, avatarPositionRef.current);
         if (seat) updateAvatarPosition(getStandingPosition(seat));
         return;
       }
@@ -803,7 +902,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           updateAvatarPosition(getStandingPosition(currentSeat));
         }
       }
-      setMyAwareness({ seatId: null });
+      publishPosition(null, avatarPositionRef.current);
       pendingSeatId.current = seatId;
       clickDestination.current = getStandingPosition(seat);
       setAvatarWalking(true);
@@ -817,7 +916,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       const bounds = car.getBoundingClientRect();
       if (bounds.width <= 0 || bounds.height <= 0) return;
 
-      setMyAwareness({ seatId: null });
+      publishPosition(null, avatarPositionRef.current);
       pendingSeatId.current = null;
       clickDestination.current = getCommutePointFromClient(
         { x: event.clientX, y: event.clientY },
@@ -858,7 +957,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       pendingSeatId.current = null;
       clickDestination.current = null;
       const seat = SEATS.find((candidate) => candidate.id === mySeatId);
-      setMyAwareness({ seatId: null });
+      publishPosition(null, avatarPositionRef.current);
       setAvatarWalking(false);
       if (seat) updateAvatarPosition(getStandingPosition(seat));
     };
@@ -952,7 +1051,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           clickDestination.current = null;
           if (mySeatId !== null) {
             const seat = SEATS.find((candidate) => candidate.id === mySeatId);
-            setMyAwarenessRef.current({ seatId: null });
+            publishPosition(null, avatarPositionRef.current);
             if (seat) updateAvatarPosition(getStandingPosition(seat));
           } else {
             const nextPosition = moveCommuteAvatar(
@@ -986,7 +1085,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         }
         if (mySeatId !== null) {
           const seat = SEATS.find((candidate) => candidate.id === mySeatId);
-          setMyAwarenessRef.current({ seatId: null });
+          publishPosition(null, avatarPositionRef.current);
           if (seat) updateAvatarPosition(getStandingPosition(seat));
           setAvatarWalking(true);
           return;
@@ -1005,6 +1104,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           clickDestination.current = null;
           setAvatarWalking(false);
           if (seatId !== null) {
+            cancelPositionPublish();
             setMyAwarenessRef.current({ seatId });
           }
         }
@@ -1015,31 +1115,22 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       return () => window.cancelAnimationFrame(movementFrame);
     }, [
       mobileBoarded,
+      cancelPositionPublish,
       mySeatId,
       props.atOrigin,
       props.phase,
+      publishPosition,
       updateAvatarPosition,
     ]);
 
-    useEffect(() => {
-      const car = carRef.current;
-      if (isLoading || mySeatId !== null || !car) return;
-
-      const bounds = car.getBoundingClientRect();
-      if (car.offsetWidth === 0 || car.offsetHeight === 0) return;
-
-      // Feed carriage movement through the cursor client's paced transport so
-      // desktop clicks and joystick walking share one presence path.
-      document.dispatchEvent(
-        new MouseEvent("mousemove", {
-          bubbles: true,
-          clientX:
-            bounds.left + avatarPosition.x * (bounds.width / car.offsetWidth),
-          clientY:
-            bounds.top + avatarPosition.y * (bounds.height / car.offsetHeight),
-        }),
-      );
-    }, [avatarPosition, isLoading, mySeatId]);
+    useEffect(
+      () => () => {
+        if (positionPublishTimer.current !== undefined) {
+          window.clearTimeout(positionPublishTimer.current);
+        }
+      },
+      [],
+    );
 
     const doorOpen = props.phase === "stopped";
     const canExit = doorOpen && !props.atOrigin;
@@ -1058,22 +1149,10 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           <span className="train-car__edge train-car__edge--right" />
           <span
             className={`train-car__side-door train-car__side-door--left ${
-              showJoiningAnimation ? "train-car__side-door--joining" : ""
+              isArriving ? "train-car__side-door--joining" : ""
             }`}
           />
           <span className="train-car__side-door train-car__side-door--right" />
-          {showJoiningAnimation && (
-            <span className="train-joiner" aria-hidden>
-              <CursorRider
-                color={cursors.color || "#5b8db8"}
-                label="you"
-                isYou
-              />
-              <span className="train-joiner__message">
-                joining from the next carriage
-              </span>
-            </span>
-          )}
 
           {DOORS.map((x) => (
             <TrainDoor
@@ -1107,7 +1186,11 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
 
           {standingRiders.map((rider) => (
             <span
-              className="commute-avatar commute-avatar--remote"
+              className={`commute-avatar commute-avatar--remote ${
+                arrivingRiderIds.has(rider.id)
+                  ? "commute-avatar--arriving"
+                  : ""
+              }`}
               style={{
                 left: rider.position.x,
                 top: rider.position.y,
@@ -1122,11 +1205,11 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             </span>
           ))}
 
-          {mySeatId === null && !showJoiningAnimation && (
+          {mySeatId === null && hasEnteredCar && (
             <span
               className={`commute-avatar ${
                 avatarWalking ? "commute-avatar--walking" : ""
-              }`}
+              } ${isArriving ? "commute-avatar--arriving" : ""}`}
               style={{
                 left: avatarPosition.x,
                 top: avatarPosition.y,
@@ -1138,6 +1221,11 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
                 isYou
                 ariaLabel="Your cursor is aboard the train"
               />
+              {isArriving && (
+                <span className="commute-avatar__arrival-message">
+                  joining from the next carriage
+                </span>
+              )}
             </span>
           )}
         </section>
@@ -1153,7 +1241,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             onBoard={() => {
               pendingSeatId.current = null;
               clickDestination.current = null;
-              updateAvatarPosition(initialAvatarPosition);
               onMobileBoardStateChange(true);
             }}
             onMove={updateMovement}
@@ -1457,7 +1544,7 @@ function InternetCommute() {
             currentStop={currentStop}
             phase={timing.phase}
             atOrigin={timing.atOrigin}
-            isJoining={serviceConnection.joinedExistingService}
+            serviceReady={serviceConnection.service !== null}
             mobileBoarded={mobileBoarded}
             onMobileBoardStateChange={setMobileBoarded}
             onSeatStateChange={setHasSeat}

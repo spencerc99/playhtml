@@ -3,13 +3,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  COMMUTE_AVATAR_START,
   COMMUTE_JOIN_ENTRY_POSITION,
   findNearbyCommuteSeat,
-  getCommuteAvatarStart,
+  findNewCommuteRiders,
   getCommutePointFromClient,
   getCommutePointFromZone,
   getCommuteRiderStart,
+  getSharedCommutePosition,
   getStandingPosition,
   isNearCommuteDoor,
   moveCommuteAvatar,
@@ -24,9 +24,29 @@ const SEATS: CommuteSeatGeometry[] = [
 ];
 
 describe("mobile commute geometry", () => {
-  it("places a joining rider where the side-door animation ends", () => {
-    expect(getCommuteAvatarStart(true)).toBe(COMMUTE_JOIN_ENTRY_POSITION);
-    expect(getCommuteAvatarStart(false)).toBe(COMMUTE_AVATAR_START);
+  it("finds remote riders who appeared after the initial roster", () => {
+    const previousRiderIds = new Set(["me", "rider-a"]);
+
+    expect(
+      findNewCommuteRiders(previousRiderIds, [
+        { pid: "me", isMe: true },
+        { pid: "rider-a", isMe: false },
+        { pid: "rider-b", isMe: false },
+      ]),
+    ).toEqual(["rider-b"]);
+    expect(previousRiderIds).toEqual(new Set(["me", "rider-a"]));
+  });
+
+  it("accepts bounded shared positions and rejects malformed presence", () => {
+    expect(getSharedCommutePosition({ x: 500, y: 200 })).toEqual({
+      x: 500,
+      y: 200,
+    });
+    expect(getSharedCommutePosition({ x: 9_999, y: -20 })).toEqual({
+      x: 1062,
+      y: 32,
+    });
+    expect(getSharedCommutePosition({ x: "500", y: 200 })).toBeNull();
   });
 
   it("normalizes diagonal movement and clamps it inside the carriage", () => {
