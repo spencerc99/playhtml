@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   COMMUTE_JOIN_ENTRY_POSITION,
   findNearbyCommuteSeat,
-  findNewCommuteRiders,
+  getCommuteArrivalRiderId,
   getCommutePointFromClient,
   getCommutePointFromZone,
   getMyCommuteRiderStart,
@@ -25,17 +25,11 @@ const SEATS: CommuteSeatGeometry[] = [
 ];
 
 describe("mobile commute geometry", () => {
-  it("finds remote riders who appeared after the initial roster", () => {
-    const previousRiderIds = new Set(["me", "rider-a"]);
-
-    expect(
-      findNewCommuteRiders(previousRiderIds, [
-        { pid: "me", isMe: true },
-        { pid: "rider-a", isMe: false },
-        { pid: "rider-b", isMe: false },
-      ]),
-    ).toEqual(["rider-b"]);
-    expect(previousRiderIds).toEqual(new Set(["me", "rider-a"]));
+  it("accepts rider arrival events and rejects malformed payloads", () => {
+    expect(getCommuteArrivalRiderId({ riderId: "rider-a" })).toBe("rider-a");
+    expect(getCommuteArrivalRiderId({ riderId: "" })).toBeNull();
+    expect(getCommuteArrivalRiderId({ riderId: 42 })).toBeNull();
+    expect(getCommuteArrivalRiderId(null)).toBeNull();
   });
 
   it("waits for the local rider identity before choosing an entry point", () => {

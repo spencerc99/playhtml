@@ -39,19 +39,6 @@ const CAR_MIN_Y = 32;
 const CAR_MAX_Y = 316;
 const SEAT_INTERACTION_RADIUS = 55;
 
-export function findNewCommuteRiders(
-  knownRiderIds: ReadonlySet<string>,
-  riders: Iterable<CommuteRiderIdentity>,
-): string[] {
-  const newRiderIds: string[] = [];
-  for (const rider of riders) {
-    if (!rider.isMe && !knownRiderIds.has(rider.pid)) {
-      newRiderIds.push(rider.pid);
-    }
-  }
-  return newRiderIds;
-}
-
 export function getMyCommuteRiderStart(
   riders: Iterable<CommuteRiderIdentity>,
 ): CommutePoint | null {
@@ -59,6 +46,19 @@ export function getMyCommuteRiderStart(
     if (rider.isMe) return getCommuteRiderStart(rider.pid);
   }
   return null;
+}
+
+export function getCommuteArrivalRiderId(payload: unknown): string | null {
+  if (
+    payload === null ||
+    typeof payload !== "object" ||
+    !("riderId" in payload) ||
+    typeof payload.riderId !== "string" ||
+    payload.riderId.length === 0
+  ) {
+    return null;
+  }
+  return payload.riderId;
 }
 
 export function getSharedCommutePosition(value: unknown): CommutePoint | null {

@@ -61,7 +61,7 @@ import {
   COMMUTE_JOIN_ENTRY_POSITION,
   COMMUTE_WALK_SPEED,
   findNearbyCommuteSeat,
-  findNewCommuteRiders,
+  getCommuteArrivalRiderId,
   getCommutePointFromClient,
   getMyCommuteRiderStart,
   getCommuteRiderStart,
@@ -133,6 +133,7 @@ const DOORS = [276, 696];
 const DOOR_GEOMETRY = DOORS.map((x) => ({ x }));
 const COMMUTE_REFRESH_MS = 30_000;
 const COMMUTE_ROUTE_TIMEOUT_MS = 5_000;
+const COMMUTE_RIDER_ARRIVAL_EVENT = "commute-rider-arrival";
 
 function useRecentRoute(): RecentRoute {
   const [route, setRoute] = useState<RecentRoute>({
@@ -625,7 +626,18 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const { mobileBoarded, onMobileBoardStateChange, onSeatStateChange } =
       props;
     const users = useUsers();
-    const { configureCursors, cursors, isLoading } = usePlayContext();
+    const {
+      configureCursors,
+      cursors,
+      dispatchPlayEvent,
+      isLoading,
+      registerPlayEventListener,
+      removePlayEventListener,
+    } = usePlayContext();
+    const myRiderId = useMemo(
+      () => users.find((user) => user.isMe)?.pid ?? null,
+      [users],
+    );
     const myRiderStart = useMemo(
       () => getMyCommuteRiderStart(users),
       [users],
@@ -643,8 +655,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const carRef = useRef<HTMLElement | null>(null);
     const hasEnteredCarRef = useRef(false);
     const lastRiderPositions = useRef(new Map<string, CommutePoint>());
-    const knownRiderIds = useRef<Set<string> | null>(null);
     const arrivalTimers = useRef(new Map<string, number>());
+    const myRiderIdRef = useRef<string | null>(null);
     const mySeatIdRef = useRef<number | null>(null);
     const toastTimer = useRef<number | undefined>(undefined);
     const positionPublishTimer = useRef<number | undefined>(undefined);
@@ -664,6 +676,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     );
     const setMyAwarenessRef = useRef(setMyAwareness);
     setMyAwarenessRef.current = setMyAwareness;
+    myRiderIdRef.current = myRiderId;
 
     const publishPosition = useCallback(
       (seatId: number | null, position: CommutePoint) => {
@@ -733,49 +746,12 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       };
     }, [configureCursors, isLoading]);
 
-    useEffect(() => {
-      if (
-        !props.serviceReady ||
-        myRiderStart === null ||
-        hasEnteredCarRef.current
-      ) {
-        return;
-      }
-      hasEnteredCarRef.current = true;
-      updateAvatarPosition(myRiderStart);
-      setHasEnteredCar(true);
-      setIsArriving(true);
-    }, [myRiderStart, props.serviceReady, updateAvatarPosition]);
+    const playRemoteArrival = useCallback(
+      (riderId: string) => {
+        if (riderId === myRiderIdRef.current) return;
 
-    useEffect(() => {
-      if (!isArriving) return;
-      const timer = window.setTimeout(() => {
-        setIsArriving(false);
-      }, 1_400);
-      return () => window.clearTimeout(timer);
-    }, [isArriving]);
-
-    useEffect(() => {
-      if (isLoading) return;
-
-      if (knownRiderIds.current === null) {
-        knownRiderIds.current = new Set(users.map((user) => user.pid));
-        return;
-      }
-
-      const currentRiderIds = new Set(users.map((user) => user.pid));
-      for (const riderId of knownRiderIds.current) {
-        if (!currentRiderIds.has(riderId)) knownRiderIds.current.delete(riderId);
-      }
-      const newRiderIds = findNewCommuteRiders(knownRiderIds.current, users);
-      knownRiderIds.current = currentRiderIds;
-      if (newRiderIds.length === 0) return;
-
-      publishPosition(mySeatId, avatarPositionRef.current);
-      setArrivingRiderIds((current) =>
-        new Set([...current, ...newRiderIds]),
-      );
-      for (const riderId of newRiderIds) {
+        publishPosition(mySeatIdRef.current, avatarPositionRef.current);
+        setArrivingRiderIds((current) => new Set([...current, riderId]));
         const existingTimer = arrivalTimers.current.get(riderId);
         if (existingTimer !== undefined) window.clearTimeout(existingTimer);
         const timer = window.setTimeout(() => {
@@ -788,8 +764,65 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           });
         }, 1_400);
         arrivalTimers.current.set(riderId, timer);
+      },
+      [publishPosition],
+    );
+
+    useEffect(() => {
+      if (isLoading) return;
+      const listenerId = registerPlayEventListener(
+        COMMUTE_RIDER_ARRIVAL_EVENT,
+        {
+          onEvent: (payload: unknown) => {
+            const riderId = getCommuteArrivalRiderId(payload);
+            if (riderId !== null) playRemoteArrival(riderId);
+          },
+        },
+      );
+      return () => {
+        removePlayEventListener(COMMUTE_RIDER_ARRIVAL_EVENT, listenerId);
+      };
+    }, [
+      isLoading,
+      playRemoteArrival,
+      registerPlayEventListener,
+      removePlayEventListener,
+    ]);
+
+    useEffect(() => {
+      if (
+        isLoading ||
+        !props.serviceReady ||
+        myRiderId === null ||
+        myRiderStart === null ||
+        hasEnteredCarRef.current
+      ) {
+        return;
       }
-    }, [isLoading, mySeatId, publishPosition, users]);
+      hasEnteredCarRef.current = true;
+      updateAvatarPosition(myRiderStart);
+      setHasEnteredCar(true);
+      setIsArriving(true);
+      dispatchPlayEvent({
+        type: COMMUTE_RIDER_ARRIVAL_EVENT,
+        eventPayload: { riderId: myRiderId },
+      });
+    }, [
+      dispatchPlayEvent,
+      isLoading,
+      myRiderId,
+      myRiderStart,
+      props.serviceReady,
+      updateAvatarPosition,
+    ]);
+
+    useEffect(() => {
+      if (!isArriving) return;
+      const timer = window.setTimeout(() => {
+        setIsArriving(false);
+      }, 1_400);
+      return () => window.clearTimeout(timer);
+    }, [isArriving]);
 
     useEffect(
       () => () => {
