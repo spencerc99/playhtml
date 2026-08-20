@@ -14,5 +14,3 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
-
-- Early features now invite you to request access and help shape what comes next.
