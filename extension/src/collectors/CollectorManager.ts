@@ -6,7 +6,11 @@ import { BaseCollector } from './BaseCollector';
 import type { CollectionEventType, CollectorStatus } from './types';
 import { EventBuffer } from '../storage/EventBuffer';
 import { VERBOSE } from '../config';
-import { getValidEventTypes } from '@playhtml/extension-types';
+import {
+  collectionModeStorageKey,
+  isCollectionMode,
+  normalizeCollectionMode,
+} from './modes';
 
 const STORAGE_KEY = 'collection_enabled_collectors';
 
@@ -48,15 +52,17 @@ export class CollectorManager {
    */
   private async applyModesFromStorage(): Promise<void> {
     try {
-      const types = getValidEventTypes();
-      const keys = types.map((t) => `collection_mode_${t}`);
+      const types = Array.from(this.collectors.keys());
+      const keys = types.map((t) => collectionModeStorageKey(t));
       const result = await browser.storage.local.get(keys);
       for (const type of types) {
-        const mode = result[`collection_mode_${type}`];
-        // Only act if a mode is explicitly set; leave unset types to loadEnabledCollectors
+        const stored = result[collectionModeStorageKey(type)];
+        // Only act if a recognized mode is stored; leave the rest to loadEnabledCollectors
+        if (!isCollectionMode(stored)) continue;
+        const mode = normalizeCollectionMode(type, stored);
         if (mode === 'off') {
           await this.disableCollector(type as CollectionEventType);
-        } else if (mode === 'local' || mode === 'shared') {
+        } else {
           await this.enableCollector(type as CollectionEventType);
         }
       }

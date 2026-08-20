@@ -8,6 +8,8 @@ import { CollectionEvent, Trail, TrailState } from "../types";
 // Replace with the minimum hold threshold so the event still renders as a hold.
 const MAX_REASONABLE_HOLD_MS = 3_600_000;
 const MIN_HOLD_THRESHOLD_MS = 250;
+const LIVE_SEGMENT_SEPARATOR = "|segment:";
+const MAX_LIVE_SEGMENT_PX = 20;
 
 function sanitizeHoldDuration(duration: number | undefined): number | undefined {
   if (duration === undefined) return undefined;
@@ -23,8 +25,8 @@ import {
   RISO_COLORS,
   TRAIL_TIME_THRESHOLD,
   getColorForParticipant,
+  getColorForEvent,
   eventMatchesAnyFilter,
-  deriveSessionColor,
   type FilterChip,
 } from "../utils/eventUtils";
 
@@ -49,9 +51,8 @@ export interface CursorTrailSettings {
   // so movements across a long scrollable page are shown relative to the full document.
   documentSpace: boolean;
   // When true, each participant+url group contributes only its most recent
-  // segment (the in-progress trail), so a group never yields two trails sharing
-  // the same id. Required for the live view, where trail id must be both unique
-  // and stable as the event window slides; the archive shows every segment.
+  // segment. The segment keeps a stable id while its accumulated points grow,
+  // and a replacement segment gets a distinct id.
   singleSegmentPerGroup?: boolean;
 }
 
@@ -80,6 +81,58 @@ export function buildTrailSchedulePositionLookup(
     positions[orderedIndices[position]] = position;
   }
   return positions;
+}
+
+export function buildLiveTrailId(
+  groupId: string,
+  segmentStartTime: number,
+): string {
+  return `${groupId}${LIVE_SEGMENT_SEPARATOR}${segmentStartTime}`;
+}
+
+export function getLiveTrailGroupId(trailId: string): string {
+  const separatorIndex = trailId.lastIndexOf(LIVE_SEGMENT_SEPARATOR);
+  if (separatorIndex === -1) {
+    throw new Error(`Live trail id is missing its segment identity: ${trailId}`);
+  }
+  return trailId.slice(0, separatorIndex);
+}
+
+export function getAccumulationEvictions(
+  removedTrailIds: string[],
+  activeTrailIds: ReadonlySet<string>,
+): string[] {
+  const groupIds = new Set<string>();
+  for (const trailId of removedTrailIds) {
+    if (activeTrailIds.has(trailId)) {
+      groupIds.add(getLiveTrailGroupId(trailId));
+    }
+  }
+  return Array.from(groupIds);
+}
+
+export function densifyGrowingTrail(
+  points: Array<{ x: number; y: number }>,
+): Array<{ x: number; y: number }> {
+  if (points.length < 2) return points;
+
+  const densified = [points[0]];
+  for (let index = 1; index < points.length; index++) {
+    const start = points[index - 1];
+    const end = points[index];
+    const distance = Math.hypot(end.x - start.x, end.y - start.y);
+    const segmentCount = Math.max(1, Math.ceil(distance / MAX_LIVE_SEGMENT_PX));
+
+    for (let segment = 1; segment <= segmentCount; segment++) {
+      const progress = segment / segmentCount;
+      densified.push({
+        x: start.x + (end.x - start.x) * progress,
+        y: start.y + (end.y - start.y) * progress,
+      });
+    }
+  }
+
+  return densified;
 }
 
 export interface UseCursorTrailsResult {
@@ -185,8 +238,7 @@ export function useCursorTrails(
       groupEvents.sort((a, b) => a.ts - b.ts);
 
       const pid = groupEvents[0].meta.pid;
-      const cursorColor = groupEvents[0].meta.cursor_color;
-      const timezone = groupEvents[0].meta.tz;
+      const firstEvent = groupEvents[0];
 
       // Determine color resolution. When randomizeColors is on, every NEW
       // trail picks a fresh palette color (so a single participant's session
@@ -198,9 +250,8 @@ export function useCursorTrails(
           trailColorIndex++;
           return c;
         }
-        if (cursorColor) {
-          return deriveSessionColor(cursorColor, trailStartTs, timezone);
-        }
+        if (firstEvent.meta.cursor_color)
+          return getColorForEvent(firstEvent, trailStartTs);
         if (!participantColors.has(pid)) {
           participantColors.set(pid, getColorForParticipant(pid));
         }
@@ -343,7 +394,9 @@ export function useCursorTrails(
           points: currentTrail,
           color: getTrailColor(startTime),
           opacity: 1,
-          id: groupKey,
+          id: settings.singleSegmentPerGroup
+            ? buildLiveTrailId(groupKey, startTime)
+            : groupKey,
           startTime,
           endTime,
           clicks: [...currentClicks],
@@ -512,23 +565,21 @@ export function useCursorTrails(
         seed,
         settings.chaosIntensity || 1.0,
       );
-      // Round sharp direction-reversals once, so the freehand stroke outline
-      // doesn't pinch into a knot at those corners (most visible when zoomed in
-      // for cinematic capture). Computed here on the fixed path — not per frame
-      // — so already-drawn ink stays put.
-      const roundedPoints = roundPathCorners(styledPoints);
-      // roundPathCorners returns the SAME array when no corner was sharp enough
-      // to touch (the common case). Only when it actually rounded something do
-      // we resample: rounding bunches points near corners, making them unevenly
-      // spaced by distance, and the animator advances the head by INDEX — so
-      // uneven spacing makes the head speed up/slow down (looks like it lags
-      // then catches up). Resampling to even arc-length spacing fixes that.
-      // Skipping both when nothing was rounded keeps the common case allocation
-      // -free and identical to the pre-rounding geometry.
-      const variedPoints =
-        roundedPoints === styledPoints
-          ? styledPoints
-          : resampleUniform(roundedPoints, roundedPoints.length);
+      // A growing live path must remain prefix-stable: appending points cannot
+      // reshape ink that is already on screen. Archive paths are fixed, so they
+      // can still round and resample their complete geometry before playback.
+      let variedPoints = settings.singleSegmentPerGroup
+        ? densifyGrowingTrail(styledPoints)
+        : styledPoints;
+      if (!settings.singleSegmentPerGroup) {
+        const roundedPoints = roundPathCorners(styledPoints);
+        // roundPathCorners returns the SAME array when no corner was sharp
+        // enough to touch. Only resample when rounding changed the geometry.
+        variedPoints =
+          roundedPoints === styledPoints
+            ? styledPoints
+            : resampleUniform(roundedPoints, roundedPoints.length);
+      }
 
       // Calculate click progress along the trail
       const clicksWithProgress = trail.clicks.map((click) => {

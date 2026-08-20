@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/react",
   "description": "Create interactive, collaborative html elements in React",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -35,13 +35,13 @@
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",
-      "import": "./dist/react-playhtml.es.js",
-      "require": "./dist/react-playhtml.umd.js"
+      "import": "./dist/react-playhtml.es.js"
     }
   },
   "scripts": {
     "build": "tsc && vite build",
-    "test": "vitest run --no-typecheck",
+    "test": "bun run test:types && vitest run --no-typecheck && vitest run --no-typecheck --config vitest.integration.config.ts",
+    "test:types": "tsc --noEmit -p tsconfig.type-tests.json",
     "test:watch": "vitest --no-typecheck"
   },
   "publishConfig": {

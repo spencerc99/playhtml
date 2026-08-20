@@ -2,6 +2,7 @@
 // ABOUTME: Renders a RollerCoaster Tycoon-inspired toolbar with warm colors, beveled edges, and no rounded corners.
 
 import type { PlayHTMLComponents } from "./index";
+import type { ElementHandler } from "./elements";
 import {
   formatStateLeafValue,
   isEditableStateLeaf,
@@ -759,14 +760,15 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 // ─── Main Setup ────────────────────────────────────────────────────────
-export function setupDevUI(playhtml: PlayHTMLComponents) {
+export function setupDevUI(
+  playhtml: PlayHTMLComponents,
+  elementHandlers: Map<string, Map<string, ElementHandler>>,
+) {
   // Guard against duplicate setup (e.g. HMR)
   teardownDevUI();
   const existing = document.getElementById("playhtml-dev-root");
   if (existing) existing.remove();
   clearDataUpdateSubscriptions();
-
-  const { elementHandlers } = playhtml;
 
   // Inject styles
   const styleEl = document.createElement("style");

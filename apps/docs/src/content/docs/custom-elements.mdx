@@ -7,11 +7,18 @@ sidebar:
 
 import { Aside } from "@astrojs/starlight/components";
 import { SmileyRow } from "@/components/react/capability-demos/SmileyRow";
-import { DocsCounter } from "@/components/react/capability-demos/DocsCounter";
-import { DocsGuestbook } from "@/components/react/capability-demos/DocsGuestbook";
 import { DocsSpinner } from "@/components/react/capability-demos/DocsSpinner";
 import { InteractiveToggleDemo } from "@/components/react/InteractiveToggleDemo";
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import {
+  emojiMirrorRecipe,
+  growingListMirrorRecipe,
+} from "@/components/playground/recipes/mirror-basics";
+import {
+  sharedCounterRecipe,
+  sharedGuestbookRecipe,
+} from "@/components/playground/recipes/shared-state-basics";
 
 The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** state — a counter, a poll, a guestbook, a chat — you build a custom element. There are two approaches:
 
@@ -47,19 +54,12 @@ Use it when the state you want to share is the DOM itself: a shared textarea, a 
 A textarea that filters to emoji characters on input. The filtered value mirrors to everyone.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: emoji textarea">
-  <div class="ph-canmirror-vignette ph-canmirror-vignette--emoji" data-can-mirror-vignette="emoji">
-    <textarea
-      can-mirror
-      id="emoji-pad"
-      class="ph-canmirror-vignette__textarea"
-      rows="4"
-      placeholder="emojis only..."
-      aria-label="Emoji-only shared textarea"
-    ></textarea>
-    <p class="ph-canmirror-vignette__hint">
-      Type anything. Only emojis stick, and the filtered value mirrors to everyone.
-    </p>
-  </div>
+  <RecipeExample
+    recipe={emojiMirrorRecipe}
+    compact
+    frameHeight="24rem"
+    client:load
+  />
 </div>
 
 ```html
@@ -79,17 +79,13 @@ A textarea that filters to emoji characters on input. The filtered value mirrors
 Click "+" to append a new `<li>`. The list itself has `can-mirror`, so the direct child addition mirrors and new readers see the whole list, not just the latest.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: growing list">
-  <div class="ph-canmirror-vignette ph-canmirror-vignette--guestbook" data-can-mirror-vignette="guestbook">
-    <ul can-mirror id="guestbook" class="ph-canmirror-vignette__list" aria-label="Shared guestbook entries">
-      <li>first</li>
-    </ul>
-    <button type="button" id="guestbook-add" class="ph-canmirror-vignette__button">
-      add entry
-    </button>
-  </div>
+  <RecipeExample
+    recipe={growingListMirrorRecipe}
+    compact
+    frameHeight="25rem"
+    client:load
+  />
 </div>
-
-<script type="module" src="/docs/can-mirror-vignettes.js"></script>
 
 ```html
 <ul can-mirror id="guestbook">
@@ -154,7 +150,12 @@ Most capability tags can share the same element. Each tag keeps its own data and
       Click to add one. The count is shared — everyone reading this page bumps the same number.
     </p>
   </div>
-  <DocsCounter client:only="react" />
+  <RecipeExample
+    recipe={sharedCounterRecipe}
+    compact
+    frameHeight="20rem"
+    client:load
+  />
 </div>
 
 #### State to style
@@ -331,7 +332,12 @@ form.addEventListener("submit", (e) => {
       Drop a note about what you're learning or building. The list is shared, capped at 20, oldest entries fall off.
     </p>
   </div>
-  <DocsGuestbook client:only="react" />
+  <RecipeExample
+    recipe={sharedGuestbookRecipe}
+    compact
+    frameHeight="34rem"
+    client:load
+  />
 </div>
 
 #### Reusing the element many times: `define`

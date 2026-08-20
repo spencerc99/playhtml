@@ -26,6 +26,12 @@ import {
   formatAdminResetWarning,
 } from "./adminMessages";
 import { HOSTS, type EnvName } from "./adminHosts";
+import {
+  QuarantinedRoomsOverview,
+  RoomQuarantinePanel,
+  type QuarantineOverviewState,
+  type RoomQuarantineStatus,
+} from "./adminQuarantine";
 
 // Types from the original admin.ts
 interface RoomData {
@@ -43,6 +49,7 @@ interface RoomData {
   timestamp?: string;
   roomId?: string;
   documentSize?: number;
+  quarantine?: RoomQuarantineStatus;
 }
 
 interface DebugLog {
@@ -581,6 +588,12 @@ const LoginScreen: React.FC<{
         <h1 style={{ marginTop: 0, marginBottom: "1.5rem" }}>
           🛠️ PlayHTML Admin
         </h1>
+        <a
+          className="admin-office-link"
+          href="https://wewere.online/admin/"
+        >
+          Open WWO Internal Office ↗
+        </a>
 
         <div style={{ marginBottom: "1.5rem" }}>
           <label
@@ -678,6 +691,8 @@ const AdminConsole: React.FC = () => {
   const [urlInput, setUrlInput] = useState<string>("");
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [quarantineOverview, setQuarantineOverview] =
+    useState<QuarantineOverviewState>({ state: "loading", rooms: [] });
   // Auto-detect environment - cannot be changed
   const hostEnv = detectEnvironment();
   const [roomStatus, setRoomStatus] = useState<{
@@ -1213,6 +1228,58 @@ const AdminConsole: React.FC = () => {
 
     return await response.json();
   };
+
+  const loadQuarantinedRooms = useCallback(async () => {
+    if (!adminToken) return;
+
+    setQuarantineOverview((previous) => ({
+      state: "loading",
+      rooms: previous.rooms,
+    }));
+
+    try {
+      const response = await fetch(
+        `${HOSTS[hostEnv]}/admin/quarantines?token=${encodeURIComponent(
+          adminToken
+        )}`
+      );
+      const body = await response.json();
+
+      if (response.status === 401) {
+        setAdminToken(null);
+        localStorage.removeItem("playhtml-admin-token");
+        throw new Error(
+          "Authentication failed. Please re-authenticate with a valid token."
+        );
+      }
+
+      if (!response.ok || body.available !== true) {
+        throw new Error(
+          body.error ||
+            `Failed to read quarantines: ${response.status} ${response.statusText}`
+        );
+      }
+
+      setQuarantineOverview({
+        state: "ready",
+        rooms: body.rooms,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setQuarantineOverview((previous) => ({
+        state: "error",
+        rooms: previous.rooms,
+        message,
+      }));
+      addLog("error", `Failed to list quarantined rooms: ${message}`);
+    }
+  }, [addLog, adminToken, hostEnv]);
+
+  useEffect(() => {
+    if (adminToken) {
+      void loadQuarantinedRooms();
+    }
+  }, [adminToken, loadQuarantinedRooms]);
 
   const exportRoomData = async () => {
     if (!roomData || !currentRoomId) return;
@@ -2272,7 +2339,10 @@ const AdminConsole: React.FC = () => {
   return (
     <div className="admin-container">
       <header className="admin-header">
-        <h1>🛠️ PlayHTML Admin Console</h1>
+        <div className="admin-header-title">
+          <h1>🛠️ PlayHTML Admin Console</h1>
+          <a href="https://wewere.online/admin/">WWO Internal Office ↗</a>
+        </div>
         <div>
           <EnvironmentDisplay currentEnv={hostEnv} />
           <div className="auth-controls">
@@ -2292,6 +2362,15 @@ const AdminConsole: React.FC = () => {
       </header>
 
       <div className="admin-content">
+        <QuarantinedRoomsOverview
+          overview={quarantineOverview}
+          onRefresh={() => void loadQuarantinedRooms()}
+          onSelectRoom={(roomId) => {
+            setCurrentRoomId(roomId);
+            void loadRoom(roomId);
+          }}
+        />
+
         <section className="room-inspector">
           <h2>Room Inspector</h2>
           <div className="input-group">
@@ -2322,6 +2401,10 @@ const AdminConsole: React.FC = () => {
             <div className={`status-display ${roomStatus.type}`}>
               {roomStatus.message}
             </div>
+          )}
+
+          {roomData?.quarantine && (
+            <RoomQuarantinePanel status={roomData.quarantine} />
           )}
 
           {roomData && (

@@ -5,7 +5,7 @@ import { bottleDebug as debug } from "./bottle-debug";
 
 export interface BottleAnchor {
   selector: string;
-  offsetX: number; // 0..1, fraction of anchor element width
+  offsetX: number; // fraction of anchor width; outside 0..1 means a side margin
   offsetY: number; // -1..3, fraction of anchor element height (>1 means below the element)
 }
 
@@ -15,112 +15,48 @@ interface ResolvedPosition {
   rotate: number; // degrees, deterministic from anchor
 }
 
-// Visible footprint of a bottle above the slot. Slightly conservative.
-const BOTTLE_W = 44;
-const BOTTLE_H = 80;
-// Sample box covers most of the bottle's footprint so we catch any
-// text/image that would be visually obscured.
-const SAMPLE_HALF_W = 22;
-const SAMPLE_HALF_H = 38;
+// Bounding box of the 72x96 mound at its maximum 15-degree rotation.
+const BOTTLE_W = 96;
+const BOTTLE_H = 112;
+// Require breathing room beyond the visible object.
+const SAMPLE_HALF_W = BOTTLE_W / 2 + 12;
+const SAMPLE_HALF_H = BOTTLE_H / 2 + 12;
+const CONTENT_GAP_PX = 24;
 const SAFE_TOP_PX = 80;
 const SAFE_EDGE_PX = 24;
 
-const MAX_PICK_ATTEMPTS = 80;
-// First-match threshold — stop searching once we find a position this clear.
-const GOOD_ENOUGH_SCORE = 0.95;
-// Minimum we'll accept. We want a clean background spot, not "tolerable text overlap."
-const MIN_ACCEPTABLE_SCORE = 0.85;
+const MAX_PICK_ATTEMPTS = 160;
+const MIN_READABLE_TEXT_LENGTH = 60;
 
 /**
- * Pick a stable anchor whose resolved position lands in clear empty space.
- * Tries many candidates+offsets, scoring each by how clear its footprint
- * is, and returns the best one above MIN_ACCEPTABLE_SCORE.
+ * Pick a stable anchor whose resolved position lands in a clear side margin
+ * beside substantial readable content.
  */
 export function pickBottleAnchor(): BottleAnchor | null {
-  const candidates = collectAnchorCandidates();
+  const candidates = collectAnchorCandidates(true);
   if (!candidates.length) {
     debug("[bottles] no anchor candidates collected from DOM");
     return null;
   }
-  debug(
-    `[bottles] collected ${candidates.length} anchor candidate(s), trying up to ${MAX_PICK_ATTEMPTS} placements`,
-  );
+  debug(`[bottles] collected ${candidates.length} readable anchor candidate(s)`);
 
-  let best: { anchor: BottleAnchor; score: number; reason: string } | null = null;
   const reasonCounts: Record<string, number> = {};
-
-  // Strategy 1: scan the viewport grid for empty cells, derive an anchor
-  // pointing at each. Much higher hit rate on content-heavy pages where
-  // random anchor offsets rarely land in margins.
-  const gridAnchors = anchorsFromViewportGrid(candidates);
-  for (const anchor of gridAnchors) {
+  const anchors = anchorsBesideReadableContent(candidates);
+  for (const anchor of anchors.slice(0, MAX_PICK_ATTEMPTS)) {
     const result = scorePlacement(anchor);
     if (result.score < 0) {
       reasonCounts[result.reason] = (reasonCounts[result.reason] ?? 0) + 1;
       continue;
     }
-    if (!best || result.score > best.score) {
-      best = { anchor, score: result.score, reason: result.reason };
-      if (result.score >= GOOD_ENOUGH_SCORE) {
-        debug(
-          `[bottles] picked anchor (grid, score=${result.score.toFixed(2)}): ${anchor.selector}`,
-        );
-        return anchor;
-      }
-    }
-  }
-
-  // Strategy 2: random anchor + random offset, as a fallback.
-  for (let i = 0; i < MAX_PICK_ATTEMPTS; i++) {
-    const selector = candidates[Math.floor(Math.random() * candidates.length)];
-    const offsetY = pickOffsetY();
-    const offsetX = pickOffsetX();
-    const anchor: BottleAnchor = { selector, offsetX, offsetY };
-    const result = scorePlacement(anchor);
-    if (result.score < 0) {
-      reasonCounts[result.reason] = (reasonCounts[result.reason] ?? 0) + 1;
-      continue;
-    }
-    if (!best || result.score > best.score) {
-      best = { anchor, score: result.score, reason: result.reason };
-      if (result.score >= GOOD_ENOUGH_SCORE) {
-        debug(
-          `[bottles] picked anchor (random, score=${result.score.toFixed(2)}): ${selector}`,
-        );
-        return anchor;
-      }
-    }
-  }
-
-  if (best && best.score >= MIN_ACCEPTABLE_SCORE) {
-    debug(
-      `[bottles] picked best-available anchor (score=${best.score.toFixed(2)}): ${best.anchor.selector}`,
-    );
-    return best.anchor;
+    debug(`[bottles] picked clear content margin: ${anchor.selector}`);
+    return anchor;
   }
 
   debug(
-    `[bottles] all ${MAX_PICK_ATTEMPTS} placements below MIN_ACCEPTABLE_SCORE. ` +
-      `best=${best ? best.score.toFixed(2) : "n/a"} rejections=`,
+    `[bottles] no clear content margin among ${Math.min(anchors.length, MAX_PICK_ATTEMPTS)} placements. rejections=`,
     reasonCounts,
   );
   return null;
-}
-
-function pickOffsetY(): number {
-  const r = Math.random();
-  if (r < 0.35) return 1.1 + Math.random() * 0.4; // just below
-  if (r < 0.55) return 1.6 + Math.random() * 0.8; // further below
-  if (r < 0.75) return -0.5 + Math.random() * 0.4; // above
-  // beside the anchor (matched with wide offsetX)
-  return 0.2 + Math.random() * 0.6;
-}
-
-function pickOffsetX(): number {
-  const r = Math.random();
-  if (r < 0.55) return 0.3 + Math.random() * 0.4; // inside the anchor
-  if (r < 0.8) return -1.0 + Math.random() * 1.0; // left margin
-  return 1.0 + Math.random() * 1.0; // right margin
 }
 
 /** Resolve the page position chosen at placement time. Offscreen positions are
@@ -203,10 +139,10 @@ function scorePlacement(anchor: BottleAnchor): ScoreResult {
   // (with safe margins), not just partially overlapping it. Anchors below
   // the fold or above the scroll-top are not acceptable at placement time.
   if (
-    x - BOTTLE_W / 2 < SAFE_EDGE_PX ||
-    x + BOTTLE_W / 2 > vw - SAFE_EDGE_PX ||
-    y - BOTTLE_H / 2 < SAFE_TOP_PX ||
-    y + BOTTLE_H / 2 > vh - SAFE_EDGE_PX
+    x - SAMPLE_HALF_W < SAFE_EDGE_PX ||
+    x + SAMPLE_HALF_W > vw - SAFE_EDGE_PX ||
+    y - SAMPLE_HALF_H < SAFE_TOP_PX ||
+    y + SAMPLE_HALF_H > vh - SAFE_EDGE_PX
   ) {
     return { score: -1, position: null, reason: "out-of-viewport" };
   }
@@ -238,15 +174,13 @@ function resolveAnchorPosition(anchor: BottleAnchor): {
   }
   if (!el) return { position: null, reason: "no-element" };
   const rect = el.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0)
-    return { position: null, reason: "zero-size" };
+  if (rect.width === 0 || rect.height === 0) return { position: null, reason: "zero-size" };
 
   const x = rect.left + rect.width * anchor.offsetX;
   const y = rect.top + rect.height * anchor.offsetY;
 
   const rotate =
-    -15 +
-    (hashStr(anchor.selector + anchor.offsetX.toFixed(2) + anchor.offsetY.toFixed(2)) % 30);
+    -15 + (hashStr(anchor.selector + anchor.offsetX.toFixed(2) + anchor.offsetY.toFixed(2)) % 30);
 
   return {
     position: { x, y, rotate },
@@ -265,25 +199,14 @@ function resolveAnchorPosition(anchor: BottleAnchor): {
  * sample point. Anything else is hard-rejected.
  */
 function scoreArea(centerX: number, centerY: number): number {
-  // 12-point sample — denser than 9 to catch narrow text lines
-  const samples: Array<[number, number]> = [
-    [centerX - SAMPLE_HALF_W, centerY - SAMPLE_HALF_H],
-    [centerX, centerY - SAMPLE_HALF_H],
-    [centerX + SAMPLE_HALF_W, centerY - SAMPLE_HALF_H],
-    [centerX - SAMPLE_HALF_W, centerY - SAMPLE_HALF_H / 2],
-    [centerX + SAMPLE_HALF_W, centerY - SAMPLE_HALF_H / 2],
-    [centerX - SAMPLE_HALF_W, centerY],
-    [centerX, centerY],
-    [centerX + SAMPLE_HALF_W, centerY],
-    [centerX - SAMPLE_HALF_W, centerY + SAMPLE_HALF_H / 2],
-    [centerX + SAMPLE_HALF_W, centerY + SAMPLE_HALF_H / 2],
-    [centerX - SAMPLE_HALF_W, centerY + SAMPLE_HALF_H],
-    [centerX, centerY + SAMPLE_HALF_H],
-    [centerX + SAMPLE_HALF_W, centerY + SAMPLE_HALF_H],
-  ];
-
-  for (const [sx, sy] of samples) {
-    if (!isBackgroundAt(sx, sy)) return -1;
+  const columns = 5;
+  const rows = 7;
+  for (let row = 0; row < rows; row++) {
+    const y = centerY - SAMPLE_HALF_H + (row / (rows - 1)) * SAMPLE_HALF_H * 2;
+    for (let column = 0; column < columns; column++) {
+      const x = centerX - SAMPLE_HALF_W + (column / (columns - 1)) * SAMPLE_HALF_W * 2;
+      if (!isBackgroundAt(x, y)) return -1;
+    }
   }
   return 1;
 }
@@ -302,33 +225,13 @@ function isBackgroundAt(sx: number, sy: number): boolean {
   const tag = top.tagName.toLowerCase();
   if (tag === "html" || tag === "body") return true;
 
-  // Things we definitely shouldn't overlap, ever:
-  if (
-    tag === "input" ||
-    tag === "textarea" ||
-    tag === "button" ||
-    tag === "select" ||
-    tag === "a" ||
-    tag === "img" ||
-    tag === "video" ||
-    tag === "canvas" ||
-    tag === "svg" ||
-    tag === "iframe" ||
-    tag === "picture"
-  ) {
+  if (top.closest(INTERACTIVE_OR_MEDIA_SELECTOR)) {
     return false;
   }
 
   // p, li, h1-h6, span, etc — content elements. If they have direct text
   // at this spot, reject. (We use childNodes text content as the signal.)
   if (hasDirectText(top)) return false;
-
-  // Element is a container. Check whether the element has rendered visible
-  // content (text or media) — even if `top` is a div with no direct text,
-  // if its bounding box has any text content we treat its interior as
-  // not-background. This catches cases where the element has spans/links
-  // inside but elementFromPoint returned the parent div.
-  if (looksLikeContentContainer(top)) return false;
 
   return true;
 }
@@ -343,137 +246,70 @@ function hasDirectText(el: Element): boolean {
 }
 
 /**
- * Heuristic for "this div is actually content, not background." True if
- * any descendant within a small radius of the sample point has visible
- * text or media. Keeps the test cheap by only looking 1-2 levels deep.
+ * Build placements in the left and right margins of readable blocks. The
+ * bottle is only eligible when the full rotated footprint and its breathing
+ * room fit between the content and viewport edge.
  */
-function looksLikeContentContainer(el: Element): boolean {
-  // Walk through child elements — if any is a content tag with non-empty
-  // text, treat the container as content.
-  for (const child of Array.from(el.children).slice(0, 6)) {
-    const tag = child.tagName.toLowerCase();
-    if (
-      tag === "p" ||
-      tag === "h1" ||
-      tag === "h2" ||
-      tag === "h3" ||
-      tag === "h4" ||
-      tag === "h5" ||
-      tag === "h6" ||
-      tag === "li" ||
-      tag === "blockquote" ||
-      tag === "a" ||
-      tag === "img" ||
-      tag === "span"
-    ) {
-      if ((child.textContent || "").trim().length > 0) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Probe a grid of points across the visible viewport. For each cell that
- * is empty background, find the nearest content-anchor candidate and
- * compute the offsetX/offsetY needed to point at that cell. Returns the
- * resulting anchors in random order.
- *
- * This is the inverse of "pick anchor → guess offset": we look at where
- * empty space ACTUALLY is, then derive an anchor that encodes that
- * position relative to stable content.
- */
-function anchorsFromViewportGrid(candidates: string[]): BottleAnchor[] {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  // 10x6 grid covering the viewport (skipping the very edges + top nav)
-  const cols = 10;
-  const rows = 6;
-  const xStep = (vw - SAFE_EDGE_PX * 2) / (cols - 1);
-  const yStep = (vh - SAFE_TOP_PX - SAFE_EDGE_PX) / (rows - 1);
-
-  const clearCells: Array<[number, number]> = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = SAFE_EDGE_PX + c * xStep;
-      const y = SAFE_TOP_PX + r * yStep;
-      // Quick check: a 5-point cross sample. Cheaper than the full scoreArea.
-      if (
-        isBackgroundAt(x, y) &&
-        isBackgroundAt(x - 12, y) &&
-        isBackgroundAt(x + 12, y) &&
-        isBackgroundAt(x, y - 16) &&
-        isBackgroundAt(x, y + 16)
-      ) {
-        clearCells.push([x, y]);
-      }
-    }
-  }
-
-  // Build a list of anchor elements with their current rects
-  const anchorRects: Array<{ selector: string; rect: DOMRect }> = [];
+function anchorsBesideReadableContent(candidates: string[]): BottleAnchor[] {
+  const anchors: BottleAnchor[] = [];
   for (const sel of candidates) {
     const el = document.querySelector(sel);
     if (!el) continue;
     const rect = el.getBoundingClientRect();
-    if (rect.width < 20 || rect.height < 8) continue;
-    anchorRects.push({ selector: sel, rect });
-  }
-  if (anchorRects.length === 0) return [];
-
-  // Shuffle cells so we don't always prefer top-left
-  for (let i = clearCells.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [clearCells[i], clearCells[j]] = [clearCells[j], clearCells[i]];
-  }
-
-  const out: BottleAnchor[] = [];
-  for (const [cellX, cellY] of clearCells) {
-    // Find the anchor whose rect center is closest to this cell
-    let bestAnchor: { selector: string; rect: DOMRect } | null = null;
-    let bestDist = Infinity;
-    for (const a of anchorRects) {
-      const ax = a.rect.left + a.rect.width / 2;
-      const ay = a.rect.top + a.rect.height / 2;
-      const dx = ax - cellX;
-      const dy = ay - cellY;
-      const d = dx * dx + dy * dy;
-      if (d < bestDist) {
-        bestDist = d;
-        bestAnchor = a;
-      }
+    const y = rect.top + rect.height / 2;
+    const leftX = rect.left - SAMPLE_HALF_W - CONTENT_GAP_PX;
+    const rightX = rect.right + SAMPLE_HALF_W + CONTENT_GAP_PX;
+    if (leftX - SAMPLE_HALF_W >= SAFE_EDGE_PX) {
+      anchors.push({
+        selector: sel,
+        offsetX: (leftX - rect.left) / rect.width,
+        offsetY: 0.5,
+      });
     }
-    if (!bestAnchor) continue;
-    const { selector, rect } = bestAnchor;
-    const offsetX = (cellX - rect.left) / rect.width;
-    const offsetY = (cellY - rect.top) / rect.height;
-    out.push({ selector, offsetX, offsetY });
+    if (rightX + SAMPLE_HALF_W <= window.innerWidth - SAFE_EDGE_PX) {
+      anchors.push({
+        selector: sel,
+        offsetX: (rightX - rect.left) / rect.width,
+        offsetY: 0.5,
+      });
+    }
   }
-  return out;
+
+  for (let i = anchors.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [anchors[i], anchors[j]] = [anchors[j], anchors[i]];
+  }
+  return anchors;
 }
 
-function collectAnchorCandidates(): string[] {
+function collectAnchorCandidates(readableOnly = false): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
 
-  const idEls = document.querySelectorAll<HTMLElement>("[id]");
-  for (const el of idEls) {
-    if (!isReasonableAnchor(el)) continue;
-    if (el.id && /^[a-z][\w-]+$/i.test(el.id)) {
-      const sel = `#${CSS.escape(el.id)}`;
-      if (!seen.has(sel)) {
-        seen.add(sel);
-        out.push(sel);
+  if (!readableOnly) {
+    const idEls = document.querySelectorAll<HTMLElement>("[id]");
+    for (const el of idEls) {
+      if (!isReasonableAnchor(el)) continue;
+      if (el.id && /^[a-z][\w-]+$/i.test(el.id)) {
+        const sel = `#${CSS.escape(el.id)}`;
+        if (!seen.has(sel)) {
+          seen.add(sel);
+          out.push(sel);
+        }
       }
     }
   }
 
   const blocks = document.querySelectorAll<HTMLElement>(
-    "p, li, h1, h2, h3, h4, blockquote, dt, dd, figcaption",
+    readableOnly
+      ? "p, li, blockquote, dd, figcaption"
+      : "p, li, h1, h2, h3, h4, blockquote, dt, dd, figcaption",
   );
   for (const el of blocks) {
     if (!isReasonableAnchor(el)) continue;
-    const sel = buildStructuralSelector(el);
+    if (readableOnly && normalizedTextLength(el) < MIN_READABLE_TEXT_LENGTH) continue;
+    const sel =
+      el.id && /^[a-z][\w-]+$/i.test(el.id) ? `#${CSS.escape(el.id)}` : buildStructuralSelector(el);
     if (!sel || seen.has(sel)) continue;
     seen.add(sel);
     out.push(sel);
@@ -524,6 +360,36 @@ function isReasonableAnchor(el: HTMLElement): boolean {
   if (closestChrome) return false;
   return true;
 }
+
+function normalizedTextLength(el: Element): number {
+  return (el.textContent || "").replace(/\s+/g, " ").trim().length;
+}
+
+const INTERACTIVE_OR_MEDIA_SELECTOR = [
+  "a",
+  "button",
+  "input",
+  "textarea",
+  "select",
+  "img",
+  "video",
+  "canvas",
+  "svg",
+  "iframe",
+  "picture",
+  "[contenteditable='true']",
+  "[role='button']",
+  "[role='link']",
+  "[role='tab']",
+  "[role='menuitem']",
+  "[role='checkbox']",
+  "[role='radio']",
+  "[role='switch']",
+  "[role='textbox']",
+  "[role='combobox']",
+  "[role='option']",
+  "[role='gridcell']",
+].join(",");
 
 function hashStr(s: string): number {
   let h = 0;

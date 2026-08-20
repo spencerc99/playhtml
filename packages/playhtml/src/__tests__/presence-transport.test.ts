@@ -1,7 +1,7 @@
 // ABOUTME: Verifies the realtime presence transport sends and receives protocol messages.
 // ABOUTME: Uses a fake socket so transport behavior is tested without network I/O.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   RealtimePresenceTransport,
   type PresenceSocketFactory,
@@ -58,6 +58,31 @@ class FakeSocket {
     for (const listener of this.listeners.get("close") ?? []) {
       listener(event);
     }
+  }
+}
+
+class PropertyHandlerSocket extends FakeSocket {
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onopen: ((event: Event) => void) | null = null;
+  onclose: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+
+  override receive(data: unknown): void {
+    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
+  }
+
+  override open(): void {
+    this.readyState = WebSocket.OPEN;
+    this.onopen?.(new Event("open"));
+  }
+
+  override disconnect(): void {
+    this.readyState = WebSocket.CLOSED;
+    this.onclose?.(new Event("close"));
+  }
+
+  fail(): void {
+    this.onerror?.(new Event("error"));
   }
 }
 
@@ -320,6 +345,43 @@ describe("RealtimePresenceTransport", () => {
     ]);
   });
 
+  it("uses socket handler properties when available", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const socket = new PropertyHandlerSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+    const received: unknown[] = [];
+    transport.subscribe((message) => received.push(message));
+
+    expect(
+      ["message", "open", "close", "error"].every(
+        (event) => !socket.listeners.has(event),
+      ),
+    ).toBe(true);
+
+    socket.open();
+    expect(transport.connectionState).toBe("open");
+    socket.receive({ type: "presence-sync", peers: {} });
+    expect(received).toEqual([{ type: "presence-sync", peers: {} }]);
+
+    socket.disconnect();
+    expect(transport.connectionState).toBe("connecting");
+    socket.fail();
+    socket.fail();
+    socket.fail();
+    expect(transport.connectionState).toBe("unreachable");
+
+    transport.destroy();
+    expect(socket.onmessage).toBeNull();
+    expect(socket.onopen).toBeNull();
+    expect(socket.onclose).toBeNull();
+    expect(socket.onerror).toBeNull();
+    errorSpy.mockRestore();
+  });
+
   it("ignores malformed nested server change messages", () => {
     const socket = new FakeSocket();
     const transport = new RealtimePresenceTransport({
@@ -354,5 +416,98 @@ describe("RealtimePresenceTransport", () => {
     transport.destroy();
 
     expect(socket.closed).toBe(true);
+  });
+
+  it("starts in the connecting state and flips to open", () => {
+    const socket = new FakeSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+    expect(transport.connectionState).toBe("connecting");
+    socket.open();
+    expect(transport.connectionState).toBe("open");
+    transport.destroy();
+  });
+
+  it("flags unreachable after the grace window and logs exactly once", () => {
+    vi.useFakeTimers();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const socket = new FakeSocket();
+      const transport = new RealtimePresenceTransport({
+        host: "example.com",
+        room: "room-1",
+        socketFactory: () => socket,
+      });
+      // Never opens.
+      vi.advanceTimersByTime(20_000);
+      expect(transport.connectionState).toBe("unreachable");
+      const unreachableLogs = errorSpy.mock.calls.filter((c) =>
+        String(c[0]).includes("unreachable"),
+      );
+      expect(unreachableLogs).toHaveLength(1);
+
+      // Further failures do not re-log.
+      socket.disconnect();
+      socket.disconnect();
+      const after = errorSpy.mock.calls.filter((c) =>
+        String(c[0]).includes("unreachable"),
+      );
+      expect(after).toHaveLength(1);
+      transport.destroy();
+    } finally {
+      vi.useRealTimers();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("flags unreachable after repeated failed reconnects before the grace window", () => {
+    vi.useFakeTimers();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const socket = new FakeSocket();
+      const transport = new RealtimePresenceTransport({
+        host: "example.com",
+        room: "room-1",
+        socketFactory: () => socket,
+      });
+      socket.disconnect();
+      socket.disconnect();
+      expect(transport.connectionState).not.toBe("unreachable");
+      socket.disconnect();
+      expect(transport.connectionState).toBe("unreachable");
+      transport.destroy();
+    } finally {
+      vi.useRealTimers();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("logs a base warning on presence-error and presence-rate, rate-limited", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const socket = new FakeSocket();
+      const transport = new RealtimePresenceTransport({
+        host: "example.com",
+        room: "room-1",
+        socketFactory: () => socket,
+      });
+      socket.open();
+
+      socket.receive({ type: "presence-error", message: "bad value" });
+      socket.receive({ type: "presence-rate", channel: "presence:x", hz: 20 });
+      const first = warnSpy.mock.calls.length;
+      expect(first).toBe(2);
+
+      // Rapid repeats of the same event type are rate-limited (no new logs).
+      socket.receive({ type: "presence-error", message: "bad again" });
+      socket.receive({ type: "presence-error", message: "bad again" });
+      expect(warnSpy.mock.calls.length).toBe(first);
+      transport.destroy();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

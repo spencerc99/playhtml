@@ -38,7 +38,7 @@ interface PlayerIdentity {
 
 `PlayerIdentity` is the public identity shared through presence. Keep private keys, local profile data, and browsing history in your own app storage instead of adding them to this object.
 
-Read your identity with `playhtml.presence.getMyIdentity()` (vanilla) or `usePlayContext().getMyPlayerIdentity()` / `usePlayerIdentity()` (React).
+Read your identity with `playhtml.presence.getMyIdentity()` (vanilla) or `usePlayContext().getMyPlayerIdentity()` / `usePlayerIdentity()` (React). To set identity fields, use [`playhtml.users.me`](/docs/data/presence/users/).
 
 When the "we were online" browser extension is installed, it can inject identity via the `playhtml:configure-identity` DOM event. playhtml merges the extension's color and public key automatically.
 

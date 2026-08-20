@@ -19,6 +19,23 @@ export interface ScheduledClick {
   holdDuration?: number;
 }
 
+export const MAX_VISIBLE_CLICK_EFFECTS = 2000;
+
+export type VisibleClickEffect = ClickEffect & {
+  sourceId: string;
+};
+
+export function mergeClickEffects(
+  current: VisibleClickEffect[],
+  incoming: VisibleClickEffect[],
+): VisibleClickEffect[] {
+  const incomingSourceIds = new Set(incoming.map((effect) => effect.sourceId));
+  return [
+    ...current.filter((effect) => !incomingSourceIds.has(effect.sourceId)),
+    ...incoming,
+  ].slice(-MAX_VISIBLE_CLICK_EFFECTS);
+}
+
 interface AnimatedClicksProps {
   scheduledClicks: ScheduledClick[];
   timeRange: { duration: number };
@@ -30,12 +47,14 @@ interface AnimatedClicksProps {
 
 export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
   ({ scheduledClicks, timeRange, settings, soundEngine = null }) => {
-    const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
-      [],
-    );
-    const animationRef = useRef<number>();
-    const timeoutRef = useRef<number>();
+    const [activeClickEffects, setActiveClickEffects] = useState<
+      VisibleClickEffect[]
+    >([]);
+    const animationRef = useRef<number | undefined>(undefined);
+    const timeoutRef = useRef<number | undefined>(undefined);
     const spawnedThisCycleRef = useRef<Set<string>>(new Set());
+    const currentCycleEffectIdsRef = useRef<Set<string>>(new Set());
+    const completedCycleEffectIdsRef = useRef<Set<string>>(new Set());
 
     const animationSpeedRef = useRef(settings.animationSpeed);
     useEffect(() => {
@@ -47,20 +66,18 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       soundEngineRef.current = soundEngine;
     }, [soundEngine]);
 
-    // Ripples persist after their animation finishes — they only clear when
-    // the whole scene resets (data change, resize, or cycle restart).
-    // We do count completions so the rAF loop knows when every spawned ripple
-    // has finished animating and the cycle is safe to restart.
-    const finishedCountRef = useRef(0);
-    const handleClickComplete = useCallback((_id: string) => {
-      finishedCountRef.current += 1;
+    // Finished ripples remain as residue while their event ids are replayed.
+    // Track the current pass by rendered id so completions from a previous
+    // archive batch cannot make the next pass finish early.
+    const handleClickComplete = useCallback((id: string) => {
+      if (currentCycleEffectIdsRef.current.has(id)) {
+        completedCycleEffectIdsRef.current.add(id);
+      }
     }, []);
-
-    const spawnedCountRef = useRef(0);
 
     // Microtask-batched commits so multiple per-frame spawns don't each cause
     // their own React re-render.
-    const pendingSpawnsRef = useRef<ClickEffect[]>([]);
+    const pendingSpawnsRef = useRef<VisibleClickEffect[]>([]);
     const flushSpawnsScheduledRef = useRef(false);
     const scheduleFlushSpawns = useCallback(() => {
       if (flushSpawnsScheduledRef.current) return;
@@ -70,7 +87,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
         const batch = pendingSpawnsRef.current;
         if (batch.length === 0) return;
         pendingSpawnsRef.current = [];
-        setActiveClickEffects((prev) => [...prev, ...batch]);
+        setActiveClickEffects((prev) => mergeClickEffects(prev, batch));
       });
     }, []);
 
@@ -82,17 +99,18 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
     // `scheduledClicks` changes identity.
     useEffect(() => {
       if (scheduledClicks.length === 0 || timeRange.duration <= 0) {
-        setActiveClickEffects([]);
         spawnedThisCycleRef.current.clear();
+        currentCycleEffectIdsRef.current.clear();
+        completedCycleEffectIdsRef.current.clear();
         return;
       }
 
-      // Reset state when clicks or duration change so we don't carry ripples
-      // anchored to stale x/y coordinates after a resize / refetch.
+      // A new event set starts a fresh clock but retains the previous residue.
+      // Incoming events replace matching marks and the bounded visible set
+      // gradually pushes unrelated marks out without blanking the canvas.
       spawnedThisCycleRef.current.clear();
-      finishedCountRef.current = 0;
-      spawnedCountRef.current = 0;
-      setActiveClickEffects([]);
+      currentCycleEffectIdsRef.current.clear();
+      completedCycleEffectIdsRef.current.clear();
       soundEngineRef.current?.reset();
       pendingSpawnsRef.current = [];
 
@@ -134,14 +152,16 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
         for (const sc of scheduledClicks) {
           if (scaledElapsed >= sc.spawnAtMs && !spawned.has(sc.id)) {
             spawned.add(sc.id);
-            spawnedCountRef.current += 1;
             soundEngineRef.current?.triggerClick({
               x: sc.x,
               y: sc.y,
               holdDuration: sc.holdDuration,
             });
+            const renderedId = `${sc.id}-${timestamp}`;
+            currentCycleEffectIdsRef.current.add(renderedId);
             pendingSpawnsRef.current.push({
-              id: `${sc.id}-${timestamp}`,
+              id: renderedId,
+              sourceId: sc.id,
               x: sc.x,
               y: sc.y,
               color: sc.color,
@@ -159,15 +179,15 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
 
         const allSpawned = scaledElapsed >= timeRange.duration;
         const allDone =
-          spawnedCountRef.current > 0 &&
-          finishedCountRef.current >= spawnedCountRef.current;
+          currentCycleEffectIdsRef.current.size > 0 &&
+          completedCycleEffectIdsRef.current.size >=
+            currentCycleEffectIdsRef.current.size;
 
         if (allSpawned && allDone) {
           startTime = timestamp;
           spawnedThisCycleRef.current.clear();
-          finishedCountRef.current = 0;
-          spawnedCountRef.current = 0;
-          setActiveClickEffects([]);
+          currentCycleEffectIdsRef.current.clear();
+          completedCycleEffectIdsRef.current.clear();
           soundEngineRef.current?.reset();
         }
 

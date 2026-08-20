@@ -309,6 +309,8 @@ export class QuarantineTapeManager {
 
   // ----- rip (optimistic, reconciled) -----
   private async ripStrip(strip: Strip, pos: number) {
+    if (strip.id.startsWith("temp-")) return;
+
     // snapshot rips-required at the first rip (locks provisional vs set)
     if (strip.ripsRequired === null) {
       const standing = this.strips.filter((s) => !isFullyTorn(s)).length;
@@ -316,10 +318,6 @@ export class QuarantineTapeManager {
     }
     strip.rips.push({ by: this.playerPid, at: Date.now(), pos });
     this.renderStrips();
-
-    // Temp (not-yet-persisted) strips have no server id to rip against; the rip
-    // rides along when the strip's commit reconciles.
-    if (strip.id.startsWith("temp-")) return;
 
     const server = await postRip({
       url: location.href,

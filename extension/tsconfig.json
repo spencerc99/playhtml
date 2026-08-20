@@ -17,5 +17,5 @@
       "@movement/*": ["./website/shared/*"]
     }
   },
-  "exclude": ["dist", "website"]
+  "exclude": ["dist", "website", "worker"]
 }

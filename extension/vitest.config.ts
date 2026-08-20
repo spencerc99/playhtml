@@ -19,6 +19,13 @@ const extensionTypesSource = fileURLToPath(
 
 export default defineConfig({
   root: rootDir,
+  css: {
+    preprocessorOptions: {
+      scss: {
+        silenceDeprecations: ["legacy-js-api"],
+      },
+    },
+  },
   resolve: {
     alias: {
       "@extension": extensionSource,
@@ -36,8 +43,8 @@ export default defineConfig({
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
       "scripts/**/*.test.mjs",
-      "website/shared/**/*.test.ts",
-      "website/shared/**/*.test.tsx",
+      "website/**/*.test.ts",
+      "website/**/*.test.tsx",
     ],
   },
 });

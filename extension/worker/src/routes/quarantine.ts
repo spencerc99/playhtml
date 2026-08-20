@@ -236,6 +236,7 @@ export async function handleQuarantineRip(request: Request, env: Env): Promise<R
     .from('quarantine_strips')
     .select('*')
     .eq('id', stripId)
+    .eq('url', key)
     .maybeSingle();
 
   if (loadErr) {
@@ -259,7 +260,7 @@ export async function handleQuarantineRip(request: Request, env: Env): Promise<R
     const { count } = await supabase
       .from('quarantine_strips')
       .select('id', { count: 'exact', head: true })
-      .eq('url', key);
+      .eq('url', strip.url);
     ripsRequired = (count ?? 0) >= SET_THRESHOLD ? SET_THRESHOLD : 1;
   }
 
@@ -269,6 +270,7 @@ export async function handleQuarantineRip(request: Request, env: Env): Promise<R
     .from('quarantine_strips')
     .update({ rips: nextRips, rips_required: ripsRequired })
     .eq('id', stripId)
+    .eq('url', strip.url)
     .select('*')
     .single();
 

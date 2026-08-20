@@ -19,12 +19,31 @@ import {
   shouldPublishTypingAwareness,
   type TypingCursorAwareness,
 } from "./layout";
+import {
+  canStartIntroScroll,
+  getIntroScrollY,
+  INTRO_CONTENT_SETTLE_MS,
+  INTRO_FADE_DURATION_MS,
+  INTRO_SCROLL_DURATION_MS,
+  isPlayhtmlHostReady,
+} from "./intro";
 
 interface CellData {
   letter: string;
   color: string;
   timestamp: number;
 }
+
+type IntroState = "loading" | "scrolling" | "fading" | "hidden";
+
+const PLAYER_COLORS = [
+  { name: "red", value: "hsl(0, 70%, 60%)" },
+  { name: "orange", value: "hsl(25, 70%, 60%)" },
+  { name: "green", value: "hsl(137, 44%, 52%)" },
+  { name: "blue", value: "hsl(221, 83%, 53%)" },
+  { name: "purple", value: "hsl(267, 70%, 60%)" },
+  { name: "pink", value: "hsl(296, 70%, 60%)" },
+];
 
 const Main = withSharedState(
   {
@@ -34,17 +53,43 @@ const Main = withSharedState(
     myDefaultAwareness: undefined as undefined | TypingCursorAwareness,
   },
   ({ data, setData, awareness, myAwareness, setMyAwareness }) => {
-    const { cursors } = usePlayContext();
+    const { cursors, isLoading } = usePlayContext();
     const myColor = cursors.color;
     const gridRef = useRef<HTMLDivElement>(null);
     const bottomBarRef = useRef<HTMLDivElement>(null);
-    const shouldFollowScrollEndRef = useRef(true);
+    const shouldFollowScrollEndRef = useRef(false);
+    const introStartedRef = useRef(false);
     const [gridDimensions, setGridDimensions] = useState({
       cols: 60,
       rows: 40,
     });
+    const [hasMeasuredGrid, setHasMeasuredGrid] = useState(false);
+    const [hasSettledContent, setHasSettledContent] = useState(false);
+    const [introState, setIntroState] = useState<IntroState>("loading");
     const [bottomBarHeightPx, setBottomBarHeightPx] =
       useState(BOTTOM_BAR_HEIGHT_PX);
+
+    useLayoutEffect(() => {
+      window.scrollTo(0, 0);
+    }, []);
+
+    // Keep the viewport pinned while the loading cover is up so the tall paper
+    // can lay out underneath without the user scrolling ahead of the intro.
+    useEffect(() => {
+      if (introState !== "loading") return;
+
+      const { body, documentElement } = document;
+      const previousBodyOverflow = body.style.overflow;
+      const previousHtmlOverflow = documentElement.style.overflow;
+      body.style.overflow = "hidden";
+      documentElement.style.overflow = "hidden";
+      window.scrollTo(0, 0);
+
+      return () => {
+        body.style.overflow = previousBodyOverflow;
+        documentElement.style.overflow = previousHtmlOverflow;
+      };
+    }, [introState]);
 
     // Calculate grid dimensions based on window size
     useEffect(() => {
@@ -60,6 +105,7 @@ const Main = withSharedState(
         const cols = Math.floor(window.innerWidth / cellWidth);
         const rows = Math.floor(window.innerHeight / cellHeight);
         setGridDimensions({ cols, rows });
+        setHasMeasuredGrid(true);
       };
 
       calculateDimensions();
@@ -92,6 +138,10 @@ const Main = withSharedState(
 
     useEffect(() => {
       const updateScrollEndState = () => {
+        // Ignore scroll-end pinning until the intro finishes. On first paint the
+        // empty grid fits in one viewport so we would look "at end", then jump
+        // when letters arrive after the intro.
+        if (introState !== "hidden") return;
         shouldFollowScrollEndRef.current = isScrollAtEnd({
           scrollY: window.scrollY,
           scrollHeight: document.documentElement.scrollHeight,
@@ -107,7 +157,7 @@ const Main = withSharedState(
         window.removeEventListener("scroll", updateScrollEndState);
         window.removeEventListener("resize", updateScrollEndState);
       };
-    }, []);
+    }, [introState]);
 
     // Minimum cells to fill the page
     const minCells = gridDimensions.cols * gridDimensions.rows;
@@ -120,7 +170,140 @@ const Main = withSharedState(
 
     const cursorPosition = getTypingCursorPosition(data.letters.length);
 
+    // Wait until the can-play host is set up (synced data applied) and the grid
+    // height is quiet. Starting earlier animates a short empty page, then jumps
+    // once letters hydrate.
+    useEffect(() => {
+      if (isLoading || !hasMeasuredGrid) {
+        setHasSettledContent(false);
+        return;
+      }
+
+      let cancelled = false;
+      let settleTimeout = 0;
+      let raf = 0;
+
+      const armSettleTimer = () => {
+        settleTimeout = window.setTimeout(() => {
+          if (!cancelled) setHasSettledContent(true);
+        }, INTRO_CONTENT_SETTLE_MS);
+      };
+
+      const waitForHost = () => {
+        if (cancelled) return;
+        if (!isPlayhtmlHostReady(document.getElementById("experiment-8"))) {
+          raf = window.requestAnimationFrame(waitForHost);
+          return;
+        }
+        armSettleTimer();
+      };
+
+      waitForHost();
+
+      return () => {
+        cancelled = true;
+        window.cancelAnimationFrame(raf);
+        window.clearTimeout(settleTimeout);
+      };
+    }, [isLoading, hasMeasuredGrid, data.letters.length, totalCells]);
+
+    // Leave the loading cover only after content has settled so the scroll
+    // animation effect below measures the full paper with overflow unlocked.
+    useEffect(() => {
+      if (introState !== "loading") return;
+      if (
+        !canStartIntroScroll({
+          isLoading,
+          hasMeasuredGrid,
+          hasSettledContent,
+        })
+      ) {
+        return;
+      }
+
+      setIntroState("scrolling");
+    }, [hasMeasuredGrid, hasSettledContent, introState, isLoading]);
+
+    useEffect(() => {
+      if (introState !== "scrolling" || introStartedRef.current) return;
+
+      introStartedRef.current = true;
+
+      // Content has settled; capture the destination once so easing stays smooth.
+      const destinationY = getScrollEndY({
+        scrollHeight: document.documentElement.scrollHeight,
+        viewportHeight: window.innerHeight,
+      });
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+      const durationMs = reducedMotion ? 0 : INTRO_SCROLL_DURATION_MS;
+      let animationFrame = 0;
+      let startTime: number | undefined;
+      let cancelled = false;
+
+      const finishIntro = () => {
+        if (cancelled) return;
+        window.scrollTo(0, destinationY);
+        shouldFollowScrollEndRef.current = true;
+        setIntroState("fading");
+      };
+
+      const animateScroll = (timestamp: number) => {
+        if (cancelled) return;
+        startTime ??= timestamp;
+        const elapsedMs = timestamp - startTime;
+        window.scrollTo(
+          0,
+          getIntroScrollY({ destinationY, elapsedMs, durationMs })
+        );
+
+        if (elapsedMs < durationMs) {
+          animationFrame = window.requestAnimationFrame(animateScroll);
+          return;
+        }
+
+        finishIntro();
+      };
+
+      window.scrollTo(0, 0);
+      if (reducedMotion) {
+        finishIntro();
+      } else {
+        animationFrame = window.requestAnimationFrame(() => {
+          animationFrame = window.requestAnimationFrame(animateScroll);
+        });
+      }
+
+      return () => {
+        cancelled = true;
+        window.cancelAnimationFrame(animationFrame);
+        // Allow a remount/re-run to restart the animation instead of leaving
+        // the intro stuck on "scrolling".
+        introStartedRef.current = false;
+      };
+    }, [introState]);
+
+    // Keep fade timing in its own effect so changing introState to "fading"
+    // does not clear the hide timeout via the scroll effect's cleanup.
+    useEffect(() => {
+      if (introState !== "fading") return;
+
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+      const fadeTimeout = window.setTimeout(() => {
+        shouldFollowScrollEndRef.current = true;
+        setIntroState("hidden");
+      }, reducedMotion ? 800 : INTRO_FADE_DURATION_MS);
+
+      return () => {
+        window.clearTimeout(fadeTimeout);
+      };
+    }, [introState]);
+
     useLayoutEffect(() => {
+      if (introState !== "hidden") return;
       if (!shouldFollowScrollEndRef.current) return;
 
       window.scrollTo(
@@ -130,7 +313,7 @@ const Main = withSharedState(
           viewportHeight: window.innerHeight,
         })
       );
-    }, [totalCells, bottomBarHeightPx]);
+    }, [totalCells, bottomBarHeightPx, introState]);
 
     useEffect(() => {
       const nextAwareness = { color: myColor, cursorPos: cursorPosition };
@@ -193,7 +376,7 @@ const Main = withSharedState(
       isMe: color === myColor,
     }));
 
-    const [editingName, setEditingName] = useState(false);
+    const [editingIdentity, setEditingIdentity] = useState(false);
     const [nameInput, setNameInput] = useState(cursors.name || "");
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -201,12 +384,16 @@ const Main = withSharedState(
       if (nameInput.trim()) {
         window.cursors.name = nameInput.trim();
       }
-      setEditingName(false);
+    };
+
+    const openIdentityEditor = () => {
+      setNameInput(cursors.name || "");
+      setEditingIdentity(true);
     };
 
     // Update input width to match content
     useEffect(() => {
-      if (inputRef.current && editingName) {
+      if (inputRef.current && editingIdentity) {
         const canvas = document.createElement("canvas");
         const context = canvas.getContext("2d");
         if (context) {
@@ -218,7 +405,7 @@ const Main = withSharedState(
           inputRef.current.style.width = `${width + 20}px`;
         }
       }
-    }, [nameInput, editingName, cursors.name]);
+    }, [nameInput, editingIdentity, cursors.name]);
 
     return (
       <div
@@ -231,9 +418,36 @@ const Main = withSharedState(
           } as React.CSSProperties
         }
       >
+        {introState === "loading" && (
+          <div
+            className="loading-screen"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <p>loading the paper…</p>
+          </div>
+        )}
+        {(introState === "scrolling" || introState === "fading") && (
+          <section
+            className={`intro-message ${
+              introState === "fading" ? "fading" : ""
+            }`}
+            aria-labelledby="intro-title"
+            aria-describedby="intro-description"
+          >
+            <h1 id="intro-title">single grid paper</h1>
+            <p id="intro-description">
+              A website where we share a single piece of paper to type on.
+              everything you type appears in your color. No backspaces! Have fun
+              and be nice
+            </p>
+          </section>
+        )}
         <div
           ref={gridRef}
           className="grid-container"
+          aria-hidden={introState === "loading"}
           style={{
             gridTemplateColumns: `repeat(${gridDimensions.cols}, ${GRID_CELL_SIZE_PX}px)`,
             gridAutoRows: `${getGridRowHeightPx({
@@ -282,35 +496,77 @@ const Main = withSharedState(
                 style={{ backgroundColor: player.color }}
               >
                 {player.isMe ? (
-                  editingName ? (
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={nameInput}
-                      onChange={(e) => setNameInput(e.target.value)}
-                      onBlur={handleNameSubmit}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          handleNameSubmit();
-                        } else if (e.key === "Escape") {
-                          setNameInput(cursors.name || "");
-                          setEditingName(false);
-                        }
-                      }}
-                      autoFocus
-                      className="name-input"
-                    />
-                  ) : (
-                    <span onClick={() => setEditingName(true)}>
+                  <>
+                    <button
+                      type="button"
+                      className="player-name"
+                      onClick={openIdentityEditor}
+                      aria-expanded={editingIdentity}
+                      aria-controls="identity-editor"
+                    >
                       {cursors.name || "you"}
-                    </span>
-                  )
+                    </button>
+                    {editingIdentity && (
+                      <div id="identity-editor" className="identity-editor">
+                        <label htmlFor="identity-name">name</label>
+                        <input
+                          ref={inputRef}
+                          id="identity-name"
+                          type="text"
+                          value={nameInput}
+                          onChange={(e) => setNameInput(e.target.value)}
+                          onBlur={handleNameSubmit}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleNameSubmit();
+                              setEditingIdentity(false);
+                            } else if (e.key === "Escape") {
+                              setNameInput(cursors.name || "");
+                              setEditingIdentity(false);
+                            }
+                          }}
+                          className="name-input"
+                        />
+                        <span>color</span>
+                        <div className="color-options">
+                          {PLAYER_COLORS.map((color) => (
+                            <button
+                              key={color.value}
+                              type="button"
+                              className="color-option"
+                              style={{ backgroundColor: color.value }}
+                              onClick={() => {
+                                window.cursors.color = color.value;
+                              }}
+                              aria-label={`Use ${color.name}`}
+                              aria-pressed={myColor === color.value}
+                            />
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="identity-editor-close"
+                          onClick={() => {
+                            handleNameSubmit();
+                            setEditingIdentity(false);
+                          }}
+                          aria-label="Close name and color settings"
+                        >
+                          done
+                        </button>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <span>{"·"}</span>
                 )}
               </div>
             ))}
           </div>
+          <p className="experiment-attribution">
+            this is <a href="/experiments">experiment 8</a> made with{" "}
+            <a href="/">playhtml</a>
+          </p>
           <OnlineNowIndicator />
         </div>
       </div>

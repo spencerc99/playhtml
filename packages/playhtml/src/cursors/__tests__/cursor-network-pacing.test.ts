@@ -7,6 +7,7 @@ import {
   getCursorNetworkHz,
   getCursorNetworkIntervalMs,
 } from "../cursor-network-pacing";
+import { createFakePresenceTransport } from "../../__tests__/presence-test-utils";
 
 function makeIdentity(publicKey: string, color: string) {
   return {
@@ -73,29 +74,6 @@ function dispatchMouseMove(x: number, y: number) {
       bubbles: true,
     }),
   );
-}
-
-function makeFakePresenceTransport() {
-  const listeners = new Set<(message: unknown) => void>();
-  return {
-    updates: [] as Array<{ channel: string; value: unknown }>,
-    clears: [] as string[],
-    join: vi.fn(),
-    update(channel: string, value: unknown) {
-      this.updates.push({ channel, value });
-    },
-    clear(channel: string) {
-      this.clears.push(channel);
-    },
-    subscribe: vi.fn((listener: (message: unknown) => void) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    }),
-    emit(message: unknown) {
-      for (const listener of listeners) listener(message);
-    },
-    destroy: vi.fn(),
-  };
 }
 
 describe("cursor network pacing", () => {
@@ -188,7 +166,11 @@ describe("cursor network pacing", () => {
     const callCountAfterIdentityChange =
       provider.awareness.setLocalStateField.mock.calls.length;
 
-    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 1);
+    // Identity change writes two awareness fields: `__playhtml_identity__`
+    // (published by the users module on every identity change) and
+    // `__playhtml_cursors__` (cursor awareness, refreshed by the cursor client's
+    // reaction to that change).
+    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 2);
 
     vi.advanceTimersByTime(Math.ceil(getCursorNetworkIntervalMs(20)));
 
@@ -201,7 +183,7 @@ describe("cursor network pacing", () => {
 
   it("publishes movement through presence transport instead of cursor awareness when available", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -233,7 +215,7 @@ describe("cursor network pacing", () => {
 
   it("notifies local cursor presence listeners without waiting for transport echo", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -262,7 +244,7 @@ describe("cursor network pacing", () => {
 
   it("renders remote cursors from presence transport sync messages", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -271,7 +253,6 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
-
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -299,7 +280,7 @@ describe("cursor network pacing", () => {
 
   it("ignores unsafe remote custom cursor URLs", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -308,7 +289,6 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
-
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -336,7 +316,7 @@ describe("cursor network pacing", () => {
 
   it("backs off transport-backed cursor publishing when about fifty peers are present", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -379,7 +359,7 @@ describe("cursor network pacing", () => {
 
   it("keeps transport publishing at 60Hz when joined peers have no active cursor", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -412,7 +392,7 @@ describe("cursor network pacing", () => {
   it("expires stale transport cursor positions", () => {
     vi.setSystemTime(100_000);
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -445,7 +425,7 @@ describe("cursor network pacing", () => {
 
   it("checks proximity immediately after local transport cursor movement", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const onProximityEntered = vi.fn();
     const client = new CursorClientAwareness(
       provider,
@@ -482,7 +462,7 @@ describe("cursor network pacing", () => {
 
   it("uses server cursor rate messages as an additional publish cap", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -506,9 +486,12 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
-  it("warns when the presence server rejects a message", () => {
+  it("does not itself warn on presence-error (the transport logs it now)", () => {
+    // Base control-message logging moved to RealtimePresenceTransport so it
+    // happens on every socket, not just the cursor client's. The cursor client
+    // only layers hz pacing; it must not duplicate the rejection warning.
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const client = new CursorClientAwareness(
       provider,
@@ -521,17 +504,18 @@ describe("cursor network pacing", () => {
 
     transport.emit({ type: "presence-error", message: "bad cursor" });
 
-    expect(warn).toHaveBeenCalledWith(
-      "[playhtml] Presence server rejected message:",
-      "bad cursor",
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("rejected"),
+      expect.anything(),
     );
 
     client.destroy();
+    warn.mockRestore();
   });
 
   it("omits overlong page paths from transport messages", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const identity = makeIdentity("local", "#ff0000");
     const originalPath = window.location.pathname;
     window.history.pushState(null, "", `/${"x".repeat(600)}`);
@@ -548,7 +532,7 @@ describe("cursor network pacing", () => {
       dispatchMouseMove(10, 20);
       vi.advanceTimersByTime(Math.ceil(1000 / 60));
 
-      expect(transport.join).toHaveBeenCalledWith({
+      expect(transport.joins).toContainEqual({
         identity,
         page: undefined,
       });
@@ -567,7 +551,7 @@ describe("cursor network pacing", () => {
 
   it("repositions transport-backed remote cursors after viewport changes", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -617,9 +601,13 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
-  it("publishes global cursor identity changes through the presence transport", () => {
+  it("does not republish the identity channel itself on self-change (transport owns it)", () => {
+    // Identity broadcasting moved to the shared presence transport (one
+    // re-join per socket on users.onSelfChange). The cursor client only reacts
+    // to identity changes for rendering + CursorEvents, and must NOT also push
+    // the identity channel — that would be a second broadcaster on the socket.
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -630,34 +618,32 @@ describe("cursor network pacing", () => {
     );
     transport.updates = [];
 
+    const colors: string[] = [];
+    const names: Array<string | undefined> = [];
+    window.cursors.on("color", (c: string) => colors.push(c));
+    window.cursors.on("name", (n: string | undefined) => names.push(n));
+
     window.cursors.color = "#00ff00";
     window.cursors.name = "Ada";
 
+    // No identity-channel updates from the cursor client.
     expect(
       transport.updates.filter((update) => update.channel === "identity"),
-    ).toEqual([
-      {
-        channel: "identity",
-        value: expect.objectContaining({
-          playerStyle: { colorPalette: ["#00ff00"] },
-          publicKey: "local",
-        }),
-      },
-      {
-        channel: "identity",
-        value: expect.objectContaining({
-          name: "Ada",
-          publicKey: "local",
-        }),
-      },
-    ]);
+    ).toEqual([]);
+    // But cursor awareness still republishes (cursor rendering source of truth).
+    expect(
+      transport.updates.some((update) => update.channel === "cursor"),
+    ).toBe(true);
+    // And CursorEvents subscribers still fire for changed fields.
+    expect(colors).toContain("#00ff00");
+    expect(names).toContain("Ada");
 
     client.destroy();
   });
 
   it("keeps the local player in allColors on the presence transport path", () => {
     const provider = makeFakeProvider();
-    const transport = makeFakePresenceTransport();
+    const transport = createFakePresenceTransport();
     const client = new CursorClientAwareness(
       provider,
       {
@@ -666,6 +652,8 @@ describe("cursor network pacing", () => {
       },
       transport as any,
     );
+    const allColorEvents: string[][] = [];
+    client.on("allColors", (colors) => allColorEvents.push(colors));
 
     transport.emit({
       type: "presence-sync",
@@ -684,6 +672,10 @@ describe("cursor network pacing", () => {
 
     expect(client.getSnapshot().allColors).toEqual(["#ff0000", "#00ff00"]);
     expect(window.cursors.allColors).toEqual(["#ff0000", "#00ff00"]);
+    expect(allColorEvents).toContainEqual(["#ff0000", "#00ff00"]);
+    expect(
+      Object.getOwnPropertyDescriptor(window.cursors, "allColors")?.set,
+    ).toBeUndefined();
 
     client.destroy();
   });

@@ -5,6 +5,7 @@ import type { ScrollAnimation } from "../../types";
 import { getViewportTitleText } from "../../utils/titleText";
 import {
   buildViewportAnimationTimeline,
+  getScrollQueueIndex,
   getResizeDimensionsAtTime,
   getScrollPositionAtTime,
   getZoomLevelAtTime,
@@ -83,6 +84,16 @@ describe("AnimatedScrollViewports timeline helpers", () => {
 
   it("interpolates zoom levels at a specific time", () => {
     expect(getZoomLevelAtTime(makeAnimation().zoomEvents ?? [], 500)).toBe(1.25);
+  });
+});
+
+describe("AnimatedScrollViewports queue helpers", () => {
+  it("stops after one pass when archive playback owns the queue", () => {
+    expect(getScrollQueueIndex(3, 3, false)).toBeNull();
+  });
+
+  it("wraps after one pass when repeated playback is enabled", () => {
+    expect(getScrollQueueIndex(3, 3, true)).toBe(0);
   });
 });
 

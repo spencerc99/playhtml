@@ -16,6 +16,24 @@ export const STORAGE_KEYS = {
   emergencyCompactCheckAfter: "emergencyCompactCheckAfter",
   // Stores the next time autosave should try compacting before persistence
   persistedDocumentCompactCheckAfter: "persistedDocumentCompactCheckAfter",
+  // Stores the quarantine record for a room whose persisted document cannot be
+  // hydrated without crashing the Durable Object
+  quarantine: "quarantine",
+  // Counts hydration attempts that started but never reported completion
+  quarantineLoadAttempts: "quarantineLoadAttempts",
+  // Counts generic alarm runs that started but never reported completion.
+  alarmFailureAttempts: "alarmFailureAttempts",
+  // Earliest time each risky operation may be retried after repeated failures.
+  // Load and alarm keep separate deadlines so a success on one never erases the
+  // other's backoff.
+  loadRetryAfter: "loadRetryAfter",
+  alarmRetryAfter: "alarmRetryAfter",
+  // Tracks automatic compaction attempts that started but never completed.
+  compactionAttempts: "compactionAttempts",
+  // Earliest time a failed automatic compaction may be retried.
+  compactionRetryAfter: "compactionRetryAfter",
+  // Timestamp set after automatic compaction vanishes three times in a row.
+  compactionDisabledAt: "compactionDisabledAt",
 };
 // Subscriber lease configuration (default 12 hours)
 export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
@@ -56,8 +74,42 @@ export const DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES = (() => {
 export const DEFAULT_DOCUMENT_WARNING_BYTES = (() => {
   return 1024 * 1024 * 40;
 })();
+// Documents above this size are reported as a load risk. Lethality varies with
+// isolate co-tenancy: 7-8MB rooms have OOMed, but healthy production rooms also
+// sit in the 6-8MB band, so size alone never blocks a load or quarantines a
+// room. It is a warning; repeated real failures are what drive backoff.
+export const DEFAULT_QUARANTINE_DOCUMENT_BYTES = (() => {
+  return 1024 * 1024 * 10;
+})();
+// Automatic compaction gets two delayed retries after the initial attempt.
+// A third vanished attempt disables automatic compaction for that room.
+export const DEFAULT_COMPACTION_RETRY_DELAYS_MS = [15_000, 30_000] as const;
+export const DEFAULT_COMPACTION_DISABLE_AFTER = 3;
+// Consecutive failures of the same risky operation before the room is
+// quarantined as a last resort. The backoff ladder below is expected to absorb
+// transient failures long before this is reached.
+export const DEFAULT_QUARANTINE_FAILURE_THRESHOLD = (() => {
+  return 8;
+})();
+// Retry backoff for risky work that keeps failing. Cloudflare retries a failed
+// alarm within seconds, which is what turns one OOM into a crash loop, so the
+// alarm is rescheduled onto this ladder instead: 1min, 5min, 20min, 1h, 6h,
+// then capped. Failures self-heal -- a success clears the counter and restores
+// the normal cadence.
+export const DEFAULT_FAILURE_BACKOFF_MS = (() => {
+  return 60 * 1000;
+})();
+export const DEFAULT_FAILURE_BACKOFF_MAX_MS = (() => {
+  return 60 * 60 * 1000 * 24;
+})();
 export const DEFAULT_SUPABASE_LOAD_TIMEOUT_MS = (() => {
   return 5000;
+})();
+export const DEFAULT_SUPABASE_LOAD_ATTEMPTS = (() => {
+  return 3;
+})();
+export const DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS = (() => {
+  return 250;
 })();
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";

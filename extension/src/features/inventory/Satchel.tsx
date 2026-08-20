@@ -15,14 +15,25 @@ interface Props {
 
 export function Satchel({ inventory, openSignal }: Props) {
   const [armed, setArmed] = useState<ArmedTool | null>(inventory.getArmed());
-  const [hidden, setHidden] = useState(false);
+  const [pageObjectsVisible, setPageObjectsVisible] = useState(
+    inventory.arePageObjectsVisible(),
+  );
   const [isOpen, setIsOpen] = useState(false);
+  const [hidePromptPosition, setHidePromptPosition] = useState<{
+    left: string;
+    top: string;
+  } | null>(null);
+  const [hidePreferenceError, setHidePreferenceError] = useState(false);
   const nubRef = useRef<HTMLDivElement>(null);
   const kitRef = useRef<HTMLDivElement>(null);
   const pos = useRef({ top: Math.round(window.innerHeight / 2) - 24 });
   const edge = useRef<"edge-r" | "edge-l">("edge-l");
 
   useEffect(() => inventory.onArmedChange(setArmed), [inventory]);
+  useEffect(
+    () => inventory.onPageObjectsVisibilityChange(setPageObjectsVisible),
+    [inventory],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -61,7 +72,9 @@ export function Satchel({ inventory, openSignal }: Props) {
   function openKit(at: { x: number; y: number } | null) {
     const kit = kitRef.current;
     if (!kit) return;
-    setHidden(false);
+    setHidePromptPosition(null);
+    setHidePreferenceError(false);
+    inventory.showPageObjects();
     setIsOpen(true);
     kit.classList.add("show");
     // Measure the rendered kit so cursor summons stay inside the viewport.
@@ -88,8 +101,28 @@ export function Satchel({ inventory, openSignal }: Props) {
     setIsOpen(false);
   }
   function hideInventory() {
+    const kit = kitRef.current;
+    if (!kit) return;
+    const promptLeft = Math.max(
+      12,
+      Math.min(parseFloat(kit.style.left), window.innerWidth - 220 - 12),
+    );
+    setHidePromptPosition({ left: `${promptLeft}px`, top: kit.style.top });
+    setHidePreferenceError(false);
     setIsOpen(false);
-    setHidden(true);
+    inventory.hidePageObjects();
+  }
+  async function alwaysHideOnSite() {
+    try {
+      await inventory.hidePageObjectsOnSite();
+      setHidePromptPosition(null);
+    } catch (error) {
+      console.error(
+        "[we-were-online] failed to save hidden satchel preference:",
+        error,
+      );
+      setHidePreferenceError(true);
+    }
   }
 
   // drag the nub (snap to nearest edge on release)
@@ -126,7 +159,7 @@ export function Satchel({ inventory, openSignal }: Props) {
 
   return (
     <div className="wwo-inv">
-      {!hidden && !isOpen && (
+      {pageObjectsVisible && !isOpen && (
         <div
           ref={nubRef}
           className="wwo-nub edge-l"
@@ -171,6 +204,36 @@ export function Satchel({ inventory, openSignal }: Props) {
           ))}
         </div>
       </div>
+
+      {hidePromptPosition && (
+        <div
+          className="wwo-hide-prompt"
+          role="dialog"
+          aria-labelledby="wwo-hide-prompt-title"
+          style={hidePromptPosition}
+        >
+          <span className="wwo-hide-prompt-brand" aria-hidden="true">
+            wwo
+          </span>
+          <div id="wwo-hide-prompt-title" className="wwo-hide-prompt-title">
+            Keep the satchel hidden here?
+          </div>
+          <p>
+            Save this to hide the satchel and objects like bottles across this site.
+          </p>
+          {hidePreferenceError && (
+            <p className="wwo-hide-prompt-error">Couldn’t save that preference.</p>
+          )}
+          <div className="wwo-hide-prompt-actions">
+            <button type="button" onClick={alwaysHideOnSite}>
+              Always hide on this site
+            </button>
+            <button type="button" onClick={() => setHidePromptPosition(null)}>
+              Only this time
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
