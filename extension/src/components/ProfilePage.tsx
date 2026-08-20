@@ -1,4 +1,4 @@
-// ABOUTME: Profile settings for identity, cursor color, and beta access requests.
+// ABOUTME: Profile settings for identity, cursor color, and early access requests.
 // ABOUTME: Prefills locally shared contact email only when the person submits a request.
 import React, { FormEvent, useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
@@ -203,8 +203,8 @@ export function ProfilePage({
 
         {!privateExperimentAccess && (
           <section className="profile-section profile-section--beta">
-            <label className="profile-section__label" htmlFor="beta-email">Closed beta</label>
-            <p>Request early access to new experimental features to make the internt feel more shared and alive. Experiments stay off until you choose to enable them.</p>
+            <label className="profile-section__label" htmlFor="beta-email">Request early access</label>
+            <p>Try new experimental features that make the internet feel more shared and alive. Experiments stay off until you choose to enable them.</p>
             {betaRequestStatus === "sent" ? (
               <strong className="profile-section__request-success">Request sent</strong>
             ) : (
@@ -218,7 +218,7 @@ export function ProfilePage({
                   autoComplete="email"
                 />
                 <button type="submit" disabled={requestingBeta}>
-                  {requestingBeta ? "Sending…" : "Request access"}
+                  {requestingBeta ? "Sending…" : "Request early access"}
                 </button>
               </form>
             )}

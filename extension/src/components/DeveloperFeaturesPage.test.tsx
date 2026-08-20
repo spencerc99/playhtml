@@ -64,6 +64,8 @@ describe("DeveloperFeaturesPage", () => {
       expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(
         FEATURE_IDS.filter((feature) => FEATURE_CATALOG[feature].defaultStage !== "released").length,
       );
+      expect(container.textContent).toContain("Early access");
+      expect(container.textContent).not.toContain("Closed beta");
       const commuteToggle = container.querySelector<HTMLInputElement>(
         'input[aria-label="Enable Internet Commute"]',
       );

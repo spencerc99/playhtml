@@ -300,7 +300,6 @@ export function InternetPortraitHome({
       </main>
 
       <footer className="portrait-home__footer">
-        <span>Beta</span>
         {onViewDeveloperFeatures && (
           <button
             className="portrait-home__internal-link"

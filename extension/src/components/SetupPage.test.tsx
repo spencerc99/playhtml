@@ -120,7 +120,7 @@ describe("SetupPage", () => {
         "Email for project updates (optional)",
       );
       expect(container.textContent).toContain(
-        "Get occasional updates about we were online and have the opportunity to beta test new features",
+        "Get occasional updates about we were online and opportunities to help shape new features",
       );
       expect(container.querySelector('input[type="email"]')).not.toBeNull();
 
