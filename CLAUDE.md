@@ -129,7 +129,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 | Changed published package behavior | Add a changeset + audit `apps/docs/` |
 | Changed the public core API | Update both starter templates |
 | Changed package deps or exports | Run the tarball install simulation |
-| Changed what extension users see | Add a bullet to `extension/PENDING.md` |
+| Added a meaningful feature, common-workflow change, or broadly relevant fix to the released extension | Add a bullet to `extension/PENDING.md` |
 
 - **Commits:** Short imperative subject; scope paths when helpful (e.g., `react:`, `extension:`). Group mechanical changes separately.
 - **PRs:** Include summary, rationale, screenshots for UI/site/extension changes, reproduction for fixes, and link issues.
@@ -143,7 +143,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 
 - **Starter templates for core API changes:** Whenever you change the public core API under `packages/` (capability attributes/classes, React component props like `<CanDuplicateElement>`/`<CanToggleElement>`, exported functions, the vanilla `can-play` element API `defaultData`/`onClick`/`updateElement`/`setupPlayElement`, `playhtml.init` options, or CSS hooks like `[data-playhtml-hover]`), update BOTH starter templates in the same PR so they stay copy-pasteable and verify them live in a browser: `templates/react-starter/` (React API — `src/App.tsx`, `src/index.css`) and `templates/html-starter/` (vanilla API — `index.html`, `style.css`, `script.js`). The starters depend on the published `@playhtml/react` / `playhtml` (`"latest"`), so they pick up code changes on release — but their own usage (imports, props, selectors, example markup/CSS) won't update itself. Only use real, existing API methods: there is no `playhtml.setupCustomElement`; vanilla custom elements set `defaultData`/`onClick`/`updateElement` directly on the DOM element, then call `playhtml.setupPlayElement(el)`. The starters are standalone projects: `react-starter` is Vite+TS with no `tsconfig.json` of its own (so `npm run build`'s `tsc` step picks up the monorepo root config and fails — verify with `npx vite build` plus a live browser test instead); `html-starter` is static files loading `playhtml@latest` from unpkg. If a change doesn't touch either starter, say why in the PR summary.
 
-- **Extension release notes:** When a PR changes what regular users see or get in the released extension, add final user-facing release-note copy to `extension/PENDING.md` — one short, plain-language sentence per bullet about what someone can do, what works better, or what problem was fixed. No implementation or maintainer details. Full rules, including how feature flags affect this, are in `extension/CLAUDE.md`.
+- **Extension release notes:** `extension/PENDING.md` is a curated public changelog, not a complete record of extension changes. Add a bullet only for a meaningful change that regular users are likely to notice or care about, such as a feature, a common-workflow change, or a broadly relevant fix. Skip copy polish, narrow bug fixes, minor performance or reliability work without a clear user-visible outcome, and internal maintenance. Write one short, plain-language sentence about what someone can do, what works better, or what problem was fixed. No implementation or maintainer details. Full rules, including how feature flags affect this, are in `extension/CLAUDE.md`.
 
 ## Documentation
 

@@ -121,7 +121,7 @@ describe("ProfilePage", () => {
     }
   });
 
-  it("prefills a locally shared email and submits an explicit beta request", async () => {
+  it("prefills a locally shared email and submits an explicit early access request", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ status: "pending" }), { status: 201 }),
     );
@@ -130,10 +130,12 @@ describe("ProfilePage", () => {
 
     try {
       await act(async () => Promise.resolve());
+      expect(container.textContent).toContain("Request early access");
+      expect(container.textContent).not.toContain("Closed beta");
       const email = container.querySelector<HTMLInputElement>('#beta-email');
       expect(email?.value).toBe("person@example.com");
       const submit = Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent === "Request access",
+        (button) => button.textContent === "Request early access",
       );
       await act(async () => submit?.click());
       expect(fetchMock).toHaveBeenCalledWith(

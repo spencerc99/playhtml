@@ -366,8 +366,8 @@ export default function SetupPage() {
                 id="updates-email-help"
                 className="setup-step__field-help"
               >
-                Get occasional updates about we were online and have the
-                opportunity to beta test new features
+                Get occasional updates about we were online and opportunities
+                to help shape new features
               </span>
             </div>
             <button

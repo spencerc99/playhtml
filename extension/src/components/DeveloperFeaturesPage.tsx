@@ -24,7 +24,7 @@ type Props = {
 
 const STAGE_LABELS: Record<FeatureStage, string> = {
   internal: "Internal",
-  beta: "Closed beta",
+  beta: "Early access",
   released: "Released",
 };
 
