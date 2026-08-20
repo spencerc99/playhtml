@@ -457,8 +457,11 @@
   &__state {
     flex-shrink: 0;
 
-    &--on {
+    &--shared {
       color: $accent-teal;
+    }
+    &--local {
+      color: $accent-blue;
     }
     &--off {
       color: $text-faint;

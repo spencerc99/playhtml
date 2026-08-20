@@ -120,12 +120,13 @@ describe("SetupPage", () => {
         "Email for project updates (optional)",
       );
       expect(container.textContent).toContain(
-        "Get occasional updates about we were online and have the opportunity to beta test new features",
+        "Get occasional updates about we were online and early access to new features",
       );
+      expect(container.textContent).toContain("Help shape WWO");
+      expect(container.textContent).toContain("takes about a minute");
       expect(container.querySelector('input[type="email"]')).not.toBeNull();
 
       await click(container, "Get started");
-      await click(container, "Continue");
       await click(container, "Continue");
 
       expect(container.textContent).toContain("All set!");
@@ -133,21 +134,17 @@ describe("SetupPage", () => {
         container.querySelector(".setup-page__inner--complete"),
       ).not.toBeNull();
       expect(container.querySelector(".setup-step--complete")).not.toBeNull();
-      expect(container.textContent).toContain("1. See your trail, anywhere");
+      expect(container.textContent).toContain("See your trail, anywhere");
       expect(container.textContent).toContain(
-        "in your browser toolbar anytime",
+        "Click the icon in your browser toolbar anytime",
       );
-      const toolbarIcon = container.querySelector<HTMLImageElement>(
-        'img[alt="we were online extension icon"]',
-      );
-      expect(toolbarIcon?.src).toBe("chrome-extension://test/icon/32.png");
       expect(container.textContent).toContain("browsing portrait preview");
-      expect(container.textContent).toContain("2. Review your browsing");
+      expect(container.textContent).toContain("Review your browsing");
       expect(container.textContent).toContain("milestone preview");
       expect(container.textContent).toContain(
         "We'll share some of your progress as you browse.",
       );
-      expect(container.textContent).toContain("3. Wikipedia feels inhabited");
+      expect(container.textContent).toContain("Wikipedia feels inhabited");
       expect(container.querySelector('input[type="email"]')).toBeNull();
       expect(browser.storage.local.set).toHaveBeenCalled();
       expect(browser.storage.local.set).not.toHaveBeenCalledWith(
@@ -173,7 +170,6 @@ describe("SetupPage", () => {
       await fillEmail(container, "person@example.com");
       await click(container, "Get started");
       await click(container, "Continue");
-      await click(container, "Continue");
       await click(container, "Finish setup");
 
       await vi.waitFor(() => {
@@ -190,6 +186,7 @@ describe("SetupPage", () => {
       });
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         onboarding_complete: "true",
+        newtab_takeover_enabled: true,
         setup_email: "person@example.com",
       });
     } finally {
@@ -204,7 +201,6 @@ describe("SetupPage", () => {
     try {
       await fillEmail(container, "person@example.com");
       await click(container, "Get started");
-      await click(container, "Continue");
       await click(container, "Continue");
       await click(container, "Finish setup");
 

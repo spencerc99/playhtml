@@ -1,0 +1,250 @@
+// ABOUTME: Styles the searchable, full-page extension settings layout.
+// ABOUTME: Defines the sticky navigation rail, section cards, and responsive behavior.
+
+@use "../styles/variables" as *;
+
+.options-page {
+  width: min(840px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 36px 0 72px;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 32px;
+  color: $text;
+
+  &__rail {
+    position: sticky;
+    top: 28px;
+    align-self: start;
+
+    nav {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      a {
+        padding: 5px 7px;
+        border-radius: 5px;
+        color: $text-muted;
+        font-family: $font-mono;
+        font-size: 11px;
+        text-decoration: none;
+
+        &:hover,
+        &.options-page__toc-link--active {
+          background: $surface;
+          color: $accent-teal;
+        }
+      }
+    }
+  }
+
+  &__brand {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 16px;
+
+    strong {
+      @include wordmark;
+      font-size: 18px;
+    }
+
+    span {
+      color: $text-faint;
+      font-family: $font-mono;
+      font-size: 9px;
+      text-transform: uppercase;
+    }
+  }
+
+  &__search {
+    @include input-field;
+    width: 100%;
+    margin-bottom: 14px;
+    font-size: 11px;
+  }
+
+  &__content {
+    min-width: 0;
+  }
+
+  &__section {
+    margin-bottom: 32px;
+    scroll-margin-top: 24px;
+
+    > h1 {
+      @include heading;
+      margin-bottom: 10px;
+      font-size: 20px;
+    }
+  }
+
+  &__card {
+    padding: 16px;
+    border: 1px solid $border;
+    border-radius: 10px;
+    background: $surface;
+
+    h2 {
+      @include heading;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    p {
+      color: $text-muted;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    button {
+      @include btn-secondary;
+      padding: 7px 10px;
+      font-size: 11px;
+    }
+
+    input[type="email"] {
+      @include input-field;
+      min-width: 230px;
+    }
+  }
+
+  &__setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+
+    + .options-page__setting-row {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid $border;
+    }
+  }
+
+  &__identity-actions,
+  &__key-actions,
+  &__email-current,
+  &__email-form,
+  &__access-request form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__identity-actions > button:first-of-type {
+    width: 52px;
+    height: 52px;
+    padding: 6px;
+  }
+
+  &__color-input {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  &__key-actions code,
+  &__email-current code {
+    padding: 6px 8px;
+    border: 1px solid $border;
+    border-radius: 5px;
+    background: $bg;
+    font-family: $font-mono;
+    font-size: 10px;
+  }
+
+  &__checkbox,
+  &__mono-note {
+    font-family: $font-mono;
+    font-size: 11px;
+  }
+
+  &__checkbox {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 12px;
+  }
+
+  &__access-request {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid $border;
+
+    strong {
+      color: $accent-teal;
+      font-size: 12px;
+    }
+  }
+
+  &__community > div {
+    padding: 18px;
+    border: 1px solid rgba($accent-teal, 0.25);
+    border-radius: 10px;
+    background: $active-bg;
+
+    h2 {
+      @include heading;
+      margin-bottom: 5px;
+      font-size: 16px;
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: $text-muted;
+      font-size: 12px;
+    }
+
+    a {
+      @include btn-teal;
+      padding: 8px 11px;
+      font-size: 11px;
+      text-decoration: none;
+    }
+  }
+
+  &__collections-card {
+    .collections {
+      height: auto;
+      padding: 0;
+    }
+
+    .collections__main {
+      overflow: visible;
+    }
+  }
+
+  &__no-results {
+    color: $text-muted;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 700px) {
+  .options-page {
+    grid-template-columns: 1fr;
+    gap: 20px;
+
+    &__rail {
+      position: static;
+
+      nav {
+        flex-flow: row wrap;
+      }
+    }
+
+    &__setting-row {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    &__email-form,
+    &__access-request form {
+      align-items: stretch;
+      flex-direction: column;
+    }
+  }
+}

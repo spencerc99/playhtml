@@ -19,7 +19,7 @@
     max-width: 560px;
 
     &--complete {
-      max-width: 720px;
+      max-width: 840px;
     }
   }
 
@@ -152,6 +152,69 @@
     color: $text-faint;
     font-size: 11px;
     line-height: 1.45;
+  }
+
+  &__discord-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding: 12px;
+    border: 1px solid rgba($accent-teal, 0.25);
+    border-radius: 10px;
+    background: $surface;
+  }
+
+  &__discord-icon {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    color: $accent-teal;
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  &__discord-copy {
+    min-width: 0;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+
+    strong {
+      font-size: 12px;
+    }
+
+    span {
+      color: $text-muted;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+  }
+
+  &__discord-button {
+    @include btn-teal;
+    flex: 0 0 auto;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    text-decoration: none;
+  }
+
+  &__welcome-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    span {
+      color: $text-faint;
+      font-family: $font-mono;
+      font-size: 10px;
+    }
   }
 
   // ── Preset tabs ─────────────────────────────────────────────────────────────
@@ -367,7 +430,7 @@
   // Faux browser window around the history-page preview, so the step reads as
   // "this is what the new tab becomes".
   &__newtab-preview {
-    margin: 20px 0 16px;
+    margin: 12px 0;
     border: 1px solid $border;
     border-radius: 10px;
     overflow: hidden;
@@ -408,7 +471,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 20px;
+    margin: 12px 0 0;
     font-family: $font-mono;
     font-size: 12px;
     color: $text;
@@ -421,7 +484,7 @@
 
   // Stands in for the opt-in checkbox where the browser has no new tab override.
   &__newtab-note {
-    margin-bottom: 20px;
+    margin: 12px 0 0;
     font-family: $font-mono;
     font-size: 12px;
     line-height: 1.5;
@@ -439,10 +502,33 @@
   // ── Completion page ─────────────────────────────────────────────────────────
 
   &__tip {
-    margin-bottom: 20px;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid $border;
+    border-radius: 10px;
+    background: $surface;
 
     > .setup-step__desc {
       margin-bottom: 10px;
+    }
+  }
+
+  &__tips-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  &__community-footer {
+    margin-top: 10px;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 10px;
+    text-align: right;
+
+    a {
+      color: $accent-teal;
     }
   }
 
@@ -644,5 +730,26 @@
 @media (prefers-reduced-motion: reduce) {
   .setup-step__wiki-cursor {
     animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .setup-page {
+    padding: 16px;
+  }
+
+  .setup-step {
+    &__discord-card {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    &__discord-button {
+      margin-left: 36px;
+    }
+
+    &__tips-grid {
+      grid-template-columns: 1fr;
+    }
   }
 }

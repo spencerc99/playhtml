@@ -10,33 +10,16 @@ import { createRoot } from "react-dom/client";
 import "../../styles/popup.scss";
 import browser from "webextension-polyfill";
 import { Inventory } from "../../components/Inventory";
-import { PlayerIdentityCard } from "../../components/PlayerIdentityCard";
-import { SiteStatus } from "../../components/SiteStatus";
-import { QuickActions } from "../../components/QuickActions";
-import { Collections } from "../../components/Collections";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";
-import { ProfilePage } from "../../components/ProfilePage";
-import { DeveloperFeaturesPage } from "../../components/DeveloperFeaturesPage";
 import { refreshFeatureAccess } from "../../features/featureAccess";
-import {
-  useFeatureState,
-  useExperimentAccess,
-} from "../../features/useFeatureAccess";
+import { useFeatureState } from "../../features/useFeatureAccess";
 import {
   pageObjectsAreHiddenOnSite,
   showPageObjectsOnSite,
   siteOriginFromUrl,
 } from "../../features/inventory/siteVisibility";
-import {
-  PlayerIdentity,
-  GameInventory,
-  InventoryItem,
-  PlayHTMLStatus,
-} from "../../types";
-import {
-  findOpenCommuteTab,
-  openOrFocusCommute,
-} from "./commuteNavigation";
+import { PlayerIdentity, GameInventory, InventoryItem } from "../../types";
+import { findOpenCommuteTab, openOrFocusCommute } from "./commuteNavigation";
 
 const PUBLIC_CHANGELOG_URL = "https://wewere.online/changelog/";
 
@@ -47,25 +30,12 @@ function PlayHTMLPopup() {
   const [discoveredSites, setDiscoveredSites] = useState<string[]>([]);
   const [currentTab, setCurrentTab] = useState<browser.Tabs.Tab | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [playhtmlStatus, setPlayhtmlStatus] = useState<PlayHTMLStatus>({
-    detected: false,
-    elementCount: 0,
-    checking: true,
-  });
   const [inventory, setInventory] = useState<GameInventory>({
     items: [],
     totalItems: 0,
     lastUpdated: 0,
   });
-  const [currentView, setCurrentView] = useState<
-    | "main"
-    | "inventory"
-    | "collections"
-    | "profile"
-    | "bag-settings"
-    | "developer-features"
-  >("main");
-  const experimentAccess = useExperimentAccess();
+  const [currentView, setCurrentView] = useState<"main" | "inventory">("main");
   const commuteEnabled = useFeatureState("COMMUTE").enabled;
   const [commuteIsOpen, setCommuteIsOpen] = useState(false);
   const [hiddenSite, setHiddenSite] = useState<{
@@ -100,7 +70,8 @@ function PlayHTMLPopup() {
   }, [commuteEnabled]);
 
   useEffect(() => {
-    if (import.meta.env.MODE === "development" || !playerIdentity?.publicKey) return;
+    if (import.meta.env.MODE === "development" || !playerIdentity?.publicKey)
+      return;
     refreshFeatureAccess(playerIdentity.publicKey).catch(() => {});
   }, [playerIdentity?.publicKey]);
 
@@ -113,7 +84,7 @@ function PlayHTMLPopup() {
       });
       setCurrentTab(tab);
       const siteOrigin = tab?.url ? siteOriginFromUrl(tab.url) : null;
-      if (siteOrigin && await pageObjectsAreHiddenOnSite(siteOrigin)) {
+      if (siteOrigin && (await pageObjectsAreHiddenOnSite(siteOrigin))) {
         setHiddenSite({
           origin: siteOrigin,
           name: new URL(siteOrigin).hostname,
@@ -131,9 +102,6 @@ function PlayHTMLPopup() {
         Array.isArray(profile?.discoveredSites) ? profile.discoveredSites : [],
       );
 
-      // Check PlayHTML status on current page
-      await checkPlayHtmlStatus(tab);
-
       // Load inventory
       await loadInventory();
 
@@ -141,31 +109,6 @@ function PlayHTMLPopup() {
     } catch (error) {
       console.error("Failed to load player data:", error);
       setIsLoading(false);
-    }
-  };
-
-  const checkPlayHtmlStatus = async (tab: browser.Tabs.Tab | null) => {
-    if (!tab?.id) return;
-
-    try {
-      const response = await browser.tabs.sendMessage(tab.id, {
-        type: "CHECK_PLAYHTML_STATUS",
-      });
-
-      if (response) {
-        setPlayhtmlStatus({
-          detected: response.elementCount > 0,
-          elementCount: response.elementCount,
-          checking: false,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to check PlayHTML status:", error);
-      setPlayhtmlStatus({
-        detected: false,
-        elementCount: 0,
-        checking: false,
-      });
     }
   };
 
@@ -189,25 +132,6 @@ function PlayHTMLPopup() {
     } catch (error) {
       console.error("Failed to load inventory:", error);
     }
-  };
-
-  const addInventoryItem = async (
-    item: Omit<InventoryItem, "id" | "collectedAt">,
-  ) => {
-    const newItem: InventoryItem = {
-      ...item,
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      collectedAt: Date.now(),
-    };
-
-    const updatedInventory: GameInventory = {
-      items: [...inventory.items, newItem],
-      totalItems: inventory.totalItems + 1,
-      lastUpdated: Date.now(),
-    };
-
-    setInventory(updatedInventory);
-    await browser.storage.local.set({ gameInventory: updatedInventory });
   };
 
   const removeFromInventory = async (itemId: string) => {
@@ -249,20 +173,6 @@ function PlayHTMLPopup() {
     }
   };
 
-  const activateElementPicker = async () => {
-    if (!currentTab?.id) return;
-
-    try {
-      // Close popup (Chrome behavior) and activate element picker
-      await browser.tabs.sendMessage(currentTab.id, {
-        type: "ACTIVATE_ELEMENT_PICKER",
-      });
-      window.close(); // Close popup
-    } catch (error) {
-      console.error("Failed to activate element picker:", error);
-    }
-  };
-
   const toggleHistoricalOverlay = async () => {
     if (!currentTab?.id) return;
 
@@ -273,18 +183,6 @@ function PlayHTMLPopup() {
       window.close(); // Close popup
     } catch (error) {
       console.error("Failed to toggle historical overlay:", error);
-    }
-  };
-
-  const pingContentScript = async () => {
-    try {
-      if (currentTab?.id) {
-        const response = await browser.tabs.sendMessage(currentTab.id, {
-          type: "PING",
-        });
-      }
-    } catch (error) {
-      console.error("Failed to ping content script:", error);
     }
   };
 
@@ -343,7 +241,7 @@ function PlayHTMLPopup() {
           </p>
           <button
             onClick={async () => {
-              const url = browser.runtime.getURL("options.html");
+              const url = browser.runtime.getURL("setup.html");
               await browser.tabs.create({ url });
               window.close();
             }}
@@ -365,17 +263,6 @@ function PlayHTMLPopup() {
     );
   }
 
-  if (currentView === "profile" && playerIdentity) {
-    return (
-      <ProfilePage
-        playerIdentity={playerIdentity}
-        discoveredSites={discoveredSites}
-        onBack={() => setCurrentView("main")}
-        onIdentityUpdated={(updated) => setPlayerIdentity(updated)}
-      />
-    );
-  }
-
   if (currentView === "inventory") {
     return (
       <Inventory
@@ -387,78 +274,12 @@ function PlayHTMLPopup() {
     );
   }
 
-  if (currentView === "collections") {
-    return <Collections onBack={() => setCurrentView("main")} />;
-  }
-
-  if (currentView === "bag-settings") {
-    return (
-      <div
-        style={{
-          padding: "16px",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <header style={{ marginBottom: "16px" }}>
-          <button
-            onClick={() => setCurrentView("main")}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              fontSize: "12px",
-              color: "#6b7280",
-              cursor: "pointer",
-              marginBottom: "8px",
-            }}
-          >
-            ← back
-          </button>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "16px",
-              color: "#1f2937",
-              fontFamily: "'Lora', Georgia, serif",
-            }}
-          >
-            Bag Settings
-          </h1>
-        </header>
-
-        <main style={{ flex: 1, overflow: "auto" }}>
-          <SiteStatus currentTab={currentTab} playhtmlStatus={playhtmlStatus} />
-          <QuickActions
-            onTestConnection={pingContentScript}
-            onPickElement={activateElementPicker}
-            onViewInventory={() => setCurrentView("inventory")}
-            onViewCollections={() => setCurrentView("collections")}
-            onViewHistory={toggleHistoricalOverlay}
-            inventory={inventory}
-            showBagFeatures={true}
-          />
-        </main>
-      </div>
-    );
-  }
-
-  if (currentView === "developer-features" && experimentAccess) {
-    return <DeveloperFeaturesPage onBack={() => setCurrentView("main")} />;
-  }
-
   return (
     <InternetPortraitHome
       playerIdentity={playerIdentity}
       discoveredSites={discoveredSites}
-      onViewCollections={() => setCurrentView("collections")}
+      onOpenSettings={() => void browser.runtime.openOptionsPage()}
       onViewHistory={toggleHistoricalOverlay}
-      onViewProfile={() => setCurrentView("profile")}
-      onViewBagSettings={() => setCurrentView("bag-settings")}
-      onViewDeveloperFeatures={
-        experimentAccess ? () => setCurrentView("developer-features") : undefined
-      }
       onViewCommute={async () => {
         await openOrFocusCommute();
         window.close();
