@@ -121,7 +121,7 @@ $slotY: $moundTopGap + $visibleH;
   }
 
   &:focus-visible {
-    outline: 2px solid #4a90e2;
+    outline: 2px solid var(--accent-blue, #4a90e2);
     outline-offset: 4px;
     border-radius: 4px;
   }
@@ -135,12 +135,12 @@ $slotY: $moundTopGap + $visibleH;
 // ============================
 .mb-variant-foldedLetter {
   width: 32px;
-  background: #fbf9f4;
-  border: 1px solid #b8ad9a;
+  background: var(--bg, #fbf9f4);
+  border: 1px solid var(--border-strong, #b8ad9a);
   border-radius: 2px;
   box-shadow:
-    inset 0 1px 1px rgba(0, 0, 0, 0.05),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.6);
+    inset 0 1px 1px var(--shadow, rgba(0, 0, 0, 0.05)),
+    inset 0 -1px 0 var(--border, rgba(255, 255, 255, 0.6));
   overflow: hidden;
 }
 
@@ -370,21 +370,21 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
 // broider pixel border. The border IS the frame; the linen ground stays soft
 // underneath it.
 .seg-linen {
-  color: #3d3833;
-  background-color: #faf7f2;
+  color: var(--text, #3d3833);
+  background-color: var(--bg, #faf7f2);
   background-image:
     radial-gradient(
       120% 80% at 50% 0%,
-      rgba(255, 255, 255, 0.5),
+      color-mix(in srgb, var(--text, #ffffff) 7%, transparent),
       transparent 60%
     ),
     radial-gradient(
       140% 90% at 50% 100%,
-      rgba(120, 104, 84, 0.14),
+      color-mix(in srgb, var(--text, #786854) 5%, transparent),
       transparent 55%
     ),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.32 0 0 0 0 0.29 0 0 0 0 0.24 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
-  box-shadow: inset 0 0 40px rgba(120, 104, 84, 0.1);
+  box-shadow: inset 0 0 40px var(--shadow, rgba(120, 104, 84, 0.1));
   border-width: 7px;
   border-style: solid;
   border-image: $broider-border 7 / 7px / 0 round;
@@ -491,7 +491,7 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
   height: 22px;
 }
 .perf-linen::before {
-  background: #faf7f2;
+  background: var(--bg, #faf7f2);
   -webkit-mask-image: linear-gradient(#000 0 0),
     linear-gradient(135deg, transparent 11px, #000 11px),
     linear-gradient(-135deg, transparent 11px, #000 11px),
@@ -556,7 +556,7 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
   right: 0;
   top: 2px;
   height: 2px;
-  background: #c4724e;
+  background: var(--accent-rust, #c4724e);
   pointer-events: none;
 }
 
@@ -703,10 +703,10 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
 @keyframes writeBreathe {
   0%,
   100% {
-    box-shadow: 0 6px 22px rgba(74, 154, 138, 0.14);
+    box-shadow: 0 6px 22px var(--active-bg, rgba(74, 154, 138, 0.14));
   }
   50% {
-    box-shadow: 0 10px 30px rgba(74, 154, 138, 0.26);
+    box-shadow: 0 10px 30px var(--active-border, rgba(74, 154, 138, 0.26));
   }
 }
 // Two stacked rows: the salutation owns the full first line (a letter's
@@ -778,7 +778,7 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
 
   &:hover { transform: translateY(-1px) rotate(var(--tilt, 0deg)); }
   &.selected {
-    outline: 2px solid #4a9a8a;
+    outline: 2px solid var(--accent-teal, #4a9a8a);
     outline-offset: 2px;
   }
 }
@@ -788,7 +788,7 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
 .swatch-linen {
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.32 0 0 0 0 0.29 0 0 0 0 0.24 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='40' height='40' filter='url(%23g)'/%3E%3C/svg%3E"),
-    #faf7f2;
+    var(--bg, #faf7f2);
   border-width: 3px;
   border-style: solid;
   border-image: $broider-border 7 / 3px / 0 round;
@@ -797,7 +797,7 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
   background: url($stationery-paper) center / cover;
 }
 .swatch-webnative {
-  background: linear-gradient(140deg, #5b8db8, #4a9a8a 55%, #d4b85c);
+  background: linear-gradient(140deg, var(--accent-blue, #5b8db8), var(--accent-teal, #4a9a8a) 55%, var(--accent-gold, #d4b85c));
 }
 // Bare paper, no form rules — the blank sheet should look like the finished
 // letter will: ink straight on the ground. The placeholder and the sheet's
@@ -930,12 +930,12 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
   font-style: italic;
   font-size: 15px;
   line-height: 1.7;
-  color: #5c5142;
-  background-color: #f3ede1;
+  color: var(--text, #5c5142);
+  background-color: var(--surface-hover, #f3ede1);
   // a warm glow from the top so the sheet feels held rather than closed
   background-image: radial-gradient(
     130% 100% at 50% 0%,
-    rgba(212, 184, 92, 0.16),
+    var(--gold-bg, rgba(212, 184, 92, 0.16)),
     transparent 62%
   );
 
@@ -947,7 +947,7 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
     height: 2px;
     margin: 18px auto 0;
     border-radius: 1px;
-    background: rgba(74, 154, 138, 0.5);
+    background: var(--accent-teal, rgba(74, 154, 138, 0.5));
   }
 }
 .mbs-tickRail {
@@ -1111,13 +1111,13 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
   // perspective once the flip carries the packet off-center to the slot.
   transform: translateZ(3px);
   opacity: 0;
-  background: #fbf9f4;
-  border: 1px solid #b8ad9a;
+  background: var(--bg, #fbf9f4);
+  border: 1px solid var(--border-strong, #b8ad9a);
   border-radius: 3px;
   box-shadow:
-    inset 0 1px 1px rgba(0, 0, 0, 0.05),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.6),
-    0 8px 24px rgba(20, 15, 10, 0.45);
+    inset 0 1px 1px var(--shadow, rgba(0, 0, 0, 0.05)),
+    inset 0 -1px 0 var(--border, rgba(255, 255, 255, 0.6)),
+    0 8px 24px var(--shadow-strong, rgba(20, 15, 10, 0.45));
   overflow: hidden;
   pointer-events: none;
 }
@@ -1127,7 +1127,7 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
 // down. Placed after .mbf-cardSkin so these single-class rules win over both it
 // and .mb-variant-foldedLetter.
 .mb-paper-linen {
-  background: #faf7f2;
+  background: var(--bg, #faf7f2);
   border: 3px solid transparent;
   border-image: $broider-border 7 / 3px / 0 round;
   border-radius: 0;
@@ -1226,8 +1226,8 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
   transform: rotateX(180deg);
   backface-visibility: hidden;
   // fallback ground if the note has no style (linen default still sets one)
-  background: #efe9df;
-  box-shadow: inset 0 0 20px rgba(90, 70, 45, 0.12);
+  background: var(--surface-hover, #efe9df);
+  box-shadow: inset 0 0 20px var(--shadow, rgba(90, 70, 45, 0.12));
   overflow: hidden;
 
   // the underside is the paper seen from behind — mute the ground a touch and
@@ -1237,8 +1237,8 @@ $broider-border: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYA
     content: "";
     position: absolute;
     inset: 0;
-    background: rgba(240, 236, 226, 0.5);
-    box-shadow: inset 0 0 24px rgba(90, 70, 45, 0.16);
+    background: color-mix(in srgb, var(--surface, #f0ece2) 50%, transparent);
+    box-shadow: inset 0 0 24px var(--shadow-strong, rgba(90, 70, 45, 0.16));
   }
 }
 

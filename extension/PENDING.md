@@ -22,3 +22,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Choose during setup whether History opens in new tabs, and change the setting from the History page at any time.
   ![History new tab choice during setup](/changelog/media/new-tab-setup.png)
 - Extension pages now follow your system light or dark appearance.
+- Controls shown on websites now match each site's light or dark appearance.
