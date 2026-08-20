@@ -79,7 +79,6 @@ export const PagePreview = memo(
       return (
         <foreignObject x={x} y={y} width={width} height={height}>
           <div
-            xmlns="http://www.w3.org/1999/xhtml"
             style={{
               width: `${width}px`,
               height: `${height}px`,
@@ -117,7 +116,6 @@ export const PagePreview = memo(
     return (
       <foreignObject x={x} y={y} width={width} height={height}>
         <div
-          xmlns="http://www.w3.org/1999/xhtml"
           style={{
             width: `${width}px`,
             height: `${height}px`,

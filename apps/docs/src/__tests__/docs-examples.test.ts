@@ -12,7 +12,7 @@ import {
 } from "./docs-snippets";
 
 const CAPABILITIES = "capabilities.mdx";
-const SHARED_ELEMENTS = "advanced/shared-elements.md";
+const SHARED_ELEMENTS = "advanced/shared-elements.mdx";
 
 function findSnippet(
   file: string,

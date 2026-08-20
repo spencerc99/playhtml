@@ -6,6 +6,10 @@ import { createRoot } from "react-dom/client";
 import { playhtml } from "playhtml";
 import { FLAGS } from "@extension/flags";
 import {
+  FEATURE_ACCESS_STORAGE_KEY,
+  FEATURE_OVERRIDES_STORAGE_KEY,
+} from "@extension/features/featureAccess";
+import {
   initGlobalFeatures,
   anyGlobalFeatureActive,
 } from "@extension/features/global";
@@ -87,12 +91,29 @@ function buildSeededNotes(n: number): BottleNote[] {
  * initEmotes(deps) for the emote wheel. Cursors are enabled here (unlike the
  * extension's headless every-page path) so the emote wheel has a cursorClient
  * and peer positions to render on — matching the extension's cursor-site path.
- * The dev override is forced on so flag-off experiments still run here.
+ * Experiment access and choices are enabled so every social preview still runs here.
  */
 async function bootSocial(): Promise<() => void> {
-  // Force the internal-dev override on (shim-backed storage), so experiments
-  // run on the site even though their committed FLAGS are off.
-  await browser.storage.local.set({ internalDevFeaturesEnabled: true });
+  // The playground uses shim-backed storage to expose and enable its preview features.
+  await browser.storage.local.set({
+    [FEATURE_ACCESS_STORAGE_KEY]: {
+      features: {
+        BOTTLES: { stage: "internal", available: true },
+        QUARANTINE_TAPE: { stage: "internal", available: true },
+        INVENTORY: { stage: "internal", available: true },
+        PAGE_COLLECTION: { stage: "internal", available: true },
+        EMOTES: { stage: "internal", available: true },
+      },
+      checkedAt: Date.now(),
+    },
+    [FEATURE_OVERRIDES_STORAGE_KEY]: {
+      BOTTLES: true,
+      QUARANTINE_TAPE: true,
+      INVENTORY: true,
+      PAGE_COLLECTION: true,
+      EMOTES: true,
+    },
+  });
 
   await playhtml.init({
     cursors: { enabled: true, coordinateMode: "absolute" },
@@ -320,7 +341,7 @@ bootSocial()
   .then(() => {
     if (statusEl)
       statusEl.textContent =
-        "live — satchel left; synced bottles on this page; emote wheel on Cmd/Ctrl+Shift+E";
+        "live — satchel left; bottles and quarantine tape on this page; emote wheel on Cmd/Ctrl+Shift+E";
   })
   .catch((err) => {
     console.error("[social-playground] live boot failed:", err);

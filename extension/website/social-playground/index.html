@@ -37,6 +37,7 @@
       h2 { font-family: Lora, Georgia, serif; font-weight: 600; font-size: 18px; margin: 34px 0 8px; }
       p { color: #5c554d; }
       .filler p { color: #cfc7ba; }
+      .tape-target { display: block; width: min(100%, 520px); height: auto; margin: 18px 0; }
       ul { color: #5c554d; }
       .controls { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; align-items: flex-start; }
       .controls textarea {
@@ -76,7 +77,7 @@
       </p>
       <span class="status" id="status">booting…</span>
 
-      <h2>The satchel + bottles (live)</h2>
+      <h2>The satchel + social experiments (live)</h2>
       <p>
         These boot automatically via the extension's real
         <code>initGlobalFeatures</code>:
@@ -91,6 +92,12 @@
         <li>
           <strong>Bottles</strong> — a message bottle places itself somewhere on
           this page (it's a real synced experiment — open it, read/add, seal).
+        </li>
+        <li>
+          <strong>Quarantine tape</strong> — arm an AI slop or SEO spam roll in
+          the satchel. Click two viewport edges to tape the page, or drag across
+          an image to tape that image. Disarm the roll, then drag across tape to
+          rip it.
         </li>
         <li>
           <strong>Emote wheel</strong> — press <code>Cmd/Ctrl+Shift+E</code> to
@@ -156,6 +163,12 @@
 
       <h2 class="filler">Some page content</h2>
       <div class="filler">
+        <p>Arm a quarantine tape roll and drag across this image to test image taping.</p>
+        <img
+          class="tape-target"
+          src="/social/wwo-portrait.png"
+          alt="We Were Online portrait preview"
+        />
         <p>
           The quick brown fox jumps over the lazy dog. The quick brown fox jumps
           over the lazy dog. The quick brown fox jumps over the lazy dog. The

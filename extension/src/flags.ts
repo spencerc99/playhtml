@@ -1,19 +1,60 @@
-// ABOUTME: Feature flags for the browser extension.
-// ABOUTME: Controls visibility of in-development features like copresence.
+// ABOUTME: Resolves effective extension feature states from server access and local choices.
+// ABOUTME: Re-exports the shared catalog for existing extension feature consumers.
 
-export const FLAGS = {
-  // When false, hide PlayHTML Bag features by default in popup
-  // Devs can override via Cmd+Shift+. in the popup
-  COPRESENCE: true,
+import {
+  FEATURE_CATALOG,
+  FEATURE_IDS,
+  isFeatureId,
+  type FeatureAccessSnapshot,
+  type FeatureId,
+} from "../shared/featureCatalog";
 
-  // Social experiments — each runs on every page via the social registry
-  // (src/features/social/registry.ts). Default OFF for normal users; devs who
-  // have toggled `internalDevFeaturesEnabled` (Cmd+Shift+. in the popup) see
-  // every experiment regardless of these flags. Flip one to `true` only when
-  // it's ready to ship to everyone (with its own safety layers).
-  BOTTLES: false,
-  QUARANTINE_TAPE: false,
+export {
+  FEATURE_CATALOG,
+  FEATURE_IDS,
+  isFeatureId,
+  type FeatureAccessSnapshot,
+  type FeatureId,
+  type FeaturePolicy,
+  type FeatureStage,
+} from "../shared/featureCatalog";
 
-  // Inventory surface (the satchel) + the InventoryAPI. Gates the on-page UI.
-  INVENTORY: true,
-} as const;
+export type FeatureOverrides = Partial<Record<FeatureId, boolean>>;
+
+export const FLAGS = Object.fromEntries(
+  FEATURE_IDS.map((feature) => [
+    feature,
+    FEATURE_CATALOG[feature].defaultStage === "released",
+  ]),
+) as Record<FeatureId, boolean>;
+
+export type FeatureState = {
+  enabled: boolean;
+  available: boolean;
+  stage: FeatureAccessSnapshot["features"][FeatureId]["stage"];
+  source: "released" | "choice" | "available" | "unavailable";
+};
+
+export function resolveFeatureState(
+  feature: FeatureId,
+  options: {
+    access: FeatureAccessSnapshot;
+    overrides?: FeatureOverrides;
+  },
+): FeatureState {
+  const policy = options.access.features[feature];
+  if (!policy.available) {
+    return { enabled: false, available: false, stage: policy.stage, source: "unavailable" };
+  }
+
+  if (policy.stage === "released") {
+    return { enabled: true, available: true, stage: policy.stage, source: "released" };
+  }
+
+  const override = options.overrides?.[feature];
+  if (override !== undefined) {
+    return { enabled: override, available: true, stage: policy.stage, source: "choice" };
+  }
+
+  return { enabled: false, available: true, stage: policy.stage, source: "available" };
+}

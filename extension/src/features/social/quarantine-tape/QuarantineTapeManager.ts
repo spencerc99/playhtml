@@ -216,9 +216,13 @@ export class QuarantineTapeManager {
    */
   private renderElementMarks() {
     this.gElements.replaceChildren();
-    const setness = Math.min(1, this.elementMarks.length / (SET_THRESHOLD + 2));
     for (const m of this.elementMarks) {
       const torn = isFullyTorn(m);
+      const standing = this.elementMarks.filter(
+        (mark) => mark.src === m.src && !isFullyTorn(mark),
+      ).length;
+      const setness = Math.min(1, standing / (SET_THRESHOLD + 2));
+      const provisional = standing < SET_THRESHOLD;
       // one verdict can paint every copy of that image on the page
       for (const el of this.elementsForSrc(m.src)) {
         const r = el.getBoundingClientRect();
@@ -243,7 +247,7 @@ export class QuarantineTapeManager {
               m.type,
               m.seed + i * 7717,
               opacity,
-              false,
+              provisional && !torn,
               this.ripPositions(m),
               torn,
             ),
@@ -332,12 +336,15 @@ export class QuarantineTapeManager {
    * stringing a wall-to-wall strip.
    */
   private updateHoverTarget(e: MouseEvent) {
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    const img =
-      el instanceof HTMLImageElement && el.getBoundingClientRect().width >= MIN_IMAGE ? el : null;
-    if (img === this.hoverTarget) return;
+    const img = document.elementsFromPoint(e.clientX, e.clientY).find((element): element is HTMLImageElement => {
+      if (!(element instanceof HTMLImageElement)) return false;
+      const rect = element.getBoundingClientRect();
+      return rect.width >= MIN_IMAGE && rect.height >= MIN_IMAGE;
+    });
+    const target = img ?? null;
+    if (target === this.hoverTarget) return;
     this.hoverTarget?.classList.remove(TARGET_HOVER_CLASS);
-    this.hoverTarget = img;
+    this.hoverTarget = target;
     if (this.hoverTarget && this.equipped) {
       this.hoverTarget.style.setProperty("--qt-target-color", TYPE_STYLE[this.equipped].base);
       this.hoverTarget.classList.add(TARGET_HOVER_CLASS);
@@ -521,6 +528,8 @@ export class QuarantineTapeManager {
 
   // ----- rip (optimistic, reconciled) -----
   private async ripStrip(strip: Strip, pos: number) {
+    if (strip.id.startsWith("temp-")) return;
+
     // snapshot rips-required at the first rip (locks provisional vs set)
     if (strip.ripsRequired === null) {
       const standing = this.strips.filter((s) => !isFullyTorn(s)).length;
@@ -528,10 +537,6 @@ export class QuarantineTapeManager {
     }
     strip.rips.push({ by: this.playerPid, at: Date.now(), pos });
     this.renderStrips();
-
-    // Temp (not-yet-persisted) strips have no server id to rip against; the rip
-    // rides along when the strip's commit reconciles.
-    if (strip.id.startsWith("temp-")) return;
 
     const server = await postRip({
       url: location.href,
@@ -582,6 +587,8 @@ export class QuarantineTapeManager {
 
   // ----- element mark rip (optimistic, reconciled) -----
   private async ripElementMark(mark: ElementMark) {
+    if (mark.id.startsWith("temp-")) return;
+
     // snapshot rips-required at the first rip, from the standing layers on this src
     if (mark.ripsRequired === null) {
       const layers = this.elementMarks.filter(
@@ -592,10 +599,6 @@ export class QuarantineTapeManager {
     const pos = 0.5;
     mark.rips.push({ by: this.playerPid, at: Date.now(), pos });
     this.renderElementMarks();
-
-    // Temp (not-yet-persisted) marks have no server id; the rip rides along when
-    // the mark's commit reconciles.
-    if (mark.id.startsWith("temp-")) return;
 
     const server = await postElementRip({
       src: mark.src,

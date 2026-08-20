@@ -1,5 +1,50 @@
 # Change Log
 
+## 2.14.1
+
+### Patch Changes
+
+- f8753dc: Receive realtime presence messages reliably in Firefox so remote cursors and presence controls appear.
+- abf44f6: Preserve function-valued initialization options when they are the only configuration so dynamic rooms and error handlers run as declared.
+- 4b19169: Reapply cursor visibility filters immediately when their configuration changes so custom presence views can replace an existing cursor without waiting for that person to move again.
+
+## 2.14.0
+
+### Minor Changes
+
+- ee236da: Removes internal dead code and the deprecated `additionalSetup` initializer field. Use `onMount` instead. Runtime behavior is unchanged.
+- 90e703d: Page presence now syncs over the generic realtime presence transport. If the realtime connection can't be reached, playhtml now logs a single clear console error that presence is degraded instead of failing silently.
+- d18ccee: Add a `playhtml.users` module for durable user identity (name and color) that works whether or not cursors are enabled. `playhtml.users.me` exposes your own identity (`name`, `color`, `pid`) with setters that persist and publish to the room. `playhtml.users.getAll()` returns an array of everyone currently in the room, and `playhtml.users.onChange(callback)` subscribes to join/leave/identity changes. In React, the new `useUsers()` hook gives a reactive roster, and `usePlayerIdentity()` no longer requires `cursors: { enabled: true }`.
+
+  Identity now lives in one place: `window.cursors.color` and `window.cursors.name` are thin delegates to `playhtml.users.me`, `window.cursors.allColors` is derived from the room's users (its undocumented setter is removed), identity changes republish to peers (previously a name or color change on a page without cursors never reached other visitors), and the browser extension's injected identity is adopted without cursors enabled. `playhtml.elementHandlers` remains available for compatibility but is deprecated; use `playhtml.getHandle(elementId, tag)` to interact with a bound element.
+
+### Patch Changes
+
+- 90e703d: Element awareness (`setMyAwareness` / `updateElementAwareness`) now syncs over the generic realtime presence transport
+- d70d7c3: Mark the packages as ESM-only instead of advertising CommonJS entry points that could not load their exports. The `playhtml/leafEditor` subpath now provides declarations that type-check with NodeNext module resolution.
+- Updated dependencies [ee236da]
+- Updated dependencies [d70d7c3]
+- Updated dependencies [d18ccee]
+  - @playhtml/common@0.9.0
+
+## 2.13.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- 7c1bdda: Coalesce can-mirror DOM observer writes before syncing so many simultaneous element mutations send a single shared document update instead of one update per element.
+- 5a32af7: Clean up built-in element listeners when an element is removed so remounting and dragging do not leave stale handlers active, and install listeners when callbacks are added after setup.
+- b3f20bb: Update playhtml's default PartyKit hosts to the Cloudflare WAF-protected custom API domains so production pages connect through `api.playhtml.fun` and staging pages connect through `api-staging.playhtml.fun`.
+- 4a1711c: Defer loading the development toolbar until development mode is enabled so production runtime bundles do not include that code path.
+- dca1704: Restrict presence player identities to public fields, strip profile-only fields from generated identities, and allow custom presence values larger than 4 KiB.
+- 252acd0: Apply `can-move-bounds` only while dragging so setup preserves initial CSS layout and persisted positions instead of rewriting them from pre-insertion or client-specific geometry.
+- 1f8cf34: Add inline editing for existing primitive state leaves in the playhtml development toolbar, so developers can update string, number, boolean, and null values without replacing whole JSON blobs.
+- c5083b7: Clean up cursor chat keyboard, timer, and DOM resources when cursor presence is destroyed.
+- Updated dependencies [cd1ebf9]
+- Updated dependencies [dca1704]
+- Updated dependencies [252acd0]
+  - @playhtml/common@0.8.2
+
 ## 2.13.1
 
 ### Patch Changes

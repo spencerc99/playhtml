@@ -180,7 +180,7 @@ export const DocsScrollRail = withSharedState<{}, RailAwareness>(
     const myColor = myAwareness?.color ?? readCursorColor();
 
     return (
-      <div id="ph-docs-scroll-rail-el" className="ph-rail" role="presentation">
+      <div id="ph-docs-scroll-rail" className="ph-rail" role="presentation">
         {/* Section-heading ticks: the rail's "ruler". Drawn first so the
             dots paint on top of any tick that happens to share a y. h2
             ticks are wider/louder; h3 ticks are shorter and quieter so

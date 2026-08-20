@@ -181,6 +181,7 @@ export async function handleQuarantineElementRip(request: Request, env: Env): Pr
     .from('quarantine_element_marks')
     .select('*')
     .eq('id', markId)
+    .eq('src', key)
     .maybeSingle();
 
   if (loadErr) {
@@ -201,7 +202,7 @@ export async function handleQuarantineElementRip(request: Request, env: Env): Pr
     const { count } = await supabase
       .from('quarantine_element_marks')
       .select('id', { count: 'exact', head: true })
-      .eq('src', key);
+      .eq('src', mark.src);
     ripsRequired = (count ?? 0) >= SET_THRESHOLD ? SET_THRESHOLD : 1;
   }
 
@@ -211,6 +212,7 @@ export async function handleQuarantineElementRip(request: Request, env: Env): Pr
     .from('quarantine_element_marks')
     .update({ rips: nextRips, rips_required: ripsRequired })
     .eq('id', markId)
+    .eq('src', mark.src)
     .select('*')
     .single();
 

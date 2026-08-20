@@ -33,6 +33,8 @@ const VIEWPORT_MARGIN = 8; // Gap between viewports
 interface AnimatedScrollViewportsProps {
   animations: ScrollAnimation[];
   canvasSize: { width: number; height: number };
+  repeatAnimations?: boolean;
+  onAnimationsComplete?: () => boolean;
   settings: {
     scrollSpeed: number;
     backgroundOpacity: number;
@@ -75,6 +77,16 @@ const hashString = (str: string): number => {
   }
   return Math.abs(hash);
 };
+
+export function getScrollQueueIndex(
+  currentIndex: number,
+  animationCount: number,
+  repeatAnimations: boolean,
+): number | null {
+  if (animationCount === 0) return null;
+  if (currentIndex < animationCount) return currentIndex;
+  return repeatAnimations ? 0 : null;
+}
 
 // Check if two rectangles overlap (with margin)
 const rectsOverlap = (
@@ -211,7 +223,14 @@ const calculateViewportSize = (
 };
 
 export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
-  memo(({ animations, canvasSize, settings, urlMetadata }) => {
+  memo(({
+    animations,
+    canvasSize,
+    repeatAnimations = true,
+    onAnimationsComplete,
+    settings,
+    urlMetadata,
+  }) => {
     const [activeViewports, setActiveViewports] = useState<ActiveViewport[]>(
       [],
     );
@@ -223,6 +242,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const lastFillCheckRef = useRef(0);
     const lastFrameUpdateRef = useRef(0);
     const startTimeRef = useRef<number | null>(null);
+    const completionSignaledRef = useRef(false);
 
     // Settings ref to avoid re-renders
     const settingsRef = useRef(settings);
@@ -256,21 +276,27 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         }
         animationQueueRef.current = shuffled;
         queueIndexRef.current = 0;
+        completionSignaledRef.current = false;
         console.log(
           `[Scroll Dynamic] Initialized queue with ${shuffled.length} animations`,
         );
       }
     }, [animations]);
 
-    // Get next animation from queue (cycles through)
+    // Get the next animation from the queue
     const getNextAnimation = useCallback((): ScrollAnimation | null => {
       const queue = animationQueueRef.current;
-      if (queue.length === 0) return null;
+      const nextIndex = getScrollQueueIndex(
+        queueIndexRef.current,
+        queue.length,
+        repeatAnimations,
+      );
+      if (nextIndex === null) return null;
 
-      const animation = queue[queueIndexRef.current];
-      queueIndexRef.current = (queueIndexRef.current + 1) % queue.length;
+      const animation = queue[nextIndex];
+      queueIndexRef.current = nextIndex + 1;
       return animation;
-    }, []);
+    }, [repeatAnimations]);
 
     // Try to add a new viewport to an available space
     const tryAddViewport = useCallback(
@@ -481,6 +507,15 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         if (currentTime - lastFillCheckRef.current >= FILL_CHECK_INTERVAL) {
           lastFillCheckRef.current = currentTime;
           tryAddViewport(currentTime);
+          if (
+            !repeatAnimations &&
+            queueIndexRef.current >= animationQueueRef.current.length &&
+            activeViewportsRef.current.length === 0 &&
+            !completionSignaledRef.current
+          ) {
+            completionSignaledRef.current =
+              onAnimationsComplete?.() ?? true;
+          }
         }
 
         if (currentTime - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
@@ -498,7 +533,14 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           cancelAnimationFrame(animationFrameRef.current);
         }
       };
-    }, [animations.length, canvasSize.width, updateViewports, tryAddViewport]);
+    }, [
+      animations.length,
+      canvasSize.width,
+      onAnimationsComplete,
+      repeatAnimations,
+      updateViewports,
+      tryAddViewport,
+    ]);
 
     if (animations.length === 0) {
       return null;

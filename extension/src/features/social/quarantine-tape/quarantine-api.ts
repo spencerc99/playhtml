@@ -78,7 +78,7 @@ export async function getElementVerdicts(
   if (srcs.length === 0) return {};
   try {
     const { workerUrl } = await getConfig();
-    const qs = srcs.map((s) => `src=${encodeURIComponent(s)}`).join("&");
+    const qs = srcs.slice(0, 100).map((s) => `src=${encodeURIComponent(s)}`).join("&");
     const res = await fetch(`${workerUrl}/quarantine/element-verdict?${qs}`);
     if (!res.ok) return {};
     const body = (await res.json()) as { marks?: Record<string, ElementMark[]> };

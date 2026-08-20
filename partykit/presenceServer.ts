@@ -24,7 +24,10 @@ import {
   takePresenceChanges,
 } from "./presencePolicy";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
-import { persistPresenceConnectionState } from "./presenceMessage";
+import {
+  persistPresenceConnectionState,
+  projectPresenceClientIdentity,
+} from "./presenceMessage";
 
 const PRESENCE_CHANNELS_STATE_KEY = "__playhtmlPresenceChannels";
 const PRESENCE_OPENED_AT_STATE_KEY = "__playhtmlPresenceOpenedAt";
@@ -74,7 +77,9 @@ export class PresenceServer extends Server<Env> {
 
     let parsed: PresenceClientMessage;
     try {
-      parsed = validatePresenceClientMessage(JSON.parse(message));
+      parsed = validatePresenceClientMessage(
+        projectPresenceClientIdentity(JSON.parse(message)),
+      );
     } catch (error) {
       this.sendError(connection, getErrorMessage(error));
       return;
@@ -109,9 +114,7 @@ export class PresenceServer extends Server<Env> {
       return;
     }
 
-    if (parsed.type !== "presence-ping") {
-      this.scheduleBroadcast();
-    }
+    this.scheduleBroadcast();
   }
 
   override onClose(

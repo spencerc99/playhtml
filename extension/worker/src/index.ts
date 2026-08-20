@@ -21,6 +21,17 @@ import {
   handleQuarantineElementMark,
   handleQuarantineElementRip,
 } from './routes/quarantineElement';
+import { handleCommute } from './routes/commute';
+import {
+  handleAccessRequest,
+  handleAdminAccessOverview,
+  handleAdminAccessRequestReview,
+  handleAdminCohortFeaturesUpdate,
+  handleAdminFeatureStageUpdate,
+  handleAdminPeopleAdd,
+  handleAdminPersonCohortsUpdate,
+  handleFeatureAccessCheck,
+} from './routes/accessControl';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -40,7 +51,7 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         },
       });
@@ -59,6 +70,12 @@ export default {
     if (path === '/events/recent' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleRecent(request, env);
+    }
+
+    if (path === '/commute/recent' && request.method === 'GET') {
+      // This response is reduced to public destinations, domain-only scenery,
+      // and aggregate counts. Extension-page GETs can omit Origin and Referer.
+      return handleCommute(request, env);
     }
 
     if (path === '/events/daily-counts' && request.method === 'GET') {
@@ -105,6 +122,62 @@ export default {
 
     if (path === '/quarantine/element-rip' && request.method === 'POST') {
       return handleQuarantineElementRip(request, env);
+    }
+
+    const featureAccessMatch = path.match(/^\/feature-access\/(.+)$/);
+    if (featureAccessMatch && request.method === 'GET') {
+      return handleFeatureAccessCheck(
+        env,
+        decodeURIComponent(featureAccessMatch[1]),
+      );
+    }
+
+    if (path === '/access-requests' && request.method === 'POST') {
+      return handleAccessRequest(request, env);
+    }
+
+    if (path === '/admin/access-control' && request.method === 'GET') {
+      return handleAdminAccessOverview(request, env);
+    }
+
+    if (path === '/admin/access-control/people' && request.method === 'POST') {
+      return handleAdminPeopleAdd(request, env);
+    }
+
+    const adminFeatureMatch = path.match(/^\/admin\/access-control\/features\/([^/]+)$/);
+    if (adminFeatureMatch && request.method === 'PUT') {
+      return handleAdminFeatureStageUpdate(
+        request,
+        env,
+        decodeURIComponent(adminFeatureMatch[1]),
+      );
+    }
+
+    const adminCohortMatch = path.match(/^\/admin\/access-control\/cohorts\/([^/]+)$/);
+    if (adminCohortMatch && request.method === 'PUT') {
+      return handleAdminCohortFeaturesUpdate(
+        request,
+        env,
+        decodeURIComponent(adminCohortMatch[1]),
+      );
+    }
+
+    const adminPersonMatch = path.match(/^\/admin\/access-control\/people\/([^/]+)$/);
+    if (adminPersonMatch && request.method === 'PUT') {
+      return handleAdminPersonCohortsUpdate(
+        request,
+        env,
+        decodeURIComponent(adminPersonMatch[1]),
+      );
+    }
+
+    const adminRequestMatch = path.match(/^\/admin\/access-control\/requests\/(\d+)$/);
+    if (adminRequestMatch && request.method === 'PUT') {
+      return handleAdminAccessRequestReview(
+        request,
+        env,
+        Number(adminRequestMatch[1]),
+      );
     }
 
     if (path === '/page-meta' && request.method === 'GET') {

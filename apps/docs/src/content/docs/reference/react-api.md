@@ -322,15 +322,24 @@ All hooks must be used inside a `PlayProvider`. Each is safe to call before play
 Subscribe to a custom [presence](/docs/data/presence/) channel. Returns the live map of everyone's presence, a setter for your own, and your identity.
 
 ```tsx
-function usePresence<T = Record<string, unknown>>(channel: string): {
-  presences: Map<string, PresenceView<T>>;
-  setMyPresence: (data: T) => void;
+function usePresence<
+  Channel extends string,
+  Payload extends Record<string, unknown> = Record<string, unknown>,
+>(channel: Channel): {
+  presences: Map<
+    string,
+    PresenceView<Partial<Record<Channel, Payload>>>
+  >;
+  setMyPresence: (data: Payload) => void;
   myIdentity: PlayerIdentity | null;
 };
 ```
 
 ```tsx
-const { presences, setMyPresence } = usePresence<{ text: string }>("status");
+const { presences, setMyPresence } = usePresence<
+  "status",
+  { text: string }
+>("status");
 setMyPresence({ text: "focused" });
 // presences is keyed by stable id; each value has isMe, playerIdentity, cursor,
 // plus your channel data nested under the channel name:
@@ -340,7 +349,7 @@ for (const [, p] of presences) {
 }
 ```
 
-The type parameter is an assertion about your channel's shape; no runtime validation is performed. Note your data lives under the channel key (`p.status`), not flattened onto the view.
+The type parameters describe the channel name and its payload. No runtime validation is performed. The channel property is optional because a peer may not have published a value. Your data lives under the channel key (`p.status`), not directly on the view.
 
 ### `usePageData`
 
@@ -400,9 +409,37 @@ useCursorZone(ref);
 return <div ref={ref} id="shared-canvas" />; // the element needs a stable id
 ```
 
+### `useUsers`
+
+Reactive version of `playhtml.users.getAll()`. Returns the live array of everyone in the room and re-renders your component on join/leave/identity changes. Works without `cursors: { enabled: true }`.
+
+```tsx
+function useUsers(): User[];
+```
+
+```tsx
+interface User {
+  pid: string;
+  name?: string;
+  color: string;
+  isMe: boolean;
+}
+```
+
+```tsx
+import { useUsers } from "@playhtml/react";
+
+function OnlineCount() {
+  const users = useUsers();
+  return <div>{users.length} online</div>;
+}
+```
+
+See [Users](/docs/data/presence/users/) for the full identity API.
+
 ### `usePlayerIdentity`
 
-Read the local player's cursor color, participant id, and name. Requires `cursors: { enabled: true }`.
+Read the local player's color, participant id, and name. Backed by `playhtml.users`, so it works without `cursors: { enabled: true }`.
 
 ```tsx
 function usePlayerIdentity(): {
@@ -414,8 +451,8 @@ function usePlayerIdentity(): {
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `color` | `string` | Primary cursor color. |
-| `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until cursors sync. |
+| `color` | `string` | Primary color. |
+| `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until sync. |
 | `name` | `string \| undefined` | Display name, if set. |
 
 ```tsx
@@ -429,7 +466,7 @@ function Profile() {
 
 Values update reactively. With the "we were online" extension installed, color and `pid` reflect the extension's injected identity.
 
-See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
+To set these values or read other players, see [Users](/docs/data/presence/users/). See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
 
 ## `TagType`
 

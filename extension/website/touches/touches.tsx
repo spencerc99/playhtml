@@ -83,7 +83,7 @@ const styles = {
 };
 
 const CursorTouches = () => {
-  const chromeHidden = useChromeToggle();
+  const chromeHidden = useChromeToggle(true);
   const { events, loading, deepening, error } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,
@@ -127,6 +127,22 @@ const CursorTouches = () => {
   );
 
   const { trails } = useCursorTrails(events, viewportSize, cursorSettings);
+
+  useEffect(() => {
+    if (loading || deepening || trails.length === 0) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        (window as unknown as { __movementReady?: boolean }).__movementReady =
+          true;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [loading, deepening, trails.length]);
 
   const touches = useMemo(
     () => detectTouches(trails, touchRadius, !samePersonOk),

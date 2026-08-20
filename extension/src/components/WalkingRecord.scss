@@ -1,0 +1,1000 @@
+// ABOUTME: Styles the walking-record new-tab page from the supplied WWO prototype.
+// ABOUTME: Keeps the linen paper, quiet typography, and riso-colored movement traces responsive.
+
+@use "../styles/variables" as *;
+
+:root {
+  @include root-tokens;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background-color: $bg;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(90, 78, 65, 0.025) 0 1px,
+      transparent 1px 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(90, 78, 65, 0.025) 0 1px,
+      transparent 1px 3px
+    );
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: transparent;
+  color: $text;
+  font-family: $font-body;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+a {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid rgba($accent-teal, 0.65);
+  outline-offset: 3px;
+}
+
+.walking-record {
+  width: min(100%, 776px);
+  margin: 0 auto;
+  padding: 52px 28px 80px;
+}
+
+.walking-record__header {
+  margin-bottom: 8px;
+}
+
+.walking-record__loading,
+.walking-record__error {
+  display: flex;
+  min-height: 360px;
+  align-items: center;
+  justify-content: center;
+  color: $text-muted;
+  font-family: $font-mono;
+  font-size: 11px;
+}
+
+.walking-record__loading {
+  width: min(100%, 320px);
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 auto;
+}
+
+.walking-record__loading-cursors {
+  position: relative;
+  width: 100%;
+  height: 64px;
+  overflow: hidden;
+
+  > svg:first-child {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.walking-record__loading-route {
+  fill: none;
+  stroke: rgba(90, 78, 65, 0.16);
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+  stroke-width: 1;
+  animation: walking-record-route 3s linear infinite;
+}
+
+.walking-record__loading-cursor {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 18px;
+  height: 18px;
+  offset-path: path(
+    "M 8 42 C 54 10, 93 53, 137 27 S 218 14, 260 36 S 296 43, 312 17"
+  );
+  offset-rotate: 0deg;
+  opacity: 0;
+  filter: drop-shadow(0 1px 1px rgba(90, 78, 65, 0.12));
+  animation: walking-record-cursor-walk 5.4s linear infinite;
+}
+
+.walking-record__loading-cursor--two {
+  animation-delay: -1.8s;
+}
+
+.walking-record__loading-cursor--three {
+  animation-delay: -3.6s;
+}
+
+@keyframes walking-record-route {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+@keyframes walking-record-cursor-walk {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+
+  10%,
+  88% {
+    opacity: 0.78;
+  }
+
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+.walking-record__loading-copy {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.walking-record__loading-track {
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(90, 78, 65, 0.12);
+
+  > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: $accent-teal;
+    transition: width 0.22s ease-out;
+  }
+}
+
+.walking-record__error {
+  flex-direction: column;
+  gap: 8px;
+
+  strong {
+    color: $text;
+    font-family: $font-heading;
+    font-size: 18px;
+  }
+}
+
+.walking-record__portrait-shell {
+  position: relative;
+  margin: 20px 0 40px;
+}
+
+.walking-record__portrait {
+  overflow: hidden;
+  border: 1px solid rgba(90, 78, 65, 0.14);
+  border-radius: 10px;
+  background: $surface;
+  box-shadow: 0 2px 10px rgba(90, 78, 65, 0.1);
+}
+
+.walking-record__period-rail {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  margin-top: 14px;
+  color: #8a8279;
+  font-family: $font-mono;
+  font-size: 10.5px;
+}
+
+.walking-record__period-step {
+  width: 96px;
+  flex: 0 0 96px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #8a8279;
+  cursor: pointer;
+  font-family: $font-mono;
+  font-size: 10.5px;
+  line-height: 1.25;
+  transition: color 0.12s;
+
+  &:hover {
+    color: $accent-teal;
+  }
+
+  &:disabled {
+    color: rgba(138, 130, 121, 0.34);
+    cursor: default;
+  }
+
+  &:focus-visible {
+    outline: 1px solid rgba($accent-teal, 0.55);
+    outline-offset: 3px;
+  }
+}
+
+.walking-record__period-step--earlier {
+  text-align: left;
+}
+
+.walking-record__period-step--later {
+  text-align: right;
+}
+
+.walking-record__period-dabs {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-around;
+}
+
+.walking-record__period-dab {
+  display: inline-flex;
+  width: 18px;
+  height: 24px;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+
+  > span {
+    display: block;
+    border-radius: 50%;
+    background: #5a4e41;
+    transition:
+      width 0.12s,
+      height 0.12s,
+      opacity 0.12s,
+      box-shadow 0.12s,
+      background 0.12s;
+  }
+
+  &[aria-pressed="true"] > span {
+    background: $accent-teal;
+    box-shadow:
+      0 0 0 2px $bg,
+      0 0 0 3.5px rgba($accent-teal, 0.4);
+  }
+
+  &:hover > span {
+    background: $accent-teal;
+    opacity: 1 !important;
+  }
+
+  &:focus-visible {
+    border-radius: 50%;
+    outline: 1px solid rgba($accent-teal, 0.55);
+    outline-offset: 1px;
+  }
+}
+
+.walking-record__portrait-card {
+  position: relative;
+  height: 220px;
+}
+
+.walking-record__portrait-periods {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 20px;
+  border-top: 1px solid rgba(90, 78, 65, 0.12);
+  background: rgba($bg, 0.72);
+
+  > div {
+    display: flex;
+    align-items: center;
+  }
+
+  .walking-record__period-options {
+    gap: 18px;
+  }
+
+  .walking-record__period-navigation {
+    gap: 8px;
+
+    > span {
+      min-width: 122px;
+      color: $text-faint;
+      font-family: $font-mono;
+      font-size: 9px;
+      text-align: center;
+      text-transform: lowercase;
+    }
+  }
+
+  button {
+    display: inline-flex;
+    gap: 5px;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: $text-faint;
+    cursor: pointer;
+    font-family: $font-mono;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+
+    &[aria-pressed="true"] {
+      color: $accent-teal;
+    }
+
+    &:hover {
+      color: $text;
+    }
+
+    &:disabled {
+      color: rgba($text-faint, 0.35);
+      cursor: default;
+    }
+  }
+}
+
+.walking-record__section {
+  margin-bottom: 48px;
+
+  h1,
+  h2 {
+    margin: 0;
+    font-family: $font-heading;
+    font-size: 19px;
+    font-weight: 600;
+  }
+}
+
+.walking-record__section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+
+  > span {
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 10px;
+    text-align: right;
+  }
+}
+
+.walking-record__section-intro {
+  margin: 0 0 18px;
+  color: $text-muted;
+  font-size: 13px;
+}
+
+.walking-record__departures {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+}
+
+.walking-record__departure {
+  display: grid;
+  width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: 34px minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 8px 10px 4px;
+  border-bottom: 1px solid rgba(90, 78, 65, 0.1);
+  transition: background 0.12s;
+
+  &:hover {
+    background: rgba($surface, 0.55);
+  }
+}
+
+.walking-record__departure-copy {
+  min-width: 0;
+  flex: 1;
+
+  > div {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    color: $text-muted;
+    font-size: 12.5px;
+
+    strong {
+      color: $accent-blue;
+      font-size: 13px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 10.5px;
+  }
+}
+
+.walking-record__day {
+  padding-top: 3px;
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 10px;
+}
+
+.walking-record__departure-time {
+  padding-top: 2px;
+  color: $accent-teal;
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.walking-record__departures-more {
+  display: block;
+  margin: 10px 4px 0 auto;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid rgba($accent-teal, 0.35);
+  background: transparent;
+  color: $accent-teal;
+  cursor: pointer;
+  font-family: $font-mono;
+  font-size: 10px;
+
+  &:hover {
+    border-bottom-color: $accent-teal;
+    color: $text;
+  }
+}
+
+.walking-record__empty {
+  padding: 20px;
+  border: 1px dashed $border-strong;
+  border-radius: 8px;
+  color: $text-muted;
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.walking-record__subsection-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 24px 0 8px;
+
+  h2 {
+    color: $text-muted;
+    font-size: 14px !important;
+    font-style: italic;
+  }
+
+  span {
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 9.5px;
+  }
+}
+
+.walking-record__settled-ledger {
+  padding: 4px 14px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $bg;
+
+  > a {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 260px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(90, 78, 65, 0.08);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    &:hover strong {
+      text-decoration: underline;
+    }
+
+    > span {
+      font-family: $font-mono;
+      font-size: 11px;
+      text-align: right;
+    }
+
+    > div {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 6px;
+    }
+
+    strong {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      color: $accent-blue;
+      font-size: 13px;
+      font-weight: 400;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    small {
+      overflow: hidden;
+      color: $text-faint;
+      font-size: 11.5px;
+      font-style: italic;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}
+
+.walking-record__day-plates {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+
+  &[data-period="month"] {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  &[data-period="year"] {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.walking-record__trace {
+  mix-blend-mode: multiply;
+}
+
+.walking-record__future-trace {
+  fill: none;
+  stroke: rgba(90, 78, 65, 0.12);
+  stroke-dasharray: 2 4;
+  stroke-linecap: round;
+  stroke-width: 1;
+}
+
+.walking-record__day-plate {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 6px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    transform 0.12s;
+
+  &[href]:hover,
+  &[href]:focus-visible {
+    border-color: rgba($accent-teal, 0.45);
+    box-shadow: 0 3px 10px rgba(90, 78, 65, 0.12);
+    transform: translateY(-1px);
+  }
+
+  svg {
+    width: 100%;
+    height: 58px;
+  }
+
+  strong {
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 8.5px;
+    font-weight: 400;
+    text-align: center;
+  }
+
+  > span {
+    display: -webkit-box;
+    overflow: hidden;
+    color: $text-faint;
+    font-size: 9.5px;
+    font-style: italic;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    text-align: center;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+@keyframes walking-record-skeleton-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.walking-record__day-plate-skeleton,
+.walking-record__movement-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(90, 78, 65, 0.055);
+
+  &::after {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    animation: walking-record-skeleton-sweep 1.8s ease-in-out infinite;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba($surface, 0.8),
+      transparent
+    );
+    content: "";
+  }
+
+  > span {
+    position: absolute;
+    z-index: 1;
+    display: block;
+    border-radius: 999px;
+    background: rgba(90, 78, 65, 0.1);
+  }
+}
+
+.walking-record__day-plate-skeleton {
+  width: 100%;
+  height: 58px;
+  border-radius: 6px;
+
+  > span {
+    width: 58%;
+    height: 4px;
+    transform: rotate(-16deg);
+
+    &:nth-child(1) {
+      top: 14px;
+      left: 8%;
+    }
+
+    &:nth-child(2) {
+      top: 29px;
+      left: 26%;
+      width: 64%;
+      transform: rotate(12deg);
+    }
+
+    &:nth-child(3) {
+      top: 43px;
+      left: 12%;
+      width: 45%;
+      transform: rotate(-8deg);
+    }
+  }
+}
+
+.walking-record__day-plate--future {
+  border-color: rgba(90, 78, 65, 0.18);
+  border-style: dashed;
+  background: rgba($surface, 0.2);
+  box-shadow: none;
+
+  strong,
+  > span {
+    color: rgba(90, 78, 65, 0.45);
+  }
+}
+
+.walking-record__time-spent {
+  padding: 14px 16px 12px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+}
+
+.walking-record__time-stack {
+  display: flex;
+  width: 100%;
+  height: 22px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: $border;
+
+  span {
+    display: block;
+    min-width: 1px;
+    height: 100%;
+    opacity: 0.82;
+
+    &:not(:last-child) {
+      border-right: 1px solid rgba($bg, 0.7);
+    }
+  }
+}
+
+.walking-record__time-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 18px;
+  margin-top: 12px;
+
+  > a,
+  > div {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: $text-muted;
+    font-size: 12.5px;
+    line-height: 1.3;
+  }
+
+  > a:hover .walking-record__time-legend-site {
+    color: $text;
+  }
+
+  strong {
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+
+  .walking-record__site-favicon,
+  .walking-record__site-favicon-fallback {
+    width: 15px;
+    height: 15px;
+    flex-basis: 15px;
+  }
+}
+
+.walking-record__time-legend-site {
+  border-bottom: 2px solid;
+  padding-bottom: 2px;
+  line-height: 1.15;
+}
+
+.walking-record__site-favicon,
+.walking-record__site-favicon-fallback {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+.walking-record__site-favicon {
+  object-fit: contain;
+}
+
+.walking-record__site-favicon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(90, 78, 65, 0.2);
+  border-radius: 50%;
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.walking-record__site-favicon-globe {
+  border: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1;
+}
+
+.walking-record__movement-section {
+  margin-bottom: 0;
+}
+
+.walking-record__movement-landscape {
+  position: relative;
+  height: 210px;
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: $surface;
+  box-shadow: 0 1px 4px $shadow;
+
+  .trails-svg {
+    z-index: 2;
+  }
+}
+
+.walking-record__movement-skeleton {
+  > span {
+    width: 46%;
+    height: 9px;
+
+    &:nth-child(1) {
+      top: 24%;
+      left: 8%;
+      transform: rotate(7deg);
+    }
+
+    &:nth-child(2) {
+      top: 49%;
+      left: 38%;
+      width: 52%;
+      transform: rotate(-9deg);
+    }
+
+    &:nth-child(3) {
+      top: 72%;
+      left: 16%;
+      width: 38%;
+      transform: rotate(4deg);
+    }
+  }
+}
+
+.walking-record__movement-paper {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0.42;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+@media (max-width: 650px) {
+  .walking-record {
+    padding: 30px 18px 56px;
+  }
+
+  .walking-record__portrait-shell {
+    margin-bottom: 32px;
+  }
+
+  .walking-record__period-rail {
+    font-size: 9.5px;
+  }
+
+  .walking-record__period-step {
+    width: 68px;
+    flex-basis: 68px;
+    font-size: 9.5px;
+  }
+
+  .walking-record__period-dab {
+    width: 16px;
+    flex-basis: 16px;
+  }
+
+  .walking-record__portrait-periods {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0;
+    padding: 0 14px;
+
+    .walking-record__period-options,
+    .walking-record__period-navigation {
+      min-height: 34px;
+      justify-content: center;
+    }
+
+    .walking-record__period-navigation {
+      border-top: 1px solid rgba(90, 78, 65, 0.08);
+    }
+  }
+
+  .walking-record__section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .walking-record__departure {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .walking-record__departure-time {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .walking-record__day-plates {
+    grid-template-columns: repeat(7, 90px);
+    overflow-x: auto;
+    padding-bottom: 6px;
+
+    &[data-period="month"] {
+      grid-template-columns: repeat(5, 90px);
+    }
+
+    &[data-period="year"] {
+      grid-template-columns: repeat(12, 90px);
+    }
+  }
+
+  .walking-record__settled-ledger > a {
+    grid-template-columns: 80px minmax(0, 1fr);
+
+    small {
+      grid-column: 2;
+    }
+  }
+
+  .walking-record__movement-landscape {
+    height: 160px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .walking-record__day-plate-skeleton::after,
+  .walking-record__movement-skeleton::after,
+  .walking-record__loading-route,
+  .walking-record__loading-cursor {
+    animation: none;
+  }
+
+  .walking-record__loading-cursor {
+    opacity: 0.5;
+  }
+
+  .walking-record__loading-cursor--one {
+    offset-distance: 22%;
+  }
+
+  .walking-record__loading-cursor--two {
+    offset-distance: 50%;
+  }
+
+  .walking-record__loading-cursor--three {
+    offset-distance: 78%;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

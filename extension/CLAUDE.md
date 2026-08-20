@@ -8,8 +8,10 @@ Browser extension that collects anonymous browsing behavior (cursor movements, n
 - `bun run dev:firefox`: WXT dev server (Firefox)
 - `bun run build`: Production build (Chrome)
 - `bun run build:firefox`: Production build (Firefox)
+- `bun run build:safari`: Production Manifest V3 build (Safari)
 - `bun run test`: Run Vitest tests
 - `bun run zip`: Package for Chrome Web Store
+- `bun run zip:safari`: Package for Safari Web Extension Packager
 
 Worker backend (in `worker/`):
 - `cd worker && wrangler dev`: Local API server (localhost:8787)
@@ -20,13 +22,49 @@ Worker backend (in `worker/`):
 The extension ships independently of the core packages, mirroring the
 changesets release-PR flow but on a separate cadence.
 
-**Day-to-day:** when a PR changes the extension itself — `extension/src/**`,
-`extension/wxt.config.ts`, `extension/public/**`, or anything else that ships
-in the extension zip — add a bullet to `extension/PENDING.md` describing the
-user-facing change. Changes under `extension/website/**` (wewere.online pages
-and visualizations) and `extension/worker/**` deploy on their own and do NOT
-get PENDING bullets or extension releases. If the change should
-show public media in release notes, add the finished image or video under
+**Day-to-day:** `extension/PENDING.md` is a curated public changelog, not a
+complete record of changes that ship in the extension. Add a bullet only when
+a regular user can understand the outcome and is likely to notice or care
+about it.
+
+A change is usually changelog-worthy when it:
+
+- Adds or removes a feature or capability.
+- Meaningfully changes a common workflow or visible behavior.
+- Fixes a problem that affects a substantial group of users.
+- Requires users to take action or changes what they should expect.
+
+Usually skip a bullet for:
+
+- Copy, label, badge, or wording polish.
+- Narrow bug or compatibility fixes that few users encounter.
+- Small performance or reliability improvements without a noticeable outcome.
+- Refactors, dependencies, tests, build changes, telemetry, and other internal
+  maintenance.
+
+A narrow fix can still deserve a bullet when its impact is significant and can
+be explained plainly. If the release note needs implementation jargon or makes
+the impact sound larger than it is, omit it.
+
+Changes that ship dark, behind an unreleased feature in `FEATURE_CATALOG`, do
+not get a bullet. The public changelog should never describe a feature users
+cannot reach. Add the bullet in the PR that enables the feature for everyone.
+
+Write each bullet as final release-note copy for people who use the extension:
+
+- Lead with what they can now do, what works better, or what problem no longer
+  affects them.
+- Use one short sentence in plain language.
+- Include only details that help someone understand the change or use it.
+- Do not mention filenames, functions, storage engines, schemas, migrations,
+  message passing, retries, build systems, deployment, tests, PRs, or other
+  implementation and maintainer details.
+- Do not describe internal-only maintenance.
+
+Changes under `extension/website/**` (wewere.online pages and visualizations)
+and `extension/worker/**` deploy on their own and do NOT get PENDING bullets or
+extension releases. If the change should show public media in release notes,
+add the finished image or video under
 `extension/website/public/changelog/media/` and reference it from
 `PENDING.md`. Use normal Markdown images for photos/screenshots and the
 `![video: Title](/changelog/media/file.mp4)` convention for videos. The public
@@ -42,9 +80,10 @@ pending notes into `CHANGELOG.md`.
   `Release: @playhtml/extension v{version}`. Force-pushes the release branch
   on every prep cycle so the PR always reflects current `main`.
 - Merging that PR to `main` triggers `.github/workflows/extension-release.yml`,
-  which builds Chrome + Firefox zips, submits Chrome through
+  which builds Chrome, Firefox, and Safari zips, submits Chrome through
   `scripts/submitChrome.mjs`, submits Edge through `scripts/submitEdge.mjs`,
-  submits Firefox through `wxt submit`, and pushes a
+  submits Firefox through `wxt submit`, packages and uploads the macOS Safari
+  app to App Store Connect, and pushes a
   `@playhtml/extension@x.y.z` tag. Non-dry-run releases also announce the
   version in Discord with a link to the public changelog.
 
@@ -87,9 +126,34 @@ Microsoft Edge Add-ons:
 - `EDGE_API_KEY` — from Microsoft Edge → Publish API
 - `EDGE_CERTIFICATION_NOTES` — optional notes sent with the submission
 
-**Manual fallback:** The local `./release.sh` continues to work as an escape
-hatch (uses `.env.submit` instead of GitHub secrets, requires a manual
-`extension/package.json` bump first).
+App Store Connect:
+- `APPLE_TEAM_ID` — Apple Developer team ID
+- `APPLE_API_KEY_ID` — App Store Connect team API key ID
+- `APPLE_API_ISSUER_ID` — issuer ID for the team API key
+- `APPLE_API_PRIVATE_KEY` — full contents of the downloaded `.p8` private key
+
+Set the optional GitHub Actions variable `SAFARI_VERSION` to the macOS version
+in App Store Connect. It defaults to `1.0`. Update it when you create the next
+macOS version.
+
+The App Store Connect key must support provisioning and app uploads. Before the
+first release, manually create one App Store Connect record with the macOS
+platform and bundle ID `online.wewere.app`. App Store Connect does not support
+creating app records through its API. The macOS app is the minimal container
+required to distribute the Safari extension. A future native iOS app and iOS
+Safari extension can be added to this record as another platform.
+
+The release workflow uses Xcode cloud signing to create the provisioning
+profile, archive the macOS app, and upload the build. The containing app uses
+`online.wewere.app`; its embedded Safari extension uses
+`online.wewere.app.Extension`. Select the processed build and submit it for App
+Review in App Store Connect.
+
+**Manual fallback:** The local `./release.sh` uses `.env.submit` instead of
+GitHub secrets. It requires Xcode 26 and a manual `extension/package.json` bump
+first. Set `APPLE_API_KEY_PATH` to the downloaded `.p8` file. Set
+`SAFARI_VERSION` when the App Store version is not `1.0`. Use `--skip-safari`
+when Xcode or Apple credentials are not available.
 
 ## Website & experiments (`extension/website/`)
 
@@ -159,7 +223,7 @@ Individual collectors:
 ### Storage (`src/storage/`)
 
 - **EventBuffer**: Creates CollectionEvents with metadata in content-script context, batches for 3s flush, sends to background via `browser.runtime.sendMessage`.
-- **LocalEventStore**: IndexedDB v8 with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrls). Screen time from focus/blur session pairing.
+- **LocalEventStore**: IndexedDB v10 with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrlCount), with exact URL membership stored separately in `aggregate_urls`. Screen time from focus/blur session pairing.
 - **sync.ts**: Upload to Cloudflare Worker (`POST /events`), retry on failure, participant color sync.
 
 ### Identity (`src/storage/participant.ts`)

@@ -14,6 +14,13 @@ export interface FinishedTrailRenderRange {
   finishedCount: number;
 }
 
+export function didPlaybackCycleWrap(
+  previousElapsedMs: number,
+  currentElapsedMs: number,
+): boolean {
+  return currentElapsedMs < previousElapsedMs;
+}
+
 export function buildStraightPathSegment(
   points: Array<{ x: number; y: number }>,
   startIndex: number,
@@ -55,6 +62,12 @@ const FREEHAND_OPTIONS = {
 // How many px of stroke length each end tapers over
 const END_TAPER = 20;
 
+export interface FreehandStrokeStyle {
+  thinning?: number;
+  simulatePressure?: boolean;
+  taper?: number;
+}
+
 // Converts a perfect-freehand outline polygon into a closed SVG path,
 // smoothing between outline points with quadratic midpoint curves.
 function getSvgPathFromStroke(outline: number[][]): string {
@@ -83,6 +96,7 @@ export function buildFreehandPathSegment(
   size: number,
   isComplete: boolean,
   interpolatedHead?: { x: number; y: number },
+  style?: FreehandStrokeStyle,
 ): string {
   if (points.length === 0 || startIndex > endIndex) return "";
 
@@ -97,9 +111,14 @@ export function buildFreehandPathSegment(
   const outline = getStroke(inputPoints, {
     ...FREEHAND_OPTIONS,
     size,
+    thinning: style?.thinning ?? FREEHAND_OPTIONS.thinning,
+    simulatePressure:
+      style?.simulatePressure ?? FREEHAND_OPTIONS.simulatePressure,
     last: isComplete,
-    start: { taper: END_TAPER },
-    end: isComplete ? { taper: END_TAPER } : { taper: 0, cap: true },
+    start: { taper: style?.taper ?? END_TAPER },
+    end: isComplete
+      ? { taper: style?.taper ?? END_TAPER }
+      : { taper: 0, cap: true },
   });
 
   return getSvgPathFromStroke(outline);

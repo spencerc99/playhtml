@@ -1,5 +1,42 @@
 # @playhtml/extension
 
+## 0.1.23 (2026-08-19)
+
+- Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
+- Wikipedia shows other readers' live text selections in their cursor colors.
+- Wikipedia editing sessions now stay separate from article-reading rooms.
+- Testers can request beta access from their profile and choose which approved experiments to enable.
+- Browsing history performance improvements
+- Browsing history can be removed as the new tab page. Toggle it on/off at any time. In Safari, where new tabs can't be replaced, the history page suggests bookmarking or pinning it instead.
+  ![History new tab choice during setup](/changelog/media/new-tab-setup.png)
+
+
+## 0.1.22 (2026-08-11)
+
+- Open History from every new tab or the popup to see time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
+  ![Browsing history summary](/changelog/media/browsing-history.jpg)
+- Presence controls and remote cursors now appear reliably in Firefox.
+- Now available for Safari!
+- Reduced WWO's impact on browser performance during long browsing sessions.
+
+## 0.1.21 (2026-08-07)
+
+- Keep newly collected activity queued when local storage temporarily fails.
+- Tune Wikipedia patina
+- See time by site, active explorations, smaller places you returned to, daily cursor portraits, and a moving landscape of real browsing traces.
+
+
+## 0.1.20 (2026-07-23)
+
+- Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
+- Preserve pending typing sequences when an input loses focus (#262)
+- Restored history no longer uploads again, while offline history in imported files stays queued to sync.
+- Send bugs, ideas, and other feedback directly from the extension popup.
+  ![Feedback button in the extension popup](/changelog/media/feedback-popup-button.png)
+- Fix Wikipedia presence startup while keeping private identity keys out of page-facing payloads.
+- Return to a site you haven't visited in over a month and a toast welcomes you back, showing how long it's been and a few of your past visit dates.
+
+
 ## 0.1.19 (2026-07-05)
 
 - Restore Wikipedia link patina on pages with absolute article links

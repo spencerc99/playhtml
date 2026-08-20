@@ -26,12 +26,52 @@ const codeThemes = {
 <section class="ph-recipe-code">
   <h2>Copy the code</h2>
   <p>
-    Both versions use the same shared data and behavior. The live playground
-    runs the Vanilla HTML version.
+    {recipe.react
+      ? "Both versions use the same shared data and behavior. The live playground runs the Vanilla HTML version."
+      : "The live playground and this source use the same Vanilla HTML recipe."}
   </p>
 
-  <Tabs syncKey="framework">
-    <TabItem label="Vanilla HTML">
+  {recipe.react ? (
+    <Tabs syncKey="framework">
+      <TabItem label="Vanilla HTML">
+        <p>
+          Save this as <code>index.html</code>, or open it in the playground to
+          test and change it.
+        </p>
+        <p class="ph-recipe-code__action">
+          <LinkButton href={playgroundHref}>Remix</LinkButton>
+        </p>
+        <Code
+          code={recipe.html}
+          lang="html"
+          themes={codeThemes}
+          defaultColor="light"
+          class="ph-recipe-code__block"
+        />
+      </TabItem>
+
+      <TabItem label="React">
+        <p>
+          Start with a React + TypeScript project, install the packages below,
+          then replace <code>src/App.tsx</code> with the component.
+        </p>
+        <Code
+          code={recipe.react.install}
+          lang="shell"
+          themes={codeThemes}
+          defaultColor="light"
+        />
+        <Code
+          code={recipe.react.code}
+          lang="tsx"
+          themes={codeThemes}
+          defaultColor="light"
+          class="ph-recipe-code__block"
+        />
+      </TabItem>
+    </Tabs>
+  ) : (
+    <div>
       <p>
         Save this as <code>index.html</code>, or open it in the playground to
         test and change it.
@@ -46,28 +86,8 @@ const codeThemes = {
         defaultColor="light"
         class="ph-recipe-code__block"
       />
-    </TabItem>
-
-    <TabItem label="React">
-      <p>
-        Start with a React + TypeScript project, install the packages below,
-        then replace <code>src/App.tsx</code> with the component.
-      </p>
-      <Code
-        code={recipe.react.install}
-        lang="shell"
-        themes={codeThemes}
-        defaultColor="light"
-      />
-      <Code
-        code={recipe.react.code}
-        lang="tsx"
-        themes={codeThemes}
-        defaultColor="light"
-        class="ph-recipe-code__block"
-      />
-    </TabItem>
-  </Tabs>
+    </div>
+  )}
 </section>
 
 <style>

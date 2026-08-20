@@ -8,8 +8,10 @@ import { requestSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
 
 const BATCH_INTERVAL_MS = 3000; // 3 seconds
-const STORE_BATCH_INTERVAL_MS = 250;
+const STORE_BATCH_INTERVAL_MS = 1000;
 const STORE_BATCH_MAX_EVENTS = 25;
+const STORE_RETRY_INITIAL_MS = 1000;
+const STORE_RETRY_MAX_MS = 30_000;
 
 interface EventMetadataBase {
   pid: string;
@@ -53,6 +55,7 @@ async function getEventParticipantPublicKey(): Promise<string> {
 export class EventBuffer {
   private batchTimer: number | null = null;
   private storeTimer: number | null = null;
+  private storeRetryDelayMs = STORE_RETRY_INITIAL_MS;
   private pendingEvents: CollectionEvent[] = [];
   private storeFlushPromise: Promise<boolean> | null = null;
   private metadataBasePromise: Promise<EventMetadataBase> | null = null;
@@ -85,6 +88,22 @@ export class EventBuffer {
     }, STORE_BATCH_INTERVAL_MS);
   }
 
+  private scheduleStoreRetry(): void {
+    if (this.storeTimer !== null) return;
+
+    const retryDelayMs = this.storeRetryDelayMs;
+    this.storeRetryDelayMs = Math.min(retryDelayMs * 2, STORE_RETRY_MAX_MS);
+    this.storeTimer = window.setTimeout(() => {
+      this.storeTimer = null;
+      void this.flushBatch();
+    }, retryDelayMs);
+  }
+
+  private requeueEventsForStorageRetry(events: CollectionEvent[]): void {
+    this.pendingEvents.unshift(...events);
+    this.scheduleStoreRetry();
+  }
+
   private async flushStoredEvents(): Promise<boolean> {
     if (this.storeTimer !== null) {
       clearTimeout(this.storeTimer);
@@ -105,9 +124,18 @@ export class EventBuffer {
         events,
       })
       .then(
-        () => true,
+        (response) => {
+          if (response?.success === true) {
+            this.storeRetryDelayMs = STORE_RETRY_INITIAL_MS;
+            return true;
+          }
+
+          this.requeueEventsForStorageRetry(events);
+          console.error('[EventBuffer] Background failed to store events');
+          return false;
+        },
         (error) => {
-          this.pendingEvents.unshift(...events);
+          this.requeueEventsForStorageRetry(events);
           console.error(error);
           return false;
         },
@@ -132,10 +160,11 @@ export class EventBuffer {
     }
 
     this.batchTimer = window.setTimeout(() => {
+      this.batchTimer = null;
       if (VERBOSE) {
         console.log(`[EventBuffer] Batch timer fired (${BATCH_INTERVAL_MS}ms)`);
       }
-      this.flushBatch();
+      void this.flushBatch();
     }, BATCH_INTERVAL_MS);
   }
 
@@ -143,6 +172,11 @@ export class EventBuffer {
    * Trigger upload of pending events via background service worker
    */
   async flushBatch(): Promise<void> {
+    if (this.batchTimer !== null) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+
     const stored = await this.flushStoredEvents();
     if (!stored) return;
     browser.runtime.sendMessage({ type: 'FLUSH_PENDING_UPLOADS' }).catch(console.error);

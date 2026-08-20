@@ -28,7 +28,9 @@ export async function gzipString(str: string): Promise<Uint8Array> {
 export async function gunzipToString(data: Uint8Array): Promise<string> {
   const ds = new DecompressionStream('gzip');
   const writer = ds.writable.getWriter();
-  writer.write(data);
+  const input = new Uint8Array(data.length);
+  input.set(data);
+  writer.write(input);
   writer.close();
   const chunks: Uint8Array[] = [];
   const reader = ds.readable.getReader();

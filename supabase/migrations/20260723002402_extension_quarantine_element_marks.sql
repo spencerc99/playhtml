@@ -23,6 +23,9 @@ ALTER TABLE ONLY "public"."quarantine_element_marks"
 CREATE INDEX IF NOT EXISTS "quarantine_element_marks_src_idx" ON "public"."quarantine_element_marks" USING "btree" ("src");
 
 
+ALTER TABLE "public"."quarantine_element_marks" ENABLE ROW LEVEL SECURITY;
+
+
 GRANT ALL ON TABLE "public"."quarantine_element_marks" TO "anon";
 GRANT ALL ON TABLE "public"."quarantine_element_marks" TO "authenticated";
 GRANT ALL ON TABLE "public"."quarantine_element_marks" TO "service_role";

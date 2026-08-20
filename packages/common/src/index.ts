@@ -65,8 +65,6 @@ export interface ElementInitializer<T = any, U = any, V = any> {
     e: MouseEvent | TouchEvent,
     eventData: ElementEventHandlerData<T, U, V>,
   ) => void;
-  // @deprecated use onMount instead
-  additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
   // Used to set up any additional event handlers. May return a cleanup
   // function (to cancel rAF loops, timers, listeners) that runs when the
   // element is removed/unregistered.
@@ -283,11 +281,6 @@ export type MoveData = {
 };
 export type SpinData = {
   rotation: number;
-};
-export type GrowData = {
-  scale: number;
-  maxScale: number;
-  isHovering: boolean;
 };
 /**
  * Optional container for clones: an element id (with or without leading `#`)

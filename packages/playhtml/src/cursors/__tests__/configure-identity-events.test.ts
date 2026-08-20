@@ -1,7 +1,7 @@
 // ABOUTME: Verifies configure({ playerIdentity }) emits color/name events.
 // ABOUTME: The extension identity-injection path depends on these so React reacts.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as Y from "yjs";
 import { CursorClientAwareness } from "../cursor-client";
 
@@ -43,6 +43,10 @@ describe("configure({ playerIdentity }) event emission", () => {
       .forEach((n) => n.remove());
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("emits a color event when the configured identity changes color", () => {
     const client = new CursorClientAwareness(makeFakeProvider(), {
       enabled: true,
@@ -63,6 +67,39 @@ describe("configure({ playerIdentity }) event emission", () => {
     });
 
     expect(colors).toContain("#ffae00");
+    client.destroy?.();
+  });
+
+  it("isolates throwing color event subscribers", () => {
+    const client = new CursorClientAwareness(makeFakeProvider(), {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#111111"] },
+      } as any,
+    });
+    const callbackError = new Error("color subscriber failed");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    window.cursors!.on("color", () => {
+      throw callbackError;
+    });
+    const colors: string[] = [];
+    window.cursors!.on("color", (color: string) => colors.push(color));
+
+    expect(() => {
+      client.configure({
+        playerIdentity: {
+          publicKey: "injected-key",
+          playerStyle: { colorPalette: ["#ffae00"] },
+        } as any,
+      });
+    }).not.toThrow();
+
+    expect(colors).toEqual(["#ffae00"]);
+    expect(consoleError).toHaveBeenCalledWith(
+      '[playhtml] cursors "color" subscriber threw:',
+      callbackError,
+    );
     client.destroy?.();
   });
 

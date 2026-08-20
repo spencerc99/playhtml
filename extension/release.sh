@@ -1,6 +1,6 @@
 #!/bin/bash
 # ABOUTME: Build browser zips into ./publish and submit to extension stores.
-# ABOUTME: Usage: ./release.sh [--dry-run] [--skip-chrome] [--skip-edge] [--skip-firefox]
+# ABOUTME: Usage: ./release.sh [--dry-run] [--skip-chrome] [--skip-edge] [--skip-firefox] [--skip-safari]
 
 set -euo pipefail
 
@@ -11,12 +11,14 @@ DRY_RUN=""
 SKIP_FIREFOX=0
 SKIP_CHROME=0
 SKIP_EDGE=0
+SKIP_SAFARI=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN="--dry-run" ;;
     --skip-firefox) SKIP_FIREFOX=1 ;;
     --skip-chrome) SKIP_CHROME=1 ;;
     --skip-edge) SKIP_EDGE=1 ;;
+    --skip-safari) SKIP_SAFARI=1 ;;
     *) echo "Unknown arg: $arg"; exit 1 ;;
   esac
 done
@@ -48,22 +50,36 @@ if [ "$SKIP_CHROME" -eq 0 ]; then
 fi
 
 VERSION=$(node -p "require('./package.json').version")
+SAFARI_VERSION="${SAFARI_VERSION:-1.0}"
 PUBLISH_DIR="publish"
 
 echo "Building extension v${VERSION} into ${PUBLISH_DIR}/ ..."
 rm -rf "${PUBLISH_DIR}"
 WXT_OUT_DIR="${PUBLISH_DIR}" bun run zip
 WXT_OUT_DIR="${PUBLISH_DIR}" bun run zip:firefox
+if [ "$SKIP_SAFARI" -eq 0 ]; then
+  WXT_OUT_DIR="${PUBLISH_DIR}" bun run zip:safari
+fi
 
 CHROME_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-chrome.zip | head -1)
 FIREFOX_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-firefox.zip | head -1)
 SOURCES_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-sources.zip | head -1)
+SAFARI_ZIP=""
+if [ "$SKIP_SAFARI" -eq 0 ]; then
+  SAFARI_ZIP=$(ls "${PUBLISH_DIR}"/*-${VERSION}-safari.zip | head -1)
+fi
 
 echo "  chrome:  ${CHROME_ZIP}"
 echo "  firefox: ${FIREFOX_ZIP}"
 echo "  sources: ${SOURCES_ZIP}"
+if [ -n "$SAFARI_ZIP" ]; then
+  echo "  safari:  ${SAFARI_ZIP}"
+fi
 
 node scripts/validateExtensionBuild.mjs "${PUBLISH_DIR}/chrome-mv3"
+if [ "$SKIP_SAFARI" -eq 0 ]; then
+  node scripts/validateExtensionBuild.mjs "${PUBLISH_DIR}/safari-mv3" safari
+fi
 
 echo "Submitting to stores..."
 if [ "$SKIP_CHROME" -eq 0 ]; then
@@ -89,6 +105,14 @@ if [ "$SKIP_FIREFOX" -eq 0 ]; then
     scripts/submitFirefox.sh "$DRY_RUN" "${FIREFOX_ARGS[@]}"
   else
     scripts/submitFirefox.sh "${FIREFOX_ARGS[@]}"
+  fi
+fi
+
+if [ "$SKIP_SAFARI" -eq 0 ]; then
+  if [ -n "$DRY_RUN" ]; then
+    VERSION="$SAFARI_VERSION" scripts/submitSafari.sh --dry-run
+  else
+    VERSION="$SAFARI_VERSION" scripts/submitSafari.sh
   fi
 fi
 

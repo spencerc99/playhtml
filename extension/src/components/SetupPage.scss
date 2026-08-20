@@ -1,5 +1,5 @@
 // ABOUTME: Styles for the full-page first-time setup wizard
-// ABOUTME: Covers welcome, configure, and done steps
+// ABOUTME: Covers consent choices and the feature-rich completion page
 
 @use "../styles/variables" as *;
 
@@ -17,10 +17,70 @@
     z-index: 1;
     width: 100%;
     max-width: 560px;
+
+    &--complete {
+      max-width: 720px;
+    }
+  }
+
+  &__dev-nav {
+    position: fixed;
+    left: 50%;
+    bottom: 12px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 7px;
+    border: 1px solid $border;
+    border-radius: 999px;
+    background: rgba($bg, 0.92);
+    box-shadow: 0 2px 10px rgba($text, 0.08);
+    font-family: $font-mono;
+    font-size: 9px;
+    transform: translateX(-50%);
+    backdrop-filter: blur(8px);
+
+    span {
+      padding: 0 4px;
+      color: $text-faint;
+    }
+
+    button {
+      padding: 3px 6px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: $text-muted;
+      font: inherit;
+      cursor: pointer;
+
+      &:hover,
+      &[aria-current="step"] {
+        background: $surface-hover;
+        color: $accent-teal;
+      }
+    }
   }
 }
 
 .setup-step {
+  &--complete {
+    .setup-step__desc {
+      max-width: 620px;
+    }
+
+    .setup-step__portrait-preview {
+      width: 100%;
+      max-width: 380px;
+      height: 180px;
+    }
+
+    .setup-step__wiki-preview {
+      max-width: 520px;
+    }
+  }
+
   &__trail-art {
     position: fixed;
     inset: 0;
@@ -87,6 +147,13 @@
     max-width: 280px;
   }
 
+  &__field-help {
+    max-width: 320px;
+    color: $text-faint;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
   // ── Preset tabs ─────────────────────────────────────────────────────────────
 
   &__preset-tabs {
@@ -111,7 +178,10 @@
     background: $surface;
     border: 1px solid $border;
     color: $text-muted;
-    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    transition:
+      border-color 0.15s,
+      background 0.15s,
+      color 0.15s;
 
     &:not(&--active):hover {
       background: $surface-hover;
@@ -125,7 +195,9 @@
       color: white;
       border-color: $accent-teal;
 
-      .setup-step__preset-subhead { color: rgba(255, 255, 255, 0.85); }
+      .setup-step__preset-subhead {
+        color: rgba(255, 255, 255, 0.85);
+      }
       .setup-step__preset-chip {
         background: rgba(255, 255, 255, 0.2);
         color: white;
@@ -182,6 +254,52 @@
     margin-bottom: 16px;
   }
 
+  &__website-access {
+    padding: 16px;
+    margin-bottom: 20px;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 10px;
+
+    .setup-step__subheading,
+    .setup-step__desc {
+      margin-bottom: 10px;
+    }
+  }
+
+  &__website-access-hint,
+  &__website-access-error,
+  &__website-access-success {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  &__website-access-hint {
+    margin-top: 10px;
+    color: $text-muted;
+  }
+
+  &__website-access-error {
+    margin-top: 8px;
+    color: $error-text;
+  }
+
+  &__save-error {
+    margin-top: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: $error-text;
+  }
+
+  &__website-access-success {
+    padding: 10px 12px;
+    margin-bottom: 20px;
+    color: $accent-teal;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 8px;
+  }
+
   // ── Collector list (reuses Collections card styles) ─────────────────────────
 
   .collections__collector-list {
@@ -228,7 +346,9 @@
     border: 1px solid $border;
     border-radius: 8px;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
+    transition:
+      border-color 0.15s,
+      background 0.15s;
 
     &:hover {
       border-color: $border-strong;
@@ -244,6 +364,70 @@
     align-items: center;
   }
 
+  // Faux browser window around the history-page preview, so the step reads as
+  // "this is what the new tab becomes".
+  &__newtab-preview {
+    margin: 20px 0 16px;
+    border: 1px solid $border;
+    border-radius: 10px;
+    overflow: hidden;
+    background: $bg;
+    box-shadow: 0 2px 10px $shadow;
+  }
+
+  &__newtab-chrome {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    background: $surface-hover;
+  }
+
+  &__newtab-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+
+    &--close {
+      background: $accent-rust;
+    }
+    &--min {
+      background: $accent-gold;
+    }
+    &--expand {
+      background: $accent-teal;
+    }
+  }
+
+  &__newtab-shot {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  &__newtab-optin {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    font-family: $font-mono;
+    font-size: 12px;
+    color: $text;
+    cursor: pointer;
+
+    input {
+      cursor: pointer;
+    }
+  }
+
+  // Stands in for the opt-in checkbox where the browser has no new tab override.
+  &__newtab-note {
+    margin-bottom: 20px;
+    font-family: $font-mono;
+    font-size: 12px;
+    line-height: 1.5;
+    color: $text-muted;
+  }
+
   &__btn-primary {
     @include btn-primary;
   }
@@ -252,36 +436,213 @@
     @include btn-secondary;
   }
 
-  // ── Done-step tips ──────────────────────────────────────────────────────────
+  // ── Completion page ─────────────────────────────────────────────────────────
 
   &__tip {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
+
+    > .setup-step__desc {
+      margin-bottom: 10px;
+    }
   }
 
   &__kbd {
     display: inline-block;
-    font-family: 'Martian Mono', monospace;
-    font-size: 11px;
     padding: 2px 6px;
-    border-radius: 4px;
-    background: $surface;
     border: 1px solid $border-strong;
     border-bottom-width: 2px;
+    border-radius: 4px;
+    background: $surface;
     color: $text;
+    font-family: $font-mono;
+    font-size: 11px;
     line-height: 1.2;
     vertical-align: baseline;
   }
 
   &__kbd-plus {
-    color: $text-muted;
     margin: 0 2px;
+    color: $text-muted;
     font-size: 11px;
   }
 
+  &__toolbar-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin: 0 2px;
+    border: 1px solid $border;
+    border-radius: 5px;
+    background: $surface;
+    box-shadow: 0 1px 2px rgba($text, 0.1);
+    vertical-align: middle;
+
+    img {
+      width: 16px;
+      height: 16px;
+      object-fit: contain;
+    }
+  }
+
   &__milestone-preview {
-    margin-top: 12px;
-    min-height: 96px;
     display: flex;
     align-items: flex-start;
+    min-height: 96px;
+    margin-top: 12px;
+  }
+
+  &__portrait-preview {
+    position: relative;
+    width: 250px;
+    height: 132px;
+    margin-top: 12px;
+    overflow: hidden;
+    border: 1px solid $border;
+    border-radius: 7px;
+    box-shadow: 0 2px 8px rgba($text, 0.06);
+  }
+
+  &__progress-note {
+    margin: -3px 0 0;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
+  &__text-link {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: $accent-teal;
+    font-family: $font-mono;
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: rgba($accent-teal, 0.35);
+    text-underline-offset: 3px;
+
+    &:hover {
+      text-decoration-color: $accent-teal;
+    }
+  }
+
+  &__wiki-preview {
+    width: 100%;
+    max-width: 360px;
+    margin: 12px 0 10px;
+    overflow: hidden;
+    border: 1px solid $border;
+    border-radius: 7px;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba($text, 0.06);
+  }
+
+  &__wiki-address {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 9px;
+    border-bottom: 1px solid $border;
+    background: $surface;
+    color: $text-faint;
+    font-family: $font-mono;
+    font-size: 8px;
+
+    strong {
+      color: $text;
+      font-family: Georgia, serif;
+      font-size: 12px;
+    }
+  }
+
+  &__wiki-article {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 86px;
+    padding: 12px 14px;
+
+    > strong {
+      margin-bottom: 2px;
+      font-family: Georgia, serif;
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    > i {
+      display: block;
+      width: 88%;
+      height: 3px;
+      border-radius: 2px;
+      background: #dedbd5;
+    }
+
+    > i:nth-of-type(2) {
+      width: 72%;
+    }
+
+    > .setup-step__wiki-link {
+      width: 48%;
+      background: rgba($accent-blue, 0.45);
+    }
+  }
+
+  &__wiki-cursor {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    color: $text;
+
+    em {
+      padding: 1px 3px;
+      border-radius: 2px;
+      background: rgba($bg, 0.9);
+      font-family: $font-mono;
+      font-size: 7px;
+      font-style: normal;
+    }
+
+    &--one {
+      top: 24px;
+      left: 64%;
+      animation: setup-wiki-cursor-one 6s ease-in-out infinite;
+    }
+
+    &--two {
+      top: 58px;
+      left: 28%;
+      animation: setup-wiki-cursor-two 7s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes setup-wiki-cursor-one {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-38px, 21px);
+  }
+}
+
+@keyframes setup-wiki-cursor-two {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(54px, -26px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-step__wiki-cursor {
+    animation: none;
   }
 }

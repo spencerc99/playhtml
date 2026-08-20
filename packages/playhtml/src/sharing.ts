@@ -1,6 +1,15 @@
-import { parseDataSource } from "@playhtml/common";
-import { getIdForElement } from "@playhtml/common";
-import { sharedPermissions } from "./index";
+// ABOUTME: Discovers shared elements and references on the current page.
+// ABOUTME: Tracks local read permissions for shared element consumers.
+import { getIdForElement, parseDataSource } from "@playhtml/common";
+
+const sharedPermissions = new Map<string, "read-only" | "read-write">();
+
+export function setSharedPermission(
+  elementId: string,
+  permission: "read-only" | "read-write",
+): void {
+  sharedPermissions.set(elementId, permission);
+}
 
 // Shared elements interfaces
 interface SharedElement {
@@ -57,7 +66,7 @@ export function findSharedReferencesOnPage(): SharedReference[] {
 
 export function isSharedReadOnly(
   element: HTMLElement,
-  elementId?: string | null
+  elementId?: string | null,
 ): boolean {
   const isConsumer = element.hasAttribute("data-source");
   const isReadOnlyExplicit =
