@@ -117,7 +117,7 @@ describe("SetupPage", () => {
         "Email for project updates (optional)",
       );
       expect(container.textContent).toContain(
-        "Get occasional updates about we were online and early access to new features",
+        "Get occasional updates about we were online and opportunities to help shape new features",
       );
       expect(container.textContent).toContain("Help shape WWO");
       expect(container.textContent).toContain("takes about a minute");

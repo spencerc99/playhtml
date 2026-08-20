@@ -367,8 +367,8 @@ export default function SetupPage() {
                 className="setup-step__input"
               />
               <span id="updates-email-help" className="setup-step__field-help">
-                Get occasional updates about we were online and early access to
-                new features
+                Get occasional updates about we were online and opportunities
+                to help shape new features
               </span>
             </div>
             <div className="setup-step__welcome-actions">
