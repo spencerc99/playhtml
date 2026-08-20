@@ -234,4 +234,34 @@ describe("element awareness sync", () => {
     expect(finalShard).toContain("burst-0");
     expect(finalShard).toContain("burst-99");
   });
+
+  it("updates only the element whose local awareness changed", async () => {
+    const updateCounts = new Map<string, number>();
+    for (let i = 0; i < 100; i += 1) {
+      const elementId = `targeted-${i}`;
+      const el = document.createElement("div");
+      el.id = elementId;
+      el.setAttribute("can-play", "");
+      (el as any).defaultData = {};
+      (el as any).myDefaultAwareness = { active: false };
+      (el as any).updateElement = () => {};
+      (el as any).updateElementAwareness = () => {
+        updateCounts.set(elementId, (updateCounts.get(elementId) ?? 0) + 1);
+      };
+      document.body.appendChild(el);
+    }
+    playhtml.setupPlayElements();
+    await flushPresencePublishes();
+    expect(updateCounts.size).toBe(100);
+    expect(Array.from(updateCounts.values()).every((count) => count === 1)).toBe(
+      true,
+    );
+    updateCounts.clear();
+
+    playhtml
+      .getHandle("targeted-50", "can-play")
+      .setMyAwareness({ active: true });
+
+    expect(updateCounts).toEqual(new Map([["targeted-50", 1]]));
+  });
 });

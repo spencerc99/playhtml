@@ -152,7 +152,7 @@ playhtml.setupPlayElement(card);
 
 **Signature:** `setupPlayElements(): void`
 
-Scans the entire document and registers every element that carries a playhtml capability attribute. Called internally at the end of `init()`. Useful if you inject a batch of playhtml elements into the DOM at once and want to activate them all in one pass.
+Scans the entire document and registers elements that carry a playhtml capability attribute. Elements already bound to the same DOM node are skipped. Called internally at the end of `init()`. Use it after injecting a batch of playhtml elements into the DOM.
 
 ```js
 container.innerHTML = serverRenderedHtml;

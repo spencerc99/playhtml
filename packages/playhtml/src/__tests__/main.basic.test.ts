@@ -343,6 +343,25 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(reinitialize).not.toHaveBeenCalled();
   });
 
+  it("does not re-render elements that are already bound during a page scan", async () => {
+    const el = document.createElement("div");
+    el.id = "scan-existing";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = { count: 0 };
+    let renderCount = 0;
+    (el as any).updateElement = () => {
+      renderCount += 1;
+    };
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+    const renderCountAfterSetup = renderCount;
+
+    playhtml.setupPlayElements();
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(renderCount).toBe(renderCountAfterSetup);
+  });
+
   it("deleteElementData cleans up all data and handlers", async () => {
     const el = document.createElement("div");
     el.id = "cleanup-test";
