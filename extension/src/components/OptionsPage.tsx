@@ -4,7 +4,7 @@
 import React, { FormEvent, useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
 import { WORKER_URL } from "@movement/config";
-import type { PlayerIdentity } from "../types";
+import type { GameInventory, PlayerIdentity, PlayHTMLStatus } from "../types";
 import { CursorSvg } from "./icons";
 import {
   DataCollectionSection,
@@ -12,6 +12,10 @@ import {
   YourDataSection,
 } from "./Collections";
 import { DeveloperFeaturesSection } from "./DeveloperFeaturesPage";
+import { FeatureGate } from "./FeatureGate";
+import { Inventory } from "./Inventory";
+import { QuickActions } from "./QuickActions";
+import { SiteStatus } from "./SiteStatus";
 import { savePlayerColor } from "../storage/playerColor";
 import {
   getPublicPlayerIdentity,
@@ -20,7 +24,10 @@ import {
 import { hslToHex } from "../utils/color";
 import { isSafariExtensionPageUrl } from "../utils/extensionPage";
 import { NEWTAB_TAKEOVER_KEY } from "../features/newtab/takeover";
-import { useExperimentAccess } from "../features/useFeatureAccess";
+import {
+  useExperimentAccess,
+  useFeatureState,
+} from "../features/useFeatureAccess";
 import "./OptionsPage.scss";
 
 const DISCORD_INVITE_URL = "https://discord.gg/SKbsSf4ptU";
@@ -30,6 +37,7 @@ const SECTIONS = [
   { id: "data-collection", title: "Data collection" },
   { id: "new-tab", title: "New tab" },
   { id: "project-updates", title: "Project updates" },
+  { id: "bag-settings", title: "Bag settings" },
   { id: "experiments", title: "Experiments" },
   { id: "community", title: "Community" },
   { id: "your-data", title: "Your data" },
@@ -43,6 +51,117 @@ function randomPrimaryColor(): string {
 function truncatedPublicKey(publicKey: string): string {
   if (publicKey.length <= 12) return publicKey;
   return `${publicKey.slice(0, 6)}...${publicKey.slice(-6)}`;
+}
+
+function BagSettingsSection() {
+  const [currentTab, setCurrentTab] = useState<browser.Tabs.Tab | null>(null);
+  const [playhtmlStatus, setPlayhtmlStatus] = useState<PlayHTMLStatus>({
+    detected: false,
+    elementCount: 0,
+    checking: true,
+  });
+  const [inventory, setInventory] = useState<GameInventory>({
+    items: [],
+    totalItems: 0,
+    lastUpdated: 0,
+  });
+  const [showInventory, setShowInventory] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      browser.tabs.query({ active: true, currentWindow: true }),
+      browser.storage.local.get(["gameInventory"]),
+    ])
+      .then(([tabs, stored]) => {
+        const tab = tabs[0] ?? null;
+        setCurrentTab(tab);
+        if (stored.gameInventory) setInventory(stored.gameInventory);
+        if (!tab?.id) {
+          setPlayhtmlStatus({
+            detected: false,
+            elementCount: 0,
+            checking: false,
+          });
+          return;
+        }
+        return browser.tabs
+          .sendMessage(tab.id, { type: "CHECK_PLAYHTML_STATUS" })
+          .then((status) => setPlayhtmlStatus({ ...status, checking: false }))
+          .catch(() =>
+            setPlayhtmlStatus({
+              detected: false,
+              elementCount: 0,
+              checking: false,
+            }),
+          );
+      })
+      .catch(() => {
+        setPlayhtmlStatus({
+          detected: false,
+          elementCount: 0,
+          checking: false,
+        });
+      });
+  }, []);
+
+  const sendToCurrentTab = async (message: { type: string }) => {
+    if (currentTab?.id) await browser.tabs.sendMessage(currentTab.id, message);
+  };
+
+  const clearInventory = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to clear your entire inventory? This cannot be undone.",
+      )
+    )
+      return;
+    const emptyInventory: GameInventory = {
+      items: [],
+      totalItems: 0,
+      lastUpdated: Date.now(),
+    };
+    setInventory(emptyInventory);
+    await browser.storage.local.set({ gameInventory: emptyInventory });
+  };
+
+  if (showInventory) {
+    return (
+      <Inventory
+        inventory={inventory}
+        onBack={() => setShowInventory(false)}
+        onRemoveItem={async (itemId) => {
+          const updatedInventory = {
+            ...inventory,
+            items: inventory.items.filter((item) => item.id !== itemId),
+            totalItems: Math.max(0, inventory.totalItems - 1),
+            lastUpdated: Date.now(),
+          };
+          setInventory(updatedInventory);
+          await browser.storage.local.set({ gameInventory: updatedInventory });
+        }}
+        onClearInventory={() => void clearInventory()}
+      />
+    );
+  }
+
+  return (
+    <>
+      <SiteStatus currentTab={currentTab} playhtmlStatus={playhtmlStatus} />
+      <QuickActions
+        onTestConnection={() => void sendToCurrentTab({ type: "PING" })}
+        onPickElement={() =>
+          void sendToCurrentTab({ type: "ACTIVATE_ELEMENT_PICKER" })
+        }
+        onViewInventory={() => setShowInventory(true)}
+        onViewCollections={() => (window.location.hash = "#data-collection")}
+        onViewHistory={() =>
+          void sendToCurrentTab({ type: "TOGGLE_HISTORICAL_OVERLAY" })
+        }
+        inventory={inventory}
+        showBagFeatures
+      />
+    </>
+  );
 }
 
 export function OptionsPage() {
@@ -64,10 +183,14 @@ export function OptionsPage() {
   >("idle");
   const colorInputRef = useRef<HTMLInputElement>(null);
   const experimentAccess = useExperimentAccess();
+  const bagSettingsEnabled = useFeatureState("BAG_SETTINGS").enabled;
   const isSafari = isSafariExtensionPageUrl(window.location.href);
   const opensNativePickerInPage = !import.meta.env.FIREFOX;
 
-  const visibleSections = SECTIONS.filter(({ title }) =>
+  const sections = bagSettingsEnabled
+    ? SECTIONS
+    : SECTIONS.filter(({ id }) => id !== "bag-settings");
+  const visibleSections = sections.filter(({ title }) =>
     title.toLowerCase().includes(search.trim().toLowerCase()),
   );
 
@@ -162,7 +285,7 @@ export function OptionsPage() {
       const response = await fetch(`${WORKER_URL}/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, source: "options" }),
+        body: JSON.stringify({ email, source: "extension-setup" }),
       });
       if (!response.ok)
         throw new Error(`Subscription failed with ${response.status}`);
@@ -356,7 +479,7 @@ export function OptionsPage() {
                       setEmailDraft("");
                     }}
                   >
-                    Remove
+                    Forget on this device
                   </button>
                 </div>
               ) : (
@@ -381,6 +504,7 @@ export function OptionsPage() {
                 Only used for occasional project updates. Never connected to
                 your browsing data, which stays anonymous.
               </p>
+              <p>To unsubscribe, use the link in any project email.</p>
               {emailStatus === "error" && (
                 <small role="alert">
                   Couldn’t save your email. Please try again.
@@ -388,6 +512,17 @@ export function OptionsPage() {
               )}
             </div>
           </section>
+        )}
+
+        {sectionIsVisible("bag-settings") && (
+          <FeatureGate feature="BAG_SETTINGS">
+            <section id="bag-settings" className="options-page__section">
+              <h1>Bag settings</h1>
+              <div className="options-page__card">
+                <BagSettingsSection />
+              </div>
+            </section>
+          </FeatureGate>
         )}
 
         {sectionIsVisible("experiments") && (

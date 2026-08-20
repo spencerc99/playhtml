@@ -18,6 +18,7 @@ vi.mock("./DeveloperFeaturesPage", () => ({
 }));
 vi.mock("../features/useFeatureAccess", () => ({
   useExperimentAccess: () => false,
+  useFeatureState: () => ({ enabled: true }),
 }));
 vi.mock("../utils/extensionPage", () => ({
   isSafariExtensionPageUrl: () => false,
@@ -74,11 +75,23 @@ describe("OptionsPage", () => {
         "Data collection",
         "New tab",
         "Project updates",
+        "Bag settings",
         "Experiments",
         "Community",
         "Your data",
         "Developer",
       ]);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("shows bag settings only when the feature is enabled", async () => {
+    const { container, root } = await renderOptions();
+    try {
+      expect(container.querySelector("#bag-settings")).not.toBeNull();
+      expect(container.textContent).toContain("Current Site");
+      expect(container.textContent).toContain("Quick Actions");
     } finally {
       cleanup(root, container);
     }

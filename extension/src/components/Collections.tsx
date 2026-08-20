@@ -284,7 +284,11 @@ export function Collections({
   useEffect(() => {
     if (visibleSection === "all") loadCollectors();
     else setIsLoading(false);
-    if (visibleSection === "all" || visibleSection === "data") {
+    if (
+      visibleSection === "all" ||
+      visibleSection === "data" ||
+      visibleSection === "your-data"
+    ) {
       loadPrivacyLevel();
       loadFilterSubstrings();
       loadModes();
