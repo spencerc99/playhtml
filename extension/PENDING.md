@@ -1,5 +1,7 @@
 # Unreleased
 
+- Internet Commute now keeps riders, arrivals, and train timing in sync across browsers.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR

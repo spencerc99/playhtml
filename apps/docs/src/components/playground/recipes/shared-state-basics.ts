@@ -56,24 +56,23 @@ export const sharedCounterRecipe: ExampleRecipe = {
       id="ph-docs-counter"
       class="counter"
       type="button"
-      can-play
       aria-label="Increment the shared counter"
     >
       <span aria-hidden="true">❤️</span>
       <span class="count" data-count>0</span>
     </button>
   </main>`,
-    script: `    const counter = document.getElementById("ph-docs-counter");
-
-    counter.defaultData = { count: 0 };
-    counter.onClick = (_event, { setData }) => {
-      setData((draft) => {
-        draft.count += 1;
-      });
-    };
-    counter.updateElement = ({ element, data }) => {
-      element.querySelector("[data-count]").textContent = String(data.count);
-    };`,
+    script: `    playhtml.register("ph-docs-counter", {
+      defaultData: { count: 0 },
+      onClick: (_event, { setData }) => {
+        setData((draft) => {
+          draft.count += 1;
+        });
+      },
+      updateElement: ({ element, data }) => {
+        element.querySelector("[data-count]").textContent = String(data.count);
+      },
+    });`,
   }),
 };
 
@@ -133,7 +132,7 @@ export const sharedGuestbookRecipe: ExampleRecipe = {
     body: `  <main>
     <h1>Shared guestbook</h1>
     <p class="intro">Add a short note. The latest 20 entries remain for everyone.</p>
-    <section id="ph-cap-docs-guestbook" class="guestbook" can-play>
+    <section id="ph-cap-docs-guestbook" class="guestbook">
       <form data-form>
         <label>
           Prompt
@@ -166,67 +165,69 @@ export const sharedGuestbookRecipe: ExampleRecipe = {
       );
     }
 
-    guestbook.defaultData = { entries: [] };
-    guestbook.updateElement = ({ element, data }) => {
-      const list = element.querySelector("[data-entries]");
-      const entries = [...data.entries].reverse();
-      list.replaceChildren(
-        ...(entries.length
-          ? entries.map((entry) => {
-              const item = document.createElement("li");
-              const prompt = document.createElement("strong");
-              const text = document.createElement("span");
-              prompt.textContent = prompts[entry.prompt];
-              text.textContent = entry.text;
-              item.append(prompt, text);
-              return item;
-            })
-          : [Object.assign(document.createElement("li"), {
-              className: "empty",
-              textContent: "No entries yet.",
-            })]),
-      );
-    };
-    guestbook.onClick = (event, { setData }) => {
-      if (!event.target.closest("[data-submit]")) {
-        return;
-      }
-      event.preventDefault();
-
-      const form = guestbook.querySelector("[data-form]");
-      const prompt = form.elements.prompt;
-      const text = form.elements.text;
-      const value = text.value.trim().slice(0, 140);
-      if (!value || isProfane(value)) {
-        text.value = "";
-        return;
-      }
-
-      setData((draft) => {
-        draft.entries.push({
-          id: crypto.randomUUID(),
-          prompt: prompt.value,
-          text: value,
-          at: Date.now(),
-        });
-        if (draft.entries.length > MAX_ENTRIES) {
-          draft.entries.splice(0, draft.entries.length - MAX_ENTRIES);
+    playhtml.register(guestbook, {
+      defaultData: { entries: [] },
+      updateElement: ({ element, data }) => {
+        const list = element.querySelector("[data-entries]");
+        const entries = [...data.entries].reverse();
+        list.replaceChildren(
+          ...(entries.length
+            ? entries.map((entry) => {
+                const item = document.createElement("li");
+                const prompt = document.createElement("strong");
+                const text = document.createElement("span");
+                prompt.textContent = prompts[entry.prompt];
+                text.textContent = entry.text;
+                item.append(prompt, text);
+                return item;
+              })
+            : [Object.assign(document.createElement("li"), {
+                className: "empty",
+                textContent: "No entries yet.",
+              })]),
+        );
+      },
+      onClick: (event, { setData }) => {
+        if (!event.target.closest("[data-submit]")) {
+          return;
         }
-      });
-      text.value = "";
-    };
-    guestbook.onMount = ({ getElement }) => {
-      const form = getElement().querySelector("[data-form]");
-      const prompt = form.elements.prompt;
-      const text = form.elements.text;
-      const updatePlaceholder = () => {
-        text.placeholder = prompts[prompt.value];
-      };
+        event.preventDefault();
 
-      prompt.addEventListener("change", updatePlaceholder);
-      return () => {
-        prompt.removeEventListener("change", updatePlaceholder);
-      };
-    };`,
+        const form = guestbook.querySelector("[data-form]");
+        const prompt = form.elements.prompt;
+        const text = form.elements.text;
+        const value = text.value.trim().slice(0, 140);
+        if (!value || isProfane(value)) {
+          text.value = "";
+          return;
+        }
+
+        setData((draft) => {
+          draft.entries.push({
+            id: crypto.randomUUID(),
+            prompt: prompt.value,
+            text: value,
+            at: Date.now(),
+          });
+          if (draft.entries.length > MAX_ENTRIES) {
+            draft.entries.splice(0, draft.entries.length - MAX_ENTRIES);
+          }
+        });
+        text.value = "";
+      },
+      onMount: ({ getElement }) => {
+        const form = getElement().querySelector("[data-form]");
+        const prompt = form.elements.prompt;
+        const text = form.elements.text;
+        const updatePlaceholder = () => {
+          text.placeholder = prompts[prompt.value];
+        };
+
+        prompt.addEventListener("change", updatePlaceholder);
+        return () => {
+          prompt.removeEventListener("change", updatePlaceholder);
+        };
+      },
+    });`,
   }),
 };

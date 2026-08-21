@@ -1,6 +1,6 @@
 ---
 title: "Dynamic elements"
-description: "Register runtime-created nodes with setupPlayElement, and share state across many-of-a-kind elements with selector-id."
+description: "Bind runtime-created custom and capability elements, then share state across many-of-a-kind elements with selector-id."
 sidebar:
   order: 3
 ---
@@ -18,7 +18,7 @@ This page covers both.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
-When you add a playhtml element to the DOM yourself, call `setupPlayElement` to register it:
+For a built-in or defined capability, call `setupPlayElement` after adding the element:
 
 ```js
 const el = document.createElement("div");
@@ -36,6 +36,23 @@ playhtml.setupPlayElement(el, { ignoreIfAlreadySetup: true });
 ```
 
 To re-walk the whole DOM (e.g. after injecting a chunk of server-rendered HTML), call `playhtml.setupPlayElements()`, the same pass `init()` runs.
+
+For a one-off custom element that already exists, pass the element and its initializer to `register`:
+
+```js
+const note = document.createElement("div");
+note.id = "note-42";
+document.body.appendChild(note);
+
+playhtml.register(note, {
+  defaultData: { text: "" },
+  updateElement: ({ element, data }) => {
+    element.textContent = data.text;
+  },
+});
+```
+
+This preserves the `setupPlayElement(element)` call shape while keeping the initializer in one object. You can also call `register("note-42", initializer)` before the element exists. Do not call `setupPlayElement` for either custom-element path.
 
 ### Cleaning up
 

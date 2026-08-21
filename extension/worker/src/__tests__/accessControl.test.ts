@@ -19,10 +19,13 @@ import {
 
 const PUBLIC_ID = `pk_${'a'.repeat(130)}`;
 const SECOND_PUBLIC_ID = `pk_${'b'.repeat(130)}`;
-const schema = readFileSync(
-  fileURLToPath(new URL('../../migrations/0001_access_control.sql', import.meta.url)),
+const schema = [
+  '../../migrations/0001_access_control.sql',
+  '../../migrations/0002_quarantine_tape_feature.sql',
+].map((path) => readFileSync(
+  fileURLToPath(new URL(path, import.meta.url)),
   'utf8',
-).replace(/^--.*$/gm, '').trim();
+)).join('\n').replace(/^--.*$/gm, '').trim();
 
 let miniflare: Miniflare;
 let workerEnv: Env;
@@ -86,6 +89,7 @@ describe('feature access control', () => {
     expect(body.features.INVENTORY).toEqual({ stage: 'internal', available: false });
     expect(body.features.COMMUTE).toEqual({ stage: 'beta', available: false });
     expect(body.features.BOTTLES).toEqual({ stage: 'internal', available: false });
+    expect(body.features.QUARANTINE_TAPE).toEqual({ stage: 'internal', available: false });
   });
 
   it('gives internal members every unreleased feature', async () => {
@@ -96,6 +100,7 @@ describe('feature access control', () => {
     expect(body.features.COMMUTE.available).toBe(true);
     expect(body.features.BOTTLES.available).toBe(true);
     expect(body.features.EMOTES.available).toBe(true);
+    expect(body.features.QUARANTINE_TAPE.available).toBe(true);
   });
 
   it('limits closed beta members to the cohort feature grants', async () => {

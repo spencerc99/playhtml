@@ -64,7 +64,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(playhtml.syncedStore["can-toggle"]["foo"]).toEqual({ on: false });
   });
 
-  it("keeps can-play element props scoped when combined with can-move", async () => {
+  it("keeps direct can-play property configuration compatible with can-move", async () => {
     const el = document.createElement("img");
     el.id = "composed-candle";
     el.setAttribute("can-play", "");
@@ -369,6 +369,30 @@ describe("playhtml basic setup with SyncedStore", () => {
       "Expected the page scan to bind the added element",
     );
 
+    expect(renderCount).toBe(renderCountAfterSetup);
+  });
+
+  it("does not re-render registered elements during a page scan", async () => {
+    const el = document.createElement("div");
+    el.id = "scan-registered";
+    document.body.appendChild(el);
+    let renderCount = 0;
+    playhtml.register("scan-registered", {
+      defaultData: { count: 0 },
+      updateElement: () => {
+        renderCount += 1;
+      },
+    });
+    await waitForCondition(
+      () => elementHandlers.get("can-play")?.has("scan-registered") === true,
+      "Expected the registered element to bind",
+    );
+    const renderCountAfterSetup = renderCount;
+
+    playhtml.setupPlayElements();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(el.hasAttribute("can-play")).toBe(false);
     expect(renderCount).toBe(renderCountAfterSetup);
   });
 
