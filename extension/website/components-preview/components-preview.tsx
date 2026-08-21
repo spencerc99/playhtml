@@ -12,7 +12,15 @@ import { MILESTONE_TOAST_CSS } from "@extension/entrypoints/content/milestone-to
 import { MILESTONE_COPY } from "@extension/milestones/copy";
 import { PopupNav } from "@extension/components/PopupNav";
 import { PlayerIdentityCard } from "@extension/components/PlayerIdentityCard";
+import { SlowModeSettings } from "@extension/components/SlowModeSettings";
+import {
+  SLOW_MODE_SETTINGS_KEY,
+  SLOW_MODE_STATE_KEY,
+  dayKey,
+} from "@extension/features/slowMode/slowMode";
 import type { PlayerIdentity } from "@extension/types";
+import browser from "webextension-polyfill";
+import "@extension/components/InternetPortraitHome.scss";
 const Agentation = import.meta.env.DEV
   ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
   : null;
@@ -2643,9 +2651,87 @@ function PopupNavSection() {
   );
 }
 
+function SlowModePopupPreview() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const now = Date.now();
+    void browser.storage.local
+      .set({
+        [SLOW_MODE_SETTINGS_KEY]: {
+          enabled: true,
+          chancePercent: 40,
+        },
+        [SLOW_MODE_STATE_KEY]: {
+          farJumpCountByDay: {
+            [dayKey(now)]: 7,
+          },
+          lastCommuteAt: now - 8 * 60_000,
+          lastCommuteByDomain: {
+            "are.na": now - 8 * 60_000,
+          },
+          rides: [
+            {
+              id: "preview-ride-1",
+              destinationDomain: "are.na",
+              destinationUrl: "https://www.are.na/",
+              startedAt: now - 8 * 60_000,
+              stopCount: 3,
+              outcome: "arrived",
+            },
+            {
+              id: "preview-ride-2",
+              destinationDomain: "wikipedia.org",
+              destinationUrl: "https://en.wikipedia.org/wiki/Train",
+              startedAt: now - 72 * 60_000,
+              stopCount: 2,
+              outcome: "teleported",
+            },
+          ],
+        },
+      })
+      .then(() => setReady(true));
+  }, []);
+
+  return (
+    <div className="popup-frame slow-mode-popup-frame">
+      <div className="popup-frame__row">
+        <div className="popup-frame__wordmark">we were online</div>
+        <span className="slow-mode-popup-frame__status">collecting</span>
+      </div>
+      <div className="slow-mode-popup-frame__body">
+        {ready && <SlowModeSettings />}
+      </div>
+    </div>
+  );
+}
+
+function SlowModeSection() {
+  return (
+    <div
+      id="section-slow-mode-popup"
+      style={{ padding: "0 40px 40px", maxWidth: "1200px" }}
+    >
+      <div className="popup-variant-row">
+        <div className="popup-variant__label">popup controls</div>
+        <div className="popup-variant__note">
+          The shipping Slow Mode settings at the popup's real 350px width,
+          populated with a cooldown and today's ride log.
+        </div>
+        <SlowModePopupPreview />
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar navigation ────────────────────────────────────────────────────────
 
-type Section = "portrait-card" | "link-patina" | "milestones" | "popup-nav";
+type Section =
+  | "portrait-card"
+  | "link-patina"
+  | "milestones"
+  | "popup-nav"
+  | "slow-mode";
 
 const PORTRAIT_NAV = [
   { id: "section-density", label: "density" },
@@ -2672,6 +2758,9 @@ const MILESTONES_NAV = [
 ];
 
 const POPUP_NAV_NAV = [{ id: "section-popup-nav", label: "top nav" }];
+const SLOW_MODE_NAV = [
+  { id: "section-slow-mode-popup", label: "popup controls" },
+];
 
 function SidebarNav({
   activeSection,
@@ -2688,6 +2777,8 @@ function SidebarNav({
         ? MILESTONES_NAV
         : activeSection === "popup-nav"
           ? POPUP_NAV_NAV
+          : activeSection === "slow-mode"
+            ? SLOW_MODE_NAV
           : LINK_PATINA_NAV;
 
   useEffect(() => {
@@ -2710,7 +2801,13 @@ function SidebarNav({
   return (
     <nav className="sidebar-nav">
       {(
-        ["portrait-card", "link-patina", "milestones", "popup-nav"] as Section[]
+        [
+          "portrait-card",
+          "link-patina",
+          "milestones",
+          "popup-nav",
+          "slow-mode",
+        ] as Section[]
       ).map((s) => (
         <a
           key={s}
@@ -2720,7 +2817,7 @@ function SidebarNav({
           }`}
           style={{
             fontWeight: activeSection === s ? 700 : undefined,
-            marginBottom: s !== "popup-nav" ? "6px" : undefined,
+            marginBottom: s !== "slow-mode" ? "6px" : undefined,
           }}
           onClick={(e) => {
             e.preventDefault();
@@ -2735,7 +2832,9 @@ function SidebarNav({
               ? "link patina"
               : s === "milestones"
                 ? "milestones"
-                : "popup nav"}
+                : s === "popup-nav"
+                  ? "popup nav"
+                  : "slow mode"}
         </a>
       ))}
       {activeSection !== "portrait-card" && (
@@ -2784,6 +2883,7 @@ function PreviewPage() {
     if (hash === "link-patina") return "link-patina";
     if (hash === "milestones") return "milestones";
     if (hash === "popup-nav") return "popup-nav";
+    if (hash === "slow-mode") return "slow-mode";
     return "portrait-card";
   });
 
@@ -2811,6 +2911,8 @@ function PreviewPage() {
                     ? "milestones — copy & visuals"
                     : activeSection === "popup-nav"
                       ? "popup nav — top navigation bar"
+                      : activeSection === "slow-mode"
+                        ? "slow mode — internet commute"
                       : "link patina — design directions"}
               </div>
               <div className="page-subtitle">
@@ -2820,6 +2922,8 @@ function PreviewPage() {
                     ? "five milestone types · full copy pool for each"
                     : activeSection === "popup-nav"
                       ? "the real component inside a mock 350px popup frame"
+                      : activeSection === "slow-mode"
+                        ? "popup controls here · platform and carriage on the real commute route"
                       : "three visual treatments · links carry varied visit counts"}
               </div>
               {activeSection === "portrait-card" && (
@@ -2956,6 +3060,8 @@ function PreviewPage() {
         {activeSection === "milestones" && <MilestonesSection />}
 
         {activeSection === "popup-nav" && <PopupNavSection />}
+
+        {activeSection === "slow-mode" && <SlowModeSection />}
       </div>
     </div>
   );
@@ -2965,7 +3071,7 @@ ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement,
 ).render(
   <>
-    <Agentation />
+    {Agentation && <Agentation />}
     <PreviewPage />
   </>,
 );

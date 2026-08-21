@@ -81,6 +81,7 @@ export function SlowModeSettings() {
         <label className="slow-mode-toggle">
           <input
             type="checkbox"
+            aria-label="Enable Slow Mode"
             checked={settings.enabled}
             disabled={!loaded}
             onChange={(event) =>
@@ -88,7 +89,6 @@ export function SlowModeSettings() {
             }
           />
           <span aria-hidden="true" />
-          <span className="sr-only">Enable Slow Mode</span>
         </label>
       </div>
 
