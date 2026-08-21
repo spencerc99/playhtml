@@ -208,79 +208,6 @@ async function advanceToNewTabStep(container: HTMLElement) {
   });
 }
 
-it("takes over the new tab by default when setup continues", async () => {
-  const { default: SetupPage } = await import("../components/SetupPage");
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-
-  await act(async () => {
-    root.render(<SetupPage />);
-    await Promise.resolve();
-  });
-
-  await advanceToNewTabStep(container);
-
-  expect(container.textContent).toContain("See your browsing evolve");
-  const optIn = container.querySelector<HTMLInputElement>(
-    'input[type="checkbox"]',
-  );
-  expect(optIn?.checked).toBe(true);
-
-  await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Continue")
-      ?.click();
-    await Promise.resolve();
-  });
-
-  expect(browser.storage.local.set).toHaveBeenCalledWith({
-    newtab_takeover_enabled: true,
-  });
-  expect(container.textContent).toContain("All set!");
-
-  act(() => root.unmount());
-  container.remove();
-});
-
-it("leaves the new tab page alone when the opt-in is unchecked", async () => {
-  const { default: SetupPage } = await import("../components/SetupPage");
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-
-  await act(async () => {
-    root.render(<SetupPage />);
-    await Promise.resolve();
-  });
-
-  await advanceToNewTabStep(container);
-
-  const optIn = container.querySelector<HTMLInputElement>(
-    'input[type="checkbox"]',
-  );
-  await act(async () => {
-    optIn?.click();
-    await Promise.resolve();
-  });
-  expect(optIn?.checked).toBe(false);
-
-  await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Continue")
-      ?.click();
-    await Promise.resolve();
-  });
-
-  expect(browser.storage.local.set).toHaveBeenCalledWith({
-    newtab_takeover_enabled: false,
-  });
-  expect(container.textContent).toContain("All set!");
-
-  act(() => root.unmount());
-  container.remove();
-});
-
 it("offers recovery when Safari cannot finish setup", async () => {
   vi.mocked(browser.storage.local.set)
     // consent choices, then the new tab choice, then the failing finish
@@ -341,6 +268,44 @@ it("offers recovery when Safari cannot finish setup", async () => {
   });
 
   expect(browser.tabs.remove).toHaveBeenCalledWith(1);
+
+  act(() => root.unmount());
+  container.remove();
+});
+
+it("offers bookmarking instead of the new tab checkbox on Safari", async () => {
+  const { default: SetupPage } = await import("../components/SetupPage");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<SetupPage />);
+    await Promise.resolve();
+  });
+
+  await advanceToNewTabStep(container);
+
+  // The step and its preview still show, but the opt-in is replaced by advice.
+  expect(container.textContent).toContain("See your browsing evolve");
+  expect(container.querySelector("img")).toBeTruthy();
+  expect(container.textContent).toContain(
+    "Safari doesn't let extensions change the new tab",
+  );
+  expect(container.textContent).not.toContain("make this my new tab");
+  expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+
+  // Safari never opts in to a takeover the browser cannot honor.
+  expect(browser.storage.local.set).toHaveBeenCalledWith({
+    newtab_takeover_enabled: false,
+  });
 
   act(() => root.unmount());
   container.remove();

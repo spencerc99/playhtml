@@ -7,6 +7,7 @@ import {
   FEATURE_IDS,
   type FeatureId,
   type FeatureOverrides,
+  type FeatureStage,
   type FeatureState,
 } from "../flags";
 import {
@@ -21,11 +22,10 @@ type Props = {
   onBack: () => void;
 };
 
-const SOURCE_LABELS: Record<FeatureState["source"], string> = {
-  released: "released",
-  "internal-access": "beta default",
-  override: "your override",
-  unavailable: "unavailable",
+const STAGE_LABELS: Record<FeatureStage, string> = {
+  internal: "Internal",
+  beta: "Early access",
+  released: "Released",
 };
 
 export function DeveloperFeaturesPage({ onBack }: Props) {
@@ -59,16 +59,18 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
         <button className="developer-features__back" onClick={onBack}>
           ← back
         </button>
-        <span className="developer-features__eyebrow">INTERNAL OFFICE</span>
+        <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
         <h1>Experiments</h1>
         <p>
-          Beta access turns unfinished features on by default. Your choices only
-          affect this browser.
+          Turn on the experiments available to you. Your choices only affect
+          this browser.
         </p>
       </header>
 
       <main className="developer-features__list">
-        {states && FEATURE_IDS.map((feature) => {
+        {states && FEATURE_IDS.filter((feature) =>
+          states[feature].available && states[feature].stage !== "released",
+        ).map((feature) => {
           const definition = FEATURE_CATALOG[feature];
           const state = states[feature];
           return (
@@ -77,7 +79,8 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
                 <strong>{definition.name}</strong>
                 <span>{definition.description}</span>
                 <small>
-                  {SOURCE_LABELS[state.source]}
+                  {STAGE_LABELS[state.stage]}
+                  {state.source === "choice" ? " · your choice" : ""}
                   {definition.requiresReload ? " · reload pages after changing" : ""}
                 </small>
               </span>
@@ -100,9 +103,9 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
             await load();
           }}
         >
-          Reset to beta defaults
+          Reset choices
         </button>
-        <span>{Object.keys(overrides).length} overrides</span>
+        <span>{Object.keys(overrides).length} choices</span>
       </footer>
     </div>
   );

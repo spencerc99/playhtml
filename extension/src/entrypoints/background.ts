@@ -45,18 +45,21 @@ import { isUserActive } from '../utils/userActivity'
 import { initNewTabTakeover } from '../features/newtab/takeover'
 import { grandfatherNewTabTakeover } from '../features/newtab/grandfather'
 import {
+  calculateCursorDistance,
+  queryCursorEventsForPortrait,
+} from '../utils/cursorDistance'
+import {
   getOrCreateWikipediaHandle,
   rerollWikipediaHandle,
   setWikipediaHandle,
 } from '../storage/wikipediaHandle'
 import {
   FEATURE_OVERRIDES_STORAGE_KEY,
-  INTERNAL_ACCESS_STORAGE_KEY,
+  FEATURE_ACCESS_STORAGE_KEY,
   getAllFeatureStates,
-  getInternalAccess,
-  refreshInternalAccess,
+  refreshFeatureAccess,
 } from '../features/featureAccess'
-import { FEATURE_CATALOG, FEATURE_IDS } from '../flags'
+import { FEATURE_IDS } from '../flags'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -108,7 +111,7 @@ export type ScrapRecord = ScrapRecordBase &
       }
   )
 
-const INTERNAL_ACCESS_REFRESH_ALARM = 'refreshInternalAccess'
+const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -459,7 +462,7 @@ export default defineBackground(() => {
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
-  browser.alarms.create(INTERNAL_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
+  browser.alarms.create(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -472,8 +475,8 @@ export default defineBackground(() => {
       return
     }
 
-    if (alarm.name === INTERNAL_ACCESS_REFRESH_ALARM) {
-      await refreshInternalFeatureAccess().catch(() => {})
+    if (alarm.name === FEATURE_ACCESS_REFRESH_ALARM) {
+      await refreshExperimentAccess().catch(() => {})
       return
     }
 
@@ -534,13 +537,12 @@ export default defineBackground(() => {
     } catch {}
   }
 
-  async function updateInternalAccessBadge() {
+  async function updateExperimentBadge() {
     if (!browser.action) return
-    const enabled = await getInternalAccess()
     const states = await getAllFeatureStates()
-    const experimentsActive = enabled && FEATURE_IDS.some(
+    const experimentsActive = FEATURE_IDS.some(
       (feature) =>
-        !FEATURE_CATALOG[feature].released && states[feature].enabled,
+        states[feature].source !== 'released' && states[feature].enabled,
     )
     await browser.action.setBadgeText({ text: experimentsActive ? 'LAB' : '' })
     if (experimentsActive) {
@@ -551,30 +553,30 @@ export default defineBackground(() => {
     }
   }
 
-  async function refreshInternalFeatureAccess() {
+  async function refreshExperimentAccess() {
     const identity = await getPublicPlayerIdentity()
     if (import.meta.env.MODE !== 'development' && identity?.publicKey) {
-      await refreshInternalAccess(identity.publicKey)
+      await refreshFeatureAccess(identity.publicKey)
     }
-    await updateInternalAccessBadge()
+    await updateExperimentBadge()
   }
 
   async function initializeIdentityServices() {
     await Promise.all([
       syncIdentityToServer(),
-      refreshInternalFeatureAccess().catch(() => updateInternalAccessBadge()),
+      refreshExperimentAccess().catch(() => updateExperimentBadge()),
     ])
   }
 
-  updateInternalAccessBadge().catch(() => {})
+  updateExperimentBadge().catch(() => {})
 
   browser.storage.onChanged?.addListener((changes, areaName) => {
     if (
       areaName === 'local' &&
-      (changes[INTERNAL_ACCESS_STORAGE_KEY] ||
+      (changes[FEATURE_ACCESS_STORAGE_KEY] ||
         changes[FEATURE_OVERRIDES_STORAGE_KEY])
     ) {
-      updateInternalAccessBadge().catch(() => {})
+      updateExperimentBadge().catch(() => {})
     }
   })
 
@@ -751,7 +753,7 @@ export default defineBackground(() => {
           // expanded domain view (also pre-computed, key range scan).
           const [agg, cursorEvents, pageAggs] = await Promise.all([
             store.getSessionStats(domain, normalizedUrl).catch(() => null),
-            store.queryByDomain(domain, { type: 'cursor', limit: 2000 }),
+            queryCursorEventsForPortrait(store, domain, rawUrl),
             includePageSessions
               ? store.getPageStats(domain).catch(() => [] as never[])
               : Promise.resolve([] as never[]),
@@ -768,19 +770,7 @@ export default defineBackground(() => {
 
           const hourBuckets = agg?.hourBuckets ?? new Array(24).fill(0)
 
-          // Compute cursor distance: sum of Euclidean distances between consecutive move samples
-          // Normalized positions (0-1) are scaled by assumed 1920×1080 viewport
-          const moveEvents = cursorEvents
-            .filter((e) => (e.data as any).event === 'move')
-            .sort((a, b) => a.ts - b.ts)
-          let cursorDistancePx = 0
-          for (let i = 1; i < moveEvents.length; i++) {
-            const prev = moveEvents[i - 1].data as any
-            const curr = moveEvents[i].data as any
-            const dx = (curr.x - prev.x) * 1920
-            const dy = (curr.y - prev.y) * 1080
-            cursorDistancePx += Math.sqrt(dx * dx + dy * dy)
-          }
+          const cursorDistancePx = calculateCursorDistance(cursorEvents)
 
           // Build per-page breakdown from page-level aggregates for the stats
           // page's expanded domain view. Each page aggregate yields one entry

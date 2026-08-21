@@ -69,6 +69,17 @@ describe("content page-lifecycle wiring", () => {
 
     storageGet.mockReset();
     storageGet.mockImplementation((keys: string | string[]) => {
+      if (keys === "wwoFeatureAccess") {
+        return Promise.resolve({
+          wwoFeatureAccess: {
+            features: { COPRESENCE: { stage: "internal", available: true } },
+            checkedAt: 1,
+          },
+        });
+      }
+      if (keys === "wwoFeatureOverrides") {
+        return Promise.resolve({ wwoFeatureOverrides: { COPRESENCE: true } });
+      }
       if (!Array.isArray(keys)) return Promise.resolve({});
       return Promise.resolve(
         Object.fromEntries(

@@ -4,7 +4,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEATURE_IDS, type FeatureId, type FeatureState } from "../flags";
+import { FEATURE_CATALOG, FEATURE_IDS, type FeatureId, type FeatureState } from "../flags";
 import { DeveloperFeaturesPage } from "./DeveloperFeaturesPage";
 import {
   clearFeatureOverrides,
@@ -22,10 +22,15 @@ vi.mock("../features/featureAccess", () => ({
 }));
 
 const enabledStates = Object.fromEntries(
-  FEATURE_IDS.map((feature) => [
-    feature,
-    { enabled: true, source: "internal-access" },
-  ]),
+  FEATURE_IDS.map((feature) => {
+    const stage = FEATURE_CATALOG[feature].defaultStage;
+    return [feature, {
+      enabled: stage === "released",
+      available: true,
+      stage,
+      source: stage === "released" ? "released" : "available",
+    }];
+  }),
 ) as Record<FeatureId, FeatureState>;
 
 async function renderPage() {
@@ -57,13 +62,15 @@ describe("DeveloperFeaturesPage", () => {
     const { container, root } = await renderPage();
     try {
       expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(
-        FEATURE_IDS.length,
+        FEATURE_IDS.filter((feature) => FEATURE_CATALOG[feature].defaultStage !== "released").length,
       );
+      expect(container.textContent).toContain("Early access");
+      expect(container.textContent).not.toContain("Closed beta");
       const commuteToggle = container.querySelector<HTMLInputElement>(
         'input[aria-label="Enable Internet Commute"]',
       );
       await act(async () => commuteToggle?.click());
-      expect(setFeatureOverride).toHaveBeenCalledWith("COMMUTE", false);
+      expect(setFeatureOverride).toHaveBeenCalledWith("COMMUTE", true);
     } finally {
       cleanup(root, container);
     }
@@ -73,7 +80,7 @@ describe("DeveloperFeaturesPage", () => {
     const { container, root } = await renderPage();
     try {
       const reset = Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent === "Reset to beta defaults",
+        (button) => button.textContent === "Reset choices",
       );
       await act(async () => reset?.click());
       expect(clearFeatureOverrides).toHaveBeenCalledOnce();

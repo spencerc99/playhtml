@@ -24,9 +24,11 @@ describe("getPostcardCandidates", () => {
   it("includes the scraps postcard for approved beta testers", async () => {
     vi.mocked(browser.storage.local.get).mockImplementation(
       async (keys: unknown) =>
-        keys === "wwoInternalAccess"
-          ? { wwoInternalAccess: { enabled: true, checkedAt: 1 } }
-          : {},
+        keys === "wwoFeatureAccess"
+          ? { wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: true } }, checkedAt: 1 } }
+          : keys === "wwoFeatureOverrides"
+            ? { wwoFeatureOverrides: { SCRAPS: true } }
+            : {},
     );
     const candidates = await getPostcardCandidates();
     expect(candidates.map((a) => a.id)).toContain("scraps-2026-08");

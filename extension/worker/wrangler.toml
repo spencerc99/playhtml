@@ -46,9 +46,11 @@ compatibility_date = "2024-01-01"
 name = "LIVE_EVENTS_HUB"
 class_name = "LiveEventsHub"
 
-[[kv_namespaces]]
-binding = "WWO_INTERNAL_ACCESS"
-id = "18926e14c023447889e3ad4ffeb9a05a"
+[[d1_databases]]
+binding = "WWO_ADMIN_DB"
+database_name = "wwo-admin"
+database_id = "e6d5d996-c301-45d6-8b81-584d9ae5ee43"
+migrations_dir = "migrations"
 
 [[migrations]]
 tag = "v1"

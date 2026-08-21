@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import type { PlayerIdentity } from "../types";
 
+vi.mock("@movement/config", () => ({ WORKER_URL: "https://worker.example" }));
+
 vi.mock("../components/ProfilePage.scss", () => ({}));
 
 const identity: PlayerIdentity = {
@@ -66,6 +68,9 @@ describe("ProfilePage", () => {
       success: true,
       stats: { totalEvents: 0, estimatedSizeBytes: 0 },
     });
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      setup_email: "person@example.com",
+    });
   });
 
   afterEach(() => {
@@ -111,6 +116,40 @@ describe("ProfilePage", () => {
       });
       expect(container.textContent).not.toContain("events stored");
       expect(container.textContent).not.toContain("local data");
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
+  it("prefills a locally shared email and submits an explicit early access request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "pending" }), { status: 201 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { container, root } = await renderProfilePage();
+
+    try {
+      await act(async () => Promise.resolve());
+      expect(container.textContent).toContain("Request early access");
+      expect(container.textContent).not.toContain("Closed beta");
+      const email = container.querySelector<HTMLInputElement>('#beta-email');
+      expect(email?.value).toBe("person@example.com");
+      const submit = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Request early access",
+      );
+      await act(async () => submit?.click());
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://worker.example/access-requests",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            publicId: "pk_test",
+            email: "person@example.com",
+            requestedFeatures: ["COMMUTE", "SCRAPS"],
+          }),
+        }),
+      );
+      expect(container.textContent).toContain("Request sent");
     } finally {
       cleanupRoot(root, container);
     }

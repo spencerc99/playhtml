@@ -1,5 +1,9 @@
 # Unreleased
 
+- Internet Commute now keeps riders, arrivals, and train timing in sync across browsers.
+- Extension pages now follow your system light or dark appearance.
+- Controls shown on websites now match each site's light or dark appearance.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
@@ -14,12 +18,3 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
-
-- Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
-- Wikipedia shows other readers' live text selections in their cursor colors.
-- Wikipedia editing sessions now stay separate from article-reading rooms.
-- Browsing history performance improvements
-- Choose during setup whether History opens in new tabs, and change the setting from the History page at any time.
-  ![History new tab choice during setup](/changelog/media/new-tab-setup.png)
-- Extension pages now follow your system light or dark appearance.
-- Controls shown on websites now match each site's light or dark appearance.

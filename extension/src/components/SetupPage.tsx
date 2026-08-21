@@ -366,8 +366,8 @@ export default function SetupPage() {
                 id="updates-email-help"
                 className="setup-step__field-help"
               >
-                Get occasional updates about we were online and have the
-                opportunity to beta test new features
+                Get occasional updates about we were online and opportunities
+                to help shape new features
               </span>
             </div>
             <button
@@ -508,10 +508,20 @@ export default function SetupPage() {
             </h2>
             <p className="setup-step__desc">
               The places you explored, where your time went, and how your
-              cursor traveled. By default, it opens in your new tab so you can
-              stay in touch with your browsing. This is also where new ways of
-              making the web shared and alive will slowly appear. You can
-              revert your new tab any time from the history page.
+              cursor traveled.{" "}
+              {isSafari ? (
+                <>
+                  This is also where new ways of making the web shared and
+                  alive will slowly appear.
+                </>
+              ) : (
+                <>
+                  By default, it opens in your new tab so you can stay in touch
+                  with your browsing. This is also where new ways of making the
+                  web shared and alive will slowly appear. You can revert your
+                  new tab any time from the history page.
+                </>
+              )}
             </p>
 
             <div className="setup-step__newtab-preview">
@@ -529,18 +539,27 @@ export default function SetupPage() {
               />
             </div>
 
-            <label className="setup-step__newtab-optin">
-              <input
-                type="checkbox"
-                checked={newTabTakeover}
-                onChange={(e) => setNewTabTakeover(e.target.checked)}
-              />
-              <span>make this my new tab</span>
-            </label>
+            {isSafari ? (
+              <p className="setup-step__newtab-note">
+                Safari doesn't let extensions change the new tab — bookmark or
+                pin the history page to keep it a click away.
+              </p>
+            ) : (
+              <label className="setup-step__newtab-optin">
+                <input
+                  type="checkbox"
+                  checked={newTabTakeover}
+                  onChange={(e) => setNewTabTakeover(e.target.checked)}
+                />
+                <span>make this my new tab</span>
+              </label>
+            )}
 
             <div className="setup-step__actions">
               <button
-                onClick={() => void chooseNewTabTakeover(newTabTakeover)}
+                onClick={() =>
+                  void chooseNewTabTakeover(isSafari ? false : newTabTakeover)
+                }
                 className="setup-step__btn-primary"
                 disabled={busy}
               >

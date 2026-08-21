@@ -24,7 +24,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -165,13 +167,20 @@ a {
   border-bottom: 1px solid #cbc8bb;
   background: #e8eee9;
 
-  label {
+  > label,
+  > label > span {
     display: block;
     margin-bottom: 8px;
     color: #35483f;
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
+  }
+
+  > label > span small {
+    font-size: 8px;
+    font-weight: 400;
+    text-transform: none;
   }
 
   > div {
@@ -192,7 +201,53 @@ a {
   }
 }
 
-input {
+.office-add--person {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) minmax(190px, 1.4fr) minmax(140px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+
+  label {
+    margin: 0;
+  }
+
+  input,
+  select {
+    width: 100%;
+  }
+
+  button {
+    min-height: 38px;
+  }
+
+  .office-add__success {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #236859;
+    font: 12px/1.4 "Lora", serif;
+  }
+}
+
+.office-bulk-import {
+  border-top: 1px solid #cbc8bb;
+
+  summary {
+    padding: 14px 24px;
+    color: #59645e;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .office-add {
+    border: 0;
+    border-top: 1px solid #d8d5ca;
+    background: #f2f3ed;
+  }
+}
+
+input,
+select,
+textarea {
   padding: 10px 11px;
   border: 1px solid #aaa99f;
   border-radius: 5px;
@@ -205,6 +260,16 @@ input {
     border-color: #357768;
     box-shadow: 0 0 0 3px rgba(53, 119, 104, 0.12);
   }
+}
+
+textarea {
+  min-height: 122px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+select {
+  cursor: pointer;
 }
 
 button {
@@ -254,6 +319,106 @@ button {
   }
 }
 
+.office-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.office-feature-card,
+.office-cohort-card {
+  min-width: 0;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0ded5;
+
+  &:nth-child(odd) {
+    border-right: 1px solid #e0ded5;
+  }
+}
+
+.office-feature-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  align-items: center;
+  gap: 18px;
+
+  > span {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  strong {
+    font: 600 15px "Lora", serif;
+  }
+
+  small {
+    color: #73756e;
+    font: 12px/1.45 "Lora", serif;
+  }
+}
+
+.office-cohort-card {
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  strong {
+    font: 600 18px "Lora", serif;
+  }
+
+  code {
+    color: #817f76;
+    font-size: 9px;
+  }
+
+  p {
+    margin: 15px 0 0;
+    color: #61655e;
+    font: 13px/1.55 "Lora", serif;
+  }
+}
+
+.office-check-list,
+.office-memberships {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 15px;
+
+  label {
+    padding: 7px 9px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #c9c6b9;
+    border-radius: 5px;
+    background: #faf9f4;
+    color: #4f554f;
+    font-size: 9px;
+    cursor: pointer;
+  }
+
+  input {
+    width: auto;
+    margin: 0;
+    accent-color: #236859;
+  }
+}
+
+.office-add--bulk {
+  textarea {
+    width: 100%;
+  }
+
+  > div {
+    margin-top: 10px;
+    justify-content: flex-end;
+  }
+}
+
 .office-list {
   margin: 0;
   padding: 0;
@@ -278,6 +443,10 @@ button {
       gap: 3px;
     }
 
+    > div:last-child:not(:first-child) {
+      flex-direction: row;
+    }
+
     code {
       overflow: hidden;
       color: #2d483f;
@@ -291,12 +460,37 @@ button {
       text-transform: uppercase;
     }
 
+    span {
+      color: #85867f;
+      font-size: 9px;
+    }
+
     button {
       border-color: #d3b1a4;
       background: #fff7f3;
       color: #9b4228;
     }
   }
+}
+
+.office-row-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.office-button--quiet {
+  border-color: #c9c6b9 !important;
+  background: #fffefa !important;
+  color: #656961 !important;
+}
+
+.office-people-list li {
+  align-items: flex-start;
+}
+
+.office-memberships {
+  justify-content: flex-end;
+  margin-top: 0;
 }
 
 .office-empty,
@@ -401,7 +595,30 @@ button {
     flex-direction: column;
   }
 
+  .office-add--person {
+    grid-template-columns: 1fr;
+  }
+
   .office-list-header input {
     width: 100%;
+  }
+
+  .office-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .office-feature-card,
+  .office-cohort-card {
+    border-right: 0 !important;
+  }
+
+  .office-feature-card {
+    grid-template-columns: 1fr;
+  }
+
+  .office-list li,
+  .office-memberships {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

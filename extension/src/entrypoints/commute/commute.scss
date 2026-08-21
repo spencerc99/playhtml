@@ -773,26 +773,7 @@ button {
   }
 }
 
-.train-joiner {
-  position: absolute;
-  top: 140px;
-  left: 5px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  opacity: 0;
-  pointer-events: none;
-  animation: carriage-entry 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) both;
-
-  .cursor-rider {
-    position: relative;
-    top: auto;
-    left: auto;
-  }
-}
-
-.train-joiner__message {
+.commute-avatar__arrival-message {
   padding: 3px 6px;
   color: var(--text);
   border: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
@@ -1123,6 +1104,10 @@ button {
     .cursor-rider {
       animation: cursor-walk 0.32s ease-in-out infinite;
     }
+  }
+
+  &--arriving {
+    animation: carriage-entry 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) both;
   }
 }
 
@@ -1958,21 +1943,16 @@ button {
 @keyframes carriage-entry {
   0% {
     opacity: 0;
-    transform: translateX(-30px);
+    transform: translate(-120px, -14px);
   }
 
   18% {
     opacity: 1;
   }
 
-  72% {
-    opacity: 1;
-    transform: translateX(76px);
-  }
-
   100% {
-    opacity: 0;
-    transform: translateX(96px);
+    opacity: 1;
+    transform: translate(-14px, -14px);
   }
 }
 

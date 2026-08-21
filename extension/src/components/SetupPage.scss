@@ -434,6 +434,15 @@
     }
   }
 
+  // Stands in for the opt-in checkbox where the browser has no new tab override.
+  &__newtab-note {
+    margin-bottom: 20px;
+    font-family: $font-mono;
+    font-size: 12px;
+    line-height: 1.5;
+    color: $text-muted;
+  }
+
   &__btn-primary {
     @include btn-primary;
   }

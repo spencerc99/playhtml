@@ -37,6 +37,7 @@ import {
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
 import { NEWTAB_TAKEOVER_KEY } from "../../features/newtab/takeover";
+import { isSafariExtensionPageUrl } from "../../utils/extensionPage";
 import {
   createMovementLoadingPreview,
   isMovementLoadingPreview,
@@ -342,42 +343,53 @@ function WalkingRecordEntryPage() {
   );
 }
 
+const NEWTAB_CONTROL_STYLE = {
+  position: "fixed",
+  right: "16px",
+  bottom: "16px",
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  padding: "8px 12px",
+  borderRadius: "8px",
+  background: "color-mix(in srgb, var(--bg) 92%, transparent)",
+  border: "1px solid var(--border-strong)",
+  fontFamily: "'Martian Mono', monospace",
+  fontSize: "11px",
+  color: "var(--text)",
+  zIndex: 50,
+} as const;
+
 /** Controls whether new browser tabs open this walking record. */
 function NewTabTakeoverToggle() {
   const [enabled, setEnabled] = useState(false);
+  // Safari has no new tab override, so there is no preference to offer.
+  const isSafari = isSafariExtensionPageUrl(window.location.href);
 
   useEffect(() => {
+    if (isSafari) return;
     browser.storage.local
       .get([NEWTAB_TAKEOVER_KEY])
       .then((result) => setEnabled(Boolean(result[NEWTAB_TAKEOVER_KEY])))
       .catch(() => setEnabled(false));
-  }, []);
+  }, [isSafari]);
 
   const toggle = (next: boolean) => {
     setEnabled(next);
     browser.storage.local.set({ [NEWTAB_TAKEOVER_KEY]: next }).catch(() => {});
   };
 
+  if (isSafari) {
+    return (
+      <p style={{ ...NEWTAB_CONTROL_STYLE, maxWidth: "320px", margin: 0 }}>
+        Safari doesn't let extensions change the new tab — bookmark or pin this
+        page to keep it a click away.
+      </p>
+    );
+  }
+
   return (
-    <label
-      style={{
-        position: "fixed",
-        right: "16px",
-        bottom: "16px",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "8px 12px",
-        borderRadius: "8px",
-        background: "color-mix(in srgb, var(--bg) 92%, transparent)",
-        border: "1px solid var(--border-strong)",
-        fontFamily: "'Martian Mono', monospace",
-        fontSize: "11px",
-        color: "var(--text)",
-        cursor: "pointer",
-        zIndex: 50,
-      }}
-    >
+    <label style={{ ...NEWTAB_CONTROL_STYLE, cursor: "pointer" }}>
       <input
         type="checkbox"
         checked={enabled}
