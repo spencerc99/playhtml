@@ -4,11 +4,33 @@
 import { describe, expect, it } from "vitest";
 import {
   getCommuteRouteDurationSeconds,
+  getSlowModeProgress,
   getCommuteTiming,
   SLOW_MODE_DURATIONS,
 } from "./commuteTiming";
 
 describe("getCommuteTiming", () => {
+  it("counts a stop after the train reaches it", () => {
+    expect(
+      getSlowModeProgress(
+        { atOrigin: true, phase: "stopped", stopIndex: 0 },
+        4,
+      ),
+    ).toEqual({ completedIndex: -1, stopsLeft: 3 });
+    expect(
+      getSlowModeProgress(
+        { atOrigin: false, phase: "riding", stopIndex: 0 },
+        4,
+      ),
+    ).toEqual({ completedIndex: -1, stopsLeft: 3 });
+    expect(
+      getSlowModeProgress(
+        { atOrigin: false, phase: "stopped", stopIndex: 0 },
+        4,
+      ),
+    ).toEqual({ completedIndex: 0, stopsLeft: 2 });
+  });
+
   it("uses the Slow Mode platform, leg, and dwell durations", () => {
     expect(getCommuteTiming(4, 3, SLOW_MODE_DURATIONS)).toMatchObject({
       phase: "stopped",

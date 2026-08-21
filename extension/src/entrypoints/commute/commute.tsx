@@ -45,6 +45,7 @@ import {
 } from "./commuteService";
 import {
   DEPARTURE_SECONDS,
+  getSlowModeProgress,
   getCommuteTiming,
   INITIAL_PLATFORM_SECONDS,
   SLOW_MODE_DURATIONS,
@@ -1567,19 +1568,21 @@ function CommuteDebugPanel({
 
 function SlowModeProgress({
   destinationDomain,
+  phase,
   stopIndex,
   stops,
   atOrigin,
 }: {
   destinationDomain: string;
+  phase: CommutePhase;
   stopIndex: number;
   stops: CommuteStop[];
   atOrigin: boolean;
 }) {
-  const completedIndex = atOrigin ? -1 : stopIndex;
-  const stopsLeft = atOrigin
-    ? Math.max(0, stops.length - 1)
-    : Math.max(0, stops.length - 2 - stopIndex);
+  const { completedIndex, stopsLeft } = getSlowModeProgress(
+    { atOrigin, phase, stopIndex },
+    stops.length,
+  );
 
   return (
     <section className="slow-mode-progress" aria-label="Slow Mode route progress">
@@ -1685,11 +1688,14 @@ function InternetCommute() {
     SLOW_MODE_REQUEST ? SLOW_MODE_DURATIONS : undefined,
   );
   const timing =
-    SLOW_MODE_REQUEST && routeTiming.complete
+    SLOW_MODE_REQUEST &&
+    (routeTiming.complete || (slowModeRoute !== null && reducedMotion))
       ? {
           ...routeTiming,
           phase: "stopped" as const,
+          stopIndex: stops.length - 1,
           atOrigin: false,
+          complete: true,
           secondsLeft: 0,
         }
       : routeTiming;
@@ -1759,6 +1765,7 @@ function InternetCommute() {
             destinationDomain={new URL(
               SLOW_MODE_REQUEST.destinationUrl,
             ).hostname.replace(/^www\./, "")}
+            phase={timing.phase}
             stopIndex={timing.stopIndex}
             stops={stops}
             atOrigin={timing.atOrigin}
