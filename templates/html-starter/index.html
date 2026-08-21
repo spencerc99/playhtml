@@ -232,7 +232,9 @@
       // API: register a render function and playhtml re-renders it whenever the
       // shared `count` changes (locally or from another tab). Writes are driven
       // from the @click handler in the template. `register` works before or
-      // after init(). (This is the experimental vanilla view API.)
+      // after init(), and accepts an element or its id. The view renderer is
+      // experimental; registration is a supported API for both view and
+      // imperative updateElement renderers.
       playhtml.register("reactionBtn", {
         defaultData: { count: 0 },
         view: ({ data, setData }) => {
