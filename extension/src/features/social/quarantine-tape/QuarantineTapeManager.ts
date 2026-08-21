@@ -79,6 +79,7 @@ export class QuarantineTapeManager {
   private elementDragStart: { x: number; y: number; img: HTMLImageElement } | null = null;
   private elementPreviewRaf = 0;
   private scrollRaf = 0;
+  private previousBodyUserSelect: string | null = null;
 
   private destroyed = false;
 
@@ -356,6 +357,25 @@ export class QuarantineTapeManager {
     this.hoverTarget = null;
   }
 
+  private suppressPageSelection() {
+    if (this.previousBodyUserSelect !== null) return;
+    this.previousBodyUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+  }
+
+  private restorePageSelection() {
+    if (this.previousBodyUserSelect === null) return;
+    document.body.style.userSelect = this.previousBodyUserSelect;
+    this.previousBodyUserSelect = null;
+  }
+
+  private isStandingTapedImage(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLImageElement)) return false;
+    return this.elementMarks.some(
+      (mark) => mark.src === target.src && !isFullyTorn(mark),
+    );
+  }
+
   // ----- interaction -----
   private onMouseMove = (e: MouseEvent) => {
     this.cursor = { x: e.clientX, y: e.clientY };
@@ -397,19 +417,19 @@ export class QuarantineTapeManager {
       if (this.hoverTarget) {
         e.preventDefault(); // belt-and-braces against the native image drag
         this.elementDragStart = { x: e.clientX, y: e.clientY, img: this.hoverTarget };
-        document.body.style.userSelect = "none";
+        this.suppressPageSelection();
       }
       return; // armed → laying tape, not ripping
     }
     this.slashStart = { x: e.clientX, y: e.clientY };
-    document.body.style.userSelect = "none"; // don't select page text mid-slash
   };
 
-  // Images are natively draggable: without this the browser hijacks the gesture
-  // with an HTML5 drag (dragstart fires, mouseup never does), so armed placement
-  // and mid-slash drags silently do nothing.
+  // Armed placement owns the page gesture. Unarmed tracking only takes over a
+  // native image drag when that image has standing tape that can be ripped.
   private onDragStart = (e: DragEvent) => {
-    if (this.equipped || this.slashStart) e.preventDefault();
+    if (this.equipped || (this.slashStart && this.isStandingTapedImage(e.target))) {
+      e.preventDefault();
+    }
   };
 
   private onClick = (e: MouseEvent) => {
@@ -432,11 +452,11 @@ export class QuarantineTapeManager {
     // --- armed: drag across a hovered image tapes that element ---
     const elDrag = this.elementDragStart;
     this.elementDragStart = null;
-    if (elDrag && this.equipped) {
-      document.body.style.userSelect = "";
+    if (elDrag) {
+      this.restorePageSelection();
       this.gPreview.replaceChildren(); // drop the ghost X, committed or not
       const dist = Math.hypot(e.clientX - elDrag.x, e.clientY - elDrag.y);
-      if (dist >= SLASH_MIN_LEN) {
+      if (this.equipped && dist >= SLASH_MIN_LEN) {
         void this.commitElementMark(elDrag.img.src, this.equipped);
         this.clearHoverTarget();
       }
@@ -446,7 +466,6 @@ export class QuarantineTapeManager {
     const start = this.slashStart;
     this.slashStart = null;
     this.gSlash.replaceChildren();
-    document.body.style.userSelect = "";
     if (!start) return;
     const end = { x: e.clientX, y: e.clientY };
     const dragLen = Math.hypot(end.x - start.x, end.y - start.y);
@@ -645,7 +664,7 @@ export class QuarantineTapeManager {
     window.removeEventListener("resize", this.onResize);
     window.removeEventListener("scroll", this.onScroll);
     this.clearHoverTarget();
-    document.body.style.userSelect = "";
+    this.restorePageSelection();
     this.targetStyle?.remove();
     this.targetStyle = null;
     this.host?.remove();
