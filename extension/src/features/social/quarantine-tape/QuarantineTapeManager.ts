@@ -208,14 +208,12 @@ export class QuarantineTapeManager {
   private onMouseDown = (e: MouseEvent) => {
     if (this.equipped) return; // armed → laying tape via click, not ripping
     this.slashStart = { x: e.clientX, y: e.clientY };
-    document.body.style.userSelect = "none"; // don't select page text mid-slash
   };
 
-  // Images are natively draggable: without this the browser hijacks the gesture
-  // with an HTML5 drag (dragstart fires, mouseup never does), so armed placement
-  // and mid-slash drags silently do nothing.
+  // Armed placement owns the page gesture, so prevent native drags from taking
+  // it over. Unarmed rip tracking stays passive so normal page drags still work.
   private onDragStart = (e: DragEvent) => {
-    if (this.equipped || this.slashStart) e.preventDefault();
+    if (this.equipped) e.preventDefault();
   };
 
   private onClick = (e: MouseEvent) => {
@@ -238,7 +236,6 @@ export class QuarantineTapeManager {
     const start = this.slashStart;
     this.slashStart = null;
     this.gSlash.replaceChildren();
-    document.body.style.userSelect = "";
     if (!start) return;
     const end = { x: e.clientX, y: e.clientY };
     const dragLen = Math.hypot(end.x - start.x, end.y - start.y);
@@ -350,7 +347,6 @@ export class QuarantineTapeManager {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("dragstart", this.onDragStart);
     window.removeEventListener("resize", this.onResize);
-    document.body.style.userSelect = "";
     this.host?.remove();
     this.host = null;
     this.overlay = null;
