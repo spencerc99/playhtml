@@ -6,6 +6,7 @@ import {
   DEFAULT_SLOW_MODE_SETTINGS,
   SLOW_MODE_COOLDOWN_MS,
   createCommuteUrl,
+  dayKey,
   evaluateSlowModeNavigation,
   getCooldownStatus,
   isFarJump,
@@ -14,6 +15,7 @@ import {
 } from "./slowMode";
 
 const NOW = new Date("2026-08-21T17:00:00-07:00").getTime();
+const TODAY = dayKey(NOW);
 
 function emptyState(): SlowModeState {
   return {
@@ -174,7 +176,7 @@ describe("Slow Mode consent gates", () => {
     ).toBe("global-cooldown");
 
     const domainState = emptyState();
-    domainState.lastCommuteByDomain["museum.example"] = "2026-08-21";
+    domainState.lastCommuteByDomain["museum.example"] = TODAY;
     expect(
       evaluateSlowModeNavigation(
         navigation,
@@ -188,7 +190,7 @@ describe("Slow Mode consent gates", () => {
 
   it("shares the daily cooldown across subdomains", () => {
     const domainState = emptyState();
-    domainState.lastCommuteByDomain["example.com"] = "2026-08-21";
+    domainState.lastCommuteByDomain["example.com"] = TODAY;
 
     expect(
       evaluateSlowModeNavigation(
@@ -215,7 +217,7 @@ describe("Slow Mode state", () => {
     });
 
     expect(state.lastCommuteAt).toBe(NOW);
-    expect(state.lastCommuteByDomain["museum.example"]).toBe("2026-08-21");
+    expect(state.lastCommuteByDomain["museum.example"]).toBe(TODAY);
     expect(state.rides[0]).toMatchObject({
       destinationDomain: "museum.example",
       stopCount: 3,
