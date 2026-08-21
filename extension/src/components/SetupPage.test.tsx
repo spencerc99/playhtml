@@ -143,7 +143,14 @@ describe("SetupPage", () => {
       ).toBe("true");
       expect(container.textContent).toContain("See your progress");
       expect(container.textContent).toContain(
-        "Click the icon in your browser toolbar anytime",
+        "in your browser toolbar anytime to see your current portrait. Pin it to keep it one click away.",
+      );
+      const toolbarIcon = container.querySelector(
+        ".setup-step__progress-note .setup-step__toolbar-icon img",
+      );
+      expect(toolbarIcon?.getAttribute("src")).toContain("icon/32.png");
+      expect(toolbarIcon?.getAttribute("alt")).toBe(
+        "we were online extension icon",
       );
       expect(container.textContent).not.toContain("See your current portrait");
       expect(container.querySelector(".setup-step__portrait-preview")).toBeNull();

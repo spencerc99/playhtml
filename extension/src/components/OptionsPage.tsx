@@ -535,7 +535,8 @@ export function OptionsPage() {
                 <p>
                   Request early access to new experimental features to make the
                   internet feel more shared and alive. Experiments stay off
-                  until you choose to enable them.
+                  until you choose to enable them. Leaving an email also signs
+                  you up for occasional project updates.
                 </p>
                 {accessRequestStatus === "sent" ? (
                   <strong>Request sent</strong>

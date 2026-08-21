@@ -92,6 +92,9 @@ describe("OptionsPage", () => {
       expect(container.querySelector("#bag-settings")).not.toBeNull();
       expect(container.textContent).toContain("Current Site");
       expect(container.textContent).toContain("Quick Actions");
+      expect(container.textContent).toContain(
+        "Leaving an email also signs you up for occasional project updates.",
+      );
     } finally {
       cleanup(root, container);
     }

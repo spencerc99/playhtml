@@ -608,8 +608,15 @@ export default function SetupPage() {
                   We'll share some of your progress as you browse.
                 </p>
                 <p className="setup-step__progress-note">
-                  Click the icon in your browser toolbar anytime to see your
-                  current portrait.
+                  Click{" "}
+                  <span className="setup-step__toolbar-icon">
+                    <img
+                      src={browser.runtime.getURL("icon/32.png")}
+                      alt="we were online extension icon"
+                    />
+                  </span>{" "}
+                  in your browser toolbar anytime to see your current portrait.
+                  Pin it to keep it one click away.
                 </p>
               </div>
 
