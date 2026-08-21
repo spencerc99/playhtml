@@ -280,6 +280,158 @@
   }
 }
 
+.slow-mode-settings {
+  margin: -4px 0 12px;
+  overflow: hidden;
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: $bg;
+
+  &__heading,
+  &__chance,
+  &__today {
+    padding: 11px 13px;
+  }
+
+  &__heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    > span {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    strong {
+      font-family: $font-heading;
+      font-size: 13px;
+    }
+
+    small {
+      color: $text-muted;
+      font: 9px $font-mono;
+    }
+  }
+
+  &__chance {
+    display: block;
+    border-top: 1px solid $border;
+
+    > span {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 10px;
+    }
+
+    output {
+      color: $accent-teal;
+      font-family: $font-mono;
+    }
+
+    input {
+      width: 100%;
+      accent-color: $accent-teal;
+    }
+  }
+
+  &__today {
+    border-top: 1px solid $border;
+
+    > p {
+      margin: 7px 0 0;
+      color: $text-muted;
+      font-size: 10px;
+      font-style: italic;
+    }
+
+    ol {
+      margin: 7px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 6px;
+      padding: 3px 0;
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    time,
+    footer,
+    .slow-mode-settings__label {
+      color: $text-faint;
+      font-family: $font-mono;
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed $border;
+      font-size: 9px;
+    }
+  }
+
+  &__label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+}
+
+.slow-mode-toggle {
+  position: relative;
+  width: 38px;
+  height: 22px;
+
+  input {
+    position: absolute;
+    opacity: 0;
+  }
+
+  > span:first-of-type {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: $border;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: $bg;
+      box-shadow: 0 1px 3px rgba($text, 0.24);
+      transition: transform 0.15s;
+    }
+  }
+
+  input:checked + span {
+    background: $accent-teal;
+
+    &::after {
+      transform: translateX(16px);
+    }
+  }
+
+  input:focus-visible + span {
+    outline: 2px solid $accent-teal;
+    outline-offset: 2px;
+  }
+}
+
 .site-visibility-notice {
   display: flex;
   align-items: center;

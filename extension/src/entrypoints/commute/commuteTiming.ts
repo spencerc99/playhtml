@@ -8,6 +8,52 @@ export const PLATFORM_SECONDS = 5;
 export const DEPARTURE_SECONDS = 2.6;
 export const RETURN_TRAVEL_SECONDS = 6;
 export const RETURN_ARRIVAL_SECONDS = 4;
+export const SLOW_MODE_APPROACH_SECONDS = 5;
+export const SLOW_MODE_BOARDING_SECONDS = 4;
+export const SLOW_MODE_TRAIN_PULL_IN_SECONDS = 2;
+
+export interface CommuteDurations {
+  initialPlatformSeconds: number;
+  travelSeconds: number;
+  arrivalSeconds: number;
+  platformSeconds: number;
+  departureSeconds: number;
+  returnTravelSeconds: number;
+  returnArrivalSeconds: number;
+}
+
+export const DEFAULT_COMMUTE_DURATIONS: CommuteDurations = {
+  initialPlatformSeconds: INITIAL_PLATFORM_SECONDS,
+  travelSeconds: TRAVEL_SECONDS,
+  arrivalSeconds: ARRIVAL_SECONDS,
+  platformSeconds: PLATFORM_SECONDS,
+  departureSeconds: DEPARTURE_SECONDS,
+  returnTravelSeconds: RETURN_TRAVEL_SECONDS,
+  returnArrivalSeconds: RETURN_ARRIVAL_SECONDS,
+};
+
+export const SLOW_MODE_DURATIONS: CommuteDurations = {
+  ...DEFAULT_COMMUTE_DURATIONS,
+  initialPlatformSeconds:
+    SLOW_MODE_APPROACH_SECONDS + SLOW_MODE_BOARDING_SECONDS,
+  travelSeconds: 12,
+  platformSeconds: 8,
+};
+
+export type SlowModePlatformPhase = "waiting" | "arriving" | "boarding";
+
+export function getSlowModePlatformPhase(
+  secondsLeft: number,
+): SlowModePlatformPhase {
+  if (secondsLeft <= SLOW_MODE_BOARDING_SECONDS) return "boarding";
+  if (
+    secondsLeft <=
+    SLOW_MODE_BOARDING_SECONDS + SLOW_MODE_TRAIN_PULL_IN_SECONDS
+  ) {
+    return "arriving";
+  }
+  return "waiting";
+}
 
 export type CommutePhase = "stopped" | "riding" | "arriving";
 
@@ -18,6 +64,21 @@ export interface CommuteTiming {
   departureStopIndex: number | null;
   atOrigin: boolean;
   complete: boolean;
+}
+
+export function getSlowModeProgress(
+  timing: Pick<CommuteTiming, "atOrigin" | "phase" | "stopIndex">,
+  stopCount: number,
+): { completedIndex: number; stopsLeft: number } {
+  const completedIndex = timing.atOrigin
+    ? -1
+    : timing.phase === "stopped"
+      ? timing.stopIndex
+      : timing.stopIndex - 1;
+  return {
+    completedIndex,
+    stopsLeft: Math.max(0, stopCount - 2 - completedIndex),
+  };
 }
 
 export function getCommuteRouteDurationSeconds(stopCount: number): number {
@@ -36,15 +97,16 @@ export function getCommuteRouteDurationSeconds(stopCount: number): number {
 export function getCommuteTiming(
   elapsedSeconds: number,
   stopCount: number,
+  durations: CommuteDurations = DEFAULT_COMMUTE_DURATIONS,
 ): CommuteTiming {
   if (stopCount < 1) {
     throw new Error("Internet Commute requires at least one stop");
   }
 
-  if (elapsedSeconds < INITIAL_PLATFORM_SECONDS) {
+  if (elapsedSeconds < durations.initialPlatformSeconds) {
     return {
       phase: "stopped",
-      secondsLeft: INITIAL_PLATFORM_SECONDS - elapsedSeconds,
+      secondsLeft: durations.initialPlatformSeconds - elapsedSeconds,
       stopIndex: 0,
       departureStopIndex: null,
       atOrigin: true,
@@ -52,28 +114,36 @@ export function getCommuteTiming(
     };
   }
 
-  const cycleSeconds = TRAVEL_SECONDS + ARRIVAL_SECONDS + PLATFORM_SECONDS;
-  const elapsedAfterOrigin = elapsedSeconds - INITIAL_PLATFORM_SECONDS;
+  const cycleSeconds =
+    durations.travelSeconds +
+    durations.arrivalSeconds +
+    durations.platformSeconds;
+  const elapsedAfterOrigin = elapsedSeconds - durations.initialPlatformSeconds;
   const completedCycles = Math.floor(elapsedAfterOrigin / cycleSeconds);
   if (completedCycles >= stopCount) {
     const returnPosition = elapsedAfterOrigin - stopCount * cycleSeconds;
-    if (returnPosition < RETURN_TRAVEL_SECONDS) {
+    if (returnPosition < durations.returnTravelSeconds) {
       return {
         phase: "riding",
-        secondsLeft: RETURN_TRAVEL_SECONDS - returnPosition,
+        secondsLeft: durations.returnTravelSeconds - returnPosition,
         stopIndex: stopCount - 1,
         departureStopIndex:
-          returnPosition < DEPARTURE_SECONDS ? stopCount - 1 : null,
+          returnPosition < durations.departureSeconds ? stopCount - 1 : null,
         atOrigin: false,
         complete: true,
       };
     }
 
-    if (returnPosition < RETURN_TRAVEL_SECONDS + RETURN_ARRIVAL_SECONDS) {
+    if (
+      returnPosition <
+      durations.returnTravelSeconds + durations.returnArrivalSeconds
+    ) {
       return {
         phase: "arriving",
         secondsLeft:
-          RETURN_TRAVEL_SECONDS + RETURN_ARRIVAL_SECONDS - returnPosition,
+          durations.returnTravelSeconds +
+          durations.returnArrivalSeconds -
+          returnPosition,
         stopIndex: stopCount - 1,
         departureStopIndex: null,
         atOrigin: true,
@@ -94,13 +164,13 @@ export function getCommuteTiming(
   const cyclePosition = elapsedAfterOrigin % cycleSeconds;
   const stopIndex = completedCycles;
 
-  if (cyclePosition < TRAVEL_SECONDS) {
+  if (cyclePosition < durations.travelSeconds) {
     return {
       phase: "riding",
-      secondsLeft: TRAVEL_SECONDS - cyclePosition,
+      secondsLeft: durations.travelSeconds - cyclePosition,
       stopIndex,
       departureStopIndex:
-        completedCycles === 0 || cyclePosition >= DEPARTURE_SECONDS
+        completedCycles === 0 || cyclePosition >= durations.departureSeconds
           ? null
           : stopIndex - 1,
       atOrigin: false,
@@ -108,10 +178,13 @@ export function getCommuteTiming(
     };
   }
 
-  if (cyclePosition < TRAVEL_SECONDS + ARRIVAL_SECONDS) {
+  if (
+    cyclePosition < durations.travelSeconds + durations.arrivalSeconds
+  ) {
     return {
       phase: "arriving",
-      secondsLeft: TRAVEL_SECONDS + ARRIVAL_SECONDS - cyclePosition,
+      secondsLeft:
+        durations.travelSeconds + durations.arrivalSeconds - cyclePosition,
       stopIndex,
       departureStopIndex: null,
       atOrigin: false,

@@ -20,6 +20,7 @@ import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
 import { FeatureGate } from "./FeatureGate";
 import { useFeatureState } from "../features/useFeatureAccess";
 import { PopupNav, WALKING_RECORD_PAGE } from "./PopupNav";
+import { SlowModeSettings } from "./SlowModeSettings";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -207,34 +208,37 @@ export function InternetPortraitHome({
         )}
         <FeatureGate feature="COMMUTE">
           {onViewCommute && (
-            <button
-              className="commute-entry"
-              onClick={onViewCommute}
-              aria-label={
-                commuteIsOpen
-                  ? "Return to the Internet Commute"
-                  : "Board the Internet Commute"
-              }
-            >
-              <span className="commute-entry__route" aria-hidden="true">
-                <span className="commute-entry__stop commute-entry__stop--blue" />
-                <span className="commute-entry__stop commute-entry__stop--gold" />
-                <span className="commute-entry__stop commute-entry__stop--rust" />
-              </span>
-              <span className="commute-entry__copy">
-                <span className="commute-entry__eyebrow">BOARDING NOW</span>
-                <strong>
-                  {commuteIsOpen
-                    ? "Return to the internet commute"
-                    : "Board the internet commute"}
-                </strong>
-                <span>A slow train through pages people found lately.</span>
-              </span>
-              <span className="commute-entry__door" aria-hidden="true">
-                <span />
-                <span />
-              </span>
-            </button>
+            <>
+              <button
+                className="commute-entry"
+                onClick={onViewCommute}
+                aria-label={
+                  commuteIsOpen
+                    ? "Return to the Internet Commute"
+                    : "Board the Internet Commute"
+                }
+              >
+                <span className="commute-entry__route" aria-hidden="true">
+                  <span className="commute-entry__stop commute-entry__stop--blue" />
+                  <span className="commute-entry__stop commute-entry__stop--gold" />
+                  <span className="commute-entry__stop commute-entry__stop--rust" />
+                </span>
+                <span className="commute-entry__copy">
+                  <span className="commute-entry__eyebrow">BOARDING NOW</span>
+                  <strong>
+                    {commuteIsOpen
+                      ? "Return to the internet commute"
+                      : "Board the internet commute"}
+                  </strong>
+                  <span>A slow train through pages people found lately.</span>
+                </span>
+                <span className="commute-entry__door" aria-hidden="true">
+                  <span />
+                  <span />
+                </span>
+              </button>
+              <SlowModeSettings />
+            </>
           )}
         </FeatureGate>
         <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
