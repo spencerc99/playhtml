@@ -3,9 +3,19 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Miniflare } from 'miniflare';
 import type { Env } from '../lib/supabase';
+
+const mockAddContact = vi.fn();
+const mockSendUpdatesEmail = vi.fn();
+
+vi.mock('../lib/resend', () => ({
+  createResendClient: vi.fn(() => ({
+    addContact: mockAddContact,
+    sendUpdatesEmail: mockSendUpdatesEmail,
+  })),
+}));
 import {
   __resetAccessRequestRateLimitForTests,
   handleAccessRequest,
@@ -70,8 +80,13 @@ beforeEach(async () => {
   );
   workerEnv = {
     ADMIN_KEY: 'admin-secret',
+    RESEND_API_KEY: 'resend-secret',
     WWO_ADMIN_DB: db,
   } as Env;
+  mockAddContact.mockReset();
+  mockAddContact.mockResolvedValue({ created: true });
+  mockSendUpdatesEmail.mockReset();
+  mockSendUpdatesEmail.mockResolvedValue(undefined);
   __resetAccessRequestRateLimitForTests();
 });
 
@@ -216,6 +231,11 @@ describe('feature access control', () => {
     );
     expect(request.status).toBe(201);
     const { id } = await request.json() as { id: number };
+    expect(mockAddContact).toHaveBeenCalledWith(
+      'tester@example.com',
+      'extension-setup',
+    );
+    expect(mockSendUpdatesEmail).toHaveBeenCalledWith('tester@example.com');
 
     const approval = await handleAdminAccessRequestReview(
       adminRequest(`/admin/access-control/requests/${id}`, {
@@ -232,6 +252,56 @@ describe('feature access control', () => {
     };
     expect(access.features.COMMUTE.available).toBe(true);
     expect(access.features.BOTTLES.available).toBe(false);
+  });
+
+  it('does not resend the updates email to an existing contact', async () => {
+    mockAddContact.mockResolvedValueOnce({ created: false });
+
+    const response = await handleAccessRequest(
+      new Request('https://worker.example/access-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.2' },
+        body: JSON.stringify({
+          publicId: PUBLIC_ID,
+          email: 'existing@example.com',
+          requestedFeatures: ['COMMUTE'],
+        }),
+      }),
+      workerEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(mockAddContact).toHaveBeenCalledWith(
+      'existing@example.com',
+      'extension-setup',
+    );
+    expect(mockSendUpdatesEmail).not.toHaveBeenCalled();
+  });
+
+  it('records the access request when the project-updates signup fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockAddContact.mockRejectedValueOnce(new Error('resend down'));
+
+    const response = await handleAccessRequest(
+      new Request('https://worker.example/access-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.3' },
+        body: JSON.stringify({
+          publicId: PUBLIC_ID,
+          email: 'tester@example.com',
+          requestedFeatures: ['COMMUTE'],
+        }),
+      }),
+      workerEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ id: 1, status: 'pending' });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[AccessControl] project updates signup failed:',
+      expect.any(Error),
+    );
+    consoleErrorSpy.mockRestore();
   });
 
   it('requires the admin key for policy reads and mutations', async () => {

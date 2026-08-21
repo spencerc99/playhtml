@@ -443,7 +443,7 @@ export default defineBackground(() => {
       // First time installation - setup default identity
       initializePlayerIdentity().then(() => initializeIdentityServices())
       // Open setup page in a new tab
-      const url = browser.runtime.getURL('options.html')
+      const url = browser.runtime.getURL('setup.html')
       browser.tabs.create({ url }).catch((e) => {
         console.warn('Failed to open setup page on install', e)
       })

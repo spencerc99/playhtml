@@ -16,3 +16,8 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Setup now ends with one overview of browsing history, trails, portraits, and Wikipedia.
+- The setup welcome now includes an invitation to the community Discord.
+- Settings now brings identity, data collection, new tab, project updates, experiments, and local data controls into one page.
+- The popup now opens the settings page instead of nesting settings screens.

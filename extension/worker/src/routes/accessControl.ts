@@ -12,6 +12,7 @@ import {
 } from '../../../shared/featureCatalog';
 import { getAdminAuthError } from '../lib/adminAuth';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
+import { createResendClient } from '../lib/resend';
 import type { Env } from '../lib/supabase';
 
 const PUBLIC_ID_PATTERN = /^pk_[0-9a-f]{130}$/i;
@@ -420,21 +421,41 @@ export async function handleAccessRequest(
      WHERE public_id = ? AND status = 'pending'
      ORDER BY created_at DESC LIMIT 1`,
   ).bind(publicId).first<{ request_id: number }>();
+  let requestId = existing?.request_id;
   if (existing) {
     await env.WWO_ADMIN_DB.prepare(
       `UPDATE access_requests
        SET email = COALESCE(?, email), requested_features = ?
        WHERE request_id = ?`,
     ).bind(email, JSON.stringify(requestedFeatures), existing.request_id).run();
-    return jsonResponse(200, { id: existing.request_id, status: 'pending' });
+  } else {
+    const result = await env.WWO_ADMIN_DB.prepare(
+      `INSERT INTO access_requests (public_id, email, requested_features)
+       VALUES (?, ?, ?)
+       RETURNING request_id`,
+    ).bind(publicId, email, JSON.stringify(requestedFeatures)).first<{ request_id: number }>();
+    requestId = result?.request_id;
   }
 
-  const result = await env.WWO_ADMIN_DB.prepare(
-    `INSERT INTO access_requests (public_id, email, requested_features)
-     VALUES (?, ?, ?)
-     RETURNING request_id`,
-  ).bind(publicId, email, JSON.stringify(requestedFeatures)).first<{ request_id: number }>();
-  return jsonResponse(201, { id: result?.request_id, status: 'pending' });
+  if (email) {
+    try {
+      const resend = createResendClient({
+        apiKey: env.RESEND_API_KEY,
+        segmentId: env.RESEND_SEGMENT_ID,
+      });
+      const contact = await resend.addContact(email, 'extension-setup');
+      if (contact.created) {
+        await resend.sendUpdatesEmail(email);
+      }
+    } catch (err) {
+      console.error('[AccessControl] project updates signup failed:', err);
+    }
+  }
+
+  return jsonResponse(existing ? 200 : 201, {
+    id: requestId,
+    status: 'pending',
+  });
 }
 
 export async function handleAdminAccessRequestReview(
