@@ -24,7 +24,8 @@ import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
 import "./Collections.scss";
 
 interface CollectionsProps {
-  onBack: () => void;
+  onBack?: () => void;
+  visibleSection?: "all" | "data" | "your-data" | "developer";
 }
 
 const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
@@ -96,7 +97,8 @@ const COLLECTOR_DESCRIPTIONS: Record<string, string> = {
   keyboard: "Captures typing frequency and location",
   viewport: "Captures scroll position and viewport changes",
   navigation: "Captures page navigation and session timing",
-  element: "Captures small scraps like images, buttons, icons, and cursors from pages you visit",
+  element:
+    "Captures small scraps like images, buttons, icons, and cursors from pages you visit",
 };
 
 // ── Keyboard legibility preview ──────────────────────────────────────────────
@@ -127,7 +129,10 @@ function legibilityDescription(pct: number): string {
 function KeyboardLegibilityPreview({ pct }: { pct: number }) {
   // Seed stays stable across renders for a given preview so the pattern
   // doesn't flicker while the user drags the slider.
-  const output = useMemo(() => redactWithLegibility(SAMPLE_TYPED_TEXT, pct, 1), [pct]);
+  const output = useMemo(
+    () => redactWithLegibility(SAMPLE_TYPED_TEXT, pct, 1),
+    [pct],
+  );
   return (
     <div className="collector-card__privacy-preview">
       <div className="collector-card__privacy-preview-row">
@@ -166,10 +171,7 @@ export function CollectorList({
               ? " collector-card--local"
               : "";
         return (
-          <div
-            key={type}
-            className={`collector-card${modifier}`}
-          >
+          <div key={type} className={`collector-card${modifier}`}>
             <div className="collector-card__row">
               <div className="collector-card__title-row">
                 <span aria-hidden className="collector-card__icon">
@@ -202,7 +204,8 @@ export function CollectorList({
                 <div className="collector-card__privacy-header">
                   <div>
                     <label className="collector-card__privacy-label">
-                      Keyboard legibility — {legibilityLabel(keyboardLegibilityPct)}
+                      Keyboard legibility —{" "}
+                      {legibilityLabel(keyboardLegibilityPct)}
                     </label>
                     <p className="collector-card__privacy-desc">
                       {legibilityDescription(keyboardLegibilityPct)}
@@ -255,13 +258,15 @@ export function CollectorList({
   );
 }
 
-export function Collections({ onBack }: CollectionsProps) {
+export function Collections({
+  onBack,
+  visibleSection = "all",
+}: CollectionsProps) {
   const [collectors, setCollectors] = useState<CollectorStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [keyboardLegibilityPct, setKeyboardLegibilityPct] = useState<number>(
-    DEFAULT_LEGIBILITY,
-  );
+  const [keyboardLegibilityPct, setKeyboardLegibilityPct] =
+    useState<number>(DEFAULT_LEGIBILITY);
   const [filterSubstrings, setFilterSubstrings] = useState<string[]>([]);
   const [newFilterSubstring, setNewFilterSubstring] = useState("");
   const [modes, setModes] = useState<Record<string, CollectionMode>>({});
@@ -277,12 +282,40 @@ export function Collections({ onBack }: CollectionsProps) {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    loadCollectors();
-    loadPrivacyLevel();
-    loadFilterSubstrings();
-    loadModes();
-    loadStorageStats();
-    loadDevMode();
+    if (visibleSection === "all") loadCollectors();
+    else setIsLoading(false);
+    if (
+      visibleSection === "all" ||
+      visibleSection === "data" ||
+      visibleSection === "your-data"
+    ) {
+      loadPrivacyLevel();
+      loadFilterSubstrings();
+      loadModes();
+    }
+    if (visibleSection === "all" || visibleSection === "your-data") {
+      loadStorageStats();
+    }
+    if (
+      visibleSection === "all" ||
+      visibleSection === "your-data" ||
+      visibleSection === "developer"
+    ) {
+      loadDevMode();
+    }
+  }, [visibleSection]);
+
+  useEffect(() => {
+    const handleStorageChange = (
+      changes: Record<string, browser.Storage.StorageChange>,
+      areaName: string,
+    ) => {
+      if (areaName === "local" && changes[DEV_MODE_KEY]) {
+        setDevMode(Boolean(changes[DEV_MODE_KEY].newValue));
+      }
+    };
+    browser.storage.onChanged.addListener(handleStorageChange);
+    return () => browser.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
   const loadDevMode = async () => {
@@ -349,7 +382,10 @@ export function Collections({ onBack }: CollectionsProps) {
       const result = await browser.storage.local.get(keys);
       const next: Record<string, CollectionMode> = {};
       for (const t of types) {
-        next[t] = normalizeCollectionMode(t, result[collectionModeStorageKey(t)]);
+        next[t] = normalizeCollectionMode(
+          t,
+          result[collectionModeStorageKey(t)],
+        );
       }
       setModes(next);
       const toSet: Record<string, string> = {};
@@ -374,7 +410,7 @@ export function Collections({ onBack }: CollectionsProps) {
         active: true,
         currentWindow: true,
       });
-      if (tab?.id) {
+      if (tab?.id && (!tab.url || !isExtensionPageUrl(tab.url))) {
         if (mode === "off") {
           await browser.tabs.sendMessage(tab.id, {
             type: "DISABLE_COLLECTOR",
@@ -522,7 +558,10 @@ export function Collections({ onBack }: CollectionsProps) {
       });
       await loadStorageStats();
     } catch (e: any) {
-      setTransferStatus({ type: "error", message: `Restore failed: ${e.message}` });
+      setTransferStatus({
+        type: "error",
+        message: `Restore failed: ${e.message}`,
+      });
     } finally {
       setIsRestoring(false);
     }
@@ -571,8 +610,7 @@ export function Collections({ onBack }: CollectionsProps) {
       // Check if tab URL is accessible (not chrome:// or extension://)
       if (
         tab.url &&
-        (tab.url.startsWith("chrome://") ||
-          isExtensionPageUrl(tab.url))
+        (tab.url.startsWith("chrome://") || isExtensionPageUrl(tab.url))
       ) {
         throw new Error("Content script not available on this page");
       }
@@ -679,269 +717,306 @@ export function Collections({ onBack }: CollectionsProps) {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && visibleSection === "all") {
     return <div className="collections__loading">Loading collections...</div>;
   }
 
   const eventTypeCounts = storageStats
     ? getEventTypeCounts(storageStats.countsByType)
     : [];
-  const hasActiveCollection = Object.values(modes).some((mode) => mode !== "off");
+  const hasActiveCollection = Object.values(modes).some(
+    (mode) => mode !== "off",
+  );
 
   return (
     <div className="collections">
-      <header className="collections__header">
-        <button onClick={onBack} className="back-btn">
-          ← back
-        </button>
-        <h1>Data Collection Settings</h1>
-        <p className="collections__header-desc">
-          Control what's collected and whether it's shared
-        </p>
-      </header>
+      {visibleSection === "all" && (
+        <header className="collections__header">
+          {onBack && (
+            <button onClick={onBack} className="back-btn">
+              ← back
+            </button>
+          )}
+          <h1>Data Collection Settings</h1>
+          <p className="collections__header-desc">
+            Control what's collected and whether it's shared
+          </p>
+        </header>
+      )}
 
       <main className="collections__main">
-        {error && (
-          <div className="collections__error">
-            <strong>△ {error}</strong>
-            <br />
-            <span>
-              Try refreshing the page or navigating to a regular website.
-            </span>
-          </div>
-        )}
-
-        <div className="collections__context">
-          {Object.values(modes).some((m) => m === "shared") ? (
-            <>
-              <strong>Participating in</strong>{" "}
-              <a
-                href="https://spencer.place/creation/internet-movement"
-                target="_blank"
-                rel="noreferrer"
-                className="collections__context-link"
-              >
-                Internet Movement
-              </a>
-              <br />
-              <span>
-                Thank you for contributing to a living, collective portrait of
-                the internet.
-              </span>
-            </>
-          ) : (
-            <>
-              <strong>Not participating in</strong>{" "}
-              <a
-                href="https://spencer.place/creation/internet-movement"
-                target="_blank"
-                rel="noreferrer"
-                className="collections__context-link"
-              >
-                Internet Movement
-              </a>
-              <br />
-              <span>Your browsing data is only staying local.</span>
-            </>
-          )}
-        </div>
-
-        <CollectorList
-          modes={modes}
-          onModeChange={updateMode}
-          keyboardLegibilityPct={keyboardLegibilityPct}
-          onKeyboardLegibilityChange={updatePrivacyLevel}
-        />
-
-        {/* Filter substrings — only when keyboard is active and any text is legible */}
-        {(modes["keyboard"] ?? "local") !== "off" &&
-          keyboardLegibilityPct > 0 && (
-            <div className="collector-card__filter-section">
-              <label className="collector-card__filter-label">
-                Filter Sensitive Text
-              </label>
-              <p className="collector-card__filter-desc">
-                Sequences containing these substrings will be redacted
-              </p>
-              <div className="collector-card__filter-input-row">
-                <input
-                  type="text"
-                  value={newFilterSubstring}
-                  onChange={(e) => setNewFilterSubstring(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") addFilterSubstring();
-                  }}
-                  placeholder="Enter substring..."
-                />
-                <button onClick={addFilterSubstring}>Add</button>
+        {(visibleSection === "all" || visibleSection === "data") && (
+          <>
+            {visibleSection === "all" && error && (
+              <div className="collections__error">
+                <strong>△ {error}</strong>
+                <br />
+                <span>
+                  Try refreshing the page or navigating to a regular website.
+                </span>
               </div>
-              {filterSubstrings.length > 0 && (
-                <div className="collector-card__filter-tags">
-                  {filterSubstrings.map((substring) => (
-                    <div key={substring} className="collector-card__filter-tag">
-                      <span>{substring}</span>
-                      <button onClick={() => removeFilterSubstring(substring)}>
-                        ×
-                      </button>
+            )}
+
+            <div className="collections__context">
+              {Object.values(modes).some((m) => m === "shared") ? (
+                <>
+                  <strong>Participating in</strong>{" "}
+                  <a
+                    href="https://spencer.place/creation/internet-movement"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="collections__context-link"
+                  >
+                    Internet Movement
+                  </a>
+                  <br />
+                  <span>
+                    Thank you for contributing to a living, collective portrait
+                    of the internet.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>Not participating in</strong>{" "}
+                  <a
+                    href="https://spencer.place/creation/internet-movement"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="collections__context-link"
+                  >
+                    Internet Movement
+                  </a>
+                  <br />
+                  <span>Your browsing data is only staying local.</span>
+                </>
+              )}
+            </div>
+
+            <CollectorList
+              modes={modes}
+              onModeChange={updateMode}
+              keyboardLegibilityPct={keyboardLegibilityPct}
+              onKeyboardLegibilityChange={updatePrivacyLevel}
+            />
+
+            {/* Filter substrings — only when keyboard is active and any text is legible */}
+            {(modes["keyboard"] ?? "local") !== "off" &&
+              keyboardLegibilityPct > 0 && (
+                <div className="collector-card__filter-section">
+                  <label className="collector-card__filter-label">
+                    Filter Sensitive Text
+                  </label>
+                  <p className="collector-card__filter-desc">
+                    Sequences containing these substrings will be redacted
+                  </p>
+                  <div className="collector-card__filter-input-row">
+                    <input
+                      type="text"
+                      value={newFilterSubstring}
+                      onChange={(e) => setNewFilterSubstring(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter") addFilterSubstring();
+                      }}
+                      placeholder="Enter substring..."
+                    />
+                    <button onClick={addFilterSubstring}>Add</button>
+                  </div>
+                  {filterSubstrings.length > 0 && (
+                    <div className="collector-card__filter-tags">
+                      {filterSubstrings.map((substring) => (
+                        <div
+                          key={substring}
+                          className="collector-card__filter-tag"
+                        >
+                          <span>{substring}</span>
+                          <button
+                            onClick={() => removeFilterSubstring(substring)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+                  {filterSubstrings.length === 0 && (
+                    <p className="collector-card__filter-empty">
+                      No filters added yet
+                    </p>
+                  )}
                 </div>
               )}
-              {filterSubstrings.length === 0 && (
-                <p className="collector-card__filter-empty">
-                  No filters added yet
+
+            <div className="collections__privacy-notice">
+              {keyboardLegibilityPct > 0 &&
+              (modes["keyboard"] ?? "local") !== "off" ? (
+                <>
+                  Keyboard legibility is above 0, so some typed text is
+                  recorded. Use filters above to redact sensitive content. All
+                  other data is anonymous.{" "}
+                  <a href="mailto:hi@spencer.place">hi@spencer.place</a>
+                </>
+              ) : (
+                <>
+                  All data is anonymous & no personal info is collected. Pause
+                  collection anytime. Questions?{" "}
+                  <a href="mailto:hi@spencer.place">hi@spencer.place</a>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {(visibleSection === "all" || visibleSection === "your-data") && (
+          <>
+            {storageStats && hasActiveCollection && (
+              <div className="collections__storage-summary">
+                <h3 className="collections__storage-title">Local database</h3>
+                <div className="collections__stats">
+                  <div className="collections__stat">
+                    <span className="collections__stat-value">
+                      {storageStats.localUsageBytes === null
+                        ? "unknown"
+                        : formatSize(storageStats.localUsageBytes)}
+                    </span>
+                    <span className="collections__stat-label">
+                      local storage
+                    </span>
+                  </div>
+                  <div className="collections__stat">
+                    <span className="collections__stat-value">
+                      {formatCompactCount(storageStats.totalEvents)}
+                    </span>
+                    <span className="collections__stat-label">events</span>
+                  </div>
+                  <div className="collections__stat">
+                    <span className="collections__stat-value">
+                      {formatSize(storageStats.estimatedSizeBytes)}
+                    </span>
+                    <span className="collections__stat-label">event data</span>
+                  </div>
+                  {storageStats.oldestEvent > 0 && (
+                    <div className="collections__stat">
+                      <span className="collections__stat-value">
+                        {formatAge(storageStats.oldestEvent)}
+                      </span>
+                      <span className="collections__stat-label">
+                        collecting
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {eventTypeCounts.length > 0 && (
+                  <div className="collections__stats-detail">
+                    {eventTypeCounts.map(({ type, count }) => (
+                      <span
+                        key={type}
+                        className="collections__stats-detail-item"
+                        aria-label={`${type} events: ${count}`}
+                        title={`${type} events: ${count}`}
+                      >
+                        <span
+                          aria-hidden
+                          className="collections__stats-detail-icon"
+                        >
+                          <CollectorIcon type={type} size={10} />
+                        </span>
+                        <span className="collections__stats-detail-count">
+                          {count}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="collections__transfer">
+              <div className="collections__transfer-buttons">
+                <button
+                  className="collections__transfer-btn"
+                  onClick={handleExport}
+                  disabled={isExporting || isImporting}
+                >
+                  {isExporting ? "Exporting…" : "Export data"}
+                </button>
+                <button
+                  className="collections__transfer-btn"
+                  onClick={() => importInputRef.current?.click()}
+                  disabled={isExporting || isImporting}
+                >
+                  {isImporting ? "Importing…" : "Import data"}
+                </button>
+                {devMode && (
+                  <button
+                    className="collections__transfer-btn"
+                    onClick={handleRestoreFromServer}
+                    disabled={isExporting || isImporting || isRestoring}
+                    title="Fetch your shared events from the server and merge into local store"
+                  >
+                    {isRestoring ? "Restoring…" : "Restore from server"}
+                  </button>
+                )}
+              </div>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json.gz"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImportFile(file);
+                }}
+              />
+              {transferStatus && (
+                <p
+                  className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}
+                >
+                  {transferStatus.message}
                 </p>
               )}
             </div>
-          )}
 
-        <div className="collections__privacy-notice">
-          {keyboardLegibilityPct > 0 &&
-          (modes["keyboard"] ?? "local") !== "off" ? (
-            <>
-              Keyboard legibility is above 0, so some typed text is recorded.
-              Use filters above to redact sensitive content. All other data is
-              anonymous.{" "}
-              <a href="mailto:hi@spencer.place">hi@spencer.place</a>
-            </>
-          ) : (
-            <>
-              All data is anonymous & no personal info is collected. Pause
-              collection anytime. Questions?{" "}
-              <a href="mailto:hi@spencer.place">hi@spencer.place</a>
-            </>
-          )}
-        </div>
-
-        {storageStats && hasActiveCollection && (
-          <div className="collections__storage-summary">
-            <h3 className="collections__storage-title">Local database</h3>
-            <div className="collections__stats">
-              <div className="collections__stat">
-                <span className="collections__stat-value">
-                  {storageStats.localUsageBytes === null
-                    ? "unknown"
-                    : formatSize(storageStats.localUsageBytes)}
-                </span>
-                <span className="collections__stat-label">local storage</span>
-              </div>
-              <div className="collections__stat">
-                <span className="collections__stat-value">
-                  {formatCompactCount(storageStats.totalEvents)}
-                </span>
-                <span className="collections__stat-label">events</span>
-              </div>
-              <div className="collections__stat">
-                <span className="collections__stat-value">
-                  {formatSize(storageStats.estimatedSizeBytes)}
-                </span>
-                <span className="collections__stat-label">event data</span>
-              </div>
-              {storageStats.oldestEvent > 0 && (
-                <div className="collections__stat">
-                  <span className="collections__stat-value">
-                    {formatAge(storageStats.oldestEvent)}
-                  </span>
-                  <span className="collections__stat-label">collecting</span>
-                </div>
-              )}
-            </div>
-            {eventTypeCounts.length > 0 && (
-              <div className="collections__stats-detail">
-                {eventTypeCounts.map(({ type, count }) => (
-                  <span
-                    key={type}
-                    className="collections__stats-detail-item"
-                    aria-label={`${type} events: ${count}`}
-                    title={`${type} events: ${count}`}
-                  >
-                    <span
-                      aria-hidden
-                      className="collections__stats-detail-icon"
-                    >
-                      <CollectorIcon type={type} size={10} />
-                    </span>
-                    <span className="collections__stats-detail-count">
-                      {count}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+            <button className="collections__clear-btn" onClick={clearAllData}>
+              {clearConfirmPending
+                ? "Click again to confirm — this cannot be undone"
+                : "Clear all local data"}
+            </button>
+          </>
         )}
 
-        <div className="collections__transfer">
-          <div className="collections__transfer-buttons">
-            <button
-              className="collections__transfer-btn"
-              onClick={handleExport}
-              disabled={isExporting || isImporting}
-            >
-              {isExporting ? "Exporting…" : "Export data"}
-            </button>
-            <button
-              className="collections__transfer-btn"
-              onClick={() => importInputRef.current?.click()}
-              disabled={isExporting || isImporting}
-            >
-              {isImporting ? "Importing…" : "Import data"}
-            </button>
-            {devMode && (
-              <button
-                className="collections__transfer-btn"
-                onClick={handleRestoreFromServer}
-                disabled={isExporting || isImporting || isRestoring}
-                title="Fetch your shared events from the server and merge into local store"
-              >
-                {isRestoring ? "Restoring…" : "Restore from server"}
-              </button>
-            )}
+        {(visibleSection === "all" || visibleSection === "developer") && (
+          <div className="collections__dev-mode">
+            <label className="collections__dev-mode-label">
+              <input
+                type="checkbox"
+                checked={devMode}
+                onChange={(e) => toggleDevMode(e.target.checked)}
+                className="collections__dev-mode-checkbox"
+              />
+              <div>
+                <span className="collections__dev-mode-title">
+                  Developer mode
+                </span>
+                <span className="collections__dev-mode-desc">
+                  Shows advanced controls in the movement overlay
+                </span>
+              </div>
+            </label>
           </div>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".json.gz"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleImportFile(file);
-            }}
-          />
-          {transferStatus && (
-            <p
-              className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}
-            >
-              {transferStatus.message}
-            </p>
-          )}
-        </div>
-
-        <button className="collections__clear-btn" onClick={clearAllData}>
-          {clearConfirmPending
-            ? "Click again to confirm — this cannot be undone"
-            : "Clear all local data"}
-        </button>
-
-        <div className="collections__dev-mode">
-          <label className="collections__dev-mode-label">
-            <input
-              type="checkbox"
-              checked={devMode}
-              onChange={(e) => toggleDevMode(e.target.checked)}
-              className="collections__dev-mode-checkbox"
-            />
-            <div>
-              <span className="collections__dev-mode-title">
-                Developer mode
-              </span>
-              <span className="collections__dev-mode-desc">
-                Shows advanced controls in the movement overlay
-              </span>
-            </div>
-          </label>
-        </div>
+        )}
       </main>
     </div>
   );
+}
+
+export function DataCollectionSection() {
+  return <Collections visibleSection="data" />;
+}
+
+export function YourDataSection() {
+  return <Collections visibleSection="your-data" />;
+}
+
+export function DeveloperModeSection() {
+  return <Collections visibleSection="developer" />;
 }
