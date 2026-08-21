@@ -118,6 +118,72 @@ describe('feature access control', () => {
     expect(body.features.QUARANTINE_TAPE.available).toBe(true);
   });
 
+  it('gives internal members code-defined features without seeded policy rows', async () => {
+    await workerEnv.WWO_ADMIN_DB.prepare(
+      'DELETE FROM features WHERE feature_id = ?',
+    ).bind('QUARANTINE_TAPE').run();
+    expect((await addToCohort([PUBLIC_ID], 'internal')).status).toBe(201);
+
+    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const body = await response.json() as {
+      features: Record<string, { stage: string; available: boolean }>;
+    };
+
+    expect(body.features.QUARANTINE_TAPE).toEqual({
+      stage: 'internal',
+      available: true,
+    });
+  });
+
+  it('shows code-defined features in the admin overview without policy rows', async () => {
+    await workerEnv.WWO_ADMIN_DB.prepare(
+      'DELETE FROM features WHERE feature_id = ?',
+    ).bind('QUARANTINE_TAPE').run();
+
+    const response = await handleAdminAccessOverview(
+      adminRequest('/admin/access-control'),
+      workerEnv,
+    );
+    const body = await response.json() as {
+      features: Array<{
+        id: string;
+        name: string;
+        description: string;
+        stage: string;
+      }>;
+    };
+
+    expect(body.features).toContainEqual({
+      id: 'QUARANTINE_TAPE',
+      name: 'Quarantine tape',
+      description: 'Mark pages with shared caution tape.',
+      stage: 'internal',
+    });
+  });
+
+  it('creates missing policy rows when a cohort receives a feature grant', async () => {
+    await workerEnv.WWO_ADMIN_DB.prepare(
+      'DELETE FROM features WHERE feature_id = ?',
+    ).bind('QUARANTINE_TAPE').run();
+
+    const cohortUpdate = await handleAdminCohortFeaturesUpdate(
+      adminRequest('/admin/access-control/cohorts/closed-beta', {
+        method: 'PUT',
+        body: JSON.stringify({ featureIds: ['QUARANTINE_TAPE'] }),
+      }),
+      workerEnv,
+      'closed-beta',
+    );
+    expect(cohortUpdate.status).toBe(200);
+    expect((await addToCohort([PUBLIC_ID], 'closed-beta')).status).toBe(201);
+
+    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const body = await response.json() as {
+      features: Record<string, { available: boolean }>;
+    };
+    expect(body.features.QUARANTINE_TAPE.available).toBe(true);
+  });
+
   it('limits closed beta members to the cohort feature grants', async () => {
     expect((await addToCohort([PUBLIC_ID], 'closed-beta')).status).toBe(201);
 
@@ -159,6 +225,25 @@ describe('feature access control', () => {
     expect(memberBody.features.BOTTLES.available).toBe(true);
     expect(memberBody.features.COMMUTE.available).toBe(false);
     expect(publicBody.features.EMOTES.available).toBe(true);
+  });
+
+  it('clears every explicit cohort feature grant', async () => {
+    await addToCohort([PUBLIC_ID], 'closed-beta');
+    const cohortUpdate = await handleAdminCohortFeaturesUpdate(
+      adminRequest('/admin/access-control/cohorts/closed-beta', {
+        method: 'PUT',
+        body: JSON.stringify({ featureIds: [] }),
+      }),
+      workerEnv,
+      'closed-beta',
+    );
+    expect(cohortUpdate.status).toBe(200);
+
+    const body = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+      features: Record<string, { available: boolean }>;
+    };
+    expect(body.features.COMMUTE.available).toBe(false);
+    expect(body.features.SCRAPS.available).toBe(false);
   });
 
   it('rejects the removed Labs stage', async () => {
