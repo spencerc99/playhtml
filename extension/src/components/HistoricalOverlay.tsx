@@ -509,7 +509,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     padding: "0 6px",
     cursor: "pointer",
     fontSize: "11px",
-    color: "rgba(61,56,51,0.6)",
+    color: "var(--text-muted, rgba(61,56,51,0.6))",
     fontFamily: "'Martian Mono', 'Space Mono', 'Courier New', monospace",
     lineHeight: 1,
     transition: "color 0.15s",
@@ -518,7 +518,9 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
 
   const scopeBtnStyle = (active: boolean): React.CSSProperties => ({
     ...actionBtnBase,
-    color: active ? "#3d3833" : "rgba(61,56,51,0.4)",
+    color: active
+      ? "var(--text, #3d3833)"
+      : "var(--text-muted, rgba(61,56,51,0.4))",
     fontWeight: active ? 600 : 400,
   });
 
@@ -545,8 +547,8 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             height: "160px",
             borderRadius: "10px 10px 0 0",
             overflow: "hidden",
-            boxShadow: "0 4px 24px rgba(0,0,0,0.22)",
-            border: "1px solid rgba(61,56,51,0.12)",
+            boxShadow: "0 4px 24px var(--shadow-strong, rgba(0,0,0,0.22))",
+            border: "1px solid var(--border, rgba(61,56,51,0.12))",
             borderBottom: "none",
           }}
         >
@@ -557,12 +559,12 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               style={{
                 position: "absolute",
                 inset: 0,
-                background: "#f5f0e8",
+                background: "var(--surface, #f5f0e8)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: "11px",
-                color: "rgba(61,56,51,0.4)",
+                color: "var(--text-muted, rgba(61,56,51,0.4))",
                 fontFamily: "'Martian Mono', monospace",
               }}
             >
@@ -586,13 +588,13 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         <div
           style={{
             background: forceServerBackfill
-              ? "rgba(212,184,92,0.95)"
-              : "rgba(250,247,242,0.97)",
+              ? "var(--accent-gold, rgba(212,184,92,0.95))"
+              : "var(--bg, rgba(250,247,242,0.97))",
             borderRadius: "0 0 10px 10px",
-            border: "1px solid rgba(61,56,51,0.12)",
-            borderTop: "1px solid rgba(61,56,51,0.08)",
+            border: "1px solid var(--border, rgba(61,56,51,0.12))",
+            borderTop: "1px solid var(--border, rgba(61,56,51,0.08))",
             backdropFilter: "blur(8px)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+            boxShadow: "0 4px 16px var(--shadow-strong, rgba(0,0,0,0.15))",
           }}
         >
           {/* Row 1: scope toggle + full portrait link */}
@@ -602,7 +604,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               alignItems: "center",
               padding: "0 10px",
               height: "30px",
-              borderBottom: "1px solid rgba(61,56,51,0.07)",
+              borderBottom: "1px solid var(--border, rgba(61,56,51,0.07))",
               gap: "2px",
             }}
           >
@@ -613,7 +615,12 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             >
               ◉ Domain
             </button>
-            <span style={{ color: "rgba(61,56,51,0.18)", fontSize: "10px" }}>
+            <span
+              style={{
+                color: "var(--text-faint, rgba(61,56,51,0.18))",
+                fontSize: "10px",
+              }}
+            >
               |
             </span>
             <button
@@ -625,7 +632,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             </button>
             <span
               style={{
-                color: "rgba(61,56,51,0.18)",
+                color: "var(--text-faint, rgba(61,56,51,0.18))",
                 fontSize: "10px",
                 padding: "0 4px",
               }}
@@ -642,10 +649,11 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               }
               title="Open full internet portrait in new tab"
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#3d3833";
+                e.currentTarget.style.color = "var(--text, #3d3833)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+                e.currentTarget.style.color =
+                  "var(--text-muted, rgba(61,56,51,0.6))";
               }}
             >
               the internet ↗
@@ -666,10 +674,11 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               onClick={handleCapturePagePortrait}
               title="Save page portrait as image"
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#3d3833";
+                e.currentTarget.style.color = "var(--text, #3d3833)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+                e.currentTarget.style.color =
+                  "var(--text-muted, rgba(61,56,51,0.6))";
               }}
             >
               ↓ save image
@@ -687,10 +696,11 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               onClick={() => setSoundEnabled((v) => !v)}
               title={soundEnabled ? "Mute trail sounds" : "Play trail sounds"}
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#3d3833";
+                e.currentTarget.style.color = "var(--text, #3d3833)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+                e.currentTarget.style.color =
+                  "var(--text-muted, rgba(61,56,51,0.6))";
               }}
             >
               <svg
@@ -724,10 +734,11 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               onClick={onClose}
               title="Close overlay"
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#3d3833";
+                e.currentTarget.style.color = "var(--text, #3d3833)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+                e.currentTarget.style.color =
+                  "var(--text-muted, rgba(61,56,51,0.6))";
               }}
             >
               close ✕
@@ -751,14 +762,14 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             gap: "12px",
             padding: "8px 16px",
             background: forceServerBackfill
-              ? "rgba(212,184,92,0.92)"
-              : "rgba(250,247,242,0.97)",
-            borderTop: "1px solid rgba(61,56,51,0.15)",
+              ? "var(--accent-gold, rgba(212,184,92,0.92))"
+              : "var(--bg, rgba(250,247,242,0.97))",
+            borderTop: "1px solid var(--border, rgba(61,56,51,0.15))",
             backdropFilter: "blur(8px)",
             fontFamily:
               "'Martian Mono', 'Space Mono', 'Courier New', monospace",
             fontSize: "11px",
-            color: "#3d3833",
+            color: "var(--text, #3d3833)",
           }}
         >
           <span
@@ -767,7 +778,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               fontSize: "10px",
               letterSpacing: "0.06em",
               textTransform: "uppercase",
-              color: "rgba(61,56,51,0.5)",
+              color: "var(--text-muted, rgba(61,56,51,0.5))",
             }}
           >
             dev
@@ -789,7 +800,9 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
                 userSelect: "none",
                 fontSize: "11px",
                 fontWeight: 600,
-                color: settings[key] ? "#3d3833" : "rgba(61,56,51,0.4)",
+                color: settings[key]
+                  ? "var(--text, #3d3833)"
+                  : "var(--text-muted, rgba(61,56,51,0.4))",
                 letterSpacing: "0.03em",
                 textTransform: "uppercase",
               }}
@@ -804,24 +817,39 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
                   cursor: "pointer",
                   width: "14px",
                   height: "14px",
-                  accentColor: "#4a9a8a",
+                  accentColor: "var(--accent-teal, #4a9a8a)",
                 }}
               />
               {label}
             </label>
           ))}
           {loading && (
-            <span style={{ marginLeft: "auto", color: "rgba(61,56,51,0.5)" }}>
+            <span
+              style={{
+                marginLeft: "auto",
+                color: "var(--text-muted, rgba(61,56,51,0.5))",
+              }}
+            >
               loading...
             </span>
           )}
           {error && (
-            <span style={{ marginLeft: "auto", color: "#9a5a3a" }}>
+            <span
+              style={{
+                marginLeft: "auto",
+                color: "var(--error-text, #9a5a3a)",
+              }}
+            >
               {error}
             </span>
           )}
           {forceServerBackfill && (
-            <span style={{ color: "rgba(61,56,51,0.6)", fontSize: "10px" }}>
+            <span
+              style={{
+                color: "var(--text-muted, rgba(61,56,51,0.6))",
+                fontSize: "10px",
+              }}
+            >
               • server
             </span>
           )}
@@ -886,7 +914,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
             alignItems: "center",
             justifyContent: "center",
             fontSize: "11px",
-            color: "rgba(61,56,51,0.4)",
+            color: "var(--text-muted, rgba(61,56,51,0.4))",
             fontFamily: "'Martian Mono', monospace",
             pointerEvents: "none",
           }}

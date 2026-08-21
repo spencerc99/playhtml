@@ -2,10 +2,7 @@
 // ABOUTME: Keeps the linen paper, quiet typography, and riso-colored movement traces responsive.
 
 @use "../styles/variables" as *;
-
-:root {
-  @include root-tokens;
-}
+@use "../styles/base";
 
 *,
 *::before,
@@ -15,18 +12,34 @@
 
 html {
   min-height: 100%;
-  background-color: $bg;
+  background-color: var(--bg);
   background-image:
     repeating-linear-gradient(
       0deg,
-      rgba(90, 78, 65, 0.025) 0 1px,
+      color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px,
       transparent 1px 3px
     ),
     repeating-linear-gradient(
       90deg,
-      rgba(90, 78, 65, 0.025) 0 1px,
+      color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px,
       transparent 1px 3px
     );
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(236, 229, 218, 0.045) 0 1px,
+        transparent 1px 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(236, 229, 218, 0.045) 0 1px,
+        transparent 1px 3px
+      );
+  }
 }
 
 body {
@@ -34,7 +47,7 @@ body {
   min-height: 100vh;
   margin: 0;
   background: transparent;
-  color: $text;
+  color: var(--text);
   font-family: $font-body;
   -webkit-font-smoothing: antialiased;
 }
@@ -55,7 +68,7 @@ a {
 
 a:focus-visible,
 button:focus-visible {
-  outline: 2px solid rgba($accent-teal, 0.65);
+  outline: 2px solid color-mix(in srgb, var(--accent-teal) 65%, transparent);
   outline-offset: 3px;
 }
 
@@ -75,7 +88,7 @@ button:focus-visible {
   min-height: 360px;
   align-items: center;
   justify-content: center;
-  color: $text-muted;
+  color: var(--text-muted);
   font-family: $font-mono;
   font-size: 11px;
 }
@@ -103,7 +116,7 @@ button:focus-visible {
 
 .walking-record__loading-route {
   fill: none;
-  stroke: rgba(90, 78, 65, 0.16);
+  stroke: var(--shadow-strong);
   stroke-dasharray: 2 5;
   stroke-linecap: round;
   stroke-width: 1;
@@ -121,7 +134,7 @@ button:focus-visible {
   );
   offset-rotate: 0deg;
   opacity: 0;
-  filter: drop-shadow(0 1px 1px rgba(90, 78, 65, 0.12));
+  filter: drop-shadow(0 1px 1px var(--border));
   animation: walking-record-cursor-walk 5.4s linear infinite;
 }
 
@@ -168,13 +181,13 @@ button:focus-visible {
   height: 3px;
   overflow: hidden;
   border-radius: 99px;
-  background: rgba(90, 78, 65, 0.12);
+  background: var(--border);
 
   > span {
     display: block;
     height: 100%;
     border-radius: inherit;
-    background: $accent-teal;
+    background: var(--accent-teal);
     transition: width 0.22s ease-out;
   }
 }
@@ -184,7 +197,7 @@ button:focus-visible {
   gap: 8px;
 
   strong {
-    color: $text;
+    color: var(--text);
     font-family: $font-heading;
     font-size: 18px;
   }
@@ -197,10 +210,10 @@ button:focus-visible {
 
 .walking-record__portrait {
   overflow: hidden;
-  border: 1px solid rgba(90, 78, 65, 0.14);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: $surface;
-  box-shadow: 0 2px 10px rgba(90, 78, 65, 0.1);
+  background: var(--surface);
+  box-shadow: 0 2px 10px var(--shadow);
 }
 
 .walking-record__period-rail {
@@ -208,7 +221,7 @@ button:focus-visible {
   min-height: 36px;
   align-items: center;
   margin-top: 14px;
-  color: #8a8279;
+  color: var(--text-muted);
   font-family: $font-mono;
   font-size: 10.5px;
 }
@@ -219,7 +232,7 @@ button:focus-visible {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #8a8279;
+  color: var(--text-muted);
   cursor: pointer;
   font-family: $font-mono;
   font-size: 10.5px;
@@ -227,16 +240,16 @@ button:focus-visible {
   transition: color 0.12s;
 
   &:hover {
-    color: $accent-teal;
+    color: var(--accent-teal);
   }
 
   &:disabled {
-    color: rgba(138, 130, 121, 0.34);
+    color: color-mix(in srgb, var(--text-muted) 34%, transparent);
     cursor: default;
   }
 
   &:focus-visible {
-    outline: 1px solid rgba($accent-teal, 0.55);
+    outline: 1px solid color-mix(in srgb, var(--accent-teal) 55%, transparent);
     outline-offset: 3px;
   }
 }
@@ -272,7 +285,7 @@ button:focus-visible {
   > span {
     display: block;
     border-radius: 50%;
-    background: #5a4e41;
+    background: var(--text);
     transition:
       width 0.12s,
       height 0.12s,
@@ -282,20 +295,20 @@ button:focus-visible {
   }
 
   &[aria-pressed="true"] > span {
-    background: $accent-teal;
+    background: var(--accent-teal);
     box-shadow:
-      0 0 0 2px $bg,
-      0 0 0 3.5px rgba($accent-teal, 0.4);
+      0 0 0 2px var(--bg),
+      0 0 0 3.5px color-mix(in srgb, var(--accent-teal) 40%, transparent);
   }
 
   &:hover > span {
-    background: $accent-teal;
+    background: var(--accent-teal);
     opacity: 1 !important;
   }
 
   &:focus-visible {
     border-radius: 50%;
-    outline: 1px solid rgba($accent-teal, 0.55);
+    outline: 1px solid color-mix(in srgb, var(--accent-teal) 55%, transparent);
     outline-offset: 1px;
   }
 }
@@ -311,8 +324,8 @@ button:focus-visible {
   justify-content: space-between;
   min-height: 34px;
   padding: 0 20px;
-  border-top: 1px solid rgba(90, 78, 65, 0.12);
-  background: rgba($bg, 0.72);
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
 
   > div {
     display: flex;
@@ -328,7 +341,7 @@ button:focus-visible {
 
     > span {
       min-width: 122px;
-      color: $text-faint;
+      color: var(--text-faint);
       font-family: $font-mono;
       font-size: 9px;
       text-align: center;
@@ -343,7 +356,7 @@ button:focus-visible {
     padding: 0;
     border: 0;
     background: transparent;
-    color: $text-faint;
+    color: var(--text-faint);
     cursor: pointer;
     font-family: $font-mono;
     font-size: 9px;
@@ -351,15 +364,15 @@ button:focus-visible {
     text-transform: uppercase;
 
     &[aria-pressed="true"] {
-      color: $accent-teal;
+      color: var(--accent-teal);
     }
 
     &:hover {
-      color: $text;
+      color: var(--text);
     }
 
     &:disabled {
-      color: rgba($text-faint, 0.35);
+      color: color-mix(in srgb, var(--text-faint) 35%, transparent);
       cursor: default;
     }
   }
@@ -385,7 +398,7 @@ button:focus-visible {
   margin-bottom: 6px;
 
   > span {
-    color: $text-faint;
+    color: var(--text-faint);
     font-family: $font-mono;
     font-size: 10px;
     text-align: right;
@@ -394,7 +407,7 @@ button:focus-visible {
 
 .walking-record__section-intro {
   margin: 0 0 18px;
-  color: $text-muted;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -412,11 +425,11 @@ button:focus-visible {
   gap: 10px;
   align-items: start;
   padding: 10px 8px 10px 4px;
-  border-bottom: 1px solid rgba(90, 78, 65, 0.1);
+  border-bottom: 1px solid var(--border);
   transition: background 0.12s;
 
   &:hover {
-    background: rgba($surface, 0.55);
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
   }
 }
 
@@ -429,11 +442,11 @@ button:focus-visible {
     align-items: center;
     flex-wrap: wrap;
     gap: 7px;
-    color: $text-muted;
+    color: var(--text-muted);
     font-size: 12.5px;
 
     strong {
-      color: $accent-blue;
+      color: var(--accent-blue);
       font-size: 13px;
       font-weight: 500;
       overflow-wrap: anywhere;
@@ -442,7 +455,7 @@ button:focus-visible {
 
   p {
     margin: 4px 0 0;
-    color: $text-faint;
+    color: var(--text-faint);
     font-family: $font-mono;
     font-size: 10.5px;
   }
@@ -450,14 +463,14 @@ button:focus-visible {
 
 .walking-record__day {
   padding-top: 3px;
-  color: $text-faint;
+  color: var(--text-faint);
   font-family: $font-mono;
   font-size: 10px;
 }
 
 .walking-record__departure-time {
   padding-top: 2px;
-  color: $accent-teal;
+  color: var(--accent-teal);
   font-family: $font-mono;
   font-size: 11px;
   font-weight: 600;
@@ -470,24 +483,24 @@ button:focus-visible {
   margin: 10px 4px 0 auto;
   padding: 2px 0;
   border: 0;
-  border-bottom: 1px solid rgba($accent-teal, 0.35);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-teal) 35%, transparent);
   background: transparent;
-  color: $accent-teal;
+  color: var(--accent-teal);
   cursor: pointer;
   font-family: $font-mono;
   font-size: 10px;
 
   &:hover {
-    border-bottom-color: $accent-teal;
-    color: $text;
+    border-bottom-color: var(--accent-teal);
+    color: var(--text);
   }
 }
 
 .walking-record__empty {
   padding: 20px;
-  border: 1px dashed $border-strong;
+  border: 1px dashed var(--border-strong);
   border-radius: 8px;
-  color: $text-muted;
+  color: var(--text-muted);
   font-size: 12.5px;
   font-style: italic;
   line-height: 1.5;
@@ -501,13 +514,13 @@ button:focus-visible {
   margin: 24px 0 8px;
 
   h2 {
-    color: $text-muted;
+    color: var(--text-muted);
     font-size: 14px !important;
     font-style: italic;
   }
 
   span {
-    color: $text-faint;
+    color: var(--text-faint);
     font-family: $font-mono;
     font-size: 9.5px;
   }
@@ -515,9 +528,9 @@ button:focus-visible {
 
 .walking-record__settled-ledger {
   padding: 4px 14px;
-  border: 1px solid $border;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: $bg;
+  background: var(--bg);
 
   > a {
     display: grid;
@@ -525,7 +538,7 @@ button:focus-visible {
     gap: 12px;
     align-items: center;
     padding: 8px 0;
-    border-bottom: 1px solid rgba(90, 78, 65, 0.08);
+    border-bottom: 1px solid var(--shadow);
 
     &:last-child {
       border-bottom: 0;
@@ -552,7 +565,7 @@ button:focus-visible {
       min-width: 0;
       flex: 1;
       overflow: hidden;
-      color: $accent-blue;
+      color: var(--accent-blue);
       font-size: 13px;
       font-weight: 400;
       text-overflow: ellipsis;
@@ -561,7 +574,7 @@ button:focus-visible {
 
     small {
       overflow: hidden;
-      color: $text-faint;
+      color: var(--text-faint);
       font-size: 11.5px;
       font-style: italic;
       text-overflow: ellipsis;
@@ -591,7 +604,7 @@ button:focus-visible {
 
 .walking-record__future-trace {
   fill: none;
-  stroke: rgba(90, 78, 65, 0.12);
+  stroke: var(--border);
   stroke-dasharray: 2 4;
   stroke-linecap: round;
   stroke-width: 1;
@@ -603,10 +616,10 @@ button:focus-visible {
   flex-direction: column;
   gap: 6px;
   padding: 8px 6px;
-  border: 1px solid $border;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: $surface;
-  box-shadow: 0 1px 4px $shadow;
+  background: var(--surface);
+  box-shadow: 0 1px 4px var(--shadow);
   transition:
     border-color 0.12s,
     box-shadow 0.12s,
@@ -614,8 +627,8 @@ button:focus-visible {
 
   &[href]:hover,
   &[href]:focus-visible {
-    border-color: rgba($accent-teal, 0.45);
-    box-shadow: 0 3px 10px rgba(90, 78, 65, 0.12);
+    border-color: color-mix(in srgb, var(--accent-teal) 45%, transparent);
+    box-shadow: 0 3px 10px var(--border);
     transform: translateY(-1px);
   }
 
@@ -625,7 +638,7 @@ button:focus-visible {
   }
 
   strong {
-    color: $text-muted;
+    color: var(--text-muted);
     font-family: $font-mono;
     font-size: 8.5px;
     font-weight: 400;
@@ -635,7 +648,7 @@ button:focus-visible {
   > span {
     display: -webkit-box;
     overflow: hidden;
-    color: $text-faint;
+    color: var(--text-faint);
     font-size: 9.5px;
     font-style: italic;
     line-height: 1.35;
@@ -660,7 +673,7 @@ button:focus-visible {
 .walking-record__movement-skeleton {
   position: relative;
   overflow: hidden;
-  background: rgba(90, 78, 65, 0.055);
+  background: var(--shadow);
 
   &::after {
     position: absolute;
@@ -670,7 +683,7 @@ button:focus-visible {
     background: linear-gradient(
       90deg,
       transparent,
-      rgba($surface, 0.8),
+      color-mix(in srgb, var(--surface) 80%, transparent),
       transparent
     );
     content: "";
@@ -681,7 +694,7 @@ button:focus-visible {
     z-index: 1;
     display: block;
     border-radius: 999px;
-    background: rgba(90, 78, 65, 0.1);
+    background: var(--border);
   }
 }
 
@@ -717,23 +730,23 @@ button:focus-visible {
 }
 
 .walking-record__day-plate--future {
-  border-color: rgba(90, 78, 65, 0.18);
+  border-color: var(--border-strong);
   border-style: dashed;
-  background: rgba($surface, 0.2);
+  background: color-mix(in srgb, var(--surface) 20%, transparent);
   box-shadow: none;
 
   strong,
   > span {
-    color: rgba(90, 78, 65, 0.45);
+    color: var(--text-faint);
   }
 }
 
 .walking-record__time-spent {
   padding: 14px 16px 12px;
-  border: 1px solid $border;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: $surface;
-  box-shadow: 0 1px 4px $shadow;
+  background: var(--surface);
+  box-shadow: 0 1px 4px var(--shadow);
 }
 
 .walking-record__time-stack {
@@ -742,7 +755,7 @@ button:focus-visible {
   height: 22px;
   overflow: hidden;
   border-radius: 5px;
-  background: $border;
+  background: var(--border);
 
   span {
     display: block;
@@ -751,7 +764,7 @@ button:focus-visible {
     opacity: 0.82;
 
     &:not(:last-child) {
-      border-right: 1px solid rgba($bg, 0.7);
+      border-right: 1px solid color-mix(in srgb, var(--bg) 70%, transparent);
     }
   }
 }
@@ -767,17 +780,17 @@ button:focus-visible {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: $text-muted;
+    color: var(--text-muted);
     font-size: 12.5px;
     line-height: 1.3;
   }
 
   > a:hover .walking-record__time-legend-site {
-    color: $text;
+    color: var(--text);
   }
 
   strong {
-    color: $text-faint;
+    color: var(--text-faint);
     font-family: $font-mono;
     font-size: 11px;
     font-weight: 400;
@@ -813,9 +826,9 @@ button:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(90, 78, 65, 0.2);
+  border: 1px solid var(--border-strong);
   border-radius: 50%;
-  color: $text-faint;
+  color: var(--text-faint);
   font-family: $font-mono;
   font-size: 8px;
   line-height: 1;
@@ -839,10 +852,10 @@ button:focus-visible {
   height: 210px;
   margin-top: 14px;
   overflow: hidden;
-  border: 1px solid $border;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: $surface;
-  box-shadow: 0 1px 4px $shadow;
+  background: var(--surface);
+  box-shadow: 0 1px 4px var(--shadow);
 
   .trails-svg {
     z-index: 2;
@@ -922,7 +935,7 @@ button:focus-visible {
     }
 
     .walking-record__period-navigation {
-      border-top: 1px solid rgba(90, 78, 65, 0.08);
+      border-top: 1px solid var(--shadow);
     }
   }
 

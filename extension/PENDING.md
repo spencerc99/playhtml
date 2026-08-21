@@ -1,6 +1,8 @@
 # Unreleased
 
 - Internet Commute now keeps riders, arrivals, and train timing in sync across browsers.
+- Extension pages now follow your system light or dark appearance.
+- Controls shown on websites now match each site's light or dark appearance.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow

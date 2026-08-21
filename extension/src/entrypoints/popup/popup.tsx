@@ -326,19 +326,19 @@ function PlayHTMLPopup() {
             style={{
               margin: "0 0 6px 0",
               fontSize: 18,
-              color: "#111827",
+              color: "var(--text, #3d3833)",
               fontStyle: "italic",
               fontFamily: "'Lora', Georgia, serif",
             }}
           >
             we were online
           </h1>
-          <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
+          <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted, #8a8279)" }}>
             Finish setup to get started
           </p>
         </header>
         <main style={{ flex: 1 }}>
-          <p style={{ fontSize: 12, color: "#4b5563" }}>
+          <p style={{ fontSize: 12, color: "var(--text-muted, #8a8279)" }}>
             We’ll guide you through a quick setup in a full tab.
           </p>
           <button
@@ -409,7 +409,7 @@ function PlayHTMLPopup() {
               border: "none",
               padding: 0,
               fontSize: "12px",
-              color: "#6b7280",
+              color: "var(--text-muted, #8a8279)",
               cursor: "pointer",
               marginBottom: "8px",
             }}
@@ -420,7 +420,7 @@ function PlayHTMLPopup() {
             style={{
               margin: 0,
               fontSize: "16px",
-              color: "#1f2937",
+              color: "var(--text, #3d3833)",
               fontFamily: "'Lora', Georgia, serif",
             }}
           >

@@ -9,8 +9,23 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: $bg;
-  color: $text;
+  background: var(--bg);
+  color: var(--text);
+
+  @media (prefers-color-scheme: dark) {
+    background-color: var(--bg);
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(236, 229, 218, 0.04) 0 1px,
+        transparent 1px 4px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(236, 229, 218, 0.03) 0 1px,
+        transparent 1px 6px
+      );
+  }
 
   &__inner {
     position: relative;
@@ -32,10 +47,10 @@
     align-items: center;
     gap: 4px;
     padding: 5px 7px;
-    border: 1px solid $border;
+    border: 1px solid var(--border);
     border-radius: 999px;
-    background: rgba($bg, 0.92);
-    box-shadow: 0 2px 10px rgba($text, 0.08);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--text) 8%, transparent);
     font-family: $font-mono;
     font-size: 9px;
     transform: translateX(-50%);
@@ -43,7 +58,7 @@
 
     span {
       padding: 0 4px;
-      color: $text-faint;
+      color: var(--text-faint);
     }
 
     button {
@@ -51,14 +66,14 @@
       border: 0;
       border-radius: 999px;
       background: transparent;
-      color: $text-muted;
+      color: var(--text-muted);
       font: inherit;
       cursor: pointer;
 
       &:hover,
       &[aria-current="step"] {
-        background: $surface-hover;
-        color: $accent-teal;
+        background: var(--surface-hover);
+        color: var(--accent-teal);
       }
     }
   }
@@ -104,7 +119,7 @@
   }
 
   &__heading-link {
-    color: $accent-teal;
+    color: var(--accent-teal);
     text-decoration: underline;
     text-decoration-thickness: 1px;
     text-underline-offset: 3px;
@@ -123,7 +138,7 @@
   &__desc {
     font-size: 14px;
     line-height: 1.6;
-    color: $text-muted;
+    color: var(--text-muted);
     margin-bottom: 20px;
     max-width: 460px;
   }
@@ -138,7 +153,7 @@
   &__field-label {
     font-size: 12px;
     font-weight: 500;
-    color: $text;
+    color: var(--text);
   }
 
   &__input {
@@ -149,7 +164,7 @@
 
   &__field-help {
     max-width: 320px;
-    color: $text-faint;
+    color: var(--text-faint);
     font-size: 11px;
     line-height: 1.45;
   }
@@ -175,32 +190,32 @@
     font-weight: 500;
     text-align: left;
     border-radius: 10px;
-    background: $surface;
-    border: 1px solid $border;
-    color: $text-muted;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
     transition:
       border-color 0.15s,
       background 0.15s,
       color 0.15s;
 
     &:not(&--active):hover {
-      background: $surface-hover;
-      color: $text;
-      border-color: $border-strong;
+      background: var(--surface-hover);
+      color: var(--text);
+      border-color: var(--border-strong);
       filter: none;
     }
 
     &--active {
-      background: $accent-teal;
-      color: white;
-      border-color: $accent-teal;
+      background: var(--accent-teal);
+      color: var(--btn-fg);
+      border-color: var(--accent-teal);
 
       .setup-step__preset-subhead {
-        color: rgba(255, 255, 255, 0.85);
+        color: color-mix(in srgb, var(--btn-fg) 85%, transparent);
       }
       .setup-step__preset-chip {
-        background: rgba(255, 255, 255, 0.2);
-        color: white;
+        background: color-mix(in srgb, var(--btn-fg) 20%, transparent);
+        color: var(--btn-fg);
       }
     }
   }
@@ -213,7 +228,7 @@
 
   &__preset-subhead {
     font-size: 11px;
-    color: $text-muted;
+    color: var(--text-muted);
     font-weight: 400;
   }
 
@@ -227,29 +242,29 @@
     text-transform: uppercase;
     padding: 2px 6px;
     border-radius: 10px;
-    background: $accent-teal;
-    color: white;
+    background: var(--accent-teal);
+    color: var(--btn-fg);
   }
 
   &__preset-description {
     font-size: 13px;
     line-height: 1.55;
-    color: $text;
+    color: var(--text);
     margin: 8px 0 12px;
   }
 
   &__preset-customized {
-    color: $text-muted;
+    color: var(--text-muted);
     font-style: italic;
   }
 
   &__trust {
     font-size: 12px;
     line-height: 1.5;
-    color: $text-muted;
+    color: var(--text-muted);
     padding: 10px 12px;
-    background: $surface;
-    border: 1px solid $border;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     margin-bottom: 16px;
   }
@@ -257,8 +272,8 @@
   &__website-access {
     padding: 16px;
     margin-bottom: 20px;
-    background: $surface;
-    border: 1px solid $border;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 10px;
 
     .setup-step__subheading,
@@ -276,27 +291,27 @@
 
   &__website-access-hint {
     margin-top: 10px;
-    color: $text-muted;
+    color: var(--text-muted);
   }
 
   &__website-access-error {
     margin-top: 8px;
-    color: $error-text;
+    color: var(--error-text);
   }
 
   &__save-error {
     margin-top: 10px;
     font-size: 12px;
     line-height: 1.5;
-    color: $error-text;
+    color: var(--error-text);
   }
 
   &__website-access-success {
     padding: 10px 12px;
     margin-bottom: 20px;
-    color: $accent-teal;
-    background: $surface;
-    border: 1px solid $border;
+    color: var(--accent-teal);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
   }
 
@@ -342,8 +357,8 @@
     justify-content: center;
     width: 52px;
     height: 52px;
-    background: $surface;
-    border: 1px solid $border;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     cursor: pointer;
     transition:
@@ -351,8 +366,8 @@
       background 0.15s;
 
     &:hover {
-      border-color: $border-strong;
-      background: $surface-hover;
+      border-color: var(--border-strong);
+      background: var(--surface-hover);
     }
   }
 
@@ -368,18 +383,18 @@
   // "this is what the new tab becomes".
   &__newtab-preview {
     margin: 20px 0 16px;
-    border: 1px solid $border;
+    border: 1px solid var(--border);
     border-radius: 10px;
     overflow: hidden;
-    background: $bg;
-    box-shadow: 0 2px 10px $shadow;
+    background: var(--bg);
+    box-shadow: 0 2px 10px var(--shadow);
   }
 
   &__newtab-chrome {
     display: flex;
     gap: 6px;
     padding: 8px;
-    background: $surface-hover;
+    background: var(--surface-hover);
   }
 
   &__newtab-dot {
@@ -388,13 +403,13 @@
     border-radius: 9999px;
 
     &--close {
-      background: $accent-rust;
+      background: var(--accent-rust);
     }
     &--min {
-      background: $accent-gold;
+      background: var(--accent-gold);
     }
     &--expand {
-      background: $accent-teal;
+      background: var(--accent-teal);
     }
   }
 
@@ -411,7 +426,7 @@
     margin-bottom: 20px;
     font-family: $font-mono;
     font-size: 12px;
-    color: $text;
+    color: var(--text);
     cursor: pointer;
 
     input {
@@ -449,11 +464,11 @@
   &__kbd {
     display: inline-block;
     padding: 2px 6px;
-    border: 1px solid $border-strong;
+    border: 1px solid var(--border-strong);
     border-bottom-width: 2px;
     border-radius: 4px;
-    background: $surface;
-    color: $text;
+    background: var(--surface);
+    color: var(--text);
     font-family: $font-mono;
     font-size: 11px;
     line-height: 1.2;
@@ -462,7 +477,7 @@
 
   &__kbd-plus {
     margin: 0 2px;
-    color: $text-muted;
+    color: var(--text-muted);
     font-size: 11px;
   }
 
@@ -473,10 +488,10 @@
     width: 22px;
     height: 22px;
     margin: 0 2px;
-    border: 1px solid $border;
+    border: 1px solid var(--border);
     border-radius: 5px;
-    background: $surface;
-    box-shadow: 0 1px 2px rgba($text, 0.1);
+    background: var(--surface);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 10%, transparent);
     vertical-align: middle;
 
     img {
@@ -499,14 +514,14 @@
     height: 132px;
     margin-top: 12px;
     overflow: hidden;
-    border: 1px solid $border;
+    border: 1px solid var(--border);
     border-radius: 7px;
-    box-shadow: 0 2px 8px rgba($text, 0.06);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 6%, transparent);
   }
 
   &__progress-note {
     margin: -3px 0 0;
-    color: $text-faint;
+    color: var(--text-faint);
     font-family: $font-mono;
     font-size: 9px;
     line-height: 1.4;
@@ -516,16 +531,16 @@
     padding: 0;
     border: 0;
     background: transparent;
-    color: $accent-teal;
+    color: var(--accent-teal);
     font-family: $font-mono;
     font-size: 11px;
     cursor: pointer;
     text-decoration: underline;
-    text-decoration-color: rgba($accent-teal, 0.35);
+    text-decoration-color: color-mix(in srgb, var(--accent-teal) 35%, transparent);
     text-underline-offset: 3px;
 
     &:hover {
-      text-decoration-color: $accent-teal;
+      text-decoration-color: var(--accent-teal);
     }
   }
 
@@ -534,10 +549,10 @@
     max-width: 360px;
     margin: 12px 0 10px;
     overflow: hidden;
-    border: 1px solid $border;
+    border: 1px solid var(--border);
     border-radius: 7px;
-    background: #fff;
-    box-shadow: 0 2px 8px rgba($text, 0.06);
+    background: var(--bg);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 6%, transparent);
   }
 
   &__wiki-address {
@@ -545,14 +560,14 @@
     align-items: center;
     gap: 7px;
     padding: 6px 9px;
-    border-bottom: 1px solid $border;
-    background: $surface;
-    color: $text-faint;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-faint);
     font-family: $font-mono;
     font-size: 8px;
 
     strong {
-      color: $text;
+      color: var(--text);
       font-family: Georgia, serif;
       font-size: 12px;
     }
@@ -578,7 +593,7 @@
       width: 88%;
       height: 3px;
       border-radius: 2px;
-      background: #dedbd5;
+      background: var(--border-strong);
     }
 
     > i:nth-of-type(2) {
@@ -587,7 +602,7 @@
 
     > .setup-step__wiki-link {
       width: 48%;
-      background: rgba($accent-blue, 0.45);
+      background: color-mix(in srgb, var(--accent-blue) 45%, transparent);
     }
   }
 
@@ -596,12 +611,12 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    color: $text;
+    color: var(--text);
 
     em {
       padding: 1px 3px;
       border-radius: 2px;
-      background: rgba($bg, 0.9);
+      background: color-mix(in srgb, var(--bg) 90%, transparent);
       font-family: $font-mono;
       font-size: 7px;
       font-style: normal;

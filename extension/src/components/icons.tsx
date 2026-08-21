@@ -3,9 +3,9 @@
 
 import React from "react";
 
-const TEXT_COLOR = "#3d3833";
-const SURFACE_COLOR = "#efe9df";
-const SCROLLBAR_TRACK = "#b5aea5";
+const TEXT_COLOR = "currentColor";
+const SURFACE_COLOR = "var(--surface-hover)";
+const SCROLLBAR_TRACK = "var(--text-faint)";
 
 interface SizeProps {
   size?: number;

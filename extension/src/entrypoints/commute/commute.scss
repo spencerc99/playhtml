@@ -2,6 +2,7 @@
 // ABOUTME: Translates the authored prototype and its ink-wash moving landscape.
 
 @use "../../styles/variables" as *;
+@use "../../styles/base";
 
 $car-shell: #e7e0d4;
 $car-trim: #f5f0e8;
@@ -22,8 +23,8 @@ body,
 }
 
 body {
-  color: $text;
-  background: $bg;
+  color: var(--text);
+  background: var(--bg);
   font-family: $font-body;
   -webkit-font-smoothing: antialiased;
 }
@@ -42,16 +43,16 @@ button {
   min-height: 100vh;
   padding: 28px 20px 40px;
   overflow-x: auto;
-  background-color: $bg;
+  background-color: var(--bg);
   background-image:
     repeating-linear-gradient(
       0deg,
-      rgba(90, 78, 65, 0.025) 0 1px,
+      color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px,
       transparent 1px 3px
     ),
     repeating-linear-gradient(
       90deg,
-      rgba(90, 78, 65, 0.025) 0 1px,
+      color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px,
       transparent 1px 3px
     );
 }
@@ -80,7 +81,7 @@ button {
 
   > span {
     justify-self: end;
-    color: $text-muted;
+    color: var(--text-muted);
     font-family: $font-mono;
     font-size: 10px;
     letter-spacing: 0.1em;
@@ -97,7 +98,7 @@ button {
 
   &:hover,
   &:focus-visible {
-    color: $accent-blue;
+    color: var(--accent-blue);
     text-decoration: underline;
     text-underline-offset: 3px;
   }
@@ -105,7 +106,7 @@ button {
 
 .commute-subtitle {
   margin: 0 0 16px;
-  color: $text-muted;
+  color: var(--text-muted);
   font-size: 12px;
   font-style: italic;
   text-align: center;
@@ -123,18 +124,18 @@ button {
   align-items: center;
   gap: 12px;
   overflow: hidden;
-  border: 1px dashed rgba($text, 0.32);
+  border: 1px dashed color-mix(in srgb, var(--text) 32%, transparent);
   border-radius: 10px 6px 6px 10px;
   background:
     repeating-linear-gradient(
       90deg,
-      rgba($accent-gold, 0.04) 0 1px,
+      color-mix(in srgb, var(--accent-gold) 4%, transparent) 0 1px,
       transparent 1px 5px
     ),
-    rgba($surface, 0.96);
+    color-mix(in srgb, var(--surface) 96%, transparent);
   box-shadow:
-    inset 0 3px $accent-teal,
-    0 2px 8px rgba($text, 0.14);
+    inset 0 3px var(--accent-teal),
+    0 2px 8px color-mix(in srgb, var(--text) 14%, transparent);
   text-decoration: none;
   transition:
     border-color 0.15s,
@@ -143,10 +144,10 @@ button {
 
   &:hover,
   &:focus-visible {
-    border-color: rgba($accent-teal, 0.72);
+    border-color: color-mix(in srgb, var(--accent-teal) 72%, transparent);
     box-shadow:
-      inset 0 3px $accent-teal,
-      0 3px 12px rgba($text, 0.18);
+      inset 0 3px var(--accent-teal),
+      0 3px 12px color-mix(in srgb, var(--text) 18%, transparent);
     outline: none;
     transform: translateY(-1px);
   }
@@ -158,9 +159,9 @@ button {
     left: 61px;
     width: 9px;
     height: 9px;
-    border: 1px dashed rgba($text, 0.28);
+    border: 1px dashed color-mix(in srgb, var(--text) 28%, transparent);
     border-radius: 50%;
-    background: $bg;
+    background: var(--bg);
   }
 
   &::before {
@@ -176,20 +177,20 @@ button {
   width: 44px;
   height: 44px;
   flex: 0 0 auto;
-  border: 1px solid rgba($text, 0.18);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 6px;
-  background-color: $bg;
+  background-color: var(--bg);
   background-image: url("../../../public/icon/128.png");
   background-position: center;
   background-size: cover;
-  box-shadow: inset 0 0 0 1px rgba($bg, 0.7);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg) 70%, transparent);
 }
 
 .commute-install-cta__copy {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  border-left: 1px dashed rgba($text, 0.25);
+  border-left: 1px dashed color-mix(in srgb, var(--text) 25%, transparent);
   padding-left: 5px;
 
   strong {
@@ -197,13 +198,13 @@ button {
   }
 
   span {
-    color: $text-muted;
+    color: var(--text-muted);
     font-family: $font-mono;
     font-size: 8px;
   }
 
   .commute-install-cta__label {
-    color: $accent-rust;
+    color: var(--accent-rust);
     font-size: 7px;
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -218,10 +219,10 @@ button {
   display: flex;
   align-items: center;
   gap: 14px;
-  border: 1px solid $border-strong;
+  border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: $surface;
-  box-shadow: 0 1px 4px $shadow;
+  background: var(--surface);
+  box-shadow: 0 1px 4px var(--shadow);
 
   strong {
     max-width: 600px;
@@ -243,9 +244,9 @@ button {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  color: $bg;
+  color: var(--btn-fg);
   border-radius: 7px;
-  background: $accent-teal;
+  background: var(--accent-teal);
   font-family: $font-mono;
   font-size: 13px;
   font-weight: 600;
@@ -254,7 +255,7 @@ button {
 .commute-banner__rule {
   min-width: 20px;
   flex: 1;
-  border-top: 1px solid rgba(90, 78, 65, 0.18);
+  border-top: 1px solid var(--border-strong);
 }
 
 .commute-banner__aside {
@@ -264,7 +265,7 @@ button {
   align-items: center;
   gap: 6px;
   overflow: hidden;
-  color: $text-muted;
+  color: var(--text-muted);
   font-family: $font-mono;
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -296,7 +297,7 @@ button {
 
 .commute-banner__destination-label {
   flex: 0 0 auto;
-  color: $text-muted;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0.04em;
@@ -305,7 +306,7 @@ button {
 .commute-banner__domain {
   min-width: 0;
   overflow: hidden;
-  color: $text;
+  color: var(--text);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -317,7 +318,7 @@ button {
   min-height: 26px;
   margin: 0;
   padding: 5px 0;
-  color: $text-muted;
+  color: var(--text-muted);
   font-size: 12px;
   font-style: italic;
   text-align: center;
@@ -341,7 +342,7 @@ button {
   width: 1100px;
   position: relative;
   overflow: hidden;
-  border: 1px solid $border-strong;
+  border: 1px solid var(--border-strong);
   background: $landscape-paper;
 
   &--upper {
@@ -490,10 +491,10 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid $border-strong;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: rgba($bg, 0.92);
-  box-shadow: 0 1px 4px rgba(90, 78, 65, 0.15);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  box-shadow: 0 1px 4px var(--shadow-strong);
   font-family: $font-mono;
   font-size: 9px;
   white-space: nowrap;
@@ -520,7 +521,7 @@ button {
   }
 
   i {
-    color: $text-faint;
+    color: var(--text-faint);
     font-style: normal;
   }
 }
@@ -551,7 +552,7 @@ button {
   top: 54px;
   right: 0;
   left: 0;
-  border-block: 1px solid rgba($text, 0.15);
+  border-block: 1px solid color-mix(in srgb, var(--text) 15%, transparent);
   background: var(--station-hue);
   opacity: 0.85;
 }
@@ -581,7 +582,7 @@ button {
   left: 0;
   background: repeating-linear-gradient(
     90deg,
-    $accent-gold 0 26px,
+    var(--accent-gold) 0 26px,
     #c9a94a 26px 52px
   );
 }
@@ -618,9 +619,9 @@ button {
   align-items: center;
   gap: 12px;
   overflow: hidden;
-  color: $text;
+  color: var(--text);
   border-bottom: 2px solid var(--station-hue);
-  background: rgba($bg, 0.82);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
   font-family: $font-mono;
   transform: translateX(-50%);
 
@@ -628,9 +629,9 @@ button {
     width: 36px;
     height: 36px;
     flex: 0 0 auto;
-    border: 1px solid rgba($text, 0.14);
+    border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
     border-radius: 5px;
-    box-shadow: 0 1px 4px rgba(90, 78, 65, 0.12);
+    box-shadow: 0 1px 4px var(--border);
 
     img {
       width: 28px;
@@ -659,7 +660,7 @@ button {
   }
 
   small {
-    color: $text-muted;
+    color: var(--text-muted);
     font-size: 9px;
     letter-spacing: 0.03em;
   }
@@ -669,8 +670,8 @@ button {
   display: grid;
   place-items: center;
   overflow: hidden;
-  color: $text;
-  background: $bg;
+  color: var(--text);
+  background: var(--bg);
   font-family: $font-mono;
   font-size: 8px;
   text-transform: uppercase;
@@ -693,11 +694,11 @@ button {
   height: 360px;
   position: relative;
   overflow: hidden;
-  border: 2px solid $text;
+  border: 2px solid var(--text);
   border-radius: 22px;
   background-color: $car-shell;
   background-image: radial-gradient(
-    rgba($accent-blue, 0.1) 1px,
+    color-mix(in srgb, var(--accent-blue) 10%, transparent) 1px,
     transparent 1px
   );
   background-size: 14px 14px;
@@ -723,12 +724,12 @@ button {
 
   &--top {
     top: 0;
-    border-bottom: 1px solid $border-strong;
+    border-bottom: 1px solid var(--border-strong);
   }
 
   &--bottom {
     bottom: 0;
-    border-top: 1px solid $border-strong;
+    border-top: 1px solid var(--border-strong);
   }
 
   &--left,
@@ -740,12 +741,12 @@ button {
 
   &--left {
     left: 0;
-    border-right: 1px solid $border-strong;
+    border-right: 1px solid var(--border-strong);
   }
 
   &--right {
     right: 0;
-    border-left: 1px solid $border-strong;
+    border-left: 1px solid var(--border-strong);
   }
 }
 
@@ -774,11 +775,11 @@ button {
 
 .commute-avatar__arrival-message {
   padding: 3px 6px;
-  color: $text;
-  border: 1px solid rgba($text, 0.25);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
   border-radius: 4px;
-  background: rgba($bg, 0.94);
-  box-shadow: 0 1px 4px rgba($text, 0.18);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--text) 18%, transparent);
   font-family: $font-mono;
   font-size: 8px;
   white-space: nowrap;
@@ -827,8 +828,8 @@ button {
     &:hover,
     &:focus-visible {
       .train-door__panel {
-        border-color: rgba($accent-gold, 0.9);
-        box-shadow: 0 0 0 2px rgba($accent-gold, 0.18);
+        border-color: color-mix(in srgb, var(--accent-gold) 90%, transparent);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-gold) 18%, transparent);
       }
 
       .train-door__label {
@@ -862,7 +863,7 @@ button {
   position: absolute;
   top: 26px;
   left: 50%;
-  color: $error-text;
+  color: var(--error-text);
   font-family: $font-mono;
   font-size: 10px;
   font-weight: 600;
@@ -894,7 +895,7 @@ button {
     background: radial-gradient(
       circle at 35% 35%,
       #ecd692,
-      $accent-gold 55%,
+      var(--accent-gold) 55%,
       #a8883a
     );
   }
@@ -942,7 +943,7 @@ button {
   top: 179px;
   right: 60px;
   left: 60px;
-  border-top: 1px dashed rgba($text, 0.14);
+  border-top: 1px dashed color-mix(in srgb, var(--text) 14%, transparent);
 }
 
 .warning-strip {
@@ -953,8 +954,8 @@ button {
   border-radius: 0 0 3px 3px;
   background: repeating-linear-gradient(
     45deg,
-    rgba($accent-gold, 0.7) 0 8px,
-    rgba($text, 0.35) 8px 16px
+    color-mix(in srgb, var(--accent-gold) 70%, transparent) 0 8px,
+    color-mix(in srgb, var(--text) 35%, transparent) 8px 16px
   );
 
   &--left {
@@ -1012,7 +1013,7 @@ button {
 
   &:hover,
   &:focus-visible {
-    outline: 2px dashed $accent-gold;
+    outline: 2px dashed var(--accent-gold);
     outline-offset: 2px;
   }
 
@@ -1021,21 +1022,21 @@ button {
   }
 
   &--mine {
-    outline: 2px solid $text;
+    outline: 2px solid var(--text);
     outline-offset: 2px;
   }
 
   &--nearby {
-    outline: 2px dashed $accent-gold;
+    outline: 2px dashed var(--accent-gold);
     outline-offset: 2px;
   }
 }
 
 .train-seat__prompt {
   padding: 1px 4px;
-  color: $bg;
+  color: var(--bg);
   border-radius: 3px;
-  background: rgba($text, 0.5);
+  background: color-mix(in srgb, var(--text) 50%, transparent);
   font-family: $font-mono;
   font-size: 8px;
   opacity: 0;
@@ -1058,7 +1059,7 @@ button {
 
   svg {
     display: block;
-    filter: drop-shadow(0 1px 0 rgba($bg, 0.8));
+    filter: drop-shadow(0 1px 0 color-mix(in srgb, var(--bg) 80%, transparent));
   }
 
   span {
@@ -1066,7 +1067,7 @@ button {
     margin-top: -2px;
     padding: 1px 4px;
     overflow: hidden;
-    color: $bg;
+    color: var(--bg);
     border-radius: 3px;
     background: var(--cursor-color);
     font-family: $font-mono;
@@ -1130,11 +1131,11 @@ button {
   max-height: calc(100vh - 28px);
   padding: 12px;
   overflow: auto;
-  border: 1px solid rgba($text, 0.45);
+  border: 1px solid color-mix(in srgb, var(--text) 45%, transparent);
   border-radius: 5px;
-  background: rgba($bg, 0.96);
-  box-shadow: 4px 4px 0 rgba($text, 0.12);
-  color: $text;
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text);
   font-family: $font-mono;
   font-size: 11px;
 
@@ -1143,7 +1144,7 @@ button {
     align-items: center;
     justify-content: space-between;
     padding-bottom: 8px;
-    border-bottom: 1px solid rgba($text, 0.25);
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
   }
 
   header strong {
@@ -1155,7 +1156,7 @@ button {
     width: 24px;
     height: 24px;
     padding: 0;
-    border: 1px solid rgba($text, 0.35);
+    border: 1px solid color-mix(in srgb, var(--text) 35%, transparent);
     border-radius: 2px;
     background: transparent;
     color: inherit;
@@ -1176,7 +1177,7 @@ button {
   }
 
   dt {
-    color: rgba($text, 0.55);
+    color: color-mix(in srgb, var(--text) 55%, transparent);
     text-transform: uppercase;
   }
 
@@ -1204,7 +1205,7 @@ button {
   }
 
   &__stop-index {
-    color: rgba($text, 0.5);
+    color: color-mix(in srgb, var(--text) 50%, transparent);
     text-align: right;
   }
 
@@ -1227,12 +1228,12 @@ button {
   }
 
   &__stop--current {
-    background: rgba($accent-teal, 0.16);
-    outline: 1px solid rgba($accent-teal, 0.45);
+    background: color-mix(in srgb, var(--accent-teal) 16%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--accent-teal) 45%, transparent);
   }
 
   > small {
-    color: rgba($text, 0.52);
+    color: color-mix(in srgb, var(--text) 52%, transparent);
   }
 }
 
@@ -1243,10 +1244,10 @@ button {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: baseline;
-  color: #fff;
+  color: var(--btn-fg);
   border-radius: 10px;
-  background: $accent-blue;
-  box-shadow: 0 2px 10px $shadow;
+  background: var(--accent-blue);
+  box-shadow: 0 2px 10px var(--shadow);
 
   strong {
     font-size: 14px;
@@ -1262,11 +1263,17 @@ button {
     letter-spacing: 0.08em;
     opacity: 0.9;
   }
+
+  // At night the daylight-blue service bar dims to a lit information panel.
+  @media (prefers-color-scheme: dark) {
+    background: color-mix(in srgb, var(--accent-blue) 22%, var(--surface));
+    color: var(--text);
+  }
 }
 
 .commute-note {
   margin: 18px 0 0;
-  color: $text-faint;
+  color: var(--text-faint);
   font-size: 11px;
   font-style: italic;
   text-align: center;
@@ -1311,17 +1318,17 @@ button {
     align-items: center;
     justify-content: center;
     gap: 14px;
-    color: $text;
-    background-color: $bg;
+    color: var(--text);
+    background-color: var(--bg);
     background-image:
       repeating-linear-gradient(
         0deg,
-        rgba(90, 78, 65, 0.025) 0 1px,
+        color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px,
         transparent 1px 3px
       ),
       repeating-linear-gradient(
         90deg,
-        rgba(90, 78, 65, 0.025) 0 1px,
+        color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px,
         transparent 1px 3px
       );
     text-align: center;
@@ -1335,7 +1342,7 @@ button {
     p {
       max-width: 250px;
       margin: 0;
-      color: $text-muted;
+      color: var(--text-muted);
       font-size: 13px;
       font-style: italic;
       line-height: 1.45;
@@ -1348,7 +1355,7 @@ button {
     position: relative;
     display: block;
     padding-bottom: 5px;
-    border: 2.5px solid $text;
+    border: 2.5px solid var(--text);
     border-radius: 8px;
     animation: phone-turn 2.4s ease-in-out infinite;
 
@@ -1359,7 +1366,7 @@ button {
       bottom: 5px;
       left: 50%;
       border-radius: 2px;
-      background: $text;
+      background: var(--text);
       transform: translateX(-50%);
     }
   }
@@ -1415,7 +1422,7 @@ button {
     padding: 5px 9px;
     gap: 7px;
     border-radius: 8px;
-    background: rgba($surface, 0.9);
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
 
     strong {
       max-width: none;
@@ -1518,16 +1525,16 @@ button {
     align-items: center;
     justify-content: center;
     gap: 14px;
-    background-color: rgba($bg, 0.96);
+    background-color: color-mix(in srgb, var(--bg) 96%, transparent);
     background-image:
       repeating-linear-gradient(
         0deg,
-        rgba(90, 78, 65, 0.025) 0 1px,
+        color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px,
         transparent 1px 3px
       ),
       repeating-linear-gradient(
         90deg,
-        rgba(90, 78, 65, 0.025) 0 1px,
+        color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px,
         transparent 1px 3px
       );
     text-align: center;
@@ -1541,7 +1548,7 @@ button {
     p {
       max-width: 340px;
       margin: 0;
-      color: $text-muted;
+      color: var(--text-muted);
       font-size: 13px;
       font-style: italic;
     }
@@ -1550,11 +1557,11 @@ button {
       min-height: 56px;
       margin-top: 10px;
       padding: 14px 42px;
-      color: $bg;
+      color: var(--btn-fg);
       border: 0;
       border-radius: 999px;
-      background: $accent-teal;
-      box-shadow: 0 2px 10px rgba($text, 0.3);
+      background: var(--accent-teal);
+      box-shadow: 0 2px 10px color-mix(in srgb, var(--text) 30%, transparent);
       font-size: 18px;
       font-weight: 700;
       cursor: pointer;
@@ -1565,7 +1572,7 @@ button {
     }
 
     small {
-      color: $text-faint;
+      color: var(--text-faint);
       font-family: $font-mono;
       font-size: 10px;
       letter-spacing: 0.08em;
@@ -1592,11 +1599,11 @@ button {
     z-index: 30;
     display: grid;
     place-items: center;
-    color: $text;
-    border: 1px solid rgba($text, 0.3);
+    color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--text) 30%, transparent);
     border-radius: 10px;
-    background: rgba($bg, 0.9);
-    box-shadow: 0 1px 4px rgba($text, 0.15);
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--text) 15%, transparent);
     cursor: pointer;
 
     svg {
@@ -1614,10 +1621,10 @@ button {
     left: calc(20px + env(safe-area-inset-left));
     z-index: 30;
     display: block;
-    border: 1.5px solid rgba($text, 0.35);
+    border: 1.5px solid color-mix(in srgb, var(--text) 35%, transparent);
     border-radius: 50%;
-    background: rgba($bg, 0.55);
-    box-shadow: inset 0 2px 8px rgba($text, 0.12);
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    box-shadow: inset 0 2px 8px color-mix(in srgb, var(--text) 12%, transparent);
     touch-action: none;
 
     span {
@@ -1626,10 +1633,10 @@ button {
       position: absolute;
       top: 50%;
       left: 50%;
-      border: 2px solid #35756a;
+      border: 2px solid var(--active-border);
       border-radius: 50%;
-      background: $accent-teal;
-      box-shadow: 0 2px 6px rgba($text, 0.3);
+      background: var(--accent-teal);
+      box-shadow: 0 2px 6px color-mix(in srgb, var(--text) 30%, transparent);
       transform: translate(
         calc(-50% + var(--joystick-x)),
         calc(-50% + var(--joystick-y))
@@ -1646,11 +1653,11 @@ button {
     z-index: 30;
     padding: 9px 20px;
     display: block;
-    color: $bg;
-    border: 2px solid rgba($text, 0.25);
+    color: var(--btn-fg);
+    border: 2px solid color-mix(in srgb, var(--text) 25%, transparent);
     border-radius: 999px;
-    background: $accent-teal;
-    box-shadow: 0 2px 10px rgba($text, 0.3);
+    background: var(--accent-teal);
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--text) 30%, transparent);
     font-size: 13px;
     font-weight: 700;
     white-space: nowrap;
@@ -1661,11 +1668,11 @@ button {
     }
 
     &--stand {
-      background: $accent-plum;
+      background: var(--accent-plum);
     }
 
     &--exit {
-      background: $accent-rust;
+      background: var(--accent-rust);
     }
   }
 
@@ -1685,16 +1692,153 @@ button {
   }
 }
 
+@media (prefers-color-scheme: dark) {
+  .commute-page,
+  .commute-mobile-rotate,
+  .commute-mobile-board {
+    background-color: var(--bg);
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(236, 229, 218, 0.045) 0 1px,
+        transparent 1px 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(236, 229, 218, 0.04) 0 1px,
+        transparent 1px 3px
+      );
+  }
+
+  .landscape-window {
+    background: color-mix(in srgb, var(--bg) 88%, #6b4d34 12%);
+    box-shadow:
+      inset 0 0 24px color-mix(in srgb, var(--accent-gold) 14%, transparent),
+      0 0 18px color-mix(in srgb, var(--accent-gold) 10%, transparent);
+  }
+
+  .landscape {
+    background:
+      repeating-linear-gradient(
+        0deg,
+        rgba(236, 229, 218, 0.045) 0 1px,
+        transparent 1px 3px
+      ),
+      color-mix(in srgb, var(--bg) 86%, #6b4d34 14%);
+  }
+
+  .landscape-cloud,
+  .landscape-contour,
+  .landscape-tree,
+  .landscape-water {
+    stroke: rgba(236, 229, 218, 0.42);
+  }
+
+  .landscape-mountain {
+    stroke: rgba(236, 229, 218, 0.34);
+
+    &--near {
+      fill: rgba(117, 86, 62, 0.58);
+    }
+  }
+
+  .landscape-tree__leaf {
+    fill: rgba(199, 174, 142, 0.62);
+  }
+
+  .station-platform {
+    background-color: color-mix(in srgb, var(--bg) 82%, #76573f 18%);
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(236, 229, 218, 0.055) 0 1px,
+        transparent 1px 21px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(236, 229, 218, 0.055) 0 1px,
+        transparent 1px 33px
+      );
+  }
+
+  .landscape-window--lower .station-platform {
+    background-image: repeating-linear-gradient(
+      90deg,
+      rgba(236, 229, 218, 0.05) 0 1px,
+      transparent 1px 40px
+    );
+  }
+
+  .station-platform__pillar {
+    border-color: rgba(236, 229, 218, 0.12);
+    background: color-mix(in srgb, var(--bg) 76%, var(--accent-gold) 24%);
+  }
+
+  .station-platform__stripe,
+  .station-platform__edge,
+  .warning-strip {
+    filter: saturate(0.72) brightness(0.78);
+    opacity: 0.68;
+  }
+
+  .station-sign {
+    border-color: color-mix(in srgb, var(--station-hue) 62%, var(--accent-gold));
+    background: color-mix(in srgb, var(--bg) 84%, var(--accent-gold) 16%);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--accent-gold) 18%, transparent);
+  }
+
+  .train-car {
+    background-color: color-mix(in srgb, #e7e0d4 94%, var(--accent-gold) 6%);
+    box-shadow:
+      inset 0 0 28px color-mix(in srgb, var(--accent-gold) 10%, transparent),
+      0 4px 18px var(--shadow-strong);
+  }
+
+  .train-car__edge {
+    background: color-mix(in srgb, #f5f0e8 95%, var(--accent-gold) 5%);
+  }
+
+  .train-car__side-door,
+  .train-door__panel {
+    background: #8e877e;
+  }
+
+  .floor-light {
+    box-shadow: 0 0 24px color-mix(in srgb, var(--accent-gold) 28%, transparent);
+
+    &::after {
+      box-shadow: 0 0 18px color-mix(in srgb, var(--accent-gold) 38%, transparent);
+    }
+  }
+
+  .train-seat {
+    &--teal {
+      --seat-bg: #3f8175;
+      --seat-border: #315f58;
+    }
+
+    &--gold {
+      --seat-bg: #b99d4f;
+      --seat-border: #866f31;
+    }
+
+    &--plum {
+      --seat-bg: #745969;
+      --seat-border: #59434f;
+    }
+  }
+}
+
 .commute-toast {
   position: fixed;
   bottom: 90px;
   left: 50%;
   z-index: 20;
   padding: 10px 18px;
-  color: $bg;
+  color: var(--bg);
   border-radius: 8px;
-  background: $text;
-  box-shadow: 0 2px 10px rgba(90, 78, 65, 0.3);
+  background: var(--text);
+  box-shadow: 0 2px 10px var(--shadow-strong);
   font-size: 13px;
   transform: translateX(-50%);
 }
@@ -1762,11 +1906,11 @@ button {
 @keyframes door-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba($accent-gold, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-gold) 0%, transparent);
   }
 
   50% {
-    box-shadow: 0 0 0 6px rgba($accent-gold, 0.35);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-gold) 35%, transparent);
   }
 }
 
@@ -1781,17 +1925,17 @@ button {
 
   35%,
   70% {
-    border-color: rgba($accent-gold, 0.75);
+    border-color: color-mix(in srgb, var(--accent-gold) 75%, transparent);
     background:
       repeating-linear-gradient(
         90deg,
-        rgba($accent-gold, 0.18) 0 2px,
+        color-mix(in srgb, var(--accent-gold) 18%, transparent) 0 2px,
         transparent 2px 5px
       ),
       #4e5351;
     box-shadow:
-      inset -2px 0 rgba($bg, 0.65),
-      0 0 0 3px rgba($accent-gold, 0.2);
+      inset -2px 0 color-mix(in srgb, var(--bg) 65%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--accent-gold) 20%, transparent);
     filter: brightness(1.35);
   }
 }
