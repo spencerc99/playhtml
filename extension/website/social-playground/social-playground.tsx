@@ -99,6 +99,8 @@ async function bootSocial(): Promise<() => void> {
     [FEATURE_ACCESS_STORAGE_KEY]: {
       features: {
         BOTTLES: { stage: "internal", available: true },
+        QUARANTINE_TAPE: { stage: "internal", available: true },
+        INVENTORY: { stage: "internal", available: true },
         PAGE_COLLECTION: { stage: "internal", available: true },
         EMOTES: { stage: "internal", available: true },
       },
@@ -106,6 +108,8 @@ async function bootSocial(): Promise<() => void> {
     },
     [FEATURE_OVERRIDES_STORAGE_KEY]: {
       BOTTLES: true,
+      QUARANTINE_TAPE: true,
+      INVENTORY: true,
       PAGE_COLLECTION: true,
       EMOTES: true,
     },
@@ -337,7 +341,7 @@ bootSocial()
   .then(() => {
     if (statusEl)
       statusEl.textContent =
-        "live — satchel left; synced bottles on this page; emote wheel on Cmd/Ctrl+Shift+E";
+        "live — satchel left; bottles and quarantine tape on this page; emote wheel on Cmd/Ctrl+Shift+E";
   })
   .catch((err) => {
     console.error("[social-playground] live boot failed:", err);

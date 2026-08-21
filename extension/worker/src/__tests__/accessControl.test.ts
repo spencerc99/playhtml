@@ -22,6 +22,7 @@ const SECOND_PUBLIC_ID = `pk_${'b'.repeat(130)}`;
 const schema = [
   '../../migrations/0001_access_control.sql',
   '../../migrations/0002_quarantine_tape_feature.sql',
+  '../../migrations/0003_quarantine_tape_images.sql',
 ].map((path) => readFileSync(
   fileURLToPath(new URL(path, import.meta.url)),
   'utf8',
