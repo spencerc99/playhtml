@@ -11,7 +11,6 @@ import { createSlowModeNavigationHandler } from "./slowModeBackground";
 
 function emptyState(): SlowModeState {
   return {
-    farJumpCountByDay: {},
     lastCommuteAt: null,
     lastCommuteByDomain: {},
     rides: [],
@@ -62,7 +61,6 @@ describe("Slow Mode browser interception", () => {
       stopCount: 2,
       outcome: "riding",
     });
-    expect(state.farJumpCountByDay["2026-08-21"]).toBe(1);
   });
 
   it("does not redirect subframes or link navigations", async () => {

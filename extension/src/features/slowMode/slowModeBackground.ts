@@ -7,10 +7,8 @@ import {
   SLOW_MODE_STATE_KEY,
   createCommuteUrl,
   evaluateSlowModeNavigation,
-  isFarJump,
   normalizeSlowModeSettings,
   normalizeSlowModeState,
-  recordFarJump,
   recordSlowModeRide,
 } from "./slowMode";
 
@@ -84,11 +82,6 @@ export function createSlowModeNavigationHandler(
           stored[SLOW_MODE_SETTINGS_KEY],
         );
         let state = normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY]);
-        const farJump = isFarJump(navigation);
-        if (farJump) {
-          state = recordFarJump(state, dependencies.now());
-        }
-
         const now = dependencies.now();
         const decision = evaluateSlowModeNavigation(
           navigation,
@@ -98,9 +91,6 @@ export function createSlowModeNavigationHandler(
           dependencies.random,
         );
         if (!decision.shouldCommute) {
-          if (farJump) {
-            await dependencies.setStorage({ [SLOW_MODE_STATE_KEY]: state });
-          }
           return;
         }
 

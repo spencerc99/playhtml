@@ -17,7 +17,6 @@ const NOW = new Date("2026-08-21T17:00:00-07:00").getTime();
 
 function emptyState(): SlowModeState {
   return {
-    farJumpCountByDay: {},
     lastCommuteAt: null,
     lastCommuteByDomain: {},
     rides: [],
@@ -180,6 +179,24 @@ describe("Slow Mode consent gates", () => {
       evaluateSlowModeNavigation(
         navigation,
         settings,
+        domainState,
+        NOW,
+        () => 0,
+      ).reason,
+    ).toBe("domain-cooldown");
+  });
+
+  it("shares the daily cooldown across subdomains", () => {
+    const domainState = emptyState();
+    domainState.lastCommuteByDomain["example.com"] = "2026-08-21";
+
+    expect(
+      evaluateSlowModeNavigation(
+        {
+          ...navigation,
+          destinationUrl: "https://news.example.com/article",
+        },
+        { enabled: true, chancePercent: 100 },
         domainState,
         NOW,
         () => 0,

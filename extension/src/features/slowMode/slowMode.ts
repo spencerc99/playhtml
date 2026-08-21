@@ -30,7 +30,6 @@ export interface SlowModeRide {
 }
 
 export interface SlowModeState {
-  farJumpCountByDay: Record<string, number>;
   lastCommuteAt: number | null;
   lastCommuteByDomain: Record<string, string>;
   rides: SlowModeRide[];
@@ -151,7 +150,8 @@ function siteDomain(url: URL): string | null {
 }
 
 export function destinationDomain(destinationUrl: string): string {
-  return new URL(destinationUrl).hostname.replace(/^www\./, "").toLowerCase();
+  const url = new URL(destinationUrl);
+  return siteDomain(url) ?? url.hostname.replace(/^www\./, "").toLowerCase();
 }
 
 export function dayKey(timestamp: number): string {
@@ -231,20 +231,6 @@ export function evaluateSlowModeNavigation(
   return { shouldCommute: true, reason: "commute" };
 }
 
-export function recordFarJump(
-  state: SlowModeState,
-  timestamp: number,
-): SlowModeState {
-  const today = dayKey(timestamp);
-  return {
-    ...state,
-    farJumpCountByDay: {
-      ...state.farJumpCountByDay,
-      [today]: (state.farJumpCountByDay[today] ?? 0) + 1,
-    },
-  };
-}
-
 export function recordSlowModeRide(
   state: SlowModeState,
   ride: Omit<SlowModeRide, "id" | "destinationDomain">,
@@ -314,7 +300,6 @@ export function normalizeSlowModeSettings(value: unknown): SlowModeSettings {
 
 export function normalizeSlowModeState(value: unknown): SlowModeState {
   const empty: SlowModeState = {
-    farJumpCountByDay: {},
     lastCommuteAt: null,
     lastCommuteByDomain: {},
     rides: [],
@@ -322,10 +307,6 @@ export function normalizeSlowModeState(value: unknown): SlowModeState {
   if (!value || typeof value !== "object") return empty;
   const stored = value as Partial<SlowModeState>;
   return {
-    farJumpCountByDay:
-      stored.farJumpCountByDay && typeof stored.farJumpCountByDay === "object"
-        ? stored.farJumpCountByDay
-        : {},
     lastCommuteAt:
       typeof stored.lastCommuteAt === "number" ? stored.lastCommuteAt : null,
     lastCommuteByDomain:

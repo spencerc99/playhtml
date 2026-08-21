@@ -868,6 +868,10 @@ button {
   position: relative;
 }
 
+.commute-page--train-arriving .train-car-wrap {
+  animation: train-pull-in 2.8s cubic-bezier(0.22, 0.75, 0.35, 1) both;
+}
+
 .train-car {
   width: 1100px;
   height: 360px;
@@ -1890,6 +1894,16 @@ button {
 }
 
 @keyframes station-arrive {
+  from {
+    transform: translateX(115%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes train-pull-in {
   from {
     transform: translateX(115%);
   }

@@ -16,7 +16,6 @@ import {
 } from "../features/slowMode/slowMode";
 
 const EMPTY_STATE: SlowModeState = {
-  farJumpCountByDay: {},
   lastCommuteAt: null,
   lastCommuteByDomain: {},
   rides: [],
@@ -135,8 +134,8 @@ export function SlowModeSettings() {
           </ol>
         )}
         <footer>
-          <span>{state.farJumpCountByDay[today] ?? 0} far jumps</span>
-          <span>{ridesToday.length} commutes</span>
+          {ridesToday.length}{" "}
+          {ridesToday.length === 1 ? "commute" : "commutes"}
         </footer>
       </div>
     </section>

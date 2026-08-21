@@ -1702,6 +1702,9 @@ function InternetCommute() {
       ? currentStop
       : stops[timing.departureStopIndex];
   const platformAtOrigin = timing.atOrigin || departingOrigin;
+  const trainIsPullingIn = Boolean(
+    SLOW_MODE_REQUEST && slowModeRoute && timing.atOrigin,
+  );
 
   const finishSlowModeRide = useCallback(
     async (outcome: SlowModeRideOutcome, url: string) => {
@@ -1720,7 +1723,9 @@ function InternetCommute() {
 
   return (
     <main
-      className="commute-page"
+      className={`commute-page ${
+        trainIsPullingIn ? "commute-page--train-arriving" : ""
+      }`}
       data-service-id={serviceConnection.service?.id}
       data-service-started-at={serviceConnection.service?.startedAt}
       data-service-elapsed-seconds={elapsedSeconds}

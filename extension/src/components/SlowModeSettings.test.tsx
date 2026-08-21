@@ -20,7 +20,6 @@ describe("SlowModeSettings", () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
       [SLOW_MODE_SETTINGS_KEY]: { enabled: true, chancePercent: 40 },
       [SLOW_MODE_STATE_KEY]: {
-        farJumpCountByDay: {},
         lastCommuteAt: null,
         lastCommuteByDomain: {},
         rides: [],
