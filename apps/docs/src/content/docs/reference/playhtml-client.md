@@ -31,7 +31,7 @@ await playhtml.init();
 |---|---|
 | Lifecycle | `init`, `configure`, `ready`, `isLoading`, `handleNavigation` |
 | Element setup & teardown | `setupPlayElements`, `setupPlayElement`, `setupPlayElementForTag`, `removePlayElement`, `deleteElementData` |
-| Custom elements _(experimental)_ | `register`, `define`, `getHandle` |
+| Custom elements | `register`, `define`, `getHandle` |
 | Events | `dispatchPlayEvent`, `registerPlayEventListener`, `removePlayEventListener` |
 | Page data | `createPageData` |
 | Presence | `presence`, `createPresenceRoom`, `cursorClient` |
@@ -132,11 +132,13 @@ See [Navigation & SPAs](/docs/advanced/navigation/) for a full guide and framewo
 
 **Signature:** `setupPlayElement(element: Element, options?: { ignoreIfAlreadySetup?: boolean }): void`
 
-Registers one element after `init()`. Use for elements added dynamically.
+Registers one element after `init()`. Use for dynamically added built-in or defined capabilities.
 
 Pass `{ ignoreIfAlreadySetup: true }` to skip elements that are already registered.
 
 The element needs a unique `id`.
+
+For a one-off custom element, use [`register(elementOrId, initializer)`](#registerelementorid-init). It binds the element automatically, so it does not need a separate `setupPlayElement` call.
 
 ```js
 const card = document.createElement("div");
@@ -205,30 +207,44 @@ Throws a console warning if called before `init()` completes sync.
 
 ---
 
-## Custom elements (experimental)
+## Custom elements
 
-:::caution[Experimental]
-`register`, `define`, and `getHandle` are part of the new view API and are **experimental** — signatures may change in a future minor release. The imperative `can-play` path (`updateElement`) is unaffected. Feedback welcome on [#95](https://github.com/spencerc99/playhtml/issues/95).
-:::
+Use `register` for one custom element and `define` for a reusable capability. Both accept an `ElementInitializer` with either the supported imperative `updateElement` renderer or the experimental declarative `view` renderer. See [Registration API](/docs/reference/view-api/).
 
-These three methods are part of the experimental view API. See [View API](/docs/reference/view-api/).
+### `register(elementOrId, init)`
 
-### `register(elementId, init)`
+**Signatures:**
 
-**Signature:** `register<T, U, V>(elementId: string, init: ElementInitializer<T, U, V>): PlayElementHandle<T, U, V>`
+```ts
+register<T, U, V>(
+  elementId: string,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>
 
-Binds an initializer to one element by id. Returns a handle for reads and writes from outside the element's own callbacks. Callable before or after `init()` and before or after the element exists in the DOM.
+register<T, U, V>(
+  element: HTMLElement,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>
+```
+
+Binds an initializer to one element. Pass a string id before the element exists, or pass an existing HTML element to bind that node directly. The element form requires a non-empty `id`. Both forms return a handle for reads and writes outside the element's callbacks.
 
 ```js
-const handle = playhtml.register("my-counter", {
+const counter = document.getElementById("my-counter");
+const handle = playhtml.register(counter, {
   defaultData: { count: 0 },
-  view: ({ data, setData }) => html`
-    <button @click=${() => setData(d => { d.count++ })}>
-      Clicked ${data.count} times
-    </button>
-  `,
+  onClick: (_event, { setData }) => {
+    setData((data) => {
+      data.count += 1;
+    });
+  },
+  updateElement: ({ element, data }) => {
+    element.textContent = `Clicked ${data.count} times`;
+  },
 });
 ```
+
+Directly assigning initializer fields to an element remains supported for compatibility, but is deprecated for vanilla code.
 
 ---
 
@@ -236,7 +252,7 @@ const handle = playhtml.register("my-counter", {
 
 **Signature:** `define<T, U, V>(capabilityName: string, init: ElementInitializer<T, U, V>): void`
 
-Registers a reusable capability under an attribute name. Every element carrying `[capabilityName]` binds, including elements added to the DOM later. The runtime equivalent of `init({ extraCapabilities })`.
+Registers a reusable capability under an attribute name. Matching elements already on the page bind immediately, as do matching descendants rendered by a registered view. Call `setupPlayElement(element)` for other elements added after initialization. `define` is the runtime equivalent of `init({ extraCapabilities })`.
 
 ```js
 playhtml.define("can-note", {

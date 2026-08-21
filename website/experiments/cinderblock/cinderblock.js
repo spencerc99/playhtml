@@ -510,9 +510,11 @@ const yard = new CinderblockYard({
   status: requireElement("yard-status"),
 });
 
-yardElement.defaultData = createDefaultYard();
-yardElement.updateElement = ({ data }) => yard.applySharedState(data);
-yardElement.onMount = ({ getData, setData }) => yard.mount({ getData, setData });
+playhtml.register("cinderblock-yard", {
+  defaultData: createDefaultYard(),
+  updateElement: ({ data }) => yard.applySharedState(data),
+  onMount: ({ getData, setData }) => yard.mount({ getData, setData }),
+});
 
 playhtml.init({
   room: window.location.pathname,
