@@ -8,6 +8,9 @@ export const PLATFORM_SECONDS = 5;
 export const DEPARTURE_SECONDS = 2.6;
 export const RETURN_TRAVEL_SECONDS = 6;
 export const RETURN_ARRIVAL_SECONDS = 4;
+export const SLOW_MODE_APPROACH_SECONDS = 5;
+export const SLOW_MODE_BOARDING_SECONDS = 4;
+export const SLOW_MODE_TRAIN_PULL_IN_SECONDS = 2;
 
 export interface CommuteDurations {
   initialPlatformSeconds: number;
@@ -31,10 +34,26 @@ export const DEFAULT_COMMUTE_DURATIONS: CommuteDurations = {
 
 export const SLOW_MODE_DURATIONS: CommuteDurations = {
   ...DEFAULT_COMMUTE_DURATIONS,
-  initialPlatformSeconds: 5,
+  initialPlatformSeconds:
+    SLOW_MODE_APPROACH_SECONDS + SLOW_MODE_BOARDING_SECONDS,
   travelSeconds: 12,
   platformSeconds: 8,
 };
+
+export type SlowModePlatformPhase = "waiting" | "arriving" | "boarding";
+
+export function getSlowModePlatformPhase(
+  secondsLeft: number,
+): SlowModePlatformPhase {
+  if (secondsLeft <= SLOW_MODE_BOARDING_SECONDS) return "boarding";
+  if (
+    secondsLeft <=
+    SLOW_MODE_BOARDING_SECONDS + SLOW_MODE_TRAIN_PULL_IN_SECONDS
+  ) {
+    return "arriving";
+  }
+  return "waiting";
+}
 
 export type CommutePhase = "stopped" | "riding" | "arriving";
 

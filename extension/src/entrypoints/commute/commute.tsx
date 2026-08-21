@@ -11,6 +11,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
+import trainAeolusUrl from "../../assets/train-aeolus.png";
 import {
   PlayProvider,
   usePlayContext,
@@ -45,11 +46,13 @@ import {
 } from "./commuteService";
 import {
   DEPARTURE_SECONDS,
+  getSlowModePlatformPhase,
   getSlowModeProgress,
   getCommuteTiming,
   INITIAL_PLATFORM_SECONDS,
   SLOW_MODE_DURATIONS,
   type CommutePhase,
+  type SlowModePlatformPhase,
 } from "./commuteTiming";
 import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import {
@@ -497,6 +500,45 @@ function CursorRider({
       </svg>
       {(isYou || label) && <span>{isYou ? "you" : label}</span>}
     </span>
+  );
+}
+
+function SlowModePlatformScene({
+  cursorColor,
+  destinationDomain,
+  secondsLeft,
+}: {
+  cursorColor: string;
+  destinationDomain: string;
+  secondsLeft: number;
+}) {
+  const phase = getSlowModePlatformPhase(secondsLeft);
+
+  return (
+    <section
+      className={`slow-mode-platform slow-mode-platform--${phase}`}
+      aria-label="Waiting at home station for the Slow Mode train"
+    >
+      <span className="slow-mode-platform__stripe" />
+      <span className="slow-mode-platform__pillar slow-mode-platform__pillar--left" />
+      <span className="slow-mode-platform__pillar slow-mode-platform__pillar--right" />
+      <span className="slow-mode-platform__edge" />
+      <strong className="slow-mode-platform__sign">home station</strong>
+
+      <span className="slow-mode-platform__train">
+        <span className="slow-mode-platform__service">
+          local · {destinationDomain}
+        </span>
+        <img
+          src={trainAeolusUrl}
+          alt="A streamlined train pulling into home station"
+        />
+      </span>
+
+      <span className="slow-mode-platform__rider">
+        <CursorRider color={cursorColor} label="you" isYou />
+      </span>
+    </section>
   );
 }
 
@@ -1414,6 +1456,7 @@ function Banner({
   hasSeat,
   routeComplete,
   waitingForFreshStops,
+  slowModePlatformPhase,
 }: {
   phase: CommutePhase;
   secondsLeft: number;
@@ -1422,6 +1465,7 @@ function Banner({
   hasSeat: boolean;
   routeComplete: boolean;
   waitingForFreshStops: boolean;
+  slowModePlatformPhase?: SlowModePlatformPhase;
 }) {
   let message: React.ReactNode;
   let mobileMessage: React.ReactNode;
@@ -1455,9 +1499,23 @@ function Banner({
     mobileMessage = "waiting for a stop";
   } else if (atOrigin) {
     message = destinationLabel("next train to");
-    aside = `route starts in ${secondsLeft}s`;
-    instruction = "click the carriage to move or an empty seat to sit";
-    mobileMessage = `${secondsLeft}s · departure`;
+    if (slowModePlatformPhase === "boarding") {
+      aside = `doors close in ${secondsLeft}s`;
+      instruction = "doors open — stepping in";
+      mobileMessage = `${secondsLeft}s · boarding`;
+    } else if (slowModePlatformPhase) {
+      const arrivalSeconds = secondsLeft - 4;
+      aside =
+        arrivalSeconds > 1
+          ? `arriving in ${arrivalSeconds}s`
+          : "now arriving";
+      instruction = "the train is pulling in — this is your one beat to bail";
+      mobileMessage = `${Math.max(1, arrivalSeconds)}s · arriving`;
+    } else {
+      aside = `route starts in ${secondsLeft}s`;
+      instruction = "click the carriage to move or an empty seat to sit";
+      mobileMessage = `${secondsLeft}s · departure`;
+    }
   } else if (phase === "stopped") {
     message = `now stopped at ${stopName}`;
     aside = secondsLeft > 0 ? `doors close in ${secondsLeft}s` : "doors are open";
@@ -1700,17 +1758,21 @@ function InternetCommute() {
         }
       : routeTiming;
   const currentStop = stops[timing.stopIndex];
+  const initialPlatformSeconds = SLOW_MODE_REQUEST
+    ? SLOW_MODE_DURATIONS.initialPlatformSeconds
+    : INITIAL_PLATFORM_SECONDS;
   const departingOrigin =
     timing.phase === "riding" &&
-    elapsedSeconds < INITIAL_PLATFORM_SECONDS + DEPARTURE_SECONDS;
+    elapsedSeconds < initialPlatformSeconds + DEPARTURE_SECONDS;
   const platformStop =
     timing.departureStopIndex === null
       ? currentStop
       : stops[timing.departureStopIndex];
   const platformAtOrigin = timing.atOrigin || departingOrigin;
-  const trainIsPullingIn = Boolean(
-    SLOW_MODE_REQUEST && slowModeRoute && timing.atOrigin,
-  );
+  const slowModePlatformPhase =
+    SLOW_MODE_REQUEST && slowModeRoute && timing.atOrigin
+      ? getSlowModePlatformPhase(timing.secondsLeft)
+      : undefined;
 
   const finishSlowModeRide = useCallback(
     async (outcome: SlowModeRideOutcome, url: string) => {
@@ -1729,9 +1791,7 @@ function InternetCommute() {
 
   return (
     <main
-      className={`commute-page ${
-        trainIsPullingIn ? "commute-page--train-arriving" : ""
-      }`}
+      className="commute-page"
       data-service-id={serviceConnection.service?.id}
       data-service-started-at={serviceConnection.service?.startedAt}
       data-service-elapsed-seconds={elapsedSeconds}
@@ -1786,6 +1846,7 @@ function InternetCommute() {
           waitingForFreshStops={
             waitingForFreshStops && SLOW_MODE_REQUEST === null
           }
+          slowModePlatformPhase={slowModePlatformPhase}
         />
 
         {SLOW_MODE_REQUEST && timing.atOrigin && (
@@ -1843,6 +1904,14 @@ function InternetCommute() {
               continue to {new URL(SLOW_MODE_REQUEST.destinationUrl).hostname} →
             </button>
           </section>
+        ) : SLOW_MODE_REQUEST && slowModeRoute && timing.atOrigin ? (
+          <SlowModePlatformScene
+            cursorColor="#3d3833"
+            destinationDomain={new URL(
+              SLOW_MODE_REQUEST.destinationUrl,
+            ).hostname.replace(/^www\./, "")}
+            secondsLeft={timing.secondsLeft}
+          />
         ) : (
           <CommuteStage>
             <LandscapeWindow

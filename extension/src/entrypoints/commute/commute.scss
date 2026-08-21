@@ -845,6 +845,143 @@ button {
   }
 }
 
+.slow-mode-platform {
+  width: 1100px;
+  height: 340px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba($text, 0.25);
+  border-radius: 10px;
+  background-color: #f1ece0;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(90, 78, 65, 0.06) 0 1px,
+      transparent 1px 34px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(90, 78, 65, 0.06) 0 1px,
+      transparent 1px 46px
+    );
+}
+
+.slow-mode-platform__stripe {
+  height: 14px;
+  position: absolute;
+  top: 64px;
+  right: 0;
+  left: 0;
+  background: $accent-teal;
+  opacity: 0.85;
+}
+
+.slow-mode-platform__pillar {
+  width: 26px;
+  position: absolute;
+  top: 0;
+  bottom: 130px;
+  border: 1px solid rgba($text, 0.18);
+  background: #ded8ca;
+
+  &--left {
+    left: 180px;
+  }
+
+  &--right {
+    right: 180px;
+  }
+}
+
+.slow-mode-platform__edge {
+  height: 10px;
+  position: absolute;
+  right: 0;
+  bottom: 122px;
+  left: 0;
+  border-top: 1px solid rgba($text, 0.15);
+  background: repeating-linear-gradient(
+    90deg,
+    $accent-gold 0 26px,
+    #c9a94a 26px 52px
+  );
+}
+
+.slow-mode-platform__sign {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  z-index: 2;
+  padding: 8px 22px;
+  border: 1px solid rgba($text, 0.2);
+  border-bottom: 3px solid $accent-teal;
+  border-radius: 4px;
+  background: $bg;
+  box-shadow: 0 1px 4px rgba(90, 78, 65, 0.12);
+  font-family: $font-mono;
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  transform: translateX(-50%);
+}
+
+.slow-mode-platform__train {
+  height: 140px;
+  position: absolute;
+  right: 60px;
+  bottom: 8px;
+  left: 60px;
+  z-index: 3;
+  display: grid;
+  place-items: end center;
+  transform: translateX(115%);
+  transition: transform 2.8s cubic-bezier(0.22, 0.75, 0.35, 1);
+
+  img {
+    width: 100%;
+    height: 130px;
+    display: block;
+    object-fit: contain;
+    filter: sepia(0.18) contrast(0.9);
+    opacity: 0.9;
+  }
+}
+
+.slow-mode-platform--arriving .slow-mode-platform__train,
+.slow-mode-platform--boarding .slow-mode-platform__train {
+  transform: translateX(0);
+}
+
+.slow-mode-platform__service {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  z-index: 1;
+  padding: 2px 12px;
+  color: $accent-gold;
+  border-radius: 4px;
+  background: $text;
+  font-family: $font-mono;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.slow-mode-platform__rider {
+  position: absolute;
+  bottom: 138px;
+  left: 17%;
+  z-index: 4;
+  transition:
+    left 1.8s cubic-bezier(0.2, 0.8, 0.3, 1),
+    opacity 0.6s ease 1.6s;
+}
+
+.slow-mode-platform--boarding .slow-mode-platform__rider {
+  left: 46.5%;
+  opacity: 0;
+}
+
 .stop-favicon {
   display: grid;
   place-items: center;
@@ -866,10 +1003,6 @@ button {
 .train-car-wrap {
   width: 1100px;
   position: relative;
-}
-
-.commute-page--train-arriving .train-car-wrap {
-  animation: train-pull-in 2.8s cubic-bezier(0.22, 0.75, 0.35, 1) both;
 }
 
 .train-car {
@@ -1894,16 +2027,6 @@ button {
 }
 
 @keyframes station-arrive {
-  from {
-    transform: translateX(115%);
-  }
-
-  to {
-    transform: translateX(0);
-  }
-}
-
-@keyframes train-pull-in {
   from {
     transform: translateX(115%);
   }
