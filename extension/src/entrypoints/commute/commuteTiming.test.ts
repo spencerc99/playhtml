@@ -5,9 +5,26 @@ import { describe, expect, it } from "vitest";
 import {
   getCommuteRouteDurationSeconds,
   getCommuteTiming,
+  SLOW_MODE_DURATIONS,
 } from "./commuteTiming";
 
 describe("getCommuteTiming", () => {
+  it("uses the Slow Mode platform, leg, and dwell durations", () => {
+    expect(getCommuteTiming(4, 3, SLOW_MODE_DURATIONS)).toMatchObject({
+      phase: "stopped",
+      secondsLeft: 1,
+      atOrigin: true,
+    });
+    expect(getCommuteTiming(5, 3, SLOW_MODE_DURATIONS)).toMatchObject({
+      phase: "riding",
+      secondsLeft: 12,
+    });
+    expect(getCommuteTiming(21, 3, SLOW_MODE_DURATIONS)).toMatchObject({
+      phase: "stopped",
+      secondsLeft: 8,
+      stopIndex: 0,
+    });
+  });
   it("starts at the origin with open doors", () => {
     expect(getCommuteTiming(0, 5)).toEqual({
       phase: "stopped",

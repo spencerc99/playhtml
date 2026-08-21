@@ -233,6 +233,186 @@ button {
   }
 }
 
+.slow-mode-progress {
+  width: min(100%, 1100px);
+  margin: 0 auto 8px;
+  padding: 10px 16px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 8px;
+  background: #f5f0e8;
+  box-shadow: 0 1px 4px rgba(90, 78, 65, 0.08);
+
+  &__map {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+
+    > span:not(.slow-mode-progress__origin) {
+      width: 13px;
+      height: 13px;
+      flex: 0 0 13px;
+      box-sizing: border-box;
+      border: 2px solid #b5aea5;
+      border-radius: 50%;
+      background: #f5f0e8;
+
+      &.is-complete {
+        border-color: #4a9a8a;
+        background: #4a9a8a;
+      }
+
+      &.is-destination {
+        border-radius: 3px;
+      }
+    }
+
+    > i {
+      min-width: 12px;
+      flex: 1;
+      border-top: 2px dashed #b5aea5;
+
+      &.is-complete {
+        border-top-style: solid;
+        border-color: #4a9a8a;
+      }
+    }
+  }
+
+  &__origin {
+    color: #8a8279;
+    font-family: var(--wwo-font-mono);
+    font-size: 9px;
+  }
+
+  > strong {
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  &__pill {
+    display: none;
+  }
+}
+
+.slow-mode-teleport {
+  display: block;
+  margin: -4px auto 10px;
+  padding: 3px 7px;
+  border: 0;
+  background: transparent;
+  color: #8a8279;
+  font-family: var(--wwo-font-mono);
+  font-size: 10px;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: #3d3833;
+  }
+}
+
+.slow-mode-portal {
+  position: absolute;
+  z-index: 12;
+  top: 132px;
+  left: 516px;
+  width: 68px;
+  height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: #6a6154;
+  cursor: pointer;
+  user-select: none;
+
+  > span {
+    width: 34px;
+    height: 52px;
+    border: 2px solid #4a9a8a;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, #f5f0e8 0 42%, #73b3a6 46% 52%, transparent 56%);
+    box-shadow: 0 0 8px rgba(74, 154, 138, 0.35);
+    transition: transform 2s linear, box-shadow 2s linear;
+  }
+
+  small {
+    font-family: var(--wwo-font-mono);
+    font-size: 8px;
+    white-space: nowrap;
+  }
+
+  &--holding > span {
+    transform: scale(1.35);
+    box-shadow: 0 0 24px rgba(74, 154, 138, 0.85);
+  }
+}
+
+.slow-mode-summary {
+  width: min(100%, 620px);
+  margin: 24px auto;
+  padding: 28px;
+  box-sizing: border-box;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 12px;
+  background: #f5f0e8;
+
+  > span {
+    color: #8a8279;
+    font-family: var(--wwo-font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    margin: 5px 0 16px;
+    font-size: 22px;
+  }
+
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid rgba(90, 78, 65, 0.15);
+
+    > span,
+    small {
+      color: #8a8279;
+      font-family: var(--wwo-font-mono);
+      font-size: 9px;
+    }
+  }
+
+  button {
+    width: 100%;
+    margin-top: 18px;
+    padding: 10px 14px;
+    border: 1px solid #4a9a8a;
+    border-radius: 7px;
+    background: #4a9a8a;
+    color: #faf7f2;
+    font-family: var(--wwo-font-mono);
+    cursor: pointer;
+  }
+}
+
 .commute-banner__mobile-message {
   display: none;
 }
@@ -1793,6 +1973,30 @@ button {
       inset -2px 0 rgba($bg, 0.65),
       0 0 0 3px rgba($accent-gold, 0.2);
     filter: brightness(1.35);
+  }
+}
+
+@media (max-width: 720px) {
+  .slow-mode-progress {
+    width: auto;
+    margin: 0 12px 8px;
+    padding: 7px 10px;
+
+    &__map,
+    > strong {
+      display: none;
+    }
+
+    &__pill {
+      display: inline-flex;
+      margin-left: auto;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #4a9a8a;
+      color: #faf7f2;
+      font-family: var(--wwo-font-mono);
+      font-size: 10px;
+    }
   }
 }
 
