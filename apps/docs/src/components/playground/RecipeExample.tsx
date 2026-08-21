@@ -19,8 +19,11 @@ type RecipeExampleProps = {
   frameHeight?: string;
 };
 
-function makeRoomId(recipeId: string): string {
-  return `example-${recipeId}-${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+export function resolveExampleRoomId(url: URL): string {
+  const existingRoom = url.searchParams.get("room");
+  return existingRoom && isValidRoomId(existingRoom)
+    ? existingRoom
+    : url.pathname;
 }
 
 export function RecipeExample({
@@ -34,18 +37,7 @@ export function RecipeExample({
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    const existingRoom = url.searchParams.get("room");
-    const nextRoom =
-      existingRoom && isValidRoomId(existingRoom)
-        ? existingRoom
-        : makeRoomId(recipe.id);
-
-    if (existingRoom !== nextRoom) {
-      url.searchParams.set("room", nextRoom);
-      history.replaceState(null, "", url);
-    }
-
-    setRoomId(nextRoom);
+    setRoomId(resolveExampleRoomId(url));
   }, [recipe.id]);
 
   useEffect(() => {

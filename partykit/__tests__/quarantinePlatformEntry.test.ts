@@ -59,14 +59,18 @@ const supabaseStub = {
         return {
           eq() {
             return {
-              maybeSingle: async () => {
-                documentReadCount += 1;
+              abortSignal() {
                 return {
-                  data:
-                    persistedRow.document === null
-                      ? null
-                      : { document: persistedRow.document },
-                  error: null,
+                  maybeSingle: async () => {
+                    documentReadCount += 1;
+                    return {
+                      data:
+                        persistedRow.document === null
+                          ? null
+                          : { document: persistedRow.document },
+                      error: null,
+                    };
+                  },
                 };
               },
             };

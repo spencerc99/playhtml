@@ -1,7 +1,7 @@
 // ABOUTME: Shared types, interfaces, and capability initializers for the playhtml library.
 // ABOUTME: Exports element capabilities, event handler types, and built-in tag definitions.
 import { canMirrorInitializer, type ElementState } from "./canMirror";
-export type { ElementState } from "./canMirror";
+export { observeElementChanges, type ElementState } from "./canMirror";
 
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
 export * from "./presence-protocol";

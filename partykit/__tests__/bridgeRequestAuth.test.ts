@@ -101,6 +101,7 @@ async function createPartyServerHarness() {
   });
   Object.assign(server, {
     persistenceMode: { kind: "available" },
+    documentLoadCompleted: true,
     bridgeHealth: { reset() {} },
     getSubscribers: async () => subscribers,
     setSubscribers: async (nextSubscribers: typeof subscribers) => {

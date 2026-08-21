@@ -19,26 +19,26 @@ import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { ScrapCollector } from "../collectors/ScrapCollector";
+import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+} from "../collectors/modes";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
-import { FLAGS } from "../flags";
+import { isFeatureEnabled } from "../features/featureAccess";
 import { shouldStartExtensionPresence } from "./content/presencePolicy";
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
+import { isExtensionPageUrl } from "../utils/extensionPage";
 
-async function internalDevFeaturesEnabled(): Promise<boolean> {
-  try {
-    const result = await browser.storage.local.get("internalDevFeaturesEnabled");
-    return Boolean(result.internalDevFeaturesEnabled);
-  } catch {
-    return false;
-  }
-}
-
+// Scraps are local-only, so normalize any unsupported stored mode before the
+// collector starts.
 async function ensureScrapCollectionMode(): Promise<void> {
-  const key = "collection_mode_element";
+  const key = collectionModeStorageKey("element");
   const result = await browser.storage.local.get(key);
-  if (result[key] === undefined) {
-    await browser.storage.local.set({ [key]: "local" });
+  const stored = result[key];
+  const normalized = normalizeCollectionMode("element", stored);
+  if (stored !== normalized) {
+    await browser.storage.local.set({ [key]: normalized });
   }
 }
 
@@ -50,8 +50,7 @@ export default defineContentScript({
     // Don't run collectors or extension features on extension-internal pages
     // (portrait, popup, options, etc.) — they generate noise and can trigger
     // the 64MiB sendMessage limit when the portrait page requests all events.
-    const proto = window.location.protocol;
-    if (proto === "chrome-extension:" || proto === "moz-extension:") {
+    if (isExtensionPageUrl(window.location.href)) {
       return;
     }
 
@@ -98,7 +97,7 @@ export default defineContentScript({
           this.setupPresenceDetection();
           this.setupSignChallengeBridge();
 
-          if (await this.areInternalDevFeaturesEnabled()) {
+          if (await isFeatureEnabled("PAGE_COLLECTION")) {
             // Check if this is a new site discovery
             await this.checkSiteDiscovery();
 
@@ -142,17 +141,6 @@ export default defineContentScript({
             }),
           );
         });
-      }
-
-      private async areInternalDevFeaturesEnabled(): Promise<boolean> {
-        try {
-          const result = await browser.storage.local.get([
-            "internalDevFeaturesEnabled",
-          ]);
-          return result.internalDevFeaturesEnabled === true;
-        } catch {
-          return false;
-        }
       }
 
       private detectExistingPlayHTML() {
@@ -1115,6 +1103,8 @@ export default defineContentScript({
       }
 
       private async setupPresence() {
+        if (!(await isFeatureEnabled("COPRESENCE"))) return;
+
         // On pages that already run playhtml, defer presence/cursors to the
         // page's instance (we only inject our identity). We don't stand up our
         // own cursor instance here — but bottles still get one later via
@@ -1183,10 +1173,9 @@ export default defineContentScript({
           }
           // Emote wheel rides the same cursor layer; peers are only present
           // where cursors are enabled, so it lives inside this block. Gated
-          // behind internal-dev mode (Cmd+Shift+. in the popup) while it's still
-          // in progress — not shipped to all users yet.
+          // behind its feature gate while it is still in progress.
           const cursorClient = playhtml.cursorClient;
-          if (cursorClient && (await this.areInternalDevFeaturesEnabled())) {
+          if (cursorClient && (await isFeatureEnabled("EMOTES"))) {
             try {
               const { initEmotes } = await import("../features/emotes");
               this.emoteCleanup = initEmotes({
@@ -1331,7 +1320,7 @@ export default defineContentScript({
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
 
-        if (FLAGS.SCRAPS || (await internalDevFeaturesEnabled())) {
+        if (await isFeatureEnabled("SCRAPS")) {
           await ensureScrapCollectionMode();
           const scrapCollector = new ScrapCollector();
           collectorManager.registerCollector(scrapCollector);
@@ -1384,18 +1373,14 @@ export default defineContentScript({
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
-        if (FLAGS.COPRESENCE) {
-          extensionInstance = new PlayHTMLExtension();
-          extensionInstance.init();
-        }
+        extensionInstance = new PlayHTMLExtension();
+        extensionInstance.init();
         initializeCollectors().catch(console.error);
         setupModeChangeListener();
       });
     } else {
-      if (FLAGS.COPRESENCE) {
-        extensionInstance = new PlayHTMLExtension();
-        extensionInstance.init();
-      }
+      extensionInstance = new PlayHTMLExtension();
+      extensionInstance.init();
       initializeCollectors().catch(console.error);
       setupModeChangeListener();
     }

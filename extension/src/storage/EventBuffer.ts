@@ -8,7 +8,7 @@ import { requestSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
 
 const BATCH_INTERVAL_MS = 3000; // 3 seconds
-const STORE_BATCH_INTERVAL_MS = 250;
+const STORE_BATCH_INTERVAL_MS = 1000;
 const STORE_BATCH_MAX_EVENTS = 25;
 const STORE_RETRY_INITIAL_MS = 1000;
 const STORE_RETRY_MAX_MS = 30_000;

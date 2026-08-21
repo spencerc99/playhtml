@@ -5,10 +5,14 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_STOPS } from "./commuteStops";
 import {
   COMMUTE_SERVICE_CHANNEL,
+  COMMUTE_SERVICE_STOP_LIMIT,
   createCommuteService,
+  estimateServerTimeOffset,
+  getCommuteServiceEndTime,
   getCommuteServicesFromPresences,
   getCommuteStops,
   getCommuteServiceFromPresence,
+  getUnvisitedCommuteStops,
   selectCommuteService,
 } from "./commuteService";
 
@@ -21,6 +25,16 @@ function presenceFor(service: ReturnType<typeof createCommuteService>) {
 }
 
 describe("Internet Commute service", () => {
+  it("estimates server time from the request midpoint", () => {
+    expect(estimateServerTimeOffset(10_050, 9_900, 10_100)).toBe(50);
+  });
+
+  it("rejects invalid server timing samples", () => {
+    expect(() => estimateServerTimeOffset(10_000, 10_100, 10_000)).toThrow(
+      "valid server timing sample",
+    );
+  });
+
   it("creates a route snapshot that does not follow later local mutations", () => {
     const stops = SAMPLE_STOPS.slice(0, 2).map((stop) => ({ ...stop }));
     const service = createCommuteService(1_000, "rider-a", stops);
@@ -36,7 +50,7 @@ describe("Internet Commute service", () => {
     const later = createCommuteService(1_100, "rider-b", SAMPLE_STOPS);
 
     expect(
-      selectCommuteService([later, first]),
+      selectCommuteService([later, first], 2_000),
     ).toEqual(first);
   });
 
@@ -45,8 +59,21 @@ describe("Internet Commute service", () => {
     const serviceA = createCommuteService(1_000, "rider-a", SAMPLE_STOPS);
 
     expect(
-      selectCommuteService([serviceB, serviceA])?.id,
+      selectCommuteService([serviceB, serviceA], 2_000)?.id,
     ).toBe(serviceA.id);
+  });
+
+  it("ignores services whose finite route has completed", () => {
+    const completed = createCommuteService(1_000, "rider-a", SAMPLE_STOPS);
+    const active = createCommuteService(2_000, "rider-b", SAMPLE_STOPS);
+    const completedAt = getCommuteServiceEndTime(completed);
+
+    expect(selectCommuteService([completed, active], completedAt - 1)).toEqual(
+      completed,
+    );
+    expect(selectCommuteService([completed, active], completedAt)).toEqual(
+      active,
+    );
   });
 
   it("ignores malformed route data from presence", () => {
@@ -65,6 +92,11 @@ describe("Internet Commute service", () => {
     expect(
       getCommuteServicesFromPresences([malformed, presenceFor(valid)]),
     ).toEqual([valid]);
+    expect(
+      getCommuteServiceFromPresence({
+        [COMMUTE_SERVICE_CHANNEL]: { service: null },
+      }),
+    ).toBeNull();
   });
 
   it("reconstructs display stops from the compact service route", () => {
@@ -106,5 +138,44 @@ describe("Internet Commute service", () => {
     const bytes = new TextEncoder().encode(JSON.stringify(wireValue)).byteLength;
 
     expect(bytes).toBeLessThanOrEqual(4_096);
+  });
+
+  it("selects at most ten domains that have not appeared earlier in the visit", () => {
+    const stops = Array.from({ length: 15 }, (_, index) => ({
+      ...SAMPLE_STOPS[0],
+      id: `destination-${index}`,
+      url: `https://destination-${index}.example/place`,
+      domain: `destination-${index}.example`,
+    }));
+
+    expect(
+      getUnvisitedCommuteStops(stops, [
+        "destination-0.example",
+        "destination-1.example",
+      ]).map((stop) => stop.domain),
+    ).toEqual(
+      Array.from(
+        { length: COMMUTE_SERVICE_STOP_LIMIT },
+        (_, index) => `destination-${index + 2}.example`,
+      ),
+    );
+  });
+
+  it("rejects a service route that exceeds the presence-safe stop limit", () => {
+    expect(() =>
+      createCommuteService(
+        1_000,
+        "rider-a",
+        Array.from(
+          { length: COMMUTE_SERVICE_STOP_LIMIT + 1 },
+          (_, index) => ({
+            ...SAMPLE_STOPS[0],
+            id: `destination-${index}`,
+            url: `https://destination-${index}.example/place`,
+            domain: `destination-${index}.example`,
+          }),
+        ),
+      ),
+    ).toThrow("at most 10 stops");
   });
 });

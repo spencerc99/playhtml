@@ -24,6 +24,62 @@ describe("playhtml configure() + init()", () => {
     expect(playhtml.cursorClient).not.toBeNull();
   });
 
+  it("uses a function-only room declaration", async () => {
+    await playhtml.init({ room: () => "/function-room" });
+
+    const host = window.location.host.replace(/^www\./, "");
+    expect(playhtml.roomId).toBe(
+      encodeURIComponent(`${host}-/function-room`),
+    );
+  });
+
+  it("uses a function-only error handler declaration", async () => {
+    const onError = vi.fn();
+    await playhtml.init({ onError });
+
+    const [provider] = (globalThis as any).PLAYHTML_TEST_PROVIDERS;
+    provider.emit("error", new Error("connection failed"));
+
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it("binds extraCapabilities through the reusable capability path", async () => {
+    const element = document.createElement("div");
+    element.id = "configured-capability";
+    element.setAttribute("can-configured", "");
+    document.body.appendChild(element);
+
+    const updateElement = vi.fn();
+    playhtml.configure({
+      extraCapabilities: {
+        "can-configured": {
+          defaultData: { enabled: true },
+          updateElement,
+        },
+      },
+    });
+    await playhtml.init();
+
+    expect(updateElement).toHaveBeenCalled();
+    expect(
+      playhtml
+        .getHandle("configured-capability", "can-configured")
+        .getData(),
+    ).toEqual({ enabled: true });
+  });
+
+  it("validates extraCapabilities with the same rules as define()", () => {
+    expect(() =>
+      playhtml.configure({
+        extraCapabilities: {
+          "can-invalid-configured": {
+            defaultData: { count: 0 },
+          },
+        },
+      }),
+    ).toThrow(/invalid initializer/);
+  });
+
   it("a repeated empty configure() before init() does not lock config", async () => {
     // configure() with no options is a true no-op: it must not freeze config, so
     // a later real configure() still wins. (configure() is connection-free, so

@@ -10,10 +10,24 @@ Object.defineProperty(window, "scrollX", { value: 0, writable: true });
 Object.defineProperty(window, "scrollY", { value: 0, writable: true });
 
 // Mock document dimensions
-Object.defineProperty(document.documentElement, "scrollWidth", { value: 1024, writable: true, configurable: true });
-Object.defineProperty(document.documentElement, "scrollHeight", { value: 2000, writable: true, configurable: true });
-Object.defineProperty(document.documentElement, "scrollLeft", { value: 0, writable: true });
-Object.defineProperty(document.documentElement, "scrollTop", { value: 0, writable: true });
+Object.defineProperty(document.documentElement, "scrollWidth", {
+  value: 1024,
+  writable: true,
+  configurable: true,
+});
+Object.defineProperty(document.documentElement, "scrollHeight", {
+  value: 2000,
+  writable: true,
+  configurable: true,
+});
+Object.defineProperty(document.documentElement, "scrollLeft", {
+  value: 0,
+  writable: true,
+});
+Object.defineProperty(document.documentElement, "scrollTop", {
+  value: 0,
+  writable: true,
+});
 
 // Mock devicePixelRatio
 Object.defineProperty(window, "devicePixelRatio", { value: 1, writable: true });
@@ -54,19 +68,30 @@ vi.mock("webextension-polyfill", () => ({
         set: vi.fn().mockResolvedValue(undefined),
         remove: vi.fn().mockResolvedValue(undefined),
       },
+      onChanged: {
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      },
     },
     runtime: {
+      getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
       sendMessage: vi.fn().mockResolvedValue({}),
       onMessage: {
         addListener: vi.fn(),
         removeListener: vi.fn(),
       },
     },
+    permissions: {
+      contains: vi.fn().mockResolvedValue(false),
+      request: vi.fn().mockResolvedValue(false),
+    },
     tabs: {
       query: vi.fn().mockResolvedValue([{ id: 1, url: "https://example.com" }]),
+      getCurrent: vi.fn().mockResolvedValue({ id: 1 }),
       sendMessage: vi.fn().mockResolvedValue({ success: true }),
       create: vi.fn().mockResolvedValue({ id: 2 }),
       update: vi.fn().mockResolvedValue({ id: 1 }),
+      remove: vi.fn().mockResolvedValue(undefined),
     },
     windows: {
       update: vi.fn().mockResolvedValue({ id: 1 }),

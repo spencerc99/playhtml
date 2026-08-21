@@ -17,6 +17,16 @@ import {
   playhtml,
 } from "../index";
 
+const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
+  isLoading: boolean;
+  init: ReturnType<typeof vi.fn>;
+  ready: Promise<void>;
+  resetReady: () => void;
+  resolveReady: () => void;
+  createPresenceRoom: ReturnType<typeof vi.fn>;
+  presence: unknown;
+};
+
 describe("usePresence", () => {
   beforeEach(() => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -170,6 +180,92 @@ describe("usePresenceRoom", () => {
 
     expect(seen[0]).toBe(false);
     await waitFor(() => expect(seen.at(-1)).toBe(true));
+  });
+
+  it("keeps returning null when the provider is briefly ahead of core readiness", async () => {
+    mockedPlayhtml.resetReady();
+    mockedPlayhtml.isLoading = false;
+    mockedPlayhtml.init.mockImplementation(() => mockedPlayhtml.ready);
+    mockedPlayhtml.createPresenceRoom.mockClear();
+
+    const room = {
+      presence: mockedPlayhtml.presence,
+      destroy: vi.fn(),
+    };
+    mockedPlayhtml.createPresenceRoom
+      .mockImplementationOnce(() => {
+        throw new Error("playhtml.createPresenceRoom is not available before init()");
+      })
+      .mockImplementation(() => room);
+
+    function TestComponent() {
+      const room = usePresenceRoom("voice");
+      return <div data-testid="room">{room ? "ready" : "loading"}</div>;
+    }
+
+    const { getByTestId } = render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    expect(getByTestId("room")).toHaveTextContent("loading");
+    await waitFor(() => {
+      expect(mockedPlayhtml.createPresenceRoom).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent("playhtml:navigated"));
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("room")).toHaveTextContent("ready");
+    });
+  });
+
+  it("retries the current room name when readiness resolves", async () => {
+    mockedPlayhtml.resetReady();
+    mockedPlayhtml.isLoading = false;
+    mockedPlayhtml.init.mockImplementation(() => mockedPlayhtml.ready);
+    mockedPlayhtml.createPresenceRoom.mockClear();
+
+    let coreReady = false;
+    mockedPlayhtml.createPresenceRoom.mockImplementation((name: string) => {
+      if (!coreReady) {
+        throw new Error("playhtml.createPresenceRoom is not available before init()");
+      }
+      return {
+        name,
+        presence: mockedPlayhtml.presence,
+        destroy: vi.fn(),
+      };
+    });
+
+    function TestComponent({ name }: { name: string }) {
+      const room = usePresenceRoom(name) as { name: string } | null;
+      return <div data-testid="room">{room?.name ?? "loading"}</div>;
+    }
+
+    const { getByTestId, rerender } = render(
+      <PlayProvider>
+        <TestComponent name="first" />
+      </PlayProvider>,
+    );
+    expect(getByTestId("room")).toHaveTextContent("loading");
+
+    rerender(
+      <PlayProvider>
+        <TestComponent name="second" />
+      </PlayProvider>,
+    );
+    coreReady = true;
+    act(() => {
+      mockedPlayhtml.resolveReady();
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("room")).toHaveTextContent("second");
+    });
   });
 });
 

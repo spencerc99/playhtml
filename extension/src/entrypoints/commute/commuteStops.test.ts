@@ -185,15 +185,13 @@ describe("deriveRecentStops", () => {
 });
 
 describe("getFaviconUrl", () => {
-  it("uses the first-party origin for live destinations", () => {
+  it("uses the public favicon service for live destinations without metadata", () => {
     expect(
       getFaviconUrl({
         domain: "neal.fun",
         faviconUrl: null,
-        source: "live",
-        url: "https://neal.fun/deep-sea/",
       }),
-    ).toBe("https://neal.fun/favicon.ico");
+    ).toBe("https://www.google.com/s2/favicons?domain=neal.fun&sz=64");
   });
 
   it("uses known favicon images for the public sample route", () => {
@@ -207,8 +205,6 @@ describe("getFaviconUrl", () => {
       getFaviconUrl({
         domain: "neal.fun",
         faviconUrl: "https://neal.fun/icon.png",
-        source: "live",
-        url: "https://neal.fun/deep-sea/",
       }),
     ).toBe("https://neal.fun/icon.png");
   });

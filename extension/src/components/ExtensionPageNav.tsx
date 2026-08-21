@@ -1,11 +1,11 @@
 // ABOUTME: Shared navigation for the extension's standalone portrait and history pages.
 // ABOUTME: Keeps page links consistent while hiding unfinished surfaces behind their feature gate.
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import browser from "webextension-polyfill";
 import "@fontsource/martian-mono/latin-400.css";
 import "@fontsource/source-serif-4/latin-200-italic.css";
-import { FLAGS } from "../flags";
+import { useFeatureState } from "../features/useFeatureAccess";
 import "./ExtensionPageNav.scss";
 
 export type ExtensionPageId = "portrait" | "time" | "walking-record" | "scraps";
@@ -16,46 +16,16 @@ const PAGE_LINKS: Array<{
   path: string;
 }> = [
   { id: "portrait", label: "portrait", path: "portrait.html" },
-  { id: "time", label: "time", path: "stats.html" },
-  { id: "walking-record", label: "walking record", path: "newtab.html" },
+  { id: "walking-record", label: "history", path: "walking-record.html" },
   { id: "scraps", label: "scraps", path: "scraps.html" },
 ];
-
-function useScrapsNavigationEnabled(): boolean {
-  const [internalDevFeaturesEnabled, setInternalDevFeaturesEnabled] =
-    useState(false);
-
-  useEffect(() => {
-    if (FLAGS.SCRAPS) return;
-
-    let active = true;
-    browser.storage.local
-      .get("internalDevFeaturesEnabled")
-      .then((result) => {
-        if (active) {
-          setInternalDevFeaturesEnabled(
-            result.internalDevFeaturesEnabled === true,
-          );
-        }
-      })
-      .catch(() => {
-        if (active) setInternalDevFeaturesEnabled(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return FLAGS.SCRAPS || internalDevFeaturesEnabled;
-}
 
 export function ExtensionPageNav({
   currentPage,
 }: {
   currentPage: ExtensionPageId;
 }) {
-  const scrapsEnabled = useScrapsNavigationEnabled();
+  const scrapsEnabled = useFeatureState("SCRAPS").enabled;
   const visibleLinks = PAGE_LINKS.filter(
     (link) => link.id !== "scraps" || scrapsEnabled,
   );

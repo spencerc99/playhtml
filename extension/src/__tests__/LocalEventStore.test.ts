@@ -1,13 +1,18 @@
 // ABOUTME: Tests local event database storage, query, and aggregate behavior.
 // ABOUTME: Guards hot paths, storage stats, and upload metadata handling in IndexedDB.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  IDBIndex as FakeIDBIndex,
   IDBKeyRange as fakeIDBKeyRange,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
-import { LocalEventStore, type DomainStatsAggregate } from "../storage/LocalEventStore";
+import {
+  LocalEventStore,
+  type DomainStatsAggregate,
+} from "../storage/LocalEventStore";
 import type { CollectionEvent } from "../collectors/types";
+import { queryCursorEventsForPortrait } from "../utils/cursorDistance";
 
 const DB_NAME = "collection_events_db";
 const STORE_NAME = "events";
@@ -76,8 +81,12 @@ async function openVersion8Database(
       eventStore.createIndex("type", "type", { unique: false });
       eventStore.createIndex("uploaded", "uploaded", { unique: false });
       eventStore.createIndex("domain", "domain", { unique: false });
-      eventStore.createIndex("normalizedUrl", "normalizedUrl", { unique: false });
-      const statsStore = db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
+      eventStore.createIndex("normalizedUrl", "normalizedUrl", {
+        unique: false,
+      });
+      const statsStore = db.createObjectStore(STATS_STORE_NAME, {
+        keyPath: "key",
+      });
       statsStore.put(seedAggregate);
     };
     request.onsuccess = () => resolve(request.result);
@@ -85,7 +94,9 @@ async function openVersion8Database(
   });
 }
 
-async function openVersion7Database(seedEvents: CollectionEvent[]): Promise<IDBDatabase> {
+async function openVersion7Database(
+  seedEvents: CollectionEvent[],
+): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = fakeIndexedDB.open(DB_NAME, 7);
     request.onupgradeneeded = () => {
@@ -95,7 +106,9 @@ async function openVersion7Database(seedEvents: CollectionEvent[]): Promise<IDBD
       eventStore.createIndex("type", "type", { unique: false });
       eventStore.createIndex("uploaded", "uploaded", { unique: false });
       eventStore.createIndex("domain", "domain", { unique: false });
-      eventStore.createIndex("normalizedUrl", "normalizedUrl", { unique: false });
+      eventStore.createIndex("normalizedUrl", "normalizedUrl", {
+        unique: false,
+      });
       db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
 
       for (const seedEvent of seedEvents) {
@@ -107,7 +120,10 @@ async function openVersion7Database(seedEvents: CollectionEvent[]): Promise<IDBD
   });
 }
 
-async function putSeedEvent(db: IDBDatabase, seedEvent: CollectionEvent): Promise<void> {
+async function putSeedEvent(
+  db: IDBDatabase,
+  seedEvent: CollectionEvent,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction([STORE_NAME], "readwrite");
     transaction.objectStore(STORE_NAME).put(seedEvent);
@@ -155,6 +171,7 @@ function aggregate(): DomainStatsAggregate {
     firstVisit: 0,
     lastVisit: 0,
     uniqueUrlCount: 1,
+    activeDayCount: 0,
   };
 }
 
@@ -177,7 +194,10 @@ function event(id: string, type: CollectionEvent["type"]): CollectionEvent {
   };
 }
 
-function contentScriptEvent(id: string, type: CollectionEvent["type"]): CollectionEvent {
+function contentScriptEvent(
+  id: string,
+  type: CollectionEvent["type"],
+): CollectionEvent {
   const { domain, normalizedUrl, ...sourceEvent } = event(id, type);
   return sourceEvent;
 }
@@ -195,6 +215,231 @@ afterEach(async () => {
 });
 
 describe("LocalEventStore aggregates", () => {
+  it("maintains compact milestone activity and recent domain metadata", async () => {
+    const store = createStore();
+    const focusTs = Date.UTC(2026, 7, 10, 10);
+    const blurTs = focusTs + 5_000;
+
+    await store.addEvents([
+      {
+        ...event("focus", "navigation"),
+        ts: focusTs,
+        data: {
+          event: "focus",
+          favicon_url: "https://example.com/favicon.png",
+        },
+        meta: { ...event("focus", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("cursor-first", "cursor"),
+        ts: focusTs + 1_000,
+        data: { event: "move", x: 0.1, y: 0.2 },
+        meta: { ...event("cursor-first", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("cursor-second", "cursor"),
+        ts: focusTs + 2_000,
+        data: { event: "move", x: 0.2, y: 0.2 },
+        meta: { ...event("cursor-second", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: blurTs,
+        data: { event: "blur" },
+        meta: { ...event("blur", "navigation").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+    const domains = await store.getAllDomains();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-10",
+      cursorDistancePx: 192,
+      lastCursorPosition: { x: 0.2, y: 0.2 },
+      screenTimeMs: 5_000,
+      pendingFocusTs: null,
+    });
+    expect(domains[0]).toEqual(
+      expect.objectContaining({
+        latestFaviconUrl: "https://example.com/favicon.png",
+        recentFocusVisits: [focusTs],
+      }),
+    );
+  });
+
+  it("closes compact milestone screen time on beforeunload", async () => {
+    const store = createStore();
+    const firstFocusTs = Date.UTC(2026, 7, 10, 10);
+
+    await store.addEvents([
+      {
+        ...event("first-focus", "navigation"),
+        ts: firstFocusTs,
+        data: { event: "focus" },
+        meta: { ...event("first-focus", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("beforeunload", "navigation"),
+        ts: firstFocusTs + 5_000,
+        data: { event: "beforeunload" },
+        meta: { ...event("beforeunload", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("second-focus", "navigation"),
+        ts: firstFocusTs + 10_000,
+        data: { event: "focus" },
+        meta: { ...event("second-focus", "navigation").meta, tz: "UTC" },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: firstFocusTs + 13_000,
+        data: { event: "blur" },
+        meta: { ...event("blur", "navigation").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-10",
+      cursorDistancePx: 0,
+      lastCursorPosition: null,
+      screenTimeMs: 8_000,
+      pendingFocusTs: null,
+    });
+  });
+
+  it("seeds recent visits from retained aggregate history", async () => {
+    const store = createStore();
+    const previousVisitTs = Date.UTC(2026, 0, 1, 10);
+    const returnTs = Date.UTC(2026, 7, 10, 10);
+
+    await store.addEvents([
+      {
+        ...event("previous-event", "cursor"),
+        ts: previousVisitTs,
+        data: { event: "move", x: 0.1, y: 0.1 },
+        meta: { ...event("previous-event", "cursor").meta, tz: "UTC" },
+      },
+    ]);
+    await store.addEvents([
+      {
+        ...event("return-focus", "navigation"),
+        ts: returnTs,
+        data: { event: "focus" },
+        meta: { ...event("return-focus", "navigation").meta, tz: "UTC" },
+      },
+    ]);
+
+    const domains = await store.getAllDomains();
+
+    expect(domains[0].recentFocusVisits).toEqual([returnTs, previousVisitTs]);
+  });
+
+  it("resets compact daily activity when the local day changes", async () => {
+    const store = createStore();
+
+    await store.addEvents([
+      {
+        ...event("day-one-first", "cursor"),
+        ts: Date.UTC(2026, 7, 10, 10),
+        data: { event: "move", x: 0.1, y: 0.1 },
+        meta: { ...event("day-one-first", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("day-one-second", "cursor"),
+        ts: Date.UTC(2026, 7, 10, 10, 1),
+        data: { event: "move", x: 0.2, y: 0.1 },
+        meta: { ...event("day-one-second", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("day-two-first", "cursor"),
+        ts: Date.UTC(2026, 7, 11, 10),
+        data: { event: "move", x: 0.3, y: 0.1 },
+        meta: { ...event("day-two-first", "cursor").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-11",
+      cursorDistancePx: 0,
+      lastCursorPosition: { x: 0.3, y: 0.1 },
+      screenTimeMs: 0,
+      pendingFocusTs: null,
+    });
+  });
+
+  it("keeps compact daily activity when an older day arrives later", async () => {
+    const store = createStore();
+
+    await store.addEvents([
+      {
+        ...event("current-day-first", "cursor"),
+        ts: Date.UTC(2026, 7, 11, 10),
+        data: { event: "move", x: 0.1, y: 0.1 },
+        meta: { ...event("current-day-first", "cursor").meta, tz: "UTC" },
+      },
+      {
+        ...event("current-day-second", "cursor"),
+        ts: Date.UTC(2026, 7, 11, 10, 1),
+        data: { event: "move", x: 0.2, y: 0.1 },
+        meta: { ...event("current-day-second", "cursor").meta, tz: "UTC" },
+      },
+    ]);
+    await store.addEvents([
+      {
+        ...event("older-day", "cursor"),
+        ts: Date.UTC(2026, 7, 10, 10),
+        data: { event: "move", x: 0.9, y: 0.9 },
+        meta: { ...event("older-day", "cursor").meta, tz: "UTC" },
+      },
+    ]);
+
+    const globalStats = await store.getGlobalStats();
+
+    expect(globalStats?.milestoneActivity).toEqual({
+      localDayKey: "2026-08-11",
+      cursorDistancePx: 192,
+      lastCursorPosition: { x: 0.2, y: 0.1 },
+      screenTimeMs: 0,
+      pendingFocusTs: null,
+    });
+  });
+
+  it("fails with reload guidance instead of hanging when an upgrade is blocked", async () => {
+    const existingConnection = await openVersion8Database();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const store = createStore();
+
+    await expect(store.getAllDomains()).rejects.toThrow(
+      "Reload the extension and open a new tab.",
+    );
+
+    existingConnection.close();
+    consoleError.mockRestore();
+  });
+
+  it("closes its connection when a newer database version is requested", async () => {
+    const store = createStore();
+    await store.getAllDomains();
+
+    const upgradedDatabase = await new Promise<IDBDatabase>(
+      (resolve, reject) => {
+        const request = fakeIndexedDB.open(DB_NAME, 12);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      },
+    );
+
+    expect((store as unknown as { db: IDBDatabase | null }).db).toBeNull();
+    upgradedDatabase.close();
+  });
+
   it("updates bounded aggregate fields for non-navigation events", () => {
     const agg = aggregate();
 
@@ -298,10 +543,62 @@ describe("LocalEventStore aggregates", () => {
       });
     }
   });
+
+  it("restores active-day counts after a bulk import rebuilds domain stats", async () => {
+    const store = createStore();
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+
+    await store.getAllDomains();
+    await store.addRestoredEvents([
+      {
+        ...event("focus-first", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-second", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+
+    const stats = await store.getSessionStats("example.com");
+
+    expect(stats?.activeDayCount).toBe(2);
+  });
+
+  it("tracks one active day per domain regardless of focus churn", async () => {
+    const store = createStore();
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+
+    await store.addEvents([
+      {
+        ...event("focus-first", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-again", "navigation"),
+        ts: firstDay + 60_000,
+        data: { event: "focus" },
+      },
+      {
+        ...event("focus-next-day", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+
+    const stats = await store.getSessionStats("example.com");
+
+    expect(stats?.activeDayCount).toBe(2);
+  });
 });
 
 describe("LocalEventStore walking record events", () => {
-  it("derives screen time from navigation events without reading cursor or viewport data", async () => {
+  it("derives screen time while reading walking-record events", async () => {
     const store = createStore();
     await store.addEvents([
       {
@@ -325,6 +622,36 @@ describe("LocalEventStore walking record events", () => {
       },
     ]);
 
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 10_000,
+    });
+
+    expect(result.sessions).toEqual([
+      {
+        url: "https://example.com/page",
+        focusTs: 1_000,
+        blurTs: 6_000,
+        durationMs: 5_000,
+      },
+    ]);
+  });
+
+  it("still supports standalone screen-time queries", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("focus", "navigation"),
+        ts: 1_000,
+        data: { event: "focus" },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: 6_000,
+        data: { event: "blur" },
+      },
+    ]);
+
     await expect(
       store.getScreenTime({ startTs: 0, endTs: 10_000 }),
     ).resolves.toEqual({
@@ -338,6 +665,44 @@ describe("LocalEventStore walking record events", () => {
         },
       ],
     });
+  });
+
+  it("compresses interaction events into active browsing windows", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("cursor-first", "cursor"),
+        ts: 1_000,
+        data: { event: "move", x: 0.1, y: 0.1 },
+      },
+      {
+        ...event("scroll-same-window", "viewport"),
+        ts: 20_000,
+        data: { event: "scroll", scrollDistancePx: 300 },
+      },
+      {
+        ...event("keyboard-next-window", "keyboard"),
+        ts: 35_000,
+        data: { event: "typing", x: 0.5, y: 0.5 },
+      },
+      {
+        ...event("resize-ignored", "viewport"),
+        ts: 65_000,
+        data: { event: "resize", width: 1_000, height: 800 },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 90_000,
+    });
+
+    expect(result.activity).toEqual([
+      {
+        url: "https://example.com/page",
+        windowStarts: [0, 30_000],
+      },
+    ]);
   });
 
   it("keeps navigation events and samples cursors without losing measured distance", async () => {
@@ -407,6 +772,113 @@ describe("LocalEventStore walking record events", () => {
       "navigation-2",
     ]);
     expect(result.cursorDistancePx).toBeCloseTo(102.4);
+    expect(result.activity).toEqual([
+      {
+        url: "https://example.com/page",
+        windowStarts: [0, 300_000],
+      },
+      {
+        url: "https://example.com/other",
+        windowStarts: [0],
+      },
+    ]);
+  });
+
+  it("does not transfer repeated page metadata with walking record visits", async () => {
+    const store = createStore();
+    const repeatedMetadata = "a".repeat(100_000);
+    await store.addEvents([
+      {
+        ...event("focus-1", "navigation"),
+        ts: 1_000,
+        data: {
+          event: "focus",
+          title: repeatedMetadata,
+          favicon_url: `data:image/png;base64,${repeatedMetadata}`,
+        },
+      },
+      {
+        ...event("focus-2", "navigation"),
+        ts: 181_000,
+        data: {
+          event: "focus",
+          title: repeatedMetadata,
+          favicon_url: `data:image/png;base64,${repeatedMetadata}`,
+        },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 300_000,
+    });
+
+    expect(JSON.stringify(result).length).toBeLessThan(10_000);
+  });
+
+  it("returns one bounded favicon per visited walking-record domain", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("focus", "navigation"),
+        ts: 1_000,
+        data: {
+          event: "focus",
+          favicon_url: "https://example.com/favicon.png",
+        },
+      },
+      {
+        ...event("blur", "navigation"),
+        ts: 6_000,
+        data: { event: "blur" },
+      },
+    ]);
+
+    const result = await store.getWalkingRecordEvents({
+      startTs: 0,
+      endTs: 10_000,
+    });
+
+    expect(result.favicons).toEqual({
+      "example.com": "https://example.com/favicon.png",
+    });
+    expect(result.events[0].data).toEqual({ event: "focus" });
+  });
+
+  it("loads only the latest bounded favicon for requested walking record domains", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("focus-older", "navigation"),
+        ts: 1_000,
+        data: {
+          event: "focus",
+          favicon_url: "https://example.com/older.png",
+        },
+      },
+      {
+        ...event("focus-latest", "navigation"),
+        ts: 2_000,
+        data: {
+          event: "focus",
+          favicon_url: "https://example.com/latest.png",
+        },
+      },
+      {
+        ...event("focus-oversized", "navigation"),
+        ts: 3_000,
+        data: {
+          event: "focus",
+          favicon_url: `data:image/png;base64,${"a".repeat(129 * 1024)}`,
+        },
+      },
+    ]);
+
+    await expect(
+      store.getWalkingRecordFavicons(["example.com"]),
+    ).resolves.toEqual({
+      "example.com": "https://example.com/latest.png",
+    });
   });
 
   it("requires an explicit walking-record range", async () => {
@@ -443,7 +915,7 @@ describe("LocalEventStore walking record events", () => {
       cursor("after", 12_000, 1, 1),
     ]);
 
-    const traces = await store.getWalkingRecordTraces([
+    const movement = await store.getWalkingRecordMovement([
       {
         id: "day:2026-07-20",
         url: "https://example.com/page",
@@ -452,15 +924,107 @@ describe("LocalEventStore walking record events", () => {
       },
     ]);
 
-    expect(traces).toEqual([
+    expect(movement.traces).toEqual([
       {
         targetId: "day:2026-07-20",
         paths: [
-          [{ x: 0.1, y: 0.2 }, { x: 0.2, y: 0.3 }],
-          [{ x: 0.6, y: 0.4 }, { x: 0.8, y: 0.7 }],
+          [
+            { x: 0.1, y: 0.2 },
+            { x: 0.2, y: 0.3 },
+          ],
+          [
+            { x: 0.6, y: 0.4 },
+            { x: 0.8, y: 0.7 },
+          ],
         ],
       },
     ]);
+    expect(movement.landscapePaths).toHaveLength(2);
+    expect(movement.landscapePaths[0].map((event) => event.id)).toEqual([
+      "first",
+      "middle",
+    ]);
+    expect(movement.landscapePaths[1].map((event) => event.id)).toEqual([
+      "after-gap",
+      "last",
+    ]);
+  });
+
+  it("opens one exact cursor range per selected movement session", async () => {
+    const store = createStore();
+    await store.addEvents([
+      {
+        ...event("first-window", "cursor"),
+        ts: 2_000,
+        data: { event: "move", x: 0.1, y: 0.2 },
+      },
+      {
+        ...event("second-window", "cursor"),
+        ts: 1_002_000,
+        data: { event: "move", x: 0.3, y: 0.4 },
+      },
+    ]);
+    const openCursor = vi.spyOn(FakeIDBIndex.prototype, "openCursor");
+
+    try {
+      await store.getWalkingRecordMovement([
+        {
+          id: "first",
+          url: "https://example.com/page",
+          startTs: 1_000,
+          endTs: 3_000,
+        },
+        {
+          id: "second",
+          url: "https://example.com/page",
+          startTs: 1_001_000,
+          endTs: 1_003_000,
+        },
+      ]);
+
+      expect(
+        openCursor.mock.calls.map(([range]) => {
+          const keyRange = range as IDBKeyRange;
+          return [keyRange.lower, keyRange.upper];
+        }),
+      ).toEqual([
+        [1_000, 3_000],
+        [1_001_000, 1_003_000],
+      ]);
+    } finally {
+      openCursor.mockRestore();
+    }
+  });
+
+  it("turns long movement into a bounded queue of consecutive landscape trails", async () => {
+    const store = createStore();
+    const cursorEvents = Array.from({ length: 300 }, (_, index) => ({
+      ...event(`cursor-${index}`, "cursor"),
+      ts: 1_000 + index * 100,
+      data: {
+        event: "move" as const,
+        x: index / 300,
+        y: index % 2 === 0 ? 0.25 : 0.75,
+      },
+    }));
+    await store.addEvents(cursorEvents);
+
+    const movement = await store.getWalkingRecordMovement([
+      {
+        id: "day:2026-07-20",
+        url: "https://example.com/page",
+        startTs: 1_000,
+        endTs: 31_000,
+      },
+    ]);
+
+    expect(movement.landscapePaths).toHaveLength(4);
+    expect(movement.landscapePaths.every((path) => path.length <= 96)).toBe(
+      true,
+    );
+    expect(movement.landscapePaths[0][0].id).toBe("cursor-0");
+    expect(movement.landscapePaths.at(-1)?.at(-1)?.id).toBe("cursor-299");
+    expect(movement.landscapePaths.at(-1)?.at(-1)?.ts).toBe(30_900);
   });
 });
 
@@ -746,10 +1310,50 @@ describe("LocalEventStore pending uploads", () => {
     await store.addEvents([contentScriptEvent("cursor-indexed", "cursor")]);
 
     const domainEvents = await store.queryByDomain("example.com");
-    const urlEvents = await store.queryByUrl("https://example.com/page?ignored=true#hash");
+    const urlEvents = await store.queryByUrl(
+      "https://example.com/page?ignored=true#hash",
+    );
 
-    expect(domainEvents.map((storedEvent) => storedEvent.id)).toEqual(["cursor-indexed"]);
-    expect(urlEvents.map((storedEvent) => storedEvent.id)).toEqual(["cursor-indexed"]);
+    expect(domainEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "cursor-indexed",
+    ]);
+    expect(urlEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "cursor-indexed",
+    ]);
+  });
+
+  it("scopes page portrait cursor events by URL while domain portraits keep the domain", async () => {
+    const store = createStore();
+    const siblingPage = {
+      ...contentScriptEvent("sibling-cursor", "cursor"),
+      meta: {
+        ...contentScriptEvent("sibling-cursor", "cursor").meta,
+        url: "https://example.com/sibling",
+      },
+    };
+    await store.addEvents([
+      contentScriptEvent("page-cursor", "cursor"),
+      contentScriptEvent("page-navigation", "navigation"),
+      siblingPage,
+    ]);
+
+    const pageEvents = await queryCursorEventsForPortrait(
+      store,
+      "example.com",
+      "https://example.com/page?ignored=true#section",
+    );
+    const domainEvents = await queryCursorEventsForPortrait(
+      store,
+      "example.com",
+    );
+
+    expect(pageEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "page-cursor",
+    ]);
+    expect(domainEvents.map((storedEvent) => storedEvent.id)).toEqual([
+      "page-cursor",
+      "sibling-cursor",
+    ]);
   });
 
   it("stores new events as pending when uploaded is missing", async () => {
@@ -759,7 +1363,9 @@ describe("LocalEventStore pending uploads", () => {
 
     const events = await store.getPendingEvents(100);
 
-    expect(events.map((pendingEvent) => pendingEvent.id)).toEqual(["cursor-pending"]);
+    expect(events.map((pendingEvent) => pendingEvent.id)).toEqual([
+      "cursor-pending",
+    ]);
     expect((sourceEvent as StoredTestEvent).uploaded).toBeUndefined();
     expect((sourceEvent as StoredTestEvent).uploadState).toBeUndefined();
     expect((events[0] as StoredTestEvent).uploaded).toBeUndefined();
@@ -804,7 +1410,9 @@ describe("LocalEventStore pending uploads", () => {
     const store = createStore();
     const events = await store.getPendingEvents(100);
 
-    expect(events.map((storedEvent) => storedEvent.id)).toEqual(["migrated-pending"]);
+    expect(events.map((storedEvent) => storedEvent.id)).toEqual([
+      "migrated-pending",
+    ]);
     expect((events[0] as StoredTestEvent).uploaded).toBeUndefined();
     expect((events[0] as StoredTestEvent).uploadState).toBeUndefined();
   });

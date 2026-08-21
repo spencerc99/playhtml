@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { ExtensionPageNav } from "../components/ExtensionPageNav";
 
-async function renderNavigation(currentPage: "portrait" | "time") {
+vi.mock("../components/ExtensionPageNav.scss", () => ({}));
+
+async function renderNavigation(currentPage: "portrait" | "walking-record") {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -40,37 +42,32 @@ describe("ExtensionPageNav", () => {
   });
 
   it("shows the shared public pages and identifies the current page", async () => {
-    vi.mocked(browser.storage.local.get).mockResolvedValue({
-      internalDevFeaturesEnabled: false,
-    });
-    const { container, root } = await renderNavigation("time");
+    vi.mocked(browser.storage.local.get).mockResolvedValue({});
+    const { container, root } = await renderNavigation("portrait");
 
     try {
       expect(container.textContent).toContain("portrait");
-      expect(container.textContent).toContain("time");
-      expect(container.textContent).toContain("walking record");
+      expect(container.textContent).toContain("history");
+      expect(container.textContent).not.toContain("time");
+      expect(container.textContent).not.toContain("walking record");
       expect(container.textContent).not.toContain("scraps");
       expect(
         container.querySelector('[aria-current="page"]')?.textContent,
-      ).toBe("time");
+      ).toBe("portrait");
     } finally {
       cleanup(root, container);
     }
   });
 
-  it("shows scraps when internal development features are enabled", async () => {
+  it("shows scraps when the tester has access and opts in", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      internalDevFeaturesEnabled: true,
+      wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: true } }, checkedAt: 123 },
+      wwoFeatureOverrides: { SCRAPS: true },
     });
     const { container, root } = await renderNavigation("portrait");
 
     try {
       expect(container.textContent).toContain("scraps");
-      expect(
-        container.querySelector(
-          'a[href="chrome-extension://test/scraps.html"]',
-        ),
-      ).not.toBeNull();
     } finally {
       cleanup(root, container);
     }

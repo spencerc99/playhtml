@@ -50,8 +50,8 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
     const [activeClickEffects, setActiveClickEffects] = useState<
       VisibleClickEffect[]
     >([]);
-    const animationRef = useRef<number>();
-    const timeoutRef = useRef<number>();
+    const animationRef = useRef<number | undefined>(undefined);
+    const timeoutRef = useRef<number | undefined>(undefined);
     const spawnedThisCycleRef = useRef<Set<string>>(new Set());
     const currentCycleEffectIdsRef = useRef<Set<string>>(new Set());
     const completedCycleEffectIdsRef = useRef<Set<string>>(new Set());

@@ -10,42 +10,40 @@ const storyHtml = readFileSync(
   "utf8",
 );
 
-const storyScript = storyHtml.match(
-  /<script>\s*(const explicitSlurRegexes[\s\S]*?input\.updateElement = \(\{ data \}\) => \{[\s\S]*?\n\s*\};)\s*<\/script>/,
+const colorHelperSource = storyHtml.match(
+  /(function convertHexToRGB\(hex\) \{[\s\S]*?)(?=\n\s*if \(getUserColor)/,
+)?.[1];
+const updateElementSource = storyHtml.match(
+  /updateElement:\s*(\(\{ data \}\) => \{[\s\S]*?\n\s*\}),\n\s*\}\);/,
 )?.[1];
 
-function runStoryScript() {
-  if (!storyScript) {
-    throw new Error("Could not find the one-word story script");
+function getUpdateElement() {
+  if (!colorHelperSource || !updateElementSource) {
+    throw new Error("Could not find the one-word story renderer");
   }
 
-  new Function(storyScript)();
+  return new Function(
+    "storyContent",
+    "lastUpdatedTime",
+    `${colorHelperSource}
+return ${updateElementSource};`,
+  )(
+    document.getElementById("storyContent"),
+    document.getElementById("lastUpdatedTime"),
+  );
 }
 
 describe("one-word story rendering", () => {
   test("renders hostile persisted words literally", () => {
     document.body.innerHTML = `
-      <input id="colorPicker" type="color" />
-      <input id="wordInput" />
-      <button class="wordSubmit"></button>
       <span id="storyContent"></span>
-      <span id="typingIndicators"></span>
-      <span id="activeUsersCount"></span>
       <span id="lastUpdatedTime"></span>
     `;
-    localStorage.clear();
-    Object.assign(globalThis, {
-      activeUsersCount: document.getElementById("activeUsersCount"),
-      colorPicker: document.getElementById("colorPicker"),
-      lastUpdatedTime: document.getElementById("lastUpdatedTime"),
-    });
-    runStoryScript();
 
     const storyContent = document.getElementById("storyContent");
-    const input = document.getElementById("wordInput");
     const hostileWord = "<svg/onload=alert()>";
 
-    input.updateElement({
+    getUpdateElement()({
       data: [
         { word: "together", color: "#112233", ts: 0 },
         { word: hostileWord, color: "#abcdef", ts: 1 },

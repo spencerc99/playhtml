@@ -1,5 +1,5 @@
 // ABOUTME: Verifies local heuristics that turn browsing events into walking records.
-// ABOUTME: Covers period boundaries, trace cadence, page hues, departures, and revisits.
+// ABOUTME: Covers period boundaries, trace cadence, page hues, departures, and settled places.
 
 import { describe, expect, it } from "vitest";
 import { parseColorToHsl } from "@movement/utils/eventUtils";
@@ -52,6 +52,7 @@ function domain(
     totalTimeMs: 0,
     uniquePageCount: 1,
     sessionCount: 1,
+    activeDayCount: 0,
     eventCounts: { navigation: 2 },
     ...overrides,
   };
@@ -135,12 +136,7 @@ describe("walking record ranges", () => {
       },
     ];
 
-    const summaries = summarizeWalkingRecordPeriods(
-      "week",
-      sessions,
-      12,
-      now,
-    );
+    const summaries = summarizeWalkingRecordPeriods("week", sessions, 12, now);
 
     expect(summaries).toHaveLength(12);
     expect(summaries.map((summary) => summary.offset)).toEqual([
@@ -216,6 +212,39 @@ describe("walking record color and trace cadence", () => {
     expect(year.dayPlates[0].day).toBe("jan");
     expect(year.dayPlates[11].day).toBe("dec");
   });
+
+  it("distinguishes future intervals from past days without activity", () => {
+    const now = new Date(2026, 6, 29, 12);
+    const range = getWalkingRecordPeriodRange("week", 0, now);
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions: [],
+      domains: [],
+      range,
+      nowTs: now.getTime(),
+    });
+
+    expect(record.dayPlates.map((plate) => plate.vignette)).toEqual([
+      "no trace kept",
+      "no trace kept",
+      "no trace kept",
+      "still to come",
+      "still to come",
+      "still to come",
+      "still to come",
+    ]);
+    expect(record.dayPlates.map((plate) => plate.future)).toEqual([
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+    ]);
+  });
 });
 
 describe("deriveWalkingRecord", () => {
@@ -245,7 +274,10 @@ describe("deriveWalkingRecord", () => {
         "navigation",
         mondayMorning,
         "https://github.com/spencerc99/playhtml",
-        { event: "focus" },
+        {
+          event: "focus",
+          favicon_url: "https://github.githubassets.com/favicons/favicon.svg",
+        },
       ),
       event(
         "garden-focus",
@@ -291,34 +323,29 @@ describe("deriveWalkingRecord", () => {
       expect.objectContaining({
         from: "github.com",
         to: "foldedpaper.garden",
-        note: "stayed 11 minutes · your first visit",
-        familiarity: "new to you",
-        hue: colorForDomain("#4a9a8a", "foldedpaper.garden"),
-        accentHue: paletteColorForIndex(0),
-        traceTarget: {
-          id: `departure:${departureTs}:foldedpaper.garden`,
-          url: quietSession.url,
-          startTs: quietSession.focusTs,
-          endTs: quietSession.blurTs,
-        },
+        note: "your first visit · stayed 11 minutes",
+        fromFaviconUrl: "https://github.githubassets.com/favicons/favicon.svg",
       }),
     ]);
-    expect(record.timeSpent.map((entry) => entry.site)).toContain(
-      "the quiet streets, together",
-    );
+    expect(
+      record.timeSpent.find((entry) => entry.site === "github.com")?.faviconUrl,
+    ).toBe("https://github.githubassets.com/favicons/favicon.svg");
     expect(record.pageCount).toBe(2);
     expect(record.cursorDistancePx).toBeCloseTo(100);
     expect(record.dayPlates).toHaveLength(7);
     expect(record.dayPlates[0]).toEqual(
       expect.objectContaining({
         day: "mon",
-        vignette: "11 quiet minutes on foldedpaper.garden",
-        traceTarget: {
-          id: "day:2026-07-20",
-          url: quietSession.url,
-          startTs: quietSession.focusTs,
-          endTs: quietSession.blurTs,
-        },
+        vignette: "11m on foldedpaper.garden",
+        portraitDay: "2026-07-20",
+        traceTargets: expect.arrayContaining([
+          {
+            id: "day:2026-07-20",
+            url: quietSession.url,
+            startTs: quietSession.focusTs,
+            endTs: quietSession.blurTs,
+          },
+        ]),
       }),
     );
 
@@ -328,62 +355,146 @@ describe("deriveWalkingRecord", () => {
     const tracedRecord = attachWalkingRecordTraces(record, [
       {
         targetId: "day:2026-07-20",
-        paths: [[{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.6 }]],
+        paths: [
+          [
+            { x: 0.1, y: 0.2 },
+            { x: 0.4, y: 0.6 },
+          ],
+        ],
       },
-      {
-        targetId: `departure:${departureTs}:foldedpaper.garden`,
-        paths: [[{ x: 0.3, y: 0.4 }, { x: 0.7, y: 0.8 }]],
-      },
     ]);
-    expect(tracedRecord.dayPlates[0].tracePaths).toEqual([
-      [{ x: 0.1, y: 0.2 }, { x: 0.4, y: 0.6 }],
+    expect(tracedRecord.dayPlates[0].tracePaths[0]).toEqual([
+      { x: 0.1, y: 0.2 },
+      { x: 0.4, y: 0.6 },
     ]);
-    expect(tracedRecord.departures[0].tracePaths).toEqual([
-      [{ x: 0.3, y: 0.4 }, { x: 0.7, y: 0.8 }],
-    ]);
+    expect(tracedRecord.dayPlates[0].tracePaths).toHaveLength(2);
+    expect(tracedRecord.departures[0]).not.toHaveProperty("tracePaths");
   });
 
-  it("surfaces familiar small sites that went quiet before the report week", () => {
+  it("surfaces smaller places with active returns across the report week", () => {
     const range = getWalkingRecordPeriodRange(
       "week",
       -1,
       new Date(2026, 6, 30, 14),
     );
-    const oldVisit = range.startTs - 214 * 24 * 60 * 60 * 1_000;
+    const monday = range.startTs + 9 * 60 * 60_000;
+    const gardenSessions = [0, 2, 4].map((dayOffset, index) => ({
+      url: `https://garden.example/page-${index + 1}`,
+      focusTs: monday + dayOffset * 24 * 60 * 60_000,
+      blurTs: monday + dayOffset * 24 * 60 * 60_000 + 12 * 60_000,
+      durationMs: 12 * 60_000,
+    }));
+    const leadingSessions = Array.from({ length: 5 }, (_, index) => ({
+      url: `https://leader-${index + 1}.example/work`,
+      focusTs: monday + index * 60_000,
+      blurTs: monday + index * 60_000 + 60 * 60_000,
+      durationMs: 60 * 60_000,
+    }));
 
     const record = deriveWalkingRecord({
       period: "week",
       baseColor: "#4a9a8a",
       events: [],
-      sessions: [],
+      sessions: [...leadingSessions, ...gardenSessions],
+      activity: gardenSessions.map((session) => ({
+        url: session.url,
+        windowStarts: Array.from(
+          { length: 12 },
+          (_, index) => session.focusTs + index * 30_000,
+        ),
+      })),
       domains: [
-        domain("diagram.website", {
-          sessionCount: 31,
-          lastVisit: oldVisit,
-          totalTimeMs: 90 * 60_000,
-        }),
-        domain("youtube.com", {
-          sessionCount: 80,
-          lastVisit: oldVisit,
+        ...leadingSessions.map((session, index) =>
+          domain(`leader-${index + 1}.example`, {
+            sessionCount: 20,
+            totalTimeMs: session.durationMs,
+          }),
+        ),
+        domain("garden.example", {
+          sessionCount: 3,
+          uniquePageCount: 3,
+          activeDayCount: 3,
         }),
       ],
       range,
     });
 
-    expect(record.revisits).toEqual([
+    expect(record.settledPlaces).toEqual([
       expect.objectContaining({
-        span: "7 months",
-        site: "diagram.website",
-        memory: "you visited 31 times before the gap",
+        site: "garden.example",
+        activeTime: "18m active",
+        evidence: "returned in the mornings on 3 days · visited 3 pages",
         hue: paletteColorForIndex(0),
       }),
     ]);
-    expect(record.totalTimeMs).toBe(0);
-    expect(record.totalTimeLabel).toBe("0 min");
-    expect(record.timeSpent).toEqual([]);
   });
 
-  it("keeps a real departure trace interval when no screen-time session completed", () => {
+  it("keeps top-time and popular sites out of settled places", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const monday = range.startTs + 9 * 60 * 60_000;
+    const sessions = ["youtube.com", "top.example"].flatMap((site, siteIndex) =>
+      [0, 2, 4].map((dayOffset) => ({
+        url: `https://${site}/page`,
+        focusTs: monday + dayOffset * 24 * 60 * 60_000 + siteIndex * 60_000,
+        blurTs:
+          monday +
+          dayOffset * 24 * 60 * 60_000 +
+          siteIndex * 60_000 +
+          20 * 60_000,
+        durationMs: 20 * 60_000,
+      })),
+    );
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions,
+      activity: sessions.map((session) => ({
+        url: session.url,
+        windowStarts: [session.focusTs, session.focusTs + 30_000],
+      })),
+      domains: [
+        domain("youtube.com", { sessionCount: 3 }),
+        domain("top.example", { sessionCount: 3 }),
+      ],
+      range,
+    });
+
+    expect(record.settledPlaces).toEqual([]);
+  });
+
+  it("does not mistake one passive session for a settled place", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const focusTs = range.startTs + 9 * 60 * 60_000;
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions: [
+        {
+          url: "https://passive.example/video",
+          focusTs,
+          blurTs: focusTs + 50 * 60_000,
+          durationMs: 50 * 60_000,
+        },
+      ],
+      activity: [],
+      domains: [domain("passive.example", { sessionCount: 1 })],
+      range,
+    });
+
+    expect(record.settledPlaces).toEqual([]);
+  });
+
+  it("omits a departure when no browsing evidence was recorded", () => {
     const range = getWalkingRecordPeriodRange(
       "week",
       -1,
@@ -431,21 +542,202 @@ describe("deriveWalkingRecord", () => {
       range,
     });
 
+    expect(record.departures).toEqual([]);
+    expect(record.movementCount).toBe(0);
+  });
+
+  it("describes a sub-minute active departure without rounding it to zero", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const mondayMorning = new Date(2026, 6, 20, 9).getTime();
+    const departureTs = mondayMorning + 5 * 60_000;
+
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [
+        event(
+          "main-focus",
+          "navigation",
+          mondayMorning,
+          "https://google.com/search",
+          { event: "focus" },
+        ),
+        event(
+          "departure-focus",
+          "navigation",
+          departureTs,
+          "https://tiny.garden/path",
+          { event: "focus" },
+        ),
+      ],
+      activity: [
+        {
+          url: "https://tiny.garden/path",
+          windowStarts: [departureTs],
+        },
+      ],
+      sessions: [
+        {
+          url: "https://tiny.garden/path",
+          focusTs: departureTs,
+          blurTs: departureTs + 45_000,
+          durationMs: 45_000,
+        },
+      ],
+      domains: [
+        domain("google.com", { sessionCount: 100 }),
+        domain("tiny.garden", {
+          firstVisit: departureTs - 2 * 60_000,
+          lastVisit: departureTs,
+          sessionCount: 1,
+        }),
+      ],
+      range,
+    });
+
     expect(record.departures).toEqual([
       expect.objectContaining({
         to: "tiny.garden",
-        familiarity: "new to you",
-        traceTarget: {
-          id: `departure:${departureTs}:tiny.garden`,
-          url: "https://tiny.garden/path",
-          startTs: departureTs,
-          endTs: nextFocusTs - 1,
-        },
+        time: "< 1 min active",
+        note: "actively browsed",
       }),
     ]);
   });
 
-  it("ranks traceable departures above equally rare visits without movement", () => {
+  it("uses the most actively browsed session for a portrait and preserves a derived mark", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const monday = range.startTs + 9 * 60 * 60_000;
+    const lightlyTracedSession: ScreenTimeSession = {
+      url: "https://lightly-traced.example/long",
+      focusTs: monday,
+      blurTs: monday + 2 * 60 * 60_000,
+      durationMs: 2 * 60 * 60_000,
+    };
+    const tracedSession: ScreenTimeSession = {
+      url: "https://traced.example/short",
+      focusTs: monday + 3 * 60 * 60_000,
+      blurTs: monday + 3 * 60 * 60_000 + 12 * 60_000,
+      durationMs: 12 * 60_000,
+    };
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [
+        event(
+          "light-trace-1",
+          "cursor",
+          lightlyTracedSession.focusTs + 1_000,
+          lightlyTracedSession.url,
+          { event: "move", x: 0.2, y: 0.3 },
+        ),
+        event(
+          "light-trace-2",
+          "cursor",
+          lightlyTracedSession.focusTs + 2_000,
+          lightlyTracedSession.url,
+          { event: "move", x: 0.5, y: 0.6 },
+        ),
+        event(
+          "trace-1",
+          "cursor",
+          tracedSession.focusTs + 1_000,
+          tracedSession.url,
+          { event: "move", x: 0.2, y: 0.3 },
+        ),
+        event(
+          "trace-2",
+          "cursor",
+          tracedSession.focusTs + 2_000,
+          tracedSession.url,
+          { event: "move", x: 0.5, y: 0.6 },
+        ),
+        event(
+          "trace-3",
+          "cursor",
+          tracedSession.focusTs + 3_000,
+          tracedSession.url,
+          { event: "move", x: 0.7, y: 0.4 },
+        ),
+      ],
+      sessions: [lightlyTracedSession, tracedSession],
+      domains: [
+        domain("lightly-traced.example", { sessionCount: 20 }),
+        domain("traced.example", { sessionCount: 20 }),
+      ],
+      range,
+      nowTs: range.endTs + 1,
+    });
+
+    expect(record.dayPlates[0]).toEqual(
+      expect.objectContaining({
+        traceTargets: expect.arrayContaining([
+          expect.objectContaining({ url: tracedSession.url }),
+          expect.objectContaining({ url: lightlyTracedSession.url }),
+        ]),
+        tracePaths: expect.arrayContaining([
+          expect.arrayContaining([expect.any(Object)]),
+        ]),
+      }),
+    );
+
+    const withoutStoredCursorPath = attachWalkingRecordTraces(record, []);
+    expect(
+      withoutStoredCursorPath.dayPlates[0].tracePaths[0].length,
+    ).toBeGreaterThan(1);
+  });
+
+  it("shows five real sites before the remaining-time summary", () => {
+    const range = getWalkingRecordPeriodRange(
+      "week",
+      -1,
+      new Date(2026, 6, 30, 14),
+    );
+    const domains = Array.from({ length: 8 }, (_, index) =>
+      domain(`site-${index + 1}.example`, {
+        sessionCount: index < 6 ? 20 : 2,
+      }),
+    );
+    const sessions = domains.map((entry, index) => {
+      const durationMs = (8 - index) * 10 * 60_000;
+      return {
+        url: `https://${entry.domain}/page`,
+        focusTs: range.startTs + index * 60 * 60_000,
+        blurTs: range.startTs + index * 60 * 60_000 + durationMs,
+        durationMs,
+      };
+    });
+
+    const record = deriveWalkingRecord({
+      period: "week",
+      baseColor: "#4a9a8a",
+      events: [],
+      sessions,
+      domains,
+      range,
+      nowTs: range.endTs + 1,
+    });
+
+    expect(record.timeSpent.map((entry) => entry.site)).toEqual([
+      "site-1.example",
+      "site-2.example",
+      "site-3.example",
+      "site-4.example",
+      "site-5.example",
+      "3 others",
+    ]);
+    expect(record.timeSpent[0].time).toBe("1h20m");
+    expect(record.timeSpent.at(-1)?.time).toBe("1h");
+  });
+
+  it("ranks active browsing above a longer passive visit", () => {
     const range = getWalkingRecordPeriodRange(
       "week",
       -1,
@@ -498,7 +790,29 @@ describe("deriveWalkingRecord", () => {
           { event: "focus" },
         ),
       ],
-      sessions: [],
+      activity: [
+        {
+          url: "https://moving.example/path",
+          windowStarts: Array.from(
+            { length: 30 },
+            (_, index) => secondDepartureTs + index * 30_000,
+          ),
+        },
+      ],
+      sessions: [
+        {
+          url: "https://still.example/path",
+          focusTs: firstDepartureTs,
+          blurTs: firstDepartureTs + 50 * 60_000,
+          durationMs: 50 * 60_000,
+        },
+        {
+          url: "https://moving.example/path",
+          focusTs: secondDepartureTs,
+          blurTs: secondDepartureTs + 15 * 60_000,
+          durationMs: 15 * 60_000,
+        },
+      ],
       domains: [
         domain("google.com", { sessionCount: 100 }),
         domain("still.example", {

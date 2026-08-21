@@ -50,6 +50,13 @@ function usePlayhtmlSubscription<T>(
   return value;
 }
 
+function isPresenceRoomNotReadyError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message === "playhtml.createPresenceRoom is not available before init()"
+  );
+}
+
 /**
  * Hook to access cursor presences from the playhtml context
  * Returns a Map of stable ID -> CursorPresenceView
@@ -199,16 +206,55 @@ export function usePageData<T>(
  */
 export function usePresenceRoom(name: string): PresenceRoom | null {
   const { isLoading } = useContext(PlayContext);
-  return usePlayhtmlSubscription<PresenceRoom | null>(
-    isLoading,
-    () => null,
-    (setRoom) => {
-      const room = playhtml.createPresenceRoom(name);
-      setRoom(room);
-      return () => room.destroy();
-    },
-    [name],
-  );
+  const [room, setRoom] = useState<PresenceRoom | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const readyRetryRef = useRef<{
+    name: string;
+    ready: Promise<void>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (isLoading) {
+      setRoom(null);
+      return;
+    }
+
+    let r: PresenceRoom;
+    try {
+      r = playhtml.createPresenceRoom(name);
+    } catch (error) {
+      if (!isPresenceRoomNotReadyError(error)) {
+        throw error;
+      }
+
+      let cancelled = false;
+      const retry = () => {
+        if (!cancelled) {
+          setRetryCount((count) => count + 1);
+        }
+      };
+      const ready = playhtml.ready;
+      const readyRetry = readyRetryRef.current;
+      if (readyRetry?.ready !== ready || readyRetry.name !== name) {
+        readyRetryRef.current = { name, ready };
+        void ready.then(retry, () => {});
+      }
+      document.addEventListener("playhtml:navigated", retry, { once: true });
+      setRoom(null);
+      return () => {
+        cancelled = true;
+        document.removeEventListener("playhtml:navigated", retry);
+      };
+    }
+
+    setRoom(r);
+    return () => {
+      r.destroy();
+      setRoom(null);
+    };
+  }, [isLoading, name, retryCount]);
+
+  return room;
 }
 
 const EMPTY_PLAYER_IDENTITY = {
@@ -250,7 +296,13 @@ export function usePlayerIdentity(): {
     }
     const readIdentity = () => {
       const me = playhtml.users.me;
-      setIdentity({ color: me.color, pid: me.pid, name: me.name });
+      // users.onChange fires on every presence tick; only re-render consumers
+      // when the identity itself changed.
+      setIdentity((prev) =>
+        prev.color === me.color && prev.pid === me.pid && prev.name === me.name
+          ? prev
+          : { color: me.color, pid: me.pid, name: me.name },
+      );
     };
     readIdentity();
     return playhtml.users.onChange(readIdentity);

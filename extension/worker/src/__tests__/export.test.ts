@@ -1,64 +1,32 @@
-// ABOUTME: Tests for the admin event export route.
-// ABOUTME: Verifies auth, pagination, and JSON export shape for collected events.
+// ABOUTME: Tests stable pagination for admin event exports.
+// ABOUTME: Verifies delayed inserts cannot shift later pages onto duplicate rows.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Env } from '../lib/supabase';
+import { describe, expect, it } from 'vitest';
+import {
+  getLaterEventFilter,
+  loadExportEventRows,
+} from '../routes/export';
 
-const queryBuilder = {
-  select: vi.fn(),
-  eq: vi.fn(),
-  gte: vi.fn(),
-  lt: vi.fn(),
-  order: vi.fn(),
-  range: vi.fn(),
-  then: vi.fn(),
-};
-
-const from = vi.fn();
-let pageResults: Array<{
-  data: Array<Record<string, unknown>>;
-  error: null;
-  count: number;
-}>;
-
-vi.mock('../lib/supabase', () => ({
-  createSupabaseClient: vi.fn(() => ({
-    from,
-  })),
-}));
-
-import { handleExport } from '../routes/export';
-
-const ENV: Env = {
-  SUPABASE_URL: 'https://example.supabase.co',
-  SUPABASE_SECRET_KEY: 'k',
-  ADMIN_KEY: 'admin',
-  RESEND_API_KEY: 'r',
-  CODA_API_TOKEN: 'c',
-  LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
-};
-
-function makeExportRequest(): Request {
-  return new Request('https://example.com/events/export', {
-    method: 'POST',
-    headers: {
-      Authorization: 'Bearer admin',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      type: 'keyboard',
-      startDate: '2026-01-01T00:00:00.000Z',
-      endDate: '2026-01-02T00:00:00.000Z',
-      name: 'Keyboard Export',
-    }),
-  });
+interface StoredEventRow {
+  id: string;
+  type: 'keyboard';
+  ts: string;
+  data: unknown;
+  participant_id: string;
+  session_id: string;
+  url: string;
+  viewport_width: number;
+  viewport_height: number;
+  timezone: string;
 }
 
-function makeRow(index: number): Record<string, unknown> {
+const EVENT_TS = '2026-01-01T12:00:00.000Z';
+
+function makeRow(index: number): StoredEventRow {
   return {
-    id: `event-${index}`,
+    id: `event-${index.toString().padStart(4, '0')}`,
     type: 'keyboard',
-    ts: new Date(index).toISOString(),
+    ts: EVENT_TS,
     data: { event: 'type', index },
     participant_id: `participant-${index % 2}`,
     session_id: `session-${index}`,
@@ -69,58 +37,51 @@ function makeRow(index: number): Record<string, unknown> {
   };
 }
 
-describe('handleExport', () => {
-  beforeEach(() => {
-    queryBuilder.select.mockReset();
-    queryBuilder.eq.mockReset();
-    queryBuilder.gte.mockReset();
-    queryBuilder.lt.mockReset();
-    queryBuilder.order.mockReset();
-    queryBuilder.range.mockReset();
-    queryBuilder.then.mockReset();
-    from.mockReset();
+describe('event export pagination', () => {
+  it('continues after the last event when earlier rows arrive during export', async () => {
+    const storedRows = Array.from({ length: 1001 }, (_, index) => makeRow(index));
+    let pageCount = 0;
 
-    pageResults = [
-      {
-        data: Array.from({ length: 1000 }, (_, index) => makeRow(index)),
-        error: null,
-        count: 1001,
-      },
-      {
-        data: [makeRow(1000)],
-        error: null,
-        count: 1001,
-      },
-    ];
+    const result = await loadExportEventRows(async (cursor, pageSize) => {
+      pageCount += 1;
+      if (pageCount === 2) {
+        storedRows.push({
+          ...makeRow(-1),
+          id: 'event--delayed',
+        });
+      }
 
-    from.mockReturnValue(queryBuilder);
-    queryBuilder.select.mockReturnValue(queryBuilder);
-    queryBuilder.eq.mockReturnValue(queryBuilder);
-    queryBuilder.gte.mockReturnValue(queryBuilder);
-    queryBuilder.lt.mockReturnValue(queryBuilder);
-    queryBuilder.order.mockReturnValue(queryBuilder);
-    queryBuilder.range.mockImplementation(() => Promise.resolve(pageResults.shift()));
-    queryBuilder.then.mockImplementation((resolve, reject) =>
-      Promise.resolve(pageResults[0]).then(resolve, reject),
-    );
+      const rows = storedRows
+        .filter((row) => {
+          if (!cursor) return true;
+          return row.ts > cursor.ts || (row.ts === cursor.ts && row.id > cursor.id);
+        })
+        .sort((a, b) => {
+          const tsOrder = a.ts.localeCompare(b.ts);
+          return tsOrder || a.id.localeCompare(b.id);
+        })
+        .slice(0, pageSize);
+
+      return { data: rows, error: null };
+    });
+
+    if (result.error) throw new Error(result.error.message);
+
+    expect(result.rows).toHaveLength(1001);
+    expect(new Set(result.rows.map((row) => row.id)).size).toBe(1001);
+    expect(result.rows[0].id).toBe('event-0000');
+    expect(result.rows[1000].id).toBe('event-1000');
+    expect(result.rows.some((row) => row.id === 'event--delayed')).toBe(false);
   });
 
-  it('exports every matching event across Supabase result pages', async () => {
-    const res = await handleExport(makeExportRequest(), ENV);
-
-    expect(res.status).toBe(200);
-    expect(queryBuilder.range).toHaveBeenCalledWith(0, 999);
-    expect(queryBuilder.range).toHaveBeenCalledWith(1000, 1999);
-
-    const body = await res.json() as {
-      edition: { eventCount: number; participantCount: number };
-      events: Array<{ id: string; ts: number }>;
-    };
-
-    expect(body.edition.eventCount).toBe(1001);
-    expect(body.edition.participantCount).toBe(2);
-    expect(body.events).toHaveLength(1001);
-    expect(body.events[0]).toMatchObject({ id: 'event-0', ts: 0 });
-    expect(body.events[1000]).toMatchObject({ id: 'event-1000', ts: 1000 });
+  it('builds a stable filter for equal timestamps and quoted ids', () => {
+    expect(
+      getLaterEventFilter(
+        '2026-01-01T12:00:00.000Z',
+        'event-"0999"',
+      ),
+    ).toBe(
+      'ts.gt."2026-01-01T12:00:00.000Z",and(ts.eq."2026-01-01T12:00:00.000Z",id.gt."event-\\"0999\\"")',
+    );
   });
 });

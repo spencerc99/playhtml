@@ -2,9 +2,11 @@
 // ABOUTME: Uses server-calibrated time and active presence so an empty train resets at Home.
 
 import type { CommuteStop } from "./commuteStops";
+import { getCommuteRouteDurationSeconds } from "./commuteTiming";
 
 export const COMMUTE_SERVICE_CHANNEL = "internet-commute-service";
 export const COMMUTE_SERVICE_DISCOVERY_MS = 1_500;
+export const COMMUTE_SERVICE_STOP_LIMIT = 10;
 
 export interface CommuteServiceStop {
   url: string;
@@ -22,7 +24,26 @@ export interface CommuteService {
 }
 
 export interface CommuteServicePresence extends Record<string, unknown> {
-  service: CommuteService;
+  service: CommuteService | null;
+}
+
+export function estimateServerTimeOffset(
+  serverTimestamp: number,
+  requestStartedAt: number,
+  responseReceivedAt: number,
+): number {
+  if (
+    !Number.isFinite(serverTimestamp) ||
+    !Number.isFinite(requestStartedAt) ||
+    !Number.isFinite(responseReceivedAt) ||
+    responseReceivedAt < requestStartedAt
+  ) {
+    throw new Error("Internet Commute requires a valid server timing sample");
+  }
+
+  const requestMidpoint =
+    requestStartedAt + (responseReceivedAt - requestStartedAt) / 2;
+  return serverTimestamp - requestMidpoint;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -68,6 +89,7 @@ export function isCommuteService(value: unknown): value is CommuteService {
     value.startedAt > 0 &&
     Array.isArray(value.stops) &&
     value.stops.length > 0 &&
+    value.stops.length <= COMMUTE_SERVICE_STOP_LIMIT &&
     value.stops.every(isCommuteServiceStop)
   );
 }
@@ -100,10 +122,12 @@ export function getCommuteServicesFromPresences(
 
 export function selectCommuteService(
   services: Iterable<CommuteService>,
+  now: number,
 ): CommuteService | null {
   let selected: CommuteService | null = null;
 
   for (const candidate of services) {
+    if (getCommuteServiceEndTime(candidate) <= now) continue;
     if (
       selected === null ||
       candidate.startedAt < selected.startedAt ||
@@ -115,6 +139,29 @@ export function selectCommuteService(
   }
 
   return selected;
+}
+
+export function getCommuteServiceEndTime(service: CommuteService): number {
+  return (
+    service.startedAt +
+    getCommuteRouteDurationSeconds(service.stops.length) * 1_000
+  );
+}
+
+export function getCommuteServiceDomains(service: CommuteService): string[] {
+  return service.stops.map((stop) =>
+    new URL(stop.url).hostname.replace(/^www\./, ""),
+  );
+}
+
+export function getUnvisitedCommuteStops(
+  stops: CommuteStop[],
+  visitedDomains: Iterable<string>,
+): CommuteStop[] {
+  const visited = new Set(visitedDomains);
+  return stops
+    .filter((stop) => !visited.has(stop.domain))
+    .slice(0, COMMUTE_SERVICE_STOP_LIMIT);
 }
 
 export function createCommuteService(
@@ -130,6 +177,11 @@ export function createCommuteService(
   }
   if (stops.length === 0) {
     throw new Error("Internet Commute requires at least one service stop");
+  }
+  if (stops.length > COMMUTE_SERVICE_STOP_LIMIT) {
+    throw new Error(
+      `Internet Commute supports at most ${COMMUTE_SERVICE_STOP_LIMIT} stops per service`,
+    );
   }
 
   return {

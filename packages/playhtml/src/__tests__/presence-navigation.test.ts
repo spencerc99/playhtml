@@ -4,14 +4,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 import {
-  flushMicrotasks,
+  cursorTestModes,
+  flushPresencePublishes,
   getPresenceSocketForRoom,
   getPresenceSockets,
   sentChannelUpdates,
   sentPresenceValues,
 } from "./presence-test-utils";
 
-describe("presence across navigation", () => {
+describe.each(cursorTestModes)("presence across navigation with cursors $cursorMode", ({ cursors }) => {
   const origPath = window.location.pathname + window.location.search;
 
   beforeEach(async () => {
@@ -38,7 +39,7 @@ describe("presence across navigation", () => {
 
   it("returns the SAME presence object before and after navigation", async () => {
     history.replaceState(null, "", "/facade-a");
-    await playhtml.init({ cursors: { enabled: false } });
+    await playhtml.init({ cursors });
     const before = playhtml.presence;
 
     history.replaceState(null, "", "/facade-b");
@@ -49,7 +50,7 @@ describe("presence across navigation", () => {
 
   it("routes a write from a captured reference to the NEW room after navigation", async () => {
     history.replaceState(null, "", "/write-a");
-    await playhtml.init({ cursors: { enabled: false } });
+    await playhtml.init({ cursors });
     const roomA = playhtml.roomId;
     const capturedPresence = playhtml.presence;
 
@@ -74,7 +75,7 @@ describe("presence across navigation", () => {
 
   it("delivers post-navigation updates to a subscription registered before navigation", async () => {
     history.replaceState(null, "", "/sub-a");
-    await playhtml.init({ cursors: { enabled: false } });
+    await playhtml.init({ cursors });
 
     const received: Array<Map<string, unknown>> = [];
     // Subscribe before navigation.
@@ -124,19 +125,19 @@ describe("presence across navigation", () => {
 
   it("reseeds retained element awareness into the new room without a user action", async () => {
     history.replaceState(null, "", "/seed-a");
-    await playhtml.init({ cursors: { enabled: false } });
+    await playhtml.init({ cursors });
 
     const el = addCanPlayElement("retained-card");
     await playhtml.setupPlayElementForTag(el, "can-play");
     elementHandlers.get("can-play")!.get("retained-card")!
       .setMyAwareness({ here: true } as any);
-    await flushMicrotasks();
+    await flushPresencePublishes();
 
     // Element stays mounted across navigation.
     history.replaceState(null, "", "/seed-b");
     await playhtml.handleNavigation();
     const roomB = playhtml.roomId;
-    await flushMicrotasks();
+    await flushPresencePublishes();
 
     // The new room's socket receives the retained awareness with no further
     // setMyAwareness call.
@@ -149,7 +150,7 @@ describe("presence across navigation", () => {
 
   it("seeds all retained handlers in a single coalesced publish", async () => {
     history.replaceState(null, "", "/seed-batch-a");
-    await playhtml.init({ cursors: { enabled: false } });
+    await playhtml.init({ cursors });
 
     for (let i = 0; i < 5; i += 1) {
       const el = addCanPlayElement(`batch-${i}`);
@@ -157,14 +158,14 @@ describe("presence across navigation", () => {
       elementHandlers.get("can-play")!.get(`batch-${i}`)!
         .setMyAwareness({ i } as any);
     }
-    await flushMicrotasks();
+    await flushPresencePublishes();
 
     history.replaceState(null, "", "/seed-batch-b");
     await playhtml.handleNavigation();
     const roomB = playhtml.roomId;
     const socketB = getPresenceSocketForRoom(roomB);
     const before = sentChannelUpdates(socketB, "element:shard:0").length;
-    await flushMicrotasks();
+    await flushPresencePublishes();
 
     const after = sentChannelUpdates(socketB, "element:shard:0");
     // The seed is one coalesced publish, not one per element.
@@ -180,7 +181,7 @@ describe("presence across navigation", () => {
     // client is NOT rebuilt. A disconnected element's awareness must be removed
     // in the sweep, or it rebroadcasts forever.
     history.replaceState(null, "", "/same-room");
-    await playhtml.init({ cursors: { enabled: false }, room: "/pinned-room" });
+    await playhtml.init({ cursors, room: "/pinned-room" });
 
     const keep = addCanPlayElement("keep");
     const gone = addCanPlayElement("gone");
@@ -188,7 +189,7 @@ describe("presence across navigation", () => {
     await playhtml.setupPlayElementForTag(gone, "can-play");
     elementHandlers.get("can-play")!.get("keep")!.setMyAwareness({ v: 1 } as any);
     elementHandlers.get("can-play")!.get("gone")!.setMyAwareness({ v: 2 } as any);
-    await flushMicrotasks();
+    await flushPresencePublishes();
 
     const room = playhtml.roomId;
     const socket = getPresenceSocketForRoom(room);
@@ -197,7 +198,7 @@ describe("presence across navigation", () => {
     gone.remove();
     history.replaceState(null, "", "/same-room-elsewhere");
     await playhtml.handleNavigation();
-    await flushMicrotasks();
+    await flushPresencePublishes();
 
     const publishes = sentChannelUpdates(socket, "element:shard:0");
     const latest = JSON.stringify(publishes.at(-1));

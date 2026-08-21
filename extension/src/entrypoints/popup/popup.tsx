@@ -16,7 +16,12 @@ import { QuickActions } from "../../components/QuickActions";
 import { Collections } from "../../components/Collections";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";
 import { ProfilePage } from "../../components/ProfilePage";
-import { FLAGS } from "../../flags";
+import { DeveloperFeaturesPage } from "../../components/DeveloperFeaturesPage";
+import { refreshFeatureAccess } from "../../features/featureAccess";
+import {
+  useFeatureState,
+  useExperimentAccess,
+} from "../../features/useFeatureAccess";
 import {
   pageObjectsAreHiddenOnSite,
   showPageObjectsOnSite,
@@ -53,9 +58,15 @@ function PlayHTMLPopup() {
     lastUpdated: 0,
   });
   const [currentView, setCurrentView] = useState<
-    "main" | "inventory" | "collections" | "profile" | "bag-settings"
+    | "main"
+    | "inventory"
+    | "collections"
+    | "profile"
+    | "bag-settings"
+    | "developer-features"
   >("main");
-  const [internalDevFeaturesEnabled, setInternalDevFeaturesEnabled] = useState(false);
+  const experimentAccess = useExperimentAccess();
+  const commuteEnabled = useFeatureState("COMMUTE").enabled;
   const [commuteIsOpen, setCommuteIsOpen] = useState(false);
   const [hiddenSite, setHiddenSite] = useState<{
     origin: string;
@@ -67,50 +78,31 @@ function PlayHTMLPopup() {
 
   useEffect(() => {
     loadPlayerData();
-    // Load dev override and onboarding flags
+    // Load onboarding state
     (async () => {
       try {
-        const result = await browser.storage.local.get([
-          "internalDevFeaturesEnabled",
-          "onboarding_complete",
-        ]);
-        setInternalDevFeaturesEnabled(Boolean(result.internalDevFeaturesEnabled));
+        const result = await browser.storage.local.get("onboarding_complete");
         setOnboardingComplete(
           result.onboarding_complete === "true" ||
             result.onboarding_complete === true,
         );
       } catch {
-        setInternalDevFeaturesEnabled(false);
         setOnboardingComplete(false);
       }
     })();
-
-    // Dev hotkey: Cmd/Ctrl+Shift+. — Shift changes "." to ">" on US layouts,
-    // so accept either e.key value. Also accept e.code === "Period" as a layout-safe fallback.
-    const onKeyDown = async (e: KeyboardEvent) => {
-      const isToggleKey = e.key === "." || e.key === ">" || e.code === "Period";
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && isToggleKey) {
-        e.preventDefault();
-        setInternalDevFeaturesEnabled((prev) => {
-          const next = !prev;
-          browser.storage.local
-            .set({ internalDevFeaturesEnabled: next })
-            .catch(() => {});
-          console.log(`[we-were-online] internalDevFeaturesEnabled = ${next}`);
-          return next;
-        });
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
-    if (!FLAGS.COMMUTE && !internalDevFeaturesEnabled) return;
+    if (!commuteEnabled) return;
     findOpenCommuteTab()
       .then((tab) => setCommuteIsOpen(tab !== null))
       .catch(() => setCommuteIsOpen(false));
-  }, [internalDevFeaturesEnabled]);
+  }, [commuteEnabled]);
+
+  useEffect(() => {
+    if (import.meta.env.MODE === "development" || !playerIdentity?.publicKey) return;
+    refreshFeatureAccess(playerIdentity.publicKey).catch(() => {});
+  }, [playerIdentity?.publicKey]);
 
   const loadPlayerData = async () => {
     try {
@@ -284,12 +276,6 @@ function PlayHTMLPopup() {
     }
   };
 
-  // PlayHTML Bag is dev-only until public release.
-  // To enable: open the extension popup, then toggle via Cmd/Ctrl+Shift+. (or > on US keyboards).
-  // Alternative: from any extension page devtools, run
-  //   `browser.storage.local.set({ internalDevFeaturesEnabled: true })` and reopen the popup.
-  const bagEnabled = internalDevFeaturesEnabled;
-
   const pingContentScript = async () => {
     try {
       if (currentTab?.id) {
@@ -458,6 +444,10 @@ function PlayHTMLPopup() {
     );
   }
 
+  if (currentView === "developer-features" && experimentAccess) {
+    return <DeveloperFeaturesPage onBack={() => setCurrentView("main")} />;
+  }
+
   return (
     <InternetPortraitHome
       playerIdentity={playerIdentity}
@@ -465,27 +455,25 @@ function PlayHTMLPopup() {
       onViewCollections={() => setCurrentView("collections")}
       onViewHistory={toggleHistoricalOverlay}
       onViewProfile={() => setCurrentView("profile")}
-      onViewBagSettings={
-        bagEnabled ? () => setCurrentView("bag-settings") : undefined
+      onViewBagSettings={() => setCurrentView("bag-settings")}
+      onViewDeveloperFeatures={
+        experimentAccess ? () => setCurrentView("developer-features") : undefined
       }
-      onViewCommute={
-        FLAGS.COMMUTE || internalDevFeaturesEnabled
-          ? async () => {
-              await openOrFocusCommute();
-              window.close();
-            }
-          : undefined
-      }
+      onViewCommute={async () => {
+        await openOrFocusCommute();
+        window.close();
+      }}
       commuteIsOpen={commuteIsOpen}
-      onViewScraps={
-        FLAGS.SCRAPS || internalDevFeaturesEnabled
-          ? async () => {
-              const url = browser.runtime.getURL("scraps.html");
-              await browser.tabs.create({ url });
-              window.close();
-            }
-          : undefined
-      }
+      onViewBrowsingHistory={async () => {
+        const url = browser.runtime.getURL("walking-record.html");
+        await browser.tabs.create({ url });
+        window.close();
+      }}
+      onViewScraps={async () => {
+        const url = browser.runtime.getURL("scraps.html");
+        await browser.tabs.create({ url });
+        window.close();
+      }}
       onViewChangelog={async () => {
         await browser.tabs.create({ url: PUBLIC_CHANGELOG_URL });
         window.close();

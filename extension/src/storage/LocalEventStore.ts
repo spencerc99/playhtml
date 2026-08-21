@@ -14,13 +14,21 @@ import {
 } from "../utils/urlNormalization";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
+const AGGREGATE_DAYS_STORE_NAME = "aggregate_days";
 const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
+const DAYS_BACKFILL_STATE_KEY = "__days_backfill_state__";
 const UPLOAD_STATE_PENDING = "pending";
 const UPLOAD_STATE_UPLOADED = "uploaded";
+const LANDSCAPE_SEGMENT_POINT_LIMIT = 96;
+const LANDSCAPE_SEGMENT_DURATION_MS = 12_000;
+const LANDSCAPE_SEGMENTS_PER_TARGET = 8;
+const LANDSCAPE_SOURCE_PATH_LIMIT = 8;
+export const WALKING_RECORD_FAVICON_DOMAIN_LIMIT = 24;
+const WALKING_RECORD_FAVICON_URL_LENGTH_LIMIT = 128 * 1024;
 const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "cursor",
   "navigation",
@@ -29,6 +37,8 @@ const COLLECTION_EVENT_TYPES: CollectionEventType[] = [
   "element",
 ];
 const STORAGE_SIZE_SAMPLE_LIMIT = 200;
+const RECENT_FOCUS_VISIT_LIMIT = 5;
+const AGGREGATE_FAVICON_URL_LENGTH_LIMIT = 2048;
 
 type UploadState = typeof UPLOAD_STATE_PENDING | typeof UPLOAD_STATE_UPLOADED;
 type StatsBackfillState = "running" | "complete";
@@ -41,6 +51,13 @@ interface StoredCollectionEvent extends CollectionEvent {
 interface AggregateUrl {
   aggregateKey: string;
   url: string;
+}
+
+export interface AggregateDay {
+  domain: string;
+  localDayKey: string;
+  firstVisitTs: number;
+  lastVisitTs: number;
 }
 
 // Aggregate key for cross-domain totals (all browsing activity combined)
@@ -103,6 +120,22 @@ export interface DomainStatsAggregate {
   lastVisit: number;
   /** Number of unique URLs represented by this aggregate */
   uniqueUrlCount: number;
+  /** Number of local calendar days with at least one focused visit */
+  activeDayCount: number;
+  /** Latest bounded favicon observed for domain-level milestone UI. */
+  latestFaviconUrl?: string;
+  /** Most recent focused visit on up to five distinct local days. */
+  recentFocusVisits?: number[];
+  /** Compact daily activity used by the global milestone check. */
+  milestoneActivity?: MilestoneActivityAggregate;
+}
+
+export interface MilestoneActivityAggregate {
+  localDayKey: string;
+  cursorDistancePx: number;
+  lastCursorPosition: { x: number; y: number } | null;
+  screenTimeMs: number;
+  pendingFocusTs: number | null;
 }
 
 function domainStatsKey(domain: string): string {
@@ -111,6 +144,26 @@ function domainStatsKey(domain: string): string {
 
 function pageStatsKey(domain: string, normalizedUrl: string): string {
   return `${domain}::${normalizedUrl}`;
+}
+
+function localDayKey(timestamp: number, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(timestamp);
+    const values = new Map(parts.map((part) => [part.type, part.value]));
+    return `${values.get("year")}-${values.get("month")}-${values.get("day")}`;
+  } catch {
+    const date = new Date(timestamp);
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
 }
 
 function getUploadState(event: StoredCollectionEvent): UploadState {
@@ -139,6 +192,14 @@ export interface ScreenTimeResult {
 export interface WalkingRecordEventResult {
   events: CollectionEvent[];
   cursorDistancePx: number;
+  activity: WalkingRecordActivity[];
+  sessions: ScreenTimeSession[];
+  favicons: Record<string, string>;
+}
+
+export interface WalkingRecordActivity {
+  url: string;
+  windowStarts: number[];
 }
 
 export interface WalkingRecordTracePoint {
@@ -158,8 +219,14 @@ export interface WalkingRecordTrace {
   paths: WalkingRecordTracePoint[][];
 }
 
+export interface WalkingRecordMovement {
+  traces: WalkingRecordTrace[];
+  landscapePaths: CollectionEvent[][];
+}
+
 interface TimedTracePoint extends WalkingRecordTracePoint {
   ts: number;
+  event: CollectionEvent;
 }
 
 function squaredDistance(
@@ -247,6 +314,40 @@ function tracePathDistance(points: TimedTracePoint[]): number {
   return distance;
 }
 
+function splitLandscapePath(points: TimedTracePoint[]): TimedTracePoint[][] {
+  const segments: TimedTracePoint[][] = [];
+  let current: TimedTracePoint[] = [];
+
+  for (const point of points) {
+    const first = current[0];
+    if (
+      current.length >= 2 &&
+      (current.length >= LANDSCAPE_SEGMENT_POINT_LIMIT ||
+        point.ts - first.ts > LANDSCAPE_SEGMENT_DURATION_MS)
+    ) {
+      segments.push(current);
+      current = [current.at(-1)!, point];
+    } else {
+      current.push(point);
+    }
+  }
+
+  if (current.length >= 2) segments.push(current);
+  return segments;
+}
+
+function evenlySpacedPaths(
+  paths: TimedTracePoint[][],
+  limit: number,
+): TimedTracePoint[][] {
+  if (paths.length <= limit) return paths;
+
+  return Array.from({ length: limit }, (_, index) => {
+    const sourceIndex = Math.round((index / (limit - 1)) * (paths.length - 1));
+    return paths[sourceIndex];
+  });
+}
+
 /**
  * Extract domain from URL (matches frontend logic)
  * Removes 'www.' prefix and returns hostname
@@ -266,6 +367,8 @@ export class LocalEventStore {
   private initPromise: Promise<void> | null = null;
   private statsBackfillPromise: Promise<void> | null = null;
   private statsBackfillComplete = false;
+  private daysBackfillPromise: Promise<void> | null = null;
+  private daysBackfillComplete = false;
   private eventsPendingStatsAfterBackfill: CollectionEvent[] = [];
   private eventIdsPendingStatsAfterBackfill = new Set<string>();
 
@@ -282,17 +385,38 @@ export class LocalEventStore {
 
     this.initPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+      let upgradeBlocked = false;
 
       request.onerror = () => {
         this.initPromise = null;
         reject(request.error);
       };
       request.onblocked = () => {
-        console.warn("[LocalEventStore] DB upgrade blocked by another connection");
+        upgradeBlocked = true;
+        this.initPromise = null;
+        reject(
+          new Error(
+            "Local history is waiting for an older extension process to close. Reload the extension and open a new tab.",
+          ),
+        );
       };
 
       request.onsuccess = () => {
-        this.db = request.result;
+        const db = request.result;
+        if (upgradeBlocked) {
+          db.close();
+          return;
+        }
+
+        db.onversionchange = () => {
+          db.close();
+          if (this.db === db) {
+            this.db = null;
+            this.isInitialized = false;
+            this.initPromise = null;
+          }
+        };
+        this.db = db;
         this.isInitialized = true;
         if (VERBOSE) {
           console.log("[LocalEventStore] Initialized successfully");
@@ -356,7 +480,9 @@ export class LocalEventStore {
             }
           }
           if (!store.indexNames.contains("normalizedUrl")) {
-            store.createIndex("normalizedUrl", "normalizedUrl", { unique: false });
+            store.createIndex("normalizedUrl", "normalizedUrl", {
+              unique: false,
+            });
             if (VERBOSE) {
               console.log("[LocalEventStore] Added normalizedUrl index");
             }
@@ -396,7 +522,9 @@ export class LocalEventStore {
           }
           db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
           if (VERBOSE) {
-            console.log("[LocalEventStore] Created domain_stats store (keyPath: key)");
+            console.log(
+              "[LocalEventStore] Created domain_stats store (keyPath: key)",
+            );
           }
         } else if (!db.objectStoreNames.contains(STATS_STORE_NAME)) {
           db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
@@ -405,9 +533,12 @@ export class LocalEventStore {
         if (oldVersion < 10) {
           let aggregateUrlsStore: IDBObjectStore;
           if (!db.objectStoreNames.contains(AGGREGATE_URLS_STORE_NAME)) {
-            aggregateUrlsStore = db.createObjectStore(AGGREGATE_URLS_STORE_NAME, {
-              keyPath: ["aggregateKey", "url"],
-            });
+            aggregateUrlsStore = db.createObjectStore(
+              AGGREGATE_URLS_STORE_NAME,
+              {
+                keyPath: ["aggregateKey", "url"],
+              },
+            );
           } else {
             const tx = (event.target as IDBOpenDBRequest).transaction!;
             aggregateUrlsStore = tx.objectStore(AGGREGATE_URLS_STORE_NAME);
@@ -448,6 +579,20 @@ export class LocalEventStore {
             }
             cursor.continue();
           };
+        }
+
+        if (oldVersion < 11) {
+          if (!db.objectStoreNames.contains(AGGREGATE_DAYS_STORE_NAME)) {
+            db.createObjectStore(AGGREGATE_DAYS_STORE_NAME, {
+              keyPath: ["domain", "localDayKey"],
+            });
+          }
+
+          const tx = (event.target as IDBOpenDBRequest).transaction!;
+          tx.objectStore(STATS_STORE_NAME).put({
+            key: DAYS_BACKFILL_STATE_KEY,
+            state: oldVersion === 0 ? "complete" : "running",
+          });
         }
 
         if (oldVersion < 9) {
@@ -511,6 +656,228 @@ export class LocalEventStore {
     return this.statsBackfillPromise;
   }
 
+  private async ensureAggregateDaysBackfilled(): Promise<void> {
+    if (this.daysBackfillComplete) return;
+
+    if (!this.daysBackfillPromise) {
+      this.daysBackfillPromise = this.readDaysBackfillState()
+        .then(async (state) => {
+          if (state !== "complete") {
+            await this.rebuildAggregateDays();
+          }
+        })
+        .then(() => this.writeDaysBackfillState("complete"))
+        .then(() => {
+          this.daysBackfillComplete = true;
+        })
+        .finally(() => {
+          this.daysBackfillPromise = null;
+        });
+    }
+
+    return this.daysBackfillPromise;
+  }
+
+  private async readDaysBackfillState(): Promise<StatsBackfillState | null> {
+    if (!this.db) return null;
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STATS_STORE_NAME], "readonly");
+      const request = transaction
+        .objectStore(STATS_STORE_NAME)
+        .get(DAYS_BACKFILL_STATE_KEY);
+      request.onsuccess = () => {
+        const state = (request.result as { state?: unknown } | undefined)
+          ?.state;
+        resolve(state === "running" || state === "complete" ? state : null);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private async writeDaysBackfillState(
+    state: StatsBackfillState,
+  ): Promise<void> {
+    if (!this.db) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction([STATS_STORE_NAME], "readwrite");
+      transaction.objectStore(STATS_STORE_NAME).put({
+        key: DAYS_BACKFILL_STATE_KEY,
+        state,
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  private static aggregateDaysForEvents(
+    events: CollectionEvent[],
+  ): AggregateDay[] {
+    const days = new Map<string, AggregateDay>();
+
+    for (const event of events) {
+      if (event.type !== "navigation") continue;
+      const data = event.data as NavigationEventData;
+      if (data.event !== "focus") continue;
+
+      const domain = event.domain || extractDomain(event.meta?.url);
+      if (!domain) continue;
+      const dayKey = localDayKey(event.ts, event.meta.tz);
+      const key = `${domain}\n${dayKey}`;
+      const existing = days.get(key);
+      if (existing) {
+        existing.firstVisitTs = Math.min(existing.firstVisitTs, event.ts);
+        existing.lastVisitTs = Math.max(existing.lastVisitTs, event.ts);
+      } else {
+        days.set(key, {
+          domain,
+          localDayKey: dayKey,
+          firstVisitTs: event.ts,
+          lastVisitTs: event.ts,
+        });
+      }
+    }
+
+    return [...days.values()];
+  }
+
+  private async upsertAggregateDays(events: CollectionEvent[]): Promise<void> {
+    const days = LocalEventStore.aggregateDaysForEvents(events);
+    if (days.length === 0 || !this.db) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        [AGGREGATE_DAYS_STORE_NAME, STATS_STORE_NAME],
+        "readwrite",
+      );
+      const daysStore = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      const newDaysByDomain = new Map<string, number>();
+      let pendingDayReads = days.length;
+
+      const updateActiveDayCounts = () => {
+        for (const [domain, count] of newDaysByDomain) {
+          const request = statsStore.get(domainStatsKey(domain));
+          request.onsuccess = () => {
+            const aggregate = request.result as
+              | DomainStatsAggregate
+              | undefined;
+            if (!aggregate) return;
+            aggregate.activeDayCount = (aggregate.activeDayCount ?? 0) + count;
+            statsStore.put(aggregate);
+          };
+        }
+      };
+
+      for (const day of days) {
+        const request = daysStore.get([day.domain, day.localDayKey]);
+        request.onsuccess = () => {
+          const existing = request.result as AggregateDay | undefined;
+          if (existing) {
+            daysStore.put({
+              ...existing,
+              firstVisitTs: Math.min(existing.firstVisitTs, day.firstVisitTs),
+              lastVisitTs: Math.max(existing.lastVisitTs, day.lastVisitTs),
+            } satisfies AggregateDay);
+          } else {
+            daysStore.put(day);
+            newDaysByDomain.set(
+              day.domain,
+              (newDaysByDomain.get(day.domain) ?? 0) + 1,
+            );
+          }
+
+          pendingDayReads--;
+          if (pendingDayReads === 0) updateActiveDayCounts();
+        };
+      }
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  private async rebuildAggregateDays(): Promise<void> {
+    if (!this.db) return;
+    await this.writeDaysBackfillState("running");
+
+    const days = await new Promise<AggregateDay[]>((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], "readonly");
+      const index = transaction.objectStore(STORE_NAME).index("type");
+      const request = index.openCursor(IDBKeyRange.only("navigation"));
+      const aggregated = new Map<string, AggregateDay>();
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve([...aggregated.values()]);
+          return;
+        }
+
+        const event = toCollectionEvent(cursor.value as StoredCollectionEvent);
+        for (const day of LocalEventStore.aggregateDaysForEvents([event])) {
+          const key = `${day.domain}\n${day.localDayKey}`;
+          const existing = aggregated.get(key);
+          if (existing) {
+            existing.firstVisitTs = Math.min(
+              existing.firstVisitTs,
+              day.firstVisitTs,
+            );
+            existing.lastVisitTs = Math.max(
+              existing.lastVisitTs,
+              day.lastVisitTs,
+            );
+          } else {
+            aggregated.set(key, day);
+          }
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    const counts = new Map<string, number>();
+    for (const day of days) {
+      counts.set(day.domain, (counts.get(day.domain) ?? 0) + 1);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        [AGGREGATE_DAYS_STORE_NAME, STATS_STORE_NAME],
+        "readwrite",
+      );
+      transaction.objectStore(AGGREGATE_DAYS_STORE_NAME).clear();
+      const request = transaction.objectStore(STATS_STORE_NAME).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const aggregate = cursor.value as DomainStatsAggregate;
+        if (aggregate.domain && !aggregate.key.includes("::")) {
+          aggregate.activeDayCount = counts.get(aggregate.domain) ?? 0;
+          cursor.update(aggregate);
+        }
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+
+    for (let index = 0; index < days.length; index += 1_000) {
+      const batch = days.slice(index, index + 1_000);
+      await new Promise<void>((resolve, reject) => {
+        const transaction = this.db!.transaction(
+          [AGGREGATE_DAYS_STORE_NAME],
+          "readwrite",
+        );
+        const store = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
+        for (const day of batch) store.put(day);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    }
+  }
+
   private async canUpdateStatsIncrementally(): Promise<boolean> {
     if (this.statsBackfillComplete) return true;
     if (this.statsBackfillPromise) return false;
@@ -527,7 +894,7 @@ export class LocalEventStore {
       const eventStore = transaction.objectStore(STORE_NAME);
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
       const eventCountRequest = eventStore.count();
-      const statsCountRequest = statsStore.count();
+      const statsCursorRequest = statsStore.openCursor();
       const stateRequest = statsStore.get(STATS_BACKFILL_STATE_KEY);
       let eventCount = 0;
       let statsCount = 0;
@@ -551,8 +918,14 @@ export class LocalEventStore {
         eventCount = eventCountRequest.result;
         complete();
       };
-      statsCountRequest.onsuccess = () => {
-        statsCount = statsCountRequest.result;
+      statsCursorRequest.onsuccess = () => {
+        const cursor = statsCursorRequest.result;
+        if (cursor) {
+          const value = cursor.value as Partial<DomainStatsAggregate>;
+          if (typeof value.domain === "string") statsCount++;
+          cursor.continue();
+          return;
+        }
         complete();
       };
       stateRequest.onsuccess = () => {
@@ -566,7 +939,7 @@ export class LocalEventStore {
         complete();
       };
       eventCountRequest.onerror = () => reject(eventCountRequest.error);
-      statsCountRequest.onerror = () => reject(statsCountRequest.error);
+      statsCursorRequest.onerror = () => reject(statsCursorRequest.error);
       stateRequest.onerror = () => reject(stateRequest.error);
       transaction.onerror = () => reject(transaction.error);
     });
@@ -585,7 +958,9 @@ export class LocalEventStore {
     }
   }
 
-  private removeEventsQueuedForStatsAfterBackfill(events: CollectionEvent[]): void {
+  private removeEventsQueuedForStatsAfterBackfill(
+    events: CollectionEvent[],
+  ): void {
     const idsToRemove = new Set(events.map((event) => event.id));
     this.eventsPendingStatsAfterBackfill =
       this.eventsPendingStatsAfterBackfill.filter((event) => {
@@ -608,7 +983,9 @@ export class LocalEventStore {
     }
   }
 
-  private async writeStatsBackfillState(state: StatsBackfillState): Promise<void> {
+  private async writeStatsBackfillState(
+    state: StatsBackfillState,
+  ): Promise<void> {
     if (!this.db) return;
 
     await new Promise<void>((resolve, reject) => {
@@ -636,7 +1013,7 @@ export class LocalEventStore {
     }>((resolve, reject) => {
       const tx = this.db!.transaction([STATS_STORE_NAME], "readonly");
       const store = tx.objectStore(STATS_STORE_NAME);
-      const countReq = store.count();
+      const countReq = store.openCursor();
       const stateReq = store.get(STATS_BACKFILL_STATE_KEY);
       let statsCount = 0;
       let state: StatsBackfillState | null = null;
@@ -649,7 +1026,13 @@ export class LocalEventStore {
       };
 
       countReq.onsuccess = () => {
-        statsCount = countReq.result;
+        const cursor = countReq.result;
+        if (cursor) {
+          const value = cursor.value as Partial<DomainStatsAggregate>;
+          if (typeof value.domain === "string") statsCount++;
+          cursor.continue();
+          return;
+        }
         complete();
       };
       stateReq.onsuccess = () => {
@@ -686,29 +1069,36 @@ export class LocalEventStore {
     }
 
     // Walk ALL events to build complete aggregates (counts, timestamps, URLs, sessions)
-    const allEvents = await new Promise<CollectionEvent[]>((resolve, reject) => {
-      const tx = this.db!.transaction([STORE_NAME], "readonly");
-      const store = tx.objectStore(STORE_NAME);
-      const events: CollectionEvent[] = [];
-      const req = store.openCursor();
+    const allEvents = await new Promise<CollectionEvent[]>(
+      (resolve, reject) => {
+        const tx = this.db!.transaction([STORE_NAME], "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const events: CollectionEvent[] = [];
+        const req = store.openCursor();
 
-      req.onsuccess = () => {
-        const cursor = req.result;
-        if (cursor) {
-          const evt = toCollectionEvent(cursor.value as StoredCollectionEvent);
-          if (!this.eventIdsPendingStatsAfterBackfill.has(evt.id)) {
-            events.push(evt);
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (cursor) {
+            const evt = toCollectionEvent(
+              cursor.value as StoredCollectionEvent,
+            );
+            if (!this.eventIdsPendingStatsAfterBackfill.has(evt.id)) {
+              events.push(evt);
+            }
+            cursor.continue();
+          } else {
+            resolve(events);
           }
-          cursor.continue();
-        } else {
-          resolve(events);
-        }
-      };
-      req.onerror = () => reject(req.error);
-    });
+        };
+        req.onerror = () => reject(req.error);
+      },
+    );
 
     // Group events by aggregate key (global + domain-level + page-level)
-    const keyToEvents = new Map<string, { domain: string; events: CollectionEvent[] }>();
+    const keyToEvents = new Map<
+      string,
+      { domain: string; events: CollectionEvent[] }
+    >();
 
     // Global aggregate: all events regardless of domain
     keyToEvents.set(GLOBAL_STATS_KEY, { domain: "", events: [] });
@@ -727,7 +1117,8 @@ export class LocalEventStore {
       keyToEvents.get(dKey)!.events.push(evt);
 
       // Page-level
-      const nUrl = (evt as any).normalizedUrl || normalizeUrl(evt.meta?.url ?? "");
+      const nUrl =
+        (evt as any).normalizedUrl || normalizeUrl(evt.meta?.url ?? "");
       if (nUrl) {
         const pKey = pageStatsKey(dom, nUrl);
         if (!keyToEvents.has(pKey)) {
@@ -788,7 +1179,8 @@ export class LocalEventStore {
   ): Promise<CollectionEvent[]> {
     await this.ensureInitialized();
 
-    if (VERBOSE) console.log(`[LocalEventStore] Querying domain: ${domain}`, options);
+    if (VERBOSE)
+      console.log(`[LocalEventStore] Querying domain: ${domain}`, options);
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -827,9 +1219,10 @@ export class LocalEventStore {
           cursor.continue();
         } else {
           events.sort((a, b) => a.ts - b.ts);
-          if (VERBOSE) console.log(
-            `[LocalEventStore] Query complete: ${events.length} events for ${domain}`,
-          );
+          if (VERBOSE)
+            console.log(
+              `[LocalEventStore] Query complete: ${events.length} events for ${domain}`,
+            );
           resolve(events);
         }
       };
@@ -864,7 +1257,9 @@ export class LocalEventStore {
         if (!cursor) {
           events.sort((a, b) => b.ts - a.ts);
           resolve(
-            options.limit === undefined ? events : events.slice(0, options.limit),
+            options.limit === undefined
+              ? events
+              : events.slice(0, options.limit),
           );
           return;
         }
@@ -1089,7 +1484,10 @@ export class LocalEventStore {
       totalTimeMs: number;
       uniquePageCount: number;
       sessionCount: number;
+      activeDayCount: number;
       eventCounts: Record<string, number>;
+      latestFaviconUrl?: string;
+      recentFocusVisits: number[];
     }>
   > {
     await this.ensureInitialized();
@@ -1112,7 +1510,10 @@ export class LocalEventStore {
         totalTimeMs: number;
         uniquePageCount: number;
         sessionCount: number;
+        activeDayCount: number;
         eventCounts: Record<string, number>;
+        latestFaviconUrl?: string;
+        recentFocusVisits: number[];
       }> = [];
 
       request.onsuccess = (event) => {
@@ -1138,7 +1539,12 @@ export class LocalEventStore {
               totalTimeMs: aggregate.totalTimeMs,
               uniquePageCount: aggregate.uniqueUrlCount,
               sessionCount: aggregate.sessionCount,
+              activeDayCount: aggregate.activeDayCount ?? 0,
               eventCounts,
+              ...(aggregate.latestFaviconUrl
+                ? { latestFaviconUrl: aggregate.latestFaviconUrl }
+                : {}),
+              recentFocusVisits: aggregate.recentFocusVisits ?? [],
             });
           }
 
@@ -1211,7 +1617,8 @@ export class LocalEventStore {
       const oldestRequest = tsIndex.openCursor();
       oldestRequest.onsuccess = () => {
         oldestEvent =
-          (oldestRequest.result?.value as StoredCollectionEvent | undefined)?.ts ?? 0;
+          (oldestRequest.result?.value as StoredCollectionEvent | undefined)
+            ?.ts ?? 0;
         complete();
       };
       oldestRequest.onerror = () => fail(oldestRequest.error);
@@ -1219,7 +1626,8 @@ export class LocalEventStore {
       const newestRequest = tsIndex.openCursor(null, "prev");
       newestRequest.onsuccess = () => {
         newestEvent =
-          (newestRequest.result?.value as StoredCollectionEvent | undefined)?.ts ?? 0;
+          (newestRequest.result?.value as StoredCollectionEvent | undefined)
+            ?.ts ?? 0;
         complete();
       };
       newestRequest.onerror = () => fail(newestRequest.error);
@@ -1333,6 +1741,7 @@ export class LocalEventStore {
     }
 
     const sampleIntervalMs = 5 * 60_000;
+    const activityWindowMs = 30_000;
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error("Database not initialized"));
@@ -1346,13 +1755,43 @@ export class LocalEventStore {
       const request = tsIndex.openCursor(range);
       const events: CollectionEvent[] = [];
       const sampledCursorWindows = new Set<string>();
+      const activityWindowsByUrl = new Map<string, Set<number>>();
+      const sessions: ScreenTimeSession[] = [];
+      const favicons = new Map<string, string>();
       let previousCursorEvent: CollectionEvent | null = null;
+      let pendingFocus: { ts: number; url: string } | null = null;
       let cursorDistancePx = 0;
+
+      const recordActivity = (event: CollectionEvent) => {
+        const url = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+        if (!url) return;
+        const windowStart =
+          startTs +
+          Math.floor((event.ts - startTs) / activityWindowMs) *
+            activityWindowMs;
+        const windows = activityWindowsByUrl.get(url) ?? new Set<number>();
+        windows.add(windowStart);
+        activityWindowsByUrl.set(url, windows);
+      };
 
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) {
-          resolve({ events, cursorDistancePx });
+          const visitedDomains = new Set(
+            sessions.map((session) => extractDomain(session.url)),
+          );
+          resolve({
+            events,
+            cursorDistancePx,
+            activity: [...activityWindowsByUrl].map(([url, windowStarts]) => ({
+              url,
+              windowStarts: [...windowStarts].sort((a, b) => a - b),
+            })),
+            sessions,
+            favicons: Object.fromEntries(
+              [...favicons].filter(([domain]) => visitedDomains.has(domain)),
+            ),
+          });
           return;
         }
 
@@ -1360,9 +1799,58 @@ export class LocalEventStore {
         const event = toCollectionEvent(storedEvent);
 
         if (event.type === "navigation") {
-          events.push(event);
+          const data = event.data as NavigationEventData;
+          if (data.event === "focus") {
+            pendingFocus = { ts: event.ts, url: event.meta.url };
+            const faviconUrl = data.favicon_url;
+            if (
+              typeof faviconUrl === "string" &&
+              faviconUrl.length > 0 &&
+              faviconUrl.length <= AGGREGATE_FAVICON_URL_LENGTH_LIMIT
+            ) {
+              try {
+                const parsed = new URL(faviconUrl);
+                if (
+                  parsed.protocol === "https:" ||
+                  parsed.protocol === "http:" ||
+                  parsed.protocol === "data:"
+                ) {
+                  favicons.set(extractDomain(event.meta.url), faviconUrl);
+                }
+              } catch {
+                // Ignore malformed favicon metadata from the visited page.
+              }
+            }
+            events.push({
+              ...event,
+              data: { event: data.event },
+            });
+          } else if (
+            (data.event === "blur" || data.event === "beforeunload") &&
+            pendingFocus
+          ) {
+            const durationMs = event.ts - pendingFocus.ts;
+            if (durationMs >= 1_000 && durationMs <= 8 * 60 * 60_000) {
+              sessions.push({
+                url: pendingFocus.url,
+                focusTs: pendingFocus.ts,
+                blurTs: event.ts,
+                durationMs,
+              });
+            }
+            pendingFocus = null;
+          }
+          if (data.event === "popstate") recordActivity(event);
         } else if (event.type === "cursor") {
           const data = event.data as CursorEventData;
+          if (
+            data.event === "move" ||
+            data.event === "click" ||
+            data.event === "hold" ||
+            data.event === undefined
+          ) {
+            recordActivity(event);
+          }
           if (data.event === "move" || data.event === undefined) {
             if (previousCursorEvent) {
               const previous = previousCursorEvent.data as CursorEventData;
@@ -1389,13 +1877,29 @@ export class LocalEventStore {
             previousCursorEvent = event;
           }
 
-          const sampleWindow = Math.floor((event.ts - startTs) / sampleIntervalMs);
+          const sampleWindow = Math.floor(
+            (event.ts - startTs) / sampleIntervalMs,
+          );
           const page = event.normalizedUrl ?? normalizeUrl(event.meta.url);
           const sampleKey = `cursor:${page}:${sampleWindow}`;
           if (!sampledCursorWindows.has(sampleKey)) {
             sampledCursorWindows.add(sampleKey);
             events.push(event);
           }
+        } else if (event.type === "viewport") {
+          const data = event.data as {
+            event?: unknown;
+            scrollDistancePx?: unknown;
+          };
+          if (
+            data.event === "scroll" &&
+            typeof data.scrollDistancePx === "number" &&
+            data.scrollDistancePx > 0
+          ) {
+            recordActivity(event);
+          }
+        } else if (event.type === "keyboard") {
+          recordActivity(event);
         }
 
         cursor.continue();
@@ -1405,19 +1909,90 @@ export class LocalEventStore {
     });
   }
 
+  async getWalkingRecordFavicons(
+    domains: string[],
+  ): Promise<Record<string, string>> {
+    await this.ensureInitialized();
+
+    const requestedDomains = [
+      ...new Set(domains.filter((domain) => domain.length > 0)),
+    ];
+    if (requestedDomains.length > WALKING_RECORD_FAVICON_DOMAIN_LIMIT) {
+      throw new Error("Walking record favicon domain limit exceeded");
+    }
+    if (requestedDomains.length === 0) return {};
+
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const transaction = this.db.transaction([STORE_NAME], "readonly");
+    const domainIndex = transaction.objectStore(STORE_NAME).index("domain");
+    const entries = await Promise.all(
+      requestedDomains.map(
+        (domain) =>
+          new Promise<[string, string] | null>((resolve, reject) => {
+            const request = domainIndex.openCursor(IDBKeyRange.only(domain));
+            let latest: { ts: number; url: string } | null = null;
+
+            request.onsuccess = () => {
+              const cursor = request.result;
+              if (!cursor) {
+                resolve(latest ? [domain, latest.url] : null);
+                return;
+              }
+
+              const event = cursor.value as StoredCollectionEvent;
+              if (event.type === "navigation") {
+                const faviconUrl = (event.data as NavigationEventData)
+                  .favicon_url;
+                if (
+                  typeof faviconUrl === "string" &&
+                  faviconUrl.length <=
+                    WALKING_RECORD_FAVICON_URL_LENGTH_LIMIT &&
+                  event.ts > (latest?.ts ?? -Infinity)
+                ) {
+                  try {
+                    const parsed = new URL(faviconUrl);
+                    if (
+                      parsed.protocol === "https:" ||
+                      parsed.protocol === "http:" ||
+                      parsed.protocol === "data:"
+                    ) {
+                      latest = { ts: event.ts, url: faviconUrl };
+                    }
+                  } catch {
+                    // Ignore malformed favicon metadata from the visited page.
+                  }
+                }
+              }
+              cursor.continue();
+            };
+            request.onerror = () => reject(request.error);
+          }),
+      ),
+    );
+
+    return Object.fromEntries(
+      entries.filter((entry): entry is [string, string] => entry !== null),
+    );
+  }
+
   /**
-   * Extract a few representative, continuous cursor paths for selected sessions.
-   * Paths remain normalized to the source viewport and are simplified before transfer.
+   * Extract representative cursor paths for cards and animated playback.
+   * Card paths are simplified more heavily; playback keeps original timestamps.
    */
-  async getWalkingRecordTraces(
+  async getWalkingRecordMovement(
     targets: WalkingRecordTraceTarget[],
-  ): Promise<WalkingRecordTrace[]> {
+  ): Promise<WalkingRecordMovement> {
     await this.ensureInitialized();
 
     if (targets.length > 16) {
-      throw new Error("Walking record trace target limit exceeded");
+      throw new Error("Walking record movement target limit exceeded");
     }
-    if (targets.length === 0) return [];
+    if (targets.length === 0) {
+      return { traces: [], landscapePaths: [] };
+    }
 
     for (const target of targets) {
       if (
@@ -1427,7 +2002,7 @@ export class LocalEventStore {
         !Number.isFinite(target.endTs) ||
         target.endTs < target.startTs
       ) {
-        throw new Error("Walking record trace target is invalid");
+        throw new Error("Walking record movement target is invalid");
       }
     }
 
@@ -1442,8 +2017,6 @@ export class LocalEventStore {
         },
       ]),
     );
-    const startTs = Math.min(...targets.map((target) => target.startTs));
-    const endTs = Math.max(...targets.map((target) => target.endTs));
 
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -1454,57 +2027,80 @@ export class LocalEventStore {
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
       const tsIndex = store.index("ts");
-      const request = tsIndex.openCursor(IDBKeyRange.bound(startTs, endTs));
+      let remainingCollectors = collectors.size;
 
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) {
-          const traces = [...collectors.values()].map((collector) => {
-            if (collector.currentPath.length >= 2) {
-              collector.paths.push(collector.currentPath);
-            }
+      const finish = () => {
+        const completed = [...collectors.values()].map((collector) => {
+          if (collector.currentPath.length >= 2) {
+            collector.paths.push(collector.currentPath);
+          }
 
-            const paths = collector.paths
-              .map((points, index) => ({
-                points,
-                index,
-                distance: tracePathDistance(points),
-              }))
-              .filter(({ points }) => points.length >= 2)
-              .sort((a, b) => b.distance - a.distance)
-              .slice(0, 3)
+          const rankedPaths = collector.paths
+            .map((points, index) => ({
+              points,
+              index,
+              distance: tracePathDistance(points),
+            }))
+            .filter(({ points }) => points.length >= 2)
+            .sort((a, b) => b.distance - a.distance);
+
+          const selectedPaths = rankedPaths
+            .slice(0, 3)
+            .sort((a, b) => a.index - b.index);
+          const paths = selectedPaths.map(({ points }) =>
+            simplifyTracePath(points),
+          );
+          const landscapePaths = evenlySpacedPaths(
+            rankedPaths
+              .slice(0, LANDSCAPE_SOURCE_PATH_LIMIT)
               .sort((a, b) => a.index - b.index)
-              .map(({ points }) => simplifyTracePath(points));
+              .flatMap(({ points }) => splitLandscapePath(points)),
+            LANDSCAPE_SEGMENTS_PER_TARGET,
+          ).map((points) => points.map(({ event }) => event));
 
-            return { targetId: collector.target.id, paths };
-          });
-          resolve(traces);
-          return;
-        }
+          return {
+            trace: { targetId: collector.target.id, paths },
+            landscapePaths,
+          };
+        });
+        resolve({
+          traces: completed.map(({ trace }) => trace),
+          landscapePaths: completed
+            .flatMap(({ landscapePaths }) => landscapePaths)
+            .filter((path) => path.length >= 2),
+        });
+      };
 
-        const event = cursor.value as StoredCollectionEvent;
-        if (event.type === "cursor") {
-          const data = event.data as CursorEventData;
-          const eventUrl = event.normalizedUrl ?? normalizeUrl(event.meta.url);
+      for (const collector of collectors.values()) {
+        const request = tsIndex.openCursor(
+          IDBKeyRange.bound(collector.target.startTs, collector.target.endTs),
+        );
 
-          if (
-            (data.event === "move" || data.event === undefined) &&
-            Number.isFinite(data.x) &&
-            Number.isFinite(data.y)
-          ) {
-            for (const collector of collectors.values()) {
-              if (
-                event.ts < collector.target.startTs ||
-                event.ts > collector.target.endTs ||
-                eventUrl !== collector.normalizedUrl
-              ) {
-                continue;
-              }
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) {
+            remainingCollectors -= 1;
+            if (remainingCollectors === 0) finish();
+            return;
+          }
 
+          const event = cursor.value as StoredCollectionEvent;
+          if (event.type === "cursor") {
+            const data = event.data as CursorEventData;
+            const eventUrl =
+              event.normalizedUrl ?? normalizeUrl(event.meta.url);
+
+            if (
+              eventUrl === collector.normalizedUrl &&
+              (data.event === "move" || data.event === undefined) &&
+              Number.isFinite(data.x) &&
+              Number.isFinite(data.y)
+            ) {
               const point: TimedTracePoint = {
                 x: Math.max(0, Math.min(1, data.x)),
                 y: Math.max(0, Math.min(1, data.y)),
                 ts: event.ts,
+                event: toCollectionEvent(event),
               };
               const previous = collector.currentPath.at(-1);
 
@@ -1538,12 +2134,12 @@ export class LocalEventStore {
               }
             }
           }
-        }
 
-        cursor.continue();
-      };
+          cursor.continue();
+        };
 
-      request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error);
+      }
     });
   }
 
@@ -1587,7 +2183,9 @@ export class LocalEventStore {
   /**
    * Compute screen time by pairing focus→blur navigation events.
    */
-  async getScreenTime(options: Pick<QueryOptions, 'startTs' | 'endTs'> = {}): Promise<ScreenTimeResult> {
+  async getScreenTime(
+    options: Pick<QueryOptions, "startTs" | "endTs"> = {},
+  ): Promise<ScreenTimeResult> {
     await this.ensureInitialized();
 
     const navEvents = await this.queryByType("navigation", options);
@@ -1599,9 +2197,12 @@ export class LocalEventStore {
 
     for (const evt of navEvents) {
       const d = evt.data as NavigationEventData;
-      if (d.event === 'focus') {
+      if (d.event === "focus") {
         pendingFocus = { ts: evt.ts, url: evt.meta.url };
-      } else if ((d.event === 'blur' || d.event === 'beforeunload') && pendingFocus) {
+      } else if (
+        (d.event === "blur" || d.event === "beforeunload") &&
+        pendingFocus
+      ) {
         const durationMs = evt.ts - pendingFocus.ts;
         // Discard sessions under 1s (noise) or over 8h (forgot to close tab)
         if (durationMs >= 1000 && durationMs <= 8 * 60 * 60 * 1000) {
@@ -1705,11 +2306,18 @@ export class LocalEventStore {
     // Update domain aggregates in a separate transaction so a stats
     // failure never blocks event storage
     if (eventsForStats.length > 0) {
-      const eventsByDomain = LocalEventStore.groupEventsByDomain(eventsForStats);
+      const eventsByDomain =
+        LocalEventStore.groupEventsByDomain(eventsForStats);
       try {
         await this.updateDomainStats(eventsForStats, eventsByDomain);
       } catch (e) {
         console.error("[LocalEventStore] Failed to update domain stats:", e);
+      }
+
+      try {
+        await this.upsertAggregateDays(eventsForStats);
+      } catch (e) {
+        console.error("[LocalEventStore] Failed to update active days:", e);
       }
     }
   }
@@ -1719,6 +2327,9 @@ export class LocalEventStore {
     await this.ensureSessionStatsBackfilled();
     await this.addEvents(events);
     await this.rebuildSessionStats();
+    await this.rebuildAggregateDays();
+    await this.writeDaysBackfillState("complete");
+    this.daysBackfillComplete = true;
     await this.writeStatsBackfillState("complete");
     this.statsBackfillComplete = true;
   }
@@ -1730,7 +2341,10 @@ export class LocalEventStore {
     );
   }
 
-  private static emptyAggregate(key: string, domain: string): DomainStatsAggregate {
+  private static emptyAggregate(
+    key: string,
+    domain: string,
+  ): DomainStatsAggregate {
     return {
       key,
       domain,
@@ -1744,6 +2358,7 @@ export class LocalEventStore {
       firstVisit: 0,
       lastVisit: 0,
       uniqueUrlCount: 0,
+      activeDayCount: 0,
     };
   }
 
@@ -1785,6 +2400,7 @@ export class LocalEventStore {
     agg.storageSizeBytes ??= 0;
 
     for (const evt of events) {
+      const previousLastVisit = agg.lastVisit;
       agg.eventsByType[evt.type] = (agg.eventsByType[evt.type] ?? 0) + 1;
       agg.storageSizeBytes += JSON.stringify(evt).length;
       if (agg.firstVisit === 0 || evt.ts < agg.firstVisit) {
@@ -1797,6 +2413,30 @@ export class LocalEventStore {
       if (evt.type === "navigation") {
         const d = evt.data as NavigationEventData;
         if (d.event === "focus") {
+          if (agg.domain && !agg.key.includes("::")) {
+            const faviconUrl = d.favicon_url;
+            if (
+              typeof faviconUrl === "string" &&
+              faviconUrl.length > 0 &&
+              faviconUrl.length <= AGGREGATE_FAVICON_URL_LENGTH_LIMIT
+            ) {
+              agg.latestFaviconUrl = faviconUrl;
+            }
+
+            const visitDay = localDayKey(evt.ts, evt.meta.tz);
+            const recentVisits =
+              agg.recentFocusVisits ??
+              (previousLastVisit > 0 && previousLastVisit < evt.ts
+                ? [previousLastVisit]
+                : []);
+            agg.recentFocusVisits = [
+              evt.ts,
+              ...recentVisits.filter(
+                (timestamp) => localDayKey(timestamp, evt.meta.tz) !== visitDay,
+              ),
+            ].slice(0, RECENT_FOCUS_VISIT_LIMIT);
+          }
+
           agg.pendingFocusTs = evt.ts;
           agg.pendingFocusUrl = evt.meta?.url ?? "";
         } else if (
@@ -1815,6 +2455,65 @@ export class LocalEventStore {
         }
       }
     }
+
+    if (agg.key === GLOBAL_STATS_KEY) {
+      LocalEventStore.applyEventsToMilestoneActivity(agg, events);
+    }
+  }
+
+  private static applyEventsToMilestoneActivity(
+    agg: DomainStatsAggregate,
+    events: CollectionEvent[],
+  ): void {
+    for (const evt of [...events].sort((a, b) => a.ts - b.ts)) {
+      const eventDay = localDayKey(evt.ts, evt.meta.tz);
+      if (
+        agg.milestoneActivity &&
+        eventDay < agg.milestoneActivity.localDayKey
+      ) {
+        continue;
+      }
+      if (agg.milestoneActivity?.localDayKey !== eventDay) {
+        agg.milestoneActivity = {
+          localDayKey: eventDay,
+          cursorDistancePx: 0,
+          lastCursorPosition: null,
+          screenTimeMs: 0,
+          pendingFocusTs: null,
+        };
+      }
+
+      const activity = agg.milestoneActivity;
+      if (evt.type === "cursor") {
+        const data = evt.data as CursorEventData;
+        if (
+          data.event === "move" &&
+          Number.isFinite(data.x) &&
+          Number.isFinite(data.y)
+        ) {
+          if (activity.lastCursorPosition) {
+            const dx = (data.x - activity.lastCursorPosition.x) * 1920;
+            const dy = (data.y - activity.lastCursorPosition.y) * 1080;
+            activity.cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
+          }
+          activity.lastCursorPosition = { x: data.x, y: data.y };
+        }
+      } else if (evt.type === "navigation") {
+        const data = evt.data as NavigationEventData;
+        if (data.event === "focus") {
+          activity.pendingFocusTs = evt.ts;
+        } else if (
+          (data.event === "blur" || data.event === "beforeunload") &&
+          activity.pendingFocusTs !== null
+        ) {
+          activity.screenTimeMs += Math.max(
+            0,
+            evt.ts - activity.pendingFocusTs,
+          );
+          activity.pendingFocusTs = null;
+        }
+      }
+    }
   }
 
   /**
@@ -1825,7 +2524,10 @@ export class LocalEventStore {
     eventsByDomain: Map<string, CollectionEvent[]>,
   ): Promise<void> {
     // Collect all aggregate keys we need to read/write (global + domain + page)
-    const keyToEvents = new Map<string, { domain: string; events: CollectionEvent[] }>();
+    const keyToEvents = new Map<
+      string,
+      { domain: string; events: CollectionEvent[] }
+    >();
 
     // Global aggregate: receives ALL events from every domain
     keyToEvents.set(GLOBAL_STATS_KEY, { domain: "", events });
@@ -1840,7 +2542,8 @@ export class LocalEventStore {
 
       // Page-level aggregates: group by normalizedUrl
       for (const evt of domainEvents) {
-        const nUrl = (evt as any).normalizedUrl || normalizeUrl(evt.meta?.url ?? "");
+        const nUrl =
+          (evt as any).normalizedUrl || normalizeUrl(evt.meta?.url ?? "");
         if (!nUrl) continue;
         const pKey = pageStatsKey(dom, nUrl);
         if (!keyToEvents.has(pKey)) {
@@ -1861,7 +2564,9 @@ export class LocalEventStore {
         "readwrite",
       );
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
-      const aggregateUrlsStore = transaction.objectStore(AGGREGATE_URLS_STORE_NAME);
+      const aggregateUrlsStore = transaction.objectStore(
+        AGGREGATE_URLS_STORE_NAME,
+      );
 
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
@@ -1929,7 +2634,9 @@ export class LocalEventStore {
       const transaction = this.db.transaction([STORE_NAME], "readonly");
       const store = transaction.objectStore(STORE_NAME);
       const uploadStateIndex = store.index("uploadState");
-      const request = uploadStateIndex.openCursor(IDBKeyRange.only(UPLOAD_STATE_PENDING));
+      const request = uploadStateIndex.openCursor(
+        IDBKeyRange.only(UPLOAD_STATE_PENDING),
+      );
 
       const events: CollectionEvent[] = [];
 
@@ -1998,16 +2705,31 @@ export class LocalEventStore {
       }
 
       const transaction = this.db.transaction(
-        [STORE_NAME, STATS_STORE_NAME, AGGREGATE_URLS_STORE_NAME],
+        [
+          STORE_NAME,
+          STATS_STORE_NAME,
+          AGGREGATE_URLS_STORE_NAME,
+          AGGREGATE_DAYS_STORE_NAME,
+        ],
         "readwrite",
       );
       const evtStore = transaction.objectStore(STORE_NAME);
       const statsStore = transaction.objectStore(STATS_STORE_NAME);
-      const aggregateUrlsStore = transaction.objectStore(AGGREGATE_URLS_STORE_NAME);
+      const aggregateUrlsStore = transaction.objectStore(
+        AGGREGATE_URLS_STORE_NAME,
+      );
+      const aggregateDaysStore = transaction.objectStore(
+        AGGREGATE_DAYS_STORE_NAME,
+      );
       evtStore.clear();
       statsStore.clear();
       aggregateUrlsStore.clear();
-      transaction.oncomplete = () => resolve();
+      aggregateDaysStore.clear();
+      transaction.oncomplete = () => {
+        this.statsBackfillComplete = false;
+        this.daysBackfillComplete = false;
+        resolve();
+      };
       transaction.onerror = () => reject(transaction.error);
     });
   }
@@ -2033,7 +2755,9 @@ export class LocalEventStore {
       const transaction = this.db.transaction([STORE_NAME], "readwrite");
       const store = transaction.objectStore(STORE_NAME);
       const tsIndex = store.index("ts");
-      const request = tsIndex.openCursor(IDBKeyRange.upperBound(cutoffTs, true));
+      const request = tsIndex.openCursor(
+        IDBKeyRange.upperBound(cutoffTs, true),
+      );
 
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;

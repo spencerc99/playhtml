@@ -2,7 +2,10 @@
 // ABOUTME: Covers the origin platform, travel, arrival, and destination dwell.
 
 import { describe, expect, it } from "vitest";
-import { getCommuteTiming } from "./commuteTiming";
+import {
+  getCommuteRouteDurationSeconds,
+  getCommuteTiming,
+} from "./commuteTiming";
 
 describe("getCommuteTiming", () => {
   it("starts at the origin with open doors", () => {
@@ -12,6 +15,7 @@ describe("getCommuteTiming", () => {
       stopIndex: 0,
       departureStopIndex: null,
       atOrigin: true,
+      complete: false,
     });
   });
 
@@ -29,6 +33,7 @@ describe("getCommuteTiming", () => {
       stopIndex: 0,
       departureStopIndex: null,
       atOrigin: false,
+      complete: false,
     });
   });
 
@@ -44,6 +49,7 @@ describe("getCommuteTiming", () => {
       stopIndex: 0,
       departureStopIndex: null,
       atOrigin: false,
+      complete: false,
     });
     expect(getCommuteTiming(28.999, 5)).toMatchObject({
       phase: "arriving",
@@ -56,6 +62,7 @@ describe("getCommuteTiming", () => {
       stopIndex: 0,
       departureStopIndex: null,
       atOrigin: false,
+      complete: false,
     });
     expect(getCommuteTiming(33.999, 5)).toMatchObject({
       phase: "stopped",
@@ -71,6 +78,7 @@ describe("getCommuteTiming", () => {
       stopIndex: 1,
       departureStopIndex: 0,
       atOrigin: false,
+      complete: false,
     });
     expect(getCommuteTiming(36.599, 5)).toMatchObject({
       phase: "riding",
@@ -84,12 +92,45 @@ describe("getCommuteTiming", () => {
     });
   });
 
-  it("identifies the previous stop when the route loops", () => {
-    expect(getCommuteTiming(58, 2)).toMatchObject({
-      phase: "riding",
-      stopIndex: 0,
-      departureStopIndex: 1,
+  it("completes the route after the final stop without wrapping", () => {
+    expect(getCommuteTiming(57.999, 2)).toMatchObject({
+      phase: "stopped",
+      stopIndex: 1,
+      atOrigin: false,
+      complete: false,
     });
+    expect(getCommuteTiming(58, 2)).toEqual({
+      phase: "riding",
+      secondsLeft: 6,
+      stopIndex: 1,
+      departureStopIndex: 1,
+      atOrigin: false,
+      complete: true,
+    });
+    expect(getCommuteTiming(64, 2)).toEqual({
+      phase: "arriving",
+      secondsLeft: 4,
+      stopIndex: 1,
+      departureStopIndex: null,
+      atOrigin: true,
+      complete: true,
+    });
+    expect(getCommuteTiming(67.999, 2)).toMatchObject({
+      phase: "arriving",
+      stopIndex: 1,
+      atOrigin: true,
+      complete: true,
+    });
+    expect(getCommuteTiming(500, 2)).toMatchObject({
+      phase: "stopped",
+      stopIndex: 1,
+      atOrigin: true,
+      complete: true,
+    });
+  });
+
+  it("includes the synchronized return home in the finite route duration", () => {
+    expect(getCommuteRouteDurationSeconds(2)).toBe(68);
   });
 
   it("rejects an empty route", () => {

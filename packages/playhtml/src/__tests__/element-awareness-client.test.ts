@@ -9,13 +9,7 @@ import {
   MAX_ELEMENT_PRESENCE_SHARDS,
   type ElementAwarenessMap,
 } from "../element-awareness";
-
-// Publishes are coalesced across a microtask, so drain it before asserting on
-// what reached the socket. Local emits stay synchronous, so emitted-map
-// assertions do not need this.
-function flushPublish(): Promise<void> {
-  return Promise.resolve();
-}
+import { flushPresencePublishes } from "./presence-test-utils";
 
 class FakeSocket {
   sent: string[] = [];
@@ -92,7 +86,7 @@ describe("ElementAwarenessClient", () => {
     expect(entry.byStableId.get("pk_local")).toEqual({ active: true });
     expect(client.getLocalAwareness("can-play", "card")).toEqual({ active: true });
     // Publish is coalesced onto a microtask.
-    await flushPublish();
+    await flushPresencePublishes();
     expect(parsedSent().at(-1)).toMatchObject({
       type: "presence-update",
       channel: "element:shard:0",
@@ -106,10 +100,10 @@ describe("ElementAwarenessClient", () => {
     const { client, socket } = createClient();
     const value = { active: true };
     client.setLocalAwareness("can-play", "card", value);
-    await flushPublish();
+    await flushPresencePublishes();
     const sentCount = socket.sent.length;
     client.setLocalAwareness("can-play", "card", value);
-    await flushPublish();
+    await flushPresencePublishes();
     expect(socket.sent.length).toBe(sentCount);
   });
 
@@ -118,7 +112,7 @@ describe("ElementAwarenessClient", () => {
     client.setLocalAwareness("can-play", "a", { n: 1 });
     client.setLocalAwareness("can-play", "b", { n: 2 });
     client.setLocalAwareness("can-play", "c", { n: 3 });
-    await flushPublish();
+    await flushPresencePublishes();
     const updates = parsedSent().filter(
       (message) => message.type === "presence-update",
     );
@@ -131,14 +125,14 @@ describe("ElementAwarenessClient", () => {
     client.setLocalAwareness("can-play", "a", { n: 1 });
     client.setLocalAwareness("can-play", "b", { n: 2 });
     client.removeLocalAwareness("can-play", "a");
-    await flushPublish();
+    await flushPresencePublishes();
     expect(parsedSent().at(-1)).toMatchObject({
       type: "presence-update",
       channel: "element:shard:0",
       value: { v: 1, entries: [["can-play", "b", { n: 2 }]] },
     });
     client.removeLocalAwareness("can-play", "b");
-    await flushPublish();
+    await flushPresencePublishes();
     expect(parsedSent().at(-1)).toEqual({
       type: "presence-clear",
       channel: "element:shard:0",
@@ -214,6 +208,46 @@ describe("ElementAwarenessClient", () => {
     expect(entry.byStableId.size).toBe(1);
   });
 
+  it("re-keys every local element when the identity changes", () => {
+    let identity = IDENTITY;
+    const socket = new FakeSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "/page",
+      socketFactory: () => socket as any,
+    });
+    const client = new ElementAwarenessClient({
+      transport,
+      getIdentity: () => identity,
+      getPage: () => "/page",
+      onAwareness: () => {},
+      onAwarenessChange: () => {},
+    });
+    client.setLocalAwareness("can-play", "card-a", { active: false });
+    client.setLocalAwareness("can-play", "card-b", { active: false });
+
+    identity = {
+      publicKey: "pk_replaced",
+      playerStyle: { colorPalette: ["green"] },
+    };
+    client.setLocalAwareness("can-play", "card-a", { active: true });
+    client.setLocalAwareness("can-play", "card-b", { active: true });
+
+    expect(
+      Array.from(
+        client.getAwareness("can-play", "card-a")!.byStableId.keys(),
+      ),
+    ).toEqual(["pk_replaced"]);
+    expect(
+      Array.from(
+        client.getAwareness("can-play", "card-b")!.byStableId.keys(),
+      ),
+    ).toEqual(["pk_replaced"]);
+
+    client.destroy();
+    transport.destroy();
+  });
+
   it("removes a peer's awareness when its channels are removed on disconnect", () => {
     const { socket, emitted } = createClient();
     socket.receive({
@@ -254,7 +288,7 @@ describe("ElementAwarenessClient", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const huge = { blob: "x".repeat(5000) };
     expect(() => client.setLocalAwareness("can-play", "card", huge)).not.toThrow();
-    await flushPublish();
+    await flushPresencePublishes();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -264,9 +298,9 @@ describe("ElementAwarenessClient", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     client.setLocalAwareness("can-play", "card", { active: true });
-    await flushPublish();
+    await flushPresencePublishes();
     client.setLocalAwareness("can-play", "card", { blob: "x".repeat(5000) });
-    await flushPublish();
+    await flushPresencePublishes();
 
     expect(warn).toHaveBeenCalled();
     expect(parsedSent().at(-1)).toEqual({
@@ -287,7 +321,7 @@ describe("ElementAwarenessClient", () => {
         focus: false,
       });
     }
-    await flushPublish();
+    await flushPresencePublishes();
 
     const updates = parsedSent().filter(
       (message) =>
@@ -307,12 +341,57 @@ describe("ElementAwarenessClient", () => {
     error.mockRestore();
   });
 
+  it("includes the timestamp envelope when splitting shards at the byte limit", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+    try {
+      const { client, parsedSent } = createClient();
+      const emptyByteLength = jsonByteLength({
+        v: 1,
+        entries: [
+          ["can-play", "first", { value: "" }],
+          ["can-play", "second", { value: "" }],
+        ],
+      });
+      const fillToUnstampedLimit = "x".repeat(
+        MAX_PRESENCE_VALUE_BYTES - emptyByteLength,
+      );
+
+      client.setLocalAwareness("can-play", "first", { value: "" });
+      client.setLocalAwareness("can-play", "second", {
+        value: fillToUnstampedLimit,
+      });
+      await flushPresencePublishes();
+
+      expect(
+        jsonByteLength({
+          v: 1,
+          entries: [
+            ["can-play", "first", { value: "" }],
+            ["can-play", "second", { value: fillToUnstampedLimit }],
+          ],
+        }),
+      ).toBe(MAX_PRESENCE_VALUE_BYTES);
+      const updates = parsedSent().filter(
+        (message) => message.type === "presence-update",
+      );
+      expect(updates).toHaveLength(2);
+      for (const update of updates) {
+        expect(update.value.at).toBe(1_700_000_000_000);
+        expect(jsonByteLength(update.value)).toBeLessThanOrEqual(
+          MAX_PRESENCE_VALUE_BYTES,
+        );
+      }
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("coalesces N element inits into one bounded burst of channel updates", async () => {
     const { client, parsedSent } = createClient();
     for (let i = 0; i < 100; i += 1) {
       client.setLocalAwareness("can-mirror", `tile-${i}`, { hover: false });
     }
-    await flushPublish();
+    await flushPresencePublishes();
     const updates = parsedSent().filter(
       (message) =>
         message.type === "presence-update" &&
@@ -340,7 +419,7 @@ describe("ElementAwarenessClient", () => {
         ...bigValue,
       });
     }
-    await flushPublish();
+    await flushPresencePublishes();
 
     const updates = parsedSent().filter(
       (message) =>
@@ -444,6 +523,7 @@ describe("ElementAwarenessClient", () => {
   it("drops a ghost peer's element awareness after the staleness window", () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const { socket, emitted } = createClient();
       socket.receive({
@@ -469,7 +549,11 @@ describe("ElementAwarenessClient", () => {
       // No further message from the ghost; after the window the sweep drops it.
       vi.advanceTimersByTime(31_000);
       expect(emitted.at(-1)!.has("can-play:card")).toBe(false);
+      expect(error).toHaveBeenCalledWith(
+        expect.stringContaining("presence transport unreachable"),
+      );
     } finally {
+      error.mockRestore();
       vi.useRealTimers();
     }
   });

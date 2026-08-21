@@ -1,7 +1,7 @@
 {
   "name": "@playhtml/common",
   "description": "Common types for playhtml packages",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "license": "MIT",
   "type": "module",
   "author": "Spencer Chang <spencerc99@gmail.com>",
@@ -22,19 +22,21 @@
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",
-      "import": "./dist/playhtml-common.es.js",
-      "require": "./dist/playhtml-common.umd.js"
+      "import": "./dist/playhtml-common.es.js"
     }
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc && vite build"
+    "build": "tsc && vite build",
+    "test": "vitest run --no-typecheck",
+    "test:watch": "vitest --no-typecheck"
   },
   "devDependencies": {
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-dts": "^4.5.4"
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^2.0.0"
   }
 }

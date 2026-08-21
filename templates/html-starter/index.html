@@ -81,6 +81,11 @@
             use it to build your own tiny social network. Check out the code and
             hover over the capabilities below to see which of these things are collaborative elements.
           </p>
+          <section>
+            <h2>people here</h2>
+            <p id="peopleHereCount">0 people here</p>
+            <ul id="peopleHere"></ul>
+          </section>
             <script>
           function highlightElements(capability) {
             document.querySelectorAll(`[${capability}]`).forEach((ele) => {
@@ -157,7 +162,7 @@
         </ol>
 
           <p>
-            For all the details about these capabilities and more, see the <a href="https://github.com/spencerc99/playhtml#plug-and-play-capabilities">playhtml docs</a
+            For all the details about these capabilities and more, see the <a href="https://github.com/spencerc99/playhtml#plug-and-play-capabilities">playhtml docs</a>
           </p>
         </div>
       </div>
@@ -204,11 +209,32 @@
         }
       });
 
+      const peopleHere = document.getElementById("peopleHere");
+      const peopleHereCount = document.getElementById("peopleHereCount");
+
+      function renderUsers(users) {
+        peopleHereCount.textContent =
+          users.length === 1 ? "1 person here" : `${users.length} people here`;
+        peopleHere.replaceChildren(
+          ...users.map((user) => {
+            const item = document.createElement("li");
+            item.textContent = user.name ?? "anonymous";
+            item.style.color = user.color;
+            return item;
+          })
+        );
+      }
+
+      playhtml.users.onChange(renderUsers);
+      renderUsers(playhtml.users.getAll());
+
       // Reaction button — a custom collaborative element built with the `view`
       // API: register a render function and playhtml re-renders it whenever the
       // shared `count` changes (locally or from another tab). Writes are driven
       // from the @click handler in the template. `register` works before or
-      // after init(). (This is the new experimental vanilla view API.)
+      // after init(), and accepts an element or its id. The view renderer is
+      // experimental; registration is a supported API for both view and
+      // imperative updateElement renderers.
       playhtml.register("reactionBtn", {
         defaultData: { count: 0 },
         view: ({ data, setData }) => {

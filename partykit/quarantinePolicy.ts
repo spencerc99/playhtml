@@ -192,7 +192,7 @@ export function formatQuarantineLog({
     `consecutiveFailures=${failureCount}`,
     `cause=${cause}.`,
     "The persisted document is NOT loaded and will NOT be overwritten.",
-    "The room runs in TRANSIENT MODE: visitors sync live with each other, nothing persists, alarms are parked.",
+    "The room runs in TRANSIENT MODE: awareness continues, shared-data writes are blocked, nothing persists, alarms are parked.",
     `To recover: repair or shrink the document (GET admin/raw-data, compact offline, POST admin/restore-raw-document), then POST admin/quarantine-clear for room=${roomName}.`,
   ].join(" ");
 }

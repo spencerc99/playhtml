@@ -16,6 +16,7 @@ import {
   toPublicPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
+  observeElementChanges,
 } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./shared-elements";
 import {
@@ -91,12 +92,14 @@ import {
 import { normalizePathname } from "./room";
 import {
   ElementAwarenessClient,
+  type ElementAwarenessEntry,
   type ElementAwarenessMap,
 } from "./element-awareness";
 import { PresenceClient } from "./presence-client";
 import { PresenceFacade } from "./presence-facade";
 import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
+import { resolveRoomHost } from "./roomHost";
 
 export {
   formatStateLeafValue,
@@ -171,7 +174,7 @@ function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
  */
 function resolveCursorRoom(room: CursorRoom): string {
   const context = {
-    domain: window.location.host,
+    domain: getCurrentRoomHost(),
     pathname: window.location.pathname,
     search: window.location.search,
   };
@@ -217,6 +220,10 @@ function normalizeRoomId(host: string, roomString: string): string {
   // Otherwise use host + "-" + roomString format to match main room construction
   const normalized = roomString === "" ? h : `${h}-${roomString}`;
   return encodeURIComponent(normalized);
+}
+
+function getCurrentRoomHost(): string {
+  return resolveRoomHost(window.location, document.referrer);
 }
 
 let yprovider: YProvider;
@@ -552,6 +559,48 @@ export interface InitOptions<T = unknown> {
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
+const elementInitializersById = new Map<string, ElementInitializer>();
+let registeredElementObserver: MutationObserver | null = null;
+
+function observeRegisteredElements(): void {
+  if (
+    registeredElementObserver ||
+    elementInitializersById.size === 0 ||
+    typeof MutationObserver === "undefined"
+  ) {
+    return;
+  }
+
+  registeredElementObserver = observeElementChanges(
+    document.documentElement,
+    (mutations) => {
+      for (const mutation of mutations) {
+        for (const addedNode of mutation.addedNodes) {
+          if (!isHTMLElement(addedNode)) continue;
+
+          if (
+            addedNode.id &&
+            elementInitializersById.has(addedNode.id)
+          ) {
+            setupPlayElement(addedNode);
+          }
+
+          addedNode.querySelectorAll<HTMLElement>("[id]").forEach((element) => {
+            if (elementInitializersById.has(element.id)) {
+              setupPlayElement(element);
+            }
+          });
+        }
+      }
+    },
+    { childList: true, subtree: true },
+  );
+}
+
+function disconnectRegisteredElementObserver(): void {
+  registeredElementObserver?.disconnect();
+  registeredElementObserver = null;
+}
 
 function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
@@ -784,6 +833,15 @@ function normalizeConfig(value: unknown): unknown {
   return value;
 }
 
+function containsConfiguredFunction(value: unknown): boolean {
+  if (typeof value === "function") return true;
+  if (Array.isArray(value)) return value.some(containsConfiguredFunction);
+  if (value && typeof value === "object") {
+    return Object.values(value).some(containsConfiguredFunction);
+  }
+  return false;
+}
+
 /**
  * Returns true if `incoming` conflicts with the already-locked config.
  *
@@ -832,10 +890,13 @@ function configsConflict(locked: InitOptions, incoming: InitOptions): boolean {
 
 /** True if these options declare no config worth locking (an "ensure running"
  * call). Such a call must NOT lock config, so a real configure() can still win
- * before connection. Uses the same normalization as configsConflict, so
- * `{}`, `{ cursors: {} }`, and `{ room: undefined }` all count as empty. */
+ * before connection. `{}`, `{ cursors: {} }`, and `{ room: undefined }` all
+ * count as empty, while function-valued options still declare config. */
 function isEmptyConfig(options: InitOptions): boolean {
-  return normalizeConfig(options) === undefined;
+  return (
+    normalizeConfig(options) === undefined &&
+    !containsConfiguredFunction(options)
+  );
 }
 
 /**
@@ -868,6 +929,12 @@ function applyConfig(options: InitOptions): void {
     return;
   }
 
+  if (options.extraCapabilities) {
+    for (const [tag, tagInfo] of Object.entries(options.extraCapabilities)) {
+      validateCapability(tag, tagInfo);
+    }
+  }
+
   // Shallow-copy so a caller that mutates or reuses its options object after
   // declaring config can't silently change the locked config. cursors is
   // copied too since it's the most commonly nested-and-mutated option.
@@ -881,7 +948,7 @@ function applyConfig(options: InitOptions): void {
 
   if (options.extraCapabilities) {
     for (const [tag, tagInfo] of Object.entries(options.extraCapabilities)) {
-      capabilitiesToInitializer[tag] = tagInfo;
+      registerCapability(tag, tagInfo);
     }
   }
   if (options.events) {
@@ -1042,6 +1109,7 @@ function buildElementAwarenessClient(): void {
       getIdentity: resolveMyIdentity,
       getPage: getPresencePage,
       onAwareness: applyElementAwareness,
+      onAwarenessChange: applyElementAwarenessEntry,
     });
   } catch (error) {
     elementAwarenessRoom = null;
@@ -1199,7 +1267,7 @@ function buildCursors(args: {
 
   if (cursorOptions.room) {
     const cursorRoomString = resolveCursorRoom(cursorOptions.room);
-    const cursorRoom = normalizeRoomId(window.location.host, cursorRoomString);
+    const cursorRoom = normalizeRoomId(getCurrentRoomHost(), cursorRoomString);
 
     if (cursorRoom !== mainRoom) {
       const cursorDoc = new Y.Doc();
@@ -1356,7 +1424,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   markAllElementsAsLoading();
   await waitForMainProviderSync(SERVER_ROOM_RESET_SYNC_TIMEOUT_MS);
   refreshPageDataChannels(getPageDataDeps());
-  setupElements();
+  reinitializeElements();
   markAllElementsAsReady();
   cursorClient?.refreshContainer?.();
   cursorClient?.refreshCursorStyles?.();
@@ -1416,7 +1484,7 @@ async function runHandleNavigation(): Promise<void> {
     getDefaultRoom(
       configuredOptions?.defaultRoomOptions ?? { includeSearch: false },
     );
-  const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
+  const newMainRoom = normalizeRoomId(getCurrentRoomHost(), nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
 
   const cursorOptions = configuredOptions?.cursors;
@@ -1430,7 +1498,7 @@ async function runHandleNavigation(): Promise<void> {
   if (cursorOptions?.enabled) {
     if (cursorOptions.room) {
       const resolved = resolveCursorRoom(cursorOptions.room);
-      const normalized = normalizeRoomId(window.location.host, resolved);
+      const normalized = normalizeRoomId(getCurrentRoomHost(), resolved);
       cursorRoomChanged = normalized !== currentCursorRoomId;
     } else {
       cursorRoomChanged = mainRoomChanged;
@@ -1525,7 +1593,11 @@ async function runHandleNavigation(): Promise<void> {
     refreshPageDataChannels(getPageDataDeps());
   }
 
-  setupElements();
+  if (mainRoomChanged) {
+    reinitializeElements();
+  } else {
+    setupElements();
+  }
   markAllElementsAsReady();
 
   cursorClient?.refreshContainer?.();
@@ -1634,7 +1706,7 @@ async function initPlayHTMLOnce() {
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   // TODO: We want to normalize here but we can't without losing data.
-  const room = normalizeRoomId(window.location.host, inputRoom);
+  const room = normalizeRoomId(getCurrentRoomHost(), inputRoom);
 
   const partykitHost = getPartykitHost(host);
   __currentRoomId = room;
@@ -1985,8 +2057,8 @@ function createPlayElementData<T extends TagType, TData = any>(
     triggerAwarenessUpdate: () => {
       if (elementAwarenessClient) {
         // setLocalAwareness (called by onAwarenessChange, which always runs
-        // immediately before this in setMyAwareness) already emitted the
-        // handler sweep synchronously. Refreshing here would fire
+        // immediately before this in setMyAwareness) already delivered the
+        // element's awareness synchronously. Refreshing here would fire
         // updateElementAwareness a second time for the same local write.
         return;
       }
@@ -2047,7 +2119,8 @@ function getElementInitializerValidationIssues(
   return issues;
 }
 
-// Read custom element properties set by CanPlayElement (React) on the DOM node
+// Read initializer properties from React elements and direct can-play
+// configurations that remain supported for compatibility.
 function getCustomElementProps(element: HTMLElement) {
   const el = element as any;
   const props: Partial<ElementInitializer> = {};
@@ -2086,7 +2159,13 @@ function getElementInitializerInfoForElement(
   element: HTMLElement,
 ) {
   if (tag === TagType.CanPlay) {
-    // For can-play, all properties come from the DOM element
+    const registeredInitializer = elementInitializersById.get(element.id);
+    if (registeredInitializer) {
+      return registeredInitializer as Required<ElementInitializer>;
+    }
+
+    // React and the imperative can-play API provide initializer properties on
+    // the DOM element.
     const customProps = getCustomElementProps(element);
     return customProps as Required<ElementInitializer>;
   }
@@ -2175,6 +2254,26 @@ function applyElementAwareness(elementAwareness: ElementAwarenessMap): void {
   trackedElementAwarenessKeys = new Set(elementAwareness.keys());
 }
 
+function applyElementAwarenessEntry(
+  key: string,
+  awareness: ElementAwarenessEntry | undefined,
+): void {
+  safeInvoke(
+    () =>
+      updateHandlerAwarenessForKey(
+        key,
+        awareness?.array ?? [],
+        awareness?.byStableId ?? new Map(),
+      ),
+    "element awareness handler",
+  );
+  if (awareness) {
+    trackedElementAwarenessKeys.add(key);
+  } else {
+    trackedElementAwarenessKeys.delete(key);
+  }
+}
+
 function updateHandlerAwarenessForKey(
   key: string,
   array: any[],
@@ -2200,25 +2299,34 @@ function updateHandlerAwarenessForKey(
  * on the `playhtml` object on `window`.
  */
 function setupElements(): void {
+  setupElementsFromDocument(false);
+}
+
+function reinitializeElements(): void {
+  setupElementsFromDocument(true);
+}
+
+function setupElementsFromDocument(reinitializeExisting: boolean): void {
   if (!hasSynced) {
     return;
   }
 
-  // Stamp any registrations made before init() onto their elements so the
-  // can-play scan below picks them up.
-  for (const [id, init] of pendingRegistrations) {
-    const el = document.getElementById(id);
-    if (el && isHTMLElement(el)) {
-      stampRegistrationOntoElement(el, init);
-    }
-  }
+  observeRegisteredElements();
 
   for (const tag of getTagTypes()) {
-    const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`),
-    ).filter(isHTMLElement);
+    const tagElements = new Set<HTMLElement>(
+      Array.from(document.querySelectorAll(`[${tag}]`)).filter(isHTMLElement),
+    );
+    if (tag === TagType.CanPlay) {
+      for (const id of elementInitializersById.keys()) {
+        const element = document.getElementById(id);
+        if (element && isHTMLElement(element)) {
+          tagElements.add(element);
+        }
+      }
+    }
 
-    if (!tagElements.length) {
+    if (tagElements.size === 0) {
       continue;
     }
 
@@ -2226,7 +2334,16 @@ function setupElements(): void {
       console.log(`SET UP ${tag}`);
     }
     void Promise.all(
-      tagElements.map((element) => setupPlayElementForTag(element, tag)),
+      Array.from(tagElements).map((element) => {
+        const elementId = getIdForElement(element);
+        const existingHandler = elementId
+          ? elementHandlers.get(tag)?.get(elementId)
+          : undefined;
+        if (!reinitializeExisting && existingHandler?.element === element) {
+          return;
+        }
+        return setupPlayElementForTag(element, tag);
+      }),
     );
   }
 
@@ -2280,7 +2397,7 @@ function createPresenceRoom(name: string): PresenceRoom {
     throw new Error("playhtml.createPresenceRoom is not available before init()");
   }
 
-  const roomId = normalizeRoomId(window.location.host, name);
+  const roomId = normalizeRoomId(getCurrentRoomHost(), name);
 
   // Transport path: an isolated presence socket to the named room. Its traffic
   // never touches the page room, and reconnects replay join+state on their own.
@@ -2365,11 +2482,11 @@ export interface PlayHTMLComponents {
   removePlayElement: typeof removePlayElement;
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  /** @experimental View API — register a custom element by id. */
+  /** Register a custom element by id or DOM reference. */
   register: typeof registerPlayElement;
-  /** @experimental View API — register a reusable capability by attribute name. */
+  /** Register a reusable capability by attribute name. */
   define: typeof definePlayCapability;
-  /** @experimental View API — get a handle for a bound element. */
+  /** Get a handle for a bound element. */
   getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<PlayStore["play"]>;
   /** @deprecated Use getHandle(elementId, tag) to access a bound element. */
@@ -2456,6 +2573,7 @@ export async function resetPlayHTML(): Promise<void> {
     pageDataRefCounts.clear();
     pageDataListeners.clear();
     mainProviderSyncWaiters.clear();
+    disconnectRegisteredElementObserver();
 
     unbindHandshake();
     __resetPermissionsForTests();
@@ -2620,6 +2738,14 @@ function isElementValidForTag(
   element: HTMLElement,
   tag: TagType | string,
 ): boolean {
+  const registeredValidator =
+    tag === TagType.CanPlay
+      ? elementInitializersById.get(element.id)?.isValidElementForTag
+      : undefined;
+  if (registeredValidator) {
+    return registeredValidator(element);
+  }
+
   const customValidator = shouldReadElementPropsForTag(tag, element)
     ? (element as any).isValidElementForTag
     : undefined;
@@ -2771,9 +2897,14 @@ async function setupPlayElementForTag<T extends TagType | string>(
     }
   }
 
-  // redo this now that we have set it in the mapping.
-  // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
-  elementData.triggerAwarenessUpdate?.();
+  const initialAwareness = elementAwarenessClient?.getAwareness(tag, elementId);
+  if (initialAwareness) {
+    tagElementHandlers
+      .get(elementId)
+      ?.updateAwareness(initialAwareness.array, initialAwareness.byStableId);
+  } else {
+    elementData.triggerAwarenessUpdate?.();
+  }
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
@@ -2890,12 +3021,6 @@ function setupPlayElement(
     return;
   }
 
-  // If this element was registered via register() before it existed, stamp its
-  // initializer on now so the can-play branch below picks it up.
-  if (element.id && pendingRegistrations.has(element.id)) {
-    stampRegistrationOntoElement(element, pendingRegistrations.get(element.id)!);
-  }
-
   // Check for data-source attribute and handle dynamic discovery
   if (element.hasAttribute("data-source")) {
     handleNewSharedReference(element);
@@ -2907,11 +3032,14 @@ function setupPlayElement(
   }
 
   // Handle loading state for dynamically added elements
-  const hasPlayhtmlAttributes = getTagTypes().some((tag) =>
-    element.hasAttribute(tag),
+  const tags = new Set(
+    getTagTypes().filter((tag) => element.hasAttribute(tag)),
   );
+  if (element.id && elementInitializersById.has(element.id)) {
+    tags.add(TagType.CanPlay);
+  }
 
-  if (hasPlayhtmlAttributes) {
+  if (tags.size > 0) {
     if (hasSynced) {
       // If already synced, element will be ready immediately
       markElementAsReady(element);
@@ -2922,9 +3050,7 @@ function setupPlayElement(
   }
 
   void Promise.all(
-    getTagTypes()
-      .filter((tag) => element.hasAttribute(tag))
-      .map((tag) => setupPlayElementForTag(element, tag)),
+    Array.from(tags).map((tag) => setupPlayElementForTag(element, tag)),
   );
 }
 
@@ -3014,7 +3140,6 @@ function removePlayElement(element: Element | null) {
  * bound element. Reads/writes resolve the live handler lazily, so a handle
  * obtained before the element binds still works once it does.
  *
- * @experimental Part of the new view API; subject to change in a future minor.
  */
 export interface PlayElementHandle<T = any, U = any, V = any> {
   id: string;
@@ -3030,10 +3155,6 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
   /** Detach the handler (shared data is preserved) and drop the registration. */
   unregister(): void;
 }
-
-// elementId -> initializer, pending until both the definition and the DOM
-// element exist (upgrade semantics, like customElements.define).
-const pendingRegistrations = new Map<string, ElementInitializer>();
 
 /**
  * Enforces initializer invariants before register/define stores a capability.
@@ -3072,28 +3193,6 @@ function validateRegisteredInitializer(
       `[playhtml] "${name}" has an invalid initializer: ${issues.join(", ")}.`,
     );
   }
-}
-
-/** Stamps a registration's initializer fields onto its element as props. */
-function stampRegistrationOntoElement(
-  element: HTMLElement,
-  init: ElementInitializer,
-): void {
-  Object.assign(element, init);
-  if (!element.hasAttribute(TagType.CanPlay)) {
-    element.setAttribute(TagType.CanPlay, "");
-  }
-}
-
-/** Applies a pending registration if its element exists and we've synced. */
-function applyPendingRegistration(elementId: string): void {
-  if (!hasSynced) return;
-  const init = pendingRegistrations.get(elementId);
-  if (!init) return;
-  const element = document.getElementById(elementId);
-  if (!element || !isHTMLElement(element)) return;
-  stampRegistrationOntoElement(element, init);
-  void setupPlayElementForTag(element, TagType.CanPlay);
 }
 
 /**
@@ -3160,32 +3259,67 @@ function createPlayElementHandle(
       handler.requestUpdate();
     },
     unregister: () => {
-      pendingRegistrations.delete(elementId);
-      const el = document.getElementById(elementId);
-      if (el) removePlayElement(el);
+      const boundElement = findHandlerForElementId(elementId, tag)?.element;
+      elementInitializersById.delete(elementId);
+      if (elementInitializersById.size === 0) {
+        disconnectRegisteredElementObserver();
+      }
+      const element = boundElement ?? document.getElementById(elementId);
+      if (element) removePlayElement(element);
     },
   };
 }
 
 /**
- * Registers a `view`/`updateElement` initializer for a single element by id.
- * Callable before or after `init()` and before or after the element exists;
- * binding happens once both are present. Returns a handle for reads/writes
- * from outside the view (e.g. form submit handlers).
- *
- * @experimental New view API; signature may change in a future minor release.
+ * Registers a `view`/`updateElement` initializer for a single element by id or
+ * DOM reference. Callable before or after `init()`. An id registration binds
+ * once the element exists; an element registration binds the provided node.
+ * Returns a handle for reads/writes from outside the view.
  */
 function registerPlayElement<T = any, U = any, V = any>(
   elementId: string,
   init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>;
+function registerPlayElement<T = any, U = any, V = any>(
+  element: HTMLElement,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>;
+function registerPlayElement<T = any, U = any, V = any>(
+  elementOrId: string | Element,
+  init: ElementInitializer<T, U, V>,
 ): PlayElementHandle<T, U, V> {
+  let element: HTMLElement | null;
+  let elementId: string;
+  if (typeof elementOrId === "string") {
+    elementId = elementOrId;
+    element = document.getElementById(elementId);
+  } else {
+    if (!isHTMLElement(elementOrId)) {
+      throw new Error(
+        "[playhtml] register(element, initializer) requires an HTML element.",
+      );
+    }
+    if (!elementOrId.id) {
+      throw new Error(
+        "[playhtml] register(element, initializer) requires an element with a non-empty id.",
+      );
+    }
+    element = elementOrId;
+    elementId = element.id;
+  }
+
   validateRegisteredInitializer(elementId, init as ElementInitializer);
-  pendingRegistrations.set(elementId, init as ElementInitializer);
-  applyPendingRegistration(elementId);
+  elementInitializersById.set(elementId, init as ElementInitializer);
+  if (hasSynced) {
+    observeRegisteredElements();
+  }
+  if (element && isHTMLElement(element)) {
+    setupPlayElement(element);
+  }
   if (
     configuredOptions?.developmentMode &&
     hasSynced &&
-    !document.getElementById(elementId)
+    !element
   ) {
     console.warn(
       `[playhtml] register("${elementId}") — no element with that id is in the DOM yet. ` +
@@ -3201,33 +3335,27 @@ function registerPlayElement<T = any, U = any, V = any>(
 
 /**
  * Registers a reusable capability under an attribute name (e.g. "can-note").
- * Every element carrying that attribute gets the capability — including ones
- * added to the DOM later. The imperative counterpart of
- * `init({ extraCapabilities })`.
+ * Upgrades matching elements already in the DOM. Matching descendants rendered
+ * by a view bind through the view's observer. The imperative counterpart of
+ * `init({ extraCapabilities })`; other elements added later still use
+ * `setupPlayElement`.
  *
  * @param capabilityName - The attribute name elements use to opt in (used in an
  *   attribute selector, e.g. `[can-note]`).
- * @experimental New view API; signature may change in a future minor release.
  */
 function definePlayCapability<T = any, U = any, V = any>(
   capabilityName: string,
   init: ElementInitializer<T, U, V>,
 ): void {
-  if (capabilityName === PAGE_TAG) {
-    throw new Error(`"${PAGE_TAG}" is a reserved tag name for page-level data`);
-  }
-  if (capabilityName === TagType.CanPlay) {
-    throw new Error(
-      `[playhtml] "${TagType.CanPlay}" is reserved — use register(id, init) for single elements.`,
-    );
-  }
-  if (Object.prototype.hasOwnProperty.call(TagTypeToElement, capabilityName)) {
-    throw new Error(
-      `[playhtml] "${capabilityName}" is a built-in capability and cannot be redefined.`,
-    );
-  }
-  validateRegisteredInitializer(capabilityName, init as ElementInitializer);
-  capabilitiesToInitializer[capabilityName] = init as ElementInitializer;
+  registerCapability(capabilityName, init as ElementInitializer);
+}
+
+function registerCapability(
+  capabilityName: string,
+  init: ElementInitializer,
+): void {
+  validateCapability(capabilityName, init);
+  capabilitiesToInitializer[capabilityName] = init;
   // Upgrade any elements already on the page (no-op before init()).
   if (hasSynced) {
     const els = Array.from(
@@ -3237,6 +3365,26 @@ function definePlayCapability<T = any, U = any, V = any>(
       els.map((el) => setupPlayElementForTag(el, capabilityName)),
     );
   }
+}
+
+function validateCapability(
+  capabilityName: string,
+  init: ElementInitializer,
+): void {
+  if (capabilityName === PAGE_TAG) {
+    throw new Error(`"${PAGE_TAG}" is a reserved tag name for page-level data`);
+  }
+  if (capabilityName === TagType.CanPlay) {
+    throw new Error(
+      `[playhtml] "${TagType.CanPlay}" is reserved — use register(elementOrId, init) for single elements.`,
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(TagTypeToElement, capabilityName)) {
+    throw new Error(
+      `[playhtml] "${capabilityName}" is a built-in capability and cannot be redefined.`,
+    );
+  }
+  validateRegisteredInitializer(capabilityName, init);
 }
 
 /**
@@ -3256,18 +3404,21 @@ function definePlayCapability<T = any, U = any, V = any>(
 const viewDescendants = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
 
 function setupViewDescendants(root: HTMLElement): void {
-  // Stamp pending single-element registrations onto matching descendants.
-  for (const [id, init] of pendingRegistrations) {
+  const present = new Map<string, HTMLElement>();
+
+  // Registered elements do not need a can-play attribute, so include matching
+  // descendants by id before scanning capability attributes.
+  for (const id of elementInitializersById.keys()) {
     if (id === root.id) continue;
-    const el = document.getElementById(id);
-    if (el && root.contains(el) && isHTMLElement(el)) {
-      stampRegistrationOntoElement(el, init);
+    const element = document.getElementById(id);
+    if (element && root.contains(element) && isHTMLElement(element)) {
+      present.set(`${TagType.CanPlay}:${id}`, element);
     }
   }
+
   // Capability descendants present in this render, keyed by `tag:id`. The scan
   // is subtree-wide, so each view-root tracks its full descendant set
   // (including nested ones) — teardown below covers every depth.
-  const present = new Map<string, HTMLElement>();
   for (const tag of getTagTypes()) {
     const els = Array.from(root.querySelectorAll(`[${tag}]`)).filter(
       isHTMLElement,
@@ -3284,13 +3435,16 @@ function setupViewDescendants(root: HTMLElement): void {
         continue;
       }
       present.set(`${tag}:${el.id}`, el);
-      const existing = elementHandlers.get(tag)?.get(el.id);
-      if (existing) {
-        if (existing.element === el) continue; // already bound to this node
-      }
-      void setupPlayElementForTag(el, tag);
     }
   }
+
+  for (const [key, element] of present) {
+    const tag = key.slice(0, key.indexOf(":"));
+    const existing = elementHandlers.get(tag)?.get(element.id);
+    if (existing?.element === element) continue;
+    void setupPlayElementForTag(element, tag);
+  }
+
   // Tear down descendants this root bound previously that are gone now.
   const previous = viewDescendants.get(root);
   if (previous) {

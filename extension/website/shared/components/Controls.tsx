@@ -27,6 +27,8 @@ import {
   type SavedConfig,
 } from "../utils/savedConfigs";
 
+const { stateChangeTypes: comboboxStateChangeTypes } = useCombobox;
+
 interface ControlsProps {
   visible: boolean;
   settings: any;
@@ -397,13 +399,14 @@ const FilterChipInput: React.FC<{
     inputValue,
     setInputValue,
     closeMenu,
+    openMenu,
   } = useCombobox<string>({
     items,
     initialInputValue: "",
     itemToString: (item) => item ?? "",
     stateReducer: (state, { type, changes }) => {
-      const t = useCombobox.stateChangeTypes;
-      if (type === t.InputClick || type === t.InputFocus) {
+      const t = comboboxStateChangeTypes;
+      if (type === t.InputClick) {
         return { ...changes, isOpen: true };
       }
       if (type === t.InputChange) {
@@ -512,11 +515,12 @@ const FilterChipInput: React.FC<{
         }}
       >
         <input
-          id="filter-input"
           {...getInputProps({
+            id: "filter-input",
             placeholder: filters.length
               ? "add another (domain or path)…"
               : "domain.com  /path  or  domain.com/path",
+            onFocus: openMenu,
             onBlur: commitTyped,
             onKeyDown: (e) => {
               if (e.key === "Enter") {

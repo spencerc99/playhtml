@@ -137,7 +137,7 @@ export class AdminHandler {
   }
 
   private checkPersistenceWriteAvailable(): Response | null {
-    return this.context.getPersistenceUnavailableResponse();
+    return this.context.getSharedDataWriteUnavailableResponse();
   }
 
   private async loadDatabasePlayData(): Promise<{
@@ -478,15 +478,7 @@ export class AdminHandler {
     try {
       const liveYDoc = this.context.document;
       const base64 = encodeDocToBase64(liveYDoc);
-      const { error } = await supabase.from("documents").upsert(
-        {
-          name: this.context.name,
-          document: base64,
-        },
-        { onConflict: "name" }
-      );
-      if (error) throw new Error(error.message);
-      this.context.markDocumentPersisted(base64);
+      await this.context.saveDocumentBase64(base64);
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "content-type": "application/json" },
       });
@@ -1038,6 +1030,7 @@ export class AdminHandler {
         if (this.context.circuitBreaker.isQuarantined()) {
           await this.context.circuitBreaker.clearQuarantine();
           quarantineCleared = true;
+          this.context.markDocumentHydrated();
         }
       } catch (error) {
         cleanupError = error instanceof Error ? error.message : String(error);

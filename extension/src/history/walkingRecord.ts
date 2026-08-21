@@ -1,26 +1,31 @@
 // ABOUTME: Derives calendar-period walking records from locally collected browsing events.
-// ABOUTME: Ranks departures, dormant familiar sites, time spent, and representative traces.
+// ABOUTME: Ranks departures, settled small sites, time spent, and representative traces.
 
 import type {
   CollectionEvent,
   CursorEventData,
   NavigationEventData,
 } from "../collectors/types";
-import type {
-  ScreenTimeSession,
-  WalkingRecordTrace,
-  WalkingRecordTracePoint,
-  WalkingRecordTraceTarget,
+import {
+  WALKING_RECORD_FAVICON_DOMAIN_LIMIT,
+  type ScreenTimeSession,
+  type WalkingRecordActivity,
+  type WalkingRecordTrace,
+  type WalkingRecordTracePoint,
+  type WalkingRecordTraceTarget,
 } from "../storage/LocalEventStore";
 import { risoInkColor } from "../utils/risoInk";
+import { calculateCursorDistance } from "../utils/cursorDistance";
 import { extractDomain, normalizeUrl } from "../utils/urlNormalization";
 import { parseColorToHsl } from "@movement/utils/eventUtils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SMALL_SITE_MAX_VISITS = 5;
-const FAMILIAR_SITE_MIN_VISITS = 10;
 const MAIN_ROAD_LIMIT = 20;
-const DEPARTURE_TRACE_MAX_MS = 30 * 60_000;
+const TIME_SPENT_SITE_LIMIT = 5;
+const SETTLED_PLACE_LIMIT = 5;
+const ACTIVE_WINDOW_MS = 30_000;
+const MIN_DEPARTURE_DWELL_MS = 60_000;
 const PAGE_HUE_SHIFTS = [-28, -18, -10, 10, 18, 28];
 
 const POPULAR_DOMAIN_ROOTS = [
@@ -88,29 +93,29 @@ export interface WalkingRecordDomain {
   totalTimeMs: number;
   uniquePageCount: number;
   sessionCount: number;
+  activeDayCount: number;
   eventCounts: Record<string, number>;
+  latestFaviconUrl?: string;
 }
 
 export interface Departure {
   day: string;
-  verb: "departed";
   from: string;
   to: string;
   toUrl: string;
+  fromFaviconUrl?: string;
+  toFaviconUrl?: string;
+  time: string;
   note: string;
-  familiarity: string;
-  hue: string;
-  accentHue: string;
   score: number;
-  traceTarget?: WalkingRecordTraceTarget;
-  tracePaths: WalkingRecordTracePoint[][];
 }
 
-export interface Revisit {
-  span: string;
+export interface SettledPlace {
   site: string;
   href: string;
-  memory: string;
+  faviconUrl?: string;
+  activeTime: string;
+  evidence: string;
   hue: string;
   score: number;
 }
@@ -120,13 +125,16 @@ export interface DayPlate {
   day: string;
   vignette: string;
   hue: string;
-  traceTarget?: WalkingRecordTraceTarget;
+  future: boolean;
+  portraitDay?: string;
+  traceTargets: WalkingRecordTraceTarget[];
   tracePaths: WalkingRecordTracePoint[][];
 }
 
 export interface TimeSpentEntry {
   rank: number;
   site: string;
+  faviconUrl?: string;
   time: string;
   percentage: number;
   hue: string;
@@ -145,20 +153,22 @@ export interface WalkingRecord {
   hourBuckets: number[];
   movementCount: number;
   departures: Departure[];
-  revisits: Revisit[];
+  settledPlaces: SettledPlace[];
   dayPlates: DayPlate[];
+  landscapePaths: CollectionEvent[][];
   timeSpent: TimeSpentEntry[];
-  timeSpentIntro: string;
 }
 
 interface WalkingRecordInput {
   period: WalkingRecordPeriod;
   baseColor: string;
   events: CollectionEvent[];
+  activity?: WalkingRecordActivity[];
   sessions: ScreenTimeSession[];
   domains: WalkingRecordDomain[];
   range: WalkingRecordRange;
   cursorDistancePx?: number;
+  nowTs?: number;
 }
 
 interface DomainTime {
@@ -214,11 +224,7 @@ export function getWalkingRecordPeriodRange(
     };
   }
 
-  const periodStart = new Date(
-    currentDay.getFullYear() + periodOffset,
-    0,
-    1,
-  );
+  const periodStart = new Date(currentDay.getFullYear() + periodOffset, 0, 1);
   const nextPeriod = new Date(periodStart.getFullYear() + 1, 0, 1);
   return {
     startTs: periodStart.getTime(),
@@ -258,6 +264,22 @@ export function formatDuration(ms: number): string {
   return minutes === 0 ? hourLabel : `${hourLabel} ${minutes} min`;
 }
 
+export function formatCompactDuration(
+  ms: number,
+  unitSeparator = " ",
+): string {
+  if (ms <= 0) return "0m";
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 1) return "<1m";
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes === 0
+    ? `${hours}h`
+    : `${hours}h${unitSeparator}${minutes}m`;
+}
+
 export function formatRange(range: WalkingRecordRange): string {
   const start = new Date(range.startTs);
   const end = new Date(range.endTs);
@@ -289,6 +311,40 @@ function hashDomain(domain: string): number {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
   return hash;
+}
+
+function seededValue(seed: number, offset: number): number {
+  const value = Math.sin(seed + offset * 12.9898) * 43_758.5453;
+  return value - Math.floor(value);
+}
+
+function derivedSessionPath(
+  target: WalkingRecordTraceTarget,
+): WalkingRecordTracePoint[][] {
+  const seed = hashDomain(`${target.url}:${target.startTs}:${target.endTs}`);
+  const durationMinutes = Math.max(1, (target.endTs - target.startTs) / 60_000);
+  const pointCount = Math.min(
+    11,
+    4 + Math.floor(Math.log2(durationMinutes + 1)),
+  );
+  const points: WalkingRecordTracePoint[] = [];
+  let x = 0.18 + seededValue(seed, 0) * 0.64;
+  let y = 0.18 + seededValue(seed, 1) * 0.64;
+
+  points.push({ x, y });
+  for (let index = 1; index < pointCount; index++) {
+    x = Math.max(
+      0.08,
+      Math.min(0.92, x + (seededValue(seed, index * 2) - 0.5) * 0.42),
+    );
+    y = Math.max(
+      0.08,
+      Math.min(0.92, y + (seededValue(seed, index * 2 + 1) - 0.5) * 0.42),
+    );
+    points.push({ x, y });
+  }
+
+  return [points];
 }
 
 export function colorForDomain(baseColor: string, domain: string): string {
@@ -336,11 +392,17 @@ function focusVisits(events: CollectionEvent[]): FocusVisit[] {
 
   return visits.filter((visit, index) => {
     const previous = visits[index - 1];
-    return !previous || previous.domain !== visit.domain || visit.ts - previous.ts > 120_000;
+    return (
+      !previous ||
+      previous.domain !== visit.domain ||
+      visit.ts - previous.ts > 120_000
+    );
   });
 }
 
-function sessionsByDomain(sessions: ScreenTimeSession[]): Map<string, DomainTime> {
+function sessionsByDomain(
+  sessions: ScreenTimeSession[],
+): Map<string, DomainTime> {
   const grouped = new Map<string, DomainTime>();
 
   for (const session of sessions) {
@@ -356,21 +418,54 @@ function sessionsByDomain(sessions: ScreenTimeSession[]): Map<string, DomainTime
   return grouped;
 }
 
-function cursorSamplesByUrl(events: CollectionEvent[]): Map<string, number[]> {
-  const samples = new Map<string, number[]>();
+function faviconsByDomain(events: CollectionEvent[]): Map<string, string> {
+  const favicons = new Map<string, string>();
 
   for (const event of events) {
-    if (event.type !== "cursor") continue;
-    const data = event.data as CursorEventData;
-    if (data.event !== "move" && data.event !== undefined) continue;
+    if (event.type !== "navigation") continue;
+    const faviconUrl = (event.data as NavigationEventData).favicon_url;
+    if (typeof faviconUrl !== "string" || faviconUrl.length === 0) continue;
 
-    const url = normalizeUrl(event.meta.url);
-    const timestamps = samples.get(url) ?? [];
-    timestamps.push(event.ts);
-    samples.set(url, timestamps);
+    try {
+      const parsed = new URL(faviconUrl);
+      if (
+        parsed.protocol === "https:" ||
+        parsed.protocol === "http:" ||
+        parsed.protocol === "data:"
+      ) {
+        favicons.set(extractDomain(event.meta.url), faviconUrl);
+      }
+    } catch {
+      // Ignore malformed favicon metadata from the visited page.
+    }
   }
 
-  return samples;
+  return favicons;
+}
+
+function logarithmicScore(valueMinutes: number, capMinutes: number): number {
+  return (
+    Math.log1p(Math.min(Math.max(0, valueMinutes), capMinutes)) /
+    Math.log1p(capMinutes)
+  );
+}
+
+function formatDepartureDuration(ms: number): string {
+  return ms < 60_000 ? "< 1 min" : formatDuration(ms);
+}
+
+function activeTimeForSession(
+  session: ScreenTimeSession | undefined,
+  activityByUrl: Map<string, number[]>,
+): number {
+  if (!session) return 0;
+  const windows = activityByUrl.get(normalizeUrl(session.url)) ?? [];
+  const activeWindows = windows.filter(
+    (timestamp) =>
+      timestamp < session.blurTs &&
+      timestamp + ACTIVE_WINDOW_MS > session.focusTs,
+  ).length;
+  return Math.min(session.durationMs, activeWindows * ACTIVE_WINDOW_MS);
 }
 
 function getVisitSession(
@@ -382,27 +477,33 @@ function getVisitSession(
   return domainTime.sessions
     .filter((session) => Math.abs(session.focusTs - visit.ts) <= 60_000)
     .sort(
-      (a, b) =>
-        Math.abs(a.focusTs - visit.ts) - Math.abs(b.focusTs - visit.ts),
+      (a, b) => Math.abs(a.focusTs - visit.ts) - Math.abs(b.focusTs - visit.ts),
     )[0];
 }
 
 function buildDepartureNote(
   visit: FocusVisit,
   session: ScreenTimeSession | undefined,
+  activeTimeMs: number,
   domain: WalkingRecordDomain,
   visitsThisPeriod: number,
 ): string {
   const notes: string[] = [];
 
-  if (session && session.durationMs >= 10 * 60_000) {
-    notes.push(`stayed ${Math.round(session.durationMs / 60_000)} minutes`);
-  }
   if (domain.firstVisit >= visit.ts - 60_000) {
     notes.push("your first visit");
   }
+  if (activeTimeMs >= 60_000) {
+    notes.push(`${Math.round(activeTimeMs / 60_000)} active minutes`);
+  } else if (activeTimeMs > 0) {
+    notes.push("actively browsed");
+  } else if (session && session.durationMs >= 10 * 60_000) {
+    notes.push(`stayed ${Math.round(session.durationMs / 60_000)} minutes`);
+  }
   if (visitsThisPeriod > 1) {
-    notes.push(`went back ${visitsThisPeriod - 1 === 1 ? "once" : `${visitsThisPeriod - 1} times`}`);
+    notes.push(
+      `returned ${visitsThisPeriod - 1 === 1 ? "once" : `${visitsThisPeriod - 1} times`}`,
+    );
   }
   if (new Date(visit.ts).getHours() < 5) {
     notes.push("found after midnight");
@@ -413,28 +514,36 @@ function buildDepartureNote(
 
 function buildDepartures(
   events: CollectionEvent[],
+  activity: WalkingRecordActivity[],
   sessions: ScreenTimeSession[],
   domains: WalkingRecordDomain[],
   mainRoads: Set<string>,
-  range: WalkingRecordRange,
-  baseColor: string,
 ): { departures: Departure[]; movementCount: number } {
   const visits = focusVisits(events);
-  const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
+  const domainByName = new Map(
+    domains.map((domain) => [domain.domain, domain]),
+  );
   const timeByDomain = sessionsByDomain(sessions);
-  const movementByUrl = cursorSamplesByUrl(events);
+  const activityByUrl = new Map(
+    activity.map((entry) => [entry.url, entry.windowStarts]),
+  );
+  const hasActivityCoverage = activity.some(
+    (entry) => entry.windowStarts.length > 0,
+  );
+  const faviconByDomain = faviconsByDomain(events);
   const visitsByDomain = new Map<string, number>();
 
   for (const visit of visits) {
-    visitsByDomain.set(visit.domain, (visitsByDomain.get(visit.domain) ?? 0) + 1);
+    visitsByDomain.set(
+      visit.domain,
+      (visitsByDomain.get(visit.domain) ?? 0) + 1,
+    );
   }
 
-  const candidates: Array<Omit<Departure, "accentHue"> & { dayKey: string }> =
-    [];
+  const candidates: Array<Departure & { dayKey: string }> = [];
   for (let index = 1; index < visits.length; index++) {
     const previous = visits[index - 1];
     const visit = visits[index];
-    const nextVisit = visits[index + 1];
     const domain = domainByName.get(visit.domain);
 
     if (!domain) continue;
@@ -443,60 +552,54 @@ function buildDepartures(
     if (domain.sessionCount > SMALL_SITE_MAX_VISITS) continue;
 
     const session = getVisitSession(visit, timeByDomain.get(visit.domain));
-    const rarityScore = SMALL_SITE_MAX_VISITS - domain.sessionCount + 1;
-    const dwellScore = session ? Math.min(session.durationMs / 60_000, 30) / 10 : 0;
+    const activeTimeMs = activeTimeForSession(session, activityByUrl);
+    if (
+      activeTimeMs < ACTIVE_WINDOW_MS &&
+      (session?.durationMs ?? 0) < MIN_DEPARTURE_DWELL_MS
+    ) {
+      continue;
+    }
+    const dwellMinutes = (session?.durationMs ?? 0) / 60_000;
+    const activeMinutes = activeTimeMs / 60_000;
+    const activeScore = logarithmicScore(activeMinutes, 30);
+    const dwellScore = logarithmicScore(dwellMinutes, 30);
+    const browsingScore = hasActivityCoverage
+      ? activeScore * 0.8 + dwellScore * 0.2
+      : dwellScore;
+    const rarityScore =
+      (SMALL_SITE_MAX_VISITS - domain.sessionCount + 1) /
+      (SMALL_SITE_MAX_VISITS + 1);
     const date = new Date(visit.ts);
     const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-    const traceEndTs = Math.max(
-      visit.ts,
-      Math.min(
-        range.endTs,
-        visit.ts + DEPARTURE_TRACE_MAX_MS,
-        session?.blurTs ?? Infinity,
-        nextVisit ? nextVisit.ts - 1 : Infinity,
-      ),
-    );
     const isFirstVisit = domain.firstVisit >= visit.ts - 60_000;
-    const movementSamples = (
-      movementByUrl.get(normalizeUrl(visit.url)) ?? []
-    ).filter((timestamp) => timestamp >= visit.ts && timestamp <= traceEndTs).length;
-    const movementScore = Math.min(movementSamples, 3) * 2;
+    const visitsThisPeriod = visitsByDomain.get(visit.domain) ?? 1;
+    const discoveryScore =
+      (isFirstVisit ? 0.6 : 0) + (visitsThisPeriod > 1 ? 0.4 : 0);
 
     candidates.push({
       dayKey,
       day: date.toLocaleDateString("en", { weekday: "short" }).toLowerCase(),
-      verb: "departed",
       from: previous.domain,
       to: visit.domain,
       toUrl: visit.url,
+      fromFaviconUrl: faviconByDomain.get(previous.domain),
+      toFaviconUrl: faviconByDomain.get(visit.domain),
+      time:
+        activeTimeMs > 0
+          ? `${formatDepartureDuration(activeTimeMs)} active`
+          : formatDepartureDuration(session!.durationMs),
       note: buildDepartureNote(
         visit,
         session,
+        activeTimeMs,
         domain,
-        visitsByDomain.get(visit.domain) ?? 1,
+        visitsThisPeriod,
       ),
-      familiarity:
-        isFirstVisit
-          ? "new to you"
-          : domain.sessionCount > 0
-            ? `${domain.sessionCount} visits by you`
-            : "seen before",
-      hue: colorForDomain(baseColor, visit.domain),
-      score: rarityScore + dwellScore + movementScore,
-      traceTarget: {
-        id: `departure:${visit.ts}:${visit.domain}`,
-        url: visit.url,
-        startTs: visit.ts,
-        endTs: traceEndTs,
-      },
-      tracePaths: [],
+      score: browsingScore * 0.6 + rarityScore * 0.25 + discoveryScore * 0.15,
     });
   }
 
-  const deduped = new Map<
-    string,
-    Omit<Departure, "accentHue"> & { dayKey: string }
-  >();
+  const deduped = new Map<string, Departure & { dayKey: string }>();
   for (const candidate of candidates) {
     const key = `${candidate.dayKey}:${candidate.to}`;
     const existing = deduped.get(key);
@@ -508,83 +611,187 @@ function buildDepartures(
   const ranked = [...deduped.values()].sort((a, b) => b.score - a.score);
   return {
     movementCount: ranked.length,
-    departures: ranked.slice(0, 4).map((candidate, index) => {
+    departures: ranked.map((candidate) => {
       const { dayKey: _, ...departure } = candidate;
-      return {
-        ...departure,
-        accentHue: paletteColorForIndex(index),
-      };
+      return departure;
     }),
   };
 }
 
-function formatGap(ms: number): string {
-  const days = Math.max(1, Math.floor(ms / DAY_MS));
-  if (days < 60) return `${days} day${days === 1 ? "" : "s"}`;
+function periodKey(timestamp: number, period: "week" | "month"): string {
+  const date = new Date(timestamp);
+  if (period === "month") {
+    return `${date.getFullYear()}-${date.getMonth()}`;
+  }
 
-  const months = Math.floor(days / 30);
-  if (months < 24) return `${months} month${months === 1 ? "" : "s"}`;
-
-  const years = Math.floor(days / 365);
-  return `${years} year${years === 1 ? "" : "s"}`;
+  const weekStart = startOfLocalDay(date);
+  const daysFromMonday = (weekStart.getDay() + 6) % 7;
+  weekStart.setDate(weekStart.getDate() - daysFromMonday);
+  return localDateKey(weekStart.getTime());
 }
 
-function buildRevisits(
-  domains: WalkingRecordDomain[],
-  range: WalkingRecordRange,
-): Revisit[] {
-  return domains
-    .filter(
-      (domain) =>
-        domain.sessionCount >= FAMILIAR_SITE_MIN_VISITS &&
-        domain.lastVisit > 0 &&
-        domain.lastVisit < range.startTs &&
-        !isPopularDomain(domain.domain),
-    )
-    .map((domain) => {
-      const gapMs = range.endTs - domain.lastVisit;
-      return {
-        span: formatGap(gapMs),
-        site: domain.domain,
-        href: `https://${domain.domain}`,
-        memory: `you visited ${domain.sessionCount} times before the gap`,
-        score: Math.log2(domain.sessionCount + 1) * Math.log2(gapMs / DAY_MS + 1),
-      };
+function timeOfDayLabel(hour: number): string {
+  if (hour >= 5 && hour < 12) return "mornings";
+  if (hour >= 12 && hour < 17) return "afternoons";
+  if (hour >= 17 && hour < 22) return "evenings";
+  return "late nights";
+}
+
+function recurringTimeOfDay(
+  sessions: Array<{ session: ScreenTimeSession; activeTimeMs: number }>,
+): string | null {
+  const strongestSessionByDay = new Map<
+    string,
+    { session: ScreenTimeSession; activeTimeMs: number }
+  >();
+  for (const entry of sessions) {
+    const day = localDateKey(entry.session.focusTs);
+    const strongest = strongestSessionByDay.get(day);
+    if (!strongest || entry.activeTimeMs > strongest.activeTimeMs) {
+      strongestSessionByDay.set(day, entry);
+    }
+  }
+  if (strongestSessionByDay.size < 3) return null;
+
+  const counts = new Map<string, number>();
+  for (const { session } of strongestSessionByDay.values()) {
+    const label = timeOfDayLabel(new Date(session.focusTs).getHours());
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const [label, count] = [...counts].sort((a, b) => b[1] - a[1])[0]!;
+  return count / strongestSessionByDay.size >= 0.6 ? label : null;
+}
+
+function qualifiesAsSettledPlace(
+  period: WalkingRecordPeriod,
+  activeDays: number,
+  activeWeeks: number,
+  activeMonths: number,
+  uniquePages: number,
+): boolean {
+  if (activeDays < 2) return false;
+  if (period === "week") return true;
+  if (period === "month") {
+    return (activeDays >= 3 && activeWeeks >= 2) || uniquePages >= 5;
+  }
+  return (activeDays >= 5 && activeMonths >= 3) || uniquePages >= 10;
+}
+
+function settledPlaceCaps(period: WalkingRecordPeriod) {
+  if (period === "week") {
+    return { minutes: 120, days: 5, pages: 12, sessions: 10 };
+  }
+  if (period === "month") {
+    return { minutes: 600, days: 15, pages: 30, sessions: 30 };
+  }
+  return { minutes: 2_400, days: 60, pages: 100, sessions: 120 };
+}
+
+function buildSettledPlaces(
+  activity: WalkingRecordActivity[],
+  sessions: ScreenTimeSession[],
+  period: WalkingRecordPeriod,
+): SettledPlace[] {
+  const activityByUrl = new Map(
+    activity.map((entry) => [entry.url, entry.windowStarts]),
+  );
+  const grouped = [...sessionsByDomain(sessions).values()].sort(
+    (a, b) => b.totalMs - a.totalMs,
+  );
+  const leadingDomains = new Set(
+    grouped.slice(0, TIME_SPENT_SITE_LIMIT).map(({ domain }) => domain),
+  );
+  const caps = settledPlaceCaps(period);
+
+  return grouped
+    .flatMap((group): Omit<SettledPlace, "hue">[] => {
+      if (leadingDomains.has(group.domain) || isPopularDomain(group.domain)) {
+        return [];
+      }
+
+      const engagedSessions = group.sessions
+        .map((session) => ({
+          session,
+          activeTimeMs: activeTimeForSession(session, activityByUrl),
+        }))
+        .filter(({ activeTimeMs }) => activeTimeMs > 0);
+      const activeTimeMs = engagedSessions.reduce(
+        (sum, entry) => sum + entry.activeTimeMs,
+        0,
+      );
+      if (activeTimeMs < 5 * 60_000) return [];
+
+      const activeDays = new Set(
+        engagedSessions.map(({ session }) => localDateKey(session.focusTs)),
+      ).size;
+      const activeWeeks = new Set(
+        engagedSessions.map(({ session }) =>
+          periodKey(session.focusTs, "week"),
+        ),
+      ).size;
+      const activeMonths = new Set(
+        engagedSessions.map(({ session }) =>
+          periodKey(session.focusTs, "month"),
+        ),
+      ).size;
+      const uniquePages = new Set(
+        engagedSessions.map(({ session }) => normalizeUrl(session.url)),
+      ).size;
+      if (
+        !qualifiesAsSettledPlace(
+          period,
+          activeDays,
+          activeWeeks,
+          activeMonths,
+          uniquePages,
+        )
+      ) {
+        return [];
+      }
+
+      const recurringTime = recurringTimeOfDay(engagedSessions);
+      const recurrenceScore = recurringTime ? 1 : 0;
+      const score =
+        logarithmicScore(activeTimeMs / 60_000, caps.minutes) * 0.35 +
+        logarithmicScore(activeDays, caps.days) * 0.25 +
+        logarithmicScore(uniquePages, caps.pages) * 0.2 +
+        logarithmicScore(engagedSessions.length, caps.sessions) * 0.1 +
+        recurrenceScore * 0.1;
+      const returnEvidence = recurringTime
+        ? `returned in the ${recurringTime} on ${activeDays} days`
+        : `returned on ${activeDays} days`;
+
+      return [
+        {
+          site: group.domain,
+          href: `https://${group.domain}`,
+          activeTime: `${formatCompactDuration(activeTimeMs)} active`,
+          evidence: `${returnEvidence} · visited ${uniquePages} page${uniquePages === 1 ? "" : "s"}`,
+          score,
+        },
+      ];
     })
     .sort((a, b) => b.score - a.score)
-    .slice(0, 8)
-    .map((revisit, index) => ({
-      ...revisit,
+    .slice(0, SETTLED_PLACE_LIMIT)
+    .map((place, index) => ({
+      ...place,
       hue: paletteColorForIndex(index),
     }));
 }
 
-function cursorDistance(events: CollectionEvent[]): number {
-  const moves = events
-    .filter((event) => {
-      if (event.type !== "cursor") return false;
-      const data = event.data as CursorEventData;
-      return data.event === "move" || data.event === undefined;
-    })
-    .sort((a, b) => a.ts - b.ts);
+function cursorMovementByUrl(events: CollectionEvent[]): Map<string, number[]> {
+  const movementByUrl = new Map<string, number[]>();
+  for (const event of events) {
+    if (event.type !== "cursor") continue;
+    const data = event.data as CursorEventData;
+    if (data.event !== "move" && data.event !== undefined) continue;
 
-  let distance = 0;
-  for (let index = 1; index < moves.length; index++) {
-    const previousEvent = moves[index - 1];
-    const event = moves[index];
-    if (normalizeUrl(previousEvent.meta.url) !== normalizeUrl(event.meta.url)) continue;
-    if (event.ts - previousEvent.ts > 5_000) continue;
-
-    const previous = previousEvent.data as CursorEventData;
-    const current = event.data as CursorEventData;
-    const width = event.meta.vw || previousEvent.meta.vw;
-    const height = event.meta.vh || previousEvent.meta.vh;
-    const dx = (current.x - previous.x) * width;
-    const dy = (current.y - previous.y) * height;
-    distance += Math.sqrt(dx * dx + dy * dy);
+    const url = normalizeUrl(event.meta.url);
+    const timestamps = movementByUrl.get(url) ?? [];
+    timestamps.push(event.ts);
+    movementByUrl.set(url, timestamps);
   }
-
-  return distance;
+  return movementByUrl;
 }
 
 function hourBuckets(sessions: ScreenTimeSession[]): number[] {
@@ -612,7 +819,8 @@ function deriveBrowsingPortrait({
 
   return {
     totalTimeMs: sessions.reduce((sum, session) => sum + session.durationMs, 0),
-    cursorDistancePx: measuredCursorDistance ?? cursorDistance(events),
+    cursorDistancePx:
+      measuredCursorDistance ?? calculateCursorDistance(events),
     pageCount: uniquePages.size,
     hourBuckets: hourBuckets(sessions),
   };
@@ -690,140 +898,136 @@ function traceIntervals(
 }
 
 function buildDayPlates(
+  events: CollectionEvent[],
   sessions: ScreenTimeSession[],
   range: WalkingRecordRange,
   domains: WalkingRecordDomain[],
   period: WalkingRecordPeriod,
   baseColor: string,
+  nowTs: number,
 ): DayPlate[] {
-  const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
+  const domainByName = new Map(
+    domains.map((domain) => [domain.domain, domain]),
+  );
+  const movementByUrl = cursorMovementByUrl(events);
+  const intervals = traceIntervals(period, range);
+  const targetLimit = Math.max(1, Math.floor(16 / intervals.length));
 
-  return traceIntervals(period, range).map((interval) => {
+  return intervals.map((interval) => {
     const sessionsForInterval = sessions
       .filter(
         (session) =>
           session.focusTs >= interval.startTs &&
           session.focusTs <= interval.endTs,
       )
+      .map((session) => ({
+        session,
+        movementCount: (
+          movementByUrl.get(normalizeUrl(session.url)) ?? []
+        ).filter(
+          (timestamp) =>
+            timestamp >= session.focusTs && timestamp <= session.blurTs,
+        ).length,
+      }))
       .sort((a, b) => {
-        if (a.durationMs !== b.durationMs) return b.durationMs - a.durationMs;
-        const aVisits = domainByName.get(extractDomain(a.url))?.sessionCount ?? Infinity;
-        const bVisits = domainByName.get(extractDomain(b.url))?.sessionCount ?? Infinity;
+        if (a.movementCount !== b.movementCount) {
+          return b.movementCount - a.movementCount;
+        }
+        if (a.session.durationMs !== b.session.durationMs) {
+          return b.session.durationMs - a.session.durationMs;
+        }
+        const aVisits =
+          domainByName.get(extractDomain(a.session.url))?.sessionCount ??
+          Infinity;
+        const bVisits =
+          domainByName.get(extractDomain(b.session.url))?.sessionCount ??
+          Infinity;
         return aVisits - bVisits;
       });
-    const session = sessionsForInterval[0];
+    const selectedSessions = sessionsForInterval
+      .slice(0, targetLimit)
+      .map((candidate) => candidate.session);
+    const session = selectedSessions[0];
 
     if (!session) {
+      const future = interval.startTs > nowTs;
       return {
         date: interval.key,
         day: interval.label,
-        vignette: "no trace kept",
+        vignette: future ? "still to come" : "no trace kept",
         hue: "#b5aea5",
+        future,
+        traceTargets: [],
         tracePaths: [],
       };
     }
 
     const domain = extractDomain(session.url);
     const minutes = Math.max(1, Math.round(session.durationMs / 60_000));
+    const traceTargets = selectedSessions.map((selectedSession, index) => ({
+      id: index === 0 ? interval.key : `${interval.key}:${index + 1}`,
+      url: selectedSession.url,
+      startTs: selectedSession.focusTs,
+      endTs: selectedSession.blurTs,
+    }));
 
     return {
       date: interval.key,
       day: interval.label,
-      vignette: `${minutes} quiet minute${minutes === 1 ? "" : "s"} on ${domain}`,
+      vignette: `${minutes}m on ${domain}`,
       hue: colorForDomain(baseColor, domain),
-      traceTarget: {
-        id: interval.key,
-        url: session.url,
-        startTs: session.focusTs,
-        endTs: session.blurTs,
-      },
-      tracePaths: [],
+      future: false,
+      portraitDay: period === "week" ? interval.key.slice(4) : undefined,
+      traceTargets,
+      tracePaths: traceTargets.flatMap(derivedSessionPath),
     };
   });
-}
-
-function topHourNote(sessions: ScreenTimeSession[]): string {
-  const buckets = hourBuckets(sessions);
-  const topHour = buckets.indexOf(Math.max(...buckets));
-  if (topHour < 0 || buckets[topHour] === 0) return "";
-
-  const formatter = new Intl.DateTimeFormat("en", { hour: "numeric" });
-  const start = new Date(2020, 0, 1, topHour);
-  const end = new Date(2020, 0, 1, (topHour + 1) % 24);
-  return `mostly around ${formatter.format(start)}–${formatter.format(end)}`;
 }
 
 function buildTimeSpent(
+  events: CollectionEvent[],
   sessions: ScreenTimeSession[],
-  domains: WalkingRecordDomain[],
-  mainRoads: Set<string>,
-): { entries: TimeSpentEntry[]; intro: string } {
+): { entries: TimeSpentEntry[] } {
   const grouped = [...sessionsByDomain(sessions).values()].sort(
     (a, b) => b.totalMs - a.totalMs,
   );
-  const domainByName = new Map(domains.map((domain) => [domain.domain, domain]));
-  const top = grouped.slice(0, 3);
-  const quiet = grouped.filter((entry) => {
-    const domain = domainByName.get(entry.domain);
-    return (
-      domain &&
-      domain.sessionCount <= SMALL_SITE_MAX_VISITS &&
-      !isMainRoad(entry.domain, mainRoads)
-    );
-  });
-  const quietMs = quiet.reduce((sum, entry) => sum + entry.totalMs, 0);
-  const quietLongReads = quiet.flatMap((entry) => entry.sessions).filter(
-    (session) => session.durationMs >= 10 * 60_000,
-  ).length;
-  const rows: Array<DomainTime & { quiet?: boolean }> = [...top];
-
-  if (quietMs > 0) {
-    rows.push({
-      domain: "the quiet streets, together",
-      totalMs: quietMs,
-      sessions: quiet.flatMap((entry) => entry.sessions),
-      quiet: true,
-    });
-  }
-
-  const maxMs = Math.max(...rows.map((row) => row.totalMs), 1);
-  const entries = rows.map((row, index): TimeSpentEntry => {
-    if (row.quiet) {
-      return {
-        rank: index + 1,
-        site: row.domain,
-        time: formatDuration(row.totalMs),
-        percentage: (row.totalMs / maxMs) * 100,
-        hue: paletteColorForIndex(index),
-        note: `${quiet.length} small site${quiet.length === 1 ? "" : "s"} · ${quietLongReads} long read${quietLongReads === 1 ? "" : "s"}`,
-      };
-    }
-
-    return {
+  const faviconByDomain = faviconsByDomain(events);
+  const totalMs = grouped.reduce((sum, entry) => sum + entry.totalMs, 0);
+  const top = grouped.slice(0, TIME_SPENT_SITE_LIMIT);
+  const topMs = top.reduce((sum, entry) => sum + entry.totalMs, 0);
+  const remaining = grouped.slice(TIME_SPENT_SITE_LIMIT);
+  const remainingMs = totalMs - topMs;
+  const entries = top.map(
+    (row, index): TimeSpentEntry => ({
       rank: index + 1,
       site: row.domain,
-      time: formatDuration(row.totalMs),
-      percentage: (row.totalMs / maxMs) * 100,
+      faviconUrl: faviconByDomain.get(row.domain),
+      time: formatCompactDuration(row.totalMs, ""),
+      percentage: (row.totalMs / Math.max(totalMs, 1)) * 100,
       hue: paletteColorForIndex(index),
-      note: topHourNote(row.sessions),
+      note: "",
       href: `https://${row.domain}`,
-    };
-  });
+    }),
+  );
+  if (remainingMs > 0) {
+    entries.push({
+      rank: entries.length + 1,
+      site: `${remaining.length} other${remaining.length === 1 ? "" : "s"}`,
+      time: formatCompactDuration(remainingMs, ""),
+      percentage: (remainingMs / Math.max(totalMs, 1)) * 100,
+      hue: "#c8c3bb",
+      note: "",
+    });
+  }
 
   if (grouped.length === 0) {
     return {
       entries: [],
-      intro: "there is no completed screen-time record for this period.",
     };
   }
 
-  const quietSentence =
-    quiet.length > 0
-      ? ` ${quiet.length} quiet street${quiet.length === 1 ? "" : "s"} held ${formatDuration(quietMs)}.`
-      : "";
   return {
     entries,
-    intro: `you spent the most time on ${grouped[0].domain}.${quietSentence}`,
   };
 }
 
@@ -831,10 +1035,12 @@ export function deriveWalkingRecord({
   period,
   baseColor,
   events,
+  activity = [],
   sessions,
   domains,
   range,
   cursorDistancePx: measuredCursorDistance,
+  nowTs = Date.now(),
 }: WalkingRecordInput): WalkingRecord {
   const portrait = deriveBrowsingPortrait({
     events,
@@ -844,16 +1050,14 @@ export function deriveWalkingRecord({
   const mainRoads = getMainRoads(domains);
   const { departures, movementCount } = buildDepartures(
     events,
+    activity,
     sessions,
     domains,
     mainRoads,
-    range,
-    baseColor,
   );
-  const { entries: timeSpent, intro: timeSpentIntro } = buildTimeSpent(
+  const { entries: timeSpent } = buildTimeSpent(
+    events,
     sessions,
-    domains,
-    mainRoads,
   );
 
   return {
@@ -867,26 +1071,72 @@ export function deriveWalkingRecord({
     hourBuckets: portrait.hourBuckets,
     movementCount,
     departures,
-    revisits: buildRevisits(domains, range),
+    settledPlaces: buildSettledPlaces(activity, sessions, period),
     dayPlates: buildDayPlates(
+      events,
       sessions,
       range,
       domains,
       period,
       baseColor,
+      nowTs,
     ),
+    landscapePaths: [],
     timeSpent,
-    timeSpentIntro,
   };
 }
 
 export function getWalkingRecordTraceTargets(
   record: WalkingRecord,
 ): WalkingRecordTraceTarget[] {
+  return record.dayPlates.flatMap((plate) => plate.traceTargets);
+}
+
+export function getWalkingRecordFaviconDomains(
+  record: WalkingRecord,
+): string[] {
   return [
-    ...record.dayPlates.map((plate) => plate.traceTarget),
-    ...record.departures.map((departure) => departure.traceTarget),
-  ].filter((target): target is WalkingRecordTraceTarget => target !== undefined);
+    ...new Set([
+      ...record.timeSpent.flatMap((entry) => (entry.href ? [entry.site] : [])),
+      ...record.settledPlaces.map((place) => place.site),
+      ...record.departures.flatMap((departure) => [
+        departure.from,
+        departure.to,
+      ]),
+    ]),
+  ].slice(0, WALKING_RECORD_FAVICON_DOMAIN_LIMIT);
+}
+
+export function attachWalkingRecordFavicons(
+  record: WalkingRecord,
+  favicons: Record<string, string>,
+): WalkingRecord {
+  return {
+    ...record,
+    departures: record.departures.map((departure) => ({
+      ...departure,
+      fromFaviconUrl: favicons[departure.from],
+      toFaviconUrl: favicons[departure.to],
+    })),
+    timeSpent: record.timeSpent.map((entry) => ({
+      ...entry,
+      faviconUrl: favicons[entry.site],
+    })),
+    settledPlaces: record.settledPlaces.map((place) => ({
+      ...place,
+      faviconUrl: favicons[place.site],
+    })),
+  };
+}
+
+function pathsForTarget(
+  target: WalkingRecordTraceTarget,
+  pathsByTarget: Map<string, WalkingRecordTracePoint[][]>,
+): WalkingRecordTracePoint[][] {
+  const storedPaths = pathsByTarget.get(target.id);
+  return storedPaths?.some((path) => path.length >= 2)
+    ? storedPaths
+    : derivedSessionPath(target);
 }
 
 export function attachWalkingRecordTraces(
@@ -901,15 +1151,19 @@ export function attachWalkingRecordTraces(
     ...record,
     dayPlates: record.dayPlates.map((plate) => ({
       ...plate,
-      tracePaths: plate.traceTarget
-        ? pathsByTarget.get(plate.traceTarget.id) ?? []
-        : [],
+      tracePaths: plate.traceTargets.flatMap((target) =>
+        pathsForTarget(target, pathsByTarget),
+      ),
     })),
-    departures: record.departures.map((departure) => ({
-      ...departure,
-      tracePaths: departure.traceTarget
-        ? pathsByTarget.get(departure.traceTarget.id) ?? []
-        : [],
-    })),
+  };
+}
+
+export function attachWalkingRecordLandscape(
+  record: WalkingRecord,
+  landscapePaths: CollectionEvent[][],
+): WalkingRecord {
+  return {
+    ...record,
+    landscapePaths,
   };
 }

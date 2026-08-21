@@ -28,6 +28,8 @@ import {
 } from "../../utils/portraitExport";
 import type { PortraitCardProps } from "../../components/PortraitCard";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
+import { portraitDayFromSearch } from "../../utils/portraitDay";
+import { calculateCursorDistance } from "../../utils/cursorDistance";
 
 /** Convert sessions to hour buckets (total ms per hour-of-day) for PortraitCard */
 function sessionsToHourBuckets(sessions: ScreenTimeSession[]): number[] {
@@ -45,7 +47,9 @@ const PortraitPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [hovering, setHovering] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(() =>
+    portraitDayFromSearch(window.location.search),
+  );
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
   const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
     DEFAULT_ACTIVE_VISUALIZATIONS,
@@ -187,18 +191,7 @@ const PortraitPage = () => {
 
   // Build portrait card props from whichever data source is available.
   const portraitStats = useMemo((): PortraitCardProps | null => {
-    // Cursor distance is always derived from the (capped) event set
-    const cursorMoves = events
-      .filter((e) => e.type === "cursor" && (e.data as any).event === "move")
-      .sort((a, b) => a.ts - b.ts);
-    let cursorDistancePx = 0;
-    for (let i = 1; i < cursorMoves.length; i++) {
-      const prev = cursorMoves[i - 1].data as any;
-      const curr = cursorMoves[i].data as any;
-      const dx = (curr.x - prev.x) * 1920;
-      const dy = (curr.y - prev.y) * 1080;
-      cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
-    }
+    const cursorDistancePx = calculateCursorDistance(events);
 
     // Unfiltered: use pre-computed global aggregate
     if (globalStats && !selectedDay) {
