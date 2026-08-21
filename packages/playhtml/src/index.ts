@@ -898,6 +898,24 @@ function isEmptyConfig(options: InitOptions): boolean {
   );
 }
 
+function applyMigrationTestOptions(options: InitOptions): InitOptions {
+  if (options.v2 === true) return options;
+
+  const migrationTestHost = new URLSearchParams(window.location.search).get(
+    "__pv2",
+  );
+  if (migrationTestHost === null) return options;
+
+  // __pv2 is a migration-testing affordance for exercising v2 on any local
+  // page without changing that page's normal initialization code. It also
+  // replaces a page's default false value; an explicit v2:true remains fixed.
+  return {
+    ...options,
+    v2: true,
+    ...(migrationTestHost ? { host: migrationTestHost } : {}),
+  };
+}
+
 /**
  * Capture init config into module state. The first caller to supply real config
  * wins and locks it; a later call with conflicting values warns and is ignored.
@@ -905,6 +923,8 @@ function isEmptyConfig(options: InitOptions): boolean {
  * configure() (until bootstrap connects, after which config can't change).
  */
 function applyConfig(options: InitOptions): void {
+  options = applyMigrationTestOptions(options);
+
   if (configuredOptions) {
     if (configsConflict(configuredOptions, options)) {
       console.warn(

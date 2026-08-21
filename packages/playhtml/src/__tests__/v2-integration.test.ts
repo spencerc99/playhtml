@@ -136,6 +136,37 @@ describe("playhtml version 2 integration", () => {
     vi.restoreAllMocks();
     await resetPlayHTML();
     document.body.innerHTML = "";
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("opts into v2 from __pv2 when no v2 option is configured", async () => {
+    window.history.replaceState(null, "", "/?__pv2=localhost:2000");
+    const server = new InProcessServer();
+    const initialized = playhtml.init();
+    const socket = await waitForV2Socket();
+
+    socket.receive(server.snapshotMessage());
+    await initialized;
+
+    expect(socket.options).toMatchObject({
+      host: "localhost:2000",
+      party: "v2",
+    });
+    expect((globalThis as any).PLAYHTML_TEST_PROVIDERS).toEqual([]);
+  });
+
+  it("does not let __pv2 override an explicit v2 opt-in", async () => {
+    window.history.replaceState(null, "", "/?__pv2=localhost:2000");
+
+    const initialized = playhtml.init({ v2: true, host: "localhost:1999" });
+    const socket = await waitForV2Socket();
+    socket.receive(new InProcessServer().snapshotMessage());
+    await initialized;
+
+    expect(socket.options).toMatchObject({
+      host: "localhost:1999",
+      party: "v2",
+    });
   });
 
   it("seeds, mutates, and renders remote operations without a Yjs provider", async () => {

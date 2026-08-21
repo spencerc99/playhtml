@@ -54,8 +54,14 @@ mock.module("cloudflare:workers", () => ({
 
 // A single mutable row stands in for the room's `documents` record. Tests assert
 // against `persistedRow.document` to prove risky paths never overwrite real data.
-type PersistedRow = { document: string | null };
-const persistedRow: PersistedRow = { document: null };
+type PersistedRow = {
+  document: string | null;
+  protocol_version: number | null;
+};
+const persistedRow: PersistedRow = {
+  document: null,
+  protocol_version: null,
+};
 let upsertCalls: Array<{ name: string; document: string }> = [];
 let upsertError: Error | null = null;
 
@@ -75,7 +81,10 @@ function createDocumentRead() {
       data:
         persistedRow.document === null
           ? null
-          : { document: persistedRow.document },
+          : {
+              document: persistedRow.document,
+              protocol_version: persistedRow.protocol_version,
+            },
       error: null,
     };
   };
@@ -158,6 +167,7 @@ function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
     persistenceMode: { value: { kind: "available" }, writable: true },
     realtimeSyncStarted: { value: true, writable: true },
     documentLoadCompleted: { value: false, writable: true },
+    migratedReadOnly: { value: false, writable: true },
     isSkippingSave: { value: false, writable: true },
     lastKnownDocumentBytes: { value: 0, writable: true },
     hasWarnedDocumentSize: { value: false, writable: true },
@@ -236,6 +246,7 @@ const COMPACT_LETHAL_DOCUMENT = encodeDoc(COMPACT_LETHAL_DOC);
 
 beforeEach(() => {
   persistedRow.document = null;
+  persistedRow.protocol_version = null;
   upsertCalls = [];
   upsertError = null;
   documentReadCount = 0;
@@ -245,6 +256,113 @@ beforeEach(() => {
 });
 
 describe("hydration write guards", () => {
+  test("a protocol v2 room hydrates its v1 document and serves it read-only", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    persistedRow.protocol_version = 2;
+    const { room } = createRoom();
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message: unknown) => logs.push(String(message));
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+    expect(room.roomState()).toBe("migrated-read-only");
+    expect(room.isReadOnly({})).toBe(true);
+    expect(logs).toContain(
+      "[PartyServer] Room migrated to protocol v2, v1 serving read-only: room=example-room."
+    );
+  });
+
+  test("a protocol v2 room skips autosave and automatic compaction", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    persistedRow.protocol_version = 2;
+    const { room } = createRoom();
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    console.log = () => {};
+    console.warn = () => {};
+
+    try {
+      await startRoom(room);
+      await room.onSave();
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+
+    let compactionCalls = 0;
+    room.runAutomaticCompaction = async () => {
+      compactionCalls += 1;
+    };
+    await room.compactEmptyRoomDocument();
+
+    expect(compactionCalls).toBe(0);
+    expect(upsertCalls).toEqual([]);
+    expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
+  test("a protocol v2 room refuses admin mutations as migrated", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    persistedRow.protocol_version = 2;
+    const { room } = createRoom();
+    const originalLog = console.log;
+    console.log = () => {};
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.log = originalLog;
+    }
+
+    const response = await room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/force-save-live",
+        { method: "POST" }
+      )
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "room_migrated_to_protocol_v2",
+      message:
+        "This room migrated to protocol v2; the v1 server is read-only and refuses admin writes.",
+      roomId: "example-room",
+    });
+    await expect(
+      room.saveDocumentBase64("overwrite-me", {
+        operation: "quarantine-repair",
+      })
+    ).rejects.toThrow(/room state is migrated-read-only/);
+    expect(upsertCalls).toEqual([]);
+    expect(persistedRow.document).toBe(SMALL_DOCUMENT);
+  });
+
+  test("an unstamped room hydrates and remains writable", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = createRoom();
+
+    await startRoom(room);
+
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+    expect(room.roomState()).toBe("ready");
+    expect(room.isReadOnly({})).toBe(false);
+
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      await room.onSave();
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(upsertCalls).toHaveLength(1);
+  });
+
   test("room state has one precedence order for every write guard", async () => {
     const { room } = createRoom();
 

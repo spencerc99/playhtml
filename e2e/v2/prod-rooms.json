@@ -1,0 +1,39 @@
+[
+  {
+    "prodRoom": "playhtml.fun-%2F",
+    "localRoom": "localhost%3A5178-%2F",
+    "pagePath": "/",
+    "notes": "Homepage default room; covers built-in capabilities, can-play, and the React guestbook."
+  },
+  {
+    "prodRoom": "playhtml.fun-fridge",
+    "localRoom": "localhost%3A5178-fridge",
+    "pagePath": "/fridge",
+    "notes": "Fridge's explicit default wall room; covers nested can-play words and React can-move state."
+  },
+  {
+    "prodRoom": "playhtml.fun-%2Fcandles",
+    "localRoom": "localhost%3A5178-%2Fcandles",
+    "pagePath": "/candles",
+    "notes": "Candle factory page; covers a vanilla can-play element with duplication and movement. Interaction skipped: the candle ignores playwright-synthesized drags (pointer capture never engages) despite working under manual and standalone-probe drags; harness quirk tracked in internal-docs/2026-08-17-v2-fridge-perf-investigation.md.",
+    "skipInteraction": true
+  },
+  {
+    "prodRoom": "playhtml.fun-%2Fstory",
+    "localRoom": "localhost%3A5178-%2Fstory",
+    "pagePath": "/story",
+    "notes": "One-word story page; covers a persisted array in a vanilla can-play element."
+  },
+  {
+    "prodRoom": "playhtml.fun-%2Fevents%2Fgray-area%2F",
+    "localRoom": "localhost%3A5178-%2Fevents%2Fgray-area%2F",
+    "pagePath": "/events/gray-area/",
+    "notes": "Workshop page; covers many static can-toggle and can-move elements on a nested path."
+  },
+  {
+    "prodRoom": "playhtml.fun-%2Fexperiments%2Fcinderblock%2F",
+    "localRoom": "localhost%3A5178-%2Fexperiments%2Fcinderblock%2F",
+    "pagePath": "/experiments/cinderblock/",
+    "notes": "Cinderblock yard; covers a deeply nested custom can-play state and local drag interactions."
+  }
+]

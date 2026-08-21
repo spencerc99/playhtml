@@ -135,6 +135,7 @@ type PersistLiveDocumentOptions = {
 type RoomState =
   | "quarantined"
   | "loading"
+  | "migrated-read-only"
   | "transient"
   | "save-paused"
   | "ready";
@@ -213,6 +214,7 @@ export class PartyServer extends YServer {
   // after the platform's one-time onStart hook has already returned.
   private realtimeSyncStarted = false;
   private documentLoadCompleted = false;
+  private migratedReadOnly = false;
 
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -520,6 +522,7 @@ export class PartyServer extends YServer {
   private roomState(): RoomState {
     if (this.circuitBreaker.isQuarantined()) return "quarantined";
     if (!this.documentLoadCompleted) return "loading";
+    if (this.migratedReadOnly) return "migrated-read-only";
     if (!this.isPersistenceAvailable()) return "transient";
     if (this.isSkippingSave) return "save-paused";
     return "ready";
@@ -554,6 +557,20 @@ export class PartyServer extends YServer {
   getSharedDataWriteUnavailableResponse(): Response | null {
     const state = this.roomState();
     if (state === "ready") return null;
+    if (state === "migrated-read-only") {
+      return new Response(
+        JSON.stringify({
+          error: "room_migrated_to_protocol_v2",
+          message:
+            "This room migrated to protocol v2; the v1 server is read-only and refuses admin writes.",
+          roomId: this.name,
+        }),
+        {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
     if (this.persistenceMode.kind === "transient") {
       return createPersistenceUnavailableResponse({
         ...this.persistenceMode,
@@ -760,9 +777,10 @@ export class PartyServer extends YServer {
       this.circuitBreaker.assertNotQuarantined("persist document");
     }
     const stateAllowsSave =
-      operation === "quarantine-repair" ||
-      state === "ready" ||
-      (operation === "reset" && state === "save-paused");
+      !this.migratedReadOnly &&
+      (operation === "quarantine-repair" ||
+        state === "ready" ||
+        (operation === "reset" && state === "save-paused"));
     if (!stateAllowsSave) {
       throw new Error(
         `Cannot persist document while room state is ${state} (operation=${operation})`
@@ -1738,6 +1756,7 @@ export class PartyServer extends YServer {
    */
   override async onLoad(): Promise<void> {
     this.documentLoadCompleted = false;
+    this.migratedReadOnly = false;
     await this.circuitBreaker.loadStoredQuarantine();
     if (this.circuitBreaker.isQuarantined()) {
       await this.circuitBreaker.enterQuarantineRuntimeState();
@@ -1760,7 +1779,7 @@ export class PartyServer extends YServer {
         successfulAttempt = attempt;
         const queryResult = await supabase
           .from("documents")
-          .select("document")
+          .select("document, protocol_version")
           .eq("name", this.name)
           .abortSignal(signal)
           .maybeSingle();
@@ -1803,6 +1822,13 @@ export class PartyServer extends YServer {
     this.markPersistenceAvailable();
 
     if (result.data) {
+      if (result.data.protocol_version === 2) {
+        this.migratedReadOnly = true;
+        console.log(
+          `[PartyServer] Room migrated to protocol v2, v1 serving read-only: room=${this.name}.`
+        );
+      }
+
       // Size is reported, never enforced. Hydration is one copy of the document
       // and succeeds well past this threshold; it is compaction that multiplies
       // memory, so that is where the hard ceiling lives.

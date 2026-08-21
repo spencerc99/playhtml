@@ -28,7 +28,8 @@ function Main() {
           <p>
             get settled, introduce yourself to your neighbor, and open your
             laptop to do the following:
-            <ol>
+          </p>
+          <ol>
               <li>
                 open{" "}
                 <a href="https://playhtml.fun/events/gray-area">
@@ -48,7 +49,6 @@ function Main() {
                 password: Incubator2024
               </li>
             </ol>
-          </p>
           <p>
             we'll wait a bit for everyone to get here to get started :) in the
             meanwhile, if you're on this site, you can play around with some of
