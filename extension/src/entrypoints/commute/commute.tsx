@@ -11,7 +11,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
-import trainAeolusUrl from "../../assets/train-aeolus.png";
+import trainIceUrl from "../../assets/train-ice.png";
 import {
   PlayProvider,
   usePlayContext,
@@ -530,8 +530,8 @@ function SlowModePlatformScene({
           local · {destinationDomain}
         </span>
         <img
-          src={trainAeolusUrl}
-          alt="A streamlined train pulling into home station"
+          src={trainIceUrl}
+          alt="A white high-speed train pulling into home station"
         />
       </span>
 

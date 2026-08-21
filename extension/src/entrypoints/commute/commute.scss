@@ -933,7 +933,7 @@ button {
   z-index: 3;
   display: grid;
   place-items: end center;
-  transform: translateX(115%);
+  transform: translateX(-115%);
   transition: transform 2.8s cubic-bezier(0.22, 0.75, 0.35, 1);
 
   img {
