@@ -92,6 +92,11 @@ describe("OptionsPage", () => {
       expect(container.querySelector("#bag-settings")).not.toBeNull();
       expect(container.textContent).toContain("Current Site");
       expect(container.textContent).toContain("Quick Actions");
+      expect(
+        container
+          .querySelector(".options-page__access-request button")
+          ?.textContent?.trim(),
+      ).toBe("Request early access");
       expect(container.textContent).toContain(
         "Leaving an email also signs you up for occasional project updates.",
       );

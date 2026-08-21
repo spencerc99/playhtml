@@ -211,32 +211,15 @@ function PlayHTMLPopup() {
 
   if (!onboardingComplete) {
     return (
-      <div
-        style={{
-          padding: 16,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <header style={{ marginBottom: 12 }}>
-          <h1
-            style={{
-              margin: "0 0 6px 0",
-              fontSize: 18,
-              color: "#111827",
-              fontStyle: "italic",
-              fontFamily: "'Lora', Georgia, serif",
-            }}
-          >
-            we were online
-          </h1>
-          <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
+      <div className="popup-onboarding">
+        <header className="popup-onboarding__header">
+          <h1 className="popup-onboarding__title">we were online</h1>
+          <p className="popup-onboarding__subtitle">
             Finish setup to get started
           </p>
         </header>
-        <main style={{ flex: 1 }}>
-          <p style={{ fontSize: 12, color: "#4b5563" }}>
+        <main className="popup-onboarding__main">
+          <p className="popup-onboarding__body">
             We’ll guide you through a quick setup in a full tab.
           </p>
           <button
@@ -245,16 +228,7 @@ function PlayHTMLPopup() {
               await browser.tabs.create({ url });
               window.close();
             }}
-            style={{
-              padding: "10px 12px",
-              background: "var(--accent-teal, #4a9a8a)",
-              color: "white",
-              border: "none",
-              borderRadius: 6,
-              fontSize: 12,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
+            className="popup-onboarding__button"
           >
             Open Setup
           </button>

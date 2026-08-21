@@ -550,11 +550,12 @@ export function OptionsPage() {
                     />
                     <button
                       type="submit"
+                      className="options-page__request-button"
                       disabled={!identity || accessRequestStatus === "sending"}
                     >
                       {accessRequestStatus === "sending"
                         ? "Sending…"
-                        : "Request access"}
+                        : "Request early access"}
                     </button>
                   </form>
                 )}

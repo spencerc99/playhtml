@@ -143,9 +143,9 @@
 
   &__field-help {
     max-width: 320px;
-    color: $text-faint;
-    font-size: 11px;
-    line-height: 1.45;
+    color: $text-muted;
+    font-size: 14px;
+    line-height: 1.5;
   }
 
   &__discord-card {
@@ -167,22 +167,20 @@
     gap: 2px;
 
     strong {
-      font-size: 12px;
+      @include heading;
+      font-size: 14px;
     }
 
     span {
       color: $text-muted;
-      font-size: 11px;
-      line-height: 1.4;
+      font-size: 14px;
+      line-height: 1.5;
     }
   }
 
   &__discord-button {
     @include btn-teal;
     flex: 0 0 auto;
-    padding: 7px 10px;
-    border-radius: 6px;
-    font-size: 11px;
     text-decoration: none;
   }
 
@@ -193,8 +191,7 @@
 
     span {
       color: $text-faint;
-      font-family: $font-mono;
-      font-size: 10px;
+      font-size: 14px;
     }
   }
 
@@ -276,9 +273,9 @@
   }
 
   &__preset-description {
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.55;
-    color: $text;
+    color: $text-muted;
     margin: 8px 0 12px;
   }
 
@@ -288,13 +285,13 @@
   }
 
   &__trust {
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1.5;
     color: $text-muted;
-    padding: 10px 12px;
+    padding: 12px 14px;
     background: $surface;
     border: 1px solid $border;
-    border-radius: 8px;
+    border-radius: 10px;
     margin-bottom: 16px;
   }
 
@@ -314,7 +311,7 @@
   &__website-access-hint,
   &__website-access-error,
   &__website-access-success {
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1.5;
   }
 
@@ -336,12 +333,12 @@
   }
 
   &__website-access-success {
-    padding: 10px 12px;
+    padding: 12px 14px;
     margin-bottom: 20px;
     color: $accent-teal;
     background: $surface;
     border: 1px solid $border;
-    border-radius: 8px;
+    border-radius: 10px;
   }
 
   // ── Collector list (reuses Collections card styles) ─────────────────────────
@@ -375,9 +372,6 @@
 
   &__reroll-btn {
     @include btn-secondary;
-    padding: 8px 10px;
-    font-size: 14px;
-    border-radius: 6px;
   }
 
   &__cursor-preview {
@@ -466,8 +460,8 @@
   // Stands in for the opt-in checkbox where the browser has no new tab override.
   &__newtab-note {
     margin: 12px 0 0;
-    font-family: $font-mono;
-    font-size: 12px;
+    font-family: $font-body;
+    font-size: 14px;
     line-height: 1.5;
     color: $text-muted;
   }
@@ -488,9 +482,19 @@
     border: 1px solid $border;
     border-radius: 10px;
     background: $surface;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 
     > .setup-step__desc {
       margin-bottom: 10px;
+    }
+  }
+
+  &__tip--trail {
+    .setup-step__trail-preview {
+      flex: 1;
+      min-height: 0;
     }
   }
 
@@ -499,18 +503,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 20px;
-  }
-
-  &__community-footer {
-    margin-top: 10px;
-    color: $text-faint;
-    font-family: $font-mono;
-    font-size: 10px;
-    text-align: right;
-
-    a {
-      color: $accent-teal;
-    }
   }
 
   &__kbd {
@@ -563,11 +555,11 @@
   &__trail-preview {
     position: relative;
     width: 100%;
-    height: 140px;
+    min-height: 140px;
     margin: 12px 0;
     overflow: hidden;
     border: 1px solid $border-strong;
-    border-radius: 8px;
+    border-radius: 10px;
     background: white;
   }
 
@@ -625,8 +617,8 @@
     border: 0;
     background: transparent;
     color: $accent-teal;
-    font-family: $font-mono;
-    font-size: 11px;
+    font-family: $font-body;
+    font-size: 14px;
     cursor: pointer;
     text-decoration: underline;
     text-decoration-color: rgba($accent-teal, 0.35);
@@ -643,7 +635,7 @@
     margin: 12px 0 10px;
     overflow: hidden;
     border: 1px solid $border;
-    border-radius: 7px;
+    border-radius: 10px;
     background: #fff;
     box-shadow: 0 2px 8px rgba($text, 0.06);
   }

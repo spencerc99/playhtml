@@ -121,6 +121,9 @@ describe("SetupPage", () => {
       );
       expect(container.textContent).toContain("Help shape WWO");
       expect(container.textContent).toContain("takes about a minute");
+      expect(container.textContent).not.toContain(
+        "The Discord is always open",
+      );
       expect(
         container.querySelector(".setup-step__discord-card svg"),
       ).toBeNull();

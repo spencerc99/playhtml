@@ -550,7 +550,7 @@ export default function SetupPage() {
                 )}
               </div>
 
-              <div className="setup-step__tip">
+              <div className="setup-step__tip setup-step__tip--trail">
                 <h3 className="setup-step__subheading">
                   See your trail, anywhere
                 </h3>
@@ -694,12 +694,6 @@ export default function SetupPage() {
                 </p>
               )}
             </form>
-            <p className="setup-step__community-footer">
-              Found something weird?{" "}
-              <a href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">
-                The Discord is always open
-              </a>
-            </p>
           </section>
         )}
       </div>

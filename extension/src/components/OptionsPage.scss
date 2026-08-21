@@ -99,8 +99,6 @@
 
     button {
       @include btn-secondary;
-      padding: 7px 10px;
-      font-size: 11px;
     }
 
     input[type="email"] {
@@ -178,6 +176,15 @@
       color: $accent-teal;
       font-size: 12px;
     }
+
+    h2 {
+      @include heading;
+      font-size: 14px;
+    }
+
+    button {
+      @include btn-primary;
+    }
   }
 
   &__community > div {
@@ -189,7 +196,7 @@
     h2 {
       @include heading;
       margin-bottom: 5px;
-      font-size: 16px;
+      font-size: 14px;
     }
 
     p {
@@ -200,8 +207,6 @@
 
     a {
       @include btn-teal;
-      padding: 8px 11px;
-      font-size: 11px;
       text-decoration: none;
     }
   }
