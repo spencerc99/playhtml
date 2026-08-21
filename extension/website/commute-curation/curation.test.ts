@@ -7,6 +7,7 @@ import {
   getDecisionForReviewItem,
   getReviewTarget,
   getScopedPlace,
+  mergeCatalogEvidence,
   normalizePlace,
   parseCommuteReviewResponse,
   parseStoredCuration,
@@ -150,6 +151,54 @@ describe("parseCommuteReviewResponse", () => {
   });
 });
 
+describe("mergeCatalogEvidence", () => {
+  it("attaches audit evidence without converting its suggestion into a verdict", () => {
+    const items = mergeCatalogEvidence([], [
+      {
+        url: "https://example.com/essay",
+        domain: "example.com",
+        title: "An essay",
+        provenance: "commute-history-audit/v2:redacted",
+        generatedAt: "2026-08-16T00:00:00.000Z",
+        evidence: {
+          category: { value: "Arts & culture", confidence: 0.8, source: "url-rule", reasons: [] },
+          pageType: { value: "Article or essay", confidence: 0.8, source: "url-rule", reasons: [] },
+          exposure: { value: "Public", confidence: 0.92, source: "commute-policy", reasons: [] },
+          character: { value: "Human-made", confidence: 0.7, source: "url-rule", reasons: [] },
+          observation: {
+            visits: 5,
+            participants: 2,
+            sessions: 3,
+            screenTimeMs: 60_000,
+            firstSeen: "2026-08-01T00:00:00.000Z",
+            lastSeen: "2026-08-02T00:00:00.000Z",
+            domainParticipants: 4,
+            domainVisits: 10,
+            domainScreenTimeMs: 120_000,
+          },
+          lanes: ["Independent convergence"],
+          components: { humanConfidence: 0.7 },
+          scores: { humanWeb: 82 },
+          initialJudgment: { value: "Promote", confidence: 0.8, source: "initial-judgment", reasons: [] },
+          reasons: ["2 people"],
+        },
+      },
+    ]);
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        url: "https://example.com/essay",
+        currentDisposition: "stop",
+        evidence: expect.objectContaining({
+          initialJudgment: expect.objectContaining({ value: "Promote" }),
+          scores: { humanWeb: 82 },
+        }),
+      }),
+    ]);
+    expect(items[0]).not.toHaveProperty("verdict");
+  });
+});
+
 describe("getReviewTarget", () => {
   it("uses the same normalized identity as stored decisions", () => {
     expect(
@@ -191,6 +240,7 @@ describe("serializeCurationArtifact", () => {
       input: "login.example.net/account",
       scope: "hostname",
       verdict: "blocked",
+      reason: "authentication-required",
       comment: " ",
       updatedAt: "2026-08-12T12:01:00.000Z",
     });
@@ -215,6 +265,7 @@ describe("serializeCurationArtifact", () => {
           place: "login.example.net",
           scope: "hostname",
           verdict: "blocked",
+          reason: "authentication-required",
         },
       ],
     });

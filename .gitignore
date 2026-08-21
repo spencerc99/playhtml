@@ -48,6 +48,7 @@ extension/src/**/*.js.map
 .output
 extension/dist
 extension/publish
+extension/website/public/commute-evaluation-data.json
 
 internal-docs
 

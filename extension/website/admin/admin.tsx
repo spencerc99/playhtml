@@ -144,7 +144,7 @@ function InternalOffice() {
         <div><span className="office-kicker">WE WERE ONLINE</span><h1>Internal Office</h1></div>
         <nav aria-label="Internal tools">
           <a aria-current="page" href="/admin/">Access control</a>
-          <span title="The curation desk will join this office when its branch lands">Commute curation</span>
+          <a href="/commute-curation/">Commute curation</a>
           <a href={PLAYHTML_ADMIN_URL}>PlayHTML rooms ↗</a>
         </nav>
         <button className="office-header__logout" onClick={() => {

@@ -1,9 +1,16 @@
 // ABOUTME: Serves the privacy-limited recent route used by Internet Commute.
 // ABOUTME: Reduces navigation and cursor events before returning them to the extension.
 
-import type { CollectionEvent } from '@playhtml/extension-types';
+import type {
+  CollectionEvent,
+  CommuteResponse,
+} from '@playhtml/extension-types';
 import type { Env } from '../lib/supabase';
 import { buildCommuteResponse } from './commutePolicy';
+import {
+  applyInternetPlacePolicies,
+  loadInternetPlacePolicies,
+} from './internetPlaceCatalog';
 import { handleRecent } from './recent';
 
 const NAVIGATION_LIMIT = 2000;
@@ -11,6 +18,8 @@ const CURSOR_LIMIT = 1000;
 const REVIEW_NAVIGATION_LIMIT = 10_000;
 const REVIEW_DESTINATION_LIMIT = 200;
 const REVIEW_SCENERY_LIMIT = 200;
+const CATALOG_CANDIDATE_LIMIT = 200;
+const COMMUTE_DESTINATION_LIMIT = 50;
 
 async function fetchRecentEvents(
   request: Request,
@@ -46,11 +55,36 @@ export async function handleCommute(
       fetchRecentEvents(request, env, 'navigation', NAVIGATION_LIMIT),
       fetchRecentEvents(request, env, 'cursor', CURSOR_LIMIT),
     ]);
-    const response = buildCommuteResponse(
+    const candidateResponse = buildCommuteResponse(
       navigationEvents,
       cursorEvents,
       Date.now(),
+      { destinations: CATALOG_CANDIDATE_LIMIT },
     );
+    let response: CommuteResponse;
+    try {
+      if (!env.WWO_ADMIN_DB) {
+        throw new Error('WWO_ADMIN_DB binding is unavailable');
+      }
+      const policies = await loadInternetPlacePolicies(
+        env.WWO_ADMIN_DB,
+        candidateResponse,
+      );
+      response = applyInternetPlacePolicies(
+        candidateResponse,
+        policies,
+        COMMUTE_DESTINATION_LIMIT,
+      );
+    } catch (error) {
+      if (env.WWO_ADMIN_DB) {
+        console.error('[commute] place catalog unavailable:', error);
+      }
+      response = applyInternetPlacePolicies(
+        candidateResponse,
+        [],
+        COMMUTE_DESTINATION_LIMIT,
+      );
+    }
 
     return new Response(JSON.stringify(response), {
       headers: {

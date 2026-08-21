@@ -33,9 +33,51 @@ body {
 
 button,
 input,
+select,
 textarea {
   color: inherit;
   font: inherit;
+}
+
+.curation-login {
+  min-height: calc(100vh - 88px);
+  display: grid;
+  place-items: center;
+}
+
+.curation-login form {
+  width: min(460px, 100%);
+  padding: 34px;
+  border: 1px solid $ink;
+  background: $paper-light;
+  box-shadow: 8px 8px 0 rgba($ink, 0.12);
+}
+
+.curation-login h1 {
+  margin: 10px 0 18px;
+}
+
+.curation-login p {
+  margin-bottom: 24px;
+  color: rgba($ink, 0.65);
+}
+
+.curation-login input,
+.curation-login button {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid $ink;
+}
+
+.curation-login input {
+  padding: 9px 10px;
+  background: #fffef8;
+}
+
+.curation-login button {
+  margin-top: 12px;
+  background: $ink;
+  color: $paper-light;
 }
 
 button,
@@ -121,6 +163,17 @@ h1 {
 
 .masthead__notice small {
   color: rgba($ink, 0.65);
+}
+
+.masthead__notice button {
+  width: max-content;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  font-family: $mono;
+  font-size: 8px;
 }
 
 .verdict-key {
@@ -217,6 +270,15 @@ h1 {
   min-width: 0;
 }
 
+.catalog-error {
+  grid-column: 1 / -1;
+  padding: 10px 13px;
+  border: 1px solid $orange;
+  background: color-mix(in srgb, $orange 12%, $paper-light);
+  font-family: $mono;
+  font-size: 9px;
+}
+
 .panel {
   border: 1px solid $ink;
   background: rgba($paper-light, 0.94);
@@ -265,10 +327,12 @@ h1 {
 
 .queue-controls {
   display: flex;
+  align-items: center;
   gap: 12px;
 }
 
 .queue-controls button,
+.import-control,
 .empty-state button {
   padding: 0;
   border: 0;
@@ -276,6 +340,22 @@ h1 {
   background: transparent;
   font-family: inherit;
   font-size: inherit;
+}
+
+.import-control {
+  display: inline;
+  margin: 0;
+  cursor: pointer;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.import-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
 }
 
 .intake form {
@@ -389,6 +469,97 @@ h1 {
   font-size: 12px;
 }
 
+.evaluation-evidence {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid $line;
+}
+
+.evaluation-evidence__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: $mono;
+  text-transform: uppercase;
+}
+
+.evaluation-evidence__heading small {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.evaluation-evidence__heading strong {
+  color: $green;
+  font-size: 8px;
+}
+
+.evidence-labels,
+.evidence-observation,
+.evidence-scores {
+  display: grid;
+  margin-top: 10px;
+  border: solid $line;
+  border-width: 1px 0 0 1px;
+}
+
+.evidence-labels {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.evidence-observation,
+.evidence-scores {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.evidence-labels > span,
+.evidence-observation > span,
+.evidence-scores > span {
+  min-width: 0;
+  padding: 7px;
+  border: solid $line;
+  border-width: 0 1px 1px 0;
+}
+
+.evidence-labels small,
+.evidence-labels b,
+.evidence-observation b,
+.evidence-scores small,
+.evidence-scores b {
+  display: block;
+}
+
+.evidence-labels small,
+.evidence-scores small {
+  color: rgba($ink, 0.5);
+  font-family: $mono;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.evidence-labels b,
+.evidence-observation,
+.evidence-scores b {
+  font-size: 10px;
+}
+
+.evidence-scores b {
+  margin-top: 3px;
+  font-family: $mono;
+  font-size: 15px;
+}
+
+.evaluation-evidence > p,
+.evaluation-evidence > small {
+  display: block;
+  margin-top: 9px;
+  color: rgba($ink, 0.56);
+  font-family: $mono;
+  font-size: 7px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .inspection-card {
   --inspection-color: #{rgba($ink, 0.5)};
   padding: 12px 14px;
@@ -480,12 +651,22 @@ label i {
 
 input[type="text"],
 input:not([type]),
+select,
 textarea {
   width: 100%;
   border: 1px solid $line;
   border-radius: 0;
   outline: 0;
   background: #fffef8;
+}
+
+.intake select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  background: #fffef8;
+  font-family: $mono;
+  font-size: 10px;
 }
 
 .intake input:not([type]) {
@@ -503,6 +684,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: $ink;
   box-shadow: 3px 3px 0 rgba($blue, 0.24);

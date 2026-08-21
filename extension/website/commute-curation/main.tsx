@@ -1,5 +1,5 @@
 // ABOUTME: Renders the live Internet Commute destination review workbench.
-// ABOUTME: Joins sanitized route candidates with shadow inspection and local decisions.
+// ABOUTME: Joins sanitized route candidates with audit evidence and durable D1 policies.
 
 import React, {
   FormEvent,
@@ -17,7 +17,7 @@ import {
 } from "@movement/config";
 import {
   createCuratedPlace,
-  CURATION_STORAGE_KEY,
+  CURATION_REASONS,
   CURATION_VERDICTS,
   type CommuteReviewItem,
   type CommuteReviewResponse,
@@ -26,12 +26,18 @@ import {
   type CurationVerdict,
   getDecisionForReviewItem,
   getReviewTarget,
+  mergeCatalogEvidence,
   parseCommuteReviewResponse,
-  parseStoredCuration,
   type PublicPageInspection,
   serializeCurationArtifact,
   upsertCuratedPlace,
 } from "./curation";
+import {
+  deleteCatalogPolicy,
+  getCatalog,
+  importEvaluationArtifact,
+  saveCatalogPolicy,
+} from "./catalogApi";
 import "./style.scss";
 
 const VERDICT_LABELS: Record<CurationVerdict, string> = {
@@ -46,6 +52,14 @@ const SCOPE_LABELS: Record<CurationScope, string> = {
   site: "Entire site",
 };
 const CURATION_SCOPES: CurationScope[] = ["page", "hostname", "site"];
+const TOKEN_STORAGE_KEY = "wwo-admin-token";
+
+const REASON_LABELS = Object.fromEntries(
+  CURATION_REASONS.map((reason) => [
+    reason,
+    reason.replaceAll("-", " "),
+  ]),
+) as Record<(typeof CURATION_REASONS)[number], string>;
 
 const INSPECTION_LABELS: Record<PublicPageInspection["verdict"], string> = {
   public: "Public page",
@@ -153,10 +167,6 @@ type InspectionState =
   | { status: "missing" }
   | { status: "error" };
 
-function loadPlaces(): CuratedPlace[] {
-  return parseStoredCuration(localStorage.getItem(CURATION_STORAGE_KEY));
-}
-
 function relativeTime(timestamp: number): string {
   const elapsedSeconds = Math.max(
     0,
@@ -170,9 +180,41 @@ function relativeTime(timestamp: number): string {
   return `${Math.round(elapsedHours / 24)}d ago`;
 }
 
-export function App() {
-  const [places, setPlaces] = useState<CuratedPlace[]>(loadPlaces);
-  const [reviewItems, setReviewItems] = useState<CommuteReviewItem[]>([]);
+function Login({ onLogin }: { onLogin: (token: string) => void }) {
+  const [token, setToken] = useState("");
+  return (
+    <main className="curation-login">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (token.trim()) onLogin(token.trim());
+        }}
+      >
+        <span className="eyebrow">WWO / INTERNAL OFFICE</span>
+        <h1>Commute Curation</h1>
+        <p>Use the Worker admin key to review and change the durable catalog.</p>
+        <label>
+          <span>Admin key</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            autoFocus
+          />
+        </label>
+        <button type="submit" disabled={!token.trim()}>Enter desk</button>
+      </form>
+    </main>
+  );
+}
+
+export function App({ token, onLogout }: { token: string; onLogout: () => void }) {
+  const [places, setPlaces] = useState<CuratedPlace[]>([]);
+  const [liveItems, setLiveItems] = useState<CommuteReviewItem[]>([]);
+  const [evidenceItems, setEvidenceItems] = useState<
+    Awaited<ReturnType<typeof getCatalog>>["evidence"]
+  >([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [queueStatus, setQueueStatus] = useState<"loading" | "ready" | "error">(
     "loading",
@@ -180,6 +222,7 @@ export function App() {
   const [queueGeneratedAt, setQueueGeneratedAt] = useState<number | null>(null);
   const [scope, setScope] = useState<CurationScope>("hostname");
   const [verdict, setVerdict] = useState<CurationVerdict | undefined>();
+  const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [inspectionById, setInspectionById] = useState(
     new Map<string, InspectionState>(),
@@ -187,6 +230,13 @@ export function App() {
   const requestedInspectionIds = useRef(new Set<string>());
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [importStatus, setImportStatus] = useState("Import audit JSON");
+  const reviewItems = useMemo(
+    () => mergeCatalogEvidence(liveItems, evidenceItems),
+    [evidenceItems, liveItems],
+  );
 
   const visibleItems = useMemo(
     () =>
@@ -228,7 +278,7 @@ export function App() {
       const payload: CommuteReviewResponse = parseCommuteReviewResponse(
         await response.json(),
       );
-      setReviewItems(payload.items);
+      setLiveItems(payload.items);
       setQueueGeneratedAt(payload.generatedAt);
       setSelectedId((current) =>
         payload.items.some((item) => item.id === current)
@@ -241,15 +291,28 @@ export function App() {
     }
   }, []);
 
+  const loadCatalog = useCallback(async () => {
+    setCatalogError("");
+    try {
+      const catalog = await getCatalog(token);
+      setPlaces(catalog.policies);
+      setEvidenceItems(catalog.evidence);
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : String(error));
+    }
+  }, [token]);
+
   useEffect(() => {
     void loadQueue();
-  }, [loadQueue]);
+    void loadCatalog();
+  }, [loadCatalog, loadQueue]);
 
   useEffect(() => {
     if (!selectedItem) return;
     const priorDecision = getDecisionForReviewItem(places, selectedItem);
     setScope(priorDecision?.scope ?? "hostname");
     setVerdict(priorDecision?.verdict);
+    setReason(priorDecision?.reason ?? "");
     setComment(priorDecision?.comment ?? "");
   }, [places, selectedItem]);
 
@@ -293,12 +356,7 @@ export function App() {
       });
   }, [selectedItem]);
 
-  function savePlaces(nextPlaces: CuratedPlace[]) {
-    setPlaces(nextPlaces);
-    localStorage.setItem(CURATION_STORAGE_KEY, JSON.stringify(nextPlaces));
-  }
-
-  function fileDecision(event: FormEvent) {
+  async function fileDecision(event: FormEvent) {
     event.preventDefault();
     if (!selectedItem) return;
     if (!verdict && !comment.trim()) return;
@@ -309,13 +367,31 @@ export function App() {
       input: target,
       scope,
       verdict,
+      reason,
       comment,
       updatedAt: new Date().toISOString(),
     });
-    const otherPlaces = priorDecision
-      ? places.filter((place) => place.id !== priorDecision.id)
-      : places;
-    savePlaces(upsertCuratedPlace(otherPlaces, decision));
+    setSaving(true);
+    setCatalogError("");
+    try {
+      if (
+        priorDecision &&
+        (priorDecision.scope !== decision.scope ||
+          priorDecision.place !== decision.place)
+      ) {
+        await deleteCatalogPolicy(token, priorDecision);
+      }
+      const saved = await saveCatalogPolicy(token, decision);
+      const otherPlaces = priorDecision
+        ? places.filter((place) => place.id !== priorDecision.id)
+        : places;
+      setPlaces(upsertCuratedPlace(otherPlaces, saved));
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : String(error));
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
 
     const currentIndex = visibleItems.findIndex(
       (item) => item.id === selectedItem.id,
@@ -324,10 +400,34 @@ export function App() {
     setSelectedId(nextItem?.id ?? null);
   }
 
-  function removeDecision(item: CommuteReviewItem) {
+  async function removeDecision(item: CommuteReviewItem) {
     const priorDecision = getDecisionForReviewItem(places, item);
     if (!priorDecision) return;
-    savePlaces(places.filter((place) => place.id !== priorDecision.id));
+    setSaving(true);
+    try {
+      await deleteCatalogPolicy(token, priorDecision);
+      setPlaces(places.filter((place) => place.id !== priorDecision.id));
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function importAudit(file: File) {
+    setImportStatus("Importing…");
+    setCatalogError("");
+    try {
+      const result = await importEvaluationArtifact(
+        token,
+        JSON.parse(await file.text()) as unknown,
+      );
+      setImportStatus(`${result.imported} pages imported`);
+      await loadCatalog();
+    } catch (error) {
+      setImportStatus("Import audit JSON");
+      setCatalogError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function copyArtifact() {
@@ -359,9 +459,10 @@ export function App() {
           </div>
         </div>
         <div className="masthead__notice">
-          <span>LOCAL DRAFT</span>
-          <strong>REVIEW LIVE CANDIDATES</strong>
-          <small>saved in this browser</small>
+          <span>DURABLE CATALOG</span>
+          <strong>CHANGES AFFECT THE TRAIN</strong>
+          <small>human policy stored in D1</small>
+          <button type="button" onClick={onLogout}>Lock desk</button>
         </div>
       </header>
 
@@ -377,6 +478,7 @@ export function App() {
       </section>
 
       <div className="workbench">
+        {catalogError && <p className="catalog-error">{catalogError}</p>}
         <section className="intake panel">
           <div className="panel__heading review-heading">
             <div>
@@ -388,12 +490,12 @@ export function App() {
             </span>
           </div>
 
-          {queueStatus === "loading" && (
+          {queueStatus === "loading" && !selectedItem && (
             <div className="empty-state">
               <span>LOADING THE TRAIN…</span>
             </div>
           )}
-          {queueStatus === "error" && (
+          {queueStatus === "error" && !selectedItem && (
             <div className="empty-state">
               <span>QUEUE UNAVAILABLE</span>
               <p>The review Worker may not be running yet.</p>
@@ -402,14 +504,14 @@ export function App() {
               </button>
             </div>
           )}
-          {queueStatus === "ready" && !selectedItem && (
+          {!selectedItem && queueStatus !== "loading" && queueStatus !== "error" && (
             <div className="empty-state">
               <span>QUEUE COMPLETE</span>
               <p>Show reviewed places or refresh for new arrivals.</p>
             </div>
           )}
 
-          {queueStatus === "ready" && selectedItem && (
+          {selectedItem && (
             <form className="review-form" onSubmit={fileDecision}>
               <div className="candidate-card">
                 <div
@@ -452,6 +554,44 @@ export function App() {
                     The observed path stays private; this opens the domain
                     homepage.
                   </p>
+                )}
+                {selectedItem.evidence && (
+                  <div className="evaluation-evidence">
+                    <div className="evaluation-evidence__heading">
+                      <small>AUDIT EVIDENCE</small>
+                      <strong>
+                        suggestion: {selectedItem.evidence.initialJudgment.value}
+                      </strong>
+                    </div>
+                    <div className="evidence-labels">
+                      {[
+                        ["Category", selectedItem.evidence.category],
+                        ["Page type", selectedItem.evidence.pageType],
+                        ["Exposure", selectedItem.evidence.exposure],
+                        ["Character", selectedItem.evidence.character],
+                      ].map(([label, evidence]) => (
+                        <span key={label as string}>
+                          <small>{label as string}</small>
+                          <b>{(evidence as { value: string }).value}</b>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="evidence-observation">
+                      <span><b>{selectedItem.evidence.observation.participants}</b> people</span>
+                      <span><b>{selectedItem.evidence.observation.visits}</b> visits</span>
+                      <span><b>{Math.round(selectedItem.evidence.observation.screenTimeMs / 60_000)}</b> min attention</span>
+                      <span><b>{selectedItem.evidence.observation.domainParticipants}</b> domain reach</span>
+                    </div>
+                    <div className="evidence-scores">
+                      {Object.entries(selectedItem.evidence.scores).map(([name, score]) => (
+                        <span key={name}><small>{name}</small><b>{score}</b></span>
+                      ))}
+                    </div>
+                    <p>{selectedItem.evidence.lanes.join(" · ")}</p>
+                    <small>
+                      Machine observation only · {selectedItem.evidenceProvenance}
+                    </small>
+                  </div>
                 )}
               </div>
 
@@ -544,6 +684,16 @@ export function App() {
                 </div>
               </fieldset>
 
+              <label>
+                <span>Reason <i>optional</i></span>
+                <select value={reason} onChange={(event) => setReason(event.target.value)}>
+                  <option value="">Choose a reusable reason</option>
+                  {CURATION_REASONS.map((value) => (
+                    <option key={value} value={value}>{REASON_LABELS[value]}</option>
+                  ))}
+                </select>
+              </label>
+
               <fieldset>
                 <legend>
                   Your decision <i>optional</i>
@@ -591,7 +741,7 @@ export function App() {
                 <button
                   className="primary-action"
                   type="submit"
-                  disabled={!verdict && !comment.trim()}
+                  disabled={saving || (!verdict && !comment.trim())}
                 >
                   {verdict ? "File decision" : "Save note"} →
                 </button>
@@ -623,6 +773,18 @@ export function App() {
               <h2>Commute queue</h2>
             </div>
             <div className="queue-controls">
+              <label className="import-control">
+                {importStatus}
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void importAudit(file);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
               <button
                 type="button"
                 onClick={() => setShowReviewed((value) => !value)}
@@ -686,7 +848,8 @@ export function App() {
                     <button
                       className="place-card__remove"
                       type="button"
-                      onClick={() => removeDecision(item)}
+                      onClick={() => void removeDecision(item)}
+                      disabled={saving}
                     >
                       Clear
                     </button>
@@ -701,7 +864,9 @@ export function App() {
                 ? `Route sampled ${relativeTime(queueGeneratedAt)}`
                 : "No route loaded"}
             </span>
-            <span>{reviewItems.length} sanitized places</span>
+            <span>
+              {liveItems.length} live · {evidenceItems.length} audited
+            </span>
           </div>
         </section>
       </div>
@@ -736,8 +901,22 @@ export function App() {
   );
 }
 
+function CurationDesk() {
+  const [token, setToken] = useState(
+    () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
+  );
+  if (!token) {
+    return <Login onLogin={(nextToken) => {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+      setToken(nextToken);
+    }} />;
+  }
+  return <App token={token} onLogout={() => {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    setToken("");
+  }} />;
+}
+
 createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
+  <React.StrictMode><CurationDesk /></React.StrictMode>,
 );

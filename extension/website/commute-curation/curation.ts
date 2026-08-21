@@ -1,18 +1,35 @@
-// ABOUTME: Defines local Internet Commute curation decisions and their portable artifact.
-// ABOUTME: Normalizes submitted places and keeps serialization deterministic for review.
+// ABOUTME: Defines Internet Commute curation decisions, evidence, and portable artifacts.
+// ABOUTME: Normalizes page, hostname, and site identities consistently with the Worker catalog.
 
-import { getDomain } from "tldts";
+import {
+  INTERNET_PLACE_VERDICTS,
+  normalizeInternetPlace,
+  type InternetPlaceScope,
+  type InternetPlaceVerdict,
+} from "../../shared/internetPlaceCatalog";
 
 export const CURATION_STORAGE_KEY = "wwo-commute-curation-v1";
 
-export const CURATION_VERDICTS = [
-  "promoted",
-  "scenery-only",
-  "blocked",
+export const CURATION_VERDICTS = INTERNET_PLACE_VERDICTS;
+
+export const CURATION_REASONS = [
+  "authentication-required",
+  "private-or-user-bound",
+  "documentation-or-support",
+  "jobs-or-recruiting",
+  "generic-homepage",
+  "business-or-product",
+  "unsafe-or-low-quality",
+  "human-community",
+  "editorial-or-cultural",
+  "standalone-tool",
+  "inspection-error",
+  "other",
 ] as const;
 
-export type CurationVerdict = (typeof CURATION_VERDICTS)[number];
-export type CurationScope = "page" | "hostname" | "site";
+export type CurationVerdict = InternetPlaceVerdict;
+export type CurationScope = InternetPlaceScope;
+export type CurationReason = (typeof CURATION_REASONS)[number];
 
 export type CuratedPlace = {
   id: string;
@@ -20,6 +37,7 @@ export type CuratedPlace = {
   domain: string;
   scope: CurationScope;
   verdict?: CurationVerdict;
+  reason?: string;
   comment: string;
   updatedAt: string;
 };
@@ -31,6 +49,7 @@ export type CurationArtifact = {
     place: string;
     scope: CurationScope;
     verdict?: CurationVerdict;
+    reason?: string;
     comment?: string;
   }>;
 };
@@ -41,6 +60,48 @@ export type CommuteReviewItem = {
   url?: string;
   title?: string;
   currentDisposition: "stop" | "scenery";
+  evidence?: EvaluationEvidence;
+  evidenceProvenance?: string;
+  evidenceGeneratedAt?: string;
+};
+
+export type EvidenceLabel = {
+  value: string;
+  confidence: number;
+  source: string;
+  reasons: string[];
+};
+
+export type EvaluationEvidence = {
+  category: EvidenceLabel;
+  pageType: EvidenceLabel;
+  exposure: EvidenceLabel;
+  character: EvidenceLabel;
+  observation: {
+    visits: number;
+    participants: number;
+    sessions: number;
+    screenTimeMs: number;
+    firstSeen: string;
+    lastSeen: string;
+    domainParticipants: number;
+    domainVisits: number;
+    domainScreenTimeMs: number;
+  };
+  lanes: string[];
+  components: Record<string, number | null>;
+  scores: Record<string, number>;
+  initialJudgment: EvidenceLabel;
+  reasons: string[];
+};
+
+export type CatalogEvidenceItem = {
+  url: string;
+  domain: string;
+  title: string;
+  provenance: string;
+  generatedAt: string;
+  evidence: EvaluationEvidence;
 };
 
 export type CommuteReviewResponse = {
@@ -101,6 +162,48 @@ export function parseCommuteReviewResponse(
   };
 }
 
+export function mergeCatalogEvidence(
+  liveItems: CommuteReviewItem[],
+  evidenceItems: CatalogEvidenceItem[],
+): CommuteReviewItem[] {
+  const byUrl = new Map(
+    evidenceItems.map((item) => [
+      normalizeInternetPlace(item.url, "page"),
+      item,
+    ]),
+  );
+  const mergedLive = liveItems.map((item) => {
+    if (!item.url) return item;
+    const normalizedUrl = normalizeInternetPlace(item.url, "page");
+    const evidence = byUrl.get(normalizedUrl);
+    if (!evidence) return item;
+    byUrl.delete(normalizedUrl);
+    return {
+      ...item,
+      evidence: evidence.evidence,
+      evidenceProvenance: evidence.provenance,
+      evidenceGeneratedAt: evidence.generatedAt,
+    };
+  });
+  const historical = [...byUrl.values()]
+    .sort(
+      (first, second) =>
+        (second.evidence.scores.humanWeb ?? 0) -
+        (first.evidence.scores.humanWeb ?? 0),
+    )
+    .map((item) => ({
+      id: item.url,
+      domain: item.domain,
+      url: item.url,
+      title: item.title,
+      currentDisposition: "stop" as const,
+      evidence: item.evidence,
+      evidenceProvenance: item.provenance,
+      evidenceGeneratedAt: item.generatedAt,
+    }));
+  return [...mergedLive, ...historical];
+}
+
 export function getReviewTarget(
   item: CommuteReviewItem,
   scope: CurationScope,
@@ -152,14 +255,10 @@ export function getScopedPlace(
   scope: CurationScope,
 ): { place: string; domain: string } {
   const normalized = normalizePlace(value);
-  if (scope === "page") return normalized;
-  if (scope === "hostname") {
-    return { place: normalized.domain, domain: normalized.domain };
-  }
-
-  const site = getDomain(normalized.domain, { allowPrivateDomains: true });
-  if (!site) throw new Error("The site boundary could not be determined.");
-  return { place: site, domain: normalized.domain };
+  return {
+    place: normalizeInternetPlace(value, scope),
+    domain: normalized.domain,
+  };
 }
 
 export function getDecisionKey(scope: CurationScope, place: string): string {
@@ -190,6 +289,7 @@ export function createCuratedPlace({
   input,
   scope,
   verdict,
+  reason,
   comment,
   updatedAt,
 }: {
@@ -197,6 +297,7 @@ export function createCuratedPlace({
   input: string;
   scope: CurationScope;
   verdict?: CurationVerdict;
+  reason?: string;
   comment: string;
   updatedAt: string;
 }): CuratedPlace {
@@ -207,6 +308,7 @@ export function createCuratedPlace({
     ...normalized,
     scope,
     verdict,
+    ...(reason?.trim() ? { reason: reason.trim() } : {}),
     comment: comment.trim(),
     updatedAt,
   };
@@ -261,10 +363,11 @@ export function serializeCurationArtifact(
           : (verdictOrder.get(b.verdict) ?? 0));
       return verdictDifference || a.place.localeCompare(b.place);
     })
-    .map(({ place, scope, verdict, comment }) => ({
+    .map(({ place, scope, verdict, reason, comment }) => ({
       place,
       scope,
       ...(verdict ? { verdict } : {}),
+      ...(reason ? { reason } : {}),
       ...(comment ? { comment } : {}),
     }));
 
@@ -306,6 +409,9 @@ function migrateCuratedPlace(value: unknown): CuratedPlace[] {
       scope,
       ...(candidate.verdict
         ? { verdict: candidate.verdict as CurationVerdict }
+        : {}),
+      ...(typeof candidate.reason === "string" && candidate.reason
+        ? { reason: candidate.reason }
         : {}),
       comment: candidate.comment as string,
       updatedAt: candidate.updatedAt as string,

@@ -27,6 +27,12 @@ import {
   handleAdminPersonCohortsUpdate,
   handleFeatureAccessCheck,
 } from './routes/accessControl';
+import {
+  handleInternetPlaceCatalog,
+  handleInternetPlaceEvidenceImport,
+  handleInternetPlacePolicyDelete,
+  handleInternetPlacePolicyPut,
+} from './routes/internetPlaceCatalog';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -76,6 +82,28 @@ export default {
     if (path === '/commute/review' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleCommuteReview(request, env);
+    }
+
+    if (path === '/admin/internet-places' && request.method === 'GET') {
+      return handleInternetPlaceCatalog(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/evidence' &&
+      request.method === 'POST'
+    ) {
+      return handleInternetPlaceEvidenceImport(request, env);
+    }
+
+    if (path === '/admin/internet-places/policy' && request.method === 'PUT') {
+      return handleInternetPlacePolicyPut(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/policy' &&
+      request.method === 'DELETE'
+    ) {
+      return handleInternetPlacePolicyDelete(request, env);
     }
 
     if (path === '/events/daily-counts' && request.method === 'GET') {
