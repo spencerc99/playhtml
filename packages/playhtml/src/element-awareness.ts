@@ -322,6 +322,11 @@ export class ElementAwarenessClient {
     const key = `${tag}:${elementId}`;
     const previous = this.currentAwareness.get(key);
     const nextStableId = this.getIdentity().publicKey;
+    if (nextStableId !== this.localStableId) {
+      this.localStableId = nextStableId;
+      this.emit();
+      return;
+    }
     const byStableId = new Map<string, any>();
     const tagMap = this.localTags.get(tag);
     if (tagMap && elementId in tagMap) {
@@ -333,8 +338,6 @@ export class ElementAwarenessClient {
       }
       byStableId.set(stableId, value);
     }
-    this.localStableId = nextStableId;
-
     if (byStableId.size === 0) {
       this.currentAwareness.delete(key);
       this.onAwarenessChange(key, undefined);
