@@ -36,6 +36,7 @@ import {
   deleteCatalogPolicy,
   getCatalog,
   importEvaluationArtifact,
+  isCatalogUnauthorized,
   saveCatalogPolicy,
 } from "./catalogApi";
 import "./style.scss";
@@ -267,6 +268,14 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
     [places],
   );
 
+  const handleCatalogError = useCallback((error: unknown) => {
+    if (isCatalogUnauthorized(error)) {
+      onLogout();
+      return;
+    }
+    setCatalogError(error instanceof Error ? error.message : String(error));
+  }, [onLogout]);
+
   const loadQueue = useCallback(async () => {
     setQueueStatus("loading");
     try {
@@ -298,9 +307,9 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
       setPlaces(catalog.policies);
       setEvidenceItems(catalog.evidence);
     } catch (error) {
-      setCatalogError(error instanceof Error ? error.message : String(error));
+      handleCatalogError(error);
     }
-  }, [token]);
+  }, [handleCatalogError, token]);
 
   useEffect(() => {
     void loadQueue();
@@ -387,7 +396,7 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
         : places;
       setPlaces(upsertCuratedPlace(otherPlaces, saved));
     } catch (error) {
-      setCatalogError(error instanceof Error ? error.message : String(error));
+      handleCatalogError(error);
       setSaving(false);
       return;
     }
@@ -408,7 +417,7 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
       await deleteCatalogPolicy(token, priorDecision);
       setPlaces(places.filter((place) => place.id !== priorDecision.id));
     } catch (error) {
-      setCatalogError(error instanceof Error ? error.message : String(error));
+      handleCatalogError(error);
     } finally {
       setSaving(false);
     }
@@ -426,7 +435,7 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
       await loadCatalog();
     } catch (error) {
       setImportStatus("Import audit JSON");
-      setCatalogError(error instanceof Error ? error.message : String(error));
+      handleCatalogError(error);
     }
   }
 

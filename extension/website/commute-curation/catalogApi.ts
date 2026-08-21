@@ -14,7 +14,21 @@ export type CatalogSnapshot = {
   evidence: CatalogEvidenceItem[];
 };
 
-async function readResponse<T>(response: Response): Promise<T> {
+export class CatalogApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "CatalogApiError";
+  }
+}
+
+export function isCatalogUnauthorized(error: unknown): boolean {
+  return error instanceof CatalogApiError && error.status === 401;
+}
+
+export async function readCatalogResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.text();
     let message = body;
@@ -22,7 +36,10 @@ async function readResponse<T>(response: Response): Promise<T> {
       const parsed = JSON.parse(body) as { error?: unknown };
       if (typeof parsed.error === "string") message = parsed.error;
     } catch {}
-    throw new Error(message || `Request failed with ${response.status}`);
+    throw new CatalogApiError(
+      message || `Request failed with ${response.status}`,
+      response.status,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -35,7 +52,7 @@ function headers(token: string, json = false): HeadersInit {
 }
 
 export async function getCatalog(token: string): Promise<CatalogSnapshot> {
-  const payload = await readResponse<{
+  const payload = await readCatalogResponse<{
     policies: Array<{
       scope: CurationScope;
       placeKey: string;
@@ -69,7 +86,7 @@ export async function saveCatalogPolicy(
   token: string,
   policy: CuratedPlace,
 ): Promise<CuratedPlace> {
-  const payload = await readResponse<{
+  const payload = await readCatalogResponse<{
     policy: {
       scope: CurationScope;
       placeKey: string;
@@ -112,7 +129,7 @@ export async function deleteCatalogPolicy(
     scope: policy.scope,
     placeKey: policy.place,
   });
-  await readResponse(await fetch(
+  await readCatalogResponse(await fetch(
     `${WORKER_URL}/admin/internet-places/policy?${query}`,
     { method: "DELETE", headers: headers(token) },
   ));
@@ -122,7 +139,7 @@ export async function importEvaluationArtifact(
   token: string,
   artifact: unknown,
 ): Promise<{ imported: number; generatedAt: string }> {
-  return readResponse(await fetch(`${WORKER_URL}/admin/internet-places/evidence`, {
+  return readCatalogResponse(await fetch(`${WORKER_URL}/admin/internet-places/evidence`, {
     method: "POST",
     headers: headers(token, true),
     body: JSON.stringify(artifact),
