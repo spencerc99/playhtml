@@ -614,10 +614,10 @@
 
   &__progress-note {
     margin: -3px 0 0;
-    color: $text-faint;
-    font-family: $font-mono;
-    font-size: 9px;
-    line-height: 1.4;
+    color: $text-muted;
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 460px;
   }
 
   &__text-link {
