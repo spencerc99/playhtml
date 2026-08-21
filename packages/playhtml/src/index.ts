@@ -65,6 +65,7 @@ import {
 } from "./presence-transport";
 import {
   ElementAwarenessClient,
+  type ElementAwarenessEntry,
   type ElementAwarenessMap,
 } from "./element-awareness";
 import { PresenceClient } from "./presence-client";
@@ -1059,6 +1060,7 @@ function buildElementAwarenessClient(): void {
       getIdentity: resolveMyIdentity,
       getPage: getPresencePage,
       onAwareness: applyElementAwareness,
+      onAwarenessChange: applyElementAwarenessEntry,
     });
   } catch (error) {
     elementAwarenessRoom = null;
@@ -1373,7 +1375,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   markAllElementsAsLoading();
   await waitForMainProviderSync(SERVER_ROOM_RESET_SYNC_TIMEOUT_MS);
   refreshPageDataChannels(getPageDataDeps());
-  setupElements();
+  reinitializeElements();
   markAllElementsAsReady();
   cursorClient?.refreshContainer?.();
   cursorClient?.refreshCursorStyles?.();
@@ -1536,7 +1538,11 @@ async function runHandleNavigation(): Promise<void> {
     refreshPageDataChannels(getPageDataDeps());
   }
 
-  setupElements();
+  if (mainRoomChanged) {
+    reinitializeElements();
+  } else {
+    setupElements();
+  }
   markAllElementsAsReady();
 
   cursorClient?.refreshContainer?.();
@@ -1935,8 +1941,8 @@ function createPlayElementData<T extends TagType, TData = any>(
     triggerAwarenessUpdate: () => {
       if (elementAwarenessClient) {
         // setLocalAwareness (called by onAwarenessChange, which always runs
-        // immediately before this in setMyAwareness) already emitted the
-        // handler sweep synchronously. Refreshing here would fire
+        // immediately before this in setMyAwareness) already delivered the
+        // element's awareness synchronously. Refreshing here would fire
         // updateElementAwareness a second time for the same local write.
         return;
       }
@@ -2132,6 +2138,26 @@ function applyElementAwareness(elementAwareness: ElementAwarenessMap): void {
   trackedElementAwarenessKeys = new Set(elementAwareness.keys());
 }
 
+function applyElementAwarenessEntry(
+  key: string,
+  awareness: ElementAwarenessEntry | undefined,
+): void {
+  safeInvoke(
+    () =>
+      updateHandlerAwarenessForKey(
+        key,
+        awareness?.array ?? [],
+        awareness?.byStableId ?? new Map(),
+      ),
+    "element awareness handler",
+  );
+  if (awareness) {
+    trackedElementAwarenessKeys.add(key);
+  } else {
+    trackedElementAwarenessKeys.delete(key);
+  }
+}
+
 function updateHandlerAwarenessForKey(
   key: string,
   array: any[],
@@ -2157,6 +2183,14 @@ function updateHandlerAwarenessForKey(
  * on the `playhtml` object on `window`.
  */
 function setupElements(): void {
+  setupElementsFromDocument(false);
+}
+
+function reinitializeElements(): void {
+  setupElementsFromDocument(true);
+}
+
+function setupElementsFromDocument(reinitializeExisting: boolean): void {
   if (!hasSynced) {
     return;
   }
@@ -2184,9 +2218,16 @@ function setupElements(): void {
       console.log(`SET UP ${tag}`);
     }
     void Promise.all(
-      Array.from(tagElements).map((element) =>
-        setupPlayElementForTag(element, tag),
-      ),
+      Array.from(tagElements).map((element) => {
+        const elementId = getIdForElement(element);
+        const existingHandler = elementId
+          ? elementHandlers.get(tag)?.get(elementId)
+          : undefined;
+        if (!reinitializeExisting && existingHandler?.element === element) {
+          return;
+        }
+        return setupPlayElementForTag(element, tag);
+      }),
     );
   }
 
@@ -2711,9 +2752,14 @@ async function setupPlayElementForTag<T extends TagType | string>(
     }
   }
 
-  // redo this now that we have set it in the mapping.
-  // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
-  elementData.triggerAwarenessUpdate?.();
+  const initialAwareness = elementAwarenessClient?.getAwareness(tag, elementId);
+  if (initialAwareness) {
+    tagElementHandlers
+      .get(elementId)
+      ?.updateAwareness(initialAwareness.array, initialAwareness.byStableId);
+  } else {
+    elementData.triggerAwarenessUpdate?.();
+  }
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);

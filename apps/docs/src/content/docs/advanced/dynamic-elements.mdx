@@ -69,6 +69,8 @@ el.remove();
 playhtml.deleteElementData("can-move", "note-42");
 ```
 
+Reuse the same stable `id` when a logical item can return. A fresh `id` creates a separate persisted item on every mount. Call `deleteElementData` when the item is permanently removed.
+
 See [Development & data cleanup](/docs/advanced/development/) for inspecting and resetting stored state from the devtools panel.
 
   </TabItem>
