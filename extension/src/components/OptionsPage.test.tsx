@@ -1,11 +1,16 @@
-// ABOUTME: Covers the full settings page section structure and title search.
-// ABOUTME: Verifies filtering hides section cards whose titles do not match.
+// ABOUTME: Covers the full settings page structure and merged settings groups.
+// ABOUTME: Verifies navigation order and dividers between card content blocks.
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { OptionsPage } from "./OptionsPage";
+
+const featureState = vi.hoisted(() => ({
+  experimentAccess: false,
+  bagSettingsEnabled: true,
+}));
 
 vi.mock("./OptionsPage.scss", () => ({}));
 vi.mock("./Collections", () => ({
@@ -17,8 +22,8 @@ vi.mock("./DeveloperFeaturesPage", () => ({
   DeveloperFeaturesSection: () => <div>feature controls</div>,
 }));
 vi.mock("../features/useFeatureAccess", () => ({
-  useExperimentAccess: () => false,
-  useFeatureState: () => ({ enabled: true }),
+  useExperimentAccess: () => featureState.experimentAccess,
+  useFeatureState: () => ({ enabled: featureState.bagSettingsEnabled }),
 }));
 vi.mock("../utils/extensionPage", () => ({
   isSafariExtensionPageUrl: () => false,
@@ -55,6 +60,8 @@ describe("OptionsPage", () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
+    featureState.experimentAccess = false;
+    featureState.bagSettingsEnabled = true;
     vi.mocked(browser.storage.local.get).mockResolvedValue({});
   });
 
@@ -73,56 +80,114 @@ describe("OptionsPage", () => {
       ).toEqual([
         "Identity",
         "Data collection",
-        "New tab",
-        "Project updates",
+        "Browser",
         "Bag settings",
         "Experiments",
         "Community",
         "Your data",
-        "Developer",
+      ]);
+      expect(
+        Array.from(container.querySelectorAll("nav a")).map(
+          (link) => link.textContent,
+        ),
+      ).toEqual([
+        "identity",
+        "data collection",
+        "browser",
+        "bag settings",
+        "experiments",
+        "community",
+        "your data",
       ]);
     } finally {
       cleanup(root, container);
     }
   });
 
-  it("shows bag settings only when the feature is enabled", async () => {
+  it("keeps bag settings feature-gated in its existing position", async () => {
+    featureState.bagSettingsEnabled = false;
     const { container, root } = await renderOptions();
     try {
-      expect(container.querySelector("#bag-settings")).not.toBeNull();
-      expect(container.textContent).toContain("Current Site");
-      expect(container.textContent).toContain("Quick Actions");
+      expect(container.querySelector("#bag-settings")).toBeNull();
       expect(
-        container
-          .querySelector(".options-page__access-request button")
-          ?.textContent?.trim(),
-      ).toBe("Request early access");
-      expect(container.textContent).toContain(
-        "Leaving an email also signs you up for occasional project updates.",
-      );
+        Array.from(container.querySelectorAll("nav a")).map(
+          (link) => link.textContent,
+        ),
+      ).toEqual([
+        "identity",
+        "data collection",
+        "browser",
+        "experiments",
+        "community",
+        "your data",
+      ]);
     } finally {
       cleanup(root, container);
     }
   });
 
-  it("hides sections whose titles do not match the search", async () => {
+  it("merges project updates into Community and Developer mode into Experiments", async () => {
     const { container, root } = await renderOptions();
     try {
-      const input = container.querySelector<HTMLInputElement>(
-        'input[aria-label="Search settings"]',
+      expect(container.querySelector("#project-updates")).toBeNull();
+      expect(container.querySelector("#developer")).toBeNull();
+      expect(container.querySelector("#community")?.textContent).toContain(
+        "Only used for occasional project updates.",
       );
-      await act(async () => {
-        const setValue = Object.getOwnPropertyDescriptor(
-          HTMLInputElement.prototype,
-          "value",
-        )?.set;
-        setValue?.call(input, "community");
-        input?.dispatchEvent(new Event("input", { bubbles: true }));
-      });
+      expect(container.querySelector("#community")?.textContent).toContain(
+        "Subscribe",
+      );
+      expect(container.querySelector("#experiments")?.textContent).toContain(
+        "developer controls",
+      );
+      expect(container.querySelector('input[type="search"]')).toBeNull();
+    } finally {
+      cleanup(root, container);
+    }
+  });
 
-      expect(container.querySelector("#community")).not.toBeNull();
-      expect(container.querySelector("#identity")).toBeNull();
-      expect(container.querySelector("#data-collection")).toBeNull();
+  it("does not render a divider before the first Experiments card block", async () => {
+    const { container, root } = await renderOptions();
+    try {
+      const accessRequest = container.querySelector(
+        ".options-page__access-request",
+      );
+      expect(accessRequest?.previousElementSibling).toBeNull();
+      expect(
+        accessRequest?.classList.contains(
+          "options-page__access-request--divided",
+        ),
+      ).toBe(false);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("renders dividers when Experiments card blocks have content above them", async () => {
+    featureState.experimentAccess = true;
+    const { container, root } = await renderOptions();
+    try {
+      const accessRequest = container.querySelector(
+        ".options-page__access-request",
+      );
+      expect(accessRequest?.previousElementSibling?.textContent).toContain(
+        "feature controls",
+      );
+      expect(
+        accessRequest?.classList.contains(
+          "options-page__access-request--divided",
+        ),
+      ).toBe(true);
+
+      const developerMode = container.querySelector(
+        ".options-page__developer-mode",
+      );
+      expect(developerMode?.previousElementSibling).toBe(accessRequest);
+      expect(
+        developerMode?.classList.contains(
+          "options-page__developer-mode--divided",
+        ),
+      ).toBe(true);
     } finally {
       cleanup(root, container);
     }

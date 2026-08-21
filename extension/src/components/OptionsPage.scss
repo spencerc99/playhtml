@@ -1,4 +1,4 @@
-// ABOUTME: Styles the searchable, full-page extension settings layout.
+// ABOUTME: Styles the full-page extension settings layout.
 // ABOUTME: Defines the sticky navigation rail, section cards, and responsive behavior.
 
 @use "../styles/variables" as *;
@@ -55,13 +55,6 @@
       font-size: 9px;
       text-transform: uppercase;
     }
-  }
-
-  &__search {
-    @include input-field;
-    width: 100%;
-    margin-bottom: 14px;
-    font-size: 11px;
   }
 
   &__content {
@@ -168,10 +161,6 @@
   }
 
   &__access-request {
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid $border;
-
     strong {
       color: $accent-teal;
       font-size: 12px;
@@ -187,9 +176,29 @@
     }
   }
 
-  &__community > div {
+  &__access-request--divided {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid $border;
+  }
+
+  &__developer-mode {
+    .collections__dev-mode {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+  }
+
+  &__developer-mode--divided .collections__dev-mode {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid $border;
+  }
+
+  &__discord-band {
     padding: 18px;
-    border: 1px solid rgba($accent-teal, 0.25);
+    border: 1px solid $active-border;
     border-radius: 10px;
     background: $active-bg;
 
@@ -211,6 +220,12 @@
     }
   }
 
+  &__community-email {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid $border;
+  }
+
   &__collections-card {
     .collections {
       height: auto;
@@ -220,11 +235,6 @@
     .collections__main {
       overflow: visible;
     }
-  }
-
-  &__no-results {
-    color: $text-muted;
-    font-size: 13px;
   }
 }
 

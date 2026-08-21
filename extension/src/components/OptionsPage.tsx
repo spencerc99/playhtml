@@ -1,5 +1,5 @@
-// ABOUTME: Full-page extension settings for identity, collection, updates, and experiments.
-// ABOUTME: Organizes settings into searchable sections with a sticky navigation rail.
+// ABOUTME: Full-page extension settings for identity, collection, community, and experiments.
+// ABOUTME: Organizes settings into sections with a sticky navigation rail.
 
 import React, { FormEvent, useEffect, useRef, useState } from "react";
 import browser from "webextension-polyfill";
@@ -35,13 +35,11 @@ const DISCORD_INVITE_URL = "https://discord.gg/SKbsSf4ptU";
 const SECTIONS = [
   { id: "identity", title: "Identity" },
   { id: "data-collection", title: "Data collection" },
-  { id: "new-tab", title: "New tab" },
-  { id: "project-updates", title: "Project updates" },
+  { id: "browser", title: "Browser" },
   { id: "bag-settings", title: "Bag settings" },
   { id: "experiments", title: "Experiments" },
   { id: "community", title: "Community" },
   { id: "your-data", title: "Your data" },
-  { id: "developer", title: "Developer" },
 ] as const;
 
 function randomPrimaryColor(): string {
@@ -165,7 +163,6 @@ function BagSettingsSection() {
 }
 
 export function OptionsPage() {
-  const [search, setSearch] = useState("");
   const [activeSection, setActiveSection] = useState("identity");
   const [identity, setIdentity] = useState<PlayerIdentity | null>(null);
   const [color, setColor] = useState("#4a9a8a");
@@ -190,9 +187,6 @@ export function OptionsPage() {
   const sections = bagSettingsEnabled
     ? SECTIONS
     : SECTIONS.filter(({ id }) => id !== "bag-settings");
-  const visibleSections = sections.filter(({ title }) =>
-    title.toLowerCase().includes(search.trim().toLowerCase()),
-  );
 
   useEffect(() => {
     Promise.all([
@@ -244,7 +238,7 @@ export function OptionsPage() {
       .querySelectorAll<HTMLElement>(".options-page__section")
       .forEach((section) => observer.observe(section));
     return () => observer.disconnect();
-  }, [search]);
+  }, [bagSettingsEnabled]);
 
   const handleOpenColorPicker = async () => {
     if (opensNativePickerInPage) {
@@ -321,9 +315,6 @@ export function OptionsPage() {
     }
   };
 
-  const sectionIsVisible = (id: (typeof SECTIONS)[number]["id"]) =>
-    visibleSections.some((section) => section.id === id);
-
   return (
     <div className="options-page">
       <aside className="options-page__rail">
@@ -331,16 +322,8 @@ export function OptionsPage() {
           <strong>we were online</strong>
           <span>settings</span>
         </div>
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search settings…"
-          aria-label="Search settings"
-          className="options-page__search"
-        />
         <nav aria-label="Settings sections">
-          {SECTIONS.map(({ id, title }) => (
+          {sections.map(({ id, title }) => (
             <a
               key={id}
               href={`#${id}`}
@@ -355,116 +338,180 @@ export function OptionsPage() {
       </aside>
 
       <main className="options-page__content">
-        {sectionIsVisible("identity") && (
-          <section id="identity" className="options-page__section">
-            <h1>Identity</h1>
-            <div className="options-page__card">
-              <div className="options-page__setting-row">
-                <div>
-                  <h2>Cursor color</h2>
-                  <p>The color other people see when your cursor appears.</p>
-                </div>
-                <div className="options-page__identity-actions">
-                  <input
-                    ref={colorInputRef}
-                    type="color"
-                    value={color}
-                    onChange={(event) => setColor(event.target.value)}
-                    className="options-page__color-input"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleOpenColorPicker()}
-                    aria-label="Pick cursor color"
-                  >
-                    <CursorSvg size={36} color={color} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setColor(randomPrimaryColor())}
-                    aria-label="Re-roll color"
-                  >
-                    ↻
-                  </button>
-                  {color !== identity?.playerStyle.colorPalette[0] && (
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveColor()}
-                      disabled={savingColor}
-                    >
-                      {savingColor ? "Saving..." : "Save"}
-                    </button>
-                  )}
-                </div>
+        <section id="identity" className="options-page__section">
+          <h1>Identity</h1>
+          <div className="options-page__card">
+            <div className="options-page__setting-row">
+              <div>
+                <h2>Cursor color</h2>
+                <p>The color other people see when your cursor appears.</p>
               </div>
-              <div className="options-page__setting-row">
-                <div>
-                  <h2>Anonymous ID</h2>
-                  <p>
-                    A key generated in this browser. It's how your trails are
-                    recognized as yours — it says nothing about who you are.
-                  </p>
-                </div>
-                {identity && (
-                  <div className="options-page__key-actions">
-                    <code>{truncatedPublicKey(identity.publicKey)}</code>
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyPublicKey()}
-                    >
-                      {copied ? "Copied" : "Copy"}
-                    </button>
-                  </div>
+              <div className="options-page__identity-actions">
+                <input
+                  ref={colorInputRef}
+                  type="color"
+                  value={color}
+                  onChange={(event) => setColor(event.target.value)}
+                  className="options-page__color-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleOpenColorPicker()}
+                  aria-label="Pick cursor color"
+                >
+                  <CursorSvg size={36} color={color} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setColor(randomPrimaryColor())}
+                  aria-label="Re-roll color"
+                >
+                  ↻
+                </button>
+                {color !== identity?.playerStyle.colorPalette[0] && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveColor()}
+                    disabled={savingColor}
+                  >
+                    {savingColor ? "Saving..." : "Save"}
+                  </button>
                 )}
               </div>
             </div>
-          </section>
-        )}
-
-        {sectionIsVisible("data-collection") && (
-          <section id="data-collection" className="options-page__section">
-            <h1>Data collection</h1>
-            <div className="options-page__card options-page__collections-card">
-              <DataCollectionSection />
-            </div>
-          </section>
-        )}
-
-        {sectionIsVisible("new-tab") && (
-          <section id="new-tab" className="options-page__section">
-            <h1>New tab</h1>
-            <div className="options-page__card">
-              <h2>New tab</h2>
-              <p>Open your history page in every new tab.</p>
-              {isSafari ? (
-                <p className="options-page__mono-note">
-                  Safari doesn't let extensions change the new tab — bookmark or
-                  pin the history page to keep it a click away.
+            <div className="options-page__setting-row">
+              <div>
+                <h2>Anonymous ID</h2>
+                <p>
+                  A key generated in this browser. It's how your trails are
+                  recognized as yours — it says nothing about who you are.
                 </p>
-              ) : (
-                <label className="options-page__checkbox">
-                  <input
-                    type="checkbox"
-                    checked={newTabTakeover}
-                    onChange={(event) => {
-                      const enabled = event.target.checked;
-                      setNewTabTakeover(enabled);
-                      void browser.storage.local.set({
-                        [NEWTAB_TAKEOVER_KEY]: enabled,
-                      });
-                    }}
-                  />
-                  make this my new tab
-                </label>
+              </div>
+              {identity && (
+                <div className="options-page__key-actions">
+                  <code>{truncatedPublicKey(identity.publicKey)}</code>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyPublicKey()}
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
               )}
             </div>
-          </section>
+          </div>
+        </section>
+
+        <section id="data-collection" className="options-page__section">
+          <h1>Data collection</h1>
+          <div className="options-page__card options-page__collections-card">
+            <DataCollectionSection />
+          </div>
+        </section>
+
+        <section id="browser" className="options-page__section">
+          <h1>Browser</h1>
+          <div className="options-page__card">
+            <h2>New tab</h2>
+            <p>Open your history page in every new tab.</p>
+            {isSafari ? (
+              <p className="options-page__mono-note">
+                Safari doesn't let extensions change the new tab — bookmark or
+                pin the history page to keep it a click away.
+              </p>
+            ) : (
+              <label className="options-page__checkbox">
+                <input
+                  type="checkbox"
+                  checked={newTabTakeover}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    setNewTabTakeover(enabled);
+                    void browser.storage.local.set({
+                      [NEWTAB_TAKEOVER_KEY]: enabled,
+                    });
+                  }}
+                />
+                make this my new tab
+              </label>
+            )}
+          </div>
+        </section>
+
+        {bagSettingsEnabled && (
+          <FeatureGate feature="BAG_SETTINGS">
+            <section id="bag-settings" className="options-page__section">
+              <h1>Bag settings</h1>
+              <div className="options-page__card">
+                <BagSettingsSection />
+              </div>
+            </section>
+          </FeatureGate>
         )}
 
-        {sectionIsVisible("project-updates") && (
-          <section id="project-updates" className="options-page__section">
-            <h1>Project updates</h1>
-            <div className="options-page__card">
+        <section id="experiments" className="options-page__section">
+          <h1>Experiments</h1>
+          <div className="options-page__card">
+            {experimentAccess && <DeveloperFeaturesSection />}
+            <div
+              className={`options-page__access-request${
+                experimentAccess ? " options-page__access-request--divided" : ""
+              }`}
+            >
+              <h2>Request early access</h2>
+              <p>
+                Request early access to new experimental features to make the
+                internet feel more shared and alive. Experiments stay off until
+                you choose to enable them. Leaving an email also signs you up
+                for occasional project updates.
+              </p>
+              {accessRequestStatus === "sent" ? (
+                <strong>Request sent</strong>
+              ) : (
+                <form onSubmit={requestExperimentAccess}>
+                  <input
+                    type="email"
+                    value={emailDraft}
+                    onChange={(event) => setEmailDraft(event.target.value)}
+                    placeholder="Email for a reply (optional)"
+                  />
+                  <button
+                    type="submit"
+                    className="options-page__request-button"
+                    disabled={!identity || accessRequestStatus === "sending"}
+                  >
+                    {accessRequestStatus === "sending"
+                      ? "Sending…"
+                      : "Request early access"}
+                  </button>
+                </form>
+              )}
+              {accessRequestStatus === "error" && (
+                <small role="alert">
+                  Couldn’t send the request. Please try again.
+                </small>
+              )}
+            </div>
+            <div className="options-page__developer-mode options-page__developer-mode--divided">
+              <DeveloperModeSection />
+            </div>
+          </div>
+        </section>
+
+        <section id="community" className="options-page__section">
+          <h1>Community</h1>
+          <div className="options-page__card">
+            <div className="options-page__discord-band">
+              <h2>Help shape WWO</h2>
+              <p>
+                Join the community to share what you're seeing and get a look at
+                experiments before they ship.
+              </p>
+              <a href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">
+                Join the Discord ↗
+              </a>
+            </div>
+            <div className="options-page__community-email">
               {setupEmail && !editingEmail ? (
                 <div className="options-page__email-current">
                   <code>{setupEmail}</code>
@@ -511,106 +558,15 @@ export function OptionsPage() {
                 </small>
               )}
             </div>
-          </section>
-        )}
+          </div>
+        </section>
 
-        {sectionIsVisible("bag-settings") && (
-          <FeatureGate feature="BAG_SETTINGS">
-            <section id="bag-settings" className="options-page__section">
-              <h1>Bag settings</h1>
-              <div className="options-page__card">
-                <BagSettingsSection />
-              </div>
-            </section>
-          </FeatureGate>
-        )}
-
-        {sectionIsVisible("experiments") && (
-          <section id="experiments" className="options-page__section">
-            <h1>Experiments</h1>
-            <div className="options-page__card">
-              {experimentAccess && <DeveloperFeaturesSection />}
-              <div className="options-page__access-request">
-                <h2>Request early access</h2>
-                <p>
-                  Request early access to new experimental features to make the
-                  internet feel more shared and alive. Experiments stay off
-                  until you choose to enable them. Leaving an email also signs
-                  you up for occasional project updates.
-                </p>
-                {accessRequestStatus === "sent" ? (
-                  <strong>Request sent</strong>
-                ) : (
-                  <form onSubmit={requestExperimentAccess}>
-                    <input
-                      type="email"
-                      value={emailDraft}
-                      onChange={(event) => setEmailDraft(event.target.value)}
-                      placeholder="Email for a reply (optional)"
-                    />
-                    <button
-                      type="submit"
-                      className="options-page__request-button"
-                      disabled={!identity || accessRequestStatus === "sending"}
-                    >
-                      {accessRequestStatus === "sending"
-                        ? "Sending…"
-                        : "Request early access"}
-                    </button>
-                  </form>
-                )}
-                {accessRequestStatus === "error" && (
-                  <small role="alert">
-                    Couldn’t send the request. Please try again.
-                  </small>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {sectionIsVisible("community") && (
-          <section
-            id="community"
-            className="options-page__section options-page__community"
-          >
-            <h1>Community</h1>
-            <div>
-              <h2>Help shape WWO</h2>
-              <p>
-                Join the community to share what you're seeing and get a look at
-                experiments before they ship.
-              </p>
-              <a href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">
-                Join the Discord ↗
-              </a>
-            </div>
-          </section>
-        )}
-
-        {sectionIsVisible("your-data") && (
-          <section id="your-data" className="options-page__section">
-            <h1>Your data</h1>
-            <div className="options-page__card options-page__collections-card">
-              <YourDataSection />
-            </div>
-          </section>
-        )}
-
-        {sectionIsVisible("developer") && (
-          <section id="developer" className="options-page__section">
-            <h1>Developer</h1>
-            <div className="options-page__card options-page__collections-card">
-              <DeveloperModeSection />
-            </div>
-          </section>
-        )}
-
-        {visibleSections.length === 0 && (
-          <p className="options-page__no-results">
-            No settings sections match “{search}”.
-          </p>
-        )}
+        <section id="your-data" className="options-page__section">
+          <h1>Your data</h1>
+          <div className="options-page__card options-page__collections-card">
+            <YourDataSection />
+          </div>
+        </section>
       </main>
     </div>
   );
