@@ -6,12 +6,12 @@ import {
   getInternetPlaceLookupKeys,
   getInternetPlacePolicyKey,
   INTERNET_PLACE_SCOPES,
-  INTERNET_PLACE_VERDICTS,
+  INTERNET_PLACE_PLACEMENTS,
   normalizeInternetPlace,
   resolveInternetPlacePolicy,
   type InternetPlacePolicy,
   type InternetPlaceScope,
-  type InternetPlaceVerdict,
+  type InternetPlacePlacement,
 } from '../../../shared/internetPlaceCatalog';
 import { getAdminAuthError } from '../lib/adminAuth';
 import type { Env } from '../lib/supabase';
@@ -26,7 +26,7 @@ const IMPORT_ROWS_PER_BATCH = 50;
 type PolicyRow = {
   scope: InternetPlaceScope;
   place_key: string;
-  verdict: InternetPlaceVerdict | null;
+  placement: InternetPlacePlacement | null;
   reason: string | null;
   note: string;
   updated_at: string;
@@ -197,7 +197,7 @@ function policyFromRow(row: PolicyRow): InternetPlacePolicy {
   return {
     scope: row.scope,
     placeKey: row.place_key,
-    ...(row.verdict ? { verdict: row.verdict } : {}),
+    ...(row.placement ? { placement: row.placement } : {}),
     ...(row.reason ? { reason: row.reason } : {}),
     note: row.note,
     updatedAt: row.updated_at,
@@ -217,7 +217,7 @@ export async function handleInternetPlaceCatalog(
 
   const [policyRows, evidenceRows] = await Promise.all([
     allRows<PolicyRow>(env.WWO_ADMIN_DB.prepare(
-      `SELECT scope, place_key, verdict, reason, note, updated_at
+      `SELECT scope, place_key, placement, reason, note, updated_at
        FROM place_policies
        ORDER BY updated_at DESC`,
     )),
@@ -325,13 +325,15 @@ export async function handleInternetPlacePolicyPut(
     return jsonResponse(400, { error: 'Invalid policy scope' });
   }
   const scope = body.scope as InternetPlaceScope;
-  const verdict = body.verdict;
+  const placement = body.placement;
   const note = typeof body.note === 'string' ? body.note.trim() : '';
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   if (
-    (verdict !== undefined &&
-      !INTERNET_PLACE_VERDICTS.includes(verdict as InternetPlaceVerdict)) ||
-    (!verdict && !note) ||
+    (placement !== undefined &&
+      !INTERNET_PLACE_PLACEMENTS.includes(
+        placement as InternetPlacePlacement,
+      )) ||
+    (!placement && !note) ||
     note.length > 2_000 ||
     reason.length > 100 ||
     typeof body.placeKey !== 'string'
@@ -346,17 +348,17 @@ export async function handleInternetPlacePolicyPut(
     return jsonResponse(400, { error: 'Invalid place policy target' });
   }
   await env.WWO_ADMIN_DB.prepare(
-    `INSERT INTO place_policies (scope, place_key, verdict, reason, note, updated_at)
+    `INSERT INTO place_policies (scope, place_key, placement, reason, note, updated_at)
      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
      ON CONFLICT(scope, place_key) DO UPDATE SET
-       verdict = excluded.verdict,
+       placement = excluded.placement,
        reason = excluded.reason,
        note = excluded.note,
        updated_at = CURRENT_TIMESTAMP`,
-  ).bind(scope, placeKey, verdict ?? null, reason || null, note).run();
+  ).bind(scope, placeKey, placement ?? null, reason || null, note).run();
 
   const row = await env.WWO_ADMIN_DB.prepare(
-    `SELECT scope, place_key, verdict, reason, note, updated_at
+    `SELECT scope, place_key, placement, reason, note, updated_at
      FROM place_policies WHERE scope = ? AND place_key = ?`,
   ).bind(scope, placeKey).first<PolicyRow>();
   if (!row) return jsonResponse(500, { error: 'Policy was not saved' });
@@ -423,7 +425,7 @@ export async function loadInternetPlacePolicies(
          json_extract(value, '$.placeKey') AS place_key
        FROM json_each(?)
      )
-     SELECT p.scope, p.place_key, p.verdict, p.reason, p.note, p.updated_at
+     SELECT p.scope, p.place_key, p.placement, p.reason, p.note, p.updated_at
      FROM place_policies p
      INNER JOIN requested r
        ON r.scope = p.scope AND r.place_key = p.place_key`,
@@ -436,29 +438,39 @@ export function applyInternetPlacePolicies(
   policies: InternetPlacePolicy[],
   destinationLimit: number,
 ): CommuteResponse {
-  const runtimePolicies = policies.filter((policy) => policy.verdict);
+  const runtimePolicies = policies.filter((policy) => policy.placement);
   const domainPolicies = runtimePolicies.filter(
     (policy) => policy.scope !== 'page',
   );
-  const promoted: CommuteResponse['destinations'] = [];
+  const reserve: CommuteResponse['destinations'] = [];
+  const featured: CommuteResponse['destinations'] = [];
   const ordinary: CommuteResponse['destinations'] = [];
 
   for (const destination of response.destinations) {
     const policy = resolveInternetPlacePolicy(runtimePolicies, destination.url);
-    if (policy?.verdict === 'blocked' || policy?.verdict === 'scenery-only') {
+    if (policy?.placement === 'hidden' || policy?.placement === 'scenery') {
       continue;
     }
-    (policy?.verdict === 'promoted' ? promoted : ordinary).push(destination);
+    if (policy?.placement === 'reserve') {
+      reserve.push(destination);
+    } else if (policy?.placement === 'featured') {
+      featured.push(destination);
+    } else {
+      ordinary.push(destination);
+    }
   }
 
   const scenery = response.scenery.filter((item) => {
     const policy = resolveInternetPlacePolicy(domainPolicies, item.domain);
-    return policy?.verdict !== 'blocked';
+    return policy?.placement !== 'hidden';
   });
 
   return {
     ...response,
     scenery,
-    destinations: [...promoted, ...ordinary].slice(0, destinationLimit),
+    destinations: [...reserve, ...featured, ...ordinary].slice(
+      0,
+      destinationLimit,
+    ),
   };
 }

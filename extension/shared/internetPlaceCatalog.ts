@@ -5,19 +5,22 @@ import { canonicalizeUrl } from '@playhtml/extension-types';
 import { getDomain } from 'tldts';
 
 export const INTERNET_PLACE_SCOPES = ['page', 'hostname', 'site'] as const;
-export const INTERNET_PLACE_VERDICTS = [
-  'promoted',
-  'scenery-only',
-  'blocked',
+export const INTERNET_PLACE_PLACEMENTS = [
+  'hidden',
+  'scenery',
+  'regular',
+  'featured',
+  'reserve',
 ] as const;
 
 export type InternetPlaceScope = (typeof INTERNET_PLACE_SCOPES)[number];
-export type InternetPlaceVerdict = (typeof INTERNET_PLACE_VERDICTS)[number];
+export type InternetPlacePlacement =
+  (typeof INTERNET_PLACE_PLACEMENTS)[number];
 
 export interface InternetPlacePolicy {
   scope: InternetPlaceScope;
   placeKey: string;
-  verdict?: InternetPlaceVerdict;
+  placement?: InternetPlacePlacement;
   reason?: string;
   note: string;
   updatedAt: string;

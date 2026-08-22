@@ -15,9 +15,15 @@ import {
   loadInternetPlacePolicies,
 } from '../routes/internetPlaceCatalog';
 
-const schema = readFileSync(
+const verdictSchema = readFileSync(
   fileURLToPath(
     new URL('../../migrations/0003_internet_place_catalog.sql', import.meta.url),
+  ),
+  'utf8',
+).replace(/^--.*$/gm, '').trim();
+const placementMigration = readFileSync(
+  fileURLToPath(
+    new URL('../../migrations/0004_internet_place_placement.sql', import.meta.url),
   ),
   'utf8',
 ).replace(/^--.*$/gm, '').trim();
@@ -145,6 +151,15 @@ function commuteResponse(): CommuteResponse {
   };
 }
 
+async function executeSql(db: D1Database, sql: string): Promise<void> {
+  for (const statement of sql
+    .split(';')
+    .map((value) => value.trim())
+    .filter(Boolean)) {
+    await db.prepare(statement).run();
+  }
+}
+
 beforeEach(async () => {
   miniflare = new Miniflare({
     modules: true,
@@ -152,13 +167,8 @@ beforeEach(async () => {
     d1Databases: ['WWO_ADMIN_DB'],
   });
   const db = await miniflare.getD1Database('WWO_ADMIN_DB');
-  await db.batch(
-    schema
-      .split(';')
-      .map((statement) => statement.trim())
-      .filter(Boolean)
-      .map((statement) => db.prepare(statement)),
-  );
+  await executeSql(db, verdictSchema);
+  await executeSql(db, placementMigration);
   env = {
     ADMIN_KEY: 'admin-secret',
     WWO_ADMIN_DB: db,
@@ -170,6 +180,51 @@ afterEach(async () => {
 });
 
 describe('Internet place catalog', () => {
+  it('migrates existing verdicts into the five placement levels', async () => {
+    const migrationRuntime = new Miniflare({
+      modules: true,
+      script: 'export default { fetch() { return new Response("ok") } }',
+      d1Databases: ['WWO_ADMIN_DB'],
+    });
+    try {
+      const db = await migrationRuntime.getD1Database('WWO_ADMIN_DB');
+      await executeSql(db, verdictSchema);
+      await db.batch([
+        db.prepare(
+          `INSERT INTO place_policies (scope, place_key, verdict, note)
+           VALUES ('hostname', 'hidden.example', 'blocked', '')`,
+        ),
+        db.prepare(
+          `INSERT INTO place_policies (scope, place_key, verdict, note)
+           VALUES ('hostname', 'scenery.example', 'scenery-only', '')`,
+        ),
+        db.prepare(
+          `INSERT INTO place_policies (scope, place_key, verdict, note)
+           VALUES ('hostname', 'featured.example', 'promoted', '')`,
+        ),
+        db.prepare(
+          `INSERT INTO place_policies (scope, place_key, verdict, note)
+           VALUES ('hostname', 'noted.example', NULL, 'Review later')`,
+        ),
+      ]);
+
+      await executeSql(db, placementMigration);
+
+      const rows = await db.prepare(
+        `SELECT place_key, placement, note FROM place_policies
+         ORDER BY place_key`,
+      ).all<{ place_key: string; placement: string | null; note: string }>();
+      expect(rows.results).toEqual([
+        { place_key: 'featured.example', placement: 'featured', note: '' },
+        { place_key: 'hidden.example', placement: 'hidden', note: '' },
+        { place_key: 'noted.example', placement: null, note: 'Review later' },
+        { place_key: 'scenery.example', placement: 'scenery', note: '' },
+      ]);
+    } finally {
+      await migrationRuntime.dispose();
+    }
+  });
+
   it('imports only machine evidence without creating a human policy', async () => {
     const response = await handleInternetPlaceEvidenceImport(
       adminRequest('/admin/internet-places/evidence', {
@@ -262,9 +317,9 @@ describe('Internet place catalog', () => {
 
   it('applies page before hostname before site and ignores note-only policies', async () => {
     const policies = [
-      { scope: 'site', placeKey: 'example.com', verdict: 'blocked' },
-      { scope: 'hostname', placeKey: 'example.com', verdict: 'scenery-only' },
-      { scope: 'page', placeKey: 'https://example.com/essay', verdict: 'promoted' },
+      { scope: 'site', placeKey: 'example.com', placement: 'hidden' },
+      { scope: 'hostname', placeKey: 'example.com', placement: 'scenery' },
+      { scope: 'page', placeKey: 'https://example.com/essay', placement: 'featured' },
       { scope: 'page', placeKey: 'https://example.com/notes', note: 'Review later' },
     ] as const;
     for (const policy of policies) {
@@ -284,6 +339,74 @@ describe('Internet place catalog', () => {
     const result = applyInternetPlacePolicies(commuteResponse(), loaded, 50);
     expect(result.destinations.map((item) => item.url)).toEqual([
       'https://example.com/essay',
+      'https://other.example/article',
+    ]);
+    expect(result.scenery.map((item) => item.domain)).toEqual([
+      'example.com',
+      'other.example',
+    ]);
+  });
+
+  it('orders reserve and featured stops while preserving explicit regular stops', () => {
+    const result = applyInternetPlacePolicies(
+      commuteResponse(),
+      [
+        {
+          scope: 'page',
+          placeKey: 'https://other.example/article',
+          placement: 'reserve',
+          note: '',
+          updatedAt: '2026-08-22T00:00:00Z',
+        },
+        {
+          scope: 'page',
+          placeKey: 'https://example.com/essay',
+          placement: 'featured',
+          note: '',
+          updatedAt: '2026-08-22T00:00:00Z',
+        },
+        {
+          scope: 'page',
+          placeKey: 'https://example.com/notes',
+          placement: 'regular',
+          note: '',
+          updatedAt: '2026-08-22T00:00:00Z',
+        },
+      ],
+      50,
+    );
+
+    expect(result.destinations.map((item) => item.url)).toEqual([
+      'https://other.example/article',
+      'https://example.com/essay',
+      'https://example.com/notes',
+      'https://sub.example.com/page',
+    ]);
+  });
+
+  it('keeps scenery places visible and removes hidden places entirely', () => {
+    const result = applyInternetPlacePolicies(
+      commuteResponse(),
+      [
+        {
+          scope: 'hostname',
+          placeKey: 'example.com',
+          placement: 'scenery',
+          note: '',
+          updatedAt: '2026-08-22T00:00:00Z',
+        },
+        {
+          scope: 'hostname',
+          placeKey: 'sub.example.com',
+          placement: 'hidden',
+          note: '',
+          updatedAt: '2026-08-22T00:00:00Z',
+        },
+      ],
+      50,
+    );
+
+    expect(result.destinations.map((item) => item.url)).toEqual([
       'https://other.example/article',
     ]);
     expect(result.scenery.map((item) => item.domain)).toEqual([
