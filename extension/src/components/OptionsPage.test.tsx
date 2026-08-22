@@ -126,6 +126,25 @@ describe("OptionsPage", () => {
     }
   });
 
+  it("opens the cursor color input within the settings page", async () => {
+    const { container, root } = await renderOptions();
+    try {
+      const colorInput = container.querySelector<HTMLInputElement>(
+        'input[type="color"]',
+      );
+      const clickColorInput = vi.spyOn(colorInput!, "click");
+      const colorButton = container.querySelector<HTMLButtonElement>(
+        'button[aria-label="Pick cursor color"]',
+      );
+
+      await act(async () => colorButton?.click());
+
+      expect(clickColorInput).toHaveBeenCalledOnce();
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
   it("merges project updates into Community and Developer mode into Experiments", async () => {
     const { container, root } = await renderOptions();
     try {

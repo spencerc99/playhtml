@@ -12,7 +12,7 @@ import {
 } from "../collectors/modes";
 import { TinyMovementPreview } from "./TinyMovementPreview";
 import { PortraitCard } from "./PortraitCard";
-import { CollectorIcon } from "./icons";
+import { CollectorIcon, GearSvg } from "./icons";
 import "./InternetPortraitHome.scss";
 import { PostcardStack } from "../announcements/PostcardStack";
 import { FeedbackForm } from "./FeedbackForm";
@@ -279,14 +279,6 @@ export function InternetPortraitHome({
               <div className="preview-card__label">Open Portrait Overlay</div>
             </div>
           </div>
-          <FeatureGate feature="BAG_SETTINGS">
-            <button
-              className="portrait-home__nav-link portrait-home__bag-settings-link"
-              onClick={onOpenSettings}
-            >
-              bag settings
-            </button>
-          </FeatureGate>
         </section>
 
         <section className="collection-status">
@@ -326,10 +318,12 @@ export function InternetPortraitHome({
       <footer className="portrait-home__footer">
         <button
           type="button"
-          className="portrait-home__changelog-link"
+          aria-label="settings"
+          title="Settings"
+          className="portrait-home__changelog-link portrait-home__settings-link"
           onClick={onOpenSettings}
         >
-          settings
+          <GearSvg size={14} />
         </button>
         <button
           type="button"
