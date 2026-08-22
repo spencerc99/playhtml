@@ -43,4 +43,5 @@ export interface Env {
   CODA_API_TOKEN: string;       // Coda API token for extension feedback submissions
   LIVE_EVENTS_HUB: DurableObjectNamespace; // Live cursor-event stream hub
   WWO_ADMIN_DB: D1Database;     // Feature policy, beta cohorts, and operator workflows
+  AI?: Ai;                      // Advisory Internet place classifications
 }

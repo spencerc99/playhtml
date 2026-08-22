@@ -33,6 +33,7 @@ import {
   handleInternetPlacePolicyDelete,
   handleInternetPlacePolicyPut,
 } from './routes/internetPlaceCatalog';
+import { handleInternetPlaceSuggestion } from './routes/internetPlaceSuggestion';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -104,6 +105,13 @@ export default {
       request.method === 'DELETE'
     ) {
       return handleInternetPlacePolicyDelete(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/suggestion' &&
+      request.method === 'POST'
+    ) {
+      return handleInternetPlaceSuggestion(request, env);
     }
 
     if (path === '/events/daily-counts' && request.method === 'GET') {
