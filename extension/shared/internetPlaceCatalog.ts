@@ -12,10 +12,25 @@ export const INTERNET_PLACE_PLACEMENTS = [
   'featured',
   'reserve',
 ] as const;
+export const INTERNET_PLACE_REASONS = [
+  'authentication-required',
+  'private-or-user-bound',
+  'documentation-or-support',
+  'jobs-or-recruiting',
+  'generic-homepage',
+  'business-or-product',
+  'unsafe-or-low-quality',
+  'human-community',
+  'editorial-or-cultural',
+  'standalone-tool',
+  'inspection-error',
+  'other',
+] as const;
 
 export type InternetPlaceScope = (typeof INTERNET_PLACE_SCOPES)[number];
 export type InternetPlacePlacement =
   (typeof INTERNET_PLACE_PLACEMENTS)[number];
+export type InternetPlaceReason = (typeof INTERNET_PLACE_REASONS)[number];
 
 export interface InternetPlacePolicy {
   scope: InternetPlaceScope;

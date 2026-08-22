@@ -2,32 +2,20 @@
 // ABOUTME: Normalizes page, hostname, and site identities consistently with the Worker catalog.
 
 import {
-  INTERNET_PLACE_VERDICTS,
+  INTERNET_PLACE_PLACEMENTS,
+  INTERNET_PLACE_REASONS,
   normalizeInternetPlace,
+  type InternetPlacePlacement,
   type InternetPlaceScope,
-  type InternetPlaceVerdict,
 } from "../../shared/internetPlaceCatalog";
 
 export const CURATION_STORAGE_KEY = "wwo-commute-curation-v1";
 
-export const CURATION_VERDICTS = INTERNET_PLACE_VERDICTS;
+export const CURATION_PLACEMENTS = INTERNET_PLACE_PLACEMENTS;
 
-export const CURATION_REASONS = [
-  "authentication-required",
-  "private-or-user-bound",
-  "documentation-or-support",
-  "jobs-or-recruiting",
-  "generic-homepage",
-  "business-or-product",
-  "unsafe-or-low-quality",
-  "human-community",
-  "editorial-or-cultural",
-  "standalone-tool",
-  "inspection-error",
-  "other",
-] as const;
+export const CURATION_REASONS = INTERNET_PLACE_REASONS;
 
-export type CurationVerdict = InternetPlaceVerdict;
+export type CurationPlacement = InternetPlacePlacement;
 export type CurationScope = InternetPlaceScope;
 export type CurationReason = (typeof CURATION_REASONS)[number];
 
@@ -36,19 +24,19 @@ export type CuratedPlace = {
   place: string;
   domain: string;
   scope: CurationScope;
-  verdict?: CurationVerdict;
+  placement?: CurationPlacement;
   reason?: string;
   comment: string;
   updatedAt: string;
 };
 
 export type CurationArtifact = {
-  format: "internet-commute-curation/v3";
+  format: "internet-commute-curation/v4";
   generatedAt: string;
   decisions: Array<{
     place: string;
     scope: CurationScope;
-    verdict?: CurationVerdict;
+    placement?: CurationPlacement;
     reason?: string;
     comment?: string;
   }>;
@@ -284,11 +272,29 @@ export function getDecisionForReviewItem(
   return undefined;
 }
 
+export function canPrefillSuggestion({
+  hasDecision,
+  formEdited,
+  selectedItemId,
+  suggestionItemId,
+}: {
+  hasDecision: boolean;
+  formEdited: boolean;
+  selectedItemId: string | null;
+  suggestionItemId: string;
+}): boolean {
+  return (
+    !hasDecision &&
+    !formEdited &&
+    selectedItemId === suggestionItemId
+  );
+}
+
 export function createCuratedPlace({
   id,
   input,
   scope,
-  verdict,
+  placement,
   reason,
   comment,
   updatedAt,
@@ -296,7 +302,7 @@ export function createCuratedPlace({
   id: string;
   input: string;
   scope: CurationScope;
-  verdict?: CurationVerdict;
+  placement?: CurationPlacement;
   reason?: string;
   comment: string;
   updatedAt: string;
@@ -307,7 +313,7 @@ export function createCuratedPlace({
     id,
     ...normalized,
     scope,
-    verdict,
+    placement,
     ...(reason?.trim() ? { reason: reason.trim() } : {}),
     comment: comment.trim(),
     updatedAt,
@@ -349,30 +355,30 @@ export function serializeCurationArtifact(
   places: CuratedPlace[],
   generatedAt: string,
 ): string {
-  const verdictOrder = new Map(
-    CURATION_VERDICTS.map((verdict, index) => [verdict, index]),
+  const placementOrder = new Map(
+    CURATION_PLACEMENTS.map((placement, index) => [placement, index]),
   );
   const decisions = [...places]
     .sort((a, b) => {
-      const verdictDifference =
-        (a.verdict === undefined
-          ? CURATION_VERDICTS.length
-          : (verdictOrder.get(a.verdict) ?? 0)) -
-        (b.verdict === undefined
-          ? CURATION_VERDICTS.length
-          : (verdictOrder.get(b.verdict) ?? 0));
-      return verdictDifference || a.place.localeCompare(b.place);
+      const placementDifference =
+        (a.placement === undefined
+          ? CURATION_PLACEMENTS.length
+          : (placementOrder.get(a.placement) ?? 0)) -
+        (b.placement === undefined
+          ? CURATION_PLACEMENTS.length
+          : (placementOrder.get(b.placement) ?? 0));
+      return placementDifference || a.place.localeCompare(b.place);
     })
-    .map(({ place, scope, verdict, reason, comment }) => ({
+    .map(({ place, scope, placement, reason, comment }) => ({
       place,
       scope,
-      ...(verdict ? { verdict } : {}),
+      ...(placement ? { placement } : {}),
       ...(reason ? { reason } : {}),
       ...(comment ? { comment } : {}),
     }));
 
   const artifact: CurationArtifact = {
-    format: "internet-commute-curation/v3",
+    format: "internet-commute-curation/v4",
     generatedAt,
     decisions,
   };
@@ -383,15 +389,24 @@ export function serializeCurationArtifact(
 function migrateCuratedPlace(value: unknown): CuratedPlace[] {
   if (!value || typeof value !== "object") return [];
   const candidate = value as Record<string, unknown>;
+  const legacyPlacement =
+    candidate.verdict === "promoted"
+      ? "featured"
+      : candidate.verdict === "scenery-only"
+        ? "scenery"
+        : candidate.verdict === "blocked"
+          ? "hidden"
+          : undefined;
+  const placement = candidate.placement ?? legacyPlacement;
   const isStoredPlace =
     typeof candidate.id === "string" &&
     typeof candidate.place === "string" &&
     typeof candidate.domain === "string" &&
-    (candidate.verdict === undefined ||
-      CURATION_VERDICTS.includes(candidate.verdict as CurationVerdict)) &&
+    (placement === undefined ||
+      CURATION_PLACEMENTS.includes(placement as CurationPlacement)) &&
     typeof candidate.comment === "string" &&
     typeof candidate.updatedAt === "string";
-  if (!isStoredPlace || (candidate.verdict === undefined && !candidate.comment)) {
+  if (!isStoredPlace || (placement === undefined && !candidate.comment)) {
     return [];
   }
 
@@ -407,8 +422,8 @@ function migrateCuratedPlace(value: unknown): CuratedPlace[] {
       id: candidate.id as string,
       ...normalized,
       scope,
-      ...(candidate.verdict
-        ? { verdict: candidate.verdict as CurationVerdict }
+      ...(placement
+        ? { placement: placement as CurationPlacement }
         : {}),
       ...(typeof candidate.reason === "string" && candidate.reason
         ? { reason: candidate.reason }

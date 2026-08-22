@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  canPrefillSuggestion,
   createCuratedPlace,
   getDecisionForReviewItem,
   getReviewTarget,
@@ -15,11 +16,11 @@ import {
   upsertCuratedPlace,
 } from "./curation";
 
-const PROMOTED = createCuratedPlace({
+const FEATURED = createCuratedPlace({
   id: "one",
   input: "https://www.example.com/an-essay?view=full#notes",
   scope: "page",
-  verdict: "promoted",
+  placement: "featured",
   comment: "A public essay.",
   updatedAt: "2026-08-12T12:00:00.000Z",
 });
@@ -69,20 +70,20 @@ describe("decision scope", () => {
 
 describe("curation queue", () => {
   it("updates an existing place instead of duplicating it", () => {
-    const replacement = { ...PROMOTED, verdict: "blocked" as const };
-    expect(upsertCuratedPlace([PROMOTED], replacement)).toEqual([replacement]);
+    const replacement = { ...FEATURED, placement: "hidden" as const };
+    expect(upsertCuratedPlace([FEATURED], replacement)).toEqual([replacement]);
   });
 
   it("recovers valid entries from storage and ignores corrupt data", () => {
-    expect(parseStoredCuration(JSON.stringify([PROMOTED, { id: 4 }]))).toEqual([
-      PROMOTED,
+    expect(parseStoredCuration(JSON.stringify([FEATURED, { id: 4 }]))).toEqual([
+      FEATURED,
     ]);
     expect(parseStoredCuration("not json")).toEqual([]);
   });
 
   it("preserves prior prototype decisions as hostname decisions", () => {
     const oldPlace = Object.fromEntries(
-      Object.entries(PROMOTED).filter(([key]) => key !== "scope"),
+      Object.entries(FEATURED).filter(([key]) => key !== "scope"),
     );
     expect(parseStoredCuration(JSON.stringify([oldPlace]))[0]).toMatchObject({
       place: "example.com",
@@ -91,7 +92,18 @@ describe("curation queue", () => {
     });
   });
 
-  it("stores a note without inventing a verdict", () => {
+  it("maps prior verdicts into the five placement levels", () => {
+    const priorDecision = {
+      ...FEATURED,
+      placement: undefined,
+      verdict: "promoted",
+    };
+    expect(parseStoredCuration(JSON.stringify([priorDecision]))[0]).toMatchObject({
+      placement: "featured",
+    });
+  });
+
+  it("stores a note without inventing a placement", () => {
     const note = createCuratedPlace({
       id: "note",
       input: "example.com",
@@ -100,8 +112,37 @@ describe("curation queue", () => {
       updatedAt: "2026-08-12T12:00:00.000Z",
     });
 
-    expect(note.verdict).toBeUndefined();
+    expect(note.placement).toBeUndefined();
     expect(parseStoredCuration(JSON.stringify([note]))).toEqual([note]);
+  });
+});
+
+describe("suggestion prefill", () => {
+  it("fills only the still-selected untouched candidate without human policy", () => {
+    expect(canPrefillSuggestion({
+      hasDecision: false,
+      formEdited: false,
+      selectedItemId: "one",
+      suggestionItemId: "one",
+    })).toBe(true);
+    expect(canPrefillSuggestion({
+      hasDecision: true,
+      formEdited: false,
+      selectedItemId: "one",
+      suggestionItemId: "one",
+    })).toBe(false);
+    expect(canPrefillSuggestion({
+      hasDecision: false,
+      formEdited: true,
+      selectedItemId: "one",
+      suggestionItemId: "one",
+    })).toBe(false);
+    expect(canPrefillSuggestion({
+      hasDecision: false,
+      formEdited: false,
+      selectedItemId: "two",
+      suggestionItemId: "one",
+    })).toBe(false);
   });
 });
 
@@ -152,7 +193,7 @@ describe("parseCommuteReviewResponse", () => {
 });
 
 describe("mergeCatalogEvidence", () => {
-  it("attaches audit evidence without converting its suggestion into a verdict", () => {
+  it("attaches audit evidence without converting its suggestion into a placement", () => {
     const items = mergeCatalogEvidence([], [
       {
         url: "https://example.com/essay",
@@ -195,7 +236,7 @@ describe("mergeCatalogEvidence", () => {
         }),
       }),
     ]);
-    expect(items[0]).not.toHaveProperty("verdict");
+    expect(items[0]).not.toHaveProperty("placement");
   });
 });
 
@@ -219,7 +260,7 @@ describe("getReviewTarget", () => {
       id: "site",
       input: "example.com",
       scope: "site",
-      verdict: "blocked",
+      placement: "hidden",
       comment: "",
       updatedAt: "2026-08-12T12:00:00.000Z",
     });
@@ -239,39 +280,39 @@ describe("serializeCurationArtifact", () => {
       id: "two",
       input: "login.example.net/account",
       scope: "hostname",
-      verdict: "blocked",
+      placement: "hidden",
       reason: "authentication-required",
       comment: " ",
       updatedAt: "2026-08-12T12:01:00.000Z",
     });
     const artifact = JSON.parse(
       serializeCurationArtifact(
-        [blocked, PROMOTED],
+        [blocked, FEATURED],
         "2026-08-12T13:00:00.000Z",
       ),
     );
 
     expect(artifact).toEqual({
-      format: "internet-commute-curation/v3",
+      format: "internet-commute-curation/v4",
       generatedAt: "2026-08-12T13:00:00.000Z",
       decisions: [
         {
-          place: "https://example.com/an-essay?view=full",
-          scope: "page",
-          verdict: "promoted",
-          comment: "A public essay.",
-        },
-        {
           place: "login.example.net",
           scope: "hostname",
-          verdict: "blocked",
+          placement: "hidden",
           reason: "authentication-required",
+        },
+        {
+          place: "https://example.com/an-essay?view=full",
+          scope: "page",
+          placement: "featured",
+          comment: "A public essay.",
         },
       ],
     });
   });
 
-  it("exports note-only entries without a verdict", () => {
+  it("exports note-only entries without a placement", () => {
     const note = createCuratedPlace({
       id: "note",
       input: "notes.example.com",

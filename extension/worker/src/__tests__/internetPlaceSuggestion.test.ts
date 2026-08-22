@@ -92,6 +92,10 @@ describe('Internet place suggestions', () => {
       ...suggestion,
       confidence: 2,
     })).toBeNull();
+    expect(parseInternetPlaceSuggestionModelOutput({
+      ...suggestion,
+      reason: 'A persuasive explanation rather than a reusable reason',
+    })).toBeNull();
   });
 
   it('requires admin authentication before reading the cache', async () => {

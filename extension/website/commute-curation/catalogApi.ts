@@ -4,14 +4,32 @@
 import { WORKER_URL } from "@movement/config";
 import type {
   CatalogEvidenceItem,
+  CommuteReviewItem,
   CuratedPlace,
+  CurationPlacement,
   CurationScope,
-  CurationVerdict,
+  PublicPageInspection,
 } from "./curation";
+import type { ReserveMetadata } from "./reserveCatalog";
 
 export type CatalogSnapshot = {
   policies: CuratedPlace[];
   evidence: CatalogEvidenceItem[];
+};
+
+export type CatalogSuggestion = {
+  placement: CurationPlacement;
+  scope: CurationScope;
+  reason?: string;
+  confidence: number;
+  rationale: string;
+  uncertainties: string[];
+};
+
+export type CatalogSuggestionResponse = {
+  source: "cache" | "model";
+  createdAt: string;
+  suggestion: CatalogSuggestion;
 };
 
 export class CatalogApiError extends Error {
@@ -81,7 +99,7 @@ export async function getCatalog(token: string): Promise<CatalogSnapshot> {
     policies: Array<{
       scope: CurationScope;
       placeKey: string;
-      verdict?: CurationVerdict;
+      placement?: CurationPlacement;
       reason?: string;
       note: string;
       updatedAt: string;
@@ -98,7 +116,7 @@ export async function getCatalog(token: string): Promise<CatalogSnapshot> {
         ? new URL(policy.placeKey).hostname.replace(/^www\./, "")
         : policy.placeKey,
       scope: policy.scope,
-      ...(policy.verdict ? { verdict: policy.verdict } : {}),
+      ...(policy.placement ? { placement: policy.placement } : {}),
       ...(policy.reason ? { reason: policy.reason } : {}),
       comment: policy.note,
       updatedAt: policy.updatedAt,
@@ -115,7 +133,7 @@ export async function saveCatalogPolicy(
     policy: {
       scope: CurationScope;
       placeKey: string;
-      verdict?: CurationVerdict;
+      placement?: CurationPlacement;
       reason?: string;
       note: string;
       updatedAt: string;
@@ -126,7 +144,7 @@ export async function saveCatalogPolicy(
     body: JSON.stringify({
       scope: policy.scope,
       placeKey: policy.place,
-      verdict: policy.verdict,
+      placement: policy.placement,
       reason: policy.reason,
       note: policy.comment,
     }),
@@ -139,11 +157,55 @@ export async function saveCatalogPolicy(
       ? new URL(saved.placeKey).hostname.replace(/^www\./, "")
       : saved.placeKey,
     scope: saved.scope,
-    ...(saved.verdict ? { verdict: saved.verdict } : {}),
+    ...(saved.placement ? { placement: saved.placement } : {}),
     ...(saved.reason ? { reason: saved.reason } : {}),
     comment: saved.note,
     updatedAt: saved.updatedAt,
   };
+}
+
+export async function getCatalogSuggestion({
+  token,
+  item,
+  reserve,
+  inspection,
+  refresh = false,
+}: {
+  token: string;
+  item: CommuteReviewItem;
+  reserve?: ReserveMetadata;
+  inspection?: PublicPageInspection;
+  refresh?: boolean;
+}): Promise<CatalogSuggestionResponse> {
+  if (!item.url) {
+    throw new Error("Suggestions require a public page URL.");
+  }
+  return readCatalogResponse(await fetch(
+    `${catalogWorkerUrl()}/admin/internet-places/suggestion`,
+    {
+      method: "POST",
+      headers: headers(token, true),
+      body: JSON.stringify({
+        candidate: {
+          url: item.url,
+          ...(item.title ? { title: item.title } : {}),
+          ...(item.evidence ? { audit: item.evidence } : {}),
+          ...(reserve ? {
+            reserve: {
+              sourceCollection: reserve.sourceCollection,
+              sourceMode: reserve.sourceMode,
+              tags: reserve.tags,
+              interactionLevel: reserve.interactionLevel,
+              ...(reserve.issue ? { issue: reserve.issue } : {}),
+              ...(reserve.section ? { section: reserve.section } : {}),
+            },
+          } : {}),
+          ...(inspection ? { inspection } : {}),
+        },
+        refresh,
+      }),
+    },
+  ));
 }
 
 export async function deleteCatalogPolicy(

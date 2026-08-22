@@ -187,7 +187,7 @@ h1 {
 
 .verdict-key {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   border: solid $ink;
   border-width: 0 1px 1px;
 }
@@ -254,13 +254,17 @@ h1 {
   color: rgba($ink, 0.5);
 }
 
-.verdict--promoted {
+.placement--featured,
+.placement--reserve {
   --verdict-color: #{$green};
 }
-.verdict--scenery-only {
+.placement--regular {
+  --verdict-color: #{rgba($ink, 0.5)};
+}
+.placement--scenery {
   --verdict-color: #{$blue};
 }
-.verdict--blocked {
+.placement--hidden {
   --verdict-color: #{$orange};
 }
 
@@ -905,7 +909,7 @@ fieldset {
 
 .verdict-options {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
 }
 
 .verdict-option {

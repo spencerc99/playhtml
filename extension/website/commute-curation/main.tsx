@@ -16,14 +16,15 @@ import {
   PAGE_INSPECTION_URL,
 } from "@movement/config";
 import {
+  canPrefillSuggestion,
   createCuratedPlace,
+  CURATION_PLACEMENTS,
   CURATION_REASONS,
-  CURATION_VERDICTS,
   type CommuteReviewItem,
   type CommuteReviewResponse,
   type CuratedPlace,
   type CurationScope,
-  type CurationVerdict,
+  type CurationPlacement,
   getDecisionForReviewItem,
   getReviewTarget,
   mergeCatalogEvidence,
@@ -34,6 +35,7 @@ import {
 } from "./curation";
 import {
   deleteCatalogPolicy,
+  getCatalogSuggestion,
   getCatalog,
   importEvaluationArtifact,
   isCatalogUnauthorized,
@@ -46,10 +48,12 @@ import {
 } from "./reserveCatalog";
 import "./style.scss";
 
-const VERDICT_LABELS: Record<CurationVerdict, string> = {
-  promoted: "Promoted stop",
-  "scenery-only": "Scenery only",
-  blocked: "Blocked",
+const PLACEMENT_LABELS: Record<CurationPlacement, string> = {
+  hidden: "Hidden",
+  scenery: "Scenery only",
+  regular: "Regular stop",
+  featured: "Featured stop",
+  reserve: "Trusted reserve",
 };
 
 const SCOPE_LABELS: Record<CurationScope, string> = {
@@ -85,7 +89,7 @@ const ROUTE_LABELS: Record<CommuteReviewItem["currentDisposition"], string> = {
 };
 
 type StatusIconKind =
-  | CurationVerdict
+  | CurationPlacement
   | CommuteReviewItem["currentDisposition"]
   | PublicPageInspection["verdict"]
   | "note"
@@ -93,10 +97,12 @@ type StatusIconKind =
 
 function StatusIcon({ kind }: { kind: StatusIconKind }) {
   const iconKind =
-    kind === "promoted"
+    kind === "regular" || kind === "featured" || kind === "reserve"
       ? "stop"
-      : kind === "scenery-only"
+      : kind === "scenery"
         ? "scenery"
+        : kind === "hidden"
+          ? "blocked"
         : kind;
 
   return (
@@ -156,9 +162,10 @@ function StatusIcon({ kind }: { kind: StatusIconKind }) {
   );
 }
 
-function verdictTone(verdict: CurationVerdict): string {
-  if (verdict === "promoted") return "green";
-  if (verdict === "scenery-only") return "blue";
+function placementTone(placement: CurationPlacement): string {
+  if (placement === "featured" || placement === "reserve") return "green";
+  if (placement === "scenery") return "blue";
+  if (placement === "regular") return "neutral";
   return "orange";
 }
 
@@ -262,18 +269,24 @@ export function App({
     "loading" | "ready" | "error"
   >("loading");
   const [scope, setScope] = useState<CurationScope>("hostname");
-  const [verdict, setVerdict] = useState<CurationVerdict | undefined>();
+  const [placement, setPlacement] = useState<CurationPlacement | undefined>();
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [inspectionById, setInspectionById] = useState(
     new Map<string, InspectionState>(),
   );
   const requestedInspectionIds = useRef(new Set<string>());
+  const selectedItemId = useRef<string | null>(null);
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState(false);
   const [importStatus, setImportStatus] = useState("Import audit JSON");
+  const [suggestionStatus, setSuggestionStatus] = useState<
+    "idle" | "loading" | "prefilled" | "unavailable"
+  >("idle");
+  const formEdited = useRef(false);
+  const requestedSuggestionIds = useRef(new Set<string>());
   const observedItems = useMemo(
     () => mergeCatalogEvidence(liveItems, evidenceItems),
     [evidenceItems, liveItems],
@@ -314,20 +327,25 @@ export function App({
   const selectedReserve = selectedItem && "reserve" in selectedItem
     ? selectedItem.reserve
     : undefined;
+  selectedItemId.current = selectedItem?.id ?? null;
   const counts = useMemo(
     () =>
       Object.fromEntries(
-        CURATION_VERDICTS.map((value) => [
+        CURATION_PLACEMENTS.map((value) => [
           value,
-          places.filter((place) => place.verdict === value).length,
+          places.filter((place) => place.placement === value).length,
         ]),
-      ) as Record<CurationVerdict, number>,
+      ) as Record<CurationPlacement, number>,
     [places],
   );
   const artifact = useMemo(
     () => serializeCurationArtifact(places, new Date().toISOString()),
     [places],
   );
+  const markFormEdited = useCallback(() => {
+    formEdited.current = true;
+    setSuggestionStatus("idle");
+  }, []);
 
   const handleCatalogError = useCallback((error: unknown) => {
     if (isCatalogUnauthorized(error)) {
@@ -408,10 +426,12 @@ export function App({
   useEffect(() => {
     if (!selectedItem) return;
     const priorDecision = getDecisionForReviewItem(places, selectedItem);
+    formEdited.current = false;
     setScope(priorDecision?.scope ?? "hostname");
-    setVerdict(priorDecision?.verdict);
+    setPlacement(priorDecision?.placement);
     setReason(priorDecision?.reason ?? "");
     setComment(priorDecision?.comment ?? "");
+    setSuggestionStatus(priorDecision || !selectedItem.url ? "idle" : "loading");
   }, [places, selectedItem]);
 
   useEffect(() => {
@@ -454,17 +474,68 @@ export function App({
       });
   }, [selectedItem]);
 
+  useEffect(() => {
+    if (
+      !selectedItem?.url ||
+      getDecisionForReviewItem(places, selectedItem) ||
+      requestedSuggestionIds.current.has(selectedItem.id)
+    ) {
+      return;
+    }
+    setSuggestionStatus("loading");
+    const inspectionState = inspectionById.get(selectedItem.id);
+    const suggestionTimer = window.setTimeout(() => {
+      if (
+        formEdited.current ||
+        selectedItemId.current !== selectedItem.id
+      ) return;
+      requestedSuggestionIds.current.add(selectedItem.id);
+      void getCatalogSuggestion({
+        token,
+        item: selectedItem,
+        reserve: "reserve" in selectedItem ? selectedItem.reserve : undefined,
+        inspection:
+          inspectionState?.status === "ready"
+            ? inspectionState.inspection
+            : undefined,
+      })
+        .then(({ suggestion }) => {
+          if (!canPrefillSuggestion({
+            hasDecision: Boolean(getDecisionForReviewItem(places, selectedItem)),
+            formEdited: formEdited.current,
+            selectedItemId: selectedItemId.current,
+            suggestionItemId: selectedItem.id,
+          })) return;
+          setScope(suggestion.scope);
+          setPlacement(suggestion.placement);
+          setReason(
+            suggestion.reason && CURATION_REASONS.includes(
+              suggestion.reason as (typeof CURATION_REASONS)[number],
+            )
+              ? suggestion.reason
+              : "",
+          );
+          setSuggestionStatus("prefilled");
+        })
+        .catch((error) => {
+          if (isCatalogUnauthorized(error)) onUnauthorized();
+          else setSuggestionStatus("unavailable");
+        });
+    }, 350);
+    return () => window.clearTimeout(suggestionTimer);
+  }, [inspectionById, onUnauthorized, places, selectedItem, token]);
+
   async function fileDecision(event: FormEvent) {
     event.preventDefault();
     if (!selectedItem) return;
-    if (!verdict && !comment.trim()) return;
+    if (!placement && !comment.trim()) return;
     const target = getReviewTarget(selectedItem, scope);
     const priorDecision = getDecisionForReviewItem(places, selectedItem);
     const decision = createCuratedPlace({
       id: priorDecision?.id ?? crypto.randomUUID(),
       input: target,
       scope,
-      verdict,
+      placement,
       reason,
       comment,
       updatedAt: new Date().toISOString(),
@@ -569,11 +640,11 @@ export function App({
       </header>
 
       <section className="verdict-key" aria-label="Curation totals">
-        {CURATION_VERDICTS.map((value, index) => (
-          <div className={`verdict-key__item verdict--${value}`} key={value}>
+        {CURATION_PLACEMENTS.map((value, index) => (
+          <div className={`verdict-key__item placement--${value}`} key={value}>
             <span>0{index + 1}</span>
             <StatusIcon kind={value} />
-            <strong>{VERDICT_LABELS[value]}</strong>
+            <strong>{PLACEMENT_LABELS[value]}</strong>
             <b>{counts[value]}</b>
           </div>
         ))}
@@ -869,7 +940,10 @@ export function App({
                           name="scope"
                           checked={scope === value}
                           disabled={disabled}
-                          onChange={() => setScope(value)}
+                          onChange={() => {
+                            markFormEdited();
+                            setScope(value);
+                          }}
                         />
                         <span>{SCOPE_LABELS[value]}</span>
                         <small>
@@ -883,40 +957,44 @@ export function App({
                 </div>
               </fieldset>
 
-              <label>
-                <span>Reason <i>optional</i></span>
-                <select value={reason} onChange={(event) => setReason(event.target.value)}>
-                  <option value="">Choose a reusable reason</option>
-                  {CURATION_REASONS.map((value) => (
-                    <option key={value} value={value}>{REASON_LABELS[value]}</option>
-                  ))}
-                </select>
-              </label>
-
               <fieldset>
                 <legend>
                   Your decision <i>optional</i>
                 </legend>
+                {suggestionStatus === "loading" && (
+                  <p className="decision-help">Drafting a suggestion…</p>
+                )}
+                {suggestionStatus === "prefilled" && (
+                  <p className="decision-help">
+                    Suggested fields are prefilled. Change anything before saving.
+                  </p>
+                )}
                 <div className="verdict-options">
-                  {CURATION_VERDICTS.map((value) => (
+                  {CURATION_PLACEMENTS.map((value) => (
                     <label
-                      className={`verdict-option verdict--${value} status-tone--${verdictTone(value)}`}
+                      className={`verdict-option placement--${value} status-tone--${placementTone(value)}`}
                       key={value}
                     >
                       <input
                         type="radio"
-                        name="verdict"
-                        checked={verdict === value}
-                        onChange={() => setVerdict(value)}
+                        name="placement"
+                        checked={placement === value}
+                        onChange={() => {
+                          markFormEdited();
+                          setPlacement(value);
+                        }}
                       />
                       <StatusIcon kind={value} />
-                      <span>{VERDICT_LABELS[value]}</span>
+                      <span>{PLACEMENT_LABELS[value]}</span>
                     </label>
                   ))}
                 </div>
                 <p className="decision-help">
-                  {verdict ? (
-                    <button type="button" onClick={() => setVerdict(undefined)}>
+                  {placement ? (
+                    <button type="button" onClick={() => {
+                      markFormEdited();
+                      setPlacement(undefined);
+                    }}>
                       Clear classification
                     </button>
                   ) : (
@@ -926,12 +1004,28 @@ export function App({
               </fieldset>
 
               <label>
+                <span>Reason <i>optional</i></span>
+                <select value={reason} onChange={(event) => {
+                  markFormEdited();
+                  setReason(event.target.value);
+                }}>
+                  <option value="">Choose a reusable reason</option>
+                  {CURATION_REASONS.map((value) => (
+                    <option key={value} value={value}>{REASON_LABELS[value]}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
                 <span>
-                  Reviewer note <i>{verdict ? "optional" : "note only"}</i>
+                  Reviewer note <i>{placement ? "optional" : "note only"}</i>
                 </span>
                 <textarea
                   value={comment}
-                  onChange={(event) => setComment(event.target.value)}
+                  onChange={(event) => {
+                    markFormEdited();
+                    setComment(event.target.value);
+                  }}
                   placeholder="Why this is ambiguous, or what broader rule it suggests…"
                 />
               </label>
@@ -940,9 +1034,9 @@ export function App({
                 <button
                   className="primary-action"
                   type="submit"
-                  disabled={saving || (!verdict && !comment.trim())}
+                  disabled={saving || (!placement && !comment.trim())}
                 >
-                  {verdict ? "File decision" : "Save note"} →
+                  {placement ? "File decision" : "Save note"} →
                 </button>
                 <button
                   className="text-action"
@@ -960,6 +1054,16 @@ export function App({
                 >
                   Skip for now
                 </button>
+                {getDecisionForReviewItem(places, selectedItem) && (
+                  <button
+                    className="text-action"
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void removeDecision(selectedItem)}
+                  >
+                    Remove saved policy
+                  </button>
+                )}
               </div>
             </form>
           )}
@@ -1077,16 +1181,16 @@ export function App({
                       {priorDecision && (
                         <b
                           className={`decision-mark ${
-                            priorDecision.verdict
-                              ? `status-tone--${verdictTone(priorDecision.verdict)}`
+                            priorDecision.placement
+                              ? `status-tone--${placementTone(priorDecision.placement)}`
                               : "status-tone--neutral"
                           }`}
                         >
                           <StatusIcon
-                            kind={priorDecision.verdict ?? "note"}
+                            kind={priorDecision.placement ?? "note"}
                           />
-                          {priorDecision.verdict
-                            ? VERDICT_LABELS[priorDecision.verdict]
+                          {priorDecision.placement
+                            ? PLACEMENT_LABELS[priorDecision.placement]
                             : "Note only"}
                         </b>
                       )}
