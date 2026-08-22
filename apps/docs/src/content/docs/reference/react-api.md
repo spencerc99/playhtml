@@ -439,13 +439,16 @@ See [Users](/docs/data/presence/users/) for the full identity API.
 
 ### `usePlayerIdentity`
 
-Read the local player's color, participant id, and name. Backed by `playhtml.users`, so it works without `cursors: { enabled: true }`.
+Read the local player's identity and permission state. Backed by `playhtml.users`,
+so it works without `cursors: { enabled: true }`.
 
 ```tsx
 function usePlayerIdentity(): {
   color: string;
   pid: string | undefined;
   name: string | undefined;
+  verified: boolean;
+  roles: string[];
 };
 ```
 
@@ -454,17 +457,22 @@ function usePlayerIdentity(): {
 | `color` | `string` | Primary color. |
 | `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until sync. |
 | `name` | `string \| undefined` | Display name, if set. |
+| `verified` | `boolean` | Whether this connection has proved ownership of its participant id. |
+| `roles` | `string[]` | Permission roles resolved for the current identity. |
 
 ```tsx
 import { usePlayerIdentity } from "@playhtml/react";
 
 function Profile() {
-  const { color, pid, name } = usePlayerIdentity();
-  return <div style={{ color }}>{name ?? "anonymous"}</div>;
+  const { color, name, verified, roles } = usePlayerIdentity();
+  const status = verified ? roles.join(", ") || "verified" : "unverified";
+  return <div style={{ color }}>{name ?? "anonymous"}: {status}</div>;
 }
 ```
 
-Values update reactively. With the "we were online" extension installed, color and `pid` reflect the extension's injected identity.
+Values update reactively. With the "we were online" extension installed, color
+and `pid` reflect the extension's injected identity. `verified` and `roles`
+update when authentication or server permissions change.
 
 To set these values or read other players, see [Users](/docs/data/presence/users/). See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
 

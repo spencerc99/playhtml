@@ -11,6 +11,7 @@ import { Buffer } from "node:buffer";
 // same entry points the runtime uses.
 
 const kvStore = new Map<string, string>();
+const BRIDGE_SECRET = "test-bridge-secret";
 
 const quarantineKvStub = {
   async get(key: string) {
@@ -34,7 +35,10 @@ const quarantineKvStub = {
 };
 
 mock.module("cloudflare:workers", () => ({
-  env: { QUARANTINE_CONTROL: quarantineKvStub },
+  env: {
+    QUARANTINE_CONTROL: quarantineKvStub,
+    PARTYKIT_BRIDGE_SECRET: BRIDGE_SECRET,
+  },
   DurableObject: class {
     constructor(
       public ctx: unknown,
@@ -301,6 +305,7 @@ describe("fetch entry point", () => {
     const recovered = await server.fetch(
       new Request("https://example.com/parties/main/example-room", {
         method: "POST",
+        headers: { "x-playhtml-bridge-secret": BRIDGE_SECRET },
         body: JSON.stringify({ nonsense: true }),
       })
     );
@@ -334,6 +339,7 @@ describe("fetch entry point", () => {
     const recovered = await server.fetch(
       new Request("https://example.com/parties/main/example-room", {
         method: "POST",
+        headers: { "x-playhtml-bridge-secret": BRIDGE_SECRET },
         body: JSON.stringify({ nonsense: true }),
       })
     );
@@ -484,6 +490,7 @@ describe("fetch entry point", () => {
     const recovered = await server.fetch(
       new Request("https://example.com/parties/main/example-room", {
         method: "POST",
+        headers: { "x-playhtml-bridge-secret": BRIDGE_SECRET },
         body: JSON.stringify({ nonsense: true }),
       })
     );

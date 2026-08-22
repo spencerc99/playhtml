@@ -5,6 +5,16 @@ import type { PageDataChannel } from "@playhtml/common";
 import { clonePlain, deepReplaceIntoProxy } from "@playhtml/common";
 import { getYjsValue } from "@syncedstore/core";
 import type * as Y from "yjs";
+import { buildGatedWriteOps, sendGatedWrite } from "./auth/handshake";
+import {
+  can,
+  dispatchPermissionDenied,
+  isLocallyGated,
+  isPermissionsStatusPending,
+  isServerGated,
+  PERMISSIONS_CHANGE_EVENT,
+  usesKeyedGatedWrites,
+} from "./auth/permissions";
 
 const PAGE_TAG = "__page__";
 
@@ -27,6 +37,12 @@ interface PageDataDeps {
 
 function pageDataObserverKey(name: string): string {
   return `${PAGE_TAG}:${name}`;
+}
+
+function createPermissionTarget(name: string): HTMLElement {
+  const target = document.createElement("div");
+  target.id = name;
+  return target;
 }
 
 function attachPageDataObserver<T>(
@@ -126,6 +142,30 @@ export function createPageDataChannel<T>(
 
     setData(data: T | ((draft: T) => void)): void {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
+      if (isPermissionsStatusPending()) {
+        const queuedData =
+          typeof data === "function" ? data : clonePlain(data);
+        const retry = () => {
+          this.setData(queuedData as T | ((draft: T) => void));
+        };
+        document.addEventListener(PERMISSIONS_CHANGE_EVENT, retry, {
+          once: true,
+        });
+        return;
+      }
+
+      const permissionTarget = createPermissionTarget(name);
+      if (isLocallyGated(permissionTarget, name)) {
+        if (!can("write", permissionTarget)) {
+          dispatchPermissionDenied(document, {
+            action: "write",
+            elementId: name,
+            reason: "missing required role",
+          });
+          return;
+        }
+      }
+
       // Re-acquire the proxy if it's gone (e.g. a room change cleared page-data
       // out from under this still-alive handle). ensureProxy re-seeds the
       // default into a fresh value and attachObserver re-attaches the deep
@@ -137,6 +177,33 @@ export function createPageDataChannel<T>(
         attachObserver();
       }
       const proxy = currentProxy;
+
+      if (isServerGated(name)) {
+        const before = clonePlain(proxy);
+        let after: unknown;
+        if (typeof data === "function") {
+          const draft = clonePlain(before);
+          (data as (draft: T) => void)(draft as T);
+          after = draft;
+        } else {
+          after = clonePlain(data);
+        }
+        const ops = buildGatedWriteOps({
+          before,
+          after,
+          keyed: usesKeyedGatedWrites(name),
+        });
+        if (ops.length > 0) {
+          sendGatedWrite({
+            target: document,
+            tag: PAGE_TAG,
+            elementId: name,
+            ops,
+          });
+        }
+        return;
+      }
+
       if (typeof data === "function") {
         doc().transact(() => {
           (data as (draft: T) => void)(proxy);

@@ -15,6 +15,14 @@ export type PlayerIdentity = {
     cursorStyle?: string;
   };
   createdAt?: number;
+  /**
+   * Where the identity's key lives: "extension" when injected by the
+   * "we were online" extension (private key in the extension background),
+   * "local" when backed by the library's own keypair in IndexedDB.
+   * Absent on legacy identities whose publicKey is random hex with no
+   * actual key behind it (those can never be verified).
+   */
+  source?: "extension" | "local";
 };
 
 export const MAX_PLAYER_IDENTITY_COLORS = 16;
@@ -223,5 +231,29 @@ export function generatePersistentPlayerIdentity(): PlayerIdentity {
   const identity = generatePlayerIdentity();
   savePlayerIdentityToStorage(identity);
   cachedPlayerIdentity = identity;
+  return identity;
+}
+
+/**
+ * Replaces the persisted identity's publicKey (and source) in place,
+ * preserving name/colors/etc. Used to upgrade legacy random-hex identities to
+ * a real local keypair's public key. Mutates the cached identity so existing
+ * references observe the new key.
+ */
+export function upgradePersistentPlayerIdentityKey(
+  publicKey: string,
+  source: "extension" | "local",
+): PlayerIdentity {
+  const identity = generatePersistentPlayerIdentity();
+  if (identity.publicKey === publicKey && identity.source === source) {
+    return identity;
+  }
+  identity.publicKey = publicKey;
+  identity.source = source;
+  try {
+    localStorage.setItem(PLAYER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
+  } catch (e) {
+    console.warn("Failed to save player identity to localStorage:", e);
+  }
   return identity;
 }

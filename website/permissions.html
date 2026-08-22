@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="playhtml identity & permissions playground — keys, locks, and who can change what"
+    />
+    <title>playhtml · the locked room</title>
+    <style>
+      body {
+        font-family: monospace;
+        max-width: 720px;
+        margin: 2em auto;
+        padding: 0 1em;
+        background: #f7f3ec;
+        color: #2b2b2b;
+      }
+      h1 { font-size: 1.4em; }
+      section {
+        border: 2px solid #2b2b2b;
+        border-radius: 8px;
+        padding: 1em;
+        margin: 1.2em 0;
+        background: #fff;
+      }
+      .panel-row { display: flex; gap: 0.6em; align-items: center; flex-wrap: wrap; }
+      .pill {
+        display: inline-block;
+        border: 1px solid #2b2b2b;
+        border-radius: 999px;
+        padding: 0.1em 0.7em;
+        font-size: 0.85em;
+        background: #eee;
+      }
+      .pill.on { background: #c8f7c5; }
+      #my-pid { cursor: pointer; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      button { font-family: inherit; cursor: pointer; padding: 0.3em 0.8em; }
+      #locked-title {
+        font-size: 1.6em;
+        font-weight: bold;
+        padding: 0.3em 0.5em;
+        border-radius: 6px;
+        transition: transform 0.1s;
+      }
+      .denied { animation: shake 0.35s; }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-6px); }
+        75% { transform: translateX(6px); }
+      }
+      .note {
+        border: 1px dashed #888;
+        border-radius: 6px;
+        padding: 0.5em;
+        margin: 0.4em 0;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5em;
+        align-items: center;
+      }
+      .note .who { font-size: 0.75em; opacity: 0.6; }
+      #event-log {
+        font-size: 0.78em;
+        max-height: 10em;
+        overflow-y: auto;
+        background: #1d1d1d;
+        color: #9fdf9f;
+        padding: 0.6em;
+        border-radius: 6px;
+        white-space: pre-wrap;
+      }
+      .hint { font-size: 0.82em; opacity: 0.75; }
+    </style>
+  </head>
+  <body>
+    <h1>🗝️ the locked room</h1>
+    <p class="hint">
+      a playground for playhtml's identity &amp; permissions. open this page in
+      two browsers to see different keys in action. rules live in
+      <a href="/.well-known/playhtml.json" target="_blank">/.well-known/playhtml.json</a>.
+    </p>
+
+    <section>
+      <h2>who am i?</h2>
+      <div class="panel-row">
+        <span class="pill" id="my-pid" title="click to copy">pid: …</span>
+        <span class="pill" id="my-source">source: …</span>
+        <span class="pill" id="my-verified">unverified</span>
+        <span class="pill" id="my-enforced">enforcement: …</span>
+        <span class="pill" id="my-roles">roles: —</span>
+        <button id="verify-btn">verify()</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>the title only admins can change <span id="title-lock">🔒</span></h2>
+      <div id="locked-title" can-play>untitled room</div>
+      <div class="panel-row">
+        <input id="title-input" placeholder="new title…" />
+        <button id="title-save">rewrite the sign</button>
+      </div>
+      <p class="hint">
+        gated <code>write:admin</code>. put your pid in the well-known file to
+        hold the gold key — until then, watch the server bounce you.
+      </p>
+    </section>
+
+    <section>
+      <h2>notes anyone (verified) can pin, only their author can change</h2>
+      <div id="playground-notes" can-play></div>
+      <div class="panel-row">
+        <input id="note-input" placeholder="leave a note…" maxlength="120" />
+        <button id="note-add">pin note</button>
+      </div>
+      <p class="hint">
+        gated <code>create:verified, update:creator, delete:creator|admin</code>.
+        edit/remove buttons only appear on notes you own.
+      </p>
+    </section>
+
+    <section>
+      <h2>event log</h2>
+      <div id="event-log"></div>
+    </section>
+
+    <script type="module" src="./permissions.ts"></script>
+  </body>
+</html>
