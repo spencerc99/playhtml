@@ -347,32 +347,40 @@ describe('Internet place catalog', () => {
     ]);
   });
 
-  it('orders reserve and featured stops while preserving explicit regular stops', () => {
+  it('orders reserve and featured stops while preserving explicit regular stops', async () => {
+    for (const policy of [
+      {
+        scope: 'page',
+        placeKey: 'https://other.example/article',
+        placement: 'reserve',
+      },
+      {
+        scope: 'page',
+        placeKey: 'https://example.com/essay',
+        placement: 'featured',
+      },
+      {
+        scope: 'page',
+        placeKey: 'https://example.com/notes',
+        placement: 'regular',
+      },
+    ] as const) {
+      expect((await handleInternetPlacePolicyPut(
+        adminRequest('/admin/internet-places/policy', {
+          method: 'PUT',
+          body: JSON.stringify(policy),
+        }),
+        env,
+      )).status).toBe(200);
+    }
+
+    const policies = await loadInternetPlacePolicies(
+      env.WWO_ADMIN_DB,
+      commuteResponse(),
+    );
     const result = applyInternetPlacePolicies(
       commuteResponse(),
-      [
-        {
-          scope: 'page',
-          placeKey: 'https://other.example/article',
-          placement: 'reserve',
-          note: '',
-          updatedAt: '2026-08-22T00:00:00Z',
-        },
-        {
-          scope: 'page',
-          placeKey: 'https://example.com/essay',
-          placement: 'featured',
-          note: '',
-          updatedAt: '2026-08-22T00:00:00Z',
-        },
-        {
-          scope: 'page',
-          placeKey: 'https://example.com/notes',
-          placement: 'regular',
-          note: '',
-          updatedAt: '2026-08-22T00:00:00Z',
-        },
-      ],
+      policies,
       50,
     );
 
