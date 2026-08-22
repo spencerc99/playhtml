@@ -1,5 +1,18 @@
 # Change Log
 
+## 2.14.2
+
+### Patch Changes
+
+- 74e4d35: Make `playhtml.register(elementOrId, initializer)` the recommended vanilla API for custom elements using either `updateElement` or `view`. Callers can pass an existing HTML element or register by id before the element exists. Registered initializers bind through the standard setup path without being copied onto DOM elements, while direct element-property configuration remains supported for compatibility.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 23e3b32: Avoid reinitializing bound elements during repeated page scans and limit local awareness updates to the element that changed, reducing navigation and presence overhead on pages with many PlayHTML elements.
+- fb24e9b: Preserve the embedding page's room namespace for `srcdoc` examples so stable element IDs reconnect to their existing shared data.
+- Updated dependencies [74e4d35]
+- Updated dependencies [ad66821]
+- Updated dependencies [75c1cce]
+  - @playhtml/common@0.9.1
+
 ## 2.14.1
 
 ### Patch Changes
