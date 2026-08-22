@@ -62,6 +62,15 @@ textarea {
   color: rgba($ink, 0.65);
 }
 
+.curation-login .curation-login__error {
+  margin: -10px 0 18px;
+  padding: 9px 10px;
+  border-left: 4px solid $orange;
+  background: rgba($orange, 0.1);
+  color: $ink;
+  font-size: 13px;
+}
+
 .curation-login input,
 .curation-login button {
   width: 100%;
@@ -259,6 +268,52 @@ h1 {
   box-shadow: inset 0 -5px 0 var(--verdict-color);
 }
 
+.review-view-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: solid $ink;
+  border-width: 0 1px 1px;
+  background: $paper-light;
+}
+
+.review-view-switch button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 12px 16px;
+  border: 0;
+  border-right: 1px solid $ink;
+  background: transparent;
+  text-align: left;
+}
+
+.review-view-switch button:last-child {
+  border-right: 0;
+}
+
+.review-view-switch button[aria-pressed="true"] {
+  background: rgba($green, 0.1);
+  box-shadow: inset 0 -5px 0 $green;
+}
+
+.review-view-switch span,
+.review-view-switch b {
+  font-family: $mono;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.review-view-switch b {
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.review-view-switch small {
+  grid-column: 1 / -1;
+  color: rgba($ink, 0.54);
+  font-size: 11px;
+}
+
 .workbench {
   display: grid;
   grid-template-columns: minmax(330px, 0.8fr) minmax(460px, 1.45fr);
@@ -329,6 +384,15 @@ h1 {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.queue-controls select {
+  width: auto;
+  max-width: 170px;
+  min-height: 28px;
+  padding: 4px 24px 4px 7px;
+  font-family: $mono;
+  font-size: 8px;
 }
 
 .queue-controls button,
@@ -473,6 +537,90 @@ h1 {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid $line;
+}
+
+.reserve-evidence {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid $line;
+}
+
+.reserve-evidence__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: $mono;
+}
+
+.reserve-evidence__heading small {
+  color: rgba($ink, 0.5);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.reserve-evidence__heading strong {
+  color: $green;
+  font-size: 10px;
+  text-align: right;
+}
+
+.reserve-evidence__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 10px;
+  border: solid $line;
+  border-width: 1px 0 0 1px;
+}
+
+.reserve-evidence__facts > span {
+  min-width: 0;
+  padding: 7px;
+  border: solid $line;
+  border-width: 0 1px 1px 0;
+}
+
+.reserve-evidence__facts small,
+.reserve-evidence__facts b {
+  display: block;
+}
+
+.reserve-evidence__facts small {
+  color: rgba($ink, 0.5);
+  font-family: $mono;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.reserve-evidence__facts b {
+  margin-top: 3px;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.reserve-evidence__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.reserve-evidence__tags span {
+  padding: 3px 5px;
+  border: 1px solid rgba($green, 0.5);
+  background: rgba($green, 0.08);
+  font-family: $mono;
+  font-size: 7px;
+}
+
+.reserve-evidence > p,
+.reserve-evidence > a {
+  display: block;
+  margin-top: 9px;
+  color: rgba($ink, 0.58);
+  font-family: $mono;
+  font-size: 8px;
+  line-height: 1.45;
 }
 
 .evaluation-evidence__heading {
@@ -946,6 +1094,17 @@ fieldset {
   overflow: hidden;
   color: rgba($ink, 0.58);
   font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.place-card__source {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: $green;
+  font-family: $mono;
+  font-size: 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -6,6 +6,7 @@ import {
   CatalogApiError,
   isCatalogUnauthorized,
   readCatalogResponse,
+  resolveCatalogWorkerUrl,
 } from "./catalogApi";
 
 describe("catalog authentication", () => {
@@ -21,5 +22,27 @@ describe("catalog authentication", () => {
     expect(isCatalogUnauthorized(new CatalogApiError("Unavailable", 503)))
       .toBe(false);
     expect(isCatalogUnauthorized(new Error("Unauthorized"))).toBe(false);
+  });
+});
+
+describe("catalog Worker routing", () => {
+  it("uses the local Worker for a localhost curation desk", () => {
+    expect(resolveCatalogWorkerUrl("127.0.0.1", undefined, "https://worker.example"))
+      .toBe("http://127.0.0.1:8787");
+    expect(resolveCatalogWorkerUrl("localhost", undefined, "https://worker.example"))
+      .toBe("http://127.0.0.1:8787");
+  });
+
+  it("keeps the configured or deployed Worker elsewhere", () => {
+    expect(resolveCatalogWorkerUrl(
+      "127.0.0.1",
+      "http://localhost:8799/",
+      "https://worker.example",
+    )).toBe("http://localhost:8799");
+    expect(resolveCatalogWorkerUrl(
+      "wewere.online",
+      undefined,
+      "https://worker.example/",
+    )).toBe("https://worker.example");
   });
 });

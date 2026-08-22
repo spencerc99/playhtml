@@ -24,6 +24,31 @@ export class CatalogApiError extends Error {
   }
 }
 
+const LOCAL_CATALOG_WORKER_URL = "http://127.0.0.1:8787";
+
+export function resolveCatalogWorkerUrl(
+  pageHostname: string | undefined,
+  configuredUrl: string | undefined,
+  defaultUrl = WORKER_URL,
+): string {
+  if (configuredUrl) return configuredUrl.replace(/\/$/, "");
+  if (
+    pageHostname === "127.0.0.1" ||
+    pageHostname === "localhost" ||
+    pageHostname === "[::1]"
+  ) {
+    return LOCAL_CATALOG_WORKER_URL;
+  }
+  return defaultUrl.replace(/\/$/, "");
+}
+
+function catalogWorkerUrl(): string {
+  return resolveCatalogWorkerUrl(
+    typeof window === "undefined" ? undefined : window.location.hostname,
+    import.meta.env.VITE_CATALOG_WORKER_URL,
+  );
+}
+
 export function isCatalogUnauthorized(error: unknown): boolean {
   return error instanceof CatalogApiError && error.status === 401;
 }
@@ -62,7 +87,7 @@ export async function getCatalog(token: string): Promise<CatalogSnapshot> {
       updatedAt: string;
     }>;
     evidence: CatalogEvidenceItem[];
-  }>(await fetch(`${WORKER_URL}/admin/internet-places`, {
+  }>(await fetch(`${catalogWorkerUrl()}/admin/internet-places`, {
     headers: headers(token),
   }));
   return {
@@ -95,7 +120,7 @@ export async function saveCatalogPolicy(
       note: string;
       updatedAt: string;
     };
-  }>(await fetch(`${WORKER_URL}/admin/internet-places/policy`, {
+  }>(await fetch(`${catalogWorkerUrl()}/admin/internet-places/policy`, {
     method: "PUT",
     headers: headers(token, true),
     body: JSON.stringify({
@@ -130,7 +155,7 @@ export async function deleteCatalogPolicy(
     placeKey: policy.place,
   });
   await readCatalogResponse(await fetch(
-    `${WORKER_URL}/admin/internet-places/policy?${query}`,
+    `${catalogWorkerUrl()}/admin/internet-places/policy?${query}`,
     { method: "DELETE", headers: headers(token) },
   ));
 }
@@ -139,7 +164,7 @@ export async function importEvaluationArtifact(
   token: string,
   artifact: unknown,
 ): Promise<{ imported: number; generatedAt: string }> {
-  return readCatalogResponse(await fetch(`${WORKER_URL}/admin/internet-places/evidence`, {
+  return readCatalogResponse(await fetch(`${catalogWorkerUrl()}/admin/internet-places/evidence`, {
     method: "POST",
     headers: headers(token, true),
     body: JSON.stringify(artifact),

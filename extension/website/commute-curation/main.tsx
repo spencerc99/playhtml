@@ -39,6 +39,11 @@ import {
   isCatalogUnauthorized,
   saveCatalogPolicy,
 } from "./catalogApi";
+import {
+  parseReserveCatalog,
+  type ReserveReviewItem,
+  type ReserveSourceMode,
+} from "./reserveCatalog";
 import "./style.scss";
 
 const VERDICT_LABELS: Record<CurationVerdict, string> = {
@@ -54,6 +59,10 @@ const SCOPE_LABELS: Record<CurationScope, string> = {
 };
 const CURATION_SCOPES: CurationScope[] = ["page", "hostname", "site"];
 const TOKEN_STORAGE_KEY = "wwo-admin-token";
+const RESERVE_CATALOG_URL = "/internet-commute-reserve-catalog.json";
+
+type ReviewView = "observed" | "reserve";
+type ReviewItem = CommuteReviewItem | ReserveReviewItem;
 
 const REASON_LABELS = Object.fromEntries(
   CURATION_REASONS.map((reason) => [
@@ -181,7 +190,13 @@ function relativeTime(timestamp: number): string {
   return `${Math.round(elapsedHours / 24)}d ago`;
 }
 
-function Login({ onLogin }: { onLogin: (token: string) => void }) {
+function Login({
+  error,
+  onLogin,
+}: {
+  error: string;
+  onLogin: (token: string) => void;
+}) {
   const [token, setToken] = useState("");
   return (
     <main className="curation-login">
@@ -194,6 +209,7 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
         <span className="eyebrow">WWO / INTERNAL OFFICE</span>
         <h1>Commute Curation</h1>
         <p>Use the Worker admin key to review and change the durable catalog.</p>
+        {error && <p className="curation-login__error">{error}</p>}
         <label>
           <span>Admin key</span>
           <input
@@ -210,17 +226,41 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
   );
 }
 
-export function App({ token, onLogout }: { token: string; onLogout: () => void }) {
+export function App({
+  token,
+  onLogout,
+  onUnauthorized,
+}: {
+  token: string;
+  onLogout: () => void;
+  onUnauthorized: () => void;
+}) {
   const [places, setPlaces] = useState<CuratedPlace[]>([]);
   const [liveItems, setLiveItems] = useState<CommuteReviewItem[]>([]);
+  const [reserveItems, setReserveItems] = useState<ReserveReviewItem[]>([]);
   const [evidenceItems, setEvidenceItems] = useState<
     Awaited<ReturnType<typeof getCatalog>>["evidence"]
   >([]);
+  const [reviewView, setReviewView] = useState<ReviewView>(() =>
+    new URLSearchParams(window.location.search).get("view") === "reserve"
+      ? "reserve"
+      : "observed",
+  );
+  const [reserveSource, setReserveSource] = useState("all");
+  const [reserveMode, setReserveMode] = useState<ReserveSourceMode | "all">(
+    "trusted-editorial",
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [queueStatus, setQueueStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
   const [queueGeneratedAt, setQueueGeneratedAt] = useState<number | null>(null);
+  const [reserveGeneratedAt, setReserveGeneratedAt] = useState<number | null>(
+    null,
+  );
+  const [reserveStatus, setReserveStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
   const [scope, setScope] = useState<CurationScope>("hostname");
   const [verdict, setVerdict] = useState<CurationVerdict | undefined>();
   const [reason, setReason] = useState("");
@@ -234,10 +274,28 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState(false);
   const [importStatus, setImportStatus] = useState("Import audit JSON");
-  const reviewItems = useMemo(
+  const observedItems = useMemo(
     () => mergeCatalogEvidence(liveItems, evidenceItems),
     [evidenceItems, liveItems],
   );
+  const reserveSources = useMemo(
+    () =>
+      [...new Set(reserveItems.map((item) => item.reserve.sourceCollection))]
+        .sort((first, second) => first.localeCompare(second)),
+    [reserveItems],
+  );
+  const filteredReserveItems = useMemo(
+    () =>
+      reserveItems.filter(
+        (item) =>
+          (reserveSource === "all" ||
+            item.reserve.sourceCollection === reserveSource) &&
+          (reserveMode === "all" || item.reserve.sourceMode === reserveMode),
+      ),
+    [reserveItems, reserveMode, reserveSource],
+  );
+  const reviewItems: ReviewItem[] =
+    reviewView === "reserve" ? filteredReserveItems : observedItems;
 
   const visibleItems = useMemo(
     () =>
@@ -253,6 +311,9 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
       null,
     [selectedId, visibleItems],
   );
+  const selectedReserve = selectedItem && "reserve" in selectedItem
+    ? selectedItem.reserve
+    : undefined;
   const counts = useMemo(
     () =>
       Object.fromEntries(
@@ -270,11 +331,11 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
 
   const handleCatalogError = useCallback((error: unknown) => {
     if (isCatalogUnauthorized(error)) {
-      onLogout();
+      onUnauthorized();
       return;
     }
     setCatalogError(error instanceof Error ? error.message : String(error));
-  }, [onLogout]);
+  }, [onUnauthorized]);
 
   const loadQueue = useCallback(async () => {
     setQueueStatus("loading");
@@ -300,6 +361,25 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
     }
   }, []);
 
+  const loadReserveCatalog = useCallback(async () => {
+    setReserveStatus("loading");
+    try {
+      const response = await fetch(RESERVE_CATALOG_URL, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) {
+        throw new Error(`Reserve catalog returned ${response.status}`);
+      }
+      const catalog = parseReserveCatalog(await response.json());
+      setReserveItems(catalog.items);
+      setReserveGeneratedAt(Date.parse(catalog.generatedAt));
+      setReserveStatus("ready");
+    } catch (error) {
+      setReserveStatus("error");
+      setCatalogError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
   const loadCatalog = useCallback(async () => {
     setCatalogError("");
     try {
@@ -313,8 +393,17 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
 
   useEffect(() => {
     void loadQueue();
+    void loadReserveCatalog();
     void loadCatalog();
-  }, [loadCatalog, loadQueue]);
+  }, [loadCatalog, loadQueue, loadReserveCatalog]);
+
+  useEffect(() => {
+    setSelectedId(null);
+    const url = new URL(window.location.href);
+    if (reviewView === "reserve") url.searchParams.set("view", "reserve");
+    else url.searchParams.delete("view");
+    window.history.replaceState(null, "", url);
+  }, [reviewView, reserveMode, reserveSource]);
 
   useEffect(() => {
     if (!selectedItem) return;
@@ -452,6 +541,10 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
   const selectedInspection = selectedItem
     ? inspectionById.get(selectedItem.id)
     : undefined;
+  const activeQueueStatus =
+    reviewView === "reserve" ? reserveStatus : queueStatus;
+  const activeGeneratedAt =
+    reviewView === "reserve" ? reserveGeneratedAt : queueGeneratedAt;
 
   return (
     <main>
@@ -486,37 +579,83 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
         ))}
       </section>
 
+      <nav className="review-view-switch" aria-label="Review queue">
+        <button
+          type="button"
+          aria-pressed={reviewView === "observed"}
+          onClick={() => setReviewView("observed")}
+        >
+          <span>Observed queue</span>
+          <b>{observedItems.length}</b>
+          <small>Recent navigation and audit evidence</small>
+        </button>
+        <button
+          type="button"
+          aria-pressed={reviewView === "reserve"}
+          onClick={() => setReviewView("reserve")}
+        >
+          <span>Reserve catalog</span>
+          <b>{reserveItems.length}</b>
+          <small>Editorial, interactive, and poetic sources</small>
+        </button>
+      </nav>
+
       <div className="workbench">
         {catalogError && <p className="catalog-error">{catalogError}</p>}
         <section className="intake panel">
           <div className="panel__heading review-heading">
             <div>
-              <span>LIVE REVIEW 01</span>
-              <h2>Current candidate</h2>
+              <span>
+                {reviewView === "reserve" ? "RESERVE REVIEW 01" : "LIVE REVIEW 01"}
+              </span>
+              <h2>
+                {reviewView === "reserve"
+                  ? "Reserve candidate"
+                  : "Current candidate"}
+              </h2>
             </div>
             <span className="queue-position">
               {visibleItems.length} {showReviewed ? "visible" : "unreviewed"}
             </span>
           </div>
 
-          {queueStatus === "loading" && !selectedItem && (
+          {activeQueueStatus === "loading" && !selectedItem && (
             <div className="empty-state">
-              <span>LOADING THE TRAIN…</span>
+              <span>
+                {reviewView === "reserve"
+                  ? "LOADING THE RESERVE…"
+                  : "LOADING THE TRAIN…"}
+              </span>
             </div>
           )}
-          {queueStatus === "error" && !selectedItem && (
+          {activeQueueStatus === "error" && !selectedItem && (
             <div className="empty-state">
               <span>QUEUE UNAVAILABLE</span>
-              <p>The review Worker may not be running yet.</p>
-              <button type="button" onClick={() => void loadQueue()}>
+              <p>
+                {reviewView === "reserve"
+                  ? "The generated reserve catalog could not be loaded."
+                  : "The review Worker may not be running yet."}
+              </p>
+              <button
+                type="button"
+                onClick={() => void (
+                  reviewView === "reserve"
+                    ? loadReserveCatalog()
+                    : loadQueue()
+                )}
+              >
                 Try again
               </button>
             </div>
           )}
-          {!selectedItem && queueStatus !== "loading" && queueStatus !== "error" && (
+          {!selectedItem && activeQueueStatus === "ready" && (
             <div className="empty-state">
               <span>QUEUE COMPLETE</span>
-              <p>Show reviewed places or refresh for new arrivals.</p>
+              <p>
+                {reviewView === "reserve"
+                  ? "Change source filters or show reviewed reserve pages."
+                  : "Show reviewed places or refresh for new arrivals."}
+              </p>
             </div>
           )}
 
@@ -528,15 +667,23 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
                 >
                   <StatusIcon kind={selectedItem.currentDisposition} />
                   <div>
-                    <small>AUTOMATIC ROUTING</small>
+                    <small>
+                      {selectedReserve ? "RESERVE SOURCE" : "AUTOMATIC ROUTING"}
+                    </small>
                     <strong>
-                      {ROUTE_LABELS[selectedItem.currentDisposition]}
+                      {selectedReserve
+                        ? selectedReserve.sourceMode === "trusted-editorial"
+                          ? "Trusted editorial candidate"
+                          : "Discovery candidate"
+                        : ROUTE_LABELS[selectedItem.currentDisposition]}
                     </strong>
                   </div>
                   <span>
-                    {selectedItem.currentDisposition === "stop"
-                      ? "Eligible to arrive"
-                      : "Visible from the train"}
+                    {selectedReserve
+                      ? "Not automatically promoted"
+                      : selectedItem.currentDisposition === "stop"
+                        ? "Eligible to arrive"
+                        : "Visible from the train"}
                   </span>
                 </div>
                 <div className="candidate-card__identity">
@@ -563,6 +710,49 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
                     The observed path stays private; this opens the domain
                     homepage.
                   </p>
+                )}
+                {selectedReserve && (
+                  <div className="reserve-evidence">
+                    <div className="reserve-evidence__heading">
+                      <small>EDITORIAL PROVENANCE</small>
+                      <strong>{selectedReserve.sourceCollection}</strong>
+                    </div>
+                    <div className="reserve-evidence__facts">
+                      <span>
+                        <small>Source mode</small>
+                        <b>{selectedReserve.sourceMode.replace("-", " ")}</b>
+                      </span>
+                      <span>
+                        <small>Interaction</small>
+                        <b>{selectedReserve.interactionLevel}</b>
+                      </span>
+                      {selectedReserve.issue && (
+                        <span>
+                          <small>Issue</small>
+                          <b>{selectedReserve.issue}</b>
+                        </span>
+                      )}
+                      {selectedReserve.section && (
+                        <span>
+                          <small>Section</small>
+                          <b>{selectedReserve.section}</b>
+                        </span>
+                      )}
+                    </div>
+                    <div className="reserve-evidence__tags">
+                      {selectedReserve.tags.map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                    </div>
+                    <p>{selectedReserve.healthNote}</p>
+                    <a
+                      href={selectedReserve.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open source collection ↗
+                    </a>
+                  </div>
                 )}
                 {selectedItem.evidence && (
                   <div className="evaluation-evidence">
@@ -778,29 +968,68 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
         <section className="queue panel">
           <div className="panel__heading panel__heading--queue">
             <div>
-              <span>LIVE REGISTER 02</span>
-              <h2>Commute queue</h2>
+              <span>
+                {reviewView === "reserve"
+                  ? "RESERVE REGISTER 02"
+                  : "LIVE REGISTER 02"}
+              </span>
+              <h2>
+                {reviewView === "reserve" ? "Reserve catalog" : "Commute queue"}
+              </h2>
             </div>
             <div className="queue-controls">
-              <label className="import-control">
-                {importStatus}
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void importAudit(file);
-                    event.target.value = "";
-                  }}
-                />
-              </label>
+              {reviewView === "reserve" ? (
+                <>
+                  <select
+                    aria-label="Reserve source mode"
+                    value={reserveMode}
+                    onChange={(event) =>
+                      setReserveMode(event.target.value as ReserveSourceMode | "all")
+                    }
+                  >
+                    <option value="trusted-editorial">Trusted editorial</option>
+                    <option value="discovery-only">Discovery only</option>
+                    <option value="all">All source modes</option>
+                  </select>
+                  <select
+                    aria-label="Reserve source collection"
+                    value={reserveSource}
+                    onChange={(event) => setReserveSource(event.target.value)}
+                  >
+                    <option value="all">All collections</option>
+                    {reserveSources.map((source) => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <label className="import-control">
+                  {importStatus}
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void importAudit(file);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
               <button
                 type="button"
                 onClick={() => setShowReviewed((value) => !value)}
               >
                 {showReviewed ? "Hide reviewed" : "Show reviewed"}
               </button>
-              <button type="button" onClick={() => void loadQueue()}>
+              <button
+                type="button"
+                onClick={() => void (
+                  reviewView === "reserve"
+                    ? loadReserveCatalog()
+                    : loadQueue()
+                )}
+              >
                 Refresh
               </button>
             </div>
@@ -829,12 +1058,22 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
                           className={`route-chip route-chip--${item.currentDisposition}`}
                         >
                           <StatusIcon kind={item.currentDisposition} />
-                          {ROUTE_LABELS[item.currentDisposition]}
+                          {"reserve" in item
+                            ? item.reserve.sourceMode === "trusted-editorial"
+                              ? "Trusted source"
+                              : "Discovery only"
+                            : ROUTE_LABELS[item.currentDisposition]}
                         </span>
                       </span>
                       <span className="place-card__subtitle">
                         {item.title ?? "Scenery domain"}
                       </span>
+                      {"reserve" in item && (
+                        <span className="place-card__source">
+                          {item.reserve.sourceCollection}
+                          {item.reserve.issue ? ` · ${item.reserve.issue}` : ""}
+                        </span>
+                      )}
                       {priorDecision && (
                         <b
                           className={`decision-mark ${
@@ -869,12 +1108,18 @@ export function App({ token, onLogout }: { token: string; onLogout: () => void }
           </ol>
           <div className="queue-footer">
             <span>
-              {queueGeneratedAt
-                ? `Route sampled ${relativeTime(queueGeneratedAt)}`
-                : "No route loaded"}
+              {activeGeneratedAt
+                ? reviewView === "reserve"
+                  ? `Catalog generated ${relativeTime(activeGeneratedAt)}`
+                  : `Route sampled ${relativeTime(activeGeneratedAt)}`
+                : reviewView === "reserve"
+                  ? "No reserve catalog loaded"
+                  : "No route loaded"}
             </span>
             <span>
-              {liveItems.length} live · {evidenceItems.length} audited
+              {reviewView === "reserve"
+                ? `${filteredReserveItems.length} shown · ${reserveItems.length} reserve`
+                : `${liveItems.length} live · ${evidenceItems.length} audited`}
             </span>
           </div>
         </section>
@@ -914,16 +1159,33 @@ function CurationDesk() {
   const [token, setToken] = useState(
     () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
   );
-  if (!token) {
-    return <Login onLogin={(nextToken) => {
-      sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
-      setToken(nextToken);
-    }} />;
-  }
-  return <App token={token} onLogout={() => {
+  const [authError, setAuthError] = useState("");
+  const logout = useCallback(() => {
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
     setToken("");
-  }} />;
+  }, []);
+  if (!token) {
+    return (
+      <Login
+        error={authError}
+        onLogin={(nextToken) => {
+          setAuthError("");
+          sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+          setToken(nextToken);
+        }}
+      />
+    );
+  }
+  return (
+    <App
+      token={token}
+      onLogout={logout}
+      onUnauthorized={() => {
+        setAuthError("That admin key was rejected. Check the current Worker key and try again.");
+        logout();
+      }}
+    />
+  );
 }
 
 createRoot(document.getElementById("root")!).render(
