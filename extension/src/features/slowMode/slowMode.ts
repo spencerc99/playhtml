@@ -74,7 +74,18 @@ const DELIBERATE_TRANSITIONS = new Set([
   "generated",
 ]);
 const NEVER_TRANSITIONS = new Set(["link", "form_submit", "reload"]);
-const PROTECTED_HOST_PREFIXES = ["auth.", "mail.", "calendar.", "docs."];
+const PROTECTED_HOST_PREFIXES = ["mail.", "calendar.", "docs."];
+const AUTHENTICATION_HOST_LABELS = new Set([
+  "auth",
+  "idp",
+  "idpproxy",
+  "login",
+  "mysignin",
+  "mysignins",
+  "signin",
+  "signins",
+  "sso",
+]);
 const PRIVATE_HOSTS = new Set([
   "accounts.google.com",
   "calendar.google.com",
@@ -98,6 +109,12 @@ const PROTECTED_PATH_SEGMENTS = new Set([
   "signin",
   "sso",
 ]);
+const AUTHENTICATION_PATH_MARKERS = [
+  "oauth2callback",
+  "saml2acs",
+  "signinoidc",
+  "simplesaml",
+];
 
 function isWebUrl(url: URL): boolean {
   return url.protocol === "http:" || url.protocol === "https:";
@@ -137,12 +154,25 @@ function isProtectedDestination(url: URL): boolean {
   if (PROTECTED_HOST_PREFIXES.some((prefix) => hostname.startsWith(prefix))) {
     return true;
   }
+  if (
+    hostname
+      .split(".")
+      .some((label) => AUTHENTICATION_HOST_LABELS.has(label))
+  ) {
+    return true;
+  }
 
   return url.pathname
     .toLowerCase()
     .split("/")
     .filter(Boolean)
-    .some((segment) => PROTECTED_PATH_SEGMENTS.has(segment));
+    .some((segment) => {
+      const label = segment.replace(/[^a-z0-9]+/g, "");
+      return (
+        PROTECTED_PATH_SEGMENTS.has(label) ||
+        AUTHENTICATION_PATH_MARKERS.some((marker) => label.includes(marker))
+      );
+    });
 }
 
 function siteDomain(url: URL): string | null {

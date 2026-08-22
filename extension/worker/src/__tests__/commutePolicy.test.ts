@@ -142,6 +142,22 @@ describe('buildCommuteResponse', () => {
           'rider-one',
           'Log in',
         ),
+        event(
+          'identity-provider',
+          'navigation',
+          'https://idpproxy.illinois.edu/simplesaml/module.php/saml/sp/saml2-acs.php/saml-sp',
+          90,
+          'rider-two',
+          'Sign in',
+        ),
+        event(
+          'authentication-callback',
+          'navigation',
+          'https://university.example/oauth2callback',
+          80,
+          'rider-three',
+          'Signing in',
+        ),
       ],
       [],
       1_000,
@@ -151,7 +167,7 @@ describe('buildCommuteResponse', () => {
     expect(response.destinations).toEqual([]);
   });
 
-  it('keeps large documentation and authentication surfaces as scenery only', () => {
+  it('keeps large documentation as scenery while excluding authentication surfaces', () => {
     const response = buildCommuteResponse(
       [
         event(
@@ -201,9 +217,6 @@ describe('buildCommuteResponse', () => {
 
     expect(response.scenery.map((item) => item.domain)).toEqual([
       'docs.superhuman.com',
-      'idpproxy.illinois.edu',
-      'university.example',
-      'mysignins.microsoft.com',
       'garden.example',
     ]);
     expect(
@@ -636,7 +649,6 @@ describe('buildCommuteResponse', () => {
       'shop.example',
       'account.mayoclinic.org',
       'candidate.atsglobe.com',
-      'service.example',
       'newsletter.example',
       'article.example',
       'newsletter.substack.com',

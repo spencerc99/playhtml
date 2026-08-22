@@ -178,7 +178,22 @@ const PRODUCT_PATH_PATTERNS = [
   /\/listings?\/[^/]+(?:\/|$)/i,
 ];
 
-const NEVER_SHOW_SUBDOMAIN_LABELS = new Set(['auth', 'tracking']);
+const AUTHENTICATION_SUBDOMAIN_LABELS = new Set([
+  'auth',
+  'idp',
+  'idpproxy',
+  'login',
+  'mysignin',
+  'mysignins',
+  'signin',
+  'signins',
+  'sso',
+]);
+
+const NEVER_SHOW_SUBDOMAIN_LABELS = new Set([
+  ...AUTHENTICATION_SUBDOMAIN_LABELS,
+  'tracking',
+]);
 
 const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'account',
@@ -190,19 +205,20 @@ const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'file',
   'files',
   'fs',
-  'idp',
-  'idpproxy',
   'inside',
   'intranet',
-  'login',
   'mail',
   'my',
-  'mysignin',
-  'mysignins',
   'portal',
   'profile',
+]);
+
+const AUTHENTICATION_PATH_SEGMENTS = new Set([
+  'auth',
+  'authorize',
+  'login',
+  'oauth',
   'signin',
-  'signins',
   'sso',
 ]);
 
@@ -210,24 +226,18 @@ const SCENERY_ONLY_PATH_SEGMENTS = new Set([
   'account',
   'accounts',
   'admin',
-  'auth',
-  'authorize',
   'cart',
   'checkout',
   'download',
   'editor',
   'inbox',
-  'login',
   'myschedule',
   'mypolicy',
-  'oauth',
   'outbound',
   'publish',
   'redirect',
   'redir',
   'settings',
-  'signin',
-  'sso',
   'statements',
 ]);
 
@@ -434,6 +444,16 @@ function hasQueryLikePath(pathname: string): boolean {
   }
 }
 
+function hasAuthenticationPath(pathname: string): boolean {
+  return pathname.split('/').some((segment) => {
+    const label = comparableLabel(segment);
+    return (
+      AUTHENTICATION_PATH_SEGMENTS.has(label) ||
+      AUTHENTICATION_PATH_MARKERS.some((marker) => label.includes(marker))
+    );
+  });
+}
+
 function hasBlockedPath(pathname: string, domain: string): boolean {
   const normalizedPathname = pathname.toLowerCase();
   if (
@@ -462,10 +482,7 @@ function hasBlockedPath(pathname: string, domain: string): boolean {
 
   return pathname.split('/').some((segment) => {
     const label = comparableLabel(segment);
-    return (
-      SCENERY_ONLY_PATH_SEGMENTS.has(label) ||
-      AUTHENTICATION_PATH_MARKERS.some((marker) => label.includes(marker))
-    );
+    return SCENERY_ONLY_PATH_SEGMENTS.has(label);
   });
 }
 
@@ -775,7 +792,8 @@ function toCandidate(event: CollectionEvent): NavigationCandidate | null {
       !registrableDomain ||
       url.username ||
       url.password ||
-      isNeverShownHost(domain, registrableDomain)
+      isNeverShownHost(domain, registrableDomain) ||
+      hasAuthenticationPath(url.pathname)
     ) {
       return null;
     }
