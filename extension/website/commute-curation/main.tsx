@@ -40,6 +40,7 @@ import {
   importEvaluationArtifact,
   isCatalogUnauthorized,
   saveCatalogPolicy,
+  type CatalogSuggestion,
 } from "./catalogApi";
 import {
   parseReserveCatalog,
@@ -287,6 +288,7 @@ export function App({
   >("idle");
   const formEdited = useRef(false);
   const requestedSuggestionIds = useRef(new Set<string>());
+  const suggestionById = useRef(new Map<string, CatalogSuggestion>());
   const observedItems = useMemo(
     () => mergeCatalogEvidence(liveItems, evidenceItems),
     [evidenceItems, liveItems],
@@ -426,12 +428,26 @@ export function App({
   useEffect(() => {
     if (!selectedItem) return;
     const priorDecision = getDecisionForReviewItem(places, selectedItem);
+    const cachedSuggestion = suggestionById.current.get(selectedItem.id);
     formEdited.current = false;
-    setScope(priorDecision?.scope ?? "hostname");
-    setPlacement(priorDecision?.placement);
-    setReason(priorDecision?.reason ?? "");
+    setScope(priorDecision?.scope ?? cachedSuggestion?.scope ?? "hostname");
+    setPlacement(priorDecision?.placement ?? cachedSuggestion?.placement);
+    setReason(
+      priorDecision?.reason ??
+        (cachedSuggestion?.reason && CURATION_REASONS.includes(
+          cachedSuggestion.reason as (typeof CURATION_REASONS)[number],
+        )
+          ? cachedSuggestion.reason
+          : ""),
+    );
     setComment(priorDecision?.comment ?? "");
-    setSuggestionStatus(priorDecision || !selectedItem.url ? "idle" : "loading");
+    setSuggestionStatus(
+      priorDecision || !selectedItem.url
+        ? "idle"
+        : cachedSuggestion
+          ? "prefilled"
+          : "loading",
+    );
   }, [places, selectedItem]);
 
   useEffect(() => {
@@ -500,6 +516,7 @@ export function App({
             : undefined,
       })
         .then(({ suggestion }) => {
+          suggestionById.current.set(selectedItem.id, suggestion);
           if (!canPrefillSuggestion({
             hasDecision: Boolean(getDecisionForReviewItem(places, selectedItem)),
             formEdited: formEdited.current,
