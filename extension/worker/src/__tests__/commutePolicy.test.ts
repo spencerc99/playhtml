@@ -131,6 +131,26 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('excludes authentication hosts from commute output', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'authentication',
+          'navigation',
+          'https://auth.openai.com/log-in',
+          100,
+          'rider-one',
+          'Log in',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.scenery).toEqual([]);
+    expect(response.destinations).toEqual([]);
+  });
+
   it('keeps large documentation and authentication surfaces as scenery only', () => {
     const response = buildCommuteResponse(
       [

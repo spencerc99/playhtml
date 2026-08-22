@@ -178,14 +178,13 @@ const PRODUCT_PATH_PATTERNS = [
   /\/listings?\/[^/]+(?:\/|$)/i,
 ];
 
-const NEVER_SHOW_SUBDOMAIN_LABELS = new Set(['tracking']);
+const NEVER_SHOW_SUBDOMAIN_LABELS = new Set(['auth', 'tracking']);
 
 const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'account',
   'accounts',
   'admin',
   'apply',
-  'auth',
   'candidate',
   'dashboard',
   'file',

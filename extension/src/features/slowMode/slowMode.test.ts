@@ -88,6 +88,7 @@ describe("isFarJump", () => {
   });
 
   it.each([
+    "https://auth.openai.com/log-in",
     "https://accounts.google.com/signin",
     "https://shop.example/checkout",
     "https://localhost:3000/private",

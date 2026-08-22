@@ -74,7 +74,7 @@ const DELIBERATE_TRANSITIONS = new Set([
   "generated",
 ]);
 const NEVER_TRANSITIONS = new Set(["link", "form_submit", "reload"]);
-const PRIVATE_HOST_PREFIXES = ["mail.", "calendar.", "docs."];
+const PROTECTED_HOST_PREFIXES = ["auth.", "mail.", "calendar.", "docs."];
 const PRIVATE_HOSTS = new Set([
   "accounts.google.com",
   "calendar.google.com",
@@ -134,7 +134,7 @@ function isProtectedDestination(url: URL): boolean {
   const hostname = url.hostname.toLowerCase();
   if (isPrivateNetworkHostname(hostname)) return true;
   if (PRIVATE_HOSTS.has(hostname)) return true;
-  if (PRIVATE_HOST_PREFIXES.some((prefix) => hostname.startsWith(prefix))) {
+  if (PROTECTED_HOST_PREFIXES.some((prefix) => hostname.startsWith(prefix))) {
     return true;
   }
 
