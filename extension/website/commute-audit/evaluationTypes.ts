@@ -45,6 +45,7 @@ export const EXPOSURE_LABELS = ["Public", "Private or sensitive", "Uncertain"] a
 export const CHARACTER_LABELS = ["Human-made", "Platform-mediated or mixed", "Automated or SEO-forward", "Uncertain"] as const;
 export const PROMOTION_JUDGMENTS = ["Promote", "Do not promote", "Uncertain"] as const;
 export const SAMPLE_LANES = [
+  "Engaged uncommon domain",
   "Rare page on rare domain",
   "Hidden item on major platform",
   "Independent convergence",
@@ -52,6 +53,7 @@ export const SAMPLE_LANES = [
   "Current ranking",
   "Low classification confidence",
   "Exposure or character borderline",
+  "Low-trust diagnostic",
   "Random control",
 ] as const;
 

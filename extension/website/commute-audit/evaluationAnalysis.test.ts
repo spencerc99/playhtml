@@ -103,4 +103,41 @@ describe("CommuteEvaluationBuilder", () => {
     expect(candidate?.category.value).toBe("Arts & culture");
     expect(candidate?.observation.participants).toBe(2);
   });
+
+  test("prioritizes engaged uncommon domains while separating mainstream and low-trust diagnostics", () => {
+    const builder = new CommuteEvaluationBuilder();
+    let ts = 1_000;
+    const addVisits = (domain: string, pages: number, visits: number): void => {
+      for (let page = 0; page < pages; page++) {
+        for (let visit = 0; visit < visits; visit++) {
+          const pid = `person-${domain}-${visit}`;
+          const url = `https://${domain}/stories/${page}`;
+          builder.addNavigation(navigation(`${domain}-${page}-${visit}-focus`, ts, url, "focus", pid, `A specific story ${page}`));
+          builder.addNavigation(navigation(`${domain}-${page}-${visit}-blur`, ts + 120_000, url, "blur", pid));
+          ts += 180_000;
+        }
+      }
+    };
+
+    addVisits("small-press.example", 6, 2);
+    addVisits("single-reader.example", 2, 1);
+    addVisits("reddit.com", 6, 2);
+    addVisits("new-fmovies.cam", 6, 2);
+
+    const result = builder.finalize("archive.sql.zst", { ...scan, collectionRows: 72, navigationRows: 72 });
+    const uncommon = result.candidates.filter((candidate) => candidate.lanes.includes("Engaged uncommon domain"));
+    const mainstream = result.candidates.filter((candidate) => candidate.lanes.includes("Hidden item on major platform"));
+    const lowTrust = result.candidates.filter((candidate) => candidate.lanes.includes("Low-trust diagnostic"));
+
+    expect(uncommon).toHaveLength(3);
+    expect(uncommon.every((candidate) => candidate.domain === "small-press.example")).toBe(true);
+    expect(result.candidates.some((candidate) => candidate.domain === "single-reader.example" && candidate.lanes.includes("Engaged uncommon domain"))).toBe(false);
+    expect(mainstream).toHaveLength(2);
+    expect(mainstream.every((candidate) => candidate.domain === "reddit.com")).toBe(true);
+    expect(lowTrust).toHaveLength(2);
+    expect(lowTrust.every((candidate) => candidate.domain === "new-fmovies.cam")).toBe(true);
+    expect(result.candidates.filter((candidate) => candidate.domain === "reddit.com")).toHaveLength(2);
+    expect(result.candidates.filter((candidate) => candidate.domain === "new-fmovies.cam")).toHaveLength(2);
+    expect(result.candidates.filter((candidate) => candidate.domain === "small-press.example")).toHaveLength(3);
+  });
 });

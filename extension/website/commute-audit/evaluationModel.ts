@@ -281,3 +281,7 @@ export function initialJudgment(candidate: Omit<EvaluationCandidate, "initialJud
 export function isMajorPlatform(domain: string): boolean {
   return MAJOR_PLATFORM_DOMAINS.has(domain);
 }
+
+export function isLowTrustPromotionDomain(domain: string): boolean {
+  return LOW_TRUST_PROMOTION_DOMAINS.has(domain);
+}

@@ -12,6 +12,7 @@ import {
   exposureLabel,
   formulaScores,
   initialJudgment,
+  isLowTrustPromotionDomain,
   isMajorPlatform,
   scoreComponents,
 } from "./evaluationModel";
@@ -34,6 +35,14 @@ import type { ExportPageMetadata, ExportScanSummary } from "../scripts/postgresC
 const MIN_SCREEN_TIME_MS = 1_000;
 const MAX_SCREEN_TIME_MS = 8 * 60 * 60 * 1_000;
 const LANE_LIMIT = 80;
+const MAJOR_PLATFORM_LANE_LIMIT = 12;
+const LOW_TRUST_LANE_LIMIT = 24;
+const DEFAULT_DOMAIN_CAP = 3;
+const DIAGNOSTIC_DOMAIN_CAP = 2;
+const UNCOMMON_DOMAIN_PARTICIPANT_LIMIT = 4;
+const UNCOMMON_DOMAIN_MIN_PARTICIPANTS = 2;
+const UNCOMMON_DOMAIN_MIN_ATTENTION_MS = 90_000;
+const UNCOMMON_DOMAIN_MIN_VISITS = 2;
 const PRIVATE_WORKFLOW_DOMAINS = new Set([
   "clickup.com",
   "cryptpad.fr",
@@ -139,11 +148,28 @@ export function isSensitiveDestination(rawUrl: string, title: string): boolean {
   return false;
 }
 
-function boundedInsert(rows: RankedCandidate[], candidate: EvaluationCandidate, metric: number, limit = LANE_LIMIT): void {
+function boundedInsert(
+  rows: RankedCandidate[],
+  candidate: EvaluationCandidate,
+  metric: number,
+  limit = LANE_LIMIT,
+  domainCap = DEFAULT_DOMAIN_CAP,
+): void {
   if (rows.length >= limit && metric <= rows[rows.length - 1].metric) return;
+  const domainRows = rows.filter((row) => row.candidate.domain === candidate.domain);
+  if (domainRows.length >= domainCap && metric <= domainRows[domainRows.length - 1].metric) return;
   rows.push({ candidate, metric });
   rows.sort((first, second) => second.metric - first.metric || first.candidate.id.localeCompare(second.candidate.id));
-  if (rows.length > limit) rows.length = limit;
+  const domainCounts = new Map<string, number>();
+  const kept: RankedCandidate[] = [];
+  for (const row of rows) {
+    const count = domainCounts.get(row.candidate.domain) ?? 0;
+    if (count >= domainCap) continue;
+    kept.push(row);
+    domainCounts.set(row.candidate.domain, count + 1);
+    if (kept.length >= limit) break;
+  }
+  rows.splice(0, rows.length, ...kept);
 }
 
 function mergeSet<T>(target: Set<T>, source: Set<T>): void {
@@ -152,6 +178,12 @@ function mergeSet<T>(target: Set<T>, source: Set<T>): void {
 
 function currentRankingMetric(candidate: EvaluationCandidate): number {
   return Math.log1p(candidate.observation.screenTimeMs) * 0.45 + Math.log1p(candidate.observation.participants) * 0.3 + Math.log1p(candidate.observation.visits) * 0.25;
+}
+
+function uncommonEngagementMetric(candidate: EvaluationCandidate): number {
+  return candidate.scores.longTail
+    + Math.log1p(candidate.observation.screenTimeMs / 60_000) * 8
+    + Math.log1p(candidate.observation.visits) * 4;
 }
 
 function reasonList(candidate: Omit<EvaluationCandidate, "initialJudgment" | "reasons">): string[] {
@@ -423,31 +455,72 @@ export class CommuteEvaluationBuilder {
       characterCoverage.confidence += character.confidence;
       if (isCharacterUncertain(character.value)) characterCoverage.uncertain++;
 
-      for (const formula of formulaBuckets.keys()) boundedInsert(formulaBuckets.get(formula) as RankedCandidate[], candidate, scores[formula], 50);
-      if (observation.domainParticipants <= 2 && observation.participants <= 2 && observation.screenTimeMs >= 30_000 && components.specificity >= 0.34) {
+      for (const formula of formulaBuckets.keys()) {
+        boundedInsert(formulaBuckets.get(formula) as RankedCandidate[], candidate, scores[formula], 50, 50);
+      }
+      const majorPlatform = isMajorPlatform(page.domain);
+      const lowTrust = isLowTrustPromotionDomain(page.domain);
+      const humanReviewCandidate = !majorPlatform && !lowTrust;
+      if (
+        humanReviewCandidate
+        && observation.participants >= UNCOMMON_DOMAIN_MIN_PARTICIPANTS
+        && observation.domainParticipants <= UNCOMMON_DOMAIN_PARTICIPANT_LIMIT
+        && observation.screenTimeMs >= UNCOMMON_DOMAIN_MIN_ATTENTION_MS
+        && observation.visits >= UNCOMMON_DOMAIN_MIN_VISITS
+      ) {
+        boundedInsert(laneBuckets.get("Engaged uncommon domain") as RankedCandidate[], candidate, uncommonEngagementMetric(candidate));
+      }
+      if (humanReviewCandidate && observation.domainParticipants <= 2 && observation.participants <= 2 && observation.screenTimeMs >= 30_000 && components.specificity >= 0.34) {
         boundedInsert(laneBuckets.get("Rare page on rare domain") as RankedCandidate[], candidate, scores.longTail);
       }
-      if (isMajorPlatform(page.domain) && observation.participants <= 2 && components.specificity >= 0.34) {
-        boundedInsert(laneBuckets.get("Hidden item on major platform") as RankedCandidate[], candidate, scores.hiddenPlatform);
+      if (majorPlatform && observation.participants <= 2 && components.specificity >= 0.34) {
+        boundedInsert(
+          laneBuckets.get("Hidden item on major platform") as RankedCandidate[],
+          candidate,
+          scores.hiddenPlatform,
+          MAJOR_PLATFORM_LANE_LIMIT,
+          DIAGNOSTIC_DOMAIN_CAP,
+        );
       }
-      if (observation.participants >= 2 && observation.participants <= 4) {
+      if (humanReviewCandidate && observation.participants >= 2 && observation.participants <= 4) {
         boundedInsert(laneBuckets.get("Independent convergence") as RankedCandidate[], candidate, scores.balanced);
       }
-      boundedInsert(laneBuckets.get("High attention") as RankedCandidate[], candidate, observation.screenTimeMs);
-      boundedInsert(laneBuckets.get("Current ranking") as RankedCandidate[], candidate, currentRankingMetric(candidate));
-      if (category.value === "Other" || pageType.value === "Other" || character.value === "Uncertain") {
+      if (humanReviewCandidate) {
+        boundedInsert(laneBuckets.get("High attention") as RankedCandidate[], candidate, observation.screenTimeMs);
+        boundedInsert(laneBuckets.get("Current ranking") as RankedCandidate[], candidate, currentRankingMetric(candidate));
+      }
+      if (humanReviewCandidate && (category.value === "Other" || pageType.value === "Other" || character.value === "Uncertain")) {
         boundedInsert(laneBuckets.get("Low classification confidence") as RankedCandidate[], candidate, observation.screenTimeMs);
       }
-      if (character.value === "Uncertain" || character.confidence < 0.5) {
+      if (humanReviewCandidate && (character.value === "Uncertain" || character.confidence < 0.5)) {
         boundedInsert(laneBuckets.get("Exposure or character borderline") as RankedCandidate[], candidate, scores.balanced);
       }
-      boundedInsert(laneBuckets.get("Random control") as RankedCandidate[], candidate, hash(`control:${page.canonicalUrl}`) / 0xffffffff);
+      boundedInsert(laneBuckets.get("Random control") as RankedCandidate[], candidate, hash(`control:${page.canonicalUrl}`) / 0xffffffff, LANE_LIMIT, 1);
+      if (lowTrust) {
+        boundedInsert(
+          laneBuckets.get("Low-trust diagnostic") as RankedCandidate[],
+          candidate,
+          observation.screenTimeMs,
+          LOW_TRUST_LANE_LIMIT,
+          DIAGNOSTIC_DOMAIN_CAP,
+        );
+      }
     }
 
     const selected = new Map<string, EvaluationCandidate>();
+    const selectedDomainCounts = new Map<string, number>();
     for (const [lane, rows] of laneBuckets) {
       for (const row of rows) {
-        const candidate = selected.get(row.candidate.id) ?? row.candidate;
+        const existing = selected.get(row.candidate.id);
+        if (!existing) {
+          const domainCap = isMajorPlatform(row.candidate.domain) || isLowTrustPromotionDomain(row.candidate.domain)
+            ? DIAGNOSTIC_DOMAIN_CAP
+            : DEFAULT_DOMAIN_CAP;
+          const selectedCount = selectedDomainCounts.get(row.candidate.domain) ?? 0;
+          if (selectedCount >= domainCap) continue;
+          selectedDomainCounts.set(row.candidate.domain, selectedCount + 1);
+        }
+        const candidate = existing ?? row.candidate;
         if (!candidate.lanes.includes(lane)) candidate.lanes.push(lane);
         selected.set(candidate.id, candidate);
       }
