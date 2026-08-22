@@ -9,6 +9,13 @@ const setupFile = fileURLToPath(new URL("./vitest.setup.ts", import.meta.url));
 
 export default defineConfig({
   root: rootDir,
+  css: {
+    preprocessorOptions: {
+      scss: {
+        silenceDeprecations: ["legacy-js-api"],
+      },
+    },
+  },
   resolve: {
     alias: {
       playhtml: path.resolve(rootDir, "../../packages/playhtml/src/index.ts"),

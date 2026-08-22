@@ -87,15 +87,23 @@ describe("verify()", () => {
   });
 
   it("clears the stored room token before requesting verification", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const sent: string[] = [];
     sessionStorage.setItem("playhtml_auth_token_example.com-%2Fwall", "tok");
     bind(sent);
 
     const result = requestVerification();
 
-    expect(sessionStorage.getItem("playhtml_auth_token_example.com-%2Fwall")).toBeNull();
+    expect(
+      sessionStorage.getItem("playhtml_auth_token_example.com-%2Fwall"),
+    ).toBeNull();
     handleAuthMessage({ type: "auth_error", reason: "origin_mismatch" });
     await expect(result).resolves.toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      "[playhtml] Auth handshake failed:",
+      "origin_mismatch",
+    );
+    warn.mockRestore();
   });
 
   it("rejects auth_ok for a different current pid", async () => {
@@ -112,7 +120,9 @@ describe("verify()", () => {
 
     await expect(result).resolves.toBe(false);
     expect(getMe().verified).toBe(false);
-    expect(sessionStorage.getItem("playhtml_auth_token_example.com-%2Fwall")).toBeNull();
+    expect(
+      sessionStorage.getItem("playhtml_auth_token_example.com-%2Fwall"),
+    ).toBeNull();
   });
 });
 
@@ -129,7 +139,10 @@ describe("session resume", () => {
       roomId: "example.com-%2Fwall",
       ts: Date.now(),
     });
-    expect(JSON.parse(sent.at(-1)!)).toEqual({ type: "auth_resume", token: "tok" });
+    expect(JSON.parse(sent.at(-1)!)).toEqual({
+      type: "auth_resume",
+      token: "tok",
+    });
   });
 });
 
@@ -224,7 +237,7 @@ describe("gated writes", () => {
         keyed: false,
         before: { text: "old" },
         after: { text: "new" },
-      })
+      }),
     ).toEqual([{ op: "replace", key: "", value: { text: "new" } }]);
   });
 });
