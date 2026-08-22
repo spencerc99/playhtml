@@ -396,7 +396,7 @@ export * from "./sharedElements";
 export * from "./cursor-types";
 import type { Cursor, PlayerIdentity } from "./cursor-types";
 
-export type PageDataSetter<T> = T extends object
+export type PageDataSetter<T> = [T] extends [object]
   ? T | ((draft: T) => void)
   : T | ((value: T) => T);
 
