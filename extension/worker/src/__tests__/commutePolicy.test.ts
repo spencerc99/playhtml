@@ -438,6 +438,14 @@ describe('buildCommuteResponse', () => {
           'dictionary-rider',
           'Old Icelandic Dictionary - Þyrnir',
         ),
+        event(
+          'untitled-hosted-project',
+          'navigation',
+          'https://generic-workshop.vercel.app/',
+          50,
+          'untitled-rider',
+          undefined,
+        ),
       ],
       [],
       1_000,
@@ -1132,6 +1140,104 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('keeps student systems domain-only without excluding public university pages', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'ellucian-portal',
+          'navigation',
+          'https://experience.elluciancloud.com/example-university',
+          600,
+          'ellucian-rider',
+          'Home - Student Portal',
+        ),
+        event(
+          'gradescope-course',
+          'navigation',
+          'https://www.gradescope.com/courses/1234567',
+          500,
+          'gradescope-rider',
+          'Example Course Dashboard | Gradescope',
+        ),
+        event(
+          'registration-history',
+          'navigation',
+          'https://banner.apps.example.edu/StudentRegistrationSSB/ssb/registrationHistory/registrationHistory',
+          400,
+          'registration-rider',
+          'View Registration Information',
+        ),
+        event(
+          'private-quiz',
+          'navigation',
+          'https://www.zipgrade.com/quiz/opaque-quiz-id/all',
+          300,
+          'quiz-rider',
+          'ZipGrade Quiz',
+        ),
+        event(
+          'university-museum',
+          'navigation',
+          'https://museum.example.edu/exhibitions/handmade-web',
+          200,
+          'museum-rider',
+          'Handmade Web Exhibition',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'museum.example.edu',
+    ]);
+    expect(response.scenery.map((item) => item.domain)).toEqual(
+      expect.arrayContaining([
+        'experience.elluciancloud.com',
+        'gradescope.com',
+        'banner.apps.example.edu',
+        'zipgrade.com',
+      ]),
+    );
+  });
+
+  it('keeps private chat channels and person-bound Steam profiles domain-only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'fluxer-channel',
+          'navigation',
+          'https://web.canary.fluxer.app/channels/123456789/987654321',
+          400,
+          'fluxer-rider',
+          'Private channel',
+        ),
+        event(
+          'steam-friend-action',
+          'navigation',
+          'https://steamcommunity.com/id/example-person/friends/add',
+          300,
+          'steam-rider',
+          'Example Person',
+        ),
+        event(
+          'public-article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          200,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
   it('keeps short-form video and movie streaming services as scenery only', () => {
     const response = buildCommuteResponse(
       [
@@ -1168,6 +1274,22 @@ describe('buildCommuteResponse', () => {
           'A film on Criterion Channel',
         ),
         event(
+          'f1-stream',
+          'navigation',
+          'https://f1tv.formula1.com/',
+          175,
+          'f1-rider',
+          'F1 TV | Home',
+        ),
+        event(
+          'unlicensed-stream',
+          'navigation',
+          'https://nepu.to/show/example/season/1/episode/9',
+          150,
+          'stream-rider',
+          'Watch a show free in HD',
+        ),
+        event(
           'article',
           'navigation',
           'https://garden.example/essays/moss',
@@ -1185,6 +1307,8 @@ describe('buildCommuteResponse', () => {
       'peacocktv.com',
       'disneyplus.com',
       'criterionchannel.com',
+      'f1tv.formula1.com',
+      'nepu.to',
       'garden.example',
     ]);
     expect(response.destinations.map((item) => item.domain)).toEqual([

@@ -25,12 +25,14 @@ const MOVIE_TV_STREAMING_DOMAINS = [
   'directv.com',
   'discoveryplus.com',
   'disneyplus.com',
+  'f1tv.formula1.com',
   'fubo.tv',
   'hoopladigital.com',
   'hulu.com',
   'kanopy.com',
   'max.com',
   'mubi.com',
+  'nepu.to',
   'netflix.com',
   'paramountplus.com',
   'peacocktv.com',
@@ -102,9 +104,12 @@ const SCENERY_ONLY_DOMAINS = [
   'duckduckgo.com',
   'ecosia.org',
   'ellipsus.com',
+  'experience.elluciancloud.com',
   'facebook.com',
   'figma.com',
   'form.typeform.com',
+  'fluxer.app',
+  'gradescope.com',
   'joinoasis.com',
   'jotform.com',
   'linkedin.com',
@@ -144,6 +149,7 @@ const SCENERY_ONLY_DOMAINS = [
   'vk.com',
   'web.telegram.org',
   'x.com',
+  'zipgrade.com',
 ];
 
 const GENERIC_BUSINESS_HOMEPAGE_DOMAINS = [
@@ -165,7 +171,11 @@ const GENERIC_BUSINESS_HOMEPAGE_DOMAINS = [
   'wayfair.com',
 ];
 
-const MEANINGFUL_TITLE_REQUIRED_DOMAINS = ['itch.io', 'wordpress.com'];
+const MEANINGFUL_TITLE_REQUIRED_DOMAINS = [
+  'itch.io',
+  'vercel.app',
+  'wordpress.com',
+];
 
 const GENERIC_PATHS = new Set([
   '/browse',
@@ -191,6 +201,7 @@ const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'admin',
   'apply',
   'auth',
+  'banner',
   'candidate',
   'dashboard',
   'docs',
@@ -233,9 +244,11 @@ const SCENERY_ONLY_PATH_SEGMENTS = new Set([
   'outbound',
   'publish',
   'redirect',
+  'registrationhistory',
   'redir',
   'settings',
   'signin',
+  'studentregistrationssb',
   'sso',
   'statements',
 ]);
@@ -711,7 +724,9 @@ function hasPersonBoundRoute(url: URL, domain: string): boolean {
     (domainMatches(domain, 'last.fm') &&
       /^\/user\/[^/]+(?:\/|$)/.test(url.pathname)) ||
     (domainMatches(domain, 'artfight.net') &&
-      /^\/~[^/]+(?:\/|$)/.test(url.pathname))
+      /^\/~[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (domainMatches(domain, 'steamcommunity.com') &&
+      /^\/(?:id|profiles)\/[^/]+(?:\/|$)/.test(url.pathname))
   );
 }
 
