@@ -1,7 +1,15 @@
 // ABOUTME: Verifies PageDataChannel reads, writes, listeners, lifecycle cleanup,
 // ABOUTME: and permission-gated routing for named shared data channels.
-import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
-import { syncedStore } from "@syncedstore/core";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
+import { getYjsDoc, syncedStore } from "@syncedstore/core";
 import * as Y from "yjs";
 import { playhtml } from "../index";
 import { createPageDataChannel, PAGE_TAG } from "../page-data";
@@ -17,6 +25,39 @@ import { clonePlain } from "@playhtml/common";
 
 const ADMIN_PK = "pk_" + "aa".repeat(65);
 const OTHER_PK = "pk_" + "bb".repeat(65);
+
+function createPageDataTestDeps(
+  store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+    play: {},
+  }),
+) {
+  const doc = getYjsDoc(store);
+  const proxyByTagAndId = new Map<string, Map<string, any>>();
+  const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
+
+  return {
+    ensureProxy<T>(tag: string, id: string, defaultData: T): T {
+      if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+      const tagMap = proxyByTagAndId.get(tag)!;
+      if (!tagMap.has(id)) {
+        store.play[tag] ??= {};
+        const tagRecord = store.play[tag]!;
+        if (tagRecord[id] === undefined) {
+          tagRecord[id] = clonePlain(defaultData);
+        }
+        tagMap.set(id, tagRecord[id]);
+      }
+      return tagMap.get(id)! as T;
+    },
+    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
+    getDoc: () => doc,
+    getStorePlay: () => store.play,
+    proxyByTagAndId,
+    yObserverByKey,
+    channelRefCounts: new Map<string, number>(),
+    channelListeners: new Map<string, Set<(data: unknown) => void>>(),
+  };
+}
 
 beforeAll(async () => {
   await playhtml.init({});
@@ -43,6 +84,59 @@ describe("playhtml.createPageData", () => {
     });
     await new Promise((r) => queueMicrotask(r));
     expect(channel.getData()).toEqual({ count: 10 });
+  });
+
+  it("ignores terse object mutator returns", async () => {
+    const channel = playhtml.createPageData("test-terse-mutator", { count: 0 });
+
+    channel.setData((draft) => draft.count++);
+    await new Promise((r) => queueMicrotask(r));
+
+    expect(channel.getData()).toEqual({ count: 1 });
+  });
+
+  it("replaces primitive roots with values and functional updates", async () => {
+    const channel = playhtml.createPageData("test-primitive-root", 0);
+    const updates: number[] = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData(1);
+    await new Promise((r) => queueMicrotask(r));
+    channel.setData((value) => value + 1);
+    await new Promise((r) => queueMicrotask(r));
+
+    expect(channel.getData()).toBe(2);
+    expect(updates).toEqual([1, 2]);
+  });
+
+  it("uses a remotely updated primitive value for functional updates", () => {
+    const firstStore = syncedStore<{
+      play: Record<string, Record<string, unknown>>;
+    }>({
+      play: {},
+    });
+    const secondStore = syncedStore<{
+      play: Record<string, Record<string, unknown>>;
+    }>({
+      play: {},
+    });
+    const firstDoc = getYjsDoc(firstStore);
+    const secondDoc = getYjsDoc(secondStore);
+    const secondChannel = createPageDataChannel(
+      "view-count",
+      0,
+      createPageDataTestDeps(secondStore),
+    );
+
+    Y.applyUpdate(firstDoc, Y.encodeStateAsUpdate(secondDoc));
+    firstStore.play[PAGE_TAG]!["view-count"] = 1;
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+
+    expect(secondChannel.getData()).toBe(1);
+
+    secondChannel.setData((value) => value + 1);
+
+    expect(secondChannel.getData()).toBe(2);
   });
 
   it("onUpdate fires on local changes", async () => {
@@ -117,47 +211,12 @@ describe("playhtml.createPageData", () => {
     document.body.appendChild(el);
 
     await expect(
-      playhtml.setupPlayElementForTag(el, "__page__")
+      playhtml.setupPlayElementForTag(el, "__page__"),
     ).rejects.toThrow(/reserved/);
 
     document.body.removeChild(el);
   });
 });
-
-function createPageDataTestDeps() {
-  const doc = new Y.Doc();
-  const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>(
-    { play: {} },
-    doc,
-  );
-  const proxyByTagAndId = new Map<string, Map<string, any>>();
-  const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
-  const channelRefCounts = new Map<string, number>();
-  const channelListeners = new Map<string, Set<(data: any) => void>>();
-
-  return {
-    ensureProxy<T>(tag: string, id: string, defaultData: T): T {
-      if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
-      const tagMap = proxyByTagAndId.get(tag)!;
-      if (!tagMap.has(id)) {
-        store.play[tag] ??= {};
-        const tagRecord = store.play[tag]!;
-        if (tagRecord[id] === undefined) {
-          tagRecord[id] = clonePlain(defaultData);
-        }
-        tagMap.set(id, tagRecord[id]);
-      }
-      return tagMap.get(id)! as T;
-    },
-    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
-    getDoc: () => doc,
-    getStorePlay: () => store.play,
-    proxyByTagAndId,
-    yObserverByKey,
-    channelRefCounts,
-    channelListeners,
-  };
-}
 
 describe("page-data permissions", () => {
   beforeEach(() => {
@@ -207,6 +266,44 @@ describe("page-data permissions", () => {
       tag: PAGE_TAG,
       elementId: "my-channel",
       ops: [{ op: "replace", key: "", value: { count: 1 } }],
+    });
+  });
+
+  it("routes primitive functional updates through gated_write ops", () => {
+    const sent: string[] = [];
+    bindHandshake({
+      send: (message) => sent.push(message),
+      getPid: () => ADMIN_PK,
+      roomId: "example.com-%2Fwall",
+    });
+    setIdentity({
+      publicKey: ADMIN_PK,
+      playerStyle: { colorPalette: ["red"] },
+      source: "local",
+    });
+    setVerified(true);
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: true,
+      roles: { admin: [ADMIN_PK] },
+      rules: [{ match: "view-count", write: "admin" }],
+      roomPath: "/wall",
+    });
+
+    const channel = createPageDataChannel(
+      "view-count",
+      1,
+      createPageDataTestDeps(),
+    );
+
+    channel.setData((value) => value + 1);
+
+    expect(channel.getData()).toBe(1);
+    expect(JSON.parse(sent.at(-1)!)).toMatchObject({
+      type: "gated_write",
+      tag: PAGE_TAG,
+      elementId: "view-count",
+      ops: [{ op: "replace", key: "", value: 2 }],
     });
   });
 
