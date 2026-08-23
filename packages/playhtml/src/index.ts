@@ -42,7 +42,11 @@ import {
   getPresencePage,
 } from "./cursors/cursor-client";
 import { createPresenceAPI } from "./presence";
-import { createUsersAPI, defaultSeedIdentity } from "./users";
+import {
+  createUsersAPI,
+  defaultSeedIdentity,
+  toPresencePlayerIdentity,
+} from "./users";
 import type { UsersAPI } from "./users";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import {
@@ -278,6 +282,10 @@ const cursorPresenceHub = {
 
 function resolveMyIdentity(): PlayerIdentity {
   return usersAPI?.getIdentity() ?? defaultSeedIdentity();
+}
+
+function resolvePresenceIdentity(): PlayerIdentity {
+  return toPresencePlayerIdentity(resolveMyIdentity());
 }
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
@@ -756,7 +764,7 @@ function acquirePresenceTransport(
     usersAPI?.onSelfChange(() => {
       try {
         transport.join({
-          identity: resolveMyIdentity(),
+          identity: resolvePresenceIdentity(),
           page: getPresencePage(),
         });
       } catch (error) {
@@ -1106,7 +1114,7 @@ function buildElementAwarenessClient(): void {
   try {
     elementAwarenessClient = new ElementAwarenessClient({
       transport,
-      getIdentity: resolveMyIdentity,
+      getIdentity: resolvePresenceIdentity,
       getPage: getPresencePage,
       onAwareness: applyElementAwareness,
       onAwarenessChange: applyElementAwarenessEntry,
@@ -1174,7 +1182,7 @@ function buildInnerPresenceAPI(): PresenceAPI {
     try {
       presenceClient = new PresenceClient({
         transport,
-        getIdentity: resolveMyIdentity,
+        getIdentity: resolvePresenceIdentity,
         getPage: getPresencePage,
         // Route the cursor channel through the stable hub, not the current cursor
         // client instance, so the subscription survives cursor rebuilds (nav /
@@ -2414,7 +2422,10 @@ function createPresenceRoom(name: string): PresenceRoom {
     const selfChangeUnsub =
       usersAPI?.onSelfChange(() => {
         try {
-          transport.join({ identity: resolveMyIdentity(), page: getPresencePage() });
+          transport.join({
+            identity: resolvePresenceIdentity(),
+            page: getPresencePage(),
+          });
         } catch (error) {
           console.warn(
             "[playhtml] Failed to republish identity on change:",
@@ -2425,7 +2436,7 @@ function createPresenceRoom(name: string): PresenceRoom {
 
     const presence = new PresenceClient({
       transport,
-      getIdentity: resolveMyIdentity,
+      getIdentity: resolvePresenceIdentity,
       getPage: getPresencePage,
     });
 

@@ -69,14 +69,20 @@ describe("playhtml.users.me", () => {
 
   it("publishes __playhtml_identity__ at init and on every change", () => {
     const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key", "#111111"), {
+    const identity = {
+      ...makeIdentity("local-key", "#111111"),
+      source: "local" as const,
+    };
+    const users = createUsersAPI(identity, {
       getAwareness: () => awareness,
     });
 
-    expect(
-      (awareness.getLocalState()?.["__playhtml_identity__"] as PlayerIdentity)
-        .publicKey,
-    ).toBe("local-key");
+    const published = awareness.getLocalState()?.[
+      "__playhtml_identity__"
+    ] as PlayerIdentity;
+    expect(published.publicKey).toBe("local-key");
+    expect(published).not.toHaveProperty("source");
+    expect(users.getIdentity().source).toBe("local");
 
     users.me.color = "#222222";
     expect(
