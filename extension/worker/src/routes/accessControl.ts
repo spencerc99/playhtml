@@ -6,12 +6,13 @@ import {
   FEATURE_IDS,
   isFeatureId,
   isFeatureStage,
-  type FeatureAccessSnapshot,
   type FeatureId,
   type FeatureStage,
 } from '../../../shared/featureCatalog';
 import { getAdminAuthError } from '../lib/adminAuth';
+import { resolveFeaturePolicies, resolveFeatureStage } from '../lib/featurePolicy';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
+import { createResendClient } from '../lib/resend';
 import type { Env } from '../lib/supabase';
 
 const PUBLIC_ID_PATTERN = /^pk_[0-9a-f]{130}$/i;
@@ -25,9 +26,12 @@ const JSON_HEADERS = {
 
 type FeatureRow = {
   feature_id: string;
-  name: string;
-  description: string;
   stage: string;
+};
+
+type FeatureGrantRow = {
+  feature_id: string | null;
+  grants_all_unreleased: number;
 };
 
 type CohortRow = {
@@ -91,16 +95,18 @@ async function allRows<T>(statement: D1PreparedStatement): Promise<T[]> {
   return result.results;
 }
 
-async function ensureFeatureCatalog(db: D1Database): Promise<void> {
+async function ensureFeaturePolicyRows(
+  db: D1Database,
+  featureIds: FeatureId[],
+): Promise<void> {
+  if (featureIds.length === 0) return;
   await db.batch(
-    FEATURE_IDS.map((featureId) => {
+    featureIds.map((featureId) => {
       const feature = FEATURE_CATALOG[featureId];
       return db.prepare(
         `INSERT INTO features (feature_id, name, description, stage)
          VALUES (?, ?, ?, ?)
-         ON CONFLICT(feature_id) DO UPDATE SET
-           name = excluded.name,
-           description = excluded.description`,
+         ON CONFLICT(feature_id) DO NOTHING`,
       ).bind(
         featureId,
         feature.name,
@@ -127,46 +133,31 @@ export async function handleFeatureAccessCheck(
     return jsonResponse(400, { error: 'Invalid public ID' });
   }
 
-  const rows = await allRows<FeatureRow & { available: number }>(
-    env.WWO_ADMIN_DB.prepare(
-      `SELECT
-         f.feature_id,
-         f.name,
-         f.description,
-         f.stage,
-         CASE
-           WHEN f.stage = 'released' THEN 1
-           WHEN EXISTS (
-             SELECT 1
-             FROM cohort_memberships cm
-             JOIN cohorts c ON c.cohort_id = cm.cohort_id
-             LEFT JOIN cohort_features cf
-               ON cf.cohort_id = c.cohort_id
-              AND cf.feature_id = f.feature_id
-             WHERE cm.public_id = ?
-               AND (c.grants_all_unreleased = 1 OR cf.feature_id IS NOT NULL)
-           ) THEN 1
-           ELSE 0
-         END AS available
-       FROM features f`,
-    ).bind(publicId),
+  const [featureRows, grantRows] = await Promise.all([
+    allRows<FeatureRow>(env.WWO_ADMIN_DB.prepare(
+      'SELECT feature_id, stage FROM features',
+    )),
+    allRows<FeatureGrantRow>(env.WWO_ADMIN_DB.prepare(
+      `SELECT c.grants_all_unreleased, cf.feature_id
+       FROM cohort_memberships cm
+       JOIN cohorts c ON c.cohort_id = cm.cohort_id
+       LEFT JOIN cohort_features cf ON cf.cohort_id = c.cohort_id
+       WHERE cm.public_id = ?`,
+    ).bind(publicId)),
+  ]);
+  const grantsAllUnreleased = grantRows.some((row) => row.grants_all_unreleased === 1);
+  const grantedFeatureIds = new Set(
+    grantRows.flatMap((row) => row.feature_id ? [row.feature_id] : []),
   );
 
-  const features = Object.fromEntries(
-    FEATURE_IDS.map((featureId) => {
-      const row = rows.find((candidate) => candidate.feature_id === featureId);
-      const stage = row && isFeatureStage(row.stage)
-        ? row.stage
-        : FEATURE_CATALOG[featureId].defaultStage;
-      return [
-        featureId,
-        {
-          stage,
-          available: stage === 'released' || row?.available === 1,
-        },
-      ];
-    }),
-  ) as FeatureAccessSnapshot['features'];
+  const storedStages = new Map(
+    featureRows.map((row) => [row.feature_id, row.stage]),
+  );
+  const features = resolveFeaturePolicies({
+    storedStages,
+    grantsAllUnreleased,
+    grantedFeatureIds,
+  });
 
   return jsonResponse(200, { features });
 }
@@ -178,11 +169,10 @@ export async function handleAdminAccessOverview(
   const authError = getAdminAuthError(request, env.ADMIN_KEY);
   if (authError) return authError;
 
-  await ensureFeatureCatalog(env.WWO_ADMIN_DB);
   const [featureRows, cohortRows, cohortFeatureRows, personRows, membershipRows, requestRows] =
     await Promise.all([
       allRows<FeatureRow>(env.WWO_ADMIN_DB.prepare(
-        'SELECT feature_id, name, description, stage FROM features ORDER BY name',
+        'SELECT feature_id, stage FROM features',
       )),
       allRows<CohortRow>(env.WWO_ADMIN_DB.prepare(
         'SELECT cohort_id, name, grants_all_unreleased FROM cohorts ORDER BY name',
@@ -204,15 +194,19 @@ export async function handleAdminAccessOverview(
       )),
     ]);
 
+  const storedStages = new Map(
+    featureRows.map((row) => [row.feature_id, row.stage]),
+  );
   return jsonResponse(200, {
-    features: featureRows
-      .filter((row) => isFeatureId(row.feature_id) && isFeatureStage(row.stage))
-      .map((row) => ({
-        id: row.feature_id,
-        name: row.name,
-        description: row.description,
-        stage: row.stage,
-      })),
+    features: FEATURE_IDS.map((featureId) => {
+      const definition = FEATURE_CATALOG[featureId];
+      return {
+        id: featureId,
+        name: definition.name,
+        description: definition.description,
+        stage: resolveFeatureStage(featureId, storedStages),
+      };
+    }),
     cohorts: cohortRows.map((row) => ({
       id: row.cohort_id,
       name: row.name,
@@ -256,7 +250,7 @@ export async function handleAdminFeatureStageUpdate(
     return jsonResponse(400, { error: 'Invalid feature stage' });
   }
 
-  await ensureFeatureCatalog(env.WWO_ADMIN_DB);
+  await ensureFeaturePolicyRows(env.WWO_ADMIN_DB, [featureId]);
   await env.WWO_ADMIN_DB.prepare(
     'UPDATE features SET stage = ?, updated_at = CURRENT_TIMESTAMP WHERE feature_id = ?',
   ).bind(stage, featureId).run();
@@ -284,6 +278,7 @@ export async function handleAdminCohortFeaturesUpdate(
   }
 
   const featureIds = [...new Set(requestedFeatureIds as FeatureId[])];
+  await ensureFeaturePolicyRows(env.WWO_ADMIN_DB, featureIds);
   await env.WWO_ADMIN_DB.batch([
     env.WWO_ADMIN_DB.prepare('DELETE FROM cohort_features WHERE cohort_id = ?').bind(cohortId),
     ...featureIds.map((featureId) => env.WWO_ADMIN_DB.prepare(
@@ -420,21 +415,41 @@ export async function handleAccessRequest(
      WHERE public_id = ? AND status = 'pending'
      ORDER BY created_at DESC LIMIT 1`,
   ).bind(publicId).first<{ request_id: number }>();
+  let requestId = existing?.request_id;
   if (existing) {
     await env.WWO_ADMIN_DB.prepare(
       `UPDATE access_requests
        SET email = COALESCE(?, email), requested_features = ?
        WHERE request_id = ?`,
     ).bind(email, JSON.stringify(requestedFeatures), existing.request_id).run();
-    return jsonResponse(200, { id: existing.request_id, status: 'pending' });
+  } else {
+    const result = await env.WWO_ADMIN_DB.prepare(
+      `INSERT INTO access_requests (public_id, email, requested_features)
+       VALUES (?, ?, ?)
+       RETURNING request_id`,
+    ).bind(publicId, email, JSON.stringify(requestedFeatures)).first<{ request_id: number }>();
+    requestId = result?.request_id;
   }
 
-  const result = await env.WWO_ADMIN_DB.prepare(
-    `INSERT INTO access_requests (public_id, email, requested_features)
-     VALUES (?, ?, ?)
-     RETURNING request_id`,
-  ).bind(publicId, email, JSON.stringify(requestedFeatures)).first<{ request_id: number }>();
-  return jsonResponse(201, { id: result?.request_id, status: 'pending' });
+  if (email) {
+    try {
+      const resend = createResendClient({
+        apiKey: env.RESEND_API_KEY,
+        segmentId: env.RESEND_SEGMENT_ID,
+      });
+      const contact = await resend.addContact(email, 'extension-setup');
+      if (contact.created) {
+        await resend.sendUpdatesEmail(email);
+      }
+    } catch (err) {
+      console.error('[AccessControl] project updates signup failed:', err);
+    }
+  }
+
+  return jsonResponse(existing ? 200 : 201, {
+    id: requestId,
+    status: 'pending',
+  });
 }
 
 export async function handleAdminAccessRequestReview(

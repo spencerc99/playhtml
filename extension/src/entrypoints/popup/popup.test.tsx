@@ -1,5 +1,5 @@
-// ABOUTME: Verifies beta feature visibility in the extension popup.
-// ABOUTME: Ensures server-granted beta access exposes unfinished feature entries.
+// ABOUTME: Verifies experimental feature visibility and navigation in the extension popup.
+// ABOUTME: Ensures the popup remains a glance-and-jump surface.
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -89,7 +89,13 @@ describe("PlayHTMLPopup", () => {
         };
       }
       if (requestedKeys.includes("wwoFeatureOverrides")) {
-        return { wwoFeatureOverrides: { COMMUTE: true, SCRAPS: true, BAG_SETTINGS: true } };
+        return {
+          wwoFeatureOverrides: {
+            COMMUTE: true,
+            SCRAPS: true,
+            BAG_SETTINGS: true,
+          },
+        };
       }
       if (requestedKeys.includes("gameInventory")) {
         return {
@@ -122,6 +128,7 @@ describe("PlayHTMLPopup", () => {
     ]);
     Object.assign(browser.runtime, {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
+      openOptionsPage: vi.fn().mockResolvedValue(undefined),
     });
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
@@ -131,7 +138,7 @@ describe("PlayHTMLPopup", () => {
     document.body.innerHTML = "";
   });
 
-  it("shows only the experiments the tester chose to enable", async () => {
+  it("shows enabled feature entries without nesting settings", async () => {
     const { container, root } = await renderPopup();
 
     try {
@@ -139,7 +146,25 @@ describe("PlayHTMLPopup", () => {
       expect(container.querySelector(".commute-entry")).not.toBeNull();
       expect(container.textContent).toContain("scraps");
       expect(container.textContent).toContain("bag settings");
-      expect(container.textContent).toContain("experiments");
+      expect(container.textContent).not.toContain("experiments");
+      expect(container.textContent).toContain("settings");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("opens the options page from settings", async () => {
+    const { container, root } = await renderPopup();
+
+    try {
+      const settingsButton = Array.from(
+        container.querySelectorAll<HTMLButtonElement>("button"),
+      ).find((button) => button.textContent?.trim() === "settings");
+      expect(settingsButton).toBeDefined();
+
+      await act(async () => settingsButton?.click());
+
+      expect(browser.runtime.openOptionsPage).toHaveBeenCalledOnce();
     } finally {
       cleanup(root, container);
     }
@@ -158,7 +183,9 @@ describe("PlayHTMLPopup", () => {
         historyButton?.click();
       });
 
-      expect(browser.runtime.getURL).toHaveBeenCalledWith("walking-record.html");
+      expect(browser.runtime.getURL).toHaveBeenCalledWith(
+        "walking-record.html",
+      );
       expect(browser.tabs.create).toHaveBeenCalledWith({
         url: "chrome-extension://test/walking-record.html",
       });

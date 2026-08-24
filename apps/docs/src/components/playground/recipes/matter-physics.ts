@@ -171,7 +171,7 @@ export const matterPhysicsRecipe: ExampleRecipe = {
       <span id="physics-status" role="status">Joining room…</span>
     </div>
 
-    <div id="physics-world" can-play aria-label="Shared physics world"></div>
+    <div id="physics-world" aria-label="Shared physics world"></div>
     <p class="note">The last person to interact controls the simulation.</p>
   </main>
 
@@ -481,16 +481,18 @@ export const matterPhysicsRecipe: ExampleRecipe = {
       requestAnimationFrame(animate);
     }
 
-    worldElement.defaultData = {
-      controllerId: "",
-      bodies: structuredClone(INITIAL_BODIES),
-    };
-    worldElement.updateElement = ({ data }) => applySharedState(data);
-    worldElement.onMount = (context) => {
-      getData = context.getData;
-      setData = context.setData;
-      statusElement.textContent = "Watching shared motion";
-    };
+    playhtml.register("physics-world", {
+      defaultData: {
+        controllerId: "",
+        bodies: structuredClone(INITIAL_BODIES),
+      },
+      updateElement: ({ data }) => applySharedState(data),
+      onMount: (context) => {
+        getData = context.getData;
+        setData = context.setData;
+        statusElement.textContent = "Watching shared motion";
+      },
+    });
 
     worldElement.addEventListener("pointerdown", handlePointerDown);
     worldElement.addEventListener("pointermove", handlePointerMove);

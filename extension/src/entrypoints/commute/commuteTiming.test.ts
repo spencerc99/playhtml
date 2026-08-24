@@ -4,10 +4,56 @@
 import { describe, expect, it } from "vitest";
 import {
   getCommuteRouteDurationSeconds,
+  getSlowModePlatformPhase,
+  getSlowModeProgress,
   getCommuteTiming,
+  SLOW_MODE_DURATIONS,
 } from "./commuteTiming";
 
 describe("getCommuteTiming", () => {
+  it("counts a stop after the train reaches it", () => {
+    expect(
+      getSlowModeProgress(
+        { atOrigin: true, phase: "stopped", stopIndex: 0 },
+        4,
+      ),
+    ).toEqual({ completedIndex: -1, stopsLeft: 3 });
+    expect(
+      getSlowModeProgress(
+        { atOrigin: false, phase: "riding", stopIndex: 0 },
+        4,
+      ),
+    ).toEqual({ completedIndex: -1, stopsLeft: 3 });
+    expect(
+      getSlowModeProgress(
+        { atOrigin: false, phase: "stopped", stopIndex: 0 },
+        4,
+      ),
+    ).toEqual({ completedIndex: 0, stopsLeft: 2 });
+  });
+
+  it("uses the Slow Mode platform, leg, and dwell durations", () => {
+    expect(getCommuteTiming(8, 3, SLOW_MODE_DURATIONS)).toMatchObject({
+      phase: "stopped",
+      secondsLeft: 1,
+      atOrigin: true,
+    });
+    expect(getCommuteTiming(9, 3, SLOW_MODE_DURATIONS)).toMatchObject({
+      phase: "riding",
+      secondsLeft: 12,
+    });
+    expect(getCommuteTiming(25, 3, SLOW_MODE_DURATIONS)).toMatchObject({
+      phase: "stopped",
+      secondsLeft: 8,
+      stopIndex: 0,
+    });
+  });
+
+  it("separates the Slow Mode train arrival from boarding", () => {
+    expect(getSlowModePlatformPhase(9)).toBe("waiting");
+    expect(getSlowModePlatformPhase(6)).toBe("arriving");
+    expect(getSlowModePlatformPhase(4)).toBe("boarding");
+  });
   it("starts at the origin with open doors", () => {
     expect(getCommuteTiming(0, 5)).toEqual({
       phase: "stopped",

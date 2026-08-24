@@ -1,5 +1,5 @@
-<!-- ABOUTME: Hosts the collaborative cinder-block construction yard experiment. -->
-<!-- ABOUTME: Provides the accessible toolbar and fixed-size physics stage for the vanilla app. -->
+<!-- ABOUTME: Hosts experiment 10 — collaborative cinder-block construction yard. -->
+<!-- ABOUTME: Includes a shared site-diary gallery of yard snapshots over time. -->
 <!doctype html>
 <html lang="en">
   <head>
@@ -7,7 +7,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Build, topple, and rebuild a shared cinder-block structure."
+      content="Experiment 10: build, topple, and rebuild a shared cinder-block structure over time."
+    />
+    <meta
+      name="og:image"
+      content="https://playhtml.fun/experiments/index-previews/ex-10.png"
     />
     <meta
       property="og:image"
@@ -19,18 +23,25 @@
       content="https://playhtml.fun/experiments/index-previews/ex-10.png"
     />
     <link rel="icon" type="image/png" href="/icon.png" />
-    <title>Cinderblock Yard · playhtml</title>
+    <title>cinderblock yard — playhtml experiment 10</title>
   </head>
   <body>
     <main class="page-shell">
       <header class="title-row">
         <div>
-          <p class="eyebrow">PLAYHTML / SHARED ROOM / LIVE</p>
+          <p class="eyebrow">
+            <a href="/experiments/">playhtml experiment</a> 10
+          </p>
           <h1>Cinderblock Yard</h1>
+          <p class="lede">
+            A shared construction site that keeps growing — or collapsing —
+            as people pass through.
+          </p>
         </div>
         <p class="instructions">
-          01. DRAG TO BUILD OR DEMOLISH<br />
-          02. SELECT + <kbd>R</kbd> TO ROTATE 90°
+          DRAG TO BUILD OR DEMOLISH<br />
+          SELECT + <kbd>R</kbd> TO ROTATE 90°<br />
+          SAVE THE STRUCTURE TO THE DIARY
         </p>
       </header>
 
@@ -62,14 +73,43 @@
         class="stage-frame"
         aria-label="Shared cinder-block construction area"
       >
-        <div id="cinderblock-yard" can-play>
+        <div id="cinderblock-yard">
           <div id="block-layer"></div>
           <div class="ground" aria-hidden="true"></div>
         </div>
       </section>
 
+      <section class="site-diary" aria-labelledby="diary-heading">
+        <div class="diary-header">
+          <div>
+            <p class="tool-label">site diary</p>
+            <h2 id="diary-heading">Snapshots of the yard</h2>
+            <p class="diary-copy">
+              Freeze the yard as block positions — a quiet static copy, no
+              physics and no image bytes in the room. One save every 15 minutes.
+            </p>
+          </div>
+          <div class="diary-actions">
+            <button type="button" data-action="save-snapshot" id="save-snapshot">
+              SAVE
+            </button>
+            <p id="save-status" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+        <div
+          id="snapshot-gallery"
+          class="snapshot-gallery"
+          aria-live="polite"
+        >
+          <p class="gallery-empty">No frames yet — build something, then SAVE.</p>
+        </div>
+      </section>
+
       <footer>
-        <p>SHARED CONSTRUCTION ROOM / POSITIONS PERSIST</p>
+        <p>
+          this is <a href="/experiments/">experiment 10</a> made with
+          <a href="/">playhtml</a>
+        </p>
         <a href="/experiments/">&larr; ALL EXPERIMENTS</a>
       </footer>
     </main>

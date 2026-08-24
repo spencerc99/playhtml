@@ -60,6 +60,13 @@ import {
   refreshFeatureAccess,
 } from '../features/featureAccess'
 import { FEATURE_IDS } from '../flags'
+import {
+  SLOW_MODE_STATE_KEY,
+  isSlowModeRideOutcome,
+  normalizeSlowModeState,
+  updateSlowModeRide,
+} from '../features/slowMode/slowMode'
+import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -415,6 +422,7 @@ export default defineBackground(() => {
   // Opt-in: send new browser tabs to the walking record instead of the
   // default new tab page. Off unless the user turns it on.
   initNewTabTakeover()
+  const slowModeInterception = initSlowModeInterception()
 
   // Forward the manifest "open-inventory" command to the active tab's content script.
   // Manifest commands are browser-routed, so this works reliably on every page.
@@ -443,7 +451,7 @@ export default defineBackground(() => {
       // First time installation - setup default identity
       initializePlayerIdentity().then(() => initializeIdentityServices())
       // Open setup page in a new tab
-      const url = browser.runtime.getURL('options.html')
+      const url = browser.runtime.getURL('setup.html')
       browser.tabs.create({ url }).catch((e) => {
         console.warn('Failed to open setup page on install', e)
       })
@@ -599,6 +607,42 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
+    if (message.type === 'SLOW_MODE_FORM_STATE' && sender.tab?.id != null) {
+      slowModeInterception.setFormInProgress(
+        sender.tab.id,
+        message.inProgress === true,
+      )
+      reply({ success: true })
+      return
+    }
+
+    if (message.type === 'SLOW_MODE_RIDE_OUTCOME') {
+      if (
+        typeof message.rideId !== 'string' ||
+        !isSlowModeRideOutcome(message.outcome)
+      ) {
+        reply({ success: false })
+        return
+      }
+      browser.storage.local
+        .get(SLOW_MODE_STATE_KEY)
+        .then((stored) =>
+          browser.storage.local.set({
+            [SLOW_MODE_STATE_KEY]: updateSlowModeRide(
+              normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY]),
+              message.rideId,
+              message.outcome,
+            ),
+          }),
+        )
+        .then(() => reply({ success: true }))
+        .catch((error) => {
+          console.warn('[Slow Mode] failed to update ride log:', error)
+          reply({ success: false })
+        })
+      return true
+    }
+
     if (message.type === 'GET_SESSION_ID') {
       getSessionId().then(reply)
       return true

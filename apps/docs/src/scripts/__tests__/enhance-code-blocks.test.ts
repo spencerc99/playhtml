@@ -13,7 +13,7 @@ const handle = {
 vi.mock("playhtml", () => ({
   playhtml: {
     ready: Promise.resolve(),
-    setupPlayElement: vi.fn(),
+    register: vi.fn(() => handle),
     getHandle: vi.fn(() => handle),
     registerPlayEventListener: vi.fn(
       (type: string, event: { onEvent: (payload: unknown) => void }) => {
@@ -50,7 +50,13 @@ describe("docs code-block copy enhancement", () => {
       "docs-code-copy",
       expect.objectContaining({ onEvent: expect.any(Function) }),
     );
-    expect(playhtml.setupPlayElement).toHaveBeenCalledOnce();
+    expect(playhtml.register).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      expect.objectContaining({
+        defaultData: { wear: 0 },
+        updateElement: expect.any(Function),
+      }),
+    );
 
     const button = document.querySelector<HTMLButtonElement>(".ph-copy__btn");
     expect(button).not.toBeNull();
