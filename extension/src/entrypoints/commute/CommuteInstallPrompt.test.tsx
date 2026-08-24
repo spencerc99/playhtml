@@ -9,6 +9,7 @@ import {
   markExtensionInstalled,
 } from "../../utils/extensionInstallMarker";
 import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
+import { CommuteStationPoster } from "./CommuteStationPoster";
 
 async function renderPrompt(): Promise<{
   container: HTMLDivElement;
@@ -48,7 +49,9 @@ describe("CommuteInstallPrompt", () => {
     });
 
     expect(container.textContent).toContain("internet transit pass");
+    expect(container.textContent).toContain("join the ride");
     expect(container.textContent).toContain("get the extension");
+    expect(container.textContent).not.toContain("add your stops");
     const link = container.querySelector("a");
     expect(link?.href).toBe("https://wewere.online/");
     expect(link?.target).toBe("_blank");
@@ -80,6 +83,61 @@ describe("CommuteInstallPrompt", () => {
     });
 
     expect(container.querySelector(".commute-install-cta")).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("opens and dismisses the station poster overlay", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(<CommuteStationPoster />);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+    });
+
+    const poster = container.querySelector<HTMLButtonElement>(
+      ".station-install-poster",
+    );
+    expect(poster?.getAttribute("aria-label")).toBe(
+      "Open the internet transit pass poster",
+    );
+    act(() => poster?.click());
+
+    const dialog = document.querySelector<HTMLElement>(
+      ".commute-poster-dialog",
+    );
+    expect(dialog?.textContent).toContain("internet transit pass");
+    expect(dialog?.textContent).toContain("join the ride");
+    expect(dialog?.textContent).toContain(
+      "this line runs on the stops of riders like you — install we were online and the places you visit become stations on everyone's commute.",
+    );
+    expect(dialog?.querySelector("a")?.href).toBe("https://wewere.online/");
+
+    act(() =>
+      dialog
+        ?.querySelector<HTMLButtonElement>(
+          ".commute-poster-dialog__close",
+        )
+        ?.click(),
+    );
+    expect(document.querySelector(".commute-poster-dialog")).toBeNull();
+
+    act(() => poster?.click());
+    const backdrop = document.querySelector<HTMLElement>(
+      ".commute-poster-backdrop",
+    );
+    act(() => {
+      backdrop?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+    expect(document.querySelector(".commute-poster-dialog")).toBeNull();
+
+    act(() => poster?.click());
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(document.querySelector(".commute-poster-dialog")).toBeNull();
     act(() => root.unmount());
   });
 });

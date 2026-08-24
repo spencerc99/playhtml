@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import type { CommutePoint } from "./commuteMobile";
+import { CommuteMobileTransitPass } from "./CommuteMobileTransitPass";
 
 interface LandscapeOrientation extends ScreenOrientation {
   lock?: (orientation: "landscape") => Promise<void>;
@@ -207,6 +208,7 @@ export function CommuteMobileControls({
               {action.label}
             </button>
           )}
+          <CommuteMobileTransitPass />
         </>
       )}
     </div>

@@ -61,6 +61,7 @@ import {
   type CommuteMobileAction,
 } from "./CommuteMobileControls";
 import { CommuteStage } from "./CommuteStage";
+import { CommuteStationPoster } from "./CommuteStationPoster";
 import { useCommuteDebug } from "./commuteDebug";
 import {
   COMMUTE_CLICK_WALK_SPEED,
@@ -595,10 +596,12 @@ function Platform({
   currentStop,
   visible,
   atOrigin,
+  showInstallPoster,
 }: {
   currentStop: CommuteStop;
   visible: boolean;
   atOrigin: boolean;
+  showInstallPoster: boolean;
 }) {
   return (
     <div
@@ -608,13 +611,13 @@ function Platform({
           "--station-hue": atOrigin ? "#4a9a8a" : currentStop.hue,
         } as React.CSSProperties
       }
-      aria-hidden
     >
-      <span className="station-platform__stripe" />
-      <span className="station-platform__pillar station-platform__pillar--left" />
-      <span className="station-platform__pillar station-platform__pillar--right" />
-      <span className="station-platform__edge" />
-      <span className="station-sign">
+      <span className="station-platform__stripe" aria-hidden />
+      <span className="station-platform__pillar station-platform__pillar--left" aria-hidden />
+      <span className="station-platform__pillar station-platform__pillar--right" aria-hidden />
+      <span className="station-platform__edge" aria-hidden />
+      {showInstallPoster && <CommuteStationPoster />}
+      <span className="station-sign" aria-hidden>
         {!atOrigin && <StopFavicon stop={currentStop} />}
         <span className="station-sign__destination">
           <strong>
@@ -679,6 +682,7 @@ function LandscapeWindow({
         currentStop={platformStop}
         visible={stationVisible}
         atOrigin={platformAtOrigin}
+        showInstallPoster={edge === "upper"}
       />
     </div>
   );

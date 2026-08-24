@@ -134,10 +134,7 @@ function makeRidge(
   return points;
 }
 
-function makeRidgeTrees(
-  random: () => number,
-  ridge: Point[],
-): TreeMark[] {
+function makeRidgeTrees(random: () => number, ridge: Point[]): TreeMark[] {
   const trees: TreeMark[] = [];
 
   for (let index = 0; index < ridge.length - 1; index += 1) {
@@ -223,13 +220,7 @@ export function createLandscapePlan(seed: string): LandscapePlan {
   const ridgeTrees = makeRidgeTrees(random, mountainRidge);
 
   const foregroundTrees = Array.from({ length: 13 }, (_, index) =>
-    makeTree(
-      random,
-      45 + index * 170 + between(random, -55, 55),
-      118,
-      23,
-      52,
-    ),
+    makeTree(random, 45 + index * 170 + between(random, -55, 55), 118, 23, 52),
   );
 
   return {
@@ -249,7 +240,9 @@ function SmallTree({ tree }: { tree: TreeMark }) {
   const tipX = tree.x + tree.lean;
   return (
     <g className="landscape-tree landscape-tree--small">
-      <path d={`M ${tree.x} ${tree.y} Q ${tree.x} ${crownY + 5} ${tipX} ${crownY}`} />
+      <path
+        d={`M ${tree.x} ${tree.y} Q ${tree.x} ${crownY + 5} ${tipX} ${crownY}`}
+      />
       <path
         className="landscape-tree__leaf"
         d={`M ${tipX} ${crownY - 4} q -5 7 0 11 q 5 -4 0 -11 Z`}
@@ -298,7 +291,10 @@ function LandscapeSvg({
         ))}
       {layer === "mountain" && (
         <>
-          <path className="landscape-mountain landscape-mountain--near" d={plan.mountain} />
+          <path
+            className="landscape-mountain landscape-mountain--near"
+            d={plan.mountain}
+          />
           {plan.contours.map((contour, index) => (
             <path key={index} className="landscape-contour" d={contour} />
           ))}
@@ -354,8 +350,16 @@ export function ProceduralLandscape({
     <div className={`landscape landscape--${edge} landscape--${phase}`}>
       {edge === "upper" ? (
         <>
-          <MovingLayer plan={plan} layer="clouds" className="landscape-track--clouds" />
-          <MovingLayer plan={plan} layer="mountain" className="landscape-track--mountain" />
+          <MovingLayer
+            plan={plan}
+            layer="clouds"
+            className="landscape-track--clouds"
+          />
+          <MovingLayer
+            plan={plan}
+            layer="mountain"
+            className="landscape-track--mountain"
+          />
           <MovingLayer
             plan={plan}
             layer="foreground"
@@ -364,7 +368,11 @@ export function ProceduralLandscape({
         </>
       ) : (
         <>
-          <MovingLayer plan={plan} layer="water" className="landscape-track--water" />
+          <MovingLayer
+            plan={plan}
+            layer="water"
+            className="landscape-track--water"
+          />
           <MovingLayer
             plan={plan}
             layer="foreground"
