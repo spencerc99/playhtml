@@ -2139,6 +2139,36 @@ button {
     box-shadow: 0 0 16px color-mix(in srgb, var(--accent-gold) 18%, transparent);
   }
 
+  .slow-mode-progress {
+    border-color: var(--border-strong);
+    background: var(--surface);
+    box-shadow: 0 1px 4px var(--shadow);
+
+    &__map {
+      > span:not(.slow-mode-progress__origin) {
+        border-color: var(--border-strong);
+        background: var(--surface);
+
+        &.is-complete {
+          border-color: var(--accent-teal);
+          background: var(--accent-teal);
+        }
+      }
+
+      > i {
+        border-color: var(--border-strong);
+
+        &.is-complete {
+          border-color: var(--accent-teal);
+        }
+      }
+    }
+
+    &__origin {
+      color: var(--text-muted);
+    }
+  }
+
   .slow-mode-platform__train img {
     filter: sepia(0.28) brightness(0.82) contrast(0.92);
   }
