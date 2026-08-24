@@ -23,6 +23,7 @@ import { PresenceIndicator } from "./components/PresenceIndicator";
 import { Bench } from "./components/Bench";
 import { CoffeeMachine } from "./components/CoffeeMachine";
 import { DownloadGate } from "./components/DownloadGate";
+import { TrainCrossing } from "./components/TrainCrossing";
 import {
   CHANGELOG_URL,
   isNavigationPathActive,
@@ -463,6 +464,8 @@ export default function App() {
           <br />
           <DownloadGate />
         </section>
+
+        <TrainCrossing />
 
         <section className={styles.section}>
           <h2 className={styles.sectionHeading}>leave a mark</h2>
