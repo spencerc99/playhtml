@@ -48,7 +48,7 @@ export function TrainCrossing() {
           className={`${styles.train} ${hasArrived ? styles.trainArrived : ""}`}
         >
           <span className={styles.serviceLabel}>
-            local · try the internet commute
+            try the internet commute
           </span>
           <img
             className={styles.trainIllustration}
@@ -65,8 +65,7 @@ export function TrainCrossing() {
         </span>
       </span>
       <span className={styles.caption}>
-        a slow train through the recent web — click to board with whoever's
-        riding
+        a slow train through the recent web
       </span>
     </a>
   );

@@ -72,13 +72,14 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
 $accent-gold: #d4b85c;
 
+// The train photo is cropped mid-carriage on its left edge, so the rear must
+// always sit past the viewport's left edge to read as a longer train.
 .train {
   position: absolute;
-  left: clamp(24px, 14vw, 130px);
+  left: -36px;
   bottom: 26px;
   display: block;
-  width: clamp(360px, 46vw, 470px);
-  max-width: calc(100vw - 48px);
+  width: clamp(480px, 58vw, 620px);
   transform: translateX(calc(-100% - 14vw));
   transition: transform 3.2s cubic-bezier(0.22, 0.75, 0.35, 1);
 }
@@ -98,7 +99,7 @@ $accent-gold: #d4b85c;
 .serviceLabel {
   position: absolute;
   top: -32px;
-  left: 50%;
+  left: calc(50% + 18px);
   padding: 3px 14px;
   color: color.adjust($accent-gold, $lightness: -14%);
   background: rgba($bg, 0.9);
@@ -167,10 +168,9 @@ $accent-gold: #d4b85c;
   }
 
   .train {
-    left: 12px;
+    left: -24px;
     bottom: 26px;
-    width: min(88vw, 360px);
-    max-width: none;
+    width: min(96vw, 420px);
   }
 
   .signal {
