@@ -178,7 +178,7 @@ const PRODUCT_PATH_PATTERNS = [
   /\/listings?\/[^/]+(?:\/|$)/i,
 ];
 
-const AUTHENTICATION_SUBDOMAIN_LABELS = new Set([
+const AUTHENTICATION_HOST_LABELS = new Set([
   'auth',
   'idp',
   'idpproxy',
@@ -190,10 +190,7 @@ const AUTHENTICATION_SUBDOMAIN_LABELS = new Set([
   'sso',
 ]);
 
-const NEVER_SHOW_SUBDOMAIN_LABELS = new Set([
-  ...AUTHENTICATION_SUBDOMAIN_LABELS,
-  'tracking',
-]);
+const NEVER_SHOW_SUBDOMAIN_LABELS = new Set(['tracking']);
 
 const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'account',
@@ -392,6 +389,10 @@ function hasSubdomainLabel(domain: string, labels: Set<string>): boolean {
   );
 }
 
+function hasHostLabel(domain: string, labels: Set<string>): boolean {
+  return domain.split('.').some((label) => labels.has(comparableLabel(label)));
+}
+
 function isNeverShownHost(
   domain: string,
   registrableDomain: string | null,
@@ -401,6 +402,7 @@ function isNeverShownHost(
     domain.endsWith('.localhost') ||
     domain.endsWith('.local') ||
     registrableDomain === null ||
+    hasHostLabel(domain, AUTHENTICATION_HOST_LABELS) ||
     hasSubdomainLabel(domain, NEVER_SHOW_SUBDOMAIN_LABELS)
   );
 }
