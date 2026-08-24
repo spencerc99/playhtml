@@ -91,7 +91,7 @@ describe("CommuteInstallPrompt", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     act(() => {
-      root.render(<CommuteStationPoster />);
+      root.render(<CommuteStationPoster stationVisible />);
     });
     await act(async () => {
       vi.advanceTimersByTime(800);
@@ -134,6 +134,41 @@ describe("CommuteInstallPrompt", () => {
     expect(document.querySelector(".commute-poster-dialog")).toBeNull();
 
     act(() => poster?.click());
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(document.querySelector(".commute-poster-dialog")).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("removes the poster trigger while the station is offscreen but keeps an open overlay", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(<CommuteStationPoster stationVisible={false} />);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+    });
+
+    expect(container.querySelector(".station-install-poster")).toBeNull();
+
+    act(() => {
+      root.render(<CommuteStationPoster stationVisible />);
+    });
+    const poster = container.querySelector<HTMLButtonElement>(
+      ".station-install-poster",
+    );
+    act(() => poster?.click());
+    expect(document.querySelector(".commute-poster-dialog")).not.toBeNull();
+
+    act(() => {
+      root.render(<CommuteStationPoster stationVisible={false} />);
+    });
+    expect(container.querySelector(".station-install-poster")).toBeNull();
+    expect(document.querySelector(".commute-poster-dialog")).not.toBeNull();
+
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     });

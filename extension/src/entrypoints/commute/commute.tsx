@@ -616,7 +616,7 @@ function Platform({
       <span className="station-platform__pillar station-platform__pillar--left" aria-hidden />
       <span className="station-platform__pillar station-platform__pillar--right" aria-hidden />
       <span className="station-platform__edge" aria-hidden />
-      {showInstallPoster && <CommuteStationPoster />}
+      {showInstallPoster && <CommuteStationPoster stationVisible={visible} />}
       <span className="station-sign" aria-hidden>
         {!atOrigin && <StopFavicon stop={currentStop} />}
         <span className="station-sign__destination">

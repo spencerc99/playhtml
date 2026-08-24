@@ -5,7 +5,11 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useExtensionInstallState } from "./commuteInstallState";
 
-export function CommuteStationPoster() {
+export function CommuteStationPoster({
+  stationVisible,
+}: {
+  stationVisible: boolean;
+}) {
   const installState = useExtensionInstallState();
   const [open, setOpen] = useState(false);
 
@@ -23,19 +27,21 @@ export function CommuteStationPoster() {
 
   return (
     <>
-      <button
-        className="station-install-poster"
-        type="button"
-        aria-label="Open the internet transit pass poster"
-        onClick={() => setOpen(true)}
-      >
-        <span className="station-install-poster__stripe" aria-hidden />
-        <span className="station-install-poster__copy">
-          <span>internet transit pass</span>
-          <strong>join the ride</strong>
-          <i aria-hidden />
-        </span>
-      </button>
+      {stationVisible && (
+        <button
+          className="station-install-poster"
+          type="button"
+          aria-label="Open the internet transit pass poster"
+          onClick={() => setOpen(true)}
+        >
+          <span className="station-install-poster__stripe" aria-hidden />
+          <span className="station-install-poster__copy">
+            <span>internet transit pass</span>
+            <strong>join the ride</strong>
+            <i aria-hidden />
+          </span>
+        </button>
+      )}
 
       {open &&
         createPortal(
