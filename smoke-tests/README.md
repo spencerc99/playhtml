@@ -34,6 +34,9 @@ They are manual because they take several minutes, wait for real Durable Object
 alarms, and need staging secrets.
 
 ```bash
+# Verifies authenticated source-to-consumer and consumer-to-source bridge sync.
+bun smoke:partykit:bridge
+
 # Verifies bridge observers reattach after Durable Object hibernation.
 bun smoke:partykit:hibernation
 
