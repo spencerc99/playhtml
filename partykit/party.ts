@@ -159,6 +159,8 @@ type DocumentWriteState =
 
 type PendingDocumentReset = {
   resetEpoch: number;
+  attempt?: number;
+  retryAt?: number;
 };
 
 type DocumentSaveRetry = {
@@ -888,23 +890,81 @@ export class PartyServer extends YServer {
       "resetEpoch" in value &&
       typeof value.resetEpoch === "number"
     ) {
-      return { resetEpoch: value.resetEpoch };
+      return {
+        resetEpoch: value.resetEpoch,
+        attempt:
+          "attempt" in value && typeof value.attempt === "number"
+            ? value.attempt
+            : undefined,
+        retryAt:
+          "retryAt" in value && typeof value.retryAt === "number"
+            ? value.retryAt
+            : undefined
+      };
     }
     return null;
   }
 
-  private async reconcilePendingDocumentReset(): Promise<void> {
+  private async schedulePendingDocumentResetRetry(
+    resetEpoch: number
+  ): Promise<void> {
+    try {
+      const previous = await this.getPendingDocumentReset();
+      const attempt = (previous?.attempt ?? 0) + 1;
+      const delay = Math.min(
+        DEFAULT_DOCUMENT_SAVE_RETRY_MS * 2 ** (attempt - 1),
+        DEFAULT_DOCUMENT_SAVE_RETRY_MAX_MS
+      );
+      await this.ctx.storage.put(STORAGE_KEYS.pendingDocumentReset, {
+        resetEpoch,
+        attempt,
+        retryAt: Date.now() + delay
+      } satisfies PendingDocumentReset);
+      await this.scheduleNextAlarm();
+    } catch (error) {
+      console.error(
+        `[PartyServer] Pending document reset retry scheduling failed for room=${this.name}:`,
+        error
+      );
+    }
+  }
+
+  private async reconcilePendingDocumentReset(): Promise<boolean> {
     const pending = await this.getPendingDocumentReset();
-    if (pending === null) return;
+    if (pending === null) return true;
 
     const documentResetEpoch = getDocResetEpoch(this.document);
-    if (documentResetEpoch === pending.resetEpoch) {
+    if (documentResetEpoch !== pending.resetEpoch) {
+      this.documentWriteState = {
+        kind: "recovery-required",
+        resetEpoch: pending.resetEpoch
+      };
+      await this.schedulePendingDocumentResetRetry(pending.resetEpoch);
+      return false;
+    }
+
+    try {
       await this.setResetEpoch(pending.resetEpoch);
+      await this.ctx.storage.delete(STORAGE_KEYS.pendingDocumentReset);
+      if (this.getDocumentWriteState().kind === "recovery-required") {
+        this.documentWriteState = { kind: "idle" };
+      }
       console.warn(
         `[PartyServer] Recovered interrupted document reset for room=${this.name}: resetEpoch=${pending.resetEpoch}`
       );
+      return true;
+    } catch (error) {
+      this.documentWriteState = {
+        kind: "recovery-required",
+        resetEpoch: pending.resetEpoch
+      };
+      console.error(
+        `[PartyServer] Pending document reset reconciliation failed for room=${this.name}:`,
+        error
+      );
+      await this.schedulePendingDocumentResetRetry(pending.resetEpoch);
+      return false;
     }
-    await this.ctx.storage.delete(STORAGE_KEYS.pendingDocumentReset);
   }
 
   private async getPersistedDocumentBase64(): Promise<string | null> {
@@ -986,7 +1046,6 @@ export class PartyServer extends YServer {
     afterReplace
   }: CommitCompactedDocumentOptions): Promise<boolean> {
     this.documentWriteState = { kind: "compaction" };
-    let liveDocumentReplaced = false;
     let databaseCommitted = false;
 
     try {
@@ -1058,15 +1117,26 @@ export class PartyServer extends YServer {
         kind: "recovery-required",
         resetEpoch: compactedDocument.resetEpoch
       };
-      await this.setResetEpochAfterDocumentCommit(
+      const resetEpochCommitted = await this.setResetEpochAfterDocumentCommit(
         compactedDocument.resetEpoch
       );
 
       this.compactionAutosaveSnapshot = compactedDocument.base64;
       replaceDocFromSnapshot(this.document, compactedDocument.base64);
-      liveDocumentReplaced = true;
-      await this.ctx.storage.delete(STORAGE_KEYS.pendingDocumentReset);
-      this.documentWriteState = { kind: "idle" };
+      if (resetEpochCommitted) {
+        this.documentWriteState = { kind: "idle" };
+        try {
+          await this.ctx.storage.delete(STORAGE_KEYS.pendingDocumentReset);
+        } catch (error) {
+          console.error(
+            `[PartyServer] Compaction marker cleanup failed for room=${this.name}:`,
+            error
+          );
+          await this.schedulePendingDocumentResetRetry(
+            compactedDocument.resetEpoch
+          );
+        }
+      }
       try {
         await afterReplace?.();
       } catch (error) {
@@ -1084,10 +1154,7 @@ export class PartyServer extends YServer {
       }
       throw error;
     } finally {
-      if (
-        liveDocumentReplaced ||
-        this.getDocumentWriteState().kind === "compaction"
-      ) {
+      if (this.getDocumentWriteState().kind === "compaction") {
         this.documentWriteState = { kind: "idle" };
       }
     }
@@ -1113,12 +1180,14 @@ export class PartyServer extends YServer {
     }
   }
 
-  private async setResetEpochAfterDocumentCommit(epoch: number): Promise<void> {
+  private async setResetEpochAfterDocumentCommit(
+    epoch: number
+  ): Promise<boolean> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= RESET_EPOCH_WRITE_ATTEMPTS; attempt += 1) {
       try {
         await this.setResetEpoch(epoch);
-        return;
+        return true;
       } catch (error) {
         lastError = error;
         if (attempt < RESET_EPOCH_WRITE_ATTEMPTS) {
@@ -1129,7 +1198,12 @@ export class PartyServer extends YServer {
         }
       }
     }
-    throw lastError;
+    console.error(
+      `[PartyServer] Reset epoch remains pending for room=${this.name}:`,
+      lastError
+    );
+    await this.schedulePendingDocumentResetRetry(epoch);
+    return false;
   }
 
   private setConnectionAcceptedResetEpoch(
@@ -1352,8 +1426,11 @@ export class PartyServer extends YServer {
       console.log(`[Restore Snapshot] Successfully saved snapshot to database`);
 
       // Set reset epoch for client detection
-      await this.setResetEpochAfterDocumentCommit(resetEpoch);
-      console.log(`[Restore Snapshot] Set resetEpoch: ${resetEpoch}`);
+      const resetEpochCommitted =
+        await this.setResetEpochAfterDocumentCommit(resetEpoch);
+      if (resetEpochCommitted) {
+        console.log(`[Restore Snapshot] Set resetEpoch: ${resetEpoch}`);
+      }
 
       // Broadcast a "room-reset" message to all connected clients
       this.broadcastCustomMessage(this.getRoomResetMessage(resetEpoch));
@@ -1378,8 +1455,18 @@ export class PartyServer extends YServer {
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
       this.markDocumentHydrated();
-      await this.ctx.storage.delete(STORAGE_KEYS.pendingDocumentReset);
-      resetCompleted = true;
+      if (resetEpochCommitted) {
+        try {
+          await this.ctx.storage.delete(STORAGE_KEYS.pendingDocumentReset);
+          resetCompleted = true;
+        } catch (error) {
+          console.error(
+            `[Restore Snapshot] Marker cleanup failed for room=${roomId}:`,
+            error
+          );
+          await this.schedulePendingDocumentResetRetry(resetEpoch);
+        }
+      }
       console.log(`[Restore Snapshot] Successfully reloaded live server`);
 
       console.log(
@@ -1498,16 +1585,26 @@ export class PartyServer extends YServer {
     const documentSaveRetry = await this.getDocumentSaveRetry();
     const persistenceRecoveryAlarm =
       await this.circuitBreaker.getPersistenceRecoveryRetryAfter();
-    const nextAlarm = [
-      maintenanceAlarm,
-      documentSaveRetry?.retryAt ?? null,
-      persistenceRecoveryAlarm,
-    ].reduce<
-      number | null
-    >((earliest, candidate) => {
-      if (candidate === null) return earliest;
-      return earliest === null ? candidate : Math.min(earliest, candidate);
-    }, null);
+    const pendingDocumentReset = await this.getPendingDocumentReset();
+    const pendingDocumentResetAlarm =
+      pendingDocumentReset === null
+        ? null
+        : (pendingDocumentReset.retryAt ?? now);
+    const nextAlarm =
+      [
+        maintenanceAlarm,
+        documentSaveRetry?.retryAt ?? null,
+        persistenceRecoveryAlarm,
+        pendingDocumentResetAlarm,
+      ].reduce<number | null>(
+        (earliest, candidate) =>
+          candidate === null
+            ? earliest
+            : earliest === null
+              ? candidate
+              : Math.min(earliest, candidate),
+        null
+      );
 
     if (nextAlarm === null) {
       await this.ctx.storage.deleteAlarm?.();
@@ -3226,6 +3323,16 @@ export class PartyServer extends YServer {
     if (!(await this.circuitBreaker.shouldRunAlarm())) return;
 
     try {
+      const pendingDocumentReset = await this.getPendingDocumentReset();
+      if (
+        pendingDocumentReset !== null &&
+        (pendingDocumentReset.retryAt ?? 0) <= Date.now()
+      ) {
+        await this.runDocumentWrite(() =>
+          this.reconcilePendingDocumentReset()
+        );
+      }
+
       const documentSaveRetry = await this.getDocumentSaveRetry();
       if (
         documentSaveRetry !== null &&
