@@ -2152,13 +2152,7 @@ describe("quarantine data safety", () => {
     const { room, storage } = createRoom();
     await startRoom(room);
 
-    const savedDoc = new Y.Doc();
-    savedDoc.getMap("play").set("version", "saved-before-recovery");
-    const savedBase64 = encodeDoc(savedDoc);
-    Y.applyUpdate(
-      room.document,
-      new Uint8Array(Buffer.from(savedBase64, "base64"))
-    );
+    room.document.getMap("play").set("version", "saved-before-recovery");
 
     const delayedSave = createDeferred();
     const saveStarted = createDeferred();
