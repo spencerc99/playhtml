@@ -1481,7 +1481,6 @@ export class PartyServer extends YServer {
     const subs = await this.getSubscribers();
     const refs = await this.getSharedReferences();
     const maintenanceAlarm = getNextAlarmTime({
-    const maintenanceAlarm = getNextAlarmTime({
       compactAfter: await this.getEmptyRoomCompactAfter(),
       hasBridgeLeases: Boolean(subs.length || refs.length),
       now,
