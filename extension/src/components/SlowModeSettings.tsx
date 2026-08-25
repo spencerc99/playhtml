@@ -1,5 +1,5 @@
 // ABOUTME: Renders the popup controls and daily ride summary for Slow Mode.
-// ABOUTME: Persists the global toggle and chance while exposing cooldown status.
+// ABOUTME: Persists interception and stop-sharing choices while exposing cooldown status.
 
 import React, { useEffect, useMemo, useState } from "react";
 import browser from "webextension-polyfill";

@@ -60,7 +60,7 @@ export default defineContentScript({
 
     markExtensionInstalled(document.documentElement);
     const removeSlowModeBridge = initHostedSlowModeContentBridge();
-    ctx.onInvalidated(removeSlowModeBridge);
+    ctx?.onInvalidated(removeSlowModeBridge);
 
     let currentPresenceCount = 0;
 
