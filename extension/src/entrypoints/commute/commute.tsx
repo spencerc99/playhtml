@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import type { PlayerIdentity } from "@playhtml/common";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
@@ -92,6 +93,8 @@ import {
   parseSlowModeRequest,
   type SlowModeRequest,
 } from "../../features/slowMode/slowModeRoute";
+import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
+import { createCommuteInitOptions } from "./commuteIdentity";
 import "./commute.scss";
 
 type CarData = Record<string, never>;
@@ -1686,8 +1689,14 @@ function usePrefersReducedMotion(): boolean {
   return reducedMotion;
 }
 
-function InternetCommute() {
+function InternetCommute({
+  extensionCursorColor,
+}: {
+  extensionCursorColor: string | null;
+}) {
   const riders = useUsers();
+  const { cursors } = usePlayContext();
+  const cursorColor = (extensionCursorColor ?? cursors.color) || "#3d3833";
   const [debugVisible, setDebugVisible] = useCommuteDebug();
   const recentRoute = useRecentRoute();
   const slowModeRoute = useSlowModeRoute(SLOW_MODE_REQUEST, recentRoute);
@@ -1910,7 +1919,7 @@ function InternetCommute() {
           </section>
         ) : SLOW_MODE_REQUEST && slowModeRoute && timing.atOrigin ? (
           <SlowModePlatformScene
-            cursorColor="#3d3833"
+            cursorColor={cursorColor}
             destinationDomain={new URL(
               SLOW_MODE_REQUEST.destinationUrl,
             ).hostname.replace(/^www\./, "")}
@@ -1998,19 +2007,33 @@ function InternetCommute() {
   );
 }
 
+function CommuteRoot() {
+  const [playerIdentity, setPlayerIdentity] = useState<
+    PlayerIdentity | null | undefined
+  >(undefined);
+
+  useEffect(() => {
+    getPublicPlayerIdentity().then(setPlayerIdentity).catch((error: unknown) => {
+      console.warn("[internet commute] cursor identity unavailable:", error);
+      setPlayerIdentity(null);
+    });
+  }, []);
+
+  if (playerIdentity === undefined) return null;
+
+  return (
+    <PlayProvider initOptions={createCommuteInitOptions(playerIdentity)}>
+      <InternetCommute
+        extensionCursorColor={
+          playerIdentity?.playerStyle.colorPalette[0] ?? null
+        }
+      />
+    </PlayProvider>
+  );
+}
+
 createRoot(document.getElementById("commute-root")!).render(
   <React.StrictMode>
-    <PlayProvider
-      initOptions={{
-        room: "wwo-internet-commute",
-        cursors: {
-          enabled: true,
-          enableChat: false,
-          coordinateMode: "absolute",
-        },
-      }}
-    >
-      <InternetCommute />
-    </PlayProvider>
+    <CommuteRoot />
   </React.StrictMode>,
 );

@@ -182,7 +182,6 @@ export function OptionsPage() {
   const experimentAccess = useExperimentAccess();
   const bagSettingsEnabled = useFeatureState("BAG_SETTINGS").enabled;
   const isSafari = isSafariExtensionPageUrl(window.location.href);
-  const opensNativePickerInPage = !import.meta.env.FIREFOX;
 
   const sections = bagSettingsEnabled
     ? SECTIONS
@@ -240,18 +239,7 @@ export function OptionsPage() {
     return () => observer.disconnect();
   }, [bagSettingsEnabled]);
 
-  const handleOpenColorPicker = async () => {
-    if (opensNativePickerInPage) {
-      colorInputRef.current?.click();
-      return;
-    }
-    await browser.windows.create({
-      url: browser.runtime.getURL("color-picker.html"),
-      type: "popup",
-      width: 360,
-      height: 260,
-    });
-  };
+  const handleOpenColorPicker = () => colorInputRef.current?.click();
 
   const handleSaveColor = async () => {
     setSavingColor(true);
@@ -356,7 +344,7 @@ export function OptionsPage() {
                 />
                 <button
                   type="button"
-                  onClick={() => void handleOpenColorPicker()}
+                  onClick={handleOpenColorPicker}
                   aria-label="Pick cursor color"
                 >
                   <CursorSvg size={36} color={color} />

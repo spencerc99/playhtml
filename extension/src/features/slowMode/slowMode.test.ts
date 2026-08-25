@@ -88,6 +88,10 @@ describe("isFarJump", () => {
   });
 
   it.each([
+    "https://auth.openai.com/log-in",
+    "https://login.example.com/continue",
+    "https://idpproxy.illinois.edu/simplesaml/module.php/saml/sp/saml2-acs.php/saml-sp",
+    "https://university.example/oauth2callback",
     "https://accounts.google.com/signin",
     "https://shop.example/checkout",
     "https://localhost:3000/private",

@@ -131,7 +131,51 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
-  it('keeps large documentation and authentication surfaces as scenery only', () => {
+  it('excludes authentication hosts from commute output', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'authentication',
+          'navigation',
+          'https://auth.openai.com/log-in',
+          100,
+          'rider-one',
+          'Log in',
+        ),
+        event(
+          'identity-provider',
+          'navigation',
+          'https://idpproxy.illinois.edu/simplesaml/module.php/saml/sp/saml2-acs.php/saml-sp',
+          90,
+          'rider-two',
+          'Sign in',
+        ),
+        event(
+          'authentication-callback',
+          'navigation',
+          'https://university.example/oauth2callback',
+          80,
+          'rider-three',
+          'Signing in',
+        ),
+        event(
+          'registrable-authentication-host',
+          'navigation',
+          'https://login.gov/',
+          70,
+          'rider-four',
+          'Login.gov',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.scenery).toEqual([]);
+    expect(response.destinations).toEqual([]);
+  });
+
+  it('keeps large documentation as scenery while excluding authentication surfaces', () => {
     const response = buildCommuteResponse(
       [
         event(
@@ -181,9 +225,6 @@ describe('buildCommuteResponse', () => {
 
     expect(response.scenery.map((item) => item.domain)).toEqual([
       'docs.superhuman.com',
-      'idpproxy.illinois.edu',
-      'university.example',
-      'mysignins.microsoft.com',
       'garden.example',
     ]);
     expect(
@@ -616,7 +657,6 @@ describe('buildCommuteResponse', () => {
       'shop.example',
       'account.mayoclinic.org',
       'candidate.atsglobe.com',
-      'service.example',
       'newsletter.example',
       'article.example',
       'newsletter.substack.com',
