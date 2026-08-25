@@ -252,6 +252,7 @@ export class PartyServer extends YServer {
   private cachedSharedPerms: Record<string, SharedElementPermissions> | null =
     null;
   private persistenceMode: PersistenceMode = { kind: "available" };
+  private persistenceRecoveryPromise: Promise<void> | null = null;
   private roomCircuitBreakerInstance: RoomCircuitBreaker | null = null;
   // Tracks the two startup phases separately because a deferred room hydrates
   // after the platform's one-time onStart hook has already returned.
@@ -692,6 +693,48 @@ export class PartyServer extends YServer {
       })
     );
     await this.ctx.storage.put(STORAGE_KEYS.persistenceRecoveryPending, true);
+    await this.circuitBreaker.schedulePersistenceRecovery();
+    await this.scheduleNextAlarm();
+  }
+
+  private async recoverTransientPersistenceIfDue(): Promise<void> {
+    if (
+      this.isPersistenceAvailable() ||
+      this.circuitBreaker.isQuarantined() ||
+      !(await this.circuitBreaker.isPersistenceRecoveryDue())
+    ) {
+      return;
+    }
+
+    if (this.persistenceRecoveryPromise) {
+      await this.persistenceRecoveryPromise;
+      return;
+    }
+
+    const recovery = (async () => {
+      this.documentLoadCompleted = false;
+      try {
+        await this.onLoad();
+      } catch (error) {
+        this.documentLoadCompleted = false;
+        this.persistenceMode = {
+          kind: "transient",
+          reason: getErrorMessage(error),
+          failedAt: Date.now(),
+        };
+        await this.circuitBreaker.schedulePersistenceRecovery();
+        console.error(
+          `[PartyServer] Persistence recovery failed for room=${this.name}: ${getErrorMessage(error)}`
+        );
+      }
+    })();
+
+    this.persistenceRecoveryPromise = recovery;
+    try {
+      await recovery;
+    } finally {
+      this.persistenceRecoveryPromise = null;
+    }
   }
 
   private async readLimitedJson(request: Request): Promise<unknown | Response> {
@@ -1274,7 +1317,6 @@ export class PartyServer extends YServer {
         snapshotDoc.destroy();
       }
       this.documentWriteState = { kind: "reset", resetEpoch };
-
       const documentSize = updatedBase64.length;
 
       await this.ctx.storage.put(STORAGE_KEYS.pendingDocumentReset, {
@@ -1440,19 +1482,25 @@ export class PartyServer extends YServer {
     const subs = await this.getSubscribers();
     const refs = await this.getSharedReferences();
     const maintenanceAlarm = getNextAlarmTime({
+    const maintenanceAlarm = getNextAlarmTime({
       compactAfter: await this.getEmptyRoomCompactAfter(),
       hasBridgeLeases: Boolean(subs.length || refs.length),
       now,
       pruneIntervalMs: DEFAULT_PRUNE_INTERVAL_MS
     });
     const documentSaveRetry = await this.getDocumentSaveRetry();
-    const nextAlarm =
-      maintenanceAlarm === null
-        ? (documentSaveRetry?.retryAt ?? null)
-        : Math.min(
-            maintenanceAlarm,
-            documentSaveRetry?.retryAt ?? maintenanceAlarm
-          );
+    const persistenceRecoveryAlarm =
+      await this.circuitBreaker.getPersistenceRecoveryRetryAfter();
+    const nextAlarm = [
+      maintenanceAlarm,
+      documentSaveRetry?.retryAt ?? null,
+      persistenceRecoveryAlarm,
+    ].reduce<
+      number | null
+    >((earliest, candidate) => {
+      if (candidate === null) return earliest;
+      return earliest === null ? candidate : Math.min(earliest, candidate);
+    }, null);
 
     if (nextAlarm === null) {
       await this.ctx.storage.deleteAlarm?.();
@@ -1833,6 +1881,8 @@ export class PartyServer extends YServer {
   ) {
     this.setConnectionOpenedAt(connection, Date.now());
 
+    await this.recoverTransientPersistenceIfDue();
+
     const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
     if (loadDeferred) {
       const retryAfterSeconds = loadDeferred.headers.get("retry-after") ?? "1";
@@ -2040,6 +2090,26 @@ export class PartyServer extends YServer {
       return;
     }
 
+    const persistenceRecoveryPending =
+      (await this.ctx.storage.get(
+        STORAGE_KEYS.persistenceRecoveryPending
+      )) === true;
+    const persistenceRecoveryRetryAfter =
+      await this.circuitBreaker.getPersistenceRecoveryRetryAfter();
+    if (
+      persistenceRecoveryPending &&
+      persistenceRecoveryRetryAfter !== null &&
+      persistenceRecoveryRetryAfter > Date.now()
+    ) {
+      this.persistenceMode = {
+        kind: "transient",
+        reason: "waiting for scheduled persistence recovery",
+        failedAt: Date.now(),
+      };
+      await this.scheduleNextAlarm();
+      return;
+    }
+
     if (this.circuitBreaker.isLoadDeferred()) return;
 
     // Durable BEFORE the risky work: if hydration kills the isolate, this
@@ -2096,7 +2166,15 @@ export class PartyServer extends YServer {
       );
     }
 
-    this.markPersistenceAvailable();
+    let persistedDocument = result.data?.document;
+    if (persistedDocument === undefined) {
+      const emptyDoc = new Y.Doc();
+      try {
+        persistedDocument = encodeDocToBase64(emptyDoc);
+      } finally {
+        emptyDoc.destroy();
+      }
+    }
 
     if (result.data) {
       // Size is reported, never enforced. Hydration is one copy of the document
@@ -2113,43 +2191,47 @@ export class PartyServer extends YServer {
       }
 
       this.markDocumentPersisted(result.data.document);
-      Y.applyUpdate(
-        this.document,
-        new Uint8Array(Buffer.from(result.data.document, "base64"))
-      );
-
-      const documentResetEpoch = getDocResetEpoch(this.document);
-      const storedResetEpoch = await this.getResetEpoch();
-      if (
-        documentResetEpoch !== null &&
-        (storedResetEpoch === null || documentResetEpoch > storedResetEpoch)
-      ) {
-        await this.setResetEpoch(documentResetEpoch);
-        console.warn(
-          `[PartyServer] Loaded document advanced the server reset epoch for room=${this.name}: ` +
-            `documentResetEpoch=${documentResetEpoch}, storedResetEpoch=${storedResetEpoch ?? "none"}`
-        );
-      }
     }
 
-    await this.reconcilePendingDocumentReset();
-
-    const persistenceRecoveryPending =
-      (await this.ctx.storage.get(STORAGE_KEYS.persistenceRecoveryPending)) ===
-      true;
-
-    // Hydration completed without killing the isolate, so the failure history
-    // and any pending backoff are cleared.
-    await this.circuitBreaker.completeRiskyOperation("load");
-    this.markDocumentHydrated();
-
     if (persistenceRecoveryPending) {
-      await this.restoreFromSnapshot(encodeDocToBase64(this.document), {
+      // The persisted snapshot is authoritative. Transient and quarantined
+      // rooms may have an in-memory Y.Doc containing state that was never
+      // accepted for persistence, so merging here would resurrect it.
+      this.documentLoadCompleted = true;
+      this.markPersistenceAvailable();
+      await this.restoreFromSnapshot(persistedDocument, {
         bumpEpoch: true,
         connectionCloseReason: "Room Persistence Restored",
       });
       await this.ctx.storage.delete(STORAGE_KEYS.persistenceRecoveryPending);
+    } else {
+      if (result.data) {
+        Y.applyUpdate(
+          this.document,
+          new Uint8Array(Buffer.from(persistedDocument, "base64"))
+        );
+        const documentResetEpoch = getDocResetEpoch(this.document);
+        const storedResetEpoch = await this.getResetEpoch();
+        if (
+          documentResetEpoch !== null &&
+          (storedResetEpoch === null || documentResetEpoch > storedResetEpoch)
+        ) {
+          await this.setResetEpoch(documentResetEpoch);
+          console.warn(
+            `[PartyServer] Loaded document advanced the server reset epoch for room=${this.name}: ` +
+              `documentResetEpoch=${documentResetEpoch}, storedResetEpoch=${storedResetEpoch ?? "none"}`
+          );
+        }
+      }
+      await this.reconcilePendingDocumentReset();
+      this.markDocumentHydrated();
     }
+
+    // Recovery evidence is cleared only after the authoritative reset and its
+    // durable marker cleanup both succeed.
+    this.circuitBreaker.setLoadDeferredUntil(null);
+    await this.circuitBreaker.completeRiskyOperation("load");
+    await this.circuitBreaker.completePersistenceRecovery();
   }
 
   // Undoes this start's increment when the load ended before hydration could be
@@ -2547,6 +2629,14 @@ export class PartyServer extends YServer {
       }
 
       const url = new URL(request.url);
+      const isLoadControlRoute = [
+        "/admin/quarantine-status",
+        "/admin/quarantine-set",
+        "/admin/quarantine-clear",
+      ].some((path) => url.pathname.includes(path));
+      if (!isLoadControlRoute) {
+        await this.recoverTransientPersistenceIfDue();
+      }
 
       // Route admin requests to admin handler
       // PartyKit paths are like /parties/main/room-id/admin/inspect
@@ -2555,11 +2645,6 @@ export class PartyServer extends YServer {
         // operator can inspect or quarantine the room. Every other admin route
         // is blocked: the live document was never hydrated, so a write derived
         // from it could overwrite the real snapshot with an empty document.
-        const isLoadControlRoute = [
-          "/admin/quarantine-status",
-          "/admin/quarantine-set",
-          "/admin/quarantine-clear",
-        ].some((path) => url.pathname.includes(path));
         if (!isLoadControlRoute) {
           const loadDeferred =
             await this.circuitBreaker.getLoadDeferredResponse();
@@ -3117,6 +3202,7 @@ export class PartyServer extends YServer {
 
   // PartyKit Alarm: invoked when storage alarm rings
   override async onAlarm(): Promise<void> {
+    await this.recoverTransientPersistenceIfDue();
     if (!(await this.circuitBreaker.shouldRunAlarm())) return;
 
     try {

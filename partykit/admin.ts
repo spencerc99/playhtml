@@ -1028,7 +1028,9 @@ export class AdminHandler {
         await this.context.circuitBreaker.clearCompactionFailure();
         compactionFailureCleared = true;
         if (this.context.circuitBreaker.isQuarantined()) {
-          await this.context.circuitBreaker.clearQuarantine();
+          await this.context.circuitBreaker.clearQuarantine({
+            recoveryCompleted: true,
+          });
           quarantineCleared = true;
           this.context.markDocumentHydrated();
         }
@@ -1238,9 +1240,9 @@ export class AdminHandler {
             },
             stillTransient: !this.context.isPersistenceAvailable(),
             message: reset.wasQuarantined
-              ? "Quarantine cleared, along with the failure history that caused it. Normal traffic stays gated until a guarded load restores the persisted document."
+              ? "Quarantine cleared. Normal traffic stays gated until a guarded load restores the persisted document, then its load failure history is cleared."
               : resetSomething
-                ? "Room was not quarantined, but its failure history was reset. Normal traffic stays gated until a guarded load restores the persisted document."
+                ? "Room was not quarantined, but guarded recovery is pending. Normal traffic stays gated until the persisted document is restored."
                 : "Room was not quarantined and had no failure history; nothing changed.",
           },
           null,

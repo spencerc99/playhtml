@@ -1180,7 +1180,7 @@ describe("hardening", () => {
       new Error("failure 2"),
       new Error("failure 3"),
     ];
-    const { room } = createRoom();
+    const { room, storage } = createRoom();
     const warnings: string[] = [];
     const errors: string[] = [];
     const originalWarn = console.warn;
@@ -1205,6 +1205,41 @@ describe("hardening", () => {
     expect(errors).toEqual([
       "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=failure 3 Entering TRANSIENT MODE: awareness may continue, shared-data writes disabled, autosave disabled, admin writes disabled.",
     ]);
+    expect(storage.alarm).toBe(
+      storage.values.get("persistenceRecoveryRetryAfter")
+    );
+  });
+
+  test("a warm transient room does not retry before its recovery deadline", async () => {
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const { room, storage } = createRoom();
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+    }
+
+    const retryAfter = storage.values.get(
+      "persistenceRecoveryRetryAfter"
+    ) as number;
+    expect(retryAfter).toBeGreaterThan(Date.now());
+
+    await room.onRequest(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: JSON.stringify({ nonsense: true }),
+      })
+    );
+
+    expect(documentReadCount).toBe(3);
+    expect(room.isPersistenceAvailable()).toBe(false);
   });
 
   test("successful hydration resets clients that connected during transient mode", async () => {
@@ -1226,6 +1261,7 @@ describe("hardening", () => {
     }
 
     expect(storage.values.get("persistenceRecoveryPending")).toBe(true);
+    storage.values.set("persistenceRecoveryRetryAfter", Date.now() - 1);
 
     const resetMessages: string[] = [];
     const closeCalls: Array<{ code: number; reason: string }> = [];
@@ -1266,6 +1302,58 @@ describe("hardening", () => {
     expect(persistedDoc.getMap("__playhtml_meta").get("resetEpoch")).toBe(
       resetEpoch
     );
+  });
+
+  test("a warm transient room retries in place and discards transient document state", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const { room, storage } = createRoom();
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+    }
+
+    room.document.getMap("play").set("transient-only", "discard me");
+    storage.values.set("persistenceRecoveryRetryAfter", Date.now() - 1);
+
+    const resetMessages: string[] = [];
+    const closeCalls: Array<{ code: number; reason: string }> = [];
+    room.getConnections = () => [
+      {
+        close(code: number, reason: string) {
+          closeCalls.push({ code, reason });
+        },
+      },
+    ];
+    room.broadcastCustomMessage = (message: string) => {
+      resetMessages.push(message);
+    };
+
+    const response = await room.onRequest(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: JSON.stringify({ nonsense: true }),
+      })
+    );
+
+    expect(response.status).not.toBe(503);
+    expect(room.isPersistenceAvailable()).toBe(true);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+    expect(room.document.getMap("play").get("transient-only")).toBeUndefined();
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+    expect(storage.values.has("persistenceRecoveryRetryAfter")).toBe(false);
+    expect(resetMessages).toHaveLength(1);
+    expect(closeCalls).toEqual([
+      { code: 4000, reason: "Room Persistence Restored" },
+    ]);
   });
 
   // F5: admin force-reload calls markPersistenceAvailable, which would otherwise
@@ -1461,6 +1549,73 @@ describe("admin quarantine endpoints", () => {
     expect(room.circuitBreaker.getQuarantineState().detail).toBe(
       "no reason given"
     );
+  });
+
+  test("quarantine clear keeps failure evidence until authoritative recovery succeeds", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 3);
+    storage.values.set("loadRetryAfter", Date.now() + 60_000);
+    await room.circuitBreaker.enterQuarantine({
+      reason: "repeated-failures",
+      detail: "load work failed three times",
+      failureKind: "load",
+      failureCount: 3,
+    });
+
+    const response = await room.onRequest(
+      adminRequest("quarantine-clear", { method: "POST" })
+    );
+
+    expect(response.status).toBe(200);
+    expect(storage.values.get("quarantineLoadAttempts")).toBe(3);
+    expect(storage.values.get("loadRetryAfter")).toBeNumber();
+    expect(storage.values.get("persistenceRecoveryPending")).toBe(true);
+  });
+
+  test("quarantine recovery replaces live-only state and fences connected clients", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    await startRoom(room);
+    await room.circuitBreaker.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+    room.document.getMap("play").set("live-only", "discard me");
+
+    const closeCalls: Array<{ code: number; reason: string }> = [];
+    room.getConnections = () => [
+      {
+        close(code: number, reason: string) {
+          closeCalls.push({ code, reason });
+        },
+      },
+    ];
+    room.broadcastCustomMessage = () => {};
+
+    await room.onRequest(
+      adminRequest("quarantine-clear", { method: "POST" })
+    );
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+
+    const recovered = await room.onRequest(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: JSON.stringify({ nonsense: true }),
+      })
+    );
+
+    expect(recovered.status).not.toBe(503);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+    expect(room.document.getMap("play").get("live-only")).toBeUndefined();
+    expect(closeCalls).toEqual([
+      { code: 4000, reason: "Room Persistence Restored" },
+    ]);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+    expect(storage.values.has("quarantineLoadAttempts")).toBe(false);
+    expect(storage.values.has("loadRetryAfter")).toBe(false);
   });
 
   test("restoring a document clears quarantine and compaction failure state", async () => {
@@ -1717,7 +1872,7 @@ describe("manual quarantine", () => {
     expect(room.circuitBreaker.isQuarantined()).toBe(false);
   });
 
-  test("clearing quarantine also clears the failure history behind it", async () => {
+  test("clearing quarantine preserves load evidence until recovery", async () => {
     const { room, storage } = createRoom();
     storage.values.set("alarmFailureAttempts", 8);
     storage.values.set("quarantineLoadAttempts", 3);
@@ -1733,9 +1888,10 @@ describe("manual quarantine", () => {
     await room.circuitBreaker.clearQuarantine();
 
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
-    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
-    expect(storage.values.get("loadRetryAfter")).toBeUndefined();
+    expect(storage.values.get("quarantineLoadAttempts")).toBe(3);
+    expect(storage.values.get("loadRetryAfter")).toBeNumber();
     expect(storage.values.get("alarmRetryAfter")).toBeUndefined();
+    expect(storage.values.get("persistenceRecoveryPending")).toBe(true);
   });
 
   test("a quarantined room resumes quarantine on restart without hydrating", async () => {

@@ -19,6 +19,10 @@ export const STORAGE_KEYS = {
   // Records a failed autosave retry deadline. The document itself remains the
   // authoritative live Y.Doc and is re-encoded when the retry runs.
   documentSaveRetry: "documentSaveRetry",
+  // Tracks bounded retry rounds while a warm room is serving awareness-only
+  // traffic during a persistence outage.
+  persistenceRecoveryAttempts: "persistenceRecoveryAttempts",
+  persistenceRecoveryRetryAfter: "persistenceRecoveryRetryAfter",
   // Stores the next time a connected large room should pay the expensive
   // compactability check
   emergencyCompactCheckAfter: "emergencyCompactCheckAfter",
