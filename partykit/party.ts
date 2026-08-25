@@ -935,12 +935,14 @@ export class PartyServer extends YServer {
 
     const documentResetEpoch = getDocResetEpoch(this.document);
     if (documentResetEpoch !== pending.resetEpoch) {
-      this.documentWriteState = {
-        kind: "recovery-required",
-        resetEpoch: pending.resetEpoch
-      };
-      await this.schedulePendingDocumentResetRetry(pending.resetEpoch);
-      return false;
+      await this.ctx.storage.delete(STORAGE_KEYS.pendingDocumentReset);
+      if (this.getDocumentWriteState().kind === "recovery-required") {
+        this.documentWriteState = { kind: "idle" };
+      }
+      console.warn(
+        `[PartyServer] Aborted uncommitted document reset for room=${this.name}: pendingResetEpoch=${pending.resetEpoch}, documentResetEpoch=${documentResetEpoch ?? "none"}`
+      );
+      return true;
     }
 
     try {
@@ -2882,17 +2884,114 @@ export class PartyServer extends YServer {
         const { subtrees, sender, originKind } = body;
 
         const yDoc = this.document;
-        const subscribers = await this.getSubscribers();
-        const sharedRefs = await this.getSharedReferences();
-        const relationship = getBridgeApplyRelationship({
-          sender,
-          originKind,
-          subscriberRoomIds: subscribers.map(
-            (subscriber) => subscriber.consumerRoomId
-          ),
-          sourceRoomIds: sharedRefs.map((reference) => reference.sourceRoomId),
+        const senderResetEpoch =
+          typeof body.resetEpoch === "number" ? body.resetEpoch : null;
+        const applyResult = await this.runDocumentWrite(async () => {
+          if (!this.canWriteSharedData()) {
+            return { kind: "unavailable" } as const;
+          }
+
+          const subscribers = await this.getSubscribers();
+          const sharedRefs = await this.getSharedReferences();
+          const relationship = getBridgeApplyRelationship({
+            sender,
+            originKind,
+            subscriberRoomIds: subscribers.map(
+              (subscriber) => subscriber.consumerRoomId
+            ),
+            sourceRoomIds: sharedRefs.map(
+              (reference) => reference.sourceRoomId
+            ),
+          });
+          if (relationship === null) {
+            return { kind: "relationship-not-found" } as const;
+          }
+
+          const currentServerResetEpoch = await this.getResetEpoch();
+          if (this.isEpochStale(senderResetEpoch, currentServerResetEpoch)) {
+            return {
+              kind: "stale-epoch",
+              serverResetEpoch: currentServerResetEpoch,
+            } as const;
+          }
+
+          const receivingFromConsumer = relationship === "consumer";
+          const receivingFromSource = relationship === "source";
+          let subtreesToApply: Record<string, Record<string, any>> = subtrees;
+          if (receivingFromConsumer) {
+            // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
+            // the source of truth is derived from the source room and not consumer-added capabilities.
+            const play = yDoc.getMap("play") as Y.Map<any>;
+            const filtered: Record<string, Record<string, any>> = {};
+            Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+              const tagMap = play.get?.(tag) as Y.Map<any> | undefined;
+              if (!(tagMap instanceof Y.Map)) return;
+              const kept: Record<string, any> = {};
+              Object.entries(elements).forEach(([elementId, data]) => {
+                if (tagMap.has(elementId)) kept[elementId] = data;
+              });
+              if (Object.keys(kept).length) filtered[tag] = kept;
+            });
+            // Enforce simple permissions: read-only shared elements on this source room cannot be modified by consumers
+            const perms = await this.getSharedPermissions();
+            const filteredByPerms: Record<string, Record<string, any>> = {};
+            Object.entries(filtered).forEach(([tag, elements]) => {
+              const kept: Record<string, any> = {};
+              Object.entries(elements).forEach(([elementId, data]) => {
+                // Only allow writes to elements explicitly shared as read-write
+                // This handles both read-only elements and ones that aren't even shared
+                if (perms[elementId] !== "read-write") {
+                  return;
+                }
+                kept[elementId] = data;
+              });
+              if (Object.keys(kept).length) filteredByPerms[tag] = kept;
+            });
+            subtreesToApply = filteredByPerms;
+          } else if (receivingFromSource) {
+            // Consumer: apply only the elementIds we are subscribed to for this sender/source
+            const ref = sharedRefs.find((r) => r.sourceRoomId === sender);
+            const allowed = new Set(ref?.elementIds || []);
+            if (allowed.size > 0) {
+              const filteredByRefs: Record<string, Record<string, any>> = {};
+              Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+                const kept: Record<string, any> = {};
+                Object.entries(elements).forEach(([elementId, data]) => {
+                  if (allowed.has(elementId)) kept[elementId] = data;
+                });
+                if (Object.keys(kept).length) filteredByRefs[tag] = kept;
+              });
+              subtreesToApply = filteredByRefs;
+            } else {
+              subtreesToApply = {};
+            }
+          }
+          if (!Object.keys(subtreesToApply).length) {
+            return { kind: "empty" } as const;
+          }
+
+          const ORIGIN = originKind === "consumer" ? ORIGIN_C2S : ORIGIN_S2C;
+          yDoc.transact(
+            () => this.assignPlaySubtrees(yDoc, subtreesToApply),
+            ORIGIN
+          );
+          return {
+            kind: "applied",
+            receivingFromConsumer,
+            subtreesToApply,
+          } as const;
         });
-        if (relationship === null) {
+
+        if (applyResult.kind === "unavailable") {
+          console.warn(
+            `[Bridge] Ignoring apply-subtrees for room ${this.name}: document hydration or persistence unavailable after waiting for document maintenance.`
+          );
+          const response: ApplySubtreesResponse = { ok: true, applied: false };
+          return new Response(JSON.stringify(response), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (applyResult.kind === "relationship-not-found") {
           return new Response(
             JSON.stringify({
               error: "bridge_relationship_not_found",
@@ -2904,74 +3003,16 @@ export class PartyServer extends YServer {
             }
           );
         }
-
-        const senderResetEpoch =
-          typeof body.resetEpoch === "number" ? body.resetEpoch : null;
-        const serverResetEpoch = await this.getResetEpoch();
-
-        if (this.isEpochStale(senderResetEpoch, serverResetEpoch)) {
+        if (applyResult.kind === "stale-epoch") {
           console.warn(
-            `[Bridge] Ignoring apply-subtrees from ${sender} (${originKind}) due to stale reset epoch (sender=${senderResetEpoch}, server=${serverResetEpoch})`
+            `[Bridge] Ignoring apply-subtrees from ${sender} (${originKind}) due to stale reset epoch after waiting for document maintenance (sender=${senderResetEpoch}, server=${applyResult.serverResetEpoch})`
           );
           const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
         }
-
-        const receivingFromConsumer = relationship === "consumer";
-        const receivingFromSource = relationship === "source";
-
-        let subtreesToApply: Record<string, Record<string, any>> = subtrees;
-        if (receivingFromConsumer) {
-          // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
-          // the source of truth is derived from the source room and not consumer-added capabilities.
-          const play = yDoc.getMap("play") as Y.Map<any>;
-          const filtered: Record<string, Record<string, any>> = {};
-          Object.entries(subtreesToApply).forEach(([tag, elements]) => {
-            const tagMap = play.get?.(tag) as Y.Map<any> | undefined;
-            if (!(tagMap instanceof Y.Map)) return;
-            const kept: Record<string, any> = {};
-            Object.entries(elements).forEach(([elementId, data]) => {
-              if (tagMap.has(elementId)) kept[elementId] = data;
-            });
-            if (Object.keys(kept).length) filtered[tag] = kept;
-          });
-          // Enforce simple permissions: read-only shared elements on this source room cannot be modified by consumers
-          const perms = await this.getSharedPermissions();
-          const filteredByPerms: Record<string, Record<string, any>> = {};
-          Object.entries(filtered).forEach(([tag, elements]) => {
-            const kept: Record<string, any> = {};
-            Object.entries(elements).forEach(([elementId, data]) => {
-              // Only allow writes to elements explicitly shared as read-write
-              // This handles both read-only elements and ones that aren't even shared
-              if (perms[elementId] !== "read-write") {
-                return;
-              }
-              kept[elementId] = data;
-            });
-            if (Object.keys(kept).length) filteredByPerms[tag] = kept;
-          });
-          subtreesToApply = filteredByPerms;
-        } else if (receivingFromSource) {
-          // Consumer: apply only the elementIds we are subscribed to for this sender/source
-          const ref = sharedRefs.find((r) => r.sourceRoomId === sender);
-          const allowed = new Set(ref?.elementIds || []);
-          if (allowed.size > 0) {
-            const filteredByRefs: Record<string, Record<string, any>> = {};
-            Object.entries(subtreesToApply).forEach(([tag, elements]) => {
-              const kept: Record<string, any> = {};
-              Object.entries(elements).forEach(([elementId, data]) => {
-                if (allowed.has(elementId)) kept[elementId] = data;
-              });
-              if (Object.keys(kept).length) filteredByRefs[tag] = kept;
-            });
-            subtreesToApply = filteredByRefs;
-          } else {
-            subtreesToApply = {};
-          }
-        }
-        if (!Object.keys(subtreesToApply).length) {
+        if (applyResult.kind === "empty") {
           // Nothing to apply (filtered to empty). Not a failure — report applied
           // so it does not count against the sender's circuit breaker.
           const response: ApplySubtreesResponse = { ok: true, applied: true };
@@ -2979,11 +3020,7 @@ export class PartyServer extends YServer {
             headers: { "content-type": "application/json" },
           });
         }
-        const ORIGIN = originKind === "consumer" ? ORIGIN_C2S : ORIGIN_S2C;
-        yDoc.transact(
-          () => this.assignPlaySubtrees(yDoc, subtreesToApply),
-          ORIGIN
-        );
+        const { receivingFromConsumer, subtreesToApply } = applyResult;
 
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {

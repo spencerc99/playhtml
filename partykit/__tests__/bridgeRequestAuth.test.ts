@@ -1,7 +1,12 @@
 // ABOUTME: Exercises authentication and relationship checks through PartyServer bridge routing.
 // ABOUTME: Verifies rejected requests leave live documents and bridge metadata untouched.
 import { describe, expect, it, mock } from "bun:test";
-import { docToJson, jsonToDoc } from "../docUtils";
+import {
+  docToJson,
+  encodeDocToBase64,
+  jsonToDoc,
+  replaceDocFromSnapshot,
+} from "../docUtils";
 import { BRIDGE_SECRET_HEADER } from "../bridgeAuth";
 
 const SECRET = "test-bridge-secret";
@@ -52,6 +57,8 @@ async function createHarness() {
     document: { value: document },
     persistenceMode: { value: { kind: "available" }, writable: true },
     documentLoadCompleted: { value: true, writable: true },
+    documentWriteState: { value: { kind: "idle" }, writable: true },
+    documentWriteTail: { value: Promise.resolve(), writable: true },
     realtimeSyncStarted: { value: true, writable: true },
     isSkippingSave: { value: false, writable: true },
     circuitBreaker: {
@@ -132,6 +139,71 @@ describe("PartyServer bridge request protection", () => {
     expect(response.status).toBe(200);
     expect(docToJson(document)?.["can-toggle"]?.shared).toEqual({
       active: true,
+    });
+  });
+
+  it("serializes a bridge apply behind an in-flight document replacement", async () => {
+    const { server, document } = await createHarness();
+    Object.defineProperty(server, "getSharedReferences", {
+      value: async () => [
+        {
+          sourceRoomId: "registered-source",
+          elementIds: ["shared"],
+          sourceResetEpoch: 42,
+        },
+      ],
+    });
+    let releaseReplacement = () => {};
+    const replacementGate = new Promise<void>((resolve) => {
+      releaseReplacement = resolve;
+    });
+    const replacement = jsonToDoc({
+      "can-toggle": { shared: { active: false } },
+      "can-play": { preserved: { value: "replacement" } },
+    });
+    const replacementBase64 = encodeDocToBase64(replacement);
+    replacement.destroy();
+    server.documentWriteTail = replacementGate.then(() => {
+      replaceDocFromSnapshot(document, replacementBase64);
+    });
+    let reachedWriteQueue = () => {};
+    const writeQueued = new Promise<void>((resolve) => {
+      reachedWriteQueue = resolve;
+    });
+    const runDocumentWrite = server.runDocumentWrite.bind(server);
+    Object.defineProperty(server, "runDocumentWrite", {
+      value: (work: () => Promise<unknown>) => {
+        reachedWriteQueue();
+        return runDocumentWrite(work);
+      },
+    });
+
+    const responsePromise = server.onRequest(
+      bridgeRequest(
+        {
+          ...applyAction,
+          sender: "registered-source",
+          originKind: "source",
+          resetEpoch: 42,
+        },
+        SECRET
+      )
+    );
+    await writeQueued;
+
+    expect(docToJson(document)?.["can-toggle"]?.shared).toEqual({
+      active: false,
+    });
+
+    releaseReplacement();
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    expect(docToJson(document)?.["can-toggle"]?.shared).toEqual({
+      active: true,
+    });
+    expect(docToJson(document)?.["can-play"]?.preserved).toEqual({
+      value: "replacement",
     });
   });
 });

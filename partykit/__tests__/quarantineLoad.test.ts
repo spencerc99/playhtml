@@ -2304,6 +2304,63 @@ describe("quarantine data safety", () => {
     );
   });
 
+  test("a restart aborts compaction intent that did not reach the database", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.attachPersistenceObserver();
+    room.document.getMap("play").set("kept", "persisted");
+    const candidate = room.buildCompactedDocument(room.document);
+    expect(candidate).not.toBeNull();
+    persistedRow.document = candidate.sourceBase64;
+    const crashStorage = new FakeStorage();
+    beforeUpsert = async () => {
+      crashStorage.values = new Map(storage.values);
+      throw new Error("simulated isolate crash before database commit");
+    };
+
+    await expect(
+      room.commitCompactedDocument({ compactedDocument: candidate })
+    ).rejects.toThrow("simulated isolate crash before database commit");
+    beforeUpsert = null;
+
+    const restarted = restartRoom(crashStorage);
+    await startRoom(restarted);
+
+    expect(crashStorage.values.get("pendingDocumentReset")).toBeUndefined();
+    expect(restarted.roomState()).toBe("ready");
+    expect(restarted.document.getMap("play").get("kept")).toBe("persisted");
+    expect(persistedRow.document).toBe(candidate.sourceBase64);
+  });
+
+  test("a restart aborts restore intent that did not reach the database", async () => {
+    const originalDocument = encodeDoc(
+      jsonToDoc({ "can-play": { guestbook: { entries: ["persisted"] } } })
+    );
+    persistedRow.document = originalDocument;
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    const crashStorage = new FakeStorage();
+    beforeUpsert = async () => {
+      crashStorage.values = new Map(storage.values);
+      throw new Error("simulated isolate crash before database commit");
+    };
+
+    await expect(
+      room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true })
+    ).rejects.toThrow("Failed to save snapshot");
+    beforeUpsert = null;
+
+    const restarted = restartRoom(crashStorage);
+    await startRoom(restarted);
+
+    expect(crashStorage.values.get("pendingDocumentReset")).toBeUndefined();
+    expect(restarted.roomState()).toBe("ready");
+    expect(docToJson(restarted.document)?.["can-play"]?.guestbook).toEqual({
+      entries: ["persisted"],
+    });
+    expect(persistedRow.document).toBe(originalDocument);
+  });
+
   test("post-compaction cleanup failure does not reopen the committed write", async () => {
     const { room } = createRoom();
     room.documentLoadCompleted = true;
