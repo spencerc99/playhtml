@@ -8,8 +8,9 @@ import * as Y from "yjs";
 import { Buffer } from "node:buffer";
 import {
   parseSharedElementsFromUrl,
-  parseSharedReferencesFromUrl,
+  parseSharedReferencesFromUrl
 } from "../sharing";
+import { getDocResetEpoch } from "../docUtils";
 
 // PartyServer imports Cloudflare-only modules and constructs a Supabase client at
 // module scope. Stub both so the real class can be exercised under bun test.
@@ -58,15 +59,18 @@ type PersistedRow = { document: string | null };
 const persistedRow: PersistedRow = { document: null };
 let upsertCalls: Array<{ name: string; document: string }> = [];
 let upsertError: Error | null = null;
+let beforeUpsert: (() => Promise<void>) | null = null;
 
 // Counts reads of the documents row. The load-backoff contract requires that a
 // deferred room never touches Supabase at all, which this makes observable.
 let documentReadCount = 0;
 let documentReadErrors: Error[] = [];
+let beforeDocumentRead: (() => Promise<void>) | null = null;
 
 function createDocumentRead() {
   const maybeSingle = async () => {
     documentReadCount += 1;
+    await beforeDocumentRead?.();
     const error = documentReadErrors.shift();
     if (error) {
       return { data: null, error: { message: error.message } };
@@ -100,6 +104,7 @@ const supabaseStub = {
       },
       async upsert(row: { name: string; document: string }) {
         upsertCalls.push(row);
+        await beforeUpsert?.();
         if (upsertError) {
           return { error: { message: upsertError.message } };
         }
@@ -158,7 +163,10 @@ function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
     persistenceMode: { value: { kind: "available" }, writable: true },
     realtimeSyncStarted: { value: true, writable: true },
     documentLoadCompleted: { value: false, writable: true },
-    isSkippingSave: { value: false, writable: true },
+    documentWriteState: { value: { kind: "idle" }, writable: true },
+    documentWriteTail: { value: Promise.resolve(), writable: true },
+    documentGeneration: { value: 0, writable: true },
+    persistenceObserverAttached: { value: false, writable: true },
     lastKnownDocumentBytes: { value: 0, writable: true },
     hasWarnedDocumentSize: { value: false, writable: true },
     cachedSubscribers: { value: null, writable: true },
@@ -222,6 +230,17 @@ function docIsEmpty(doc: Y.Doc): boolean {
   return Object.keys(doc.getMap("play").toJSON()).length === 0;
 }
 
+function createDeferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
+  let resolve = () => {};
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
 const MB = 1024 * 1024;
 
 const SMALL_DOCUMENT = (() => {
@@ -238,8 +257,10 @@ beforeEach(() => {
   persistedRow.document = null;
   upsertCalls = [];
   upsertError = null;
+  beforeUpsert = null;
   documentReadCount = 0;
   documentReadErrors = [];
+  beforeDocumentRead = null;
   kvStore.clear();
   kvFailure = null;
 });
@@ -1737,6 +1758,239 @@ describe("manual quarantine", () => {
 });
 
 describe("quarantine data safety", () => {
+  test("an in-flight autosave cannot finish after an authoritative restore", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    const delayedAutosave = createDeferred();
+    let upsertIndex = 0;
+    beforeUpsert = async () => {
+      upsertIndex += 1;
+      if (upsertIndex === 1) {
+        await delayedAutosave.promise;
+      }
+    };
+
+    const staleDoc = new Y.Doc();
+    staleDoc.getMap("play").set("version", "stale");
+    Y.applyUpdate(
+      room.document,
+      new Uint8Array(Buffer.from(encodeDoc(staleDoc), "base64"))
+    );
+    const restoredDoc = new Y.Doc();
+    restoredDoc.getMap("play").set("version", "restored");
+
+    const autosave = room.saveDocumentBase64(encodeDoc(staleDoc));
+    await Promise.resolve();
+    const restore = room.restoreFromSnapshot(encodeDoc(restoredDoc), {
+      bumpEpoch: true
+    });
+    await Promise.resolve();
+
+    delayedAutosave.resolve();
+    await Promise.all([autosave, restore]);
+
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("version")).toBe("restored");
+    expect(upsertCalls).toHaveLength(2);
+  });
+
+  test("a stale save queued behind a restore cannot overwrite it", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    const restoreWrite = createDeferred();
+    const restoreWriteStarted = createDeferred();
+    beforeUpsert = async () => {
+      restoreWriteStarted.resolve();
+      await restoreWrite.promise;
+    };
+
+    const staleDoc = new Y.Doc();
+    staleDoc.getMap("play").set("version", "stale");
+    const restoredDoc = new Y.Doc();
+    restoredDoc.getMap("play").set("version", "restored");
+
+    const restore = room.restoreFromSnapshot(encodeDoc(restoredDoc), {
+      bumpEpoch: true
+    });
+    await restoreWriteStarted.promise;
+    const staleSave = room.saveDocumentBase64(encodeDoc(staleDoc));
+    restoreWrite.resolve();
+
+    await restore;
+    await expect(staleSave).rejects.toThrow("Cannot persist stale document");
+    expect(upsertCalls).toHaveLength(1);
+  });
+
+  test("a failed autosave schedules and completes a durable retry", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("play").set("message", "retry me");
+    upsertError = new Error("database unavailable");
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await room.onSave();
+    } finally {
+      console.error = originalError;
+    }
+
+    const retry = storage.values.get("documentSaveRetry") as
+      | { retryAt: number }
+      | undefined;
+    expect(retry?.retryAt).toBeNumber();
+    expect(storage.alarm).toBe(retry?.retryAt ?? null);
+
+    upsertError = null;
+    storage.alarm = null;
+    storage.values.set("documentSaveRetry", {
+      ...(retry ?? { attempt: 1, generation: 0 }),
+      retryAt: Date.now() - 1
+    });
+    await room.onAlarm();
+
+    expect(storage.values.get("documentSaveRetry")).toBeUndefined();
+    expect(persistedRow.document).not.toBeNull();
+  });
+
+  test("autosave persists the live document when compaction fails", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("play").set("message", "keep me");
+    room.getPersistedDocumentCompactBytes = () => 1;
+    room.getPersistedDocumentCompactCheckAfter = async () => null;
+    room.maybeCompactAutosaveCandidate = async () => {
+      throw new Error("compaction failed");
+    };
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await room.onSave();
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).not.toBeNull();
+  });
+
+  test("compaction preserves a live update that arrives during validation", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    room.attachPersistenceObserver();
+    room.document.getMap("play").set("before", "present");
+    const candidate = room.buildCompactedDocument(room.document);
+    expect(candidate).not.toBeNull();
+    persistedRow.document = candidate.sourceBase64;
+
+    const validationStarted = createDeferred();
+    const continueValidation = createDeferred();
+    beforeDocumentRead = async () => {
+      validationStarted.resolve();
+      await continueValidation.promise;
+    };
+
+    const compaction = room.commitCompactedDocument({
+      compactedDocument: candidate
+    });
+    await validationStarted.promise;
+    room.document.getMap("play").set("during-validation", "preserved");
+    continueValidation.resolve();
+
+    expect(await compaction).toBe(false);
+    expect(room.document.getMap("play").get("during-validation")).toBe(
+      "preserved"
+    );
+
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("during-validation")).toBe(
+      "preserved"
+    );
+  });
+
+  test("post-compaction cleanup failure does not reopen the committed write", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    room.attachPersistenceObserver();
+    room.document.getMap("play").set("kept", "value");
+    const candidate = room.buildCompactedDocument(room.document);
+    expect(candidate).not.toBeNull();
+    persistedRow.document = candidate.sourceBase64;
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await expect(
+        room.commitCompactedDocument({
+          compactedDocument: candidate,
+          afterReplace: async () => {
+            throw new Error("cleanup unavailable");
+          }
+        })
+      ).resolves.toBe(true);
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).toBe(candidate.base64);
+  });
+
+  test("an unavailable room pushes an expired save retry into the future", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.persistenceMode = {
+      kind: "transient",
+      reason: "database unavailable",
+      failedAt: Date.now()
+    };
+    storage.values.set("documentSaveRetry", {
+      attempt: 1,
+      retryAt: Date.now() - 1
+    });
+
+    await room.onAlarm();
+
+    const retry = storage.values.get("documentSaveRetry") as {
+      attempt: number;
+      retryAt: number;
+    };
+    expect(retry.attempt).toBe(2);
+    expect(retry.retryAt).toBeGreaterThan(Date.now());
+    expect(storage.alarm).toBe(retry.retryAt);
+    expect(upsertCalls).toEqual([]);
+  });
+
+  test("a reset-epoch storage failure retries in the same warm room", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    const originalPut = storage.put.bind(storage);
+    let resetEpochWriteFailed = false;
+    storage.put = async (key: string, value: unknown) => {
+      if (key === "resetEpoch" && !resetEpochWriteFailed) {
+        resetEpochWriteFailed = true;
+        throw new Error("durable storage unavailable");
+      }
+      await originalPut(key, value);
+    };
+
+    await room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true });
+
+    expect(resetEpochWriteFailed).toBe(true);
+    expect(storage.values.get("pendingDocumentReset")).toBeUndefined();
+    expect(room.roomState()).toBe("ready");
+    expect(await room.getResetEpoch()).toBe(getDocResetEpoch(room.document));
+  });
+
   test("force-save-live cannot bypass quarantine protection", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
