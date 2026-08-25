@@ -1,0 +1,1638 @@
+// ABOUTME: Renders the collaborative third-anniversary party room.
+// ABOUTME: Connects persistent party artifacts, awareness, cursors, and transient play events.
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
+  CanToggleElement,
+  playhtml,
+  usePlayContext,
+  usePlayerIdentity,
+  useUsers,
+  withSharedState,
+} from "@playhtml/react";
+import {
+  BITE_REQUIREMENT,
+  CAKE_CELL_COUNT,
+  PARTY_COLORS,
+  canBiteCakeCell,
+  getCakeBitePosition,
+  getCakeCell,
+  getCurrentPlace,
+  getDriftPosition,
+  isCakeCellFinished,
+  type BalloonsData,
+  type CakeData,
+  type CardPattern,
+  type PartyBalloon,
+  type PartyData,
+  type PartyIdentity,
+  type PartyWish,
+  type PopperAwareness,
+  type WishesData,
+} from "./partyState";
+import { playPartySound } from "./partySound";
+import "./party.scss";
+
+const ARRIVAL_KEY = "playhtml-party-3-arrived";
+const SOUND_KEY = "playhtml-party-3-sound";
+const PARTY_EVENT = "playhtml-party-3-event";
+const POPPER_EVENT = "playhtml-party-3-popper";
+const BALLOON_POP_EVENT = "playhtml-party-3-balloon-pop";
+const CAKE_FINALE_EVENT = "playhtml-party-3-cake-finale";
+const CARD_COLORS = [
+  "var(--ph-sage)",
+  "var(--ph-ultramarine-wash)",
+  "var(--ph-brick-wash)",
+  "var(--ph-mustard-wash)",
+];
+const SEAL_COLORS = [
+  "var(--ph-mustard)",
+  "var(--ph-ultramarine)",
+  "var(--ph-brick)",
+];
+
+type PartyEffect = "confetti" | "popper" | "balloon-pop" | "cake-finale";
+
+interface PartyEventPayload {
+  message: string;
+  effect?: PartyEffect;
+}
+
+type SharedSetter<T> = (next: T | ((draft: T) => void)) => void;
+
+function createId(prefix: string) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function identityLabel(name: string | undefined) {
+  return name?.trim() || "you";
+}
+
+function getRandomPartyColor(currentColor: string) {
+  const choices = PARTY_COLORS.filter((choice) => choice !== currentColor);
+  return choices[Math.floor(Math.random() * choices.length)] ?? PARTY_COLORS[0];
+}
+
+function ColorChoices({
+  label,
+  colors,
+  selectedColor,
+  customColor,
+  onChange,
+  onCustomColorChange,
+}: {
+  label: string;
+  colors: string[];
+  selectedColor: string;
+  customColor: string;
+  onChange: (color: string) => void;
+  onCustomColorChange: (color: string) => void;
+}) {
+  return (
+    <span className="party-color-choices" role="group" aria-label={label}>
+      <em>{label}</em>
+      {colors.map((choice) => (
+        <button
+          key={choice}
+          type="button"
+          className={selectedColor === choice ? "is-selected" : ""}
+          style={{ background: choice }}
+          onClick={() => onChange(choice)}
+          aria-label={`Use ${choice} for ${label}`}
+          aria-pressed={selectedColor === choice}
+        />
+      ))}
+      <label title={`Pick your own ${label} color`}>
+        <input
+          type="color"
+          className={selectedColor === customColor ? "is-selected" : ""}
+          value={customColor}
+          onChange={(event) => onCustomColorChange(event.target.value)}
+          aria-label={`Pick your own ${label} color`}
+        />
+      </label>
+    </span>
+  );
+}
+
+function ArrivalNametag({
+  initialName,
+  initialColor,
+  onEnter,
+}: {
+  initialName: string;
+  initialColor: string;
+  onEnter: (name: string, color: string) => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [color, setColor] = useState(initialColor);
+  const [customColor, setCustomColor] = useState(initialColor);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      className="party-arrival"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="party-arrival-title"
+    >
+      <form
+        className="party-nametag"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onEnter(name.trim(), color);
+        }}
+      >
+        <div className="party-nametag__band">
+          <p id="party-arrival-title">HELLO</p>
+          <span>my name is</span>
+        </div>
+        <div className="party-nametag__body">
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            maxLength={14}
+            placeholder="your name"
+            aria-label="Your name"
+          />
+          <div className="party-color-row" aria-label="Choose your party color">
+            {PARTY_COLORS.map((choice) => (
+              <button
+                key={choice}
+                type="button"
+                className={choice === color ? "is-selected" : ""}
+                style={{ background: choice }}
+                onClick={() => setColor(choice)}
+                aria-label={`Use ${choice}`}
+                aria-pressed={choice === color}
+              />
+            ))}
+            <button
+              className="party-color-row__random"
+              type="button"
+              onClick={() =>
+                setColor((current) => getRandomPartyColor(current))
+              }
+              aria-label="Choose a random party color"
+              title="surprise me"
+            >
+              ↻
+            </button>
+            <label title="pick your own party color">
+              <input
+                type="color"
+                className={!PARTY_COLORS.includes(color) ? "is-selected" : ""}
+                value={customColor}
+                onChange={(event) => {
+                  setCustomColor(event.target.value);
+                  setColor(event.target.value);
+                }}
+                aria-label="Pick your own party color"
+              />
+            </label>
+          </div>
+          <button className="phs-btn-ink party-nametag__enter" type="submit">
+            {name.trim() ? "join the party" : "slip in unnamed"}
+          </button>
+          <p className="party-nametag__note">
+            your tag follows you around · everything you touch gets your name on
+            it
+          </p>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Pennants() {
+  const colors = [
+    "var(--ph-sage-wash)",
+    "#f0e3c0",
+    "var(--ph-mustard)",
+    "var(--ph-paper)",
+  ];
+  return (
+    <div
+      className="party-pennants"
+      title="can-toggle · click a letter to make it glow"
+    >
+      {"playhtml is 3".split("").map((character, index) =>
+        character === " " ? (
+          <span className="party-pennants__space" key={`space-${index}`} />
+        ) : (
+          <CanToggleElement key={`${character}-${index}`}>
+            {({ data }) => (
+              <button
+                id={`party-3-pennant-${index}`}
+                className={`party-pennant ${data?.on ? "is-glowing" : ""}`}
+                style={
+                  {
+                    "--flag-color": colors[index % colors.length],
+                  } as React.CSSProperties
+                }
+                type="button"
+                aria-label={`Toggle glow on ${character}`}
+              >
+                <span>{character}</span>
+                <i />
+              </button>
+            )}
+          </CanToggleElement>
+        ),
+      )}
+    </div>
+  );
+}
+
+function PresenceBalloons({ colors }: { colors: string[] }) {
+  const visibleColors =
+    colors.length > 0 ? colors.slice(0, 3) : [PARTY_COLORS[0]];
+  return (
+    <span className="presence-balloons" aria-hidden="true">
+      {visibleColors.map((color, index) => (
+        <i
+          key={`${color}-${index}`}
+          style={
+            {
+              "--presence-color": color,
+              "--presence-delay": `${index * 0.65}s`,
+            } as React.CSSProperties
+          }
+        />
+      ))}
+    </span>
+  );
+}
+
+function PeopleChip({
+  count,
+  glyph,
+  color,
+  label,
+}: {
+  count: number;
+  glyph: string;
+  color: string;
+  label: string;
+}) {
+  return (
+    <span className="party-people-chip">
+      <i style={{ background: color }}>{glyph}</i>
+      <strong>{count}</strong>
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function Confetti({ effect }: { effect: PartyEffect | null }) {
+  if (effect !== "confetti" && effect !== "popper" && effect !== "cake-finale")
+    return null;
+  return (
+    <div className="party-confetti" aria-hidden="true">
+      {Array.from({ length: 36 }, (_, index) => (
+        <i
+          key={index}
+          style={
+            {
+              left: `${(index * 137) % 100}%`,
+              background: [
+                "var(--ph-mustard)",
+                "var(--ph-ultramarine)",
+                "var(--ph-brick)",
+                "var(--ph-sage-deep)",
+              ][index % 4],
+              animationDuration: `${2.4 + (index % 5) * 0.5}s`,
+              animationDelay: `${(index % 7) * 0.4}s`,
+            } as React.CSSProperties
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function CakeStation({
+  identity,
+  emitEvent,
+  soundOn,
+}: {
+  identity: PartyIdentity;
+  emitEvent: (message: string, effect?: PartyEffect) => void;
+  soundOn: boolean;
+}) {
+  const current = useRef({ identity, emitEvent, soundOn });
+  current.current = { identity, emitEvent, soundOn };
+  const SharedCake = useMemo(
+    () =>
+      withSharedState<CakeData>(
+        { defaultData: { cellsByIndex: {} } },
+        ({ data, setData }) => {
+          const { identity, emitEvent, soundOn } = current.current;
+          const finishedCount = Array.from(
+            { length: CAKE_CELL_COUNT },
+            (_, index) => isCakeCellFinished(data.cellsByIndex, index),
+          ).filter(Boolean).length;
+          const participantTotals = new Map<
+            string,
+            PartyIdentity & { bites: number }
+          >();
+          Object.values(data.cellsByIndex).forEach((cell) => {
+            Object.values(cell.bitesByParticipant).forEach((bite) => {
+              const current = participantTotals.get(bite.pid);
+              participantTotals.set(bite.pid, {
+                pid: bite.pid,
+                name: bite.name,
+                color: bite.color,
+                bites: (current?.bites ?? 0) + 1,
+              });
+            });
+          });
+          const credits = [...participantTotals.values()]
+            .sort((a, b) => b.bites - a.bites)
+            .slice(0, 6);
+          const maxBites = Math.max(
+            1,
+            ...credits.map((credit) => credit.bites),
+          );
+
+          const biteCell = (
+            index: number,
+            event: React.MouseEvent<HTMLButtonElement>,
+          ) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const column = index % 10;
+            const row = Math.floor(index / 10);
+            const useVerticalFraction =
+              (column === 0 || column === 9) && row !== 0 && row !== 5;
+            const clickFraction = useVerticalFraction
+              ? (event.clientY - rect.top) / rect.height
+              : (event.clientX - rect.left) / rect.width;
+            let message = "";
+            let didBite = false;
+            let finishedCake = false;
+            setData((draft) => {
+              if (!canBiteCakeCell(draft.cellsByIndex, index)) {
+                message =
+                  "you can't reach the middle yet · the cake is eaten from the outside in";
+                return;
+              }
+              const key = String(index);
+              if (!draft.cellsByIndex[key]) {
+                draft.cellsByIndex[key] = { bitesByParticipant: {} };
+              }
+              const cell = draft.cellsByIndex[key];
+              if (cell.bitesByParticipant[identity.pid]) {
+                message =
+                  "you already bit this square · other guests finish it";
+                return;
+              }
+              if (
+                Object.keys(cell.bitesByParticipant).length >= BITE_REQUIREMENT
+              )
+                return;
+              const position = getCakeBitePosition(
+                draft.cellsByIndex,
+                index,
+                clickFraction,
+              );
+              cell.bitesByParticipant[identity.pid] = {
+                ...identity,
+                ...position,
+              };
+              const count = Object.keys(cell.bitesByParticipant).length;
+              didBite = true;
+              message =
+                count >= BITE_REQUIREMENT
+                  ? "you finished the square · crumbs and credits remain"
+                  : `you bit a hole (${count}/${BITE_REQUIREMENT}) · ${BITE_REQUIREMENT - count} more to finish it`;
+              finishedCake = Array.from(
+                { length: CAKE_CELL_COUNT },
+                (_, cellIndex) =>
+                  isCakeCellFinished(draft.cellsByIndex, cellIndex),
+              ).every(Boolean);
+            });
+            if (!message) return;
+            if (didBite) playPartySound("bite", soundOn);
+            emitEvent(message, finishedCake ? "cake-finale" : undefined);
+          };
+
+          return (
+            <section
+              id="party-3-cake"
+              className="party-station party-station--cake"
+            >
+              <StationHeading number="1" color="var(--ph-brick)">
+                help yourself to cake
+              </StationHeading>
+              <div className="party-card party-cake-card">
+                <div className="party-candles">
+                  {[0, 1, 2].map((index) => (
+                    <CanToggleElement key={index}>
+                      {({ data: candle }) => (
+                        <button
+                          id={`party-3-candle-${index}`}
+                          type="button"
+                          title="can-toggle · blow it out"
+                        >
+                          <img
+                            src={
+                              candle?.on
+                                ? "/party/3/assets/candle-off.png"
+                                : "/party/3/assets/candle-on.gif"
+                            }
+                            alt={
+                              candle?.on ? "Extinguished candle" : "Lit candle"
+                            }
+                          />
+                        </button>
+                      )}
+                    </CanToggleElement>
+                  ))}
+                </div>
+                <div className="party-cake">
+                  {[
+                    ["chocolate", "Chocolate cake"],
+                    ["peach", "Peach cake"],
+                    ["matcha", "Matcha cake"],
+                    ["vanilla", "Vanilla funfetti cake"],
+                    ["pecan", "Pecan praline cake"],
+                    ["lemon", "Lemon cake"],
+                  ].map(([flavor, alt]) => (
+                    <img
+                      key={flavor}
+                      className={`party-cake__${flavor}`}
+                      src={`/party/3/assets/cake-${flavor}.png`}
+                      alt={alt}
+                    />
+                  ))}
+                  <div className="party-cake__grid">
+                    {Array.from({ length: CAKE_CELL_COUNT }, (_, index) => {
+                      const cell = getCakeCell(data.cellsByIndex, index);
+                      const bites = Object.values(cell.bitesByParticipant);
+                      const finished = bites.length >= BITE_REQUIREMENT;
+                      const reachable = canBiteCakeCell(
+                        data.cellsByIndex,
+                        index,
+                      );
+                      return (
+                        <button
+                          key={index}
+                          className={`party-cake__cell ${finished ? "is-finished" : ""}`}
+                          type="button"
+                          onClick={(event) => biteCell(index, event)}
+                          title={
+                            finished
+                              ? `finished by ${bites.map((bite) => bite.name).join(", ")}`
+                              : reachable
+                                ? `${bites.length}/${BITE_REQUIREMENT} bites`
+                                : "can't reach this yet"
+                          }
+                        >
+                          {finished ? (
+                            <span className="party-cake__eaters">
+                              {bites.map((bite) => bite.name).join(" · ")}
+                            </span>
+                          ) : (
+                            bites.map((bite, biteIndex) => (
+                              <i
+                                className="party-cake__bite"
+                                key={bite.pid}
+                                style={
+                                  {
+                                    left: bite.x,
+                                    top: bite.y,
+                                    transform: `rotate(${(index * 47 + biteIndex * 111) % 360}deg)`,
+                                    "--crumb-color": bite.color,
+                                  } as React.CSSProperties
+                                }
+                                title={`a bite by ${bite.name}`}
+                              >
+                                <b />
+                                <em />
+                              </i>
+                            ))
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {finishedCount === CAKE_CELL_COUNT && (
+                  <div className="party-cake__plaque">
+                    this cake was eaten square by square · august 2026
+                  </div>
+                )}
+                <div className="party-cake__counter">
+                  <span>
+                    <strong>{CAKE_CELL_COUNT - finishedCount}</strong> of 60
+                    squares left
+                  </span>
+                  <PeopleChip
+                    count={participantTotals.size}
+                    glyph="◕"
+                    color="var(--ph-brick)"
+                    label="people took a bite"
+                  />
+                </div>
+                {finishedCount === CAKE_CELL_COUNT && credits.length > 0 && (
+                  <div className="party-cake__credits">
+                    <strong>cake credits</strong>
+                    {credits.map((credit) => (
+                      <div key={credit.pid}>
+                        <i style={{ background: credit.color }} />
+                        <span>{credit.name}</span>
+                        <b>
+                          <i
+                            style={{
+                              width: `${(credit.bites / maxBites) * 100}%`,
+                              background: credit.color,
+                            }}
+                          />
+                        </b>
+                        <small>{credit.bites} bites</small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        },
+      ),
+    [],
+  );
+  return <SharedCake />;
+}
+
+function StationHeading({
+  number,
+  color,
+  children,
+}: {
+  number: string;
+  color: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <h2 className="party-station-heading" style={{ color }}>
+      <span style={{ background: color }}>{number}</span>
+      {children}
+    </h2>
+  );
+}
+
+function BalloonShape({
+  balloon,
+  position,
+  onPointerDown,
+  onClick,
+  popped,
+}: {
+  balloon: PartyBalloon;
+  position: { x: number; y: number; tilt: number; scale?: number };
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  popped: boolean;
+}) {
+  return (
+    <div
+      className="party-balloon-position"
+      style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+    >
+      {popped ? (
+        <strong className="party-balloon-pop">pop!</strong>
+      ) : (
+        <button
+          className="party-balloon"
+          type="button"
+          onPointerDown={onPointerDown}
+          onClick={onClick}
+          style={{
+            transform: `scale(${position.scale ?? balloon.scale}) rotate(${position.tilt}deg)`,
+            filter: `hue-rotate(${balloon.hue}deg) saturate(1.05)`,
+          }}
+          title={`a balloon tied by ${balloon.by.name}`}
+        >
+          <i className="party-balloon__body" />
+          <i className="party-balloon__highlight" />
+          <i className="party-balloon__knot" />
+          <i className="party-balloon__string" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function BalloonsStation({
+  identity,
+  emitEvent,
+  soundOn,
+}: {
+  identity: PartyIdentity;
+  emitEvent: (message: string, effect?: PartyEffect) => void;
+  soundOn: boolean;
+}) {
+  const spencerRef = useRef<HTMLDivElement>(null);
+  const [holdingPin, setHoldingPin] = useState<number | null>(null);
+  const [drag, setDrag] = useState<{
+    id: string;
+    x: number;
+    y: number;
+    scale: number;
+    offsetX: number;
+    offsetY: number;
+    blowing: boolean;
+  } | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const setBalloonsData = useRef<SharedSetter<BalloonsData> | null>(null);
+  const current = useRef({
+    drag,
+    emitEvent,
+    holdingPin,
+    identity,
+    now,
+    soundOn,
+  });
+  current.current = { drag, emitEvent, holdingPin, identity, now, soundOn };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 80);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      setDrag((currentDrag) => {
+        if (!currentDrag) return null;
+        const x = event.clientX - currentDrag.offsetX;
+        const y = event.clientY + window.scrollY - currentDrag.offsetY;
+        const spencer = spencerRef.current?.getBoundingClientRect();
+        const mouth = spencer
+          ? {
+              x: spencer.left + spencer.width * 0.56,
+              y: spencer.top + window.scrollY + spencer.height * 0.8,
+            }
+          : { x: -9999, y: -9999 };
+        const blowing = Math.hypot(x + 30 - mouth.x, y + 40 - mouth.y) < 75;
+        return {
+          ...currentDrag,
+          x,
+          y,
+          blowing,
+          scale: blowing
+            ? Math.min(1.8, currentDrag.scale + 0.013)
+            : currentDrag.scale,
+        };
+      });
+    };
+    const onPointerUp = () => {
+      setDrag((currentDrag) => {
+        if (!currentDrag) return null;
+        const shouldPop = currentDrag.scale > 1.75;
+        setBalloonsData.current?.((draft) => {
+          const balloon = draft.balloonsById[currentDrag.id];
+          if (!balloon) return;
+          balloon.x = currentDrag.x;
+          balloon.y = currentDrag.y;
+          balloon.scale = Math.min(1.75, currentDrag.scale);
+          if (shouldPop) delete draft.balloonsById[currentDrag.id];
+        });
+        if (shouldPop) {
+          playPartySound("pop", soundOn);
+          emitEvent(
+            "you overfilled a balloon · everyone heard it",
+            "balloon-pop",
+          );
+        } else if (currentDrag.blowing) {
+          emitEvent("spencer catches his breath");
+        }
+        return null;
+      });
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+  }, [emitEvent, soundOn]);
+
+  const SharedBalloons = useMemo(
+    () =>
+      withSharedState<BalloonsData>(
+        {
+          id: "party-3-balloons-data",
+          defaultData: { balloonsById: {}, pinClaimsByIndex: {} },
+        },
+        ({ data, setData }) => {
+          setBalloonsData.current = setData;
+          const { drag, emitEvent, holdingPin, identity, now, soundOn } =
+            current.current;
+          const balloons = Object.values(data.balloonsById);
+          const participants = new Set(
+            balloons.map((balloon) => balloon.by.pid),
+          );
+          const availablePins = [0, 1, 2].filter((index) => {
+            const claim = data.pinClaimsByIndex[String(index)];
+            return !claim || now - claim.claimedAt >= 20_000;
+          });
+
+          const tieBalloon = () => {
+            const rect = spencerRef.current?.getBoundingClientRect();
+            const id = createId("balloon");
+            const balloon: PartyBalloon = {
+              id,
+              by: identity,
+              createdAt: Date.now(),
+              seed: Math.random() * 10_000,
+              x: rect ? rect.right + 30 + Math.random() * 80 : 260,
+              y: rect
+                ? rect.top + window.scrollY - 40 + Math.random() * 100
+                : 420,
+              scale: 0.55 + Math.random() * 0.15,
+              hue: Math.floor(Math.random() * 360),
+            };
+            setData((draft) => {
+              draft.balloonsById[id] = balloon;
+            });
+            emitEvent(
+              "you tied a new balloon at the stand · it's small until spencer fills it",
+            );
+          };
+
+          const popBalloon = (
+            balloon: PartyBalloon,
+            event: React.MouseEvent<HTMLButtonElement>,
+          ) => {
+            if (drag?.id === balloon.id) return;
+            if (holdingPin !== null) {
+              setData((draft) => {
+                delete draft.balloonsById[balloon.id];
+              });
+              setHoldingPin(null);
+              playPartySound("pop", soundOn);
+              emitEvent(
+                "pinned! the pop echoed through the party · the pin is spent",
+                "balloon-pop",
+              );
+              return;
+            }
+            const nextScale = Math.max(
+              0.5,
+              balloon.scale + (event.altKey ? -0.15 : 0.15),
+            );
+            if (nextScale > 1.75) {
+              setData((draft) => {
+                delete draft.balloonsById[balloon.id];
+              });
+              playPartySound("pop", soundOn);
+              emitEvent(
+                "you popped a balloon · everyone heard it",
+                "balloon-pop",
+              );
+              return;
+            }
+            setData((draft) => {
+              draft.balloonsById[balloon.id].scale = nextScale;
+            });
+          };
+
+          return (
+            <>
+              {balloons.map((balloon) => {
+                const drift = getDriftPosition(
+                  balloon.seed,
+                  balloon.createdAt,
+                  now,
+                  balloon.x,
+                  balloon.y,
+                  {
+                    width: window.innerWidth,
+                    height: Math.max(820, document.body.scrollHeight - 180),
+                  },
+                );
+                const currentDrag = drag?.id === balloon.id ? drag : null;
+                return (
+                  <BalloonShape
+                    key={balloon.id}
+                    balloon={balloon}
+                    position={
+                      currentDrag
+                        ? {
+                            x: currentDrag.x,
+                            y: currentDrag.y,
+                            tilt: 0,
+                            scale: currentDrag.scale,
+                          }
+                        : drift
+                    }
+                    popped={false}
+                    onClick={(event) => popBalloon(balloon, event)}
+                    onPointerDown={(event) => {
+                      if (holdingPin !== null) return;
+                      event.preventDefault();
+                      const position = currentDrag ?? {
+                        x: drift.x,
+                        y: drift.y,
+                        scale: balloon.scale,
+                      };
+                      setDrag({
+                        id: balloon.id,
+                        x: position.x,
+                        y: position.y,
+                        scale: position.scale,
+                        offsetX: event.clientX - position.x,
+                        offsetY: event.clientY + window.scrollY - position.y,
+                        blowing: false,
+                      });
+                    }}
+                  />
+                );
+              })}
+              <section
+                id="party-3-balloons"
+                className="party-station party-station--balloons"
+              >
+                <StationHeading number="2" color="var(--ph-ultramarine)">
+                  blow up a balloon
+                </StationHeading>
+                <div className="party-card party-balloon-card">
+                  <div className="party-spencer">
+                    <div ref={spencerRef} className="party-spencer__photo">
+                      <img
+                        src={
+                          drag?.blowing
+                            ? "/party/3/assets/spencer-blowing.png"
+                            : "/party/3/assets/spencer-normal.png"
+                        }
+                        alt="Spencer on balloon duty"
+                      />
+                      {drag?.blowing && (
+                        <span className="party-spencer__puffs">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                      )}
+                    </div>
+                    <p>
+                      {drag?.blowing ? "fwoooo…" : "spencer, on balloon duty"}
+                    </p>
+                  </div>
+                  <div className="party-balloon-controls">
+                    <p>
+                      decorate with some balloons! Use spencer's mouth to blow
+                      it up.
+                    </p>
+                    <PeopleChip
+                      count={participants.size}
+                      glyph="●"
+                      color="var(--ph-ultramarine)"
+                      label="people tied balloons"
+                    />
+                    <div>
+                      <button
+                        className="phs-chip"
+                        type="button"
+                        onClick={tieBalloon}
+                      >
+                        + tie a balloon
+                      </button>
+                      <span className="party-pins">
+                        {availablePins.map((index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            className={holdingPin === index ? "is-held" : ""}
+                            style={{
+                              transform: `rotate(${[24, -12, 38][index]}deg)`,
+                            }}
+                            onClick={() => {
+                              if (holdingPin !== null) return;
+                              setData((draft) => {
+                                draft.pinClaimsByIndex[String(index)] = {
+                                  participantId: identity.pid,
+                                  claimedAt: Date.now(),
+                                };
+                              });
+                              setHoldingPin(index);
+                              emitEvent(
+                                "you picked up a pin · the balloons are nervous",
+                              );
+                            }}
+                            aria-label="Pick up a pin"
+                          >
+                            <i />
+                            <b />
+                          </button>
+                        ))}
+                      </span>
+                      <small>
+                        {holdingPin === null
+                          ? ""
+                          : "click any balloon to pop it · one use"}
+                      </small>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </>
+          );
+        },
+      ),
+    [],
+  );
+  return <SharedBalloons />;
+}
+
+function CardBand({
+  cardColor,
+  sealColor,
+  pattern,
+}: {
+  cardColor: string;
+  sealColor: string;
+  pattern: CardPattern;
+}) {
+  return (
+    <div
+      className={`party-wish__band party-wish__band--${pattern}`}
+      style={
+        {
+          background: cardColor,
+          "--seal-color": sealColor,
+        } as React.CSSProperties
+      }
+    >
+      <i />
+      <b />
+    </div>
+  );
+}
+
+function WishesStation({
+  identity,
+  emitEvent,
+  soundOn,
+}: {
+  identity: PartyIdentity;
+  emitEvent: (message: string, effect?: PartyEffect) => void;
+  soundOn: boolean;
+}) {
+  const [note, setNote] = useState("");
+  const [cardColor, setCardColor] = useState("var(--ph-sage)");
+  const [sealColor, setSealColor] = useState("var(--ph-mustard)");
+  const [customCardColor, setCustomCardColor] = useState("#f2c4cf");
+  const [customSealColor, setCustomSealColor] = useState("#7a9574");
+  const [pattern, setPattern] = useState<CardPattern>("cross");
+  const current = useRef({
+    cardColor,
+    customCardColor,
+    customSealColor,
+    emitEvent,
+    identity,
+    note,
+    pattern,
+    sealColor,
+    soundOn,
+  });
+  current.current = {
+    cardColor,
+    customCardColor,
+    customSealColor,
+    emitEvent,
+    identity,
+    note,
+    pattern,
+    sealColor,
+    soundOn,
+  };
+  const SharedWishes = useMemo(
+    () =>
+      withSharedState<WishesData>(
+        { defaultData: { wishesById: {} } },
+        ({ data, setData }) => {
+          const {
+            cardColor,
+            customCardColor,
+            customSealColor,
+            emitEvent,
+            identity,
+            note,
+            pattern,
+            sealColor,
+            soundOn,
+          } = current.current;
+          const wishes = Object.values(data.wishesById).sort(
+            (a, b) => a.createdAt - b.createdAt,
+          );
+          const participants = new Set(wishes.map((wish) => wish.pid));
+          const signWish = () => {
+            const trimmedNote = note.trim();
+            if (!trimmedNote) return;
+            const id = createId("wish");
+            const wish: PartyWish = {
+              ...identity,
+              id,
+              note: trimmedNote,
+              cardColor,
+              sealColor,
+              pattern,
+              when: "today",
+              where: getCurrentPlace(),
+              createdAt: Date.now(),
+            };
+            setData((draft) => {
+              draft.wishesById[id] = wish;
+            });
+            setNote("");
+            playPartySound("chime", soundOn);
+            emitEvent("you signed a card for the pile · it stays for good");
+          };
+          return (
+            <section
+              id="party-3-wishes"
+              className="party-station party-station--wishes"
+            >
+              <StationHeading number="3" color="var(--ph-sage-deep)">
+                leave a wish
+              </StationHeading>
+              <div className="party-card party-wishes-card">
+                <h3>the message pile</h3>
+                <p>everyone who came left a card. sign one yourself.</p>
+                <PeopleChip
+                  count={participants.size}
+                  glyph="✦"
+                  color="var(--ph-sage-deep)"
+                  label="people left wishes"
+                />
+                <div className="party-wishes-pile">
+                  {wishes.length === 0 && (
+                    <p className="party-empty-note">
+                      the pile is waiting for its first wish
+                    </p>
+                  )}
+                  {wishes.map((wish, index) => (
+                    <article
+                      className="party-wish"
+                      key={wish.id}
+                      style={{
+                        transform: `rotate(${[-1.4, 0.9, -0.6, 1.5, -1.1][index % 5]}deg)`,
+                      }}
+                    >
+                      <CardBand
+                        cardColor={wish.cardColor}
+                        sealColor={wish.sealColor}
+                        pattern={wish.pattern}
+                      />
+                      <div className="party-wish__body">
+                        <p>{wish.note}</p>
+                        <strong>— {wish.name}</strong>
+                        <small>
+                          {wish.when} · {wish.where}
+                        </small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <div className="party-signing-bench">
+                  <div>
+                    <textarea
+                      value={note}
+                      maxLength={120}
+                      onChange={(event) => setNote(event.target.value)}
+                      placeholder="write your anniversary wish"
+                    />
+                    <div className="party-card-options">
+                      <ColorChoices
+                        label="card"
+                        colors={CARD_COLORS}
+                        selectedColor={cardColor}
+                        customColor={customCardColor}
+                        onChange={setCardColor}
+                        onCustomColorChange={(color) => {
+                          setCustomCardColor(color);
+                          setCardColor(color);
+                        }}
+                      />
+                      <ColorChoices
+                        label="seal"
+                        colors={SEAL_COLORS}
+                        selectedColor={sealColor}
+                        customColor={customSealColor}
+                        onChange={setSealColor}
+                        onCustomColorChange={(color) => {
+                          setCustomSealColor(color);
+                          setSealColor(color);
+                        }}
+                      />
+                      <span className="party-pattern-choices">
+                        <em>band</em>{" "}
+                        {(["cross", "sash", "polka"] as CardPattern[]).map(
+                          (choice) => (
+                            <button
+                              key={choice}
+                              className={
+                                pattern === choice ? "is-selected" : ""
+                              }
+                              type="button"
+                              onClick={() => setPattern(choice)}
+                              aria-label={choice}
+                            >
+                              <CardBand
+                                cardColor="#f4efe5"
+                                sealColor="#1c1c1c"
+                                pattern={choice}
+                              />
+                            </button>
+                          ),
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      className="phs-btn-ink"
+                      type="button"
+                      onClick={signWish}
+                    >
+                      sign it
+                    </button>
+                  </div>
+                  <div className="party-wish-preview">
+                    <article className="party-wish">
+                      <CardBand
+                        cardColor={cardColor}
+                        sealColor={sealColor}
+                        pattern={pattern}
+                      />
+                      <div className="party-wish__body">
+                        <p>{note.trim() || "your wish goes here…"}</p>
+                        <strong>— {identity.name}</strong>
+                        <small>today · {getCurrentPlace()}</small>
+                      </div>
+                    </article>
+                    <small>yours, before you sign it</small>
+                  </div>
+                </div>
+              </div>
+            </section>
+          );
+        },
+      ),
+    [],
+  );
+  return <SharedWishes />;
+}
+
+function PartyPopper({
+  data,
+  setData,
+  awareness,
+  setMyAwareness,
+  identity,
+  emitEvent,
+  soundOn,
+}: {
+  data: PartyData;
+  setData: (setter: PartyData | ((draft: PartyData) => void)) => void;
+  awareness: PopperAwareness[];
+  setMyAwareness: (awareness: PopperAwareness) => void;
+  identity: PartyIdentity;
+  emitEvent: (message: string, effect?: PartyEffect) => void;
+  soundOn: boolean;
+}) {
+  const [charge, setCharge] = useState(0);
+  const [holdId, setHoldId] = useState("");
+  const [snapped, setSnapped] = useState(false);
+  const [tease, setTease] = useState(
+    "someone else has to be here for this one.",
+  );
+  const chargeRef = useRef(0);
+  const holders = awareness.filter(
+    (person) => person.holdingPopper && person.holdId,
+  );
+  const otherHolder = holders.find((person) => person.pid !== identity.pid);
+  const lastPopperPair = useRef(data.lastPopperPair);
+  lastPopperPair.current = data.lastPopperPair;
+  const holding = holders.some(
+    (person) => person.pid === identity.pid && person.holdId === holdId,
+  );
+
+  const release = useCallback(() => {
+    setMyAwareness({ ...identity, holdingPopper: false, holdId: "" });
+    setHoldId("");
+    chargeRef.current = 0;
+    setCharge(0);
+  }, [identity, setMyAwareness]);
+
+  useEffect(() => {
+    window.addEventListener("pointerup", release);
+    return () => window.removeEventListener("pointerup", release);
+  }, [release]);
+
+  useEffect(() => {
+    if (!holding || !otherHolder || snapped) return;
+    const pairKey = [holdId, otherHolder.holdId].sort().join(":");
+    const timer = window.setInterval(() => {
+      const next = Math.min(1, chargeRef.current + 0.14);
+      chargeRef.current = next;
+      setCharge(next);
+      if (next >= 1 && lastPopperPair.current !== pairKey) {
+        const leader =
+          [identity.pid, otherHolder.pid].sort()[0] === identity.pid;
+        if (leader) {
+          setData((draft) => {
+            if (draft.lastPopperPair === pairKey) return;
+            draft.lastPopperPair = pairKey;
+            draft.popperCount += 1;
+          });
+          setSnapped(true);
+          playPartySound("bang", soundOn);
+          emitEvent(
+            `the popper went off · ${otherHolder.name} and ${identity.name} pulled it together`,
+            "popper",
+          );
+          window.setTimeout(() => {
+            setSnapped(false);
+            release();
+          }, 2600);
+        }
+      }
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, [
+    emitEvent,
+    holdId,
+    holding,
+    identity,
+    otherHolder,
+    release,
+    setData,
+    snapped,
+    soundOn,
+  ]);
+
+  useEffect(() => {
+    if (!holding || otherHolder) return;
+    const timer = window.setTimeout(() => {
+      const teases = [
+        "you are holding one end of a paper tube. compelling.",
+        "pulling alone makes a sad crinkle sound.",
+        "it takes two. this is the whole point of the party.",
+        "nothing. you've achieved nothing. together, though…",
+      ];
+      setTease(teases[Math.floor(Math.random() * teases.length)]);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [holding, otherHolder]);
+
+  const tension = Math.round(charge * 10);
+  return (
+    <div className="party-popper" data-popper>
+      {snapped && <strong>bang!</strong>}
+      <div className={holding && otherHolder ? "is-pulling" : ""}>
+        <button
+          className="party-popper__end party-popper__end--mine"
+          type="button"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            const nextHoldId = createId("hold");
+            setHoldId(nextHoldId);
+            setMyAwareness({
+              ...identity,
+              holdingPopper: true,
+              holdId: nextHoldId,
+            });
+          }}
+          style={{
+            transform: `translateX(${snapped ? -34 : holding ? -8 - tension : 0}px)`,
+          }}
+          aria-label="Hold your end of the party popper"
+        >
+          <i />
+          <b />
+          <em />
+        </button>
+        <span className="party-popper__middle">
+          <i />
+        </span>
+        <button
+          className={`party-popper__end party-popper__end--theirs ${otherHolder ? "is-held" : ""}`}
+          type="button"
+          onPointerDown={() =>
+            setTease(
+              "that end isn't yours to hold · someone else has to take it",
+            )
+          }
+          style={{
+            transform: `translateX(${snapped ? 34 : otherHolder ? 8 + tension : 0}px)`,
+          }}
+          aria-label="The other person's end of the party popper"
+        >
+          <i />
+          <b />
+          <em />
+        </button>
+      </div>
+      <p>
+        {snapped
+          ? "pop! that only works together."
+          : holding && otherHolder
+            ? "pulling together… hold on!"
+            : otherHolder
+              ? `${otherHolder.name} has the other end · hold yours`
+              : holding
+                ? "holding · waiting for someone else"
+                : tease}
+      </p>
+      <small>pulled {data.popperCount} times</small>
+    </div>
+  );
+}
+
+function PartyRoom({
+  identity,
+  soundOn,
+  setSoundOn,
+}: {
+  identity: PartyIdentity;
+  soundOn: boolean;
+  setSoundOn: (value: boolean) => void;
+}) {
+  const {
+    dispatchPlayEvent,
+    registerPlayEventListener,
+    removePlayEventListener,
+  } = usePlayContext();
+  const users = useUsers();
+  const [eventLine, setEventLine] = useState(
+    "the party is ready · take the first bite or leave a wish",
+  );
+  const [effect, setEffect] = useState<PartyEffect | null>(null);
+  const effectTimer = useRef<number | null>(null);
+  const floorRef = useRef<HTMLDivElement>(null);
+
+  const showEffect = useCallback((nextEffect?: PartyEffect) => {
+    if (!nextEffect) return;
+    setEffect(nextEffect);
+    if (effectTimer.current) window.clearTimeout(effectTimer.current);
+    effectTimer.current = window.setTimeout(
+      () => setEffect(null),
+      nextEffect === "cake-finale" ? 7000 : 2800,
+    );
+  }, []);
+
+  useEffect(() => {
+    const eventTypes = [
+      PARTY_EVENT,
+      POPPER_EVENT,
+      BALLOON_POP_EVENT,
+      CAKE_FINALE_EVENT,
+    ];
+    const listenerIds = eventTypes.map((type) => ({
+      type,
+      id: registerPlayEventListener(type, {
+        onEvent: (payload: PartyEventPayload) => {
+          setEventLine(payload.message);
+          showEffect(payload.effect);
+        },
+      }),
+    }));
+    return () =>
+      listenerIds.forEach(({ type, id }) => removePlayEventListener(type, id));
+  }, [registerPlayEventListener, removePlayEventListener, showEffect]);
+
+  const emitEvent = useCallback(
+    (message: string, nextEffect?: PartyEffect) => {
+      setEventLine(message);
+      showEffect(nextEffect);
+      const type =
+        nextEffect === "popper"
+          ? POPPER_EVENT
+          : nextEffect === "balloon-pop"
+            ? BALLOON_POP_EVENT
+            : nextEffect === "cake-finale"
+              ? CAKE_FINALE_EVENT
+              : PARTY_EVENT;
+      dispatchPlayEvent({
+        type,
+        eventPayload: {
+          message,
+          effect: nextEffect,
+        } satisfies PartyEventPayload,
+      });
+    },
+    [dispatchPlayEvent, showEffect],
+  );
+
+  const current = useRef({
+    effect,
+    emitEvent,
+    eventLine,
+    setSoundOn,
+    soundOn,
+    users,
+  });
+  current.current = {
+    effect,
+    emitEvent,
+    eventLine,
+    setSoundOn,
+    soundOn,
+    users,
+  };
+  const setPartyAwareness = useRef<
+    ((awareness: PopperAwareness) => void) | null
+  >(null);
+
+  useEffect(() => {
+    setPartyAwareness.current?.({
+      ...identity,
+      holdingPopper: false,
+      holdId: "",
+    });
+  }, [identity]);
+
+  const SharedRoom = useMemo(
+    () =>
+      withSharedState<PartyData, PopperAwareness, { identity: PartyIdentity }>(
+        (props) => ({
+          defaultData: { popperCount: 0, lastPopperPair: "" },
+          myDefaultAwareness: {
+            ...props.identity,
+            holdingPopper: false,
+            holdId: "",
+          },
+        }),
+        ({ data, setData, awareness, setMyAwareness }, props) => {
+          setPartyAwareness.current = setMyAwareness;
+          const { effect, emitEvent, eventLine, setSoundOn, soundOn, users } =
+            current.current;
+          return (
+            <div id="party-3-room" className="party-page">
+              <Confetti effect={effect} />
+              <Pennants />
+              <section className="party-hero" data-hero>
+                <p className="party-hero__date">August 2023–2026</p>
+                <h1>help us celebrate!</h1>
+                <p>
+                  three years ago I put <strong>playhtml</strong> on the
+                  internet hoping the web could feel a little more lived-in. Now
+                  we have hundreds of tiny social websites that people inhabit
+                  every day.
+                </p>
+                <p className="party-hero__signoff">— spencer</p>
+                <PartyPopper
+                  data={data}
+                  setData={setData}
+                  awareness={awareness}
+                  setMyAwareness={setMyAwareness}
+                  identity={props.identity}
+                  emitEvent={emitEvent}
+                  soundOn={soundOn}
+                />
+              </section>
+              <nav className="party-station-nav" aria-label="Party stations">
+                <span>← wander →</span>
+                {[
+                  ["the cake", 720],
+                  ["balloons", 90],
+                  ["wishes", 1440],
+                ].map(([label, left]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() =>
+                      floorRef.current?.scrollTo({
+                        left: Math.max(
+                          0,
+                          Number(left) -
+                            (floorRef.current.clientWidth - 580) / 2,
+                        ),
+                        behavior: "smooth",
+                      })
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+              <div ref={floorRef} className="party-floor" data-floor>
+                <div className="party-floor__canvas" data-canvas>
+                  <CakeStation
+                    identity={props.identity}
+                    emitEvent={emitEvent}
+                    soundOn={soundOn}
+                  />
+                  <BalloonsStation
+                    identity={props.identity}
+                    emitEvent={emitEvent}
+                    soundOn={soundOn}
+                  />
+                  <WishesStation
+                    identity={props.identity}
+                    emitEvent={emitEvent}
+                    soundOn={soundOn}
+                  />
+                </div>
+              </div>
+              <p className="party-event-line">✳ {eventLine}</p>
+              <footer className="party-footer" data-footer>
+                <span>three years of playhtml</span>
+                <button
+                  type="button"
+                  onClick={() => setSoundOn(!soundOn)}
+                  title={
+                    soundOn
+                      ? "sound on · click to mute"
+                      : "muted · click for pops and bangs"
+                  }
+                >
+                  {soundOn ? "♪" : "♪̸"}
+                </button>
+                <span className="party-footer__presence">
+                  <PresenceBalloons colors={users.map((user) => user.color)} />{" "}
+                  {users.length} here
+                </span>
+                <a href="https://playhtml.fun">home</a>
+                <a href="https://playhtml.fun/docs/">docs</a>
+                <a href="https://discord.gg/2FhWH9AmSp">discord</a>
+              </footer>
+            </div>
+          );
+        },
+      ),
+    [],
+  );
+  return <SharedRoom identity={identity} />;
+}
+
+export function PartyPage() {
+  const playerIdentity = usePlayerIdentity();
+  const { isLoading } = usePlayContext();
+  const [arrived, setArrived] = useState<boolean | null>(null);
+  const [soundOn, setSoundOnState] = useState(true);
+
+  useEffect(() => {
+    const skipEntry = new URLSearchParams(window.location.search).has(
+      "skipEntry",
+    );
+    setArrived(skipEntry || localStorage.getItem(ARRIVAL_KEY) === "true");
+    setSoundOnState(localStorage.getItem(SOUND_KEY) !== "off");
+  }, []);
+
+  const setSoundOn = useCallback((value: boolean) => {
+    setSoundOnState(value);
+    localStorage.setItem(SOUND_KEY, value ? "on" : "off");
+  }, []);
+
+  if (isLoading || arrived === null || !playerIdentity.pid) {
+    return <main className="party-loading">setting the table…</main>;
+  }
+
+  const identity: PartyIdentity = {
+    pid: playerIdentity.pid,
+    name: identityLabel(playerIdentity.name),
+    color: playerIdentity.color || PARTY_COLORS[0],
+  };
+
+  return (
+    <>
+      {!arrived && (
+        <ArrivalNametag
+          initialName={playerIdentity.name ?? ""}
+          initialColor={
+            PARTY_COLORS.includes(
+              playerIdentity.color as (typeof PARTY_COLORS)[number],
+            )
+              ? playerIdentity.color
+              : PARTY_COLORS[0]
+          }
+          onEnter={(name, color) => {
+            playhtml.users.me.name = name || undefined;
+            playhtml.users.me.color = color;
+            localStorage.setItem(ARRIVAL_KEY, "true");
+            setArrived(true);
+            playPartySound("chime", soundOn);
+          }}
+        />
+      )}
+      <PartyRoom
+        identity={identity}
+        soundOn={soundOn}
+        setSoundOn={setSoundOn}
+      />
+    </>
+  );
+}
