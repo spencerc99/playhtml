@@ -163,8 +163,10 @@ describe("PartyServer bridge request protection", () => {
     });
     const replacementBase64 = encodeDocToBase64(replacement);
     replacement.destroy();
+    server.documentWriteState = { kind: "reset", resetEpoch: 43 };
     server.documentWriteTail = replacementGate.then(() => {
       replaceDocFromSnapshot(document, replacementBase64);
+      server.documentWriteState = { kind: "idle" };
     });
     let reachedWriteQueue = () => {};
     const writeQueued = new Promise<void>((resolve) => {
@@ -189,8 +191,12 @@ describe("PartyServer bridge request protection", () => {
         SECRET
       )
     );
-    await writeQueued;
+    const admission = await Promise.race([
+      writeQueued.then(() => "queued" as const),
+      responsePromise.then(() => "responded" as const),
+    ]);
 
+    expect(admission).toBe("queued");
     expect(docToJson(document)?.["can-toggle"]?.shared).toEqual({
       active: false,
     });

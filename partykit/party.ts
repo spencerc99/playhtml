@@ -2790,9 +2790,20 @@ export class PartyServer extends YServer {
         if (bridgeAuthFailure) return bridgeAuthFailure;
       }
 
+      const documentWriteKind = this.getDocumentWriteState().kind;
+      const bridgeApplyCanWaitForMaintenance =
+        isApplySubtreesImmediateRequest(body) &&
+        this.documentLoadCompleted &&
+        this.isPersistenceAvailable() &&
+        !this.circuitBreaker.isQuarantined() &&
+        (documentWriteKind === "maintenance" ||
+          documentWriteKind === "compaction" ||
+          documentWriteKind === "reset");
       if (
         !this.canWriteSharedData() &&
-        (isSubscribeRequest(body) || isApplySubtreesImmediateRequest(body))
+        (isSubscribeRequest(body) ||
+          (isApplySubtreesImmediateRequest(body) &&
+            !bridgeApplyCanWaitForMaintenance))
       ) {
         return new Response(
           JSON.stringify({
@@ -2890,16 +2901,6 @@ export class PartyServer extends YServer {
       }
 
       if (isApplySubtreesImmediateRequest(body)) {
-        if (!this.canWriteSharedData()) {
-          console.warn(
-            `[Bridge] Ignoring apply-subtrees for room ${this.name}: document hydration or persistence unavailable.`
-          );
-          const response: ApplySubtreesResponse = { ok: true, applied: false };
-          return new Response(JSON.stringify(response), {
-            headers: { "content-type": "application/json" },
-          });
-        }
-
         // Applies provided subtrees immediately and marks origin to suppress echo
         const { subtrees, sender, originKind } = body;
 
