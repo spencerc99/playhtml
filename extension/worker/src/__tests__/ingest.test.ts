@@ -42,6 +42,7 @@ const ENV: Env = {
   RESEND_API_KEY: 'r',
   CODA_API_TOKEN: 'c',
   LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
+  COMMUTE_TRAIN_DISPATCHER: {} as DurableObjectNamespace,
   WWO_ADMIN_DB: {} as D1Database,
 };
 

@@ -17,6 +17,7 @@ import {
   handleQuarantineRip,
 } from './routes/quarantine';
 import { handleCommute } from './routes/commute';
+import { handleCommuteTrainBoard } from './routes/commuteTrains';
 import {
   handleAccessRequest,
   handleAdminAccessOverview,
@@ -31,6 +32,7 @@ import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
 export { LiveEventsHub } from './live/LiveEventsHub';
+export { CommuteTrainDispatcherObject } from './commuteTrainDispatcherObject';
 
 /**
  * Cloudflare Worker entry point
@@ -71,6 +73,11 @@ export default {
       // This response is reduced to public destinations, domain-only scenery,
       // and aggregate counts. Extension-page GETs can omit Origin and Referer.
       return handleCommute(request, env);
+    }
+
+    if (path === '/commute/trains/board' && request.method === 'POST') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleCommuteTrainBoard(request, env);
     }
 
     if (path === '/events/daily-counts' && request.method === 'GET') {

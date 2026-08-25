@@ -46,6 +46,10 @@ compatibility_date = "2024-01-01"
 name = "LIVE_EVENTS_HUB"
 class_name = "LiveEventsHub"
 
+[[durable_objects.bindings]]
+name = "COMMUTE_TRAIN_DISPATCHER"
+class_name = "CommuteTrainDispatcherObject"
+
 [[d1_databases]]
 binding = "WWO_ADMIN_DB"
 database_name = "wwo-admin"
@@ -55,3 +59,7 @@ migrations_dir = "migrations"
 [[migrations]]
 tag = "v1"
 new_classes = ["LiveEventsHub"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["CommuteTrainDispatcherObject"]
