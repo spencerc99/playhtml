@@ -10,7 +10,8 @@ import {
   parseSharedElementsFromUrl,
   parseSharedReferencesFromUrl
 } from "../sharing";
-import { getDocResetEpoch } from "../docUtils";
+import { docToJson, getDocResetEpoch, jsonToDoc } from "../docUtils";
+import { recordsFromPlay } from "../moderation";
 
 // PartyServer imports Cloudflare-only modules and constructs a Supabase client at
 // module scope. Stub both so the real class can be exercised under bun test.
@@ -226,6 +227,54 @@ function encodeDoc(doc: Y.Doc): string {
   return Buffer.from(Y.encodeStateAsUpdate(doc)).toString("base64");
 }
 
+function moderationTarget(
+  play: Record<string, unknown>,
+  key: string
+): { key: string; contentHash: string } {
+  const record = recordsFromPlay(play).find(
+    (candidate) => candidate.key === key
+  );
+  if (!record) throw new Error(`No moderation record found for ${key}`);
+  return { key, contentHash: record.contentHash };
+}
+
+function adminPost(
+  room: any,
+  endpoint: string,
+  body: Record<string, unknown>
+): Promise<Response> {
+  return room.adminHandler.handleRequest(
+    new Request(
+      `https://example.com/parties/main/example-room/admin/${endpoint}`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      }
+    )
+  );
+}
+
+function buildReadyAdminRoom(play: Record<string, unknown>) {
+  const storage = new FakeStorage();
+  const room = buildRoom(storage, "example-room", jsonToDoc(play));
+  const effects = {
+    closedReasons: [] as string[],
+    broadcasts: [] as string[],
+  };
+  room.documentLoadCompleted = true;
+  room.getConnections = () => [
+    {
+      close(_code: number, reason: string) {
+        effects.closedReasons.push(reason);
+      },
+    },
+  ];
+  room.broadcastCustomMessage = (message: string) => {
+    effects.broadcasts.push(message);
+  };
+  return { room, effects };
+}
+
 function docIsEmpty(doc: Y.Doc): boolean {
   return Object.keys(doc.getMap("play").toJSON()).length === 0;
 }
@@ -263,6 +312,188 @@ beforeEach(() => {
   beforeDocumentRead = null;
   kvStore.clear();
   kvFailure = null;
+});
+
+describe("admin mutations use the authoritative live document", () => {
+  test("moderation preserves unrelated live-only data and returns commit metadata", async () => {
+    const persistedPlay = {
+      "can-play": {
+        newWords: [
+          { id: "remove", word: "remove me" },
+          { id: "keep", word: "keep me" },
+        ],
+      },
+    };
+    const livePlay = {
+      ...persistedPlay,
+      "can-move": {
+        "live-only": { x: 12, y: 34 },
+      },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(persistedPlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "moderation-remove", {
+      targets: [moderationTarget(persistedPlay, "can-play.newWords#0")],
+    });
+    const body = await response.json();
+    const savedPlay = docToJson(room.document);
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      removed: 1,
+      skipped: [],
+      closedConnections: 1,
+    });
+    expect(body.documentSize).toBeNumber();
+    expect(body.resetEpoch).toBeNumber();
+    expect(savedPlay?.["can-play"].newWords).toEqual([
+      { id: "keep", word: "keep me" },
+    ]);
+    expect(savedPlay?.["can-move"]["live-only"]).toEqual({ x: 12, y: 34 });
+    expect(upsertCalls).toHaveLength(1);
+    expect(effects.closedReasons).toEqual(["Room Restored by Admin"]);
+    expect(effects.broadcasts).toHaveLength(1);
+  });
+
+  test("moderation rechecks stale hashes against live data without saving or resetting", async () => {
+    const persistedPlay = {
+      "can-post": {
+        guestbook: [{ id: "entry", message: "before review" }],
+      },
+    };
+    const livePlay = {
+      "can-post": {
+        guestbook: [{ id: "entry", message: "edited while reviewing" }],
+      },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(persistedPlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "moderation-remove", {
+      targets: [moderationTarget(persistedPlay, "can-post.guestbook#0")],
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      removed: 0,
+      skipped: [{ key: "can-post.guestbook#0", reason: "hash-mismatch" }],
+      documentSize: null,
+      resetEpoch: null,
+      closedConnections: 0,
+    });
+    expect(docToJson(room.document)).toEqual(livePlay);
+    expect(upsertCalls).toEqual([]);
+    expect(effects.closedReasons).toEqual([]);
+    expect(effects.broadcasts).toEqual([]);
+  });
+
+  test("orphan cleanup dry-run inspects live data without saving or resetting", async () => {
+    const persistedPlay = {
+      "can-move": { kept: { x: 1, y: 2 } },
+    };
+    const livePlay = {
+      "can-move": {
+        kept: { x: 1, y: 2 },
+        "live-orphan": { x: 3, y: 4 },
+      },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(persistedPlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "cleanup-orphans", {
+      tag: "can-move",
+      activeIds: ["kept"],
+      dryRun: true,
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      tag: "can-move",
+      total: 2,
+      active: 1,
+      orphaned: 1,
+      orphanedIds: ["live-orphan"],
+      dryRun: true,
+    });
+    expect(docToJson(room.document)).toEqual(livePlay);
+    expect(upsertCalls).toEqual([]);
+    expect(effects.closedReasons).toEqual([]);
+    expect(effects.broadcasts).toEqual([]);
+  });
+
+  test("orphan cleanup skips a no-op without saving or resetting", async () => {
+    const livePlay = {
+      "can-move": { kept: { x: 1, y: 2 } },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(livePlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "cleanup-orphans", {
+      tag: "can-move",
+      activeIds: ["kept"],
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      tag: "can-move",
+      total: 1,
+      active: 1,
+      removed: 0,
+      orphanedIds: [],
+      documentSize: null,
+      resetEpoch: null,
+      closedConnections: 0,
+    });
+    expect(upsertCalls).toEqual([]);
+    expect(effects.closedReasons).toEqual([]);
+    expect(effects.broadcasts).toEqual([]);
+  });
+
+  test("orphan cleanup preserves live-only data and returns commit counts", async () => {
+    const persistedPlay = {
+      "can-move": {
+        kept: { x: 1, y: 2 },
+        orphan: { x: 3, y: 4 },
+      },
+    };
+    const livePlay = {
+      ...persistedPlay,
+      "can-toggle": { "live-only": { on: true } },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(persistedPlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "cleanup-orphans", {
+      tag: "can-move",
+      activeIds: ["kept"],
+    });
+    const body = await response.json();
+    const savedPlay = docToJson(room.document);
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      tag: "can-move",
+      total: 2,
+      active: 1,
+      removed: 1,
+      orphanedIds: ["orphan"],
+      closedConnections: 1,
+    });
+    expect(body.documentSize).toBeNumber();
+    expect(body.resetEpoch).toBeNumber();
+    expect(savedPlay?.["can-move"]).toEqual({ kept: { x: 1, y: 2 } });
+    expect(savedPlay?.["can-toggle"]["live-only"]).toEqual({ on: true });
+    expect(upsertCalls).toHaveLength(1);
+    expect(effects.closedReasons).toEqual(["Room Restored by Admin"]);
+    expect(effects.broadcasts).toHaveLength(1);
+  });
 });
 
 describe("hydration write guards", () => {
