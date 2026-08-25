@@ -24,6 +24,7 @@ describe("hosted Slow Mode bridge", () => {
   it("reads an opaque ride id from the fragment", () => {
     expect(getHostedSlowModeRideId(`#ride=${RIDE_ID}`)).toBe(RIDE_ID);
     expect(getHostedSlowModeRideId("#ride=example.com")).toBeNull();
+    expect(getHostedSlowModeRideId(`#ride=${"-".repeat(36)}`)).toBeNull();
   });
 
   it("validates page requests and outcomes", () => {

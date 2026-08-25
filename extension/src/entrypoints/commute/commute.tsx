@@ -1503,11 +1503,13 @@ function usePrefersReducedMotion(): boolean {
 
 function InternetCommute({
   assignment,
+  bridgeUnavailable,
   extensionCursorColor,
   ride,
   serverTimeOffsetMs,
 }: {
   assignment: CommuteTrainAssignment;
+  bridgeUnavailable: boolean;
   extensionCursorColor: string | null;
   ride: HostedSlowModeRide | null;
   serverTimeOffsetMs: number;
@@ -1614,6 +1616,12 @@ function InternetCommute({
         <p className="commute-subtitle">a slow train through the recent web</p>
 
         <CommuteInstallPrompt />
+
+        {bridgeUnavailable && (
+          <p className="slow-mode-sharing" role="status">
+            Slow Mode connection unavailable · riding the public route
+          </p>
+        )}
 
         {ride && destinationStopIndex >= 0 && (
           <SlowModeProgress
@@ -1783,9 +1791,11 @@ function InternetCommute({
 }
 
 function CommuteBoardingRoot({
+  bridgeUnavailable,
   playerIdentity,
   ride,
 }: {
+  bridgeUnavailable: boolean;
   playerIdentity: PlayerIdentity | null;
   ride: HostedSlowModeRide | null;
 }) {
@@ -1818,6 +1828,7 @@ function CommuteBoardingRoot({
     >
       <InternetCommute
         assignment={connection.assignment}
+        bridgeUnavailable={bridgeUnavailable}
         extensionCursorColor={
           playerIdentity?.playerStyle.colorPalette[0] ?? null
         }
@@ -1830,7 +1841,11 @@ function CommuteBoardingRoot({
 
 function CommuteRoot() {
   const [rootState, setRootState] = useState<
-    | { playerIdentity: PlayerIdentity | null; ride: HostedSlowModeRide | null }
+    | {
+        bridgeUnavailable: boolean;
+        playerIdentity: PlayerIdentity | null;
+        ride: HostedSlowModeRide | null;
+      }
     | undefined
   >(undefined);
 
@@ -1842,13 +1857,20 @@ function CommuteRoot() {
         return null;
       }),
       rideId ? requestHostedSlowModeRide(rideId) : Promise.resolve(null),
-    ]).then(([playerIdentity, ride]) => setRootState({ playerIdentity, ride }));
+    ]).then(([playerIdentity, ride]) =>
+      setRootState({
+        bridgeUnavailable: rideId !== null && ride === null,
+        playerIdentity,
+        ride,
+      }),
+    );
   }, []);
 
   if (!rootState) return null;
 
   return (
     <CommuteBoardingRoot
+      bridgeUnavailable={rootState.bridgeUnavailable}
       playerIdentity={rootState.playerIdentity}
       ride={rootState.ride}
     />
