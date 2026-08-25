@@ -254,6 +254,21 @@ describe("alarm entry point", () => {
 });
 
 describe("persistence recovery admission", () => {
+  test("a restarted isolate runs due persistence recovery ahead of load backoff", async () => {
+    const { server, storage } = createServer();
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("persistenceRecoveryAttempts", 1);
+    storage.values.set("persistenceRecoveryRetryAfter", Date.now() - 1);
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() + 10 * 60_000);
+
+    await server.alarm();
+
+    expect(documentReadCount).toBe(1);
+    expect(server.isPersistenceAvailable()).toBe(true);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+  });
+
   test("a restarted isolate honors the durable recovery deadline", async () => {
     const { server, storage } = createServer();
     const retryAfter = Date.now() + 10 * 60_000;

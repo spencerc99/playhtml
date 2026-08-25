@@ -343,8 +343,17 @@ export class PartyServer extends YServer {
       return;
     }
 
-    // Load backoff, evaluated before hydration for the same reason.
-    if (await this.circuitBreaker.shouldDeferLoad()) {
+    const persistenceRecoveryPending =
+      (await this.ctx.storage.get(
+        STORAGE_KEYS.persistenceRecoveryPending
+      )) === true;
+
+    // Persistence recovery has its own durable deadline and must reach onLoad
+    // before the ordinary load-failure ledger can defer startup.
+    if (
+      !persistenceRecoveryPending &&
+      (await this.circuitBreaker.shouldDeferLoad())
+    ) {
       return;
     }
 
