@@ -92,6 +92,9 @@ import {
 import { BridgeHealth } from "./bridgeHealth";
 import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
 import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
+import { createBridgeRequest, getBridgeAuthFailure } from "./bridgeAuth";
+import { getBridgeApplyRelationship } from "./bridgeRequestPolicy";
+import { mergeSharedReferenceLeases } from "./bridgeLeasePolicy";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
@@ -196,11 +199,7 @@ type AutomaticCompactionOptions<T> = {
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
 // The URL is synthetic — the target server's onRequest reads the body, not the path.
 function internalRequest(path: string, body: unknown): Request {
-  return new Request(`http://internal${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return createBridgeRequest(path, body, env.PARTYKIT_BRIDGE_SECRET);
 }
 
 function readPositiveNumberEnv(name: string, fallback: number): number {
@@ -1570,33 +1569,17 @@ export class PartyServer extends YServer {
     changed: boolean;
   }> {
     const existing = await this.getSharedReferences();
-    const bySource = new Map<string, Set<string>>();
-    for (const e of existing)
-      bySource.set(e.sourceRoomId, new Set(e.elementIds));
-    let changed = false;
-    for (const e of newEntries) {
-      const set = bySource.get(e.sourceRoomId) ?? new Set<string>();
-      const before = set.size;
-      for (const id of e.elementIds) set.add(id);
-      if (!bySource.has(e.sourceRoomId) || set.size !== before) changed = true;
-      bySource.set(e.sourceRoomId, set);
-    }
+    const { entries, changed } = mergeSharedReferenceLeases({
+      existing,
+      requested: newEntries,
+      nowIso: new Date().toISOString(),
+    });
     if (changed) {
-      const nowIso = new Date().toISOString();
-      const merged: Array<SharedRefEntry> = Array.from(bySource.entries()).map(
-        ([sourceRoomId, ids]) => {
-          return {
-            sourceRoomId,
-            elementIds: Array.from(ids),
-            lastSeen: nowIso,
-          };
-        }
-      );
-      await this.setSharedReferences(merged);
+      await this.setSharedReferences(entries);
       await this.ensureAlarmScheduled();
-      return { entries: merged, changed: true };
+      return { entries, changed: true };
     }
-    return { entries: existing, changed: false };
+    return { entries, changed: false };
   }
 
   // --- Helper: subscribe to sources and optionally hydrate immediately
@@ -2669,6 +2652,18 @@ export class PartyServer extends YServer {
       }
 
       if (
+        isSubscribeRequest(body) ||
+        isExportPermissionsRequest(body) ||
+        isApplySubtreesImmediateRequest(body)
+      ) {
+        const bridgeAuthFailure = getBridgeAuthFailure(
+          request,
+          env.PARTYKIT_BRIDGE_SECRET
+        );
+        if (bridgeAuthFailure) return bridgeAuthFailure;
+      }
+
+      if (
         !this.canWriteSharedData() &&
         (isSubscribeRequest(body) || isApplySubtreesImmediateRequest(body))
       ) {
@@ -2784,6 +2779,27 @@ export class PartyServer extends YServer {
         const yDoc = this.document;
         const subscribers = await this.getSubscribers();
         const sharedRefs = await this.getSharedReferences();
+        const relationship = getBridgeApplyRelationship({
+          sender,
+          originKind,
+          subscriberRoomIds: subscribers.map(
+            (subscriber) => subscriber.consumerRoomId
+          ),
+          sourceRoomIds: sharedRefs.map((reference) => reference.sourceRoomId),
+        });
+        if (relationship === null) {
+          return new Response(
+            JSON.stringify({
+              error: "bridge_relationship_not_found",
+              message: "The sending room has no registered bridge relationship",
+            }),
+            {
+              status: 403,
+              headers: { "content-type": "application/json" },
+            }
+          );
+        }
+
         const senderResetEpoch =
           typeof body.resetEpoch === "number" ? body.resetEpoch : null;
         const serverResetEpoch = await this.getResetEpoch();
@@ -2798,12 +2814,8 @@ export class PartyServer extends YServer {
           });
         }
 
-        const receivingFromConsumer =
-          originKind === "consumer" &&
-          subscribers.some((s) => s.consumerRoomId === sender);
-        const receivingFromSource =
-          originKind === "source" &&
-          sharedRefs.some((r) => r.sourceRoomId === sender);
+        const receivingFromConsumer = relationship === "consumer";
+        const receivingFromSource = relationship === "source";
 
         let subtreesToApply: Record<string, Record<string, any>> = subtrees;
         if (receivingFromConsumer) {
