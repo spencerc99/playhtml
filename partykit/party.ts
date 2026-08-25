@@ -321,6 +321,7 @@ export class PartyServer extends YServer {
           this.documentLoadCompleted = false;
         },
         clearCompactionSchedule: () => this.clearEmptyRoomCompactAfter(),
+        scheduleRoomWork: () => this.scheduleNextAlarm(),
       });
     }
     return this.roomCircuitBreakerInstance;
@@ -723,6 +724,7 @@ export class PartyServer extends YServer {
 
     const recovery = (async () => {
       this.documentLoadCompleted = false;
+      this.circuitBreaker.setLoadDeferredUntil(null);
       try {
         await this.onLoad();
       } catch (error) {
@@ -1340,6 +1342,7 @@ export class PartyServer extends YServer {
       bumpEpoch?: boolean;
       allowQuarantined?: boolean;
       connectionCloseReason?: string;
+      completeHydration?: boolean;
     }
   ): Promise<{
     documentSize: number;
@@ -1357,6 +1360,7 @@ export class PartyServer extends YServer {
       bumpEpoch?: boolean;
       allowQuarantined?: boolean;
       connectionCloseReason?: string;
+      completeHydration?: boolean;
     }
   ): Promise<{
     documentSize: number;
@@ -1456,7 +1460,9 @@ export class PartyServer extends YServer {
       const liveYDoc = this.document;
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
-      this.markDocumentHydrated();
+      if (options?.completeHydration !== false) {
+        this.markDocumentHydrated();
+      }
       if (resetEpochCommitted) {
         try {
           await this.ctx.storage.delete(STORAGE_KEYS.pendingDocumentReset);
@@ -2202,6 +2208,17 @@ export class PartyServer extends YServer {
 
     if (this.circuitBreaker.isLoadDeferred()) return;
 
+    if (persistenceRecoveryPending) {
+      await this.runDocumentWrite(() => this.loadDocument(true));
+      return;
+    }
+
+    await this.loadDocument(false);
+  }
+
+  private async loadDocument(
+    persistenceRecoveryPending: boolean
+  ): Promise<void> {
     // Durable BEFORE the risky work: if hydration kills the isolate, this
     // increment survives and the next start counts it.
     const loadAttempts = await this.circuitBreaker.beginRiskyOperation("load");
@@ -2287,11 +2304,11 @@ export class PartyServer extends YServer {
       // The persisted snapshot is authoritative. Transient and quarantined
       // rooms may have an in-memory Y.Doc containing state that was never
       // accepted for persistence, so merging here would resurrect it.
-      this.documentLoadCompleted = true;
-      this.markPersistenceAvailable();
-      await this.restoreFromSnapshot(persistedDocument, {
+      await this.restoreFromSnapshotNow(persistedDocument, {
         bumpEpoch: true,
+        allowQuarantined: true,
         connectionCloseReason: "Room Persistence Restored",
+        completeHydration: false,
       });
       await this.ctx.storage.delete(STORAGE_KEYS.persistenceRecoveryPending);
     } else {
@@ -2322,6 +2339,9 @@ export class PartyServer extends YServer {
     this.circuitBreaker.setLoadDeferredUntil(null);
     await this.circuitBreaker.completeRiskyOperation("load");
     await this.circuitBreaker.completePersistenceRecovery();
+    if (persistenceRecoveryPending) {
+      this.markDocumentHydrated();
+    }
   }
 
   // Undoes this start's increment when the load ended before hydration could be

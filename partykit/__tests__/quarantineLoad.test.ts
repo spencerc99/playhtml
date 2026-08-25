@@ -2145,6 +2145,82 @@ describe("manual quarantine", () => {
 });
 
 describe("quarantine data safety", () => {
+  test("recovery waits for an in-flight save before reading its authoritative snapshot", async () => {
+    const initialDoc = new Y.Doc();
+    initialDoc.getMap("play").set("version", "initial");
+    persistedRow.document = encodeDoc(initialDoc);
+    const { room, storage } = createRoom();
+    await startRoom(room);
+
+    const savedDoc = new Y.Doc();
+    savedDoc.getMap("play").set("version", "saved-before-recovery");
+    const savedBase64 = encodeDoc(savedDoc);
+    Y.applyUpdate(
+      room.document,
+      new Uint8Array(Buffer.from(savedBase64, "base64"))
+    );
+
+    const delayedSave = createDeferred();
+    const saveStarted = createDeferred();
+    let upsertIndex = 0;
+    beforeUpsert = async () => {
+      upsertIndex += 1;
+      if (upsertIndex === 1) {
+        saveStarted.resolve();
+        await delayedSave.promise;
+      }
+    };
+
+    const autosave = room.saveDocumentBase64(encodeDoc(room.document));
+    await saveStarted.promise;
+    const blockedSaveTail = room.documentWriteTail;
+    await room.circuitBreaker.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+    await room.circuitBreaker.clearQuarantine();
+    documentReadCount = 0;
+    const cleanupStarted = createDeferred();
+    const continueCleanup = createDeferred();
+    const originalDelete = storage.delete.bind(storage);
+    storage.delete = async (key: string) => {
+      if (key === "persistenceRecoveryPending") {
+        cleanupStarted.resolve();
+        await continueCleanup.promise;
+      }
+      await originalDelete(key);
+    };
+
+    const recovery = room.runDocumentWrite(() => room.loadDocument(true));
+
+    expect(room.documentWriteTail).not.toBe(blockedSaveTail);
+    expect(documentReadCount).toBe(0);
+
+    delayedSave.resolve();
+    await autosave;
+    await cleanupStarted.promise;
+
+    expect(room.documentLoadCompleted).toBe(false);
+    expect(room.isPersistenceAvailable()).toBe(false);
+
+    continueCleanup.resolve();
+    await recovery;
+
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("version")).toBe(
+      "saved-before-recovery"
+    );
+    expect(room.document.getMap("play").get("version")).toBe(
+      "saved-before-recovery"
+    );
+  });
+
   test("an in-flight autosave cannot finish after an authoritative restore", async () => {
     const { room } = createRoom();
     room.documentLoadCompleted = true;

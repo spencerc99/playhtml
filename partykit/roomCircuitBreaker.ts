@@ -46,6 +46,7 @@ type RoomCircuitBreakerOptions = {
   reloadRoom: () => Promise<boolean>;
   prepareGuardedReload: () => void;
   clearCompactionSchedule: () => Promise<void>;
+  scheduleRoomWork: () => Promise<void>;
 };
 
 export type EnterQuarantineOptions = {
@@ -719,6 +720,7 @@ export class RoomCircuitBreaker {
     }
     await this.storage.delete(STORAGE_KEYS.alarmFailureAttempts);
     await this.storage.delete(STORAGE_KEYS.alarmRetryAfter);
+    await this.options.scheduleRoomWork();
     console.log(
       `[PartyServer] Quarantine cleared for room=${this.roomName}: ` +
         `wasQuarantined=${summary.wasQuarantined}, ` +

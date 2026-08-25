@@ -251,6 +251,30 @@ describe("alarm entry point", () => {
       { code: 4000, reason: "Room Persistence Restored" },
     ]);
   });
+
+  test("clearing quarantine re-arms recovery without new traffic", async () => {
+    const { server, storage } = createServer();
+    kvStore.set("quarantine:example-room", "operator stop");
+
+    await server.alarm();
+    expect(server.circuitBreaker.isQuarantined()).toBe(true);
+    expect(storage.alarm).toBeNull();
+
+    await server.circuitBreaker.clearQuarantine();
+
+    expect(storage.alarm).toBeNumber();
+    expect(storage.alarm!).toBeLessThanOrEqual(Date.now());
+    expect(server.isPersistenceAvailable()).toBe(false);
+    expect(server.circuitBreaker.isQuarantined()).toBe(false);
+    expect(await server.circuitBreaker.isPersistenceRecoveryDue()).toBe(true);
+
+    documentReadCount = 0;
+    await server.onAlarm();
+
+    expect(documentReadCount).toBe(1);
+    expect(server.isPersistenceAvailable()).toBe(true);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+  });
 });
 
 describe("persistence recovery admission", () => {
