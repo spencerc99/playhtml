@@ -61,12 +61,15 @@ import {
 } from '../features/featureAccess'
 import { FEATURE_IDS } from '../flags'
 import {
+  SLOW_MODE_SETTINGS_KEY,
   SLOW_MODE_STATE_KEY,
   isSlowModeRideOutcome,
+  normalizeSlowModeSettings,
   normalizeSlowModeState,
   updateSlowModeRide,
 } from '../features/slowMode/slowMode'
 import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
+import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -501,26 +504,68 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
+    if (message.type === 'GET_SLOW_MODE_HOSTED_RIDE') {
+      if (
+        typeof message.rideId !== 'string' ||
+        !sender.tab?.url ||
+        !isHostedCommuteUrl(sender.tab.url)
+      ) {
+        reply(null)
+        return
+      }
+      browser.storage.local
+        .get([SLOW_MODE_SETTINGS_KEY, SLOW_MODE_STATE_KEY])
+        .then((stored) => {
+          const ride = normalizeSlowModeState(
+            stored[SLOW_MODE_STATE_KEY],
+          ).rides.find((candidate) => candidate.id === message.rideId)
+          if (!ride) return null
+          return {
+            rideId: ride.id,
+            destinationDomain: ride.destinationDomain,
+            stopVisibility: normalizeSlowModeSettings(
+              stored[SLOW_MODE_SETTINGS_KEY],
+            ).stopVisibility,
+          }
+        })
+        .then(reply)
+        .catch(() => reply(null))
+      return true
+    }
+
     if (message.type === 'SLOW_MODE_RIDE_OUTCOME') {
       if (
         typeof message.rideId !== 'string' ||
-        !isSlowModeRideOutcome(message.outcome)
+        !isSlowModeRideOutcome(message.outcome) ||
+        (message.navigate === true &&
+          (!sender.tab?.url || !isHostedCommuteUrl(sender.tab.url)))
       ) {
         reply({ success: false })
         return
       }
       browser.storage.local
         .get(SLOW_MODE_STATE_KEY)
-        .then((stored) =>
-          browser.storage.local.set({
+        .then(async (stored) => {
+          const state = normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY])
+          const ride = state.rides.find(
+            (candidate) => candidate.id === message.rideId,
+          )
+          if (!ride) return false
+          await browser.storage.local.set({
             [SLOW_MODE_STATE_KEY]: updateSlowModeRide(
-              normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY]),
+              state,
               message.rideId,
               message.outcome,
             ),
-          }),
-        )
-        .then(() => reply({ success: true }))
+          })
+          if (message.navigate === true && sender.tab?.id != null) {
+            await browser.tabs.update(sender.tab.id, {
+              url: ride.destinationUrl,
+            })
+          }
+          return true
+        })
+        .then((success) => reply({ success }))
         .catch((error) => {
           console.warn('[Slow Mode] failed to update ride log:', error)
           reply({ success: false })

@@ -20,7 +20,11 @@ function emptyState(): SlowModeState {
 describe("Slow Mode browser interception", () => {
   it("redirects a qualifying top-frame navigation and records the ride", async () => {
     const stored: Record<string, unknown> = {
-      [SLOW_MODE_SETTINGS_KEY]: { enabled: true, chancePercent: 100 },
+      [SLOW_MODE_SETTINGS_KEY]: {
+        enabled: true,
+        chancePercent: 100,
+        stopVisibility: "domain",
+      },
       [SLOW_MODE_STATE_KEY]: emptyState(),
     };
     const set = vi.fn(async (items: Record<string, unknown>) => {
@@ -30,10 +34,11 @@ describe("Slow Mode browser interception", () => {
     const handler = createSlowModeNavigationHandler({
       getStorage: async () => stored,
       setStorage: set,
-      getCommutePageUrl: () => "chrome-extension://test/commute.html",
+      getCommutePageUrl: () => "https://wewere.online/commute/",
       updateTab,
       now: () => new Date("2026-08-21T17:00:00-07:00").getTime(),
       random: () => 0,
+      createRideId: () => "ride_1234567890",
     });
 
     handler.rememberTabUrl(7, "https://garden.example/notes");
@@ -47,13 +52,13 @@ describe("Slow Mode browser interception", () => {
 
     expect(updateTab).toHaveBeenCalledOnce();
     const commuteUrl = new URL(updateTab.mock.calls[0][1]);
-    expect(commuteUrl.pathname).toBe("/commute.html");
-    expect(commuteUrl.searchParams.get("destination")).toBe(
-      "https://museum.example/exhibit",
+    expect(commuteUrl.origin).toBe("https://wewere.online");
+    expect(commuteUrl.pathname).toBe("/commute/");
+    expect(commuteUrl.search).toBe("");
+    expect(new URLSearchParams(commuteUrl.hash.slice(1)).get("ride")).toBe(
+      "ride_1234567890",
     );
-    expect(commuteUrl.searchParams.get("ride")).toBe(
-      `${new Date("2026-08-21T17:00:00-07:00").getTime()}:museum.example`,
-    );
+    expect(commuteUrl.href).not.toContain("museum.example");
     const state = stored[SLOW_MODE_STATE_KEY] as SlowModeState;
     expect(state.rides).toHaveLength(1);
     expect(state.rides[0]).toMatchObject({
@@ -67,14 +72,19 @@ describe("Slow Mode browser interception", () => {
     const updateTab = vi.fn().mockResolvedValue(undefined);
     const handler = createSlowModeNavigationHandler({
       getStorage: async () => ({
-        [SLOW_MODE_SETTINGS_KEY]: { enabled: true, chancePercent: 100 },
+        [SLOW_MODE_SETTINGS_KEY]: {
+          enabled: true,
+          chancePercent: 100,
+          stopVisibility: "domain",
+        },
         [SLOW_MODE_STATE_KEY]: emptyState(),
       }),
       setStorage: vi.fn().mockResolvedValue(undefined),
-      getCommutePageUrl: () => "chrome-extension://test/commute.html",
+      getCommutePageUrl: () => "https://wewere.online/commute/",
       updateTab,
       now: () => Date.now(),
       random: () => 0,
+      createRideId: () => "ride_1234567890",
     });
 
     handler.rememberTabUrl(7, "https://garden.example/notes");
