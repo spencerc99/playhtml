@@ -1186,6 +1186,67 @@ describe("hardening", () => {
     ]);
   });
 
+  test("successful hydration resets clients that connected during transient mode", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const storage = new FakeStorage();
+    const failedRoom = buildRoom(storage, "example-room");
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(failedRoom);
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(storage.values.get("persistenceRecoveryPending")).toBe(true);
+
+    const resetMessages: string[] = [];
+    const closeCalls: Array<{ code: number; reason: string }> = [];
+    const connection = {
+      close(code: number, reason: string) {
+        closeCalls.push({ code, reason });
+      },
+    };
+    const recoveredRoom = restartRoom(storage);
+    recoveredRoom.getConnections = () => [connection];
+    recoveredRoom.broadcastCustomMessage = (message: string) => {
+      resetMessages.push(message);
+    };
+
+    await startRoom(recoveredRoom);
+
+    const resetEpoch = await recoveredRoom.getResetEpoch();
+    expect(resetEpoch).toBeNumber();
+    expect(resetMessages).toEqual([
+      JSON.stringify({
+        type: "room-reset",
+        timestamp: resetEpoch,
+        resetEpoch,
+      }),
+    ]);
+    expect(closeCalls).toEqual([
+      { code: 4000, reason: "Room Persistence Restored" },
+    ]);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+    expect(persistedRow.document).not.toBe(SMALL_DOCUMENT);
+
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document ?? "", "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("greeting")).toBe("hello");
+    expect(persistedDoc.getMap("__playhtml_meta").get("resetEpoch")).toBe(
+      resetEpoch
+    );
+  });
+
   // F5: admin force-reload calls markPersistenceAvailable, which would otherwise
   // silently lift the write park on a quarantined room.
   test("markPersistenceAvailable cannot lift a quarantine write park", async () => {

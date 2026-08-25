@@ -11,6 +11,8 @@ export const STORAGE_KEYS = {
   resetEpoch: "resetEpoch",
   // Stores a timestamp after which an empty room can compact its Y.Doc history
   emptyRoomCompactAfter: "emptyRoomCompactAfter",
+  // Requires the next successful hydration to reset clients that saw transient state
+  persistenceRecoveryPending: "persistenceRecoveryPending",
   // Stores the next time a connected large room should pay the expensive
   // compactability check
   emergencyCompactCheckAfter: "emergencyCompactCheckAfter",

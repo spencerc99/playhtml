@@ -574,7 +574,7 @@ export class PartyServer extends YServer {
     );
   }
 
-  private enterTransientPersistenceMode(error: unknown): void {
+  private async enterTransientPersistenceMode(error: unknown): Promise<void> {
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
     const attempts = this.getSupabaseLoadAttempts();
     this.persistenceMode = {
@@ -590,6 +590,7 @@ export class PartyServer extends YServer {
         error,
       })
     );
+    await this.ctx.storage.put(STORAGE_KEYS.persistenceRecoveryPending, true);
   }
 
   private async readLimitedJson(request: Request): Promise<unknown | Response> {
@@ -1014,7 +1015,11 @@ export class PartyServer extends YServer {
    */
   async restoreFromSnapshot(
     snapshotBase64: string,
-    options?: { bumpEpoch?: boolean; allowQuarantined?: boolean }
+    options?: {
+      bumpEpoch?: boolean;
+      allowQuarantined?: boolean;
+      connectionCloseReason?: string;
+    }
   ): Promise<{
     documentSize: number;
     resetEpoch: number;
@@ -1082,7 +1087,9 @@ export class PartyServer extends YServer {
       );
 
       // FORCE DISCONNECT: Close all connections
-      const closedCount = this.closeConnections("Room Restored by Admin");
+      const closedCount = this.closeConnections(
+        options?.connectionCloseReason ?? "Room Restored by Admin"
+      );
       console.log(
         `[Restore Snapshot] Closed ${closedCount} connections`
       );
@@ -1781,8 +1788,8 @@ export class PartyServer extends YServer {
           );
         },
       }
-    ).catch((error) => {
-      this.enterTransientPersistenceMode(error);
+    ).catch(async (error) => {
+      await this.enterTransientPersistenceMode(error);
       return null;
     });
 
@@ -1836,10 +1843,23 @@ export class PartyServer extends YServer {
       }
     }
 
+    const persistenceRecoveryPending =
+      (await this.ctx.storage.get(
+        STORAGE_KEYS.persistenceRecoveryPending
+      )) === true;
+
     // Hydration completed without killing the isolate, so the failure history
     // and any pending backoff are cleared.
     await this.circuitBreaker.completeRiskyOperation("load");
     this.markDocumentHydrated();
+
+    if (persistenceRecoveryPending) {
+      await this.restoreFromSnapshot(encodeDocToBase64(this.document), {
+        bumpEpoch: true,
+        connectionCloseReason: "Room Persistence Restored",
+      });
+      await this.ctx.storage.delete(STORAGE_KEYS.persistenceRecoveryPending);
+    }
   }
 
   // Undoes this start's increment when the load ended before hydration could be
