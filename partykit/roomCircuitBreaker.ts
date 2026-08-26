@@ -358,7 +358,13 @@ export class RoomCircuitBreaker {
 
   async shouldDeferLoad(): Promise<boolean> {
     const previousFailures = await this.getFailureCount("load");
-    if (previousFailures === 0) return false;
+    if (previousFailures === 0) {
+      const retryAfter = await this.getFailureRetryAfter("load");
+      if (retryAfter !== null && !isRetryDue({ retryAfter, now: Date.now() })) {
+        this.loadDeferredUntil = retryAfter;
+      }
+      return false;
+    }
 
     const failureThreshold = this.getFailureThreshold();
     if (

@@ -329,6 +329,26 @@ describe("persistence recovery admission", () => {
     expect((server as any).documentLoadCompleted).toBe(false);
     expect(storage.alarm).toBe(retryAfter);
   });
+
+  test("a restarted provider outage honors its deadline without quarantine evidence", async () => {
+    const { server, storage } = createServer();
+    const retryAfter = Date.now() + 10 * 60_000;
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("loadRetryAfter", retryAfter);
+    storage.alarm = retryAfter;
+
+    await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+
+    expect(documentReadCount).toBe(0);
+    expect((server as any).documentLoadCompleted).toBe(false);
+    expect(server.circuitBreaker.isQuarantined()).toBe(false);
+    expect(storage.alarm).toBe(retryAfter);
+  });
 });
 
 describe("fetch entry point", () => {
