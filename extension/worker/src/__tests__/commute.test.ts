@@ -62,6 +62,9 @@ describe('handleCommute', () => {
 
     expect(response.status).toBe(200);
     expect(handleRecent).toHaveBeenCalledTimes(2);
+    expect(
+      new URL(handleRecent.mock.calls[1][0].url).searchParams.has('type'),
+    ).toBe(false);
     expect(payload.destinations).toEqual([
       expect.objectContaining({
         domain: 'public.example',

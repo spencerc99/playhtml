@@ -7,16 +7,16 @@ import { buildCommuteResponse } from './commutePolicy';
 import { handleRecent } from './recent';
 
 const NAVIGATION_LIMIT = 2000;
-const CURSOR_LIMIT = 1000;
+const ACTIVITY_LIMIT = 1000;
 
 async function fetchRecentEvents(
   request: Request,
   env: Env,
-  type: 'navigation' | 'cursor',
+  type: 'navigation' | null,
   limit: number,
 ): Promise<CollectionEvent[]> {
   const url = new URL('/events/recent', request.url);
-  url.searchParams.set('type', type);
+  if (type) url.searchParams.set('type', type);
   url.searchParams.set('limit', limit.toString());
   if (type === 'navigation') {
     url.searchParams.set('require_title', 'true');
@@ -39,13 +39,13 @@ export async function handleCommute(
   env: Env,
 ): Promise<Response> {
   try {
-    const [navigationEvents, cursorEvents] = await Promise.all([
+    const [navigationEvents, activityEvents] = await Promise.all([
       fetchRecentEvents(request, env, 'navigation', NAVIGATION_LIMIT),
-      fetchRecentEvents(request, env, 'cursor', CURSOR_LIMIT),
+      fetchRecentEvents(request, env, null, ACTIVITY_LIMIT),
     ]);
     const response = buildCommuteResponse(
       navigationEvents,
-      cursorEvents,
+      activityEvents,
       Date.now(),
     );
 

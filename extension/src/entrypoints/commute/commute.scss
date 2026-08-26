@@ -515,7 +515,6 @@ button {
 .commute-mobile-wordmark,
 .commute-mobile-fullscreen,
 .commute-mobile-joystick,
-.commute-mobile-action,
 .commute-mobile-transit-pass {
   display: none;
 }
@@ -1971,17 +1970,13 @@ button {
     border-radius: 0;
   }
 
-  .train-seat {
-    pointer-events: none;
-  }
-
   .commute-counts {
     width: auto;
     min-width: 280px;
     margin: 0;
     position: fixed;
-    right: calc(20px + env(safe-area-inset-right));
-    bottom: calc(24px + env(safe-area-inset-bottom));
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(10px + env(safe-area-inset-bottom));
     z-index: 30;
     padding: 6px 14px;
     display: flex;
@@ -2102,11 +2097,11 @@ button {
   }
 
   .commute-mobile-joystick {
-    width: 112px;
-    height: 112px;
+    width: 88px;
+    height: 88px;
     position: fixed;
-    bottom: calc(18px + env(safe-area-inset-bottom));
-    left: calc(20px + env(safe-area-inset-left));
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    left: calc(12px + env(safe-area-inset-left));
     z-index: 30;
     display: block;
     border: 1.5px solid rgba($text, 0.35);
@@ -2116,8 +2111,8 @@ button {
     touch-action: none;
 
     span {
-      width: 48px;
-      height: 48px;
+      width: 40px;
+      height: 40px;
       position: absolute;
       top: 50%;
       left: 50%;
@@ -2130,37 +2125,6 @@ button {
         calc(-50% + var(--joystick-y))
       );
       pointer-events: none;
-    }
-  }
-
-  .commute-mobile-action {
-    min-height: 44px;
-    position: fixed;
-    bottom: calc(58px + env(safe-area-inset-bottom));
-    left: calc(148px + env(safe-area-inset-left));
-    z-index: 30;
-    padding: 9px 20px;
-    display: block;
-    color: $bg;
-    border: 2px solid rgba($text, 0.25);
-    border-radius: 999px;
-    background: $accent-teal;
-    box-shadow: 0 2px 10px rgba($text, 0.3);
-    font-size: 13px;
-    font-weight: 700;
-    white-space: nowrap;
-    cursor: pointer;
-
-    &:active {
-      transform: scale(0.96);
-    }
-
-    &--stand {
-      background: $accent-plum;
-    }
-
-    &--exit {
-      background: $accent-rust;
     }
   }
 
