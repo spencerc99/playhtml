@@ -274,6 +274,12 @@ it("offers bookmarking instead of the new tab checkbox on Safari", async () => {
   expect(container.textContent).toContain(
     "Safari doesn't let extensions change the new tab",
   );
+  const historyLink = [...container.querySelectorAll("a")].find(
+    (element) => element.textContent === "Open History ↗",
+  );
+  expect(historyLink?.getAttribute("href")).toBe(
+    "chrome-extension://test/walking-record.html",
+  );
   expect(container.textContent).not.toContain("make this my new tab");
   expect(container.querySelector('input[type="checkbox"]')).toBeNull();
 
