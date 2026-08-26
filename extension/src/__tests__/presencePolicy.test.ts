@@ -32,13 +32,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("shouldInitializeCopresence", () => {
-  it("initializes Wikipedia when the global feature is disabled", () => {
+describe("launched copresence surfaces", () => {
+  it("keeps Wikipedia launched without experiment access", () => {
+    const wikipediaCursorsEnabled =
+      shouldEnableCursorsForHostname("en.wikipedia.org");
+
     expect(
       shouldInitializeCopresence({
         featureEnabled: false,
-        customSiteCursorsEnabled:
-          shouldEnableCursorsForHostname("en.wikipedia.org"),
+        customSiteCursorsEnabled: wikipediaCursorsEnabled,
+      }),
+    ).toBe(true);
+    expect(
+      shouldStartExtensionPresence({
+        nativePlayhtmlDetected: false,
+        cursorsEnabled: wikipediaCursorsEnabled,
       }),
     ).toBe(true);
   });
