@@ -116,7 +116,8 @@ export const DEFAULT_SUPABASE_LOAD_ATTEMPTS = (() => {
 export const DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS = (() => {
   return 250;
 })();
-export const DEFAULT_DOCUMENT_SAVE_RETRY_MS = 1_000;
+// Save retries use a single deadline while limiting database traffic during outages.
+export const DEFAULT_DOCUMENT_SAVE_RETRY_MS = 60_000;
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 

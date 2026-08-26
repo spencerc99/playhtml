@@ -655,9 +655,7 @@ export class PartyServer extends YServer {
     );
   }
 
-  private async schedulePersistenceRecovery(
-    loadAttempts: number
-  ): Promise<void> {
+  private async schedulePersistenceRecovery(): Promise<void> {
     try {
       await this.ctx.storage.put(STORAGE_KEYS.persistenceRecoveryPending, true);
     } catch (error) {
@@ -667,7 +665,7 @@ export class PartyServer extends YServer {
     }
 
     try {
-      await this.circuitBreaker.deferFailedLoad(loadAttempts);
+      await this.circuitBreaker.deferObservedLoadFailure();
       await this.scheduleNextAlarm();
     } catch (error) {
       console.error(
@@ -1914,7 +1912,7 @@ export class PartyServer extends YServer {
   private async loadDocument(): Promise<void> {
     // Durable BEFORE the risky work: if hydration kills the isolate, this
     // increment survives and the next start counts it.
-    const loadAttempts = await this.circuitBreaker.beginRiskyOperation("load");
+    await this.circuitBreaker.beginRiskyOperation("load");
 
     // Load the document from Supabase on first connection
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
@@ -1953,7 +1951,7 @@ export class PartyServer extends YServer {
     });
 
     if (result === null) {
-      await this.schedulePersistenceRecovery(loadAttempts);
+      await this.schedulePersistenceRecovery();
       return;
     }
 

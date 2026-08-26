@@ -633,12 +633,9 @@ describe("hydration write guards", () => {
     expect(room.isPersistenceAvailable()).toBe(true);
     expect(documentReadCount).toBe(3);
     expect(warnings).toHaveLength(2);
-    expect(errors).toHaveLength(2);
+    expect(errors).toHaveLength(1);
     expect(errors[0]).toBe(
       "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=hydration timed out Entering TRANSIENT MODE: awareness may continue, shared-data writes disabled, autosave disabled, admin writes disabled."
-    );
-    expect(errors[1]).toContain(
-      "ROOM WORK FAILING: room=example-room operation=load consecutiveFailures=1"
     );
     expect(logs).toEqual([
       "[PartyServer] Supabase persistence restored for room=example-room; leaving transient mode.",
@@ -1533,12 +1530,9 @@ describe("hardening", () => {
       "[PartyServer] Supabase document load attempt 1/3 failed for room=example-room; retrying in 1ms: failure 1",
       "[PartyServer] Supabase document load attempt 2/3 failed for room=example-room; retrying in 2ms: failure 2",
     ]);
-    expect(errors).toHaveLength(2);
+    expect(errors).toHaveLength(1);
     expect(errors[0]).toBe(
       "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=failure 3 Entering TRANSIENT MODE: awareness may continue, shared-data writes disabled, autosave disabled, admin writes disabled."
-    );
-    expect(errors[1]).toContain(
-      "ROOM WORK FAILING: room=example-room operation=load consecutiveFailures=1"
     );
     expect(storage.alarm).toBe(storage.values.get("loadRetryAfter"));
   });
@@ -1726,9 +1720,10 @@ describe("hardening", () => {
     expect(storage.alarm).toBeNull();
   });
 
-  test("an observed load failure advances the ordinary load backoff", async () => {
+  test("an observed load failure clears vanish evidence before deferring", async () => {
     const { room, storage } = createRoom();
-    storage.values.set("quarantineLoadAttempts", 2);
+    const before = Date.now();
+    storage.values.set("quarantineLoadAttempts", 7);
     storage.values.set("loadRetryAfter", Date.now() - 1000);
     // Supabase is unreachable, so hydration is never attempted.
     const originalFrom = supabaseStub.from;
@@ -1747,14 +1742,23 @@ describe("hardening", () => {
       }),
     });
 
+    const originalError = console.error;
+    console.error = () => {};
     try {
       await startRoom(room);
     } finally {
+      console.error = originalError;
       (supabaseStub as any).from = originalFrom;
     }
 
-    expect(storage.values.get("loadRetryAfter")).toBeGreaterThan(Date.now());
-    expect(storage.values.get("quarantineLoadAttempts")).toBe(3);
+    expect(storage.values.get("loadRetryAfter")).toBeGreaterThanOrEqual(
+      before + 60_000
+    );
+    expect(storage.values.get("loadRetryAfter")).toBeLessThanOrEqual(
+      Date.now() + 60_000
+    );
+    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
   });
 
   // L2: the flag is applied from the control plane and then resumed from durable
@@ -2400,6 +2404,7 @@ describe("quarantine data safety", () => {
     const originalError = console.error;
     console.error = () => {};
 
+    const before = Date.now();
     try {
       await room.onSave();
     } finally {
@@ -2409,15 +2414,13 @@ describe("quarantine data safety", () => {
     const retry = storage.values.get("documentSaveRetry") as
       | { retryAt: number }
       | undefined;
-    expect(retry?.retryAt).toBeNumber();
+    expect(retry?.retryAt).toBeGreaterThanOrEqual(before + 60_000);
+    expect(retry?.retryAt).toBeLessThanOrEqual(Date.now() + 60_000);
     expect(storage.alarm).toBe(retry?.retryAt ?? null);
 
     upsertError = null;
     storage.alarm = null;
-    storage.values.set("documentSaveRetry", {
-      ...(retry ?? { attempt: 1, generation: 0 }),
-      retryAt: Date.now() - 1,
-    });
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
     await room.onAlarm();
 
     expect(storage.values.get("documentSaveRetry")).toBeUndefined();
@@ -2460,7 +2463,7 @@ describe("quarantine data safety", () => {
     expect(upsertCalls).toEqual([]);
   });
 
-  test("a retry that throws schedules a fresh fixed-delay retry", async () => {
+  test("a retry that throws waits one minute before trying again", async () => {
     const { room, storage } = createRoom();
     room.documentLoadCompleted = true;
     room.getResetEpoch = async () => {
@@ -2468,12 +2471,14 @@ describe("quarantine data safety", () => {
     };
     storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
 
+    const before = Date.now();
     await expect(room.onAlarm()).rejects.toThrow("durable storage unavailable");
 
     const retry = storage.values.get("documentSaveRetry") as {
       retryAt: number;
     };
-    expect(retry.retryAt).toBeGreaterThan(Date.now());
+    expect(retry.retryAt).toBeGreaterThanOrEqual(before + 60_000);
+    expect(retry.retryAt).toBeLessThanOrEqual(Date.now() + 60_000);
     expect(storage.alarm).toBe(retry.retryAt);
   });
 
