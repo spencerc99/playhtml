@@ -1090,6 +1090,17 @@ describe("load path", () => {
     expect(closes).toEqual([{ code: 1013, reason: "Room Load Deferred" }]);
   });
 
+  test("a caught provider outage does not reject transient connections", async () => {
+    const { room } = createRoom();
+
+    await room.circuitBreaker.deferObservedLoadFailure();
+
+    expect(
+      await room.circuitBreaker.getClientLoadDeferredResponse()
+    ).toBeNull();
+    expect(await room.circuitBreaker.getLoadDeferredResponse()).not.toBeNull();
+  });
+
   // At the deadline exactly one attempt proceeds. The next deadline is written
   // before hydration, so requests racing the boundary in a fresh isolate see a
   // future deadline instead of all retrying together.

@@ -1697,7 +1697,8 @@ export class PartyServer extends YServer {
   ) {
     this.setConnectionOpenedAt(connection, Date.now());
 
-    const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+    const loadDeferred =
+      await this.circuitBreaker.getClientLoadDeferredResponse();
     if (loadDeferred) {
       const retryAfterSeconds = loadDeferred.headers.get("retry-after") ?? "1";
       console.warn(
@@ -2430,7 +2431,7 @@ export class PartyServer extends YServer {
         // from it could overwrite the real snapshot with an empty document.
         if (!isLoadControlRoute) {
           const loadDeferred =
-            await this.circuitBreaker.getLoadDeferredResponse();
+            await this.circuitBreaker.getClientLoadDeferredResponse();
           if (loadDeferred) return loadDeferred;
         }
         // Awaited so a rejection lands in this method's catch rather than
@@ -2439,7 +2440,8 @@ export class PartyServer extends YServer {
       }
 
       // The document was never read, so there is nothing to serve.
-      const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+      const loadDeferred =
+        await this.circuitBreaker.getClientLoadDeferredResponse();
       if (loadDeferred) return loadDeferred;
 
       if (request.method !== "POST") {

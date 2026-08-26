@@ -575,6 +575,17 @@ export class RoomCircuitBreaker {
     );
   }
 
+  /** Provider outages stay transient for clients while the alarm waits to retry. */
+  async getClientLoadDeferredResponse(): Promise<Response | null> {
+    if ((await this.getFailureCount("load")) === 0) {
+      const retryAfter = await this.getFailureRetryAfter("load");
+      if (retryAfter !== null && !isRetryDue({ retryAfter, now: Date.now() })) {
+        return null;
+      }
+    }
+    return this.getLoadDeferredResponse();
+  }
+
   private async attemptDeferredReload(): Promise<boolean> {
     if (this.inFlightReload) return this.inFlightReload;
 

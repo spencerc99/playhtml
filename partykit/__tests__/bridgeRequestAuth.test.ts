@@ -63,6 +63,7 @@ async function createHarness() {
     circuitBreaker: {
       value: {
         getLoadDeferredResponse: async () => null,
+        getClientLoadDeferredResponse: async () => null,
         isQuarantined: () => false,
       },
       writable: true,
