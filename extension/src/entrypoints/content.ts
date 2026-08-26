@@ -3,16 +3,9 @@
 import "./content/style.css";
 import browser from "webextension-polyfill";
 import { toPublicPlayerIdentity, type PlayerIdentity } from "@playhtml/common";
-import {
-  MILESTONE_DURATION_MS,
-  MILESTONE_TOAST_CSS,
-  MILESTONE_TOAST_FONT_URL,
-} from "./content/milestone-toast-styles";
-import { injectShadow, injectShadowReact, type InjectedReactUI } from "./content/inject-ui";
-import {
-  MilestoneToast,
-  type MilestoneToastData,
-} from "../components/MilestoneToast";
+import { injectShadow } from "./content/inject-ui";
+import type { InjectedReactUI } from "./content/inject-react-ui";
+import type { MilestoneToastData } from "../components/MilestoneToast";
 import { CollectorManager } from "../collectors/CollectorManager";
 import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
@@ -32,6 +25,7 @@ import {
 } from "./content/presencePolicy";
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
+import { loadContentPageUI } from "./content/load-content-page-ui";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -1244,8 +1238,10 @@ export default defineContentScript({
     let overlayUI: InjectedReactUI | null = null;
     let milestoneToastUI: InjectedReactUI | null = null;
     let overlayVisible = false;
+    let overlayRequest = 0;
 
     const toggleHistoricalOverlay = async () => {
+      const request = ++overlayRequest;
       try {
         overlayVisible = !overlayVisible;
 
@@ -1256,21 +1252,12 @@ export default defineContentScript({
           // interacting with the overlay UI shouldn't pollute the data.
           collectorManager?.pauseAll();
 
-          const { HistoricalOverlay } = await import("../components/HistoricalOverlay");
-
-          overlayUI = injectShadowReact(
-            HistoricalOverlay,
-            {
-              visible: true,
-              currentUrl: window.location.href,
-              onClose: () => toggleHistoricalOverlay(),
-            },
-            {
-              hostId: "playhtml-historical-overlay-root",
-              fontUrl:
-                "https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400&family=Lora:ital,wght@1,600&display=swap",
-            },
-          );
+          const contentPageUI = await loadContentPageUI();
+          if (request !== overlayRequest || !overlayVisible) return;
+          overlayUI = contentPageUI.mountHistoricalOverlay({
+            currentUrl: window.location.href,
+            onClose: () => toggleHistoricalOverlay(),
+          });
 
           if (VERBOSE) console.log("[HistoricalOverlay] Overlay activated");
         } else {
@@ -1284,7 +1271,10 @@ export default defineContentScript({
         }
       } catch (error) {
         console.error("[HistoricalOverlay] Failed to toggle overlay:", error);
-        overlayVisible = false;
+        if (request === overlayRequest) {
+          overlayVisible = false;
+          collectorManager?.resumeAll();
+        }
       }
     };
 
@@ -1437,46 +1427,48 @@ export default defineContentScript({
       }
     });
 
-    const showMilestoneToast = (milestone: MilestoneToastData): void => {
+    let milestoneToastRequest = 0;
+    const showMilestoneToast = async (
+      milestone: MilestoneToastData,
+    ): Promise<void> => {
+      const request = ++milestoneToastRequest;
       milestoneToastUI?.destroy();
+      milestoneToastUI = null;
 
-      let ui: InjectedReactUI | null = null;
+      try {
+        const contentPageUI = await loadContentPageUI();
+        if (request !== milestoneToastRequest) return;
 
-      const handleCta = (action: MilestoneToastData["ctaAction"]) => {
-        if (action === "TOGGLE_HISTORICAL_OVERLAY") {
-          toggleHistoricalOverlay();
-        } else if (action === "OPEN_PORTRAIT") {
-          browser.runtime.sendMessage({
-            type: "OPEN_TAB",
-            url: browser.runtime.getURL("portrait.html"),
-          });
-        }
-      };
+        let ui: InjectedReactUI | null = null;
 
-      const handleDismiss = () => {
-        ui?.destroy();
-        if (milestoneToastUI === ui) {
-          milestoneToastUI = null;
-        }
-        ui = null;
-      };
+        const handleCta = (action: MilestoneToastData["ctaAction"]) => {
+          if (action === "TOGGLE_HISTORICAL_OVERLAY") {
+            toggleHistoricalOverlay();
+          } else if (action === "OPEN_PORTRAIT") {
+            browser.runtime.sendMessage({
+              type: "OPEN_TAB",
+              url: browser.runtime.getURL("portrait.html"),
+            });
+          }
+        };
 
-      ui = injectShadowReact(
-        MilestoneToast,
-        {
+        const handleDismiss = () => {
+          ui?.destroy();
+          if (milestoneToastUI === ui) {
+            milestoneToastUI = null;
+          }
+          ui = null;
+        };
+
+        ui = contentPageUI.mountMilestoneToast({
           milestone,
           onCta: handleCta,
           onDismiss: handleDismiss,
-          autoHideMs: MILESTONE_DURATION_MS,
-        },
-        {
-          hostStyle:
-            "position:fixed;bottom:20px;left:20px;z-index:2147483647;",
-          css: MILESTONE_TOAST_CSS,
-          fontUrl: MILESTONE_TOAST_FONT_URL,
-        },
-      );
-      milestoneToastUI = ui;
+        });
+        milestoneToastUI = ui;
+      } catch (error) {
+        console.error("[MilestoneToast] Failed to show milestone:", error);
+      }
     };
 
     // Listen for messages from popup/devtools
@@ -1509,7 +1501,7 @@ export default defineContentScript({
         }
 
         if (message.type === "SHOW_MILESTONE") {
-          showMilestoneToast(message.milestone);
+          void showMilestoneToast(message.milestone);
           sendResponse({ success: true });
           return true;
         }

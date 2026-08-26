@@ -1,7 +1,7 @@
 // ABOUTME: One-shot toast injector — mounts the highest-priority unseen announcement for the current url.
 // ABOUTME: Use from a content script; no-op if everything's been seen or the page doesn't match.
 
-import { injectShadowReact } from "../entrypoints/content/inject-ui";
+import { injectShadowReact } from "../entrypoints/content/inject-react-ui";
 import { AnnouncementToast } from "./AnnouncementToast";
 import { getToastCandidates, setState } from "./announcement-storage";
 

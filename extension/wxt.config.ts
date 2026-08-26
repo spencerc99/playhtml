@@ -31,7 +31,11 @@ export default defineConfig({
     },
     web_accessible_resources: [
       {
-        resources: ["content-scripts/content.css", "inventory/*"],
+        resources: [
+          "content-scripts/content.css",
+          "content-page-ui.js",
+          "inventory/*",
+        ],
         matches: ["<all_urls>"],
       },
     ],

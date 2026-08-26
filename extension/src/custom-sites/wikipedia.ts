@@ -386,7 +386,9 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   // === Chat: per-article live chat (manager first, pill wired to it) ===
   const { ChatManager } = await import("../features/ChatManager");
   const { ChatEchoRenderer } = await import("../features/chat-echo-renderer");
-  const { injectShadowReact } = await import("../entrypoints/content/inject-ui");
+  const { injectShadowReact } = await import(
+    "../entrypoints/content/inject-react-ui"
+  );
   const { ChatPanel } = await import("../components/ChatPanel");
 
   const articleTitle = wikipediaPageLabel();

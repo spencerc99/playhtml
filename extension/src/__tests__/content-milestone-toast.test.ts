@@ -1,4 +1,4 @@
-// ABOUTME: Regression tests for milestone toast handling in the content script.
+// ABOUTME: Regression tests for lazy milestone UI handling in the content script.
 // ABOUTME: Verifies repeated milestone messages replace the visible injected UI.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -111,8 +111,10 @@ describe("content milestone toasts", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal("defineContentScript", (definition: unknown) => definition);
+    vi.stubGlobal("defineUnlistedScript", (main: () => void) => ({ main }));
     vi.stubGlobal("requestAnimationFrame", vi.fn(() => 0));
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    globalThis.wwoContentPageUI = undefined;
     document.body.innerHTML = "";
   });
 
@@ -121,6 +123,12 @@ describe("content milestone toasts", () => {
     const contentScript = (await import("../entrypoints/content")).default as {
       main: () => void;
     };
+    expect(globalThis.wwoContentPageUI).toBeUndefined();
+
+    const contentPageUIScript = (
+      await import("../entrypoints/content-page-ui")
+    ).default;
+    contentPageUIScript.main();
 
     contentScript.main();
 
@@ -134,7 +142,9 @@ describe("content milestone toasts", () => {
     });
 
     expect(firstResponse).toEqual({ success: true });
-    expect(document.body.childElementCount).toBe(1);
+    await vi.waitFor(() => {
+      expect(document.body.childElementCount).toBe(1);
+    });
 
     const secondResponse = await new Promise((resolve) => {
       listener(
@@ -150,6 +160,8 @@ describe("content milestone toasts", () => {
     });
 
     expect(secondResponse).toEqual({ success: true });
-    expect(document.body.childElementCount).toBe(1);
+    await vi.waitFor(() => {
+      expect(document.body.childElementCount).toBe(1);
+    });
   });
 });
