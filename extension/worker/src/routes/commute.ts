@@ -1,5 +1,5 @@
 // ABOUTME: Serves the privacy-limited recent route used by Internet Commute.
-// ABOUTME: Reduces navigation and cursor events before returning them to the extension.
+// ABOUTME: Reduces navigation and recent activity events before returning them to the extension.
 
 import type { CollectionEvent } from '@playhtml/extension-types';
 import type { Env } from '../lib/supabase';
@@ -12,11 +12,11 @@ const ACTIVITY_LIMIT = 1000;
 async function fetchRecentEvents(
   request: Request,
   env: Env,
-  type: 'navigation' | null,
+  type: 'navigation' | 'all',
   limit: number,
 ): Promise<CollectionEvent[]> {
   const url = new URL('/events/recent', request.url);
-  if (type) url.searchParams.set('type', type);
+  url.searchParams.set('type', type);
   url.searchParams.set('limit', limit.toString());
   if (type === 'navigation') {
     url.searchParams.set('require_title', 'true');
@@ -41,7 +41,7 @@ export async function handleCommute(
   try {
     const [navigationEvents, activityEvents] = await Promise.all([
       fetchRecentEvents(request, env, 'navigation', NAVIGATION_LIMIT),
-      fetchRecentEvents(request, env, null, ACTIVITY_LIMIT),
+      fetchRecentEvents(request, env, 'all', ACTIVITY_LIMIT),
     ]);
     const response = buildCommuteResponse(
       navigationEvents,
