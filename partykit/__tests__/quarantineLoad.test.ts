@@ -2815,6 +2815,65 @@ describe("quarantine data safety", () => {
     expect(room.documentMaintenanceInProgress).toBe(false);
   });
 
+  test("snapshot restore keeps saves blocked when epoch storage fails after commit", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("play").set("greeting", "stale live value");
+    const originalPut = storage.put.bind(storage);
+    let epochStorageAvailable = false;
+    storage.put = async (key: string, value: unknown) => {
+      if (key === "resetEpoch" && !epochStorageAvailable) {
+        throw new Error("epoch storage unavailable");
+      }
+      await originalPut(key, value);
+    };
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    try {
+      await expect(
+        room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true })
+      ).rejects.toThrow("epoch storage unavailable");
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(
+      errors.some((line) => line.includes("epoch storage unavailable"))
+    ).toBe(true);
+    expect(upsertCalls).toHaveLength(1);
+    const committedDocument = persistedRow.document;
+    expect(room.documentMaintenanceInProgress).toBe(true);
+
+    await room.onSave();
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).toBe(committedDocument);
+
+    upsertError = new Error("retry database unavailable");
+    console.error = () => {};
+    try {
+      await expect(
+        room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true })
+      ).rejects.toThrow("retry database unavailable");
+    } finally {
+      console.error = originalError;
+      upsertError = null;
+    }
+
+    expect(room.documentMaintenanceInProgress).toBe(true);
+    expect(persistedRow.document).toBe(committedDocument);
+
+    epochStorageAvailable = true;
+    await room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true });
+
+    expect(room.documentMaintenanceInProgress).toBe(false);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+  });
+
   test("a hard reset refuses to run while quarantined", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();

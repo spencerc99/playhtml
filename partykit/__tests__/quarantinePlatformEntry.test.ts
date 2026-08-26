@@ -181,6 +181,20 @@ describe("alarm entry point", () => {
     expect(storage.alarm).toBe(retryAfter);
   });
 
+  test("a deferred room consumes a stale save retry when its alarm fires", async () => {
+    const { server, storage } = createServer();
+    const loadRetryAfter = Date.now() + 10 * 60_000;
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", loadRetryAfter);
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+
+    await server.alarm();
+
+    expect(documentReadCount).toBe(0);
+    expect(storage.values.has("documentSaveRetry")).toBe(false);
+    expect(storage.alarm).toBe(loadRetryAfter);
+  });
+
   test("a KV-quarantined room does not hydrate when its alarm fires", async () => {
     const { server } = createServer();
     kvStore.set("quarantine:example-room", "operator stop");

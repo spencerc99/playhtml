@@ -1144,7 +1144,9 @@ export class PartyServer extends YServer {
     const roomId = this.name;
     console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
 
+    const savesWerePaused = this.documentMaintenanceInProgress;
     this.documentMaintenanceInProgress = true;
+    let committedSnapshotRequiresReload = savesWerePaused;
 
     try {
       // Decode snapshot to Y.Doc so we can ensure metadata is present
@@ -1188,6 +1190,9 @@ export class PartyServer extends YServer {
         );
       }
       console.log(`[Restore Snapshot] Successfully saved snapshot to database`);
+      // The persisted snapshot is authoritative now. Keep autosave paused until
+      // the live document catches up so a later save cannot restore stale state.
+      committedSnapshotRequiresReload = true;
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -1213,6 +1218,7 @@ export class PartyServer extends YServer {
       const liveYDoc = this.document;
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
+      committedSnapshotRequiresReload = false;
       if (options?.completeHydration !== false) {
         this.markDocumentHydrated();
       }
@@ -1240,8 +1246,12 @@ export class PartyServer extends YServer {
 
       throw error;
     } finally {
-      this.documentMaintenanceInProgress = false;
-      console.log("[Restore Snapshot] Autosave re-enabled");
+      this.documentMaintenanceInProgress = committedSnapshotRequiresReload;
+      console.log(
+        committedSnapshotRequiresReload
+          ? "[Restore Snapshot] Autosave remains paused until the committed snapshot is loaded"
+          : "[Restore Snapshot] Autosave re-enabled"
+      );
     }
   }
 
@@ -3041,6 +3051,13 @@ export class PartyServer extends YServer {
   override async onAlarm(): Promise<void> {
     const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
     if (loadDeferred) {
+      const documentSaveRetry = await this.getDocumentSaveRetry();
+      if (
+        documentSaveRetry !== null &&
+        documentSaveRetry.retryAt <= Date.now()
+      ) {
+        await this.clearDocumentSaveRetry();
+      }
       await this.scheduleNextAlarm();
       return;
     }
