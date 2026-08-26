@@ -57,10 +57,9 @@ async function createHarness() {
     document: { value: document },
     persistenceMode: { value: { kind: "available" }, writable: true },
     documentLoadCompleted: { value: true, writable: true },
-    documentWriteState: { value: { kind: "idle" }, writable: true },
+    documentMaintenanceInProgress: { value: false, writable: true },
     documentWriteTail: { value: Promise.resolve(), writable: true },
     realtimeSyncStarted: { value: true, writable: true },
-    isSkippingSave: { value: false, writable: true },
     circuitBreaker: {
       value: {
         getLoadDeferredResponse: async () => null,
@@ -99,9 +98,7 @@ describe("PartyServer bridge request protection", () => {
   it("rejects an authenticated mutation from an unrelated room", async () => {
     const { server, document } = await createHarness();
 
-    const response = await server.onRequest(
-      bridgeRequest(applyAction, SECRET)
-    );
+    const response = await server.onRequest(bridgeRequest(applyAction, SECRET));
 
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({
@@ -163,10 +160,10 @@ describe("PartyServer bridge request protection", () => {
     });
     const replacementBase64 = encodeDocToBase64(replacement);
     replacement.destroy();
-    server.documentWriteState = { kind: "reset", resetEpoch: 43 };
+    server.documentMaintenanceInProgress = true;
     server.documentWriteTail = replacementGate.then(() => {
       replaceDocFromSnapshot(document, replacementBase64);
-      server.documentWriteState = { kind: "idle" };
+      server.documentMaintenanceInProgress = false;
     });
     let reachedWriteQueue = () => {};
     const writeQueued = new Promise<void>((resolve) => {

@@ -13,16 +13,9 @@ export const STORAGE_KEYS = {
   emptyRoomCompactAfter: "emptyRoomCompactAfter",
   // Requires the next successful hydration to reset clients that saw transient state
   persistenceRecoveryPending: "persistenceRecoveryPending",
-  // Records a reset that may have reached Supabase before Durable Object
-  // metadata was committed, so hydration can reconcile it safely.
-  pendingDocumentReset: "pendingDocumentReset",
   // Records a failed autosave retry deadline. The document itself remains the
   // authoritative live Y.Doc and is re-encoded when the retry runs.
   documentSaveRetry: "documentSaveRetry",
-  // Tracks bounded retry rounds while a warm room is serving awareness-only
-  // traffic during a persistence outage.
-  persistenceRecoveryAttempts: "persistenceRecoveryAttempts",
-  persistenceRecoveryRetryAfter: "persistenceRecoveryRetryAfter",
   // Stores the next time a connected large room should pay the expensive
   // compactability check
   emergencyCompactCheckAfter: "emergencyCompactCheckAfter",
@@ -124,7 +117,6 @@ export const DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS = (() => {
   return 250;
 })();
 export const DEFAULT_DOCUMENT_SAVE_RETRY_MS = 1_000;
-export const DEFAULT_DOCUMENT_SAVE_RETRY_MAX_MS = 60_000;
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 

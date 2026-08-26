@@ -5,7 +5,7 @@ import { env } from "cloudflare:workers";
 import * as Y from "yjs";
 import { supabase } from "./db";
 import { PartyServer } from "./party";
-import { docToJson, encodeDocToBase64 } from "./docUtils";
+import { docToJson } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 import { getAdminAuthError } from "./adminAuth";
 
@@ -448,9 +448,16 @@ export class AdminHandler {
     if (persistenceError) return persistenceError;
 
     try {
-      const liveYDoc = this.context.document;
-      const base64 = encodeDocToBase64(liveYDoc);
-      await this.context.saveDocumentBase64(base64);
+      const saved = await this.context.saveLiveDocument();
+      if (!saved) {
+        return new Response(
+          JSON.stringify({ error: "Live document was not saved" }),
+          {
+            status: 409,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "content-type": "application/json" },
       });
@@ -622,7 +629,7 @@ export class AdminHandler {
       }
 
       const result = mutation.result;
-      const resetResult = mutation.kind === "committed" ? mutation : null;
+      const resetResult = mutation.committed;
 
       return new Response(
         JSON.stringify({
@@ -843,7 +850,7 @@ export class AdminHandler {
         );
       }
 
-      const resetResult = mutation.kind === "committed" ? mutation : null;
+      const resetResult = mutation.committed;
 
       return new Response(
         JSON.stringify({

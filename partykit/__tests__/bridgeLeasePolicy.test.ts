@@ -4,7 +4,32 @@ import { describe, expect, it } from "bun:test";
 import { mergeSharedReferenceLeases } from "../bridgeLeasePolicy";
 
 describe("mergeSharedReferenceLeases", () => {
-  it("renews an identical reference and preserves its source epoch", () => {
+  it("does not renew a recent identical reference", () => {
+    const result = mergeSharedReferenceLeases({
+      existing: [
+        {
+          sourceRoomId: "source-room",
+          elementIds: ["shared"],
+          sourceResetEpoch: 42,
+          lastSeen: "2026-08-24T23:00:00.000Z",
+        },
+      ],
+      requested: [{ sourceRoomId: "source-room", elementIds: ["shared"] }],
+      nowIso: "2026-08-25T00:00:00.000Z",
+    });
+
+    expect(result.changed).toBe(false);
+    expect(result.entries).toEqual([
+      {
+        sourceRoomId: "source-room",
+        elementIds: ["shared"],
+        sourceResetEpoch: 42,
+        lastSeen: "2026-08-24T23:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("renews an identical reference once its lease is old", () => {
     const result = mergeSharedReferenceLeases({
       existing: [
         {
@@ -19,14 +44,7 @@ describe("mergeSharedReferenceLeases", () => {
     });
 
     expect(result.changed).toBe(true);
-    expect(result.entries).toEqual([
-      {
-        sourceRoomId: "source-room",
-        elementIds: ["shared"],
-        sourceResetEpoch: 42,
-        lastSeen: "2026-08-25T00:00:00.000Z",
-      },
-    ]);
+    expect(result.entries[0]?.lastSeen).toBe("2026-08-25T00:00:00.000Z");
   });
 
   it("merges new ids without refreshing unrelated source leases", () => {

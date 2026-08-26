@@ -157,46 +157,9 @@ export class RoomCircuitBreaker {
     return typeof value === "number" ? value : null;
   }
 
-  async getPersistenceRecoveryRetryAfter(): Promise<number | null> {
-    const value = await this.storage.get(
-      STORAGE_KEYS.persistenceRecoveryRetryAfter
-    );
-    return typeof value === "number" ? value : null;
-  }
-
-  async isPersistenceRecoveryDue(): Promise<boolean> {
-    const retryAfter = await this.getPersistenceRecoveryRetryAfter();
-    if (retryAfter === null) return false;
-    return isRetryDue({
-      retryAfter,
-      now: Date.now(),
-    });
-  }
-
   private async requestPersistenceRecovery(): Promise<void> {
     await this.storage.put(STORAGE_KEYS.persistenceRecoveryPending, true);
-    await this.storage.put(STORAGE_KEYS.persistenceRecoveryRetryAfter, Date.now());
-  }
-
-  async schedulePersistenceRecovery(): Promise<number> {
-    const storedAttempts = await this.storage.get(
-      STORAGE_KEYS.persistenceRecoveryAttempts
-    );
-    const attempts = typeof storedAttempts === "number" ? storedAttempts + 1 : 1;
-    const retryAt = getFailureRetryAt({
-      failureCount: attempts,
-      baseMs: this.getFailureBackoffBaseMs(),
-      maxMs: this.getFailureBackoffMaxMs(),
-      now: Date.now(),
-    });
-    await this.storage.put(STORAGE_KEYS.persistenceRecoveryAttempts, attempts);
-    await this.storage.put(STORAGE_KEYS.persistenceRecoveryRetryAfter, retryAt);
-    return retryAt;
-  }
-
-  async completePersistenceRecovery(): Promise<void> {
-    await this.storage.delete(STORAGE_KEYS.persistenceRecoveryAttempts);
-    await this.storage.delete(STORAGE_KEYS.persistenceRecoveryRetryAfter);
+    await this.storage.put(STORAGE_KEYS.loadRetryAfter, Date.now());
   }
 
   async getCompactionFailureCount(): Promise<number> {
@@ -327,17 +290,6 @@ export class RoomCircuitBreaker {
     await this.storage.delete(this.retryKeyFor(kind));
   }
 
-  async releaseLoadAttempt(loadAttempts: number): Promise<void> {
-    const remaining = loadAttempts - 1;
-    if (remaining <= 0) {
-      await this.completeRiskyOperation("load");
-      return;
-    }
-
-    await this.storage.put(STORAGE_KEYS.quarantineLoadAttempts, remaining);
-    await this.storage.delete(STORAGE_KEYS.loadRetryAfter);
-  }
-
   private async handleRepeatedFailures({
     kind,
     failureCount,
@@ -380,17 +332,20 @@ export class RoomCircuitBreaker {
     return { quarantined: false, retryAt };
   }
 
+  async deferFailedLoad(failureCount: number): Promise<void> {
+    const result = await this.handleRepeatedFailures({
+      kind: "load",
+      failureCount,
+    });
+    this.loadDeferredUntil = result.quarantined ? null : result.retryAt;
+  }
+
   async shouldDeferLoad(): Promise<boolean> {
     const previousFailures = await this.getFailureCount("load");
     if (previousFailures === 0) return false;
 
-    const recoveryPending =
-      (await this.storage.get(STORAGE_KEYS.persistenceRecoveryPending)) ===
-      true;
-
     const failureThreshold = this.getFailureThreshold();
     if (
-      !recoveryPending &&
       shouldQuarantineForFailures({
         failureCount: previousFailures,
         failureThreshold,
@@ -611,12 +566,7 @@ export class RoomCircuitBreaker {
       try {
         const previousFailures = await this.getFailureCount("load");
         const failureThreshold = this.getFailureThreshold();
-        const recoveryPending =
-          (await this.storage.get(STORAGE_KEYS.persistenceRecoveryPending)) ===
-          true;
-
         if (
-          !recoveryPending &&
           shouldQuarantineForFailures({
             failureCount: previousFailures,
             failureThreshold,
@@ -716,7 +666,6 @@ export class RoomCircuitBreaker {
       await this.storage.delete(STORAGE_KEYS.quarantineLoadAttempts);
       await this.storage.delete(STORAGE_KEYS.loadRetryAfter);
       await this.storage.delete(STORAGE_KEYS.persistenceRecoveryPending);
-      await this.completePersistenceRecovery();
     }
     await this.storage.delete(STORAGE_KEYS.alarmFailureAttempts);
     await this.storage.delete(STORAGE_KEYS.alarmRetryAfter);

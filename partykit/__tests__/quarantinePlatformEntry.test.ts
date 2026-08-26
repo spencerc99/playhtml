@@ -171,12 +171,14 @@ describe("alarm entry point", () => {
   test("a deferred room does not read the document when its alarm fires", async () => {
     const { server, storage } = createServer();
     storage.values.set("quarantineLoadAttempts", 2);
-    storage.values.set("loadRetryAfter", Date.now() + 10 * 60_000);
+    const retryAfter = Date.now() + 10 * 60_000;
+    storage.values.set("loadRetryAfter", retryAfter);
 
     await server.alarm();
 
     expect(documentReadCount).toBe(0);
     expect(server.circuitBreaker.isLoadDeferred()).toBe(true);
+    expect(storage.alarm).toBe(retryAfter);
   });
 
   test("a KV-quarantined room does not hydrate when its alarm fires", async () => {
@@ -239,8 +241,9 @@ describe("alarm entry point", () => {
     };
     (server as any).documentLoadCompleted = false;
     storage.values.set("persistenceRecoveryPending", true);
-    storage.values.set("persistenceRecoveryAttempts", 1);
-    storage.values.set("persistenceRecoveryRetryAfter", Date.now() - 1);
+    storage.values.set("quarantineLoadAttempts", 1);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+    server.circuitBreaker.setLoadDeferredUntil(Date.now() - 1);
 
     await server.alarm();
 
@@ -266,7 +269,9 @@ describe("alarm entry point", () => {
     expect(storage.alarm!).toBeLessThanOrEqual(Date.now());
     expect(server.isPersistenceAvailable()).toBe(false);
     expect(server.circuitBreaker.isQuarantined()).toBe(false);
-    expect(await server.circuitBreaker.isPersistenceRecoveryDue()).toBe(true);
+    expect(storage.values.get("loadRetryAfter")).toBeLessThanOrEqual(
+      Date.now()
+    );
 
     documentReadCount = 0;
     await server.onAlarm();
@@ -278,13 +283,11 @@ describe("alarm entry point", () => {
 });
 
 describe("persistence recovery admission", () => {
-  test("a restarted isolate runs due persistence recovery ahead of load backoff", async () => {
+  test("a restarted isolate runs due persistence recovery through load backoff", async () => {
     const { server, storage } = createServer();
     storage.values.set("persistenceRecoveryPending", true);
-    storage.values.set("persistenceRecoveryAttempts", 1);
-    storage.values.set("persistenceRecoveryRetryAfter", Date.now() - 1);
     storage.values.set("quarantineLoadAttempts", 2);
-    storage.values.set("loadRetryAfter", Date.now() + 10 * 60_000);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
 
     await server.alarm();
 
@@ -297,8 +300,8 @@ describe("persistence recovery admission", () => {
     const { server, storage } = createServer();
     const retryAfter = Date.now() + 10 * 60_000;
     storage.values.set("persistenceRecoveryPending", true);
-    storage.values.set("persistenceRecoveryAttempts", 1);
-    storage.values.set("persistenceRecoveryRetryAfter", retryAfter);
+    storage.values.set("quarantineLoadAttempts", 1);
+    storage.values.set("loadRetryAfter", retryAfter);
     storage.alarm = retryAfter;
 
     await server.fetch(
@@ -309,7 +312,7 @@ describe("persistence recovery admission", () => {
     );
 
     expect(documentReadCount).toBe(0);
-    expect(server.isPersistenceAvailable()).toBe(false);
+    expect((server as any).documentLoadCompleted).toBe(false);
     expect(storage.alarm).toBe(retryAfter);
   });
 });
