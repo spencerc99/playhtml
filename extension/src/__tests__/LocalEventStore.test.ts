@@ -73,6 +73,7 @@ async function waitForBackgroundDatabaseWork(): Promise<void> {
 
 async function openVersion8Database(
   seedAggregate: Record<string, unknown> = { ...aggregate() },
+  seedEvents: CollectionEvent[] = [],
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = fakeIndexedDB.open(DB_NAME, 8);
@@ -90,6 +91,9 @@ async function openVersion8Database(
         keyPath: "key",
       });
       statsStore.put(seedAggregate);
+      for (const seedEvent of seedEvents) {
+        eventStore.put(seedEvent);
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -1604,6 +1608,41 @@ describe("LocalEventStore scrap deduplication", () => {
         request.onerror = () => reject(request.error);
       }),
     ).resolves.toBe(2);
+  });
+
+  it("preserves upload state and canonical keys in a skipped version 8 upgrade", async () => {
+    const archivedScrap = scrapEvent("archived");
+    const version8Database = await openVersion8Database(
+      { ...aggregate() },
+      [archivedScrap],
+    );
+    version8Database.close();
+
+    const store = createStore();
+    await store.queryByType("element");
+
+    const database = (store as unknown as { db: IDBDatabase }).db;
+    const transaction = database.transaction(STORE_NAME, "readonly");
+    const eventStore = transaction.objectStore(STORE_NAME);
+    await expect(
+      new Promise<StoredTestEvent & { canonicalScrapKey?: string }>(
+        (resolve, reject) => {
+          const request = eventStore.get("archived");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        },
+      ),
+    ).resolves.toMatchObject({
+      uploadState: "pending",
+      canonicalScrapKey: "https://assets.example/image.png",
+    });
+
+    await store.addEvents([
+      scrapEvent("incoming-duplicate", "https://assets.example/image.png#copy"),
+    ]);
+    expect(
+      (await store.queryByType("element")).map((storedEvent) => storedEvent.id),
+    ).toEqual(["archived"]);
   });
 
   it("releases canonical keys when their events are pruned or cleared", async () => {

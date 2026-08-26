@@ -493,30 +493,6 @@ export class LocalEventStore {
           }
         }
 
-        // Backfill domain and normalizedUrl fields on existing events
-        if (oldVersion < 5) {
-          const tx = (event.target as IDBOpenDBRequest).transaction!;
-          const objStore = tx.objectStore(STORE_NAME);
-          const backfillReq = objStore.openCursor();
-          backfillReq.onsuccess = () => {
-            const cursor = backfillReq.result;
-            if (cursor) {
-              const evt = cursor.value;
-              let updated = false;
-              if (!evt.domain && evt.meta?.url) {
-                evt.domain = extractDomain(evt.meta.url);
-                updated = true;
-              }
-              if (!evt.normalizedUrl && evt.meta?.url) {
-                evt.normalizedUrl = normalizeUrl(evt.meta.url);
-                updated = true;
-              }
-              if (updated) cursor.update(evt);
-              cursor.continue();
-            }
-          };
-        }
-
         // v6: create domain_stats store (keyPath: "domain")
         // v7: recreate with keyPath: "key" to support both domain and page-level aggregates
         // v8: force rebuild to populate page-level + global aggregates added after v7
@@ -605,27 +581,6 @@ export class LocalEventStore {
               unique: false,
             });
           }
-
-          const backfillRequest = store
-            .index("type")
-            .openCursor(IDBKeyRange.only("element"));
-          backfillRequest.onsuccess = () => {
-            const cursor = backfillRequest.result;
-            if (!cursor) return;
-
-            const storedEvent = cursor.value as StoredCollectionEvent;
-            const domain =
-              storedEvent.domain || extractDomain(storedEvent.meta.url);
-            const canonicalScrapKey = getCanonicalScrapKey(
-              domain,
-              storedEvent.data,
-            );
-            if (canonicalScrapKey !== undefined) {
-              storedEvent.canonicalScrapKey = canonicalScrapKey;
-              cursor.update(storedEvent);
-            }
-            cursor.continue();
-          };
         }
 
         if (oldVersion < 9) {
@@ -636,24 +591,60 @@ export class LocalEventStore {
             store.createIndex("uploadState", "uploadState", { unique: false });
           }
 
-          const tx = (event.target as IDBOpenDBRequest).transaction!;
-          const objStore = tx.objectStore(STORE_NAME);
-          const backfillReq = objStore.openCursor();
-          backfillReq.onsuccess = () => {
-            const cursor = backfillReq.result;
-            if (cursor) {
-              const evt = cursor.value as StoredCollectionEvent;
-              const nextState = getUploadState(evt);
-              if (
-                evt.uploadState !== nextState ||
-                evt.uploaded !== (nextState === UPLOAD_STATE_UPLOADED)
-              ) {
-                evt.uploadState = nextState;
-                evt.uploaded = nextState === UPLOAD_STATE_UPLOADED;
-                cursor.update(evt);
+        }
+
+        if (oldVersion < 12) {
+          // Backfill event fields in one cursor so every migrated row is written once.
+          const backfillRequest = store.openCursor();
+          backfillRequest.onsuccess = () => {
+            const cursor = backfillRequest.result;
+            if (!cursor) return;
+
+            const storedEvent = cursor.value as StoredCollectionEvent;
+            let updated = false;
+
+            if (oldVersion < 5 && storedEvent.meta?.url) {
+              if (!storedEvent.domain) {
+                storedEvent.domain = extractDomain(storedEvent.meta.url);
+                updated = true;
               }
-              cursor.continue();
+              if (!storedEvent.normalizedUrl) {
+                storedEvent.normalizedUrl = normalizeUrl(storedEvent.meta.url);
+                updated = true;
+              }
             }
+
+            if (oldVersion < 9) {
+              const uploadState = getUploadState(storedEvent);
+              const uploaded = uploadState === UPLOAD_STATE_UPLOADED;
+              if (
+                storedEvent.uploadState !== uploadState ||
+                storedEvent.uploaded !== uploaded
+              ) {
+                storedEvent.uploadState = uploadState;
+                storedEvent.uploaded = uploaded;
+                updated = true;
+              }
+            }
+
+            if (storedEvent.type === "element") {
+              const domain =
+                storedEvent.domain || extractDomain(storedEvent.meta.url);
+              const canonicalScrapKey = getCanonicalScrapKey(
+                domain,
+                storedEvent.data,
+              );
+              if (
+                canonicalScrapKey !== undefined &&
+                storedEvent.canonicalScrapKey !== canonicalScrapKey
+              ) {
+                storedEvent.canonicalScrapKey = canonicalScrapKey;
+                updated = true;
+              }
+            }
+
+            if (updated) cursor.update(storedEvent);
+            cursor.continue();
           };
         }
       };
