@@ -77,8 +77,10 @@ import { createCommuteInitOptions } from "./commuteIdentity";
 import {
   boardCommuteTrain,
   createCommuteTrainBoardRequest,
+  getCommuteTrainNextAction,
   getCommuteRiderToken,
   getCommuteTrainTimeOffset,
+  rotateCommuteRiderToken,
   toCommuteStop,
 } from "./commuteTrain";
 import "./commute.scss";
@@ -237,7 +239,9 @@ function useCommuteTrain(
     serverTimeOffsetMs: 0,
     status: "loading",
   });
-  const riderToken = useMemo(() => getCommuteRiderToken(ride), [ride]);
+  const [riderToken, setRiderToken] = useState(() =>
+    getCommuteRiderToken(ride),
+  );
   const request = useMemo(
     () => createCommuteTrainBoardRequest(riderToken, ride),
     [ride, riderToken],
@@ -273,8 +277,21 @@ function useCommuteTrain(
             status: "live",
           };
         });
-        if (assignment.joinable) {
-          refreshTimer = window.setTimeout(() => void board(), 3_000);
+        const nextAction = getCommuteTrainNextAction(assignment, ride !== null);
+        if (nextAction.kind === "refresh") {
+          refreshTimer = window.setTimeout(
+            () => void board(),
+            nextAction.delayMs,
+          );
+        } else if (nextAction.kind === "reboard") {
+          refreshTimer = window.setTimeout(() => {
+            setConnection({
+              assignment: null,
+              serverTimeOffsetMs: 0,
+              status: "loading",
+            });
+            setRiderToken(rotateCommuteRiderToken());
+          }, nextAction.delayMs);
         }
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -1821,6 +1838,7 @@ function CommuteBoardingRoot({
 
   return (
     <PlayProvider
+      key={connection.assignment.trainId}
       initOptions={createCommuteInitOptions(
         playerIdentity,
         connection.assignment.trainId,

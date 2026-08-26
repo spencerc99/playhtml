@@ -2,6 +2,7 @@
 // ABOUTME: Loads communal routes only when a new bounded train must be created.
 
 import type {
+  CommuteTrainAssignment,
   CommuteTrainBoardRequest,
   CommuteTrainCommunalStop,
 } from '@playhtml/extension-types';
@@ -9,6 +10,7 @@ import type { Env } from './lib/supabase';
 import { getCommuteResponse } from './routes/commute';
 import {
   CommuteTrainDispatcher,
+  CommuteTrainCapacityError,
   EMPTY_COMMUTE_TRAIN_DISPATCHER_STATE,
   type CommuteTrainDispatcherState,
 } from './commuteTrainDispatcher';
@@ -66,13 +68,21 @@ export class CommuteTrainDispatcherObject {
 
     const now = Date.now();
     const dispatcher = await this.ready;
-    const communalStops = dispatcher.needsCommunalStops(
-      parsed.riderToken,
-      now,
-    )
-      ? await this.loadCommunalStops(now)
-      : [];
-    const assignment = dispatcher.board(parsed, communalStops, now);
+    let assignment: CommuteTrainAssignment;
+    try {
+      const communalStops = dispatcher.needsCommunalStops(
+        parsed.riderToken,
+        now,
+      )
+        ? await this.loadCommunalStops(now)
+        : [];
+      assignment = dispatcher.board(parsed, communalStops, now);
+    } catch (error) {
+      if (!(error instanceof CommuteTrainCapacityError)) throw error;
+      await this.state.storage.put(DISPATCHER_STATE_KEY, dispatcher.snapshot());
+      await this.scheduleCleanup(dispatcher);
+      return jsonResponse(429, { error: 'Train dispatcher is at capacity' });
+    }
 
     await this.state.storage.put(DISPATCHER_STATE_KEY, dispatcher.snapshot());
     await this.scheduleCleanup(dispatcher);

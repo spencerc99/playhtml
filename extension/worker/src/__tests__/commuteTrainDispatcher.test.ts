@@ -8,7 +8,9 @@ import type {
 } from '@playhtml/extension-types';
 import {
   CommuteTrainDispatcher,
+  CommuteTrainCapacityError,
   EMPTY_COMMUTE_TRAIN_DISPATCHER_STATE,
+  MAX_RETAINED_COMMUTE_TRAINS,
 } from '../commuteTrainDispatcher';
 
 const NOW = 1_000_000;
@@ -120,5 +122,22 @@ describe('CommuteTrainDispatcher', () => {
     subject.cleanup(NOW + 124_000);
 
     expect(subject.snapshot().trains).toEqual([]);
+  });
+
+  it('rejects new trains at the retained-state ceiling', () => {
+    const subject = dispatcher();
+    const admittedRiders = MAX_RETAINED_COMMUTE_TRAINS * 4;
+    const assignments = Array.from({ length: admittedRiders }, (_, index) =>
+      subject.board(rider(`rider-${index}`), COMMUNAL_STOPS, NOW),
+    );
+
+    expect(subject.snapshot().trains).toHaveLength(MAX_RETAINED_COMMUTE_TRAINS);
+    expect(() =>
+      subject.board(rider('rider-over-capacity'), COMMUNAL_STOPS, NOW),
+    ).toThrow(CommuteTrainCapacityError);
+    expect(
+      subject.board(rider('rider-0'), [], NOW + 1).trainId,
+    ).toBe(assignments[0].trainId);
+    expect(subject.snapshot().trains).toHaveLength(MAX_RETAINED_COMMUTE_TRAINS);
   });
 });

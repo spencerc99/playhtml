@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 import type { CommuteTrainAssignment } from "@playhtml/extension-types";
 import {
   createCommuteTrainBoardRequest,
+  getCommuteTrainNextAction,
   getCommuteRiderToken,
   getCommuteTrainTimeOffset,
   parseCommuteTrainAssignment,
+  rotateCommuteRiderToken,
   toCommuteStop,
 } from "./commuteTrain";
 
@@ -48,6 +50,39 @@ describe("commute train client", () => {
     const firstWebToken = getCommuteRiderToken(null);
     expect(getCommuteRiderToken(null)).toBe(firstWebToken);
     expect(firstWebToken).toMatch(/^[a-zA-Z0-9_-]{16,128}$/);
+  });
+
+  it("rotates the standard rider token for the next trip", () => {
+    const firstToken = getCommuteRiderToken(null);
+    const nextToken = rotateCommuteRiderToken();
+
+    expect(nextToken).not.toBe(firstToken);
+    expect(getCommuteRiderToken(null)).toBe(nextToken);
+  });
+
+  it("refreshes open trains and reboards standard riders after completion", () => {
+    expect(getCommuteTrainNextAction(assignment, false)).toEqual({
+      kind: "refresh",
+      delayMs: 3_000,
+    });
+    expect(
+      getCommuteTrainNextAction(
+        { ...assignment, joinable: false, serverNow: 75_000 },
+        false,
+      ),
+    ).toEqual({ kind: "reboard", delayMs: 5_000 });
+    expect(
+      getCommuteTrainNextAction(
+        { ...assignment, joinable: false, serverNow: 85_000, phase: "complete" },
+        false,
+      ),
+    ).toEqual({ kind: "reboard", delayMs: 0 });
+    expect(
+      getCommuteTrainNextAction(
+        { ...assignment, joinable: false, serverNow: 85_000, phase: "complete" },
+        true,
+      ),
+    ).toEqual({ kind: "stop" });
   });
 
   it("shares only a domain stop when the rider allows it", () => {

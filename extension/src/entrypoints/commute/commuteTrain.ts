@@ -11,6 +11,16 @@ import type { HostedSlowModeRide } from "../../features/slowMode/slowModeHostedB
 import type { CommuteStop } from "./commuteStops";
 
 const COMMUTE_RIDER_TOKEN_KEY = "wwo-commute-rider-token";
+const COMMUTE_TRAIN_REFRESH_MS = 3_000;
+
+export type CommuteTrainNextAction =
+  | { kind: "refresh"; delayMs: number }
+  | { kind: "reboard"; delayMs: number }
+  | { kind: "stop" };
+
+function createCommuteRiderToken(): string {
+  return `web_${crypto.randomUUID()}`;
+}
 
 function isTrainStop(value: unknown): value is CommuteTrainStop {
   if (!value || typeof value !== "object") return false;
@@ -70,9 +80,29 @@ export function getCommuteRiderToken(
   if (ride) return `slow_${ride.rideId}`;
   const stored = window.sessionStorage.getItem(COMMUTE_RIDER_TOKEN_KEY);
   if (stored) return stored;
-  const token = `web_${crypto.randomUUID()}`;
+  const token = createCommuteRiderToken();
   window.sessionStorage.setItem(COMMUTE_RIDER_TOKEN_KEY, token);
   return token;
+}
+
+export function rotateCommuteRiderToken(): string {
+  const token = createCommuteRiderToken();
+  window.sessionStorage.setItem(COMMUTE_RIDER_TOKEN_KEY, token);
+  return token;
+}
+
+export function getCommuteTrainNextAction(
+  assignment: CommuteTrainAssignment,
+  isSlowModeRide: boolean,
+): CommuteTrainNextAction {
+  if (assignment.joinable) {
+    return { kind: "refresh", delayMs: COMMUTE_TRAIN_REFRESH_MS };
+  }
+  if (isSlowModeRide) return { kind: "stop" };
+  return {
+    kind: "reboard",
+    delayMs: Math.max(0, assignment.routeEndsAt - assignment.serverNow),
+  };
 }
 
 export function createCommuteTrainBoardRequest(

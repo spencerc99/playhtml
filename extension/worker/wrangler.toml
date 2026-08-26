@@ -50,6 +50,14 @@ class_name = "LiveEventsHub"
 name = "COMMUTE_TRAIN_DISPATCHER"
 class_name = "CommuteTrainDispatcherObject"
 
+[[ratelimits]]
+name = "COMMUTE_BOARD_RATE_LIMITER"
+namespace_id = "1620187042"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
 [[d1_databases]]
 binding = "WWO_ADMIN_DB"
 database_name = "wwo-admin"

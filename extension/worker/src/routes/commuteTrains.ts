@@ -7,6 +7,7 @@ import type { Env } from '../lib/supabase';
 
 const RIDER_TOKEN_PATTERN = /^[a-zA-Z0-9_-]{16,128}$/;
 const DISPATCHER_NAME = 'internet-commute-v1';
+const RATE_LIMIT_RETRY_SECONDS = 60;
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -50,6 +51,24 @@ export async function handleCommuteTrainBoard(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  let rateLimitAllowed: boolean;
+  try {
+    const rateLimit = await env.COMMUTE_BOARD_RATE_LIMITER.limit({
+      key: request.headers.get('CF-Connecting-IP') ?? 'unidentified-client',
+    });
+    rateLimitAllowed = rateLimit.success;
+  } catch (error) {
+    console.error('[commute trains] rate limiter unavailable:', error);
+    return jsonResponse(503, { error: 'Boarding is temporarily unavailable' });
+  }
+  if (!rateLimitAllowed) {
+    return jsonResponse(
+      429,
+      { error: 'Too many boarding requests' },
+      { 'Retry-After': String(RATE_LIMIT_RETRY_SECONDS) },
+    );
+  }
+
   let parsed: CommuteTrainBoardRequest | null;
   try {
     parsed = parseCommuteTrainBoardRequest(await request.json());
@@ -75,12 +94,17 @@ export async function handleCommuteTrainBoard(
   });
 }
 
-function jsonResponse(status: number, body: unknown): Response {
+function jsonResponse(
+  status: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
+      ...headers,
     },
   });
 }

@@ -18,6 +18,14 @@ import {
 } from '@playhtml/extension-types';
 
 const COMPLETED_TRAIN_RETENTION_MS = 60_000;
+export const MAX_RETAINED_COMMUTE_TRAINS = 64;
+
+export class CommuteTrainCapacityError extends Error {
+  constructor() {
+    super('Internet Commute is at train capacity');
+    this.name = 'CommuteTrainCapacityError';
+  }
+}
 
 interface CommuteTrainRider {
   requestedStop: CommuteTrainStopRequest;
@@ -132,18 +140,25 @@ export class CommuteTrainDispatcher {
   }
 
   cleanup(now: number): void {
-    this.state.trains = this.state.trains.filter(
+    const retainedTrains = this.state.trains.filter(
       (train) =>
         getCommuteTrainRouteEndsAt(train.createdAt, train.stops.length) +
           COMPLETED_TRAIN_RETENTION_MS >
         now,
     );
+    this.state.trains = retainedTrains.slice(-MAX_RETAINED_COMMUTE_TRAINS);
   }
 
   needsCommunalStops(riderToken: string, now: number): boolean {
     this.cleanup(now);
     if (this.findRiderTrain(riderToken)) return false;
-    return !this.state.trains.some((train) => isTrainJoinable(train, now));
+    if (this.state.trains.some((train) => isTrainJoinable(train, now))) {
+      return false;
+    }
+    if (this.state.trains.length >= MAX_RETAINED_COMMUTE_TRAINS) {
+      throw new CommuteTrainCapacityError();
+    }
+    return true;
   }
 
   board(
@@ -161,6 +176,9 @@ export class CommuteTrainDispatcher {
       .find((candidate) => isTrainJoinable(candidate, now));
 
     if (!train) {
+      if (this.state.trains.length >= MAX_RETAINED_COMMUTE_TRAINS) {
+        throw new CommuteTrainCapacityError();
+      }
       if (communalStops.length === 0) {
         throw new Error('Internet Commute requires at least one communal stop');
       }
