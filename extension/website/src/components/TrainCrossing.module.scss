@@ -1,0 +1,197 @@
+// ABOUTME: Styles the homepage Internet Commute crossing and train arrival.
+// ABOUTME: Keeps the track, signal, and train illustration responsive without overflow.
+
+@use "sass:color";
+@use "../styles/variables" as *;
+
+$accent-teal: #4a9a8a;
+$accent-blue: #5b8db8;
+$font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+.crossing {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 24px 0 56px;
+  overflow: hidden;
+  color: $text;
+  background: rgba($bg, 0.72);
+  text-decoration: none;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid $accent-teal;
+    outline-offset: -4px;
+  }
+
+  &:hover .signalSign {
+    border-bottom-color: $accent-blue;
+  }
+
+  &:hover .caption {
+    color: $accent-teal;
+  }
+}
+
+.scene {
+  position: relative;
+  display: block;
+  height: 150px;
+}
+
+.railTop,
+.railBottom,
+.ties {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: block;
+}
+
+.railTop {
+  bottom: 28px;
+  height: 3px;
+  background: rgba($text, 0.28);
+}
+
+.railBottom {
+  bottom: 20px;
+  height: 3px;
+  background: rgba($text, 0.2);
+}
+
+.ties {
+  bottom: 12px;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba($text, 0.14) 0 18px,
+    transparent 18px 44px
+  );
+}
+
+$accent-gold: #d4b85c;
+
+// The train photo is cropped mid-carriage on its left edge, so the rear must
+// always sit past the viewport's left edge to read as a longer train.
+.train {
+  position: absolute;
+  left: -36px;
+  bottom: 26px;
+  display: block;
+  width: clamp(480px, 58vw, 620px);
+  transform: translateX(calc(-100% - 14vw));
+  transition: transform 3.2s cubic-bezier(0.22, 0.75, 0.35, 1);
+}
+
+.trainArrived {
+  transform: translateX(0);
+}
+
+.trainIllustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: sepia(0.18) contrast(0.9);
+  opacity: 0.9;
+}
+
+.serviceLabel {
+  position: absolute;
+  top: -32px;
+  left: calc(50% + 18px);
+  padding: 3px 14px;
+  color: color.adjust($accent-gold, $lightness: -14%);
+  background: rgba($bg, 0.9);
+  border: 1px solid rgba($accent-gold, 0.5);
+  border-radius: 3px;
+  font-family: $font-mono;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.signal {
+  position: absolute;
+  right: clamp(24px, 10vw, 96px);
+  bottom: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.signalSign {
+  display: block;
+  padding: 6px 14px;
+  color: $text;
+  background: rgba($bg, 0.96);
+  border: 1px solid rgba($text, 0.2);
+  border-bottom: 3px solid $accent-teal;
+  border-radius: 4px;
+  font-family: $font-mono;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: border-color 0.15s;
+}
+
+.signalPost {
+  display: block;
+  width: 2px;
+  height: 26px;
+  background: rgba($text, 0.3);
+}
+
+.caption {
+  display: block;
+  max-width: calc(100% - 40px);
+  margin: 6px auto 0;
+  color: $text-muted;
+  font-family: $font-body;
+  font-size: 0.75rem;
+  font-style: italic;
+  line-height: 1.45;
+  text-align: center;
+  transition: color 0.15s;
+}
+
+@media (max-width: 800px) {
+  .crossing {
+    padding-top: 16px;
+    padding-bottom: 44px;
+  }
+
+  .scene {
+    height: 176px;
+  }
+
+  .train {
+    left: -24px;
+    bottom: 26px;
+    width: min(96vw, 420px);
+  }
+
+  .signal {
+    top: 4px;
+    right: 12px;
+    bottom: auto;
+  }
+
+  .signalSign {
+    padding: 5px 10px;
+    font-size: 0.625rem;
+  }
+
+  .caption {
+    max-width: calc(100% - 32px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .train {
+    transform: translateX(0);
+    transition: none;
+  }
+}

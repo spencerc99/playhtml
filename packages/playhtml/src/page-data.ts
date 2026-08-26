@@ -1,7 +1,7 @@
 // ABOUTME: Implements PageDataChannel — named persistent data channels
 // ABOUTME: not tied to DOM elements, backed by existing SyncedStore/Yjs.
 
-import type { PageDataChannel } from "@playhtml/common";
+import type { PageDataChannel, PageDataSetter } from "@playhtml/common";
 import { clonePlain, deepReplaceIntoProxy } from "@playhtml/common";
 import { getYjsValue } from "@syncedstore/core";
 import type * as Y from "yjs";
@@ -29,6 +29,49 @@ function pageDataObserverKey(name: string): string {
   return `${PAGE_TAG}:${name}`;
 }
 
+type PageDataObserver = ((...args: unknown[]) => void) & {
+  target?: any;
+  mode?: "deep" | "shallow";
+};
+
+function applyPageDataUpdate<T>(data: PageDataSetter<T>, value: T): T {
+  if (typeof data !== "function") return data as T;
+  if (value !== null && typeof value === "object") {
+    (data as (draft: T) => void)(value);
+    return value;
+  }
+  return (data as (value: T) => T)(value);
+}
+
+function notifyPageDataListeners<T>(
+  name: string,
+  deps: PageDataDeps,
+  listeners: Set<(data: T) => void>,
+): void {
+  const currentProxy = deps.getStorePlay()[PAGE_TAG]?.[name];
+  if (currentProxy === undefined) return;
+  const plain = clonePlain(currentProxy) as T;
+  for (const cb of listeners) {
+    cb(plain);
+  }
+}
+
+function detachPageDataObserver(name: string, deps: PageDataDeps): void {
+  const observerKey = pageDataObserverKey(name);
+  const observer = yObserverByKeyGet(deps, observerKey);
+  if (!observer) return;
+  if (observer.mode === "deep") observer.target?.unobserveDeep(observer);
+  if (observer.mode === "shallow") observer.target?.unobserve(observer);
+  deps.yObserverByKey.delete(observerKey);
+}
+
+function yObserverByKeyGet(
+  deps: PageDataDeps,
+  observerKey: string,
+): PageDataObserver | undefined {
+  return deps.yObserverByKey.get(observerKey) as PageDataObserver | undefined;
+}
+
 function attachPageDataObserver<T>(
   name: string,
   deps: PageDataDeps,
@@ -37,23 +80,34 @@ function attachPageDataObserver<T>(
   const { getStorePlay, yObserverByKey } = deps;
   const observerKey = pageDataObserverKey(name);
   if (yObserverByKey.has(observerKey)) return;
-  const yVal = getYjsValue(getStorePlay()[PAGE_TAG]?.[name]);
-  if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
+  const currentValue = getStorePlay()[PAGE_TAG]?.[name];
+  const yVal = getYjsValue(currentValue);
   let scheduled = false;
-  const observer = () => {
+  const notify = () => {
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(() => {
       scheduled = false;
-      const currentProxy = getStorePlay()[PAGE_TAG]?.[name];
-      if (!currentProxy) return;
-      const plain = clonePlain(currentProxy) as T;
-      for (const cb of listeners) {
-        cb(plain);
-      }
+      notifyPageDataListeners(name, deps, listeners);
     });
   };
-  (yVal as any).observeDeep(observer);
+  if (yVal && typeof (yVal as any).observeDeep === "function") {
+    const observer = notify as PageDataObserver;
+    observer.target = yVal;
+    observer.mode = "deep";
+    (yVal as any).observeDeep(observer);
+    yObserverByKey.set(observerKey, observer);
+    return;
+  }
+
+  const pageData = getYjsValue(getStorePlay()[PAGE_TAG]);
+  if (!pageData || typeof (pageData as any).observe !== "function") return;
+  const observer = ((event: { keysChanged?: Set<string> }) => {
+    if (event.keysChanged?.has(name)) notify();
+  }) as PageDataObserver;
+  observer.target = pageData;
+  observer.mode = "shallow";
+  (pageData as any).observe(observer);
   yObserverByKey.set(observerKey, observer);
 }
 
@@ -62,13 +116,10 @@ export function refreshPageDataChannels(deps: PageDataDeps): void {
 
   for (const [name, listeners] of channelListeners) {
     const currentProxy = getStorePlay()[PAGE_TAG]?.[name];
-    if (!currentProxy) continue;
+    if (currentProxy === undefined) continue;
 
     attachPageDataObserver(name, deps, listeners);
-    const plain = clonePlain(currentProxy);
-    for (const cb of listeners) {
-      cb(plain);
-    }
+    notifyPageDataListeners(name, deps, listeners);
   }
 }
 
@@ -79,7 +130,7 @@ export function createPageDataChannel<T>(
 ): PageDataChannel<T> {
   const {
     ensureProxy, getProxy, getDoc, getStorePlay, proxyByTagAndId,
-    yObserverByKey, channelRefCounts, channelListeners,
+    channelRefCounts, channelListeners,
   } = deps;
   // Read live each use so we follow a room-change store/doc swap.
   const storePlay = () => getStorePlay();
@@ -121,31 +172,51 @@ export function createPageDataChannel<T>(
   return {
     getData(): T {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
-      return clonePlain(storePlay()[PAGE_TAG]?.[name] ?? defaultValue) as T;
+      const value = storePlay()[PAGE_TAG]?.[name];
+      return clonePlain(value === undefined ? defaultValue : value) as T;
     },
 
-    setData(data: T | ((draft: T) => void)): void {
+    setData(data: PageDataSetter<T>): void {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
       // Re-acquire the proxy if it's gone (e.g. a room change cleared page-data
       // out from under this still-alive handle). ensureProxy re-seeds the
       // default into a fresh value and attachObserver re-attaches the deep
       // observer, wired to this channel's preserved listener set — so the
       // handle keeps both writing AND notifying after the reset.
-      let currentProxy = getProxy(PAGE_TAG, name) as T | null | undefined;
-      if (currentProxy == null) {
+      let currentProxy = getProxy(PAGE_TAG, name) as T | undefined;
+      if (currentProxy === undefined) {
         currentProxy = ensureProxy<T>(PAGE_TAG, name, defaultValue) as T;
         attachObserver();
       }
       const proxy = currentProxy;
-      if (typeof data === "function") {
+      const isObjectRoot = proxy !== null && typeof proxy === "object";
+      const currentValue = isObjectRoot
+        ? proxy
+        : storePlay()[PAGE_TAG]?.[name] as T;
+      if (typeof data === "function" && isObjectRoot) {
         doc().transact(() => {
-          (data as (draft: T) => void)(proxy);
+          applyPageDataUpdate(data as PageDataSetter<T>, proxy);
         });
-      } else {
-        doc().transact(() => {
-          deepReplaceIntoProxy(proxy, data);
-        });
+        return;
       }
+
+      const nextValue = applyPageDataUpdate(data, currentValue);
+
+      if (isObjectRoot) {
+        doc().transact(() => {
+          deepReplaceIntoProxy(proxy, nextValue);
+        });
+        return;
+      }
+
+      detachPageDataObserver(name, deps);
+      doc().transact(() => {
+        storePlay()[PAGE_TAG] ??= {};
+        storePlay()[PAGE_TAG]![name] = clonePlain(nextValue);
+        proxyByTagAndId.get(PAGE_TAG)?.set(name, storePlay()[PAGE_TAG]![name]);
+      });
+      attachObserver();
+      notifyPageDataListeners(name, deps, listeners);
     },
 
     onUpdate(callback: (data: T) => void): () => void {
@@ -173,15 +244,7 @@ export function createPageDataChannel<T>(
         channelRefCounts.delete(name);
         channelListeners.delete(name);
 
-        const key = pageDataObserverKey(name);
-        const obs = yObserverByKey.get(key);
-        if (obs) {
-          const yVal = getYjsValue(storePlay()[PAGE_TAG]?.[name]);
-          if (yVal && typeof (yVal as any).unobserveDeep === "function") {
-            (yVal as any).unobserveDeep(obs);
-          }
-          yObserverByKey.delete(key);
-        }
+        detachPageDataObserver(name, deps);
 
         const tagMap = proxyByTagAndId.get(PAGE_TAG);
         if (tagMap) {

@@ -145,9 +145,13 @@ describe("PlayHTMLPopup", () => {
       expect(container.querySelector(".portrait-home")).not.toBeNull();
       expect(container.querySelector(".commute-entry")).not.toBeNull();
       expect(container.textContent).toContain("scraps");
-      expect(container.textContent).toContain("bag settings");
+      expect(container.textContent).not.toContain("bag settings");
       expect(container.textContent).not.toContain("experiments");
-      expect(container.textContent).toContain("settings");
+      expect(
+        container.querySelector(
+          '.portrait-home__footer button[aria-label="settings"] svg',
+        ),
+      ).not.toBeNull();
     } finally {
       cleanup(root, container);
     }
@@ -157,9 +161,9 @@ describe("PlayHTMLPopup", () => {
     const { container, root } = await renderPopup();
 
     try {
-      const settingsButton = Array.from(
-        container.querySelectorAll<HTMLButtonElement>("button"),
-      ).find((button) => button.textContent?.trim() === "settings");
+      const settingsButton = container.querySelector<HTMLButtonElement>(
+        '.portrait-home__footer button[aria-label="settings"]',
+      );
       expect(settingsButton).toBeDefined();
 
       await act(async () => settingsButton?.click());

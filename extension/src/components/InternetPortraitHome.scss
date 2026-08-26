@@ -61,16 +61,6 @@
     }
   }
 
-  &__bag-settings-link {
-    display: block;
-    margin: 8px auto 0;
-    color: var(--text-faint);
-
-    &:hover {
-      color: var(--accent-rust);
-    }
-  }
-
   &__footer {
     margin-top: 12px;
     padding-top: 12px;
@@ -102,6 +92,14 @@
       outline: 2px solid var(--accent-teal);
       outline-offset: 2px;
     }
+  }
+
+  &__settings-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
   }
 
   &__feedback {

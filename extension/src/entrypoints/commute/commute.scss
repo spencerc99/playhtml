@@ -1,6 +1,7 @@
 // ABOUTME: Styles the extension's bird's-eye Internet Commute carriage.
 // ABOUTME: Translates the authored prototype and its ink-wash moving landscape.
 
+@use "sass:color";
 @use "../../styles/variables" as *;
 @use "../../styles/base";
 
@@ -114,18 +115,18 @@ button {
 
 .commute-install-cta {
   position: fixed;
-  right: 14px;
-  bottom: 14px;
+  bottom: 20px;
+  left: 50%;
   z-index: 30;
-  min-width: 198px;
-  min-height: 64px;
-  padding: 9px 11px 8px 8px;
+  min-width: 358px;
+  min-height: 100px;
+  padding: 16px 26px 15px 16px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
   overflow: hidden;
   border: 1px dashed color-mix(in srgb, var(--text) 32%, transparent);
-  border-radius: 10px 6px 6px 10px;
+  border-radius: 12px 8px 8px 12px;
   background:
     repeating-linear-gradient(
       90deg,
@@ -134,9 +135,10 @@ button {
     ),
     color-mix(in srgb, var(--surface) 96%, transparent);
   box-shadow:
-    inset 0 3px var(--accent-teal),
-    0 2px 8px color-mix(in srgb, var(--text) 14%, transparent);
+    inset 0 4px var(--accent-teal),
+    0 3px 14px color-mix(in srgb, var(--text) 16%, transparent);
   text-decoration: none;
+  transform: translateX(-50%);
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
@@ -146,39 +148,39 @@ button {
   &:focus-visible {
     border-color: color-mix(in srgb, var(--accent-teal) 72%, transparent);
     box-shadow:
-      inset 0 3px var(--accent-teal),
+      inset 0 4px var(--accent-teal),
       0 3px 12px color-mix(in srgb, var(--text) 18%, transparent);
     outline: none;
-    transform: translateY(-1px);
+    transform: translate(-50%, -1px);
   }
 
   &::before,
   &::after {
     content: "";
     position: absolute;
-    left: 61px;
-    width: 9px;
-    height: 9px;
+    left: 96px;
+    width: 11px;
+    height: 11px;
     border: 1px dashed color-mix(in srgb, var(--text) 28%, transparent);
     border-radius: 50%;
     background: var(--bg);
   }
 
   &::before {
-    top: -5px;
+    top: -6px;
   }
 
   &::after {
-    bottom: -5px;
+    bottom: -6px;
   }
 }
 
 .commute-install-cta__icon {
-  width: 44px;
-  height: 44px;
+  width: 66px;
+  height: 66px;
   flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
-  border-radius: 6px;
+  border-radius: 8px;
   background-color: var(--bg);
   background-image: url("../../../public/icon/128.png");
   background-position: center;
@@ -189,23 +191,23 @@ button {
 .commute-install-cta__copy {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   border-left: 1px dashed color-mix(in srgb, var(--text) 25%, transparent);
-  padding-left: 5px;
+  padding-left: 14px;
 
   strong {
-    font-size: 12px;
+    font-size: 21px;
   }
 
   span {
     color: var(--text-muted);
     font-family: $font-mono;
-    font-size: 8px;
+    font-size: 12px;
   }
 
   .commute-install-cta__label {
     color: var(--accent-rust);
-    font-size: 7px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -514,7 +516,8 @@ button {
 .commute-mobile-wordmark,
 .commute-mobile-fullscreen,
 .commute-mobile-joystick,
-.commute-mobile-action {
+.commute-mobile-action,
+.commute-mobile-transit-pass {
   display: none;
 }
 
@@ -572,6 +575,7 @@ button {
   display: flex;
   animation: landscape-scroll 20s linear infinite;
   will-change: transform;
+  pointer-events: none;
 
   svg {
     width: 2200px;
@@ -767,6 +771,181 @@ button {
   );
 }
 
+.station-install-poster {
+  width: 56px;
+  height: 42px;
+  position: absolute;
+  top: 8px;
+  left: 216px;
+  z-index: 1;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text);
+  border: 1.5px solid color-mix(in srgb, var(--text) 35%, transparent);
+  background: var(--bg);
+  box-shadow: 0 1px 4px rgba(90, 78, 65, 0.18);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--accent-teal);
+    outline: none;
+  }
+}
+
+.station-install-poster__stripe {
+  height: 6px;
+  display: block;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent-gold) 0 10px,
+    #c9a94a 10px 20px
+  );
+}
+
+.station-install-poster__copy {
+  padding: 3px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+
+  span {
+    color: var(--accent-rust);
+    font-family: $font-mono;
+    font-size: 4px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  strong {
+    font-family: $font-heading;
+    font-size: 8px;
+    font-style: italic;
+    font-weight: 400;
+    line-height: 1.1;
+  }
+
+  i {
+    width: 22px;
+    height: 5px;
+    border-radius: 1px;
+    background: var(--text);
+  }
+}
+
+.commute-poster-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--text) 36%, transparent);
+}
+
+.commute-poster-dialog {
+  width: min(300px, calc(100vw - 48px));
+  position: relative;
+  padding: 27px 20px 18px;
+  color: var(--text);
+  border: 2px solid color-mix(in srgb, var(--text) 35%, transparent);
+  border-radius: 4px;
+  background: var(--bg);
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--text) 18%, transparent);
+  transform: rotate(-0.8deg);
+
+  h2 {
+    margin: 7px 0 8px;
+    font-family: $font-heading;
+    font-size: 27px;
+    font-style: italic;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  > a {
+    margin-top: 12px;
+    padding: 8px 16px;
+    display: inline-block;
+    color: var(--bg);
+    border-radius: 4px;
+    background: var(--text);
+    font-size: 13px;
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--accent-teal);
+      outline: none;
+    }
+  }
+}
+
+.commute-poster-dialog__stripe {
+  height: 9px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent-gold) 0 20px,
+    #c9a94a 20px 40px
+  );
+}
+
+.commute-poster-dialog__label {
+  color: var(--accent-rust);
+  font-family: $font-mono;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.commute-poster-dialog__close {
+  width: 26px;
+  height: 26px;
+  position: absolute;
+  top: 15px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  cursor: pointer;
+}
+
+.commute-poster-dialog__tape {
+  width: 32px;
+  height: 11px;
+  position: absolute;
+  top: -8px;
+  background: color-mix(in srgb, var(--accent-gold) 55%, transparent);
+
+  &--left {
+    left: 26px;
+    transform: rotate(-4deg);
+  }
+
+  &--right {
+    right: 26px;
+    transform: rotate(3deg);
+  }
+}
+
 .landscape-window--lower {
   .station-platform {
     background-image: repeating-linear-gradient(
@@ -778,7 +957,8 @@ button {
 
   .station-platform__stripe,
   .station-platform__pillar,
-  .station-sign {
+  .station-sign,
+  .station-install-poster {
     display: none;
   }
 
@@ -971,15 +1151,13 @@ button {
 .slow-mode-platform__rider {
   position: absolute;
   bottom: 138px;
-  left: 17%;
-  z-index: 4;
-  transition:
-    left 1.8s cubic-bezier(0.2, 0.8, 0.3, 1),
-    opacity 0.6s ease 1.6s;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  transition: opacity 0.3s ease;
 }
 
 .slow-mode-platform--boarding .slow-mode-platform__rider {
-  left: 46.5%;
   opacity: 0;
 }
 
@@ -1991,6 +2169,192 @@ button {
     &--exit {
       background: var(--accent-rust);
     }
+  }
+
+  .commute-mobile-transit-pass {
+    position: fixed;
+    inset: 0;
+    z-index: 42;
+    display: block;
+    pointer-events: none;
+  }
+
+  .commute-mobile-transit-pass__tab {
+    min-width: 196px;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    padding: 8px 16px calc(10px + env(safe-area-inset-bottom)) 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    border: 1px dashed color-mix(in srgb, var(--text) 32%, transparent);
+    border-bottom: 0;
+    border-radius: 10px 10px 0 0;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    box-shadow:
+      inset 0 3px var(--accent-teal),
+      0 -2px 8px color-mix(in srgb, var(--text) 14%, transparent);
+    transform: translateX(-50%);
+    cursor: pointer;
+    pointer-events: auto;
+
+    svg {
+      flex: 0 0 auto;
+      stroke: var(--accent-rust);
+      stroke-width: 1.6;
+    }
+
+    > span:last-child {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0;
+    }
+
+    small {
+      color: var(--accent-rust);
+      font-family: $font-mono;
+      font-size: 7px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    strong {
+      font-size: 12px;
+    }
+  }
+
+  .commute-mobile-transit-pass__perforation {
+    width: 9px;
+    height: 9px;
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    border: 1px dashed color-mix(in srgb, var(--text) 28%, transparent);
+    border-radius: 50%;
+    background: var(--bg);
+    transform: translateX(-50%);
+  }
+
+  .commute-mobile-transit-pass__panel {
+    width: min(340px, calc(100vw - 32px));
+    position: absolute;
+    bottom: calc(66px + env(safe-area-inset-bottom));
+    left: 50%;
+    box-sizing: border-box;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--text);
+    border: 1px dashed color-mix(in srgb, var(--text) 35%, transparent);
+    border-radius: 10px 6px 6px 10px;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--accent-gold) 4%, transparent) 0 1px,
+        transparent 1px 5px
+      ),
+      color-mix(in srgb, var(--bg) 98%, transparent);
+    box-shadow:
+      inset 0 3px var(--accent-teal),
+      0 6px 20px color-mix(in srgb, var(--text) 20%, transparent);
+    transform: translateX(-50%);
+    pointer-events: auto;
+    user-select: text;
+
+    > strong {
+      font-size: 16px;
+    }
+
+    > p {
+      margin: 0;
+      padding-right: 22px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    form {
+      display: grid;
+      gap: 5px;
+    }
+  }
+
+  .commute-mobile-transit-pass__close {
+    width: 22px;
+    height: 22px;
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+    border-radius: 50%;
+    background: transparent;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .commute-mobile-transit-pass__label {
+    color: var(--accent-rust);
+    font-family: $font-mono;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .commute-mobile-transit-pass__form-row {
+    display: flex;
+    gap: 8px;
+
+    input,
+    button {
+      min-height: 38px;
+      box-sizing: border-box;
+      border: 1.5px solid color-mix(in srgb, var(--text) 35%, transparent);
+      border-radius: 4px;
+      font: inherit;
+    }
+
+    input {
+      min-width: 0;
+      flex: 1;
+      padding: 9px 12px;
+      color: var(--text);
+      background: color-mix(in srgb, var(--bg) 85%, transparent);
+      font-size: 15px;
+    }
+
+    button {
+      padding: 9px 16px;
+      color: var(--bg);
+      border-color: var(--text);
+      background: var(--text);
+      font-size: 15px;
+      cursor: pointer;
+    }
+  }
+
+  .commute-mobile-transit-pass__success,
+  .commute-mobile-transit-pass__error {
+    font-family: $font-mono;
+    font-size: 8px;
+    line-height: 1.5;
+  }
+
+  .commute-mobile-transit-pass__success {
+    color: var(--accent-teal) !important;
+  }
+
+  .commute-mobile-transit-pass__error {
+    color: var(--accent-rust);
   }
 
   .commute-toast {
