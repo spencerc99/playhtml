@@ -10,7 +10,10 @@ import {
   shouldEnableCursorsForHostname,
 } from "../custom-sites";
 import { initWikipedia } from "../custom-sites/wikipedia";
-import { shouldStartExtensionPresence } from "../entrypoints/content/presencePolicy";
+import {
+  shouldInitializeCopresence,
+  shouldStartExtensionPresence,
+} from "../entrypoints/content/presencePolicy";
 
 vi.mock("../custom-sites/wikipedia", () => ({
   initWikipedia: vi.fn(() => null),
@@ -27,6 +30,28 @@ const customSiteDeps = {
 afterEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("shouldInitializeCopresence", () => {
+  it("initializes Wikipedia when the global feature is disabled", () => {
+    expect(
+      shouldInitializeCopresence({
+        featureEnabled: false,
+        customSiteCursorsEnabled:
+          shouldEnableCursorsForHostname("en.wikipedia.org"),
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps unsupported sites disabled when the global feature is disabled", () => {
+    expect(
+      shouldInitializeCopresence({
+        featureEnabled: false,
+        customSiteCursorsEnabled:
+          shouldEnableCursorsForHostname("www.youtube.com"),
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("shouldStartExtensionPresence", () => {
