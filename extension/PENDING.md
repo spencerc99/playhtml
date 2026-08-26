@@ -4,6 +4,7 @@
 - Slow Mode can route deliberate far jumps through a short Internet Commute, with chance controls, cooldowns, and an always-available teleport.
 - Authentication pages no longer appear in Internet Commute or trigger Slow Mode.
 - Wikipedia always shows its shared cursors and remembered-link patina.
+- Browsing history now refreshes the current week, month, or year as new activity is recorded.
 - Internet Commute now gives mobile riders more room and lets them use seats and doors directly.
 
 <!--
