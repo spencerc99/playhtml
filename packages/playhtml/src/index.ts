@@ -42,7 +42,11 @@ import {
   getPresencePage,
 } from "./cursors/cursor-client";
 import { createPresenceAPI } from "./presence";
-import { createUsersAPI, defaultSeedIdentity } from "./users";
+import {
+  createUsersAPI,
+  defaultSeedIdentity,
+  toPresencePlayerIdentity,
+} from "./users";
 import type { UsersAPI } from "./users";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import {
@@ -59,10 +63,37 @@ import {
   refreshPageDataChannels,
 } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
+import { ensureLocalIdentity } from "./auth/identity";
+import {
+  configurePermissions,
+  can,
+  getMe,
+  setIdentity,
+  isLocallyGated,
+  isServerGated,
+  usesKeyedGatedWrites,
+  isServerEnforced,
+  isPermissionsStatusPending,
+  dispatchPermissionDenied,
+  __resetPermissionsForTests,
+  IDENTITY_CHANGE_EVENT,
+  PERMISSIONS_CHANGE_EVENT,
+  type PermissionsConfig,
+  type MeState,
+} from "./auth/permissions";
+import {
+  bindHandshake,
+  unbindHandshake,
+  handleAuthMessage,
+  requestVerification,
+  sendGatedWrite,
+  buildGatedWriteOps,
+} from "./auth/handshake";
 import {
   canUseRealtimePresenceTransport,
   RealtimePresenceTransport,
 } from "./presence-transport";
+import { normalizePathname } from "./room";
 import {
   ElementAwarenessClient,
   type ElementAwarenessEntry,
@@ -138,13 +169,6 @@ function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   return includeSearch
     ? transformedPathname + window.location.search
     : transformedPathname;
-}
-
-/**
- * Normalizes a pathname by stripping filename extensions, consistent with getDefaultRoom
- */
-function normalizePathname(pathname: string): string {
-  return pathname.replace(/\.[^/.]+$/, "");
 }
 
 /**
@@ -258,6 +282,10 @@ const cursorPresenceHub = {
 
 function resolveMyIdentity(): PlayerIdentity {
   return usersAPI?.getIdentity() ?? defaultSeedIdentity();
+}
+
+function resolvePresenceIdentity(): PlayerIdentity {
+  return toPresencePlayerIdentity(resolveMyIdentity());
 }
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
@@ -520,6 +548,14 @@ export interface InitOptions<T = unknown> {
   cursors?: CursorOptions;
 
   /**
+   * Permission roles and rules for gating element writes. Client-side this is
+   * UX gating (affordances, local write blocks); pair it with a
+   * `/.well-known/playhtml.json` on your domain to make the same rules
+   * server-enforced. See the permissions docs for details.
+   */
+  permissions?: PermissionsConfig;
+
+  /**
    * The local user's durable identity (name and color), available via
    * `playhtml.users` regardless of whether cursors are enabled. Defaults to a
    * persistent per-browser identity generated on first use.
@@ -587,6 +623,11 @@ function onMessage(data: string) {
   try {
     message = JSON.parse(data);
   } catch (err) {
+    return;
+  }
+
+  // Auth handshake / permissions / gated-write protocol messages
+  if (handleAuthMessage(message)) {
     return;
   }
 
@@ -723,7 +764,7 @@ function acquirePresenceTransport(
     usersAPI?.onSelfChange(() => {
       try {
         transport.join({
-          identity: resolveMyIdentity(),
+          identity: resolvePresenceIdentity(),
           page: getPresencePage(),
         });
       } catch (error) {
@@ -980,6 +1021,22 @@ function buildMainProvider(args: {
   return { sharedReferences };
 }
 
+/**
+ * Binds the auth handshake to the current main provider/room. Must be called
+ * after (re)building yprovider — verification is per connection.
+ */
+function bindHandshakeToCurrentProvider(): void {
+  bindHandshake({
+    send: (message) => {
+      try {
+        yprovider.sendMessage(message);
+      } catch {}
+    },
+    getPid: () => resolveMyIdentity().publicKey,
+    roomId: __currentRoomId,
+  });
+}
+
 /** Disconnect and destroy the cursor client + cursor provider. */
 function teardownCursors(): void {
   cursorPresenceHub.disconnect();
@@ -1057,7 +1114,7 @@ function buildElementAwarenessClient(): void {
   try {
     elementAwarenessClient = new ElementAwarenessClient({
       transport,
-      getIdentity: resolveMyIdentity,
+      getIdentity: resolvePresenceIdentity,
       getPage: getPresencePage,
       onAwareness: applyElementAwareness,
       onAwarenessChange: applyElementAwarenessEntry,
@@ -1125,7 +1182,7 @@ function buildInnerPresenceAPI(): PresenceAPI {
     try {
       presenceClient = new PresenceClient({
         transport,
-        getIdentity: resolveMyIdentity,
+        getIdentity: resolvePresenceIdentity,
         getPage: getPresencePage,
         // Route the cursor channel through the stable hub, not the current cursor
         // client instance, so the subscription survives cursor rebuilds (nav /
@@ -1410,6 +1467,11 @@ function setupExtensionIdentityListener(): void {
     };
 
     usersAPI.adoptIdentity(merged);
+    setIdentity(merged);
+    // The verified state (if any) belonged to the previous pid — re-run the
+    // handshake under the extension identity. No-op for the server unless
+    // the room has enforceable rules.
+    void requestVerification();
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1496,6 +1558,7 @@ async function runHandleNavigation(): Promise<void> {
       onMessage,
     });
     __currentRoomId = newMainRoom;
+    bindHandshakeToCurrentProvider();
     buildElementAwarenessClient();
     // Retained handlers (still-mounted SPA/React elements) keep their
     // selfAwareness across the room change, but the fresh client starts empty —
@@ -1629,6 +1692,19 @@ async function initPlayHTMLOnce() {
       configuredOptions?.defaultRoomOptions ?? { includeSearch: false },
     );
   const onError = configuredOptions?.onError;
+
+  if (configuredOptions?.permissions) {
+    configurePermissions(configuredOptions.permissions);
+  }
+
+  // Ensure the local keypair exists and the persisted identity carries its
+  // real public key before any provider/cursor identity is built. Bounded so
+  // a hung IndexedDB (rare, but possible in exotic privacy modes) can never
+  // stall init — identity just stays unverifiable for the session.
+  await Promise.race([
+    ensureLocalIdentity(),
+    new Promise((resolve) => setTimeout(resolve, 2000)),
+  ]);
   // @ts-ignore
   window.playhtml = playhtml;
   // DOM marker visible to browser extension content scripts (which run in an
@@ -1684,6 +1760,8 @@ async function initPlayHTMLOnce() {
   });
   usersAPI.getAll();
 
+  bindHandshakeToCurrentProvider();
+  setIdentity(resolveMyIdentity());
   buildElementAwarenessClient();
 
   setupExtensionIdentityListener();
@@ -1907,6 +1985,52 @@ function createPlayElementData<T extends TagType, TData = any>(
       // Prevent writes for read-only shared consumer elements
       if (!canWriteElementData(element)) {
         return;
+      }
+      if (isPermissionsStatusPending()) {
+        const queuedData =
+          typeof newData === "function" ? newData : clonePlain(newData);
+        const retry = () => {
+          elementData.onChange(queuedData as TData);
+        };
+        document.addEventListener(PERMISSIONS_CHANGE_EVENT, retry, {
+          once: true,
+        });
+        return;
+      }
+      // Permission gating — synchronous cache lookups; elements with no
+      // matching rules skip all of this (isLocallyGated is a cheap check).
+      if (isLocallyGated(element, elementId)) {
+        if (!can("write", element)) {
+          dispatchPermissionDenied(element, {
+            action: "write",
+            elementId,
+            reason: "missing required role",
+          });
+          return;
+        }
+        if (isServerGated(elementId)) {
+          // Server-mediated write path (wait-for-server): materialize the
+          // intended mutation, send explicit ops, and let the authoritative
+          // value come back via normal Yjs sync. Never write gated keys locally.
+          const before = clonePlain(dataProxy);
+          let after: unknown;
+          if (typeof newData === "function") {
+            const draft = clonePlain(before);
+            (newData as (d: unknown) => void)(draft);
+            after = draft;
+          } else {
+            after = clonePlain(newData);
+          }
+          const ops = buildGatedWriteOps({
+            before,
+            after,
+            keyed: usesKeyedGatedWrites(elementId),
+          });
+          if (ops.length > 0) {
+            sendGatedWrite({ target: element, tag, elementId, ops });
+          }
+          return;
+        }
       }
 
       doc.transact(() => {
@@ -2298,7 +2422,10 @@ function createPresenceRoom(name: string): PresenceRoom {
     const selfChangeUnsub =
       usersAPI?.onSelfChange(() => {
         try {
-          transport.join({ identity: resolveMyIdentity(), page: getPresencePage() });
+          transport.join({
+            identity: resolvePresenceIdentity(),
+            page: getPresencePage(),
+          });
         } catch (error) {
           console.warn(
             "[playhtml] Failed to republish identity on change:",
@@ -2309,7 +2436,7 @@ function createPresenceRoom(name: string): PresenceRoom {
 
     const presence = new PresenceClient({
       transport,
-      getIdentity: resolveMyIdentity,
+      getIdentity: resolvePresenceIdentity,
       getPage: getPresencePage,
     });
 
@@ -2383,6 +2510,16 @@ export interface PlayHTMLComponents {
   users: Pick<UsersAPI, "me" | "getAll" | "onChange">;
   createPageData: typeof createPageData;
   createPresenceRoom: typeof createPresenceRoom;
+  /** The local player: stable pid, verification state, resolved roles. */
+  me: MeState;
+  /** Synchronous permission check against resolved rules (UX gating). */
+  can: typeof can;
+  /** True when this room's domain published enforceable rules (well-known file). */
+  permissionsEnforced: boolean;
+  /** Explicitly (re)run the key handshake; resolves with the outcome. */
+  verify: () => Promise<boolean>;
+  /** Subscribe to identity/verification/permissions changes; returns unsubscribe. */
+  onIdentityChange: (callback: (me: MeState) => void) => () => void;
   // Debug / Dev helpers
   roomId: string;
   host: string;
@@ -2449,6 +2586,8 @@ export async function resetPlayHTML(): Promise<void> {
     mainProviderSyncWaiters.clear();
     disconnectRegisteredElementObserver();
 
+    unbindHandshake();
+    __resetPermissionsForTests();
     teardownElementAwarenessClient();
     teardownPresenceClient();
     teardownCursors();
@@ -2559,6 +2698,23 @@ export const playhtml: PlayHTMLComponents = {
   },
   createPageData,
   createPresenceRoom,
+  get me() {
+    return getMe();
+  },
+  can,
+  get permissionsEnforced() {
+    return isServerEnforced();
+  },
+  verify: requestVerification,
+  onIdentityChange: (callback: (me: MeState) => void) => {
+    const handler = () => callback(getMe());
+    document.addEventListener(IDENTITY_CHANGE_EVENT, handler);
+    document.addEventListener(PERMISSIONS_CHANGE_EVENT, handler);
+    return () => {
+      document.removeEventListener(IDENTITY_CHANGE_EVENT, handler);
+      document.removeEventListener(PERMISSIONS_CHANGE_EVENT, handler);
+    };
+  },
   listSharedElements: devListSharedElements,
 };
 
@@ -3467,8 +3623,23 @@ export type {
   CursorPresenceView,
   PresenceRoom,
   PresenceView,
+  PermissionAction,
+  PermissionActionSpec,
+  PermissionRule,
   User,
 } from "@playhtml/common";
+export { serializePermissionsSpec } from "@playhtml/common";
+export type {
+  PermissionsConfig,
+  MeState,
+  RoleCondition,
+  CanOptions,
+} from "./auth/permissions";
+export {
+  IDENTITY_CHANGE_EVENT,
+  PERMISSIONS_CHANGE_EVENT,
+  PERMISSION_DENIED_EVENT,
+} from "./auth/permissions";
 
 // Re-export a curated subset of lit-html for `view` authoring, so
 // script-tag and module users can `import { html, repeat } from "playhtml"`.

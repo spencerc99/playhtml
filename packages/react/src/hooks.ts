@@ -14,7 +14,12 @@ import {
   PresenceView,
   User,
 } from "playhtml";
-import type { CursorZoneOptions } from "playhtml";
+import type { CursorZoneOptions, MeState, PermissionAction } from "playhtml";
+
+// Stable protocol event names (duplicated from playhtml so this module only
+// has type-level imports from it — keeps vi.mock("playhtml") setups working).
+const IDENTITY_CHANGE_EVENT = "playhtml:identitychange";
+const PERMISSIONS_CHANGE_EVENT = "playhtml:permissionschange";
 
 type SelectedPresenceView<
   Channel extends string,
@@ -266,6 +271,11 @@ const EMPTY_PLAYER_IDENTITY = {
  * "we were online" extension injects its identity via the
  * `playhtml:configure-identity` event.
  *
+ * `verified` and `roles` come from playhtml's auth/permissions system and
+ * update on the `playhtml:identitychange` / `playhtml:permissionschange`
+ * events (key handshake completion, extension identity injection, server
+ * permissions arriving).
+ *
  * Backed by the users module, so it works without `cursors: { enabled: true }`.
  * Returns empty/undefined values until playhtml has synced.
  */
@@ -273,9 +283,12 @@ export function usePlayerIdentity(): {
   color: string;
   pid: string | undefined;
   name: string | undefined;
+  verified: boolean;
+  roles: string[];
 } {
   const { isLoading } = useContext(PlayContext);
   const [identity, setIdentity] = useState(EMPTY_PLAYER_IDENTITY);
+  const me = useMeState();
 
   useEffect(() => {
     if (isLoading) {
@@ -296,7 +309,12 @@ export function usePlayerIdentity(): {
     return playhtml.users.onChange(readIdentity);
   }, [isLoading]);
 
-  return identity;
+  return {
+    ...identity,
+    pid: identity.pid ?? me?.pid,
+    verified: me?.verified ?? false,
+    roles: me?.roles ?? [],
+  };
 }
 
 /**
@@ -312,4 +330,62 @@ export function useUsers(): User[] {
     (setUsers) => playhtml.users.onChange(setUsers),
     [],
   );
+}
+
+/** Subscribes to playhtml.me across identity/permissions change events. */
+function useMeState(): MeState | null {
+  const [me, setMe] = useState<MeState | null>(() => readMe());
+
+  useEffect(() => {
+    const update = () => setMe(readMe());
+    update();
+    document.addEventListener(IDENTITY_CHANGE_EVENT, update);
+    document.addEventListener(PERMISSIONS_CHANGE_EVENT, update);
+    return () => {
+      document.removeEventListener(IDENTITY_CHANGE_EVENT, update);
+      document.removeEventListener(PERMISSIONS_CHANGE_EVENT, update);
+    };
+  }, []);
+
+  return me;
+}
+
+function readMe(): MeState | null {
+  try {
+    return playhtml.me ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Synchronous permission check that re-evaluates when identity, verification,
+ * or server permissions change. Pass an element id ("#guestbook"), an
+ * element, or a ref; for creator-scoped collection entries, pass the entry
+ * itself (`{ entry }` — its `createdBy` is read) or its creator pid.
+ *
+ * This is UX gating (show/hide affordances) — the server independently
+ * enforces rules published in the domain's `/.well-known/playhtml.json`.
+ */
+export function useCan(
+  action: PermissionAction,
+  target: string | HTMLElement | React.RefObject<HTMLElement | null>,
+  options?: { creator?: string; entry?: unknown },
+): boolean {
+  const me = useMeState();
+  const creator = options?.creator;
+  const entry = options?.entry;
+  return useMemo(() => {
+    const resolved =
+      typeof target === "string" || target instanceof HTMLElement
+        ? target
+        : target.current;
+    if (!resolved) return true; // ref not mounted yet — default to ungated
+    try {
+      return playhtml.can(action, resolved, { creator, entry });
+    } catch {
+      return true;
+    }
+    // me is the reactive dependency: it changes whenever permission inputs do.
+  }, [action, target, creator, entry, me]);
 }

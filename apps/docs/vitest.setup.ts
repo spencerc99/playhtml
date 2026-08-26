@@ -3,6 +3,14 @@
 Object.defineProperty(window, "outerWidth", { value: 1024, writable: true });
 Object.defineProperty(window, "innerHeight", { value: 768, writable: true });
 
+const litIssuedWarnings =
+  (globalThis as typeof globalThis & { litIssuedWarnings?: Set<string> })
+    .litIssuedWarnings ?? new Set<string>();
+litIssuedWarnings.add("dev-mode");
+(
+  globalThis as typeof globalThis & { litIssuedWarnings?: Set<string> }
+).litIssuedWarnings = litIssuedWarnings;
+
 const appendHeadChild = document.head.appendChild.bind(document.head);
 document.head.appendChild = ((child: Node) => {
   if (
@@ -64,7 +72,18 @@ vi.mock("y-partyserver/provider", () => {
           getStates: () => states,
           on: (t: string, cb: any) => this.on(t, cb),
         };
-        queueMicrotask(() => this.emit("sync", true));
+        queueMicrotask(() => {
+          this.emit("sync", true);
+          this.emit(
+            "custom-message",
+            JSON.stringify({
+              type: "permissions_status",
+              enforced: false,
+              roles: {},
+              rules: [],
+            }),
+          );
+        });
       }
 
       on(t: string, cb: any) {

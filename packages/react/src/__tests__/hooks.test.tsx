@@ -16,7 +16,6 @@ import {
   useCursorZone,
   playhtml,
 } from "../index";
-import type { PlayerIdentity } from "playhtml";
 
 const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
   isLoading: boolean;
@@ -312,12 +311,24 @@ describe("usePlayerIdentity", () => {
       </PlayProvider>,
     );
 
-    expect(seen[0]).toEqual({ color: "", pid: undefined, name: undefined });
+    expect(seen[0]).toEqual({
+      color: "",
+      pid: undefined,
+      name: undefined,
+      verified: false,
+      roles: [],
+    });
 
     await waitFor(() => {
       expect(seen.at(-1)?.pid).toBe("mock-pid");
     });
-    expect(seen.at(-1)?.color).toBe("#123456");
+    expect(seen.at(-1)).toEqual({
+      color: "#123456",
+      pid: "mock-pid",
+      name: undefined,
+      verified: false,
+      roles: [],
+    });
   });
 
   it("reflects a color/name change made via playhtml.users.me", async () => {

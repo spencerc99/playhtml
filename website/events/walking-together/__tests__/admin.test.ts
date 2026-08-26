@@ -1,4 +1,5 @@
-// ABOUTME: Tests the admin gate — requires matching name AND color, case-insensitive.
+// ABOUTME: Tests the admin gate — key-based "admin" role, with the legacy
+// ABOUTME: name+color match (case-insensitive) as fallback.
 
 import { describe, it, expect } from "vitest";
 import { isAdmin } from "../admin";
@@ -20,5 +21,14 @@ describe("isAdmin", () => {
   it("is false for missing values", () => {
     expect(isAdmin(undefined, undefined)).toBe(false);
     expect(isAdmin("spencer", undefined)).toBe(false);
+  });
+
+  it("is true for any identity holding the admin role (key-based path)", () => {
+    expect(isAdmin("anyone", "#123456", ["admin"])).toBe(true);
+    expect(isAdmin(undefined, undefined, ["admin"])).toBe(true);
+  });
+
+  it("ignores unrelated roles", () => {
+    expect(isAdmin("someone", "#000000", ["editor"])).toBe(false);
   });
 });

@@ -25,3 +25,4 @@ extension/website/public/changelog/media/ and reference them here:
 - The setup welcome now includes an invitation to the community Discord.
 - Settings now brings identity, data collection, new tab, project updates, experiments, and local data controls into one page.
 - The popup now opens the settings page instead of nesting settings screens.
+- Your extension identity now works with permission-gated elements and ownership checks on playhtml sites.

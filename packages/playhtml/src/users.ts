@@ -4,6 +4,7 @@
 import {
   generatePersistentPlayerIdentity,
   savePlayerIdentityToStorage,
+  toPublicPlayerIdentity,
   User,
   type CursorPresenceView,
   type PlayerIdentity,
@@ -47,6 +48,16 @@ function assertValidPlayerIdentity(identity: PlayerIdentity): void {
     throw new Error("[playhtml] Player identity must have publicKey.");
   }
   getPrimaryColor(identity);
+}
+
+export function toPresencePlayerIdentity(
+  identity: PlayerIdentity,
+): PlayerIdentity {
+  const publicIdentity = toPublicPlayerIdentity(identity);
+  if (!publicIdentity?.playerStyle.colorPalette[0]) {
+    throw new Error("[playhtml] Cannot publish an invalid player identity.");
+  }
+  return publicIdentity;
 }
 
 function toUser(identity: PlayerIdentity, isMe: boolean): User {
@@ -99,7 +110,9 @@ export function createUsersAPI(
   let lastIdentityFingerprint = "";
 
   function publishIdentity(): void {
-    deps.getAwareness().setLocalStateField(IDENTITY_FIELD, identity);
+    deps
+      .getAwareness()
+      .setLocalStateField(IDENTITY_FIELD, toPresencePlayerIdentity(identity));
   }
 
   // Idempotent: writes identity into the current awareness's local state if

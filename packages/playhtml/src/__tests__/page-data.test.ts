@@ -1,26 +1,53 @@
-import { describe, it, expect, beforeAll } from "vitest";
+// ABOUTME: Verifies PageDataChannel reads, writes, listeners, lifecycle cleanup,
+// ABOUTME: and permission-gated routing for named shared data channels.
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
 import { getYjsDoc, syncedStore } from "@syncedstore/core";
 import * as Y from "yjs";
 import { playhtml } from "../index";
 import { createPageDataChannel, PAGE_TAG } from "../page-data";
+import { bindHandshake, unbindHandshake } from "../auth/handshake";
+import {
+  __resetPermissionsForTests,
+  PERMISSION_DENIED_EVENT,
+  setIdentity,
+  setServerPermissionsStatus,
+  setVerified,
+} from "../auth/permissions";
+import { clonePlain } from "@playhtml/common";
+
+const ADMIN_PK = "pk_" + "aa".repeat(65);
+const OTHER_PK = "pk_" + "bb".repeat(65);
 
 function createPageDataTestDeps(
-  store: ReturnType<typeof syncedStore<{ play: Record<string, Record<string, unknown>> }>>,
+  store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+    play: {},
+  }),
 ) {
   const doc = getYjsDoc(store);
-  const proxyByTagAndId = new Map<string, Map<string, unknown>>();
+  const proxyByTagAndId = new Map<string, Map<string, any>>();
   const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
 
   return {
     ensureProxy<T>(tag: string, id: string, defaultData: T): T {
       if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
-      const proxies = proxyByTagAndId.get(tag)!;
-      if (!proxies.has(id)) {
+      const tagMap = proxyByTagAndId.get(tag)!;
+      if (!tagMap.has(id)) {
         store.play[tag] ??= {};
-        store.play[tag][id] ??= defaultData;
-        proxies.set(id, store.play[tag][id]);
+        const tagRecord = store.play[tag]!;
+        if (tagRecord[id] === undefined) {
+          tagRecord[id] = clonePlain(defaultData);
+        }
+        tagMap.set(id, tagRecord[id]);
       }
-      return proxies.get(id) as T;
+      return tagMap.get(id)! as T;
     },
     getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
     getDoc: () => doc,
@@ -83,10 +110,14 @@ describe("playhtml.createPageData", () => {
   });
 
   it("uses a remotely updated primitive value for functional updates", () => {
-    const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+    const firstStore = syncedStore<{
+      play: Record<string, Record<string, unknown>>;
+    }>({
       play: {},
     });
-    const secondStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+    const secondStore = syncedStore<{
+      play: Record<string, Record<string, unknown>>;
+    }>({
       play: {},
     });
     const firstDoc = getYjsDoc(firstStore);
@@ -180,9 +211,141 @@ describe("playhtml.createPageData", () => {
     document.body.appendChild(el);
 
     await expect(
-      playhtml.setupPlayElementForTag(el, "__page__")
+      playhtml.setupPlayElementForTag(el, "__page__"),
     ).rejects.toThrow(/reserved/);
 
     document.body.removeChild(el);
+  });
+});
+
+describe("page-data permissions", () => {
+  beforeEach(() => {
+    __resetPermissionsForTests();
+    unbindHandshake();
+    document.body.innerHTML = "";
+  });
+
+  afterEach(() => {
+    unbindHandshake();
+    vi.restoreAllMocks();
+  });
+
+  it("routes server-gated channel writes through gated_write ops", () => {
+    const sent: string[] = [];
+    bindHandshake({
+      send: (message) => sent.push(message),
+      getPid: () => ADMIN_PK,
+      roomId: "example.com-%2Fwall",
+    });
+    setIdentity({
+      publicKey: ADMIN_PK,
+      playerStyle: { colorPalette: ["red"] },
+      source: "local",
+    });
+    setVerified(true);
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: true,
+      roles: { admin: [ADMIN_PK] },
+      rules: [{ match: "my-channel", write: "admin" }],
+      roomPath: "/wall",
+    });
+
+    const channel = createPageDataChannel(
+      "my-channel",
+      { count: 0 },
+      createPageDataTestDeps(),
+    );
+
+    channel.setData({ count: 1 });
+
+    expect(channel.getData()).toEqual({ count: 0 });
+    const message = JSON.parse(sent.at(-1)!);
+    expect(message).toMatchObject({
+      type: "gated_write",
+      tag: PAGE_TAG,
+      elementId: "my-channel",
+      ops: [{ op: "replace", key: "", value: { count: 1 } }],
+    });
+  });
+
+  it("routes primitive functional updates through gated_write ops", () => {
+    const sent: string[] = [];
+    bindHandshake({
+      send: (message) => sent.push(message),
+      getPid: () => ADMIN_PK,
+      roomId: "example.com-%2Fwall",
+    });
+    setIdentity({
+      publicKey: ADMIN_PK,
+      playerStyle: { colorPalette: ["red"] },
+      source: "local",
+    });
+    setVerified(true);
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: true,
+      roles: { admin: [ADMIN_PK] },
+      rules: [{ match: "view-count", write: "admin" }],
+      roomPath: "/wall",
+    });
+
+    const channel = createPageDataChannel(
+      "view-count",
+      1,
+      createPageDataTestDeps(),
+    );
+
+    channel.setData((value) => value + 1);
+
+    expect(channel.getData()).toBe(1);
+    expect(JSON.parse(sent.at(-1)!)).toMatchObject({
+      type: "gated_write",
+      tag: PAGE_TAG,
+      elementId: "view-count",
+      ops: [{ op: "replace", key: "", value: 2 }],
+    });
+  });
+
+  it("dispatches permissiondenied for locally denied channel writes", () => {
+    const sent: string[] = [];
+    bindHandshake({
+      send: (message) => sent.push(message),
+      getPid: () => OTHER_PK,
+      roomId: "example.com-%2Fwall",
+    });
+    setIdentity({
+      publicKey: OTHER_PK,
+      playerStyle: { colorPalette: ["blue"] },
+      source: "local",
+    });
+    setVerified(true);
+    setServerPermissionsStatus({
+      type: "permissions_status",
+      enforced: true,
+      roles: { admin: [ADMIN_PK] },
+      rules: [{ match: "my-channel", write: "admin" }],
+      roomPath: "/wall",
+    });
+    const denied = vi.fn();
+    document.addEventListener(PERMISSION_DENIED_EVENT, denied);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const channel = createPageDataChannel(
+      "my-channel",
+      { count: 0 },
+      createPageDataTestDeps(),
+    );
+
+    channel.setData({ count: 1 });
+
+    expect(sent).toHaveLength(0);
+    expect(channel.getData()).toEqual({ count: 0 });
+    expect(denied).toHaveBeenCalledTimes(1);
+    expect(denied.mock.calls[0][0].detail).toMatchObject({
+      action: "write",
+      elementId: "my-channel",
+    });
+    document.removeEventListener(PERMISSION_DENIED_EVENT, denied);
   });
 });

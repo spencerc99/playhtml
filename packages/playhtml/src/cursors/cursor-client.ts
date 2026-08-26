@@ -17,7 +17,12 @@ import {
 import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions, CursorZoneOptions } from "..";
 import { getStableIdForAwareness } from "../awareness-utils";
-import { createUsersAPI, selectAllColors, type UsersAPI } from "../users";
+import {
+  createUsersAPI,
+  selectAllColors,
+  toPresencePlayerIdentity,
+  type UsersAPI,
+} from "../users";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
 import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
@@ -1431,7 +1436,7 @@ export class CursorClientAwareness {
     const lastSeen = Date.now();
     const cursorPresence: CursorPresence = {
       cursor: this.currentCursor,
-      playerIdentity: this.playerIdentity,
+      playerIdentity: toPresencePlayerIdentity(this.playerIdentity),
       lastSeen,
       message: this.currentMessage,
       page: getPresencePage(),
@@ -1468,7 +1473,7 @@ export class CursorClientAwareness {
 
     const page = getPresencePage();
     this.presenceTransport.join({
-      identity: this.playerIdentity,
+      identity: toPresencePlayerIdentity(this.playerIdentity),
       page,
     });
     if (this.currentCursor) {

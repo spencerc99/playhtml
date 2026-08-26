@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="a corner shop on the open web — only the shopkeeper holds the keys to the sign, but anyone can ring the bell"
+    />
+    <meta name="og:image" content="https://playhtml.fun/playhtml.png" />
+    <title>the corner shop · playhtml</title>
+    <style>
+      body {
+        font-family: monospace;
+        background: #2c2a33;
+        color: #f3ead6;
+        max-width: 640px;
+        margin: 2em auto;
+        padding: 0 1em;
+        text-align: center;
+      }
+      .hint { font-size: 0.85em; opacity: 0.7; text-align: left; }
+      #storefront {
+        border: 3px solid #c9a86a;
+        border-radius: 12px;
+        background: #3a3742;
+        padding: 2em 1em;
+        margin: 1.5em 0;
+      }
+      #shop-sign {
+        display: inline-block;
+        font-size: 2em;
+        font-weight: bold;
+        padding: 0.4em 1.2em;
+        border-radius: 8px;
+        border: 3px solid #c9a86a;
+        cursor: pointer;
+        user-select: none;
+        transition: transform 0.15s, background 0.3s;
+        background: #6e2f2f;
+      }
+      #shop-sign.clicked { background: #2f6e3a; }
+      #shop-sign::after { content: "CLOSED"; }
+      #shop-sign.clicked::after { content: "OPEN"; }
+      #shop-marquee {
+        font-size: 1.05em;
+        margin-top: 1em;
+        font-style: italic;
+        opacity: 0.9;
+        min-height: 1.4em;
+      }
+      #doorbell {
+        font-size: 2.4em;
+        background: none;
+        border: none;
+        cursor: pointer;
+        transition: transform 0.1s;
+      }
+      #doorbell:active { transform: rotate(20deg) scale(1.15); }
+      #bell-count { font-size: 0.85em; opacity: 0.75; }
+      .denied { animation: shake 0.35s; }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-6px); }
+        75% { transform: translateX(6px); }
+      }
+      #keeper-box {
+        border: 1px dashed #c9a86a;
+        border-radius: 8px;
+        padding: 0.8em;
+        font-size: 0.8em;
+        text-align: left;
+        margin-top: 2em;
+        opacity: 0.85;
+      }
+      #keeper-box code { word-break: break-all; }
+      input, button.kb { font-family: inherit; }
+    </style>
+  </head>
+  <body>
+    <h1>🏪 the corner shop</h1>
+    <p class="hint">
+      a tiny shop on the open web. <strong>anyone</strong> can ring the bell and
+      loiter outside — but only the <strong>shopkeeper's key</strong> can flip
+      the sign or rewrite the marquee. the key is a real cryptographic keypair;
+      the playhtml server checks it on every flip.
+    </p>
+
+    <div id="storefront">
+      <div id="shop-sign" can-toggle permissions="write:admin"></div>
+      <div id="shop-marquee" can-play permissions="write:admin"></div>
+      <div style="margin-top: 1.5em">
+        <button id="doorbell" title="ring the bell — no key needed">🔔</button>
+        <div id="bell-count" can-play></div>
+      </div>
+    </div>
+
+    <div id="keeper-box">
+      <div id="keeper-status">checking who keeps this shop…</div>
+      <div id="keeper-controls" hidden style="margin-top: 0.6em">
+        <input id="marquee-input" placeholder="new marquee…" maxlength="80" />
+        <button class="kb" id="marquee-save">repaint marquee</button>
+      </div>
+      <div id="claim-help" hidden style="margin-top: 0.6em">
+        to become the shopkeeper: your pid is <code id="claim-pid"></code> —
+        put it in the <code>admin</code> role of
+        <a href="/.well-known/playhtml.json" target="_blank" style="color:#c9a86a"
+          >/.well-known/playhtml.json</a
+        >
+        and reload. that file <em>is</em> the deed to the shop.
+      </div>
+    </div>
+
+    <script type="module" src="./shop.ts"></script>
+  </body>
+</html>

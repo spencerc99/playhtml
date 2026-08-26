@@ -5,6 +5,16 @@ import type { PageDataChannel, PageDataSetter } from "@playhtml/common";
 import { clonePlain, deepReplaceIntoProxy } from "@playhtml/common";
 import { getYjsValue } from "@syncedstore/core";
 import type * as Y from "yjs";
+import { buildGatedWriteOps, sendGatedWrite } from "./auth/handshake";
+import {
+  can,
+  dispatchPermissionDenied,
+  isLocallyGated,
+  isPermissionsStatusPending,
+  isServerGated,
+  PERMISSIONS_CHANGE_EVENT,
+  usesKeyedGatedWrites,
+} from "./auth/permissions";
 
 const PAGE_TAG = "__page__";
 
@@ -27,6 +37,12 @@ interface PageDataDeps {
 
 function pageDataObserverKey(name: string): string {
   return `${PAGE_TAG}:${name}`;
+}
+
+function createPermissionTarget(name: string): HTMLElement {
+  const target = document.createElement("div");
+  target.id = name;
+  return target;
 }
 
 type PageDataObserver = ((...args: unknown[]) => void) & {
@@ -75,7 +91,7 @@ function yObserverByKeyGet(
 function attachPageDataObserver<T>(
   name: string,
   deps: PageDataDeps,
-  listeners: Set<(data: T) => void>
+  listeners: Set<(data: T) => void>,
 ): void {
   const { getStorePlay, yObserverByKey } = deps;
   const observerKey = pageDataObserverKey(name);
@@ -129,8 +145,13 @@ export function createPageDataChannel<T>(
   deps: PageDataDeps,
 ): PageDataChannel<T> {
   const {
-    ensureProxy, getProxy, getDoc, getStorePlay, proxyByTagAndId,
-    channelRefCounts, channelListeners,
+    ensureProxy,
+    getProxy,
+    getDoc,
+    getStorePlay,
+    proxyByTagAndId,
+    channelRefCounts,
+    channelListeners,
   } = deps;
   // Read live each use so we follow a room-change store/doc swap.
   const storePlay = () => getStorePlay();
@@ -171,13 +192,38 @@ export function createPageDataChannel<T>(
 
   return {
     getData(): T {
-      if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
+      if (destroyed)
+        throw new Error(`PageDataChannel "${name}" has been destroyed`);
       const value = storePlay()[PAGE_TAG]?.[name];
       return clonePlain(value === undefined ? defaultValue : value) as T;
     },
 
     setData(data: PageDataSetter<T>): void {
-      if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
+      if (destroyed)
+        throw new Error(`PageDataChannel "${name}" has been destroyed`);
+      if (isPermissionsStatusPending()) {
+        const queuedData = typeof data === "function" ? data : clonePlain(data);
+        const retry = () => {
+          this.setData(queuedData as PageDataSetter<T>);
+        };
+        document.addEventListener(PERMISSIONS_CHANGE_EVENT, retry, {
+          once: true,
+        });
+        return;
+      }
+
+      const permissionTarget = createPermissionTarget(name);
+      if (isLocallyGated(permissionTarget, name)) {
+        if (!can("write", permissionTarget)) {
+          dispatchPermissionDenied(document, {
+            action: "write",
+            elementId: name,
+            reason: "missing required role",
+          });
+          return;
+        }
+      }
+
       // Re-acquire the proxy if it's gone (e.g. a room change cleared page-data
       // out from under this still-alive handle). ensureProxy re-seeds the
       // default into a fresh value and attachObserver re-attaches the deep
@@ -192,7 +238,27 @@ export function createPageDataChannel<T>(
       const isObjectRoot = proxy !== null && typeof proxy === "object";
       const currentValue = isObjectRoot
         ? proxy
-        : storePlay()[PAGE_TAG]?.[name] as T;
+        : (storePlay()[PAGE_TAG]?.[name] as T);
+
+      if (isServerGated(name)) {
+        const before = clonePlain(currentValue) as T;
+        const after = applyPageDataUpdate(data, clonePlain(before) as T);
+        const ops = buildGatedWriteOps({
+          before,
+          after,
+          keyed: usesKeyedGatedWrites(name),
+        });
+        if (ops.length > 0) {
+          sendGatedWrite({
+            target: document,
+            tag: PAGE_TAG,
+            elementId: name,
+            ops,
+          });
+        }
+        return;
+      }
+
       if (typeof data === "function" && isObjectRoot) {
         doc().transact(() => {
           applyPageDataUpdate(data as PageDataSetter<T>, proxy);
@@ -220,7 +286,8 @@ export function createPageDataChannel<T>(
     },
 
     onUpdate(callback: (data: T) => void): () => void {
-      if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
+      if (destroyed)
+        throw new Error(`PageDataChannel "${name}" has been destroyed`);
       listeners.add(callback);
       handleListeners.add(callback);
       return () => {

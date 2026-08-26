@@ -641,11 +641,19 @@ describe("playhtml.handleNavigation", () => {
   it("handles server room-reset by reconnecting the current room without a page reload", async () => {
     const origPath = window.location.pathname + window.location.search;
     const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       history.replaceState(null, "", "/server-reset");
       await playhtml.init({
         host: "http://localhost:1999",
         room: "/server-reset",
+        cursors: { enabled: true },
+        playerIdentity: {
+          publicKey: "pk_local",
+          playerStyle: { colorPalette: ["#123456"] },
+          source: "local",
+        },
       } as any);
 
       const room = playhtml.roomId;
@@ -668,7 +676,12 @@ describe("playhtml.handleNavigation", () => {
       expect(providers.length).toBeGreaterThan(1);
       expect(playhtml.roomId).toBe(room);
       expect(page.getData()).toEqual({ v: 0 });
+      expect(
+        [...warn.mock.calls, ...error.mock.calls].flat().join(" "),
+      ).not.toContain("identity must only include public presence fields");
     } finally {
+      warn.mockRestore();
+      error.mockRestore();
       history.replaceState(null, "", origPath);
       localStorage.clear();
     }

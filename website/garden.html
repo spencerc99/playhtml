@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="a community garden — claim a plot, tend your plant, watch the garden fill with traces of everyone who passed through"
+    />
+    <meta name="og:image" content="https://playhtml.fun/playhtml.png" />
+    <title>community garden · playhtml</title>
+    <style>
+      body {
+        font-family: monospace;
+        background: #e8f0df;
+        color: #27331f;
+        max-width: 860px;
+        margin: 2em auto;
+        padding: 0 1em;
+      }
+      h1 { font-size: 1.5em; }
+      .hint { font-size: 0.85em; opacity: 0.75; max-width: 56ch; }
+      #community-garden {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+        margin: 1.5em 0;
+        min-height: 140px;
+      }
+      .plot {
+        border: 2px solid #6b8f4e;
+        border-radius: 10px;
+        background: #f7f3e3;
+        padding: 0.7em 0.5em;
+        text-align: center;
+        position: relative;
+      }
+      .plot.mine { box-shadow: 0 0 0 3px #f5c33b; }
+      .plot .plant { font-size: 2.2em; display: block; }
+      .plot .gardener { font-size: 0.7em; opacity: 0.7; display: block; margin-top: 0.3em; }
+      .plot .tends { font-size: 0.7em; opacity: 0.5; }
+      .plot button {
+        font-family: inherit;
+        font-size: 0.75em;
+        margin-top: 0.4em;
+        cursor: pointer;
+      }
+      .plot.empty {
+        border-style: dashed;
+        background: transparent;
+        color: #6b8f4e;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 110px;
+        cursor: pointer;
+      }
+      .denied { animation: shake 0.35s; }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px); }
+        75% { transform: translateX(5px); }
+      }
+      #garden-status { font-size: 0.8em; opacity: 0.7; }
+    </style>
+  </head>
+  <body>
+    <h1>🌱 community garden</h1>
+    <p class="hint">
+      claim a plot, tend your plant, and come back to find it taller. everyone
+      can see the whole garden, but <strong>only you hold the key to your own
+      plot</strong> — the playhtml server checks your key (a real keypair your
+      browser carries) before any plot is touched. traces of every gardener
+      who passed through stay in the soil.
+    </p>
+
+    <div id="community-garden" can-play></div>
+    <p id="garden-status"></p>
+
+    <script type="module" src="./garden.ts"></script>
+  </body>
+</html>
