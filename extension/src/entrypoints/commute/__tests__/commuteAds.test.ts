@@ -2,7 +2,11 @@
 // ABOUTME: Covers the extension-dependent transit-pass eligibility rule.
 
 import { describe, expect, it } from "vitest";
-import { COMMUTE_ADS, getCommuteAd, getEligibleCommuteAds } from "./commuteAds";
+import {
+  COMMUTE_ADS,
+  getCommuteAd,
+  getEligibleCommuteAds,
+} from "../commuteAds";
 
 describe("commute ads", () => {
   it("selects the same ad for the same domain and eligibility set", () => {

@@ -166,21 +166,21 @@ export function CommuteStationPoster({
   stationVisible: boolean;
 }) {
   const installState = useExtensionInstallState();
-  const [open, setOpen] = useState(false);
+  const [openAd, setOpenAd] = useState<CommuteAd | null>(null);
   const ad =
     installState === "checking"
       ? null
       : getCommuteAd(domain, installState === "missing");
 
   useEffect(() => {
-    if (!open) return;
+    if (openAd === null) return;
 
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") setOpenAd(null);
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [open]);
+  }, [openAd]);
 
   if (ad === null) return null;
 
@@ -196,28 +196,28 @@ export function CommuteStationPoster({
               : `Open the poster: ${ad.copy.headline}`
           }
           style={{ backgroundColor: ad.palette.background }}
-          onClick={() => setOpen(true)}
+          onClick={() => setOpenAd(ad)}
         >
           <PosterArtwork ad={ad} />
         </button>
       )}
 
-      {open &&
+      {openAd !== null &&
         createPortal(
           <div
             className="commute-poster-backdrop"
             onMouseDown={(event) => {
-              if (event.target === event.currentTarget) setOpen(false);
+              if (event.target === event.currentTarget) setOpenAd(null);
             }}
           >
             <section
-              className={`commute-poster-dialog commute-poster-dialog--${ad.id}`}
+              className={`commute-poster-dialog commute-poster-dialog--${openAd.id}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="commute-poster-title"
               style={{
-                backgroundColor: ad.palette.background,
-                color: ad.palette.text,
+                backgroundColor: openAd.palette.background,
+                color: openAd.palette.text,
               }}
             >
               <span
@@ -232,15 +232,15 @@ export function CommuteStationPoster({
                 className="commute-poster-dialog__close"
                 type="button"
                 aria-label={
-                  ad.id === "transit-pass"
+                  openAd.id === "transit-pass"
                     ? "Close the internet transit pass poster"
-                    : `Close the poster: ${ad.copy.headline}`
+                    : `Close the poster: ${openAd.copy.headline}`
                 }
-                onClick={() => setOpen(false)}
+                onClick={() => setOpenAd(null)}
               >
                 ×
               </button>
-              <PosterContent ad={ad} />
+              <PosterContent ad={openAd} />
             </section>
           </div>,
           document.body,

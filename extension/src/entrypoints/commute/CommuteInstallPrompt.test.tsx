@@ -139,13 +139,55 @@ describe("CommuteInstallPrompt", () => {
     act(() => root.unmount());
   });
 
-  it("removes the poster trigger while the station is offscreen but keeps an open overlay", async () => {
+  it("keeps the clicked transit-pass ad open when the extension marker arrives", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(<CommuteStationPoster domain="ad-0.test" stationVisible />);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+    });
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>(".station-install-poster")
+        ?.click(),
+    );
+    expect(
+      document.querySelector<HTMLElement>(".commute-poster-dialog")
+        ?.textContent,
+    ).toContain("internet transit pass");
+
+    await act(async () => {
+      markExtensionInstalled(document.documentElement);
+      await Promise.resolve();
+    });
+
+    expect(
+      container
+        .querySelector<HTMLButtonElement>(".station-install-poster")
+        ?.getAttribute("aria-label"),
+    ).toBe(
+      "Open the poster: come learn to build seats for strangers — example sites included",
+    );
+    const dialog = document.querySelector<HTMLElement>(
+      ".commute-poster-dialog",
+    );
+    expect(dialog?.textContent).toContain("internet transit pass");
+    expect(dialog?.textContent).toContain("join the ride");
+    expect(dialog?.querySelector("a")?.href).toBe("https://wewere.online/");
+    act(() => root.unmount());
+  });
+
+  it("removes the poster trigger offscreen but keeps the clicked ad across a domain change", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
     act(() => {
       root.render(
-        <CommuteStationPoster domain="ad-0.test" stationVisible={false} />,
+        <CommuteStationPoster domain="ad-1.test" stationVisible={false} />,
       );
     });
     await act(async () => {
@@ -155,21 +197,33 @@ describe("CommuteInstallPrompt", () => {
     expect(container.querySelector(".station-install-poster")).toBeNull();
 
     act(() => {
-      root.render(<CommuteStationPoster domain="ad-0.test" stationVisible />);
+      root.render(<CommuteStationPoster domain="ad-1.test" stationVisible />);
     });
     const poster = container.querySelector<HTMLButtonElement>(
       ".station-install-poster",
     );
     act(() => poster?.click());
-    expect(document.querySelector(".commute-poster-dialog")).not.toBeNull();
+    expect(
+      document.querySelector<HTMLElement>(".commute-poster-dialog")
+        ?.textContent,
+    ).toContain("the internet is alive");
 
     act(() => {
       root.render(
-        <CommuteStationPoster domain="ad-0.test" stationVisible={false} />,
+        <CommuteStationPoster domain="ad-5.test" stationVisible={false} />,
       );
     });
     expect(container.querySelector(".station-install-poster")).toBeNull();
-    expect(document.querySelector(".commute-poster-dialog")).not.toBeNull();
+    const dialog = document.querySelector<HTMLElement>(
+      ".commute-poster-dialog",
+    );
+    expect(dialog?.textContent).toContain("the internet is alive");
+    expect(dialog?.textContent).not.toContain(
+      "this train was built with it — make a site like this one",
+    );
+    expect(dialog?.querySelector("a")?.href).toBe(
+      "https://news.spencer.place/p/alive-internet-theory",
+    );
 
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
