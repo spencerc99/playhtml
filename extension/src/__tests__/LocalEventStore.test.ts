@@ -17,6 +17,8 @@ import { queryCursorEventsForPortrait } from "../utils/cursorDistance";
 const DB_NAME = "collection_events_db";
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
+const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
+const AGGREGATE_DAYS_STORE_NAME = "aggregate_days";
 const STATS_BACKFILL_STATE_KEY = "__stats_backfill_state__";
 
 const originalIndexedDB = globalThis.indexedDB;
@@ -120,6 +122,38 @@ async function openVersion7Database(
   });
 }
 
+async function openVersion11Database(
+  seedEvents: CollectionEvent[],
+): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = fakeIndexedDB.open(DB_NAME, 11);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      const eventStore = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      eventStore.createIndex("ts", "ts", { unique: false });
+      eventStore.createIndex("type", "type", { unique: false });
+      eventStore.createIndex("uploadState", "uploadState", { unique: false });
+      eventStore.createIndex("domain", "domain", { unique: false });
+      eventStore.createIndex("normalizedUrl", "normalizedUrl", {
+        unique: false,
+      });
+      db.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
+      db.createObjectStore(AGGREGATE_URLS_STORE_NAME, {
+        keyPath: ["aggregateKey", "url"],
+      });
+      db.createObjectStore(AGGREGATE_DAYS_STORE_NAME, {
+        keyPath: ["domain", "localDayKey"],
+      });
+
+      for (const seedEvent of seedEvents) {
+        eventStore.put(seedEvent);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 async function putSeedEvent(
   db: IDBDatabase,
   seedEvent: CollectionEvent,
@@ -200,6 +234,41 @@ function contentScriptEvent(
 ): CollectionEvent {
   const { domain, normalizedUrl, ...sourceEvent } = event(id, type);
   return sourceEvent;
+}
+
+function scrapEvent(
+  id: string,
+  src = "https://assets.example/image.png",
+): CollectionEvent {
+  return {
+    ...event(id, "element"),
+    data: {
+      kind: "image",
+      src,
+      naturalWidth: 100,
+      naturalHeight: 100,
+      pageTitle: "Example",
+    },
+  };
+}
+
+function buttonScrapEvent(
+  id: string,
+  url = "https://example.com/page",
+): CollectionEvent {
+  const domain = new URL(url).hostname;
+  return {
+    ...event(id, "element"),
+    data: {
+      kind: "button",
+      text: "Subscribe",
+      styles: { backgroundColor: "rgb(1, 2, 3)" },
+      pageTitle: "Example",
+    },
+    meta: { ...event(id, "element").meta, url },
+    domain,
+    normalizedUrl: url,
+  };
 }
 
 beforeEach(async () => {
@@ -430,7 +499,7 @@ describe("LocalEventStore aggregates", () => {
 
     const upgradedDatabase = await new Promise<IDBDatabase>(
       (resolve, reject) => {
-        const request = fakeIndexedDB.open(DB_NAME, 12);
+        const request = fakeIndexedDB.open(DB_NAME, 13);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       },
@@ -1428,5 +1497,130 @@ describe("LocalEventStore pending uploads", () => {
     expect(pendingEvents).toEqual([]);
     expect((storedEvents[0] as StoredTestEvent).uploaded).toBeUndefined();
     expect((storedEvents[0] as StoredTestEvent).uploadState).toBeUndefined();
+  });
+});
+
+describe("LocalEventStore scrap deduplication", () => {
+  it("stores one canonical scrap and counts only the accepted event", async () => {
+    const store = createStore();
+
+    await store.addEvents([scrapEvent("first")]);
+    await store.addEvents([
+      scrapEvent("duplicate", "https://assets.example/image.png?cache=2"),
+    ]);
+
+    const scraps = await store.queryByType("element");
+    const globalStats = await store.getGlobalStats();
+    const domainStats = await store.getSessionStats("example.com");
+
+    expect(scraps.map((storedEvent) => storedEvent.id)).toEqual(["first"]);
+    expect(scraps[0]).not.toHaveProperty("canonicalScrapKey");
+    expect(globalStats?.eventsByType.element).toBe(1);
+    expect(domainStats?.eventsByType.element).toBe(1);
+  });
+
+  it("pre-deduplicates canonical scraps within one batch", async () => {
+    const store = createStore();
+
+    await store.addEvents([
+      scrapEvent("first"),
+      scrapEvent("duplicate", "https://assets.example/image.png?cache=2"),
+      scrapEvent("different", "https://assets.example/different.png"),
+    ]);
+
+    const scraps = await store.queryByType("element");
+    expect(scraps.map((storedEvent) => storedEvent.id)).toEqual([
+      "different",
+      "first",
+    ]);
+  });
+
+  it("keeps domain-sensitive button identities distinct", async () => {
+    const store = createStore();
+
+    await store.addEvents([
+      buttonScrapEvent("example-first"),
+      buttonScrapEvent("example-duplicate"),
+      buttonScrapEvent("other-domain", "https://other.example/page"),
+    ]);
+
+    const scraps = await store.queryByType("element");
+    expect(scraps.map((storedEvent) => storedEvent.id).sort()).toEqual([
+      "example-first",
+      "other-domain",
+    ]);
+  });
+
+  it("serializes concurrent canonical checks and writes", async () => {
+    const store = createStore();
+
+    await Promise.all([
+      store.addEvents([scrapEvent("first")]),
+      store.addEvents([
+        scrapEvent("duplicate", "https://assets.example/image.png?cache=2"),
+      ]),
+    ]);
+
+    const scraps = await store.queryByType("element");
+    expect(scraps).toHaveLength(1);
+  });
+
+  it("backfills canonical keys without removing archived duplicates", async () => {
+    const archivedFirst = scrapEvent("archived-first");
+    const archivedDuplicate = scrapEvent(
+      "archived-duplicate",
+      "https://assets.example/image.png?cache=2",
+    );
+    const version11Database = await openVersion11Database([
+      archivedFirst,
+      archivedDuplicate,
+    ]);
+    version11Database.close();
+
+    const store = createStore();
+    await store.addEvents([
+      scrapEvent("incoming-duplicate", "https://assets.example/image.png#copy"),
+    ]);
+    await store.ensureHistoricalStats();
+
+    const scraps = await store.queryByType("element");
+    const globalStats = await store.getGlobalStats();
+    expect(scraps.map((storedEvent) => storedEvent.id).sort()).toEqual([
+      "archived-duplicate",
+      "archived-first",
+    ]);
+    expect(globalStats?.eventsByType.element).toBe(2);
+
+    const database = (store as unknown as { db: IDBDatabase }).db;
+    const transaction = database.transaction(STORE_NAME, "readonly");
+    const eventStore = transaction.objectStore(STORE_NAME);
+    expect(eventStore.indexNames.contains("canonicalScrapKey")).toBe(true);
+    await expect(
+      new Promise<number>((resolve, reject) => {
+        const request = eventStore
+          .index("canonicalScrapKey")
+          .count("https://assets.example/image.png");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      }),
+    ).resolves.toBe(2);
+  });
+
+  it("releases canonical keys when their events are pruned or cleared", async () => {
+    const store = createStore();
+    await store.addEvents([{ ...scrapEvent("pruned"), ts: 1_000 }]);
+    await store.markEventsAsUploaded(["pruned"]);
+    await store.pruneUploadedEventsOlderThan(2_000);
+
+    await store.addEvents([scrapEvent("after-prune")]);
+    expect(
+      (await store.queryByType("element")).map((storedEvent) => storedEvent.id),
+    ).toEqual(["after-prune"]);
+
+    await store.clearAll();
+    await store.addEvents([scrapEvent("after-clear")]);
+    expect(
+      (await store.queryByType("element")).map((storedEvent) => storedEvent.id),
+    ).toEqual(["after-clear"]);
   });
 });

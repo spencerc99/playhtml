@@ -12,9 +12,10 @@ import {
   normalizeUrl,
   extractDomain as extractDomainUtil,
 } from "../utils/urlNormalization";
+import { getCanonicalScrapKey } from "../collectors/scrapUtils";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
@@ -44,6 +45,7 @@ type UploadState = typeof UPLOAD_STATE_PENDING | typeof UPLOAD_STATE_UPLOADED;
 type StatsBackfillState = "running" | "complete";
 
 interface StoredCollectionEvent extends CollectionEvent {
+  canonicalScrapKey?: string;
   uploaded?: boolean;
   uploadState?: UploadState;
 }
@@ -174,13 +176,15 @@ function getUploadState(event: StoredCollectionEvent): UploadState {
 
 function prepareStoredEvent(event: CollectionEvent): StoredCollectionEvent {
   const storedEvent: StoredCollectionEvent = { ...event };
+  delete storedEvent.canonicalScrapKey;
   storedEvent.uploadState = getUploadState(storedEvent);
   storedEvent.uploaded = storedEvent.uploadState === UPLOAD_STATE_UPLOADED;
   return storedEvent;
 }
 
 function toCollectionEvent(event: StoredCollectionEvent): CollectionEvent {
-  const { uploaded, uploadState, ...collectionEvent } = event;
+  const { canonicalScrapKey, uploaded, uploadState, ...collectionEvent } =
+    event;
   return collectionEvent;
 }
 
@@ -593,6 +597,35 @@ export class LocalEventStore {
             key: DAYS_BACKFILL_STATE_KEY,
             state: oldVersion === 0 ? "complete" : "running",
           });
+        }
+
+        if (oldVersion < 12) {
+          if (!store.indexNames.contains("canonicalScrapKey")) {
+            store.createIndex("canonicalScrapKey", "canonicalScrapKey", {
+              unique: false,
+            });
+          }
+
+          const backfillRequest = store
+            .index("type")
+            .openCursor(IDBKeyRange.only("element"));
+          backfillRequest.onsuccess = () => {
+            const cursor = backfillRequest.result;
+            if (!cursor) return;
+
+            const storedEvent = cursor.value as StoredCollectionEvent;
+            const domain =
+              storedEvent.domain || extractDomain(storedEvent.meta.url);
+            const canonicalScrapKey = getCanonicalScrapKey(
+              domain,
+              storedEvent.data,
+            );
+            if (canonicalScrapKey !== undefined) {
+              storedEvent.canonicalScrapKey = canonicalScrapKey;
+              cursor.update(storedEvent);
+            }
+            cursor.continue();
+          };
         }
 
         if (oldVersion < 9) {
@@ -2222,8 +2255,8 @@ export class LocalEventStore {
   }
 
   /**
-   * Add a batch of events using upsert (put), so duplicate IDs don't error.
-   * Incrementally updates domain_stats aggregates.
+   * Add a batch of events using ID upserts and canonical scrap deduplication.
+   * Incrementally updates aggregates for accepted events.
    */
   async addEvents(events: CollectionEvent[]): Promise<void> {
     await this.ensureInitialized();
@@ -2243,9 +2276,24 @@ export class LocalEventStore {
           storedEvent.normalizedUrl = normalizeUrl(storedEvent.meta.url);
         }
       }
+      if (storedEvent.type === "element") {
+        const canonicalScrapKey = getCanonicalScrapKey(
+          storedEvent.domain ?? "",
+          storedEvent.data,
+        );
+        if (canonicalScrapKey !== undefined) {
+          storedEvent.canonicalScrapKey = canonicalScrapKey;
+        }
+      }
       storedEventsById.set(storedEvent.id, storedEvent);
     }
-    const storedEvents = [...storedEventsById.values()];
+    const canonicalScrapKeys = new Set<string>();
+    const storedEvents = [...storedEventsById.values()].filter((event) => {
+      if (event.canonicalScrapKey === undefined) return true;
+      if (canonicalScrapKeys.has(event.canonicalScrapKey)) return false;
+      canonicalScrapKeys.add(event.canonicalScrapKey);
+      return true;
+    });
     let eventsForStats = storedEvents.map(toCollectionEvent);
 
     if (!canUpdateStats) {
@@ -2263,16 +2311,17 @@ export class LocalEventStore {
 
           const transaction = this.db.transaction([STORE_NAME], "readwrite");
           const evtStore = transaction.objectStore(STORE_NAME);
+          const canonicalScrapIndex = evtStore.index("canonicalScrapKey");
           const insertedEvents: StoredCollectionEvent[] = [];
 
           transaction.oncomplete = () => resolve(insertedEvents);
           transaction.onerror = () => reject(transaction.error);
 
-          for (const event of storedEvents) {
+          const writeEvent = (event: StoredCollectionEvent) => {
             if (!canUpdateStats) {
               evtStore.put(event);
               insertedEvents.push(event);
-              continue;
+              return;
             }
 
             const getKeyRequest = evtStore.getKey(event.id);
@@ -2282,13 +2331,35 @@ export class LocalEventStore {
               }
               evtStore.put(event);
             };
+          };
+
+          for (const event of storedEvents) {
+            if (event.canonicalScrapKey === undefined) {
+              writeEvent(event);
+              continue;
+            }
+
+            const canonicalKeyRequest = canonicalScrapIndex.getKey(
+              event.canonicalScrapKey,
+            );
+            canonicalKeyRequest.onsuccess = () => {
+              if (canonicalKeyRequest.result === undefined) {
+                writeEvent(event);
+              }
+            };
           }
         },
       );
 
-      if (canUpdateStats) {
-        eventsForStats = insertedEvents.map(toCollectionEvent);
+      if (!canUpdateStats) {
+        const insertedEventIds = new Set(
+          insertedEvents.map((event) => event.id),
+        );
+        this.removeEventsQueuedForStatsAfterBackfill(
+          eventsForStats.filter((event) => !insertedEventIds.has(event.id)),
+        );
       }
+      eventsForStats = insertedEvents.map(toCollectionEvent);
     } catch (e) {
       if (!canUpdateStats) {
         this.removeEventsQueuedForStatsAfterBackfill(eventsForStats);
