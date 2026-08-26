@@ -59,41 +59,6 @@ export default defineContentScript({
 
     markExtensionInstalled(document.documentElement);
 
-    const reportsSlowModeFormState = (element: Element): boolean => {
-      if (
-        element instanceof HTMLTextAreaElement ||
-        element instanceof HTMLSelectElement
-      ) {
-        return element.value.trim().length > 0;
-      }
-      if (!(element instanceof HTMLInputElement)) return false;
-      if (
-        ["button", "checkbox", "color", "file", "hidden", "radio", "range", "reset", "submit"].includes(
-          element.type,
-        )
-      ) {
-        return false;
-      }
-      return element.value.trim().length > 0;
-    };
-    const reportSlowModeFormState = () => {
-      const inProgress = Array.from(
-        document.querySelectorAll("input, textarea, select"),
-      ).some(reportsSlowModeFormState);
-      void browser.runtime.sendMessage({
-        type: "SLOW_MODE_FORM_STATE",
-        inProgress,
-      });
-    };
-    document.addEventListener("input", reportSlowModeFormState);
-    document.addEventListener("change", reportSlowModeFormState);
-    document.addEventListener("submit", () => {
-      void browser.runtime.sendMessage({
-        type: "SLOW_MODE_FORM_STATE",
-        inProgress: false,
-      });
-    });
-
     let currentPresenceCount = 0;
 
     // Initialize PlayHTML extension on page

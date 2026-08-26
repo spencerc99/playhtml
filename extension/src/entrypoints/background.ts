@@ -316,7 +316,7 @@ export default defineBackground(() => {
   // Opt-in: send new browser tabs to the walking record instead of the
   // default new tab page. Off unless the user turns it on.
   initNewTabTakeover()
-  const slowModeInterception = initSlowModeInterception()
+  initSlowModeInterception()
 
   // Forward the manifest "open-inventory" command to the active tab's content script.
   // Manifest commands are browser-routed, so this works reliably on every page.
@@ -501,15 +501,6 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
-    if (message.type === 'SLOW_MODE_FORM_STATE' && sender.tab?.id != null) {
-      slowModeInterception.setFormInProgress(
-        sender.tab.id,
-        message.inProgress === true,
-      )
-      reply({ success: true })
-      return
-    }
-
     if (message.type === 'SLOW_MODE_RIDE_OUTCOME') {
       if (
         typeof message.rideId !== 'string' ||
