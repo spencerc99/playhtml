@@ -15,4 +15,4 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- Firefox new tabs now keep the address bar ready for immediate typing.
+- Firefox new tabs now keep the address bar ready for immediate typing. (#428)
