@@ -2,6 +2,7 @@
 
 - Extension pages now follow your system light or dark appearance.
 - Controls shown on websites now match each site's light or dark appearance.
+- Slow Mode commute rides now connect reliably when the hosted route loads before the extension.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
