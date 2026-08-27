@@ -126,6 +126,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 ## Testing Requirements
 
 - Run relevant package tests locally before PRs
+- **Automated integration tests for extension features:** Every new extension feature MUST include an automated integration test in the same PR. The test must drive the feature through the real runtime boundaries it depends on, using built artifacts where applicable. These boundaries may include the MV3 service worker, content script, injected or hosted page, browser storage, navigation lifecycle, and Worker API. Unit tests, component tests, mocked browser APIs, the generic extension shell smoke, screenshots, and manual browser verification do not satisfy this requirement. Exercise the user entrypoint, the final observable outcome, and at least one relevant failure-prone lifecycle such as cold start, reload, delayed script or service-worker readiness, or a client/server deployment contract. Run the integration test locally and in required CI before merge. If a reliable automated integration test is technically blocked, stop and tell Spencer; do not merge the feature based on manual evidence alone.
 - **Screenshots for user-facing changes:** Every user-facing change MUST be verified on the real affected surface and accompanied by screenshots of the finished result. For interactive changes, capture the key states of the flow (for example, closed, open, and success states), not only the initial screen. Include the screenshots in the handoff and PR. If the surface cannot be captured, stop and tell Spencer what blocks it rather than omitting them.
 
 ## Commit & PR Guidelines
@@ -137,6 +138,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 | Changed published package behavior | Add a changeset + audit `apps/docs/` |
 | Changed the public core API | Update both starter templates |
 | Changed package deps or exports | Run the tarball install simulation |
+| Added a new extension feature | Add and run an automated feature-level integration test in required CI |
 | Added a meaningful feature, common-workflow change, or broadly relevant fix to the released extension | Add a bullet to `extension/PENDING.md` |
 | Added, removed, or changed an extension manifest permission | Update `extension/STORE_LISTING.md` and flag the Chrome Privacy practices dashboard change |
 
