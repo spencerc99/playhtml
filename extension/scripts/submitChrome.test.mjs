@@ -47,7 +47,7 @@ test("throws when a Chrome API response has a failing HTTP status", async () => 
   );
 });
 
-test("throws when Chrome publish returns a non-OK status", async () => {
+test("accepts a Chrome item that is already pending review", async () => {
   const response = new Response(
     JSON.stringify({
       status: ["ITEM_PENDING_REVIEW"],
@@ -61,8 +61,61 @@ test("throws when Chrome publish returns a non-OK status", async () => {
     },
   );
 
-  await expect(ensureChromeResponseSucceeded("publish", response)).rejects.toThrow(
-    /Chrome publish did not return OK: ITEM_PENDING_REVIEW/,
+  await expect(ensureChromeResponseSucceeded("publish", response)).resolves.toEqual({
+    status: ["ITEM_PENDING_REVIEW"],
+  });
+});
+
+test("accepts an upload when the Chrome item is already submitted", async () => {
+  const response = new Response(
+    JSON.stringify({
+      itemError: [
+        {
+          error_code: "ITEM_NOT_UPDATABLE",
+          error_detail: "The item cannot be updated while it is pending review.",
+        },
+      ],
+    }),
+    {
+      status: 200,
+      statusText: "OK",
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  await expect(ensureChromeResponseSucceeded("upload", response)).resolves.toEqual({
+    itemError: [
+      {
+        error_code: "ITEM_NOT_UPDATABLE",
+        error_detail: "The item cannot be updated while it is pending review.",
+      },
+    ],
+  });
+});
+
+test("throws for other Chrome upload item errors", async () => {
+  const response = new Response(
+    JSON.stringify({
+      itemError: [
+        {
+          error_code: "ITEM_NOT_PUBLISHABLE",
+          error_detail: "Privacy practices are incomplete.",
+        },
+      ],
+    }),
+    {
+      status: 200,
+      statusText: "OK",
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  await expect(ensureChromeResponseSucceeded("upload", response)).rejects.toThrow(
+    /Chrome upload returned item errors:.*ITEM_NOT_PUBLISHABLE/,
   );
 });
 
