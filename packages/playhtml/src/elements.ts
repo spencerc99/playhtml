@@ -7,6 +7,7 @@ import {
   ElementData,
   ElementEventHandlerData,
   ElementSetupData,
+  ElementUser,
   ModifierKey,
   ViewTemplate,
   observeElementChanges,
@@ -23,8 +24,12 @@ const debounce = (fn: Function, ms = 300) => {
 
 type ElementDataWrite<T> = T | ((draft: T) => void);
 
-interface ElementHandlerOptions {
+interface ElementHandlerOptions<V> {
   scheduleSetupDataWrite?: (write: () => void) => void;
+  getUsers?: (
+    byStableId: Map<string, V>,
+    selfLive: V | undefined,
+  ) => ElementUser<V>[];
 }
 
 // TODO: turn this into just an extension of HTMLElement and initialize all the methods / do all the state tracking
@@ -43,7 +48,7 @@ export class ElementHandler<T = any, U = any, V = any> {
   resetShortcut?: ModifierKey;
   // TODO: change this to receive the delta instead of the whole data object so you don't have to maintain
   // internal state for expressing the delta.
-  updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
+  update?: (data: ElementEventHandlerData<T, U, V>) => void;
   view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>
@@ -63,6 +68,10 @@ export class ElementHandler<T = any, U = any, V = any> {
   private descendantObserver?: MutationObserver;
   private dataUpdateListeners = new Set<() => void>();
   private scheduleSetupDataWrite?: (write: () => void) => void;
+  private getUsers: (
+    byStableId: Map<string, V>,
+    selfLive: V | undefined,
+  ) => ElementUser<V>[];
   private clickListener?: (e: MouseEvent) => void;
   private touchStartListener?: (e: TouchEvent) => void;
   private mouseDownListener?: (e: MouseEvent) => void;
@@ -84,8 +93,8 @@ export class ElementHandler<T = any, U = any, V = any> {
   ) => void;
 
   constructor(
-    elementData: ElementData<T>,
-    options: ElementHandlerOptions = {},
+    elementData: ElementData<T, U, V>,
+    options: ElementHandlerOptions<V> = {},
   ) {
     const {
       element,
@@ -93,9 +102,11 @@ export class ElementHandler<T = any, U = any, V = any> {
       onAwarenessChange,
       defaultData,
       defaultLocalData,
+      live,
       myDefaultAwareness,
       data,
       awareness: awarenessData,
+      update,
       updateElement,
       view,
       updateElementAwareness,
@@ -106,6 +117,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     } = elementData;
     // console.log("🔨 constructing ", element.id);
     this.scheduleSetupDataWrite = options.scheduleSetupDataWrite;
+    this.getUsers = options.getUsers ?? (() => []);
     this.element = element;
     this.view = view;
     this.devMode = devMode;
@@ -114,24 +126,23 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.localData =
       defaultLocalData instanceof Function
         ? defaultLocalData(element)
-        : defaultLocalData;
+        : (defaultLocalData as U);
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
-    this.updateElement = updateElement;
+    this.update = update ?? updateElement;
     this.updateElementAwareness = updateElementAwareness;
     const initialData = data === undefined ? this.defaultData : data;
 
     if (awarenessData !== undefined) {
       this.awareness = awarenessData;
     }
-    const myInitialAwareness =
-      myDefaultAwareness instanceof Function
-        ? myDefaultAwareness(element)
-        : myDefaultAwareness;
-    if (myInitialAwareness !== undefined) {
-      this.setMyAwareness(myInitialAwareness);
+    const initialLive = live ?? myDefaultAwareness;
+    const myInitialLive =
+      initialLive instanceof Function ? initialLive(element) : initialLive;
+    if (myInitialLive !== undefined) {
+      this.setLive(myInitialLive);
     }
     // Needed to get around the typescript error even though it is assigned in __data.
     this._data = initialData as T;
@@ -190,6 +201,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     element,
     onChange,
     onAwarenessChange,
+    update,
     updateElement,
     view,
     updateElementAwareness,
@@ -200,25 +212,25 @@ export class ElementHandler<T = any, U = any, V = any> {
     debounceMs,
     triggerAwarenessUpdate,
     devMode,
-  }: ElementData<T>) {
+  }: ElementData<T, U, V>) {
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
     this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
-    this.updateElement = updateElement;
+    this.update = update ?? updateElement;
     this.view = view;
     this.devMode = devMode;
 
-    // `view` and `updateElement` are mutually exclusive. register/define throw
+    // `view` and the imperative update path are mutually exclusive. register/define throw
     // on this, but React props / extraCapabilities reach this shared path
     // without that check, so enforce it here: `view` wins and `updateElement`
     // is dropped (with a diagnostic) instead of silently ignored.
-    if (view && this.updateElement) {
+    if (view && this.update) {
       console.error(
-        `[playhtml] "${element.id}" provides both \`view\` and \`updateElement\`. ` +
-          `They are mutually exclusive — \`view\` is used and \`updateElement\` is ignored.`,
+        `[playhtml] "${element.id}" provides both \`view\` and an imperative update renderer. ` +
+          `They are mutually exclusive. \`view\` is used and the imperative renderer is ignored.`,
       );
-      this.updateElement = undefined;
+      this.update = undefined;
     }
 
     // In view mode, element-level event handlers are not wired — interactions
@@ -436,7 +448,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       // observer only fires when child nodes actually change.
       return;
     }
-    this.updateElement?.(this.getEventHandlerData());
+    this.update?.(this.getEventHandlerData());
   }
 
   /**
@@ -496,12 +508,7 @@ export class ElementHandler<T = any, U = any, V = any> {
         error,
       );
     }
-    // Views render from awareness too (e.g. "3 people here"), so an awareness
-    // change must re-render — even when updateElementAwareness is also present
-    // (otherwise the view goes stale while the callback runs).
-    if (this.view) {
-      this.render();
-    }
+    this.render();
   }
 
   getEventHandlerData(): ElementEventHandlerData<T, U, V> {
@@ -509,11 +516,15 @@ export class ElementHandler<T = any, U = any, V = any> {
       element: this.element,
       data: this.data,
       localData: this.localData,
+      live: this.selfAwareness,
+      users: this.getUsers(this.awarenessByStableId, this.selfAwareness),
       awareness: this.awareness,
       awarenessByStableId: this.awarenessByStableId,
+      myAwareness: this.selfAwareness,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setMyAwareness: (newData) => this.setMyAwareness(newData),
+      setLive: (newData) => this.setLive(newData),
+      setMyAwareness: (newData) => this.setLive(newData),
       requestUpdate: () => this.requestUpdate(),
     };
   }
@@ -521,19 +532,22 @@ export class ElementHandler<T = any, U = any, V = any> {
   getAwarenessEventHandlerData(): ElementAwarenessEventHandlerData<T, U, V> {
     return {
       ...this.getEventHandlerData(),
-      myAwareness: this.selfAwareness,
     };
   }
 
-  getSetupData(): ElementSetupData<T, U> {
+  getSetupData(): ElementSetupData<T, U, V> {
     return {
       getElement: () => this.element,
       getData: () => this.data,
       getLocalData: () => this.localData,
+      getLive: () => this.selfAwareness,
+      getUsers: () =>
+        this.getUsers(this.awarenessByStableId, this.selfAwareness),
       getAwareness: () => this.awareness,
       setData: (newData) => this.setSetupData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setMyAwareness: (newData) => this.setMyAwareness(newData),
+      setLive: (newData) => this.setLive(newData),
+      setMyAwareness: (newData) => this.setLive(newData),
       requestUpdate: () => this.requestUpdate(),
     };
   }
@@ -582,7 +596,7 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   // TODO: this should be keyed on the element to avoid conflicts
-  setMyAwareness(data: V): void {
+  setLive(data: V): void {
     // In view mode an awareness change re-renders, so writing awareness during
     // render would loop. Reject it like the other write paths.
     if (this.rejectWriteDuringRender("setMyAwareness")) return;
@@ -598,6 +612,11 @@ export class ElementHandler<T = any, U = any, V = any> {
     // y-protocols detects the change and broadcasts it), but that path reflects
     // the write back asynchronously; updating here keeps the local view immediate.
     this.triggerAwarenessUpdate?.();
+  }
+
+  /** @deprecated Use `setLive`. */
+  setMyAwareness(data: V): void {
+    this.setLive(data);
   }
 
   setDataDebounced(data: T) {

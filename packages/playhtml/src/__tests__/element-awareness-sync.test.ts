@@ -111,6 +111,91 @@ describe("element awareness sync", () => {
     }
   });
 
+  it("joins identity with element live values and rerenders on identity changes", async () => {
+    const updates: any[] = [];
+    const el = document.createElement("div");
+    el.id = "live-users-card";
+    document.body.appendChild(el);
+
+    playhtml.register(el, {
+      live: { active: true },
+      update: (context: any) => updates.push(context),
+    } as any);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          "element:shard:0": {
+            v: 1,
+            entries: [["can-play", "live-users-card", { active: false }]],
+          },
+        },
+      },
+    });
+
+    expect(updates.at(-1).live).toEqual({ active: true });
+    expect(updates.at(-1).users).not.toContainEqual(
+      expect.objectContaining({
+        user: expect.objectContaining({ pid: "pk_remote_user" }),
+      }),
+    );
+
+    const updateCountBeforeIdentity = updates.length;
+    socket.receive({
+      type: "presence-changes",
+      updates: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote_user",
+            name: "Mina",
+            playerStyle: { colorPalette: ["blue"] },
+          },
+        },
+      },
+      removes: {},
+    });
+
+    expect(updates.length).toBeGreaterThan(updateCountBeforeIdentity);
+    expect(updates.at(-1).users).toContainEqual({
+      user: {
+        pid: "pk_remote_user",
+        name: "Mina",
+        color: "blue",
+        isMe: false,
+      },
+      live: { active: false },
+    });
+
+    const updateCount = updates.length;
+    socket.receive({
+      type: "presence-changes",
+      updates: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote_user",
+            name: "Jo",
+            playerStyle: { colorPalette: ["purple"] },
+          },
+        },
+      },
+      removes: {},
+    });
+
+    expect(updates.length).toBeGreaterThan(updateCount);
+    expect(updates.at(-1).users).toContainEqual({
+      user: {
+        pid: "pk_remote_user",
+        name: "Jo",
+        color: "purple",
+        isMe: false,
+      },
+      live: { active: false },
+    });
+  });
+
   it("publishes element awareness through the page room when cursors use another room", async () => {
     document.body.innerHTML = "";
     (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];

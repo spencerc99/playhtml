@@ -342,6 +342,35 @@ describe("rail 2: lifecycle & guards", () => {
 });
 
 describe("rail 2: validation", () => {
+  it("accepts live with the preferred update renderer", () => {
+    expect(() =>
+      playhtml.register("live-update", {
+        live: { typing: false },
+        update: () => {},
+      } as any),
+    ).not.toThrow();
+  });
+
+  it("throws when update and updateElement are both provided", () => {
+    expect(() =>
+      playhtml.register("two-updates", {
+        defaultData: {},
+        update: () => {},
+        updateElement: () => {},
+      } as any),
+    ).toThrow(/both `update` and `updateElement`/);
+  });
+
+  it("throws when live and myDefaultAwareness are both provided", () => {
+    expect(() =>
+      playhtml.register("two-live-defaults", {
+        live: {},
+        myDefaultAwareness: {},
+        update: () => {},
+      } as any),
+    ).toThrow(/both `live` and `myDefaultAwareness`/);
+  });
+
   it("throws when view and updateElement are both provided", () => {
     expect(() =>
       playhtml.register("bad-1", {
