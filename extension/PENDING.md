@@ -1,5 +1,6 @@
 # Unreleased
 
+- Slow Mode commute rides now connect reliably when the hosted route loads before the extension.
 - Internet Commute stations now display rotating posters for sites, classes, and essays around the web.
 
 <!--
