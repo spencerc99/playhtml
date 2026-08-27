@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getEarlierEventFilter,
+  getRecentEventTypeFilter,
   loadRecentEventRows,
 } from '../routes/recent';
 
@@ -23,6 +24,22 @@ function makeRow(index: number): Record<string, unknown> {
 }
 
 describe('recent event pagination', () => {
+  it('defaults to cursor events and supports an explicit all-event request', () => {
+    expect(
+      getRecentEventTypeFilter(new URL('https://worker.example/events/recent')),
+    ).toBe('cursor');
+    expect(
+      getRecentEventTypeFilter(
+        new URL('https://worker.example/events/recent?type=keyboard'),
+      ),
+    ).toBe('keyboard');
+    expect(
+      getRecentEventTypeFilter(
+        new URL('https://worker.example/events/recent?type=all'),
+      ),
+    ).toBeNull();
+  });
+
   it('continues after the last row instead of using a shifted offset', async () => {
     const storedRows = Array.from({ length: 1001 }, (_, index) => makeRow(index));
     let pageCount = 0;

@@ -1,4 +1,4 @@
-// ABOUTME: Verifies mobile commute boarding, joystick, action, and fullscreen controls.
+// ABOUTME: Verifies mobile commute boarding, joystick, and fullscreen controls.
 // ABOUTME: Covers the screen-space input shell independently from train geometry.
 
 import React, { act } from "react";
@@ -59,7 +59,6 @@ describe("CommuteMobileControls", () => {
   it("boards from a user gesture and requests landscape fullscreen", async () => {
     const onBoard = vi.fn();
     const { container, root } = renderControls({
-      action: null,
       boarded: false,
       onBoard,
       onMove: vi.fn(),
@@ -84,7 +83,6 @@ describe("CommuteMobileControls", () => {
     );
     const onBoard = vi.fn();
     const { container, root } = renderControls({
-      action: null,
       boarded: false,
       onBoard,
       onMove: vi.fn(),
@@ -105,7 +103,6 @@ describe("CommuteMobileControls", () => {
   it("publishes normalized joystick movement and resets on release", () => {
     const onMove = vi.fn();
     const { container, root } = renderControls({
-      action: null,
       boarded: true,
       onBoard: vi.fn(),
       onMove,
@@ -149,25 +146,14 @@ describe("CommuteMobileControls", () => {
     act(() => root.unmount());
   });
 
-  it("shows and invokes the contextual train action", () => {
-    const onSelect = vi.fn();
+  it("keeps the train unobstructed by contextual action buttons", () => {
     const { container, root } = renderControls({
-      action: {
-        label: "sit down",
-        tone: "sit",
-        onSelect,
-      },
       boarded: true,
       onBoard: vi.fn(),
       onMove: vi.fn(),
     });
 
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(".commute-mobile-action")!
-        .click();
-    });
-    expect(onSelect).toHaveBeenCalledOnce();
+    expect(container.querySelector(".commute-mobile-action")).toBeNull();
     act(() => root.unmount());
   });
 
@@ -200,7 +186,6 @@ describe("CommuteMobileControls", () => {
   it("keeps a collapsible transit-pass tab on public mobile rides", async () => {
     vi.useFakeTimers();
     const { container, root } = renderControls({
-      action: null,
       boarded: true,
       onBoard: vi.fn(),
       onMove: vi.fn(),
@@ -240,7 +225,6 @@ describe("CommuteMobileControls", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const { container, root } = renderControls({
-      action: null,
       boarded: true,
       onBoard: vi.fn(),
       onMove: vi.fn(),
@@ -282,7 +266,6 @@ describe("CommuteMobileControls", () => {
     vi.useFakeTimers();
     localStorage.setItem("wewere.subscribed", "1");
     const { container, root } = renderControls({
-      action: null,
       boarded: true,
       onBoard: vi.fn(),
       onMove: vi.fn(),
@@ -313,7 +296,6 @@ describe("CommuteMobileControls", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const { container, root } = renderControls({
-      action: null,
       boarded: true,
       onBoard: vi.fn(),
       onMove: vi.fn(),
@@ -344,7 +326,6 @@ describe("CommuteMobileControls", () => {
 
     markExtensionInstalled(document.documentElement);
     const installed = renderControls({
-      action: null,
       boarded: true,
       onBoard: vi.fn(),
       onMove: vi.fn(),

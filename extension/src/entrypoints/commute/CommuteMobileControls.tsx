@@ -16,14 +16,7 @@ interface LandscapeOrientation extends ScreenOrientation {
   lock?: (orientation: "landscape") => Promise<void>;
 }
 
-export type CommuteMobileAction = {
-  label: string;
-  tone: "sit" | "stand" | "exit";
-  onSelect: () => void;
-};
-
 interface CommuteMobileControlsProps {
-  action: CommuteMobileAction | null;
   boarded: boolean;
   onBoard: () => void;
   onMove: (vector: CommutePoint) => void;
@@ -65,7 +58,6 @@ async function toggleFullscreen(): Promise<void> {
 }
 
 export function CommuteMobileControls({
-  action,
   boarded,
   onBoard,
   onMove,
@@ -199,15 +191,6 @@ export function CommuteMobileControls({
             />
           </div>
 
-          {action && (
-            <button
-              className={`commute-mobile-action commute-mobile-action--${action.tone}`}
-              type="button"
-              onClick={action.onSelect}
-            >
-              {action.label}
-            </button>
-          )}
           <CommuteMobileTransitPass />
         </>
       )}
