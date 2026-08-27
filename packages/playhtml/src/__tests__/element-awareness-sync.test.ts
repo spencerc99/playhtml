@@ -10,11 +10,16 @@ import {
   sentChannelUpdates,
 } from "./presence-test-utils";
 
-function setRemoteIdentity(identity: Record<string, unknown>): void {
+function publishRemoteIdentity(identity: Record<string, unknown>): void {
   const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
   const provider = providers.at(-1);
   if (!provider) throw new Error("Expected test provider");
   provider.awareness.getStates().set(2, { __playhtml_identity__: identity });
+  provider.emit("change", {
+    added: [],
+    updated: [2],
+    removed: [],
+  });
 }
 
 describe("element awareness sync", () => {
@@ -92,11 +97,6 @@ describe("element awareness sync", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const socket = getPresenceSocketForRoom(playhtml.roomId);
-    setRemoteIdentity({
-      publicKey: "pk_remote_user",
-      name: "Mina",
-      playerStyle: { colorPalette: ["blue"] },
-    });
     socket.receive({
       type: "presence-sync",
       peers: {
@@ -115,6 +115,20 @@ describe("element awareness sync", () => {
     });
 
     expect(updates.at(-1).live).toEqual({ active: true });
+    expect(updates.at(-1).users).not.toContainEqual(
+      expect.objectContaining({
+        user: expect.objectContaining({ pid: "pk_remote_user" }),
+      }),
+    );
+
+    const updateCount = updates.length;
+    publishRemoteIdentity({
+      publicKey: "pk_remote_user",
+      name: "Mina",
+      playerStyle: { colorPalette: ["blue"] },
+    });
+
+    expect(updates).toHaveLength(updateCount + 1);
     expect(updates.at(-1).users).toContainEqual({
       user: {
         pid: "pk_remote_user",
@@ -125,27 +139,13 @@ describe("element awareness sync", () => {
       live: { active: false },
     });
 
-    const updateCount = updates.length;
-    setRemoteIdentity({
+    publishRemoteIdentity({
       publicKey: "pk_remote_user",
       name: "Jo",
       playerStyle: { colorPalette: ["purple"] },
     });
-    socket.receive({
-      type: "presence-changes",
-      updates: {
-        "conn-remote": {
-          identity: {
-            publicKey: "pk_remote_user",
-            name: "Jo",
-            playerStyle: { colorPalette: ["purple"] },
-          },
-        },
-      },
-      removes: {},
-    });
 
-    expect(updates).toHaveLength(updateCount + 1);
+    expect(updates).toHaveLength(updateCount + 2);
     expect(updates.at(-1).users).toContainEqual({
       user: {
         pid: "pk_remote_user",
