@@ -193,7 +193,11 @@ function ArrivalNametag({
             <label title="pick your own party color">
               <input
                 type="color"
-                className={!PARTY_COLORS.includes(color) ? "is-selected" : ""}
+                className={
+                  !PARTY_COLORS.some((choice) => choice === color)
+                    ? "is-selected"
+                    : ""
+                }
                 value={customColor}
                 onChange={(event) => {
                   setCustomColor(event.target.value);
@@ -653,10 +657,14 @@ function BalloonsStation({
     scale: number;
     offsetX: number;
     offsetY: number;
+    startX: number;
+    startY: number;
     blowing: boolean;
+    moved: boolean;
   } | null>(null);
   const [now, setNow] = useState(Date.now());
   const setBalloonsData = useRef<SharedSetter<BalloonsData> | null>(null);
+  const suppressBalloonClick = useRef<string | null>(null);
   const current = useRef({
     drag,
     emitEvent,
@@ -691,6 +699,12 @@ function BalloonsStation({
           x,
           y,
           blowing,
+          moved:
+            currentDrag.moved ||
+            Math.hypot(
+              event.clientX - currentDrag.startX,
+              event.clientY - currentDrag.startY,
+            ) > 4,
           scale: blowing
             ? Math.min(1.8, currentDrag.scale + 0.013)
             : currentDrag.scale,
@@ -717,6 +731,16 @@ function BalloonsStation({
           );
         } else if (currentDrag.blowing) {
           emitEvent("spencer catches his breath");
+        }
+        suppressBalloonClick.current = currentDrag.moved
+          ? currentDrag.id
+          : null;
+        if (currentDrag.moved) {
+          window.setTimeout(() => {
+            if (suppressBalloonClick.current === currentDrag.id) {
+              suppressBalloonClick.current = null;
+            }
+          }, 0);
         }
         return null;
       });
@@ -776,7 +800,10 @@ function BalloonsStation({
             balloon: PartyBalloon,
             event: React.MouseEvent<HTMLButtonElement>,
           ) => {
-            if (drag?.id === balloon.id) return;
+            if (suppressBalloonClick.current === balloon.id) {
+              suppressBalloonClick.current = null;
+              return;
+            }
             if (holdingPin !== null) {
               setData((draft) => {
                 delete draft.balloonsById[balloon.id];
@@ -855,7 +882,10 @@ function BalloonsStation({
                         scale: position.scale,
                         offsetX: event.clientX - position.x,
                         offsetY: event.clientY + window.scrollY - position.y,
+                        startX: event.clientX,
+                        startY: event.clientY,
                         blowing: false,
+                        moved: false,
                       });
                     }}
                   />
@@ -1403,7 +1433,12 @@ function PartyRoom({
     const listenerIds = eventTypes.map((type) => ({
       type,
       id: registerPlayEventListener(type, {
-        onEvent: (payload: PartyEventPayload) => {
+        onEvent: (
+          payload:
+            | { eventPayload: unknown }
+            | Partial<PartyEventPayload>,
+        ) => {
+          if (!("message" in payload) || !payload.message) return;
           setEventLine(payload.message);
           showEffect(payload.effect);
         },
@@ -1613,9 +1648,7 @@ export function PartyPage() {
         <ArrivalNametag
           initialName={playerIdentity.name ?? ""}
           initialColor={
-            PARTY_COLORS.includes(
-              playerIdentity.color as (typeof PARTY_COLORS)[number],
-            )
+            PARTY_COLORS.some((choice) => choice === playerIdentity.color)
               ? playerIdentity.color
               : PARTY_COLORS[0]
           }

@@ -79,11 +79,14 @@ export function BalloonWorkshop() {
     y: number;
     offsetX: number;
     offsetY: number;
+    startX: number;
+    startY: number;
     moved: boolean;
   } | null>(null);
   const [now, setNow] = useState(Date.now());
   const tableRef = useRef<HTMLDivElement>(null);
   const setWorkshopData = useRef<SharedSetter<WorkshopData> | null>(null);
+  const suppressSegmentClick = useRef<string | null>(null);
 
   const emitEvent = useCallback(
     (message: string) => {
@@ -95,9 +98,12 @@ export function BalloonWorkshop() {
 
   useEffect(() => {
     const id = registerPlayEventListener(WORKSHOP_EVENT, {
-      onEvent: (event: { eventPayload?: { message?: string } }) => {
-        if (event.eventPayload?.message)
-          setEventLine(event.eventPayload.message);
+      onEvent: (
+        payload: { eventPayload: unknown } | { message?: string },
+      ) => {
+        if ("message" in payload && payload.message) {
+          setEventLine(payload.message);
+        }
       },
     });
     return () => removePlayEventListener(WORKSHOP_EVENT, id);
@@ -153,7 +159,10 @@ export function BalloonWorkshop() {
           ),
           moved:
             currentDrag.moved ||
-            Math.hypot(event.movementX, event.movementY) > 2,
+            Math.hypot(
+              event.clientX - currentDrag.startX,
+              event.clientY - currentDrag.startY,
+            ) > 4,
         };
       });
     };
@@ -166,6 +175,16 @@ export function BalloonWorkshop() {
           segment.x = currentDrag.x;
           segment.y = currentDrag.y;
         });
+        suppressSegmentClick.current = currentDrag.moved
+          ? currentDrag.id
+          : null;
+        if (currentDrag.moved) {
+          window.setTimeout(() => {
+            if (suppressSegmentClick.current === currentDrag.id) {
+              suppressSegmentClick.current = null;
+            }
+          }, 0);
+        }
         return null;
       });
     };
@@ -371,11 +390,16 @@ export function BalloonWorkshop() {
                             y,
                             offsetX: event.clientX - rect.left - x,
                             offsetY: event.clientY - rect.top - y,
+                            startX: event.clientX,
+                            startY: event.clientY,
                             moved: false,
                           });
                         }}
                         onClick={(event) => {
-                          if (drag?.moved) return;
+                          if (suppressSegmentClick.current === segment.id) {
+                            suppressSegmentClick.current = null;
+                            return;
+                          }
                           setData((draft) => {
                             const current = draft.segmentsById[segment.id];
                             current.scale = Math.max(

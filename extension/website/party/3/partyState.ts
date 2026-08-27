@@ -77,6 +77,7 @@ export interface PartyData {
 
 export interface PopperAwareness extends PartyIdentity {
   holdingPopper: boolean;
+  holdId: string;
 }
 
 export interface BalloonSegment {
@@ -209,7 +210,7 @@ export function getCakeBitePosition(
 
 export function getPlaceFromTimezone(timezone: string): string {
   const city = timezone.split("/").at(-1);
-  return city ? city.replaceAll("_", " ").toLowerCase() : "somewhere";
+  return city ? city.replace(/_/g, " ").toLowerCase() : "somewhere";
 }
 
 export function getCurrentPlace(): string {
