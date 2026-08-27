@@ -66,6 +66,36 @@ test("accepts a Chrome item that is already pending review", async () => {
   });
 });
 
+test("accepts Chrome's HTTP error when the item is already in review", async () => {
+  const response = new Response(
+    JSON.stringify({
+      error: {
+        code: 400,
+        message: "Publish condition not met: You may not edit or publish an item that is in review.",
+        errors: [
+          {
+            message:
+              "Publish condition not met: You may not edit or publish an item that is in review.",
+            domain: "chromewebstore.access",
+            reason: "badRequest",
+          },
+        ],
+      },
+    }),
+    {
+      status: 400,
+      statusText: "Bad Request",
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  await expect(ensureChromeResponseSucceeded("publish", response)).resolves.toEqual({
+    status: ["ITEM_PENDING_REVIEW"],
+  });
+});
+
 test("accepts an upload when the Chrome item is already submitted", async () => {
   const response = new Response(
     JSON.stringify({

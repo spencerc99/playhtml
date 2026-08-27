@@ -34,10 +34,24 @@ function formatBody(body) {
   return JSON.stringify(body);
 }
 
+function chromeItemIsInReview(body) {
+  const errors = Array.isArray(body?.error?.errors) ? body.error.errors : [];
+  return errors.some(
+    (error) =>
+      error?.domain === "chromewebstore.access" &&
+      error?.reason === "badRequest" &&
+      error?.message?.includes("item that is in review"),
+  );
+}
+
 export async function ensureChromeResponseSucceeded(action, response) {
   const body = await readResponseBody(response);
 
   if (!response.ok) {
+    if (action === "publish" && response.status === 400 && chromeItemIsInReview(body)) {
+      return { status: ["ITEM_PENDING_REVIEW"] };
+    }
+
     const detail = formatBody(body);
     throw new Error(
       `Chrome ${action} failed: ${response.status} ${response.statusText}${detail ? `\n${detail}` : ""}`,
