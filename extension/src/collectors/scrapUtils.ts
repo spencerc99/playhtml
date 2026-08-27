@@ -98,16 +98,56 @@ export function getScrapKey(data: ScrapEventData): string {
  * if their per-capture `getScrapKey` differs (different computed style
  * values, different rendered size, different CDN query params).
  */
-export function getCanonicalScrapKey(domain: string, data: ScrapEventData): string {
+export function getCanonicalScrapKey(
+  domain: string,
+  data: ScrapEventData,
+): string;
+export function getCanonicalScrapKey(
+  domain: string,
+  data: unknown,
+): string | undefined;
+export function getCanonicalScrapKey(
+  domain: string,
+  data: unknown,
+): string | undefined {
+  if (typeof data !== "object" || data === null || !("kind" in data)) {
+    return undefined;
+  }
+
   switch (data.kind) {
     case "image":
-      return canonicalImageKey(data.src);
+      return "src" in data && typeof data.src === "string"
+        ? canonicalImageKey(data.src)
+        : undefined;
     case "button":
-      return canonicalButtonKey(domain, data.text, data.styles.backgroundColor);
+      if (!("text" in data) || typeof data.text !== "string") {
+        return undefined;
+      }
+      if (
+        !("styles" in data) ||
+        typeof data.styles !== "object" ||
+        data.styles === null
+      ) {
+        return undefined;
+      }
+      return canonicalButtonKey(
+        domain,
+        data.text,
+        "backgroundColor" in data.styles &&
+          typeof data.styles.backgroundColor === "string"
+          ? data.styles.backgroundColor
+          : undefined,
+      );
     case "svg-icon":
-      return canonicalSvgIconKey(domain, data.markup);
+      return "markup" in data && typeof data.markup === "string"
+        ? canonicalSvgIconKey(domain, data.markup)
+        : undefined;
     case "cursor":
-      return canonicalCursorKey(data.url);
+      return "url" in data && typeof data.url === "string"
+        ? canonicalCursorKey(data.url)
+        : undefined;
+    default:
+      return undefined;
   }
 }
 

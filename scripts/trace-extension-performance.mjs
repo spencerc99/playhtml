@@ -337,7 +337,7 @@ async function runOne({
   const userDataDir = resolve(outDir, `${safeLabel}-profile-${runIndex}-${process.pid}`);
   const context = await chromium.launchPersistentContext(userDataDir, {
     executablePath: chromePath,
-    headless: false,
+    headless: true,
     ignoreDefaultArgs: ["--disable-extensions"],
     viewport: { width: 1280, height: 900 },
     args: [

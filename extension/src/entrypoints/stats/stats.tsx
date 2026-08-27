@@ -272,7 +272,7 @@ const StatsPage = () => {
           {!loading && totalTimeMs > 0 && (
             <p className="stats-page__subtitle">
               {formatDuration(totalTimeMs)} tracked across{" "}
-              {domains.filter((d) => d.stats?.totalTimeMs).length} domains
+              {domains.length} domains
             </p>
           )}
         </div>

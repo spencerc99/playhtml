@@ -122,6 +122,9 @@ export default function SetupPage() {
   const [newTabTakeover, setNewTabTakeover] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [completionWarning, setCompletionWarning] = useState<string | null>(
+    null,
+  );
   const colorInputRef = useRef<HTMLInputElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
   const [heroSize, setHeroSize] = useState({ width: 0, height: 0 });
@@ -229,6 +232,13 @@ export default function SetupPage() {
     const trimmedEmail = email.trim();
 
     try {
+      if (completionWarning) {
+        await closeSetupTab();
+        return;
+      }
+
+      let subscriptionSucceeded = false;
+      let subscriptionFailed = false;
       if (trimmedEmail) {
         try {
           const response = await fetch(`${WORKER_URL}/subscribe`, {
@@ -245,19 +255,24 @@ export default function SetupPage() {
               `Subscription failed with status ${response.status}`,
             );
           }
+          subscriptionSucceeded = true;
         } catch {
-          setSaveError(
-            "We couldn’t sign you up for updates. Try again, or clear the field to finish without signing up.",
-          );
-          return;
+          subscriptionFailed = true;
         }
       }
 
       await browser.storage.local.set({
         onboarding_complete: "true",
         [NEWTAB_TAKEOVER_KEY]: isSafari ? false : newTabTakeover,
-        ...(trimmedEmail ? { setup_email: trimmedEmail } : {}),
+        ...(subscriptionSucceeded ? { setup_email: trimmedEmail } : {}),
       });
+
+      if (subscriptionFailed) {
+        setCompletionWarning(
+          "Setup is complete, but we couldn’t sign you up for updates. You can try again later from Settings.",
+        );
+        return;
+      }
       await closeSetupTab();
     } catch {
       setSaveError(setupStorageError(isSafari));
@@ -532,10 +547,20 @@ export default function SetupPage() {
                   places you explored, and a cursor portrait from each day.
                 </p>
                 {isSafari ? (
-                  <p className="setup-step__newtab-note">
-                    Safari doesn't let extensions change the new tab — bookmark
-                    or pin the history page to keep it a click away.
-                  </p>
+                  <>
+                    <p className="setup-step__newtab-note">
+                      Safari doesn't let extensions change the new tab —
+                      bookmark or pin the history page to keep it a click away.
+                    </p>
+                    <a
+                      href={browser.runtime.getURL("walking-record.html")}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="setup-step__text-link"
+                    >
+                      Open History ↗
+                    </a>
+                  </>
                 ) : (
                   <label className="setup-step__newtab-optin">
                     <input
@@ -685,9 +710,18 @@ export default function SetupPage() {
                   className="setup-step__btn-primary"
                   disabled={busy}
                 >
-                  {saveError ? "Try again" : "Finish setup"}
+                  {completionWarning
+                    ? "Close setup"
+                    : saveError
+                      ? "Try again"
+                      : "Finish setup"}
                 </button>
               </div>
+              {completionWarning && (
+                <p className="setup-step__save-error" role="status">
+                  {completionWarning}
+                </p>
+              )}
               {saveError && (
                 <p className="setup-step__save-error" role="alert">
                   {saveError}

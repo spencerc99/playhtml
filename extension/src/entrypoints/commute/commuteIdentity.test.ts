@@ -13,10 +13,17 @@ describe("commute identity", () => {
       playerStyle: { colorPalette: ["#c4724e"] },
     };
 
-    expect(createCommuteInitOptions(identity).playerIdentity).toBe(identity);
+    expect(
+      createCommuteInitOptions(identity, "night-line").playerIdentity,
+    ).toBe(identity);
+    expect(createCommuteInitOptions(identity, "night-line").room).toBe(
+      "wwo-internet-commute-train-night-line",
+    );
   });
 
   it("lets the public commute use its browser-local identity", () => {
-    expect(createCommuteInitOptions(null)).not.toHaveProperty("playerIdentity");
+    expect(createCommuteInitOptions(null, "public-line")).not.toHaveProperty(
+      "playerIdentity",
+    );
   });
 });

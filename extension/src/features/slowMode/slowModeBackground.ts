@@ -5,6 +5,7 @@ import browser from "webextension-polyfill";
 import {
   SLOW_MODE_SETTINGS_KEY,
   SLOW_MODE_STATE_KEY,
+  HOSTED_COMMUTE_URL,
   createCommuteUrl,
   evaluateSlowModeNavigation,
   normalizeSlowModeSettings,
@@ -27,13 +28,13 @@ interface SlowModeNavigationDependencies {
   updateTab: (tabId: number, url: string) => Promise<unknown>;
   now: () => number;
   random: () => number;
+  createRideId: () => string;
 }
 
 export function createSlowModeNavigationHandler(
   dependencies: SlowModeNavigationDependencies,
 ) {
   const tabUrls = new Map<number, string>();
-  const formsInProgress = new Set<number>();
   let navigationQueue = Promise.resolve();
 
   return {
@@ -47,12 +48,6 @@ export function createSlowModeNavigationHandler(
 
     forgetTab(tabId: number): void {
       tabUrls.delete(tabId);
-      formsInProgress.delete(tabId);
-    },
-
-    setFormInProgress(tabId: number, inProgress: boolean): void {
-      if (inProgress) formsInProgress.add(tabId);
-      else formsInProgress.delete(tabId);
     },
 
     async onCommitted(details: CommittedNavigation): Promise<void> {
@@ -65,9 +60,7 @@ export function createSlowModeNavigationHandler(
         destinationUrl: details.url,
         transitionType: details.transitionType,
         transitionQualifiers: details.transitionQualifiers ?? [],
-        formInProgress: formsInProgress.has(details.tabId),
       };
-      formsInProgress.delete(details.tabId);
 
       const previousNavigation = navigationQueue;
       let releaseNavigation: (() => void) | undefined;
@@ -96,6 +89,7 @@ export function createSlowModeNavigationHandler(
 
         const stopCount = dependencies.random() < 0.5 ? 2 : 3;
         state = recordSlowModeRide(state, {
+          id: dependencies.createRideId(),
           destinationUrl: details.url,
           startedAt: now,
           stopCount,
@@ -105,9 +99,7 @@ export function createSlowModeNavigationHandler(
         await dependencies.setStorage({ [SLOW_MODE_STATE_KEY]: state });
         const commuteUrl = createCommuteUrl(
           dependencies.getCommutePageUrl(),
-          details.url,
           ride.id,
-          stopCount,
         );
         tabUrls.set(details.tabId, commuteUrl);
         await dependencies.updateTab(details.tabId, commuteUrl);
@@ -133,9 +125,7 @@ interface BrowserWithWebNavigation {
   };
 }
 
-export function initSlowModeInterception(): {
-  setFormInProgress: (tabId: number, inProgress: boolean) => void;
-} {
+export function initSlowModeInterception(): void {
   const handler = createSlowModeNavigationHandler({
     getStorage: () =>
       browser.storage.local.get([
@@ -143,10 +133,11 @@ export function initSlowModeInterception(): {
         SLOW_MODE_STATE_KEY,
       ]) as Promise<Record<string, unknown>>,
     setStorage: (items) => browser.storage.local.set(items),
-    getCommutePageUrl: () => browser.runtime.getURL("commute.html"),
+    getCommutePageUrl: () => HOSTED_COMMUTE_URL,
     updateTab: (tabId, url) => browser.tabs.update(tabId, { url }),
     now: Date.now,
     random: Math.random,
+    createRideId: () => crypto.randomUUID(),
   });
 
   const tabsApi = browser.tabs as Partial<typeof browser.tabs>;
@@ -180,5 +171,4 @@ export function initSlowModeInterception(): {
   });
   tabsApi.onRemoved?.addListener((tabId) => handler.forgetTab(tabId));
 
-  return { setFormInProgress: handler.setFormInProgress };
 }

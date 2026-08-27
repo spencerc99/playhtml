@@ -26,9 +26,13 @@ import {
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { isFeatureEnabled } from "../features/featureAccess";
-import { shouldStartExtensionPresence } from "./content/presencePolicy";
+import {
+  shouldInitializeCopresence,
+  shouldStartExtensionPresence,
+} from "./content/presencePolicy";
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
+import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -55,41 +59,8 @@ export default defineContentScript({
     }
 
     markExtensionInstalled(document.documentElement);
-
-    const reportsSlowModeFormState = (element: Element): boolean => {
-      if (
-        element instanceof HTMLTextAreaElement ||
-        element instanceof HTMLSelectElement
-      ) {
-        return element.value.trim().length > 0;
-      }
-      if (!(element instanceof HTMLInputElement)) return false;
-      if (
-        ["button", "checkbox", "color", "file", "hidden", "radio", "range", "reset", "submit"].includes(
-          element.type,
-        )
-      ) {
-        return false;
-      }
-      return element.value.trim().length > 0;
-    };
-    const reportSlowModeFormState = () => {
-      const inProgress = Array.from(
-        document.querySelectorAll("input, textarea, select"),
-      ).some(reportsSlowModeFormState);
-      void browser.runtime.sendMessage({
-        type: "SLOW_MODE_FORM_STATE",
-        inProgress,
-      });
-    };
-    document.addEventListener("input", reportSlowModeFormState);
-    document.addEventListener("change", reportSlowModeFormState);
-    document.addEventListener("submit", () => {
-      void browser.runtime.sendMessage({
-        type: "SLOW_MODE_FORM_STATE",
-        inProgress: false,
-      });
-    });
+    const removeSlowModeBridge = initHostedSlowModeContentBridge();
+    ctx?.onInvalidated(removeSlowModeBridge);
 
     let currentPresenceCount = 0;
 
@@ -1105,7 +1076,19 @@ export default defineContentScript({
       }
 
       private async setupPresence() {
-        if (!(await isFeatureEnabled("COPRESENCE"))) return;
+        const { getCustomSiteSettings, initCustomSite } = await import(
+          "../custom-sites"
+        );
+        const customSiteSettings = getCustomSiteSettings();
+        if (
+          !shouldInitializeCopresence({
+            featureEnabled: await isFeatureEnabled("COPRESENCE"),
+            customSiteCursorsEnabled:
+              customSiteSettings?.cursorsEnabled ?? false,
+          })
+        ) {
+          return;
+        }
 
         // On pages that already run playhtml, defer presence/cursors to the
         // page's instance (we only inject our identity). We don't stand up our
@@ -1129,10 +1112,6 @@ export default defineContentScript({
         }
 
         // Initialize PlayHTML only for sites with explicit extension cursor support.
-        const { getCustomSiteSettings, initCustomSite } = await import(
-          "../custom-sites"
-        );
-        const customSiteSettings = getCustomSiteSettings();
         const enableCursors = customSiteSettings?.cursorsEnabled ?? false;
         if (
           !shouldStartExtensionPresence({

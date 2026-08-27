@@ -5,9 +5,10 @@ import type { PlayerIdentity } from "@playhtml/common";
 
 export function createCommuteInitOptions(
   playerIdentity: PlayerIdentity | null,
+  trainId: string,
 ) {
   return {
-    room: "wwo-internet-commute",
+    room: `wwo-internet-commute-train-${trainId}`,
     cursors: {
       enabled: true,
       enableChat: false,

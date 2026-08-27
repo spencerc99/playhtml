@@ -22,6 +22,7 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 ## Development Commands
 
 - `bun run setup`: install locked dependencies, prepare WXT metadata, build packages, and verify workspace readiness
+- `bun run setup:agent`: run the full workspace setup and install headless Chromium for cloud and local agents
 - `bun run doctor`: check whether dependencies, WXT metadata, and package build outputs are ready
 - `bun dev`: Website dev server (Vite)
 - `bun dev-server`: PartyKit dev server for real-time sync
@@ -30,8 +31,15 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun build-packages`: Build all library packages
 - `bun run lint`: Type-check all packages
 - `bun run smoke:extension-worker`: bundle the extension Worker without deploying or starting a watcher
+- `bun run smoke:extension`: build and load the real extension in isolated headless Chromium with a loopback-only backend
 
 Per-package and deploy scripts are in the root `package.json`.
+
+### Cloud agents
+
+Use `bun run setup:agent` as the environment setup command for Codex Cloud, Cursor Cloud Agents, and Claude Code cloud sessions. Cursor reads this command from `.cursor/environment.json`. Configure the same command as the cached environment setup script in the Codex and Claude environment dashboards.
+
+For Claude Code cloud, use the environment setup script rather than a `SessionStart` hook. Claude caches environment setup output, while session hooks rerun after every start or resume and Bun has known compatibility issues with Claude's network proxy. Keep the default agent setup free of secrets and start long-running services only within the task that needs them.
 
 ### Testing
 
@@ -50,9 +58,9 @@ The extension and PartyKit use one Supabase project with different tables. All n
 
 ### Extension Performance
 
-- `bun run perf:extension:trace -- --extension local:extension/dist/chrome-mv3`: Trace a built extension locally. Build packages and the extension first.
-- `bun run perf:extension:compare -- --summary <summary.json>`: Compare trace summaries and write reports.
-- For extension changes that touch collectors, storage, content-script observers, or page-wide work, check the `Extension Performance Report` workflow or run a local trace before merge. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate. The workflow is report-only unless `--fail-on-regression` is passed locally.
+- The `Extension Performance Report` workflow runs extension performance traces in CI.
+- Do not run `perf:extension:trace` during local agent work. Repeated traces consume local resources and duplicate CI coverage. Check the CI workflow result instead.
+- Run a local trace only when Spencer explicitly requests one. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate.
 
 ## Papercuts
 
@@ -130,6 +138,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 | Changed the public core API | Update both starter templates |
 | Changed package deps or exports | Run the tarball install simulation |
 | Added a meaningful feature, common-workflow change, or broadly relevant fix to the released extension | Add a bullet to `extension/PENDING.md` |
+| Added, removed, or changed an extension manifest permission | Update `extension/STORE_LISTING.md` and flag the Chrome Privacy practices dashboard change |
 
 - **Commits:** Short imperative subject; scope paths when helpful (e.g., `react:`, `extension:`). Group mechanical changes separately.
 - **PRs:** Include summary, rationale, screenshots for UI/site/extension changes, reproduction for fixes, and link issues.
@@ -144,6 +153,8 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 - **Starter templates for core API changes:** Whenever you change the public core API under `packages/` (capability attributes/classes, React component props like `<CanDuplicateElement>`/`<CanToggleElement>`, exported functions, the vanilla `can-play` element API `defaultData`/`onClick`/`updateElement`/`setupPlayElement`, `playhtml.init` options, or CSS hooks like `[data-playhtml-hover]`), update BOTH starter templates in the same PR so they stay copy-pasteable and verify them live in a browser: `templates/react-starter/` (React API — `src/App.tsx`, `src/index.css`) and `templates/html-starter/` (vanilla API — `index.html`, `style.css`, `script.js`). The starters depend on the published `@playhtml/react` / `playhtml` (`"latest"`), so they pick up code changes on release — but their own usage (imports, props, selectors, example markup/CSS) won't update itself. Only use real, existing API methods: there is no `playhtml.setupCustomElement`; vanilla custom elements set `defaultData`/`onClick`/`updateElement` directly on the DOM element, then call `playhtml.setupPlayElement(el)`. The starters are standalone projects: `react-starter` is Vite+TS with no `tsconfig.json` of its own (so `npm run build`'s `tsc` step picks up the monorepo root config and fails — verify with `npx vite build` plus a live browser test instead); `html-starter` is static files loading `playhtml@latest` from unpkg. If a change doesn't touch either starter, say why in the PR summary.
 
 - **Extension release notes:** `extension/PENDING.md` is a curated public changelog, not a complete record of extension changes. Add a bullet only for a meaningful change that regular users are likely to notice or care about, such as a feature, a common-workflow change, or a broadly relevant fix. Skip copy polish, narrow bug fixes, minor performance or reliability work without a clear user-visible outcome, and internal maintenance. Write one short, plain-language sentence about what someone can do, what works better, or what problem was fixed. No implementation or maintainer details. Full rules, including how feature flags affect this, are in `extension/CLAUDE.md`.
+
+- **Extension store permissions:** Whenever a change adds, removes, or changes a permission in `extension/wxt.config.ts`, update the matching reviewer-facing justification in `extension/STORE_LISTING.md`. Explicitly flag the required Chrome Web Store Privacy practices dashboard update in the PR and release handoff. Do not describe Chrome as ready to publish or published until the dashboard disclosure is saved and the publish API succeeds. Remove stale justification copy and dashboard disclosures when a permission is removed.
 
 ## Documentation
 

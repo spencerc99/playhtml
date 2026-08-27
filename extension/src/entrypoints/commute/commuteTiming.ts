@@ -1,6 +1,15 @@
 // ABOUTME: Computes the Internet Commute's platform, travel, and arrival phases.
 // ABOUTME: Keeps train timing deterministic and independent from React rendering.
 
+import {
+  COMMUTE_TRAIN_ARRIVAL_MS,
+  COMMUTE_TRAIN_DEPARTURE_MS,
+  COMMUTE_TRAIN_PLATFORM_MS,
+  COMMUTE_TRAIN_RETURN_ARRIVAL_MS,
+  COMMUTE_TRAIN_RETURN_TRAVEL_MS,
+  COMMUTE_TRAIN_TRAVEL_MS,
+} from "@playhtml/extension-types";
+
 export const INITIAL_PLATFORM_SECONDS = 10;
 export const TRAVEL_SECONDS = 15;
 export const ARRIVAL_SECONDS = 4;
@@ -38,6 +47,16 @@ export const SLOW_MODE_DURATIONS: CommuteDurations = {
     SLOW_MODE_APPROACH_SECONDS + SLOW_MODE_BOARDING_SECONDS,
   travelSeconds: 12,
   platformSeconds: 8,
+};
+
+export const TRAIN_DURATIONS: CommuteDurations = {
+  initialPlatformSeconds: COMMUTE_TRAIN_DEPARTURE_MS / 1_000,
+  travelSeconds: COMMUTE_TRAIN_TRAVEL_MS / 1_000,
+  arrivalSeconds: COMMUTE_TRAIN_ARRIVAL_MS / 1_000,
+  platformSeconds: COMMUTE_TRAIN_PLATFORM_MS / 1_000,
+  departureSeconds: DEPARTURE_SECONDS,
+  returnTravelSeconds: COMMUTE_TRAIN_RETURN_TRAVEL_MS / 1_000,
+  returnArrivalSeconds: COMMUTE_TRAIN_RETURN_ARRIVAL_MS / 1_000,
 };
 
 export type SlowModePlatformPhase = "waiting" | "arriving" | "boarding";

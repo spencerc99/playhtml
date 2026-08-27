@@ -77,6 +77,11 @@ export async function loadRecentEventRows(
   return { rows, error: null };
 }
 
+export function getRecentEventTypeFilter(url: URL): string | null {
+  const requestedType = url.searchParams.get('type');
+  return requestedType === 'all' ? null : requestedType || 'cursor';
+}
+
 type PageMeta = { title?: string; favicon_url?: string };
 
 /**
@@ -118,7 +123,7 @@ async function fetchMetaByPageRef(
  * Public endpoint (no auth required)
  *
  * Query parameters:
- * - type: Event type filter (default: 'cursor')
+ * - type: Event type filter (default: 'cursor'; 'all' disables the filter)
  * - limit: Maximum number of events (default: 1000, max: 20000). Pagination is used internally.
  * - domain: Domain filter (optional) - filters events by URL domain
  * - pid: Participant ID filter (optional) - restore-from-server flow uses this
@@ -134,7 +139,7 @@ export async function handleRecent(
 ): Promise<Response> {
   try {
     const url = new URL(request.url);
-    const type = url.searchParams.get('type') || 'cursor';
+    const typeFilter = getRecentEventTypeFilter(url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 20000);
     const domainFilter = url.searchParams.get('domain') || null;
     const pidFilter = url.searchParams.get('pid') || null;
@@ -144,8 +149,11 @@ export async function handleRecent(
     const { rows, error } = await loadRecentEventRows(limit, async (cursor, pageSize) => {
       let query = supabase
         .from('collection_events')
-        .select('*')
-        .eq('type', type);
+        .select('*');
+
+      if (typeFilter !== null) {
+        query = query.eq('type', typeFilter);
+      }
 
       if (domainFilter) {
         query = query.eq('domain', domainFilter);

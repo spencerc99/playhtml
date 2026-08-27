@@ -9,9 +9,9 @@ import React, {
   useState,
 } from "react";
 import type { PlayerIdentity } from "@playhtml/common";
+import type { CommuteTrainAssignment } from "@playhtml/extension-types";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
-import browser from "webextension-polyfill";
 import trainIceUrl from "../../assets/train-ice.png";
 import {
   PlayProvider,
@@ -31,27 +31,12 @@ import {
   SAMPLE_STOPS,
   type CommuteStop,
 } from "./commuteStops";
-import {
-  COMMUTE_SERVICE_CHANNEL,
-  COMMUTE_SERVICE_DISCOVERY_MS,
-  createCommuteService,
-  estimateServerTimeOffset,
-  getCommuteServiceDomains,
-  getCommuteServiceEndTime,
-  getCommuteServicesFromPresences,
-  getCommuteStops,
-  getUnvisitedCommuteStops,
-  selectCommuteService,
-  type CommuteService,
-  type CommuteServicePresence,
-} from "./commuteService";
+import { estimateServerTimeOffset } from "./commuteService";
 import {
   DEPARTURE_SECONDS,
   getSlowModePlatformPhase,
-  getSlowModeProgress,
   getCommuteTiming,
-  INITIAL_PLATFORM_SECONDS,
-  SLOW_MODE_DURATIONS,
+  TRAIN_DURATIONS,
   type CommutePhase,
   type SlowModePlatformPhase,
 } from "./commuteTiming";
@@ -59,7 +44,6 @@ import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import {
   CommuteMobileControls,
   keepCommuteCursorInCar,
-  type CommuteMobileAction,
 } from "./CommuteMobileControls";
 import { CommuteStage } from "./CommuteStage";
 import { CommuteStationPoster } from "./CommuteStationPoster";
@@ -75,7 +59,6 @@ import {
   getCommuteRiderStart,
   getSharedCommutePosition,
   getStandingPosition,
-  isNearCommuteDoor,
   moveCommuteAvatar,
   moveCommuteAvatarToward,
   shouldExitCommuteThroughDoor,
@@ -84,17 +67,22 @@ import {
 } from "./commuteMobile";
 import { ProceduralLandscape } from "./landscape";
 import {
-  SLOW_MODE_STATE_KEY,
-  normalizeSlowModeState,
-  type SlowModeRideOutcome,
-} from "../../features/slowMode/slowMode";
-import {
-  buildSlowModeRoute,
-  parseSlowModeRequest,
-  type SlowModeRequest,
-} from "../../features/slowMode/slowModeRoute";
+  getHostedSlowModeRideId,
+  reportHostedSlowModeOutcome,
+  requestHostedSlowModeRide,
+  type HostedSlowModeRide,
+} from "../../features/slowMode/slowModeHostedBridge";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
 import { createCommuteInitOptions } from "./commuteIdentity";
+import {
+  boardCommuteTrain,
+  createCommuteTrainBoardRequest,
+  getCommuteTrainNextAction,
+  getCommuteRiderToken,
+  getCommuteTrainTimeOffset,
+  rotateCommuteRiderToken,
+  toCommuteStop,
+} from "./commuteTrain";
 import "./commute.scss";
 
 type CarData = Record<string, never>;
@@ -157,7 +145,6 @@ const DOOR_GEOMETRY = DOORS.map((x) => ({ x }));
 const COMMUTE_REFRESH_MS = 30_000;
 const COMMUTE_ROUTE_TIMEOUT_MS = 5_000;
 const COMMUTE_RIDER_ARRIVAL_EVENT = "commute-rider-arrival";
-const SLOW_MODE_REQUEST = parseSlowModeRequest(window.location.search);
 
 function useRecentRoute(): RecentRoute {
   const [route, setRoute] = useState<RecentRoute>({
@@ -238,211 +225,93 @@ function useRecentRoute(): RecentRoute {
   return route;
 }
 
-interface SlowModeRouteState {
-  startedAt: number;
-  stops: CommuteStop[];
+interface CommuteTrainConnection {
+  assignment: CommuteTrainAssignment | null;
+  serverTimeOffsetMs: number;
+  status: "loading" | "live" | "error";
 }
 
-function useSlowModeRoute(
-  request: SlowModeRequest | null,
-  recentRoute: RecentRoute,
-): SlowModeRouteState | null {
-  const [route, setRoute] = useState<SlowModeRouteState | null>(null);
-  const formingRoute = useRef(false);
-
-  useEffect(() => {
-    if (!request || route || formingRoute.current) return;
-    if (recentRoute.status === "loading") return;
-    formingRoute.current = true;
-
-    browser.storage.local
-      .get(SLOW_MODE_STATE_KEY)
-      .then((stored) => {
-        const state = normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY]);
-        const recentRiderDomains = state.rides
-          .filter((ride) => ride.id !== request.rideId)
-          .map((ride) => ride.destinationDomain);
-        const communalStops =
-          recentRoute.status === "live" ? recentRoute.stops : SAMPLE_STOPS;
-        setRoute({
-          startedAt: Date.now(),
-          stops: buildSlowModeRoute(
-            communalStops,
-            request.destinationUrl,
-            request.stopCount,
-            recentRiderDomains,
-          ),
-        });
-      })
-      .catch(() => {
-        setRoute({
-          startedAt: Date.now(),
-          stops: buildSlowModeRoute(
-            SAMPLE_STOPS,
-            request.destinationUrl,
-            request.stopCount,
-            [],
-          ),
-        });
-      });
-  }, [recentRoute.status, recentRoute.stops, request, route]);
-
-  return route;
-}
-
-interface CommuteServiceState {
-  joinedExistingService: boolean;
-  service: CommuteService | null;
-}
-
-interface CommuteServiceConnection extends CommuteServiceState {
-  nextStops: CommuteStop[];
-}
-
-function useCommuteService(
-  availableStops: CommuteStop[],
-  routeStatus: RecentRoute["status"],
-  serverTimeOffsetMs: number | null,
-  enabled = true,
-): CommuteServiceConnection {
-  const { presences, setMyPresence, myIdentity } = usePresence<
-    typeof COMMUTE_SERVICE_CHANNEL,
-    CommuteServicePresence
-  >(COMMUTE_SERVICE_CHANNEL);
-  const [connection, setConnection] = useState<CommuteServiceState>({
-    joinedExistingService: false,
-    service: null,
+function useCommuteTrain(
+  ride: HostedSlowModeRide | null,
+): CommuteTrainConnection {
+  const [connection, setConnection] = useState<CommuteTrainConnection>({
+    assignment: null,
+    serverTimeOffsetMs: 0,
+    status: "loading",
   });
-  const [visitedDomains, setVisitedDomains] = useState<string[]>([]);
-  const presencesRef = useRef(presences);
-  const nextStops = useMemo(
-    () => getUnvisitedCommuteStops(availableStops, visitedDomains),
-    [availableStops, visitedDomains],
+  const [riderToken, setRiderToken] = useState(() =>
+    getCommuteRiderToken(ride),
+  );
+  const request = useMemo(
+    () => createCommuteTrainBoardRequest(riderToken, ride),
+    [ride, riderToken],
   );
 
   useEffect(() => {
-    presencesRef.current = presences;
-  }, [presences]);
+    const controller = new AbortController();
+    let refreshTimer: number | undefined;
+    let lastAssignment: CommuteTrainAssignment | null = null;
 
-  useEffect(() => {
-    if (!enabled || connection.service || !myIdentity) {
-      return;
-    }
-
-    const discoveryTimer = window.setTimeout(() => {
-      const serverNow = Date.now() + (serverTimeOffsetMs ?? 0);
-      const visited = new Set(visitedDomains);
-      const existingService = selectCommuteService(
-        getCommuteServicesFromPresences(presencesRef.current.values()).filter(
-          (service) =>
-            getCommuteServiceDomains(service).every(
-              (domain) => !visited.has(domain),
+    const board = async () => {
+      const requestStartedAt = Date.now();
+      try {
+        const assignment = await boardCommuteTrain(request, controller.signal);
+        const responseReceivedAt = Date.now();
+        lastAssignment = assignment;
+        setConnection((current) => {
+          if (
+            current.assignment?.routeVersion === assignment.routeVersion &&
+            current.assignment.riderCount === assignment.riderCount &&
+            current.assignment.joinable === assignment.joinable &&
+            current.assignment.phase === assignment.phase
+          ) {
+            return current;
+          }
+          return {
+            assignment,
+            serverTimeOffsetMs: getCommuteTrainTimeOffset(
+              assignment,
+              requestStartedAt,
+              responseReceivedAt,
             ),
-        ),
-        serverNow,
-      );
-      if (
-        existingService === null &&
-        (routeStatus === "loading" || serverTimeOffsetMs === null)
-      ) {
-        return;
+            status: "live",
+          };
+        });
+        const nextAction = getCommuteTrainNextAction(assignment, ride !== null);
+        if (nextAction.kind === "refresh") {
+          refreshTimer = window.setTimeout(
+            () => void board(),
+            nextAction.delayMs,
+          );
+        } else if (nextAction.kind === "reboard") {
+          refreshTimer = window.setTimeout(() => {
+            setConnection({
+              assignment: null,
+              serverTimeOffsetMs: 0,
+              status: "loading",
+            });
+            setRiderToken(rotateCommuteRiderToken());
+          }, nextAction.delayMs);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.warn("[internet commute] train boarding unavailable:", error);
+        if (lastAssignment) {
+          refreshTimer = window.setTimeout(() => void board(), 3_000);
+        } else {
+          setConnection((current) => ({ ...current, status: "error" }));
+        }
       }
-      if (existingService === null && nextStops.length === 0) {
-        return;
-      }
-
-      const service =
-        existingService ??
-        createCommuteService(serverNow, myIdentity.publicKey, nextStops);
-      const presence: CommuteServicePresence = {
-        service,
-      };
-
-      setConnection({
-        joinedExistingService: existingService !== null,
-        service,
-      });
-      setMyPresence(presence);
-    }, COMMUTE_SERVICE_DISCOVERY_MS);
-
-    return () => window.clearTimeout(discoveryTimer);
-  }, [
-    connection.service,
-    enabled,
-    myIdentity,
-    nextStops,
-    routeStatus,
-    serverTimeOffsetMs,
-    setMyPresence,
-    visitedDomains,
-  ]);
-
-  const canonicalService = useMemo(() => {
-    const visited = new Set(visitedDomains);
-    const candidates = getCommuteServicesFromPresences(
-      presences.values(),
-    ).filter((service) =>
-      getCommuteServiceDomains(service).every((domain) => !visited.has(domain)),
-    );
-    if (connection.service) {
-      candidates.push(connection.service);
-    }
-    return selectCommuteService(
-      candidates,
-      Date.now() + (serverTimeOffsetMs ?? 0),
-    );
-  }, [connection.service, presences, serverTimeOffsetMs, visitedDomains]);
-
-  useEffect(() => {
-    if (
-      !enabled ||
-      !connection.service ||
-      !canonicalService ||
-      canonicalService.id === connection.service.id
-    ) {
-      return;
-    }
-
-    const presence: CommuteServicePresence = {
-      service: canonicalService,
-    };
-    setConnection({
-      joinedExistingService: true,
-      service: canonicalService,
-    });
-    setMyPresence(presence);
-  }, [canonicalService, connection.service, enabled, setMyPresence]);
-
-  useEffect(() => {
-    const service = connection.service;
-    if (!enabled || !service) return;
-
-    const serverNow = Date.now() + (serverTimeOffsetMs ?? 0);
-    const delay = Math.max(0, getCommuteServiceEndTime(service) - serverNow);
-    const completeService = () => {
-      const completedDomains = getCommuteServiceDomains(service);
-      setVisitedDomains((current) => [
-        ...new Set([...current, ...completedDomains]),
-      ]);
-      setConnection((current) =>
-        current.service?.id === service.id
-          ? {
-              joinedExistingService: false,
-              service: null,
-            }
-          : current,
-      );
-      setMyPresence({ service: null });
     };
 
-    const completionTimer = window.setTimeout(completeService, delay);
-    return () => window.clearTimeout(completionTimer);
-  }, [connection.service, enabled, serverTimeOffsetMs, setMyPresence]);
+    void board();
+    return () => {
+      controller.abort();
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+    };
+  }, [request]);
 
-  return {
-    ...connection,
-    nextStops,
-  };
+  return connection;
 }
 
 function StopFavicon({
@@ -804,7 +673,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const clickDestination = useRef<CommutePoint | null>(null);
     const pendingSeatId = useRef<number | null>(null);
     const pressedKeys = useRef(new Set<string>());
-    const mobileActionRef = useRef<CommuteMobileAction | null>(null);
     const exitPending = useRef(false);
     const portalTimer = useRef<number | undefined>(undefined);
     const exitTrainRef = useRef<(navigateCurrentTab?: boolean) => void>(
@@ -1026,9 +894,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       mobileBoarded && mySeatId === null
         ? findNearbyCommuteSeat(avatarPosition, SEATS, occupiedSeatIds)
         : null;
-    const nearDoor =
-      mobileBoarded && isNearCommuteDoor(avatarPosition, DOOR_GEOMETRY);
-
     useEffect(() => {
       onSeatStateChange(mySeatId !== null);
     }, [mySeatId, onSeatStateChange]);
@@ -1115,7 +980,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         () => {
           if (navigateCurrentTab) {
             window.location.assign(props.currentStop.url);
-          } else {
+          } else if (!props.onExitStop) {
             window.open(props.currentStop.url, "_blank", "noopener,noreferrer");
             exitPending.current = false;
           }
@@ -1142,38 +1007,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         props.onTeleport?.();
       }, 2_000);
     };
-
-    const standUp = () => {
-      if (mySeatId === null) return;
-      pendingSeatId.current = null;
-      clickDestination.current = null;
-      const seat = SEATS.find((candidate) => candidate.id === mySeatId);
-      publishPosition(null, avatarPositionRef.current);
-      setAvatarWalking(false);
-      if (seat) updateAvatarPosition(getStandingPosition(seat));
-    };
-
-    let mobileAction: CommuteMobileAction | null = null;
-    if (mySeatId !== null) {
-      mobileAction = {
-        label: "stand up",
-        tone: "stand",
-        onSelect: standUp,
-      };
-    } else if (nearDoor && props.phase === "stopped" && !props.atOrigin) {
-      mobileAction = {
-        label: `step off at ${props.currentStop.domain}`,
-        tone: "exit",
-        onSelect: () => exitTrain(true),
-      };
-    } else if (nearbySeat) {
-      mobileAction = {
-        label: "sit down",
-        tone: "sit",
-        onSelect: () => chooseSeat(nearbySeat.id),
-      };
-    }
-    mobileActionRef.current = mobileAction;
 
     const updateMovement = useCallback((vector: CommutePoint) => {
       movementVector.current = vector;
@@ -1202,13 +1035,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           }
           event.preventDefault();
           return;
-        }
-        if (
-          event.type === "keydown" &&
-          (event.key === "Enter" || event.key === " ")
-        ) {
-          mobileActionRef.current?.onSelect();
-          event.preventDefault();
         }
       };
 
@@ -1452,7 +1278,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         )}
         {createPortal(
           <CommuteMobileControls
-            action={mobileAction}
             boarded={mobileBoarded}
             onBoard={() => {
               pendingSeatId.current = null;
@@ -1646,21 +1471,25 @@ function CommuteDebugPanel({
 
 function SlowModeProgress({
   destinationDomain,
+  destinationStopIndex,
   phase,
   stopIndex,
   stops,
   atOrigin,
 }: {
   destinationDomain: string;
+  destinationStopIndex: number;
   phase: CommutePhase;
   stopIndex: number;
   stops: CommuteStop[];
   atOrigin: boolean;
 }) {
-  const { completedIndex, stopsLeft } = getSlowModeProgress(
-    { atOrigin, phase, stopIndex },
-    stops.length,
-  );
+  const completedIndex = atOrigin
+    ? -1
+    : phase === "stopped"
+      ? stopIndex
+      : stopIndex - 1;
+  const stopsLeft = Math.max(0, destinationStopIndex - completedIndex);
 
   return (
     <section className="slow-mode-progress" aria-label="Slow Mode route progress">
@@ -1673,7 +1502,7 @@ function SlowModeProgress({
             />
             <span
               className={`${index <= completedIndex ? "is-complete" : ""} ${
-                index === stops.length - 1 ? "is-destination" : ""
+                index === destinationStopIndex ? "is-destination" : ""
               }`}
               title={stop.domain}
             />
@@ -1703,37 +1532,35 @@ function usePrefersReducedMotion(): boolean {
 }
 
 function InternetCommute({
+  assignment,
+  bridgeUnavailable,
   extensionCursorColor,
+  ride,
+  serverTimeOffsetMs,
 }: {
+  assignment: CommuteTrainAssignment;
+  bridgeUnavailable: boolean;
   extensionCursorColor: string | null;
+  ride: HostedSlowModeRide | null;
+  serverTimeOffsetMs: number;
 }) {
   const riders = useUsers();
   const { cursors } = usePlayContext();
   const cursorColor = (extensionCursorColor ?? cursors.color) || "#3d3833";
   const [debugVisible, setDebugVisible] = useCommuteDebug();
   const recentRoute = useRecentRoute();
-  const slowModeRoute = useSlowModeRoute(SLOW_MODE_REQUEST, recentRoute);
-  const availableStops =
-    recentRoute.status === "live" ? recentRoute.stops : SAMPLE_STOPS;
-  const serviceConnection = useCommuteService(
-    availableStops,
-    recentRoute.status,
-    recentRoute.serverTimeOffsetMs,
-    SLOW_MODE_REQUEST === null,
+  const stops = useMemo(
+    () => assignment.stops.map(toCommuteStop),
+    [assignment.stops],
   );
-  const sharedStops = useMemo(
-    () =>
-      serviceConnection.service
-        ? getCommuteStops(serviceConnection.service)
-        : serviceConnection.nextStops.length > 0
-          ? serviceConnection.nextStops
-          : [SAMPLE_STOPS[0]],
-    [serviceConnection.nextStops, serviceConnection.service],
-  );
-  const stops = slowModeRoute?.stops ?? sharedStops;
-  const waitingForFreshStops =
-    serviceConnection.service === null &&
-    serviceConnection.nextStops.length === 0;
+  const destinationStopIndex = ride
+    ? assignment.stops.findIndex(
+        (stop) =>
+          stop.kind === "domain" && stop.domain === ride.destinationDomain,
+      )
+    : -1;
+  const destinationStopId =
+    destinationStopIndex >= 0 ? stops[destinationStopIndex]?.id : undefined;
   const sceneryStops =
     recentRoute.sceneryStops.length > 0
       ? recentRoute.sceneryStops
@@ -1742,7 +1569,17 @@ function InternetCommute({
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [hasSeat, setHasSeat] = useState(false);
   const [mobileBoarded, setMobileBoarded] = useState(false);
+  const [routeNotice, setRouteNotice] = useState<string | null>(null);
+  const previousStopCount = useRef(assignment.stops.length);
   const reducedMotion = usePrefersReducedMotion();
+
+  useEffect(() => {
+    if (assignment.stops.length <= previousStopCount.current) return;
+    previousStopCount.current = assignment.stops.length;
+    setRouteNotice("route updated · a new stop joined the line");
+    const timer = window.setTimeout(() => setRouteNotice(null), 6_000);
+    return () => window.clearTimeout(timer);
+  }, [assignment.stops.length]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1751,82 +1588,46 @@ function InternetCommute({
     return () => window.clearInterval(timer);
   }, []);
 
-  const elapsedSeconds = SLOW_MODE_REQUEST
-    ? slowModeRoute
-      ? Math.max(0, Math.floor((clockNow - slowModeRoute.startedAt) / 1000))
-      : 0
-    : serviceConnection.service
-      ? Math.max(
-          0,
-          Math.floor(
-            (clockNow +
-              (recentRoute.serverTimeOffsetMs ?? 0) -
-              serviceConnection.service.startedAt) /
-              1000,
-          ),
-        )
-      : 0;
-  const routeTiming = getCommuteTiming(
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor(
+      (clockNow + serverTimeOffsetMs - assignment.createdAt) / 1_000,
+    ),
+  );
+  const timing = getCommuteTiming(
     elapsedSeconds,
     stops.length,
-    SLOW_MODE_REQUEST ? SLOW_MODE_DURATIONS : undefined,
+    TRAIN_DURATIONS,
   );
-  const timing =
-    SLOW_MODE_REQUEST &&
-    (routeTiming.complete || (slowModeRoute !== null && reducedMotion))
-      ? {
-          ...routeTiming,
-          phase: "stopped" as const,
-          stopIndex: stops.length - 1,
-          atOrigin: false,
-          complete: true,
-          secondsLeft: 0,
-        }
-      : routeTiming;
   const currentStop = stops[timing.stopIndex];
-  const initialPlatformSeconds = SLOW_MODE_REQUEST
-    ? SLOW_MODE_DURATIONS.initialPlatformSeconds
-    : INITIAL_PLATFORM_SECONDS;
   const departingOrigin =
     timing.phase === "riding" &&
-    elapsedSeconds < initialPlatformSeconds + DEPARTURE_SECONDS;
+    elapsedSeconds < TRAIN_DURATIONS.initialPlatformSeconds + DEPARTURE_SECONDS;
   const platformStop =
     timing.departureStopIndex === null
       ? currentStop
       : stops[timing.departureStopIndex];
   const platformAtOrigin = timing.atOrigin || departingOrigin;
   const slowModePlatformPhase =
-    SLOW_MODE_REQUEST && slowModeRoute && timing.atOrigin
+    ride && timing.atOrigin && !timing.complete
       ? getSlowModePlatformPhase(timing.secondsLeft)
       : undefined;
 
   const finishSlowModeRide = useCallback(
-    async (outcome: SlowModeRideOutcome, url: string) => {
-      if (!SLOW_MODE_REQUEST) return;
-      await browser.runtime
-        .sendMessage({
-          type: "SLOW_MODE_RIDE_OUTCOME",
-          rideId: SLOW_MODE_REQUEST.rideId,
-          outcome,
-        })
-        .catch(() => {});
-      window.location.assign(url);
+    (outcome: "arrived" | "teleported" | "left", navigate: boolean) => {
+      if (!ride) return;
+      reportHostedSlowModeOutcome(ride.rideId, outcome, navigate);
     },
-    [],
+    [ride],
   );
 
   return (
     <main
       className="commute-page"
-      data-service-id={serviceConnection.service?.id}
-      data-service-started-at={serviceConnection.service?.startedAt}
+      data-train-id={assignment.trainId}
+      data-train-started-at={assignment.createdAt}
       data-service-elapsed-seconds={elapsedSeconds}
-      data-joined-existing-service={serviceConnection.joinedExistingService}
-      data-joining-service={
-        serviceConnection.joinedExistingService
-          ? serviceConnection.service?.id
-          : undefined
-      }
+      data-route-version={assignment.routeVersion}
       onMouseMove={keepCommuteCursorInCar}
       onTouchMove={keepCommuteCursorInCar}
     >
@@ -1846,11 +1647,16 @@ function InternetCommute({
 
         <CommuteInstallPrompt />
 
-        {SLOW_MODE_REQUEST && slowModeRoute && (
+        {bridgeUnavailable && (
+          <p className="slow-mode-sharing" role="status">
+            Slow Mode connection unavailable · riding the public route
+          </p>
+        )}
+
+        {ride && destinationStopIndex >= 0 && (
           <SlowModeProgress
-            destinationDomain={new URL(
-              SLOW_MODE_REQUEST.destinationUrl,
-            ).hostname.replace(/^www\./, "")}
+            destinationDomain={ride.destinationDomain}
+            destinationStopIndex={destinationStopIndex}
             phase={timing.phase}
             stopIndex={timing.stopIndex}
             stops={stops}
@@ -1858,33 +1664,40 @@ function InternetCommute({
           />
         )}
 
+        {ride && (
+          <p className="slow-mode-sharing">
+            {ride.stopVisibility === "private"
+              ? "your destination is private · no stop added"
+              : `your stop is shared as ${ride.destinationDomain}`}
+          </p>
+        )}
+
+        {routeNotice && (
+          <p className="commute-route-notice" role="status">
+            {routeNotice}
+          </p>
+        )}
+
         <Banner
           phase={timing.phase}
           secondsLeft={timing.secondsLeft}
           atOrigin={timing.atOrigin}
           currentStop={
-            SLOW_MODE_REQUEST && timing.atOrigin
-              ? stops[stops.length - 1]
+            ride && timing.atOrigin && destinationStopIndex >= 0
+              ? stops[destinationStopIndex]
               : currentStop
           }
           hasSeat={hasSeat}
-          routeComplete={timing.complete && !SLOW_MODE_REQUEST}
-          waitingForFreshStops={
-            waitingForFreshStops && SLOW_MODE_REQUEST === null
-          }
+          routeComplete={timing.complete}
+          waitingForFreshStops={false}
           slowModePlatformPhase={slowModePlatformPhase}
         />
 
-        {SLOW_MODE_REQUEST && timing.atOrigin && (
+        {ride && timing.atOrigin && (
           <button
             className="slow-mode-teleport"
             type="button"
-            onClick={() =>
-              void finishSlowModeRide(
-                "teleported",
-                SLOW_MODE_REQUEST.destinationUrl,
-              )
-            }
+            onClick={() => finishSlowModeRide("teleported", true)}
           >
             teleport instead →
           </button>
@@ -1893,49 +1706,42 @@ function InternetCommute({
         {debugVisible && (
           <CommuteDebugPanel
             elapsedSeconds={elapsedSeconds}
-            joinedExistingService={serviceConnection.joinedExistingService}
+            joinedExistingService={assignment.riderCount > 1}
             phase={timing.phase}
             riders={riders.length}
             routeStatus={recentRoute.status}
             secondsLeft={timing.secondsLeft}
-            serviceId={serviceConnection.service?.id}
+            serviceId={assignment.trainId}
             stopIndex={timing.stopIndex}
             stops={stops}
             onClose={() => setDebugVisible(false)}
           />
         )}
 
-        {SLOW_MODE_REQUEST && slowModeRoute && reducedMotion ? (
+        {ride && reducedMotion ? (
           <section className="slow-mode-summary">
             <span>your route</span>
-            <h2>{SLOW_MODE_REQUEST.stopCount} stops passed</h2>
+            <h2>{stops.length} stops on this train</h2>
             <ol>
               {stops.map((stop, index) => (
                 <li key={stop.id}>
                   <span>{index + 1}</span>
                   <strong>{stop.domain}</strong>
-                  {index === stops.length - 1 && <small>destination</small>}
+                  {index === destinationStopIndex && <small>your stop</small>}
                 </li>
               ))}
             </ol>
             <button
               type="button"
-              onClick={() =>
-                void finishSlowModeRide(
-                  "arrived",
-                  SLOW_MODE_REQUEST.destinationUrl,
-                )
-              }
+              onClick={() => finishSlowModeRide("teleported", true)}
             >
-              continue to {new URL(SLOW_MODE_REQUEST.destinationUrl).hostname} →
+              continue to {ride.destinationDomain} →
             </button>
           </section>
-        ) : SLOW_MODE_REQUEST && slowModeRoute && timing.atOrigin ? (
+        ) : ride && timing.atOrigin && !timing.complete ? (
           <SlowModePlatformScene
             cursorColor={cursorColor}
-            destinationDomain={new URL(
-              SLOW_MODE_REQUEST.destinationUrl,
-            ).hostname.replace(/^www\./, "")}
+            destinationDomain={ride.destinationDomain}
             secondsLeft={timing.secondsLeft}
           />
         ) : (
@@ -1954,35 +1760,29 @@ function InternetCommute({
               currentStop={currentStop}
               phase={timing.phase}
               atOrigin={timing.atOrigin}
-              serviceReady={
-                SLOW_MODE_REQUEST
-                  ? slowModeRoute !== null
-                  : serviceConnection.service !== null
-              }
+              serviceReady
               mobileBoarded={mobileBoarded}
               onMobileBoardStateChange={setMobileBoarded}
               onSeatStateChange={setHasSeat}
-              navigateCurrentTabOnExit={SLOW_MODE_REQUEST !== null}
+              navigateCurrentTabOnExit={false}
               onExitStop={
-                SLOW_MODE_REQUEST
+                ride
                   ? (stop) => {
-                      const outcome =
-                        stop.url === stops.at(-1)?.url ? "arrived" : "left";
-                      void browser.runtime.sendMessage({
-                        type: "SLOW_MODE_RIDE_OUTCOME",
-                        rideId: SLOW_MODE_REQUEST.rideId,
-                        outcome,
-                      });
+                      if (stop.id === destinationStopId) {
+                        finishSlowModeRide("arrived", true);
+                        return;
+                      }
+                      finishSlowModeRide("left", false);
+                      window.setTimeout(
+                        () => window.location.assign(stop.url),
+                        100,
+                      );
                     }
                   : undefined
               }
               onTeleport={
-                SLOW_MODE_REQUEST
-                  ? () =>
-                      void finishSlowModeRide(
-                        "teleported",
-                        SLOW_MODE_REQUEST.destinationUrl,
-                      )
+                ride
+                  ? () => finishSlowModeRide("teleported", true)
                   : undefined
               }
             />
@@ -2000,7 +1800,7 @@ function InternetCommute({
 
         <div className="commute-counts">
           <strong>
-            {riders.length} {riders.length === 1 ? "person" : "people"} riding
+            {assignment.riderCount}/{assignment.capacity} riders on this train
           </strong>
           <span></span>
           <strong>
@@ -2020,28 +1820,91 @@ function InternetCommute({
   );
 }
 
-function CommuteRoot() {
-  const [playerIdentity, setPlayerIdentity] = useState<
-    PlayerIdentity | null | undefined
-  >(undefined);
+function CommuteBoardingRoot({
+  bridgeUnavailable,
+  playerIdentity,
+  ride,
+}: {
+  bridgeUnavailable: boolean;
+  playerIdentity: PlayerIdentity | null;
+  ride: HostedSlowModeRide | null;
+}) {
+  const connection = useCommuteTrain(ride);
 
-  useEffect(() => {
-    getPublicPlayerIdentity().then(setPlayerIdentity).catch((error: unknown) => {
-      console.warn("[internet commute] cursor identity unavailable:", error);
-      setPlayerIdentity(null);
-    });
-  }, []);
-
-  if (playerIdentity === undefined) return null;
+  if (connection.status === "error") {
+    return (
+      <main className="commute-page commute-board-status">
+        <strong>the next train is delayed</strong>
+        <button type="button" onClick={() => window.location.reload()}>
+          check the platform again
+        </button>
+      </main>
+    );
+  }
+  if (!connection.assignment) {
+    return (
+      <main className="commute-page commute-board-status">
+        <strong>finding your train…</strong>
+      </main>
+    );
+  }
 
   return (
-    <PlayProvider initOptions={createCommuteInitOptions(playerIdentity)}>
+    <PlayProvider
+      key={connection.assignment.trainId}
+      initOptions={createCommuteInitOptions(
+        playerIdentity,
+        connection.assignment.trainId,
+      )}
+    >
       <InternetCommute
+        assignment={connection.assignment}
+        bridgeUnavailable={bridgeUnavailable}
         extensionCursorColor={
           playerIdentity?.playerStyle.colorPalette[0] ?? null
         }
+        ride={ride}
+        serverTimeOffsetMs={connection.serverTimeOffsetMs}
       />
     </PlayProvider>
+  );
+}
+
+function CommuteRoot() {
+  const [rootState, setRootState] = useState<
+    | {
+        bridgeUnavailable: boolean;
+        playerIdentity: PlayerIdentity | null;
+        ride: HostedSlowModeRide | null;
+      }
+    | undefined
+  >(undefined);
+
+  useEffect(() => {
+    const rideId = getHostedSlowModeRideId(window.location.hash);
+    Promise.all([
+      getPublicPlayerIdentity().catch((error: unknown) => {
+        console.warn("[internet commute] cursor identity unavailable:", error);
+        return null;
+      }),
+      rideId ? requestHostedSlowModeRide(rideId) : Promise.resolve(null),
+    ]).then(([playerIdentity, ride]) =>
+      setRootState({
+        bridgeUnavailable: rideId !== null && ride === null,
+        playerIdentity,
+        ride,
+      }),
+    );
+  }, []);
+
+  if (!rootState) return null;
+
+  return (
+    <CommuteBoardingRoot
+      bridgeUnavailable={rootState.bridgeUnavailable}
+      playerIdentity={rootState.playerIdentity}
+      ride={rootState.ride}
+    />
   );
 }
 

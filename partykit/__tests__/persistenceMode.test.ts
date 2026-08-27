@@ -148,8 +148,8 @@ describe("formatPersistenceFailureLog", () => {
     expect(message).toContain("timeoutMs=5000");
     expect(message).toContain("attempts=3");
     expect(message).toContain("connection timeout");
-    expect(message).toContain("TRANSIENT MODE");
-    expect(message).toContain("awareness may continue");
+    expect(message).toContain("RECOVERY MODE");
+    expect(message).toContain("connections closed with 1013");
     expect(message).toContain("shared-data writes disabled");
     expect(message).toContain("autosave disabled");
   });
@@ -170,7 +170,7 @@ describe("createPersistenceUnavailableResponse", () => {
     expect(body).toEqual({
       error: "persistence_unavailable",
       message:
-        "Supabase persistence is unavailable for this room; shared-data and admin writes are disabled while awareness runs in transient mode.",
+        "Supabase persistence is unavailable for this room; clients reconnect after document recovery completes.",
       roomId: "example-room",
       failedAt: "2026-05-26T21:05:45.000Z",
       reason: "connection timeout",

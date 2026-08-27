@@ -50,6 +50,14 @@ Changes that ship dark, behind an unreleased feature in `FEATURE_CATALOG`, do
 not get a bullet. The public changelog should never describe a feature users
 cannot reach. Add the bullet in the PR that enables the feature for everyone.
 
+When a change adds, removes, or changes a manifest permission in
+`wxt.config.ts`, update the matching Chrome Web Store reviewer justification in
+`STORE_LISTING.md`. Flag the required Privacy practices dashboard update in the
+PR and release handoff. Do not describe Chrome as ready to publish or published
+until the dashboard disclosure is saved and the publish API succeeds. Remove
+stale justification copy and dashboard disclosures when a permission is
+removed.
+
 Write each bullet as final release-note copy for people who use the extension:
 
 - Lead with what they can now do, what works better, or what problem no longer

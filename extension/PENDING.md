@@ -1,9 +1,6 @@
 # Unreleased
 
-- Internet Commute now keeps riders, arrivals, and train timing in sync across browsers.
 - Internet Commute stations now display rotating posters for sites, classes, and essays around the web.
-- Slow Mode can route deliberate far jumps through a short Internet Commute, with chance controls, cooldowns, and an always-available teleport.
-- Authentication pages no longer appear in Internet Commute or trigger Slow Mode.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
@@ -19,8 +16,3 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
-
-- Setup now ends with one overview of browsing history, trails, portraits, and Wikipedia.
-- The setup welcome now includes an invitation to the community Discord.
-- Settings now brings identity, data collection, new tab, project updates, experiments, and local data controls into one page.
-- The popup now opens the settings page instead of nesting settings screens.
