@@ -14,6 +14,7 @@ export const WORKER_URL: string =
 
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
 export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;
+export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
 export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
 

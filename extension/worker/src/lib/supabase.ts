@@ -42,5 +42,7 @@ export interface Env {
   RESEND_SEGMENT_ID?: string;   // Optional: assign new contacts to this Resend segment
   CODA_API_TOKEN: string;       // Coda API token for extension feedback submissions
   LIVE_EVENTS_HUB: DurableObjectNamespace; // Live cursor-event stream hub
+  COMMUTE_TRAIN_DISPATCHER: DurableObjectNamespace; // Synchronized train assignment
+  COMMUTE_BOARD_RATE_LIMITER: RateLimit; // Public train boarding request limiter
   WWO_ADMIN_DB: D1Database;     // Feature policy, beta cohorts, and operator workflows
 }

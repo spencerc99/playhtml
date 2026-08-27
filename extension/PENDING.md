@@ -1,5 +1,9 @@
 # Unreleased
 
+- Internet Commute now keeps riders, arrivals, and train timing in sync across browsers.
+- Slow Mode now boards the hosted Internet Commute, where up to four riders share a train while exact destinations stay in the extension.
+- Slow Mode can route deliberate far jumps through a short Internet Commute, with chance controls, cooldowns, and an always-available teleport.
+- Authentication pages no longer appear in Internet Commute or trigger Slow Mode.
 - Wikipedia always shows its shared cursors and remembered-link patina.
 - Browsing history now refreshes the current week, month, or year as new activity is recorded.
 

@@ -287,6 +287,7 @@
 
   &__heading,
   &__chance,
+  &__sharing,
   &__today {
     padding: 11px 13px;
   }
@@ -332,6 +333,39 @@
     input {
       width: 100%;
       accent-color: $accent-teal;
+    }
+  }
+
+  &__sharing {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid $border;
+
+    > span {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    strong {
+      font-size: 10px;
+    }
+
+    small {
+      color: $text-muted;
+      font: 8px $font-mono;
+    }
+
+    select {
+      max-width: 110px;
+      border: 1px solid $border;
+      border-radius: 4px;
+      padding: 4px 5px;
+      color: $text;
+      background: $surface;
+      font: 9px $font-mono;
     }
   }
 
