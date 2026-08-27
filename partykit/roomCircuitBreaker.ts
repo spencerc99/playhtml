@@ -40,6 +40,8 @@ type RoomCircuitBreakerOptions = {
     failureThreshold: number;
     failureBackoffMs: number;
     failureBackoffMaxMs: number;
+    observedLoadFailureBackoffMs: number;
+    observedLoadFailureBackoffMaxMs: number;
   };
   activateTransientPersistence: (quarantine: QuarantineState) => void;
   startRealtimeSync: () => Promise<void>;
@@ -117,6 +119,29 @@ export class RoomCircuitBreaker {
       "FAILURE_BACKOFF_MAX_MS",
       this.options.defaults.failureBackoffMaxMs
     );
+  }
+
+  private getObservedLoadFailureBackoffMs(): number {
+    return this.options.readPositiveNumber(
+      "SUPABASE_RECOVERY_RETRY_DELAY_MS",
+      this.options.defaults.observedLoadFailureBackoffMs
+    );
+  }
+
+  private getObservedLoadFailureBackoffMaxMs(): number {
+    return this.options.readPositiveNumber(
+      "SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS",
+      this.options.defaults.observedLoadFailureBackoffMaxMs
+    );
+  }
+
+  private getLoadRetryAt(failureCount: number): number {
+    return getFailureRetryAt({
+      failureCount,
+      baseMs: this.getFailureBackoffBaseMs(),
+      maxMs: this.getFailureBackoffMaxMs(),
+      now: Date.now(),
+    });
   }
 
   isQuarantined(): boolean {
@@ -290,6 +315,18 @@ export class RoomCircuitBreaker {
     await this.storage.delete(this.retryKeyFor(kind));
   }
 
+  private async releaseLoadAttempt(loadAttempts: number): Promise<void> {
+    const remainingAttempts = loadAttempts - 1;
+    if (remainingAttempts <= 0) {
+      await this.storage.delete(STORAGE_KEYS.quarantineLoadAttempts);
+      return;
+    }
+    await this.storage.put(
+      STORAGE_KEYS.quarantineLoadAttempts,
+      remainingAttempts
+    );
+  }
+
   private async handleRepeatedFailures({
     kind,
     failureCount,
@@ -344,14 +381,16 @@ export class RoomCircuitBreaker {
    * A returned load error proves the isolate survived, so it is not evidence
    * of the vanished work this circuit breaker quarantines.
    */
-  async deferObservedLoadFailure(): Promise<void> {
-    await this.completeRiskyOperation("load");
-    const retryAt = getFailureRetryAt({
-      failureCount: 1,
-      baseMs: this.getFailureBackoffBaseMs(),
-      maxMs: this.getFailureBackoffMaxMs(),
-      now: Date.now(),
-    });
+  async deferObservedLoadFailure(loadAttempts: number): Promise<void> {
+    const guardedRetryAt = await this.getFailureRetryAfter("load");
+    await this.releaseLoadAttempt(loadAttempts);
+    const now = Date.now();
+    const firstRetryAt = now + this.getObservedLoadFailureBackoffMs();
+    const lastRetryAt = now + this.getObservedLoadFailureBackoffMaxMs();
+    const retryAt = Math.min(
+      lastRetryAt,
+      Math.max(firstRetryAt, guardedRetryAt ?? firstRetryAt)
+    );
     await this.storage.put(STORAGE_KEYS.loadRetryAfter, retryAt);
     this.loadDeferredUntil = retryAt;
   }
@@ -362,6 +401,11 @@ export class RoomCircuitBreaker {
       const retryAfter = await this.getFailureRetryAfter("load");
       if (retryAfter !== null && !isRetryDue({ retryAfter, now: Date.now() })) {
         this.loadDeferredUntil = retryAfter;
+      } else if (retryAfter !== null) {
+        await this.storage.put(
+          STORAGE_KEYS.loadRetryAfter,
+          this.getLoadRetryAt(1)
+        );
       }
       return false;
     }
@@ -384,12 +428,7 @@ export class RoomCircuitBreaker {
 
     const retryAfter = await this.getFailureRetryAfter("load");
     if (retryAfter === null) {
-      const firstRetryAt = getFailureRetryAt({
-        failureCount: previousFailures,
-        baseMs: this.getFailureBackoffBaseMs(),
-        maxMs: this.getFailureBackoffMaxMs(),
-        now: Date.now(),
-      });
+      const firstRetryAt = this.getLoadRetryAt(previousFailures);
       await this.storage.put(STORAGE_KEYS.loadRetryAfter, firstRetryAt);
       this.deferLoad(firstRetryAt, previousFailures);
       return true;
@@ -400,12 +439,7 @@ export class RoomCircuitBreaker {
       return true;
     }
 
-    const nextRetryAt = getFailureRetryAt({
-      failureCount: previousFailures + 1,
-      baseMs: this.getFailureBackoffBaseMs(),
-      maxMs: this.getFailureBackoffMaxMs(),
-      now: Date.now(),
-    });
+    const nextRetryAt = this.getLoadRetryAt(previousFailures + 1);
     await this.storage.put(STORAGE_KEYS.loadRetryAfter, nextRetryAt);
 
     console.error(
@@ -581,17 +615,6 @@ export class RoomCircuitBreaker {
     );
   }
 
-  /** Provider outages stay transient for clients while the alarm waits to retry. */
-  async getClientLoadDeferredResponse(): Promise<Response | null> {
-    if ((await this.getFailureCount("load")) === 0) {
-      const retryAfter = await this.getFailureRetryAfter("load");
-      if (retryAfter !== null && !isRetryDue({ retryAfter, now: Date.now() })) {
-        return null;
-      }
-    }
-    return this.getLoadDeferredResponse();
-  }
-
   private async attemptDeferredReload(): Promise<boolean> {
     if (this.inFlightReload) return this.inFlightReload;
 
@@ -615,12 +638,7 @@ export class RoomCircuitBreaker {
           return false;
         }
 
-        const nextRetryAt = getFailureRetryAt({
-          failureCount: previousFailures + 1,
-          baseMs: this.getFailureBackoffBaseMs(),
-          maxMs: this.getFailureBackoffMaxMs(),
-          now: Date.now(),
-        });
+        const nextRetryAt = this.getLoadRetryAt(previousFailures + 1);
         await this.storage.put(STORAGE_KEYS.loadRetryAfter, nextRetryAt);
 
         if (previousFailures === 0) {

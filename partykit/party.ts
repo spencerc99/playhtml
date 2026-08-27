@@ -40,6 +40,8 @@ import {
   DEFAULT_SUPABASE_LOAD_ATTEMPTS,
   DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
+  DEFAULT_SUPABASE_RECOVERY_RETRY_DELAY_MS,
+  DEFAULT_SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS,
   DEFAULT_DOCUMENT_SAVE_RETRY_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
@@ -262,6 +264,10 @@ export class PartyServer extends YServer {
           failureThreshold: DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
           failureBackoffMs: DEFAULT_FAILURE_BACKOFF_MS,
           failureBackoffMaxMs: DEFAULT_FAILURE_BACKOFF_MAX_MS,
+          observedLoadFailureBackoffMs:
+            DEFAULT_SUPABASE_RECOVERY_RETRY_DELAY_MS,
+          observedLoadFailureBackoffMaxMs:
+            DEFAULT_SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS,
         },
         activateTransientPersistence: (quarantine) => {
           this.persistenceMode = {
@@ -655,7 +661,9 @@ export class PartyServer extends YServer {
     );
   }
 
-  private async schedulePersistenceRecovery(): Promise<void> {
+  private async schedulePersistenceRecovery(
+    loadAttempts: number
+  ): Promise<void> {
     try {
       await this.ctx.storage.put(STORAGE_KEYS.persistenceRecoveryPending, true);
     } catch (error) {
@@ -665,7 +673,7 @@ export class PartyServer extends YServer {
     }
 
     try {
-      await this.circuitBreaker.deferObservedLoadFailure();
+      await this.circuitBreaker.deferObservedLoadFailure(loadAttempts);
       await this.scheduleNextAlarm();
     } catch (error) {
       console.error(
@@ -1027,6 +1035,22 @@ export class PartyServer extends YServer {
       : undefined;
   }
 
+  private async closeConnectionWhileLoadDeferred(
+    connection: Party.Connection
+  ): Promise<boolean> {
+    if (this.documentLoadCompleted) return false;
+    const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+    if (loadDeferred === null) return false;
+
+    const retryAfterSeconds = loadDeferred.headers.get("retry-after") ?? "1";
+    console.warn(
+      `[PartyServer] Refusing connection until document hydration recovers: room=${this.name}, ` +
+        `connectionId=${connection.id}, retryAfterSeconds=${retryAfterSeconds}`
+    );
+    connection.close(1013, "Room Loading");
+    return true;
+  }
+
   private getRoomResetMessage(resetEpoch: number): string {
     return JSON.stringify({
       type: "room-reset",
@@ -1044,11 +1068,11 @@ export class PartyServer extends YServer {
     connection.close(4000, reason);
   }
 
-  private closeConnections(reason: string): number {
+  private closeConnections(reason: string, code = 4000): number {
     const connections = [...this.getConnections()];
     connections.forEach((conn) => {
       try {
-        conn.close(4000, reason);
+        conn.close(code, reason);
       } catch (error) {
         console.error("[PartyServer] Failed to close connection:", error);
       }
@@ -1697,17 +1721,7 @@ export class PartyServer extends YServer {
   ) {
     this.setConnectionOpenedAt(connection, Date.now());
 
-    const loadDeferred =
-      await this.circuitBreaker.getClientLoadDeferredResponse();
-    if (loadDeferred) {
-      const retryAfterSeconds = loadDeferred.headers.get("retry-after") ?? "1";
-      console.warn(
-        `[PartyServer] Refusing connection to deferred room=${this.name}: ` +
-          `connectionId=${connection.id}, retryAfterSeconds=${retryAfterSeconds}`
-      );
-      connection.close(1013, "Room Load Deferred");
-      return;
-    }
+    if (await this.closeConnectionWhileLoadDeferred(connection)) return;
 
     await this.waitForEmptyRoomCompaction();
 
@@ -1789,6 +1803,8 @@ export class PartyServer extends YServer {
     connection: Party.Connection,
     message: Party.WSMessage
   ): Promise<void> {
+    if (await this.closeConnectionWhileLoadDeferred(connection)) return;
+
     const limitResult = this.checkConnectionMessageRate(connection);
     if (limitResult.violation) {
       console.warn(
@@ -1913,7 +1929,7 @@ export class PartyServer extends YServer {
   private async loadDocument(): Promise<void> {
     // Durable BEFORE the risky work: if hydration kills the isolate, this
     // increment survives and the next start counts it.
-    await this.circuitBreaker.beginRiskyOperation("load");
+    const loadAttempts = await this.circuitBreaker.beginRiskyOperation("load");
 
     // Load the document from Supabase on first connection
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
@@ -1952,7 +1968,8 @@ export class PartyServer extends YServer {
     });
 
     if (result === null) {
-      await this.schedulePersistenceRecovery();
+      await this.schedulePersistenceRecovery(loadAttempts);
+      this.closeConnections("Room Loading", 1013);
       return;
     }
 
@@ -2431,7 +2448,7 @@ export class PartyServer extends YServer {
         // from it could overwrite the real snapshot with an empty document.
         if (!isLoadControlRoute) {
           const loadDeferred =
-            await this.circuitBreaker.getClientLoadDeferredResponse();
+            await this.circuitBreaker.getLoadDeferredResponse();
           if (loadDeferred) return loadDeferred;
         }
         // Awaited so a rejection lands in this method's catch rather than
@@ -2441,7 +2458,7 @@ export class PartyServer extends YServer {
 
       // The document was never read, so there is nothing to serve.
       const loadDeferred =
-        await this.circuitBreaker.getClientLoadDeferredResponse();
+        await this.circuitBreaker.getLoadDeferredResponse();
       if (loadDeferred) return loadDeferred;
 
       if (request.method !== "POST") {

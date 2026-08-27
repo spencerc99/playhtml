@@ -46,6 +46,8 @@ const workerEnv: Record<string, unknown> = {
   QUARANTINE_CONTROL: quarantineKvStub,
   SUPABASE_LOAD_ATTEMPTS: "3",
   SUPABASE_LOAD_RETRY_DELAY_MS: "1",
+  SUPABASE_RECOVERY_RETRY_DELAY_MS: "1",
+  SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS: "5",
 };
 
 mock.module("cloudflare:workers", () => ({
@@ -635,7 +637,7 @@ describe("hydration write guards", () => {
     expect(warnings).toHaveLength(2);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toBe(
-      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=hydration timed out Entering TRANSIENT MODE: awareness may continue, shared-data writes disabled, autosave disabled, admin writes disabled."
+      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=hydration timed out Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled."
     );
     expect(logs).toEqual([
       "[PartyServer] Supabase persistence restored for room=example-room; leaving transient mode.",
@@ -700,8 +702,11 @@ describe("hydration write guards", () => {
     expect(room.isReadOnly({})).toBe(true);
   });
 
-  test("awareness messages still apply while shared-data writes are read-only", () => {
-    const { room } = createRoom();
+  test("a hibernated socket closes before its message reaches a recovering document", async () => {
+    const { room, storage } = createRoom();
+    const retryAfter = Date.now() + 5_000;
+    storage.values.set("loadRetryAfter", retryAfter);
+    room.circuitBreaker.setLoadDeferredUntil(retryAfter);
     const sourceDoc = new Y.Doc();
     const sourceAwareness = new awarenessProtocol.Awareness(sourceDoc);
     sourceAwareness.setLocalState({ online: true });
@@ -713,8 +718,10 @@ describe("hydration write guards", () => {
     encoding.writeVarUint(encoder, 1);
     encoding.writeVarUint8Array(encoder, awarenessUpdate);
     const connectionState: Record<string, unknown> = {};
+    const closes: Array<{ code: number; reason: string }> = [];
     const connection = {
       id: "awareness-client",
+      close: (code: number, reason: string) => closes.push({ code, reason }),
       send: () => {},
       state: connectionState,
       setState: (next: unknown) => {
@@ -725,21 +732,26 @@ describe("hydration write guards", () => {
       },
     };
     room.document.awareness = new awarenessProtocol.Awareness(room.document);
+    const originalWarn = console.warn;
+    console.warn = () => {};
 
-    room.handleMessage(connection, encoding.toUint8Array(encoder));
+    try {
+      await room.onMessage(connection, encoding.toUint8Array(encoder));
+    } finally {
+      console.warn = originalWarn;
+    }
 
     expect(room.isReadOnly(connection)).toBe(true);
-    expect(room.document.awareness.getStates().get(sourceDoc.clientID)).toEqual(
-      {
-        online: true,
-      }
-    );
+    expect(closes).toEqual([{ code: 1013, reason: "Room Loading" }]);
+    expect(
+      room.document.awareness.getStates().has(sourceDoc.clientID)
+    ).toBe(false);
     sourceAwareness.destroy();
     room.document.awareness.destroy();
     sourceDoc.destroy();
   });
 
-  test("Yjs document updates are rejected while awareness remains available", () => {
+  test("Yjs document updates are rejected while the room is read-only", () => {
     const { room } = createRoom();
     const sourceDoc = new Y.Doc();
     sourceDoc.getMap("play").set("danger", "must not be applied");
@@ -1082,23 +1094,44 @@ describe("load path", () => {
       setState: () => {},
       state: {},
     };
+    const originalWarn = console.warn;
+    console.warn = () => {};
 
-    await room.onConnect(connection, {
-      request: new Request("https://example.com/parties/main/example-room"),
-    });
+    try {
+      await room.onConnect(connection, {
+        request: new Request("https://example.com/parties/main/example-room"),
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
 
-    expect(closes).toEqual([{ code: 1013, reason: "Room Load Deferred" }]);
+    expect(closes).toEqual([{ code: 1013, reason: "Room Loading" }]);
   });
 
-  test("a caught provider outage does not reject transient connections", async () => {
-    const { room } = createRoom();
+  test("a new socket cannot join a document waiting for provider recovery", async () => {
+    const { room, storage } = createRoom();
+    const retryAfter = Date.now() + 5_000;
+    storage.values.set("loadRetryAfter", retryAfter);
+    room.circuitBreaker.setLoadDeferredUntil(retryAfter);
+    const closes: Array<{ code: number; reason: string }> = [];
+    const connection = {
+      id: "new-client",
+      close: (code: number, reason: string) => closes.push({ code, reason }),
+      setState: () => {},
+      state: {},
+    };
+    const originalWarn = console.warn;
+    console.warn = () => {};
 
-    await room.circuitBreaker.deferObservedLoadFailure();
+    try {
+      await room.onConnect(connection, {
+        request: new Request("https://example.com/parties/main/example-room"),
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
 
-    expect(
-      await room.circuitBreaker.getClientLoadDeferredResponse()
-    ).toBeNull();
-    expect(await room.circuitBreaker.getLoadDeferredResponse()).not.toBeNull();
+    expect(closes).toEqual([{ code: 1013, reason: "Room Loading" }]);
   });
 
   // At the deadline exactly one attempt proceeds. The next deadline is written
@@ -1543,9 +1576,57 @@ describe("hardening", () => {
     ]);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toBe(
-      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=failure 3 Entering TRANSIENT MODE: awareness may continue, shared-data writes disabled, autosave disabled, admin writes disabled."
+      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=failure 3 Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled."
     );
     expect(storage.alarm).toBe(storage.values.get("loadRetryAfter"));
+  });
+
+  test("three failed reads close clients and recover through the scheduled alarm", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const { room, storage } = createRoom();
+    const closes: Array<{ code: number; reason: string }> = [];
+    room.getConnections = () => [
+      {
+        close(code: number, reason: string) {
+          closes.push({ code, reason });
+        },
+      },
+    ];
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    const originalLog = console.log;
+    console.warn = () => {};
+    console.error = () => {};
+    console.log = () => {};
+
+    try {
+      await startRoom(room);
+
+      expect(documentReadCount).toBe(3);
+      expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
+      expect(storage.values.get("loadRetryAfter")).toBeNumber();
+      expect(storage.alarm).toBe(storage.values.get("loadRetryAfter"));
+      expect(closes).toEqual([{ code: 1013, reason: "Room Loading" }]);
+
+      storage.values.set("loadRetryAfter", Date.now() - 1);
+      room.circuitBreaker.setLoadDeferredUntil(Date.now() - 1);
+      await room.onAlarm();
+    } finally {
+      console.warn = originalWarn;
+      console.error = originalError;
+      console.log = originalLog;
+    }
+
+    expect(documentReadCount).toBe(4);
+    expect(room.isPersistenceAvailable()).toBe(true);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+    expect(storage.values.has("loadRetryAfter")).toBe(false);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
   });
 
   test("a warm transient room does not retry before its recovery deadline", async () => {
@@ -1576,6 +1657,40 @@ describe("hardening", () => {
 
     expect(documentReadCount).toBe(3);
     expect(room.isPersistenceAvailable()).toBe(false);
+  });
+
+  test("a restarted provider outage keeps guarded cadence after another failed read", async () => {
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const storage = new FakeStorage();
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+    const room = restartRoom(storage);
+    const previousRetryMax =
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS;
+    workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = "60000";
+    const before = Date.now();
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = previousRetryMax;
+    }
+
+    expect(documentReadCount).toBe(3);
+    expect(storage.values.get("loadRetryAfter")).toBeGreaterThanOrEqual(
+      before + 30_000
+    );
+    expect(storage.values.get("loadRetryAfter")).toBeLessThanOrEqual(
+      Date.now() + 60_000
+    );
+    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
   });
 
   test("successful hydration resets clients that connected during transient mode", async () => {
@@ -1763,13 +1878,31 @@ describe("hardening", () => {
     }
 
     expect(storage.values.get("loadRetryAfter")).toBeGreaterThanOrEqual(
-      before + 60_000
+      before + 5
     );
     expect(storage.values.get("loadRetryAfter")).toBeLessThanOrEqual(
-      Date.now() + 60_000
+      Date.now() + 5
     );
-    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
+    expect(storage.values.get("quarantineLoadAttempts")).toBe(7);
     expect(room.circuitBreaker.isQuarantined()).toBe(false);
+  });
+
+  test("an observed load failure preserves a guarded reload deadline", async () => {
+    const { room, storage } = createRoom();
+    const guardedRetryAt = Date.now() + 60_000;
+    storage.values.set("loadRetryAfter", guardedRetryAt);
+    const previousRetryMax =
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS;
+    workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = "60000";
+
+    try {
+      await room.circuitBreaker.deferObservedLoadFailure(1);
+    } finally {
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = previousRetryMax;
+    }
+
+    expect(storage.values.get("loadRetryAfter")).toBe(guardedRetryAt);
+    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
   });
 
   // L2: the flag is applied from the control plane and then resumed from durable

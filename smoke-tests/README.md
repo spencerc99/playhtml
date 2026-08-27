@@ -53,9 +53,10 @@ SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:stale-compaction
 # Verifies connected-room high-watermark compaction.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:emergency
 
-# Verifies awareness continues while shared-data and admin writes stay blocked
-# when Supabase startup load fails.
+# Verifies clients close with 1013 and admin writes stay blocked when Supabase
+# startup load fails.
 SUPABASE_URL=http://127.0.0.1:9 SUPABASE_KEY=bad ADMIN_TOKEN=dev \
+  PARTYKIT_BRIDGE_SECRET=dev \
   bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 \
   --var SUPABASE_LOAD_TIMEOUT_MS:100
 PARTYKIT_HOST=localhost:1999 bun smoke:partykit:transient
