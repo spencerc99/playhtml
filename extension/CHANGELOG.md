@@ -2,16 +2,10 @@
 
 ## 0.1.24 (2026-08-27)
 
-- Internet Commute now keeps riders, arrivals, and train timing in sync across browsers.
-- Slow Mode now boards the hosted Internet Commute, where up to four riders share a train while exact destinations stay in the extension.
-- Slow Mode can route deliberate far jumps through a short Internet Commute, with chance controls, cooldowns, and an always-available teleport.
-- Authentication pages no longer appear in Internet Commute or trigger Slow Mode.
-- Wikipedia always shows its shared cursors and remembered-link patina.
+- Fix a bug with Wikipedia part showing up
 - Browsing history now refreshes the current week, month, or year as new activity is recorded.
-- Setup now ends with one overview of browsing history, trails, portraits, and Wikipedia.
-- The setup welcome now includes an invitation to the community Discord.
+- Simplify setup end screen
 - Settings now brings identity, data collection, new tab, project updates, experiments, and local data controls into one page.
-- The popup now opens the settings page instead of nesting settings screens.
 
 
 ## 0.1.23 (2026-08-19)
