@@ -11,6 +11,11 @@ export const STORAGE_KEYS = {
   resetEpoch: "resetEpoch",
   // Stores a timestamp after which an empty room can compact its Y.Doc history
   emptyRoomCompactAfter: "emptyRoomCompactAfter",
+  // Requires the next successful hydration to reset clients that saw transient state
+  persistenceRecoveryPending: "persistenceRecoveryPending",
+  // Records a failed autosave retry deadline. The document itself remains the
+  // authoritative live Y.Doc and is re-encoded when the retry runs.
+  documentSaveRetry: "documentSaveRetry",
   // Stores the next time a connected large room should pay the expensive
   // compactability check
   emergencyCompactCheckAfter: "emergencyCompactCheckAfter",
@@ -111,6 +116,8 @@ export const DEFAULT_SUPABASE_LOAD_ATTEMPTS = (() => {
 export const DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS = (() => {
   return 250;
 })();
+// Save retries use a single deadline while limiting database traffic during outages.
+export const DEFAULT_DOCUMENT_SAVE_RETRY_MS = 60_000;
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 

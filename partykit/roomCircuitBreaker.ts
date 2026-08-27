@@ -46,6 +46,7 @@ type RoomCircuitBreakerOptions = {
   reloadRoom: () => Promise<boolean>;
   prepareGuardedReload: () => void;
   clearCompactionSchedule: () => Promise<void>;
+  scheduleRoomWork: () => Promise<void>;
 };
 
 export type EnterQuarantineOptions = {
@@ -154,6 +155,11 @@ export class RoomCircuitBreaker {
   async getFailureRetryAfter(kind: FailureKind): Promise<number | null> {
     const value = await this.storage.get(this.retryKeyFor(kind));
     return typeof value === "number" ? value : null;
+  }
+
+  private async requestPersistenceRecovery(): Promise<void> {
+    await this.storage.put(STORAGE_KEYS.persistenceRecoveryPending, true);
+    await this.storage.put(STORAGE_KEYS.loadRetryAfter, Date.now());
   }
 
   async getCompactionFailureCount(): Promise<number> {
@@ -284,17 +290,6 @@ export class RoomCircuitBreaker {
     await this.storage.delete(this.retryKeyFor(kind));
   }
 
-  async releaseLoadAttempt(loadAttempts: number): Promise<void> {
-    const remaining = loadAttempts - 1;
-    if (remaining <= 0) {
-      await this.completeRiskyOperation("load");
-      return;
-    }
-
-    await this.storage.put(STORAGE_KEYS.quarantineLoadAttempts, remaining);
-    await this.storage.delete(STORAGE_KEYS.loadRetryAfter);
-  }
-
   private async handleRepeatedFailures({
     kind,
     failureCount,
@@ -337,9 +332,39 @@ export class RoomCircuitBreaker {
     return { quarantined: false, retryAt };
   }
 
+  async deferFailedLoad(failureCount: number): Promise<void> {
+    const result = await this.handleRepeatedFailures({
+      kind: "load",
+      failureCount,
+    });
+    this.loadDeferredUntil = result.quarantined ? null : result.retryAt;
+  }
+
+  /**
+   * A returned load error proves the isolate survived, so it is not evidence
+   * of the vanished work this circuit breaker quarantines.
+   */
+  async deferObservedLoadFailure(): Promise<void> {
+    await this.completeRiskyOperation("load");
+    const retryAt = getFailureRetryAt({
+      failureCount: 1,
+      baseMs: this.getFailureBackoffBaseMs(),
+      maxMs: this.getFailureBackoffMaxMs(),
+      now: Date.now(),
+    });
+    await this.storage.put(STORAGE_KEYS.loadRetryAfter, retryAt);
+    this.loadDeferredUntil = retryAt;
+  }
+
   async shouldDeferLoad(): Promise<boolean> {
     const previousFailures = await this.getFailureCount("load");
-    if (previousFailures === 0) return false;
+    if (previousFailures === 0) {
+      const retryAfter = await this.getFailureRetryAfter("load");
+      if (retryAfter !== null && !isRetryDue({ retryAfter, now: Date.now() })) {
+        this.loadDeferredUntil = retryAfter;
+      }
+      return false;
+    }
 
     const failureThreshold = this.getFailureThreshold();
     if (
@@ -556,6 +581,17 @@ export class RoomCircuitBreaker {
     );
   }
 
+  /** Provider outages stay transient for clients while the alarm waits to retry. */
+  async getClientLoadDeferredResponse(): Promise<Response | null> {
+    if ((await this.getFailureCount("load")) === 0) {
+      const retryAfter = await this.getFailureRetryAfter("load");
+      if (retryAfter !== null && !isRetryDue({ retryAfter, now: Date.now() })) {
+        return null;
+      }
+    }
+    return this.getLoadDeferredResponse();
+  }
+
   private async attemptDeferredReload(): Promise<boolean> {
     if (this.inFlightReload) return this.inFlightReload;
 
@@ -563,7 +599,6 @@ export class RoomCircuitBreaker {
       try {
         const previousFailures = await this.getFailureCount("load");
         const failureThreshold = this.getFailureThreshold();
-
         if (
           shouldQuarantineForFailures({
             failureCount: previousFailures,
@@ -638,7 +673,9 @@ export class RoomCircuitBreaker {
     );
   }
 
-  async clearQuarantine(): Promise<QuarantineResetSummary> {
+  async clearQuarantine(options?: {
+    recoveryCompleted?: boolean;
+  }): Promise<QuarantineResetSummary> {
     const summary = {
       wasQuarantined: this.quarantine !== null,
       loadFailures: await this.getFailureCount("load"),
@@ -646,7 +683,8 @@ export class RoomCircuitBreaker {
       wasLoadDeferred: this.loadDeferredUntil !== null,
     };
     const needsGuardedReload =
-      summary.wasQuarantined || summary.wasLoadDeferred;
+      !options?.recoveryCompleted &&
+      (summary.wasQuarantined || summary.wasLoadDeferred);
 
     await this.writeExternalQuarantineFlag(null);
 
@@ -655,14 +693,20 @@ export class RoomCircuitBreaker {
     this.options.prepareGuardedReload();
     this.loadDeferredUntil = needsGuardedReload ? Date.now() : null;
     await this.storage.delete(STORAGE_KEYS.quarantine);
-    await this.storage.delete(STORAGE_KEYS.quarantineLoadAttempts);
+    if (needsGuardedReload) {
+      await this.requestPersistenceRecovery();
+    } else {
+      await this.storage.delete(STORAGE_KEYS.quarantineLoadAttempts);
+      await this.storage.delete(STORAGE_KEYS.loadRetryAfter);
+      await this.storage.delete(STORAGE_KEYS.persistenceRecoveryPending);
+    }
     await this.storage.delete(STORAGE_KEYS.alarmFailureAttempts);
-    await this.storage.delete(STORAGE_KEYS.loadRetryAfter);
     await this.storage.delete(STORAGE_KEYS.alarmRetryAfter);
+    await this.options.scheduleRoomWork();
     console.log(
       `[PartyServer] Quarantine cleared for room=${this.roomName}: ` +
         `wasQuarantined=${summary.wasQuarantined}, ` +
-        `loadFailuresReset=${summary.loadFailures}, ` +
+        `loadFailures=${summary.loadFailures}, ` +
         `alarmFailuresReset=${summary.alarmFailures}, ` +
         `wasLoadDeferred=${summary.wasLoadDeferred}, ` +
         `recoveryPending=${needsGuardedReload}.`
