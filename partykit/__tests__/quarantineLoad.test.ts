@@ -637,7 +637,7 @@ describe("hydration write guards", () => {
     expect(warnings).toHaveLength(2);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toBe(
-      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=hydration timed out Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled."
+      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=15000 attempts=3 reason=hydration timed out Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled."
     );
     expect(logs).toEqual([
       "[PartyServer] Supabase persistence restored for room=example-room; leaving transient mode.",
@@ -1542,7 +1542,9 @@ describe("hardening", () => {
       "[PartyServer] Supabase document load attempt 1/3 failed for room=example-room; retrying in 1ms: temporary failure",
     ]);
     expect(logs).toEqual([
-      "[PartyServer] Supabase document load recovered for room=example-room after 2 attempts.",
+      expect.stringMatching(
+        /^\[PartyServer\] Supabase document load recovered for room=example-room after 2 attempts \(attemptElapsedMs=\d+, totalElapsedMs=\d+\)\.$/
+      ),
     ]);
   });
 
@@ -1576,7 +1578,7 @@ describe("hardening", () => {
     ]);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toBe(
-      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=failure 3 Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled."
+      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=15000 attempts=3 reason=failure 3 Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled."
     );
     expect(storage.alarm).toBe(storage.values.get("loadRetryAfter"));
   });
@@ -1637,12 +1639,15 @@ describe("hardening", () => {
     ];
     const { room, storage } = createRoom();
     const originalError = console.error;
+    const previousRecoveryDelay = workerEnv.SUPABASE_RECOVERY_RETRY_DELAY_MS;
+    workerEnv.SUPABASE_RECOVERY_RETRY_DELAY_MS = "1000";
     console.error = () => {};
 
     try {
       await startRoom(room);
     } finally {
       console.error = originalError;
+      workerEnv.SUPABASE_RECOVERY_RETRY_DELAY_MS = previousRecoveryDelay;
     }
 
     const retryAfter = storage.values.get("loadRetryAfter") as number;

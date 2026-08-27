@@ -107,8 +107,9 @@ export const DEFAULT_FAILURE_BACKOFF_MS = (() => {
 export const DEFAULT_FAILURE_BACKOFF_MAX_MS = (() => {
   return 60 * 60 * 1000 * 24;
 })();
+// Explicit load failures may retry, but all attempts share one upstream deadline.
 export const DEFAULT_SUPABASE_LOAD_TIMEOUT_MS = (() => {
-  return 5000;
+  return 15_000;
 })();
 export const DEFAULT_SUPABASE_LOAD_ATTEMPTS = (() => {
   return 3;

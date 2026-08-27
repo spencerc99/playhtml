@@ -100,7 +100,7 @@ import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
   getErrorMessage,
-  retryWithTimeout,
+  retryWithinTimeout,
   type PersistenceMode,
 } from "./persistenceMode";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
@@ -1935,9 +1935,12 @@ export class PartyServer extends YServer {
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
     const attempts = this.getSupabaseLoadAttempts();
     const retryDelayMs = this.getSupabaseLoadRetryDelayMs();
+    const loadStartedAt = Date.now();
     let successfulAttempt = 1;
-    const result = await retryWithTimeout(
+    let successfulAttemptElapsedMs = 0;
+    const result = await retryWithinTimeout(
       async (signal, attempt) => {
+        const attemptStartedAt = Date.now();
         successfulAttempt = attempt;
         const queryResult = await supabase
           .from("documents")
@@ -1945,6 +1948,7 @@ export class PartyServer extends YServer {
           .eq("name", this.name)
           .abortSignal(signal)
           .maybeSingle();
+        successfulAttemptElapsedMs = Date.now() - attemptStartedAt;
         if (queryResult.error) {
           throw new Error(queryResult.error.message);
         }
@@ -1955,9 +1959,10 @@ export class PartyServer extends YServer {
         timeoutMs,
         retryDelayMs,
         errorMessage: `Supabase document load timed out after ${timeoutMs}ms`,
-        onRetry: ({ attempt, retryAfterMs, error }) => {
+        onRetry: ({ attempt, elapsedMs, retryAfterMs, error }) => {
+          const timing = elapsedMs >= 1000 ? ` after ${elapsedMs}ms` : "";
           console.warn(
-            `[PartyServer] Supabase document load attempt ${attempt}/${attempts} failed for room=${this.name}; ` +
+            `[PartyServer] Supabase document load attempt ${attempt}/${attempts} failed${timing} for room=${this.name}; ` +
               `retrying in ${retryAfterMs}ms: ${getErrorMessage(error)}`
           );
         },
@@ -1975,7 +1980,15 @@ export class PartyServer extends YServer {
 
     if (successfulAttempt > 1) {
       console.log(
-        `[PartyServer] Supabase document load recovered for room=${this.name} after ${successfulAttempt} attempts.`
+        `[PartyServer] Supabase document load recovered for room=${this.name} after ${successfulAttempt} attempts ` +
+          `(attemptElapsedMs=${successfulAttemptElapsedMs}, totalElapsedMs=${
+            Date.now() - loadStartedAt
+          }).`
+      );
+    } else if (successfulAttemptElapsedMs >= 1000) {
+      console.warn(
+        `[PartyServer] Slow Supabase document load for room=${this.name}: ` +
+          `elapsedMs=${successfulAttemptElapsedMs}, timeoutMs=${timeoutMs}.`
       );
     }
 
