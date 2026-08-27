@@ -62,6 +62,7 @@
     "release:snapshot": "bun run build-packages && changeset version --snapshot ${SNAPSHOT_TAG:-next} && bun run rewrite-workspace-deps && changeset publish --tag ${SNAPSHOT_TAG:-next} --no-git-tag && git checkout -- .changeset packages/*/package.json packages/*/CHANGELOG.md",
     "lint": "bun run check:partykit && bun run check:website && bun run check:packages && bun run check:extension && bun run check:extension-worker && bun run check:extension-website",
     "perf:extension:trace": "node scripts/trace-extension-performance.mjs",
+    "perf:extension:startup": "node scripts/measure-extension-startup.mjs",
     "perf:extension:compare": "node scripts/compare-extension-performance.mjs",
     "perf:extension:test": "node --test scripts/compare-extension-performance.test.mjs",
     "load-test": "bun tools/load-test/src/runner.ts",
