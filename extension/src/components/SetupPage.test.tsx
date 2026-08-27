@@ -97,6 +97,15 @@ describe("SetupPage", () => {
     window.history.replaceState({}, "", "/");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null)));
     vi.mocked(browser.storage.local.get).mockResolvedValue({});
+    vi.mocked(browser.tabs.getCurrent).mockResolvedValue({
+      id: 1,
+      index: 0,
+      highlighted: true,
+      active: true,
+      pinned: false,
+      incognito: false,
+    });
+    vi.mocked(browser.tabs.remove).mockResolvedValue(undefined);
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
@@ -212,7 +221,7 @@ describe("SetupPage", () => {
     }
   });
 
-  it("keeps setup open when the subscription request fails", async () => {
+  it("completes setup when the optional subscription request fails", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }));
     const { container, root } = await renderSetup();
 
@@ -223,14 +232,24 @@ describe("SetupPage", () => {
       await click(container, "Finish setup");
 
       await vi.waitFor(() => {
-        expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-          "couldn’t sign you up for updates",
+        expect(container.querySelector('[role="status"]')?.textContent).toContain(
+          "Setup is complete, but we couldn’t sign you up for updates",
         );
       });
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
+        onboarding_complete: "true",
+        newtab_takeover_enabled: true,
+      });
       expect(browser.storage.local.set).not.toHaveBeenCalledWith(
-        expect.objectContaining({ onboarding_complete: "true" }),
+        expect.objectContaining({ setup_email: "person@example.com" }),
       );
       expect(browser.tabs.remove).not.toHaveBeenCalled();
+      expect(button(container, "Close setup")).toBeDefined();
+
+      await click(container, "Close setup");
+      await vi.waitFor(() => {
+        expect(browser.tabs.remove).toHaveBeenCalledWith(1);
+      });
     } finally {
       cleanup(root, container);
     }

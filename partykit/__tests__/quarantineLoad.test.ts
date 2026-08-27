@@ -10,6 +10,8 @@ import {
   parseSharedElementsFromUrl,
   parseSharedReferencesFromUrl,
 } from "../sharing";
+import { docToJson, getDocResetEpoch, jsonToDoc } from "../docUtils";
+import { recordsFromPlay } from "../moderation";
 
 // PartyServer imports Cloudflare-only modules and constructs a Supabase client at
 // module scope. Stub both so the real class can be exercised under bun test.
@@ -44,6 +46,8 @@ const workerEnv: Record<string, unknown> = {
   QUARANTINE_CONTROL: quarantineKvStub,
   SUPABASE_LOAD_ATTEMPTS: "3",
   SUPABASE_LOAD_RETRY_DELAY_MS: "1",
+  SUPABASE_RECOVERY_RETRY_DELAY_MS: "1",
+  SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS: "5",
 };
 
 mock.module("cloudflare:workers", () => ({
@@ -58,15 +62,19 @@ type PersistedRow = { document: string | null };
 const persistedRow: PersistedRow = { document: null };
 let upsertCalls: Array<{ name: string; document: string }> = [];
 let upsertError: Error | null = null;
+let beforeUpsert: (() => Promise<void>) | null = null;
+let afterUpsert: (() => Promise<void>) | null = null;
 
 // Counts reads of the documents row. The load-backoff contract requires that a
 // deferred room never touches Supabase at all, which this makes observable.
 let documentReadCount = 0;
 let documentReadErrors: Error[] = [];
+let beforeDocumentRead: (() => Promise<void>) | null = null;
 
 function createDocumentRead() {
   const maybeSingle = async () => {
     documentReadCount += 1;
+    await beforeDocumentRead?.();
     const error = documentReadErrors.shift();
     if (error) {
       return { data: null, error: { message: error.message } };
@@ -100,10 +108,12 @@ const supabaseStub = {
       },
       async upsert(row: { name: string; document: string }) {
         upsertCalls.push(row);
+        await beforeUpsert?.();
         if (upsertError) {
           return { error: { message: upsertError.message } };
         }
         persistedRow.document = row.document;
+        await afterUpsert?.();
         return { error: null };
       },
     };
@@ -158,7 +168,10 @@ function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
     persistenceMode: { value: { kind: "available" }, writable: true },
     realtimeSyncStarted: { value: true, writable: true },
     documentLoadCompleted: { value: false, writable: true },
-    isSkippingSave: { value: false, writable: true },
+    documentMaintenanceInProgress: { value: false, writable: true },
+    documentWriteTail: { value: Promise.resolve(), writable: true },
+    documentGeneration: { value: 0, writable: true },
+    persistenceObserverAttached: { value: false, writable: true },
     lastKnownDocumentBytes: { value: 0, writable: true },
     hasWarnedDocumentSize: { value: false, writable: true },
     cachedSubscribers: { value: null, writable: true },
@@ -218,8 +231,67 @@ function encodeDoc(doc: Y.Doc): string {
   return Buffer.from(Y.encodeStateAsUpdate(doc)).toString("base64");
 }
 
+function moderationTarget(
+  play: Record<string, unknown>,
+  key: string
+): { key: string; contentHash: string } {
+  const record = recordsFromPlay(play).find(
+    (candidate) => candidate.key === key
+  );
+  if (!record) throw new Error(`No moderation record found for ${key}`);
+  return { key, contentHash: record.contentHash };
+}
+
+function adminPost(
+  room: any,
+  endpoint: string,
+  body: Record<string, unknown>
+): Promise<Response> {
+  return room.adminHandler.handleRequest(
+    new Request(
+      `https://example.com/parties/main/example-room/admin/${endpoint}`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      }
+    )
+  );
+}
+
+function buildReadyAdminRoom(play: Record<string, unknown>) {
+  const storage = new FakeStorage();
+  const room = buildRoom(storage, "example-room", jsonToDoc(play));
+  const effects = {
+    closedReasons: [] as string[],
+    broadcasts: [] as string[],
+  };
+  room.documentLoadCompleted = true;
+  room.getConnections = () => [
+    {
+      close(_code: number, reason: string) {
+        effects.closedReasons.push(reason);
+      },
+    },
+  ];
+  room.broadcastCustomMessage = (message: string) => {
+    effects.broadcasts.push(message);
+  };
+  return { room, effects };
+}
+
 function docIsEmpty(doc: Y.Doc): boolean {
   return Object.keys(doc.getMap("play").toJSON()).length === 0;
+}
+
+function createDeferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
+  let resolve = () => {};
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
 }
 
 const MB = 1024 * 1024;
@@ -238,10 +310,254 @@ beforeEach(() => {
   persistedRow.document = null;
   upsertCalls = [];
   upsertError = null;
+  beforeUpsert = null;
+  afterUpsert = null;
   documentReadCount = 0;
   documentReadErrors = [];
+  beforeDocumentRead = null;
   kvStore.clear();
   kvFailure = null;
+});
+
+describe("admin mutations use the authoritative live document", () => {
+  test("force-save-live encodes the document after acquiring the write queue", async () => {
+    const { room } = buildReadyAdminRoom({
+      "can-post": { guestbook: [{ message: "before" }] },
+    });
+    const releaseQueue = createDeferred();
+    const queueStarted = createDeferred();
+    const queuedWork = room.runDocumentWrite(async () => {
+      queueStarted.resolve();
+      await releaseQueue.promise;
+    });
+    await queueStarted.promise;
+
+    const responsePromise = room.onRequest(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/force-save-live",
+        { method: "POST" }
+      )
+    );
+    await Promise.resolve();
+    room.document.getMap("play").set("written-while-queued", "preserved");
+    releaseQueue.resolve();
+
+    await queuedWork;
+    const response = await responsePromise;
+    const savedDoc = new Y.Doc();
+    Y.applyUpdate(
+      savedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+
+    expect(response.status).toBe(200);
+    expect(savedDoc.getMap("play").get("written-while-queued")).toBe(
+      "preserved"
+    );
+  });
+
+  test("force-save-live reports when reset-epoch validation skips the save", async () => {
+    const { room } = buildReadyAdminRoom({ "can-post": { guestbook: [] } });
+    room.document.getMap("__playhtml_meta").set("resetEpoch", 1);
+    room.cachedResetEpoch = 2;
+    const originalWarn = console.warn;
+    console.warn = () => {};
+
+    let response: Response;
+    try {
+      response = await room.onRequest(
+        new Request(
+          "https://example.com/parties/main/example-room/admin/force-save-live",
+          { method: "POST" }
+        )
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(response.status).toBe(409);
+    expect(upsertCalls).toEqual([]);
+  });
+
+  test("moderation preserves unrelated live-only data and returns commit metadata", async () => {
+    const persistedPlay = {
+      "can-play": {
+        newWords: [
+          { id: "remove", word: "remove me" },
+          { id: "keep", word: "keep me" },
+        ],
+      },
+    };
+    const livePlay = {
+      ...persistedPlay,
+      "can-move": {
+        "live-only": { x: 12, y: 34 },
+      },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(persistedPlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "moderation-remove", {
+      targets: [moderationTarget(persistedPlay, "can-play.newWords#0")],
+    });
+    const body = await response.json();
+    const savedPlay = docToJson(room.document);
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      removed: 1,
+      skipped: [],
+      closedConnections: 1,
+    });
+    expect(body.documentSize).toBeNumber();
+    expect(body.resetEpoch).toBeNumber();
+    expect(savedPlay?.["can-play"].newWords).toEqual([
+      { id: "keep", word: "keep me" },
+    ]);
+    expect(savedPlay?.["can-move"]["live-only"]).toEqual({ x: 12, y: 34 });
+    expect(upsertCalls).toHaveLength(1);
+    expect(effects.closedReasons).toEqual(["Room Restored by Admin"]);
+    expect(effects.broadcasts).toHaveLength(1);
+  });
+
+  test("moderation rechecks stale hashes against live data without saving or resetting", async () => {
+    const persistedPlay = {
+      "can-post": {
+        guestbook: [{ id: "entry", message: "before review" }],
+      },
+    };
+    const livePlay = {
+      "can-post": {
+        guestbook: [{ id: "entry", message: "edited while reviewing" }],
+      },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(persistedPlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "moderation-remove", {
+      targets: [moderationTarget(persistedPlay, "can-post.guestbook#0")],
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      removed: 0,
+      skipped: [{ key: "can-post.guestbook#0", reason: "hash-mismatch" }],
+      documentSize: null,
+      resetEpoch: null,
+      closedConnections: 0,
+    });
+    expect(docToJson(room.document)).toEqual(livePlay);
+    expect(upsertCalls).toEqual([]);
+    expect(effects.closedReasons).toEqual([]);
+    expect(effects.broadcasts).toEqual([]);
+  });
+
+  test("orphan cleanup dry-run inspects live data without saving or resetting", async () => {
+    const persistedPlay = {
+      "can-move": { kept: { x: 1, y: 2 } },
+    };
+    const livePlay = {
+      "can-move": {
+        kept: { x: 1, y: 2 },
+        "live-orphan": { x: 3, y: 4 },
+      },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(persistedPlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "cleanup-orphans", {
+      tag: "can-move",
+      activeIds: ["kept"],
+      dryRun: true,
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      tag: "can-move",
+      total: 2,
+      active: 1,
+      orphaned: 1,
+      orphanedIds: ["live-orphan"],
+      dryRun: true,
+    });
+    expect(docToJson(room.document)).toEqual(livePlay);
+    expect(upsertCalls).toEqual([]);
+    expect(effects.closedReasons).toEqual([]);
+    expect(effects.broadcasts).toEqual([]);
+  });
+
+  test("orphan cleanup skips a no-op without saving or resetting", async () => {
+    const livePlay = {
+      "can-move": { kept: { x: 1, y: 2 } },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(livePlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "cleanup-orphans", {
+      tag: "can-move",
+      activeIds: ["kept"],
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      tag: "can-move",
+      total: 1,
+      active: 1,
+      removed: 0,
+      orphanedIds: [],
+      documentSize: null,
+      resetEpoch: null,
+      closedConnections: 0,
+    });
+    expect(upsertCalls).toEqual([]);
+    expect(effects.closedReasons).toEqual([]);
+    expect(effects.broadcasts).toEqual([]);
+  });
+
+  test("orphan cleanup preserves live-only data and returns commit counts", async () => {
+    const persistedPlay = {
+      "can-move": {
+        kept: { x: 1, y: 2 },
+        orphan: { x: 3, y: 4 },
+      },
+    };
+    const livePlay = {
+      ...persistedPlay,
+      "can-toggle": { "live-only": { on: true } },
+    };
+    persistedRow.document = encodeDoc(jsonToDoc(persistedPlay));
+    const { room, effects } = buildReadyAdminRoom(livePlay);
+
+    const response = await adminPost(room, "cleanup-orphans", {
+      tag: "can-move",
+      activeIds: ["kept"],
+    });
+    const body = await response.json();
+    const savedPlay = docToJson(room.document);
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      tag: "can-move",
+      total: 2,
+      active: 1,
+      removed: 1,
+      orphanedIds: ["orphan"],
+      closedConnections: 1,
+    });
+    expect(body.documentSize).toBeNumber();
+    expect(body.resetEpoch).toBeNumber();
+    expect(savedPlay?.["can-move"]).toEqual({ kept: { x: 1, y: 2 } });
+    expect(savedPlay?.["can-toggle"]["live-only"]).toEqual({ on: true });
+    expect(upsertCalls).toHaveLength(1);
+    expect(effects.closedReasons).toEqual(["Room Restored by Admin"]);
+    expect(effects.broadcasts).toHaveLength(1);
+  });
 });
 
 describe("hydration write guards", () => {
@@ -253,10 +569,10 @@ describe("hydration write guards", () => {
     room.documentLoadCompleted = true;
     expect(room.roomState()).toBe("ready");
 
-    room.isSkippingSave = true;
+    room.documentMaintenanceInProgress = true;
     expect(room.roomState()).toBe("save-paused");
 
-    room.isSkippingSave = false;
+    room.documentMaintenanceInProgress = false;
     room.persistenceMode = {
       kind: "transient",
       reason: "database unavailable",
@@ -319,9 +635,10 @@ describe("hydration write guards", () => {
     expect(room.isPersistenceAvailable()).toBe(true);
     expect(documentReadCount).toBe(3);
     expect(warnings).toHaveLength(2);
-    expect(errors).toEqual([
-      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=hydration timed out Entering TRANSIENT MODE: awareness may continue, shared-data writes disabled, autosave disabled, admin writes disabled.",
-    ]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBe(
+      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=hydration timed out Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled."
+    );
     expect(logs).toEqual([
       "[PartyServer] Supabase persistence restored for room=example-room; leaving transient mode.",
     ]);
@@ -385,8 +702,11 @@ describe("hydration write guards", () => {
     expect(room.isReadOnly({})).toBe(true);
   });
 
-  test("awareness messages still apply while shared-data writes are read-only", () => {
-    const { room } = createRoom();
+  test("a hibernated socket closes before its message reaches a recovering document", async () => {
+    const { room, storage } = createRoom();
+    const retryAfter = Date.now() + 5_000;
+    storage.values.set("loadRetryAfter", retryAfter);
+    room.circuitBreaker.setLoadDeferredUntil(retryAfter);
     const sourceDoc = new Y.Doc();
     const sourceAwareness = new awarenessProtocol.Awareness(sourceDoc);
     sourceAwareness.setLocalState({ online: true });
@@ -398,8 +718,10 @@ describe("hydration write guards", () => {
     encoding.writeVarUint(encoder, 1);
     encoding.writeVarUint8Array(encoder, awarenessUpdate);
     const connectionState: Record<string, unknown> = {};
+    const closes: Array<{ code: number; reason: string }> = [];
     const connection = {
       id: "awareness-client",
+      close: (code: number, reason: string) => closes.push({ code, reason }),
       send: () => {},
       state: connectionState,
       setState: (next: unknown) => {
@@ -410,19 +732,26 @@ describe("hydration write guards", () => {
       },
     };
     room.document.awareness = new awarenessProtocol.Awareness(room.document);
+    const originalWarn = console.warn;
+    console.warn = () => {};
 
-    room.handleMessage(connection, encoding.toUint8Array(encoder));
+    try {
+      await room.onMessage(connection, encoding.toUint8Array(encoder));
+    } finally {
+      console.warn = originalWarn;
+    }
 
     expect(room.isReadOnly(connection)).toBe(true);
-    expect(room.document.awareness.getStates().get(sourceDoc.clientID)).toEqual({
-      online: true,
-    });
+    expect(closes).toEqual([{ code: 1013, reason: "Room Loading" }]);
+    expect(
+      room.document.awareness.getStates().has(sourceDoc.clientID)
+    ).toBe(false);
     sourceAwareness.destroy();
     room.document.awareness.destroy();
     sourceDoc.destroy();
   });
 
-  test("Yjs document updates are rejected while awareness remains available", () => {
+  test("Yjs document updates are rejected while the room is read-only", () => {
     const { room } = createRoom();
     const sourceDoc = new Y.Doc();
     sourceDoc.getMap("play").set("danger", "must not be applied");
@@ -468,7 +797,7 @@ describe("hydration write guards", () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
     room.documentLoadCompleted = true;
-    room.isSkippingSave = true;
+    room.documentMaintenanceInProgress = true;
 
     const autosaveResult = await room.persistLiveDocument({
       allowCompaction: false,
@@ -558,7 +887,7 @@ describe("hydration write guards", () => {
     const { room, storage } = createRoom();
     room.getResetEpoch = async () => null;
     room.clearEmptyRoomCompactAfter = async () => {};
-    room.ensureAlarmScheduled = async () => {};
+    room.scheduleNextAlarm = async () => {};
     room.waitForEmptyRoomCompaction = async () => {};
     room.document.awareness = new awarenessProtocol.Awareness(room.document);
     const connection = {
@@ -575,8 +904,7 @@ describe("hydration write guards", () => {
         { elementId: "shared", permissions: "read-write" },
       ]),
     });
-    const requestUrl =
-      `https://example.com/parties/main/example-room?${params.toString()}`;
+    const requestUrl = `https://example.com/parties/main/example-room?${params.toString()}`;
 
     expect(parseSharedReferencesFromUrl(requestUrl)).toHaveLength(1);
     expect(parseSharedElementsFromUrl(requestUrl)).toHaveLength(1);
@@ -766,12 +1094,44 @@ describe("load path", () => {
       setState: () => {},
       state: {},
     };
+    const originalWarn = console.warn;
+    console.warn = () => {};
 
-    await room.onConnect(connection, {
-      request: new Request("https://example.com/parties/main/example-room"),
-    });
+    try {
+      await room.onConnect(connection, {
+        request: new Request("https://example.com/parties/main/example-room"),
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
 
-    expect(closes).toEqual([{ code: 1013, reason: "Room Load Deferred" }]);
+    expect(closes).toEqual([{ code: 1013, reason: "Room Loading" }]);
+  });
+
+  test("a new socket cannot join a document waiting for provider recovery", async () => {
+    const { room, storage } = createRoom();
+    const retryAfter = Date.now() + 5_000;
+    storage.values.set("loadRetryAfter", retryAfter);
+    room.circuitBreaker.setLoadDeferredUntil(retryAfter);
+    const closes: Array<{ code: number; reason: string }> = [];
+    const connection = {
+      id: "new-client",
+      close: (code: number, reason: string) => closes.push({ code, reason }),
+      setState: () => {},
+      state: {},
+    };
+    const originalWarn = console.warn;
+    console.warn = () => {};
+
+    try {
+      await room.onConnect(connection, {
+        request: new Request("https://example.com/parties/main/example-room"),
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(closes).toEqual([{ code: 1013, reason: "Room Loading" }]);
   });
 
   // At the deadline exactly one attempt proceeds. The next deadline is written
@@ -1124,6 +1484,39 @@ describe("alarm failure backoff", () => {
 });
 
 describe("hardening", () => {
+  test("transient degradation survives a recovery-marker storage failure", async () => {
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const { room, storage } = createRoom();
+    const originalPut = storage.put.bind(storage);
+    storage.put = async (key: string, value: unknown) => {
+      if (key === "persistenceRecoveryPending") {
+        throw new Error("durable storage unavailable");
+      }
+      await originalPut(key, value);
+    };
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    try {
+      await expect(startRoom(room)).resolves.toBeUndefined();
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(room.isPersistenceAvailable()).toBe(false);
+    expect(room.documentLoadCompleted).toBe(false);
+    expect(errors.some((message) => message.includes("durable storage"))).toBe(
+      true
+    );
+  });
+
   test("a temporary Supabase failure recovers before transient mode", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     documentReadErrors = [new Error("temporary failure")];
@@ -1159,7 +1552,7 @@ describe("hardening", () => {
       new Error("failure 2"),
       new Error("failure 3"),
     ];
-    const { room } = createRoom();
+    const { room, storage } = createRoom();
     const warnings: string[] = [];
     const errors: string[] = [];
     const originalWarn = console.warn;
@@ -1181,8 +1574,237 @@ describe("hardening", () => {
       "[PartyServer] Supabase document load attempt 1/3 failed for room=example-room; retrying in 1ms: failure 1",
       "[PartyServer] Supabase document load attempt 2/3 failed for room=example-room; retrying in 2ms: failure 2",
     ]);
-    expect(errors).toEqual([
-      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=failure 3 Entering TRANSIENT MODE: awareness may continue, shared-data writes disabled, autosave disabled, admin writes disabled.",
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBe(
+      "[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=example-room timeoutMs=5000 attempts=3 reason=failure 3 Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled."
+    );
+    expect(storage.alarm).toBe(storage.values.get("loadRetryAfter"));
+  });
+
+  test("three failed reads close clients and recover through the scheduled alarm", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const { room, storage } = createRoom();
+    const closes: Array<{ code: number; reason: string }> = [];
+    room.getConnections = () => [
+      {
+        close(code: number, reason: string) {
+          closes.push({ code, reason });
+        },
+      },
+    ];
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    const originalLog = console.log;
+    console.warn = () => {};
+    console.error = () => {};
+    console.log = () => {};
+
+    try {
+      await startRoom(room);
+
+      expect(documentReadCount).toBe(3);
+      expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
+      expect(storage.values.get("loadRetryAfter")).toBeNumber();
+      expect(storage.alarm).toBe(storage.values.get("loadRetryAfter"));
+      expect(closes).toEqual([{ code: 1013, reason: "Room Loading" }]);
+
+      storage.values.set("loadRetryAfter", Date.now() - 1);
+      room.circuitBreaker.setLoadDeferredUntil(Date.now() - 1);
+      await room.onAlarm();
+    } finally {
+      console.warn = originalWarn;
+      console.error = originalError;
+      console.log = originalLog;
+    }
+
+    expect(documentReadCount).toBe(4);
+    expect(room.isPersistenceAvailable()).toBe(true);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+    expect(storage.values.has("loadRetryAfter")).toBe(false);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+  });
+
+  test("a warm transient room does not retry before its recovery deadline", async () => {
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const { room, storage } = createRoom();
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+    }
+
+    const retryAfter = storage.values.get("loadRetryAfter") as number;
+    expect(retryAfter).toBeGreaterThan(Date.now());
+
+    await room.onRequest(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: JSON.stringify({ nonsense: true }),
+      })
+    );
+
+    expect(documentReadCount).toBe(3);
+    expect(room.isPersistenceAvailable()).toBe(false);
+  });
+
+  test("a restarted provider outage keeps guarded cadence after another failed read", async () => {
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const storage = new FakeStorage();
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+    const room = restartRoom(storage);
+    const previousRetryMax =
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS;
+    workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = "60000";
+    const before = Date.now();
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = previousRetryMax;
+    }
+
+    expect(documentReadCount).toBe(3);
+    expect(storage.values.get("loadRetryAfter")).toBeGreaterThanOrEqual(
+      before + 30_000
+    );
+    expect(storage.values.get("loadRetryAfter")).toBeLessThanOrEqual(
+      Date.now() + 60_000
+    );
+    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
+  });
+
+  test("successful hydration resets clients that connected during transient mode", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const storage = new FakeStorage();
+    const failedRoom = buildRoom(storage, "example-room");
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(failedRoom);
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(storage.values.get("persistenceRecoveryPending")).toBe(true);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+
+    const resetMessages: string[] = [];
+    const closeCalls: Array<{ code: number; reason: string }> = [];
+    const connection = {
+      close(code: number, reason: string) {
+        closeCalls.push({ code, reason });
+      },
+    };
+    const recoveredRoom = restartRoom(storage);
+    recoveredRoom.getConnections = () => [connection];
+    recoveredRoom.broadcastCustomMessage = (message: string) => {
+      resetMessages.push(message);
+    };
+
+    await startRoom(recoveredRoom);
+
+    const resetEpoch = await recoveredRoom.getResetEpoch();
+    expect(resetEpoch).toBeNumber();
+    expect(resetMessages).toEqual([
+      JSON.stringify({
+        type: "room-reset",
+        timestamp: resetEpoch,
+        resetEpoch,
+      }),
+    ]);
+    expect(closeCalls).toEqual([
+      { code: 4000, reason: "Room Persistence Restored" },
+    ]);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+    expect(persistedRow.document).not.toBe(SMALL_DOCUMENT);
+
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document ?? "", "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("greeting")).toBe("hello");
+    expect(persistedDoc.getMap("__playhtml_meta").get("resetEpoch")).toBe(
+      resetEpoch
+    );
+  });
+
+  test("a warm transient room retries in place and discards transient document state", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const { room, storage } = createRoom();
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+    }
+
+    room.document.getMap("play").set("transient-only", "discard me");
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+    room.circuitBreaker.setLoadDeferredUntil(Date.now() - 1);
+
+    const resetMessages: string[] = [];
+    const closeCalls: Array<{ code: number; reason: string }> = [];
+    room.getConnections = () => [
+      {
+        close(code: number, reason: string) {
+          closeCalls.push({ code, reason });
+        },
+      },
+    ];
+    room.broadcastCustomMessage = (message: string) => {
+      resetMessages.push(message);
+    };
+
+    const response = await room.onRequest(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: JSON.stringify({ nonsense: true }),
+      })
+    );
+
+    expect(response.status).not.toBe(503);
+    expect(room.isPersistenceAvailable()).toBe(true);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+    expect(room.document.getMap("play").get("transient-only")).toBeUndefined();
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+    expect(storage.values.has("loadRetryAfter")).toBe(false);
+    expect(resetMessages).toHaveLength(1);
+    expect(closeCalls).toEqual([
+      { code: 4000, reason: "Room Persistence Restored" },
     ]);
   });
 
@@ -1224,11 +1846,10 @@ describe("hardening", () => {
     expect(storage.alarm).toBeNull();
   });
 
-  // L1: the deadline is written speculatively before an attempt that may never
-  // reach hydration.
-  test("a rolled-back load attempt also rolls back its deadline", async () => {
+  test("an observed load failure clears vanish evidence before deferring", async () => {
     const { room, storage } = createRoom();
-    storage.values.set("quarantineLoadAttempts", 2);
+    const before = Date.now();
+    storage.values.set("quarantineLoadAttempts", 7);
     storage.values.set("loadRetryAfter", Date.now() - 1000);
     // Supabase is unreachable, so hydration is never attempted.
     const originalFrom = supabaseStub.from;
@@ -1247,14 +1868,41 @@ describe("hardening", () => {
       }),
     });
 
+    const originalError = console.error;
+    console.error = () => {};
     try {
       await startRoom(room);
     } finally {
+      console.error = originalError;
       (supabaseStub as any).from = originalFrom;
     }
 
-    expect(storage.values.get("loadRetryAfter")).toBeUndefined();
-    expect(storage.values.get("quarantineLoadAttempts")).toBe(2);
+    expect(storage.values.get("loadRetryAfter")).toBeGreaterThanOrEqual(
+      before + 5
+    );
+    expect(storage.values.get("loadRetryAfter")).toBeLessThanOrEqual(
+      Date.now() + 5
+    );
+    expect(storage.values.get("quarantineLoadAttempts")).toBe(7);
+    expect(room.circuitBreaker.isQuarantined()).toBe(false);
+  });
+
+  test("an observed load failure preserves a guarded reload deadline", async () => {
+    const { room, storage } = createRoom();
+    const guardedRetryAt = Date.now() + 60_000;
+    storage.values.set("loadRetryAfter", guardedRetryAt);
+    const previousRetryMax =
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS;
+    workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = "60000";
+
+    try {
+      await room.circuitBreaker.deferObservedLoadFailure(1);
+    } finally {
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = previousRetryMax;
+    }
+
+    expect(storage.values.get("loadRetryAfter")).toBe(guardedRetryAt);
+    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
   });
 
   // L2: the flag is applied from the control plane and then resumed from durable
@@ -1379,6 +2027,71 @@ describe("admin quarantine endpoints", () => {
     expect(room.circuitBreaker.getQuarantineState().detail).toBe(
       "no reason given"
     );
+  });
+
+  test("quarantine clear keeps failure evidence until authoritative recovery succeeds", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    storage.values.set("quarantineLoadAttempts", 3);
+    storage.values.set("loadRetryAfter", Date.now() + 60_000);
+    await room.circuitBreaker.enterQuarantine({
+      reason: "repeated-failures",
+      detail: "load work failed three times",
+      failureKind: "load",
+      failureCount: 3,
+    });
+
+    const response = await room.onRequest(
+      adminRequest("quarantine-clear", { method: "POST" })
+    );
+
+    expect(response.status).toBe(200);
+    expect(storage.values.get("quarantineLoadAttempts")).toBe(3);
+    expect(storage.values.get("loadRetryAfter")).toBeNumber();
+    expect(storage.values.get("persistenceRecoveryPending")).toBe(true);
+  });
+
+  test("quarantine recovery replaces live-only state and fences connected clients", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = createRoom();
+    await startRoom(room);
+    await room.circuitBreaker.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+    room.document.getMap("play").set("live-only", "discard me");
+
+    const closeCalls: Array<{ code: number; reason: string }> = [];
+    room.getConnections = () => [
+      {
+        close(code: number, reason: string) {
+          closeCalls.push({ code, reason });
+        },
+      },
+    ];
+    room.broadcastCustomMessage = () => {};
+
+    await room.onRequest(adminRequest("quarantine-clear", { method: "POST" }));
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+
+    const recovered = await room.onRequest(
+      new Request("https://example.com/parties/main/example-room", {
+        method: "POST",
+        body: JSON.stringify({ nonsense: true }),
+      })
+    );
+
+    expect(recovered.status).not.toBe(503);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+    expect(room.document.getMap("play").get("live-only")).toBeUndefined();
+    expect(closeCalls).toEqual([
+      { code: 4000, reason: "Room Persistence Restored" },
+    ]);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+    expect(storage.values.has("quarantineLoadAttempts")).toBe(false);
+    expect(storage.values.has("loadRetryAfter")).toBe(false);
   });
 
   test("restoring a document clears quarantine and compaction failure state", async () => {
@@ -1610,6 +2323,16 @@ describe("external quarantine control plane", () => {
 });
 
 describe("manual quarantine", () => {
+  test("pending recovery cannot suppress quarantine at the load threshold", async () => {
+    const { room, storage } = createRoom();
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("quarantineLoadAttempts", 8);
+
+    await room.circuitBreaker.shouldDeferLoad();
+
+    expect(room.circuitBreaker.isQuarantined()).toBe(true);
+  });
+
   test("an operator can quarantine a healthy room and clear it again", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = createRoom();
@@ -1635,7 +2358,7 @@ describe("manual quarantine", () => {
     expect(room.circuitBreaker.isQuarantined()).toBe(false);
   });
 
-  test("clearing quarantine also clears the failure history behind it", async () => {
+  test("clearing quarantine preserves load evidence until recovery", async () => {
     const { room, storage } = createRoom();
     storage.values.set("alarmFailureAttempts", 8);
     storage.values.set("quarantineLoadAttempts", 3);
@@ -1651,9 +2374,10 @@ describe("manual quarantine", () => {
     await room.circuitBreaker.clearQuarantine();
 
     expect(storage.values.get("alarmFailureAttempts")).toBeUndefined();
-    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
-    expect(storage.values.get("loadRetryAfter")).toBeUndefined();
+    expect(storage.values.get("quarantineLoadAttempts")).toBe(3);
+    expect(storage.values.get("loadRetryAfter")).toBeNumber();
     expect(storage.values.get("alarmRetryAfter")).toBeUndefined();
+    expect(storage.values.get("persistenceRecoveryPending")).toBe(true);
   });
 
   test("a quarantined room resumes quarantine on restart without hydrating", async () => {
@@ -1676,6 +2400,481 @@ describe("manual quarantine", () => {
 });
 
 describe("quarantine data safety", () => {
+  test("recovery waits for an in-flight save before reading its authoritative snapshot", async () => {
+    const initialDoc = new Y.Doc();
+    initialDoc.getMap("play").set("version", "initial");
+    persistedRow.document = encodeDoc(initialDoc);
+    const { room, storage } = createRoom();
+    await startRoom(room);
+
+    room.document.getMap("play").set("version", "saved-before-recovery");
+
+    const delayedSave = createDeferred();
+    const saveStarted = createDeferred();
+    let upsertIndex = 0;
+    beforeUpsert = async () => {
+      upsertIndex += 1;
+      if (upsertIndex === 1) {
+        saveStarted.resolve();
+        await delayedSave.promise;
+      }
+    };
+
+    const autosave = room.saveLiveDocument();
+    await saveStarted.promise;
+    const blockedSaveTail = room.documentWriteTail;
+    await room.circuitBreaker.enterQuarantine({
+      reason: "manual",
+      detail: "operator",
+      failureKind: null,
+      failureCount: 0,
+    });
+    await room.circuitBreaker.clearQuarantine();
+    documentReadCount = 0;
+    const cleanupStarted = createDeferred();
+    const continueCleanup = createDeferred();
+    const originalDelete = storage.delete.bind(storage);
+    storage.delete = async (key: string) => {
+      if (key === "persistenceRecoveryPending") {
+        cleanupStarted.resolve();
+        await continueCleanup.promise;
+      }
+      await originalDelete(key);
+    };
+
+    const recovery = room.runDocumentWrite(() => room.loadDocument());
+
+    expect(room.documentWriteTail).not.toBe(blockedSaveTail);
+    expect(documentReadCount).toBe(0);
+
+    delayedSave.resolve();
+    await autosave;
+    await cleanupStarted.promise;
+
+    expect(room.documentLoadCompleted).toBe(false);
+    expect(room.isPersistenceAvailable()).toBe(false);
+
+    continueCleanup.resolve();
+    await recovery;
+
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("version")).toBe(
+      "saved-before-recovery"
+    );
+    expect(room.document.getMap("play").get("version")).toBe(
+      "saved-before-recovery"
+    );
+  });
+
+  test("an in-flight autosave cannot finish after an authoritative restore", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    const delayedAutosave = createDeferred();
+    let upsertIndex = 0;
+    beforeUpsert = async () => {
+      upsertIndex += 1;
+      if (upsertIndex === 1) {
+        await delayedAutosave.promise;
+      }
+    };
+
+    const staleDoc = new Y.Doc();
+    staleDoc.getMap("play").set("version", "stale");
+    Y.applyUpdate(
+      room.document,
+      new Uint8Array(Buffer.from(encodeDoc(staleDoc), "base64"))
+    );
+    const restoredDoc = new Y.Doc();
+    restoredDoc.getMap("play").set("version", "restored");
+
+    const autosave = room.saveLiveDocument();
+    await Promise.resolve();
+    const restore = room.restoreFromSnapshot(encodeDoc(restoredDoc), {
+      bumpEpoch: true,
+    });
+    await Promise.resolve();
+
+    delayedAutosave.resolve();
+    await Promise.all([autosave, restore]);
+
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("version")).toBe("restored");
+    expect(upsertCalls).toHaveLength(2);
+  });
+
+  test("a save queued behind a restore encodes the restored live document", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    const restoreWrite = createDeferred();
+    const restoreWriteStarted = createDeferred();
+    beforeUpsert = async () => {
+      restoreWriteStarted.resolve();
+      await restoreWrite.promise;
+    };
+
+    const restoredDoc = new Y.Doc();
+    restoredDoc.getMap("play").set("version", "restored");
+
+    const restore = room.restoreFromSnapshot(encodeDoc(restoredDoc), {
+      bumpEpoch: true,
+    });
+    await restoreWriteStarted.promise;
+    const queuedSave = room.saveLiveDocument();
+    restoreWrite.resolve();
+
+    await Promise.all([restore, queuedSave]);
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("version")).toBe("restored");
+    expect(upsertCalls).toHaveLength(2);
+  });
+
+  test("a failed autosave schedules and completes a durable retry", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("play").set("message", "retry me");
+    upsertError = new Error("database unavailable");
+    const originalError = console.error;
+    console.error = () => {};
+
+    const before = Date.now();
+    try {
+      await room.onSave();
+    } finally {
+      console.error = originalError;
+    }
+
+    const retry = storage.values.get("documentSaveRetry") as
+      | { retryAt: number }
+      | undefined;
+    expect(retry?.retryAt).toBeGreaterThanOrEqual(before + 60_000);
+    expect(retry?.retryAt).toBeLessThanOrEqual(Date.now() + 60_000);
+    expect(storage.alarm).toBe(retry?.retryAt ?? null);
+
+    upsertError = null;
+    storage.alarm = null;
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+    await room.onAlarm();
+
+    expect(storage.values.get("documentSaveRetry")).toBeUndefined();
+    expect(persistedRow.document).not.toBeNull();
+  });
+
+  test("a successful autosave does not schedule a retry when the document changes mid-upsert", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.attachPersistenceObserver();
+    room.document.getMap("play").set("message", "before save");
+    const continueUpsert = createDeferred();
+    const upsertStarted = createDeferred();
+    beforeUpsert = async () => {
+      upsertStarted.resolve();
+      await continueUpsert.promise;
+    };
+
+    const save = room.onSave();
+    await upsertStarted.promise;
+    room.document.getMap("play").set("message", "after save started");
+    continueUpsert.resolve();
+    await save;
+
+    expect(storage.values.get("documentSaveRetry")).toBeUndefined();
+  });
+
+  test("a skipped retry consumes its due alarm instead of spinning", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("__playhtml_meta").set("resetEpoch", 1);
+    storage.values.set("resetEpoch", 2);
+    storage.values.set("documentSaveRetry", {
+      retryAt: Date.now() - 1,
+    });
+
+    await room.onAlarm();
+
+    expect(storage.values.get("documentSaveRetry")).toBeUndefined();
+    expect(upsertCalls).toEqual([]);
+  });
+
+  test("a retry that throws waits one minute before trying again", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.getResetEpoch = async () => {
+      throw new Error("durable storage unavailable");
+    };
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+
+    const before = Date.now();
+    await expect(room.onAlarm()).rejects.toThrow("durable storage unavailable");
+
+    const retry = storage.values.get("documentSaveRetry") as {
+      retryAt: number;
+    };
+    expect(retry.retryAt).toBeGreaterThanOrEqual(before + 60_000);
+    expect(retry.retryAt).toBeLessThanOrEqual(Date.now() + 60_000);
+    expect(storage.alarm).toBe(retry.retryAt);
+  });
+
+  test("autosave persists the live document when compaction fails", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("play").set("message", "keep me");
+    room.getPersistedDocumentCompactBytes = () => 1;
+    room.getPersistedDocumentCompactCheckAfter = async () => null;
+    room.maybeCompactAutosaveCandidate = async () => {
+      throw new Error("compaction failed");
+    };
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await room.onSave();
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).not.toBeNull();
+  });
+
+  test("compaction preserves a live update that arrives during validation", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    room.attachPersistenceObserver();
+    room.document.getMap("play").set("before", "present");
+    const candidate = room.buildCompactedDocument(room.document);
+    expect(candidate).not.toBeNull();
+    persistedRow.document = candidate.sourceBase64;
+
+    const validationStarted = createDeferred();
+    const continueValidation = createDeferred();
+    beforeDocumentRead = async () => {
+      validationStarted.resolve();
+      await continueValidation.promise;
+    };
+
+    const compaction = room.commitCompactedDocument({
+      compactedDocument: candidate,
+    });
+    await validationStarted.promise;
+    room.document.getMap("play").set("during-validation", "preserved");
+    continueValidation.resolve();
+
+    expect(await compaction).toBe(false);
+    expect(room.document.getMap("play").get("during-validation")).toBe(
+      "preserved"
+    );
+
+    const persistedDoc = new Y.Doc();
+    Y.applyUpdate(
+      persistedDoc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+    expect(persistedDoc.getMap("play").get("during-validation")).toBe(
+      "preserved"
+    );
+  });
+
+  test("a restart keeps the previous document when compaction did not commit", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.attachPersistenceObserver();
+    room.document.getMap("play").set("kept", "persisted");
+    const candidate = room.buildCompactedDocument(room.document);
+    expect(candidate).not.toBeNull();
+    persistedRow.document = candidate.sourceBase64;
+    const crashStorage = new FakeStorage();
+    beforeUpsert = async () => {
+      crashStorage.values = new Map(storage.values);
+      throw new Error("simulated isolate crash before database commit");
+    };
+
+    await expect(
+      room.commitCompactedDocument({ compactedDocument: candidate })
+    ).rejects.toThrow("simulated isolate crash before database commit");
+    beforeUpsert = null;
+
+    const restarted = restartRoom(crashStorage);
+    await startRoom(restarted);
+
+    expect(restarted.roomState()).toBe("ready");
+    expect(restarted.document.getMap("play").get("kept")).toBe("persisted");
+    expect(persistedRow.document).toBe(candidate.sourceBase64);
+  });
+
+  test("a restart keeps the previous document when restore did not commit", async () => {
+    const originalDocument = encodeDoc(
+      jsonToDoc({ "can-play": { guestbook: { entries: ["persisted"] } } })
+    );
+    persistedRow.document = originalDocument;
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    const crashStorage = new FakeStorage();
+    beforeUpsert = async () => {
+      crashStorage.values = new Map(storage.values);
+      throw new Error("simulated isolate crash before database commit");
+    };
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    try {
+      await expect(
+        room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true })
+      ).rejects.toThrow("Failed to save snapshot");
+    } finally {
+      console.error = originalError;
+    }
+    beforeUpsert = null;
+
+    expect(
+      errors.some((message) => message.includes("Database save failed"))
+    ).toBe(true);
+    expect(errors.some((message) => message.includes("Failed for room"))).toBe(
+      true
+    );
+
+    const restarted = restartRoom(crashStorage);
+    await startRoom(restarted);
+
+    expect(restarted.roomState()).toBe("ready");
+    expect(docToJson(restarted.document)?.["can-play"]?.guestbook).toEqual({
+      entries: ["persisted"],
+    });
+    expect(persistedRow.document).toBe(originalDocument);
+  });
+
+  test("a restart converges after restore commits before the live document changes", async () => {
+    const originalDocument = encodeDoc(
+      jsonToDoc({ "can-play": { guestbook: { entries: ["before"] } } })
+    );
+    const replacementDocument = encodeDoc(
+      jsonToDoc({ "can-play": { guestbook: { entries: ["after"] } } })
+    );
+    persistedRow.document = originalDocument;
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    const crashStorage = new FakeStorage();
+    afterUpsert = async () => {
+      crashStorage.values = new Map(storage.values);
+      throw new Error("simulated isolate crash after database commit");
+    };
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    try {
+      await expect(
+        room.restoreFromSnapshot(replacementDocument, { bumpEpoch: true })
+      ).rejects.toThrow("Failed to save snapshot");
+    } finally {
+      console.error = originalError;
+      afterUpsert = null;
+    }
+
+    const restarted = restartRoom(crashStorage);
+    await startRoom(restarted);
+
+    expect(docToJson(restarted.document)?.["can-play"]?.guestbook).toEqual({
+      entries: ["after"],
+    });
+    expect(await restarted.getResetEpoch()).toBe(
+      getDocResetEpoch(restarted.document)
+    );
+    expect(errors.some((message) => message.includes("after database"))).toBe(
+      true
+    );
+  });
+
+  test("a restart converges after compaction commits before the live document changes", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.attachPersistenceObserver();
+    room.document.getMap("play").set("kept", "after compaction");
+    const candidate = room.buildCompactedDocument(room.document);
+    expect(candidate).not.toBeNull();
+    persistedRow.document = candidate.sourceBase64;
+    const crashStorage = new FakeStorage();
+    afterUpsert = async () => {
+      crashStorage.values = new Map(storage.values);
+      throw new Error("simulated isolate crash after database commit");
+    };
+
+    await expect(
+      room.commitCompactedDocument({ compactedDocument: candidate })
+    ).rejects.toThrow("simulated isolate crash after database commit");
+    afterUpsert = null;
+
+    const restarted = restartRoom(crashStorage);
+    await startRoom(restarted);
+
+    expect(restarted.document.getMap("play").get("kept")).toBe(
+      "after compaction"
+    );
+    expect(await restarted.getResetEpoch()).toBe(
+      getDocResetEpoch(restarted.document)
+    );
+  });
+
+  test("post-compaction cleanup failure does not reopen the committed write", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    room.attachPersistenceObserver();
+    room.document.getMap("play").set("kept", "value");
+    const candidate = room.buildCompactedDocument(room.document);
+    expect(candidate).not.toBeNull();
+    persistedRow.document = candidate.sourceBase64;
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await expect(
+        room.commitCompactedDocument({
+          compactedDocument: candidate,
+          afterReplace: async () => {
+            throw new Error("cleanup unavailable");
+          },
+        })
+      ).resolves.toBe(true);
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).toBe(candidate.base64);
+  });
+
+  test("an unavailable room consumes an expired save retry", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.persistenceMode = {
+      kind: "transient",
+      reason: "database unavailable",
+      failedAt: Date.now(),
+    };
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+
+    await room.onAlarm();
+
+    expect(storage.values.has("documentSaveRetry")).toBe(false);
+    expect(upsertCalls).toEqual([]);
+  });
+
   test("force-save-live cannot bypass quarantine protection", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
@@ -1725,9 +2924,7 @@ describe("quarantine data safety", () => {
       failureCount: 0,
     });
 
-    await expect(room.saveDocumentBase64("overwrite-me")).rejects.toThrow(
-      /Refusing to persist document for quarantined room/
-    );
+    await expect(room.saveLiveDocument()).resolves.toBe(false);
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
   });
 
@@ -1735,9 +2932,7 @@ describe("quarantine data safety", () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
 
-    await expect(room.saveDocumentBase64("overwrite-me")).rejects.toThrow(
-      /Cannot persist document while room state is loading/
-    );
+    await expect(room.saveLiveDocument()).resolves.toBe(false);
     expect(upsertCalls).toEqual([]);
     expect(persistedRow.document).toBe(SMALL_DOCUMENT);
   });
@@ -1748,7 +2943,7 @@ describe("quarantine data safety", () => {
 
     await room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true });
 
-    expect(room.isSkippingSave).toBe(false);
+    expect(room.documentMaintenanceInProgress).toBe(false);
   });
 
   test("snapshot restore releases the save lock when persistence fails", async () => {
@@ -1766,7 +2961,66 @@ describe("quarantine data safety", () => {
       console.error = originalError;
     }
 
-    expect(room.isSkippingSave).toBe(false);
+    expect(room.documentMaintenanceInProgress).toBe(false);
+  });
+
+  test("snapshot restore keeps saves blocked when epoch storage fails after commit", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("play").set("greeting", "stale live value");
+    const originalPut = storage.put.bind(storage);
+    let epochStorageAvailable = false;
+    storage.put = async (key: string, value: unknown) => {
+      if (key === "resetEpoch" && !epochStorageAvailable) {
+        throw new Error("epoch storage unavailable");
+      }
+      await originalPut(key, value);
+    };
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    try {
+      await expect(
+        room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true })
+      ).rejects.toThrow("epoch storage unavailable");
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(
+      errors.some((line) => line.includes("epoch storage unavailable"))
+    ).toBe(true);
+    expect(upsertCalls).toHaveLength(1);
+    const committedDocument = persistedRow.document;
+    expect(room.documentMaintenanceInProgress).toBe(true);
+
+    await room.onSave();
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).toBe(committedDocument);
+
+    upsertError = new Error("retry database unavailable");
+    console.error = () => {};
+    try {
+      await expect(
+        room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true })
+      ).rejects.toThrow("retry database unavailable");
+    } finally {
+      console.error = originalError;
+      upsertError = null;
+    }
+
+    expect(room.documentMaintenanceInProgress).toBe(true);
+    expect(persistedRow.document).toBe(committedDocument);
+
+    epochStorageAvailable = true;
+    await room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true });
+
+    expect(room.documentMaintenanceInProgress).toBe(false);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
   });
 
   test("a hard reset refuses to run while quarantined", async () => {
@@ -1805,7 +3059,7 @@ describe("quarantine data safety", () => {
     });
     expect(upsertCalls).toHaveLength(1);
     expect(persistedRow.document).not.toBe(COMPACT_LETHAL_DOCUMENT);
-    expect(room.isSkippingSave).toBe(false);
+    expect(room.documentMaintenanceInProgress).toBe(false);
   });
 
   test("a hard reset releases the save lock when persistence fails", async () => {
@@ -1828,7 +3082,7 @@ describe("quarantine data safety", () => {
       console.error = originalError;
     }
 
-    expect(room.isSkippingSave).toBe(false);
+    expect(room.documentMaintenanceInProgress).toBe(false);
   });
 
   test("loading a committed reset repairs a stale server epoch", async () => {

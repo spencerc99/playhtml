@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "setup": "bun install --frozen-lockfile && bun run build-packages && bun run doctor",
+    "setup:agent": "bun run setup && bunx playwright install --with-deps chromium",
     "doctor": "node scripts/check-workspace-readiness.mjs",
     "test:doctor": "node --test scripts/check-workspace-readiness.test.mjs",
     "dev": "vite --config vite.config.site.mts",
@@ -68,7 +69,9 @@
     "load-test": "bun tools/load-test/src/runner.ts",
     "load-test:full": "bun tools/load-test/src/runner.ts --config full-suite",
     "smoke": "cd smoke-tests && bun run test",
+    "smoke:extension": "VITE_WORKER_URL=http://127.0.0.1:18787 bun run --cwd extension build -- --mode development && node smoke-tests/extension-smoke.mjs",
     "smoke:partykit": "cd smoke-tests && bun run test:partykit",
+    "smoke:partykit:bridge": "cd smoke-tests && bun run test:partykit:bridge",
     "smoke:partykit:limits": "cd smoke-tests && bun run test:partykit:limits",
     "smoke:partykit:hibernation": "cd smoke-tests && bun run test:partykit:hibernation",
     "smoke:partykit:compaction": "cd smoke-tests && bun run test:partykit:compaction",

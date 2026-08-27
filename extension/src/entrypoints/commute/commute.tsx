@@ -59,7 +59,6 @@ import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import {
   CommuteMobileControls,
   keepCommuteCursorInCar,
-  type CommuteMobileAction,
 } from "./CommuteMobileControls";
 import { CommuteStage } from "./CommuteStage";
 import { CommuteStationPoster } from "./CommuteStationPoster";
@@ -75,7 +74,6 @@ import {
   getCommuteRiderStart,
   getSharedCommutePosition,
   getStandingPosition,
-  isNearCommuteDoor,
   moveCommuteAvatar,
   moveCommuteAvatarToward,
   shouldExitCommuteThroughDoor,
@@ -791,7 +789,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const clickDestination = useRef<CommutePoint | null>(null);
     const pendingSeatId = useRef<number | null>(null);
     const pressedKeys = useRef(new Set<string>());
-    const mobileActionRef = useRef<CommuteMobileAction | null>(null);
     const exitPending = useRef(false);
     const portalTimer = useRef<number | undefined>(undefined);
     const exitTrainRef = useRef<(navigateCurrentTab?: boolean) => void>(
@@ -1013,9 +1010,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       mobileBoarded && mySeatId === null
         ? findNearbyCommuteSeat(avatarPosition, SEATS, occupiedSeatIds)
         : null;
-    const nearDoor =
-      mobileBoarded && isNearCommuteDoor(avatarPosition, DOOR_GEOMETRY);
-
     useEffect(() => {
       onSeatStateChange(mySeatId !== null);
     }, [mySeatId, onSeatStateChange]);
@@ -1130,38 +1124,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       }, 2_000);
     };
 
-    const standUp = () => {
-      if (mySeatId === null) return;
-      pendingSeatId.current = null;
-      clickDestination.current = null;
-      const seat = SEATS.find((candidate) => candidate.id === mySeatId);
-      publishPosition(null, avatarPositionRef.current);
-      setAvatarWalking(false);
-      if (seat) updateAvatarPosition(getStandingPosition(seat));
-    };
-
-    let mobileAction: CommuteMobileAction | null = null;
-    if (mySeatId !== null) {
-      mobileAction = {
-        label: "stand up",
-        tone: "stand",
-        onSelect: standUp,
-      };
-    } else if (nearDoor && props.phase === "stopped" && !props.atOrigin) {
-      mobileAction = {
-        label: `step off at ${props.currentStop.domain}`,
-        tone: "exit",
-        onSelect: () => exitTrain(true),
-      };
-    } else if (nearbySeat) {
-      mobileAction = {
-        label: "sit down",
-        tone: "sit",
-        onSelect: () => chooseSeat(nearbySeat.id),
-      };
-    }
-    mobileActionRef.current = mobileAction;
-
     const updateMovement = useCallback((vector: CommutePoint) => {
       movementVector.current = vector;
     }, []);
@@ -1189,13 +1151,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           }
           event.preventDefault();
           return;
-        }
-        if (
-          event.type === "keydown" &&
-          (event.key === "Enter" || event.key === " ")
-        ) {
-          mobileActionRef.current?.onSelect();
-          event.preventDefault();
         }
       };
 
@@ -1439,7 +1394,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         )}
         {createPortal(
           <CommuteMobileControls
-            action={mobileAction}
             boarded={mobileBoarded}
             onBoard={() => {
               pendingSeatId.current = null;

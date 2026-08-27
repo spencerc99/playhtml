@@ -40,8 +40,6 @@ export interface FarJumpNavigation {
   destinationUrl: string;
   transitionType: string;
   transitionQualifiers: string[];
-  formInProgress?: boolean;
-  openedByAnotherApp?: boolean;
 }
 
 export type SlowModeDecisionReason =
@@ -193,7 +191,6 @@ export function dayKey(timestamp: number): string {
 }
 
 export function isFarJump(navigation: FarJumpNavigation): boolean {
-  if (navigation.formInProgress || navigation.openedByAnotherApp) return false;
   if (NEVER_TRANSITIONS.has(navigation.transitionType)) return false;
   if (navigation.transitionQualifiers.includes("forward_back")) return false;
 

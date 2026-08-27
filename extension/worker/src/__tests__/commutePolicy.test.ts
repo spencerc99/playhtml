@@ -1318,7 +1318,7 @@ describe('buildCommuteResponse', () => {
         ),
         event(
           'recent-two',
-          'cursor',
+          'keyboard',
           'https://private.example/two',
           900_000,
           'person-two',
