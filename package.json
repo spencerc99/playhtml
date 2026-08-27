@@ -55,7 +55,7 @@
     "check:extension-worker": "bunx tsc -p extension/worker",
     "check:extension-website": "bunx tsc -p extension/website",
     "check:docs": "bun run --cwd apps/docs build",
-    "smoke:extension-worker": "bun run --cwd extension/worker wrangler deploy --config wrangler.toml --dry-run --outdir .wrangler/smoke",
+    "smoke:extension-worker": "bunx wrangler deploy --config extension/worker/wrangler.toml --dry-run --outdir extension/worker/.wrangler/smoke",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "rewrite-workspace-deps": "bun run scripts/rewrite-workspace-deps.ts",
