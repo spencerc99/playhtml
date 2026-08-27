@@ -6,7 +6,10 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 
+const platform = vi.hoisted(() => ({ isFirefox: false }));
+
 vi.mock("../utils/extensionPage", () => ({
+  isFirefoxExtensionPageUrl: () => platform.isFirefox,
   isSafariExtensionPageUrl: vi.fn(() => false),
 }));
 vi.mock("../storage/playerIdentity", () => ({
@@ -28,6 +31,7 @@ class ResizeObserverStub {
 }
 
 beforeEach(() => {
+  platform.isFirefox = false;
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
   vi.mocked(browser.storage.local.set).mockReset();
   vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
@@ -113,6 +117,25 @@ it("records declining the new tab takeover on Finish", async () => {
   await finish(container);
   expect(browser.storage.local.set).toHaveBeenCalledWith(
     expect.objectContaining({ newtab_takeover_enabled: false }),
+  );
+
+  act(() => root.unmount());
+  container.remove();
+});
+
+it("defers the Firefox new tab choice to Firefox", async () => {
+  platform.isFirefox = true;
+  const { container, root } = await renderCompletionStep();
+
+  expect(container.textContent).toContain(
+    "Firefox will ask you to confirm the new tab page",
+  );
+  expect(container.textContent).not.toContain("make this my new tab");
+  expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+
+  await finish(container);
+  expect(browser.storage.local.set).toHaveBeenCalledWith(
+    expect.objectContaining({ newtab_takeover_enabled: true }),
   );
 
   act(() => root.unmount());

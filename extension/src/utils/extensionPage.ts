@@ -22,3 +22,11 @@ export function isSafariExtensionPageUrl(url: string): boolean {
     return false;
   }
 }
+
+export function isFirefoxExtensionPageUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === "moz-extension:";
+  } catch {
+    return false;
+  }
+}

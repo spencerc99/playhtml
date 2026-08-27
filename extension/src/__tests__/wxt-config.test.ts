@@ -57,10 +57,14 @@ describe("WXT manifest", () => {
     });
   });
 
-  it("leaves the browser's own new tab page in place", async () => {
-    const manifest = await manifestFor("chrome");
+  it("uses the native history new tab only in Firefox", async () => {
+    const chromeManifest = await manifestFor("chrome");
+    const firefoxManifest = await manifestFor("firefox");
 
-    expect(manifest.chrome_url_overrides).toBeUndefined();
+    expect(chromeManifest.chrome_url_overrides).toBeUndefined();
+    expect(firefoxManifest.chrome_url_overrides).toEqual({
+      newtab: "walking-record.html",
+    });
   });
 
   it("removes unsupported idle and options tab settings in Safari", async () => {
