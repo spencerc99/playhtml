@@ -95,9 +95,6 @@ export default defineContentScript({
             domain: window.location.hostname,
           });
 
-          // Check if page already has PlayHTML
-          this.detectExistingPlayHTML();
-
           // Initialize extension features
           this.setupElementPicker();
           this.setupPresenceDetection();
@@ -114,19 +111,6 @@ export default defineContentScript({
         } catch (error) {
           console.error("Failed to initialize PlayHTML Extension:", error);
         }
-      }
-
-      private detectExistingPlayHTML() {
-        // Look for existing PlayHTML elements
-        const existingElements = document.querySelectorAll(
-          "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]",
-        );
-
-        if (existingElements.length > 0) {
-          // TODO: Coordinate with existing PlayHTML instance
-        }
-
-        return existingElements.length;
       }
 
       public checkPlayHTMLStatus() {
