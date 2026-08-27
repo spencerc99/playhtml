@@ -33,7 +33,6 @@ export function createSlowModeNavigationHandler(
   dependencies: SlowModeNavigationDependencies,
 ) {
   const tabUrls = new Map<number, string>();
-  const formsInProgress = new Set<number>();
   let navigationQueue = Promise.resolve();
 
   return {
@@ -47,12 +46,6 @@ export function createSlowModeNavigationHandler(
 
     forgetTab(tabId: number): void {
       tabUrls.delete(tabId);
-      formsInProgress.delete(tabId);
-    },
-
-    setFormInProgress(tabId: number, inProgress: boolean): void {
-      if (inProgress) formsInProgress.add(tabId);
-      else formsInProgress.delete(tabId);
     },
 
     async onCommitted(details: CommittedNavigation): Promise<void> {
@@ -65,9 +58,7 @@ export function createSlowModeNavigationHandler(
         destinationUrl: details.url,
         transitionType: details.transitionType,
         transitionQualifiers: details.transitionQualifiers ?? [],
-        formInProgress: formsInProgress.has(details.tabId),
       };
-      formsInProgress.delete(details.tabId);
 
       const previousNavigation = navigationQueue;
       let releaseNavigation: (() => void) | undefined;
@@ -133,9 +124,7 @@ interface BrowserWithWebNavigation {
   };
 }
 
-export function initSlowModeInterception(): {
-  setFormInProgress: (tabId: number, inProgress: boolean) => void;
-} {
+export function initSlowModeInterception(): void {
   const handler = createSlowModeNavigationHandler({
     getStorage: () =>
       browser.storage.local.get([
@@ -180,5 +169,4 @@ export function initSlowModeInterception(): {
   });
   tabsApi.onRemoved?.addListener((tabId) => handler.forgetTab(tabId));
 
-  return { setFormInProgress: handler.setFormInProgress };
 }

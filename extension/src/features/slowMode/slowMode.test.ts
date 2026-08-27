@@ -110,17 +110,6 @@ describe("isFarJump", () => {
     ).toBe(false);
   });
 
-  it("rejects navigation while a form is in progress", () => {
-    expect(
-      isFarJump({
-        previousUrl: "https://garden.example/notes",
-        destinationUrl: "https://museum.example/exhibit",
-        transitionType: "typed",
-        transitionQualifiers: [],
-        formInProgress: true,
-      }),
-    ).toBe(false);
-  });
 });
 
 describe("Slow Mode consent gates", () => {
