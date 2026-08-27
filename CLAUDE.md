@@ -58,9 +58,9 @@ The extension and PartyKit use one Supabase project with different tables. All n
 
 ### Extension Performance
 
-- `bun run perf:extension:trace -- --extension local:extension/dist/chrome-mv3`: Trace a built extension locally. Build packages and the extension first.
-- `bun run perf:extension:compare -- --summary <summary.json>`: Compare trace summaries and write reports.
-- For extension changes that touch collectors, storage, content-script observers, or page-wide work, check the `Extension Performance Report` workflow or run a local trace before merge. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate. The workflow is report-only unless `--fail-on-regression` is passed locally.
+- The `Extension Performance Report` workflow runs extension performance traces in CI.
+- Do not run `perf:extension:trace` during local agent work. It launches headed Chrome windows that interrupt the user's desktop. Check the CI workflow result instead.
+- Run a local trace only when Spencer explicitly requests one. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate.
 
 ## Papercuts
 
