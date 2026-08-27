@@ -11,6 +11,8 @@ export const SLOW_MODE_HOSTED_REQUEST = "request-ride";
 export const SLOW_MODE_HOSTED_RESPONSE = "ride-response";
 export const SLOW_MODE_HOSTED_OUTCOME = "ride-outcome";
 
+const SLOW_MODE_HOSTED_REQUEST_RETRY_MS = 250;
+
 export interface HostedSlowModeRide {
   rideId: string;
   destinationDomain: string;
@@ -95,11 +97,19 @@ export function requestHostedSlowModeRide(
   timeoutMs = 1_000,
 ): Promise<HostedSlowModeRide | null> {
   const requestId = crypto.randomUUID();
+  const request = {
+    source: SLOW_MODE_HOSTED_BRIDGE_SOURCE,
+    type: SLOW_MODE_HOSTED_REQUEST,
+    requestId,
+    rideId,
+  } satisfies HostedSlowModeRequestMessage;
   return new Promise((resolve) => {
-    const timer = window.setTimeout(() => {
+    const finish = (ride: HostedSlowModeRide | null) => {
+      window.clearInterval(retryTimer);
+      window.clearTimeout(timeoutTimer);
       window.removeEventListener("message", receiveResponse);
-      resolve(null);
-    }, timeoutMs);
+      resolve(ride);
+    };
     const receiveResponse = (event: MessageEvent) => {
       if (event.source !== window) return;
       const message = event.data as Partial<HostedSlowModeResponseMessage>;
@@ -110,20 +120,18 @@ export function requestHostedSlowModeRide(
       ) {
         return;
       }
-      window.clearTimeout(timer);
-      window.removeEventListener("message", receiveResponse);
-      resolve(message.ride ?? null);
+      finish(message.ride ?? null);
     };
-    window.addEventListener("message", receiveResponse);
-    window.postMessage(
-      {
-        source: SLOW_MODE_HOSTED_BRIDGE_SOURCE,
-        type: SLOW_MODE_HOSTED_REQUEST,
-        requestId,
-        rideId,
-      } satisfies HostedSlowModeRequestMessage,
-      window.location.origin,
+    const sendRequest = () => {
+      window.postMessage(request, window.location.origin);
+    };
+    const retryTimer = window.setInterval(
+      sendRequest,
+      SLOW_MODE_HOSTED_REQUEST_RETRY_MS,
     );
+    const timeoutTimer = window.setTimeout(() => finish(null), timeoutMs);
+    window.addEventListener("message", receiveResponse);
+    sendRequest();
   });
 }
 
