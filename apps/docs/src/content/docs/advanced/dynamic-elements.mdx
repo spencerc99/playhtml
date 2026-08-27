@@ -46,7 +46,7 @@ document.body.appendChild(note);
 
 playhtml.register(note, {
   defaultData: { text: "" },
-  updateElement: ({ element, data }) => {
+  update: ({ element, data }) => {
     element.textContent = data.text;
   },
 });

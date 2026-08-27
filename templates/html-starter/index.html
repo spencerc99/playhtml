@@ -238,11 +238,13 @@
       // from the @click handler in the template. `register` works before or
       // after init(), and accepts an element or its id. The view renderer is
       // experimental; registration is a supported API for both view and
-      // imperative updateElement renderers.
+      // imperative update renderers.
       playhtml.register("reactionBtn", {
         defaultData: { count: 0 },
-        view: ({ data, setData }) => {
+        live: { hovering: false },
+        view: ({ data, users, setData, setLive }) => {
           const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
+          const peopleHovering = users.filter(({ live }) => live.hovering).length;
           const react = () => {
             if (localStorage.getItem("reacted-reaction")) {
               setData((d) => { d.count -= 1; });
@@ -257,8 +259,10 @@
               class="reaction ${hasReacted ? "reacted" : ""}"
               style="font-size: 24px; padding: 10px 20px; margin: 10px 0;"
               @click=${react}
+              @pointerenter=${() => setLive({ hovering: true })}
+              @pointerleave=${() => setLive({ hovering: false })}
             >
-              💖 ${data.count}
+              💖 ${data.count} · ${peopleHovering} here
             </button>
           `;
         },

@@ -139,7 +139,7 @@ setData((draft) => {
 
 ## Reactive callbacks
 
-The riskiest conflict is a callback that reads shared data, writes shared data, and re-runs when that same data changes. React effects, subscriptions, and vanilla `updateElement` callbacks can all do this.
+The riskiest conflict is a callback that reads shared data, writes shared data, and re-runs when that same data changes. React effects, subscriptions, and vanilla `update` callbacks can all do this.
 
 ```tsx
 useEffect(() => {
