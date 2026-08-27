@@ -6,13 +6,14 @@
 
 <!-- List the exact tests, checks, builds, and browser verification performed. -->
 
-## Extension feature integration
+## Extension feature real-browser verification
 
 <!-- Delete this section when the PR does not add a new extension feature. -->
 
-- Automated integration test command:
+- Automation or harness used (temporary or committed):
+- Browser and build tested:
 - Runtime boundaries exercised:
 - Failure-prone lifecycle exercised:
 - Final observable outcome asserted:
 
-Manual browser verification, screenshots, unit tests, component tests, mocked browser APIs, and the generic extension shell smoke do not replace this feature-level integration test.
+The verification must automate the complete feature flow in a real browser. The harness does not need to be committed. Screenshots, unit tests, component tests, mocked browser APIs, the generic extension shell smoke, and an unstructured manual pass do not replace this verification.

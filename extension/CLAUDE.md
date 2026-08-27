@@ -321,9 +321,9 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 - **Test files:** CursorCollector, NavigationCollector, ViewportCollector, collectors integration
 - **Test utils:** `src/__tests__/test-utils.ts`
 
-### New feature integration requirement
+### Real-browser feature verification requirement
 
-Every new extension feature must add an automated feature-level integration test in the same PR and run it in required CI. Start from the user entrypoint and assert the final user-visible or externally observable outcome.
+Before merging any new extension feature, Codex must automate the complete feature flow in a real browser. Start from the real user entrypoint and assert the final user-visible or externally observable outcome. The automation may be a temporary verification harness or a committed test. The PR does not need to include the harness.
 
 Use the real runtime boundaries the feature depends on:
 
@@ -333,9 +333,9 @@ Use the real runtime boundaries the feature depends on:
 - Exercise relevant lifecycle ordering, such as a cold start, cached page, reload, delayed content-script or service-worker readiness, reconnect, or upgrade from the currently released extension.
 - Assert privacy and failure behavior when the feature crosses a trust boundary.
 
-Unit and component tests still cover isolated logic. The generic extension smoke only proves that the extension shell starts, a content script responds, and the popup renders. Neither that smoke, mocked browser APIs, screenshots, nor a manual browser pass replaces the feature integration test.
+Unit and component tests still cover isolated logic. The generic extension smoke only proves that the extension shell starts, a content script responds, and the popup renders. Neither that smoke, mocked browser APIs, screenshots, nor an unstructured manual pass replaces automated verification of the complete feature flow.
 
-Give each feature integration test a dedicated command such as `smoke:<feature>` or include it in a clearly named feature suite. The PR description must name the command, runtime boundaries, lifecycle case, and result. If the feature cannot be tested reliably through automation, stop and tell Spencer before opening or merging the PR.
+The PR description and handoff must name the automation or harness, browser and build tested, runtime boundaries, lifecycle case, and result. If the feature cannot be tested reliably through real-browser automation, stop and tell Spencer before opening or merging the PR.
 
 ## Key Design Patterns
 
