@@ -1,0 +1,90 @@
+# ABOUTME: Deploys the extension API Worker after relevant changes reach main.
+# ABOUTME: Rebuilds workspace contracts and verifies the live boarding endpoint.
+
+name: Extension Worker Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/extension-worker-deploy.yml"
+      - "extension/worker/**"
+      - "packages/extension-types/**"
+      - "bun.lock"
+      - "package.json"
+  workflow_dispatch:
+
+concurrency:
+  group: extension-worker-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy extension Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build extension contracts
+        run: bun run --cwd packages/extension-types build
+
+      - name: Check extension Worker
+        run: bun run check:extension-worker
+
+      - name: Test extension Worker
+        run: bun run test:extension-worker
+
+      - name: Bundle extension Worker
+        run: bun run smoke:extension-worker
+
+      - name: Deploy extension Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: bun
+          command: deploy --config extension/worker/wrangler.toml
+
+      - name: Verify production boarding
+        env:
+          BOARDING_URL: https://playhtml-game-api.spencerc99.workers.dev/commute/trains/board
+        run: |
+          headers="$(mktemp)"
+          trap 'rm -f "$headers"' EXIT
+          rider_token="github_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          response="$(curl --fail-with-body --silent --show-error \
+            --dump-header "$headers" \
+            --header "Origin: https://wewere.online" \
+            --header "Content-Type: application/json" \
+            --data "{\"riderToken\":\"$rider_token\",\"requestedStop\":{\"kind\":\"none\"}}" \
+            "$BOARDING_URL")"
+
+          if ! awk 'BEGIN { IGNORECASE = 1 } /^access-control-allow-origin: \*/ { found = 1 } END { exit !found }' "$headers"; then
+            echo "Production boarding response is missing the expected CORS header"
+            exit 1
+          fi
+
+          if ! jq -e '
+            type == "object" and
+            (.trainId | type == "string" and length > 0) and
+            (.capacity | type == "number" and . > 0) and
+            (.riderCount | type == "number" and . > 0) and
+            (.stops | type == "array" and length > 0)
+          ' <<<"$response" > /dev/null; then
+            echo "Production boarding response does not match the train assignment contract"
+            exit 1
+          fi
