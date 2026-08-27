@@ -11,7 +11,7 @@ playhtml makes HTML elements collaborative and real-time via Yjs CRDTs.
 
 If the user's request is ambiguous on ANY of these, **stop and ask**:
 
-1. **Persistence**: Should data survive page refresh? (defaultData=yes, awareness=no)
+1. **Persistence**: Should data survive page refresh? (`defaultData`=yes, `live`=no)
 2. **Shared vs per-user**: Should all users see the same state, or does each user have their own?
 3. **Vanilla HTML or React?**
 
@@ -22,7 +22,7 @@ These determine which API and data type to use. Getting them wrong means a rewri
 | Type | Persists? | Syncs? | Use for |
 |------|-----------|--------|---------|
 | `defaultData` | Yes | Yes | Positions, counts, messages, toggles |
-| `myDefaultAwareness` | No | Yes | Who's online, typing, hover state |
+| `live` | No | Yes | Per-user typing, ready, hover, or selection state |
 | `dispatchPlayEvent` | No | One-shot | Confetti, notifications |
 | `localStorage` | Yes | No | Per-user flags ("has reacted") |
 
@@ -40,7 +40,8 @@ import { playhtml } from "https://unpkg.com/playhtml@latest";
 const el = document.getElementById("myElement");
 playhtml.register(el, {
   defaultData: { count: 0 },                           // REQUIRED
-  updateElement: ({ element, data }) => { ... },        // REQUIRED
+  live: { ready: false },
+  update: ({ element, data, live, users }) => { ... },  // REQUIRED
   onClick: (e, { data, setData }) => { ... },
   onDrag: (e, { data, setData, localData, setLocalData }) => { ... },
   onDragStart: (e, { setLocalData }) => { ... },
@@ -77,7 +78,7 @@ const Counter = withSharedState(
   )
 );
 
-// Component receives: data, setData, awareness, setMyAwareness, ref
+// Component receives: data, setData, live, users, setLive, ref
 // For events: usePlayContext() → { dispatchPlayEvent, registerPlayEventListener }
 // For cursors: usePlayContext() → { cursors, configureCursors }
 ```
@@ -173,11 +174,11 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 
 1. **Direct element-property setup** (vanilla): Use `playhtml.register(elementOrId, initializer)` so setup does not depend on assigning callbacks to a DOM node before initialization.
 2. **Missing `id`**: No id = no sync. Silent failure.
-3. **Wrong data type**: Awareness for persistent data (disappears on disconnect) or defaultData for ephemeral presence (leaves stale data). Refer to the Data Types table.
+3. **Wrong data type**: `live` for persistent data (it disappears on disconnect) or `defaultData` for ephemeral user state (it leaves stale data). Refer to the Data Types table.
 4. **Bad array mutations**: In mutator form, the draft is a Yjs CRDT proxy. Use `push()`/`splice()` only — `shift()`, `pop()`, and `items[i] = x` don't sync correctly.
 5. **Replacement form loses fields**: `setData({ x: 5 })` erases `y`. Use replacement only for whole-value writes, or use mutator form for field-level changes.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.
-7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/awareness.
+7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/`live`.
    - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. This crashed a production room; treat it as a hard rule.
-8. **Computed values in state**: Don't store what you can calculate. Compute in `updateElement`/render.
+8. **Computed values in state**: Don't store what you can calculate. Compute in `update`/render.
 9. **Missing PlayProvider** (React): `withSharedState` silently fails without it.

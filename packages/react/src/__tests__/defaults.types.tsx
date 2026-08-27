@@ -15,6 +15,8 @@ export function verifyDefaultTypes(): void {
   config.defaultData = (element: HTMLElement) => ({ label: element.id });
   // @ts-expect-error React default awareness is a value, not an element callback.
   config.myDefaultAwareness = (element: HTMLElement) => ({ status: element.id });
+  // @ts-expect-error React live defaults are values, not element callbacks.
+  config.live = (element: HTMLElement) => ({ status: element.id });
 
   // @ts-expect-error Inferred function data cannot bypass the value-only contract.
   const invalid = <CanPlayElement defaultData={(element: HTMLElement) => ({ label: element.id })}>{() => <div id="invalid" />}</CanPlayElement>;
@@ -23,6 +25,10 @@ export function verifyDefaultTypes(): void {
   // @ts-expect-error Inferred awareness callbacks are not default values.
   const invalidAwareness = <CanPlayElement defaultData={{ label: "Alice" }} myDefaultAwareness={(element: HTMLElement) => ({ status: element.id })}>{() => <div id="invalid-awareness" />}</CanPlayElement>;
   void invalidAwareness;
+
+  // @ts-expect-error Inferred live callbacks are not default values.
+  const invalidLive = <CanPlayElement defaultData={{ label: "Alice" }} live={(element: HTMLElement) => ({ status: element.id })}>{() => <div id="invalid-live" />}</CanPlayElement>;
+  void invalidLive;
 
   // @ts-expect-error The config factory returns values, not DOM-dependent defaults.
   withSharedState({ defaultData: (element: HTMLElement) => ({ label: element.id }) }, () => <div id="invalid-config" />);

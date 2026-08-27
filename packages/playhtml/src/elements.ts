@@ -138,7 +138,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     if (awarenessData !== undefined) {
       this.awareness = awarenessData;
     }
-    const initialLive = live ?? myDefaultAwareness;
+    const initialLive = live !== undefined ? live : myDefaultAwareness;
     const myInitialLive =
       initialLive instanceof Function ? initialLive(element) : initialLive;
     if (myInitialLive !== undefined) {
@@ -599,7 +599,7 @@ export class ElementHandler<T = any, U = any, V = any> {
   setLive(data: V): void {
     // In view mode an awareness change re-renders, so writing awareness during
     // render would loop. Reject it like the other write paths.
-    if (this.rejectWriteDuringRender("setMyAwareness")) return;
+    if (this.rejectWriteDuringRender("setLive")) return;
     if (data === this.selfAwareness) {
       // avoid duplicate broadcasts
       return;

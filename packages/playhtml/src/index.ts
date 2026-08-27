@@ -1806,7 +1806,8 @@ function createPlayElementData<T extends TagType, TData = any>(
       ? undefined
       : ensureElementProxy<TData>(tag, elementId, initialData as TData);
   const publishedLive = getElementAwareness(tag, elementId);
-  const configuredLive = tagInfo.live ?? tagInfo.myDefaultAwareness;
+  const configuredLive =
+    tagInfo.live !== undefined ? tagInfo.live : tagInfo.myDefaultAwareness;
   const initialLive =
     publishedLive ??
     (configuredLive instanceof Function
@@ -3301,6 +3302,7 @@ export {
 export type {
   ElementAwarenessEventHandlerData,
   ElementInitializer,
+  ElementUser,
   PageDataChannel,
   PageDataSetter,
   PlayerIdentity,

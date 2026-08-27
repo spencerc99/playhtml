@@ -1,6 +1,6 @@
 ---
 title: "Custom elements"
-description: "Build custom collaborative elements with can-mirror, register, updateElement, view, or React shared state."
+description: "Build custom collaborative elements with can-mirror, register, update, view, or React shared state."
 sidebar:
   order: 5
 ---
@@ -116,12 +116,12 @@ If a mirrored child also has its own playhtml capability, keep giving it a stabl
 
 ### can-play
 
-Register an element with its starting data, event handlers, and renderer in one initializer object. Pass the element itself when you already have it, or pass its id before it exists. Both `playhtml.register(element, initializer)` and `playhtml.register(id, initializer)` work before or after `playhtml.init()`. playhtml syncs the data and calls `updateElement` whenever it changes.
+Register an element with its starting data, event handlers, and renderer in one initializer object. Pass the element itself when you already have it, or pass its id before it exists. Both `playhtml.register(element, initializer)` and `playhtml.register(id, initializer)` work before or after `playhtml.init()`. playhtml calls `update` whenever shared data or a user's live value changes.
 
 The [Element API reference](/docs/reference/element-api/#initializer) lists every initializer field and callback context.
 
 :::note[Existing property-based elements]
-Direct assignments such as `element.defaultData = …` and `element.updateElement = …` remain supported for compatibility. Use `register` for new vanilla elements.
+Direct assignments such as `element.defaultData = …` and `element.updateElement = …` remain supported for compatibility. Use `register` with `update` for new vanilla elements.
 :::
 
 Most capabilities can share the same element. Each keeps its own data and behavior, so a registered element can also carry `can-move`. Watch out for style conflicts: two capabilities can still fight if they write the same CSS property. For example, `can-move` and `can-spin` both update `transform`, so the last update wins instead of combining translate and rotate.
@@ -141,7 +141,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
         data.count += 1;
       });
     },
-    updateElement: ({ element, data }) => {
+    update: ({ element, data }) => {
       element.textContent = String(data.count);
     },
   });
@@ -169,7 +169,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 
 #### State to style
 
-`updateElement` runs on every change, so the simplest pattern is "read `data`, set a class or style."
+`update` runs on every change, so the simplest pattern is "read `data`, set a class or style."
 
 ```html
 <button id="switch">off</button>
@@ -184,7 +184,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
         data.on = !data.on;
       });
     },
-    updateElement: ({ element, data }) => {
+    update: ({ element, data }) => {
       element.classList.toggle("on", data.on);
       element.textContent = data.on ? "on" : "off";
     },
@@ -204,9 +204,9 @@ Most capabilities can share the same element. Each keeps its own data and behavi
   <InteractiveToggleDemo client:only="react" />
 </div>
 
-#### Presence and per-user state
+#### Users and live per-user state
 
-`myDefaultAwareness` seeds a per-user ephemeral value; `setMyAwareness` broadcasts it; `updateElementAwareness` renders everyone's. Awareness does **not** persist — it's "who's here right now."
+`live` is your value for this element. It does not persist. `setLive` changes it, and every user's current value appears in `users` beside their identity. The same `update` function renders shared `data` and live user changes.
 
 ```html
 <div id="online"></div>
@@ -215,13 +215,14 @@ Most capabilities can share the same element. Each keeps its own data and behavi
   import { playhtml } from "playhtml";
 
   playhtml.register("online", {
-    myDefaultAwareness: "#2563eb",
-    updateElementAwareness: ({ element, awareness }) => {
+    live: { status: "here" },
+    update: ({ element, users }) => {
       element.replaceChildren(
-        ...awareness.map((color) => {
+        ...users.map(({ user }) => {
           const dot = document.createElement("span");
           dot.className = "dot";
-          dot.style.background = color;
+          dot.style.background = user.color;
+          dot.title = user.name ?? "Anonymous";
           return dot;
         }),
       );
@@ -250,7 +251,7 @@ Put `resetShortcut` in the initializer so shift-clicking (or ctrl/alt/meta) rese
 playhtml.register("counter", {
   defaultData: { count: 0 },
   resetShortcut: "shiftKey",
-  updateElement: ({ element, data }) => {
+  update: ({ element, data }) => {
     element.textContent = String(data.count);
   },
 });
@@ -261,19 +262,19 @@ playhtml.register("counter", {
 `register` can run before the element exists and binds it when it appears. For dynamically added built-in or defined capabilities, call `playhtml.setupPlayElement(element)` after insertion. Use [`selector-id`](/docs/advanced/dynamic-elements/) for many-of-a-kind elements.
 
 :::note[Lists and data-driven UIs get verbose here]
-With `updateElement` you hand-build and diff the DOM yourself, which is painful for lists, chat, and anything computed from a collection. That's exactly what the [reactive view API](#reactive-view-api-experimental) below is for.
+With `update` you hand-build and diff the DOM yourself, which is painful for lists, chat, and anything computed from a collection. That's exactly what the [reactive view API](#reactive-view-api-experimental) below is for.
 :::
 
 ### Reactive view API (experimental)
 
 <Aside type="caution" title="Experimental">
   The `view` renderer and lit-html helpers are experimental. `register`,
-  `define`, handles, and the imperative `updateElement` renderer are supported.
+  `define`, handles, and the imperative `update` renderer are supported.
   Trying `view`? Tell us how it goes in
   [#95](https://github.com/spencerc99/playhtml/issues/95).
 </Aside>
 
-Instead of hand-writing DOM updates in `updateElement`, you can register a **`view`**: a pure function from state to a [lit-html](https://lit.dev/docs/libraries/standalone-templates/) template. playhtml patches only what changed when the data updates. It's the vanilla equivalent of what React's `withSharedState` already gives you.
+Instead of hand-writing DOM updates in `update`, you can register a **`view`**: a pure function from state to a [lit-html](https://lit.dev/docs/libraries/standalone-templates/) template. playhtml patches only what changed when the data updates. It's the vanilla equivalent of what React's `withSharedState` already gives you.
 
 ```ts
 import { playhtml, html, svg, repeat, classMap, styleMap, nothing } from "playhtml";
@@ -302,7 +303,7 @@ The element is an empty mount point; everything you see is rendered from state. 
 </script>
 ```
 
-`register` returns a **handle** (`getElement`, `getData`, `setData`, `setLocalData`, `setMyAwareness`, `requestUpdate`, `unregister`) for reads/writes from outside the view.
+`register` returns a **handle** (`getElement`, `getData`, `setData`, `setLocalData`, `setLive`, `requestUpdate`, `unregister`) for reads/writes from outside the view.
 
 #### Local UI state
 
@@ -323,7 +324,7 @@ playhtml.register("panel", {
 
 #### Lists
 
-This is where the view API earns its keep — `repeat(items, keyFn, template)` is lit-html's keyed list, versus hand-diffing DOM in `updateElement`. **Key by a stable unique id** (`crypto.randomUUID()`), never an index or timestamp.
+This is where the view API earns its keep — `repeat(items, keyFn, template)` is lit-html's keyed list, versus hand-diffing DOM in `update`. **Key by a stable unique id** (`crypto.randomUUID()`), never an index or timestamp.
 
 ```js
 const guestbook = playhtml.register("guestbook", {
@@ -443,14 +444,14 @@ playhtml.register("chats", {
 
 #### Rules and gotchas (view API)
 
-- **Renders must be pure.** Don't call `setData` / `setLocalData` / `setMyAwareness` while rendering — it's an infinite re-render loop. playhtml rejects such writes with a console error. Drive writes from `@event` handlers or `onMount`.
+- **Renders must be pure.** Don't call `setData` / `setLocalData` / `setLive` while rendering — it's an infinite re-render loop. playhtml rejects such writes with a console error. Drive writes from `@event` handlers or `onMount`.
 - **Key lists by a stable id**, never index or timestamp.
 - **Security:** interpolated text and attribute values are auto-escaped (and `unsafeHTML` is deliberately not exported). Two sharp edges remain about a binding's *content*: `style` from a user-controlled string is CSS-injectable (prefer `styleMap`), and `href`/`src` from user data isn't URL-sanitized (validate the scheme).
 - **Changing the shape of already-live data** needs a migration or a new field name — see [Data essentials](/docs/data/data-essentials/).
 
 ## React
 
-In React there's a single, declarative path: **`withSharedState`**. It wraps a component, owns a piece of shared `data`, and hands the component `data` + `setData`. You render JSX from `data`; playhtml syncs it and re-renders on every change, local or remote. There's no `updateElement` to hand-write and no separate view API — JSX _is_ the declarative view.
+In React there's a single, declarative path: **`withSharedState`**. It wraps a component and hands it shared `data`, element `live` data, and `users`. JSX re-renders on every data or user change. There's no imperative `update` to hand-write and no separate view API — JSX _is_ the declarative view.
 
 ### A click counter
 
@@ -537,17 +538,17 @@ export const Guestbook = withSharedState(
 
 [▶ Live demo ↑](#play-guestbook)
 
-### Presence and per-user state
+### Users and live per-user state
 
-`myDefaultAwareness` seeds a per-user ephemeral value; `setMyAwareness` broadcasts it; the `awareness` prop renders everyone's. Awareness does **not** persist — it's "who's here right now."
+`live` seeds your ephemeral value; `setLive` broadcasts it; `users` renders every current user with their identity and live value.
 
 ```tsx
 export const Online = withSharedState(
-  { defaultData: {}, myDefaultAwareness: "#2563eb" },
-  ({ awareness }) => (
+  { defaultData: {}, live: { ready: false } },
+  ({ users }) => (
     <div className="row">
-      {awareness.map((color, i) => (
-        <span key={i} className="dot" style={{ background: color }} />
+      {users.map(({ user }) => (
+        <span key={user.pid} className="dot" style={{ background: user.color }} />
       ))}
     </div>
   ),
