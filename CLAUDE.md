@@ -59,7 +59,7 @@ The extension and PartyKit use one Supabase project with different tables. All n
 ### Extension Performance
 
 - The `Extension Performance Report` workflow runs extension performance traces in CI.
-- Do not run `perf:extension:trace` during local agent work. It launches headed Chrome windows that interrupt the user's desktop. Check the CI workflow result instead.
+- Do not run `perf:extension:trace` during local agent work. Repeated traces consume local resources and duplicate CI coverage. Check the CI workflow result instead.
 - Run a local trace only when Spencer explicitly requests one. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate.
 
 ## Papercuts
