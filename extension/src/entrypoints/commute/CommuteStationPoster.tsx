@@ -5,7 +5,11 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import "@fontsource/source-serif-4/latin-400-italic.css";
 import "@fontsource/source-serif-4/latin-600.css";
-import { getCommuteAd, type CommuteAd } from "./commuteAds";
+import {
+  getCommuteAd,
+  type CommuteAd,
+  type CommuteAdSlot,
+} from "./commuteAds";
 import { useExtensionInstallState } from "./commuteInstallState";
 
 function PosterArtwork({ ad }: { ad: CommuteAd }) {
@@ -30,6 +34,12 @@ function PosterArtwork({ ad }: { ad: CommuteAd }) {
         aria-hidden
       />
       <img src={ad.artwork} alt="" />
+      <strong
+        className="station-install-poster__title"
+        style={{ color: ad.palette.text }}
+      >
+        {ad.copy.short}
+      </strong>
     </>
   );
 }
@@ -161,16 +171,18 @@ function PosterContent({ ad }: { ad: CommuteAd }) {
 export function CommuteStationPoster({
   domain,
   stationVisible,
+  side = "left",
 }: {
   domain: string;
   stationVisible: boolean;
+  side?: CommuteAdSlot;
 }) {
   const installState = useExtensionInstallState();
   const [openAd, setOpenAd] = useState<CommuteAd | null>(null);
   const ad =
     installState === "checking"
       ? null
-      : getCommuteAd(domain, installState === "missing");
+      : getCommuteAd(domain, installState === "missing", side);
 
   useEffect(() => {
     if (openAd === null) return;
@@ -188,7 +200,7 @@ export function CommuteStationPoster({
     <>
       {stationVisible && (
         <button
-          className={`station-install-poster station-install-poster--${ad.id}`}
+          className={`station-install-poster station-install-poster--${ad.id} station-install-poster--${side}`}
           type="button"
           aria-label={
             ad.id === "transit-pass"

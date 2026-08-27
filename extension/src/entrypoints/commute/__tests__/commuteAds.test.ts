@@ -18,6 +18,17 @@ describe("commute ads", () => {
     );
   });
 
+  it("gives the right slot a different ad than the left, deterministically", () => {
+    for (const domain of ["ad-0.test", "ad-1.test", "wikipedia.org", "x.com"]) {
+      for (const missing of [true, false]) {
+        const left = getCommuteAd(domain, missing, "left");
+        const right = getCommuteAd(domain, missing, "right");
+        expect(right).not.toBe(left);
+        expect(getCommuteAd(domain, missing, "right")).toBe(right);
+      }
+    }
+  });
+
   it("only includes the transit pass when the extension is missing", () => {
     expect(getEligibleCommuteAds(false)).toEqual(COMMUTE_ADS);
     expect(getEligibleCommuteAds(false).map((ad) => ad.id)).not.toContain(

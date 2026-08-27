@@ -17,6 +17,7 @@ interface CommuteAdPalette {
 interface CommuteAdCopy {
   label: string;
   headline: string;
+  short: string;
   cta: string;
 }
 
@@ -51,6 +52,7 @@ export const COMMUTE_ADS = [
     copy: {
       label: "playhtml",
       headline: "this train was built with it — make a site like this one",
+      short: "make a site like this one",
       cta: "playhtml.fun →",
     },
     href: "https://playhtml.fun",
@@ -69,6 +71,7 @@ export const COMMUTE_ADS = [
       label: "school for poetic computation · summer 2026",
       headline:
         "come learn to build seats for strangers — example sites included",
+      short: "building benches for the web",
       cta: "class.playhtml.fun →",
     },
     href: "https://class.playhtml.fun",
@@ -86,6 +89,7 @@ export const COMMUTE_ADS = [
     copy: {
       label: "reading in motion · no. 1",
       headline: "the internet has no benches",
+      short: "the internet has no benches",
       cta: "read on the ride →",
     },
     href: "https://news.spencer.place/p/the-internet-has-no-benches",
@@ -103,6 +107,7 @@ export const COMMUTE_ADS = [
     copy: {
       label: "they say the internet is dead",
       headline: "the internet is alive",
+      short: "the internet is alive",
       cta: "read alive internet theory →",
     },
     href: "https://news.spencer.place/p/alive-internet-theory",
@@ -121,6 +126,7 @@ export const COMMUTE_TRANSIT_PASS_AD = {
   copy: {
     label: "internet transit pass",
     headline: "join the ride",
+    short: "join the ride",
     cta: "get the extension →",
   },
   href: "https://wewere.online/",
@@ -143,10 +149,17 @@ export function getEligibleCommuteAds(
     : COMMUTE_ADS;
 }
 
+export type CommuteAdSlot = "left" | "right";
+
 export function getCommuteAd(
   domain: string,
   extensionMissing: boolean,
+  slot: CommuteAdSlot = "left",
 ): CommuteAd {
   const eligibleAds = getEligibleCommuteAds(extensionMissing);
-  return eligibleAds[hashDomain(domain) % eligibleAds.length];
+  const leftAd = eligibleAds[hashDomain(domain) % eligibleAds.length];
+  if (slot === "left") return leftAd;
+
+  const remainingAds = eligibleAds.filter((ad) => ad !== leftAd);
+  return remainingAds[hashDomain(`${domain}::right`) % remainingAds.length];
 }

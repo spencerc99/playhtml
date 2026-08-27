@@ -620,10 +620,18 @@ function Platform({
       <span className="station-platform__pillar station-platform__pillar--right" aria-hidden />
       <span className="station-platform__edge" aria-hidden />
       {showStationPoster && (
-        <CommuteStationPoster
-          domain={currentStop.domain}
-          stationVisible={visible}
-        />
+        <>
+          <CommuteStationPoster
+            domain={currentStop.domain}
+            stationVisible={visible}
+            side="left"
+          />
+          <CommuteStationPoster
+            domain={currentStop.domain}
+            stationVisible={visible}
+            side="right"
+          />
+        </>
       )}
       <span className="station-sign" aria-hidden>
         {!atOrigin && <StopFavicon stop={currentStop} />}
