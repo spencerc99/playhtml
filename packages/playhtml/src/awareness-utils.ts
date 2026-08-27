@@ -41,6 +41,18 @@ export function getElementAwarenessFingerprint(
     const tagKeys = Object.keys(state)
       .filter((k) => !k.startsWith("__"))
       .sort();
+    if (tagKeys.length > 0) {
+      const cursorData = state.__playhtml_cursors__ as
+        | { playerIdentity?: unknown }
+        | undefined;
+      const identity =
+        state.__playhtml_identity__ ?? cursorData?.playerIdentity ?? null;
+      try {
+        parts.push(`${clientId}:identity:${JSON.stringify(identity)}`);
+      } catch {
+        parts.push(`${clientId}:identity:null`);
+      }
+    }
     for (const tag of tagKeys) {
       const tagData = state[tag];
       if (tagData == null || typeof tagData !== "object") continue;

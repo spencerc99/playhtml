@@ -375,4 +375,56 @@ describe("ElementHandler", () => {
     expect(onAwarenessChange).toHaveBeenCalledWith({ me: "X" });
     expect(triggerAwarenessUpdate).toHaveBeenCalled();
   });
+
+  it("uses one update path for live changes and exposes live users", () => {
+    const update = vi.fn();
+    const updateElementAwareness = vi.fn();
+    const onAwarenessChange = vi.fn();
+    const remoteUser = {
+      pid: "remote-user",
+      name: "Mina",
+      color: "blue",
+      isMe: false,
+    };
+
+    const handler = new ElementHandler(
+      {
+        element,
+        live: { typing: false },
+        update,
+        updateElementAwareness,
+        onChange: vi.fn(),
+        onAwarenessChange,
+        triggerAwarenessUpdate: vi.fn(),
+      } as any,
+      {
+        getUsers: (byStableId: Map<string, { typing: boolean }>) =>
+          byStableId.has(remoteUser.pid)
+            ? [{ user: remoteUser, live: byStableId.get(remoteUser.pid)! }]
+            : [],
+      } as any,
+    );
+    update.mockClear();
+    updateElementAwareness.mockClear();
+
+    handler.updateAwareness(
+      [{ typing: true }],
+      new Map([[remoteUser.pid, { typing: true }]]),
+    );
+
+    expect(updateElementAwareness).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        live: { typing: false },
+        users: [{ user: remoteUser, live: { typing: true } }],
+        setLive: expect.any(Function),
+        myAwareness: { typing: false },
+        setMyAwareness: expect.any(Function),
+      }),
+    );
+
+    update.mock.calls[0][0].setLive({ typing: true });
+    expect(onAwarenessChange).toHaveBeenCalledWith({ typing: true });
+  });
 });

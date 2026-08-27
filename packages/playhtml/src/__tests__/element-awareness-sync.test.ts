@@ -10,6 +10,13 @@ import {
   sentChannelUpdates,
 } from "./presence-test-utils";
 
+function setRemoteIdentity(identity: Record<string, unknown>): void {
+  const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
+  const provider = providers.at(-1);
+  if (!provider) throw new Error("Expected test provider");
+  provider.awareness.getStates().set(2, { __playhtml_identity__: identity });
+}
+
 describe("element awareness sync", () => {
   beforeEach(async () => {
     document.body.innerHTML = "";
@@ -70,6 +77,84 @@ describe("element awareness sync", () => {
 
     expect(awarenessSnapshots.at(-1)).toEqual([]);
     expect(byStableIdSnapshots.at(-1)?.size).toBe(0);
+  });
+
+  it("joins identity with element live values and rerenders on identity changes", async () => {
+    const updates: any[] = [];
+    const el = document.createElement("div");
+    el.id = "live-users-card";
+    document.body.appendChild(el);
+
+    playhtml.register(el, {
+      live: { active: true },
+      update: (context: any) => updates.push(context),
+    } as any);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    setRemoteIdentity({
+      publicKey: "pk_remote_user",
+      name: "Mina",
+      playerStyle: { colorPalette: ["blue"] },
+    });
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote_user",
+            name: "Mina",
+            playerStyle: { colorPalette: ["blue"] },
+          },
+          "element:shard:0": {
+            v: 1,
+            entries: [["can-play", "live-users-card", { active: false }]],
+          },
+        },
+      },
+    });
+
+    expect(updates.at(-1).live).toEqual({ active: true });
+    expect(updates.at(-1).users).toContainEqual({
+      user: {
+        pid: "pk_remote_user",
+        name: "Mina",
+        color: "blue",
+        isMe: false,
+      },
+      live: { active: false },
+    });
+
+    const updateCount = updates.length;
+    setRemoteIdentity({
+      publicKey: "pk_remote_user",
+      name: "Jo",
+      playerStyle: { colorPalette: ["purple"] },
+    });
+    socket.receive({
+      type: "presence-changes",
+      updates: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote_user",
+            name: "Jo",
+            playerStyle: { colorPalette: ["purple"] },
+          },
+        },
+      },
+      removes: {},
+    });
+
+    expect(updates).toHaveLength(updateCount + 1);
+    expect(updates.at(-1).users).toContainEqual({
+      user: {
+        pid: "pk_remote_user",
+        name: "Jo",
+        color: "purple",
+        isMe: false,
+      },
+      live: { active: false },
+    });
   });
 
   it("publishes element awareness through the page room when cursors use another room", async () => {

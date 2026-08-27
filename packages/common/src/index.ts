@@ -18,16 +18,24 @@ export * from "./presence-protocol";
  */
 export type ViewTemplate = unknown;
 
+export interface ElementUser<V = any> {
+  user: User;
+  live: V;
+}
+
 export interface ElementInitializer<T = any, U = any, V = any> {
   defaultData?: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
+  live?: V | ((element: HTMLElement) => V);
+  /** @deprecated Use `live`. */
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
   /**
-   * Imperative update path: receives the current state and mutates the DOM
-   * directly. Pair with `defaultData`; use `view` instead for declarative
-   * rendering.
-   * `view` and `updateElement` are mutually exclusive — providing both is a
-   * registration-time error.
+   * Imperative update path. Receives the current state and mutates the DOM.
+   * Runs when shared data or element live values change.
+   */
+  update?: (data: ElementEventHandlerData<T, U, V>) => void;
+  /**
+   * @deprecated Use `update`.
    */
   updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
   /**
@@ -44,7 +52,7 @@ export interface ElementInitializer<T = any, U = any, V = any> {
    */
   view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
   /**
-   * Imperative awareness update path. Required with `myDefaultAwareness`.
+   * @deprecated Use `update`, which also runs when element live values change.
    */
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>,
@@ -77,10 +85,10 @@ export interface ElementInitializer<T = any, U = any, V = any> {
 }
 
 export interface ElementData<T = any, U = any, V = any>
-  extends ElementInitializer<T> {
+  extends ElementInitializer<T, U, V> {
   data?: T;
   localData?: U;
-  awareness?: V;
+  awareness?: V[];
   element: HTMLElement;
   onChange: (data: T) => void;
   onAwarenessChange: (data: V) => void;
@@ -94,8 +102,14 @@ export interface ElementData<T = any, U = any, V = any>
 export interface ElementEventHandlerData<T = any, U = any, V = any> {
   data: T;
   localData: U;
+  live: V | undefined;
+  users: ElementUser<V>[];
+  /** @deprecated Use `users.map(({ live }) => live)`. */
   awareness: V[];
+  /** @deprecated Use `users`. */
   awarenessByStableId: Map<string, V>;
+  /** @deprecated Use `live`. */
+  myAwareness?: V;
   element: HTMLElement;
   /**
    * Updates the element's shared data.
@@ -115,6 +129,8 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
   setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U | ((draft: U) => void)) => void;
+  setLive: (data: V) => void;
+  /** @deprecated Use `setLive`. */
   setMyAwareness: (data: V) => void;
   /**
    * Re-runs the element's `view` and patches the result into the DOM, even
@@ -126,17 +142,20 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
 }
 
 export interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
-  extends ElementEventHandlerData<T, U, V> {
-  myAwareness?: V;
-}
+  extends ElementEventHandlerData<T, U, V> {}
 
 export interface ElementSetupData<T = any, U = any, V = any> {
   getData: () => T;
   getLocalData: () => U;
+  getLive: () => V | undefined;
+  getUsers: () => ElementUser<V>[];
+  /** @deprecated Use `getUsers`. */
   getAwareness: () => V[];
   getElement: () => HTMLElement;
   setData: (data: T | ((draft: T) => void)) => void;
   setLocalData: (data: U | ((draft: U) => void)) => void;
+  setLive: (data: V) => void;
+  /** @deprecated Use `setLive`. */
   setMyAwareness: (data: V) => void;
   /**
    * Re-runs the element's `view` and patches the result into the DOM. See
@@ -387,7 +406,7 @@ export * from "./sharedElements";
 
 // Export cursor types
 export * from "./cursor-types";
-import type { Cursor, PlayerIdentity } from "./cursor-types";
+import type { Cursor, PlayerIdentity, User } from "./cursor-types";
 
 export type PageDataSetter<T> = [T] extends [object]
   ? T | ((draft: T) => void)
