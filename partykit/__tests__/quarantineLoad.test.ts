@@ -1659,6 +1659,40 @@ describe("hardening", () => {
     expect(room.isPersistenceAvailable()).toBe(false);
   });
 
+  test("a restarted provider outage keeps guarded cadence after another failed read", async () => {
+    documentReadErrors = [
+      new Error("failure 1"),
+      new Error("failure 2"),
+      new Error("failure 3"),
+    ];
+    const storage = new FakeStorage();
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+    const room = restartRoom(storage);
+    const previousRetryMax =
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS;
+    workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = "60000";
+    const before = Date.now();
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = previousRetryMax;
+    }
+
+    expect(documentReadCount).toBe(3);
+    expect(storage.values.get("loadRetryAfter")).toBeGreaterThanOrEqual(
+      before + 30_000
+    );
+    expect(storage.values.get("loadRetryAfter")).toBeLessThanOrEqual(
+      Date.now() + 60_000
+    );
+    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
+  });
+
   test("successful hydration resets clients that connected during transient mode", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     documentReadErrors = [

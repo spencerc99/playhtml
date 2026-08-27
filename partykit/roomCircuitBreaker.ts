@@ -135,6 +135,15 @@ export class RoomCircuitBreaker {
     );
   }
 
+  private getLoadRetryAt(failureCount: number): number {
+    return getFailureRetryAt({
+      failureCount,
+      baseMs: this.getFailureBackoffBaseMs(),
+      maxMs: this.getFailureBackoffMaxMs(),
+      now: Date.now(),
+    });
+  }
+
   isQuarantined(): boolean {
     return this.quarantine !== null;
   }
@@ -392,6 +401,11 @@ export class RoomCircuitBreaker {
       const retryAfter = await this.getFailureRetryAfter("load");
       if (retryAfter !== null && !isRetryDue({ retryAfter, now: Date.now() })) {
         this.loadDeferredUntil = retryAfter;
+      } else if (retryAfter !== null) {
+        await this.storage.put(
+          STORAGE_KEYS.loadRetryAfter,
+          this.getLoadRetryAt(1)
+        );
       }
       return false;
     }
@@ -414,12 +428,7 @@ export class RoomCircuitBreaker {
 
     const retryAfter = await this.getFailureRetryAfter("load");
     if (retryAfter === null) {
-      const firstRetryAt = getFailureRetryAt({
-        failureCount: previousFailures,
-        baseMs: this.getFailureBackoffBaseMs(),
-        maxMs: this.getFailureBackoffMaxMs(),
-        now: Date.now(),
-      });
+      const firstRetryAt = this.getLoadRetryAt(previousFailures);
       await this.storage.put(STORAGE_KEYS.loadRetryAfter, firstRetryAt);
       this.deferLoad(firstRetryAt, previousFailures);
       return true;
@@ -430,12 +439,7 @@ export class RoomCircuitBreaker {
       return true;
     }
 
-    const nextRetryAt = getFailureRetryAt({
-      failureCount: previousFailures + 1,
-      baseMs: this.getFailureBackoffBaseMs(),
-      maxMs: this.getFailureBackoffMaxMs(),
-      now: Date.now(),
-    });
+    const nextRetryAt = this.getLoadRetryAt(previousFailures + 1);
     await this.storage.put(STORAGE_KEYS.loadRetryAfter, nextRetryAt);
 
     console.error(
@@ -634,12 +638,7 @@ export class RoomCircuitBreaker {
           return false;
         }
 
-        const nextRetryAt = getFailureRetryAt({
-          failureCount: previousFailures + 1,
-          baseMs: this.getFailureBackoffBaseMs(),
-          maxMs: this.getFailureBackoffMaxMs(),
-          now: Date.now(),
-        });
+        const nextRetryAt = this.getLoadRetryAt(previousFailures + 1);
         await this.storage.put(STORAGE_KEYS.loadRetryAfter, nextRetryAt);
 
         if (previousFailures === 0) {
