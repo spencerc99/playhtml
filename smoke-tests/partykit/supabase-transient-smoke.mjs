@@ -1,28 +1,53 @@
 // ABOUTME: Smoke tests PartyKit startup when Supabase persistence is unavailable.
-// ABOUTME: Verifies awareness continues while shared-data writes remain blocked.
-import { Y, connectRoom, getHost, sleep, waitForSync } from "./shared.mjs";
+// ABOUTME: Verifies clients close with a retryable code until hydration recovers.
+import {
+  WebSocket,
+  getHost,
+  getPartyWebSocketUrl,
+} from "./shared.mjs";
 
-function waitForCondition(label, predicate, timeoutMs = 20_000) {
+function waitForRecoveryClose(socket, label, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      try {
-        if (predicate()) {
-          clearInterval(timer);
-          resolve();
-          return;
-        }
-      } catch (error) {
-        clearInterval(timer);
-        reject(error);
+    // Local Wrangler can leave a received close frame in CLOSING until the
+    // client terminates the socket. ws retains the server code and reason.
+    const closingPoll = setInterval(() => {
+      if (socket.readyState === WebSocket.CLOSING) {
+        socket.terminate();
+      }
+    }, 25);
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`${label} did not close within ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const onClose = (code, reason) => {
+      cleanup();
+      const reasonText = reason.toString();
+      if (code !== 1013 || reasonText !== "Room Loading") {
+        reject(
+          new Error(
+            `${label} closed with ${code} ${JSON.stringify(reasonText)}, expected 1013 Room Loading`,
+          ),
+        );
         return;
       }
+      resolve();
+    };
 
-      if (Date.now() - startedAt > timeoutMs) {
-        clearInterval(timer);
-        reject(new Error(`${label} did not happen within ${timeoutMs}ms`));
-      }
-    }, 50);
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+
+    function cleanup() {
+      clearInterval(closingPoll);
+      clearTimeout(timer);
+      socket.off("close", onClose);
+      socket.off("error", onError);
+    }
+
+    socket.on("close", onClose);
+    socket.on("error", onError);
   });
 }
 
@@ -33,42 +58,18 @@ const protocol =
     ? "http"
     : "https";
 
-const docA = new Y.Doc();
-const docB = new Y.Doc();
-const providerA = connectRoom(host, room, docA);
-const providerB = connectRoom(host, room, docB);
+const clients = [
+  new WebSocket(getPartyWebSocketUrl(host, room)),
+  new WebSocket(getPartyWebSocketUrl(host, room)),
+];
 
 try {
   console.log(`Connecting transient smoke room ${room} on ${host}`);
   await Promise.all([
-    waitForSync(providerA, "client A"),
-    waitForSync(providerB, "client B"),
+    waitForRecoveryClose(clients[0], "client A"),
+    waitForRecoveryClose(clients[1], "client B"),
   ]);
-
-  providerA.awareness.setLocalStateField("transientSmoke", {
-    client: "A",
-    online: true,
-  });
-
-  await waitForCondition("awareness propagation", () => {
-    return Array.from(providerB.awareness.getStates().values()).some(
-      (state) => {
-        return state?.transientSmoke?.client === "A";
-      },
-    );
-  });
-  console.log("awareness propagated while persistence was unavailable");
-
-  docA.getMap("transient-smoke").set("message", "live while transient");
-  await sleep(500);
-  if (docB.getMap("transient-smoke").has("message")) {
-    throw new Error(
-      "expected transient shared-data write to remain blocked from peers",
-    );
-  }
-  console.log(
-    "shared-data writes stayed blocked while persistence was unavailable",
-  );
+  console.log("clients closed with 1013 while persistence was unavailable");
 
   const adminResponse = await fetch(
     `${protocol}://${host}/parties/main/${encodeURIComponent(room)}/admin/force-save-live`,
@@ -80,19 +81,17 @@ try {
   const adminBody = await adminResponse.json();
   if (
     adminResponse.status !== 503 ||
-    adminBody.error !== "persistence_unavailable"
+    adminBody.error !== "room_load_deferred"
   ) {
     throw new Error(
-      `expected transient admin write to return 503, got ${adminResponse.status}: ${JSON.stringify(adminBody)}`,
+      `expected deferred admin write to return 503, got ${adminResponse.status}: ${JSON.stringify(adminBody)}`,
     );
   }
-  console.log("admin writes are blocked while persistence is unavailable");
+  console.log("admin writes are deferred while persistence is unavailable");
 
-  await sleep(100);
   console.log("supabase transient smoke passed");
 } finally {
-  providerA.destroy();
-  providerB.destroy();
-  docA.destroy();
-  docB.destroy();
+  for (const client of clients) {
+    client.close();
+  }
 }
