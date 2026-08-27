@@ -1,5 +1,7 @@
 # Unreleased
 
+- Slow Mode commute rides now connect reliably when the hosted route loads before the extension.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
