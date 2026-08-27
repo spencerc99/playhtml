@@ -373,13 +373,15 @@ export class RoomCircuitBreaker {
    * of the vanished work this circuit breaker quarantines.
    */
   async deferObservedLoadFailure(loadAttempts: number): Promise<void> {
+    const guardedRetryAt = await this.getFailureRetryAfter("load");
     await this.releaseLoadAttempt(loadAttempts);
-    const retryAt = getFailureRetryAt({
-      failureCount: loadAttempts,
-      baseMs: this.getObservedLoadFailureBackoffMs(),
-      maxMs: this.getObservedLoadFailureBackoffMaxMs(),
-      now: Date.now(),
-    });
+    const now = Date.now();
+    const firstRetryAt = now + this.getObservedLoadFailureBackoffMs();
+    const lastRetryAt = now + this.getObservedLoadFailureBackoffMaxMs();
+    const retryAt = Math.min(
+      lastRetryAt,
+      Math.max(firstRetryAt, guardedRetryAt ?? firstRetryAt)
+    );
     await this.storage.put(STORAGE_KEYS.loadRetryAfter, retryAt);
     this.loadDeferredUntil = retryAt;
   }

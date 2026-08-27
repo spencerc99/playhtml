@@ -1853,6 +1853,24 @@ describe("hardening", () => {
     expect(room.circuitBreaker.isQuarantined()).toBe(false);
   });
 
+  test("an observed load failure preserves a guarded reload deadline", async () => {
+    const { room, storage } = createRoom();
+    const guardedRetryAt = Date.now() + 60_000;
+    storage.values.set("loadRetryAfter", guardedRetryAt);
+    const previousRetryMax =
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS;
+    workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = "60000";
+
+    try {
+      await room.circuitBreaker.deferObservedLoadFailure(1);
+    } finally {
+      workerEnv.SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = previousRetryMax;
+    }
+
+    expect(storage.values.get("loadRetryAfter")).toBe(guardedRetryAt);
+    expect(storage.values.get("quarantineLoadAttempts")).toBeUndefined();
+  });
+
   // L2: the flag is applied from the control plane and then resumed from durable
   // storage in the same start.
   test("a KV-flagged start logs the quarantine only once", async () => {
