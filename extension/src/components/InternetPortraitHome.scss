@@ -288,6 +288,7 @@
 
   &__heading,
   &__chance,
+  &__sharing,
   &__today {
     padding: 11px 13px;
   }
@@ -333,6 +334,39 @@
     input {
       width: 100%;
       accent-color: var(--accent-teal);
+    }
+  }
+
+  &__sharing {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid var(--border);
+
+    > span {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    strong {
+      font-size: 10px;
+    }
+
+    small {
+      color: var(--text-muted);
+      font: 8px $font-mono;
+    }
+
+    select {
+      max-width: 110px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 5px;
+      color: var(--text);
+      background: var(--surface);
+      font: 9px $font-mono;
     }
   }
 

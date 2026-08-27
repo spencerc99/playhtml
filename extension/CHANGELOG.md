@@ -1,5 +1,13 @@
 # @playhtml/extension
 
+## 0.1.24 (2026-08-27)
+
+- Fix a bug with Wikipedia part showing up
+- Browsing history now refreshes the current week, month, or year as new activity is recorded.
+- Simplify setup end screen
+- Settings now brings identity, data collection, new tab, project updates, experiments, and local data controls into one page.
+
+
 ## 0.1.23 (2026-08-19)
 
 - Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.

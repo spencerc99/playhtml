@@ -1,5 +1,5 @@
 // ABOUTME: Renders the popup controls and daily ride summary for Slow Mode.
-// ABOUTME: Persists the global toggle and chance while exposing cooldown status.
+// ABOUTME: Persists interception and stop-sharing choices while exposing cooldown status.
 
 import React, { useEffect, useMemo, useState } from "react";
 import browser from "webextension-polyfill";
@@ -110,6 +110,27 @@ export function SlowModeSettings() {
             })
           }
         />
+      </label>
+
+      <label className="slow-mode-settings__sharing">
+        <span>
+          <strong>share my stop</strong>
+          <small>exact pages always stay private</small>
+        </span>
+        <select
+          value={settings.stopVisibility === "private" ? "private" : "domain"}
+          disabled={!settings.enabled}
+          onChange={(event) =>
+            saveSettings({
+              ...settings,
+              stopVisibility:
+                event.target.value === "private" ? "private" : "domain",
+            })
+          }
+        >
+          <option value="domain">domain only</option>
+          <option value="private">keep private</option>
+        </select>
       </label>
 
       <div className="slow-mode-settings__today">

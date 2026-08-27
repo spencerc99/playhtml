@@ -7,15 +7,20 @@ export const SLOW_MODE_SETTINGS_KEY = "slowModeSettings";
 export const SLOW_MODE_STATE_KEY = "slowModeState";
 export const SLOW_MODE_COOLDOWN_MS = 25 * 60 * 1_000;
 export const SLOW_MODE_RIDE_LOG_LIMIT = 30;
+export const HOSTED_COMMUTE_URL = "https://wewere.online/commute/";
+
+export type SlowModeStopVisibility = "page" | "domain" | "private";
 
 export interface SlowModeSettings {
   enabled: boolean;
   chancePercent: number;
+  stopVisibility: SlowModeStopVisibility;
 }
 
 export const DEFAULT_SLOW_MODE_SETTINGS: SlowModeSettings = {
   enabled: false,
   chancePercent: 30,
+  stopVisibility: "domain",
 };
 
 export type SlowModeRideOutcome = "riding" | "arrived" | "teleported" | "left";
@@ -40,8 +45,6 @@ export interface FarJumpNavigation {
   destinationUrl: string;
   transitionType: string;
   transitionQualifiers: string[];
-  formInProgress?: boolean;
-  openedByAnotherApp?: boolean;
 }
 
 export type SlowModeDecisionReason =
@@ -193,7 +196,6 @@ export function dayKey(timestamp: number): string {
 }
 
 export function isFarJump(navigation: FarJumpNavigation): boolean {
-  if (navigation.formInProgress || navigation.openedByAnotherApp) return false;
   if (NEVER_TRANSITIONS.has(navigation.transitionType)) return false;
   if (navigation.transitionQualifiers.includes("forward_back")) return false;
 
@@ -263,12 +265,11 @@ export function evaluateSlowModeNavigation(
 
 export function recordSlowModeRide(
   state: SlowModeState,
-  ride: Omit<SlowModeRide, "id" | "destinationDomain">,
+  ride: Omit<SlowModeRide, "destinationDomain">,
 ): SlowModeState {
   const domain = destinationDomain(ride.destinationUrl);
   const entry: SlowModeRide = {
     ...ride,
-    id: `${ride.startedAt}:${domain}`,
     destinationDomain: domain,
   };
   return {
@@ -300,15 +301,10 @@ export function updateSlowModeRide(
 
 export function createCommuteUrl(
   commutePageUrl: string,
-  destinationUrl: string,
-  rideId?: string,
-  stopCount?: number,
+  rideId: string,
 ): string {
   const url = new URL(commutePageUrl);
-  url.searchParams.set("slow", "1");
-  url.searchParams.set("destination", destinationUrl);
-  if (rideId) url.searchParams.set("ride", rideId);
-  if (stopCount) url.searchParams.set("stops", String(stopCount));
+  url.hash = new URLSearchParams({ ride: rideId }).toString();
   return url.toString();
 }
 
@@ -325,6 +321,12 @@ export function normalizeSlowModeSettings(value: unknown): SlowModeSettings {
       Number.isFinite(stored.chancePercent)
         ? Math.min(100, Math.max(10, Math.round(stored.chancePercent / 10) * 10))
         : DEFAULT_SLOW_MODE_SETTINGS.chancePercent,
+    stopVisibility:
+      stored.stopVisibility === "page" ||
+      stored.stopVisibility === "domain" ||
+      stored.stopVisibility === "private"
+        ? stored.stopVisibility
+        : DEFAULT_SLOW_MODE_SETTINGS.stopVisibility,
   };
 }
 

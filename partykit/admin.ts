@@ -5,7 +5,7 @@ import { env } from "cloudflare:workers";
 import * as Y from "yjs";
 import { supabase } from "./db";
 import { PartyServer } from "./party";
-import { docToJson, encodeDocToBase64 } from "./docUtils";
+import { docToJson } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 import { getAdminAuthError } from "./adminAuth";
 
@@ -31,8 +31,8 @@ function compareKeys(
  * AdminHandler provides endpoints for inspecting and managing PlayHTML rooms.
  *
  * Data Flow:
- * - Admin edits load the database snapshot as source of truth, commit a fresh
- *   snapshot, then reset connected clients onto that snapshot.
+ * - Moderation and cleanup mutate the authoritative live room state, commit a
+ *   fresh snapshot, then reset connected clients onto that snapshot.
  * - Force-save-live is an escape hatch for persisting the live in-memory doc.
  * - Force-reload-live syncs the live doc to match the database state.
  * - All Y.Doc conversions use shared utilities in docUtils.ts for consistency.
@@ -138,34 +138,6 @@ export class AdminHandler {
 
   private checkPersistenceWriteAvailable(): Response | null {
     return this.context.getSharedDataWriteUnavailableResponse();
-  }
-
-  private async loadDatabasePlayData(): Promise<{
-    play: Record<string, any> | null;
-    documentSize: number;
-  }> {
-    const { data, error } = await supabase
-      .from("documents")
-      .select("document")
-      .eq("name", this.context.name)
-      .maybeSingle();
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    if (!data?.document) {
-      return { play: null, documentSize: 0 };
-    }
-
-    const yDoc = new Y.Doc();
-    const buffer = new Uint8Array(Buffer.from(data.document, "base64"));
-    Y.applyUpdate(yDoc, buffer);
-
-    return {
-      play: docToJson(yDoc),
-      documentSize: data.document.length,
-    };
   }
 
   private async handleAdminInspect(request: Request): Promise<Response> {
@@ -476,9 +448,16 @@ export class AdminHandler {
     if (persistenceError) return persistenceError;
 
     try {
-      const liveYDoc = this.context.document;
-      const base64 = encodeDocToBase64(liveYDoc);
-      await this.context.saveDocumentBase64(base64);
+      const saved = await this.context.saveLiveDocument();
+      if (!saved) {
+        return new Response(
+          JSON.stringify({ error: "Live document was not saved" }),
+          {
+            status: 409,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "content-type": "application/json" },
       });
@@ -623,26 +602,34 @@ export class AdminHandler {
         );
       }
 
-      const { play } = await this.loadDatabasePlayData();
-      if (!play) {
+      const mutation = await this.context.mutateAdminPlayData<ReturnType<
+        typeof removeRecordsByTargets
+      > | null>((play) => {
+        if (Object.keys(play).length === 0) {
+          return { kind: "skip", result: null };
+        }
+
+        const result = removeRecordsByTargets(play, targets);
+        if (result.removed === 0) {
+          return { kind: "skip", result };
+        }
+
+        for (const key of Object.keys(play)) {
+          delete play[key];
+        }
+        Object.assign(play, result.play);
+        return { kind: "commit", result };
+      });
+
+      if (!mutation.result) {
         return new Response(
           JSON.stringify({ error: "Room has no play data" }),
           { status: 404, headers: { "content-type": "application/json" } }
         );
       }
 
-      const result = removeRecordsByTargets(play, targets);
-      let resetResult:
-        | {
-            documentSize: number;
-            resetEpoch: number;
-            closedConnections: number;
-          }
-        | null = null;
-
-      if (result.removed > 0) {
-        resetResult = await this.context.commitAdminPlayData(result.play);
-      }
+      const result = mutation.result;
+      const resetResult = mutation.committed;
 
       return new Response(
         JSON.stringify({
@@ -771,10 +758,57 @@ export class AdminHandler {
         );
       }
 
+      type CleanupResult =
+        | { kind: "missing" }
+        | {
+            kind: "found";
+            total: number;
+            orphanedIds: string[];
+            removed: number;
+          };
+
       const activeIdSet = new Set(activeIds);
-      const { play } = await this.loadDatabasePlayData();
-      const tagData = play?.[tag];
-      if (!tagData || typeof tagData !== "object") {
+      const mutation = await this.context.mutateAdminPlayData<CleanupResult>(
+        (play) => {
+          const tagData = play[tag];
+          if (!tagData || typeof tagData !== "object") {
+            return { kind: "skip", result: { kind: "missing" } };
+          }
+
+          const allElementIds = Object.keys(tagData);
+          const orphanedIds = allElementIds.filter(
+            (id) => !activeIdSet.has(id)
+          );
+          const result: CleanupResult = {
+            kind: "found",
+            total: allElementIds.length,
+            orphanedIds,
+            removed: 0,
+          };
+
+          if (dryRun || orphanedIds.length === 0) {
+            return { kind: "skip", result };
+          }
+
+          for (const orphanedId of orphanedIds) {
+            try {
+              delete tagData[orphanedId];
+              result.removed += 1;
+            } catch (error) {
+              console.error(
+                `Failed to remove ${tag}:${orphanedId}:`,
+                error instanceof Error ? error.message : String(error)
+              );
+            }
+          }
+
+          return result.removed > 0
+            ? { kind: "commit", result }
+            : { kind: "skip", result };
+        }
+      );
+
+      if (mutation.result.kind === "missing") {
         return new Response(
           JSON.stringify({
             ok: true,
@@ -793,15 +827,14 @@ export class AdminHandler {
         );
       }
 
-      const allElementIds = Object.keys(tagData);
-      const orphanedIds = allElementIds.filter((id) => !activeIdSet.has(id));
+      const { total, orphanedIds, removed } = mutation.result;
 
       if (dryRun) {
         return new Response(
           JSON.stringify({
             ok: true,
             tag,
-            total: allElementIds.length,
+            total,
             active: activeIds.length,
             orphaned: orphanedIds.length,
             orphanedIds,
@@ -817,33 +850,17 @@ export class AdminHandler {
         );
       }
 
-      let removedCount = 0;
-      for (const orphanedId of orphanedIds) {
-        try {
-          delete tagData[orphanedId];
-          removedCount++;
-        } catch (error) {
-          console.error(
-            `Failed to remove ${tag}:${orphanedId}:`,
-            error instanceof Error ? error.message : String(error)
-          );
-        }
-      }
-
-      const resetResult =
-        removedCount > 0 && play
-          ? await this.context.commitAdminPlayData(play)
-          : null;
+      const resetResult = mutation.committed;
 
       return new Response(
         JSON.stringify({
           ok: true,
           tag,
-          total: allElementIds.length,
+          total,
           active: activeIds.length,
-          removed: removedCount,
+          removed,
           orphanedIds,
-          message: `Removed ${removedCount} orphaned entries`,
+          message: `Removed ${removed} orphaned entries`,
           documentSize: resetResult?.documentSize ?? null,
           resetEpoch: resetResult?.resetEpoch ?? null,
           closedConnections: resetResult?.closedConnections ?? 0,
@@ -1028,7 +1045,9 @@ export class AdminHandler {
         await this.context.circuitBreaker.clearCompactionFailure();
         compactionFailureCleared = true;
         if (this.context.circuitBreaker.isQuarantined()) {
-          await this.context.circuitBreaker.clearQuarantine();
+          await this.context.circuitBreaker.clearQuarantine({
+            recoveryCompleted: true,
+          });
           quarantineCleared = true;
           this.context.markDocumentHydrated();
         }
@@ -1238,9 +1257,9 @@ export class AdminHandler {
             },
             stillTransient: !this.context.isPersistenceAvailable(),
             message: reset.wasQuarantined
-              ? "Quarantine cleared, along with the failure history that caused it. Normal traffic stays gated until a guarded load restores the persisted document."
+              ? "Quarantine cleared. Normal traffic stays gated until a guarded load restores the persisted document, then its load failure history is cleared."
               : resetSomething
-                ? "Room was not quarantined, but its failure history was reset. Normal traffic stays gated until a guarded load restores the persisted document."
+                ? "Room was not quarantined, but guarded recovery is pending. Normal traffic stays gated until the persisted document is restored."
                 : "Room was not quarantined and had no failure history; nothing changed.",
           },
           null,

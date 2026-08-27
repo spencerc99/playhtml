@@ -302,6 +302,47 @@ button {
   }
 }
 
+.slow-mode-sharing,
+.commute-route-notice {
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin: 0 auto 8px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  font-family: var(--wwo-font-mono);
+  font-size: 10px;
+  text-align: center;
+}
+
+.commute-route-notice {
+  color: var(--btn-fg);
+  background: var(--accent-teal);
+}
+
+.commute-board-status {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  text-align: center;
+
+  strong {
+    font-family: var(--wwo-font-mono);
+    font-size: 15px;
+  }
+
+  button {
+    padding: 8px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    color: var(--text);
+    background: var(--surface);
+    cursor: pointer;
+  }
+}
+
 .slow-mode-teleport {
   display: block;
   margin: -4px auto 10px;
@@ -516,7 +557,6 @@ button {
 .commute-mobile-wordmark,
 .commute-mobile-fullscreen,
 .commute-mobile-joystick,
-.commute-mobile-action,
 .commute-mobile-transit-pass {
   display: none;
 }
@@ -1978,17 +2018,13 @@ button {
     border-radius: 0;
   }
 
-  .train-seat {
-    pointer-events: none;
-  }
-
   .commute-counts {
     width: auto;
     min-width: 280px;
     margin: 0;
     position: fixed;
-    right: calc(20px + env(safe-area-inset-right));
-    bottom: calc(24px + env(safe-area-inset-bottom));
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(10px + env(safe-area-inset-bottom));
     z-index: 30;
     padding: 6px 14px;
     display: flex;
@@ -2109,11 +2145,11 @@ button {
   }
 
   .commute-mobile-joystick {
-    width: 112px;
-    height: 112px;
+    width: 88px;
+    height: 88px;
     position: fixed;
-    bottom: calc(18px + env(safe-area-inset-bottom));
-    left: calc(20px + env(safe-area-inset-left));
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    left: calc(12px + env(safe-area-inset-left));
     z-index: 30;
     display: block;
     border: 1.5px solid color-mix(in srgb, var(--text) 35%, transparent);
@@ -2123,8 +2159,8 @@ button {
     touch-action: none;
 
     span {
-      width: 48px;
-      height: 48px;
+      width: 40px;
+      height: 40px;
       position: absolute;
       top: 50%;
       left: 50%;
@@ -2137,37 +2173,6 @@ button {
         calc(-50% + var(--joystick-y))
       );
       pointer-events: none;
-    }
-  }
-
-  .commute-mobile-action {
-    min-height: 44px;
-    position: fixed;
-    bottom: calc(58px + env(safe-area-inset-bottom));
-    left: calc(148px + env(safe-area-inset-left));
-    z-index: 30;
-    padding: 9px 20px;
-    display: block;
-    color: var(--btn-fg);
-    border: 2px solid color-mix(in srgb, var(--text) 25%, transparent);
-    border-radius: 999px;
-    background: var(--accent-teal);
-    box-shadow: 0 2px 10px color-mix(in srgb, var(--text) 30%, transparent);
-    font-size: 13px;
-    font-weight: 700;
-    white-space: nowrap;
-    cursor: pointer;
-
-    &:active {
-      transform: scale(0.96);
-    }
-
-    &--stand {
-      background: var(--accent-plum);
-    }
-
-    &--exit {
-      background: var(--accent-rust);
     }
   }
 
