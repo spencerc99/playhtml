@@ -52,18 +52,18 @@ const PARTY_CHROME_HEIGHT = 104;
 const PARTY_STATIONS = [
   {
     center: 460,
-    label: "the welcome sign",
-  },
-  {
-    center: 1260,
-    label: "the balloon stand",
-  },
-  {
-    center: 1970,
     label: "the cake",
   },
   {
-    center: 2700,
+    center: 1140,
+    label: "the balloon stand",
+  },
+  {
+    center: 1740,
+    label: "the party popper",
+  },
+  {
+    center: 2290,
     label: "the card pile",
   },
 ];
