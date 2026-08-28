@@ -50,7 +50,7 @@ export function getMyCommuteRiderStart(
   riders: Iterable<CommuteRiderIdentity>,
 ): CommutePoint | null {
   for (const rider of riders) {
-    if (rider.isMe) return getCommuteRiderStart(rider.pid);
+    if (rider.isMe) return COMMUTE_JOIN_ENTRY_POSITION;
   }
   return null;
 }

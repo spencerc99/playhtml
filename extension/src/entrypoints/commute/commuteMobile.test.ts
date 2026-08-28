@@ -48,7 +48,7 @@ describe("mobile commute geometry", () => {
         { pid: "rider-a", isMe: false },
         { pid: "me", isMe: true },
       ]),
-    ).toEqual(getCommuteRiderStart("me"));
+    ).toEqual(COMMUTE_JOIN_ENTRY_POSITION);
   });
 
   it("accepts bounded shared positions and rejects malformed presence", () => {
