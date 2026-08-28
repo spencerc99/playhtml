@@ -479,8 +479,10 @@ function shortestPath(
     ).sort(([a], [b]) => a.localeCompare(b))) {
       if (!unvisited.has(neighbor) || linkingPages <= 0) continue;
       if (NO_EXPAND.has(neighbor) && neighbor !== to) continue;
+      // hops dominate (a hop costs like a transfer), link strength only
+      // discounts within a hop -- so a direct road always beats a detour
       const candidate =
-        currentDistance + 1 / Math.log2(2 + linkingPages);
+        currentDistance + 1 + 1 / Math.log2(2 + linkingPages);
       const known = distances.get(neighbor) ?? Infinity;
       if (candidate < known) {
         distances.set(neighbor, candidate);
