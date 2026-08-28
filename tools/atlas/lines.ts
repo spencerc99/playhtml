@@ -10,6 +10,13 @@ import {
   type PathLeg,
 } from "./snowball";
 
+declare global {
+  interface ImportMeta {
+    readonly dir: string;
+    readonly main: boolean;
+  }
+}
+
 const DEFAULT_GRAPH_PATH = path.join(
   import.meta.dir,
   "out",
@@ -367,6 +374,52 @@ function lineId(stops: string[]): string {
   return `line-${fnv1a(termini.join("\0"))}`;
 }
 
+function assignLineNames(
+  drafts: LineDraft[],
+  nodeByDomain: Map<string, GalaxyGraph["nodes"][number]>,
+  visitsFor: (domain: string) => number,
+): string[] {
+  const usedAnchors = new Set<string>();
+  const usedNames = new Set<string>();
+  return drafts.map((draft) => {
+    const eligibleStops = draft.stops
+      .filter((stop) => {
+        const kind = nodeByDomain.get(stop)!.kind;
+        return kind === "site" || kind === "seed";
+      })
+      .sort(
+        (left, right) =>
+          visitsFor(right) - visitsFor(left) || left.localeCompare(right),
+      );
+    const availableAnchor = eligibleStops.find(
+      (stop) => !usedAnchors.has(stop),
+    );
+    if (availableAnchor !== undefined) {
+      const name = `${availableAnchor} line`;
+      usedAnchors.add(availableAnchor);
+      usedNames.add(name);
+      return name;
+    }
+
+    const anchor = eligibleStops[0];
+    const viaStops = draft.stops
+      .filter((stop) => stop !== anchor)
+      .sort(
+        (left, right) =>
+          visitsFor(right) - visitsFor(left) || left.localeCompare(right),
+      );
+    const viaStop = viaStops.find(
+      (stop) => !usedNames.has(`${anchor} line via ${stop}`),
+    );
+    if (viaStop === undefined) {
+      throw new Error(`Cannot assign a unique name to line through ${anchor}`);
+    }
+    const name = `${anchor} line via ${viaStop}`;
+    usedNames.add(name);
+    return name;
+  });
+}
+
 function assignColors(lines: TransitLine[]): void {
   const lineCountAtStop = new Map<string, number>();
   for (const line of lines) {
@@ -453,24 +506,15 @@ export function extractLines(graph: GalaxyGraph): TransitLinesFile {
     }),
   );
   const ids = new Set<string>();
-  const lines = drafts.map((draft) => {
+  const names = assignLineNames(drafts, nodeByDomain, visitsFor);
+  const lines = drafts.map((draft, index) => {
     const id = lineId(draft.stops);
     if (!ids.add(id)) {
       throw new Error(`Multiple lines resolve to ${id}`);
     }
-    const anchor = draft.stops
-      .filter(
-        (stop) =>
-          nodeByDomain.get(stop)!.kind === "site" ||
-          nodeByDomain.get(stop)!.kind === "seed",
-      )
-      .sort(
-        (left, right) =>
-          visitsFor(right) - visitsFor(left) || left.localeCompare(right),
-      )[0];
     return {
       id,
-      name: `${anchor} line`,
+      name: names[index],
       color: "",
       loop: false,
       stops: draft.stops,

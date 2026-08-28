@@ -1,119 +1,10 @@
 {
   "meta": {
-    "generatedAt": "2026-08-28T20:09:24.233Z",
-    "totalLines": 49,
-    "coverage": 0.024864376130198915
+    "generatedAt": "2026-08-28T20:56:13.841Z",
+    "totalLines": 43,
+    "coverage": 0.021360759493670885
   },
   "lines": [
-    {
-      "id": "line-39fd2d9c",
-      "name": "theverge.com line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "atlanticbrandpartners.com",
-        "theatlantic.com",
-        "flipboard.com",
-        "people.com",
-        "buysub.com",
-        "robbreport.com",
-        "pmc.com",
-        "indiewire.com",
-        "sheknows.com",
-        "punchdrink.com",
-        "theverge.com",
-        "voxmedia.com",
-        "nymag.com",
-        "curbed.com",
-        "vulture.com",
-        "vulturefestival.com"
-      ]
-    },
-    {
-      "id": "line-1a888e97",
-      "name": "variety.com line",
-      "color": "#B0783C",
-      "loop": false,
-      "stops": [
-        "displayr.com",
-        "luminatedata.com",
-        "variety.com",
-        "pmc.com",
-        "goldenglobes.com",
-        "snapchat.com",
-        "businessinsider.com",
-        "parsintl.com",
-        "forbes.com",
-        "youradchoices.com"
-      ]
-    },
-    {
-      "id": "line-41fde9ea",
-      "name": "pmc.com line",
-      "color": "#A18A3F",
-      "loop": false,
-      "stops": [
-        "adage.com",
-        "shemedia.com",
-        "pmc.com",
-        "aboutads.info",
-        "arstechnica.com",
-        "condenast.com"
-      ]
-    },
-    {
-      "id": "line-4502d093",
-      "name": "hollywoodreporter.com line",
-      "color": "#6F8A4A",
-      "loop": false,
-      "stops": [
-        "billboard.com",
-        "artforum.com",
-        "pmc.com",
-        "hollywoodreporter.com",
-        "magazineshop.us",
-        "time.com",
-        "timecoverstore.com"
-      ]
-    },
-    {
-      "id": "line-0ab1df7d",
-      "name": "pmc.com line",
-      "color": "#3F8B6C",
-      "loop": false,
-      "stops": [
-        "complex.com",
-        "vibe.com",
-        "pmc.com",
-        "sportico.com",
-        "espn.com"
-      ]
-    },
-    {
-      "id": "line-25cd7481",
-      "name": "pmc.com line",
-      "color": "#3F8790",
-      "loop": false,
-      "stops": [
-        "8newsnow.com",
-        "rollingstone.com",
-        "pmc.com",
-        "goldderby.com",
-        "emmys.com"
-      ]
-    },
-    {
-      "id": "line-95de1344",
-      "name": "pmc.com line",
-      "color": "#4D78A8",
-      "loop": false,
-      "stops": [
-        "sxswlondon.com",
-        "sxsw.com",
-        "pmc.com",
-        "wwd.com"
-      ]
-    },
     {
       "id": "line-878559cc",
       "name": "are.na line",
@@ -165,7 +56,7 @@
     },
     {
       "id": "line-0c96d532",
-      "name": "spencer.place line",
+      "name": "jzhao.xyz line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
@@ -178,7 +69,7 @@
     },
     {
       "id": "line-fd0a9537",
-      "name": "spencer.place line",
+      "name": "cloudlord.management line",
       "color": "#3F8B6C",
       "loop": false,
       "stops": [
@@ -191,7 +82,7 @@
     },
     {
       "id": "line-36c9eb08",
-      "name": "spencer.place line",
+      "name": "spencerchang.substack.com line",
       "color": "#3F8790",
       "loop": false,
       "stops": [
@@ -199,6 +90,85 @@
         "hyperwhisper.net",
         "spencer.place",
         "spencerchang.substack.com"
+      ]
+    },
+    {
+      "id": "line-be967c68",
+      "name": "indiewire.com line",
+      "color": "#A65D57",
+      "loop": false,
+      "stops": [
+        "outofprint.com",
+        "penguinrandomhouse.com",
+        "pinterest.com",
+        "indiewire.com",
+        "sheknows.com",
+        "punchdrink.com",
+        "aboutads.info",
+        "popsugar.com",
+        "voxmedia.com",
+        "nymag.com",
+        "curbed.com",
+        "vulture.com",
+        "vulturefestival.com"
+      ]
+    },
+    {
+      "id": "line-7cfc6db4",
+      "name": "rollingstone.com line",
+      "color": "#B0783C",
+      "loop": false,
+      "stops": [
+        "8newsnow.com",
+        "rollingstone.com",
+        "vibe.com",
+        "punchdrink.com",
+        "dickclark.com",
+        "goldenglobes.com",
+        "snapchat.com",
+        "nbcnews.com",
+        "zendesk.com",
+        "zendesk.de"
+      ]
+    },
+    {
+      "id": "line-6f7f5a11",
+      "name": "sxsw.com line",
+      "color": "#A18A3F",
+      "loop": false,
+      "stops": [
+        "newmuseum.org",
+        "rhizome.org",
+        "feedburner.com",
+        "punchdrink.com",
+        "sxsw.com",
+        "sxswedu.com"
+      ]
+    },
+    {
+      "id": "line-a984beb6",
+      "name": "artforum.com line",
+      "color": "#6F8A4A",
+      "loop": false,
+      "stops": [
+        "com.cn",
+        "artforum.com",
+        "punchdrink.com",
+        "eater.com",
+        "eaterwineclub.com"
+      ]
+    },
+    {
+      "id": "line-bd35986f",
+      "name": "sportico.com line",
+      "color": "#3F8B6C",
+      "loop": false,
+      "stops": [
+        "acmepackingcompany.com",
+        "sbnation.com",
+        "punchdrink.com",
+        "sportico.com",
+        "espn.com"
       ]
     },
     {
@@ -218,7 +188,7 @@
     },
     {
       "id": "line-97bfddde",
-      "name": "are.na line",
+      "name": "thehtml.review line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
@@ -248,7 +218,7 @@
     },
     {
       "id": "line-31fbba63",
-      "name": "are.na line",
+      "name": "html.energy line",
       "color": "#A18A3F",
       "loop": false,
       "stops": [
@@ -287,7 +257,7 @@
     },
     {
       "id": "line-d6ac0ee3",
-      "name": "rockpapershotgun.com line",
+      "name": "gamer.network line",
       "color": "#A18A3F",
       "loop": false,
       "stops": [
@@ -300,7 +270,7 @@
     },
     {
       "id": "line-14ea1b3a",
-      "name": "tiat.place line",
+      "name": "madsci.io line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
@@ -312,7 +282,7 @@
     },
     {
       "id": "line-3dc47821",
-      "name": "are.na line",
+      "name": "connie.surf line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
@@ -324,7 +294,7 @@
     },
     {
       "id": "line-41a612b5",
-      "name": "rockpapershotgun.com line",
+      "name": "dicebreaker.com line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
@@ -335,48 +305,35 @@
       ]
     },
     {
-      "id": "line-8335d904",
-      "name": "art-week.com line",
+      "id": "line-4c3d571d",
+      "name": "sheknows.com line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
-        "art-week.com",
-        "punchdrink.com",
-        "feedburner.com",
-        "rhizome.org",
-        "newmuseum.org"
+        "robshuter.substack.com",
+        "stylecaster.com",
+        "sheknows.com",
+        "theflowspace.com",
+        "whatsapp.com"
       ]
     },
     {
-      "id": "line-0819d985",
-      "name": "eater.com line",
+      "id": "line-513de072",
+      "name": "shemedia.com line",
       "color": "#A18A3F",
       "loop": false,
       "stops": [
-        "acmepackingcompany.com",
-        "sbnation.com",
-        "punchdrink.com",
-        "eater.com",
-        "eaterwineclub.com"
-      ]
-    },
-    {
-      "id": "line-bd47e889",
-      "name": "popsugar.com line",
-      "color": "#B0783C",
-      "loop": false,
-      "stops": [
-        "popsugar.co.uk",
-        "popsugar.com",
-        "voxmedia.com",
-        "thedodo.com",
-        "thedo.do"
+        "adage.com",
+        "shemedia.com",
+        "sheknows.com",
+        "goldderby.com",
+        "emmys.com"
       ]
     },
     {
       "id": "line-cb3252ed",
       "name": "thrillist.com line",
-      "color": "#A18A3F",
+      "color": "#B0783C",
       "loop": false,
       "stops": [
         "beckervineyards.com",
@@ -384,6 +341,18 @@
         "voxmedia.com",
         "vox.com",
         "howtogeek.com"
+      ]
+    },
+    {
+      "id": "line-84c57192",
+      "name": "thedodo.com line",
+      "color": "#A18A3F",
+      "loop": false,
+      "stops": [
+        "concert.io",
+        "voxmedia.com",
+        "thedodo.com",
+        "thedo.do"
       ]
     },
     {
@@ -408,21 +377,6 @@
         "chia.design",
         "shen.land",
         "ariellelok.com"
-      ]
-    },
-    {
-      "id": "line-c610034b",
-      "name": "indiewire.com line",
-      "color": "#B0783C",
-      "loop": false,
-      "stops": [
-        "mintlify.com",
-        "swoogo.com",
-        "ampav.com",
-        "indiewire.com",
-        "pinterest.com",
-        "penguinrandomhouse.com",
-        "outofprint.com"
       ]
     },
     {
@@ -453,21 +407,21 @@
       ]
     },
     {
-      "id": "line-4c3d571d",
-      "name": "sheknows.com line",
+      "id": "line-7a9dece6",
+      "name": "aboutads.info line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
-        "robshuter.substack.com",
-        "stylecaster.com",
-        "sheknows.com",
-        "theflowspace.com",
-        "whatsapp.com"
+        "condenast.com",
+        "arstechnica.com",
+        "aboutads.info",
+        "newyorker.com",
+        "condenaststore.com"
       ]
     },
     {
       "id": "line-7c0620e2",
-      "name": "enable-javascript.com line",
+      "name": "escapethealgorithm.substack.com line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
@@ -479,21 +433,21 @@
       ]
     },
     {
-      "id": "line-c3ea9bcf",
-      "name": "zendesk.com line",
-      "color": "#A65D57",
+      "id": "line-db0e8707",
+      "name": "artnews.com line",
+      "color": "#B0783C",
       "loop": false,
       "stops": [
-        "snap.com",
-        "snapchat.com",
-        "nbcnews.com",
-        "zendesk.com",
-        "zendesk.de"
+        "artnews.com",
+        "indiewire.com",
+        "ampav.com",
+        "swoogo.com",
+        "mintlify.com"
       ]
     },
     {
       "id": "line-21191788",
-      "name": "ign.com line",
+      "name": "maxroll.gg line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
@@ -501,18 +455,6 @@
         "ign.com",
         "maxroll.gg",
         "starforgesystems.com"
-      ]
-    },
-    {
-      "id": "line-442680d9",
-      "name": "dickclark.com line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "cognitoforms.com",
-        "dickclark.com",
-        "goldenglobes.com",
-        "go-vip.net"
       ]
     },
     {
@@ -528,18 +470,6 @@
       ]
     },
     {
-      "id": "line-e5612ceb",
-      "name": "aboutads.info line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "condenaststore.com",
-        "newyorker.com",
-        "aboutads.info",
-        "digitaladvertisingalliance.org"
-      ]
-    },
-    {
       "id": "line-9fc7570e",
       "name": "ystrickler.com line",
       "color": "#A65D57",
@@ -551,20 +481,6 @@
         "dfos.com",
         "artistcorporations.com",
         "colorado.gov"
-      ]
-    },
-    {
-      "id": "line-ee761c74",
-      "name": "notion.so line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "incident.io",
-        "notion-status.com",
-        "notion.com",
-        "notion.so",
-        "notion.dev",
-        "notion.co"
       ]
     },
     {
@@ -591,19 +507,6 @@
         "statcounter.com",
         "sfpc.study",
         "withfriends.co"
-      ]
-    },
-    {
-      "id": "line-f340d80e",
-      "name": "apnews.com line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "ap.org",
-        "apnews.com",
-        "onetrust.com",
-        "frieze.com",
-        "demos.co.uk"
       ]
     },
     {
@@ -665,14 +568,26 @@
         "cnn.com",
         "wbd.com"
       ]
+    },
+    {
+      "id": "line-fa069da1",
+      "name": "frieze.com line",
+      "color": "#A65D57",
+      "loop": false,
+      "stops": [
+        "demos.co.uk",
+        "frieze.com",
+        "onetrust.com",
+        "mckinsey.com"
+      ]
     }
   ],
   "interchanges": [
     {
       "domain": "aboutads.info",
       "lines": [
-        "line-41fde9ea",
-        "line-e5612ceb"
+        "line-7a9dece6",
+        "line-be967c68"
       ]
     },
     {
@@ -688,7 +603,7 @@
       "domain": "curbed.com",
       "lines": [
         "line-2aaec00e",
-        "line-39fd2d9c"
+        "line-be967c68"
       ]
     },
     {
@@ -696,13 +611,6 @@
       "lines": [
         "line-7c0620e2",
         "line-e5ea8602"
-      ]
-    },
-    {
-      "domain": "goldenglobes.com",
-      "lines": [
-        "line-1a888e97",
-        "line-442680d9"
       ]
     },
     {
@@ -715,34 +623,24 @@
     {
       "domain": "indiewire.com",
       "lines": [
-        "line-39fd2d9c",
-        "line-c610034b"
-      ]
-    },
-    {
-      "domain": "pmc.com",
-      "lines": [
-        "line-0ab1df7d",
-        "line-1a888e97",
-        "line-25cd7481",
-        "line-39fd2d9c",
-        "line-41fde9ea",
-        "line-4502d093",
-        "line-95de1344"
+        "line-be967c68",
+        "line-db0e8707"
       ]
     },
     {
       "domain": "punchdrink.com",
       "lines": [
-        "line-0819d985",
-        "line-39fd2d9c",
-        "line-8335d904"
+        "line-6f7f5a11",
+        "line-7cfc6db4",
+        "line-a984beb6",
+        "line-bd35986f",
+        "line-be967c68"
       ]
     },
     {
       "domain": "rhizome.org",
       "lines": [
-        "line-8335d904",
+        "line-6f7f5a11",
         "line-d56eeaed"
       ]
     },
@@ -758,8 +656,9 @@
     {
       "domain": "sheknows.com",
       "lines": [
-        "line-39fd2d9c",
-        "line-4c3d571d"
+        "line-4c3d571d",
+        "line-513de072",
+        "line-be967c68"
       ]
     },
     {
@@ -768,13 +667,6 @@
         "line-bd46552e",
         "line-c6722d53",
         "line-d0aa07b5"
-      ]
-    },
-    {
-      "domain": "snapchat.com",
-      "lines": [
-        "line-1a888e97",
-        "line-c3ea9bcf"
       ]
     },
     {
@@ -800,8 +692,8 @@
     {
       "domain": "voxmedia.com",
       "lines": [
-        "line-39fd2d9c",
-        "line-bd47e889",
+        "line-84c57192",
+        "line-be967c68",
         "line-cb3252ed"
       ]
     }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-08-28T19:39:23.436Z",
+    "generatedAt": "2026-08-28T20:26:18.117Z",
     "seeds": [
       "jzhao.xyz",
       "spencer.place"
@@ -4263,7 +4263,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "apod.li",
@@ -7255,7 +7255,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "billboardevents.com",
@@ -9335,7 +9335,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "businessinsider.de",
@@ -20575,7 +20575,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "flippistarchives.blogspot.com",
@@ -20855,7 +20855,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "forbesmedia.com",
@@ -21511,7 +21511,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 6,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "ftc.gov",
@@ -25471,7 +25471,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "holzer.online",
@@ -41855,7 +41855,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 43,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "notion.dev",
@@ -41879,7 +41879,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 43,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "notiz.blog",
@@ -44703,7 +44703,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "people.inc",
@@ -45735,7 +45735,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "pmhu3a.org.au",
@@ -46583,7 +46583,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 7,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "prose.sh",
@@ -48407,7 +48407,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "revcd.com",
@@ -48903,7 +48903,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "robcrr.com",
@@ -57271,7 +57271,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "thegymnasium.com",
@@ -58143,7 +58143,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "thevisualchronicle.com",
@@ -58655,7 +58655,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "timecoverstore.com",
@@ -61327,7 +61327,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "vasanthv.net",
@@ -62631,7 +62631,7 @@
       "participants": 0,
       "dwellMs": 0,
       "cluster": 3,
-      "kind": "site"
+      "kind": "hub"
     },
     {
       "id": "washu.edu",

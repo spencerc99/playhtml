@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-08-28T20:26:18.279Z",
+    "generatedAt": "2026-08-28T20:56:13.841Z",
     "totalLines": 43,
     "coverage": 0.021360759493670885
   },
@@ -56,7 +56,7 @@
     },
     {
       "id": "line-0c96d532",
-      "name": "spencer.place line",
+      "name": "jzhao.xyz line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
@@ -69,7 +69,7 @@
     },
     {
       "id": "line-fd0a9537",
-      "name": "spencer.place line",
+      "name": "cloudlord.management line",
       "color": "#3F8B6C",
       "loop": false,
       "stops": [
@@ -82,7 +82,7 @@
     },
     {
       "id": "line-36c9eb08",
-      "name": "spencer.place line",
+      "name": "spencerchang.substack.com line",
       "color": "#3F8790",
       "loop": false,
       "stops": [
@@ -188,7 +188,7 @@
     },
     {
       "id": "line-97bfddde",
-      "name": "are.na line",
+      "name": "thehtml.review line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
@@ -218,7 +218,7 @@
     },
     {
       "id": "line-31fbba63",
-      "name": "are.na line",
+      "name": "html.energy line",
       "color": "#A18A3F",
       "loop": false,
       "stops": [
@@ -257,7 +257,7 @@
     },
     {
       "id": "line-d6ac0ee3",
-      "name": "rockpapershotgun.com line",
+      "name": "gamer.network line",
       "color": "#A18A3F",
       "loop": false,
       "stops": [
@@ -270,7 +270,7 @@
     },
     {
       "id": "line-14ea1b3a",
-      "name": "tiat.place line",
+      "name": "madsci.io line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
@@ -282,7 +282,7 @@
     },
     {
       "id": "line-3dc47821",
-      "name": "are.na line",
+      "name": "connie.surf line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
@@ -294,7 +294,7 @@
     },
     {
       "id": "line-41a612b5",
-      "name": "rockpapershotgun.com line",
+      "name": "dicebreaker.com line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
@@ -421,7 +421,7 @@
     },
     {
       "id": "line-7c0620e2",
-      "name": "enable-javascript.com line",
+      "name": "escapethealgorithm.substack.com line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
@@ -447,7 +447,7 @@
     },
     {
       "id": "line-21191788",
-      "name": "ign.com line",
+      "name": "maxroll.gg line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
