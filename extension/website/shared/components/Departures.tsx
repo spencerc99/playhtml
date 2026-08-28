@@ -1,5 +1,5 @@
 // ABOUTME: Train-station departures board rendering navigation events as departures.
-// ABOUTME: Rows show traveler color, favicon + destination, origin, time spent, and status.
+// ABOUTME: Rows show traveler color, favicon + destination, origin, time spent, and time.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { CollectionEvent } from "../types";
@@ -25,8 +25,8 @@ export interface DeparturesProps {
   notice?: string;
 }
 
-/** Departures fresher than this flicker as "departing". */
-const DEPARTING_WINDOW_MS = 10 * 60 * 1000;
+/** Departures fresher than this pulse their traveler dot as "just left". */
+const FRESH_WINDOW_MS = 2 * 60 * 1000;
 /** Gaps longer than this mean the traveler was away, not dwelling. */
 const MAX_DWELL_MS = 4 * 60 * 60 * 1000;
 
@@ -150,7 +150,6 @@ export function Departures({
         <span>from</span>
         <span>spent</span>
         <span>time</span>
-        <span>status</span>
       </div>
 
       <div className="departures-rows">
@@ -160,7 +159,7 @@ export function Departures({
           </div>
         ) : (
           rows.map((row, index) => {
-            const departing = now - row.ts < DEPARTING_WINDOW_MS;
+            const fresh = now - row.ts < FRESH_WINDOW_MS;
             return (
               <div
                 className="departures-row"
@@ -169,7 +168,11 @@ export function Departures({
               >
                 <span className="departures-traveler">
                   <span
-                    className="departures-traveler-dot"
+                    className={
+                      fresh
+                        ? "departures-traveler-dot departures-traveler-dot-fresh"
+                        : "departures-traveler-dot"
+                    }
                     style={{ backgroundColor: row.color }}
                   />
                 </span>
@@ -192,15 +195,6 @@ export function Departures({
                   {row.spentMs !== null ? formatDuration(row.spentMs) : "—"}
                 </span>
                 <span className="departures-time">{formatTime(row.ts)}</span>
-                <span
-                  className={
-                    departing
-                      ? "departures-status departures-status-departing"
-                      : "departures-status"
-                  }
-                >
-                  {departing ? "departing" : "departed"}
-                </span>
               </div>
             );
           })

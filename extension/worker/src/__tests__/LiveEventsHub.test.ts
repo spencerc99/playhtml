@@ -50,10 +50,14 @@ beforeEach(() => {
 import { LiveEventsHub } from '../live/LiveEventsHub';
 import type { CollectionEvent } from '@playhtml/extension-types';
 
-function ev(id: string, ts: number = Date.now()): CollectionEvent {
+function ev(
+  id: string,
+  ts: number = Date.now(),
+  type: CollectionEvent['type'] = 'cursor',
+): CollectionEvent {
   return {
     id,
-    type: 'cursor',
+    type,
     ts,
     data: { x: 0.5, y: 0.5 },
     meta: { pid: 'pk_x', sid: 'sid_y' },
@@ -135,5 +139,73 @@ describe('LiveEventsHub', () => {
 
     const newFrames = server.sent.slice(beforeCount).map((s) => JSON.parse(s));
     expect(newFrames.some((f) => f.events?.[0]?.id === 'live1')).toBe(true);
+  });
+
+  it('sends each socket only the event types it subscribed to', async () => {
+    const hub = makeHub();
+    await hub.fetch(new Request('https://do/ws', { headers: { Upgrade: 'websocket' } }));
+    await hub.fetch(
+      new Request('https://do/ws?types=navigation', { headers: { Upgrade: 'websocket' } }),
+    );
+    const [cursorSocket, navSocket] = hub.socketsForTest() as unknown as FakeWebSocket[];
+
+    await hub.fetch(
+      new Request('https://do/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({
+          events: [ev('c1'), ev('n1', Date.now(), 'navigation')],
+        }),
+      }),
+    );
+
+    const cursorIds = cursorSocket.sent
+      .flatMap((s) => JSON.parse(s).events)
+      .map((e: CollectionEvent) => e.id);
+    const navIds = navSocket.sent
+      .flatMap((s) => JSON.parse(s).events)
+      .map((e: CollectionEvent) => e.id);
+    expect(cursorIds).toEqual(['c1']);
+    expect(navIds).toEqual(['n1']);
+  });
+
+  it('filters the replay buffer by the socket type selection', async () => {
+    const hub = makeHub();
+    await hub.fetch(
+      new Request('https://do/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({
+          events: [ev('c1'), ev('n1', Date.now(), 'navigation')],
+        }),
+      }),
+    );
+
+    await hub.fetch(
+      new Request('https://do/ws?types=navigation', { headers: { Upgrade: 'websocket' } }),
+    );
+    const server = hub.socketsForTest()[0] as unknown as FakeWebSocket;
+    const replay = JSON.parse(server.sent[0]);
+    expect(replay.events.map((e: CollectionEvent) => e.id)).toEqual(['n1']);
+  });
+
+  it('falls back to cursor-only for an invalid types param', async () => {
+    const hub = makeHub();
+    await hub.fetch(
+      new Request('https://do/ws?types=bogus', { headers: { Upgrade: 'websocket' } }),
+    );
+    const server = hub.socketsForTest()[0] as unknown as FakeWebSocket;
+
+    await hub.fetch(
+      new Request('https://do/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({
+          events: [ev('c1'), ev('n1', Date.now(), 'navigation')],
+        }),
+      }),
+    );
+
+    const ids = server.sent
+      .flatMap((s) => JSON.parse(s).events)
+      .map((e: CollectionEvent) => e.id);
+    expect(ids).toEqual(['c1']);
   });
 });

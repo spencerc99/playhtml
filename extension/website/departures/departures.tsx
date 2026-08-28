@@ -1,11 +1,12 @@
 // ABOUTME: Entry point for the departures board page on wewere.online.
-// ABOUTME: Fetches recent navigation events and renders them as a station board.
+// ABOUTME: Seeds the board from recent history, then flips in live departures from the stream.
 
 import "./departures.scss";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { Departures } from "../shared/components/Departures";
 import { RECENT_EVENTS_URL } from "../shared/config";
+import { useLiveEvents } from "../shared/hooks/useLiveEvents";
 import { CollectionEvent } from "../shared/types";
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -13,6 +14,7 @@ const REFRESH_INTERVAL_MS = 60_000;
 function DeparturesPage() {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { events: liveEvents } = useLiveEvents({ types: ["navigation"] });
 
   const fetchEvents = useCallback(async () => {
     const params = new URLSearchParams({ type: "navigation", limit: "1000" });
@@ -35,9 +37,18 @@ function DeparturesPage() {
     return () => clearInterval(interval);
   }, [fetchEvents]);
 
+  // History + live stream, deduped by id (the periodic refetch overlaps the
+  // stream once a live event lands in the database).
+  const mergedEvents = useMemo(() => {
+    const byId = new Map<string, CollectionEvent>();
+    for (const e of events) byId.set(e.id, e);
+    for (const e of liveEvents) byId.set(e.id, e);
+    return [...byId.values()];
+  }, [events, liveEvents]);
+
   return (
     <main className="departures-page">
-      <Departures events={events} maxRows={12} />
+      <Departures events={mergedEvents} maxRows={12} />
       {error && <p className="departures-error">{error}</p>}
     </main>
   );
