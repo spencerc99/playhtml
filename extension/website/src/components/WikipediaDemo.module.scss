@@ -208,6 +208,69 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   }
 }
 
+// Narrow stages: the ragged-right gap beside the article text disappears, so
+// the bubble docks above the chat hint and sol drifts a shorter, inset path.
+@media (max-width: 520px) {
+  .chatBubble {
+    top: auto;
+    bottom: 34px;
+    right: 12px;
+    max-width: 62%;
+  }
+
+  .cursorMira {
+    animation-name: drift-mira-narrow;
+  }
+
+  .cursorSol {
+    animation-name: drift-sol-narrow;
+  }
+}
+
+@keyframes drift-mira-narrow {
+  0% {
+    transform: translate(14px, 140px);
+  }
+
+  30% {
+    transform: translate(48px, 152px);
+  }
+
+  60% {
+    transform: translate(60px, 139px);
+  }
+
+  85% {
+    transform: translate(30px, 156px);
+  }
+
+  100% {
+    transform: translate(14px, 140px);
+  }
+}
+
+@keyframes drift-sol-narrow {
+  0% {
+    transform: translate(170px, 154px);
+  }
+
+  25% {
+    transform: translate(128px, 140px);
+  }
+
+  55% {
+    transform: translate(186px, 137px);
+  }
+
+  80% {
+    transform: translate(214px, 152px);
+  }
+
+  100% {
+    transform: translate(170px, 154px);
+  }
+}
+
 @keyframes chat-appear {
   0%,
   50% {
@@ -256,5 +319,15 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
   .chatBubble {
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 520px) {
+  .cursorMira {
+    transform: translate(48px, 152px);
+  }
+
+  .cursorSol {
+    transform: translate(150px, 140px);
   }
 }
