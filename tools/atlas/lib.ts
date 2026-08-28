@@ -121,6 +121,75 @@ export function extractLinks(html: string, pageUrl: string): string[] {
   return out;
 }
 
+function decodeXmlText(value: string): string {
+  const decodeCodePoint = (entity: string, digits: string, radix: number) => {
+    const codePoint = Number.parseInt(digits, radix);
+    return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : entity;
+  };
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (entity, digits: string) =>
+      decodeCodePoint(entity, digits, 16)
+    )
+    .replace(/&#([0-9]+);/g, (entity, digits: string) =>
+      decodeCodePoint(entity, digits, 10)
+    )
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'");
+}
+
+export function extractSitemapLocations(xml: string): string[] {
+  const locations: string[] = [];
+  const locationPattern =
+    /<(?:[a-z_][\w.-]*:)?loc\b[^>]*>([\s\S]*?)<\/(?:[a-z_][\w.-]*:)?loc\s*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = locationPattern.exec(xml))) {
+    const location = decodeXmlText(match[1]).trim();
+    if (location) locations.push(location);
+  }
+  return locations;
+}
+
+const LINK_RICH_PATH_TERMS = [
+  "link",
+  "blogroll",
+  "friend",
+  "now",
+  "about",
+  "bookmarks",
+  "webring",
+  "follow",
+];
+
+export function selectCrawlSeeds(
+  homepage: string,
+  discoveredUrls: Iterable<string>,
+  maxPages: number
+): string[] {
+  const candidates = [...new Set(discoveredUrls)].filter(
+    (url) => url !== homepage
+  );
+  candidates.sort((left, right) => {
+    const leftPath = new URL(left).pathname;
+    const rightPath = new URL(right).pathname;
+    const leftIsLinkRich = LINK_RICH_PATH_TERMS.some((term) =>
+      leftPath.toLowerCase().includes(term)
+    );
+    const rightIsLinkRich = LINK_RICH_PATH_TERMS.some((term) =>
+      rightPath.toLowerCase().includes(term)
+    );
+    if (leftIsLinkRich !== rightIsLinkRich) return leftIsLinkRich ? -1 : 1;
+    if (leftPath.length !== rightPath.length) {
+      return leftPath.length - rightPath.length;
+    }
+    return left.localeCompare(right);
+  });
+  return [homepage, ...candidates].slice(0, maxPages);
+}
+
 export function extractTitle(html: string): string | null {
   const m = html.match(/<title[^>]*>([^<]*)<\/title>/i);
   return m ? m[1].trim().slice(0, 200) || null : null;

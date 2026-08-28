@@ -7,12 +7,14 @@ import {
   baseDomain,
   extractFavicon,
   extractLinks,
+  extractSitemapLocations,
   extractTitle,
   fetchWithTimeout,
   MAX_BODY_BYTES,
   PAGE_DELAY_MS,
   robotsDisallows,
   SECOND_LEVEL_SUFFIXES,
+  selectCrawlSeeds,
   SKIP_EXTENSIONS,
 } from "./lib";
 
@@ -23,6 +25,7 @@ const DEFAULT_CRAWL_DEPTH = 3;
 const DEFAULT_OUTPUT = path.join(import.meta.dir, "out");
 const INTERCHANGE_OUTBOUND_LINK_THRESHOLD = 200;
 const EXTRA_TRUNK_EDGE_RATIO = 0.08;
+const SEED_PAGE_MULTIPLIER = 4;
 
 const NO_EXPAND = new Set([
   "google.com",
@@ -239,6 +242,96 @@ function isRobotsAllowed(url: URL, disallows: string[]): boolean {
   return !disallows.some((rule) => url.pathname.startsWith(rule));
 }
 
+async function responseText(response: Response | null): Promise<string | null> {
+  if (!response || !response.ok) return null;
+  try {
+    return await response.text();
+  } catch {
+    return null;
+  }
+}
+
+async function sitemapPageUrls(origin: string, domain: string): Promise<string[]> {
+  const sitemapUrl = `${origin}/sitemap.xml`;
+  const sitemap = await responseText(
+    await fetchWithTimeout(sitemapUrl, "application/xml")
+  );
+  if (sitemap === null) return [];
+
+  if (!/<(?:[a-z_][\w.-]*:)?sitemapindex\b/i.test(sitemap)) {
+    return extractSitemapLocations(sitemap);
+  }
+
+  const childSitemaps: string[] = [];
+  for (const location of extractSitemapLocations(sitemap)) {
+    try {
+      const childUrl = new URL(location, sitemapUrl);
+      if (
+        (childUrl.protocol === "http:" || childUrl.protocol === "https:") &&
+        baseDomain(childUrl.hostname) === domain
+      ) {
+        childSitemaps.push(childUrl.href);
+      }
+    } catch {
+      // Ignore invalid sitemap entries.
+    }
+    if (childSitemaps.length === 3) break;
+  }
+
+  const pages: string[] = [];
+  for (const childUrl of childSitemaps) {
+    const child = await responseText(
+      await fetchWithTimeout(childUrl, "application/xml")
+    );
+    if (child !== null) pages.push(...extractSitemapLocations(child));
+  }
+  return pages;
+}
+
+async function quartzPageUrls(origin: string): Promise<string[]> {
+  const response = await fetchWithTimeout(
+    `${origin}/static/contentIndex.json`,
+    "application/json"
+  );
+  if (!response || !response.ok) return [];
+  try {
+    const contentIndex: unknown = await response.json();
+    if (
+      contentIndex === null ||
+      typeof contentIndex !== "object" ||
+      Array.isArray(contentIndex)
+    ) {
+      return [];
+    }
+    return Object.keys(contentIndex).map(
+      (slug) => `${origin}/${slug.replace(/^\/+/, "")}`
+    );
+  } catch {
+    return [];
+  }
+}
+
+function normalizeDiscoveredPage(
+  candidate: string,
+  domain: string,
+  disallows: string[]
+): string | null {
+  try {
+    const url = new URL(candidate);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      baseDomain(url.hostname) !== domain ||
+      SKIP_EXTENSIONS.test(url.pathname) ||
+      !isRobotsAllowed(url, disallows)
+    ) {
+      return null;
+    }
+    return `https://${url.host}${url.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
 async function crawlDomain(
   domain: string,
   maxPages: number
@@ -252,10 +345,14 @@ async function crawlDomain(
   };
   const origin = `https://${domain}`;
   const disallows = await robotsDisallows(origin);
-  const queue: { url: string; depth: number }[] = [
-    { url: `${origin}/`, depth: 0 },
-  ];
-  const seen = new Set([`${origin}/`]);
+  const sitemapUrls = await sitemapPageUrls(origin, domain);
+  const quartzUrls = await quartzPageUrls(origin);
+  const discoveredUrls = [...sitemapUrls, ...quartzUrls]
+    .map((url) => normalizeDiscoveredPage(url, domain, disallows))
+    .filter((url): url is string => url !== null);
+  const seedUrls = selectCrawlSeeds(`${origin}/`, discoveredUrls, maxPages);
+  const queue = seedUrls.map((url) => ({ url, depth: 0 }));
+  const seen = new Set(seedUrls);
 
   while (queue.length > 0 && result.pagesCrawled < maxPages) {
     const { url, depth } = queue.shift()!;
@@ -736,10 +833,13 @@ async function runCrawl(
           `(${ring.length} wide), current ${domain}`
       );
       const existing = raw.domains[domain];
+      // seeds are the map's origins and deserve thorough charting
+      const pageBudget =
+        ringDepth === 0 ? options.maxPages * SEED_PAGE_MULTIPLIER : options.maxPages;
       const result =
         existing.pagesCrawled > 0
           ? existing
-          : await crawlDomain(domain, options.maxPages);
+          : await crawlDomain(domain, pageBudget);
       if (existing.pagesCrawled === 0) {
         raw.domains[domain] = { depth: ringDepth, ...result };
         crawled++;
