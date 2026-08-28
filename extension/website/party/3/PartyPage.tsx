@@ -48,7 +48,8 @@ const BALLOON_POP_EVENT = "playhtml-party-3-balloon-pop";
 const CAKE_FINALE_EVENT = "playhtml-party-3-cake-finale";
 const PARTY_ROOM_WIDTH = 3200;
 const PARTY_ROOM_HEIGHT = 900;
-const PARTY_CHROME_HEIGHT = 104;
+const PARTY_CHROME_HEIGHT = 88;
+const PARTY_TOAST_DURATION = 3200;
 const PARTY_STATIONS = [
   {
     center: 460,
@@ -59,11 +60,11 @@ const PARTY_STATIONS = [
     label: "the balloon stand",
   },
   {
-    center: 1740,
+    center: 1660,
     label: "the party popper",
   },
   {
-    center: 2290,
+    center: 2180,
     label: "the card pile",
   },
 ];
@@ -73,6 +74,20 @@ const CARD_COLORS = [
   "var(--ph-brick-wash)",
   "var(--ph-mustard-wash)",
 ];
+const COLOR_NAMES: Record<string, string> = {
+  "#274b9e": "ultramarine",
+  "#c0373c": "brick red",
+  "#e8a63a": "mustard",
+  "#7a9574": "sage",
+  "#ff0099": "neon pink",
+  "var(--ph-sage)": "sage",
+  "var(--ph-ultramarine-wash)": "pale blue",
+  "var(--ph-brick-wash)": "pale red",
+  "var(--ph-mustard-wash)": "pale mustard",
+  "var(--ph-mustard)": "mustard",
+  "var(--ph-ultramarine)": "ultramarine",
+  "var(--ph-brick)": "brick red",
+};
 const SEAL_COLORS = [
   "var(--ph-mustard)",
   "var(--ph-ultramarine)",
@@ -99,6 +114,10 @@ function identityLabel(name: string | undefined) {
 function getRandomPartyColor(currentColor: string) {
   const choices = PARTY_COLORS.filter((choice) => choice !== currentColor);
   return choices[Math.floor(Math.random() * choices.length)] ?? PARTY_COLORS[0];
+}
+
+function getColorName(color: string) {
+  return COLOR_NAMES[color.toLowerCase()] ?? "this color";
 }
 
 function clampCamera(value: number) {
@@ -159,7 +178,7 @@ function ColorChoices({
           className={selectedColor === choice ? "is-selected" : ""}
           style={{ background: choice }}
           onClick={() => onChange(choice)}
-          aria-label={`Use ${choice} for ${label}`}
+          aria-label={`Use ${getColorName(choice)} for ${label}`}
           aria-pressed={selectedColor === choice}
         />
       ))}
@@ -229,7 +248,7 @@ function ArrivalNametag({
                 className={choice === color ? "is-selected" : ""}
                 style={{ background: choice }}
                 onClick={() => setColor(choice)}
-                aria-label={`Use ${choice}`}
+                aria-label={`Use ${getColorName(choice)}`}
                 aria-pressed={choice === color}
               />
             ))}
@@ -657,16 +676,18 @@ function BalloonShape({
   onPointerDown,
   onClick,
   popped,
+  active,
 }: {
   balloon: PartyBalloon;
   position: { x: number; y: number; tilt: number; scale?: number };
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   popped: boolean;
+  active: boolean;
 }) {
   return (
     <div
-      className="party-balloon-position"
+      className={`party-balloon-position ${active ? "is-dragging" : ""}`}
       style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
     >
       {popped ? (
@@ -682,6 +703,7 @@ function BalloonShape({
             filter: `hue-rotate(${balloon.hue}deg) saturate(1.05)`,
           }}
           title={`a balloon tied by ${balloon.by.name}`}
+          aria-label={`Balloon tied by ${balloon.by.name}. Drag it to Spencer to inflate it.`}
         >
           <i className="party-balloon__body" />
           <i className="party-balloon__highlight" />
@@ -922,6 +944,7 @@ function BalloonsStation({
                         : drift
                     }
                     popped={false}
+                    active={Boolean(currentDrag)}
                     onClick={(event) => popBalloon(balloon, event)}
                     onPointerDown={(event) => {
                       if (holdingPin !== null) return;
@@ -1161,7 +1184,11 @@ function WishesStation({
               </StationHeading>
               <div className="party-card party-wishes-card">
                 <h3>the message pile</h3>
-                <p>everyone who came left a card. sign one yourself.</p>
+                <p>
+                  {wishes.length === 0
+                    ? "the pile is waiting. leave the first card."
+                    : "everyone here left a card. add yours to the pile."}
+                </p>
                 <PeopleChip
                   count={participants.size}
                   glyph="✦"
@@ -1170,9 +1197,12 @@ function WishesStation({
                 />
                 <div className="party-wishes-pile">
                   {wishes.length === 0 && (
-                    <p className="party-empty-note">
-                      the pile is waiting for its first wish
-                    </p>
+                    <div className="party-empty-note" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                      <span>your card starts the pile</span>
+                    </div>
                   )}
                   {wishes.map((wish, index) => (
                     <article
@@ -1199,6 +1229,9 @@ function WishesStation({
                 </div>
                 <div className="party-signing-bench">
                   <div>
+                    <strong className="party-signing-bench__title">
+                      make a card
+                    </strong>
                     <textarea
                       value={note}
                       maxLength={120}
@@ -1326,6 +1359,17 @@ function PartyPopper({
     setCharge(0);
   }, [identity, setMyAwareness]);
 
+  const startHolding = useCallback(() => {
+    if (holdId) return;
+    const nextHoldId = createId("hold");
+    setHoldId(nextHoldId);
+    setMyAwareness({
+      ...identity,
+      holdingPopper: true,
+      holdId: nextHoldId,
+    });
+  }, [holdId, identity, setMyAwareness]);
+
   useEffect(() => {
     window.addEventListener("pointerup", release);
     return () => window.removeEventListener("pointerup", release);
@@ -1390,20 +1434,24 @@ function PartyPopper({
   const tension = Math.round(charge * 10);
   return (
     <div className="party-popper" data-popper>
-      {snapped && <strong>bang!</strong>}
+      <span className="party-popper__note">needs two people</span>
+      {snapped && <strong className="party-popper__bang">bang!</strong>}
       <div className={holding && otherHolder ? "is-pulling" : ""}>
         <button
           className="party-popper__end party-popper__end--mine"
           type="button"
           onPointerDown={(event) => {
             event.preventDefault();
-            const nextHoldId = createId("hold");
-            setHoldId(nextHoldId);
-            setMyAwareness({
-              ...identity,
-              holdingPopper: true,
-              holdId: nextHoldId,
-            });
+            startHolding();
+          }}
+          onKeyDown={(event) => {
+            if ((event.key === "Enter" || event.key === " ") && !event.repeat) {
+              event.preventDefault();
+              startHolding();
+            }
+          }}
+          onKeyUp={(event) => {
+            if (event.key === "Enter" || event.key === " ") release();
           }}
           style={{
             transform: `translateX(${snapped ? -34 : holding ? -8 - tension : 0}px)`,
@@ -1420,7 +1468,7 @@ function PartyPopper({
         <button
           className={`party-popper__end party-popper__end--theirs ${otherHolder ? "is-held" : ""}`}
           type="button"
-          onPointerDown={() =>
+          onClick={() =>
             setTease(
               "that end isn't yours to hold · someone else has to take it",
             )
@@ -1468,18 +1516,18 @@ function PartyRoom({
     removePlayEventListener,
   } = usePlayContext();
   const users = useUsers();
-  const [eventLine, setEventLine] = useState(
-    "the party is ready · take the first bite or leave a wish",
-  );
+  const [eventLine, setEventLine] = useState<string | null>(null);
   const [effect, setEffect] = useState<PartyEffect | null>(null);
   const effectTimer = useRef<number | null>(null);
+  const toastTimer = useRef<number | null>(null);
   const [camera, setCamera] = useState(0);
+  const [hasMovedCamera, setHasMovedCamera] = useState(false);
   const [draggingRoom, setDraggingRoom] = useState(false);
   const [frame, setFrame] = useState({ width: 1280, height: 800 });
   const cameraStart = useRef({ x: 0, camera: 0 });
 
   const roomScale = Math.max(
-    0.2,
+    0.78,
     (frame.height - PARTY_CHROME_HEIGHT) / PARTY_ROOM_HEIGHT,
   );
   const cameraTravel = Math.max(1, PARTY_ROOM_WIDTH * roomScale - frame.width);
@@ -1488,12 +1536,7 @@ function PartyRoom({
     (a, b) =>
       Math.abs(a.center - viewportCenter) - Math.abs(b.center - viewportCenter),
   )[0];
-  const roomHint =
-    Math.abs(nearestStation.center - viewportCenter) < 260
-      ? `you’re at ${nearestStation.label}`
-      : frame.width <= 620
-        ? "drag to look around"
-        : "drag or scroll to look around";
+  const roomHint = hasMovedCamera ? `you’re at ${nearestStation.label}` : null;
 
   useEffect(() => {
     const updateFrame = () =>
@@ -1520,6 +1563,7 @@ function PartyRoom({
     };
     const onPointerMove = (event: PointerEvent) => {
       if (!draggingRoom) return;
+      setHasMovedCamera(true);
       setCamera(
         clampCamera(
           cameraStart.current.camera -
@@ -1530,6 +1574,7 @@ function PartyRoom({
     const onPointerUp = () => setDraggingRoom(false);
     const onWheel = (event: WheelEvent) => {
       if (!cameraEnabled || isScrollableTarget(event.target)) return;
+      setHasMovedCamera(true);
       const delta =
         Math.abs(event.deltaX) > Math.abs(event.deltaY)
           ? event.deltaX
@@ -1545,9 +1590,11 @@ function PartyRoom({
         return;
       }
       if (event.key === "ArrowLeft") {
+        setHasMovedCamera(true);
         setCamera((currentCamera) => clampCamera(currentCamera - 0.08));
       }
       if (event.key === "ArrowRight") {
+        setHasMovedCamera(true);
         setCamera((currentCamera) => clampCamera(currentCamera + 0.08));
       }
     };
@@ -1567,6 +1614,24 @@ function PartyRoom({
     };
   }, [camera, cameraEnabled, cameraTravel, draggingRoom]);
 
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      if (!cameraEnabled || !(event.target instanceof HTMLElement)) return;
+      const target = event.target;
+      if (!target.closest("#party-3-room-canvas")) return;
+      const rect = target.getBoundingClientRect();
+      if (rect.right >= 36 && rect.left <= frame.width - 36) return;
+      const worldCenter =
+        (rect.left + camera * cameraTravel + rect.width / 2) / roomScale;
+      setHasMovedCamera(true);
+      setCamera(
+        clampCamera((worldCenter * roomScale - frame.width / 2) / cameraTravel),
+      );
+    };
+    window.addEventListener("focusin", onFocusIn);
+    return () => window.removeEventListener("focusin", onFocusIn);
+  }, [camera, cameraEnabled, cameraTravel, frame.width, roomScale]);
+
   const showEffect = useCallback((nextEffect?: PartyEffect) => {
     if (!nextEffect) return;
     setEffect(nextEffect);
@@ -1576,6 +1641,23 @@ function PartyRoom({
       nextEffect === "cake-finale" ? 7000 : 2800,
     );
   }, []);
+
+  const showToast = useCallback((message: string) => {
+    setEventLine(message);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(
+      () => setEventLine(null),
+      PARTY_TOAST_DURATION,
+    );
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (effectTimer.current) window.clearTimeout(effectTimer.current);
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     const eventTypes = [
@@ -1591,18 +1673,23 @@ function PartyRoom({
           payload: { eventPayload: unknown } | Partial<PartyEventPayload>,
         ) => {
           if (!("message" in payload) || !payload.message) return;
-          setEventLine(payload.message);
+          showToast(payload.message);
           showEffect(payload.effect);
         },
       }),
     }));
     return () =>
       listenerIds.forEach(({ type, id }) => removePlayEventListener(type, id));
-  }, [registerPlayEventListener, removePlayEventListener, showEffect]);
+  }, [
+    registerPlayEventListener,
+    removePlayEventListener,
+    showEffect,
+    showToast,
+  ]);
 
   const emitEvent = useCallback(
     (message: string, nextEffect?: PartyEffect) => {
-      setEventLine(message);
+      showToast(message);
       showEffect(nextEffect);
       const type =
         nextEffect === "popper"
@@ -1620,7 +1707,7 @@ function PartyRoom({
         } satisfies PartyEventPayload,
       });
     },
-    [dispatchPlayEvent, showEffect],
+    [dispatchPlayEvent, showEffect, showToast],
   );
 
   const current = useRef({
@@ -1696,6 +1783,8 @@ function PartyRoom({
                 style={{
                   transform: `translateX(${-camera * cameraTravel}px) scale(${roomScale})`,
                 }}
+                role="region"
+                aria-label="Party room. Drag, scroll, or use the arrow keys to move around."
                 data-room
               >
                 <div className="party-room__wall party-room__wall--first" />
@@ -1736,9 +1825,37 @@ function PartyRoom({
                   <br />
                   other people’s balloons
                 </div>
-                <div className="party-room__cake-sign">take a whole square</div>
                 <div className="party-room__floor-cup" aria-hidden="true" />
+                <div
+                  className="party-room__floor-cup party-room__floor-cup--second"
+                  aria-hidden="true"
+                />
+                <div
+                  className="party-room__floor-cup party-room__floor-cup--third"
+                  aria-hidden="true"
+                />
                 <div className="party-room__floor-plate" aria-hidden="true" />
+                <div
+                  className="party-room__floor-plate party-room__floor-plate--second"
+                  aria-hidden="true"
+                />
+                <div className="party-room__napkin" aria-hidden="true" />
+                <div
+                  className="party-room__streamer party-room__streamer--one"
+                  aria-hidden="true"
+                />
+                <div
+                  className="party-room__streamer party-room__streamer--two"
+                  aria-hidden="true"
+                />
+                <div
+                  className="party-room__balloon-remnant"
+                  aria-hidden="true"
+                />
+                <div className="party-room__door" aria-hidden="true">
+                  <span>thanks for coming</span>
+                  <i />
+                </div>
                 <CakeStation
                   identity={props.identity}
                   emitEvent={emitEvent}
@@ -1755,14 +1872,27 @@ function PartyRoom({
                   soundOn={soundOn}
                 />
               </div>
-              <p className="party-event-line" data-camera-ignore>
-                ✳ {eventLine}
-              </p>
+              {eventLine && (
+                <p
+                  className="party-event-line"
+                  role="status"
+                  aria-live="polite"
+                  data-camera-ignore
+                >
+                  ✳ {eventLine}
+                </p>
+              )}
               <footer className="party-footer" data-footer>
-                <span>{roomHint}</span>
+                {roomHint && (
+                  <span className="party-footer__location">{roomHint}</span>
+                )}
                 <button
                   type="button"
                   onClick={() => setSoundOn(!soundOn)}
+                  aria-label={
+                    soundOn ? "Mute party sounds" : "Turn on party sounds"
+                  }
+                  aria-pressed={soundOn}
                   title={
                     soundOn
                       ? "sound on · click to mute"
@@ -1836,12 +1966,14 @@ export function PartyPage() {
           }}
         />
       )}
-      <PartyRoom
-        cameraEnabled={arrived}
-        identity={identity}
-        soundOn={soundOn}
-        setSoundOn={setSoundOn}
-      />
+      <div inert={!arrived} aria-hidden={!arrived}>
+        <PartyRoom
+          cameraEnabled={arrived}
+          identity={identity}
+          soundOn={soundOn}
+          setSoundOn={setSoundOn}
+        />
+      </div>
     </>
   );
 }
