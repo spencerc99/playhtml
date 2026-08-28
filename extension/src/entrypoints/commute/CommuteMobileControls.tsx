@@ -22,6 +22,11 @@ interface CommuteMobileControlsProps {
   onMove: (vector: CommutePoint) => void;
 }
 
+const COMMUTE_BOARDING_GATE_QUERY = [
+  "(hover: none) and (pointer: coarse) and (max-width: 900px) and (orientation: portrait)",
+  "(hover: none) and (pointer: coarse) and (max-width: 950px) and (max-height: 600px) and (orientation: landscape)",
+].join(", ");
+
 export function keepCommuteCursorInCar(event: SyntheticEvent) {
   event.stopPropagation();
 }
@@ -31,6 +36,22 @@ function shouldUseTouchFullscreen(): boolean {
     typeof window.matchMedia !== "function" ||
     window.matchMedia("(hover: none) and (pointer: coarse)").matches
   );
+}
+
+export function useCommuteBoardingGate(): boolean {
+  const [visible, setVisible] = useState(
+    () => window.matchMedia?.(COMMUTE_BOARDING_GATE_QUERY).matches ?? false,
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia?.(COMMUTE_BOARDING_GATE_QUERY);
+    if (!query) return;
+    const update = () => setVisible(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return visible;
 }
 
 async function enterLandscapeFullscreen(): Promise<void> {

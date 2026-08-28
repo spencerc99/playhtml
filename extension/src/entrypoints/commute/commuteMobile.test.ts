@@ -15,6 +15,7 @@ import {
   isNearCommuteDoor,
   moveCommuteAvatar,
   moveCommuteAvatarToward,
+  shouldStartCommuteArrival,
   shouldExitCommuteThroughDoor,
   type CommuteSeatGeometry,
 } from "./commuteMobile";
@@ -25,6 +26,12 @@ const SEATS: CommuteSeatGeometry[] = [
 ];
 
 describe("mobile commute geometry", () => {
+  it("starts boarding after the mobile rider enters", () => {
+    expect(shouldStartCommuteArrival(false, true)).toBe(false);
+    expect(shouldStartCommuteArrival(true, true)).toBe(true);
+    expect(shouldStartCommuteArrival(false, false)).toBe(true);
+  });
+
   it("accepts rider arrival events and rejects malformed payloads", () => {
     expect(getCommuteArrivalRiderId({ riderId: "rider-a" })).toBe("rider-a");
     expect(getCommuteArrivalRiderId({ riderId: "" })).toBeNull();

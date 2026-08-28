@@ -44,6 +44,7 @@ import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import {
   CommuteMobileControls,
   keepCommuteCursorInCar,
+  useCommuteBoardingGate,
 } from "./CommuteMobileControls";
 import { CommuteStage } from "./CommuteStage";
 import { CommuteStationPoster } from "./CommuteStationPoster";
@@ -61,6 +62,7 @@ import {
   getStandingPosition,
   moveCommuteAvatar,
   moveCommuteAvatarToward,
+  shouldStartCommuteArrival,
   shouldExitCommuteThroughDoor,
   type CommutePoint,
   type CommuteSeatGeometry,
@@ -632,6 +634,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       () => getMyCommuteRiderStart(users),
       [users],
     );
+    const boardingGateVisible = useCommuteBoardingGate();
     const [toast, setToast] = useState<string | null>(null);
     const initialAvatarPosition = COMMUTE_JOIN_ENTRY_POSITION;
     const [avatarPosition, setAvatarPosition] =
@@ -784,6 +787,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       if (
         isLoading ||
         !props.serviceReady ||
+        !shouldStartCommuteArrival(mobileBoarded, boardingGateVisible) ||
         myRiderId === null ||
         myRiderStart === null ||
         hasEnteredCarRef.current
@@ -803,7 +807,9 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       isLoading,
       myRiderId,
       myRiderStart,
+      mobileBoarded,
       props.serviceReady,
+      boardingGateVisible,
       updateAvatarPosition,
     ]);
 
@@ -1787,7 +1793,7 @@ function InternetCommute({
 
         <div className="commute-counts">
           <strong>
-            {assignment.riderCount}/{assignment.capacity} riders on this train
+            {riders.length}/{assignment.capacity} riders on this train
           </strong>
           <span></span>
           <strong>
