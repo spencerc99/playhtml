@@ -1,0 +1,3208 @@
+{
+  "meta": {
+    "generatedAt": "2026-08-28T00:00:00.000Z",
+    "totalJumps": 1342,
+    "totalSessions": 192
+  },
+  "nodes": [
+    {
+      "id": "recipes.serious-eats.com",
+      "visits": 815,
+      "participants": 11,
+      "dwellMs": 37691337,
+      "cluster": 8
+    },
+    {
+      "id": "figma.com",
+      "visits": 624,
+      "participants": 6,
+      "dwellMs": 42720897,
+      "cluster": 6
+    },
+    {
+      "id": "are.na",
+      "visits": 609,
+      "participants": 15,
+      "dwellMs": 25980687,
+      "cluster": 3
+    },
+    {
+      "id": "nytimes.com",
+      "visits": 551,
+      "participants": 20,
+      "dwellMs": 24235163,
+      "cluster": 4
+    },
+    {
+      "id": "wikipedia.org",
+      "visits": 513,
+      "participants": 14,
+      "dwellMs": 55012607,
+      "cluster": 0
+    },
+    {
+      "id": "youtube.com",
+      "visits": 454,
+      "participants": 23,
+      "dwellMs": 15349195,
+      "cluster": 2
+    },
+    {
+      "id": "github.com",
+      "visits": 424,
+      "participants": 17,
+      "dwellMs": 23212072,
+      "cluster": 1
+    },
+    {
+      "id": "maps.google.com",
+      "visits": 233,
+      "participants": 15,
+      "dwellMs": 23157603,
+      "cluster": 7
+    },
+    {
+      "id": "news.ycombinator.com",
+      "visits": 180,
+      "participants": 24,
+      "dwellMs": 3763915,
+      "cluster": 5
+    },
+    {
+      "id": "lemmy.social",
+      "visits": 67,
+      "participants": 6,
+      "dwellMs": 2269042,
+      "cluster": 5
+    },
+    {
+      "id": "alltrails.org",
+      "visits": 32,
+      "participants": 4,
+      "dwellMs": 3122561,
+      "cluster": 7
+    },
+    {
+      "id": "aaronz.zone",
+      "visits": 24,
+      "participants": 5,
+      "dwellMs": 552727,
+      "cluster": 3
+    },
+    {
+      "id": "sallysbakingaddiction34.com",
+      "visits": 15,
+      "participants": 3,
+      "dwellMs": 1329450,
+      "cluster": 8
+    },
+    {
+      "id": "ft.net",
+      "visits": 13,
+      "participants": 5,
+      "dwellMs": 536879,
+      "cluster": 4
+    },
+    {
+      "id": "theguardian.com",
+      "visits": 13,
+      "participants": 4,
+      "dwellMs": 1188014,
+      "cluster": 4
+    },
+    {
+      "id": "supabase.io",
+      "visits": 13,
+      "participants": 2,
+      "dwellMs": 235071,
+      "cluster": 6
+    },
+    {
+      "id": "marijn.com",
+      "visits": 9,
+      "participants": 2,
+      "dwellMs": 442317,
+      "cluster": 3
+    },
+    {
+      "id": "washingtonpost.net",
+      "visits": 8,
+      "participants": 3,
+      "dwellMs": 244116,
+      "cluster": 4
+    },
+    {
+      "id": "budgetbytes.kitchen",
+      "visits": 8,
+      "participants": 3,
+      "dwellMs": 242768,
+      "cluster": 8
+    },
+    {
+      "id": "deno.com",
+      "visits": 7,
+      "participants": 3,
+      "dwellMs": 925891,
+      "cluster": 1
+    },
+    {
+      "id": "sourcegraph.dev",
+      "visits": 7,
+      "participants": 4,
+      "dwellMs": 271398,
+      "cluster": 1
+    },
+    {
+      "id": "tildes38.com",
+      "visits": 7,
+      "participants": 4,
+      "dwellMs": 169435,
+      "cluster": 5
+    },
+    {
+      "id": "internetphonebook.garden",
+      "visits": 6,
+      "participants": 3,
+      "dwellMs": 254126,
+      "cluster": 3
+    },
+    {
+      "id": "propublica.org",
+      "visits": 6,
+      "participants": 2,
+      "dwellMs": 142222,
+      "cluster": 4
+    },
+    {
+      "id": "reuters.net",
+      "visits": 6,
+      "participants": 2,
+      "dwellMs": 538831,
+      "cluster": 4
+    },
+    {
+      "id": "buttondown.social",
+      "visits": 6,
+      "participants": 2,
+      "dwellMs": 298555,
+      "cluster": 5
+    },
+    {
+      "id": "linear.app",
+      "visits": 6,
+      "participants": 2,
+      "dwellMs": 454372,
+      "cluster": 6
+    },
+    {
+      "id": "atlasobscura5.com",
+      "visits": 6,
+      "participants": 2,
+      "dwellMs": 546489,
+      "cluster": 7
+    },
+    {
+      "id": "food5257.com",
+      "visits": 6,
+      "participants": 2,
+      "dwellMs": 170744,
+      "cluster": 8
+    },
+    {
+      "id": "bandcamp33.com",
+      "visits": 5,
+      "participants": 3,
+      "dwellMs": 274056,
+      "cluster": 2
+    },
+    {
+      "id": "kicks60.zone",
+      "visits": 5,
+      "participants": 3,
+      "dwellMs": 397323,
+      "cluster": 3
+    },
+    {
+      "id": "kicks.town",
+      "visits": 5,
+      "participants": 3,
+      "dwellMs": 91092,
+      "cluster": 3
+    },
+    {
+      "id": "manuelmoreale.garden",
+      "visits": 5,
+      "participants": 3,
+      "dwellMs": 185545,
+      "cluster": 3
+    },
+    {
+      "id": "wired.com",
+      "visits": 5,
+      "participants": 2,
+      "dwellMs": 69638,
+      "cluster": 4
+    },
+    {
+      "id": "buttondown.net",
+      "visits": 5,
+      "participants": 3,
+      "dwellMs": 171859,
+      "cluster": 5
+    },
+    {
+      "id": "notion.app",
+      "visits": 5,
+      "participants": 3,
+      "dwellMs": 265034,
+      "cluster": 6
+    },
+    {
+      "id": "netlify.com",
+      "visits": 5,
+      "participants": 3,
+      "dwellMs": 52217,
+      "cluster": 6
+    },
+    {
+      "id": "atlasobscura.com",
+      "visits": 5,
+      "participants": 2,
+      "dwellMs": 562445,
+      "cluster": 7
+    },
+    {
+      "id": "airbnb.org",
+      "visits": 5,
+      "participants": 1,
+      "dwellMs": 71776,
+      "cluster": 7
+    },
+    {
+      "id": "wikimedia.org",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 120036,
+      "cluster": 0
+    },
+    {
+      "id": "britannica35.org",
+      "visits": 4,
+      "participants": 3,
+      "dwellMs": 92808,
+      "cluster": 0
+    },
+    {
+      "id": "zotero.com",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 392586,
+      "cluster": 0
+    },
+    {
+      "id": "caniuse.dev",
+      "visits": 4,
+      "participants": 3,
+      "dwellMs": 317697,
+      "cluster": 1
+    },
+    {
+      "id": "typescriptlang.dev",
+      "visits": 4,
+      "participants": 3,
+      "dwellMs": 119371,
+      "cluster": 1
+    },
+    {
+      "id": "youtube.tv",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 99215,
+      "cluster": 2
+    },
+    {
+      "id": "kicks.zone",
+      "visits": 4,
+      "participants": 3,
+      "dwellMs": 242729,
+      "cluster": 3
+    },
+    {
+      "id": "yesterweb.com",
+      "visits": 4,
+      "participants": 1,
+      "dwellMs": 181643,
+      "cluster": 3
+    },
+    {
+      "id": "sadgrl.com",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 154662,
+      "cluster": 3
+    },
+    {
+      "id": "apnews27.com",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 379120,
+      "cluster": 4
+    },
+    {
+      "id": "washingtonpost.org",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 179544,
+      "cluster": 4
+    },
+    {
+      "id": "nplusonemag.net",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 424992,
+      "cluster": 4
+    },
+    {
+      "id": "bsky.net",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 156277,
+      "cluster": 5
+    },
+    {
+      "id": "reddit25.com",
+      "visits": 4,
+      "participants": 1,
+      "dwellMs": 164257,
+      "cluster": 5
+    },
+    {
+      "id": "supabase.design",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 245335,
+      "cluster": 6
+    },
+    {
+      "id": "gaiagps82.org",
+      "visits": 4,
+      "participants": 3,
+      "dwellMs": 41981,
+      "cluster": 7
+    },
+    {
+      "id": "kingarthurbaking.org",
+      "visits": 4,
+      "participants": 1,
+      "dwellMs": 341679,
+      "cluster": 8
+    },
+    {
+      "id": "cooking.nytimes19.kitchen",
+      "visits": 4,
+      "participants": 2,
+      "dwellMs": 54251,
+      "cluster": 8
+    },
+    {
+      "id": "britannica.org",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 101464,
+      "cluster": 0
+    },
+    {
+      "id": "berkeley.org",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 63315,
+      "cluster": 0
+    },
+    {
+      "id": "mit.org",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 276358,
+      "cluster": 0
+    },
+    {
+      "id": "caniuse.sh",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 316040,
+      "cluster": 1
+    },
+    {
+      "id": "bun.sh",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 360374,
+      "cluster": 1
+    },
+    {
+      "id": "go.dev",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 34722,
+      "cluster": 1
+    },
+    {
+      "id": "npmjs.io",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 62741,
+      "cluster": 1
+    },
+    {
+      "id": "readthedocs.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 44537,
+      "cluster": 1
+    },
+    {
+      "id": "go.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 137566,
+      "cluster": 1
+    },
+    {
+      "id": "bandcamp.com",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 43842,
+      "cluster": 2
+    },
+    {
+      "id": "mixcloud.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 82372,
+      "cluster": 2
+    },
+    {
+      "id": "nts.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 166290,
+      "cluster": 2
+    },
+    {
+      "id": "letterboxd.fm",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 225530,
+      "cluster": 2
+    },
+    {
+      "id": "vimeo.tv",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 148344,
+      "cluster": 2
+    },
+    {
+      "id": "everest.town",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 142209,
+      "cluster": 3
+    },
+    {
+      "id": "spencer.cool",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 29525,
+      "cluster": 3
+    },
+    {
+      "id": "aaronz.town",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 40577,
+      "cluster": 3
+    },
+    {
+      "id": "glitch.garden",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 112937,
+      "cluster": 3
+    },
+    {
+      "id": "hundredrabbits.garden",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 244311,
+      "cluster": 3
+    },
+    {
+      "id": "everest.garden",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 320146,
+      "cluster": 3
+    },
+    {
+      "id": "apnews.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 162880,
+      "cluster": 4
+    },
+    {
+      "id": "theatlantic.org",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 407855,
+      "cluster": 4
+    },
+    {
+      "id": "wired88.com",
+      "visits": 3,
+      "participants": 3,
+      "dwellMs": 75927,
+      "cluster": 4
+    },
+    {
+      "id": "substack.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 25060,
+      "cluster": 5
+    },
+    {
+      "id": "tildes.social",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 112865,
+      "cluster": 5
+    },
+    {
+      "id": "lobste.social",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 84788,
+      "cluster": 5
+    },
+    {
+      "id": "discourse.social",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 106900,
+      "cluster": 5
+    },
+    {
+      "id": "write.net",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 133453,
+      "cluster": 5
+    },
+    {
+      "id": "cursor.app",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 157819,
+      "cluster": 6
+    },
+    {
+      "id": "notion.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 145101,
+      "cluster": 6
+    },
+    {
+      "id": "cursor.io",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 201036,
+      "cluster": 6
+    },
+    {
+      "id": "linear.design",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 61218,
+      "cluster": 6
+    },
+    {
+      "id": "cursor86.io",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 74792,
+      "cluster": 6
+    },
+    {
+      "id": "tldraw.design",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 115542,
+      "cluster": 6
+    },
+    {
+      "id": "airbnb.co",
+      "visits": 3,
+      "participants": 1,
+      "dwellMs": 190410,
+      "cluster": 7
+    },
+    {
+      "id": "maps.google.org",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 92845,
+      "cluster": 7
+    },
+    {
+      "id": "chefsteps.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 219541,
+      "cluster": 8
+    },
+    {
+      "id": "food52.org",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 135943,
+      "cluster": 8
+    },
+    {
+      "id": "sallysbakingaddiction.com",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 61701,
+      "cluster": 8
+    },
+    {
+      "id": "thewoksoflife.kitchen",
+      "visits": 3,
+      "participants": 2,
+      "dwellMs": 150182,
+      "cluster": 8
+    },
+    {
+      "id": "gutenberg.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 157884,
+      "cluster": 0
+    },
+    {
+      "id": "annas-archive.org",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 83593,
+      "cluster": 0
+    },
+    {
+      "id": "stanford.com",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 178231,
+      "cluster": 0
+    },
+    {
+      "id": "zotero.org",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 157151,
+      "cluster": 0
+    },
+    {
+      "id": "arxiv.com",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 169893,
+      "cluster": 0
+    },
+    {
+      "id": "arxiv.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 19831,
+      "cluster": 0
+    },
+    {
+      "id": "jstor.org",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 51498,
+      "cluster": 0
+    },
+    {
+      "id": "deno.dev",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 145536,
+      "cluster": 1
+    },
+    {
+      "id": "typescriptlang.sh",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 208385,
+      "cluster": 1
+    },
+    {
+      "id": "rust-lang.sh",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 83008,
+      "cluster": 1
+    },
+    {
+      "id": "typescriptlang88.dev",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 111381,
+      "cluster": 1
+    },
+    {
+      "id": "codeberg.com",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 136046,
+      "cluster": 1
+    },
+    {
+      "id": "nts.tv",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 177347,
+      "cluster": 2
+    },
+    {
+      "id": "spotify.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 28667,
+      "cluster": 2
+    },
+    {
+      "id": "rateyourmusic.fm",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 29169,
+      "cluster": 2
+    },
+    {
+      "id": "spencer.com",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 254595,
+      "cluster": 3
+    },
+    {
+      "id": "marijn.zone",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 112090,
+      "cluster": 3
+    },
+    {
+      "id": "robinsloan.zone",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 89907,
+      "cluster": 3
+    },
+    {
+      "id": "spencer.garden",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 113872,
+      "cluster": 3
+    },
+    {
+      "id": "quantamagazine.net",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 89836,
+      "cluster": 4
+    },
+    {
+      "id": "quantamagazine11.net",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 32203,
+      "cluster": 4
+    },
+    {
+      "id": "apnews.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 93073,
+      "cluster": 4
+    },
+    {
+      "id": "ft.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 214989,
+      "cluster": 4
+    },
+    {
+      "id": "theverge.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 131724,
+      "cluster": 4
+    },
+    {
+      "id": "apnews50.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 67188,
+      "cluster": 4
+    },
+    {
+      "id": "washingtonpost.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 72554,
+      "cluster": 4
+    },
+    {
+      "id": "tildes.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 155689,
+      "cluster": 5
+    },
+    {
+      "id": "lemmy.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 177802,
+      "cluster": 5
+    },
+    {
+      "id": "substack.net",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 40358,
+      "cluster": 5
+    },
+    {
+      "id": "lemmy24.social",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 147918,
+      "cluster": 5
+    },
+    {
+      "id": "reddit.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 18590,
+      "cluster": 5
+    },
+    {
+      "id": "ghost.net",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 161650,
+      "cluster": 5
+    },
+    {
+      "id": "obsidian.app",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 131159,
+      "cluster": 6
+    },
+    {
+      "id": "excalidraw.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 122175,
+      "cluster": 6
+    },
+    {
+      "id": "figma.design",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 67267,
+      "cluster": 6
+    },
+    {
+      "id": "figma26.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 91418,
+      "cluster": 6
+    },
+    {
+      "id": "railway.io",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 129796,
+      "cluster": 6
+    },
+    {
+      "id": "vercel.app",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 113037,
+      "cluster": 6
+    },
+    {
+      "id": "openstreetmap.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 108803,
+      "cluster": 7
+    },
+    {
+      "id": "seat61.co",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 127010,
+      "cluster": 7
+    },
+    {
+      "id": "windy.co",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 89221,
+      "cluster": 7
+    },
+    {
+      "id": "rome2rio.org",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 28112,
+      "cluster": 7
+    },
+    {
+      "id": "gaiagps.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 49860,
+      "cluster": 7
+    },
+    {
+      "id": "rome2rio.com",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 65258,
+      "cluster": 7
+    },
+    {
+      "id": "chefsteps.org",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 77805,
+      "cluster": 8
+    },
+    {
+      "id": "cooking.nytimes.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 237047,
+      "cluster": 8
+    },
+    {
+      "id": "food52.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 136799,
+      "cluster": 8
+    },
+    {
+      "id": "cooking.nytimes.kitchen",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 65053,
+      "cluster": 8
+    },
+    {
+      "id": "seriouseats.kitchen",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 49328,
+      "cluster": 8
+    },
+    {
+      "id": "cooking.nytimes80.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 167228,
+      "cluster": 8
+    },
+    {
+      "id": "sallysbakingaddiction.org",
+      "visits": 2,
+      "participants": 2,
+      "dwellMs": 22685,
+      "cluster": 8
+    },
+    {
+      "id": "justonecookbook.com",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 92977,
+      "cluster": 8
+    },
+    {
+      "id": "thewoksoflife.org",
+      "visits": 2,
+      "participants": 1,
+      "dwellMs": 29825,
+      "cluster": 8
+    }
+  ],
+  "edges": [
+    {
+      "source": "wikimedia.org",
+      "target": "wikipedia.org",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "britannica35.org",
+      "target": "wikipedia.org",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "zotero.com",
+      "target": "britannica35.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "britannica.org",
+      "target": "wikipedia.org",
+      "jumps": 6,
+      "participants": 4
+    },
+    {
+      "source": "berkeley.org",
+      "target": "britannica35.org",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "mit.org",
+      "target": "wikipedia.org",
+      "jumps": 5,
+      "participants": 2
+    },
+    {
+      "source": "gutenberg.org",
+      "target": "wikipedia.org",
+      "jumps": 4,
+      "participants": 1
+    },
+    {
+      "source": "annas-archive.org",
+      "target": "wikipedia.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "stanford.com",
+      "target": "zotero.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "zotero.org",
+      "target": "wikipedia.org",
+      "jumps": 9,
+      "participants": 2
+    },
+    {
+      "source": "arxiv.com",
+      "target": "wikipedia.org",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "arxiv.org",
+      "target": "mit.org",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "jstor.org",
+      "target": "britannica.org",
+      "jumps": 4,
+      "participants": 1
+    },
+    {
+      "source": "deno.com",
+      "target": "github.com",
+      "jumps": 8,
+      "participants": 1
+    },
+    {
+      "source": "sourcegraph.dev",
+      "target": "github.com",
+      "jumps": 6,
+      "participants": 1
+    },
+    {
+      "source": "caniuse.dev",
+      "target": "sourcegraph.dev",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "typescriptlang.dev",
+      "target": "github.com",
+      "jumps": 13,
+      "participants": 1
+    },
+    {
+      "source": "caniuse.sh",
+      "target": "github.com",
+      "jumps": 18,
+      "participants": 2
+    },
+    {
+      "source": "bun.sh",
+      "target": "github.com",
+      "jumps": 20,
+      "participants": 4
+    },
+    {
+      "source": "go.dev",
+      "target": "github.com",
+      "jumps": 5,
+      "participants": 1
+    },
+    {
+      "source": "npmjs.io",
+      "target": "github.com",
+      "jumps": 10,
+      "participants": 2
+    },
+    {
+      "source": "readthedocs.com",
+      "target": "deno.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "go.com",
+      "target": "typescriptlang.dev",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "deno.dev",
+      "target": "github.com",
+      "jumps": 5,
+      "participants": 1
+    },
+    {
+      "source": "typescriptlang.sh",
+      "target": "github.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "rust-lang.sh",
+      "target": "github.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "typescriptlang88.dev",
+      "target": "github.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "codeberg.com",
+      "target": "github.com",
+      "jumps": 11,
+      "participants": 2
+    },
+    {
+      "source": "bandcamp33.com",
+      "target": "youtube.com",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "youtube.tv",
+      "target": "youtube.com",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "bandcamp.com",
+      "target": "bandcamp33.com",
+      "jumps": 5,
+      "participants": 3
+    },
+    {
+      "source": "mixcloud.com",
+      "target": "youtube.com",
+      "jumps": 6,
+      "participants": 2
+    },
+    {
+      "source": "nts.com",
+      "target": "bandcamp33.com",
+      "jumps": 9,
+      "participants": 4
+    },
+    {
+      "source": "letterboxd.fm",
+      "target": "youtube.com",
+      "jumps": 10,
+      "participants": 3
+    },
+    {
+      "source": "vimeo.tv",
+      "target": "youtube.com",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "nts.tv",
+      "target": "youtube.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "spotify.com",
+      "target": "youtube.tv",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "rateyourmusic.fm",
+      "target": "bandcamp.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "aaronz.zone",
+      "target": "are.na",
+      "jumps": 5,
+      "participants": 2
+    },
+    {
+      "source": "marijn.com",
+      "target": "are.na",
+      "jumps": 16,
+      "participants": 1
+    },
+    {
+      "source": "internetphonebook.garden",
+      "target": "are.na",
+      "jumps": 8,
+      "participants": 4
+    },
+    {
+      "source": "kicks60.zone",
+      "target": "are.na",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "kicks.town",
+      "target": "are.na",
+      "jumps": 6,
+      "participants": 2
+    },
+    {
+      "source": "manuelmoreale.garden",
+      "target": "kicks.town",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "kicks.zone",
+      "target": "are.na",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "yesterweb.com",
+      "target": "are.na",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "sadgrl.com",
+      "target": "are.na",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "everest.town",
+      "target": "are.na",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "spencer.cool",
+      "target": "are.na",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "aaronz.town",
+      "target": "spencer.cool",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "glitch.garden",
+      "target": "manuelmoreale.garden",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "hundredrabbits.garden",
+      "target": "are.na",
+      "jumps": 6,
+      "participants": 4
+    },
+    {
+      "source": "everest.garden",
+      "target": "are.na",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "spencer.com",
+      "target": "are.na",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "marijn.zone",
+      "target": "glitch.garden",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "robinsloan.zone",
+      "target": "are.na",
+      "jumps": 9,
+      "participants": 2
+    },
+    {
+      "source": "spencer.garden",
+      "target": "are.na",
+      "jumps": 5,
+      "participants": 2
+    },
+    {
+      "source": "ft.net",
+      "target": "nytimes.com",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "theguardian.com",
+      "target": "nytimes.com",
+      "jumps": 12,
+      "participants": 3
+    },
+    {
+      "source": "washingtonpost.net",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "propublica.org",
+      "target": "nytimes.com",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "reuters.net",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "wired.com",
+      "target": "reuters.net",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "apnews27.com",
+      "target": "theguardian.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "washingtonpost.org",
+      "target": "nytimes.com",
+      "jumps": 12,
+      "participants": 1
+    },
+    {
+      "source": "nplusonemag.net",
+      "target": "reuters.net",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "apnews.com",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "theatlantic.org",
+      "target": "nytimes.com",
+      "jumps": 8,
+      "participants": 1
+    },
+    {
+      "source": "wired88.com",
+      "target": "nytimes.com",
+      "jumps": 7,
+      "participants": 4
+    },
+    {
+      "source": "quantamagazine.net",
+      "target": "washingtonpost.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "quantamagazine11.net",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "apnews.org",
+      "target": "nplusonemag.net",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "ft.com",
+      "target": "nplusonemag.net",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "theverge.org",
+      "target": "ft.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "apnews50.org",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "washingtonpost.com",
+      "target": "nytimes.com",
+      "jumps": 8,
+      "participants": 1
+    },
+    {
+      "source": "lemmy.social",
+      "target": "news.ycombinator.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "tildes38.com",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "buttondown.social",
+      "target": "lemmy.social",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "buttondown.net",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "bsky.net",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "reddit25.com",
+      "target": "news.ycombinator.com",
+      "jumps": 8,
+      "participants": 2
+    },
+    {
+      "source": "substack.com",
+      "target": "bsky.net",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "tildes.social",
+      "target": "tildes38.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "lobste.social",
+      "target": "buttondown.net",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "discourse.social",
+      "target": "news.ycombinator.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "write.net",
+      "target": "lemmy.social",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "tildes.com",
+      "target": "news.ycombinator.com",
+      "jumps": 4,
+      "participants": 1
+    },
+    {
+      "source": "lemmy.com",
+      "target": "news.ycombinator.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "substack.net",
+      "target": "discourse.social",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "lemmy24.social",
+      "target": "news.ycombinator.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "reddit.com",
+      "target": "news.ycombinator.com",
+      "jumps": 5,
+      "participants": 1
+    },
+    {
+      "source": "ghost.net",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "supabase.io",
+      "target": "figma.com",
+      "jumps": 15,
+      "participants": 3
+    },
+    {
+      "source": "linear.app",
+      "target": "supabase.io",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "notion.app",
+      "target": "figma.com",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "netlify.com",
+      "target": "figma.com",
+      "jumps": 8,
+      "participants": 1
+    },
+    {
+      "source": "supabase.design",
+      "target": "figma.com",
+      "jumps": 6,
+      "participants": 1
+    },
+    {
+      "source": "cursor.app",
+      "target": "figma.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "notion.com",
+      "target": "figma.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "cursor.io",
+      "target": "supabase.io",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "linear.design",
+      "target": "cursor.io",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "cursor86.io",
+      "target": "cursor.app",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "tldraw.design",
+      "target": "figma.com",
+      "jumps": 12,
+      "participants": 2
+    },
+    {
+      "source": "obsidian.app",
+      "target": "figma.com",
+      "jumps": 16,
+      "participants": 2
+    },
+    {
+      "source": "excalidraw.com",
+      "target": "figma.com",
+      "jumps": 10,
+      "participants": 2
+    },
+    {
+      "source": "figma.design",
+      "target": "figma.com",
+      "jumps": 12,
+      "participants": 2
+    },
+    {
+      "source": "figma26.com",
+      "target": "figma.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "railway.io",
+      "target": "figma.com",
+      "jumps": 10,
+      "participants": 1
+    },
+    {
+      "source": "vercel.app",
+      "target": "figma.com",
+      "jumps": 4,
+      "participants": 2
+    },
+    {
+      "source": "alltrails.org",
+      "target": "maps.google.com",
+      "jumps": 9,
+      "participants": 2
+    },
+    {
+      "source": "atlasobscura5.com",
+      "target": "maps.google.com",
+      "jumps": 15,
+      "participants": 3
+    },
+    {
+      "source": "atlasobscura.com",
+      "target": "maps.google.com",
+      "jumps": 22,
+      "participants": 4
+    },
+    {
+      "source": "airbnb.org",
+      "target": "maps.google.com",
+      "jumps": 18,
+      "participants": 1
+    },
+    {
+      "source": "gaiagps82.org",
+      "target": "maps.google.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "airbnb.co",
+      "target": "maps.google.com",
+      "jumps": 5,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.org",
+      "target": "airbnb.co",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "openstreetmap.com",
+      "target": "maps.google.com",
+      "jumps": 7,
+      "participants": 2
+    },
+    {
+      "source": "seat61.co",
+      "target": "maps.google.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "windy.co",
+      "target": "airbnb.org",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "rome2rio.org",
+      "target": "maps.google.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "gaiagps.org",
+      "target": "openstreetmap.com",
+      "jumps": 5,
+      "participants": 3
+    },
+    {
+      "source": "rome2rio.com",
+      "target": "maps.google.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "sallysbakingaddiction34.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "budgetbytes.kitchen",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "food5257.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "kingarthurbaking.org",
+      "target": "sallysbakingaddiction34.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "cooking.nytimes19.kitchen",
+      "target": "recipes.serious-eats.com",
+      "jumps": 6,
+      "participants": 2
+    },
+    {
+      "source": "chefsteps.com",
+      "target": "cooking.nytimes19.kitchen",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "food52.org",
+      "target": "food5257.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "sallysbakingaddiction.com",
+      "target": "sallysbakingaddiction34.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "thewoksoflife.kitchen",
+      "target": "recipes.serious-eats.com",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "chefsteps.org",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "cooking.nytimes.org",
+      "target": "kingarthurbaking.org",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "food52.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "cooking.nytimes.kitchen",
+      "target": "chefsteps.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "seriouseats.kitchen",
+      "target": "recipes.serious-eats.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "cooking.nytimes80.org",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "sallysbakingaddiction.org",
+      "target": "recipes.serious-eats.com",
+      "jumps": 6,
+      "participants": 1
+    },
+    {
+      "source": "justonecookbook.com",
+      "target": "seriouseats.kitchen",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "thewoksoflife.org",
+      "target": "recipes.serious-eats.com",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "bandcamp.com",
+      "target": "youtube.com",
+      "jumps": 4,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "go.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "theverge.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "apnews27.com",
+      "target": "nytimes.com",
+      "jumps": 9,
+      "participants": 1
+    },
+    {
+      "source": "supabase.io",
+      "target": "figma.design",
+      "jumps": 6,
+      "participants": 4
+    },
+    {
+      "source": "rateyourmusic.fm",
+      "target": "youtube.com",
+      "jumps": 5,
+      "participants": 1
+    },
+    {
+      "source": "bandcamp33.com",
+      "target": "rateyourmusic.fm",
+      "jumps": 7,
+      "participants": 3
+    },
+    {
+      "source": "sourcegraph.dev",
+      "target": "go.dev",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.com",
+      "target": "windy.co",
+      "jumps": 4,
+      "participants": 1
+    },
+    {
+      "source": "cursor86.io",
+      "target": "figma.com",
+      "jumps": 5,
+      "participants": 2
+    },
+    {
+      "source": "spotify.com",
+      "target": "youtube.com",
+      "jumps": 12,
+      "participants": 1
+    },
+    {
+      "source": "jstor.org",
+      "target": "wikipedia.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "wikipedia.org",
+      "target": "zotero.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "substack.com",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "readthedocs.com",
+      "jumps": 5,
+      "participants": 1
+    },
+    {
+      "source": "stanford.com",
+      "target": "wikipedia.org",
+      "jumps": 5,
+      "participants": 2
+    },
+    {
+      "source": "glitch.garden",
+      "target": "spencer.garden",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "buttondown.social",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "apnews50.org",
+      "target": "theatlantic.org",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "youtube.com",
+      "target": "nts.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "spencer.cool",
+      "target": "yesterweb.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "sallysbakingaddiction.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "tildes.social",
+      "target": "reddit25.com",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "deno.com",
+      "target": "typescriptlang.sh",
+      "jumps": 7,
+      "participants": 3
+    },
+    {
+      "source": "figma.com",
+      "target": "linear.design",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "seriouseats.kitchen",
+      "target": "budgetbytes.kitchen",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "ft.com",
+      "target": "nytimes.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "linear.app",
+      "target": "figma.com",
+      "jumps": 4,
+      "participants": 1
+    },
+    {
+      "source": "berkeley.org",
+      "target": "wikipedia.org",
+      "jumps": 6,
+      "participants": 2
+    },
+    {
+      "source": "wired.com",
+      "target": "nytimes.com",
+      "jumps": 15,
+      "participants": 3
+    },
+    {
+      "source": "typescriptlang.sh",
+      "target": "caniuse.dev",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "nts.tv",
+      "target": "bandcamp33.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.org",
+      "target": "maps.google.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "food52.org",
+      "jumps": 16,
+      "participants": 1
+    },
+    {
+      "source": "supabase.io",
+      "target": "supabase.design",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "substack.net",
+      "jumps": 8,
+      "participants": 2
+    },
+    {
+      "source": "kicks60.zone",
+      "target": "everest.town",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "manuelmoreale.garden",
+      "target": "are.na",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "cooking.nytimes.org",
+      "target": "recipes.serious-eats.com",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "tildes.com",
+      "target": "substack.net",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "apnews.org",
+      "target": "propublica.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "tildes38.com",
+      "target": "reddit.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "sallysbakingaddiction.com",
+      "target": "cooking.nytimes.org",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "rome2rio.org",
+      "target": "windy.co",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "justonecookbook.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "write.net",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "arxiv.org",
+      "target": "wikipedia.org",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "marijn.com",
+      "target": "spencer.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "ft.com",
+      "target": "reuters.net",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "caniuse.dev",
+      "target": "github.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "alltrails.org",
+      "target": "rome2rio.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "lemmy.social",
+      "target": "substack.com",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "wikipedia.org",
+      "target": "github.com",
+      "jumps": 12,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "youtube.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "nytimes.com",
+      "jumps": 7,
+      "participants": 2
+    },
+    {
+      "source": "youtube.com",
+      "target": "are.na",
+      "jumps": 13,
+      "participants": 2
+    },
+    {
+      "source": "are.na",
+      "target": "nytimes.com",
+      "jumps": 25,
+      "participants": 1
+    },
+    {
+      "source": "are.na",
+      "target": "figma.com",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "news.ycombinator.com",
+      "jumps": 20,
+      "participants": 2
+    },
+    {
+      "source": "nytimes.com",
+      "target": "maps.google.com",
+      "jumps": 10,
+      "participants": 1
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "figma.com",
+      "jumps": 16,
+      "participants": 1
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 7,
+      "participants": 1
+    },
+    {
+      "source": "figma.com",
+      "target": "maps.google.com",
+      "jumps": 14,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 14,
+      "participants": 2
+    },
+    {
+      "source": "maps.google.com",
+      "target": "github.com",
+      "jumps": 6,
+      "participants": 1
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "wikipedia.org",
+      "jumps": 7,
+      "participants": 2
+    },
+    {
+      "source": "youtube.com",
+      "target": "gaiagps82.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "tldraw.design",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "buttondown.net",
+      "target": "theatlantic.org",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "manuelmoreale.garden",
+      "target": "figma.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "wired.com",
+      "target": "youtube.tv",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "nplusonemag.net",
+      "target": "are.na",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "food52.com",
+      "target": "wikipedia.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "youtube.com",
+      "target": "maps.google.com",
+      "jumps": 20,
+      "participants": 2
+    },
+    {
+      "source": "npmjs.io",
+      "target": "youtube.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "kicks60.zone",
+      "target": "nytimes.com",
+      "jumps": 8,
+      "participants": 3
+    },
+    {
+      "source": "notion.app",
+      "target": "github.com",
+      "jumps": 5,
+      "participants": 1
+    },
+    {
+      "source": "discourse.social",
+      "target": "wikipedia.org",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "ghost.net",
+      "target": "nts.tv",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "apnews.com",
+      "target": "buttondown.social",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "mixcloud.com",
+      "target": "are.na",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "buttondown.net",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "are.na",
+      "target": "figma.design",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "washingtonpost.org",
+      "target": "stanford.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "are.na",
+      "target": "airbnb.co",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "tildes.social",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "obsidian.app",
+      "target": "maps.google.com",
+      "jumps": 4,
+      "participants": 2
+    },
+    {
+      "source": "atlasobscura.com",
+      "target": "youtube.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "figma.com",
+      "target": "wikipedia.org",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "rome2rio.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "zotero.com",
+      "target": "github.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "kingarthurbaking.org",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "maps.google.com",
+      "jumps": 11,
+      "participants": 3
+    },
+    {
+      "source": "figma.com",
+      "target": "youtube.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "lemmy24.social",
+      "target": "wikipedia.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "rateyourmusic.fm",
+      "target": "are.na",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "wikipedia.org",
+      "target": "maps.google.com",
+      "jumps": 12,
+      "participants": 3
+    },
+    {
+      "source": "linear.app",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "bsky.net",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "buttondown.net",
+      "target": "maps.google.org",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "github.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "spencer.cool",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "excalidraw.com",
+      "target": "reuters.net",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "rome2rio.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "aaronz.zone",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "thewoksoflife.kitchen",
+      "target": "maps.google.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "wikipedia.org",
+      "target": "nytimes.com",
+      "jumps": 5,
+      "participants": 3
+    },
+    {
+      "source": "maps.google.com",
+      "target": "are.na",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "nytimes.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 14,
+      "participants": 2
+    },
+    {
+      "source": "wikipedia.org",
+      "target": "typescriptlang.dev",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "wikipedia.org",
+      "target": "quantamagazine11.net",
+      "jumps": 5,
+      "participants": 1
+    },
+    {
+      "source": "are.na",
+      "target": "cursor86.io",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "bandcamp.com",
+      "target": "github.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "spencer.com",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "yesterweb.com",
+      "target": "chefsteps.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "everest.garden",
+      "target": "wikipedia.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "youtube.com",
+      "target": "lemmy24.social",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "deno.dev",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "apnews.com",
+      "target": "zotero.org",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "figma.com",
+      "target": "reddit.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "youtube.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.com",
+      "target": "discourse.social",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "are.na",
+      "jumps": 13,
+      "participants": 1
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "youtube.com",
+      "jumps": 10,
+      "participants": 2
+    },
+    {
+      "source": "wikipedia.org",
+      "target": "caniuse.sh",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "youtube.com",
+      "jumps": 16,
+      "participants": 2
+    },
+    {
+      "source": "github.com",
+      "target": "apnews50.org",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "wikipedia.org",
+      "target": "youtube.com",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "figma.com",
+      "target": "airbnb.org",
+      "jumps": 6,
+      "participants": 1
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "caniuse.sh",
+      "jumps": 6,
+      "participants": 2
+    },
+    {
+      "source": "yesterweb.com",
+      "target": "youtube.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "sadgrl.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "letterboxd.fm",
+      "target": "figma.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "ghost.net",
+      "target": "youtube.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "letterboxd.fm",
+      "target": "aaronz.zone",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "berkeley.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "washingtonpost.org",
+      "target": "are.na",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "notion.app",
+      "target": "wikipedia.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "apnews27.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "yesterweb.com",
+      "target": "news.ycombinator.com",
+      "jumps": 9,
+      "participants": 5
+    },
+    {
+      "source": "marijn.zone",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.org",
+      "target": "figma.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "figma.com",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "letterboxd.fm",
+      "target": "are.na",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "typescriptlang.sh",
+      "target": "bandcamp.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "tildes38.com",
+      "target": "kicks.zone",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "are.na",
+      "target": "quantamagazine.net",
+      "jumps": 4,
+      "participants": 2
+    },
+    {
+      "source": "youtube.tv",
+      "target": "figma.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "mit.org",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "npmjs.io",
+      "target": "maps.google.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "typescriptlang88.dev",
+      "target": "youtube.com",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "rome2rio.org",
+      "target": "thewoksoflife.kitchen",
+      "jumps": 4,
+      "participants": 1
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "github.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "spencer.com",
+      "target": "apnews.org",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "gaiagps.org",
+      "target": "spencer.garden",
+      "jumps": 4,
+      "participants": 3
+    },
+    {
+      "source": "youtube.tv",
+      "target": "github.com",
+      "jumps": 6,
+      "participants": 2
+    },
+    {
+      "source": "buttondown.net",
+      "target": "are.na",
+      "jumps": 4,
+      "participants": 2
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "washingtonpost.net",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.com",
+      "target": "substack.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "cooking.nytimes.org",
+      "target": "obsidian.app",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.com",
+      "target": "tildes.social",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "write.net",
+      "target": "quantamagazine.net",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "nts.tv",
+      "target": "maps.google.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "figma26.com",
+      "target": "gaiagps82.org",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "gaiagps.org",
+      "target": "youtube.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "wikipedia.org",
+      "jumps": 9,
+      "participants": 1
+    },
+    {
+      "source": "nts.com",
+      "target": "github.com",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "lemmy24.social",
+      "target": "nplusonemag.net",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "figma.com",
+      "target": "buttondown.social",
+      "jumps": 9,
+      "participants": 3
+    },
+    {
+      "source": "justonecookbook.com",
+      "target": "deno.dev",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "are.na",
+      "target": "tildes.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "spencer.garden",
+      "target": "wikipedia.org",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "write.net",
+      "target": "cooking.nytimes80.org",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "maps.google.com",
+      "target": "budgetbytes.kitchen",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "youtube.com",
+      "target": "bun.sh",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "rome2rio.com",
+      "target": "figma.com",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "figma.com",
+      "target": "gaiagps82.org",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "discourse.social",
+      "target": "rateyourmusic.fm",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "justonecookbook.com",
+      "target": "openstreetmap.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "maps.google.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "mit.org",
+      "target": "github.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "chefsteps.org",
+      "target": "lemmy.social",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "are.na",
+      "target": "typescriptlang.dev",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "thewoksoflife.org",
+      "target": "buttondown.net",
+      "jumps": 7,
+      "participants": 3
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "spencer.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "typescriptlang88.dev",
+      "target": "recipes.serious-eats.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "letterboxd.fm",
+      "target": "berkeley.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "figma.com",
+      "target": "seat61.co",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "figma.com",
+      "target": "apnews50.org",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "food52.org",
+      "target": "rateyourmusic.fm",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "maps.google.com",
+      "target": "arxiv.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "reddit.com",
+      "target": "maps.google.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "marijn.zone",
+      "target": "maps.google.com",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "news.ycombinator.com",
+      "target": "railway.io",
+      "jumps": 3,
+      "participants": 1
+    },
+    {
+      "source": "youtube.com",
+      "target": "sadgrl.com",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "maps.google.com",
+      "target": "vimeo.tv",
+      "jumps": 3,
+      "participants": 2
+    },
+    {
+      "source": "cooking.nytimes19.kitchen",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 2
+    },
+    {
+      "source": "are.na",
+      "target": "tildes.social",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "github.com",
+      "target": "tildes38.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "budgetbytes.kitchen",
+      "target": "news.ycombinator.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "cursor86.io",
+      "target": "maps.google.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "recipes.serious-eats.com",
+      "target": "internetphonebook.garden",
+      "jumps": 2,
+      "participants": 2
+    },
+    {
+      "source": "spotify.com",
+      "target": "apnews.org",
+      "jumps": 2,
+      "participants": 1
+    },
+    {
+      "source": "figma.com",
+      "target": "nytimes.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "spencer.com",
+      "target": "youtube.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "chefsteps.org",
+      "target": "maps.google.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "youtube.com",
+      "target": "lemmy.com",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "youtube.com",
+      "target": "apnews.org",
+      "jumps": 1,
+      "participants": 1
+    },
+    {
+      "source": "nytimes.com",
+      "target": "seriouseats.kitchen",
+      "jumps": 1,
+      "participants": 1
+    }
+  ],
+  "clusters": [
+    {
+      "id": 0,
+      "size": 14,
+      "label": "wikipedia.org"
+    },
+    {
+      "id": 1,
+      "size": 16,
+      "label": "github.com"
+    },
+    {
+      "id": 2,
+      "size": 11,
+      "label": "youtube.com"
+    },
+    {
+      "id": 3,
+      "size": 20,
+      "label": "are.na"
+    },
+    {
+      "id": 4,
+      "size": 20,
+      "label": "nytimes.com"
+    },
+    {
+      "id": 5,
+      "size": 18,
+      "label": "news.ycombinator.com"
+    },
+    {
+      "id": 6,
+      "size": 18,
+      "label": "figma.com"
+    },
+    {
+      "id": 7,
+      "size": 14,
+      "label": "maps.google.com"
+    },
+    {
+      "id": 8,
+      "size": 19,
+      "label": "recipes.serious-eats.com"
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+// ABOUTME: Styles for the galaxy filament map — deep-space chrome, tooltip, legend.
+// ABOUTME: Everything sits above a full-viewport canvas; the canvas paints the space itself.
+
+$space: #0a0e1f;
+$gold: #eed296;
+$gold-dim: rgba(238, 210, 150, 0.55);
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: $space;
+  overflow: hidden;
+}
+
+.galaxy-root {
+  position: fixed;
+  inset: 0;
+  background: $space;
+  color: $gold;
+  font-family: "Martian Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.galaxy-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  touch-action: none;
+}
+
+.galaxy-title {
+  position: absolute;
+  top: 22px;
+  left: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+  user-select: none;
+
+  &__mark {
+    font-family: "Source Serif 4", "Lora", Georgia, serif;
+    font-style: italic;
+    font-weight: 200;
+    font-size: 21px;
+    color: rgba(238, 226, 202, 0.82);
+  }
+
+  &__sub {
+    font-size: 9px;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: rgba(238, 210, 150, 0.4);
+  }
+}
+
+.galaxy-legend {
+  position: absolute;
+  bottom: 20px;
+  left: 26px;
+  display: flex;
+  gap: 20px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(198, 190, 172, 0.42);
+  pointer-events: none;
+  user-select: none;
+}
+
+.galaxy-status {
+  position: absolute;
+  bottom: 20px;
+  right: 26px;
+  font-size: 9px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: $gold-dim;
+  pointer-events: none;
+  user-select: none;
+  animation: galaxy-pulse 2.4s ease-in-out infinite;
+
+  &--error {
+    color: rgba(226, 132, 104, 0.9);
+    animation: none;
+    letter-spacing: 0.12em;
+    text-transform: none;
+  }
+}
+
+@keyframes galaxy-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.galaxy-tooltip {
+  position: absolute;
+  z-index: 20;
+  min-width: 168px;
+  padding: 10px 12px;
+  background: rgba(8, 11, 24, 0.93);
+  border: 1px solid rgba(238, 210, 150, 0.18);
+  border-radius: 3px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  backdrop-filter: blur(3px);
+
+  &__domain {
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: rgba(255, 238, 205, 0.95);
+    word-break: break-all;
+  }
+
+  &__rows {
+    display: grid;
+    gap: 3px;
+    margin: 0;
+
+    > div {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    dt {
+      font-size: 8px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(198, 190, 172, 0.45);
+    }
+
+    dd {
+      margin: 0;
+      font-size: 10px;
+      color: rgba(238, 210, 150, 0.88);
+    }
+  }
+}
