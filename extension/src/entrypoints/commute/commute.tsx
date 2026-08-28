@@ -279,7 +279,7 @@ function useCommuteTrain(
             status: "live",
           };
         });
-        const nextAction = getCommuteTrainNextAction(assignment, ride !== null);
+        const nextAction = getCommuteTrainNextAction(assignment);
         if (nextAction.kind === "refresh") {
           refreshTimer = window.setTimeout(
             () => void board(),
@@ -292,7 +292,11 @@ function useCommuteTrain(
               serverTimeOffsetMs: 0,
               status: "loading",
             });
-            setRiderToken(rotateCommuteRiderToken());
+            if (ride) {
+              void board();
+            } else {
+              setRiderToken(rotateCommuteRiderToken());
+            }
           }, nextAction.delayMs);
         }
       } catch (error) {

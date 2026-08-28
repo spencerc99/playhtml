@@ -2,6 +2,7 @@
 
 - Slow Mode commute rides now connect reliably when the hosted route loads before the extension.
 - Internet Commute now stops counting riders after they leave and plays the boarding animation when you board.
+- Internet Commute now starts a fresh route after returning to home station.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow

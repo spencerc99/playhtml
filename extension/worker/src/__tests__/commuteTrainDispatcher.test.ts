@@ -76,6 +76,19 @@ describe('CommuteTrainDispatcher', () => {
     expect(repeated.stops).toEqual(first.stops);
   });
 
+  it('boards the same rider onto a fresh train after their route completes', () => {
+    const subject = dispatcher();
+    const first = subject.board(rider('rider-a'), COMMUNAL_STOPS, NOW);
+    const next = subject.board(
+      rider('rider-a'),
+      COMMUNAL_STOPS,
+      first.routeEndsAt,
+    );
+
+    expect(next.trainId).not.toBe(first.trainId);
+    expect(next.phase).toBe('boarding');
+  });
+
   it('appends new domains without reordering existing stops', () => {
     const subject = dispatcher();
     const first = subject.board(rider('rider-a', 'a.example'), COMMUNAL_STOPS, NOW);
