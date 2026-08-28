@@ -16,6 +16,7 @@ export interface DepartureRow {
   from: string | null;
   /** Time spent on the previous domain before departing. */
   spentMs: number | null;
+  participantId: string;
 }
 
 export interface DeparturesProps {
@@ -33,7 +34,9 @@ const MAX_DWELL_MS = 4 * 60 * 60 * 1000;
 
 /**
  * Collapse navigation events into departures: one row each time a traveler
- * moves to a different domain than the one they were last seen on.
+ * moves to a different domain than the one they were last seen on. The board
+ * keeps only the newest row per traveler+domain, so a traveler ping-ponging
+ * between two sites holds two slots instead of filling the board.
  */
 export function deriveDepartures(
   events: CollectionEvent[],
@@ -46,6 +49,9 @@ export function deriveDepartures(
   const lastStopByParticipant = new Map<string, { domain: string; ts: number }>();
   const domainFavicons = new Map<string, string>();
   const rows: DepartureRow[] = [];
+  // Participant clocks can run fast; clamp timestamps so a skewed "future"
+  // departure can't pin itself above genuinely new rows.
+  const nowTs = Date.now();
 
   for (const event of navEvents) {
     const domain = extractDomain(event.meta.url);
@@ -63,16 +69,27 @@ export function deriveDepartures(
     rows.push({
       id: event.id,
       domain,
-      ts: event.ts,
+      ts: Math.min(event.ts, nowTs),
       color: getColorForEvent(event),
       faviconUrl: faviconUrl || domainFavicons.get(domain) || null,
       from: prev?.domain ?? null,
-      spentMs: gapMs !== null && gapMs <= MAX_DWELL_MS ? gapMs : null,
+      spentMs:
+        gapMs !== null && gapMs >= 0 && gapMs <= MAX_DWELL_MS ? gapMs : null,
+      participantId: pid,
     });
   }
 
-  // Newest departures at the top of the board
-  return rows.slice(-maxRows).reverse();
+  // Keep only the newest row per traveler+domain, preserving newest-first
+  // order (iterate from the end — later events win).
+  const seen = new Set<string>();
+  const deduped: DepartureRow[] = [];
+  for (let i = rows.length - 1; i >= 0 && deduped.length < maxRows; i--) {
+    const key = `${rows[i].participantId}|${rows[i].domain}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(rows[i]);
+  }
+  return deduped.sort((a, b) => b.ts - a.ts);
 }
 
 function formatTime(ts: number): string {
