@@ -110,17 +110,6 @@ describe("isFarJump", () => {
     ).toBe(false);
   });
 
-  it("rejects navigation while a form is in progress", () => {
-    expect(
-      isFarJump({
-        previousUrl: "https://garden.example/notes",
-        destinationUrl: "https://museum.example/exhibit",
-        transitionType: "typed",
-        transitionQualifiers: [],
-        formInProgress: true,
-      }),
-    ).toBe(false);
-  });
 });
 
 describe("Slow Mode consent gates", () => {
@@ -144,7 +133,7 @@ describe("Slow Mode consent gates", () => {
   });
 
   it("applies the chance after navigation eligibility", () => {
-    const settings = { enabled: true, chancePercent: 30 };
+    const settings = { enabled: true, chancePercent: 30, stopVisibility: "domain" as const };
     expect(
       evaluateSlowModeNavigation(
         navigation,
@@ -166,7 +155,7 @@ describe("Slow Mode consent gates", () => {
   });
 
   it("enforces global and per-domain cooldowns", () => {
-    const settings = { enabled: true, chancePercent: 100 };
+    const settings = { enabled: true, chancePercent: 100, stopVisibility: "domain" as const };
     const globalState = emptyState();
     globalState.lastCommuteAt = NOW - SLOW_MODE_COOLDOWN_MS + 1;
     expect(
@@ -202,7 +191,7 @@ describe("Slow Mode consent gates", () => {
           ...navigation,
           destinationUrl: "https://news.example.com/article",
         },
-        { enabled: true, chancePercent: 100 },
+        { enabled: true, chancePercent: 100, stopVisibility: "domain" },
         domainState,
         NOW,
         () => 0,
@@ -214,6 +203,7 @@ describe("Slow Mode consent gates", () => {
 describe("Slow Mode state", () => {
   it("records a ride and reports the cooldown", () => {
     const state = recordSlowModeRide(emptyState(), {
+      id: "ride-1234567890",
       destinationUrl: "https://museum.example/exhibit?utm_source=test",
       startedAt: NOW,
       stopCount: 3,
@@ -232,14 +222,12 @@ describe("Slow Mode state", () => {
     );
   });
 
-  it("builds an encoded extension commute URL", () => {
+  it("builds a hosted commute URL containing only the opaque ride ID", () => {
     expect(
       createCommuteUrl(
-        "chrome-extension://abc/commute.html",
-        "https://museum.example/exhibit?q=slow mode",
+        "https://wewere.online/commute/",
+        "ride_1234567890",
       ),
-    ).toBe(
-      "chrome-extension://abc/commute.html?slow=1&destination=https%3A%2F%2Fmuseum.example%2Fexhibit%3Fq%3Dslow+mode",
-    );
+    ).toBe("https://wewere.online/commute/#ride=ride_1234567890");
   });
 });

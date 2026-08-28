@@ -109,7 +109,7 @@ export function formatPersistenceFailureLog({
     `timeoutMs=${timeoutMs}`,
     `attempts=${attempts}`,
     `reason=${getErrorMessage(error)}`,
-    "Entering TRANSIENT MODE: awareness may continue, shared-data writes disabled, autosave disabled, admin writes disabled.",
+    "Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled.",
   ].join(" ");
 }
 
@@ -120,7 +120,7 @@ export function createPersistenceUnavailableResponse(
     JSON.stringify({
       error: "persistence_unavailable",
       message:
-        "Supabase persistence is unavailable for this room; shared-data and admin writes are disabled while awareness runs in transient mode.",
+        "Supabase persistence is unavailable for this room; clients reconnect after document recovery completes.",
       roomId: mode.roomName,
       failedAt: new Date(mode.failedAt).toISOString(),
       reason: mode.reason,

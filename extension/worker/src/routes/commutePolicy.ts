@@ -899,15 +899,14 @@ function buildDestinations(
 }
 
 function countActivePeople(
-  cursorEvents: CollectionEvent[],
+  activityEvents: CollectionEvent[],
   now: number,
 ): number {
   const cutoff = now - ACTIVE_PEOPLE_WINDOW_MS;
   const activePeople = new Set<string>();
 
-  for (const event of cursorEvents) {
+  for (const event of activityEvents) {
     if (
-      event.type !== 'cursor' ||
       !event.meta?.pid ||
       Math.min(event.ts, now) < cutoff
     ) {
@@ -921,7 +920,7 @@ function countActivePeople(
 
 export function buildCommuteResponse(
   navigationEvents: CollectionEvent[],
-  cursorEvents: CollectionEvent[],
+  activityEvents: CollectionEvent[],
   now = Date.now(),
 ): CommuteResponse {
   const newestFirst = navigationEvents
@@ -944,7 +943,7 @@ export function buildCommuteResponse(
 
   return {
     generatedAt: now,
-    activePeople: countActivePeople(cursorEvents, now),
+    activePeople: countActivePeople(activityEvents, now),
     scenery: buildScenery(candidates, getSceneryLimit(candidates.length)),
     destinations: buildDestinations(candidates),
   };

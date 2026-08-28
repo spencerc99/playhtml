@@ -18,7 +18,11 @@ describe("SlowModeSettings", () => {
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      [SLOW_MODE_SETTINGS_KEY]: { enabled: true, chancePercent: 40 },
+      [SLOW_MODE_SETTINGS_KEY]: {
+        enabled: true,
+        chancePercent: 40,
+        stopVisibility: "domain",
+      },
       [SLOW_MODE_STATE_KEY]: {
         lastCommuteAt: null,
         lastCommuteByDomain: {},
@@ -52,7 +56,11 @@ describe("SlowModeSettings", () => {
     });
 
     expect(browser.storage.local.set).toHaveBeenCalledWith({
-      [SLOW_MODE_SETTINGS_KEY]: { enabled: true, chancePercent: 70 },
+      [SLOW_MODE_SETTINGS_KEY]: {
+        enabled: true,
+        chancePercent: 70,
+        stopVisibility: "domain",
+      },
     });
     await act(async () => root.unmount());
   });

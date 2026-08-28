@@ -10,7 +10,7 @@ import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData } from '../collectors/types'
-import { getCanonicalScrapKey, getScrapKey } from '../collectors/scrapUtils'
+import { getScrapKey } from '../collectors/scrapUtils'
 import {
   collectionModeStorageKey,
   normalizeCollectionMode,
@@ -61,12 +61,15 @@ import {
 } from '../features/featureAccess'
 import { FEATURE_IDS } from '../flags'
 import {
+  SLOW_MODE_SETTINGS_KEY,
   SLOW_MODE_STATE_KEY,
   isSlowModeRideOutcome,
+  normalizeSlowModeSettings,
   normalizeSlowModeState,
   updateSlowModeRide,
 } from '../features/slowMode/slowMode'
 import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
+import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -183,112 +186,6 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 }
 
 const store = new LocalEventStore()
-
-/**
- * Storage-time dedup for scrap ("element") events: drops incoming events
- * whose canonical identity (see getCanonicalScrapKey) already exists in the
- * store, so near-duplicates captured across pages/sessions are never
- * persisted. `knownCanonicalScrapKeys` is lazily populated by scanning
- * existing stored element events on first use, then kept current as new
- * events are accepted. This matches the render-time dedup in ScrapCollage's
- * canonicalScrapKey, but skips persistence entirely instead of collapsing
- * duplicates at render.
- *
- * The set is rebuilt via the same lazy scan on every service-worker restart
- * (MV3 workers are short-lived) — `knownCanonicalScrapKeysInitPromise` makes
- * sure two STORE_EVENTS batches arriving before the scan completes don't
- * both trigger a scan or race past each other.
- */
-const knownCanonicalScrapKeys = new Set<string>()
-let knownCanonicalScrapKeysInitialized = false
-let knownCanonicalScrapKeysInitPromise: Promise<void> | null = null
-
-function resolveScrapEventDomain(event: CollectionEvent): string {
-  return event.domain || extractDomain(event.meta.url)
-}
-
-async function ensureKnownCanonicalScrapKeys(): Promise<void> {
-  if (knownCanonicalScrapKeysInitialized) return
-  if (knownCanonicalScrapKeysInitPromise)
-    return knownCanonicalScrapKeysInitPromise
-
-  knownCanonicalScrapKeysInitPromise = (async () => {
-    const existing = await store.queryByType('element')
-    for (const event of existing) {
-      const kind = (event.data as { kind?: unknown } | null)?.kind
-      if (
-        kind !== 'image' &&
-        kind !== 'button' &&
-        kind !== 'svg-icon' &&
-        kind !== 'cursor'
-      ) {
-        continue
-      }
-      const domain = resolveScrapEventDomain(event)
-      const canonicalKey = getCanonicalScrapKey(
-        domain,
-        event.data as ScrapEventData,
-      )
-      knownCanonicalScrapKeys.add(canonicalKey)
-    }
-  })()
-
-  try {
-    await knownCanonicalScrapKeysInitPromise
-    knownCanonicalScrapKeysInitialized = true
-  } finally {
-    // Cleared so a failed scan retries on the next batch; a successful scan
-    // is latched by knownCanonicalScrapKeysInitialized instead.
-    knownCanonicalScrapKeysInitPromise = null
-  }
-}
-
-/**
- * Filters incoming events, dropping "element" (scrap) events whose canonical
- * identity is already known — either already persisted, or a duplicate of
- * another event earlier in this same batch. Non-element events pass through
- * unchanged. Accepted scrap events are added to the known-keys set so later
- * batches (and later events within this batch) see them as duplicates too.
- */
-async function dedupeScrapEvents(
-  events: CollectionEvent[],
-): Promise<CollectionEvent[]> {
-  const hasElementEvent = events.some((event) => event.type === 'element')
-  if (!hasElementEvent) return events
-
-  await ensureKnownCanonicalScrapKeys()
-
-  const accepted: CollectionEvent[] = []
-  for (const event of events) {
-    if (event.type !== 'element') {
-      accepted.push(event)
-      continue
-    }
-
-    const kind = (event.data as { kind?: unknown } | null)?.kind
-    if (
-      kind !== 'image' &&
-      kind !== 'button' &&
-      kind !== 'svg-icon' &&
-      kind !== 'cursor'
-    ) {
-      accepted.push(event)
-      continue
-    }
-
-    const domain = resolveScrapEventDomain(event)
-    const canonicalKey = getCanonicalScrapKey(
-      domain,
-      event.data as ScrapEventData,
-    )
-    if (knownCanonicalScrapKeys.has(canonicalKey)) continue
-
-    knownCanonicalScrapKeys.add(canonicalKey)
-    accepted.push(event)
-  }
-
-  return accepted
-}
 
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
@@ -422,7 +319,7 @@ export default defineBackground(() => {
   // Opt-in: send new browser tabs to the walking record instead of the
   // default new tab page. Off unless the user turns it on.
   initNewTabTakeover()
-  const slowModeInterception = initSlowModeInterception()
+  initSlowModeInterception()
 
   // Forward the manifest "open-inventory" command to the active tab's content script.
   // Manifest commands are browser-routed, so this works reliably on every page.
@@ -607,35 +504,68 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
-    if (message.type === 'SLOW_MODE_FORM_STATE' && sender.tab?.id != null) {
-      slowModeInterception.setFormInProgress(
-        sender.tab.id,
-        message.inProgress === true,
-      )
-      reply({ success: true })
-      return
+    if (message.type === 'GET_SLOW_MODE_HOSTED_RIDE') {
+      if (
+        typeof message.rideId !== 'string' ||
+        !sender.tab?.url ||
+        !isHostedCommuteUrl(sender.tab.url)
+      ) {
+        reply(null)
+        return
+      }
+      browser.storage.local
+        .get([SLOW_MODE_SETTINGS_KEY, SLOW_MODE_STATE_KEY])
+        .then((stored) => {
+          const ride = normalizeSlowModeState(
+            stored[SLOW_MODE_STATE_KEY],
+          ).rides.find((candidate) => candidate.id === message.rideId)
+          if (!ride) return null
+          return {
+            rideId: ride.id,
+            destinationDomain: ride.destinationDomain,
+            stopVisibility: normalizeSlowModeSettings(
+              stored[SLOW_MODE_SETTINGS_KEY],
+            ).stopVisibility,
+          }
+        })
+        .then(reply)
+        .catch(() => reply(null))
+      return true
     }
 
     if (message.type === 'SLOW_MODE_RIDE_OUTCOME') {
       if (
         typeof message.rideId !== 'string' ||
-        !isSlowModeRideOutcome(message.outcome)
+        !isSlowModeRideOutcome(message.outcome) ||
+        (message.navigate === true &&
+          (!sender.tab?.url || !isHostedCommuteUrl(sender.tab.url)))
       ) {
         reply({ success: false })
         return
       }
       browser.storage.local
         .get(SLOW_MODE_STATE_KEY)
-        .then((stored) =>
-          browser.storage.local.set({
+        .then(async (stored) => {
+          const state = normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY])
+          const ride = state.rides.find(
+            (candidate) => candidate.id === message.rideId,
+          )
+          if (!ride) return false
+          await browser.storage.local.set({
             [SLOW_MODE_STATE_KEY]: updateSlowModeRide(
-              normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY]),
+              state,
               message.rideId,
               message.outcome,
             ),
-          }),
-        )
-        .then(() => reply({ success: true }))
+          })
+          if (message.navigate === true && sender.tab?.id != null) {
+            await browser.tabs.update(sender.tab.id, {
+              url: ride.destinationUrl,
+            })
+          }
+          return true
+        })
+        .then((success) => reply({ success }))
         .catch((error) => {
           console.warn('[Slow Mode] failed to update ride log:', error)
           reply({ success: false })
@@ -709,8 +639,8 @@ export default defineBackground(() => {
 
     if (message.type === 'STORE_EVENTS') {
       const events = (message.events || []) as CollectionEvent[]
-      dedupeScrapEvents(events)
-        .then((dedupedEvents) => store.addEvents(dedupedEvents))
+      store
+        .addEvents(events)
         .then(() => {
           // A navigation focus is the canonical "user is now looking at this
           // domain" signal — the moment a domain-visit milestone could fire
