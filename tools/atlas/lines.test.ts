@@ -166,6 +166,35 @@ describe("extractLines", () => {
     expect(new Set(result.lines.map((line) => line.color)).size).toBe(3);
   });
 
+  test("assigns unique names without Roman numeral suffixes", () => {
+    const domains = ["x.test"];
+    const edges: GalaxyEdge[] = [];
+    const nodeOverrides: Record<
+      string,
+      Partial<GalaxyGraph["nodes"][number]>
+    > = { "x.test": { visits: 100 } };
+    for (const arm of ["a", "b", "c", "d", "e", "f"]) {
+      const stops = [`${arm}1.test`, `${arm}2.test`, `${arm}3.test`];
+      domains.push(...stops);
+      for (const stop of stops) {
+        nodeOverrides[stop] = { kind: "interchange" };
+      }
+      edges.push(
+        edge("x.test", stops[0], true),
+        edge(stops[0], stops[1], true),
+        edge(stops[1], stops[2], true),
+      );
+    }
+
+    const result = extractLines(graph(domains, edges, nodeOverrides));
+    const names = result.lines.map((line) => line.name);
+
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain("x.test line");
+    expect(names.some((name) => name.startsWith("x.test line via "))).toBe(true);
+    expect(names.every((name) => !/\b[IVXLCDM]+$/.test(name))).toBe(true);
+  });
+
   test("uses stable FNV-1a identity", () => {
     expect(fnv1a("hello")).toBe("4f9f2cab");
   });

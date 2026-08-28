@@ -58,3 +58,4 @@ tools/playwright/videos
 .playwright-mcp/
 
 .env.submit
+tools/atlas/out/wwo-quality.json
