@@ -2,7 +2,13 @@
 // ABOUTME: Registers can-play elements and shared-state helpers for React apps.
 // TODO: idk why but this is not getting registered otherwise??
 import * as React from "react";
-import { useContext, useEffect, useRef, useState } from "react";
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, elementHandlers, getIdForElement } from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
@@ -15,6 +21,9 @@ import type {
   ReactElementEventHandlerData,
 } from "./utils";
 import { PlayContext } from "./PlayProvider";
+
+const useElementRegistrationEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 // Structural equality used to decide whether a sync actually changed React
 // state. Capability data can arrive as a fresh object/array reference on every
@@ -355,7 +364,7 @@ export function CanPlayElement<T extends object, V = any>({
     return currentHandler;
   };
 
-  useEffect(() => {
+  useElementRegistrationEffect(() => {
     if (ref.current) {
       const element = ref.current;
       for (const [key, value] of Object.entries(elementProps)) {
