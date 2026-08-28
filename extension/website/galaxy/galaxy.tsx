@@ -16,6 +16,7 @@ import {
   createRandom,
   findRoute,
   findRumorStops,
+  findTransitRoute,
   hopsFromSeeds,
   nodeKind,
   searchDomains,
@@ -269,6 +270,8 @@ const TransitMap = (): React.ReactElement => {
   const [route, setRoute] = useState<Route | null>(null);
   /** Set when a requested trip has no legal one-way path, so we can say so. */
   const [noRoute, setNoRoute] = useState<{ from: string; to: string } | null>(null);
+  /** True when transit was requested but only a streets route exists. */
+  const [transitFallback, setTransitFallback] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [walkingFrom, setWalkingFrom] = useState<string | null>(null);
@@ -431,17 +434,38 @@ const TransitMap = (): React.ReactElement => {
         return;
       }
       const isHub = (id: string) => hubIds.has(id);
+
+      // Transit first when asked, but never leave the user stranded: if the
+      // backbone cannot get there, fall back to streets and say so.
+      if (settings.routeMode === "transit") {
+        const viaTransit = findTransitRoute(
+          level,
+          fromStop,
+          toStop,
+          isHub,
+          routingIndex,
+        );
+        if (viaTransit) {
+          setRoute(viaTransit);
+          setNoRoute(null);
+          setTransitFallback(false);
+          return;
+        }
+      }
+
       const direct = findRoute(level, fromStop, toStop, isHub, routingIndex);
       if (direct) {
         setRoute(direct);
         setNoRoute(null);
+        setTransitFallback(settings.routeMode === "transit");
         return;
       }
       const relaxed = findRoute(level, fromStop, toStop, isHub, undefined, true);
       setRoute(relaxed);
+      setTransitFallback(relaxed !== null && settings.routeMode === "transit");
       setNoRoute(relaxed ? null : { from: fromStop, to: toStop });
     },
-    [level, routingIndex, hubIds],
+    [level, routingIndex, hubIds, settings.routeMode],
   );
 
   // Recompute the route when the level changes under an active selection.
@@ -1077,16 +1101,23 @@ const TransitMap = (): React.ReactElement => {
 
             const label = post.node.stop.representative.id.toUpperCase();
             const mode = post.step.mode === "ride" ? "ride" : "walk";
-            const detail = `${mode} · ${post.step.pages}`;
+            // In transit mode a street exit is still shown, but marked as
+            // off-network so the choice to leave the backbone is deliberate.
+            const offNetwork = opts.routeMode === "transit" && !post.step.trunk;
+            const detail = offNetwork
+              ? `street only · ${post.step.pages}`
+              : `${mode} · ${post.step.pages}`;
             ctx.font = `600 10px "Martian Mono", ui-monospace, monospace`;
             const w = Math.max(ctx.measureText(label).width, 62) + 18;
             const h = 30;
             const bx = Math.min(Math.max(px - w / 2, 6), width - w - 6);
             const by = Math.min(Math.max(py - h / 2, 6), height - h - 6);
 
+            ctx.globalAlpha = offNetwork ? 0.55 : 1;
             ctx.fillStyle = "rgba(16, 15, 12, 0.93)";
-            ctx.strokeStyle =
-              post.step.mode === "ride"
+            ctx.strokeStyle = offNetwork
+              ? "rgba(150, 144, 132, 0.3)"
+              : post.step.mode === "ride"
                 ? "rgba(232, 194, 122, 0.7)"
                 : "rgba(198, 192, 178, 0.45)";
             ctx.lineWidth = 1;
@@ -1100,8 +1131,9 @@ const TransitMap = (): React.ReactElement => {
             ctx.fillStyle = "rgba(238, 233, 219, 0.95)";
             ctx.fillText(label, bx + w / 2, by + 5);
             ctx.font = `400 8px "Martian Mono", ui-monospace, monospace`;
-            ctx.fillStyle =
-              post.step.mode === "ride"
+            ctx.fillStyle = offNetwork
+              ? "rgba(160, 154, 142, 0.6)"
+              : post.step.mode === "ride"
                 ? "rgba(232, 194, 122, 0.85)"
                 : "rgba(198, 192, 178, 0.6)";
             ctx.fillText(detail, bx + w / 2, by + 18);
@@ -1115,6 +1147,7 @@ const TransitMap = (): React.ReactElement => {
             );
             ctx.strokeStyle = "rgba(198, 192, 178, 0.35)";
             ctx.stroke();
+            ctx.globalAlpha = 1;
           }
           ctx.restore();
         }
@@ -1487,6 +1520,13 @@ const TransitMap = (): React.ReactElement => {
     );
   }, [graph, hover]);
 
+  const update = useCallback(<K extends keyof MapSettings>(
+    key: K,
+    value: MapSettings[K],
+  ) => {
+    setSettings((s) => ({ ...s, [key]: value }));
+  }, []);
+
   const travelText = useMemo(() => {
     if (!travel || travel.legs.length === 0) return "";
     const total = travel.legs.reduce((sum, l) => sum + l.cost, 0);
@@ -1495,8 +1535,28 @@ const TransitMap = (): React.ReactElement => {
       .join(" ");
     return `${chain.trim()} (${travel.legs.length} hop${
       travel.legs.length === 1 ? "" : "s"
-    }, ${total.toFixed(2)})`;
-  }, [travel]);
+    }, ${total.toFixed(2)}, ${settings.routeMode})`;
+  }, [travel, settings.routeMode]);
+
+  /** Shared mode switch, shown in both the route and walking panels. */
+  const modeToggle = (
+    <div className="galaxy-mode">
+      <button
+        type="button"
+        className={settings.routeMode === "streets" ? "is-active" : ""}
+        onClick={() => update("routeMode", "streets")}
+      >
+        streets
+      </button>
+      <button
+        type="button"
+        className={settings.routeMode === "transit" ? "is-active" : ""}
+        onClick={() => update("routeMode", "transit")}
+      >
+        transit only
+      </button>
+    </div>
+  );
 
   const copyTravel = useCallback(() => {
     if (!travelText) return;
@@ -1510,13 +1570,6 @@ const TransitMap = (): React.ReactElement => {
       },
     );
   }, [travelText]);
-
-  const update = useCallback(<K extends keyof MapSettings>(
-    key: K,
-    value: MapSettings[K],
-  ) => {
-    setSettings((s) => ({ ...s, [key]: value }));
-  }, []);
 
   const unknownQuery =
     searchOpen && query.trim().length > 1 && hits.length === 0 ? query.trim() : null;
@@ -1796,6 +1849,7 @@ const TransitMap = (): React.ReactElement => {
             </button>
           </div>
           <div className="galaxy-route__from">at {walkingFrom}</div>
+          {modeToggle}
           <div className="galaxy-route__help">
             {travel && travel.legs.length > 0
               ? "esc steps back one hop"
@@ -1829,6 +1883,7 @@ const TransitMap = (): React.ReactElement => {
         <div className="galaxy-route galaxy-route--hint">
           <div className="galaxy-route__title">pick a destination</div>
           <div className="galaxy-route__from">from {selection[0]}</div>
+          {modeToggle}
           <button
             type="button"
             className="galaxy-route__copy"
@@ -1864,6 +1919,13 @@ const TransitMap = (): React.ReactElement => {
               requires going against one-way links
             </div>
           )}
+          {transitFallback && (
+            <div className="galaxy-route__caveat">
+              no transit route — showing streets
+            </div>
+          )}
+          <div className="galaxy-route__modeline">via {route.mode}</div>
+          {modeToggle}
           <ol className="galaxy-route__stops">
             {route.stops.map((id, i) => (
               <li key={`${id}-${i}`}>

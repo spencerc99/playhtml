@@ -590,3 +590,42 @@ body {
     color: rgba(198, 190, 172, 0.45);
   }
 }
+
+// ── Route mode toggle ───────────────────────────────────────────────────────
+.galaxy-mode {
+  display: flex;
+  gap: 4px;
+  margin-top: 9px;
+
+  button {
+    flex: 1;
+    padding: 5px 4px;
+    font: inherit;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.55);
+    background: none;
+    border: 1px solid rgba(216, 208, 189, 0.16);
+    border-radius: 2px;
+    cursor: pointer;
+
+    &:hover {
+      color: rgba(238, 233, 219, 0.9);
+    }
+
+    &.is-active {
+      color: rgba(14, 13, 11, 0.95);
+      background: rgba(232, 194, 122, 0.85);
+      border-color: rgba(232, 194, 122, 0.9);
+    }
+  }
+}
+
+.galaxy-route__modeline {
+  margin-top: 7px;
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(198, 190, 172, 0.45);
+}

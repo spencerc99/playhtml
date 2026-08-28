@@ -26,6 +26,12 @@ export interface MapSettings {
   /** Dim anything more than N hops from a seed; 0 disables. */
   seedFocusHops: number;
   /**
+   * How trips are planned: "streets" allows any road (trunk hops cheaper),
+   * "transit" rides the backbone with a walk permitted only as the first
+   * and/or last hop.
+   */
+  routeMode: "streets" | "transit";
+  /**
    * Fraction of trunk edges shown at full strength at rest, heaviest first.
    * A spanning forest marks about one trunk edge per node, so showing them all
    * buries the map; the remainder fades in as you zoom.
@@ -47,6 +53,7 @@ export const DEFAULT_SETTINGS: MapSettings = {
   directionTapers: true,
   seedFocusHops: 0,
   trunkTier: 0.15,
+  routeMode: "streets",
 };
 
 const STORAGE_KEY = "galaxy-map-settings-v1";
@@ -96,6 +103,9 @@ export function loadSettings(): MapSettings {
     }
     if (typeof parsed.seedFocusHops === "number") {
       next.seedFocusHops = clamp(Math.round(parsed.seedFocusHops), 0, 8);
+    }
+    if (parsed.routeMode === "streets" || parsed.routeMode === "transit") {
+      next.routeMode = parsed.routeMode;
     }
     if (typeof parsed.trunkTier === "number") {
       next.trunkTier = clamp(parsed.trunkTier, 0.02, 1);

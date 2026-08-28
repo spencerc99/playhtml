@@ -547,10 +547,20 @@ export interface RouteLeg {
   cost: number;
 }
 
+/**
+ * How a trip may be routed. "streets" allows any road, with trunk hops priced
+ * cheaper. "transit" restricts to the backbone, permitting a walk leg only as
+ * the first and/or last hop to reach the network — the way a transit app lets
+ * you walk to the station but never mid-journey.
+ */
+export type RouteMode = "streets" | "transit";
+
 export interface Route {
   stops: string[];
   legs: RouteLeg[];
   distance: number;
+  /** Which mode actually produced this route. */
+  mode: RouteMode;
   /**
    * True when no legal one-way path existed and the route was found by
    * ignoring direction. Such a trip requires going against one-way links.
@@ -572,7 +582,7 @@ export function findRoute(
   ignoreDirection = false,
 ): Route | null {
   if (fromId === toId) {
-    return { stops: [fromId], legs: [], distance: 0, againstOneWay: false };
+    return { stops: [fromId], legs: [], distance: 0, mode: "streets", againstOneWay: false };
   }
 
   const adjacency = ignoreDirection
@@ -622,6 +632,7 @@ export function findRoute(
         stops,
         legs,
         distance: dist.get(toId) ?? 0,
+        mode: "streets",
         againstOneWay: ignoreDirection,
       };
     }
@@ -663,6 +674,125 @@ export function findRumorStops(
     rumors.add(stop.id);
   }
   return rumors;
+}
+
+/**
+ * Cheapest transit-only trip: trunk hops throughout, with at most one walking
+ * leg at the very start and one at the very end to reach the backbone.
+ *
+ * The end-only rule is a constraint on leg ORDER, not on cost, so plain
+ * Dijkstra over stops cannot express it. Searching over (stop, phase) states
+ * can: phase 0 is "still walking to the network", 1 is "riding", 2 is "walked
+ * off at the end". Walk legs advance the phase, trunk legs keep it, and the
+ * phase never decreases — so a walk can never appear mid-ride.
+ */
+export function findTransitRoute(
+  level: GroupLevel,
+  fromId: string,
+  toId: string,
+  isHub: (stopId: string) => boolean,
+  index?: Map<string, Step[]>,
+): Route | null {
+  if (fromId === toId) {
+    return { stops: [fromId], legs: [], distance: 0, mode: "transit", againstOneWay: false };
+  }
+  const adjacency = index ?? buildRoutingIndex(level);
+  if (!adjacency.has(fromId) || !adjacency.has(toId)) return null;
+
+  const key = (stop: string, phase: number) => `${phase} ${stop}`;
+  const dist = new Map<string, number>();
+  const prev = new Map<string, { from: string; fromPhase: number; step: Step }>();
+  const settled = new Set<string>();
+  const heap = new MinHeap();
+  dist.set(key(fromId, 0), 0);
+  heap.push(key(fromId, 0), 0);
+
+  let bestEndPhase = -1;
+  let bestEndCost = Infinity;
+
+  while (heap.size > 0) {
+    const top = heap.pop();
+    if (!top) break;
+    if (settled.has(top.id)) continue;
+    if (top.cost > (dist.get(top.id) ?? Infinity)) continue;
+    settled.add(top.id);
+
+    const sep = top.id.indexOf(" ");
+    const phase = Number(top.id.slice(0, sep));
+    const stop = top.id.slice(sep + 1);
+
+    // Phase 1 is "walked to the network"; arriving there IS a legal single-walk
+    // trip, so every phase except the unreachable start counts as an arrival.
+    if (stop === toId && phase > 0 && top.cost < bestEndCost) {
+      bestEndPhase = phase;
+      bestEndCost = top.cost;
+      // Any later pop costs at least as much, so this is the cheapest arrival.
+      break;
+    }
+
+    for (const step of adjacency.get(stop) ?? []) {
+      if (step.to !== toId && isHub(step.to)) continue;
+      // A trunk leg keeps the phase; boarding for the first time moves 0 -> 1.
+      // A walk leg is only legal before boarding (0) or as the final hop (-> 2).
+      let nextPhase: number;
+      if (step.trunk) {
+        // Phase 3 has already walked off the network; no re-boarding.
+        if (phase === 3) continue;
+        nextPhase = 2;
+      } else if (phase === 0) {
+        // The one permitted approach walk. Phase 1 means "walked to the
+        // network but not yet riding", so a second walk cannot follow.
+        nextPhase = 1;
+      } else if (phase === 2 && step.to === toId) {
+        // The one permitted exit walk, and only onto the destination.
+        nextPhase = 3;
+      } else {
+        continue;
+      }
+      const nextKey = key(step.to, nextPhase);
+      if (settled.has(nextKey)) continue;
+      const next = top.cost + step.cost;
+      if (next < (dist.get(nextKey) ?? Infinity)) {
+        dist.set(nextKey, next);
+        prev.set(nextKey, { from: stop, fromPhase: phase, step });
+        heap.push(nextKey, next);
+      }
+    }
+  }
+
+  if (bestEndPhase < 0) return null;
+
+  const legs: RouteLeg[] = [];
+  const stops: string[] = [toId];
+  let cursorStop = toId;
+  let cursorPhase = bestEndPhase;
+  for (let guard = 0; guard <= level.stops.length * 3 + 3; guard++) {
+    if (cursorStop === fromId && cursorPhase === 0) {
+      legs.reverse();
+      stops.reverse();
+      return {
+        stops,
+        legs,
+        distance: bestEndCost,
+        mode: "transit",
+        againstOneWay: false,
+      };
+    }
+    const back = prev.get(key(cursorStop, cursorPhase));
+    if (!back) return null;
+    legs.push({
+      from: back.from,
+      to: cursorStop,
+      pages: back.step.pages,
+      trunk: back.step.trunk,
+      mode: back.step.mode,
+      cost: back.step.cost,
+    });
+    stops.push(back.from);
+    cursorStop = back.from;
+    cursorPhase = back.fromPhase;
+  }
+  return null;
 }
 
 /** Hop distance from any seed, for the "N hops from seeds" focus dimmer. */
