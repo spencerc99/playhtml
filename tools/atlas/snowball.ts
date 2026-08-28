@@ -21,6 +21,8 @@ const DEFAULT_MAX_DOMAINS = 250;
 const DEFAULT_MAX_PAGES = 20;
 const DEFAULT_CRAWL_DEPTH = 3;
 const DEFAULT_OUTPUT = path.join(import.meta.dir, "out");
+const INTERCHANGE_OUTBOUND_LINK_THRESHOLD = 200;
+const EXTRA_TRUNK_EDGE_RATIO = 0.08;
 
 const NO_EXPAND = new Set([
   "google.com",
@@ -111,14 +113,16 @@ interface GalaxyNode {
   participants: number;
   dwellMs: number;
   cluster: number;
-  /** seed: a crawl origin; hub: big-web domain kept visible but never a route */
-  kind: "seed" | "hub" | "site";
+  /** seed: crawl origin; interchange: directory; hub: no-transit big-web site */
+  kind: "seed" | "interchange" | "hub" | "site";
 }
 
 interface GalaxyEdge {
   source: string;
   target: string;
   jumps: number;
+  back: number;
+  trunk: boolean;
 }
 
 interface GalaxyCluster {
@@ -142,6 +146,13 @@ interface GalaxyGraph {
 interface ShortestPath {
   distance: number;
   path: string[];
+  legs: PathLeg[];
+}
+
+interface PathLeg {
+  from: string;
+  to: string;
+  kind: "ride" | "walk";
 }
 
 function emptyDomain(depth: number): SnowballDomain {
@@ -314,16 +325,73 @@ function undirectedAdjacency(
     if (edge.source === edge.target) continue;
     const sourceNeighbors = adjacency.get(edge.source)!;
     const targetNeighbors = adjacency.get(edge.target)!;
-    sourceNeighbors.set(
-      edge.target,
-      (sourceNeighbors.get(edge.target) ?? 0) + edge.jumps
-    );
-    targetNeighbors.set(
-      edge.source,
-      (targetNeighbors.get(edge.source) ?? 0) + edge.jumps
-    );
+    const weight = edge.jumps + edge.back;
+    sourceNeighbors.set(edge.target, weight);
+    targetNeighbors.set(edge.source, weight);
   }
   return adjacency;
+}
+
+function isInterchange(raw: SnowballGraph, domain: string): boolean {
+  return (
+    Object.keys(raw.domains[domain].links).length >
+    INTERCHANGE_OUTBOUND_LINK_THRESHOLD
+  );
+}
+
+function edgeWeight(
+  edge: GalaxyEdge,
+  interchangeDomains: Set<string>
+): number {
+  const jumps = interchangeDomains.has(edge.source)
+    ? Math.min(edge.jumps, 1)
+    : edge.jumps;
+  const back = interchangeDomains.has(edge.target)
+    ? Math.min(edge.back, 1)
+    : edge.back;
+  return jumps + back + 2 * Math.min(jumps, back);
+}
+
+function markTrunkEdges(
+  domains: string[],
+  edges: GalaxyEdge[],
+  interchangeDomains: Set<string>
+): void {
+  const parent = new Map(domains.map((domain) => [domain, domain]));
+  const find = (domain: string): string => {
+    let root = domain;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    let current = domain;
+    while (current !== root) {
+      const next = parent.get(current)!;
+      parent.set(current, root);
+      current = next;
+    }
+    return root;
+  };
+  const rankedEdges = [...edges].sort(
+    (a, b) =>
+      edgeWeight(b, interchangeDomains) -
+        edgeWeight(a, interchangeDomains) ||
+      a.source.localeCompare(b.source) ||
+      a.target.localeCompare(b.target)
+  );
+  const remaining: GalaxyEdge[] = [];
+  for (const edge of rankedEdges) {
+    const sourceRoot = find(edge.source);
+    const targetRoot = find(edge.target);
+    if (sourceRoot === targetRoot) {
+      remaining.push(edge);
+      continue;
+    }
+    parent.set(targetRoot, sourceRoot);
+    edge.trunk = true;
+  }
+  const extraCount = Math.min(
+    Math.ceil(EXTRA_TRUNK_EDGE_RATIO * domains.length),
+    remaining.length
+  );
+  for (const edge of remaining.slice(0, extraCount)) edge.trunk = true;
 }
 
 function connectedComponentLabels(
@@ -399,14 +467,26 @@ function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
     .filter((d) => !SECOND_LEVEL_SUFFIXES.has(d))
     .sort();
   const domainSet = new Set(domains);
-  const edges: GalaxyEdge[] = [];
+  const edgesByPair = new Map<string, GalaxyEdge>();
   // node prominence = how many distinct sites link to it, so one site with a
   // blogroll on every page cannot inflate a neighbor by itself
   const inboundDomains = new Map<string, Set<string>>();
   for (const source of domains) {
     for (const [target, jumps] of Object.entries(raw.domains[source].links)) {
-      if (!domainSet.has(target)) continue;
-      edges.push({ source, target, jumps });
+      if (!domainSet.has(target) || source === target || jumps <= 0) continue;
+      const pairSource = source < target ? source : target;
+      const pairTarget = source < target ? target : source;
+      const key = `${pairSource}\0${pairTarget}`;
+      const edge = edgesByPair.get(key) ?? {
+        source: pairSource,
+        target: pairTarget,
+        jumps: 0,
+        back: 0,
+        trunk: false,
+      };
+      if (source === pairSource) edge.jumps += jumps;
+      else edge.back += jumps;
+      edgesByPair.set(key, edge);
       const set = inboundDomains.get(target) ?? new Set<string>();
       set.add(source);
       inboundDomains.set(target, set);
@@ -415,6 +495,7 @@ function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
   const inboundVisits = new Map(
     domains.map((domain) => [domain, inboundDomains.get(domain)?.size ?? 0])
   );
+  const edges = [...edgesByPair.values()];
   edges.sort(
     (a, b) =>
       a.source.localeCompare(b.source) || a.target.localeCompare(b.target)
@@ -444,6 +525,9 @@ function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
   });
 
   const seeds = new Set(raw.seeds);
+  const interchangeDomains = new Set(
+    domains.filter((domain) => !seeds.has(domain) && isInterchange(raw, domain))
+  );
   const nodes = domains.map((domain) => ({
     id: domain,
     visits: Math.max(1, inboundVisits.get(domain) ?? 0),
@@ -452,10 +536,13 @@ function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
     cluster: clusterByDomain.get(domain)!,
     kind: seeds.has(domain)
       ? ("seed" as const)
-      : NO_EXPAND.has(domain)
-        ? ("hub" as const)
-        : ("site" as const),
+      : interchangeDomains.has(domain)
+        ? ("interchange" as const)
+        : NO_EXPAND.has(domain)
+          ? ("hub" as const)
+          : ("site" as const),
   }));
+  markTrunkEdges(domains, edges, interchangeDomains);
   return {
     meta: {
       generatedAt: new Date().toISOString(),
@@ -475,11 +562,41 @@ function shortestPath(
   to: string
 ): ShortestPath {
   if (!graph.domains[from] || !graph.domains[to]) {
-    return { distance: Infinity, path: [] };
+    return { distance: Infinity, path: [], legs: [] };
+  }
+  const galaxy = makeGalaxyGraph(graph);
+  const kindByDomain = new Map(
+    galaxy.nodes.map((node) => [node.id, node.kind])
+  );
+  const adjacency = new Map(
+    galaxy.nodes.map((node) => [
+      node.id,
+      [] as { neighbor: string; pages: number; trunk: boolean }[],
+    ])
+  );
+  for (const edge of galaxy.edges) {
+    if (edge.jumps > 0) {
+      adjacency.get(edge.source)!.push({
+        neighbor: edge.target,
+        pages: edge.jumps,
+        trunk: edge.trunk,
+      });
+    }
+    if (edge.back > 0) {
+      adjacency.get(edge.target)!.push({
+        neighbor: edge.source,
+        pages: edge.back,
+        trunk: edge.trunk,
+      });
+    }
+  }
+  for (const neighbors of adjacency.values()) {
+    neighbors.sort((a, b) => a.neighbor.localeCompare(b.neighbor));
   }
   const distances = new Map<string, number>([[from, 0]]);
   const previous = new Map<string, string>();
-  const unvisited = new Set(Object.keys(graph.domains));
+  const previousTrunk = new Map<string, boolean>();
+  const unvisited = new Set(galaxy.nodes.map((node) => node.id));
 
   while (unvisited.size > 0) {
     let current: string | null = null;
@@ -497,30 +614,36 @@ function shortestPath(
 
     // big-web hubs cannot be transit: everyone links instagram, so routing
     // through it would make every pair of sites two hops apart
-    if (NO_EXPAND.has(current) && current !== from) continue;
+    if (kindByDomain.get(current) === "hub" && current !== from) continue;
 
-    for (const [neighbor, linkingPages] of Object.entries(
-      graph.domains[current].links
-    ).sort(([a], [b]) => a.localeCompare(b))) {
-      if (!unvisited.has(neighbor) || linkingPages <= 0) continue;
-      if (NO_EXPAND.has(neighbor) && neighbor !== to) continue;
-      // hops dominate (a hop costs like a transfer), link strength only
-      // discounts within a hop -- so a direct road always beats a detour
+    for (const { neighbor, pages, trunk } of adjacency.get(current)!) {
+      if (!unvisited.has(neighbor)) continue;
+      if (kindByDomain.get(neighbor) === "hub" && neighbor !== to) continue;
+      const directionalPages =
+        kindByDomain.get(current) === "interchange" ? Math.min(pages, 1) : pages;
       const candidate =
-        currentDistance + 1 + 1 / Math.log2(2 + linkingPages);
+        currentDistance +
+        (trunk ? 1 : 1.6) +
+        1 / Math.log2(2 + directionalPages);
       const known = distances.get(neighbor) ?? Infinity;
       if (candidate < known) {
         distances.set(neighbor, candidate);
         previous.set(neighbor, current);
+        previousTrunk.set(neighbor, trunk);
       }
     }
   }
 
   const distance = distances.get(to) ?? Infinity;
-  if (distance === Infinity) return { distance, path: [] };
+  if (distance === Infinity) return { distance, path: [], legs: [] };
   const route = [to];
   while (route[0] !== from) route.unshift(previous.get(route[0])!);
-  return { distance, path: route };
+  const legs = route.slice(1).map((destination, index) => ({
+    from: route[index],
+    to: destination,
+    kind: previousTrunk.get(destination) ? ("ride" as const) : ("walk" as const),
+  }));
+  return { distance, path: route, legs };
 }
 
 export function commuteDistance(
@@ -675,10 +798,19 @@ function runDistance(args: string[]): void {
   const from = normalizeDomain(fromValue);
   const to = normalizeDomain(toValue);
   const result = shortestPath(graph, from, to);
-  console.log(
-    Number.isFinite(result.distance) ? result.distance.toString() : "Infinity"
+  if (result.path.length === 0) {
+    console.log("unreachable");
+    console.log("distance: Infinity");
+    console.log("hops: 0");
+    return;
+  }
+  const route = result.legs.reduce(
+    (text, leg) => `${text} =${leg.kind}=> ${leg.to}`,
+    result.path[0]
   );
-  console.log(result.path.length > 0 ? result.path.join(" -> ") : "unreachable");
+  console.log(route);
+  console.log(`distance: ${result.distance}`);
+  console.log(`hops: ${result.legs.length}`);
 }
 
 function runRebuild(args: string[]): void {
