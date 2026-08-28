@@ -246,6 +246,11 @@ export function WorldMap({
     const draw = (time: number) => {
       if (!running) return;
       const { w, h, dpr } = sizeRef.current;
+      if (w === 0 || h === 0) {
+        // layout not settled yet (styles may still be loading); try next frame
+        raf = requestAnimationFrame(draw);
+        return;
+      }
       const v = viewRef.current;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
