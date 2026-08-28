@@ -151,7 +151,7 @@ export class CommuteTrainDispatcher {
 
   needsCommunalStops(riderToken: string, now: number): boolean {
     this.cleanup(now);
-    if (this.findRiderTrain(riderToken)) return false;
+    if (this.findActiveRiderTrain(riderToken, now)) return false;
     if (this.state.trains.some((train) => isTrainJoinable(train, now))) {
       return false;
     }
@@ -168,7 +168,7 @@ export class CommuteTrainDispatcher {
   ): CommuteTrainAssignment {
     this.cleanup(now);
 
-    const existingTrain = this.findRiderTrain(request.riderToken);
+    const existingTrain = this.findActiveRiderTrain(request.riderToken, now);
     if (existingTrain) return assignmentFor(existingTrain, now);
 
     let train = [...this.state.trains]
@@ -213,9 +213,15 @@ export class CommuteTrainDispatcher {
     return cleanupAt;
   }
 
-  private findRiderTrain(riderToken: string): CommuteTrainRecord | null {
+  private findActiveRiderTrain(
+    riderToken: string,
+    now: number,
+  ): CommuteTrainRecord | null {
     return (
-      this.state.trains.find((train) => riderToken in train.riders) ?? null
+      this.state.trains.find(
+        (train) =>
+          riderToken in train.riders && getTrainPhase(train, now) !== 'complete',
+      ) ?? null
     );
   }
 

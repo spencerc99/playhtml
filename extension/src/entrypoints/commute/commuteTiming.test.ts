@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   getCommuteRouteDurationSeconds,
   getSlowModePlatformPhase,
+  getSlowModePresentationTiming,
   getSlowModeProgress,
   getCommuteTiming,
   SLOW_MODE_DURATIONS,
@@ -54,6 +55,25 @@ describe("getCommuteTiming", () => {
     expect(getSlowModePlatformPhase(6)).toBe("arriving");
     expect(getSlowModePlatformPhase(4)).toBe("boarding");
   });
+
+  it("shows every Slow Mode rider the origin intro before the shared route", () => {
+    const sharedRouteTiming = getCommuteTiming(30, 3);
+
+    expect(getSlowModePresentationTiming(0, sharedRouteTiming)).toMatchObject({
+      phase: "stopped",
+      secondsLeft: 9,
+      atOrigin: true,
+    });
+    expect(getSlowModePresentationTiming(8, sharedRouteTiming)).toMatchObject({
+      phase: "stopped",
+      secondsLeft: 1,
+      atOrigin: true,
+    });
+    expect(getSlowModePresentationTiming(9, sharedRouteTiming)).toBe(
+      sharedRouteTiming,
+    );
+  });
+
   it("starts at the origin with open doors", () => {
     expect(getCommuteTiming(0, 5)).toEqual({
       phase: "stopped",
