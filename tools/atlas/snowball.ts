@@ -522,40 +522,73 @@ async function runCrawl(options: CrawlOptions): Promise<void> {
     },
     domains: {},
   };
-  const queue: { domain: string; depth: number }[] = [];
+  // Ring-balanced expansion: each ring outward gets a slice of the domain
+  // budget, and within a ring we crawl the most-referenced candidates first.
+  // Plain BFS would spend the whole budget one or two rings from the seeds;
+  // this trades some breadth for actually reaching distant neighborhoods.
   const scheduled = new Set<string>();
+  const candidates = new Map<
+    string,
+    { referrers: Set<string>; totalPages: number }
+  >();
+  let ring: string[] = [];
   for (const seed of options.seeds) {
     raw.domains[seed] = emptyDomain(0);
     if (isCrawlableDomain(seed)) {
       scheduled.add(seed);
-      queue.push({ domain: seed, depth: 0 });
+      ring.push(seed);
     }
   }
 
   let crawled = 0;
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    console.log(
-      `crawled ${crawled}/${scheduled.size}, queue ${queue.length}, ` +
-        `current ${current.domain}`
-    );
-    const result = await crawlDomain(current.domain, options.maxPages);
-    raw.domains[current.domain] = { depth: current.depth, ...result };
-    crawled++;
+  let ringDepth = 0;
+  while (ring.length > 0 && ringDepth <= options.depth) {
+    for (const domain of ring) {
+      console.log(
+        `crawled ${crawled}/${scheduled.size}, ring ${ringDepth} ` +
+          `(${ring.length} wide), current ${domain}`
+      );
+      const result = await crawlDomain(domain, options.maxPages);
+      raw.domains[domain] = { depth: ringDepth, ...result };
+      crawled++;
 
-    for (const target of Object.keys(result.links).sort()) {
-      const targetDepth = current.depth + 1;
-      if (!raw.domains[target]) raw.domains[target] = emptyDomain(targetDepth);
-      if (
-        targetDepth <= options.depth &&
-        scheduled.size < options.maxDomains &&
-        !scheduled.has(target) &&
-        isCrawlableDomain(target)
-      ) {
-        scheduled.add(target);
-        queue.push({ domain: target, depth: targetDepth });
+      for (const [target, pages] of Object.entries(result.links)) {
+        if (!raw.domains[target]) {
+          raw.domains[target] = emptyDomain(ringDepth + 1);
+        }
+        if (scheduled.has(target) || !isCrawlableDomain(target)) continue;
+        const c = candidates.get(target) ?? {
+          referrers: new Set<string>(),
+          totalPages: 0,
+        };
+        c.referrers.add(domain);
+        c.totalPages += pages;
+        candidates.set(target, c);
       }
     }
+
+    const remainingRings = options.depth - ringDepth;
+    const remainingBudget = options.maxDomains - scheduled.size;
+    if (remainingRings <= 0 || remainingBudget <= 0) break;
+    const ringBudget = Math.min(
+      remainingBudget,
+      Math.max(4, Math.ceil(remainingBudget / remainingRings))
+    );
+    const picked = [...candidates.entries()]
+      .sort(
+        ([aDomain, a], [bDomain, b]) =>
+          b.referrers.size - a.referrers.size ||
+          b.totalPages - a.totalPages ||
+          aDomain.localeCompare(bDomain)
+      )
+      .slice(0, ringBudget)
+      .map(([domain]) => domain);
+    for (const domain of picked) {
+      scheduled.add(domain);
+      candidates.delete(domain);
+    }
+    ring = picked;
+    ringDepth++;
   }
 
   raw.domains = Object.fromEntries(
