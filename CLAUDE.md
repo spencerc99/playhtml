@@ -126,6 +126,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 ## Testing Requirements
 
 - Run relevant package tests locally before PRs
+- **Automated real-browser verification for extension features:** Before merging any new extension feature, Codex MUST automate the complete user flow in a real browser and confirm that the whole feature works end to end. Use the built extension and built application artifacts where applicable. Exercise every runtime boundary the feature depends on, which may include the MV3 service worker, content script, injected or hosted page, browser storage, navigation lifecycle, and Worker API. Start from the real user entrypoint, assert the final observable outcome, and cover relevant lifecycle conditions such as cold start, reload, delayed script or service-worker readiness, or a client/server deployment contract. The automation may be a temporary verification harness or a committed test; committing an integration test is not required. Unit tests, component tests, mocked browser APIs, the generic extension shell smoke, screenshots, and an unstructured manual pass do not satisfy this requirement. Report the exact automated flow and result in the PR and handoff. If real-browser automation is technically blocked, stop and tell Spencer; do not merge based on partial evidence.
 - **Screenshots for user-facing changes:** Every user-facing change MUST be verified on the real affected surface and accompanied by screenshots of the finished result. For interactive changes, capture the key states of the flow (for example, closed, open, and success states), not only the initial screen. Include the screenshots in the handoff and PR. If the surface cannot be captured, stop and tell Spencer what blocks it rather than omitting them.
 
 ## Commit & PR Guidelines
@@ -137,6 +138,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 | Changed published package behavior | Add a changeset + audit `apps/docs/` |
 | Changed the public core API | Update both starter templates |
 | Changed package deps or exports | Run the tarball install simulation |
+| Added a new extension feature | Automate and verify the complete feature end to end in a real browser before merge |
 | Added a meaningful feature, common-workflow change, or broadly relevant fix to the released extension | Add a bullet to `extension/PENDING.md` |
 | Added, removed, or changed an extension manifest permission | Update `extension/STORE_LISTING.md` and flag the Chrome Privacy practices dashboard change |
 

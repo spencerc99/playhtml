@@ -44,7 +44,21 @@ function chromeItemIsInReview(body) {
   );
 }
 
-export async function ensureChromeResponseSucceeded(action, response) {
+function chromeItemIsPublishedVersion(body, version) {
+  if (!version) return false;
+
+  const errors = Array.isArray(body?.itemError) ? body.itemError : [];
+  return (
+    errors.length > 0 &&
+    errors.every(
+      (error) =>
+        error?.error_code === "PKG_INVALID_VERSION_NUMBER" &&
+        error?.error_detail?.includes(`published package: ${version}.`),
+    )
+  );
+}
+
+export async function ensureChromeResponseSucceeded(action, response, { publishedVersion } = {}) {
   const body = await readResponseBody(response);
 
   if (!response.ok) {
@@ -63,12 +77,22 @@ export async function ensureChromeResponseSucceeded(action, response) {
     const itemIsAlreadySubmitted =
       itemErrors.length > 0 &&
       itemErrors.every((error) => error?.error_code === "ITEM_NOT_UPDATABLE");
+    const itemIsAlreadyPublished = chromeItemIsPublishedVersion(body, publishedVersion);
 
-    if (itemErrors.length > 0 && !itemIsAlreadySubmitted) {
+    if (
+      itemErrors.length > 0 &&
+      !itemIsAlreadySubmitted &&
+      !itemIsAlreadyPublished
+    ) {
       throw new Error(`Chrome upload returned item errors: ${formatBody(itemErrors)}`);
     }
 
-    if (!itemIsAlreadySubmitted && body?.uploadState && body.uploadState !== "SUCCESS") {
+    if (
+      !itemIsAlreadySubmitted &&
+      !itemIsAlreadyPublished &&
+      body?.uploadState &&
+      body.uploadState !== "SUCCESS"
+    ) {
       throw new Error(`Chrome upload did not complete: ${body.uploadState}`);
     }
   }
@@ -150,10 +174,18 @@ export async function submitChrome({ env = process.env, fetchImpl = fetch } = {}
     },
     body: zip,
   });
-  const uploadBody = await ensureChromeResponseSucceeded("upload", uploadResponse);
+  const uploadBody = await ensureChromeResponseSucceeded("upload", uploadResponse, {
+    publishedVersion: env.VERSION,
+  });
   const itemIsAlreadySubmitted = uploadBody?.itemError?.some(
     (error) => error?.error_code === "ITEM_NOT_UPDATABLE",
   );
+  const itemIsAlreadyPublished = chromeItemIsPublishedVersion(uploadBody, env.VERSION);
+  if (itemIsAlreadyPublished) {
+    console.log(`Chrome version ${env.VERSION} is already published; skipped upload.`);
+    return;
+  }
+
   if (itemIsAlreadySubmitted) {
     console.log("Chrome item is already submitted; skipped upload.");
   } else {
