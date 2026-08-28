@@ -61,6 +61,13 @@ const NO_EXPAND = new Set([
   "patreon.com",
   "ko-fi.com",
   "buymeacoffee.com",
+  "wordpress.com",
+  "tumblr.com",
+  "threads.net",
+  "t.me",
+  "nytimes.com",
+  "wikidata.org",
+  "wiktionary.org",
 ]);
 
 export interface SnowballDomain {
