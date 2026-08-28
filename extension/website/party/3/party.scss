@@ -142,13 +142,11 @@ h1 {
   width: 3200px;
   height: 900px;
   overflow: hidden;
-  cursor: grab;
   transform-origin: 0 0;
   transition: transform 380ms cubic-bezier(0.2, 0.8, 0.3, 1);
   user-select: none;
 }
 .party-room.is-dragging {
-  cursor: grabbing;
   transition: none;
 }
 .party-room__wall {
