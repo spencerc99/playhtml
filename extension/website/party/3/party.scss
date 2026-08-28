@@ -489,6 +489,10 @@ h1 {
   margin-right: auto;
   margin-left: auto;
 }
+.party-hero h1 {
+  margin-bottom: 12px;
+  font-size: clamp(2.4rem, 4.5vw, 3.6rem);
+}
 .party-hero__date,
 .party-hero__signoff {
   color: var(--ph-ink-2);
@@ -499,7 +503,8 @@ h1 {
   margin-bottom: 10px;
 }
 .party-hero__signoff {
-  margin-top: 8px;
+  margin-top: 4px;
+  margin-bottom: 0;
 }
 
 .party-popper {
