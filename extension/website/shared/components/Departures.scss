@@ -148,6 +148,10 @@ $columns: 1.4rem minmax(0, 1.25fr) minmax(0, 1fr) 3.4rem 3.2rem 5.6rem;
   animation: departures-status-flicker 1.6s steps(2, jump-none) infinite;
 }
 
+.departures-status-arrived {
+  color: $accent-rust;
+}
+
 @keyframes departures-status-flicker {
   0%,
   100% {

@@ -48,7 +48,7 @@ function DeparturesPage() {
 
   return (
     <main className="departures-page">
-      <Departures events={mergedEvents} maxRows={12} />
+      <Departures events={mergedEvents} maxRows={20} />
       {error && <p className="departures-error">{error}</p>}
     </main>
   );

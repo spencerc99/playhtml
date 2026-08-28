@@ -1,5 +1,5 @@
 // ABOUTME: Train-station departures board rendering navigation events as departures.
-// ABOUTME: Rows show traveler color, favicon + destination, origin, time spent, and time.
+// ABOUTME: Rows show traveler color, favicon + destination, origin, dwell time, time, and status.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { CollectionEvent } from "../types";
@@ -14,9 +14,11 @@ export interface DepartureRow {
   faviconUrl: string | null;
   /** Domain the traveler was on before this one. */
   from: string | null;
-  /** Time spent on the previous domain before departing. */
+  /** Time between arriving on the previous domain and departing it. */
   spentMs: number | null;
   participantId: string;
+  /** Whether this is the domain the traveler was last seen on. */
+  current: boolean;
 }
 
 export interface DeparturesProps {
@@ -26,8 +28,8 @@ export interface DeparturesProps {
   notice?: string;
 }
 
-/** Departures fresher than this flicker as "departing" before settling into
- * "departed". Kept tight so the status only marks genuinely live activity. */
+/** Departures fresher than this flicker as "departing". Kept tight so the
+ * status only marks genuinely live activity. */
 const DEPARTING_WINDOW_MS = 2 * 60 * 1000;
 /** Gaps longer than this mean the traveler was away, not dwelling. */
 const MAX_DWELL_MS = 4 * 60 * 60 * 1000;
@@ -46,7 +48,10 @@ export function deriveDepartures(
     .filter((e) => e.type === "navigation" && e.meta?.url)
     .sort((a, b) => a.ts - b.ts);
 
-  const lastStopByParticipant = new Map<string, { domain: string; ts: number }>();
+  const stopByParticipant = new Map<
+    string,
+    { domain: string; arrivedAt: number }
+  >();
   const domainFavicons = new Map<string, string>();
   const rows: DepartureRow[] = [];
   // Participant clocks can run fast; clamp timestamps so a skewed "future"
@@ -61,11 +66,13 @@ export function deriveDepartures(
     if (faviconUrl) domainFavicons.set(domain, faviconUrl);
 
     const pid = event.meta.pid;
-    const prev = lastStopByParticipant.get(pid);
-    lastStopByParticipant.set(pid, { domain, ts: event.ts });
+    const prev = stopByParticipant.get(pid);
+    // Staying on the same domain keeps the original arrival time, so dwell is
+    // measured from when the traveler got there rather than their last move.
     if (prev?.domain === domain) continue;
+    stopByParticipant.set(pid, { domain, arrivedAt: event.ts });
 
-    const gapMs = prev ? event.ts - prev.ts : null;
+    const dwellMs = prev ? event.ts - prev.arrivedAt : null;
     rows.push({
       id: event.id,
       domain,
@@ -74,9 +81,17 @@ export function deriveDepartures(
       faviconUrl: faviconUrl || domainFavicons.get(domain) || null,
       from: prev?.domain ?? null,
       spentMs:
-        gapMs !== null && gapMs >= 0 && gapMs <= MAX_DWELL_MS ? gapMs : null,
+        dwellMs !== null && dwellMs >= 0 && dwellMs <= MAX_DWELL_MS
+          ? dwellMs
+          : null,
       participantId: pid,
+      current: false,
     });
+  }
+
+  // The map's final state is where each traveler is now.
+  for (const row of rows) {
+    row.current = stopByParticipant.get(row.participantId)?.domain === row.domain;
   }
 
   // Keep only the newest row per traveler+domain, preserving newest-first
@@ -154,8 +169,8 @@ export function Departures({
     events,
     maxRows,
   ]);
-  // Ticking clock so a "departing" row settles into "departed" as it ages,
-  // not just when new data arrives.
+  // Ticking clock so a "departing" row settles as it ages, not just when new
+  // data arrives.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 15_000);
@@ -184,7 +199,12 @@ export function Departures({
           </div>
         ) : (
           rows.map((row, index) => {
-            const departing = now - row.ts < DEPARTING_WINDOW_MS;
+            const fresh = now - row.ts < DEPARTING_WINDOW_MS;
+            const status = !row.current
+              ? "departed"
+              : fresh
+                ? "departing"
+                : "arrived";
             return (
               <div
                 className="departures-row"
@@ -216,14 +236,8 @@ export function Departures({
                   {row.spentMs !== null ? formatDuration(row.spentMs) : "—"}
                 </span>
                 <span className="departures-time">{formatTime(row.ts)}</span>
-                <span
-                  className={
-                    departing
-                      ? "departures-status departures-status-departing"
-                      : "departures-status"
-                  }
-                >
-                  {departing ? "departing" : "departed"}
+                <span className={`departures-status departures-status-${status}`}>
+                  {status}
                 </span>
               </div>
             );
