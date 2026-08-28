@@ -1,9 +1,9 @@
-// ABOUTME: Styles for the galaxy filament map — deep-space chrome, tooltip, legend.
-// ABOUTME: Everything sits above a full-viewport canvas; the canvas paints the space itself.
+// ABOUTME: Styles for the transit map — dark-agar chrome, grouping slider, route panel.
+// ABOUTME: Everything sits above a full-viewport canvas; the canvas paints the map itself.
 
-$space: #0a0e1f;
-$gold: #eed296;
-$gold-dim: rgba(238, 210, 150, 0.55);
+$space: #0d0c0a;
+$gold: #d8d0bd;
+$gold-dim: rgba(216, 208, 189, 0.5);
 
 * {
   box-sizing: border-box;
@@ -24,11 +24,7 @@ body {
   background: $space;
   color: $gold;
   font-family: "Martian Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  cursor: grab;
-
-  &:active {
-    cursor: grabbing;
-  }
+  cursor: crosshair;
 }
 
 .galaxy-canvas {
@@ -36,6 +32,331 @@ body {
   inset: 0;
   display: block;
   touch-action: none;
+}
+
+// ── Grouping slider ─────────────────────────────────────────────────────────// ── Search ──────────────────────────────────────────────────────────────────
+.galaxy-search {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  width: 300px;
+
+  &__open {
+    display: block;
+    width: 100%;
+    padding: 7px 12px;
+    font: inherit;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.6);
+    background: rgba(14, 13, 11, 0.82);
+    border: 1px solid rgba(216, 208, 189, 0.13);
+    border-radius: 3px;
+    cursor: pointer;
+
+    &:hover {
+      color: rgba(226, 220, 206, 0.9);
+      border-color: rgba(216, 208, 189, 0.26);
+    }
+
+    kbd {
+      margin-left: 6px;
+      padding: 1px 4px;
+      font: inherit;
+      font-size: 8px;
+      border: 1px solid rgba(216, 208, 189, 0.24);
+      border-radius: 2px;
+    }
+  }
+
+  &__input {
+    width: 100%;
+    padding: 9px 12px;
+    font: inherit;
+    font-size: 12px;
+    color: #f0ece0;
+    background: rgba(14, 13, 11, 0.94);
+    border: 1px solid rgba(232, 194, 122, 0.4);
+    border-radius: 3px;
+    outline: none;
+
+    &::placeholder {
+      color: rgba(198, 190, 172, 0.4);
+    }
+  }
+
+  &__results {
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+    background: rgba(14, 13, 11, 0.94);
+    border: 1px solid rgba(216, 208, 189, 0.14);
+    border-radius: 3px;
+    overflow: hidden;
+
+    li {
+      display: flex;
+      flex-direction: column;
+      border-bottom: 1px solid rgba(216, 208, 189, 0.07);
+
+      &:last-child {
+        border-bottom: none;
+      }
+    }
+  }
+
+  &__go {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 7px 11px;
+    font: inherit;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(216, 208, 189, 0.07);
+    }
+  }
+
+  &__domain {
+    font-size: 11px;
+    color: rgba(238, 233, 219, 0.94);
+  }
+
+  &__inside {
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    color: rgba(198, 190, 172, 0.55);
+  }
+
+  &__route {
+    padding: 5px 11px 7px;
+    font: inherit;
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: left;
+    color: rgba(232, 194, 122, 0.85);
+    background: none;
+    border: none;
+    border-top: 1px dashed rgba(232, 194, 122, 0.18);
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(232, 194, 122, 0.09);
+    }
+  }
+
+  &__unknown {
+    margin-top: 6px;
+    padding: 10px 12px;
+    background: rgba(14, 13, 11, 0.94);
+    border: 1px dashed rgba(216, 208, 189, 0.2);
+    border-radius: 3px;
+  }
+
+  &__unknown-title {
+    font-size: 8px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.5);
+  }
+
+  &__unknown-body {
+    margin-top: 4px;
+    font-size: 10px;
+    color: rgba(226, 220, 206, 0.8);
+    word-break: break-all;
+  }
+}
+
+// ── Controls pane ───────────────────────────────────────────────────────────
+.galaxy-controls {
+  position: absolute;
+  top: 24px;
+  right: 26px;
+  z-index: 30;
+  width: 210px;
+
+  &__toggle {
+    display: block;
+    width: 100%;
+    padding: 7px 12px;
+    font: inherit;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.62);
+    background: rgba(14, 13, 11, 0.86);
+    border: 1px solid rgba(216, 208, 189, 0.14);
+    border-radius: 3px;
+    cursor: pointer;
+
+    &:hover {
+      color: rgba(226, 220, 206, 0.9);
+    }
+  }
+
+  &__body {
+    margin-top: 6px;
+    padding: 12px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    max-height: 72vh;
+    overflow-y: auto;
+    background: rgba(14, 13, 11, 0.92);
+    border: 1px solid rgba(216, 208, 189, 0.14);
+    border-radius: 3px;
+  }
+
+  &__reset {
+    margin-top: 2px;
+    padding: 6px;
+    font: inherit;
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.65);
+    background: none;
+    border: 1px solid rgba(216, 208, 189, 0.18);
+    border-radius: 2px;
+    cursor: pointer;
+
+    &:hover {
+      color: rgba(238, 233, 219, 0.92);
+      border-color: rgba(216, 208, 189, 0.34);
+    }
+  }
+}
+
+.galaxy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  > span {
+    font-size: 8px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.52);
+  }
+
+  > em {
+    font-style: normal;
+    font-size: 9px;
+    color: rgba(216, 208, 189, 0.78);
+  }
+
+  &--row {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+
+    > span {
+      letter-spacing: 0.12em;
+    }
+
+    input[type="checkbox"] {
+      width: 12px;
+      height: 12px;
+      accent-color: #d8d0bd;
+      cursor: pointer;
+    }
+  }
+
+  input[type="range"] {
+    width: 100%;
+    height: 3px;
+    appearance: none;
+    background: rgba(216, 208, 189, 0.22);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    &::-webkit-slider-thumb {
+      appearance: none;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #f0ece0;
+      border: 1px solid #17150f;
+      cursor: pointer;
+    }
+
+    &::-moz-range-thumb {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #f0ece0;
+      border: 1px solid #17150f;
+      cursor: pointer;
+    }
+  }
+}
+
+// ── Route panel ─────────────────────────────────────────────────────────────
+.galaxy-route {
+  position: absolute;
+  top: 24px;
+  left: 26px;
+  z-index: 30;
+  max-width: 260px;
+  max-height: 62vh;
+  overflow-y: auto;
+  margin-top: 64px;
+  padding: 12px 14px;
+  background: rgba(14, 13, 11, 0.9);
+  border: 1px solid rgba(232, 194, 122, 0.24);
+  border-radius: 3px;
+
+  &--hint {
+    border-color: rgba(216, 208, 189, 0.16);
+  }
+
+  &__title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(232, 194, 122, 0.9);
+  }
+
+  &__distance {
+    color: rgba(198, 190, 172, 0.55);
+  }
+
+  &__from {
+    font-size: 10px;
+    color: rgba(216, 208, 189, 0.75);
+    word-break: break-all;
+  }
+
+  &__stops {
+    margin: 0;
+    padding-left: 18px;
+
+    li {
+      font-size: 10px;
+      line-height: 1.55;
+      color: rgba(226, 220, 206, 0.86);
+      word-break: break-all;
+    }
+  }
 }
 
 .galaxy-title {
@@ -60,7 +381,7 @@ body {
     font-size: 9px;
     letter-spacing: 0.34em;
     text-transform: uppercase;
-    color: rgba(238, 210, 150, 0.4);
+    color: rgba(216, 208, 189, 0.34);
   }
 }
 
@@ -113,8 +434,8 @@ body {
   z-index: 20;
   min-width: 168px;
   padding: 10px 12px;
-  background: rgba(8, 11, 24, 0.93);
-  border: 1px solid rgba(238, 210, 150, 0.18);
+  background: rgba(14, 13, 11, 0.94);
+  border: 1px solid rgba(216, 208, 189, 0.16);
   border-radius: 3px;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.6);
   pointer-events: none;
@@ -125,7 +446,7 @@ body {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: rgba(255, 238, 205, 0.95);
+    color: rgba(238, 233, 219, 0.94);
     word-break: break-all;
   }
 
@@ -150,7 +471,112 @@ body {
     dd {
       margin: 0;
       font-size: 10px;
-      color: rgba(238, 210, 150, 0.88);
+      color: rgba(216, 208, 189, 0.85);
     }
+  }
+}
+
+// ── Walking mode extras ─────────────────────────────────────────────────────
+.galaxy-route {
+  &--walk {
+    border-color: rgba(232, 194, 122, 0.34);
+  }
+
+  &__exit {
+    padding: 1px 6px;
+    font: inherit;
+    font-size: 8px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.6);
+    background: none;
+    border: 1px solid rgba(216, 208, 189, 0.22);
+    border-radius: 2px;
+    cursor: pointer;
+
+    &:hover {
+      color: rgba(238, 233, 219, 0.9);
+    }
+  }
+
+  &__dead {
+    margin-top: 8px;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: rgba(198, 190, 172, 0.55);
+  }
+
+  &__mode {
+    display: inline-block;
+    margin-left: 7px;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(232, 194, 122, 0.6);
+  }
+
+  &__copy {
+    margin-top: 9px;
+    padding: 6px 9px;
+    font: inherit;
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.7);
+    background: none;
+    border: 1px solid rgba(216, 208, 189, 0.2);
+    border-radius: 2px;
+    cursor: pointer;
+
+    &:hover {
+      color: rgba(238, 233, 219, 0.92);
+      border-color: rgba(216, 208, 189, 0.36);
+    }
+  }
+}
+
+// ── Tooltip extras ──────────────────────────────────────────────────────────
+.galaxy-tooltip {
+  &__fan {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 7px;
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px dashed rgba(216, 208, 189, 0.16);
+
+    span {
+      font-size: 8px;
+      color: rgba(198, 190, 172, 0.62);
+      word-break: break-all;
+    }
+  }
+
+  &__more {
+    color: rgba(232, 194, 122, 0.6) !important;
+  }
+
+  &__hint {
+    margin-top: 9px;
+    padding-top: 7px;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(232, 194, 122, 0.55);
+    border-top: 1px dashed rgba(216, 208, 189, 0.14);
+  }
+}
+
+.galaxy-route {
+  &--none {
+    border-color: rgba(226, 132, 104, 0.34);
+  }
+
+  &__caveat {
+    margin-top: 6px;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(226, 172, 104, 0.8);
   }
 }
