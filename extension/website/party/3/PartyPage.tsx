@@ -53,26 +53,18 @@ const PARTY_STATIONS = [
   {
     center: 460,
     label: "the welcome sign",
-    previousLabel: "",
-    nextLabel: "enter the party →",
   },
   {
     center: 1260,
     label: "the balloon stand",
-    previousLabel: "← back to hello",
-    nextLabel: "cake is this way →",
   },
   {
     center: 1970,
     label: "the cake",
-    previousLabel: "← balloons this way",
-    nextLabel: "leave a wish →",
   },
   {
     center: 2700,
     label: "the card pile",
-    previousLabel: "← back to cake",
-    nextLabel: "",
   },
 ];
 const CARD_COLORS = [
@@ -1496,13 +1488,6 @@ function PartyRoom({
     (a, b) =>
       Math.abs(a.center - viewportCenter) - Math.abs(b.center - viewportCenter),
   )[0];
-  const nearestStationIndex = PARTY_STATIONS.indexOf(nearestStation);
-  const previousStation = PARTY_STATIONS[nearestStationIndex - 1];
-  const nextStation = PARTY_STATIONS[nearestStationIndex + 1];
-  const centerStation = (center: number) => {
-    const target = center * roomScale - frame.width / 2;
-    setCamera(clampCamera(target / cameraTravel));
-  };
   const roomHint =
     Math.abs(nearestStation.center - viewportCenter) < 260
       ? `you’re at ${nearestStation.label}`
@@ -1646,10 +1631,6 @@ function PartyRoom({
     effect,
     emitEvent,
     eventLine,
-    centerStation,
-    nearestStation,
-    nextStation,
-    previousStation,
     roomHint,
     roomScale,
     setSoundOn,
@@ -1663,10 +1644,6 @@ function PartyRoom({
     effect,
     emitEvent,
     eventLine,
-    centerStation,
-    nearestStation,
-    nextStation,
-    previousStation,
     roomHint,
     roomScale,
     setSoundOn,
@@ -1705,10 +1682,6 @@ function PartyRoom({
             effect,
             emitEvent,
             eventLine,
-            centerStation,
-            nearestStation,
-            nextStation,
-            previousStation,
             roomHint,
             roomScale,
             setSoundOn,
@@ -1783,25 +1756,6 @@ function PartyRoom({
                   soundOn={soundOn}
                 />
               </div>
-              <nav className="party-room-nav" aria-label="Explore the party">
-                {previousStation && (
-                  <button
-                    type="button"
-                    onClick={() => centerStation(previousStation.center)}
-                  >
-                    {nearestStation.previousLabel}
-                  </button>
-                )}
-                {nextStation && (
-                  <button
-                    className="party-room-nav__next"
-                    type="button"
-                    onClick={() => centerStation(nextStation.center)}
-                  >
-                    {nearestStation.nextLabel}
-                  </button>
-                )}
-              </nav>
               <p className="party-event-line" data-camera-ignore>
                 ✳ {eventLine}
               </p>

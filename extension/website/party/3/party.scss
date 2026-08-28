@@ -656,19 +656,19 @@ h1 {
   scroll-snap-align: center;
 }
 .party-station--cake {
-  top: 11%;
+  top: 37%;
   left: 1660px;
   width: 620px;
   transform: rotate(-0.5deg);
 }
 .party-station--balloons {
-  top: 16%;
+  top: 39%;
   left: 980px;
   width: 560px;
   transform: rotate(0.8deg);
 }
 .party-station--wishes {
-  top: 14%;
+  top: 37%;
   left: 2420px;
   width: 560px;
   transform: rotate(-0.9deg);
@@ -1353,45 +1353,6 @@ h1 {
   transform: translateX(-50%);
   white-space: nowrap;
 }
-.party-room-nav {
-  position: fixed;
-  right: 14px;
-  bottom: 82px;
-  left: 14px;
-  z-index: 26;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  pointer-events: none;
-}
-.party-room-nav button {
-  max-width: min(42vw, 230px);
-  padding: 5px 11px;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 999px;
-  background: var(--ph-paper);
-  box-shadow: var(--ph-shadow-brick);
-  color: var(--ph-ink);
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  overflow: hidden;
-  pointer-events: auto;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.party-room-nav button:hover {
-  background: var(--ph-mustard-wash);
-  box-shadow: var(--ph-shadow-brick-hover);
-  transform: translate(-1px, -1px);
-}
-.party-room-nav button:active {
-  box-shadow: none;
-  transform: translate(1px, 1px);
-}
-.party-room-nav__next {
-  margin-left: auto;
-}
 .party-footer {
   position: fixed;
   bottom: 26px;
@@ -1741,9 +1702,6 @@ h1 {
   .party-footer > span:first-child {
     display: none;
   }
-  .party-room-nav {
-    bottom: 66px;
-  }
 }
 
 @media (max-width: 620px) {
@@ -1755,12 +1713,6 @@ h1 {
   .party-footer a,
   .party-footer__presence {
     padding: 4px 8px;
-  }
-  .party-room-nav button {
-    max-width: 46vw;
-    padding: 5px 9px;
-    font-size: 0.64rem;
-    letter-spacing: 0.06em;
   }
   .workshop-header {
     align-items: flex-start;
