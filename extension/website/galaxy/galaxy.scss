@@ -580,3 +580,13 @@ body {
     color: rgba(226, 172, 104, 0.8);
   }
 }
+
+.galaxy-route {
+  &__help {
+    margin-top: 6px;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.45);
+  }
+}

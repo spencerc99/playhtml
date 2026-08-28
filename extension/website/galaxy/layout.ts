@@ -34,6 +34,11 @@ export interface LayoutNode {
   bundleAngle: number;
   bundleCurl: number;
   bundleDepth: number;
+  /**
+   * Uncrawled dead-end: linked to, never crawled outward. Held back from the
+   * resting view so the charted network can breathe.
+   */
+  rumor: boolean;
 }
 
 export interface LayoutEdge {
@@ -78,14 +83,23 @@ export interface Layout {
  * Build initial positions: clusters seeded on a jittered ring so they start
  * apart, members scattered around their cluster center.
  */
-export function seedLayout(level: GroupLevel, spread = 1): Layout {
+export function seedLayout(
+  level: GroupLevel,
+  spread = 1,
+  rumors: ReadonlySet<string> = new Set(),
+): Layout {
   const random = createRandom(LAYOUT_SEED);
 
   // Scale the working area with sqrt(stop count) so areal density — and the
-  // number of neighbours inside the repulsion radius — stays roughly constant
-  // from a handful of interchanges up to the full ungrouped graph.
+  // number of neighbours inside the repulsion radius — stays roughly constant.
+  // Count only CHARTED stops: rumors are hidden at rest, so sizing the world to
+  // include them shrinks the visible network into a fraction of the canvas.
+  const chartedCount = level.stops.reduce(
+    (n, s) => (rumors.has(s.id) ? n : n + 1),
+    0,
+  );
   const extent =
-    LAYOUT_EXTENT * Math.sqrt(Math.max(level.stops.length, 24) / 150) * spread;
+    LAYOUT_EXTENT * Math.sqrt(Math.max(chartedCount, 24) / 150) * spread;
 
   const clusterIds = [...new Set(level.stops.map((s) => s.cluster))].sort(
     (a, b) => a - b,
@@ -136,6 +150,7 @@ export function seedLayout(level: GroupLevel, spread = 1): Layout {
       bundleAngle: 0,
       bundleCurl: 0,
       bundleDepth: 0,
+      rumor: rumors.has(stop.id),
     };
   });
 
@@ -204,17 +219,30 @@ export function seedLayout(level: GroupLevel, spread = 1): Layout {
  */
 function bundleFringe(edges: LayoutEdge[]): void {
   const leavesByParent = new Map<LayoutNode, LayoutNode[]>();
+  const chosenParent = new Map<LayoutNode, LayoutNode>();
   for (const edge of edges) {
     const pairs: Array<[LayoutNode, LayoutNode]> = [
       [edge.a, edge.b],
       [edge.b, edge.a],
     ];
     for (const [leaf, parent] of pairs) {
-      if (leaf.degree !== 1 || parent.degree <= 1) continue;
-      const list = leavesByParent.get(parent);
-      if (list) list.push(leaf);
-      else leavesByParent.set(parent, [leaf]);
+      // Rumors bundle onto whichever charted stop links them, so they trail as
+      // dust off that stop instead of forming a halo of their own.
+      const bundleable = leaf.degree === 1 || (leaf.rumor && !parent.rumor);
+      if (!bundleable || parent.degree <= 1) continue;
+      // Keep the lexicographically smallest eligible parent, so a rumor with
+      // several anchors always attaches to the same one.
+      const chosen = chosenParent.get(leaf);
+      if (!chosen || parent.stop.id < chosen.stop.id) {
+        chosenParent.set(leaf, parent);
+      }
     }
+  }
+
+  for (const [leaf, parent] of chosenParent) {
+    const list = leavesByParent.get(parent);
+    if (list) list.push(leaf);
+    else leavesByParent.set(parent, [leaf]);
   }
 
   for (const [parent, leaves] of leavesByParent) {
@@ -453,8 +481,12 @@ export function buildTrunkPaths(layout: Layout): void {
 }
 
 /** Run a layout to convergence in one go. */
-export function solveLayout(level: GroupLevel, spread = 1): Layout {
-  const layout = seedLayout(level, spread);
+export function solveLayout(
+  level: GroupLevel,
+  spread = 1,
+  rumors: ReadonlySet<string> = new Set(),
+): Layout {
+  const layout = seedLayout(level, spread, rumors);
   const grid = new SpatialGrid(REPULSION_RADIUS);
   for (let i = 1; i <= CONVERGENCE_TICKS; i++) {
     stepLayout(layout, grid, 1 - i / CONVERGENCE_TICKS);

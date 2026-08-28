@@ -641,6 +641,30 @@ export function findRoute(
   return null;
 }
 
+/**
+ * Stops that are uncrawled dead-ends: ordinary sites that were linked TO but
+ * never crawled outward, so they have no outgoing roads. They are rumors of
+ * places rather than charted stops, and at ~80% of the graph they drown the
+ * real map, so the renderer holds them back until you look their way.
+ *
+ * Note the test is "no outgoing links" rather than a degree threshold: merged
+ * group edges give almost every folded leaf two distinct neighbours, so degree
+ * separates nothing here.
+ */
+export function findRumorStops(
+  level: GroupLevel,
+  index?: Map<string, Step[]>,
+): Set<string> {
+  const adjacency = index ?? buildRoutingIndex(level);
+  const rumors = new Set<string>();
+  for (const stop of level.stops) {
+    if (stop.kind !== "site") continue;
+    if ((adjacency.get(stop.id)?.length ?? 0) > 0) continue;
+    rumors.add(stop.id);
+  }
+  return rumors;
+}
+
 /** Hop distance from any seed, for the "N hops from seeds" focus dimmer. */
 export function hopsFromSeeds(
   level: GroupLevel,

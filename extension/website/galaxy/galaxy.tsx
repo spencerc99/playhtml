@@ -15,6 +15,7 @@ import {
   buildRoutingIndex,
   createRandom,
   findRoute,
+  findRumorStops,
   hopsFromSeeds,
   nodeKind,
   searchDomains,
@@ -273,6 +274,8 @@ const TransitMap = (): React.ReactElement => {
   const [walkingFrom, setWalkingFrom] = useState<string | null>(null);
   const [travel, setTravel] = useState<TravelLog | null>(null);
   const [copied, setCopied] = useState(false);
+  /** Mirrors signpostsRef length so the walking panel re-renders with it. */
+  const [signpostCount, setSignpostCount] = useState(0);
 
   const cameraRef = useRef<Camera>({ x: 0, y: 0, scale: 1 });
   const layoutRef = useRef<Layout | null>(null);
@@ -357,6 +360,12 @@ const TransitMap = (): React.ReactElement => {
     [level],
   );
 
+  /** Uncrawled dead-ends, held back from the resting view. */
+  const rumors = useMemo(
+    () => (level ? findRumorStops(level, routingIndex ?? undefined) : new Set<string>()),
+    [level, routingIndex],
+  );
+
   const seedStopIds = useMemo(() => {
     if (!graph || !level) return [];
     const ids: string[] = [];
@@ -391,7 +400,7 @@ const TransitMap = (): React.ReactElement => {
       morphFromRef.current = from;
     }
 
-    const next = seedLayout(level, settings.spread);
+    const next = seedLayout(level, settings.spread, rumors);
     const grid = new SpatialGrid(REPULSION_RADIUS);
     for (let i = 0; i < PRESOLVE_TICKS; i++) {
       stepLayout(next, grid, 1 - i / CONVERGENCE_TICKS);
@@ -405,7 +414,7 @@ const TransitMap = (): React.ReactElement => {
     morphStartRef.current = performance.now();
     setSettling(true);
     needsFramingRef.current = true;
-  }, [level, settings.spread]);
+  }, [level, settings.spread, rumors]);
 
   /**
    * Resolve a trip, falling back to an undirected path when no legal one-way
@@ -548,7 +557,9 @@ const TransitMap = (): React.ReactElement => {
         let minY = Infinity;
         let maxY = -Infinity;
         for (const n of layout.nodes) {
-          if (!opts.showFringe && n.bundleParent) continue;
+          // Frame the charted network only: rumors are hidden at rest, and
+          // including them shrinks the real map into a fraction of the canvas.
+          if (!opts.showRumors && n.rumor) continue;
           if (n.x < minX) minX = n.x;
           if (n.x > maxX) maxX = n.x;
           if (n.y < minY) minY = n.y;
@@ -636,6 +647,24 @@ const TransitMap = (): React.ReactElement => {
         }
       }
 
+      // Rumors materialize only when you look their way: their anchor is
+      // hovered, selected or being walked from, or the camera is deep enough
+      // into their neighbourhood that the local view has room for them.
+      const localReveal = camera.scale >= 1.6;
+      const revealedAnchors = new Set<string>();
+      if (focusStopId) revealedAnchors.add(focusStopId);
+      for (const id of selectionRef.current) revealedAnchors.add(id);
+      if (walking) revealedAnchors.add(walking);
+
+      const rumorVisible = (node: LayoutNode): boolean => {
+        if (!node.rumor) return true;
+        if (opts.showRumors) return true;
+        if (localReveal) return true;
+        const anchor = node.bundleParent?.stop.id;
+        if (anchor && revealedAnchors.has(anchor)) return true;
+        return revealedAnchors.has(node.stop.id);
+      };
+
       const dimmedBy = (stopId: string): number => {
         if (focusHops > 0 && hops) {
           const h = hops.get(stopId);
@@ -675,9 +704,8 @@ const TransitMap = (): React.ReactElement => {
         trunkCount > 0 ? Math.min(1, targetLines / trunkCount) : 1;
 
       for (const edge of layout.edges) {
-        if (!opts.showFringe && (edge.a.bundleParent || edge.b.bundleParent)) {
-          continue;
-        }
+        // A road to a hidden rumor is hidden with it.
+        if (!rumorVisible(edge.a) || !rumorVisible(edge.b)) continue;
         if (opts.lineMode === "trunk" && !edge.trunk) continue;
 
         const pa = posOf(edge.a);
@@ -709,9 +737,11 @@ const TransitMap = (): React.ReactElement => {
         // A highlighted route or the focused stop's own roads always draw.
         if (edge.trunk && !onRoute && !touchesFocus) {
           // Zooming in widens the visible slice, so detail arrives on approach.
+          // Widen the slice on zoom, but gently: the viewport already shows
+          // fewer stops as you close in, so a steep ramp re-crowds the view.
           const visible = Math.min(
             1,
-            trunkCut * (1 + Math.max(0, camera.scale - 0.6) * 2.2),
+            trunkCut * (1 + Math.max(0, camera.scale - 0.6) * 0.6),
           );
           if (edge.trunkRank > visible) {
             // Just past the cut fades rather than popping.
@@ -845,7 +875,7 @@ const TransitMap = (): React.ReactElement => {
 
       // --- Stops -----------------------------------------------------------
       for (const node of layout.nodes) {
-        if (!opts.showFringe && node.bundleParent) continue;
+        if (!rumorVisible(node)) continue;
         const p = posOf(node);
         if (p.x < viewMinX || p.x > viewMaxX || p.y < viewMinY || p.y > viewMaxY) {
           continue;
@@ -855,6 +885,18 @@ const TransitMap = (): React.ReactElement => {
         const isSelected = node.stop.members.some((m) => selected.has(m.id));
         const isFocus = id === focusStopId;
         const muted = routeSet !== null && !onRoute;
+        // Rumors are dust, not stations: a bare dim dot with no station ring.
+        if (node.rumor) {
+          const r = Math.max(0.5, 1.1 / Math.sqrt(Math.max(camera.scale, 0.32)));
+          ctx.globalAlpha = reveal * 0.34 * dimmedBy(id);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(198, 192, 178, 0.75)";
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          continue;
+        }
+
         const radius = stopRadius(node, opts.nodeScale) /
           Math.sqrt(Math.max(camera.scale, 0.32));
         const alpha =
@@ -899,7 +941,24 @@ const TransitMap = (): React.ReactElement => {
       }
 
       // --- Labels ----------------------------------------------------------
-      const labelBudget = Math.round((5 + camera.scale * 24) * opts.labelDensity);
+      // Semantic-zoom label budget: keep the on-screen count roughly constant
+      // instead of growing without bound as you zoom. Counting how many charted
+      // stops actually fall inside the viewport means a sparse region shows its
+      // names while a dense one stays readable.
+      let inView = 0;
+      for (const n of layout.nodes) {
+        if (n.rumor) continue;
+        if (n.x < viewMinX || n.x > viewMaxX || n.y < viewMinY || n.y > viewMaxY) {
+          continue;
+        }
+        inView++;
+      }
+      // The collision pass is the real limiter, so the budget can be generous:
+      // it caps how many are *considered*, not how many survive.
+      const labelBudget = Math.max(
+        8,
+        Math.round(Math.min(60, inView * 0.85) * opts.labelDensity),
+      );
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.textAlign = "center";
@@ -914,7 +973,7 @@ const TransitMap = (): React.ReactElement => {
       const seen = new Set<string>();
       const addPriority = (n: LayoutNode | undefined) => {
         if (!n || seen.has(n.stop.id)) return;
-        if (!opts.showFringe && n.bundleParent) return;
+        if (!rumorVisible(n)) return;
         seen.add(n.stop.id);
         priority.push(n);
       };
@@ -927,7 +986,7 @@ const TransitMap = (): React.ReactElement => {
       for (const id of neighborDir.keys()) addPriority(layout.byId.get(id));
 
       const budgeted = labelOrder
-        .filter((n) => !seen.has(n.stop.id) && (opts.showFringe || !n.bundleParent))
+        .filter((n) => !seen.has(n.stop.id) && rumorVisible(n))
         .sort((a, b) => {
           const ah = a.stop.kind === "hub" ? 1 : 0;
           const bh = b.stop.kind === "hub" ? 1 : 0;
@@ -937,6 +996,8 @@ const TransitMap = (): React.ReactElement => {
         .slice(0, Math.max(0, labelBudget));
 
       for (const node of [...priority, ...budgeted]) {
+        // Rumors are unnamed at rest; hovering one directly still shows a tooltip.
+        if (node.rumor && node.stop.id !== hoveredId) continue;
         const p = posOf(node);
         const sx = width / 2 + camera.x + p.x * camera.scale;
         const sy = height / 2 + camera.y + p.y * camera.scale;
@@ -958,10 +1019,10 @@ const TransitMap = (): React.ReactElement => {
           stopRadius(node, opts.nodeScale) / Math.sqrt(Math.max(camera.scale, 0.32)) +
           (isSeed ? 8 : 5);
         const box = {
-          x0: sx - halfWidth - 4,
-          y0: top - 3,
-          x1: sx + halfWidth + 4,
-          y1: top + size + 3,
+          x0: sx - halfWidth - 7,
+          y0: top - 5,
+          x1: sx + halfWidth + 7,
+          y1: top + size + 5,
         };
         const mustShow = isSeed || isFocus || onRoute || dir !== undefined;
         const collides = placed.some(
@@ -1073,11 +1134,13 @@ const TransitMap = (): React.ReactElement => {
     const layout = layoutRef.current;
     if (!walkingFrom || !level || !layout) {
       signpostsRef.current = [];
+      setSignpostCount(0);
       return;
     }
     const origin = layout.byId.get(walkingFrom);
     if (!origin) {
       signpostsRef.current = [];
+      setSignpostCount(0);
       return;
     }
     const posts: Signpost[] = [];
@@ -1092,7 +1155,9 @@ const TransitMap = (): React.ReactElement => {
     }
     // Strongest roads first, and cap the fan so the edge does not fill up.
     posts.sort((a, b) => b.step.pages - a.step.pages);
-    signpostsRef.current = posts.slice(0, 12);
+    const trimmed = posts.slice(0, 12);
+    signpostsRef.current = trimmed;
+    setSignpostCount(trimmed.length);
   }, [walkingFrom, level, settling]);
 
   // --- Interaction -------------------------------------------------------
@@ -1117,7 +1182,8 @@ const TransitMap = (): React.ReactElement => {
       let best: LayoutNode | null = null;
       let bestDist = Infinity;
       for (const node of layout.nodes) {
-        if (!opts.showFringe && node.bundleParent) continue;
+        // Only pick what is actually drawn, so clicks match what you see.
+        if (node.rumor && !opts.showRumors && camera.scale < 1.6) continue;
         const reach =
           stopRadius(node, opts.nodeScale) /
             Math.sqrt(Math.max(camera.scale, 0.32)) +
@@ -1376,15 +1442,31 @@ const TransitMap = (): React.ReactElement => {
           return;
         }
         if (walkingFrom) {
+          // Esc retraces the breadcrumb one hop at a time; from the first stop
+          // (or with no trail yet) it leaves walking mode.
+          const trail = travelRef.current;
+          if (trail && trail.legs.length > 0) {
+            const stops = trail.stops.slice(0, -1);
+            const legs = trail.legs.slice(0, -1);
+            const previous = stops[stops.length - 1];
+            if (previous) {
+              setTravel({ stops, legs });
+              setWalkingFrom(previous);
+              const node = layoutRef.current?.byId.get(previous);
+              if (node) glideTo(node);
+              return;
+            }
+          }
           setWalkingFrom(null);
           setTravel(null);
           signpostsRef.current = [];
+          setSignpostCount(0);
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [searchOpen, walkingFrom]);
+  }, [searchOpen, walkingFrom, glideTo]);
 
   // --- Derived UI --------------------------------------------------------
 
@@ -1558,10 +1640,10 @@ const TransitMap = (): React.ReactElement => {
             <label className="galaxy-field galaxy-field--row">
               <input
                 type="checkbox"
-                checked={settings.showFringe}
-                onChange={(e) => update("showFringe", e.target.checked)}
+                checked={settings.showRumors}
+                onChange={(e) => update("showRumors", e.target.checked)}
               />
-              <span>show fringe</span>
+              <span>show uncharted (rumors)</span>
             </label>
 
             <label className="galaxy-field">
@@ -1707,13 +1789,19 @@ const TransitMap = (): React.ReactElement => {
                 setWalkingFrom(null);
                 setTravel(null);
                 signpostsRef.current = [];
+                setSignpostCount(0);
               }}
             >
-              esc
+              exit
             </button>
           </div>
           <div className="galaxy-route__from">at {walkingFrom}</div>
-          {signpostsRef.current.length === 0 && (
+          <div className="galaxy-route__help">
+            {travel && travel.legs.length > 0
+              ? "esc steps back one hop"
+              : "esc exits walking"}
+          </div>
+          {signpostCount === 0 && (
             <div className="galaxy-route__dead">
               no roads lead out of here
             </div>

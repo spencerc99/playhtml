@@ -4,8 +4,11 @@
 export interface MapSettings {
   /** Index into the grouping hierarchy. */
   groupLevel: number;
-  /** Hide single-link fringe stops entirely. */
-  showFringe: boolean;
+  /**
+   * Show uncrawled dead-ends (rumors) at rest. Off by default: they are ~80%
+   * of the graph and drown the charted network.
+   */
+  showRumors: boolean;
   /** Multiplies layout spacing; changing it re-solves. */
   spread: number;
   /** Draw only backbone lines, or backbone plus the street mesh. */
@@ -34,7 +37,7 @@ export const DEFAULT_SETTINGS: MapSettings = {
   // Open at the first grouped level: the fringe affordances make collapsed
   // contents legible, and L0 at this scale is an unreadable mat.
   groupLevel: 1,
-  showFringe: true,
+  showRumors: false,
   spread: 1,
   lineMode: "all",
   meshOpacity: 0.18,
@@ -73,7 +76,7 @@ export function loadSettings(): MapSettings {
     if (typeof parsed.groupLevel === "number") {
       next.groupLevel = clamp(Math.round(parsed.groupLevel), 0, 3);
     }
-    if (typeof parsed.showFringe === "boolean") next.showFringe = parsed.showFringe;
+    if (typeof parsed.showRumors === "boolean") next.showRumors = parsed.showRumors;
     if (typeof parsed.spread === "number") next.spread = clamp(parsed.spread, 0.4, 6);
     if (parsed.lineMode === "trunk" || parsed.lineMode === "all") {
       next.lineMode = parsed.lineMode;
