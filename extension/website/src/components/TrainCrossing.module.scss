@@ -157,6 +157,105 @@ $accent-gold: #d4b85c;
   transition: color 0.15s;
 }
 
+// --- Compact variant: closing element inside a section ---
+
+.compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+  color: $text;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid $accent-teal;
+    outline-offset: 4px;
+  }
+
+  &:hover .compactHeading {
+    color: $accent-teal;
+  }
+}
+
+.compactScene {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: 440px;
+  max-width: 100%;
+  height: 118px;
+  overflow: hidden;
+}
+
+// Matches the band variant: the photo is cropped mid-carriage on its left
+// edge, so the rear stays past the frame to read as a longer train.
+.compactTrain {
+  position: absolute;
+  left: -28px;
+  bottom: 24px;
+  display: block;
+  width: 460px;
+  transform: translateX(calc(-100% - 60px));
+  transition: transform 3.2s cubic-bezier(0.22, 0.75, 0.35, 1);
+}
+
+// Declared after .compactTrain so it wins on source order at equal specificity.
+.compactTrainArrived {
+  transform: translateX(0);
+}
+
+.compactText {
+  display: block;
+  max-width: 380px;
+}
+
+.compactHeading {
+  display: block;
+  margin-bottom: 8px;
+  font-family: $font-wordmark;
+  font-weight: 600;
+  font-size: 1.375rem;
+  color: $text;
+  transition: color 0.15s;
+}
+
+.compactBody {
+  display: block;
+  font-family: $font-body;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: $text-muted;
+}
+
+@media (max-width: 768px) {
+  .compact {
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+  }
+
+  .compactScene {
+    width: 100%;
+    height: 104px;
+  }
+
+  .compactTrain {
+    width: min(96vw, 400px);
+  }
+
+  .compactText {
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compactTrain {
+    transform: translateX(0);
+    transition: none;
+  }
+}
+
 @media (max-width: 800px) {
   .crossing {
     padding-top: 16px;

@@ -24,6 +24,7 @@ import { Bench } from "./components/Bench";
 import { CoffeeMachine } from "./components/CoffeeMachine";
 import { DownloadGate } from "./components/DownloadGate";
 import { TrainCrossing } from "./components/TrainCrossing";
+import { WikipediaDemo } from "./components/WikipediaDemo";
 import {
   CHANGELOG_URL,
   isNavigationPathActive,
@@ -48,6 +49,38 @@ const DISCORD_INVITE = "https://discord.gg/SKbsSf4ptU";
 const HELP_EMAIL_USER = "hi";
 const HELP_EMAIL_DOMAIN = "spencer.place";
 const HELP_EMAIL_SUBJECT = "help build we were online";
+const PARTNER_EMAIL_SUBJECT = "make our site feel inhabited";
+
+// Same scraper-safe pattern as the help-build CTA: assemble the mailto at
+// click time so no literal address sits in the HTML.
+function openHelpEmail(subject: string) {
+  const addr = `${HELP_EMAIL_USER}@${HELP_EMAIL_DOMAIN}`;
+  window.location.href = `mailto:${addr}?subject=${encodeURIComponent(subject)}`;
+}
+
+function BrowserWindow({
+  label,
+  children,
+  bodyClassName,
+}: {
+  label: string;
+  children: ReactNode;
+  bodyClassName?: string;
+}) {
+  return (
+    <div className={styles.browserWindow}>
+      <div className={styles.browserBar}>
+        <span className={styles.browserDots} aria-hidden="true">
+          <span className={styles.browserDot} />
+          <span className={styles.browserDot} />
+          <span className={styles.browserDot} />
+        </span>
+        <span className={styles.browserLabel}>{label}</span>
+      </div>
+      <div className={bodyClassName}>{children}</div>
+    </div>
+  );
+}
 
 function RisoTexture() {
   return (
@@ -465,7 +498,167 @@ export default function App() {
           <DownloadGate />
         </section>
 
-        <TrainCrossing />
+        <div className={styles.transitionDivider} aria-hidden="true">
+          <span className={styles.transitionRule} />
+          <span className={styles.transitionLabel}>
+            make the internet feel alive
+          </span>
+          <span className={styles.transitionRule} />
+        </div>
+
+        <section className={styles.featureRows}>
+          <div className={styles.featureRow}>
+            <div className={styles.featureMedia}>
+              <BrowserWindow label="en.wikipedia.org/wiki/Rabbit_hole">
+                <WikipediaDemo />
+              </BrowserWindow>
+            </div>
+            <div className={styles.featureText}>
+              <h2 className={styles.featureHeading}>
+                wikipedia feels inhabited
+              </h2>
+              <p className={styles.featureBody}>
+                Live cursors, article chat, and link patina turn reading into a
+                place where you can cross paths with other visitors and follow
+                each other down rabbit holes.
+              </p>
+              <p className={styles.featureAside}>
+                Wikipedia is the first. If you steward an aligned organization
+                or community site,{" "}
+                <button
+                  type="button"
+                  className={styles.featureAsideLink}
+                  onClick={(e) => {
+                    openHelpEmail(PARTNER_EMAIL_SUBJECT);
+                    e.currentTarget.blur();
+                  }}
+                >
+                  let's make your corner of the web feel inhabited too →
+                </button>
+              </p>
+            </div>
+          </div>
+
+          <div className={styles.featureRow}>
+            <div className={styles.featureText}>
+              <h2 className={styles.featureHeading}>how you browsed</h2>
+              <p className={styles.featureBody}>
+                A history page that shows where your time went: the rabbit holes
+                you followed, the smaller places beyond your busiest roads where
+                you settled in, and a cursor portrait from each day.
+              </p>
+            </div>
+            <div className={styles.featureMedia}>
+              <BrowserWindow
+                label="new tab · how you browsed"
+                bodyClassName={styles.screenshotFrame}
+              >
+                <img
+                  className={styles.screenshot}
+                  src="/home/history-week.jpg"
+                  alt="The history page for a week: 18 hours 35 minutes of browsing across 973 pages, a bar of the most-visited sites, and a list of notable new sites explored for the first time"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.comingSoon}>
+          <div className={styles.comingSoonHeader}>
+            <h2 className={styles.featureHeading}>what's coming</h2>
+            <span className={styles.cautionStripe} aria-hidden="true" />
+          </div>
+          <div className={styles.comingSoonGrid}>
+            <div className={`${styles.comingCard} ${styles.comingCardA}`}>
+              <div className={styles.browserWindow}>
+                <div className={styles.browserBar}>
+                  <span className={styles.browserDots} aria-hidden="true">
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                  </span>
+                  <span className={styles.browserLabel}>your shore</span>
+                  <span className={styles.statusChipBeta}>BETA</span>
+                </div>
+                <div className={styles.comingThumbFrame}>
+                  <img
+                    className={styles.comingThumb}
+                    src="/home/scraps-all.jpg"
+                    alt="A dense collage of images, buttons, icons, and screenshots collected while browsing, layered across the page"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+              </div>
+              <h3 className={styles.comingTitle}>internet scraps</h3>
+              <p className={styles.comingBody}>
+                a snapshot of your browsing in the media you pass — images,
+                buttons, icons, cursors.
+              </p>
+            </div>
+
+            <div className={`${styles.comingCard} ${styles.comingCardB}`}>
+              <div className={styles.browserWindow}>
+                <div className={styles.browserBar}>
+                  <span className={styles.browserDots} aria-hidden="true">
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                  </span>
+                  <span className={styles.browserLabel}>somewhere kind</span>
+                  <span className={styles.statusChip}>SOON</span>
+                </div>
+                <div className={styles.comingThumbFrame}>
+                  <img
+                    className={styles.comingThumb}
+                    src="/home/letter-prototype.jpg"
+                    alt="A pink letter card tucked into a web page, opening with a handwritten salutation and dated in the corner"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+              </div>
+              <h3 className={styles.comingTitle}>letters to a website</h3>
+              <p className={styles.comingBody}>
+                tuck a sealed letter into a page for the next person to find and
+                share why the website was meaningful to you.
+              </p>
+            </div>
+
+            <div className={`${styles.comingCard} ${styles.comingCardC}`}>
+              <div className={styles.browserWindow}>
+                <div className={styles.browserBar}>
+                  <span className={styles.browserDots} aria-hidden="true">
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                  </span>
+                  <span className={styles.browserLabel}>somewhere sloppy</span>
+                  <span className={styles.statusChip}>SOON</span>
+                </div>
+                <div className={styles.comingThumbFrame}>
+                  <img
+                    className={styles.comingThumb}
+                    src="/home/quarantine-tape.jpg"
+                    alt="A listicle article crossed over with yellow and red caution tape reading AI SLOP and SEO SPAM"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+              </div>
+              <h3 className={styles.comingTitle}>AI slop tape</h3>
+              <p className={styles.comingBody}>
+                Tape off pages and content that are AI-generated slop or SEO
+                spam. Help keep our web clean!
+              </p>
+            </div>
+          </div>
+          <div className={styles.comingSoonCommute}>
+            <TrainCrossing variant="compact" />
+          </div>
+        </section>
 
         <section className={styles.section}>
           <h2 className={styles.sectionHeading}>leave a mark</h2>

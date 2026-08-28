@@ -6,6 +6,10 @@
 
 $accent-teal: #4a9a8a;
 $accent-rust: #c4724e;
+$accent-gold: #d4b85c;
+$surface: #f5f0e8;
+$border: rgba(90, 78, 65, 0.25);
+$font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
 .page {
   position: relative;
@@ -553,6 +557,290 @@ $accent-rust: #c4724e;
       border-color: $accent-teal;
     }
   }
+}
+
+// --- Transition into the feature rows ---
+
+.transitionDivider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.transitionRule {
+  flex: 1;
+  height: 0;
+  border-top: 1px dashed rgba($text-muted, 0.45);
+}
+
+.transitionLabel {
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: $text-muted;
+}
+
+@media (max-width: 480px) {
+  .transitionLabel {
+    font-size: 10px;
+  }
+}
+
+// --- Shared browser-window frame ---
+
+.browserWindow {
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(90, 78, 65, 0.1);
+  overflow: hidden;
+}
+
+.browserBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: #efe9df;
+  border-bottom: 1px solid $border;
+}
+
+.browserDots {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.browserDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgba(90, 78, 65, 0.35);
+}
+
+.browserLabel {
+  font-family: $font-mono;
+  font-size: 9.5px;
+  color: $text-muted;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// --- Feature rows ---
+
+.featureRows {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 88px;
+}
+
+.featureRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+.featureText {
+  min-width: 0;
+}
+
+// On mobile every row stacks media-first, regardless of desktop column order.
+.featureMedia {
+  min-width: 0;
+
+  @media (max-width: 768px) {
+    order: -1;
+  }
+}
+
+.featureHeading {
+  font-family: $font-wordmark;
+  font-weight: 600;
+  font-size: 1.625rem;
+  line-height: 1.25;
+  color: $text;
+  margin: 0 0 12px;
+}
+
+.featureBody {
+  font-family: $font-body;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: $text;
+  margin: 0;
+}
+
+.featureAside {
+  position: relative;
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: $text-muted;
+  margin: 16px 0 0;
+}
+
+.featureAsideLink {
+  font: inherit;
+  color: $accent-teal;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba($accent-teal, 0.3);
+  padding: 0 0 1px;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.2s, border-color 0.2s;
+
+  &:hover {
+    color: color.adjust($accent-teal, $lightness: -8%);
+    border-color: $accent-teal;
+  }
+}
+
+.screenshotFrame {
+  height: 300px;
+  overflow: hidden;
+}
+
+.screenshot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+// --- Coming soon ---
+
+.comingSoon {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.comingSoonHeader {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 32px;
+
+  .featureHeading {
+    margin: 0;
+    flex-shrink: 0;
+  }
+}
+
+.cautionStripe {
+  flex: 1;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0.85;
+  transform: rotate(-0.4deg);
+  background: repeating-linear-gradient(
+    45deg,
+    #f0a92b 0 12px,
+    #161616 12px 24px
+  );
+}
+
+.comingSoonGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+}
+
+.comingCard {
+  min-width: 0;
+}
+
+.comingCardA {
+  transform: rotate(-1deg);
+}
+
+.comingCardB {
+  transform: rotate(0.8deg);
+}
+
+.comingCardC {
+  transform: rotate(-0.5deg);
+}
+
+.comingThumbFrame {
+  height: 120px;
+  overflow: hidden;
+}
+
+// Each source image carries its subject in a different part of the frame, so
+// the crop anchor is set per card rather than defaulting to center.
+.comingThumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+@mixin status-chip {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+
+.statusChip {
+  @include status-chip;
+
+  color: $text-muted;
+  border: 1px solid rgba($text-muted, 0.5);
+}
+
+.statusChipBeta {
+  @include status-chip;
+
+  color: #7a6020;
+  background: rgba($accent-gold, 0.12);
+  border: 1px solid rgba($accent-gold, 0.5);
+}
+
+.comingSoonCommute {
+  margin-top: 64px;
+}
+
+.comingTitle {
+  font-family: $font-wordmark;
+  font-weight: 600;
+  font-size: 1rem;
+  color: $text;
+  margin: 14px 0 6px;
+}
+
+.comingBody {
+  font-family: $font-body;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: $text-muted;
+  margin: 0;
 }
 
 // --- Footer ---
