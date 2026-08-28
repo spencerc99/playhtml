@@ -482,7 +482,8 @@ describe("V2Store", () => {
       });
       expect(store.getPendingOperations()).toHaveLength(4);
 
-      vi.advanceTimersByTime(16);
+      // The queue flushes on a microtask (one send per synchronous burst).
+      await Promise.resolve();
       expect(transport.sent).toEqual(store.getPendingOperations());
 
       const [afterFlush] = store.mutate<{ count: number }>(
@@ -613,7 +614,9 @@ describe("V2Transport", () => {
           draft.count = 7;
         },
       );
-      vi.advanceTimersByTime(16);
+      // The queue flushes on a microtask; the socket is disconnected, so the
+      // transport holds the operation for reconnect replay.
+      await Promise.resolve();
       expect(socket.sent).toEqual([]);
 
       socket.open();

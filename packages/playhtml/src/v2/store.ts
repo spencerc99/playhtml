@@ -40,8 +40,6 @@ type ElementListener = (value: JsonValue | undefined) => void;
 type RoomListener = (snapshot: RoomSnapshot) => void;
 type StatusListener = (event: V2StoreStatusEvent) => void;
 
-const OUTGOING_FLUSH_MS = 16;
-
 const valuesEqual = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
@@ -102,7 +100,7 @@ export class V2Store {
   private nextMutationId: number;
   private pending: ClientOperationMessage[] = [];
   private outgoing: ClientOperationMessage[] = [];
-  private outgoingFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private outgoingFlushScheduled = false;
   private readonly echoWaitElementIds: Set<string>;
   private readonly echoWaitMutationIds = new Set<number>();
   private readonly transport: V2StoreTransport;
@@ -422,14 +420,20 @@ export class V2Store {
     return message;
   }
 
+  // Flushes on a microtask rather than a timer: a timer quantizes a drag to
+  // the timer's real cadence (setTimeout(16) fires at 20-30ms with jitter),
+  // which viewers perceive as coarser motion than the input. A microtask
+  // still coalesces the writes of one synchronous burst (one send per input
+  // event), matching how v1 shipped updates.
   private scheduleOutgoingFlush(): void {
-    if (this.outgoing.length === 0 || this.outgoingFlushTimer !== null) return;
-    this.outgoingFlushTimer = setTimeout(() => {
-      this.outgoingFlushTimer = null;
+    if (this.outgoing.length === 0 || this.outgoingFlushScheduled) return;
+    this.outgoingFlushScheduled = true;
+    queueMicrotask(() => {
+      this.outgoingFlushScheduled = false;
       const outgoing = this.outgoing;
       this.outgoing = [];
       for (const message of outgoing) this.transport.send(message);
-    }, OUTGOING_FLUSH_MS);
+    });
   }
 
   // With a changedKeys set (single-op paths), only those elements' listeners
