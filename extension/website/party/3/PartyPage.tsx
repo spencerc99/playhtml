@@ -46,6 +46,15 @@ const PARTY_EVENT = "playhtml-party-3-event";
 const POPPER_EVENT = "playhtml-party-3-popper";
 const BALLOON_POP_EVENT = "playhtml-party-3-balloon-pop";
 const CAKE_FINALE_EVENT = "playhtml-party-3-cake-finale";
+const PARTY_ROOM_WIDTH = 3200;
+const PARTY_ROOM_HEIGHT = 900;
+const PARTY_CHROME_HEIGHT = 104;
+const PARTY_STATIONS = [
+  { center: 460, label: "the welcome sign" },
+  { center: 1260, label: "the balloon stand" },
+  { center: 1970, label: "the cake" },
+  { center: 2700, label: "the card pile" },
+];
 const CARD_COLORS = [
   "var(--ph-sage)",
   "var(--ph-ultramarine-wash)",
@@ -78,6 +87,39 @@ function identityLabel(name: string | undefined) {
 function getRandomPartyColor(currentColor: string) {
   const choices = PARTY_COLORS.filter((choice) => choice !== currentColor);
   return choices[Math.floor(Math.random() * choices.length)] ?? PARTY_COLORS[0];
+}
+
+function clampCamera(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function isScrollableTarget(target: EventTarget | null) {
+  let element = target instanceof HTMLElement ? target : null;
+  while (element) {
+    const styles = getComputedStyle(element);
+    if (
+      (/(auto|scroll)/.test(styles.overflowY) &&
+        element.scrollHeight > element.clientHeight + 2) ||
+      (/(auto|scroll)/.test(styles.overflowX) &&
+        element.scrollWidth > element.clientWidth + 2)
+    ) {
+      return true;
+    }
+    element = element.parentElement;
+  }
+  return false;
+}
+
+function getRoomPoint(clientX: number, clientY: number) {
+  const room = document.getElementById("party-3-room-canvas");
+  const rect = room?.getBoundingClientRect();
+  if (!rect || rect.width === 0 || rect.height === 0) {
+    return { x: clientX, y: clientY };
+  }
+  return {
+    x: ((clientX - rect.left) / rect.width) * PARTY_ROOM_WIDTH,
+    y: ((clientY - rect.top) / rect.height) * PARTY_ROOM_HEIGHT,
+  };
 }
 
 function ColorChoices({
@@ -684,14 +726,15 @@ function BalloonsStation({
     const onPointerMove = (event: PointerEvent) => {
       setDrag((currentDrag) => {
         if (!currentDrag) return null;
-        const x = event.clientX - currentDrag.offsetX;
-        const y = event.clientY + window.scrollY - currentDrag.offsetY;
+        const roomPoint = getRoomPoint(event.clientX, event.clientY);
+        const x = roomPoint.x - currentDrag.offsetX;
+        const y = roomPoint.y - currentDrag.offsetY;
         const spencer = spencerRef.current?.getBoundingClientRect();
         const mouth = spencer
-          ? {
-              x: spencer.left + spencer.width * 0.56,
-              y: spencer.top + window.scrollY + spencer.height * 0.8,
-            }
+          ? getRoomPoint(
+              spencer.left + spencer.width * 0.56,
+              spencer.top + spencer.height * 0.8,
+            )
           : { x: -9999, y: -9999 };
         const blowing = Math.hypot(x + 30 - mouth.x, y + 40 - mouth.y) < 75;
         return {
@@ -775,16 +818,17 @@ function BalloonsStation({
 
           const tieBalloon = () => {
             const rect = spencerRef.current?.getBoundingClientRect();
+            const tiePoint = rect
+              ? getRoomPoint(rect.right, rect.top)
+              : { x: 1160, y: 210 };
             const id = createId("balloon");
             const balloon: PartyBalloon = {
               id,
               by: identity,
               createdAt: Date.now(),
               seed: Math.random() * 10_000,
-              x: rect ? rect.right + 30 + Math.random() * 80 : 260,
-              y: rect
-                ? rect.top + window.scrollY - 40 + Math.random() * 100
-                : 420,
+              x: tiePoint.x + 30 + Math.random() * 80,
+              y: tiePoint.y - 40 + Math.random() * 100,
               scale: 0.55 + Math.random() * 0.15,
               hue: Math.floor(Math.random() * 360),
             };
@@ -846,8 +890,8 @@ function BalloonsStation({
                   balloon.x,
                   balloon.y,
                   {
-                    width: window.innerWidth,
-                    height: Math.max(820, document.body.scrollHeight - 180),
+                    width: PARTY_ROOM_WIDTH,
+                    height: PARTY_ROOM_HEIGHT,
                   },
                 );
                 const currentDrag = drag?.id === balloon.id ? drag : null;
@@ -870,6 +914,10 @@ function BalloonsStation({
                     onPointerDown={(event) => {
                       if (holdingPin !== null) return;
                       event.preventDefault();
+                      const roomPoint = getRoomPoint(
+                        event.clientX,
+                        event.clientY,
+                      );
                       const position = currentDrag ?? {
                         x: drift.x,
                         y: drift.y,
@@ -880,8 +928,8 @@ function BalloonsStation({
                         x: position.x,
                         y: position.y,
                         scale: position.scale,
-                        offsetX: event.clientX - position.x,
-                        offsetY: event.clientY + window.scrollY - position.y,
+                        offsetX: roomPoint.x - position.x,
+                        offsetY: roomPoint.y - position.y,
                         startX: event.clientX,
                         startY: event.clientY,
                         blowing: false,
@@ -1392,10 +1440,12 @@ function PartyPopper({
 }
 
 function PartyRoom({
+  cameraEnabled,
   identity,
   soundOn,
   setSoundOn,
 }: {
+  cameraEnabled: boolean;
   identity: PartyIdentity;
   soundOn: boolean;
   setSoundOn: (value: boolean) => void;
@@ -1411,7 +1461,100 @@ function PartyRoom({
   );
   const [effect, setEffect] = useState<PartyEffect | null>(null);
   const effectTimer = useRef<number | null>(null);
-  const floorRef = useRef<HTMLDivElement>(null);
+  const [camera, setCamera] = useState(0);
+  const [draggingRoom, setDraggingRoom] = useState(false);
+  const [frame, setFrame] = useState({ width: 1280, height: 800 });
+  const cameraStart = useRef({ x: 0, camera: 0 });
+
+  const roomScale = Math.max(
+    0.2,
+    (frame.height - PARTY_CHROME_HEIGHT) / PARTY_ROOM_HEIGHT,
+  );
+  const cameraTravel = Math.max(1, PARTY_ROOM_WIDTH * roomScale - frame.width);
+  const viewportCenter = (camera * cameraTravel + frame.width / 2) / roomScale;
+  const nearestStation = [...PARTY_STATIONS].sort(
+    (a, b) =>
+      Math.abs(a.center - viewportCenter) - Math.abs(b.center - viewportCenter),
+  )[0];
+  const roomHint =
+    Math.abs(nearestStation.center - viewportCenter) < 260
+      ? `you’re at ${nearestStation.label}`
+      : frame.width <= 620
+        ? "drag to look around"
+        : "drag or scroll to look around";
+
+  useEffect(() => {
+    const updateFrame = () =>
+      setFrame({ width: window.innerWidth, height: window.innerHeight });
+    updateFrame();
+    playhtml.cursorClient?.refreshContainer();
+    window.addEventListener("resize", updateFrame);
+    return () => window.removeEventListener("resize", updateFrame);
+  }, []);
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (!cameraEnabled) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (
+        target?.closest(
+          "input, textarea, button, a, footer, [data-camera-ignore]",
+        ) ||
+        isScrollableTarget(target)
+      ) {
+        return;
+      }
+      cameraStart.current = { x: event.clientX, camera };
+      setDraggingRoom(true);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (!draggingRoom) return;
+      setCamera(
+        clampCamera(
+          cameraStart.current.camera -
+            (event.clientX - cameraStart.current.x) / cameraTravel,
+        ),
+      );
+    };
+    const onPointerUp = () => setDraggingRoom(false);
+    const onWheel = (event: WheelEvent) => {
+      if (!cameraEnabled || isScrollableTarget(event.target)) return;
+      const delta =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY)
+          ? event.deltaX
+          : event.deltaY;
+      setCamera((currentCamera) => clampCamera(currentCamera + delta / 1200));
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        !cameraEnabled ||
+        (event.target instanceof HTMLElement &&
+          event.target.closest("input, textarea"))
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        setCamera((currentCamera) => clampCamera(currentCamera - 0.08));
+      }
+      if (event.key === "ArrowRight") {
+        setCamera((currentCamera) => clampCamera(currentCamera + 0.08));
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    window.addEventListener("wheel", onWheel, { passive: true });
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [camera, cameraEnabled, cameraTravel, draggingRoom]);
 
   const showEffect = useCallback((nextEffect?: PartyEffect) => {
     if (!nextEffect) return;
@@ -1434,9 +1577,7 @@ function PartyRoom({
       type,
       id: registerPlayEventListener(type, {
         onEvent: (
-          payload:
-            | { eventPayload: unknown }
-            | Partial<PartyEventPayload>,
+          payload: { eventPayload: unknown } | Partial<PartyEventPayload>,
         ) => {
           if (!("message" in payload) || !payload.message) return;
           setEventLine(payload.message);
@@ -1472,17 +1613,27 @@ function PartyRoom({
   );
 
   const current = useRef({
+    camera,
+    cameraTravel,
+    draggingRoom,
     effect,
     emitEvent,
     eventLine,
+    roomHint,
+    roomScale,
     setSoundOn,
     soundOn,
     users,
   });
   current.current = {
+    camera,
+    cameraTravel,
+    draggingRoom,
     effect,
     emitEvent,
     eventLine,
+    roomHint,
+    roomScale,
     setSoundOn,
     soundOn,
     users,
@@ -1512,79 +1663,102 @@ function PartyRoom({
         }),
         ({ data, setData, awareness, setMyAwareness }, props) => {
           setPartyAwareness.current = setMyAwareness;
-          const { effect, emitEvent, eventLine, setSoundOn, soundOn, users } =
-            current.current;
+          const {
+            camera,
+            cameraTravel,
+            draggingRoom,
+            effect,
+            emitEvent,
+            eventLine,
+            roomHint,
+            roomScale,
+            setSoundOn,
+            soundOn,
+            users,
+          } = current.current;
           return (
             <div id="party-3-room" className="party-page">
               <Confetti effect={effect} />
-              <Pennants />
-              <section className="party-hero" data-hero>
-                <p className="party-hero__date">August 2023–2026</p>
-                <h1>help us celebrate!</h1>
-                <p>
-                  three years ago I put <strong>playhtml</strong> on the
-                  internet hoping the web could feel a little more lived-in. Now
-                  we have hundreds of tiny social websites that people inhabit
-                  every day.
-                </p>
-                <p className="party-hero__signoff">— spencer</p>
-                <PartyPopper
-                  data={data}
-                  setData={setData}
-                  awareness={awareness}
-                  setMyAwareness={setMyAwareness}
+              <div
+                id="party-3-room-canvas"
+                className={`party-room ${draggingRoom ? "is-dragging" : ""}`}
+                style={{
+                  transform: `translateX(${-camera * cameraTravel}px) scale(${roomScale})`,
+                }}
+                data-room
+              >
+                <div className="party-room__wall party-room__wall--first" />
+                <div className="party-room__wall party-room__wall--second" />
+                <div className="party-room__wall-seam" />
+                <div className="party-room__floor" />
+                <div className="party-room__baseboard" />
+                <div className="party-room__confetti" />
+                <img
+                  className="party-room__lamp"
+                  src="/party/3/assets/noguchi-hanging-lamp.png"
+                  alt=""
+                  aria-hidden="true"
+                />
+                <Pennants />
+                <section className="party-hero" data-hero>
+                  <p className="party-hero__date">August 2023–2026</p>
+                  <h1>help us celebrate!</h1>
+                  <p>
+                    three years ago I put <strong>playhtml</strong> on the
+                    internet hoping the web could feel a little more lived-in.
+                    Now we have hundreds of tiny social websites that people
+                    inhabit every day.
+                  </p>
+                  <p className="party-hero__signoff">— spencer</p>
+                  <PartyPopper
+                    data={data}
+                    setData={setData}
+                    awareness={awareness}
+                    setMyAwareness={setMyAwareness}
+                    identity={props.identity}
+                    emitEvent={emitEvent}
+                    soundOn={soundOn}
+                  />
+                </section>
+                <div className="party-room__note">
+                  please don’t pop
+                  <br />
+                  other people’s balloons
+                </div>
+                <div className="party-room__cake-sign">take a whole square</div>
+                <div className="party-room__floor-cup" aria-hidden="true" />
+                <div className="party-room__floor-plate" aria-hidden="true" />
+                <CakeStation
                   identity={props.identity}
                   emitEvent={emitEvent}
                   soundOn={soundOn}
                 />
-              </section>
-              <nav className="party-station-nav" aria-label="Party stations">
-                <span>← wander →</span>
-                {[
-                  ["the cake", 720],
-                  ["balloons", 90],
-                  ["wishes", 1440],
-                ].map(([label, left]) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() =>
-                      floorRef.current?.scrollTo({
-                        left: Math.max(
-                          0,
-                          Number(left) -
-                            (floorRef.current.clientWidth - 580) / 2,
-                        ),
-                        behavior: "smooth",
-                      })
-                    }
-                  >
-                    {label}
-                  </button>
-                ))}
-              </nav>
-              <div ref={floorRef} className="party-floor" data-floor>
-                <div className="party-floor__canvas" data-canvas>
-                  <CakeStation
-                    identity={props.identity}
-                    emitEvent={emitEvent}
-                    soundOn={soundOn}
-                  />
-                  <BalloonsStation
-                    identity={props.identity}
-                    emitEvent={emitEvent}
-                    soundOn={soundOn}
-                  />
-                  <WishesStation
-                    identity={props.identity}
-                    emitEvent={emitEvent}
-                    soundOn={soundOn}
-                  />
-                </div>
+                <BalloonsStation
+                  identity={props.identity}
+                  emitEvent={emitEvent}
+                  soundOn={soundOn}
+                />
+                <WishesStation
+                  identity={props.identity}
+                  emitEvent={emitEvent}
+                  soundOn={soundOn}
+                />
               </div>
-              <p className="party-event-line">✳ {eventLine}</p>
+              <div
+                className={`party-room-cue party-room-cue--left ${camera > 0.02 ? "is-visible" : ""}`}
+              >
+                ← more party
+              </div>
+              <div
+                className={`party-room-cue party-room-cue--right ${camera < 0.98 ? "is-visible" : ""}`}
+              >
+                more party →
+              </div>
+              <p className="party-event-line" data-camera-ignore>
+                ✳ {eventLine}
+              </p>
               <footer className="party-footer" data-footer>
-                <span>three years of playhtml</span>
+                <span>{roomHint}</span>
                 <button
                   type="button"
                   onClick={() => setSoundOn(!soundOn)}
@@ -1662,6 +1836,7 @@ export function PartyPage() {
         />
       )}
       <PartyRoom
+        cameraEnabled={arrived}
         identity={identity}
         soundOn={soundOn}
         setSoundOn={setSoundOn}

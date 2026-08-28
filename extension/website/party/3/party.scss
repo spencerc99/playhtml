@@ -128,7 +128,180 @@ h1 {
   background-size: 240px 240px;
 }
 .party-page {
-  padding-bottom: 132px;
+  position: fixed;
+  inset: 0;
+  min-height: 0;
+  padding: 0;
+  background: var(--ph-paper);
+  overscroll-behavior: none;
+}
+.party-room {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3200px;
+  height: 900px;
+  overflow: hidden;
+  cursor: grab;
+  transform-origin: 0 0;
+  transition: transform 380ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  user-select: none;
+}
+.party-room.is-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+.party-room__wall {
+  position: absolute;
+  top: 0;
+  height: 34%;
+}
+.party-room__wall--first {
+  left: 0;
+  width: 1600px;
+  background: rgba(244, 239, 229, 0.45)
+    url("/party/3/assets/party-wallpaper.png") repeat;
+  background-size: 300px;
+}
+.party-room__wall--second {
+  right: 0;
+  left: 1600px;
+  background-color: #f7f2e6;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      rgba(39, 75, 158, 0.13) 0 9px,
+      transparent 9px 27px
+    ),
+    radial-gradient(
+      circle at 14px 15px,
+      rgba(232, 166, 58, 0.55) 3px,
+      transparent 3.5px
+    );
+  background-position:
+    0 -7px,
+    0 0;
+  background-size:
+    auto,
+    27px 30px;
+  opacity: 0.62;
+}
+.party-room__wall-seam {
+  position: absolute;
+  top: 0;
+  left: 1598px;
+  width: 2px;
+  height: 34%;
+  background: rgba(28, 28, 28, 0.3);
+}
+.party-room__wall-seam::before,
+.party-room__wall-seam::after {
+  position: absolute;
+  left: -20px;
+  width: 42px;
+  height: 16px;
+  border: 1px solid rgba(28, 28, 28, 0.14);
+  background: rgba(255, 255, 255, 0.58);
+  content: "";
+}
+.party-room__wall-seam::before {
+  top: 54px;
+  transform: rotate(-7deg);
+}
+.party-room__wall-seam::after {
+  top: 216px;
+  transform: rotate(5deg);
+}
+.party-room__floor {
+  position: absolute;
+  inset: 34% 0 0;
+  background-color: #fbf8f1;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      rgba(28, 28, 28, 0.13) 0 1.5px,
+      transparent 1.5px 76px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(28, 28, 28, 0.13) 0 1.5px,
+      transparent 1.5px 76px
+    ),
+    linear-gradient(180deg, rgba(28, 28, 28, 0.05), transparent 22%);
+}
+.party-room__baseboard {
+  position: absolute;
+  top: 34%;
+  right: 0;
+  left: 0;
+  height: 16px;
+  border-block: 1px solid rgba(28, 28, 28, 0.19);
+  background: linear-gradient(180deg, #efe7d7, #ddd2bd);
+  box-sizing: border-box;
+}
+.party-room__confetti {
+  position: absolute;
+  inset: 34% 0 0;
+  background-image:
+    radial-gradient(circle at 3% 22%, #e8a63a 0 3.5px, transparent 3.5px),
+    radial-gradient(circle at 13% 14%, #274b9e 0 3.5px, transparent 3.5px),
+    radial-gradient(circle at 23% 43%, #ff0099 0 3px, transparent 3px),
+    radial-gradient(circle at 38% 68%, #c0373c 0 3.5px, transparent 3.5px),
+    radial-gradient(circle at 53% 86%, #ff0099 0 2.5px, transparent 2.5px),
+    radial-gradient(circle at 63% 73%, #7f9a6b 0 3px, transparent 3px),
+    radial-gradient(circle at 73% 60%, #274b9e 0 3px, transparent 3px),
+    radial-gradient(circle at 88% 70%, #7f9a6b 0 2.5px, transparent 2.5px),
+    radial-gradient(circle at 97% 58%, #274b9e 0 2.5px, transparent 2.5px);
+}
+.party-room__lamp {
+  position: absolute;
+  top: 30px;
+  left: 1910px;
+  z-index: 3;
+  width: 104px;
+}
+.party-room__note,
+.party-room__cake-sign {
+  position: absolute;
+  z-index: 6;
+  padding: 14px 18px;
+  border: 1px solid var(--ph-hairline);
+  background: var(--ph-paper);
+  box-shadow: var(--ph-shadow-brick);
+  font: italic 0.82rem/1.25 var(--ph-font-serif);
+  text-align: center;
+}
+.party-room__note {
+  top: 54px;
+  left: 850px;
+  transform: rotate(-2deg);
+}
+.party-room__cake-sign {
+  top: 354px;
+  left: 2260px;
+  transform: rotate(3deg);
+}
+.party-room__floor-cup,
+.party-room__floor-plate {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--ph-hairline);
+  background: rgba(244, 239, 229, 0.88);
+}
+.party-room__floor-cup {
+  top: 690px;
+  left: 1210px;
+  width: 22px;
+  height: 34px;
+  transform: rotate(12deg);
+}
+.party-room__floor-plate {
+  top: 742px;
+  left: 2170px;
+  width: 54px;
+  height: 34px;
+  border-radius: 50%;
+  transform: rotate(-8deg);
 }
 
 .party-arrival {
@@ -241,7 +414,10 @@ h1 {
 }
 
 .party-pennants {
-  position: relative;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
   z-index: 4;
   display: flex;
   flex-wrap: wrap;
@@ -284,10 +460,13 @@ h1 {
 }
 
 .party-hero {
-  position: relative;
+  position: absolute;
+  top: 7%;
+  left: 60px;
   z-index: 4;
-  max-width: 1080px;
-  margin: 26px auto 0;
+  width: 800px;
+  max-width: none;
+  margin: 26px 0 0;
   padding: 0 24px;
   text-align: center;
 }
@@ -477,20 +656,20 @@ h1 {
   scroll-snap-align: center;
 }
 .party-station--cake {
-  top: 0;
-  left: 720px;
+  top: 11%;
+  left: 1660px;
   width: 620px;
   transform: rotate(-0.5deg);
 }
 .party-station--balloons {
-  top: 168px;
-  left: 90px;
+  top: 16%;
+  left: 980px;
   width: 560px;
   transform: rotate(0.8deg);
 }
 .party-station--wishes {
-  top: 96px;
-  left: 1440px;
+  top: 14%;
+  left: 2420px;
   width: 560px;
   transform: rotate(-0.9deg);
 }
@@ -1159,13 +1338,48 @@ h1 {
 }
 
 .party-event-line {
-  position: relative;
-  z-index: 5;
+  position: fixed;
+  bottom: 88px;
+  left: 50%;
+  z-index: 24;
   max-width: 620px;
-  margin: -42px auto 0;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(244, 239, 229, 0.86);
   color: var(--ph-ink-2);
   font: italic 0.92rem var(--ph-font-serif);
   text-align: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.party-room-cue {
+  position: fixed;
+  top: 34%;
+  z-index: 26;
+  max-width: 32%;
+  padding: 5px 11px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 999px;
+  opacity: 0;
+  background: var(--ph-paper);
+  box-shadow: var(--ph-shadow-brick);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+  text-transform: uppercase;
+  transform: translateY(-50%);
+  transition: opacity 320ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  white-space: nowrap;
+}
+.party-room-cue.is-visible {
+  opacity: 1;
+}
+.party-room-cue--left {
+  left: 14px;
+}
+.party-room-cue--right {
+  right: 14px;
 }
 .party-footer {
   position: fixed;
@@ -1502,38 +1716,12 @@ h1 {
 }
 
 @media (max-width: 900px) {
-  .party-page {
-    overflow: visible;
-  }
-  .party-hero {
-    max-width: 720px;
-  }
-  .party-popper {
-    position: static;
-    margin: 26px auto 0;
-    transform: rotate(-5deg);
-  }
-  .party-station-nav {
-    display: none;
-  }
-  .party-floor {
-    overflow-x: visible;
-  }
-  .party-floor__canvas {
-    display: flex;
-    width: 100%;
-    height: auto;
-    flex-direction: column;
-    gap: 30px;
-    padding: 0 16px;
-  }
-  .party-station {
-    position: static;
-    width: 100%;
-    transform: none;
-  }
   .party-event-line {
-    margin: 20px 16px 0;
+    bottom: 72px;
+    max-width: calc(100% - 24px);
+    overflow: hidden;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
   }
   .party-footer {
     bottom: 12px;
@@ -1545,31 +1733,6 @@ h1 {
 }
 
 @media (max-width: 620px) {
-  .party-pennants {
-    gap: 3px;
-    padding-inline: 8px;
-  }
-  .party-pennant {
-    width: 32px;
-  }
-  .party-pennant i {
-    border-right-width: 16px;
-    border-left-width: 16px;
-  }
-  .party-card {
-    padding: 18px 14px;
-  }
-  .party-cake {
-    height: min(62vw, 336px);
-  }
-  .party-balloon-card {
-    flex-direction: column;
-    align-items: center;
-  }
-  .party-balloon-controls {
-    width: 100%;
-    min-width: 0;
-  }
   .party-footer {
     width: calc(100% - 16px);
     gap: 5px;
