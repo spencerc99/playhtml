@@ -44,6 +44,19 @@ import {
   saveSettings,
   type MapSettings,
 } from "./controls";
+import {
+  buildLineIndex,
+  buildLineLabels,
+  describeRoute,
+  lineRgba,
+  narrateRoute,
+  routeToText,
+  segmentKey,
+  summarizeRoute,
+  type LineIndex,
+  type LinesFile,
+  type RouteSegment,
+} from "./lines";
 
 // ---------------------------------------------------------------------------
 // Palette
@@ -184,6 +197,138 @@ function drawStop(
 }
 
 // ---------------------------------------------------------------------------
+// Metro lines
+// ---------------------------------------------------------------------------
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * Offset a polyline sideways so lines sharing a span run parallel rather than
+ * on top of each other. Each vertex moves along the bisector of its two
+ * adjacent segment normals, which keeps the offset width even around corners.
+ */
+function offsetPolyline(points: readonly Point[], offset: number): Point[] {
+  if (offset === 0 || points.length < 2) return points.map((p) => ({ ...p }));
+  const normals: Point[] = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (!a || !b) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.max(1e-6, Math.hypot(dx, dy));
+    normals.push({ x: -dy / len, y: dx / len });
+  }
+  return points.map((point, i) => {
+    const before = normals[i - 1];
+    const after = normals[i];
+    // Endpoints have only one adjacent segment; interior vertices average the
+    // two, which is the bisector direction for the shallow angles drawn here.
+    const nx = ((before?.x ?? after?.x ?? 0) + (after?.x ?? before?.x ?? 0)) / 2;
+    const ny = ((before?.y ?? after?.y ?? 0) + (after?.y ?? before?.y ?? 0)) / 2;
+    const len = Math.max(1e-6, Math.hypot(nx, ny));
+    return {
+      x: point.x + (nx / len) * offset,
+      y: point.y + (ny / len) * offset,
+    };
+  });
+}
+
+/**
+ * Stroke a polyline with rounded corners, the metro-map convention: straight
+ * runs joined by short arcs rather than hard vertices.
+ */
+function strokeRounded(
+  ctx: CanvasRenderingContext2D,
+  points: readonly Point[],
+  radius: number,
+): void {
+  const first = points[0];
+  if (!first) return;
+  ctx.beginPath();
+  ctx.moveTo(first.x, first.y);
+  if (points.length === 2) {
+    const second = points[1];
+    if (second) ctx.lineTo(second.x, second.y);
+    ctx.stroke();
+    return;
+  }
+  for (let i = 1; i + 1 < points.length; i++) {
+    const previous = points[i - 1];
+    const current = points[i];
+    const next = points[i + 1];
+    if (!previous || !current || !next) continue;
+    const inLen = Math.max(1e-6, Math.hypot(current.x - previous.x, current.y - previous.y));
+    const outLen = Math.max(1e-6, Math.hypot(next.x - current.x, next.y - current.y));
+    const r = Math.min(radius, inLen * 0.45, outLen * 0.45);
+    ctx.lineTo(
+      current.x - ((current.x - previous.x) / inLen) * r,
+      current.y - ((current.y - previous.y) / inLen) * r,
+    );
+    ctx.quadraticCurveTo(
+      current.x,
+      current.y,
+      current.x + ((next.x - current.x) / outLen) * r,
+      current.y + ((next.y - current.y) / outLen) * r,
+    );
+  }
+  const last = points[points.length - 1];
+  if (last) ctx.lineTo(last.x, last.y);
+  ctx.stroke();
+}
+
+/**
+ * A station tick on a line: a short bar across the line's direction, the way a
+ * metro map marks a stop that is not an interchange.
+ */
+function drawLineTick(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  length: number,
+  width: number,
+  color: string,
+): void {
+  const nx = -Math.sin(angle) * length;
+  const ny = Math.cos(angle) * length;
+  ctx.beginPath();
+  ctx.moveTo(x - nx, y - ny);
+  ctx.lineTo(x + nx, y + ny);
+  ctx.lineWidth = width;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+}
+
+/** Segmented ring: one arc per line calling at an interchange station. */
+function drawInterchangeRing(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  colors: ReadonlyArray<readonly [number, number, number]>,
+  width: number,
+  alpha: number,
+): void {
+  const slice = (Math.PI * 2) / colors.length;
+  // A gap between arcs is what makes the ring read as segmented rather than as
+  // one muddy circle; keep it proportionally smaller as the count grows.
+  const gap = Math.min(slice * 0.18, 0.24);
+  ctx.lineWidth = width;
+  ctx.lineCap = "butt";
+  colors.forEach((rgb, i) => {
+    ctx.beginPath();
+    ctx.arc(x, y, radius, i * slice + gap / 2, (i + 1) * slice - gap / 2);
+    ctx.strokeStyle = lineRgba(rgb, alpha);
+    ctx.stroke();
+  });
+  ctx.lineCap = "round";
+}
+
+// ---------------------------------------------------------------------------
 // Background
 // ---------------------------------------------------------------------------
 
@@ -261,6 +406,7 @@ const TransitMap = (): React.ReactElement => {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [graph, setGraph] = useState<Graph | null>(null);
+  const [linesFile, setLinesFile] = useState<LinesFile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<HoverState | null>(null);
   const [settling, setSettling] = useState(true);
@@ -279,6 +425,8 @@ const TransitMap = (): React.ReactElement => {
   const [copied, setCopied] = useState(false);
   /** Mirrors signpostsRef length so the walking panel re-renders with it. */
   const [signpostCount, setSignpostCount] = useState(0);
+  /** Legend hover. Transient by nature, so unlike the pinned focus it is not persisted. */
+  const [hoveredLine, setHoveredLine] = useState<string | null>(null);
 
   const cameraRef = useRef<Camera>({ x: 0, y: 0, scale: 1 });
   const layoutRef = useRef<Layout | null>(null);
@@ -319,6 +467,18 @@ const TransitMap = (): React.ReactElement => {
   const signpostsRef = useRef<Signpost[]>([]);
   const travelRef = useRef<TravelLog | null>(null);
   travelRef.current = travel;
+  /**
+   * Where each signpost was actually painted this frame. The plates are sized
+   * to their text, so the click target has to come from the render rather than
+   * being guessed at a fixed width.
+   */
+  const signpostBoxesRef = useRef<
+    Array<{ post: Signpost; x: number; y: number; w: number; h: number }>
+  >([]);
+  const lineIndexRef = useRef<LineIndex | null>(null);
+  const lineLabelsRef = useRef<ReadonlyMap<string, string>>(new Map());
+  /** Hover wins over the pinned legend selection, so a scan reads immediately. */
+  const litLineRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -333,6 +493,28 @@ const TransitMap = (): React.ReactElement => {
           throw new Error("graph.json is missing nodes or edges");
         }
         setGraph(data);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("./lines.json")
+      .then((res) => {
+        if (!res.ok) throw new Error(`lines.json responded ${res.status}`);
+        return res.json() as Promise<LinesFile>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        if (!Array.isArray(data.lines)) {
+          throw new Error("lines.json is missing lines");
+        }
+        setLinesFile(data);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -362,6 +544,22 @@ const TransitMap = (): React.ReactElement => {
     () => (level ? buildRoutingIndex(level) : null),
     [level],
   );
+
+  /** Lines resolved against the active grouping level. */
+  const lineIndex = useMemo<LineIndex | null>(
+    () => (level && linesFile ? buildLineIndex(level, linesFile.lines) : null),
+    [level, linesFile],
+  );
+
+  /** Display names, numbered where the generator reused one. */
+  const lineLabels = useMemo(
+    () => (linesFile ? buildLineLabels(linesFile.lines) : new Map<string, string>()),
+    [linesFile],
+  );
+
+  lineIndexRef.current = lineIndex;
+  lineLabelsRef.current = lineLabels;
+  litLineRef.current = hoveredLine ?? settings.focusedLine;
 
   /** Uncrawled dead-ends, held back from the resting view. */
   const rumors = useMemo(
@@ -727,10 +925,22 @@ const TransitMap = (): React.ReactElement => {
       const trunkCut =
         trunkCount > 0 ? Math.min(1, targetLines / trunkCount) : 1;
 
+      // Roads a metro line already draws are not drawn again underneath it:
+      // the line IS that road's rendering, so a doubled stroke would only
+      // fatten and desaturate the colour.
+      const lines = lineIndexRef.current;
+      const linesOn = lines !== null && opts.showLines;
+
       for (const edge of layout.edges) {
         // A road to a hidden rumor is hidden with it.
         if (!rumorVisible(edge.a) || !rumorVisible(edge.b)) continue;
         if (opts.lineMode === "trunk" && !edge.trunk) continue;
+        if (
+          linesOn &&
+          lines.coveredEdges.has(segmentKey(edge.a.stop.id, edge.b.stop.id))
+        ) {
+          continue;
+        }
 
         const pa = posOf(edge.a);
         const pb = posOf(edge.b);
@@ -872,6 +1082,146 @@ const TransitMap = (): React.ReactElement => {
         }
         ctx.stroke();
         ctx.setLineDash([]);
+      }
+
+      // --- Metro lines -----------------------------------------------------
+      // Drawn after the street mesh so they sit on top of it, and before the
+      // stops so station markers cap the line ends rather than being buried.
+      const litLine = litLineRef.current;
+      /** Where each line's stops actually landed, reused by the tick pass. */
+      const linePoints = new Map<string, Point[]>();
+      if (linesOn) {
+        for (const entry of lines.resolved) {
+          const points: Point[] = [];
+          for (const stopId of entry.stops) {
+            const node = layout.byId.get(stopId);
+            if (!node) continue;
+            points.push(posOf(node));
+          }
+          if (points.length < 2) continue;
+          linePoints.set(entry.line.id, points);
+
+          // Cull off-screen lines by their bounding box, so a zoomed-in view
+          // pays for only the lines it can see.
+          let minX = Infinity;
+          let maxX = -Infinity;
+          let minY = Infinity;
+          let maxY = -Infinity;
+          for (const p of points) {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+          }
+          if (
+            maxX < viewMinX ||
+            minX > viewMaxX ||
+            maxY < viewMinY ||
+            minY > viewMaxY
+          ) {
+            continue;
+          }
+
+          const dimmed = litLine !== null && litLine !== entry.line.id;
+          const lit = litLine === entry.line.id;
+          // A highlighted route owns the map while it is shown; lines under it
+          // stay legible but step back.
+          const routeMuted = routeSet !== null && litLine === null;
+          // At rest all 43 lines are on screen at once, which at full strength
+          // is a thicket rather than a network. Hold them at a weight where the
+          // colour still separates them but the stops stay the brighter layer,
+          // and let zooming in — where fewer lines are in frame — bring them up.
+          const restStrength = Math.min(1, 0.44 + camera.scale * 0.3);
+          const alpha =
+            (dimmed ? 0.07 : lit ? 0.95 : 0.72 * restStrength) *
+            (routeMuted ? 0.4 : 1) *
+            reveal;
+          if (alpha < 0.012) continue;
+
+          const width =
+            ((lit ? 3.4 : 1.5 + restStrength * 0.9) / Math.sqrt(camera.scale)) *
+            opts.nodeScale;
+
+          // Each span carries its own offset, so a shared run fans apart while
+          // the rest of the line stays on its road. Draw span by span and let
+          // the round joins knit them together.
+          for (let i = 0; i + 1 < points.length; i++) {
+            const a = points[i];
+            const b = points[i + 1];
+            const fromId = entry.stops[i];
+            const toId = entry.stops[i + 1];
+            if (!a || !b || fromId === undefined || toId === undefined) continue;
+            const bucket = lines.segments.get(segmentKey(fromId, toId));
+            const own = bucket?.find((s) => s.lineId === entry.line.id);
+            const shifted = offsetPolyline([a, b], (own?.offset ?? 0) / camera.scale);
+            ctx.strokeStyle = lineRgba(entry.rgb, Math.min(alpha, 0.95));
+            ctx.lineWidth = width;
+            strokeRounded(ctx, shifted, 12 / camera.scale);
+          }
+        }
+
+        // --- Station ticks and interchange rings ---------------------------
+        for (const entry of lines.resolved) {
+          const points = linePoints.get(entry.line.id);
+          if (!points) continue;
+          const dimmed = litLine !== null && litLine !== entry.line.id;
+          const alpha = (dimmed ? 0.1 : 0.9) * reveal;
+          if (alpha < 0.02) continue;
+          points.forEach((point, i) => {
+            const stopId = entry.stops[i];
+            if (stopId === undefined) return;
+            // Interchanges get one shared segmented ring instead of a tick per
+            // line, so their marker does not turn into a pile of bars.
+            if (lines.interchangeStops.has(stopId)) return;
+            if (
+              point.x < viewMinX ||
+              point.x > viewMaxX ||
+              point.y < viewMinY ||
+              point.y > viewMaxY
+            ) {
+              return;
+            }
+            const neighbor = points[i + 1] ?? points[i - 1];
+            if (!neighbor) return;
+            const angle = Math.atan2(neighbor.y - point.y, neighbor.x - point.x);
+            drawLineTick(
+              ctx,
+              point.x,
+              point.y,
+              angle,
+              (4.2 / Math.sqrt(camera.scale)) * opts.nodeScale,
+              1.6 / Math.sqrt(camera.scale),
+              lineRgba(entry.rgb, Math.min(alpha, 0.95)),
+            );
+          });
+        }
+
+        for (const stopId of lines.interchangeStops) {
+          const node = layout.byId.get(stopId);
+          if (!node) continue;
+          const p = posOf(node);
+          if (p.x < viewMinX || p.x > viewMaxX || p.y < viewMinY || p.y > viewMaxY) {
+            continue;
+          }
+          const ids = lines.linesAtStop.get(stopId) ?? [];
+          const colors = ids
+            .map((id) => lines.byId.get(id)?.rgb)
+            .filter((rgb): rgb is readonly [number, number, number] => rgb !== undefined);
+          if (colors.length === 0) continue;
+          const dimmed = litLine !== null && !ids.includes(litLine);
+          const radius =
+            (stopRadius(node, opts.nodeScale) + 4.5) /
+            Math.sqrt(Math.max(camera.scale, 0.32));
+          drawInterchangeRing(
+            ctx,
+            p.x,
+            p.y,
+            radius,
+            colors,
+            2.2 / Math.sqrt(camera.scale),
+            (dimmed ? 0.14 : 0.92) * reveal,
+          );
+        }
       }
 
       // --- Breadcrumb trail ------------------------------------------------
@@ -1075,9 +1425,72 @@ const TransitMap = (): React.ReactElement => {
           ctx.fillText("← in only", sx, top + size + 2);
         }
       }
+
+      // --- Line name plates at the termini ---------------------------------
+      // Lowest priority of anything named on the map: they take the space the
+      // station labels left, and yield rather than push a station name off.
+      // Naming all 43 lines at once is 86 plates and reads as confetti, so at
+      // rest only the longest few are named and the rest wait for a highlight
+      // or a closer look — the same semantic-zoom bargain the stop labels make.
+      if (linesOn) {
+        const labels = lineLabelsRef.current;
+        const namedBudget =
+          litLine !== null ? lines.resolved.length : Math.round(4 + camera.scale * 5);
+        const named = [...lines.resolved].sort(
+          (a, b) => b.stops.length - a.stops.length,
+        );
+        let plated = 0;
+        for (const entry of named) {
+          if (plated >= namedBudget) break;
+          const points = linePoints.get(entry.line.id);
+          if (!points || points.length < 2) continue;
+          const dimmed = litLine !== null && litLine !== entry.line.id;
+          if (dimmed) continue;
+          plated++;
+          const name = (labels.get(entry.line.id) ?? entry.line.name).toUpperCase();
+          const ends: Array<{ at: Point; toward: Point }> = [
+            { at: points[0] as Point, toward: points[1] as Point },
+            {
+              at: points[points.length - 1] as Point,
+              toward: points[points.length - 2] as Point,
+            },
+          ];
+          for (const end of ends) {
+            const sx = width / 2 + camera.x + end.at.x * camera.scale;
+            const sy = height / 2 + camera.y + end.at.y * camera.scale;
+            if (sx < -90 || sx > width + 90 || sy < -40 || sy > height + 40) continue;
+            // Push the plate outward, away from where the line arrives, so it
+            // reads as the end of that line rather than as a station name.
+            const dx = end.at.x - end.toward.x;
+            const dy = end.at.y - end.toward.y;
+            const len = Math.max(1e-6, Math.hypot(dx, dy));
+            const px = sx + (dx / len) * 16;
+            const py = sy + (dy / len) * 16;
+
+            ctx.font = `600 8px "Martian Mono", ui-monospace, monospace`;
+            const halfWidth = ctx.measureText(name).width / 2;
+            const box = {
+              x0: px - halfWidth - 5,
+              y0: py - 5,
+              x1: px + halfWidth + 5,
+              y1: py + 13,
+            };
+            const collides = placed.some(
+              (q) => box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0,
+            );
+            if (collides) continue;
+            placed.push(box);
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillStyle = lineRgba(entry.rgb, 0.85 * reveal);
+            ctx.fillText(name, px, py);
+          }
+        }
+      }
       ctx.restore();
 
       // --- Signposts (walking mode) ----------------------------------------
+      signpostBoxesRef.current = [];
       if (walking) {
         const origin = layout.byId.get(walking);
         const posts = signpostsRef.current;
@@ -1104,23 +1517,45 @@ const TransitMap = (): React.ReactElement => {
             // In transit mode a street exit is still shown, but marked as
             // off-network so the choice to leave the backbone is deliberate.
             const offNetwork = opts.routeMode === "transit" && !post.step.trunk;
-            const detail = offNetwork
-              ? `street only · ${post.step.pages}`
-              : `${mode} · ${post.step.pages}`;
+            // An exit a line covers is named by that line, so leaving a station
+            // reads as "this way for the are.na line" rather than a bare hop.
+            const exitLine = linesOn
+              ? lines.segments
+                  .get(segmentKey(walking, post.node.stop.id))
+                  ?.[0]?.lineId
+              : undefined;
+            const exitLineName = exitLine
+              ? lineLabelsRef.current.get(exitLine) ??
+                lines.byId.get(exitLine)?.line.name ??
+                null
+              : null;
+            const exitRgb = exitLine ? lines.byId.get(exitLine)?.rgb : undefined;
+            const detail = exitLineName
+              ? `${exitLineName} · ${post.step.pages}`
+              : offNetwork
+                ? `street only · ${post.step.pages}`
+                : `${mode} · ${post.step.pages}`;
             ctx.font = `600 10px "Martian Mono", ui-monospace, monospace`;
-            const w = Math.max(ctx.measureText(label).width, 62) + 18;
+            const labelWidth = ctx.measureText(label).width;
+            ctx.font = `400 8px "Martian Mono", ui-monospace, monospace`;
+            const detailWidth = ctx.measureText(detail).width;
+            const w = Math.max(labelWidth, detailWidth, 62) + 18;
             const h = 30;
+            ctx.font = `600 10px "Martian Mono", ui-monospace, monospace`;
             const bx = Math.min(Math.max(px - w / 2, 6), width - w - 6);
             const by = Math.min(Math.max(py - h / 2, 6), height - h - 6);
+            signpostBoxesRef.current.push({ post, x: bx, y: by, w, h });
 
-            ctx.globalAlpha = offNetwork ? 0.55 : 1;
+            ctx.globalAlpha = offNetwork && !exitRgb ? 0.55 : 1;
             ctx.fillStyle = "rgba(16, 15, 12, 0.93)";
-            ctx.strokeStyle = offNetwork
-              ? "rgba(150, 144, 132, 0.3)"
-              : post.step.mode === "ride"
-                ? "rgba(232, 194, 122, 0.7)"
-                : "rgba(198, 192, 178, 0.45)";
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = exitRgb
+              ? lineRgba(exitRgb, 0.85)
+              : offNetwork
+                ? "rgba(150, 144, 132, 0.3)"
+                : post.step.mode === "ride"
+                  ? "rgba(232, 194, 122, 0.7)"
+                  : "rgba(198, 192, 178, 0.45)";
+            ctx.lineWidth = exitRgb ? 1.6 : 1;
             ctx.beginPath();
             ctx.rect(bx, by, w, h);
             ctx.fill();
@@ -1131,11 +1566,13 @@ const TransitMap = (): React.ReactElement => {
             ctx.fillStyle = "rgba(238, 233, 219, 0.95)";
             ctx.fillText(label, bx + w / 2, by + 5);
             ctx.font = `400 8px "Martian Mono", ui-monospace, monospace`;
-            ctx.fillStyle = offNetwork
-              ? "rgba(160, 154, 142, 0.6)"
-              : post.step.mode === "ride"
-                ? "rgba(232, 194, 122, 0.85)"
-                : "rgba(198, 192, 178, 0.6)";
+            ctx.fillStyle = exitRgb
+              ? lineRgba(exitRgb, 0.95)
+              : offNetwork
+                ? "rgba(160, 154, 142, 0.6)"
+                : post.step.mode === "ride"
+                  ? "rgba(232, 194, 122, 0.85)"
+                  : "rgba(198, 192, 178, 0.6)";
             ctx.fillText(detail, bx + w / 2, by + 18);
 
             // A short stub pointing from the sign back toward the origin.
@@ -1293,36 +1730,18 @@ const TransitMap = (): React.ReactElement => {
       e.currentTarget.releasePointerCapture(e.pointerId);
       if (drag?.moved) return;
 
-      // In walking mode a click on a signpost travels that road.
+      // In walking mode a click on a signpost travels that road. The plates are
+      // sized to their text, so hit-test the boxes the render actually painted.
       if (walkingFromRef.current) {
-        const layout = layoutRef.current;
-        const { width, height } = sizeRef.current;
-        const camera = cameraRef.current;
-        const origin = layout?.byId.get(walkingFromRef.current);
-        if (layout && origin) {
-          const ox = width / 2 + camera.x + origin.x * camera.scale;
-          const oy = height / 2 + camera.y + origin.y * camera.scale;
-          const rx = Math.max(120, width / 2 - 78);
-          const ry = Math.max(90, height / 2 - 78);
-          for (const post of signpostsRef.current) {
-            const cos = Math.cos(post.angle);
-            const sin = Math.sin(post.angle);
-            const scale = 1 / Math.max(Math.abs(cos) / rx, Math.abs(sin) / ry);
-            const px = ox + cos * scale;
-            const py = oy + sin * scale;
-            const w = 96;
-            const h = 30;
-            const bx = Math.min(Math.max(px - w / 2, 6), width - w - 6);
-            const by = Math.min(Math.max(py - h / 2, 6), height - h - 6);
-            if (
-              e.clientX >= bx &&
-              e.clientX <= bx + w &&
-              e.clientY >= by &&
-              e.clientY <= by + h
-            ) {
-              travelTo(post.step, post.node);
-              return;
-            }
+        for (const box of signpostBoxesRef.current) {
+          if (
+            e.clientX >= box.x &&
+            e.clientX <= box.x + box.w &&
+            e.clientY >= box.y &&
+            e.clientY <= box.y + box.h
+          ) {
+            travelTo(box.post.step, box.post.node);
+            return;
           }
         }
       }
@@ -1513,6 +1932,15 @@ const TransitMap = (): React.ReactElement => {
     };
   }, [graph, level]);
 
+  /** Lines calling at the hovered stop, so the tooltip names them. */
+  const hoverLines = useMemo(() => {
+    if (!hover || !lineIndex) return [];
+    const ids = lineIndex.linesAtStop.get(hover.node.stop.id) ?? [];
+    return ids
+      .map((id) => lineIndex.byId.get(id))
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined);
+  }, [hover, lineIndex]);
+
   const hoverCluster = useMemo(() => {
     if (!graph || !hover) return null;
     return (
@@ -1527,16 +1955,72 @@ const TransitMap = (): React.ReactElement => {
     setSettings((s) => ({ ...s, [key]: value }));
   }, []);
 
+  /** Ride/walk segments for the planned route, collapsed by line. */
+  const routeSegments = useMemo<RouteSegment[]>(
+    () => (route && lineIndex ? narrateRoute(lineIndex, route.legs) : []),
+    [route, lineIndex],
+  );
+
+  const routeNarration = useMemo(
+    () =>
+      routeSegments.length > 0
+        ? describeRoute(routeSegments, lineLabels, settings.routeDetail === "express")
+        : [],
+    [routeSegments, lineLabels, settings.routeDetail],
+  );
+
+  /** The walked trail narrates the same way a planned route does. */
+  const travelSegments = useMemo<RouteSegment[]>(() => {
+    if (!travel || travel.legs.length === 0 || !lineIndex) return [];
+    return narrateRoute(
+      lineIndex,
+      travel.legs.map((l) => ({
+        from: l.from,
+        to: l.to,
+        pages: 0,
+        trunk: l.mode === "ride",
+        mode: l.mode,
+        cost: l.cost,
+      })),
+    );
+  }, [travel, lineIndex]);
+
+  const travelNarration = useMemo(
+    () =>
+      travelSegments.length > 0
+        ? describeRoute(travelSegments, lineLabels, settings.routeDetail === "express")
+        : [],
+    [travelSegments, lineLabels, settings.routeDetail],
+  );
+
   const travelText = useMemo(() => {
     if (!travel || travel.legs.length === 0) return "";
     const total = travel.legs.reduce((sum, l) => sum + l.cost, 0);
+    if (travelSegments.length > 0) {
+      return routeToText(
+        travelSegments,
+        lineLabels,
+        { distance: total, mode: settings.routeMode },
+        settings.routeDetail === "express",
+      );
+    }
     const chain = travel.legs
       .map((l, i) => `${i === 0 ? l.from : ""} =${l.mode}=> ${l.to}`)
       .join(" ");
     return `${chain.trim()} (${travel.legs.length} hop${
       travel.legs.length === 1 ? "" : "s"
     }, ${total.toFixed(2)}, ${settings.routeMode})`;
-  }, [travel, settings.routeMode]);
+  }, [travel, travelSegments, lineLabels, settings.routeMode, settings.routeDetail]);
+
+  const routeText = useMemo(() => {
+    if (!route || routeSegments.length === 0) return "";
+    return routeToText(
+      routeSegments,
+      lineLabels,
+      route,
+      settings.routeDetail === "express",
+    );
+  }, [route, routeSegments, lineLabels, settings.routeDetail]);
 
   /** Shared mode switch, shown in both the route and walking panels. */
   const modeToggle = (
@@ -1558,9 +2042,45 @@ const TransitMap = (): React.ReactElement => {
     </div>
   );
 
-  const copyTravel = useCallback(() => {
-    if (!travelText) return;
-    void navigator.clipboard?.writeText(travelText).then(
+  /** Express hides the intermediate stations a local run calls out. */
+  const detailToggle = (
+    <div className="galaxy-mode galaxy-mode--detail">
+      <button
+        type="button"
+        className={settings.routeDetail === "express" ? "is-active" : ""}
+        onClick={() => update("routeDetail", "express")}
+      >
+        express
+      </button>
+      <button
+        type="button"
+        className={settings.routeDetail === "local" ? "is-active" : ""}
+        onClick={() => update("routeDetail", "local")}
+      >
+        local
+      </button>
+    </div>
+  );
+
+  /** Narration list, shared by the route and walking panels. */
+  const narrationList = (steps: string[]): React.ReactElement => (
+    <ol className="galaxy-route__narration">
+      {steps.map((step, i) => (
+        <li
+          key={`${i}-${step}`}
+          className={
+            step.startsWith("calling at:") ? "galaxy-route__calling" : undefined
+          }
+        >
+          {step}
+        </li>
+      ))}
+    </ol>
+  );
+
+  const copyText = useCallback((text: string) => {
+    if (!text) return;
+    void navigator.clipboard?.writeText(text).then(
       () => {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1400);
@@ -1569,7 +2089,7 @@ const TransitMap = (): React.ReactElement => {
         // Clipboard can be blocked; the text stays visible for manual copy.
       },
     );
-  }, [travelText]);
+  }, []);
 
   const unknownQuery =
     searchOpen && query.trim().length > 1 && hits.length === 0 ? query.trim() : null;
@@ -1862,15 +2382,20 @@ const TransitMap = (): React.ReactElement => {
           )}
           {travel && travel.legs.length > 0 && (
             <>
-              <ol className="galaxy-route__stops">
-                {travel.stops.map((id, i) => (
-                  <li key={`${id}-${i}`}>{id}</li>
-                ))}
-              </ol>
+              {travelSegments.length > 0 && detailToggle}
+              {travelNarration.length > 0 ? (
+                narrationList(travelNarration)
+              ) : (
+                <ol className="galaxy-route__stops">
+                  {travel.stops.map((id, i) => (
+                    <li key={`${id}-${i}`}>{id}</li>
+                  ))}
+                </ol>
+              )}
               <button
                 type="button"
                 className="galaxy-route__copy"
-                onClick={copyTravel}
+                onClick={() => copyText(travelText)}
               >
                 {copied ? "copied" : "copy trail"}
               </button>
@@ -1924,20 +2449,100 @@ const TransitMap = (): React.ReactElement => {
               no transit route — showing streets
             </div>
           )}
-          <div className="galaxy-route__modeline">via {route.mode}</div>
+          <div className="galaxy-route__modeline">
+            via {route.mode}
+            {routeSegments.length > 0 && ` · ${summarizeRoute(routeSegments)}`}
+          </div>
           {modeToggle}
-          <ol className="galaxy-route__stops">
-            {route.stops.map((id, i) => (
-              <li key={`${id}-${i}`}>
-                {id}
-                {route.legs[i] && (
-                  <span className="galaxy-route__mode">
-                    {route.legs[i]?.mode}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ol>
+          {routeSegments.length > 0 && detailToggle}
+          {routeNarration.length > 0 ? (
+            narrationList(routeNarration)
+          ) : (
+            <ol className="galaxy-route__stops">
+              {route.stops.map((id, i) => (
+                <li key={`${id}-${i}`}>
+                  {id}
+                  {route.legs[i] && (
+                    <span className="galaxy-route__mode">
+                      {route.legs[i]?.mode}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          {routeText && (
+            <button
+              type="button"
+              className="galaxy-route__copy"
+              onClick={() => copyText(routeText)}
+            >
+              {copied ? "copied" : "copy route"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Lines legend ------------------------------------------------- */}
+      {lineIndex && lineIndex.resolved.length > 0 && (
+        <div className={`galaxy-lines ${settings.legendOpen ? "is-open" : ""}`}>
+          <div className="galaxy-lines__head">
+            <button
+              type="button"
+              className="galaxy-lines__toggle"
+              onClick={() => update("legendOpen", !settings.legendOpen)}
+            >
+              {settings.legendOpen ? "hide lines" : "lines"}
+              <span className="galaxy-lines__count">
+                {lineIndex.resolved.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`galaxy-lines__power ${settings.showLines ? "is-on" : ""}`}
+              title={settings.showLines ? "hide all lines" : "show all lines"}
+              onClick={() => update("showLines", !settings.showLines)}
+            >
+              {settings.showLines ? "on" : "off"}
+            </button>
+          </div>
+
+          {settings.legendOpen && (
+            <ul
+              className="galaxy-lines__list"
+              onMouseLeave={() => setHoveredLine(null)}
+            >
+              {lineIndex.resolved.map((entry) => {
+                const id = entry.line.id;
+                const pinned = settings.focusedLine === id;
+                return (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      className={`galaxy-lines__item ${pinned ? "is-pinned" : ""}`}
+                      onMouseEnter={() => setHoveredLine(id)}
+                      onFocus={() => setHoveredLine(id)}
+                      onBlur={() => setHoveredLine(null)}
+                      onClick={() =>
+                        update("focusedLine", pinned ? null : id)
+                      }
+                    >
+                      <span
+                        className="galaxy-lines__swatch"
+                        style={{ background: entry.line.color }}
+                      />
+                      <span className="galaxy-lines__name">
+                        {lineLabels.get(id) ?? entry.line.name}
+                      </span>
+                      <span className="galaxy-lines__stops">
+                        {entry.stops.length}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
 
@@ -1975,6 +2580,16 @@ const TransitMap = (): React.ReactElement => {
               </div>
             )}
           </dl>
+          {hoverLines.length > 0 && (
+            <div className="galaxy-tooltip__lines">
+              {hoverLines.map((entry) => (
+                <span key={entry.line.id}>
+                  <i style={{ background: entry.line.color }} />
+                  {lineLabels.get(entry.line.id) ?? entry.line.name}
+                </span>
+              ))}
+            </div>
+          )}
           {hover.node.stop.members.length > 1 && (
             <div className="galaxy-tooltip__fan">
               {hover.node.stop.members.slice(1, 7).map((m) => (

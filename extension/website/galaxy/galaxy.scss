@@ -629,3 +629,166 @@ body {
   text-transform: uppercase;
   color: rgba(198, 190, 172, 0.45);
 }
+
+.galaxy-mode--detail {
+  margin-top: 5px;
+}
+
+// ── Route narration ─────────────────────────────────────────────────────────
+.galaxy-route__narration {
+  margin: 10px 0 0;
+  padding-left: 16px;
+
+  li {
+    margin-bottom: 5px;
+    font-size: 10px;
+    line-height: 1.5;
+    color: rgba(226, 220, 206, 0.88);
+    word-break: break-word;
+  }
+}
+
+.galaxy-route__calling {
+  list-style: none;
+  margin-left: -16px;
+  padding-left: 2px;
+  font-size: 9px !important;
+  color: rgba(198, 190, 172, 0.58) !important;
+}
+
+// ── Lines legend ────────────────────────────────────────────────────────────
+.galaxy-lines {
+  position: absolute;
+  right: 26px;
+  bottom: 44px;
+  z-index: 30;
+  width: 210px;
+
+  &__head {
+    display: flex;
+    gap: 4px;
+  }
+
+  &__toggle {
+    display: flex;
+    flex: 1;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 10px;
+    font: inherit;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.62);
+    background: rgba(14, 13, 11, 0.86);
+    border: 1px solid rgba(216, 208, 189, 0.14);
+    border-radius: 3px;
+    cursor: pointer;
+
+    &:hover {
+      color: rgba(226, 220, 206, 0.9);
+    }
+  }
+
+  &__count {
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    color: rgba(198, 190, 172, 0.4);
+  }
+
+  &__power {
+    padding: 7px 9px;
+    font: inherit;
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(198, 190, 172, 0.5);
+    background: rgba(14, 13, 11, 0.86);
+    border: 1px solid rgba(216, 208, 189, 0.14);
+    border-radius: 3px;
+    cursor: pointer;
+
+    &.is-on {
+      color: rgba(14, 13, 11, 0.95);
+      background: rgba(216, 208, 189, 0.8);
+      border-color: rgba(216, 208, 189, 0.85);
+    }
+  }
+
+  &__list {
+    margin: 6px 0 0;
+    padding: 4px 0;
+    list-style: none;
+    max-height: 46vh;
+    overflow-y: auto;
+    background: rgba(14, 13, 11, 0.92);
+    border: 1px solid rgba(216, 208, 189, 0.14);
+    border-radius: 3px;
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 10px;
+    font: inherit;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(216, 208, 189, 0.07);
+    }
+
+    &.is-pinned {
+      background: rgba(216, 208, 189, 0.11);
+    }
+  }
+
+  &__swatch {
+    flex: none;
+    width: 14px;
+    height: 3px;
+    border-radius: 2px;
+  }
+
+  &__name {
+    flex: 1;
+    font-size: 9px;
+    color: rgba(226, 220, 206, 0.85);
+    word-break: break-word;
+  }
+
+  &__stops {
+    flex: none;
+    font-size: 8px;
+    color: rgba(198, 190, 172, 0.4);
+  }
+}
+
+// ── Tooltip line list ───────────────────────────────────────────────────────
+.galaxy-tooltip__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px dashed rgba(216, 208, 189, 0.16);
+
+  span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 8px;
+    color: rgba(216, 208, 189, 0.75);
+  }
+
+  i {
+    flex: none;
+    width: 11px;
+    height: 3px;
+    border-radius: 2px;
+  }
+}

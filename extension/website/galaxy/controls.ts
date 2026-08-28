@@ -37,6 +37,17 @@ export interface MapSettings {
    * buries the map; the remainder fades in as you zoom.
    */
   trunkTier: number;
+  /** Draw the named metro lines over the road network. */
+  showLines: boolean;
+  /** Whether the lines legend is expanded. */
+  legendOpen: boolean;
+  /** Line whose colour stays lit while the others dim; null highlights none. */
+  focusedLine: string | null;
+  /**
+   * Route narration detail. "express" lists only boarding, transfers and
+   * arrival; "local" also names every intermediate station of each ride.
+   */
+  routeDetail: "express" | "local";
 }
 
 export const DEFAULT_SETTINGS: MapSettings = {
@@ -54,6 +65,10 @@ export const DEFAULT_SETTINGS: MapSettings = {
   seedFocusHops: 0,
   trunkTier: 0.15,
   routeMode: "streets",
+  showLines: true,
+  legendOpen: false,
+  focusedLine: null,
+  routeDetail: "express",
 };
 
 const STORAGE_KEY = "galaxy-map-settings-v1";
@@ -109,6 +124,14 @@ export function loadSettings(): MapSettings {
     }
     if (typeof parsed.trunkTier === "number") {
       next.trunkTier = clamp(parsed.trunkTier, 0.02, 1);
+    }
+    if (typeof parsed.showLines === "boolean") next.showLines = parsed.showLines;
+    if (typeof parsed.legendOpen === "boolean") next.legendOpen = parsed.legendOpen;
+    if (typeof parsed.focusedLine === "string" || parsed.focusedLine === null) {
+      next.focusedLine = parsed.focusedLine;
+    }
+    if (parsed.routeDetail === "express" || parsed.routeDetail === "local") {
+      next.routeDetail = parsed.routeDetail;
     }
     return next;
   } catch {
