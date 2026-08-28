@@ -507,6 +507,51 @@ export default function App() {
         </div>
 
         <section className={styles.featureRows}>
+          <div className={styles.featureCards}>
+            <div className={styles.featureCard}>
+              <BrowserWindow
+                label="your portrait"
+                bodyClassName={styles.featureCardFrame}
+              >
+                <img
+                  className={styles.featureCardImage}
+                  src="/home/cursor-portrait.jpg"
+                  alt="A dense self-portrait drawn from browsing: overlapping cursor trails in purple, blue, red, and green, with concentric rings marking clicks and dark strokes marking keypresses"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+              <h3 className={styles.featureCardTitle}>make a cursor portrait</h3>
+              <p className={styles.featureCardBody}>
+                Your trails, clicks, and keypresses become a self-portrait of
+                your time online. Contribute them to a collective portrait,
+                transforming this traditional surveillance material into
+                expression (fully anonymized).
+              </p>
+            </div>
+
+            <div className={styles.featureCard}>
+              <BrowserWindow
+                label="new tab · how you browsed"
+                bodyClassName={styles.featureCardFrame}
+              >
+                <img
+                  className={styles.featureCardImage}
+                  src="/home/history-week.jpg"
+                  alt="The history page for a week: 18 hours 35 minutes of browsing across 973 pages, a bar of the most-visited sites, and a list of notable new sites explored for the first time"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+              <h3 className={styles.featureCardTitle}>review your browsing</h3>
+              <p className={styles.featureCardBody}>
+                A history page that shows where your time went: the rabbit holes
+                you followed, the smaller places beyond your busiest roads where
+                you settled in, and a cursor portrait from each day.
+              </p>
+            </div>
+          </div>
+
           <div className={styles.featureRow}>
             <div className={styles.featureMedia}>
               <BrowserWindow label="en.wikipedia.org/wiki/Rabbit_hole">
@@ -535,53 +580,6 @@ export default function App() {
                 >
                   let's make your corner of the web feel inhabited too →
                 </button>
-              </p>
-            </div>
-          </div>
-
-          <div className={styles.featureCards}>
-            <div className={styles.featureCard}>
-              <BrowserWindow
-                label="new tab · how you browsed"
-                bodyClassName={styles.featureCardFrame}
-              >
-                <img
-                  className={styles.featureCardImage}
-                  src="/home/history-week.jpg"
-                  alt="The history page for a week: 18 hours 35 minutes of browsing across 973 pages, a bar of the most-visited sites, and a list of notable new sites explored for the first time"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </BrowserWindow>
-              <h3 className={styles.featureCardTitle}>how you browsed</h3>
-              <p className={styles.featureCardBody}>
-                A history page that shows where your time went: the rabbit holes
-                you followed, the smaller places beyond your busiest roads where
-                you settled in, and a cursor portrait from each day.
-              </p>
-            </div>
-
-            <div className={styles.featureCard}>
-              <BrowserWindow
-                label="your portrait"
-                bodyClassName={styles.featureCardFrame}
-              >
-                <img
-                  className={styles.featureCardImage}
-                  src="/home/cursor-portrait.jpg"
-                  alt="A dense self-portrait drawn from browsing: overlapping cursor trails in purple, blue, red, and green, with concentric rings marking clicks and dark strokes marking keypresses"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </BrowserWindow>
-              <h3 className={styles.featureCardTitle}>cursor portraits</h3>
-              <p className={styles.featureCardBody}>
-                Your trails, clicks, and keypresses become a self-portrait of
-                your time online — data usually used for surveillance, made
-                expressive instead.{" "}
-                <a className={styles.featureCardLink} href={LIVE_PORTRAIT_URL}>
-                  watch the live collective portrait →
-                </a>
               </p>
             </div>
           </div>

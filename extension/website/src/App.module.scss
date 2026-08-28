@@ -755,18 +755,6 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   margin: 0;
 }
 
-.featureCardLink {
-  color: $accent-teal;
-  text-decoration: none;
-  border-bottom: 1px solid rgba($accent-teal, 0.3);
-  padding-bottom: 1px;
-  transition: color 0.2s, border-color 0.2s;
-
-  &:hover {
-    color: color.adjust($accent-teal, $lightness: -8%);
-    border-color: $accent-teal;
-  }
-}
 
 // --- Coming soon ---
 
