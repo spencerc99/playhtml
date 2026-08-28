@@ -91,6 +91,8 @@ interface GalaxyNode {
   participants: number;
   dwellMs: number;
   cluster: number;
+  /** seed: a crawl origin; hub: big-web domain kept visible but never a route */
+  kind: "seed" | "hub" | "site";
 }
 
 interface GalaxyEdge {
@@ -373,14 +375,21 @@ function propagateLabels(
 function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
   const domains = Object.keys(raw.domains).sort();
   const edges: GalaxyEdge[] = [];
-  const inboundVisits = new Map(domains.map((domain) => [domain, 0]));
+  // node prominence = how many distinct sites link to it, so one site with a
+  // blogroll on every page cannot inflate a neighbor by itself
+  const inboundDomains = new Map<string, Set<string>>();
   for (const source of domains) {
     for (const [target, jumps] of Object.entries(raw.domains[source].links)) {
       if (!raw.domains[target]) continue;
       edges.push({ source, target, jumps });
-      inboundVisits.set(target, (inboundVisits.get(target) ?? 0) + jumps);
+      const set = inboundDomains.get(target) ?? new Set<string>();
+      set.add(source);
+      inboundDomains.set(target, set);
     }
   }
+  const inboundVisits = new Map(
+    domains.map((domain) => [domain, inboundDomains.get(domain)?.size ?? 0])
+  );
   edges.sort(
     (a, b) =>
       a.source.localeCompare(b.source) || a.target.localeCompare(b.target)
@@ -409,12 +418,18 @@ function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
     return { id, size: members.length, label };
   });
 
+  const seeds = new Set(raw.seeds);
   const nodes = domains.map((domain) => ({
     id: domain,
     visits: Math.max(1, inboundVisits.get(domain) ?? 0),
     participants: 0,
     dwellMs: 0,
     cluster: clusterByDomain.get(domain)!,
+    kind: seeds.has(domain)
+      ? ("seed" as const)
+      : NO_EXPAND.has(domain)
+        ? ("hub" as const)
+        : ("site" as const),
   }));
   return {
     meta: {
@@ -455,10 +470,15 @@ function shortestPath(
     unvisited.delete(current);
     if (current === to) break;
 
+    // big-web hubs cannot be transit: everyone links instagram, so routing
+    // through it would make every pair of sites two hops apart
+    if (NO_EXPAND.has(current) && current !== from) continue;
+
     for (const [neighbor, linkingPages] of Object.entries(
       graph.domains[current].links
     ).sort(([a], [b]) => a.localeCompare(b))) {
       if (!unvisited.has(neighbor) || linkingPages <= 0) continue;
+      if (NO_EXPAND.has(neighbor) && neighbor !== to) continue;
       const candidate =
         currentDistance + 1 / Math.log2(2 + linkingPages);
       const known = distances.get(neighbor) ?? Infinity;
@@ -634,9 +654,23 @@ function runDistance(args: string[]): void {
   console.log(result.path.length > 0 ? result.path.join(" -> ") : "unreachable");
 }
 
+function runRebuild(args: string[]): void {
+  const rawPath = flagValue(args, "--rebuild");
+  if (!rawPath) throw new Error("--rebuild requires a snowball-raw.json path");
+  const raw = JSON.parse(readFileSync(rawPath, "utf-8")) as SnowballGraph;
+  const galaxy = makeGalaxyGraph(raw);
+  const outPath = path.join(path.dirname(rawPath), "galaxy-graph.json");
+  writeFileSync(outPath, JSON.stringify(galaxy, null, 2) + "\n");
+  console.log(
+    `rebuilt ${galaxy.meta.totalDomains} nodes and ` +
+      `${galaxy.meta.totalEdges} edges to ${outPath}`
+  );
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes("--distance")) runDistance(args);
+  else if (args.includes("--rebuild")) runRebuild(args);
   else await runCrawl(parseCrawlOptions(args));
 }
 
