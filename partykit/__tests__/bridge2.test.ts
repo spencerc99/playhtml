@@ -468,16 +468,16 @@ describe("PartyServerV2 shared-element bridge", () => {
 
   test("removes expired subscriber leases on alarm", async () => {
     const bridge = await setupBridge("read-write");
-    const subscribers = (await bridge.source.storage.get<Bridge2Subscriber[]>(
-      V2_BRIDGE_STORAGE_KEYS.subscribers,
-    ))!;
-    subscribers[0].lastSeen = new Date(0).toISOString();
-    await bridge.source.storage.put(
-      V2_BRIDGE_STORAGE_KEYS.subscribers,
-      subscribers,
-    );
-
-    await bridge.source.room.onAlarm();
+    // The room caches bridge state it wrote itself, so expiry is simulated
+    // the way it happens in production: time passes, not external storage
+    // writes behind the live room's back.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 365 * 24 * 60 * 60 * 1000;
+    try {
+      await bridge.source.room.onAlarm();
+    } finally {
+      Date.now = realNow;
+    }
 
     expect(
       await bridge.source.storage.get(V2_BRIDGE_STORAGE_KEYS.subscribers),

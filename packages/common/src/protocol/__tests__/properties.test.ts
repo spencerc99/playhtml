@@ -4,7 +4,11 @@
 import fc from "fast-check";
 import { produce } from "immer";
 import { describe, expect, it } from "vitest";
-import { applyOperation, checkSnapshotIntegrity } from "../engine";
+import {
+  applyOperation,
+  applyOperationInPlace,
+  checkSnapshotIntegrity,
+} from "../engine";
 import type {
   ClientId,
   IncrementOperation,
@@ -176,8 +180,15 @@ const integrity = (value: RoomSnapshot): void => {
 };
 
 const apply = (input: RoomSnapshot, operation: Operation): RoomSnapshot => {
-  const result = applyOperation(input, operation);
+  const result = applyOperation(input, operation, { validate: true });
   if (!result.ok) throw new Error(result.message);
+  const mutable = structuredClone(input);
+  const mutableResult = applyOperationInPlace(mutable, operation, {
+    validate: true,
+  });
+  if (!mutableResult.ok) throw new Error(mutableResult.message);
+  expect(mutableResult.snapshot).toBe(mutable);
+  expect(mutable).toEqual(result.snapshot);
   integrity(result.snapshot);
   return result.snapshot;
 };

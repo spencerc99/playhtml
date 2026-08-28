@@ -16,7 +16,7 @@ import {
   type ServerSnapshotMessage,
 } from "@playhtml/common";
 import {
-  applyOperation,
+  applyOperationInPlace,
   checkSnapshotIntegrity,
 } from "../packages/common/src/protocol/engine";
 import { supabase } from "./db";
@@ -481,7 +481,10 @@ export class PartyServerV2 extends PresenceServer {
         applied: false,
       } satisfies Bridge2ApplyResponse);
     }
-    const result = applyOperation(this.snapshot, request.message.operation);
+    const result = applyOperationInPlace(
+      this.snapshot,
+      request.message.operation,
+    );
     if (!result.ok) {
       return Response.json(
         {
@@ -494,13 +497,8 @@ export class PartyServerV2 extends PresenceServer {
     }
 
     this.sequence += 1;
-    this.snapshot = {
-      ...result.snapshot,
-      lastMutationIds: {
-        ...result.snapshot.lastMutationIds,
-        [request.message.clientId]: request.message.mutationId,
-      },
-    };
+    this.snapshot.lastMutationIds[request.message.clientId] =
+      request.message.mutationId;
     const payload: SequencedOperation = {
       sequence: this.sequence,
       generation: this.generation,
@@ -564,7 +562,10 @@ export class PartyServerV2 extends PresenceServer {
         applied: false,
       } satisfies Bridge2ApplyResponse);
     }
-    const result = applyOperation(this.snapshot, request.payload.operation);
+    const result = applyOperationInPlace(
+      this.snapshot,
+      request.payload.operation,
+    );
     if (!result.ok) {
       return Response.json(
         {
@@ -577,13 +578,8 @@ export class PartyServerV2 extends PresenceServer {
     }
 
     this.sequence += 1;
-    this.snapshot = {
-      ...result.snapshot,
-      lastMutationIds: {
-        ...result.snapshot.lastMutationIds,
-        [request.payload.clientId]: request.payload.mutationId,
-      },
-    };
+    this.snapshot.lastMutationIds[request.payload.clientId] =
+      request.payload.mutationId;
     reference.sourceGeneration = request.sourceGeneration;
     reference.lastSourceSequence = request.sourceSequence;
     await this.setBridgeReferences(references);
@@ -693,45 +689,57 @@ export class PartyServerV2 extends PresenceServer {
     );
   }
 
+  // Bridge state is read on every accepted operation (the forward check), so
+  // the getters memoize in memory: a Durable Object storage round-trip per op
+  // stalls the room's broadcast stream, which viewers perceive as jerky
+  // remote motion. Setters keep the cache coherent; the DO is the only
+  // writer of its own storage.
+  private bridgeSubscribersCache: Bridge2Subscriber[] | null = null;
+  private bridgeReferencesCache: Bridge2Reference[] | null = null;
+  private bridgePermissionsCache: Bridge2PermissionMap | null = null;
+
   private async getBridgeSubscribers(): Promise<Bridge2Subscriber[]> {
-    return (
+    this.bridgeSubscribersCache ??=
       (await this.ctx.storage.get<Bridge2Subscriber[]>(
         V2_BRIDGE_STORAGE_KEYS.subscribers,
-      )) ?? []
-    );
+      )) ?? [];
+    return this.bridgeSubscribersCache;
   }
 
   private async setBridgeSubscribers(
     subscribers: Bridge2Subscriber[],
   ): Promise<void> {
+    this.bridgeSubscribersCache = subscribers;
     await this.ctx.storage.put(V2_BRIDGE_STORAGE_KEYS.subscribers, subscribers);
   }
 
   private async getBridgeReferences(): Promise<Bridge2Reference[]> {
-    return (
+    this.bridgeReferencesCache ??=
       (await this.ctx.storage.get<Bridge2Reference[]>(
         V2_BRIDGE_STORAGE_KEYS.references,
-      )) ?? []
-    );
+      )) ?? [];
+    return this.bridgeReferencesCache;
   }
 
   private async setBridgeReferences(
     references: Bridge2Reference[],
   ): Promise<void> {
+    this.bridgeReferencesCache = references;
     await this.ctx.storage.put(V2_BRIDGE_STORAGE_KEYS.references, references);
   }
 
   private async getBridgePermissions(): Promise<Bridge2PermissionMap> {
-    return (
+    this.bridgePermissionsCache ??=
       (await this.ctx.storage.get<Bridge2PermissionMap>(
         V2_BRIDGE_STORAGE_KEYS.permissions,
-      )) ?? {}
-    );
+      )) ?? {};
+    return this.bridgePermissionsCache;
   }
 
   private async setBridgePermissions(
     permissions: Bridge2PermissionMap,
   ): Promise<void> {
+    this.bridgePermissionsCache = permissions;
     await this.ctx.storage.put(V2_BRIDGE_STORAGE_KEYS.permissions, permissions);
   }
 
@@ -943,7 +951,7 @@ export class PartyServerV2 extends PresenceServer {
     const lastMutationId = this.snapshot.lastMutationIds[parsed.clientId] ?? 0;
     if (parsed.mutationId <= lastMutationId) return;
 
-    const result = applyOperation(this.snapshot, parsed.operation);
+    const result = applyOperationInPlace(this.snapshot, parsed.operation);
     if (!result.ok) {
       this.reject(
         connection,
@@ -956,13 +964,7 @@ export class PartyServerV2 extends PresenceServer {
     }
 
     this.sequence += 1;
-    this.snapshot = {
-      ...result.snapshot,
-      lastMutationIds: {
-        ...result.snapshot.lastMutationIds,
-        [parsed.clientId]: parsed.mutationId,
-      },
-    };
+    this.snapshot.lastMutationIds[parsed.clientId] = parsed.mutationId;
     const response: ServerOperationMessage = {
       type: "operation",
       protocolVersion: PROTOCOL_VERSION,

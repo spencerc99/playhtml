@@ -11,7 +11,10 @@ import type {
   ServerSnapshotMessage,
 } from "@playhtml/common";
 import { PROTOCOL_VERSION } from "@playhtml/common";
-import { applyOperation } from "@playhtml/common";
+import {
+  applyOperationInPlace,
+  replaceSnapshotElementInPlace,
+} from "@playhtml/common";
 import { recordMutation, type MutationCallback } from "@playhtml/common";
 
 export type V2StoreTransport = {
@@ -63,17 +66,31 @@ const getElementValue = (
   elementId: string,
 ): JsonValue | undefined => snapshot.state[capability]?.[elementId];
 
-const withLastMutationId = (
+const selectElementSnapshot = (
   snapshot: RoomSnapshot,
-  clientId: string,
-  mutationId: number,
-): RoomSnapshot => ({
-  ...snapshot,
-  lastMutationIds: {
-    ...snapshot.lastMutationIds,
-    [clientId]: Math.max(snapshot.lastMutationIds[clientId] ?? 0, mutationId),
-  },
-});
+  capability: string,
+  elementId: string,
+): RoomSnapshot => {
+  const value = getElementValue(snapshot, capability, elementId);
+  return {
+    state: value === undefined ? {} : { [capability]: { [elementId]: value } },
+    arrays: snapshot.arrays.filter(
+      (identity) =>
+        identity.capability === capability && identity.elementId === elementId,
+    ),
+    lastMutationIds: snapshot.lastMutationIds,
+  };
+};
+
+const applyOwnedOperation = (
+  snapshot: RoomSnapshot,
+  operation: ClientOperationMessage["operation"],
+): void => {
+  const applied = applyOperationInPlace(snapshot, operation);
+  if (!applied.ok) {
+    throw new Error(`Recorded operation was rejected: ${applied.message}`);
+  }
+};
 
 export class V2Store {
   readonly clientId: string;
@@ -96,7 +113,7 @@ export class V2Store {
   constructor(options: V2StoreOptions) {
     this.clientId = options.clientId ?? crypto.randomUUID();
     this.authoritative = structuredClone(options.snapshot);
-    this.view = this.authoritative;
+    this.view = structuredClone(options.snapshot);
     this.generation = options.generation;
     this.serverSequence = options.sequence ?? 0;
     this.nextMutationId =
@@ -105,6 +122,11 @@ export class V2Store {
     this.echoWaitElementIds = new Set(options.echoWaitElementIds ?? []);
   }
 
+  /**
+   * Returns the store's live read-only view. Element values are replaced
+   * atomically, but callers must not mutate the snapshot or retain it as
+   * historical state.
+   */
   getSnapshot(): RoomSnapshot {
     return this.view;
   }
@@ -122,9 +144,9 @@ export class V2Store {
     elementId: string,
     mutatorOrValue: Value | MutationCallback<Value>,
   ): readonly ClientOperationMessage[] {
-    const previous = this.view;
+    const previousValue = getElementValue(this.view, capability, elementId);
     const recorded = recordMutation(
-      this.view,
+      selectElementSnapshot(this.view, capability, elementId),
       capability,
       elementId,
       mutatorOrValue as Value | MutationCallback<Value>,
@@ -137,16 +159,26 @@ export class V2Store {
         this.echoWaitMutationIds.add(message.mutationId);
       }
     } else {
-      this.view = recorded.next;
+      for (const operation of recorded.ops) {
+        applyOwnedOperation(this.view, operation);
+      }
     }
     // Listeners fired during a local mutation must apply synchronously: the
     // caller (e.g. drag math) reads the element's data right after setData,
     // and a frame-delayed apply makes every step compute from a stale base.
-    this.notifyingLocalMutation = true;
-    try {
-      this.notifyChanges(previous, this.view, this.changedKeysForOps(messages));
-    } finally {
-      this.notifyingLocalMutation = false;
+    if (!this.echoWaitElementIds.has(elementId) && messages.length > 0) {
+      this.notifyingLocalMutation = true;
+      try {
+        const key = this.elementKey(capability, elementId);
+        this.notifyChanges(
+          this.view,
+          this.view,
+          new Set([key]),
+          new Map([[key, previousValue]]),
+        );
+      } finally {
+        this.notifyingLocalMutation = false;
+      }
     }
     this.scheduleOutgoingFlush();
     return messages;
@@ -167,8 +199,24 @@ export class V2Store {
       return;
     }
 
-    const previous = this.view;
-    const applied = applyOperation(this.authoritative, envelope.operation);
+    const key = this.elementKey(
+      envelope.operation.capability,
+      envelope.operation.elementId,
+    );
+    const previousValues = new Map([
+      [
+        key,
+        getElementValue(
+          this.view,
+          envelope.operation.capability,
+          envelope.operation.elementId,
+        ),
+      ],
+    ]);
+    const applied = applyOperationInPlace(
+      this.authoritative,
+      envelope.operation,
+    );
     if (!applied.ok) {
       // The server accepted this operation, so a local failure means the
       // authoritative copies have diverged. Resync rather than drift.
@@ -180,9 +228,8 @@ export class V2Store {
     }
 
     this.serverSequence = envelope.sequence;
-    this.authoritative = withLastMutationId(
-      applied.snapshot,
-      envelope.clientId,
+    this.authoritative.lastMutationIds[envelope.clientId] = Math.max(
+      this.authoritative.lastMutationIds[envelope.clientId] ?? 0,
       envelope.mutationId,
     );
     if (envelope.clientId === this.clientId) {
@@ -194,15 +241,11 @@ export class V2Store {
       );
       this.echoWaitMutationIds.delete(envelope.mutationId);
     }
-    this.rederiveView();
-    const changed = this.changedKeysForOps(this.pending);
-    changed.add(
-      this.elementKey(
-        envelope.operation.capability,
-        envelope.operation.elementId,
-      ),
+    this.rederiveElement(
+      envelope.operation.capability,
+      envelope.operation.elementId,
     );
-    this.notifyChanges(previous, this.view, changed);
+    this.notifyChanges(this.view, this.view, new Set([key]), previousValues);
   }
 
   applyServerSnapshot(message: ServerSnapshotMessage): void {
@@ -238,6 +281,8 @@ export class V2Store {
 
   handleRejection(message: ServerOperationRejectedMessage): void {
     const previous = this.view;
+    let changedKey: string | undefined;
+    let previousValue: JsonValue | undefined;
     if (message.code === "stale-generation") {
       this.pending = [];
       this.outgoing = [];
@@ -248,6 +293,20 @@ export class V2Store {
       message.mutationId !== undefined &&
       (message.clientId === undefined || message.clientId === this.clientId)
     ) {
+      const rejected = this.pending.find(
+        (pending) => pending.mutationId === message.mutationId,
+      );
+      if (rejected) {
+        changedKey = this.elementKey(
+          rejected.operation.capability,
+          rejected.operation.elementId,
+        );
+        previousValue = getElementValue(
+          this.view,
+          rejected.operation.capability,
+          rejected.operation.elementId,
+        );
+      }
       this.pending = this.pending.filter(
         (pending) => pending.mutationId !== message.mutationId,
       );
@@ -255,9 +314,23 @@ export class V2Store {
         (pending) => pending.mutationId !== message.mutationId,
       );
       this.echoWaitMutationIds.delete(message.mutationId);
-      this.rederiveView();
+      if (rejected) {
+        this.rederiveElement(
+          rejected.operation.capability,
+          rejected.operation.elementId,
+        );
+      }
     }
-    this.notifyChanges(previous, this.view);
+    if (changedKey) {
+      this.notifyChanges(
+        this.view,
+        this.view,
+        new Set([changedKey]),
+        new Map([[changedKey, previousValue]]),
+      );
+    } else {
+      this.notifyChanges(previous, this.view);
+    }
     const event = { type: "write-rejected", rejection: message } as const;
     for (const listener of this.statusListeners) listener(event);
   }
@@ -288,13 +361,32 @@ export class V2Store {
   }
 
   private rederiveView(): void {
-    let next = this.authoritative;
+    this.view = structuredClone(this.authoritative);
     for (const pending of this.pending) {
       if (this.echoWaitMutationIds.has(pending.mutationId)) continue;
-      const applied = applyOperation(next, pending.operation);
-      if (applied.ok) next = applied.snapshot;
+      const applied = applyOperationInPlace(this.view, pending.operation);
+      if (!applied.ok) continue;
     }
-    this.view = next;
+  }
+
+  private rederiveElement(capability: string, elementId: string): void {
+    replaceSnapshotElementInPlace(
+      this.view,
+      this.authoritative,
+      capability,
+      elementId,
+    );
+    for (const pending of this.pending) {
+      if (
+        pending.operation.capability !== capability ||
+        pending.operation.elementId !== elementId ||
+        this.echoWaitMutationIds.has(pending.mutationId)
+      ) {
+        continue;
+      }
+      const applied = applyOperationInPlace(this.view, pending.operation);
+      if (!applied.ok) continue;
+    }
   }
 
   private queueOperation(
@@ -349,14 +441,17 @@ export class V2Store {
     previous: RoomSnapshot,
     next: RoomSnapshot,
     changedKeys?: ReadonlySet<string>,
+    previousValues?: ReadonlyMap<string, JsonValue | undefined>,
   ): void {
-    if (previous === next) return;
+    if (previous === next && previousValues === undefined) return;
     if (changedKeys !== undefined) {
       for (const key of changedKeys) {
         const listeners = this.elementListeners.get(key);
         if (!listeners) continue;
         const [capability, elementId] = this.parseElementKey(key);
-        const previousValue = getElementValue(previous, capability, elementId);
+        const previousValue = previousValues?.has(key)
+          ? previousValues.get(key)
+          : getElementValue(previous, capability, elementId);
         const nextValue = getElementValue(next, capability, elementId);
         if (valuesEqual(previousValue, nextValue)) continue;
         for (const listener of listeners) listener(nextValue);
@@ -373,23 +468,6 @@ export class V2Store {
       for (const listener of listeners) listener(nextValue);
     }
     for (const listener of this.roomListeners) listener(next);
-  }
-
-  private changedKeysForOps(
-    messages: readonly {
-      operation: { capability: string; elementId: string };
-    }[],
-  ): Set<string> {
-    const keys = new Set<string>();
-    for (const message of messages) {
-      keys.add(
-        this.elementKey(
-          message.operation.capability,
-          message.operation.elementId,
-        ),
-      );
-    }
-    return keys;
   }
 
   private elementKey(capability: string, elementId: string): string {

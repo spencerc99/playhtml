@@ -13,7 +13,7 @@ import type {
   ServerToClientMessage,
 } from "@playhtml/common";
 import { PROTOCOL_VERSION } from "@playhtml/common";
-import { applyOperation } from "@playhtml/common";
+import { applyOperation, checkSnapshotIntegrity } from "@playhtml/common";
 import { V2Store, type V2StoreTransport } from "../v2/store";
 import {
   V2Transport,
@@ -209,6 +209,48 @@ class FakeSocket implements V2Socket {
 }
 
 describe("V2Store", () => {
+  it("replaces only changed element values inside its live snapshot", () => {
+    const { store } = createStore();
+    const liveSnapshot = store.getSnapshot();
+    const state = liveSnapshot.state;
+    const capability = liveSnapshot.state.play;
+    const first = liveSnapshot.state.play.first;
+    const second = liveSnapshot.state.play.second;
+
+    store.mutate<{ count: number }>("play", "second", (draft) => {
+      draft.count = 1;
+    });
+
+    expect(store.getSnapshot()).toBe(liveSnapshot);
+    expect(liveSnapshot.state).toBe(state);
+    expect(liveSnapshot.state.play).toBe(capability);
+    expect(liveSnapshot.state.play.first).toBe(first);
+    expect(liveSnapshot.state.play.second).not.toBe(second);
+    expect(checkSnapshotIntegrity(liveSnapshot)).toEqual({ ok: true });
+  });
+
+  it("notifies room listeners only after a multi-operation view is complete", () => {
+    const { store } = createStore();
+    const listener = vi.fn((value: RoomSnapshot) => {
+      expect(
+        element<{ count: number; items: string[] }>(value, "first"),
+      ).toEqual({ count: 1, items: ["base", "added"] });
+      expect(checkSnapshotIntegrity(value)).toEqual({ ok: true });
+    });
+    store.subscribeRoom(listener);
+
+    store.mutate<{ count: number; items: string[] }>(
+      "play",
+      "first",
+      (draft) => {
+        draft.count = 1;
+        draft.items.push("added");
+      },
+    );
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it("applies a mutation optimistically and retires it on its server echo", async () => {
     const server = new InProcessServer();
     const { store, transport } = createStore();

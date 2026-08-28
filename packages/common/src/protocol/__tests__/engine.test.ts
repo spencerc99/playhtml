@@ -2,7 +2,11 @@
 // ABOUTME: Exercises stable array identities and snapshot integrity invariants.
 
 import { describe, expect, it } from "vitest";
-import { applyOperation, checkSnapshotIntegrity } from "../engine";
+import {
+  applyOperation,
+  applyOperationInPlace,
+  checkSnapshotIntegrity,
+} from "../engine";
 import type { Operation, RoomSnapshot } from "../index";
 
 const snapshot = (): RoomSnapshot => ({
@@ -387,6 +391,65 @@ describe("applyOperation", () => {
     expect(checkSnapshotIntegrity(duplicateId).ok).toBe(false);
     expect(checkSnapshotIntegrity(missingIdentity).ok).toBe(false);
     expect(checkSnapshotIntegrity(extraIdentity).ok).toBe(false);
+  });
+});
+
+describe("applyOperationInPlace", () => {
+  it("replaces only the touched element inside stable room containers", () => {
+    const input = snapshot();
+    input.state.play.sibling = { count: 10 };
+    const state = input.state;
+    const capability = input.state.play;
+    const arrays = input.arrays;
+    const touched = input.state.play.element;
+    const sibling = input.state.play.sibling;
+
+    const result = applyOperationInPlace(
+      input,
+      {
+        type: "increment",
+        ...address,
+        path: ["count"],
+        delta: 1,
+      },
+      { validate: true },
+    );
+
+    expect(result).toEqual({ ok: true, snapshot: input });
+    expect(result.ok && result.snapshot).toBe(input);
+    expect(input.state).toBe(state);
+    expect(input.state.play).toBe(capability);
+    expect(input.arrays).toBe(arrays);
+    expect(input.state.play.element).not.toBe(touched);
+    expect(input.state.play.sibling).toBe(sibling);
+    expect(input.state.play.element).toMatchObject({ count: 3 });
+    expect(checkSnapshotIntegrity(input)).toEqual({ ok: true });
+  });
+
+  it("rolls back the value and sidecars when an operation is rejected", () => {
+    const input = snapshot();
+    const before = structuredClone(input);
+    const element = input.state.play.element;
+    const arrays = input.arrays;
+    const identities = [...input.arrays];
+
+    const result = applyOperationInPlace(input, {
+      type: "insert",
+      ...address,
+      path: ["list"],
+      target: { kind: "array", index: 0, itemId: "item-a" },
+      value: { name: "collision", tags: [] },
+      arrays: [{ path: ["tags"], itemIds: [] }],
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "invalid-operation" });
+    expect(input).toEqual(before);
+    expect(input.state.play.element).toBe(element);
+    expect(input.arrays).toBe(arrays);
+    expect(input.arrays).toEqual(identities);
+    input.arrays.forEach((identity, index) => {
+      expect(identity).toBe(identities[index]);
+    });
   });
 });
 

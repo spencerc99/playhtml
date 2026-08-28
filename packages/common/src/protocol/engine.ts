@@ -343,12 +343,16 @@ const removeValueArrays = (
   snapshot: MutableSnapshot,
   address: OperationAddress,
 ): void => {
-  snapshot.arrays = snapshot.arrays.filter(
-    (identity) =>
-      identity.capability !== address.capability ||
-      identity.elementId !== address.elementId ||
-      !pathStartsWith(identity.path, address.path),
-  );
+  for (let index = snapshot.arrays.length - 1; index >= 0; index -= 1) {
+    const identity = snapshot.arrays[index];
+    if (
+      identity.capability === address.capability &&
+      identity.elementId === address.elementId &&
+      pathStartsWith(identity.path, address.path)
+    ) {
+      snapshot.arrays.splice(index, 1);
+    }
+  }
 };
 
 const setValueAtPath = (
@@ -577,6 +581,233 @@ export type ApplyOperationOptions = {
   readonly validate?: boolean;
 };
 
+const applyMutableOperation = (
+  snapshot: MutableSnapshot,
+  operation: Operation,
+): void => {
+  switch (operation.type) {
+    case "set":
+      applySet(snapshot, operation);
+      break;
+    case "insert":
+      applyInsert(snapshot, operation);
+      break;
+    case "remove":
+      applyRemove(snapshot, operation);
+      break;
+    case "increment":
+      applyIncrement(snapshot, operation);
+      break;
+  }
+};
+
+type RetainedElementBase = {
+  readonly capabilityExisted: boolean;
+  readonly arrays: readonly {
+    readonly index: number;
+    readonly identity: MutableArrayIdentity;
+  }[];
+};
+
+type RetainedElement = RetainedElementBase &
+  (
+    | { readonly elementExisted: true; readonly value: JsonValue }
+    | { readonly elementExisted: false; readonly value: undefined }
+  );
+
+const retainElement = (
+  snapshot: MutableSnapshot,
+  operation: Operation,
+): RetainedElement => {
+  const capability = snapshot.state[operation.capability];
+  const arrays: Array<{
+    index: number;
+    identity: MutableArrayIdentity;
+  }> = [];
+  snapshot.arrays.forEach((identity, index) => {
+    if (
+      identity.capability === operation.capability &&
+      identity.elementId === operation.elementId
+    ) {
+      arrays.push({ index, identity });
+    }
+  });
+  const retained = {
+    capabilityExisted: capability !== undefined,
+    arrays,
+  };
+  if (capability !== undefined && operation.elementId in capability) {
+    return {
+      ...retained,
+      elementExisted: true,
+      value: capability[operation.elementId],
+    };
+  }
+  return { ...retained, elementExisted: false, value: undefined };
+};
+
+const restoreElement = (
+  snapshot: MutableSnapshot,
+  operation: Operation,
+  retained: RetainedElement,
+): void => {
+  for (let index = snapshot.arrays.length - 1; index >= 0; index -= 1) {
+    const identity = snapshot.arrays[index];
+    if (
+      identity.capability === operation.capability &&
+      identity.elementId === operation.elementId
+    ) {
+      snapshot.arrays.splice(index, 1);
+    }
+  }
+  for (const entry of retained.arrays) {
+    snapshot.arrays.splice(entry.index, 0, entry.identity);
+  }
+
+  const capability = snapshot.state[operation.capability];
+  if (retained.elementExisted) {
+    capability[operation.elementId] = retained.value;
+  } else if (capability) {
+    delete capability[operation.elementId];
+    if (!retained.capabilityExisted)
+      delete snapshot.state[operation.capability];
+  }
+};
+
+const createElementWorkingSnapshot = (
+  snapshot: MutableSnapshot,
+  operation: Operation,
+  retained: RetainedElement,
+): MutableSnapshot => {
+  let state: MutableSnapshot["state"] = {};
+  if (retained.elementExisted) {
+    const value = retained.value;
+    if (value === undefined) {
+      throw new OperationError("Existing element has no value");
+    }
+    state = {
+      [operation.capability]: {
+        [operation.elementId]: structuredClone(value),
+      },
+    };
+  }
+  return {
+    state,
+    arrays: snapshot.arrays,
+    lastMutationIds: snapshot.lastMutationIds,
+  };
+};
+
+/**
+ * Applies one operation to an owned snapshot without replacing room-sized maps.
+ * The touched element is replaced atomically; callers must not mutate snapshots
+ * while an apply is in progress.
+ *
+ * @internal
+ */
+export const applyOperationInPlace = (
+  snapshot: RoomSnapshot,
+  operation: Operation,
+  options?: ApplyOperationOptions,
+): ApplyOperationResult => {
+  const mutable = snapshot as MutableSnapshot;
+  const validate = options?.validate ?? false;
+  let retained: RetainedElement | undefined;
+  try {
+    if (validate) {
+      const initialIntegrity = checkSnapshotIntegrity(snapshot);
+      if (!initialIntegrity.ok) {
+        throw new OperationError(
+          `Invalid snapshot: ${initialIntegrity.message}`,
+        );
+      }
+    }
+
+    retained = retainElement(mutable, operation);
+    const working = createElementWorkingSnapshot(mutable, operation, retained);
+    applyMutableOperation(working, operation);
+    const value = working.state[operation.capability]?.[operation.elementId];
+    if (value === undefined) {
+      throw new OperationError("Operation did not produce an element value");
+    }
+    if (!mutable.state[operation.capability]) {
+      mutable.state[operation.capability] = {};
+    }
+    mutable.state[operation.capability][operation.elementId] = value;
+
+    if (validate) {
+      const finalIntegrity = checkSnapshotIntegrity(snapshot);
+      if (!finalIntegrity.ok) {
+        throw new OperationError(
+          `Operation broke snapshot integrity: ${finalIntegrity.message}`,
+        );
+      }
+    }
+    return { ok: true, snapshot };
+  } catch (error) {
+    if (retained) restoreElement(mutable, operation, retained);
+    return {
+      ok: false,
+      code: "invalid-operation",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Operation could not be applied",
+    };
+  }
+};
+
+/**
+ * Replaces one element in an owned snapshot from another complete snapshot.
+ * The value and sidecars are cloned so later optimistic writes stay isolated.
+ *
+ * @internal
+ */
+export const replaceSnapshotElementInPlace = (
+  target: RoomSnapshot,
+  source: RoomSnapshot,
+  capabilityName: string,
+  elementId: string,
+): void => {
+  const mutable = target as MutableSnapshot;
+  for (let index = mutable.arrays.length - 1; index >= 0; index -= 1) {
+    const identity = mutable.arrays[index];
+    if (
+      identity.capability === capabilityName &&
+      identity.elementId === elementId
+    ) {
+      mutable.arrays.splice(index, 1);
+    }
+  }
+  source.arrays.forEach((identity, index) => {
+    if (
+      identity.capability === capabilityName &&
+      identity.elementId === elementId
+    ) {
+      mutable.arrays.splice(index, 0, {
+        ...identity,
+        path: structuredClone(identity.path),
+        itemIds: [...identity.itemIds],
+      });
+    }
+  });
+
+  const sourceCapability = source.state[capabilityName];
+  const sourceValue = sourceCapability?.[elementId];
+  if (sourceValue === undefined) {
+    const targetCapability = mutable.state[capabilityName];
+    if (!targetCapability) return;
+    delete targetCapability[elementId];
+    for (const remainingElementId in targetCapability) {
+      if (remainingElementId !== elementId) return;
+    }
+    delete mutable.state[capabilityName];
+    return;
+  }
+  if (!mutable.state[capabilityName]) mutable.state[capabilityName] = {};
+  mutable.state[capabilityName][elementId] = structuredClone(sourceValue);
+};
+
 /** Applies one operation without mutating either the input snapshot or operation. */
 export const applyOperation = (
   snapshot: RoomSnapshot,
@@ -594,20 +825,7 @@ export const applyOperation = (
       }
     }
     const next = cloneSnapshotForOperation(snapshot, operation);
-    switch (operation.type) {
-      case "set":
-        applySet(next, operation);
-        break;
-      case "insert":
-        applyInsert(next, operation);
-        break;
-      case "remove":
-        applyRemove(next, operation);
-        break;
-      case "increment":
-        applyIncrement(next, operation);
-        break;
-    }
+    applyMutableOperation(next, operation);
     const finalIntegrity = validate
       ? checkSnapshotIntegrity(next)
       : ({ ok: true } as const);
