@@ -18,6 +18,7 @@ export type PersistenceFailureDetails = {
 export type PersistenceRetryDetails = {
   attempt: number;
   attempts: number;
+  elapsedMs: number;
   retryAfterMs: number;
   error: unknown;
 };
@@ -57,7 +58,7 @@ export async function withTimeout<T>(
   }
 }
 
-export async function retryWithTimeout<T>(
+export async function retryWithinTimeout<T>(
   operation: (signal: AbortSignal, attempt: number) => PromiseLike<T>,
   {
     attempts,
@@ -77,12 +78,19 @@ export async function retryWithTimeout<T>(
     throw new Error("Persistence load attempts must be a positive integer");
   }
 
+  const deadline = Date.now() + timeoutMs;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error(errorMessage);
+    }
+
+    const attemptStartedAt = Date.now();
     try {
       return await withTimeout((signal) => operation(signal, attempt), {
-        timeoutMs,
+        timeoutMs: remainingMs,
         errorMessage,
       });
     } catch (error) {
@@ -90,7 +98,14 @@ export async function retryWithTimeout<T>(
       if (attempt === attempts) break;
 
       const retryAfterMs = retryDelayMs * 2 ** (attempt - 1);
-      onRetry?.({ attempt, attempts, retryAfterMs, error });
+      if (retryAfterMs >= deadline - Date.now()) break;
+      onRetry?.({
+        attempt,
+        attempts,
+        elapsedMs: Date.now() - attemptStartedAt,
+        retryAfterMs,
+        error,
+      });
       await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
     }
   }
