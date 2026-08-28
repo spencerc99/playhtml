@@ -391,13 +391,14 @@ function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
   const domains = Object.keys(raw.domains)
     .filter((d) => !SECOND_LEVEL_SUFFIXES.has(d))
     .sort();
+  const domainSet = new Set(domains);
   const edges: GalaxyEdge[] = [];
   // node prominence = how many distinct sites link to it, so one site with a
   // blogroll on every page cannot inflate a neighbor by itself
   const inboundDomains = new Map<string, Set<string>>();
   for (const source of domains) {
     for (const [target, jumps] of Object.entries(raw.domains[source].links)) {
-      if (!raw.domains[target]) continue;
+      if (!domainSet.has(target)) continue;
       edges.push({ source, target, jumps });
       const set = inboundDomains.get(target) ?? new Set<string>();
       set.add(source);
