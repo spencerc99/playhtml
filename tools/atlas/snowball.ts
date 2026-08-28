@@ -114,7 +114,7 @@ interface CrawlResult {
   links: Record<string, number>;
 }
 
-interface GalaxyNode {
+export interface GalaxyNode {
   id: string;
   visits: number;
   participants: number;
@@ -124,7 +124,7 @@ interface GalaxyNode {
   kind: "seed" | "interchange" | "hub" | "site";
 }
 
-interface GalaxyEdge {
+export interface GalaxyEdge {
   source: string;
   target: string;
   jumps: number;
@@ -132,13 +132,13 @@ interface GalaxyEdge {
   trunk: boolean;
 }
 
-interface GalaxyCluster {
+export interface GalaxyCluster {
   id: number;
   size: number;
   label: string;
 }
 
-interface GalaxyGraph {
+export interface GalaxyGraph {
   meta: {
     generatedAt: string;
     seeds: string[];
@@ -150,16 +150,63 @@ interface GalaxyGraph {
   clusters: GalaxyCluster[];
 }
 
-interface ShortestPath {
+export interface ShortestPath {
   distance: number;
   path: string[];
   legs: PathLeg[];
 }
 
-interface PathLeg {
+export interface PathLeg {
   from: string;
   to: string;
   kind: "ride" | "walk";
+}
+
+interface RouteQueueEntry {
+  distance: number;
+  key: string;
+}
+
+class RouteQueue {
+  private entries: RouteQueueEntry[] = [];
+
+  push(entry: RouteQueueEntry): void {
+    this.entries.push(entry);
+    let index = this.entries.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (this.compare(this.entries[parent], entry) <= 0) break;
+      this.entries[index] = this.entries[parent];
+      index = parent;
+    }
+    this.entries[index] = entry;
+  }
+
+  pop(): RouteQueueEntry | undefined {
+    const first = this.entries[0];
+    const last = this.entries.pop();
+    if (!first || !last || this.entries.length === 0) return first;
+    let index = 0;
+    while (true) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      if (left >= this.entries.length) break;
+      const child =
+        right < this.entries.length &&
+        this.compare(this.entries[right], this.entries[left]) < 0
+          ? right
+          : left;
+      if (this.compare(last, this.entries[child]) <= 0) break;
+      this.entries[index] = this.entries[child];
+      index = child;
+    }
+    this.entries[index] = last;
+    return first;
+  }
+
+  private compare(left: RouteQueueEntry, right: RouteQueueEntry): number {
+    return left.distance - right.distance || left.key.localeCompare(right.key);
+  }
 }
 
 function emptyDomain(depth: number): SnowballDomain {
@@ -657,15 +704,15 @@ function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
   };
 }
 
-function shortestPath(
-  graph: SnowballGraph,
+export function transitShortestPath(
+  galaxy: GalaxyGraph,
   from: string,
   to: string
 ): ShortestPath {
-  if (!graph.domains[from] || !graph.domains[to]) {
+  const domains = new Set(galaxy.nodes.map((node) => node.id));
+  if (!domains.has(from) || !domains.has(to)) {
     return { distance: Infinity, path: [], legs: [] };
   }
-  const galaxy = makeGalaxyGraph(graph);
   const kindByDomain = new Map(
     galaxy.nodes.map((node) => [node.id, node.kind])
   );
@@ -694,57 +741,96 @@ function shortestPath(
   for (const neighbors of adjacency.values()) {
     neighbors.sort((a, b) => a.neighbor.localeCompare(b.neighbor));
   }
-  const distances = new Map<string, number>([[from, 0]]);
+  type RoutePhase = "access" | "ride" | "egress";
+  const phases: RoutePhase[] = ["access", "ride", "egress"];
+  const stateKey = (domain: string, phase: RoutePhase) => `${phase}\0${domain}`;
+  const startKey = stateKey(from, "access");
+  const distances = new Map<string, number>([[startKey, 0]]);
   const previous = new Map<string, string>();
-  const previousTrunk = new Map<string, boolean>();
-  const unvisited = new Set(galaxy.nodes.map((node) => node.id));
+  const previousLeg = new Map<string, PathLeg>();
+  const settled = new Set<string>();
+  const queue = new RouteQueue();
+  queue.push({ distance: 0, key: startKey });
 
-  while (unvisited.size > 0) {
-    let current: string | null = null;
-    let currentDistance = Infinity;
-    for (const domain of [...unvisited].sort()) {
-      const distance = distances.get(domain) ?? Infinity;
-      if (distance < currentDistance) {
-        current = domain;
-        currentDistance = distance;
-      }
+  while (true) {
+    const entry = queue.pop();
+    if (!entry) break;
+    const { distance: currentDistance, key: currentKey } = entry;
+    if (
+      settled.has(currentKey) ||
+      currentDistance !== distances.get(currentKey)
+    ) {
+      continue;
     }
-    if (current === null || currentDistance === Infinity) break;
-    unvisited.delete(current);
-    if (current === to) break;
+    settled.add(currentKey);
+    const separator = currentKey.indexOf("\0");
+    const phase = currentKey.slice(0, separator) as RoutePhase;
+    const current = currentKey.slice(separator + 1);
 
     // big-web hubs cannot be transit: everyone links instagram, so routing
     // through it would make every pair of sites two hops apart
     if (kindByDomain.get(current) === "hub" && current !== from) continue;
 
     for (const { neighbor, pages, trunk } of adjacency.get(current)!) {
-      if (!unvisited.has(neighbor)) continue;
       if (kindByDomain.get(neighbor) === "hub" && neighbor !== to) continue;
+      let nextPhase: RoutePhase;
+      if (trunk) {
+        if (phase === "egress") continue;
+        nextPhase = "ride";
+      } else {
+        nextPhase = phase === "ride" ? "egress" : phase;
+      }
+      const neighborKey = stateKey(neighbor, nextPhase);
+      if (settled.has(neighborKey)) continue;
       const directionalPages =
         kindByDomain.get(current) === "interchange" ? Math.min(pages, 1) : pages;
       const candidate =
         currentDistance +
         (trunk ? 1 : 1.6) +
         1 / Math.log2(2 + directionalPages);
-      const known = distances.get(neighbor) ?? Infinity;
+      const known = distances.get(neighborKey) ?? Infinity;
       if (candidate < known) {
-        distances.set(neighbor, candidate);
-        previous.set(neighbor, current);
-        previousTrunk.set(neighbor, trunk);
+        distances.set(neighborKey, candidate);
+        previous.set(neighborKey, currentKey);
+        previousLeg.set(neighborKey, {
+          from: current,
+          to: neighbor,
+          kind: trunk ? "ride" : "walk",
+        });
+        queue.push({ distance: candidate, key: neighborKey });
       }
     }
   }
 
-  const distance = distances.get(to) ?? Infinity;
+  const destination = phases
+    .map((phase) => stateKey(to, phase))
+    .sort(
+      (left, right) =>
+        (distances.get(left) ?? Infinity) -
+          (distances.get(right) ?? Infinity) ||
+        left.localeCompare(right)
+    )[0];
+  const distance = distances.get(destination) ?? Infinity;
   if (distance === Infinity) return { distance, path: [], legs: [] };
-  const route = [to];
-  while (route[0] !== from) route.unshift(previous.get(route[0])!);
-  const legs = route.slice(1).map((destination, index) => ({
-    from: route[index],
-    to: destination,
-    kind: previousTrunk.get(destination) ? ("ride" as const) : ("walk" as const),
-  }));
+  const legs: PathLeg[] = [];
+  let currentKey = destination;
+  while (currentKey !== startKey) {
+    legs.unshift(previousLeg.get(currentKey)!);
+    currentKey = previous.get(currentKey)!;
+  }
+  const route = [from, ...legs.map((leg) => leg.to)];
   return { distance, path: route, legs };
+}
+
+function shortestPath(
+  graph: SnowballGraph,
+  from: string,
+  to: string
+): ShortestPath {
+  if (!graph.domains[from] || !graph.domains[to]) {
+    return { distance: Infinity, path: [], legs: [] };
+  }
+  return transitShortestPath(makeGalaxyGraph(graph), from, to);
 }
 
 export function commuteDistance(
