@@ -264,12 +264,26 @@ h1 {
 .party-room__cake-sign {
   position: absolute;
   z-index: 6;
-  padding: 14px 18px;
-  border: 1px solid var(--ph-hairline);
-  background: var(--ph-paper);
-  box-shadow: var(--ph-shadow-brick);
-  font: italic 0.82rem/1.25 var(--ph-font-serif);
+  padding: 15px 20px 13px;
+  border: 2px solid var(--ph-ink);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.28)),
+    var(--ph-paper);
+  box-shadow: 3px 4px 0 rgba(28, 28, 28, 0.28);
+  font: 1rem/1.05 var(--ph-font-wordmark);
   text-align: center;
+}
+.party-room__note::before,
+.party-room__cake-sign::before {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 48px;
+  height: 15px;
+  background: rgba(239, 222, 178, 0.78);
+  box-shadow: 0 1px 1px rgba(28, 28, 28, 0.12);
+  content: "";
+  transform: translateX(-50%) rotate(-2deg);
 }
 .party-room__note {
   top: 54px;
@@ -674,12 +688,36 @@ h1 {
   transform: rotate(-0.9deg);
 }
 .party-station-heading {
+  position: relative;
   display: flex;
+  width: max-content;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 8px;
-  font-size: 1.05rem;
-  font-weight: 800;
+  gap: 9px;
+  margin: 0 0 10px 7px;
+  padding: 4px 14px 5px 8px;
+  border: 1.5px solid var(--ph-ink);
+  background: var(--ph-paper);
+  box-shadow: 2px 3px 0 rgba(28, 28, 28, 0.32);
+  font: 1.08rem/1 var(--ph-font-wordmark);
+  letter-spacing: 0.01em;
+  transform: rotate(-1.4deg);
+}
+.party-station-heading::before,
+.party-station-heading::after {
+  position: absolute;
+  top: -7px;
+  width: 34px;
+  height: 12px;
+  background: rgba(239, 222, 178, 0.8);
+  content: "";
+}
+.party-station-heading::before {
+  left: 16px;
+  transform: rotate(-5deg);
+}
+.party-station-heading::after {
+  right: 13px;
+  transform: rotate(4deg);
 }
 .party-station-heading span {
   display: inline-flex;
@@ -687,9 +725,11 @@ h1 {
   height: 22px;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border: 1px solid var(--ph-ink);
+  border-radius: 2px 45% 48% 3px;
   color: var(--ph-paper);
-  font-size: 0.72rem;
+  font: 0.72rem var(--ph-font-body);
+  transform: rotate(3deg);
 }
 .party-card {
   padding: 22px 24px;

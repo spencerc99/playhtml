@@ -1499,7 +1499,6 @@ function PartyRoom({
     const updateFrame = () =>
       setFrame({ width: window.innerWidth, height: window.innerHeight });
     updateFrame();
-    playhtml.cursorClient?.refreshContainer();
     window.addEventListener("resize", updateFrame);
     return () => window.removeEventListener("resize", updateFrame);
   }, []);

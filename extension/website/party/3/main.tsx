@@ -15,7 +15,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           enableChat: false,
           coordinateMode: "absolute",
           room: "page",
-          container: "#party-3-room-canvas",
         },
       }}
     >
