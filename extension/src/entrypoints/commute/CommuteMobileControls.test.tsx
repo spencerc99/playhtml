@@ -12,7 +12,6 @@ import {
 import {
   CommuteMobileControls,
   keepCommuteCursorInCar,
-  useCommuteBoardingGate,
 } from "./CommuteMobileControls";
 
 function renderControls(
@@ -31,10 +30,6 @@ function enterEmail(input: HTMLInputElement, email: string): void {
     "value",
   )?.set?.call(input, email);
   input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function BoardingGateProbe() {
-  return <span>{useCommuteBoardingGate() ? "waiting" : "entering"}</span>;
 }
 
 describe("CommuteMobileControls", () => {
@@ -103,36 +98,6 @@ describe("CommuteMobileControls", () => {
     expect(onBoard).toHaveBeenCalledOnce();
     expect(document.documentElement.requestFullscreen).not.toHaveBeenCalled();
     act(() => root.unmount());
-  });
-
-  it("keeps boarding pending while the mobile gate is visible", () => {
-    let notifyChange = () => {};
-    const mediaQuery = {
-      matches: true,
-      addEventListener: vi.fn(
-        (_event: string, listener: () => void) => (notifyChange = listener),
-      ),
-      removeEventListener: vi.fn(),
-    };
-    const matchMedia = vi.fn(() => mediaQuery);
-    vi.stubGlobal("matchMedia", matchMedia);
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    act(() => root.render(<BoardingGateProbe />));
-    expect(container.textContent).toBe("waiting");
-    expect(matchMedia).toHaveBeenCalledWith(
-      expect.stringContaining("orientation: landscape"),
-    );
-
-    act(() => {
-      mediaQuery.matches = false;
-      notifyChange();
-    });
-    expect(container.textContent).toBe("entering");
-    act(() => root.unmount());
-    expect(mediaQuery.removeEventListener).toHaveBeenCalledOnce();
   });
 
   it("publishes normalized joystick movement and resets on release", () => {

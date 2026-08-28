@@ -35,6 +35,7 @@ import { estimateServerTimeOffset } from "./commuteService";
 import {
   DEPARTURE_SECONDS,
   getSlowModePlatformPhase,
+  getSlowModePresentationTiming,
   getCommuteTiming,
   TRAIN_DURATIONS,
   type CommutePhase,
@@ -44,7 +45,6 @@ import { CommuteInstallPrompt } from "./CommuteInstallPrompt";
 import {
   CommuteMobileControls,
   keepCommuteCursorInCar,
-  useCommuteBoardingGate,
 } from "./CommuteMobileControls";
 import { CommuteStage } from "./CommuteStage";
 import { CommuteStationPoster } from "./CommuteStationPoster";
@@ -62,7 +62,6 @@ import {
   getStandingPosition,
   moveCommuteAvatar,
   moveCommuteAvatarToward,
-  shouldStartCommuteArrival,
   shouldExitCommuteThroughDoor,
   type CommutePoint,
   type CommuteSeatGeometry,
@@ -638,7 +637,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       () => getMyCommuteRiderStart(users),
       [users],
     );
-    const boardingGateVisible = useCommuteBoardingGate();
     const [toast, setToast] = useState<string | null>(null);
     const initialAvatarPosition = COMMUTE_JOIN_ENTRY_POSITION;
     const [avatarPosition, setAvatarPosition] =
@@ -791,7 +789,6 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       if (
         isLoading ||
         !props.serviceReady ||
-        !shouldStartCommuteArrival(mobileBoarded, boardingGateVisible) ||
         myRiderId === null ||
         myRiderStart === null ||
         hasEnteredCarRef.current
@@ -811,9 +808,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       isLoading,
       myRiderId,
       myRiderStart,
-      mobileBoarded,
       props.serviceReady,
-      boardingGateVisible,
       updateAvatarPosition,
     ]);
 
@@ -1564,6 +1559,7 @@ function InternetCommute({
       : SAMPLE_STOPS;
   const browsingCount = recentRoute.activePeople;
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [slowModeIntroStartedAt] = useState(() => Date.now());
   const [hasSeat, setHasSeat] = useState(false);
   const [mobileBoarded, setMobileBoarded] = useState(false);
   const [routeNotice, setRouteNotice] = useState<string | null>(null);
@@ -1591,11 +1587,21 @@ function InternetCommute({
       (clockNow + serverTimeOffsetMs - assignment.createdAt) / 1_000,
     ),
   );
-  const timing = getCommuteTiming(
+  const sharedRouteTiming = getCommuteTiming(
     elapsedSeconds,
     stops.length,
     TRAIN_DURATIONS,
   );
+  const slowModeIntroElapsedSeconds = Math.max(
+    0,
+    Math.floor((clockNow - slowModeIntroStartedAt) / 1_000),
+  );
+  const timing = ride
+    ? getSlowModePresentationTiming(
+        slowModeIntroElapsedSeconds,
+        sharedRouteTiming,
+      )
+    : sharedRouteTiming;
   const currentStop = stops[timing.stopIndex];
   const departingOrigin =
     timing.phase === "riding" &&

@@ -1190,14 +1190,31 @@ button {
 .slow-mode-platform__rider {
   position: absolute;
   bottom: 138px;
-  left: 50%;
-  z-index: 2;
+  left: 29%;
+  z-index: 4;
   transform: translateX(-50%);
-  transition: opacity 0.3s ease;
 }
 
 .slow-mode-platform--boarding .slow-mode-platform__rider {
-  opacity: 0;
+  animation: slow-mode-cursor-board 3.4s ease-in-out forwards;
+}
+
+@keyframes slow-mode-cursor-board {
+  0%,
+  18% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+
+  72% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(34px) scale(0.88);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(52px) scale(0.72);
+  }
 }
 
 .stop-favicon {

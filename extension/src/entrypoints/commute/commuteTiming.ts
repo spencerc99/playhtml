@@ -74,6 +74,16 @@ export function getSlowModePlatformPhase(
   return "waiting";
 }
 
+export function getSlowModePresentationTiming(
+  introElapsedSeconds: number,
+  sharedRouteTiming: CommuteTiming,
+): CommuteTiming {
+  if (introElapsedSeconds >= SLOW_MODE_DURATIONS.initialPlatformSeconds) {
+    return sharedRouteTiming;
+  }
+  return getCommuteTiming(introElapsedSeconds, 1, SLOW_MODE_DURATIONS);
+}
+
 export type CommutePhase = "stopped" | "riding" | "arriving";
 
 export interface CommuteTiming {

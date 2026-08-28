@@ -39,18 +39,11 @@ const CAR_MIN_Y = 32;
 const CAR_MAX_Y = 316;
 const SEAT_INTERACTION_RADIUS = 55;
 
-export function shouldStartCommuteArrival(
-  mobileBoarded: boolean,
-  boardingGateVisible: boolean,
-): boolean {
-  return mobileBoarded || !boardingGateVisible;
-}
-
 export function getMyCommuteRiderStart(
   riders: Iterable<CommuteRiderIdentity>,
 ): CommutePoint | null {
   for (const rider of riders) {
-    if (rider.isMe) return COMMUTE_JOIN_ENTRY_POSITION;
+    if (rider.isMe) return getCommuteRiderStart(rider.pid);
   }
   return null;
 }
