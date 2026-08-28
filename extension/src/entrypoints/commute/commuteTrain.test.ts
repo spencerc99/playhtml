@@ -60,29 +60,21 @@ describe("commute train client", () => {
     expect(getCommuteRiderToken(null)).toBe(nextToken);
   });
 
-  it("refreshes open trains and reboards standard riders after completion", () => {
-    expect(getCommuteTrainNextAction(assignment, false)).toEqual({
+  it("refreshes open trains and reboards riders after completion", () => {
+    expect(getCommuteTrainNextAction(assignment)).toEqual({
       kind: "refresh",
       delayMs: 3_000,
     });
     expect(
       getCommuteTrainNextAction(
         { ...assignment, joinable: false, serverNow: 75_000 },
-        false,
       ),
     ).toEqual({ kind: "reboard", delayMs: 5_000 });
     expect(
       getCommuteTrainNextAction(
         { ...assignment, joinable: false, serverNow: 85_000, phase: "complete" },
-        false,
       ),
     ).toEqual({ kind: "reboard", delayMs: 0 });
-    expect(
-      getCommuteTrainNextAction(
-        { ...assignment, joinable: false, serverNow: 85_000, phase: "complete" },
-        true,
-      ),
-    ).toEqual({ kind: "stop" });
   });
 
   it("shares only a domain stop when the rider allows it", () => {

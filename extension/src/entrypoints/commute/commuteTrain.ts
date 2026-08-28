@@ -15,8 +15,7 @@ const COMMUTE_TRAIN_REFRESH_MS = 3_000;
 
 export type CommuteTrainNextAction =
   | { kind: "refresh"; delayMs: number }
-  | { kind: "reboard"; delayMs: number }
-  | { kind: "stop" };
+  | { kind: "reboard"; delayMs: number };
 
 function createCommuteRiderToken(): string {
   return `web_${crypto.randomUUID()}`;
@@ -93,12 +92,10 @@ export function rotateCommuteRiderToken(): string {
 
 export function getCommuteTrainNextAction(
   assignment: CommuteTrainAssignment,
-  isSlowModeRide: boolean,
 ): CommuteTrainNextAction {
   if (assignment.joinable) {
     return { kind: "refresh", delayMs: COMMUTE_TRAIN_REFRESH_MS };
   }
-  if (isSlowModeRide) return { kind: "stop" };
   return {
     kind: "reboard",
     delayMs: Math.max(0, assignment.routeEndsAt - assignment.serverNow),

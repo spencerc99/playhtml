@@ -35,6 +35,7 @@ import { estimateServerTimeOffset } from "./commuteService";
 import {
   DEPARTURE_SECONDS,
   getSlowModePlatformPhase,
+  getSlowModePresentationTiming,
   getCommuteTiming,
   TRAIN_DURATIONS,
   type CommutePhase,
@@ -277,7 +278,7 @@ function useCommuteTrain(
             status: "live",
           };
         });
-        const nextAction = getCommuteTrainNextAction(assignment, ride !== null);
+        const nextAction = getCommuteTrainNextAction(assignment);
         if (nextAction.kind === "refresh") {
           refreshTimer = window.setTimeout(
             () => void board(),
@@ -290,7 +291,11 @@ function useCommuteTrain(
               serverTimeOffsetMs: 0,
               status: "loading",
             });
-            setRiderToken(rotateCommuteRiderToken());
+            if (ride) {
+              void board();
+            } else {
+              setRiderToken(rotateCommuteRiderToken());
+            }
           }, nextAction.delayMs);
         }
       } catch (error) {
@@ -1567,6 +1572,7 @@ function InternetCommute({
       : SAMPLE_STOPS;
   const browsingCount = recentRoute.activePeople;
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [slowModeIntroStartedAt] = useState(() => Date.now());
   const [hasSeat, setHasSeat] = useState(false);
   const [mobileBoarded, setMobileBoarded] = useState(false);
   const [routeNotice, setRouteNotice] = useState<string | null>(null);
@@ -1594,11 +1600,21 @@ function InternetCommute({
       (clockNow + serverTimeOffsetMs - assignment.createdAt) / 1_000,
     ),
   );
-  const timing = getCommuteTiming(
+  const sharedRouteTiming = getCommuteTiming(
     elapsedSeconds,
     stops.length,
     TRAIN_DURATIONS,
   );
+  const slowModeIntroElapsedSeconds = Math.max(
+    0,
+    Math.floor((clockNow - slowModeIntroStartedAt) / 1_000),
+  );
+  const timing = ride
+    ? getSlowModePresentationTiming(
+        slowModeIntroElapsedSeconds,
+        sharedRouteTiming,
+      )
+    : sharedRouteTiming;
   const currentStop = stops[timing.stopIndex];
   const departingOrigin =
     timing.phase === "riding" &&
@@ -1800,7 +1816,7 @@ function InternetCommute({
 
         <div className="commute-counts">
           <strong>
-            {assignment.riderCount}/{assignment.capacity} riders on this train
+            {riders.length}/{assignment.capacity} riders on this train
           </strong>
           <span></span>
           <strong>
