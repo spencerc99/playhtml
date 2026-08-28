@@ -99,6 +99,10 @@ interface CrawlOptions {
   out: string;
 }
 
+interface MergeOptions extends CrawlOptions {
+  graph: string;
+}
+
 interface CrawlResult {
   alive: boolean;
   pagesCrawled: number;
@@ -682,15 +686,25 @@ function parseCrawlOptions(args: string[]): CrawlOptions {
   };
 }
 
-async function runCrawl(options: CrawlOptions): Promise<void> {
+function parseMergeOptions(args: string[]): MergeOptions {
+  const options = parseCrawlOptions(args);
+  const graph = flagValue(args, "--graph");
+  if (!graph) throw new Error("--graph is required in merge mode");
+  return { ...options, graph: path.resolve(graph) };
+}
+
+async function runCrawl(
+  options: CrawlOptions,
+  existingRaw?: SnowballGraph
+): Promise<void> {
   const raw: SnowballGraph = {
-    seeds: options.seeds,
+    seeds: [...new Set([...(existingRaw?.seeds ?? []), ...options.seeds])].sort(),
     params: {
       maxDomains: options.maxDomains,
       maxPages: options.maxPages,
       depth: options.depth,
     },
-    domains: {},
+    domains: existingRaw?.domains ?? {},
   };
   // Ring-balanced expansion: each ring outward gets a slice of the domain
   // budget, and within a ring we crawl the most-referenced candidates first.
@@ -703,7 +717,10 @@ async function runCrawl(options: CrawlOptions): Promise<void> {
   >();
   let ring: string[] = [];
   for (const seed of options.seeds) {
-    raw.domains[seed] = emptyDomain(0);
+    const existing = raw.domains[seed];
+    raw.domains[seed] = existing
+      ? { ...existing, depth: 0 }
+      : emptyDomain(0);
     if (isCrawlableDomain(seed)) {
       scheduled.add(seed);
       ring.push(seed);
@@ -718,9 +735,15 @@ async function runCrawl(options: CrawlOptions): Promise<void> {
         `crawled ${crawled}/${scheduled.size}, ring ${ringDepth} ` +
           `(${ring.length} wide), current ${domain}`
       );
-      const result = await crawlDomain(domain, options.maxPages);
-      raw.domains[domain] = { depth: ringDepth, ...result };
-      crawled++;
+      const existing = raw.domains[domain];
+      const result =
+        existing.pagesCrawled > 0
+          ? existing
+          : await crawlDomain(domain, options.maxPages);
+      if (existing.pagesCrawled === 0) {
+        raw.domains[domain] = { depth: ringDepth, ...result };
+        crawled++;
+      }
 
       for (const [target, pages] of Object.entries(result.links)) {
         if (!raw.domains[target]) {
@@ -830,6 +853,13 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes("--distance")) runDistance(args);
   else if (args.includes("--rebuild")) runRebuild(args);
+  else if (args.includes("--merge")) {
+    const options = parseMergeOptions(args);
+    const raw = JSON.parse(
+      readFileSync(options.graph, "utf-8")
+    ) as SnowballGraph;
+    await runCrawl(options, raw);
+  }
   else await runCrawl(parseCrawlOptions(args));
 }
 
