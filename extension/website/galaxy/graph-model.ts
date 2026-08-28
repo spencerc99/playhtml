@@ -393,10 +393,26 @@ export function buildGroupLevels(graph: Graph): GroupLevel[] {
 export const TRUNK_HOP_COST = 1;
 export const MESH_HOP_COST = 1.6;
 
-export function edgeCost(pages: number, trunk: boolean): number {
+/**
+ * Multiplier on a hop that a named line covers. A drawn line is the canonical
+ * way through its part of the map, so a trip prefers riding one where the
+ * detour is modest — but the discount is deliberately mild, so a genuinely
+ * shorter street path still wins rather than every route bending onto a line.
+ */
+export const LINE_RIDE_DISCOUNT = 0.75;
+
+/**
+ * `onLine` is supplied by the caller rather than read from the edge, so this
+ * module stays independent of the lines data while still pricing rides.
+ */
+export function edgeCost(pages: number, trunk: boolean, onLine = false): number {
   const base = trunk ? TRUNK_HOP_COST : MESH_HOP_COST;
-  return base + 1 / Math.log2(2 + Math.max(0, pages));
+  const cost = base + 1 / Math.log2(2 + Math.max(0, pages));
+  return onLine ? cost * LINE_RIDE_DISCOUNT : cost;
 }
+
+/** Whether the pair of stops is covered by a drawn line, for cost discounting. */
+export type LineCoverage = (a: string, b: string) => boolean;
 
 /** One traversable step away from a stop, with the direction resolved. */
 export interface Step {
@@ -413,7 +429,11 @@ export interface Step {
  * Every stop reachable in one step, honouring direction: a merged pair can be
  * travelled forward when `jumps` > 0 and backward when `back` > 0.
  */
-export function stepsFrom(level: GroupLevel, stopId: string): Step[] {
+export function stepsFrom(
+  level: GroupLevel,
+  stopId: string,
+  onLine?: LineCoverage,
+): Step[] {
   const steps: Step[] = [];
   for (const edge of level.edges) {
     let to: string | null = null;
@@ -430,7 +450,7 @@ export function stepsFrom(level: GroupLevel, stopId: string): Step[] {
       to,
       pages,
       trunk: edge.trunk,
-      cost: edgeCost(pages, edge.trunk),
+      cost: edgeCost(pages, edge.trunk, onLine?.(stopId, to) ?? false),
       mode: edge.trunk ? "ride" : "walk",
     });
   }
@@ -444,7 +464,10 @@ export function stepsFrom(level: GroupLevel, stopId: string): Step[] {
  * one-way trip exists. Travelling it means going against one-way links, so the
  * route is flagged and drawn dashed.
  */
-function buildUndirectedIndex(level: GroupLevel): Map<string, Step[]> {
+function buildUndirectedIndex(
+  level: GroupLevel,
+  onLine?: LineCoverage,
+): Map<string, Step[]> {
   const index = new Map<string, Step[]>();
   for (const stop of level.stops) index.set(stop.id, []);
   for (const edge of level.edges) {
@@ -452,7 +475,7 @@ function buildUndirectedIndex(level: GroupLevel): Map<string, Step[]> {
     const step = {
       pages,
       trunk: edge.trunk,
-      cost: edgeCost(pages, edge.trunk),
+      cost: edgeCost(pages, edge.trunk, onLine?.(edge.source, edge.target) ?? false),
       mode: (edge.trunk ? "ride" : "walk") as "ride" | "walk",
     };
     index.get(edge.source)?.push({ ...step, to: edge.target });
@@ -462,16 +485,20 @@ function buildUndirectedIndex(level: GroupLevel): Map<string, Step[]> {
 }
 
 /** Adjacency for routing, built once per level rather than per query. */
-export function buildRoutingIndex(level: GroupLevel): Map<string, Step[]> {
+export function buildRoutingIndex(
+  level: GroupLevel,
+  onLine?: LineCoverage,
+): Map<string, Step[]> {
   const index = new Map<string, Step[]>();
   for (const stop of level.stops) index.set(stop.id, []);
   for (const edge of level.edges) {
+    const covered = onLine?.(edge.source, edge.target) ?? false;
     if (edge.jumps > 0) {
       index.get(edge.source)?.push({
         to: edge.target,
         pages: edge.jumps,
         trunk: edge.trunk,
-        cost: edgeCost(edge.jumps, edge.trunk),
+        cost: edgeCost(edge.jumps, edge.trunk, covered),
         mode: edge.trunk ? "ride" : "walk",
       });
     }
@@ -480,7 +507,7 @@ export function buildRoutingIndex(level: GroupLevel): Map<string, Step[]> {
         to: edge.source,
         pages: edge.back,
         trunk: edge.trunk,
-        cost: edgeCost(edge.back, edge.trunk),
+        cost: edgeCost(edge.back, edge.trunk, covered),
         mode: edge.trunk ? "ride" : "walk",
       });
     }
@@ -580,14 +607,15 @@ export function findRoute(
   isHub: (stopId: string) => boolean,
   index?: Map<string, Step[]>,
   ignoreDirection = false,
+  onLine?: LineCoverage,
 ): Route | null {
   if (fromId === toId) {
     return { stops: [fromId], legs: [], distance: 0, mode: "streets", againstOneWay: false };
   }
 
   const adjacency = ignoreDirection
-    ? buildUndirectedIndex(level)
-    : index ?? buildRoutingIndex(level);
+    ? buildUndirectedIndex(level, onLine)
+    : index ?? buildRoutingIndex(level, onLine);
   if (!adjacency.has(fromId) || !adjacency.has(toId)) return null;
 
   const dist = new Map<string, number>();

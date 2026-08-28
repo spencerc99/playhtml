@@ -23,6 +23,7 @@ import {
   stepsFrom,
   type Graph,
   type GroupLevel,
+  type LineCoverage,
   type NodeKind,
   type Route,
   type SearchHit,
@@ -540,15 +541,26 @@ const TransitMap = (): React.ReactElement => {
     return ids;
   }, [graph]);
 
-  const routingIndex = useMemo(
-    () => (level ? buildRoutingIndex(level) : null),
-    [level],
-  );
-
   /** Lines resolved against the active grouping level. */
   const lineIndex = useMemo<LineIndex | null>(
     () => (level && linesFile ? buildLineIndex(level, linesFile.lines) : null),
     [level, linesFile],
+  );
+
+  /**
+   * Prices a hop that a drawn line covers, so trips prefer riding a line over
+   * an equivalent scramble through the street mesh. Null until the lines load,
+   * which simply means the first frames route at undiscounted cost.
+   */
+  const onLine = useMemo<LineCoverage | undefined>(() => {
+    if (!lineIndex) return undefined;
+    const covered = lineIndex.coveredEdges;
+    return (a: string, b: string) => covered.has(segmentKey(a, b));
+  }, [lineIndex]);
+
+  const routingIndex = useMemo(
+    () => (level ? buildRoutingIndex(level, onLine) : null),
+    [level, onLine],
   );
 
   /** Display names, numbered where the generator reused one. */
@@ -658,12 +670,20 @@ const TransitMap = (): React.ReactElement => {
         setTransitFallback(settings.routeMode === "transit");
         return;
       }
-      const relaxed = findRoute(level, fromStop, toStop, isHub, undefined, true);
+      const relaxed = findRoute(
+        level,
+        fromStop,
+        toStop,
+        isHub,
+        undefined,
+        true,
+        onLine,
+      );
       setRoute(relaxed);
       setTransitFallback(relaxed !== null && settings.routeMode === "transit");
       setNoRoute(relaxed ? null : { from: fromStop, to: toStop });
     },
-    [level, routingIndex, hubIds, settings.routeMode],
+    [level, routingIndex, hubIds, settings.routeMode, onLine],
   );
 
   // Recompute the route when the level changes under an active selection.
@@ -1614,7 +1634,7 @@ const TransitMap = (): React.ReactElement => {
       return;
     }
     const posts: Signpost[] = [];
-    for (const step of stepsFrom(level, walkingFrom)) {
+    for (const step of stepsFrom(level, walkingFrom, onLine)) {
       const node = layout.byId.get(step.to);
       if (!node) continue;
       posts.push({
@@ -1628,7 +1648,7 @@ const TransitMap = (): React.ReactElement => {
     const trimmed = posts.slice(0, 12);
     signpostsRef.current = trimmed;
     setSignpostCount(trimmed.length);
-  }, [walkingFrom, level, settling]);
+  }, [walkingFrom, level, settling, onLine]);
 
   // --- Interaction -------------------------------------------------------
 
