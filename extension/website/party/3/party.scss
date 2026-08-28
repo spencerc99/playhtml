@@ -1339,7 +1339,7 @@ h1 {
 
 .party-event-line {
   position: fixed;
-  bottom: 88px;
+  bottom: 128px;
   left: 50%;
   z-index: 24;
   max-width: 620px;
@@ -1353,33 +1353,44 @@ h1 {
   transform: translateX(-50%);
   white-space: nowrap;
 }
-.party-room-cue {
+.party-room-nav {
   position: fixed;
-  top: 34%;
+  right: 14px;
+  bottom: 82px;
+  left: 14px;
   z-index: 26;
-  max-width: 32%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.party-room-nav button {
+  max-width: min(42vw, 230px);
   padding: 5px 11px;
   border: 1.5px solid var(--ph-ink);
   border-radius: 999px;
-  opacity: 0;
   background: var(--ph-paper);
   box-shadow: var(--ph-shadow-brick);
+  color: var(--ph-ink);
   font-size: 0.72rem;
   letter-spacing: 0.1em;
-  pointer-events: none;
+  overflow: hidden;
+  pointer-events: auto;
+  text-overflow: ellipsis;
   text-transform: uppercase;
-  transform: translateY(-50%);
-  transition: opacity 320ms cubic-bezier(0.2, 0.8, 0.3, 1);
   white-space: nowrap;
 }
-.party-room-cue.is-visible {
-  opacity: 1;
+.party-room-nav button:hover {
+  background: var(--ph-mustard-wash);
+  box-shadow: var(--ph-shadow-brick-hover);
+  transform: translate(-1px, -1px);
 }
-.party-room-cue--left {
-  left: 14px;
+.party-room-nav button:active {
+  box-shadow: none;
+  transform: translate(1px, 1px);
 }
-.party-room-cue--right {
-  right: 14px;
+.party-room-nav__next {
+  margin-left: auto;
 }
 .party-footer {
   position: fixed;
@@ -1717,7 +1728,7 @@ h1 {
 
 @media (max-width: 900px) {
   .party-event-line {
-    bottom: 72px;
+    bottom: 112px;
     max-width: calc(100% - 24px);
     overflow: hidden;
     font-size: 0.78rem;
@@ -1730,6 +1741,9 @@ h1 {
   .party-footer > span:first-child {
     display: none;
   }
+  .party-room-nav {
+    bottom: 66px;
+  }
 }
 
 @media (max-width: 620px) {
@@ -1741,6 +1755,12 @@ h1 {
   .party-footer a,
   .party-footer__presence {
     padding: 4px 8px;
+  }
+  .party-room-nav button {
+    max-width: 46vw;
+    padding: 5px 9px;
+    font-size: 0.64rem;
+    letter-spacing: 0.06em;
   }
   .workshop-header {
     align-items: flex-start;
