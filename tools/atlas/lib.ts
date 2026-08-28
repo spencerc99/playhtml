@@ -12,8 +12,22 @@ export const SITE_SUFFIXES = [
   "pages.dev", "netlify.app", "vercel.app", "github.io", "glitch.me",
   "neocities.org", "onrender.com", "fly.dev", "web.app", "firebaseapp.com",
   "herokuapp.com", "codepen.dev", "codepen.io", "wixsite.com", "deno.dev",
-  "workers.dev", "webflow.io", "surge.sh", "repl.co",
+  "workers.dev", "webflow.io", "surge.sh", "repl.co", "blogspot.com",
+  "bearblog.dev", "substack.com", "wordpress.com", "tumblr.com",
 ];
+
+// ccTLD second-level registries: the site lives at the third label
+// (foo.co.uk), so collapsing to two labels would merge unrelated sites
+export const SECOND_LEVEL_SUFFIXES = new Set([
+  "co.uk", "org.uk", "ac.uk", "me.uk", "gov.uk",
+  "co.jp", "ne.jp", "or.jp", "ac.jp", "go.jp",
+  "com.au", "net.au", "org.au", "edu.au",
+  "com.br", "org.br", "net.br",
+  "co.nz", "org.nz", "net.nz", "ac.nz",
+  "co.kr", "or.kr", "co.in", "ac.in", "org.in",
+  "com.mx", "org.mx", "com.ar", "com.tw", "com.sg", "com.hk",
+  "co.za", "org.za", "ac.at", "or.at", "co.at",
+]);
 
 export function baseDomain(host: string): string {
   const h = host.toLowerCase().replace(/^www\./, "");
@@ -30,6 +44,12 @@ export function baseDomain(host: string): string {
     }
   }
   const labels = h.split(".");
+  if (
+    labels.length >= 3 &&
+    SECOND_LEVEL_SUFFIXES.has(labels.slice(-2).join("."))
+  ) {
+    return labels.slice(-3).join(".");
+  }
   return labels.slice(-2).join(".");
 }
 

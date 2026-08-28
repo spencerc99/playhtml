@@ -12,6 +12,7 @@ import {
   MAX_BODY_BYTES,
   PAGE_DELAY_MS,
   robotsDisallows,
+  SECOND_LEVEL_SUFFIXES,
   SKIP_EXTENSIONS,
 } from "./lib";
 
@@ -48,6 +49,18 @@ const NO_EXPAND = new Set([
   "goo.gl",
   "bit.ly",
   "t.co",
+  "creativecommons.org",
+  "wikimedia.org",
+  "mediawiki.org",
+  "flickr.com",
+  "mastodon.social",
+  "bsky.app",
+  "wordpress.org",
+  "gravatar.com",
+  "paypal.com",
+  "patreon.com",
+  "ko-fi.com",
+  "buymeacoffee.com",
 ]);
 
 export interface SnowballDomain {
@@ -373,7 +386,11 @@ function propagateLabels(
 }
 
 function makeGalaxyGraph(raw: SnowballGraph): GalaxyGraph {
-  const domains = Object.keys(raw.domains).sort();
+  // bare second-level registry suffixes (co.uk etc.) are corrupted
+  // aggregates from crawls that predate the ccTLD fix; drop them
+  const domains = Object.keys(raw.domains)
+    .filter((d) => !SECOND_LEVEL_SUFFIXES.has(d))
+    .sort();
   const edges: GalaxyEdge[] = [];
   // node prominence = how many distinct sites link to it, so one site with a
   // blogroll on every page cannot inflate a neighbor by itself
