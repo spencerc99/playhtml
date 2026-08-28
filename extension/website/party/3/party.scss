@@ -21,7 +21,7 @@
   --ph-font-display:
     "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --ph-font-body: "Play", ui-sans-serif, system-ui, sans-serif;
-  --ph-font-serif: "EB Garamond", Georgia, serif;
+  --ph-font-note: "Bricolage Grotesque", var(--ph-font-body);
   --ph-font-wordmark: "Carter One", var(--ph-font-display);
   --ph-shadow-brick: 2px 2px 0 0 var(--ph-ink);
   --ph-shadow-brick-hover: 3px 3px 0 0 var(--ph-ink);
@@ -115,8 +115,8 @@ h1 {
   place-items: center;
   background: var(--ph-sage) url("/party/3/assets/party-wallpaper.png") repeat;
   background-size: 240px 240px;
-  font-family: var(--ph-font-serif);
-  font-style: italic;
+  font-family: var(--ph-font-note);
+  font-weight: 500;
 }
 
 .party-page,
@@ -364,7 +364,7 @@ h1 {
   border-bottom: 2px solid var(--ph-ink);
   outline: 0;
   background: transparent;
-  font: italic 1.45rem var(--ph-font-serif);
+  font: 600 1.45rem var(--ph-font-note);
   text-align: center;
 }
 .party-color-row {
@@ -423,7 +423,7 @@ h1 {
 .party-nametag__note {
   margin: 10px 0 0;
   color: var(--ph-ink-3);
-  font: italic 0.82rem var(--ph-font-serif);
+  font: 500 0.82rem var(--ph-font-note);
   text-align: center;
 }
 
@@ -496,8 +496,8 @@ h1 {
 .party-hero__date,
 .party-hero__signoff {
   color: var(--ph-ink-2);
-  font-family: var(--ph-font-serif);
-  font-style: italic;
+  font-family: var(--ph-font-note);
+  font-weight: 500;
 }
 .party-hero__date {
   margin-bottom: 10px;
@@ -616,12 +616,12 @@ h1 {
 .party-popper p {
   margin: 8px 0 0;
   color: var(--ph-ink-2);
-  font: italic 0.82rem var(--ph-font-serif);
+  font: 500 0.82rem var(--ph-font-note);
   text-wrap: pretty;
 }
 .party-popper small {
   color: var(--ph-ink-3);
-  font: italic 0.72rem var(--ph-font-serif);
+  font: 500 0.72rem var(--ph-font-note);
 }
 
 .party-station-nav {
@@ -636,7 +636,7 @@ h1 {
 }
 .party-station-nav span {
   color: var(--ph-ink-2);
-  font: italic 0.95rem var(--ph-font-serif);
+  font: 500 0.95rem var(--ph-font-note);
 }
 .party-station-nav button {
   padding: 5px 14px;
@@ -957,7 +957,7 @@ h1 {
 }
 .party-people-chip > span {
   color: var(--ph-ink-2);
-  font: italic 0.88rem var(--ph-font-serif);
+  font: 500 0.88rem var(--ph-font-note);
 }
 .party-cake__credits {
   margin-top: 16px;
@@ -1097,7 +1097,7 @@ h1 {
 .party-spencer > p {
   margin: 6px 0 0;
   color: var(--ph-ink-2);
-  font: italic 0.75rem var(--ph-font-serif);
+  font: 500 0.75rem var(--ph-font-note);
   text-align: center;
 }
 .party-spencer__puffs {
@@ -1204,7 +1204,7 @@ h1 {
   width: 100%;
   padding: 30px;
   color: var(--ph-ink-3);
-  font: italic 0.9rem var(--ph-font-serif);
+  font: 500 0.9rem var(--ph-font-note);
   text-align: center;
 }
 .party-wish {
@@ -1267,7 +1267,7 @@ h1 {
 }
 .party-wish__body p {
   margin-bottom: 8px;
-  font: italic 0.88rem/1.35 var(--ph-font-serif);
+  font: 500 0.88rem/1.35 var(--ph-font-note);
   text-wrap: pretty;
 }
 .party-wish__body strong {
@@ -1280,7 +1280,7 @@ h1 {
   display: block;
   margin-top: 3px;
   color: var(--ph-ink-3);
-  font: italic 0.72rem var(--ph-font-serif);
+  font: 500 0.72rem var(--ph-font-note);
 }
 .party-signing-bench {
   display: flex;
@@ -1317,7 +1317,7 @@ h1 {
   align-items: center;
   gap: 8px 12px;
   color: var(--ph-ink-2);
-  font: italic 0.85rem var(--ph-font-serif);
+  font: 500 0.85rem var(--ph-font-note);
 }
 .party-color-choices,
 .party-pattern-choices {
@@ -1393,7 +1393,7 @@ h1 {
   border-radius: 999px;
   background: rgba(244, 239, 229, 0.86);
   color: var(--ph-ink-2);
-  font: italic 0.92rem var(--ph-font-serif);
+  font: 500 0.92rem var(--ph-font-note);
   text-align: center;
   transform: translateX(-50%);
   white-space: nowrap;
@@ -1417,7 +1417,7 @@ h1 {
   white-space: nowrap;
 }
 .party-footer > span:first-child {
-  font: italic 0.95rem var(--ph-font-serif);
+  font: 500 0.95rem var(--ph-font-note);
 }
 .party-footer button,
 .party-footer a,
@@ -1508,7 +1508,7 @@ h1 {
   background: #fff !important;
   box-shadow: 1.5px 1.5px 0 rgba(28, 28, 28, 0.55) !important;
   color: var(--ph-ink) !important;
-  font: italic 0.72rem var(--ph-font-serif) !important;
+  font: 600 0.72rem var(--ph-font-note) !important;
   opacity: 1 !important;
   text-align: center;
 }
@@ -1545,7 +1545,7 @@ h1 {
 }
 .workshop-header span {
   color: var(--ph-ink-2);
-  font: italic 0.95rem var(--ph-font-serif);
+  font: 500 0.95rem var(--ph-font-note);
 }
 .workshop-header a {
   font-size: 0.85rem;
@@ -1592,7 +1592,7 @@ h1 {
   display: grid;
   place-items: center;
   color: var(--ph-ink-3);
-  font: italic 0.9rem var(--ph-font-serif);
+  font: 500 0.9rem var(--ph-font-note);
   pointer-events: none;
 }
 .workshop-segment {
@@ -1642,7 +1642,7 @@ h1 {
   z-index: 4;
   margin: 14px auto 0;
   color: var(--ph-ink-2);
-  font: italic 0.92rem var(--ph-font-serif);
+  font: 500 0.92rem var(--ph-font-note);
   text-align: center;
 }
 .workshop-footer {
