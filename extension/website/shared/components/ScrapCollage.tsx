@@ -2,6 +2,7 @@
 // ABOUTME: Shows source provenance on hover and links each surviving image to its page.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
 import {
@@ -85,6 +86,7 @@ const DEFAULT_TARGET_COUNT = 200;
 const SCRAPS_PER_VIEWPORT_AREA = 8_000;
 const MIN_AUTO_TARGET_COUNT = 100;
 const MAX_AUTO_TARGET_COUNT = 400;
+const EVERYTHING_OVERSCAN_VIEWPORTS = 0.25;
 const TIDE_WASH_OUT_MS = 1400;
 /** Bounds of the jittered gap between tide events. */
 const TIDE_GAP_MIN_MS = 1000;
@@ -174,6 +176,26 @@ function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
   return a.key.localeCompare(b.key);
 }
 
+function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
+  const newestByCanonicalKey = new Map<string, ScrapItem>();
+  for (const item of items) {
+    const canonicalKey = canonicalScrapKey(item);
+    const current = newestByCanonicalKey.get(canonicalKey);
+    if (!current || item.ts > current.ts) {
+      newestByCanonicalKey.set(canonicalKey, item);
+    }
+  }
+
+  const newestByKey = new Map<string, ScrapItem>();
+  for (const item of newestByCanonicalKey.values()) {
+    const current = newestByKey.get(item.key);
+    if (!current || item.ts > current.ts) {
+      newestByKey.set(item.key, item);
+    }
+  }
+  return Array.from(newestByKey.values());
+}
+
 export function curateScraps(
   items: ScrapItem[],
   opts: CurateScrapsOptions,
@@ -188,17 +210,8 @@ export function curateScraps(
   );
   if (perDomainCap === 0 || targetCount === 0) return [];
 
-  const newestByCanonicalKey = new Map<string, ScrapItem>();
-  for (const item of items) {
-    const canonicalKey = canonicalScrapKey(item);
-    const current = newestByCanonicalKey.get(canonicalKey);
-    if (!current || item.ts > current.ts) {
-      newestByCanonicalKey.set(canonicalKey, item);
-    }
-  }
-
   const scrapsByDomain = new Map<string, ScrapItem[]>();
-  for (const item of newestByCanonicalKey.values()) {
+  for (const item of newestUniqueScraps(items)) {
     const domainScraps = scrapsByDomain.get(item.domain);
     if (domainScraps) {
       domainScraps.push(item);
@@ -613,6 +626,26 @@ function buildLayout(
       },
     ];
   });
+}
+
+interface ScrapViewportBounds {
+  y: number;
+  height: number;
+}
+
+export function scrapsNearViewport<T extends ScrapViewportBounds>(
+  scraps: T[],
+  scrollTop: number,
+  viewportHeight: number,
+): T[] {
+  if (viewportHeight <= 0) return [];
+
+  const overscan = viewportHeight * EVERYTHING_OVERSCAN_VIEWPORTS;
+  const minimumY = Math.max(0, scrollTop - overscan);
+  const maximumY = scrollTop + viewportHeight + overscan;
+  return scraps.filter(
+    (scrap) => scrap.y + scrap.height >= minimumY && scrap.y <= maximumY,
+  );
 }
 
 const COLLAGE_STYLES = `
@@ -1191,6 +1224,7 @@ export function ScrapCollage({
     useState<ScrapKindFilter>("all");
   const [visibleScrapCount, setVisibleScrapCount] =
     useState<VisibleScrapCount>("auto");
+  const [everythingScrollTop, setEverythingScrollTop] = useState(0);
   const [controlsExpanded, setControlsExpanded] = useState(true);
   const [shuffleIndex, setShuffleIndex] = useState(0);
   const [failedScraps, setFailedScraps] = useState<Set<string>>(
@@ -1240,11 +1274,7 @@ export function ScrapCollage({
       "svg-icon": 0,
       cursor: 0,
     };
-    const seenCanonicalKeys = new Set<string>();
-    for (const item of items) {
-      const canonicalKey = canonicalScrapKey(item);
-      if (seenCanonicalKeys.has(canonicalKey)) continue;
-      seenCanonicalKeys.add(canonicalKey);
+    for (const item of newestUniqueScraps(items)) {
       counts[item.kind] += 1;
     }
     return counts;
@@ -1346,6 +1376,17 @@ export function ScrapCollage({
     () => buildLayout(slots, containerSize.width, fieldHeight, layoutSeed),
     [containerSize.width, slots, fieldHeight, layoutSeed],
   );
+  const renderedLayout = useMemo(
+    () =>
+      everythingMode
+        ? scrapsNearViewport(
+            layout,
+            everythingScrollTop,
+            containerSize.height,
+          )
+        : layout,
+    [containerSize.height, everythingMode, everythingScrollTop, layout],
+  );
 
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -1358,6 +1399,10 @@ export function ScrapCollage({
       setSelectedKind("all");
     }
   }, [kindCounts, selectedKind]);
+
+  useEffect(() => {
+    if (!everythingMode) setEverythingScrollTop(0);
+  }, [everythingMode]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -1720,7 +1765,7 @@ export function ScrapCollage({
   }
   renderedKeysRef.current = new Set(layout.map((scrap) => scrap.item.key));
 
-  const tiles = layout.map((scrap) =>
+  const tiles = renderedLayout.map((scrap) =>
     renderTile(
       scrap,
       washInKeys.has(scrap.item.key)
@@ -1835,7 +1880,12 @@ export function ScrapCollage({
         </React.Fragment>
       ))}
       {everythingMode ? (
-        <div className="scrap-collage__scroll">
+        <div
+          className="scrap-collage__scroll"
+          onScroll={(event) =>
+            setEverythingScrollTop(event.currentTarget.scrollTop)
+          }
+        >
           <div
             className="scrap-collage__field"
             style={{ height: fieldHeight }}
@@ -1846,43 +1896,46 @@ export function ScrapCollage({
       ) : (
         tiles
       )}
-      {examining && examinedItem && (
-        <ScrapLightbox
-          key={examinedItem.key}
-          item={examinedItem}
-          origin={examining.origin}
-          faviconSrc={
-            examinedItem.faviconUrl ||
-            `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
-              examinedItem.domain,
-            )}&sz=64`
-          }
-          faviconAvailable={!failedFavicons.has(examinedItem.domain)}
-          onFaviconError={() => markFaviconFailed(examinedItem.domain)}
-          placeholderColor={placeholderColor(examinedItem.domain)}
-          hasPrevious={examineIndex > 0}
-          hasNext={examineIndex < examinableScraps.length - 1}
-          prefersReducedMotion={prefersReducedMotion}
-          currentOrigin={() => {
-            const element = tileElementsRef.current.get(examinedItem.key);
-            if (!element?.isConnected) return null;
-            const bounds = element.getBoundingClientRect();
-            const layoutEntry = layoutRef.current.find(
-              (scrap) => scrap.item.key === examinedItem.key,
-            );
-            return {
-              left: bounds.left,
-              top: bounds.top,
-              width: bounds.width,
-              height: bounds.height,
-              rotation: layoutEntry?.rotation ?? 0,
-            };
-          }}
-          onClose={closeExamine}
-          onPrevious={() => stepExamine(-1)}
-          onNext={() => stepExamine(1)}
-        />
-      )}
+      {examining &&
+        examinedItem &&
+        createPortal(
+          <ScrapLightbox
+            key={examinedItem.key}
+            item={examinedItem}
+            origin={examining.origin}
+            faviconSrc={
+              examinedItem.faviconUrl ||
+              `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+                examinedItem.domain,
+              )}&sz=64`
+            }
+            faviconAvailable={!failedFavicons.has(examinedItem.domain)}
+            onFaviconError={() => markFaviconFailed(examinedItem.domain)}
+            placeholderColor={placeholderColor(examinedItem.domain)}
+            hasPrevious={examineIndex > 0}
+            hasNext={examineIndex < examinableScraps.length - 1}
+            prefersReducedMotion={prefersReducedMotion}
+            currentOrigin={() => {
+              const element = tileElementsRef.current.get(examinedItem.key);
+              if (!element?.isConnected) return null;
+              const bounds = element.getBoundingClientRect();
+              const layoutEntry = layoutRef.current.find(
+                (scrap) => scrap.item.key === examinedItem.key,
+              );
+              return {
+                left: bounds.left,
+                top: bounds.top,
+                width: bounds.width,
+                height: bounds.height,
+                rotation: layoutEntry?.rotation ?? 0,
+              };
+            }}
+            onClose={closeExamine}
+            onPrevious={() => stepExamine(-1)}
+            onNext={() => stepExamine(1)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
