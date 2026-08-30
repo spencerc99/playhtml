@@ -38,7 +38,7 @@ import {
   type PopperAwareness,
   type WishesData,
 } from "./partyState";
-import { playPartySound } from "./partySound";
+import { playPartySound, stopPartySound } from "./partySound";
 import "./party.scss";
 
 const ARRIVAL_KEY = "playhtml-party-3-arrived";
@@ -745,6 +745,9 @@ function BalloonsStation({
   const [now, setNow] = useState(Date.now());
   const setBalloonsData = useRef<SharedSetter<BalloonsData> | null>(null);
   const suppressBalloonClick = useRef<string | null>(null);
+  const blowingSoundPlaying = useRef(false);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
   const current = useRef({
     drag,
     emitEvent,
@@ -761,6 +764,23 @@ function BalloonsStation({
   }, []);
 
   useEffect(() => {
+    const shouldPlay = Boolean(drag?.blowing && soundOn);
+    if (shouldPlay && !blowingSoundPlaying.current) {
+      playPartySound("blow", true);
+    } else if (!shouldPlay && blowingSoundPlaying.current) {
+      stopPartySound("blow");
+    }
+    blowingSoundPlaying.current = shouldPlay;
+  }, [drag?.blowing, soundOn]);
+
+  useEffect(
+    () => () => {
+      stopPartySound("blow");
+    },
+    [],
+  );
+
+  useEffect(() => {
     const onPointerMove = (event: PointerEvent) => {
       setDrag((currentDrag) => {
         if (!currentDrag) return null;
@@ -775,7 +795,7 @@ function BalloonsStation({
             )
           : { x: -9999, y: -9999 };
         const blowing = Math.hypot(x + 30 - mouth.x, y + 40 - mouth.y) < 75;
-        return {
+        const nextDrag = {
           ...currentDrag,
           x,
           y,
@@ -790,41 +810,41 @@ function BalloonsStation({
             ? Math.min(1.8, currentDrag.scale + 0.013)
             : currentDrag.scale,
         };
+        dragRef.current = nextDrag;
+        return nextDrag;
       });
     };
     const onPointerUp = () => {
-      setDrag((currentDrag) => {
-        if (!currentDrag) return null;
-        const shouldPop = currentDrag.scale > 1.75;
-        setBalloonsData.current?.((draft) => {
-          const balloon = draft.balloonsById[currentDrag.id];
-          if (!balloon) return;
-          balloon.x = currentDrag.x;
-          balloon.y = currentDrag.y;
-          balloon.scale = Math.min(1.75, currentDrag.scale);
-          if (shouldPop) delete draft.balloonsById[currentDrag.id];
-        });
-        if (shouldPop) {
-          playPartySound("pop", soundOn);
-          emitEvent(
-            "you overfilled a balloon · everyone heard it",
-            "balloon-pop",
-          );
-        } else if (currentDrag.blowing) {
-          emitEvent("spencer catches his breath");
-        }
-        suppressBalloonClick.current = currentDrag.moved
-          ? currentDrag.id
-          : null;
-        if (currentDrag.moved) {
-          window.setTimeout(() => {
-            if (suppressBalloonClick.current === currentDrag.id) {
-              suppressBalloonClick.current = null;
-            }
-          }, 0);
-        }
-        return null;
+      const currentDrag = dragRef.current;
+      if (!currentDrag) return;
+      const shouldPop = currentDrag.scale > 1.75;
+      setBalloonsData.current?.((draft) => {
+        const balloon = draft.balloonsById[currentDrag.id];
+        if (!balloon) return;
+        balloon.x = currentDrag.x;
+        balloon.y = currentDrag.y;
+        balloon.scale = Math.min(1.75, currentDrag.scale);
+        if (shouldPop) delete draft.balloonsById[currentDrag.id];
       });
+      if (shouldPop) {
+        playPartySound("pop", current.current.soundOn);
+        current.current.emitEvent(
+          "you overfilled a balloon · everyone heard it",
+          "balloon-pop",
+        );
+      } else if (currentDrag.blowing) {
+        current.current.emitEvent("spencer catches his breath");
+      }
+      suppressBalloonClick.current = currentDrag.moved ? currentDrag.id : null;
+      if (currentDrag.moved) {
+        window.setTimeout(() => {
+          if (suppressBalloonClick.current === currentDrag.id) {
+            suppressBalloonClick.current = null;
+          }
+        }, 0);
+      }
+      dragRef.current = null;
+      setDrag(null);
     };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
@@ -832,7 +852,7 @@ function BalloonsStation({
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
-  }, [emitEvent, soundOn]);
+  }, []);
 
   const SharedBalloons = useMemo(
     () =>
@@ -962,7 +982,7 @@ function BalloonsStation({
                         y: drift.y,
                         scale: balloon.scale,
                       };
-                      setDrag({
+                      const nextDrag = {
                         id: balloon.id,
                         x: position.x,
                         y: position.y,
@@ -973,7 +993,9 @@ function BalloonsStation({
                         startY: event.clientY,
                         blowing: false,
                         moved: false,
-                      });
+                      };
+                      dragRef.current = nextDrag;
+                      setDrag(nextDrag);
                     }}
                   />
                 );
@@ -1253,6 +1275,7 @@ function WishesStation({
                   glyph="✦"
                   color="var(--ph-sage-deep)"
                   label="people left wishes"
+                  className="party-people-chip--corner party-wishes__participants"
                 />
                 <div className="party-wishes-pile">
                   {wishes.length === 0 && (
@@ -1326,7 +1349,9 @@ function WishesStation({
                       <div className="party-card-maker__heading">
                         <span>card table</span>
                         <h3 id="party-card-maker-title">make a card</h3>
-                        <p>leave something for the next person who wanders in.</p>
+                        <p>
+                          leave something for the next person who wanders in.
+                        </p>
                       </div>
                       <div className="party-signing-bench">
                         <div>
@@ -1970,9 +1995,18 @@ function PartyRoom({
                   aria-hidden="true"
                 />
                 <div className="party-room__door" aria-hidden="true">
+                  <b />
                   <span>thanks for coming</span>
                   <i />
                 </div>
+                <a
+                  className="party-room__sound-credit"
+                  href="/party/3/assets/SOUND_CREDITS.txt"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  balloon sound by Terhen
+                </a>
                 <CakeStation
                   identity={props.identity}
                   emitEvent={emitEvent}
@@ -2083,7 +2117,7 @@ export function PartyPage() {
           }}
         />
       )}
-      <div inert={!arrived} aria-hidden={!arrived}>
+      <div inert={arrived ? undefined : true} aria-hidden={!arrived}>
         <PartyRoom
           cameraEnabled={arrived}
           identity={identity}

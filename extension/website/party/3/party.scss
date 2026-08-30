@@ -415,16 +415,28 @@ h1 {
   z-index: 3;
   width: 230px;
   height: 530px;
-  border: 3px solid var(--ph-ink);
+  border: 5px solid var(--ph-ultramarine-deep);
   background:
     linear-gradient(
       90deg,
-      transparent 49%,
-      rgba(28, 28, 28, 0.08) 50%,
-      transparent 51%
+      transparent 10%,
+      rgba(255, 255, 255, 0.15) 10% 12%,
+      transparent 12% 88%,
+      rgba(28, 28, 28, 0.16) 88% 90%,
+      transparent 90%
     ),
-    #e8dfcf;
-  box-shadow: inset 12px 0 rgba(28, 28, 28, 0.04);
+    linear-gradient(
+      transparent 46%,
+      rgba(28, 28, 28, 0.16) 46% 47%,
+      transparent 47% 82%,
+      rgba(28, 28, 28, 0.16) 82% 83%,
+      transparent 83%
+    ),
+    #3972d0;
+  box-shadow:
+    inset 12px 0 rgba(255, 255, 255, 0.08),
+    inset -12px 0 rgba(28, 28, 28, 0.12),
+    8px 0 0 var(--ph-ultramarine-deep);
 }
 .party-room__door::before {
   position: absolute;
@@ -433,20 +445,54 @@ h1 {
   width: max-content;
   padding: 8px 14px;
   border: 2px solid var(--ph-ink);
-  background: var(--ph-mustard-wash);
+  background: var(--ph-mustard);
   box-shadow: 3px 3px 0 rgba(28, 28, 28, 0.25);
   content: "see you around the web";
   font: 1rem var(--ph-font-wordmark);
   transform: translateX(-50%) rotate(-2deg);
 }
+.party-room__door::after {
+  position: absolute;
+  bottom: -15px;
+  left: -15px;
+  width: 255px;
+  height: 13px;
+  border: 2px solid var(--ph-ink);
+  background: var(--ph-paper-warm);
+  box-shadow: 4px 3px 0 rgba(28, 28, 28, 0.22);
+  content: "";
+}
+.party-room__door b {
+  position: absolute;
+  top: 42px;
+  left: 50%;
+  width: 142px;
+  height: 96px;
+  border: 4px solid var(--ph-ultramarine-deep);
+  background:
+    linear-gradient(
+      90deg,
+      transparent 48%,
+      var(--ph-ultramarine-deep) 48% 52%,
+      transparent 52%
+    ),
+    linear-gradient(
+      transparent 48%,
+      var(--ph-ultramarine-deep) 48% 52%,
+      transparent 52%
+    ),
+    #f2c85b;
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.45);
+  transform: translateX(-50%);
+}
 .party-room__door span {
   position: absolute;
-  top: 76px;
+  top: 178px;
   left: 50%;
   width: 150px;
   padding: 16px 12px;
   border: 1.5px solid var(--ph-ink);
-  background: var(--ph-paper);
+  background: #fff4cf;
   box-shadow: 2px 3px 0 rgba(28, 28, 28, 0.25);
   font: 1.15rem/1.05 var(--ph-font-wordmark);
   text-align: center;
@@ -454,13 +500,22 @@ h1 {
 }
 .party-room__door i {
   position: absolute;
-  top: 52%;
+  top: 57%;
   right: 24px;
   width: 14px;
   height: 14px;
   border: 1.5px solid var(--ph-ink);
   border-radius: 50%;
-  background: var(--ph-mustard);
+  background: #f7cf50;
+  box-shadow: 0 0 0 3px rgba(247, 207, 80, 0.2);
+}
+.party-room__sound-credit {
+  position: absolute;
+  top: 724px;
+  left: 2818px;
+  z-index: 4;
+  color: var(--ph-ink-3);
+  font: 500 0.65rem var(--ph-font-note);
 }
 
 .party-arrival {
@@ -1396,12 +1451,22 @@ h1 {
 
 .party-wishes-card > h3 {
   margin-bottom: 4px;
+  padding-right: 160px;
   font-size: 1.3rem;
 }
 .party-wishes-card > p {
   margin-bottom: 6px;
+  padding-right: 160px;
   color: var(--ph-ink-2);
   font-size: 0.95rem;
+}
+.party-wishes-card {
+  position: relative;
+}
+.party-wishes__participants {
+  position: absolute;
+  top: 14px;
+  right: 16px;
 }
 .party-wishes-pile {
   display: flex;

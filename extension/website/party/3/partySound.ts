@@ -4,6 +4,32 @@
 export type PartySound = "pop" | "bang" | "blow" | "bite" | "chime";
 
 let audioContext: AudioContext | undefined;
+let balloonInflateAudio: HTMLAudioElement | undefined;
+
+function playBalloonInflate() {
+  stopPartySound("blow");
+  if (typeof Audio === "undefined") return;
+  const audio = new Audio("/party/3/assets/balloon-inflate.mp3");
+  audio.volume = 0.58;
+  balloonInflateAudio = audio;
+  audio.addEventListener(
+    "ended",
+    () => {
+      if (balloonInflateAudio === audio) balloonInflateAudio = undefined;
+    },
+    { once: true },
+  );
+  void audio.play().catch(() => {
+    if (balloonInflateAudio === audio) balloonInflateAudio = undefined;
+  });
+}
+
+export function stopPartySound(sound: PartySound) {
+  if (sound !== "blow" || !balloonInflateAudio) return;
+  balloonInflateAudio.pause();
+  if (balloonInflateAudio.readyState > 0) balloonInflateAudio.currentTime = 0;
+  balloonInflateAudio = undefined;
+}
 
 function getAudioContext(): AudioContext | undefined {
   const AudioContextClass =
@@ -18,6 +44,10 @@ function getAudioContext(): AudioContext | undefined {
 export function playPartySound(sound: PartySound, enabled: boolean) {
   if (!enabled) return;
   try {
+    if (sound === "blow") {
+      playBalloonInflate();
+      return;
+    }
     const context = getAudioContext();
     if (!context) return;
     if (context.state === "suspended") void context.resume();
@@ -52,8 +82,8 @@ export function playPartySound(sound: PartySound, enabled: boolean) {
       return;
     }
 
-    if (sound === "blow") {
-      const duration = 0.26;
+    if (sound === "bite") {
+      const duration = 0.23;
       const buffer = context.createBuffer(
         1,
         Math.floor(context.sampleRate * duration),
@@ -61,38 +91,58 @@ export function playPartySound(sound: PartySound, enabled: boolean) {
       );
       const channel = buffer.getChannelData(0);
       for (let index = 0; index < channel.length; index += 1) {
-        const progress = index / channel.length;
-        channel[index] =
-          (Math.random() * 2 - 1) * Math.sin(progress * Math.PI) * 0.9;
+        const time = index / context.sampleRate;
+        const crunch = [0.012, 0.055, 0.103, 0.158].reduce(
+          (level, center, pulseIndex) =>
+            level +
+            Math.exp(
+              -Math.pow((time - center) / (0.009 + pulseIndex * 0.002), 2),
+            ) *
+              (1 - pulseIndex * 0.14),
+          0,
+        );
+        channel[index] = (Math.random() * 2 - 1) * crunch * 0.72;
       }
       const source = context.createBufferSource();
-      const filter = context.createBiquadFilter();
+      const highpass = context.createBiquadFilter();
+      const lowpass = context.createBiquadFilter();
       source.buffer = buffer;
-      filter.type = "lowpass";
-      filter.frequency.setValueAtTime(500, start);
-      filter.frequency.linearRampToValueAtTime(1300, start + duration);
-      source.connect(filter);
-      filter.connect(gain);
-      gain.gain.setValueAtTime(0.14, start);
+      highpass.type = "highpass";
+      highpass.frequency.value = 620;
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 5200;
+      source.connect(highpass);
+      highpass.connect(lowpass);
+      lowpass.connect(gain);
+      gain.gain.setValueAtTime(0.34, start);
       gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+
+      const jaw = context.createOscillator();
+      const jawGain = context.createGain();
+      jaw.type = "triangle";
+      jaw.frequency.setValueAtTime(145 + Math.random() * 18, start);
+      jaw.frequency.exponentialRampToValueAtTime(62, start + 0.105);
+      jawGain.gain.setValueAtTime(0.13, start);
+      jawGain.gain.exponentialRampToValueAtTime(0.001, start + 0.12);
+      jaw.connect(jawGain);
+      jawGain.connect(context.destination);
       source.start(start);
+      jaw.start(start);
+      jaw.stop(start + 0.13);
       return;
     }
 
     const oscillator = context.createOscillator();
-    oscillator.type = sound === "bite" ? "triangle" : "sine";
-    const frequency = sound === "bite" ? 210 + Math.random() * 60 : 660;
+    oscillator.type = "sine";
+    const frequency = 660;
     oscillator.frequency.setValueAtTime(frequency, start);
     oscillator.frequency.exponentialRampToValueAtTime(
-      frequency * (sound === "bite" ? 0.55 : 1.5),
+      frequency * 1.5,
       start + 0.12,
     );
     oscillator.connect(gain);
-    gain.gain.setValueAtTime(sound === "bite" ? 0.2 : 0.16, start);
-    gain.gain.exponentialRampToValueAtTime(
-      0.001,
-      start + (sound === "bite" ? 0.14 : 0.3),
-    );
+    gain.gain.setValueAtTime(0.16, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
     oscillator.start(start);
     oscillator.stop(start + 0.34);
   } catch {
