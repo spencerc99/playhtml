@@ -261,7 +261,7 @@ export function ScrapsPage() {
         <div
           style={{
             position: "absolute",
-            inset: "74px 20px 18px",
+            inset: "64px 0 0",
             zIndex: 2,
           }}
         >

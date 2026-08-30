@@ -64,6 +64,8 @@ interface ScrapCollageProps {
   showKindFilter?: boolean;
 }
 
+type VisibleScrapCount = "auto" | "everything" | 100 | 200 | 300 | 500;
+
 interface ScrapLayout {
   item: ScrapItem;
   /** Position in the tide's slot array, so a departing scrap keeps its place. */
@@ -80,6 +82,9 @@ interface ScrapLayout {
 
 const DEFAULT_PER_DOMAIN_CAP = 4;
 const DEFAULT_TARGET_COUNT = 200;
+const SCRAPS_PER_VIEWPORT_AREA = 8_000;
+const MIN_AUTO_TARGET_COUNT = 100;
+const MAX_AUTO_TARGET_COUNT = 400;
 const TIDE_WASH_OUT_MS = 1400;
 /** Bounds of the jittered gap between tide events. */
 const TIDE_GAP_MIN_MS = 1000;
@@ -108,6 +113,15 @@ const SCRAP_KIND_OPTIONS = [
 
 type ScrapKind = ScrapItem["kind"];
 type ScrapKindFilter = "all" | ScrapKind;
+
+export function responsiveTargetCount(width: number, height: number): number {
+  if (width <= 0 || height <= 0) return DEFAULT_TARGET_COUNT;
+  return clamp(
+    MIN_AUTO_TARGET_COUNT,
+    MAX_AUTO_TARGET_COUNT,
+    Math.round((width * height) / SCRAPS_PER_VIEWPORT_AREA),
+  );
+}
 
 function naturalArea(item: ScrapItem): number {
   switch (item.kind) {
@@ -602,18 +616,66 @@ function buildLayout(
 }
 
 const COLLAGE_STYLES = `
-  .scrap-collage__filters {
+  .scrap-collage__controls {
     position: absolute;
-    top: 12px;
+    bottom: 12px;
     left: 50%;
     z-index: 300;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
+    box-sizing: border-box;
     max-width: calc(100% - 24px);
+    padding: 7px;
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 5px;
+    background: #f5f0e8;
+    box-shadow: 0 8px 24px rgba(61, 56, 51, 0.2);
     pointer-events: auto;
     transform: translateX(-50%);
+  }
+
+  .scrap-collage__controls--collapsed {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .scrap-collage__control-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .scrap-collage__control-label {
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    letter-spacing: 0.03em;
+  }
+
+  .scrap-collage__select {
+    appearance: none;
+    min-width: 112px;
+    padding: 4px 24px 4px 9px;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 3px;
+    background-color: #faf9f6;
+    background-image:
+      linear-gradient(45deg, transparent 50%, #827a72 50%),
+      linear-gradient(135deg, #827a72 50%, transparent 50%);
+    background-position:
+      calc(100% - 11px) 50%,
+      calc(100% - 7px) 50%;
+    background-repeat: no-repeat;
+    background-size: 4px 4px, 4px 4px;
+    color: #3d3833;
+    cursor: pointer;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    line-height: 1.4;
   }
 
   .scrap-collage__filter {
@@ -636,6 +698,11 @@ const COLLAGE_STYLES = `
       color 140ms ease;
   }
 
+  .scrap-collage__filter--collapse {
+    min-width: 30px;
+    padding-inline: 8px;
+  }
+
   .scrap-collage__filter-count {
     color: #8a8279;
   }
@@ -655,6 +722,12 @@ const COLLAGE_STYLES = `
     border-color: #4a9a8a;
     box-shadow: 0 5px 10px rgba(61, 56, 51, 0.14);
     transform: translateY(-2px);
+  }
+
+  .scrap-collage__select:focus-visible {
+    border-color: #4a9a8a;
+    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline-offset: 2px;
   }
 
   .scrap-collage__filter:focus-visible {
@@ -702,6 +775,22 @@ const COLLAGE_STYLES = `
     overflow-y: auto;
     overflow-x: hidden;
     height: 100%;
+  }
+
+  @media (max-width: 620px) {
+    .scrap-collage__controls:not(.scrap-collage__controls--collapsed) {
+      width: calc(100% - 24px);
+      flex-wrap: wrap;
+    }
+
+    .scrap-collage__control-group {
+      flex: 1 1 auto;
+    }
+
+    .scrap-collage__select {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
   }
 
   .scrap-collage__field {
@@ -1100,7 +1189,10 @@ export function ScrapCollage({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [selectedKind, setSelectedKind] =
     useState<ScrapKindFilter>("all");
-  const [everythingMode, setEverythingMode] = useState(false);
+  const [visibleScrapCount, setVisibleScrapCount] =
+    useState<VisibleScrapCount>("auto");
+  const [controlsExpanded, setControlsExpanded] = useState(true);
+  const [shuffleIndex, setShuffleIndex] = useState(0);
   const [failedScraps, setFailedScraps] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1113,6 +1205,7 @@ export function ScrapCollage({
   const prefersReducedMotion = usePrefersReducedMotion();
   const [tidePaused, setTidePaused] = useState(prefersReducedMotion);
   const [tide, setTide] = useState<TideState | null>(null);
+  const tideShuffleIndexRef = useRef(shuffleIndex);
   const tideRef = useRef(tide);
   tideRef.current = tide;
   const [washingOut, setWashingOut] = useState<WashingOutScrap[]>([]);
@@ -1132,6 +1225,13 @@ export function ScrapCollage({
   // Rendered tile elements by scrap key, so arrow-key navigation can re-anchor
   // the examine view on the next scrap's actual slot.
   const tileElementsRef = useRef(new Map<string, HTMLElement>());
+  const everythingMode = visibleScrapCount === "everything";
+  const layoutSeed = seed + shuffleIndex * 10_007;
+  const selectedTargetCount =
+    targetCount ??
+    (visibleScrapCount === "auto" || visibleScrapCount === "everything"
+      ? responsiveTargetCount(containerSize.width, containerSize.height)
+      : visibleScrapCount);
 
   const kindCounts = useMemo(() => {
     const counts: Record<ScrapKind, number> = {
@@ -1149,6 +1249,10 @@ export function ScrapCollage({
     }
     return counts;
   }, [items]);
+  const totalScrapCount = Object.values(kindCounts).reduce(
+    (total, count) => total + count,
+    0,
+  );
   const filteredItems = useMemo(
     () =>
       selectedKind === "all"
@@ -1159,15 +1263,20 @@ export function ScrapCollage({
   const everythingScraps = useMemo(
     () =>
       curateScraps(filteredItems, {
-        seed,
+        seed: layoutSeed,
         perDomainCap: Infinity,
         targetCount: Infinity,
       }),
-    [filteredItems, seed],
+    [filteredItems, layoutSeed],
   );
   const curatedScraps = useMemo(
-    () => curateScraps(filteredItems, { seed, targetCount, perDomainCap }),
-    [filteredItems, perDomainCap, seed, targetCount],
+    () =>
+      curateScraps(filteredItems, {
+        seed: layoutSeed,
+        targetCount: selectedTargetCount,
+        perDomainCap,
+      }),
+    [filteredItems, layoutSeed, perDomainCap, selectedTargetCount],
   );
   /**
    * Every scrap the tide can reach, ordered so the front of the queue is the
@@ -1190,14 +1299,16 @@ export function ScrapCollage({
   );
 
   useEffect(() => {
-    setTide((current) =>
-      deriveTideState(
+    setTide((current) => {
+      const shuffled = tideShuffleIndexRef.current !== shuffleIndex;
+      tideShuffleIndexRef.current = shuffleIndex;
+      return deriveTideState(
         tidePool.map((item) => item.key),
         tideCapacity,
-        current ?? undefined,
-      ),
-    );
-  }, [tideCapacity, tidePool]);
+        shuffled ? undefined : current ?? undefined,
+      );
+    });
+  }, [shuffleIndex, tideCapacity, tidePool]);
 
   /**
    * The shore as slots: one entry per position, `null` where a scrap has washed
@@ -1219,15 +1330,21 @@ export function ScrapCollage({
               slots.filter((item): item is ScrapItem => item !== null),
               containerSize.width,
               containerSize.height,
-              seed,
+              layoutSeed,
             ),
           )
         : containerSize.height,
-    [containerSize.height, containerSize.width, slots, everythingMode, seed],
+    [
+      containerSize.height,
+      containerSize.width,
+      slots,
+      everythingMode,
+      layoutSeed,
+    ],
   );
   const layout = useMemo(
-    () => buildLayout(slots, containerSize.width, fieldHeight, seed),
-    [containerSize.width, slots, fieldHeight, seed],
+    () => buildLayout(slots, containerSize.width, fieldHeight, layoutSeed),
+    [containerSize.width, slots, fieldHeight, layoutSeed],
   );
 
   const layoutRef = useRef(layout);
@@ -1619,52 +1736,95 @@ export function ScrapCollage({
     >
       <style>{COLLAGE_STYLES}</style>
       {showKindFilter && (
-        <div className="scrap-collage__filters" aria-label="Filter scraps">
-          <button
-            type="button"
-            className="scrap-collage__filter"
-            aria-pressed={selectedKind === "all"}
-            onClick={() => setSelectedKind("all")}
-          >
-            all{" "}
-            <span className="scrap-collage__filter-count">{items.length}</span>
-          </button>
-          {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
-            kindCounts[kind] > 0 ? (
+        <div
+          className={`scrap-collage__controls${
+            controlsExpanded ? "" : " scrap-collage__controls--collapsed"
+          }`}
+          aria-label="Scrap controls"
+        >
+          {controlsExpanded ? (
+            <>
+              <label className="scrap-collage__control-group">
+                <span className="scrap-collage__control-label">show</span>
+                <select
+                  className="scrap-collage__select"
+                  aria-label="Kinds of scraps shown"
+                  value={selectedKind}
+                  onChange={(event) =>
+                    setSelectedKind(event.currentTarget.value as ScrapKindFilter)
+                  }
+                >
+                  <option value="all">all · {totalScrapCount}</option>
+                  {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
+                    kindCounts[kind] > 0 ? (
+                      <option key={kind} value={kind}>
+                        {label} · {kindCounts[kind]}
+                      </option>
+                    ) : null,
+                  )}
+                </select>
+              </label>
+              <label className="scrap-collage__control-group">
+                <span className="scrap-collage__control-label">amount</span>
+                <select
+                  className="scrap-collage__select"
+                  aria-label="Number of scraps shown"
+                  value={visibleScrapCount}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setVisibleScrapCount(
+                      value === "auto" || value === "everything"
+                        ? value
+                        : (Number(value) as VisibleScrapCount),
+                    );
+                  }}
+                >
+                  <option value="auto">fill screen · {selectedTargetCount}</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                  <option value="300">300</option>
+                  <option value="500">500</option>
+                  <option value="everything">
+                    everything · {everythingScraps.length}
+                  </option>
+                </select>
+              </label>
               <button
-                key={kind}
                 type="button"
                 className="scrap-collage__filter"
-                aria-pressed={selectedKind === kind}
-                onClick={() => setSelectedKind(kind)}
+                onClick={() => setShuffleIndex((current) => current + 1)}
               >
-                {label}{" "}
-                <span className="scrap-collage__filter-count">
-                  {kindCounts[kind]}
-                </span>
+                shuffle
               </button>
-            ) : null,
-          )}
-          <button
-            type="button"
-            className="scrap-collage__filter scrap-collage__filter--everything"
-            aria-pressed={everythingMode}
-            onClick={() => setEverythingMode((current) => !current)}
-          >
-            everything{" "}
-            <span className="scrap-collage__filter-count">
-              {everythingScraps.length}
-            </span>
-          </button>
-          {tideAvailable && (
+              {tideAvailable && (
+                <button
+                  type="button"
+                  className="scrap-collage__filter scrap-collage__filter--tide"
+                  aria-pressed={!tidePaused}
+                  title="Pause or resume the tide (spacebar)"
+                  onClick={() => setTidePaused((current) => !current)}
+                >
+                  {tidePaused ? "tide paused" : "tide moving"}
+                </button>
+              )}
+              <button
+                type="button"
+                className="scrap-collage__filter scrap-collage__filter--collapse"
+                aria-label="Collapse scrap controls"
+                title="Collapse controls"
+                onClick={() => setControlsExpanded(false)}
+              >
+                ↓
+              </button>
+            </>
+          ) : (
             <button
               type="button"
-              className="scrap-collage__filter scrap-collage__filter--tide"
-              aria-pressed={!tidePaused}
-              title="Pause or resume the tide (spacebar)"
-              onClick={() => setTidePaused((current) => !current)}
+              className="scrap-collage__filter"
+              aria-expanded="false"
+              onClick={() => setControlsExpanded(true)}
             >
-              {tidePaused ? "◼ tide paused" : "◆ tide"}
+              controls ↑
             </button>
           )}
         </div>
