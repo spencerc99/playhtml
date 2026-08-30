@@ -1257,17 +1257,19 @@ describe("LocalEventStore storage stats", () => {
       { ...event("cursor-1", "cursor"), ts: 100 },
       { ...event("cursor-2", "cursor"), ts: 200 },
       { ...event("keyboard-1", "keyboard"), ts: 300 },
+      { ...scrapEvent("scrap-1"), ts: 400 },
     ]);
 
     const stats = await store.getStorageStats();
 
     expect(stats).toMatchObject({
-      totalEvents: 3,
+      totalEvents: 4,
       oldestEvent: 100,
-      newestEvent: 300,
-      countsByType: { cursor: 2, keyboard: 1 },
+      newestEvent: 400,
+      countsByType: { cursor: 2, keyboard: 1, element: 1 },
     });
     expect(stats.estimatedSizeBytes).toBeGreaterThan(0);
+    expect(stats.estimatedSizeBytesByType.element).toBeGreaterThan(0);
   });
 });
 

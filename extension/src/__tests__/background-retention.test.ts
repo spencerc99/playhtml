@@ -50,6 +50,7 @@ const storeMock = vi.hoisted(() => ({
   getStorageStats: vi.fn().mockResolvedValue({
     totalEvents: 2,
     estimatedSizeBytes: 512,
+    estimatedSizeBytesByType: { cursor: 320, keyboard: 192 },
     oldestEvent: 1_000,
     newestEvent: 2_000,
     countsByType: { cursor: 1, keyboard: 1 },
@@ -161,6 +162,7 @@ describe("background local retention", () => {
       stats: {
         totalEvents: 2,
         estimatedSizeBytes: 512,
+        estimatedSizeBytesByType: { cursor: 320, keyboard: 192 },
         localUsageBytes: 5120,
         oldestEvent: 1_000,
         newestEvent: 2_000,

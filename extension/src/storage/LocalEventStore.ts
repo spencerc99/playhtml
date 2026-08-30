@@ -85,6 +85,8 @@ export interface StorageStats {
   totalEvents: number;
   /** Approximate byte size (sum of JSON string lengths; ~1:1 for ASCII event data). Single stringify per event for perf. */
   estimatedSizeBytes: number;
+  /** Approximate serialized byte size grouped by collection event type. */
+  estimatedSizeBytesByType: Record<string, number>;
   oldestEvent: number;
   newestEvent: number;
   countsByType: Record<string, number>;
@@ -1600,12 +1602,12 @@ export class LocalEventStore {
       const tsIndex = store.index("ts");
       const typeIndex = store.index("type");
       const countsByType: Record<string, number> = {};
+      const sampleCountsByType: Record<string, number> = {};
+      const sampleSizesByType: Record<string, number> = {};
       let totalEvents = 0;
       let oldestEvent = 0;
       let newestEvent = 0;
-      let sampleCount = 0;
-      let sampleSizeBytes = 0;
-      let pendingRequests = 4 + COLLECTION_EVENT_TYPES.length;
+      let pendingRequests = 3 + COLLECTION_EVENT_TYPES.length * 2;
       let settled = false;
 
       const fail = (error: unknown) => {
@@ -1619,12 +1621,23 @@ export class LocalEventStore {
         if (pendingRequests > 0 || settled) return;
 
         settled = true;
+        const estimatedSizeBytesByType: Record<string, number> = {};
+        let estimatedSizeBytes = 0;
+        for (const eventType of COLLECTION_EVENT_TYPES) {
+          const typeSampleCount = sampleCountsByType[eventType] ?? 0;
+          const typeCount = countsByType[eventType] ?? 0;
+          if (typeSampleCount === 0 || typeCount === 0) continue;
+
+          const typeSizeBytes = Math.round(
+            ((sampleSizesByType[eventType] ?? 0) / typeSampleCount) * typeCount,
+          );
+          estimatedSizeBytesByType[eventType] = typeSizeBytes;
+          estimatedSizeBytes += typeSizeBytes;
+        }
         resolve({
           totalEvents,
-          estimatedSizeBytes:
-            sampleCount > 0
-              ? Math.round((sampleSizeBytes / sampleCount) * totalEvents)
-              : 0,
+          estimatedSizeBytes,
+          estimatedSizeBytesByType,
           oldestEvent,
           newestEvent,
           countsByType,
@@ -1656,20 +1669,6 @@ export class LocalEventStore {
       };
       newestRequest.onerror = () => fail(newestRequest.error);
 
-      const sampleRequest = store.openCursor();
-      sampleRequest.onsuccess = () => {
-        const cursor = sampleRequest.result;
-        if (cursor && sampleCount < STORAGE_SIZE_SAMPLE_LIMIT) {
-          sampleCount++;
-          sampleSizeBytes += JSON.stringify(cursor.value).length;
-          cursor.continue();
-          return;
-        }
-
-        complete();
-      };
-      sampleRequest.onerror = () => fail(sampleRequest.error);
-
       for (const eventType of COLLECTION_EVENT_TYPES) {
         const typeCountRequest = typeIndex.count(IDBKeyRange.only(eventType));
         typeCountRequest.onsuccess = () => {
@@ -1679,6 +1678,25 @@ export class LocalEventStore {
           complete();
         };
         typeCountRequest.onerror = () => fail(typeCountRequest.error);
+
+        const typeSampleRequest = typeIndex.openCursor(
+          IDBKeyRange.only(eventType),
+        );
+        typeSampleRequest.onsuccess = () => {
+          const cursor = typeSampleRequest.result;
+          const typeSampleCount = sampleCountsByType[eventType] ?? 0;
+          if (cursor && typeSampleCount < STORAGE_SIZE_SAMPLE_LIMIT) {
+            sampleCountsByType[eventType] = typeSampleCount + 1;
+            sampleSizesByType[eventType] =
+              (sampleSizesByType[eventType] ?? 0) +
+              JSON.stringify(cursor.value).length;
+            cursor.continue();
+            return;
+          }
+
+          complete();
+        };
+        typeSampleRequest.onerror = () => fail(typeSampleRequest.error);
       }
 
       transaction.onerror = () => fail(transaction.error);
