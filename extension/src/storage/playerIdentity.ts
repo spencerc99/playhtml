@@ -168,6 +168,31 @@ export async function getPublicPlayerIdentity(): Promise<PlayerIdentity | null> 
   return storedIdentity?.public ?? null;
 }
 
+/**
+ * Sign a payload with the stored ECDSA identity so a Worker endpoint can
+ * verify it came from this participant's own key (the participant id IS the
+ * hex-encoded public key, so the Worker needs no separate identity registry).
+ */
+export async function signPlayerIdentityPayload(
+  privateKey: JsonWebKey,
+  payload: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    privateKey,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    new TextEncoder().encode(payload),
+  );
+
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
 export async function getPlayerProfile(): Promise<PlayerProfile> {
   const storedIdentity = await getStoredPlayerIdentity();
   const result = await browser.storage.local.get(DISCOVERED_SITES_STORAGE_KEY);
