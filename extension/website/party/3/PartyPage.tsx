@@ -18,6 +18,11 @@ import {
   useUsers,
   withSharedState,
 } from "@playhtml/react";
+import { EmoteWheel } from "@extension/features/emotes/EmoteWheel";
+import { CURSOR_GESTURE_CSS } from "@extension/features/emotes/cursor-gestures.styles";
+import { EMOTES_CSS } from "@extension/features/emotes/emotes.styles";
+import { getEmote } from "@extension/features/emotes/emotes";
+import { emoteIconSvg } from "@extension/features/emotes/icons";
 import {
   BITE_REQUIREMENT,
   CAKE_CELL_COUNT,
@@ -49,6 +54,7 @@ const PARTY_EVENT = "playhtml-party-3-event";
 const POPPER_EVENT = "playhtml-party-3-popper";
 const BALLOON_POP_EVENT = "playhtml-party-3-balloon-pop";
 const CAKE_FINALE_EVENT = "playhtml-party-3-cake-finale";
+const PARTY_EMOTE_EVENT = "playhtml-party-3-emote";
 const PARTY_ROOM_WIDTH = 3200;
 const PARTY_ROOM_HEIGHT = 900;
 const PARTY_CHROME_HEIGHT = 88;
@@ -105,6 +111,13 @@ interface PartyEventPayload {
   effect?: PartyEffect;
 }
 
+interface PartyEmotePayload extends PartyIdentity {
+  id: string;
+  emoteId: string;
+  x: number;
+  y: number;
+}
+
 type SharedSetter<T> = (next: T | ((draft: T) => void)) => void;
 
 function createId(prefix: string) {
@@ -126,6 +139,47 @@ function getRandomPartyColor(currentColor: string) {
 
 function getColorName(color: string) {
   return COLOR_NAMES[color.toLowerCase()] ?? "this color";
+}
+
+function isPartyEmotePayload(payload: unknown): payload is PartyEmotePayload {
+  if (!payload || typeof payload !== "object") return false;
+  const candidate = payload as Partial<PartyEmotePayload>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.emoteId === "string" &&
+    Boolean(getEmote(candidate.emoteId)?.enabled) &&
+    typeof candidate.pid === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.color === "string" &&
+    typeof candidate.x === "number" &&
+    Number.isFinite(candidate.x) &&
+    typeof candidate.y === "number" &&
+    Number.isFinite(candidate.y)
+  );
+}
+
+function PartyEmoteBurst({ emote }: { emote: PartyEmotePayload }) {
+  const definition = getEmote(emote.emoteId);
+  if (!definition) return null;
+  return (
+    <span
+      className="party-emote-burst"
+      style={{ transform: `translate(${emote.x}px, ${emote.y}px)` }}
+      aria-label={`${emote.name}: ${definition.label}`}
+    >
+      <span
+        className={`party-emote-burst__gesture ${definition.keyframe}`}
+        style={{ color: emote.color }}
+      >
+        <i
+          dangerouslySetInnerHTML={{
+            __html: emoteIconSvg(emote.emoteId, 42, "currentColor", 1.8),
+          }}
+        />
+        <small>{emote.name}</small>
+      </span>
+    </span>
+  );
 }
 
 function clampCamera(value: number) {
@@ -1713,7 +1767,14 @@ function PartyRoom({
   const [hasMovedCamera, setHasMovedCamera] = useState(false);
   const [draggingRoom, setDraggingRoom] = useState(false);
   const [frame, setFrame] = useState({ width: 1280, height: 800 });
+  const [emoteWheel, setEmoteWheel] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [activeEmotes, setActiveEmotes] = useState<PartyEmotePayload[]>([]);
   const cameraStart = useRef({ x: 0, camera: 0 });
+  const lastRoomPointer = useRef({ x: 640, y: 420 });
+  const emoteTimers = useRef(new Map<string, number>());
+  const seenEmotes = useRef(new Set<string>());
 
   const roomScale = Math.max(
     0.78,
@@ -1806,6 +1867,16 @@ function PartyRoom({
   }, [camera, cameraEnabled, cameraTravel, draggingRoom]);
 
   useEffect(() => {
+    const rememberRoomPointer = (event: PointerEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!target?.closest("#party-3-room-canvas")) return;
+      lastRoomPointer.current = getRoomPoint(event.clientX, event.clientY);
+    };
+    window.addEventListener("pointermove", rememberRoomPointer);
+    return () => window.removeEventListener("pointermove", rememberRoomPointer);
+  }, []);
+
+  useEffect(() => {
     const onFocusIn = (event: FocusEvent) => {
       if (!cameraEnabled || !(event.target instanceof HTMLElement)) return;
       const target = event.target;
@@ -1842,13 +1913,41 @@ function PartyRoom({
     );
   }, []);
 
+  const showEmote = useCallback((emote: PartyEmotePayload) => {
+    if (seenEmotes.current.has(emote.id)) return;
+    const definition = getEmote(emote.emoteId);
+    if (!definition?.enabled) return;
+    seenEmotes.current.add(emote.id);
+    setActiveEmotes((currentEmotes) => [...currentEmotes, emote]);
+    const timer = window.setTimeout(() => {
+      seenEmotes.current.delete(emote.id);
+      emoteTimers.current.delete(emote.id);
+      setActiveEmotes((currentEmotes) =>
+        currentEmotes.filter((currentEmote) => currentEmote.id !== emote.id),
+      );
+    }, definition.durationMs + 180);
+    emoteTimers.current.set(emote.id, timer);
+  }, []);
+
   useEffect(
     () => () => {
       if (effectTimer.current) window.clearTimeout(effectTimer.current);
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      emoteTimers.current.forEach((timer) => window.clearTimeout(timer));
+      emoteTimers.current.clear();
+      seenEmotes.current.clear();
     },
     [],
   );
+
+  useEffect(() => {
+    const listenerId = registerPlayEventListener(PARTY_EMOTE_EVENT, {
+      onEvent: (payload: unknown) => {
+        if (isPartyEmotePayload(payload)) showEmote(payload);
+      },
+    });
+    return () => removePlayEventListener(PARTY_EMOTE_EVENT, listenerId);
+  }, [registerPlayEventListener, removePlayEventListener, showEmote]);
 
   useEffect(() => {
     const eventTypes = [
@@ -1901,15 +2000,36 @@ function PartyRoom({
     [dispatchPlayEvent, showEffect, showToast],
   );
 
+  const fireEmote = useCallback(
+    (emoteId: string) => {
+      const definition = getEmote(emoteId);
+      if (!definition?.enabled) return;
+      const payload: PartyEmotePayload = {
+        ...identity,
+        id: createId("emote"),
+        emoteId,
+        x: lastRoomPointer.current.x,
+        y: lastRoomPointer.current.y,
+      };
+      showEmote(payload);
+      dispatchPlayEvent({ type: PARTY_EMOTE_EVENT, eventPayload: payload });
+      setEmoteWheel(null);
+    },
+    [dispatchPlayEvent, identity, showEmote],
+  );
+
   const current = useRef({
     camera,
     cameraTravel,
     draggingRoom,
     effect,
+    activeEmotes,
+    emoteWheel,
     emitEvent,
     eventLine,
     roomHint,
     roomScale,
+    fireEmote,
     setSoundOn,
     soundOn,
     users,
@@ -1919,10 +2039,13 @@ function PartyRoom({
     cameraTravel,
     draggingRoom,
     effect,
+    activeEmotes,
+    emoteWheel,
     emitEvent,
     eventLine,
     roomHint,
     roomScale,
+    fireEmote,
     setSoundOn,
     soundOn,
     users,
@@ -1957,10 +2080,13 @@ function PartyRoom({
             cameraTravel,
             draggingRoom,
             effect,
+            activeEmotes,
+            emoteWheel,
             emitEvent,
             eventLine,
             roomHint,
             roomScale,
+            fireEmote,
             setSoundOn,
             soundOn,
             users,
@@ -1984,6 +2110,9 @@ function PartyRoom({
                 <div className="party-room__floor" />
                 <div className="party-room__baseboard" />
                 <div className="party-room__confetti" />
+                {activeEmotes.map((emote) => (
+                  <PartyEmoteBurst key={emote.id} emote={emote} />
+                ))}
                 <CanToggleElement>
                   {({ data: lamp }) => (
                     <button
@@ -2108,10 +2237,38 @@ function PartyRoom({
                   ✳ {eventLine}
                 </p>
               )}
+              <style>{`${EMOTES_CSS}\n${CURSOR_GESTURE_CSS}`}</style>
+              {emoteWheel && (
+                <EmoteWheel
+                  x={emoteWheel.x}
+                  y={emoteWheel.y}
+                  onSelect={fireEmote}
+                  onClose={() => setEmoteWheel(null)}
+                />
+              )}
               <footer className="party-footer" data-footer>
                 {roomHint && (
                   <span className="party-footer__location">{roomHint}</span>
                 )}
+                <button
+                  type="button"
+                  className="party-footer__emote"
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setEmoteWheel((currentWheel) =>
+                      currentWheel
+                        ? null
+                        : {
+                            x: rect.left + rect.width / 2,
+                            y: Math.max(118, rect.top - 94),
+                          },
+                    );
+                  }}
+                  aria-haspopup="menu"
+                  aria-expanded={Boolean(emoteWheel)}
+                >
+                  emote
+                </button>
                 <button
                   type="button"
                   onClick={() => setSoundOn(!soundOn)}
