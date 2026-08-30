@@ -692,6 +692,17 @@ export const TagTypeToElement: DefaultTagInitializers = {
 
       element.addEventListener("mouseenter", onMouseEnter);
       element.addEventListener("mouseleave", onMouseLeave);
+
+      // The mouseenter/mouseleave listeners die with the element, but the
+      // document-level keydown/keyup listeners don't — if the element is
+      // removed while hovered (SPA navigation, React unmount), mouseleave
+      // never fires and they'd otherwise leak for the life of the page.
+      return () => {
+        element.removeEventListener("mouseenter", onMouseEnter);
+        element.removeEventListener("mouseleave", onMouseLeave);
+        document.removeEventListener("keydown", onKeyDownUp);
+        document.removeEventListener("keyup", onKeyDownUp);
+      };
     },
     resetShortcut: "shiftKey",
   },
