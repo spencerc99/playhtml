@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   BITE_REQUIREMENT,
   canBiteCakeCell,
+  canPanPartyRoomWithPointer,
   createBalloonCreation,
   getBalloonKnots,
   getInflatedBalloonScale,
@@ -59,6 +60,12 @@ describe("cake erosion", () => {
 });
 
 describe("party labels and drift", () => {
+  it("reserves drag panning for touch input", () => {
+    expect(canPanPartyRoomWithPointer("touch")).toBe(true);
+    expect(canPanPartyRoomWithPointer("mouse")).toBe(false);
+    expect(canPanPartyRoomWithPointer("pen")).toBe(false);
+  });
+
   it("turns a timezone into the specified place label", () => {
     expect(getPlaceFromTimezone("America/Los_Angeles")).toBe("los angeles");
     expect(getPlaceFromTimezone("UTC")).toBe("utc");

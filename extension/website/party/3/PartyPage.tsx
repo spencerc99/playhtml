@@ -23,6 +23,7 @@ import {
   CAKE_CELL_COUNT,
   PARTY_COLORS,
   canBiteCakeCell,
+  canPanPartyRoomWithPointer,
   getCakeBitePosition,
   getCakeCell,
   getCurrentPlace,
@@ -1736,7 +1737,9 @@ function PartyRoom({
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
-      if (!cameraEnabled) return;
+      if (!cameraEnabled || !canPanPartyRoomWithPointer(event.pointerType)) {
+        return;
+      }
       const target = event.target instanceof HTMLElement ? event.target : null;
       if (
         target?.closest(

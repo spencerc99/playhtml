@@ -15,6 +15,10 @@ export const CAKE_COLUMN_COUNT = 10;
 export const CAKE_ROW_COUNT = 6;
 const BALLOON_INFLATION_PER_SECOND = 0.32;
 
+export function canPanPartyRoomWithPointer(pointerType: string): boolean {
+  return pointerType === "touch";
+}
+
 export interface PartyIdentity {
   pid: string;
   name: string;
