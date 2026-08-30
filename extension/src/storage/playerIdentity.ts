@@ -177,6 +177,12 @@ export async function getPublicPlayerIdentity(): Promise<PlayerIdentity | null> 
   return storedIdentity?.public ?? null;
 }
 
+/**
+ * Sign a payload with the stored ECDSA identity so a Worker endpoint can
+ * verify it came from this participant's own key (the participant id IS the
+ * hex-encoded public key, so the Worker needs no separate identity registry).
+ * Used for both participant color updates and quarantine-tape strip/rip.
+ */
 export async function signPlayerIdentityPayload(
   privateKey: JsonWebKey,
   payload: string,

@@ -3,6 +3,7 @@
 
 import { injectShadow } from "../../../entrypoints/content/inject-ui";
 import { getVerdict, postStrip, postRip } from "./quarantine-api";
+import { quarantineRipPayload, quarantineStripPayload } from "./quarantineProof";
 import {
   buildSharedDefs,
   buildTapeGroup,
@@ -13,6 +14,9 @@ import {
   TYPE_STYLE,
 } from "./tape-render";
 import { isFullyTorn, SET_THRESHOLD, type EdgePoint, type Strip, type TapeType } from "./types";
+
+/** Signs a quarantine-tape payload with the caller's own identity; null when no signable identity is available (write is skipped). */
+export type QuarantineSigner = (payload: string) => Promise<string | null>;
 
 const SVGNS = "http://www.w3.org/2000/svg";
 const SLASH_MIN_LEN = 36; // min drag distance (px) for a rip to count — keeps it heavy/intentional
@@ -25,6 +29,7 @@ export const QUARANTINE_TAPE_CSS = `
 
 export class QuarantineTapeManager {
   private readonly playerPid: string;
+  private readonly signPayload: QuarantineSigner;
 
   private host: HTMLElement | null = null;
   private overlay: SVGSVGElement | null = null;
@@ -47,8 +52,9 @@ export class QuarantineTapeManager {
 
   private destroyed = false;
 
-  constructor(playerPid: string) {
+  constructor(playerPid: string, signPayload: QuarantineSigner = async () => null) {
     this.playerPid = playerPid;
+    this.signPayload = signPayload;
   }
 
   async init(): Promise<() => void> {
@@ -284,14 +290,20 @@ export class QuarantineTapeManager {
     this.strips.push(optimistic);
     this.renderStrips();
 
-    const server = await postStrip({
-      url: location.href,
-      type,
-      a,
-      b,
-      seed,
-      createdBy: this.playerPid,
-    });
+    const signature = await this.signPayload(
+      quarantineStripPayload(this.playerPid, location.href, type, a, b, seed),
+    );
+    const server = signature
+      ? await postStrip({
+          url: location.href,
+          type,
+          a,
+          b,
+          seed,
+          createdBy: this.playerPid,
+          signature,
+        })
+      : null;
     if (this.destroyed) return;
 
     const idx = this.strips.findIndex((s) => s.id === tempId);
@@ -316,14 +328,20 @@ export class QuarantineTapeManager {
     strip.rips.push({ by: this.playerPid, at: Date.now(), pos });
     this.renderStrips();
 
-    const server = await postRip({
-      url: location.href,
-      stripId: strip.id,
-      by: this.playerPid,
-      pos,
-    });
+    const signature = await this.signPayload(
+      quarantineRipPayload(this.playerPid, location.href, strip.id, pos),
+    );
+    const server = signature
+      ? await postRip({
+          url: location.href,
+          stripId: strip.id,
+          by: this.playerPid,
+          pos,
+          signature,
+        })
+      : null;
     if (this.destroyed) return;
-    if (!server) return; // keep the optimistic rip; a broken fetch shouldn't undo intent
+    if (!server) return; // keep the optimistic rip; a broken fetch shouldn't undo intent (also covers the no-signature case)
 
     const idx = this.strips.findIndex((s) => s.id === server.id);
     if (idx === -1) return;

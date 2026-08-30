@@ -138,6 +138,9 @@ async function bootSocial(): Promise<() => void> {
         presence: playhtml.presence,
         playerColor: randomColor(),
         playerPid: "playground-" + Math.random().toString(36).slice(2, 8),
+        // No real ECDSA identity in the playground — features that need proof of
+        // ownership (e.g. quarantine-tape) no-op their writes here.
+        signPlayerPayload: async () => null,
       }),
     );
   } else {

@@ -10,6 +10,8 @@ export interface GlobalFeatureDeps {
   presence: PresenceAPI;
   playerColor: string;
   playerPid: string;
+  /** Signs a payload with the caller's own identity for endpoints that require proof of ownership (e.g. quarantine-tape). Resolves null when no signable identity is available. */
+  signPlayerPayload: (payload: string) => Promise<string | null>;
   inventory: InventoryAPI;
 }
 

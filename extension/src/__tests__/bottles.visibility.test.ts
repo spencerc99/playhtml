@@ -67,6 +67,7 @@ describe("bottles inventory visibility", () => {
       presence: {} as PresenceAPI,
       playerColor: "#4a9a8a",
       playerPid: "me",
+      signPlayerPayload: async () => null,
       inventory: inventoryManager.api,
     });
     const host = document.querySelector<HTMLElement>("#we-were-online-bottles");
