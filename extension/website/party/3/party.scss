@@ -261,9 +261,40 @@ h1 {
 .party-room__lamp {
   position: absolute;
   top: 30px;
-  left: 408px;
-  z-index: 3;
+  left: 90px;
+  z-index: 5;
   width: 104px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.party-room__lamp::before {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  width: 174px;
+  height: 130px;
+  background: radial-gradient(
+    ellipse at top,
+    rgba(245, 201, 98, 0.32),
+    transparent 70%
+  );
+  content: "";
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: opacity 180ms ease;
+}
+.party-room__lamp img {
+  position: relative;
+  width: 100%;
+  transition: filter 180ms ease;
+}
+.party-room__lamp.is-off::before {
+  opacity: 0;
+}
+.party-room__lamp.is-off img {
+  filter: grayscale(0.68) brightness(0.72);
 }
 .party-room__note {
   position: absolute;
@@ -318,8 +349,8 @@ h1 {
   transform: rotate(7deg);
 }
 .party-room__floor-plate {
-  top: 742px;
-  left: 2170px;
+  top: 770px;
+  left: 2525px;
   width: 54px;
   height: 34px;
   border-radius: 50%;

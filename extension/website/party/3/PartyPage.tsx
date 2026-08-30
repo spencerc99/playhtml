@@ -1793,12 +1793,24 @@ function PartyRoom({
                 <div className="party-room__floor" />
                 <div className="party-room__baseboard" />
                 <div className="party-room__confetti" />
-                <img
-                  className="party-room__lamp"
-                  src="/party/3/assets/noguchi-hanging-lamp.png"
-                  alt=""
-                  aria-hidden="true"
-                />
+                <CanToggleElement>
+                  {({ data: lamp }) => (
+                    <button
+                      id="party-3-lamp"
+                      className={`party-room__lamp ${lamp?.on ? "is-off" : ""}`}
+                      type="button"
+                      title="can-toggle · turn the lamp on or off"
+                      aria-label={lamp?.on ? "Turn lamp on" : "Turn lamp off"}
+                      aria-pressed={!lamp?.on}
+                    >
+                      <img
+                        src="/party/3/assets/noguchi-hanging-lamp.png"
+                        alt=""
+                        aria-hidden="true"
+                      />
+                    </button>
+                  )}
+                </CanToggleElement>
                 <Pennants />
                 <section className="party-hero" data-hero>
                   <p className="party-hero__date">August 2023–2026</p>
