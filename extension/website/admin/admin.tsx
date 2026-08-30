@@ -63,6 +63,7 @@ function InternalOffice() {
   const [approvalCohortId, setApprovalCohortId] = useState("closed-beta");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
+  const [addPersonError, setAddPersonError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -117,8 +118,16 @@ function InternalOffice() {
 
   const submitPerson = async (event: FormEvent) => {
     event.preventDefault();
+    setAddPersonError("");
+    let person;
+    try {
+      person = parsePersonInput(publicId, email);
+    } catch (inputError) {
+      setNotice("");
+      setAddPersonError(inputError instanceof Error ? inputError.message : String(inputError));
+      return;
+    }
     await mutate(async () => {
-      const person = parsePersonInput(publicId, email);
       const cohort = overview.cohorts.find((candidate) => candidate.id === cohortId);
       if (!cohort) throw new Error("Selected cohort is unavailable");
       await addPeople(token, cohortId, [person]);
@@ -218,13 +227,18 @@ function InternalOffice() {
             <div className="office-list-header"><div><span className="office-section-number">DESK 03</span><h3>Add person</h3></div></div>
             <form className="office-add office-add--person" onSubmit={submitPerson}>
               <label><span>Public ID</span><input aria-label="Public ID" value={publicId}
-                onChange={(event) => setPublicId(event.target.value)} placeholder="pk_…" spellCheck={false} autoComplete="off" /></label>
+                aria-invalid={Boolean(addPersonError)} aria-describedby={addPersonError ? "add-person-error" : undefined}
+                onChange={(event) => {
+                  setPublicId(event.target.value);
+                  setAddPersonError("");
+                }} placeholder="pk_…" spellCheck={false} autoComplete="off" /></label>
               <label><span>Email <small>optional</small></span><input aria-label="Email" type="email" value={email}
                 onChange={(event) => setEmail(event.target.value)} placeholder="tester@example.com" autoComplete="off" /></label>
               <label><span>Cohort</span><select aria-label="Cohort" value={cohortId} onChange={(event) => setCohortId(event.target.value)}>
                 {overview.cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
               </select></label>
               <button type="submit" disabled={!publicId.trim() || saving}>Add person</button>
+              {addPersonError && <p id="add-person-error" className="office-add__error" role="alert">{addPersonError}</p>}
               {notice && <p className="office-add__success" role="status">{notice}</p>}
             </form>
             <details className="office-bulk-import">

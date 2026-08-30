@@ -220,11 +220,19 @@ a {
     min-height: 38px;
   }
 
+  .office-add__error,
   .office-add__success {
     grid-column: 1 / -1;
     margin: 0;
-    color: #236859;
     font: 12px/1.4 "Lora", serif;
+  }
+
+  .office-add__error {
+    color: #9b4228;
+  }
+
+  .office-add__success {
+    color: #236859;
   }
 }
 
