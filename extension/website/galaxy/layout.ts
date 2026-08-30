@@ -51,6 +51,13 @@ export interface LayoutEdge {
   trunk: boolean;
   /** 0..1 traffic weight, driving line thickness. */
   weight: number;
+  /**
+   * 0..1 drainage for this level: the share of real link-journeys the road
+   * carries. This, not `trunk`, is the terrain's hierarchy — most trunk edges
+   * turn out to be low-flow, so a spanning-forest flag says little about
+   * whether a road is a river or a capillary.
+   */
+  flow01: number;
   /** Gentle perpendicular offsets so routes are not dead straight. */
   wobble: number[];
   restScale: number;
@@ -61,12 +68,12 @@ export interface LayoutEdge {
    */
   trunkPath: Array<{ x: number; y: number }> | null;
   /**
-   * Rank of this trunk edge by weight within the level, 0 (heaviest) to 1.
-   * A spanning forest marks roughly one trunk edge per node, which is far too
-   * many lines to read at rest, so the renderer shows only the top slice and
-   * fades the rest in with zoom.
+   * For a low-flow edge near a much busier corridor: that corridor's endpoints.
+   * The renderer pulls this edge's control point toward the corridor's midpoint
+   * so tributaries lean into the river instead of cutting across it. Null when
+   * the edge is itself a river, or when no busier corridor is close enough.
    */
-  trunkRank: number;
+  bundleToward: { a: LayoutNode; b: LayoutNode } | null;
 }
 
 export interface Layout {
@@ -189,25 +196,13 @@ export function seedLayout(
       restScale: 0.55 + wobbleRandom() * 1.5,
       internal: a.stop.cluster === b.stop.cluster,
       trunkPath: null,
-      trunkRank: 1,
+      flow01: edge.flow01,
+      bundleToward: null,
     };
   });
 
-  // Rank trunk edges by total traffic so the renderer can show a poster-sized
-  // number of primary lines and reveal the rest on zoom.
-  const trunkEdges = edges.filter((e) => e.trunk);
-  trunkEdges.sort((x, y) => {
-    const wx = x.jumps + x.back;
-    const wy = y.jumps + y.back;
-    if (wx !== wy) return wy - wx;
-    // Stable tie-break so ranks never depend on input ordering.
-    return x.a.stop.id < y.a.stop.id ? -1 : 1;
-  });
-  trunkEdges.forEach((edge, i) => {
-    edge.trunkRank = trunkEdges.length <= 1 ? 0 : i / (trunkEdges.length - 1);
-  });
-
   bundleFringe(edges);
+  bundleTributaries(edges);
 
   return { nodes, edges, byId, clusterCenters, extent, spread };
 }
@@ -268,6 +263,61 @@ function bundleFringe(edges: LayoutEdge[]): void {
       leaf.bundleCurl = curls[tendril] ?? 0;
       leaf.bundleDepth = depth;
     });
+  }
+}
+
+/** Flow above which a road counts as a river worth bundling toward. */
+const RIVER_FLOW = 0.62;
+/** Flow below which a road is a tributary that may be bent toward a river. */
+const TRIBUTARY_FLOW = 0.5;
+
+/**
+ * Lean each tributary toward a river it actually meets. Deliberately not
+ * force-directed edge bundling: for every low-flow edge we look only at the
+ * rivers incident to its own two endpoints, so the search is bounded by how
+ * many rivers touch a stop (a handful) rather than by the whole edge set.
+ *
+ * A tributary is only bent toward a river that shares an endpoint with it,
+ * which is what makes the result read as a confluence — the two lines already
+ * meet at a stop, and the curve just makes the join tangential instead of a
+ * hard crossing. Deterministic: the chosen river is the busiest, with an id
+ * tie-break, so the same graph always bundles the same way.
+ */
+function bundleTributaries(edges: LayoutEdge[]): void {
+  const riversAt = new Map<LayoutNode, LayoutEdge[]>();
+  for (const edge of edges) {
+    if (edge.flow01 < RIVER_FLOW) continue;
+    for (const end of [edge.a, edge.b]) {
+      const list = riversAt.get(end);
+      if (list) list.push(edge);
+      else riversAt.set(end, [edge]);
+    }
+  }
+
+  for (const edge of edges) {
+    if (edge.flow01 >= TRIBUTARY_FLOW) continue;
+    let best: LayoutEdge | null = null;
+    for (const end of [edge.a, edge.b]) {
+      for (const river of riversAt.get(end) ?? []) {
+        // Never bundle a road toward itself, nor toward a river running between
+        // the very same pair of stops.
+        if (river === edge) continue;
+        if (
+          (river.a === edge.a && river.b === edge.b) ||
+          (river.a === edge.b && river.b === edge.a)
+        ) {
+          continue;
+        }
+        if (
+          !best ||
+          river.flow01 > best.flow01 ||
+          (river.flow01 === best.flow01 && river.a.stop.id < best.a.stop.id)
+        ) {
+          best = river;
+        }
+      }
+    }
+    edge.bundleToward = best ? { a: best.a, b: best.b } : null;
   }
 }
 

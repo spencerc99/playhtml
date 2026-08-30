@@ -933,18 +933,6 @@ const TransitMap = (): React.ReactElement => {
         ? new Set(activeRoute.legs.map((l) => `${l.from}>${l.to}`))
         : null;
 
-      // Translate the tier setting into a rank cut that targets a poster-sized
-      // number of lines. A pure percentage yields hundreds at the ungrouped
-      // levels and a handful at the grouped ones; anchoring on a line count
-      // keeps every level in the readable range.
-      const trunkCount = layout.edges.reduce(
-        (n, e) => (e.trunk ? n + 1 : n),
-        0,
-      );
-      const targetLines = Math.round(28 + opts.trunkTier * 340);
-      const trunkCut =
-        trunkCount > 0 ? Math.min(1, targetLines / trunkCount) : 1;
-
       // Roads a metro line already draws are not drawn again underneath it:
       // the line IS that road's rendering, so a doubled stroke would only
       // fatten and desaturate the colour.
@@ -984,54 +972,55 @@ const TransitMap = (): React.ReactElement => {
         const muted = routeSet !== null && !onRoute;
         const focusDim = Math.min(dimmedBy(aId), dimmedBy(bId));
 
-        // Trunk tiers: only the heaviest slice is drawn at full strength when
-        // zoomed out. A spanning forest marks roughly one trunk edge per node,
-        // so without this the map is thousands of lines instead of dozens.
-        let tierAlpha = 1;
-        // A highlighted route or the focused stop's own roads always draw.
-        if (edge.trunk && !onRoute && !touchesFocus) {
-          // Zooming in widens the visible slice, so detail arrives on approach.
-          // Widen the slice on zoom, but gently: the viewport already shows
-          // fewer stops as you close in, so a steep ramp re-crowds the view.
-          const visible = Math.min(
-            1,
-            trunkCut * (1 + Math.max(0, camera.scale - 0.6) * 0.6),
-          );
-          if (edge.trunkRank > visible) {
-            // Just past the cut fades rather than popping.
-            const over = (edge.trunkRank - visible) / 0.16;
-            if (over >= 1) continue;
-            tierAlpha = 1 - over;
-          }
-        }
+        // Drainage drives the hierarchy. Raising flow01 to a steep power is
+        // what separates rivers from capillaries: the export's flow01 is
+        // tightly bunched around 0.36, so a linear ramp would draw eleven
+        // thousand near-identical roads. The exponent collapses that bunching
+        // toward zero and leaves only the genuine corridors with weight.
+        //
+        // `trunk` is deliberately ignored here. It marks a spanning forest, and
+        // the vast majority of trunk edges turn out to be low-flow, so treating
+        // it as hierarchy contradicts the terrain the traffic actually shows.
+        const river = Math.pow(edge.flow01, opts.flowExponent);
 
-        // Mesh is a whisper-faint underlay; trunk carries the map.
-        const baseAlpha =
-          (edge.trunk
-            ? 0.32 + edge.weight * 0.45
-            : opts.meshOpacity * (0.5 + edge.weight * 0.5)) * tierAlpha;
+        // Rivers are the map's structure and must be legible on their own
+        // terms, so the mesh-opacity control scales only the capillary floor —
+        // letting it scale the whole ramp would dim the corridors along with
+        // the noise, which is the opposite of showing drainage.
+        // A highlighted route runs at full river strength whatever the zoom, so
+        // the journey reads as a course down a tributary and into the main flow.
+        const baseAlpha = 0.05 + opts.meshOpacity * 0.5 + river * 0.9;
         const alpha =
-          (onRoute ? 0.95 : baseAlpha) *
+          (onRoute ? 0.97 : baseAlpha) *
           (muted ? 0.14 : 1) *
           (touchesFocus ? 1.9 : 1) *
           focusDim *
           reveal;
         if (alpha < 0.012) continue;
 
+        // Cluster tint says which region a road belongs to; drainage says how
+        // much it carries. Fade the tint out as flow rises so the big corridors
+        // converge on bone — a river is terrain, not a regional detail, and
+        // leaving it tinted makes it compete with the metro lines' colours.
         const tint = opts.clusterHues
           ? edge.internal
             ? clusterTint(edge.a.stop.cluster)
             : NEUTRAL_LINE
           : NEUTRAL_LINE;
-        const color = onRoute ? ROUTE_COLOR : `${tint[0]}, ${tint[1]}, ${tint[2]}`;
+        const toBone = Math.min(1, river * 1.4);
+        const color = onRoute
+          ? ROUTE_COLOR
+          : `${Math.round(tint[0] + (238 - tint[0]) * toBone)}, ` +
+            `${Math.round(tint[1] + (233 - tint[1]) * toBone)}, ` +
+            `${Math.round(tint[2] + (219 - tint[2]) * toBone)}`;
 
-        // Mutual routes read a touch heavier than one-way ones.
+        // Hairline to river. The floor is sub-pixel on purpose: a capillary
+        // should be a suggestion of a road, not a drawn one.
         const mutual = edge.jumps > 0 && edge.back > 0;
-        const widthBase = edge.trunk
-          ? 0.9 + edge.weight * 2.2
-          : 0.32 + edge.weight * 0.8;
+        const widthBase = 0.16 + river * 3.84;
         const lineWidth =
-          ((onRoute ? 3.2 : widthBase) * (mutual ? 1.18 : 1)) /
+          ((onRoute ? Math.max(3.2, widthBase) : widthBase) *
+            (mutual ? 1.18 : 1)) /
           Math.sqrt(camera.scale);
 
         const oneWay = !mutual && opts.directionTapers;
@@ -1062,7 +1051,10 @@ const TransitMap = (): React.ReactElement => {
         }
         ctx.beginPath();
 
-        if (edge.trunk && edge.trunkPath && edge.trunkPath.length === 3) {
+        // Octilinear elbows are a poster device for major corridors. Most trunk
+        // edges are low-flow, so applying elbows by `trunk` would impose a grid
+        // on the whole capillary bed; restrict them to roads that read as rivers.
+        if (river > 0.4 && edge.trunkPath && edge.trunkPath.length === 3) {
           // Rounded elbow so octilinear trunks read as drawn lines, not corners.
           const [p0, p1, p2] = edge.trunkPath;
           if (p0 && p1 && p2) {
@@ -1086,14 +1078,35 @@ const TransitMap = (): React.ReactElement => {
         } else {
           const dx = pb.x - pa.x;
           const dy = pb.y - pa.y;
+          // Lean a tributary toward the river it joins. The pull is applied to
+          // the intermediate control points only — the endpoints stay pinned to
+          // their stops — so the road still starts and ends where it must, but
+          // approaches tangentially instead of cutting across the corridor.
+          let pullX = 0;
+          let pullY = 0;
+          const toward = edge.bundleToward;
+          if (opts.bundleTributaries && toward) {
+            const ra = posOf(toward.a);
+            const rb = posOf(toward.b);
+            const midX = (ra.x + rb.x) / 2;
+            const midY = (ra.y + rb.y) / 2;
+            // Weaker for roads that are themselves fairly busy, so the bending
+            // fades out rather than snapping on at the threshold.
+            const strength = 0.18 * (1 - edge.flow01 / 0.5);
+            pullX = (midX - (pa.x + pb.x) / 2) * strength;
+            pullY = (midY - (pa.y + pb.y) / 2) * strength;
+          }
           ctx.moveTo(pa.x, pa.y);
           let prevX = pa.x;
           let prevY = pa.y;
           for (let i = 0; i < edge.wobble.length; i++) {
             const t = (i + 1) / (edge.wobble.length + 1);
             const off = edge.wobble[i] ?? 0;
-            const px = pa.x + dx * t - dy * off;
-            const py = pa.y + dy * t + dx * off;
+            // Pull hardest mid-span and not at all at the ends: sin gives that
+            // shape without a branch, keeping the join smooth.
+            const bend = Math.sin(t * Math.PI);
+            const px = pa.x + dx * t - dy * off + pullX * bend;
+            const py = pa.y + dy * t + dx * off + pullY * bend;
             ctx.quadraticCurveTo(prevX, prevY, (prevX + px) / 2, (prevY + py) / 2);
             prevX = px;
             prevY = py;
@@ -2264,16 +2277,32 @@ const TransitMap = (): React.ReactElement => {
             </label>
 
             <label className="galaxy-field">
-              <span>trunk tier</span>
+              <span>flow contrast</span>
               <input
                 type="range"
-                min={0.02}
-                max={1}
-                step={0.01}
-                value={settings.trunkTier}
-                onChange={(e) => update("trunkTier", Number(e.target.value))}
+                min={0.5}
+                max={5}
+                step={0.1}
+                value={settings.flowExponent}
+                onChange={(e) => update("flowExponent", Number(e.target.value))}
               />
-              <em>~{Math.round(28 + settings.trunkTier * 340)} lines</em>
+              <em>
+                {settings.flowExponent.toFixed(1)}
+                {settings.flowExponent <= 1
+                  ? " — flat"
+                  : settings.flowExponent >= 3.5
+                    ? " — rivers only"
+                    : ""}
+              </em>
+            </label>
+
+            <label className="galaxy-field galaxy-field--row">
+              <input
+                type="checkbox"
+                checked={settings.bundleTributaries}
+                onChange={(e) => update("bundleTributaries", e.target.checked)}
+              />
+              <span>bundle tributaries</span>
             </label>
 
             <label className="galaxy-field">

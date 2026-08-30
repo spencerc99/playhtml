@@ -33,6 +33,18 @@ export interface GraphEdge {
   trunk?: boolean;
   /** Absent in crawl exports, which have no per-route participant counts. */
   participants?: number;
+  /**
+   * Raw link-journeys travelling this road. Drainage: how much of the map's
+   * traffic the road actually carries, which is what makes some roads rivers
+   * and most of them capillaries.
+   */
+  flow?: number;
+  /** `flow` log-normalized to 0..1 across the export. */
+  flow01?: number;
+}
+
+export function edgeFlow(edge: GraphEdge): number {
+  return edge.flow ?? 0;
 }
 
 export function edgeBack(edge: GraphEdge): number {
@@ -135,6 +147,18 @@ export interface GroupEdge {
   back: number;
   /** True when any underlying route is on the backbone. */
   trunk: boolean;
+  /**
+   * Summed journeys across every underlying route. Drainage is additive: when
+   * grouping merges stops, the roads between them merge into one channel
+   * carrying the combined traffic, exactly as tributaries do.
+   */
+  flow: number;
+  /**
+   * `flow` log-normalized to 0..1 within this level. Recomputed per level
+   * rather than inherited, because summing changes the maximum — reusing the
+   * export's normalization would wash the grouped levels out.
+   */
+  flow01: number;
 }
 
 export interface GroupLevel {
@@ -260,6 +284,7 @@ function materialize(
       existing.jumps += forward;
       existing.back += reverse;
       existing.trunk = existing.trunk || isTrunk(edge);
+      existing.flow += edgeFlow(edge);
     } else {
       edgeMap.set(key, {
         source: lo,
@@ -267,11 +292,24 @@ function materialize(
         jumps: forward,
         back: reverse,
         trunk: isTrunk(edge),
+        flow: edgeFlow(edge),
+        flow01: 0,
       });
     }
   }
 
-  return { stops, edges: [...edgeMap.values()], stopOf };
+  // Re-normalize drainage within the level. Log scale because flow spans four
+  // orders of magnitude: linear would leave everything but the single busiest
+  // corridor at zero width.
+  const edges = [...edgeMap.values()];
+  let maxFlow = 0;
+  for (const edge of edges) if (edge.flow > maxFlow) maxFlow = edge.flow;
+  const logMax = Math.log1p(maxFlow);
+  for (const edge of edges) {
+    edge.flow01 = logMax > 0 ? Math.log1p(edge.flow) / logMax : 0;
+  }
+
+  return { stops, edges, stopOf };
 }
 
 /**

@@ -31,12 +31,6 @@ export interface MapSettings {
    * and/or last hop.
    */
   routeMode: "streets" | "transit";
-  /**
-   * Fraction of trunk edges shown at full strength at rest, heaviest first.
-   * A spanning forest marks about one trunk edge per node, so showing them all
-   * buries the map; the remainder fades in as you zoom.
-   */
-  trunkTier: number;
   /** Draw the named metro lines over the road network. */
   showLines: boolean;
   /** Whether the lines legend is expanded. */
@@ -48,6 +42,14 @@ export interface MapSettings {
    * arrival; "local" also names every intermediate station of each ride.
    */
   routeDetail: "express" | "local";
+  /**
+   * Steepness of the drainage ramp. Width and alpha follow flow01 raised to
+   * this power, so a higher value pushes more of the map into whisper-thin
+   * capillaries and reserves weight for the true rivers.
+   */
+  flowExponent: number;
+  /** Curve tributaries toward the river they join. */
+  bundleTributaries: boolean;
 }
 
 export const DEFAULT_SETTINGS: MapSettings = {
@@ -63,12 +65,13 @@ export const DEFAULT_SETTINGS: MapSettings = {
   nodeScale: 1,
   directionTapers: true,
   seedFocusHops: 0,
-  trunkTier: 0.15,
   routeMode: "streets",
   showLines: true,
   legendOpen: false,
   focusedLine: null,
   routeDetail: "express",
+  flowExponent: 3.2,
+  bundleTributaries: true,
 };
 
 const STORAGE_KEY = "galaxy-map-settings-v1";
@@ -122,9 +125,6 @@ export function loadSettings(): MapSettings {
     if (parsed.routeMode === "streets" || parsed.routeMode === "transit") {
       next.routeMode = parsed.routeMode;
     }
-    if (typeof parsed.trunkTier === "number") {
-      next.trunkTier = clamp(parsed.trunkTier, 0.02, 1);
-    }
     if (typeof parsed.showLines === "boolean") next.showLines = parsed.showLines;
     if (typeof parsed.legendOpen === "boolean") next.legendOpen = parsed.legendOpen;
     if (typeof parsed.focusedLine === "string" || parsed.focusedLine === null) {
@@ -132,6 +132,12 @@ export function loadSettings(): MapSettings {
     }
     if (parsed.routeDetail === "express" || parsed.routeDetail === "local") {
       next.routeDetail = parsed.routeDetail;
+    }
+    if (typeof parsed.flowExponent === "number") {
+      next.flowExponent = clamp(parsed.flowExponent, 0.5, 5);
+    }
+    if (typeof parsed.bundleTributaries === "boolean") {
+      next.bundleTributaries = parsed.bundleTributaries;
     }
     return next;
   } catch {
