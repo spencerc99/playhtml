@@ -207,40 +207,16 @@ interface Point {
 }
 
 /**
- * Offset a polyline sideways so lines sharing a span run parallel rather than
- * on top of each other. Each vertex moves along the bisector of its two
- * adjacent segment normals, which keeps the offset width even around corners.
- */
-function offsetPolyline(points: readonly Point[], offset: number): Point[] {
-  if (offset === 0 || points.length < 2) return points.map((p) => ({ ...p }));
-  const normals: Point[] = [];
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    if (!a || !b) continue;
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.max(1e-6, Math.hypot(dx, dy));
-    normals.push({ x: -dy / len, y: dx / len });
-  }
-  return points.map((point, i) => {
-    const before = normals[i - 1];
-    const after = normals[i];
-    // Endpoints have only one adjacent segment; interior vertices average the
-    // two, which is the bisector direction for the shallow angles drawn here.
-    const nx = ((before?.x ?? after?.x ?? 0) + (after?.x ?? before?.x ?? 0)) / 2;
-    const ny = ((before?.y ?? after?.y ?? 0) + (after?.y ?? before?.y ?? 0)) / 2;
-    const len = Math.max(1e-6, Math.hypot(nx, ny));
-    return {
-      x: point.x + (nx / len) * offset,
-      y: point.y + (ny / len) * offset,
-    };
-  });
-}
-
-/**
- * Stroke a polyline with rounded corners, the metro-map convention: straight
- * runs joined by short arcs rather than hard vertices.
+ * Stroke a polyline with circle-arc corners.
+ *
+ * The arc matters, and a quadratic bezier will not do: the parallel offset of a
+ * circular arc is another circular arc with the same centre, so two lines
+ * rounding the same corner at different offsets stay exactly parallel through
+ * the turn. Offset beziers are not beziers, so with quadratics the gap between
+ * ribbons pinches and swells mid-corner and the bundle visibly wobbles.
+ *
+ * `arcTo` fits the largest circle tangent to both segments up to `radius`, so
+ * the corner radius is clamped per vertex and never overruns a short span.
  */
 function strokeRounded(
   ctx: CanvasRenderingContext2D,
@@ -262,19 +238,23 @@ function strokeRounded(
     const current = points[i];
     const next = points[i + 1];
     if (!previous || !current || !next) continue;
-    const inLen = Math.max(1e-6, Math.hypot(current.x - previous.x, current.y - previous.y));
-    const outLen = Math.max(1e-6, Math.hypot(next.x - current.x, next.y - current.y));
-    const r = Math.min(radius, inLen * 0.45, outLen * 0.45);
-    ctx.lineTo(
-      current.x - ((current.x - previous.x) / inLen) * r,
-      current.y - ((current.y - previous.y) / inLen) * r,
-    );
-    ctx.quadraticCurveTo(
-      current.x,
-      current.y,
-      current.x + ((next.x - current.x) / outLen) * r,
-      current.y + ((next.y - current.y) / outLen) * r,
-    );
+    const inX = current.x - previous.x;
+    const inY = current.y - previous.y;
+    const outX = next.x - current.x;
+    const outY = next.y - current.y;
+    const inLen = Math.hypot(inX, inY);
+    const outLen = Math.hypot(outX, outY);
+    // Degenerate or near-collinear corners have no arc to draw, and asking
+    // arcTo for one makes it project a tangent point far off the polyline —
+    // which renders as a stray ray shooting across the map.
+    const cross = Math.abs(inX * outY - inY * outX) / Math.max(1e-9, inLen * outLen);
+    if (inLen < 1e-6 || outLen < 1e-6 || cross < 1e-3) {
+      ctx.lineTo(current.x, current.y);
+      continue;
+    }
+    // Half the shorter span, so adjacent corners cannot eat into each other.
+    const r = Math.min(radius, inLen * 0.5, outLen * 0.5);
+    ctx.arcTo(current.x, current.y, next.x, next.y, r);
   }
   const last = points[points.length - 1];
   if (last) ctx.lineTo(last.x, last.y);
@@ -304,29 +284,42 @@ function drawLineTick(
   ctx.stroke();
 }
 
-/** Segmented ring: one arc per line calling at an interchange station. */
-function drawInterchangeRing(
+/**
+ * The transit-map interchange glyph: one white capsule laid ACROSS the parallel
+ * ribbons, rotated to the corridor direction, so a single mark says "these
+ * lines all call here". Drawing a separate marker per line instead turns a busy
+ * junction into a pile of dots and hides the fact that it is one station.
+ *
+ * `span` is the distance between the outermost ribbons at this stop; the
+ * capsule is grown a little past them so it visibly caps the bundle.
+ */
+function drawStationBar(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  radius: number,
-  colors: ReadonlyArray<readonly [number, number, number]>,
-  width: number,
+  angle: number,
+  span: number,
+  thickness: number,
   alpha: number,
 ): void {
-  const slice = (Math.PI * 2) / colors.length;
-  // A gap between arcs is what makes the ring read as segmented rather than as
-  // one muddy circle; keep it proportionally smaller as the count grows.
-  const gap = Math.min(slice * 0.18, 0.24);
-  ctx.lineWidth = width;
-  ctx.lineCap = "butt";
-  colors.forEach((rgb, i) => {
-    ctx.beginPath();
-    ctx.arc(x, y, radius, i * slice + gap / 2, (i + 1) * slice - gap / 2);
-    ctx.strokeStyle = lineRgba(rgb, alpha);
-    ctx.stroke();
-  });
+  // Perpendicular to the corridor: the bar crosses the ribbons, not along them.
+  const nx = -Math.sin(angle);
+  const ny = Math.cos(angle);
+  const half = span / 2;
+  ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x - nx * half, y - ny * half);
+  ctx.lineTo(x + nx * half, y + ny * half);
+  // Dark backing first so the capsule reads against the ribbons it covers.
+  ctx.lineWidth = thickness + 1.6;
+  ctx.strokeStyle = "rgba(16, 15, 12, 0.9)";
+  ctx.stroke();
+  ctx.lineWidth = thickness;
+  ctx.strokeStyle = "rgba(244, 240, 228, 0.96)";
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -1123,16 +1116,29 @@ const TransitMap = (): React.ReactElement => {
       const litLine = litLineRef.current;
       /** Where each line's stops actually landed, reused by the tick pass. */
       const linePoints = new Map<string, Point[]>();
+      /** The same stops shifted onto the line's parallel slot, for station glyphs. */
+      const offsetPoints = new Map<string, Point[]>();
+      /** The stops each line actually drew, which omits any hidden fringe. */
+      const drawnLineStops = new Map<string, string[]>();
       if (linesOn) {
         for (const entry of lines.resolved) {
           const points: Point[] = [];
+          // Kept in step with `points`, because a line may skip stops the map
+          // is hiding and the tick and station passes index the two together.
+          const drawnStops: string[] = [];
           for (const stopId of entry.stops) {
             const node = layout.byId.get(stopId);
             if (!node) continue;
+            // A line calling at a stop the map is currently hiding must not
+            // draw out to it: the fringe is bundled far outside the framed
+            // area, so such a span renders as a ray shooting off the map.
+            if (!rumorVisible(node)) continue;
             points.push(posOf(node));
+            drawnStops.push(stopId);
           }
           if (points.length < 2) continue;
           linePoints.set(entry.line.id, points);
+          drawnLineStops.set(entry.line.id, drawnStops);
 
           // Cull off-screen lines by their bounding box, so a zoomed-in view
           // pays for only the lines it can see.
@@ -1175,22 +1181,65 @@ const TransitMap = (): React.ReactElement => {
             ((lit ? 3.4 : 1.5 + restStrength * 0.9) / Math.sqrt(camera.scale)) *
             opts.nodeScale;
 
-          // Each span carries its own offset, so a shared run fans apart while
-          // the rest of the line stays on its road. Draw span by span and let
-          // the round joins knit them together.
-          for (let i = 0; i + 1 < points.length; i++) {
-            const a = points[i];
-            const b = points[i + 1];
-            const fromId = entry.stops[i];
-            const toId = entry.stops[i + 1];
-            if (!a || !b || fromId === undefined || toId === undefined) continue;
-            const bucket = lines.segments.get(segmentKey(fromId, toId));
-            const own = bucket?.find((s) => s.lineId === entry.line.id);
-            const shifted = offsetPolyline([a, b], (own?.offset ?? 0) / camera.scale);
-            ctx.strokeStyle = lineRgba(entry.rgb, Math.min(alpha, 0.95));
-            ctx.lineWidth = width;
-            strokeRounded(ctx, shifted, 12 / camera.scale);
+          // Build ONE offset polyline for the whole line and stroke it once, so
+          // the arc joins actually happen at the corners between spans. Drawing
+          // span by span would cap each span separately and never round the
+          // junction, which is what makes a bundle look like scattered sticks
+          // rather than continuous ribbons.
+          //
+          // Each vertex takes the offset of the span it leads into, so a line
+          // steps to its new slot at the stop where its companions change —
+          // which is where a real map moves it too.
+          const shifted: Point[] = [];
+          for (let i = 0; i < points.length; i++) {
+            const here = points[i];
+            if (!here) continue;
+            // The span this vertex belongs to: the outgoing one, except at the
+            // final stop, which takes the incoming span's offset.
+            const spanIndex = Math.min(i, points.length - 2);
+            const fromId = drawnStops[spanIndex];
+            const toId = drawnStops[spanIndex + 1];
+            let offset = 0;
+            if (fromId !== undefined && toId !== undefined) {
+              const bucket = lines.segments.get(segmentKey(fromId, toId));
+              offset = bucket?.find((s) => s.lineId === entry.line.id)?.offset ?? 0;
+            }
+            const previous = points[i - 1];
+            const next = points[i + 1];
+            // Offset along the bisector of the adjacent spans, so the ribbon
+            // keeps a constant perpendicular distance through the corner.
+            const dx = (next?.x ?? here.x) - (previous?.x ?? here.x);
+            const dy = (next?.y ?? here.y) - (previous?.y ?? here.y);
+            const len = Math.hypot(dx, dy);
+            // Coincident neighbours give no direction to offset along; nudging
+            // by an arbitrary normal there throws the vertex off the map.
+            if (len < 1e-6) {
+              shifted.push({ x: here.x, y: here.y });
+              continue;
+            }
+            // The gap is a screen-space quantity, so it divides by scale — but
+            // when zoomed far out that inflates into huge world distances and
+            // the ribbon flies off the map. Cap it against the span it belongs
+            // to, so an offset can never dominate the geometry it decorates.
+            const spanLength = Math.max(
+              1e-6,
+              Math.hypot(
+                (next?.x ?? here.x) - (previous?.x ?? here.x),
+                (next?.y ?? here.y) - (previous?.y ?? here.y),
+              ),
+            );
+            const scaled =
+              Math.sign(offset) *
+              Math.min(Math.abs(offset) / camera.scale, spanLength * 0.4);
+            shifted.push({
+              x: here.x + (-dy / len) * scaled,
+              y: here.y + (dx / len) * scaled,
+            });
           }
+          offsetPoints.set(entry.line.id, shifted);
+          ctx.strokeStyle = lineRgba(entry.rgb, Math.min(alpha, 0.95));
+          ctx.lineWidth = width;
+          strokeRounded(ctx, shifted, 14 / camera.scale);
         }
 
         // --- Station ticks and interchange rings ---------------------------
@@ -1200,11 +1249,15 @@ const TransitMap = (): React.ReactElement => {
           const dimmed = litLine !== null && litLine !== entry.line.id;
           const alpha = (dimmed ? 0.1 : 0.9) * reveal;
           if (alpha < 0.02) continue;
-          points.forEach((point, i) => {
-            const stopId = entry.stops[i];
+          // A single-line stop keeps its coloured tick, drawn on the ribbon's
+          // own offset position rather than the bare stop, so the tick sits on
+          // the line instead of floating beside it.
+          const shifted = offsetPoints.get(entry.line.id) ?? points;
+          const drawn = drawnLineStops.get(entry.line.id) ?? entry.stops;
+          shifted.forEach((point, i) => {
+            const stopId = drawn[i];
             if (stopId === undefined) return;
-            // Interchanges get one shared segmented ring instead of a tick per
-            // line, so their marker does not turn into a pile of bars.
+            // Multi-line stops are capped by one shared bar instead.
             if (lines.interchangeStops.has(stopId)) return;
             if (
               point.x < viewMinX ||
@@ -1214,7 +1267,7 @@ const TransitMap = (): React.ReactElement => {
             ) {
               return;
             }
-            const neighbor = points[i + 1] ?? points[i - 1];
+            const neighbor = shifted[i + 1] ?? shifted[i - 1];
             if (!neighbor) return;
             const angle = Math.atan2(neighbor.y - point.y, neighbor.x - point.x);
             drawLineTick(
@@ -1229,6 +1282,7 @@ const TransitMap = (): React.ReactElement => {
           });
         }
 
+        // --- Interchange station bars --------------------------------------
         for (const stopId of lines.interchangeStops) {
           const node = layout.byId.get(stopId);
           if (!node) continue;
@@ -1237,22 +1291,60 @@ const TransitMap = (): React.ReactElement => {
             continue;
           }
           const ids = lines.linesAtStop.get(stopId) ?? [];
-          const colors = ids
-            .map((id) => lines.byId.get(id)?.rgb)
-            .filter((rgb): rgb is readonly [number, number, number] => rgb !== undefined);
-          if (colors.length === 0) continue;
+          if (ids.length === 0) continue;
           const dimmed = litLine !== null && !ids.includes(litLine);
-          const radius =
-            (stopRadius(node, opts.nodeScale) + 4.5) /
-            Math.sqrt(Math.max(camera.scale, 0.32));
-          drawInterchangeRing(
+
+          // Measure the bundle from where the ribbons actually are at this
+          // stop: project each line's offset position onto the corridor's
+          // normal, and span the extremes. Derived from the drawn geometry, so
+          // the bar always matches whatever the ordering produced.
+          let angle: number | null = null;
+          for (const id of ids) {
+            const entry = lines.byId.get(id);
+            // Prefer the drawn ribbon, but fall back to the line's raw stop
+            // positions: a line culled from this frame has no offset polyline,
+            // and skipping it would leave a busy station with no bar at all.
+            const shifted = offsetPoints.get(id) ?? linePoints.get(id);
+            if (!entry || !shifted) continue;
+            const at = (drawnLineStops.get(id) ?? entry.stops).indexOf(stopId);
+            if (at < 0) continue;
+            const here = shifted[at];
+            const neighbor = shifted[at + 1] ?? shifted[at - 1];
+            if (!here || !neighbor) continue;
+            angle = Math.atan2(neighbor.y - here.y, neighbor.x - here.x);
+            break;
+          }
+          if (angle === null) continue;
+          const nx = -Math.sin(angle);
+          const ny = Math.cos(angle);
+          let lo = 0;
+          let hi = 0;
+          for (const id of ids) {
+            const entry = lines.byId.get(id);
+            const shifted = offsetPoints.get(id) ?? linePoints.get(id);
+            if (!entry || !shifted) continue;
+            const at = (drawnLineStops.get(id) ?? entry.stops).indexOf(stopId);
+            const here = at >= 0 ? shifted[at] : undefined;
+            if (!here) continue;
+            const along = (here.x - p.x) * nx + (here.y - p.y) * ny;
+            if (along < lo) lo = along;
+            if (along > hi) hi = along;
+          }
+          // Lines can meet at a station without sharing track on either side,
+          // in which case the measured bundle is zero wide. The bar still has
+          // to read as a station, so give it a floor.
+          const bundle = Math.max(hi - lo, 6 / Math.sqrt(camera.scale));
+          const centreX = p.x + nx * ((lo + hi) / 2);
+          const centreY = p.y + ny * ((lo + hi) / 2);
+          const cap = 7 / Math.sqrt(camera.scale);
+          drawStationBar(
             ctx,
-            p.x,
-            p.y,
-            radius,
-            colors,
-            2.2 / Math.sqrt(camera.scale),
-            (dimmed ? 0.14 : 0.92) * reveal,
+            centreX,
+            centreY,
+            angle,
+            bundle + cap,
+            (3.2 / Math.sqrt(camera.scale)) * opts.nodeScale,
+            (dimmed ? 0.18 : 0.95) * reveal,
           );
         }
       }
