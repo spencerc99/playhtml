@@ -77,6 +77,12 @@ export interface LineIndex {
   linesAtStop: Map<string, string[]>;
   /** Visible stop ids serving two or more lines. */
   interchangeStops: Set<string>;
+  /**
+   * Line ids ordered by how much of the map they carry, busiest first. The
+   * renderer shows a prefix of this at rest: 66 lines at once is a thicket,
+   * and the trunk lines are the ones worth seeing from far away.
+   */
+  byProminence: string[];
   /** Membership test for the underlay: is this pair drawn as a line? */
   coveredEdges: Set<string>;
 }
@@ -179,7 +185,33 @@ export function buildLineIndex(
     if (ids.length >= 2) interchangeStops.add(stopId);
   }
 
-  return { resolved, byId, segments, linesAtStop, interchangeStops, coveredEdges };
+  // Rank lines by how much of the network they actually carry: length first,
+  // then how many other lines they share track with — a line running down a
+  // busy corridor is part of the map's spine, while a short branch is detail.
+  // Deterministic id tie-break so the resting set never reshuffles.
+  const byProminence = resolved
+    .map((entry) => {
+      let shared = 0;
+      for (let i = 0; i + 1 < entry.stops.length; i++) {
+        const from = entry.stops[i];
+        const to = entry.stops[i + 1];
+        if (from === undefined || to === undefined) continue;
+        shared += (segments.get(segmentKey(from, to))?.length ?? 1) - 1;
+      }
+      return { id: entry.line.id, score: entry.stops.length * 2 + shared };
+    })
+    .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1))
+    .map((e) => e.id);
+
+  return {
+    resolved,
+    byId,
+    segments,
+    linesAtStop,
+    interchangeStops,
+    coveredEdges,
+    byProminence,
+  };
 }
 
 /**
@@ -201,8 +233,14 @@ export function buildLineIndex(
 /**
  * Widest a shared bundle may get, in world units. Past this the per-line gap
  * shrinks instead of the corridor growing, so a busy trunk stays a ribbon.
+ *
+ * Sized against the real data's worst case: 20 lines share
+ * manuelmoreale.com-tinyawards.net, and at 26 units they were pressed into an
+ * indistinguishable band. 52 keeps roughly 2.7 units between adjacent ribbons
+ * there — enough for the colours to separate — while ordinary two- and
+ * three-line corridors still sit at the full gap and stay compact.
  */
-const MAX_BUNDLE_WIDTH = 26;
+const MAX_BUNDLE_WIDTH = 52;
 
 function assignCorridorOrder(
   segments: Map<string, LineSegment[]>,

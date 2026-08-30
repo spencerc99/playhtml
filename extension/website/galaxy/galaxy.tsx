@@ -244,16 +244,30 @@ function strokeRounded(
     const outY = next.y - current.y;
     const inLen = Math.hypot(inX, inY);
     const outLen = Math.hypot(outX, outY);
-    // Degenerate or near-collinear corners have no arc to draw, and asking
-    // arcTo for one makes it project a tangent point far off the polyline —
-    // which renders as a stray ray shooting across the map.
-    const cross = Math.abs(inX * outY - inY * outX) / Math.max(1e-9, inLen * outLen);
-    if (inLen < 1e-6 || outLen < 1e-6 || cross < 1e-3) {
+    if (inLen < 1e-6 || outLen < 1e-6) {
       ctx.lineTo(current.x, current.y);
       continue;
     }
-    // Half the shorter span, so adjacent corners cannot eat into each other.
-    const r = Math.min(radius, inLen * 0.5, outLen * 0.5);
+    // arcTo places its tangent points r/tan(theta/2) back from the corner, and
+    // that distance runs away as the turn gets shallow: a nearly straight
+    // corner asks for a tangent point far beyond the segment, which canvas
+    // duly draws as an enormous sweeping curve across the map. Clamping r by
+    // the shorter span is NOT enough, because the blow-up is in the tangent,
+    // not in r. So solve for the r whose tangent fits the spans and use that.
+    const dot = (inX * outX + inY * outY) / (inLen * outLen);
+    const theta = Math.acos(Math.min(1, Math.max(-1, dot)));
+    const halfTurn = (Math.PI - theta) / 2;
+    // Straight enough that there is no corner worth rounding.
+    if (halfTurn < 1e-3 || !Number.isFinite(halfTurn)) {
+      ctx.lineTo(current.x, current.y);
+      continue;
+    }
+    const maxTangent = Math.min(inLen, outLen) * 0.5;
+    const r = Math.min(radius, maxTangent * Math.tan(halfTurn));
+    if (r < 1e-4) {
+      ctx.lineTo(current.x, current.y);
+      continue;
+    }
     ctx.arcTo(current.x, current.y, next.x, next.y, r);
   }
   const last = points[points.length - 1];
@@ -1113,7 +1127,29 @@ const TransitMap = (): React.ReactElement => {
       // --- Metro lines -----------------------------------------------------
       // Drawn after the street mesh so they sit on top of it, and before the
       // stops so station markers cap the line ends rather than being buried.
+
       const litLine = litLineRef.current;
+
+      // Which lines are worth drawing at this zoom. All 66 at once is a
+      // thicket from far away, so the resting view shows the busiest few and
+      // the rest fade in as you close on the map — the same semantic-zoom
+      // bargain the stop labels and the flow ramp already make. A pinned or
+      // hovered line always draws, whatever its rank.
+      const restingCount = opts.restingLineCount;
+      const visibleLineIds =
+        lines === null || restingCount <= 0
+          ? null
+          : new Set(
+              lines.byProminence.slice(
+                0,
+                Math.min(
+                  lines.byProminence.length,
+                  // Roughly doubles by the time the map fills the screen.
+                  Math.round(restingCount * (1 + Math.max(0, camera.scale - 0.8) * 1.6)),
+                ),
+              ),
+            );
+
       /** Where each line's stops actually landed, reused by the tick pass. */
       const linePoints = new Map<string, Point[]>();
       /** The same stops shifted onto the line's parallel slot, for station glyphs. */
@@ -1122,6 +1158,14 @@ const TransitMap = (): React.ReactElement => {
       const drawnLineStops = new Map<string, string[]>();
       if (linesOn) {
         for (const entry of lines.resolved) {
+          // Below the resting budget and not singled out: hold it back.
+          if (
+            visibleLineIds !== null &&
+            !visibleLineIds.has(entry.line.id) &&
+            litLine !== entry.line.id
+          ) {
+            continue;
+          }
           const points: Point[] = [];
           // Kept in step with `points`, because a line may skip stops the map
           // is hiding and the tick and station passes index the two together.
@@ -1133,7 +1177,8 @@ const TransitMap = (): React.ReactElement => {
             // draw out to it: the fringe is bundled far outside the framed
             // area, so such a span renders as a ray shooting off the map.
             if (!rumorVisible(node)) continue;
-            points.push(posOf(node));
+            const at = posOf(node);
+            points.push(at);
             drawnStops.push(stopId);
           }
           if (points.length < 2) continue;
@@ -2057,6 +2102,16 @@ const TransitMap = (): React.ReactElement => {
     };
   }, [graph, level]);
 
+  /** Legend order: busiest first, matching what the resting view draws. */
+  const legendOrder = useMemo(() => {
+    if (!lineIndex) return [];
+    const rank = new Map(lineIndex.byProminence.map((id, i) => [id, i]));
+    return [...lineIndex.resolved].sort(
+      (a, b) =>
+        (rank.get(a.line.id) ?? 0) - (rank.get(b.line.id) ?? 0),
+    );
+  }, [lineIndex]);
+
   /** Lines calling at the hovered stop, so the tooltip names them. */
   const hoverLines = useMemo(() => {
     if (!hover || !lineIndex) return [];
@@ -2398,6 +2453,25 @@ const TransitMap = (): React.ReactElement => {
             </label>
 
             <label className="galaxy-field">
+              <span>lines at rest</span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(20, lineIndex?.resolved.length ?? 20)}
+                step={1}
+                value={settings.restingLineCount}
+                onChange={(e) =>
+                  update("restingLineCount", Number(e.target.value))
+                }
+              />
+              <em>
+                {settings.restingLineCount === 0
+                  ? "all"
+                  : `busiest ${settings.restingLineCount}, more on zoom`}
+              </em>
+            </label>
+
+            <label className="galaxy-field">
               <span>mesh opacity</span>
               <input
                 type="range"
@@ -2653,14 +2727,20 @@ const TransitMap = (): React.ReactElement => {
               className="galaxy-lines__list"
               onMouseLeave={() => setHoveredLine(null)}
             >
-              {lineIndex.resolved.map((entry) => {
+              {legendOrder.map((entry, rank) => {
                 const id = entry.line.id;
                 const pinned = settings.focusedLine === id;
+                // Lines past the resting budget are drawn only on zoom or when
+                // pinned, so the legend says so rather than leaving the reader
+                // wondering why a colour is not on the map.
+                const restingOnly =
+                  settings.restingLineCount > 0 &&
+                  rank >= settings.restingLineCount;
                 return (
                   <li key={id}>
                     <button
                       type="button"
-                      className={`galaxy-lines__item ${pinned ? "is-pinned" : ""}`}
+                      className={`galaxy-lines__item ${pinned ? "is-pinned" : ""} ${restingOnly ? "is-resting-only" : ""}`}
                       onMouseEnter={() => setHoveredLine(id)}
                       onFocus={() => setHoveredLine(id)}
                       onBlur={() => setHoveredLine(null)}

@@ -50,6 +50,12 @@ export interface MapSettings {
   flowExponent: number;
   /** Curve tributaries toward the river they join. */
   bundleTributaries: boolean;
+  /**
+   * How many lines are drawn at rest, busiest first. The full set is a thicket
+   * when zoomed out; the rest arrive as you zoom in, and pinning one in the
+   * legend always shows it. 0 means show every line.
+   */
+  restingLineCount: number;
 }
 
 export const DEFAULT_SETTINGS: MapSettings = {
@@ -72,6 +78,7 @@ export const DEFAULT_SETTINGS: MapSettings = {
   routeDetail: "express",
   flowExponent: 3.2,
   bundleTributaries: true,
+  restingLineCount: 18,
 };
 
 const STORAGE_KEY = "galaxy-map-settings-v1";
@@ -138,6 +145,9 @@ export function loadSettings(): MapSettings {
     }
     if (typeof parsed.bundleTributaries === "boolean") {
       next.bundleTributaries = parsed.bundleTributaries;
+    }
+    if (typeof parsed.restingLineCount === "number") {
+      next.restingLineCount = clamp(Math.round(parsed.restingLineCount), 0, 200);
     }
     return next;
   } catch {
