@@ -868,6 +868,7 @@ h1 {
   box-shadow: var(--ph-shadow-brick);
 }
 .party-cake-card {
+  position: relative;
   padding: 18px 24px 20px;
   box-shadow: var(--ph-shadow-brick-deep);
   text-align: center;
@@ -1041,7 +1042,6 @@ h1 {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px 14px;
   margin-top: 14px;
 }
 .party-cake__counter > span {
@@ -1082,6 +1082,30 @@ h1 {
 .party-people-chip > span {
   color: var(--ph-ink-2);
   font: 500 0.88rem var(--ph-font-note);
+}
+.party-people-chip--corner {
+  gap: 5px;
+  padding: 3px 8px 3px 5px;
+  border-color: rgba(28, 28, 28, 0.3);
+  background: rgba(244, 239, 229, 0.72);
+  box-shadow: none;
+  opacity: 0.78;
+}
+.party-people-chip--corner > i {
+  width: 14px;
+  height: 14px;
+  font-size: 0.45rem;
+}
+.party-people-chip--corner > strong {
+  font-size: 0.78rem;
+}
+.party-people-chip--corner > span {
+  font-size: 0.68rem;
+}
+.party-cake__participants {
+  position: absolute;
+  top: 14px;
+  right: 16px;
 }
 .party-cake__credits {
   margin-top: 16px;
@@ -1202,9 +1226,11 @@ h1 {
   font-size: 0.9rem;
 }
 .party-balloon-card {
+  position: relative;
   display: flex;
   gap: 20px;
   align-items: flex-start;
+  padding-bottom: 40px;
 }
 .party-spencer {
   width: 132px;
@@ -1255,35 +1281,130 @@ h1 {
   flex: 1;
 }
 .party-balloon-controls > p {
+  max-width: 33ch;
   color: var(--ph-ink-2);
   font-size: 0.95rem;
 }
-.party-balloon-controls > .party-people-chip {
-  margin-bottom: 14px;
+.party-balloon-workbench {
+  position: relative;
+  display: grid;
+  min-height: 116px;
+  place-items: center;
+  margin-top: 8px;
+  border: 1px dashed rgba(28, 28, 28, 0.2);
+  border-radius: 48% 44% 46% 40%;
+  background: rgba(239, 231, 215, 0.36);
 }
-.party-balloon-controls > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
+.party-tie-balloon {
+  position: relative;
+  z-index: 2;
+  min-width: 130px;
+  padding: 10px 16px 9px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 50%;
+  background: var(--ph-mustard-wash);
+  box-shadow: 2px 3px 0 rgba(28, 28, 28, 0.28);
+  cursor: pointer;
+  transform: rotate(-1deg);
 }
-.party-balloon-controls small {
+.party-tie-balloon:hover {
+  box-shadow: 3px 4px 0 rgba(28, 28, 28, 0.32);
+  transform: translate(-1px, -1px) rotate(-1deg);
+}
+.party-tie-balloon span,
+.party-tie-balloon small {
+  display: block;
+}
+.party-tie-balloon span {
+  font: 1rem var(--ph-font-wordmark);
+}
+.party-tie-balloon small {
+  margin-top: 2px;
   color: var(--ph-ink-3);
+  font: 500 0.65rem var(--ph-font-note);
+}
+.party-unblown-balloons {
+  position: absolute;
+  bottom: 9px;
+  left: 12px;
+  width: 76px;
+  height: 58px;
+}
+.party-unblown-balloons i {
+  position: absolute;
+  bottom: 4px;
+  left: 25px;
+  width: 28px;
+  height: 18px;
+  border: 1px solid rgba(28, 28, 28, 0.42);
+  border-radius: 50% 50% 44% 48%;
+  background: var(--ph-brick);
+  transform: rotate(-14deg);
+}
+.party-unblown-balloons i::after {
+  position: absolute;
+  right: -4px;
+  bottom: 1px;
+  width: 6px;
+  height: 5px;
+  background: inherit;
+  clip-path: polygon(0 50%, 100% 0, 100% 100%);
+  content: "";
+}
+.party-unblown-balloons i:nth-child(2) {
+  bottom: 17px;
+  left: 5px;
+  background: var(--ph-mustard);
+  transform: rotate(22deg);
+}
+.party-unblown-balloons i:nth-child(3) {
+  bottom: 0;
+  left: 4px;
+  background: var(--ph-ultramarine);
+  transform: rotate(8deg);
+}
+.party-unblown-balloons i:nth-child(4) {
+  bottom: 25px;
+  left: 32px;
+  background: var(--ph-sage);
+  transform: rotate(-4deg);
+}
+.party-unblown-balloons i:nth-child(5) {
+  bottom: 7px;
+  left: 44px;
+  background: var(--ph-mustard-wash);
+  transform: rotate(-28deg);
+}
+.party-unblown-balloons i:nth-child(6) {
+  bottom: 28px;
+  left: 51px;
+  background: var(--ph-brick-wash);
+  transform: rotate(15deg);
 }
 .party-pins {
-  display: inline-flex;
-  align-items: end;
-  gap: 14px;
-  min-height: 30px;
+  position: absolute;
+  inset: 0;
 }
 .party-pins button {
-  position: relative;
+  position: absolute;
   width: 28px;
   height: 34px;
   padding: 0;
   border: 0;
   background: none;
   cursor: pointer;
+}
+.party-pins button:nth-child(1) {
+  top: 8px;
+  right: 38px;
+}
+.party-pins button:nth-child(2) {
+  right: 10px;
+  bottom: 13px;
+}
+.party-pins button:nth-child(3) {
+  top: 14px;
+  left: 88px;
 }
 .party-pins button:hover {
   scale: 1.2;
@@ -1306,6 +1427,18 @@ h1 {
   border: 1px solid var(--ph-ink);
   border-radius: 50%;
   background: var(--ph-brick);
+}
+.party-pin-hint {
+  position: absolute;
+  right: 12px;
+  bottom: -20px;
+  color: var(--ph-ink-3);
+  font: 500 0.68rem var(--ph-font-note);
+}
+.party-balloon__participants {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
 }
 
 .party-wishes-card > h3 {

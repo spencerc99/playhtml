@@ -358,14 +358,16 @@ function PeopleChip({
   glyph,
   color,
   label,
+  className = "",
 }: {
   count: number;
   glyph: string;
   color: string;
   label: string;
+  className?: string;
 }) {
   return (
-    <span className="party-people-chip">
+    <span className={`party-people-chip ${className}`}>
       <i style={{ background: color }}>{glyph}</i>
       <strong>{count}</strong>
       <span>{label}</span>
@@ -514,6 +516,13 @@ function CakeStation({
                 help yourself to cake
               </StationHeading>
               <div className="party-card party-cake-card">
+                <PeopleChip
+                  count={participantTotals.size}
+                  glyph="◕"
+                  color="var(--ph-brick)"
+                  label="people took a bite"
+                  className="party-people-chip--corner party-cake__participants"
+                />
                 <div className="party-candles">
                   {[0, 1, 2].map((index) => (
                     <CanToggleElement key={index}>
@@ -616,12 +625,6 @@ function CakeStation({
                     <strong>{CAKE_CELL_COUNT - finishedCount}</strong> of 60
                     squares left
                   </span>
-                  <PeopleChip
-                    count={participantTotals.size}
-                    glyph="◕"
-                    color="var(--ph-brick)"
-                    label="people took a bite"
-                  />
                 </div>
                 {finishedCount === CAKE_CELL_COUNT && credits.length > 0 && (
                   <div className="party-cake__credits">
@@ -1009,19 +1012,22 @@ function BalloonsStation({
                       decorate with some balloons! Use spencer's mouth to blow
                       it up.
                     </p>
-                    <PeopleChip
-                      count={participants.size}
-                      glyph="●"
-                      color="var(--ph-ultramarine)"
-                      label="people tied balloons"
-                    />
-                    <div>
+                    <div className="party-balloon-workbench">
+                      <span
+                        className="party-unblown-balloons"
+                        aria-hidden="true"
+                      >
+                        {Array.from({ length: 6 }, (_, index) => (
+                          <i key={index} />
+                        ))}
+                      </span>
                       <button
-                        className="phs-chip"
+                        className="party-tie-balloon"
                         type="button"
                         onClick={tieBalloon}
                       >
-                        + tie a balloon
+                        <span>tie a balloon</span>
+                        <small>pick one from the pile</small>
                       </button>
                       <span className="party-pins">
                         {availablePins.map((index) => (
@@ -1052,13 +1058,20 @@ function BalloonsStation({
                           </button>
                         ))}
                       </span>
-                      <small>
+                      <small className="party-pin-hint">
                         {holdingPin === null
                           ? ""
                           : "click any balloon to pop it · one use"}
                       </small>
                     </div>
                   </div>
+                  <PeopleChip
+                    count={participants.size}
+                    glyph="●"
+                    color="var(--ph-ultramarine)"
+                    label="people tied balloons"
+                    className="party-people-chip--corner party-balloon__participants"
+                  />
                 </div>
               </section>
             </>
