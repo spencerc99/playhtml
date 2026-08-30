@@ -413,30 +413,28 @@ h1 {
   top: 176px;
   left: 2780px;
   z-index: 3;
-  width: 230px;
-  height: 530px;
-  border: 5px solid var(--ph-ultramarine-deep);
-  background:
-    linear-gradient(
-      90deg,
-      transparent 10%,
-      rgba(255, 255, 255, 0.15) 10% 12%,
-      transparent 12% 88%,
-      rgba(28, 28, 28, 0.16) 88% 90%,
-      transparent 90%
-    ),
-    linear-gradient(
-      transparent 46%,
-      rgba(28, 28, 28, 0.16) 46% 47%,
-      transparent 47% 82%,
-      rgba(28, 28, 28, 0.16) 82% 83%,
-      transparent 83%
-    ),
-    #3972d0;
-  box-shadow:
-    inset 12px 0 rgba(255, 255, 255, 0.08),
-    inset -12px 0 rgba(28, 28, 28, 0.12),
-    8px 0 0 var(--ph-ultramarine-deep);
+  display: block;
+  width: 250px;
+  height: 520px;
+  border: 7px solid var(--ph-paper);
+  background: var(--ph-ultramarine);
+  box-shadow: 8px 9px 0 var(--ph-ultramarine-deep);
+  color: var(--ph-ink);
+  transition: transform 150ms ease;
+}
+.party-room__door:hover,
+.party-room__door:focus-visible {
+  transform: translate(-2px, -3px) rotate(-0.4deg);
+}
+.party-room__door:focus-visible {
+  outline: 4px solid var(--ph-mustard);
+  outline-offset: 5px;
+}
+.party-room__door img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .party-room__door::before {
   position: absolute;
@@ -462,60 +460,31 @@ h1 {
   box-shadow: 4px 3px 0 rgba(28, 28, 28, 0.22);
   content: "";
 }
-.party-room__door b {
-  position: absolute;
-  top: 42px;
-  left: 50%;
-  width: 142px;
-  height: 96px;
-  border: 4px solid var(--ph-ultramarine-deep);
-  background:
-    linear-gradient(
-      90deg,
-      transparent 48%,
-      var(--ph-ultramarine-deep) 48% 52%,
-      transparent 52%
-    ),
-    linear-gradient(
-      transparent 48%,
-      var(--ph-ultramarine-deep) 48% 52%,
-      transparent 52%
-    ),
-    #f2c85b;
-  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.45);
-  transform: translateX(-50%);
-}
 .party-room__door span {
   position: absolute;
-  top: 178px;
+  bottom: 34px;
   left: 50%;
-  width: 150px;
-  padding: 16px 12px;
-  border: 1.5px solid var(--ph-ink);
-  background: #fff4cf;
-  box-shadow: 2px 3px 0 rgba(28, 28, 28, 0.25);
+  width: max-content;
+  padding: 10px 14px;
+  border: 2px solid var(--ph-ink);
+  background: var(--ph-mustard);
+  box-shadow: 3px 3px 0 rgba(28, 28, 28, 0.3);
   font: 1.15rem/1.05 var(--ph-font-wordmark);
   text-align: center;
   transform: translateX(-50%) rotate(2deg);
 }
-.party-room__door i {
-  position: absolute;
-  top: 57%;
-  right: 24px;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 50%;
-  background: #f7cf50;
-  box-shadow: 0 0 0 3px rgba(247, 207, 80, 0.2);
-}
-.party-room__sound-credit {
+.party-room__credits {
   position: absolute;
   top: 724px;
-  left: 2818px;
+  left: 2804px;
   z-index: 4;
-  color: var(--ph-ink-3);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   font: 500 0.65rem var(--ph-font-note);
+}
+.party-room__credits a {
+  color: var(--ph-ink-3);
 }
 
 .party-arrival {
@@ -1695,16 +1664,19 @@ h1 {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.party-signing-bench textarea {
+.party-signing-bench textarea,
+.party-signing-bench input[type="text"] {
   width: 100%;
-  height: 108px;
   padding: 11px 12px;
-  resize: vertical;
   border: 1px solid rgba(0, 0, 0, 0.39);
   border-radius: 4px;
   background: var(--ph-paper);
   color: var(--ph-ink);
   font: 500 1rem/1.4 var(--ph-font-note);
+}
+.party-signing-bench textarea {
+  height: 108px;
+  resize: vertical;
 }
 .party-signing-bench .phs-btn-ink {
   align-self: flex-start;

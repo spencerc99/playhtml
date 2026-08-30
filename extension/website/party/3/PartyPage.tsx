@@ -27,6 +27,7 @@ import {
   getCakeCell,
   getCurrentPlace,
   getDriftPosition,
+  getInflatedBalloonScale,
   isCakeCellFinished,
   type BalloonsData,
   type CakeData,
@@ -94,6 +95,7 @@ const SEAL_COLORS = [
   "var(--ph-ultramarine)",
   "var(--ph-brick)",
 ];
+const CARD_PATTERNS = ["cross", "sash", "polka"] as const;
 
 type PartyEffect = "confetti" | "popper" | "balloon-pop" | "cake-finale";
 
@@ -106,6 +108,10 @@ type SharedSetter<T> = (next: T | ((draft: T) => void)) => void;
 
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function getRandomChoice<T>(choices: readonly T[]): T {
+  return choices[Math.floor(Math.random() * choices.length)] ?? choices[0];
 }
 
 function identityLabel(name: string | undefined) {
@@ -773,6 +779,28 @@ function BalloonsStation({
     blowingSoundPlaying.current = shouldPlay;
   }, [drag?.blowing, soundOn]);
 
+  useEffect(() => {
+    if (!drag?.blowing) return;
+    let previousTime = performance.now();
+    let animationFrame = 0;
+    const inflate = (time: number) => {
+      const elapsed = Math.min(time - previousTime, 100);
+      previousTime = time;
+      setDrag((currentDrag) => {
+        if (!currentDrag?.blowing) return currentDrag;
+        const nextDrag = {
+          ...currentDrag,
+          scale: getInflatedBalloonScale(currentDrag.scale, elapsed),
+        };
+        dragRef.current = nextDrag;
+        return nextDrag;
+      });
+      animationFrame = window.requestAnimationFrame(inflate);
+    };
+    animationFrame = window.requestAnimationFrame(inflate);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [drag?.blowing]);
+
   useEffect(
     () => () => {
       stopPartySound("blow");
@@ -806,9 +834,7 @@ function BalloonsStation({
               event.clientX - currentDrag.startX,
               event.clientY - currentDrag.startY,
             ) > 4,
-          scale: blowing
-            ? Math.min(1.8, currentDrag.scale + 0.013)
-            : currentDrag.scale,
+          scale: currentDrag.scale,
         };
         dragRef.current = nextDrag;
         return nextDrag;
@@ -1139,15 +1165,30 @@ function WishesStation({
   soundOn: boolean;
 }) {
   const [note, setNote] = useState("");
-  const [cardColor, setCardColor] = useState("var(--ph-sage)");
-  const [sealColor, setSealColor] = useState("var(--ph-mustard)");
+  const [cardColor, setCardColor] = useState(() =>
+    getRandomChoice(CARD_COLORS),
+  );
+  const [sealColor, setSealColor] = useState(() =>
+    getRandomChoice(SEAL_COLORS),
+  );
   const [customCardColor, setCustomCardColor] = useState("#f2c4cf");
   const [customSealColor, setCustomSealColor] = useState("#7a9574");
-  const [pattern, setPattern] = useState<CardPattern>("cross");
+  const [pattern, setPattern] = useState<CardPattern>(() =>
+    getRandomChoice(CARD_PATTERNS),
+  );
+  const [signatureName, setSignatureName] = useState(identity.name);
   const [composerOpen, setComposerOpen] = useState(false);
   const cardMakerButtonRef = useRef<HTMLButtonElement>(null);
   const cardMakerDialogRef = useRef<HTMLDivElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
+
+  const openComposer = () => {
+    setCardColor(getRandomChoice(CARD_COLORS));
+    setSealColor(getRandomChoice(SEAL_COLORS));
+    setPattern(getRandomChoice(CARD_PATTERNS));
+    setSignatureName(identity.name);
+    setComposerOpen(true);
+  };
 
   useEffect(() => {
     if (!composerOpen) return;
@@ -1197,6 +1238,7 @@ function WishesStation({
     note,
     pattern,
     sealColor,
+    signatureName,
     soundOn,
   });
   current.current = {
@@ -1209,6 +1251,7 @@ function WishesStation({
     note,
     pattern,
     sealColor,
+    signatureName,
     soundOn,
   };
   const SharedWishes = useMemo(
@@ -1226,6 +1269,7 @@ function WishesStation({
             note,
             pattern,
             sealColor,
+            signatureName,
             soundOn,
           } = current.current;
           const wishes = Object.values(data.wishesById).sort(
@@ -1238,6 +1282,7 @@ function WishesStation({
             const id = createId("wish");
             const wish: PartyWish = {
               ...identity,
+              name: signatureName.trim() || identity.name,
               id,
               note: trimmedNote,
               cardColor,
@@ -1314,7 +1359,7 @@ function WishesStation({
                   className="party-open-card-maker"
                   type="button"
                   aria-haspopup="dialog"
-                  onClick={() => setComposerOpen(true)}
+                  onClick={openComposer}
                 >
                   <strong>make a card</strong>
                   <span>choose the paper, seal, and band</span>
@@ -1364,6 +1409,18 @@ function WishesStation({
                             onChange={(event) => setNote(event.target.value)}
                             placeholder="write your anniversary wish"
                           />
+                          <label htmlFor="party-card-name">your name</label>
+                          <input
+                            id="party-card-name"
+                            type="text"
+                            value={signatureName}
+                            maxLength={40}
+                            onChange={(event) =>
+                              setSignatureName(event.target.value)
+                            }
+                            placeholder="leave your name"
+                            autoComplete="name"
+                          />
                           <div className="party-card-options">
                             <ColorChoices
                               label="card"
@@ -1389,9 +1446,7 @@ function WishesStation({
                             />
                             <span className="party-pattern-choices">
                               <em>band</em>{" "}
-                              {(
-                                ["cross", "sash", "polka"] as CardPattern[]
-                              ).map((choice) => (
+                              {CARD_PATTERNS.map((choice) => (
                                 <button
                                   key={choice}
                                   className={
@@ -1400,6 +1455,7 @@ function WishesStation({
                                   type="button"
                                   onClick={() => setPattern(choice)}
                                   aria-label={choice}
+                                  aria-pressed={pattern === choice}
                                 >
                                   <CardBand
                                     cardColor="#f4efe5"
@@ -1428,7 +1484,9 @@ function WishesStation({
                             />
                             <div className="party-wish__body">
                               <p>{note.trim() || "your wish goes here…"}</p>
-                              <strong>— {identity.name}</strong>
+                              <strong>
+                                — {signatureName.trim() || identity.name}
+                              </strong>
                               <small>today · {getCurrentPlace()}</small>
                             </div>
                           </article>
@@ -1994,19 +2052,33 @@ function PartyRoom({
                   className="party-room__balloon-remnant"
                   aria-hidden="true"
                 />
-                <div className="party-room__door" aria-hidden="true">
-                  <b />
-                  <span>thanks for coming</span>
-                  <i />
-                </div>
                 <a
-                  className="party-room__sound-credit"
-                  href="/party/3/assets/SOUND_CREDITS.txt"
-                  target="_blank"
-                  rel="noreferrer"
+                  className="party-room__door"
+                  href="/"
+                  aria-label="Leave the party and return to the home page"
                 >
-                  balloon sound by Terhen
+                  <img
+                    src="/party/3/assets/bright-blue-door.jpg"
+                    alt=""
+                  />
+                  <span>leave the party</span>
                 </a>
+                <div className="party-room__credits">
+                  <a
+                    href="/party/3/assets/SOUND_CREDITS.txt"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    balloon sound by Terhen
+                  </a>
+                  <a
+                    href="https://unsplash.com/photos/a-bright-blue-door-with-white-trim-Sna2_GKimkk"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    door photo by the iop
+                  </a>
+                </div>
                 <CakeStation
                   identity={props.identity}
                   emitEvent={emitEvent}

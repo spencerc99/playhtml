@@ -13,6 +13,7 @@ export const BITE_REQUIREMENT = 6;
 export const CAKE_CELL_COUNT = 60;
 export const CAKE_COLUMN_COUNT = 10;
 export const CAKE_ROW_COUNT = 6;
+const BALLOON_INFLATION_PER_SECOND = 0.32;
 
 export interface PartyIdentity {
   pid: string;
@@ -51,6 +52,14 @@ export interface BalloonsData {
     string,
     { participantId: string; claimedAt: number }
   >;
+}
+
+export function getInflatedBalloonScale(
+  scale: number,
+  elapsedMilliseconds: number,
+): number {
+  const elapsedSeconds = Math.max(0, elapsedMilliseconds) / 1_000;
+  return Math.min(1.8, scale + elapsedSeconds * BALLOON_INFLATION_PER_SECOND);
 }
 
 export type CardPattern = "cross" | "sash" | "polka";

@@ -7,6 +7,7 @@ import {
   canBiteCakeCell,
   createBalloonCreation,
   getBalloonKnots,
+  getInflatedBalloonScale,
   getCakeBitePosition,
   getDogSegments,
   getDriftPosition,
@@ -77,6 +78,12 @@ describe("party labels and drift", () => {
 });
 
 describe("balloon workshop geometry", () => {
+  it("inflates at a steady rate while held still", () => {
+    expect(getInflatedBalloonScale(0.6, 500)).toBeCloseTo(0.76);
+    expect(getInflatedBalloonScale(0.6, 1_000)).toBeCloseTo(0.92);
+    expect(getInflatedBalloonScale(1.7, 1_000)).toBe(1.8);
+  });
+
   it("finds a knot between nearby segments", () => {
     const [segment] = getDogSegments();
     const segments = [segment, { ...segment, id: "nearby", x: segment.x + 10 }];
