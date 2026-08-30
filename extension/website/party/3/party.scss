@@ -277,7 +277,7 @@ h1 {
   height: 130px;
   background: radial-gradient(
     ellipse at top,
-    rgba(245, 201, 98, 0.32),
+    rgba(247, 220, 156, 0.48),
     transparent 70%
   );
   content: "";
@@ -288,13 +288,15 @@ h1 {
 .party-room__lamp img {
   position: relative;
   width: 100%;
+  filter: brightness(1.2) saturate(1.6)
+    drop-shadow(0 0 42px rgba(247, 220, 156, 0.78));
   transition: filter 180ms ease;
 }
 .party-room__lamp.is-off::before {
   opacity: 0;
 }
 .party-room__lamp.is-off img {
-  filter: grayscale(0.68) brightness(0.72);
+  filter: none;
 }
 .party-room__note {
   position: absolute;
@@ -1158,11 +1160,11 @@ h1 {
   position: absolute;
   top: 0;
   left: 0;
-  z-index: 5;
+  z-index: 9;
   transition: transform 80ms linear;
 }
 .party-balloon-position.is-dragging {
-  z-index: 10;
+  z-index: 12;
 }
 .party-balloon {
   position: relative;
@@ -1325,61 +1327,12 @@ h1 {
 }
 .party-unblown-balloons {
   position: absolute;
-  bottom: 9px;
-  left: 12px;
-  width: 76px;
-  height: 58px;
-}
-.party-unblown-balloons i {
-  position: absolute;
-  bottom: 4px;
-  left: 25px;
-  width: 28px;
-  height: 18px;
-  border: 1px solid rgba(28, 28, 28, 0.42);
-  border-radius: 50% 50% 44% 48%;
-  background: var(--ph-brick);
-  transform: rotate(-14deg);
-}
-.party-unblown-balloons i::after {
-  position: absolute;
-  right: -4px;
-  bottom: 1px;
-  width: 6px;
-  height: 5px;
-  background: inherit;
-  clip-path: polygon(0 50%, 100% 0, 100% 100%);
-  content: "";
-}
-.party-unblown-balloons i:nth-child(2) {
-  bottom: 17px;
-  left: 5px;
-  background: var(--ph-mustard);
-  transform: rotate(22deg);
-}
-.party-unblown-balloons i:nth-child(3) {
-  bottom: 0;
-  left: 4px;
-  background: var(--ph-ultramarine);
-  transform: rotate(8deg);
-}
-.party-unblown-balloons i:nth-child(4) {
-  bottom: 25px;
-  left: 32px;
-  background: var(--ph-sage);
-  transform: rotate(-4deg);
-}
-.party-unblown-balloons i:nth-child(5) {
-  bottom: 7px;
-  left: 44px;
-  background: var(--ph-mustard-wash);
-  transform: rotate(-28deg);
-}
-.party-unblown-balloons i:nth-child(6) {
-  bottom: 28px;
-  left: 51px;
-  background: var(--ph-brick-wash);
-  transform: rotate(15deg);
+  bottom: 2px;
+  left: 3px;
+  width: 104px;
+  height: 76px;
+  object-fit: contain;
+  transform: rotate(-3deg);
 }
 .party-pins {
   position: absolute;
@@ -1569,37 +1522,131 @@ h1 {
   color: var(--ph-ink-3);
   font: 500 0.72rem var(--ph-font-note);
 }
+.party-open-card-maker {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 5px 8px 4px 7px;
+  background: var(--ph-mustard-wash);
+  box-shadow: 2px 3px 0 rgba(28, 28, 28, 0.25);
+  color: var(--ph-ink);
+  cursor: pointer;
+  text-align: left;
+  transform: rotate(-0.35deg);
+}
+.party-open-card-maker:hover {
+  box-shadow: 3px 4px 0 rgba(28, 28, 28, 0.3);
+  transform: translate(-1px, -1px) rotate(-0.35deg);
+}
+.party-open-card-maker strong {
+  font: 1.15rem var(--ph-font-wordmark);
+}
+.party-open-card-maker span {
+  color: var(--ph-ink-2);
+  font: 500 0.78rem var(--ph-font-note);
+}
+.party-card-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  padding: 24px;
+  overflow-y: auto;
+  place-items: center;
+  background: rgba(28, 28, 28, 0.56);
+  backdrop-filter: blur(3px);
+}
+.party-card-maker {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  padding: 26px 28px 28px;
+  overflow-y: auto;
+  border: 2px solid var(--ph-ink);
+  border-radius: 8px 13px 7px 10px;
+  background:
+    linear-gradient(rgba(28, 28, 28, 0.035) 1px, transparent 1px),
+    var(--ph-paper-warm);
+  background-size: 100% 28px;
+  box-shadow: 8px 10px 0 rgba(28, 28, 28, 0.32);
+  transform: rotate(-0.2deg);
+}
+.party-card-maker__close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 1;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 50%;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.party-card-maker__heading {
+  padding-right: 44px;
+}
+.party-card-maker__heading > span {
+  color: var(--ph-brick);
+  font: 700 0.72rem var(--ph-font-note);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.party-card-maker__heading h3 {
+  margin: 1px 0 3px;
+  font: 2rem/1 var(--ph-font-wordmark);
+}
+.party-card-maker__heading p {
+  color: var(--ph-ink-2);
+  font-size: 0.92rem;
+}
 .party-signing-bench {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  align-items: flex-start;
-  margin-top: 10px;
-  padding-top: 10px;
+  gap: 26px;
+  align-items: center;
+  margin-top: 22px;
+  padding-top: 18px;
   border-top: 1px dashed var(--ph-hairline);
 }
 .party-signing-bench > div:first-child {
   display: flex;
-  min-width: 240px;
+  min-width: 360px;
   flex: 1;
   flex-direction: column;
-  gap: 7px;
+  gap: 12px;
 }
-.party-signing-bench__title {
-  font: 1rem var(--ph-font-wordmark);
+.party-signing-bench label {
+  font: 700 0.78rem var(--ph-font-note);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .party-signing-bench textarea {
   width: 100%;
-  height: 68px;
-  padding: 8px;
-  resize: none;
+  height: 108px;
+  padding: 11px 12px;
+  resize: vertical;
   border: 1px solid rgba(0, 0, 0, 0.39);
   border-radius: 4px;
   background: var(--ph-paper);
   color: var(--ph-ink);
+  font: 500 1rem/1.4 var(--ph-font-note);
 }
 .party-signing-bench .phs-btn-ink {
   align-self: flex-start;
+}
+.party-signing-bench .phs-btn-ink:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 .party-card-options {
   display: flex;
@@ -1664,8 +1711,12 @@ h1 {
   display: none;
 }
 .party-wish-preview {
-  width: 158px;
+  width: 190px;
   text-align: center;
+}
+.party-wish-preview .party-wish {
+  width: 190px;
+  min-height: 154px;
 }
 .party-wish-preview > small {
   color: var(--ph-ink-3);
@@ -2041,6 +2092,33 @@ h1 {
 }
 
 @media (max-width: 620px) {
+  .party-card-modal {
+    padding: 10px;
+  }
+  .party-card-maker {
+    max-height: calc(100vh - 20px);
+    padding: 20px 18px 22px;
+  }
+  .party-card-maker__heading {
+    padding-right: 36px;
+  }
+  .party-signing-bench {
+    gap: 18px;
+  }
+  .party-signing-bench > div:first-child {
+    min-width: 0;
+  }
+  .party-wish-preview {
+    width: 100%;
+  }
+  .party-wish-preview .party-wish {
+    margin-inline: auto;
+  }
+  .party-open-card-maker {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
   .party-footer {
     width: calc(100% - 16px);
     gap: 5px;

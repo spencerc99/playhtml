@@ -9,6 +9,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   CanToggleElement,
   playhtml,
@@ -1013,14 +1014,12 @@ function BalloonsStation({
                       it up.
                     </p>
                     <div className="party-balloon-workbench">
-                      <span
+                      <img
                         className="party-unblown-balloons"
+                        src="/party/3/assets/unblown-balloon-pile.svg"
+                        alt=""
                         aria-hidden="true"
-                      >
-                        {Array.from({ length: 6 }, (_, index) => (
-                          <i key={index} />
-                        ))}
-                      </span>
+                      />
                       <button
                         className="party-tie-balloon"
                         type="button"
@@ -1123,8 +1122,52 @@ function WishesStation({
   const [customCardColor, setCustomCardColor] = useState("#f2c4cf");
   const [customSealColor, setCustomSealColor] = useState("#7a9574");
   const [pattern, setPattern] = useState<CardPattern>("cross");
+  const [composerOpen, setComposerOpen] = useState(false);
+  const cardMakerButtonRef = useRef<HTMLButtonElement>(null);
+  const cardMakerDialogRef = useRef<HTMLDivElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!composerOpen) return;
+    const room = document.getElementById("party-3-room");
+    room?.setAttribute("inert", "");
+    const focusFrame = window.requestAnimationFrame(() => {
+      noteRef.current?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setComposerOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        cardMakerDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button, textarea, input:not([type="hidden"]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleKeyDown);
+      room?.removeAttribute("inert");
+      cardMakerButtonRef.current?.focus();
+    };
+  }, [composerOpen]);
+
   const current = useRef({
     cardColor,
+    composerOpen,
     customCardColor,
     customSealColor,
     emitEvent,
@@ -1136,6 +1179,7 @@ function WishesStation({
   });
   current.current = {
     cardColor,
+    composerOpen,
     customCardColor,
     customSealColor,
     emitEvent,
@@ -1152,6 +1196,7 @@ function WishesStation({
         ({ data, setData }) => {
           const {
             cardColor,
+            composerOpen,
             customCardColor,
             customSealColor,
             emitEvent,
@@ -1184,6 +1229,7 @@ function WishesStation({
               draft.wishesById[id] = wish;
             });
             setNote("");
+            setComposerOpen(false);
             playPartySound("chime", soundOn);
             emitEvent("you signed a card for the pile · it stays for good");
           };
@@ -1240,88 +1286,134 @@ function WishesStation({
                     </article>
                   ))}
                 </div>
-                <div className="party-signing-bench">
-                  <div>
-                    <strong className="party-signing-bench__title">
-                      make a card
-                    </strong>
-                    <textarea
-                      value={note}
-                      maxLength={120}
-                      onChange={(event) => setNote(event.target.value)}
-                      placeholder="write your anniversary wish"
-                    />
-                    <div className="party-card-options">
-                      <ColorChoices
-                        label="card"
-                        colors={CARD_COLORS}
-                        selectedColor={cardColor}
-                        customColor={customCardColor}
-                        onChange={setCardColor}
-                        onCustomColorChange={(color) => {
-                          setCustomCardColor(color);
-                          setCardColor(color);
-                        }}
-                      />
-                      <ColorChoices
-                        label="seal"
-                        colors={SEAL_COLORS}
-                        selectedColor={sealColor}
-                        customColor={customSealColor}
-                        onChange={setSealColor}
-                        onCustomColorChange={(color) => {
-                          setCustomSealColor(color);
-                          setSealColor(color);
-                        }}
-                      />
-                      <span className="party-pattern-choices">
-                        <em>band</em>{" "}
-                        {(["cross", "sash", "polka"] as CardPattern[]).map(
-                          (choice) => (
-                            <button
-                              key={choice}
-                              className={
-                                pattern === choice ? "is-selected" : ""
-                              }
-                              type="button"
-                              onClick={() => setPattern(choice)}
-                              aria-label={choice}
-                            >
-                              <CardBand
-                                cardColor="#f4efe5"
-                                sealColor="#1c1c1c"
-                                pattern={choice}
-                              />
-                            </button>
-                          ),
-                        )}
-                      </span>
-                    </div>
-                    <button
-                      className="phs-btn-ink"
-                      type="button"
-                      onClick={signWish}
-                    >
-                      sign it
-                    </button>
-                  </div>
-                  <div className="party-wish-preview">
-                    <article className="party-wish">
-                      <CardBand
-                        cardColor={cardColor}
-                        sealColor={sealColor}
-                        pattern={pattern}
-                      />
-                      <div className="party-wish__body">
-                        <p>{note.trim() || "your wish goes here…"}</p>
-                        <strong>— {identity.name}</strong>
-                        <small>today · {getCurrentPlace()}</small>
-                      </div>
-                    </article>
-                    <small>yours, before you sign it</small>
-                  </div>
-                </div>
+                <button
+                  ref={cardMakerButtonRef}
+                  className="party-open-card-maker"
+                  type="button"
+                  aria-haspopup="dialog"
+                  onClick={() => setComposerOpen(true)}
+                >
+                  <strong>make a card</strong>
+                  <span>choose the paper, seal, and band</span>
+                </button>
               </div>
+              {composerOpen &&
+                createPortal(
+                  <div
+                    className="party-card-modal"
+                    data-camera-ignore
+                    onMouseDown={(event) => {
+                      if (event.target === event.currentTarget) {
+                        setComposerOpen(false);
+                      }
+                    }}
+                  >
+                    <div
+                      ref={cardMakerDialogRef}
+                      className="party-card-maker"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="party-card-maker-title"
+                    >
+                      <button
+                        className="party-card-maker__close"
+                        type="button"
+                        aria-label="Close card maker"
+                        onClick={() => setComposerOpen(false)}
+                      >
+                        ×
+                      </button>
+                      <div className="party-card-maker__heading">
+                        <span>card table</span>
+                        <h3 id="party-card-maker-title">make a card</h3>
+                        <p>leave something for the next person who wanders in.</p>
+                      </div>
+                      <div className="party-signing-bench">
+                        <div>
+                          <label htmlFor="party-card-note">your message</label>
+                          <textarea
+                            ref={noteRef}
+                            id="party-card-note"
+                            value={note}
+                            maxLength={120}
+                            onChange={(event) => setNote(event.target.value)}
+                            placeholder="write your anniversary wish"
+                          />
+                          <div className="party-card-options">
+                            <ColorChoices
+                              label="card"
+                              colors={CARD_COLORS}
+                              selectedColor={cardColor}
+                              customColor={customCardColor}
+                              onChange={setCardColor}
+                              onCustomColorChange={(color) => {
+                                setCustomCardColor(color);
+                                setCardColor(color);
+                              }}
+                            />
+                            <ColorChoices
+                              label="seal"
+                              colors={SEAL_COLORS}
+                              selectedColor={sealColor}
+                              customColor={customSealColor}
+                              onChange={setSealColor}
+                              onCustomColorChange={(color) => {
+                                setCustomSealColor(color);
+                                setSealColor(color);
+                              }}
+                            />
+                            <span className="party-pattern-choices">
+                              <em>band</em>{" "}
+                              {(
+                                ["cross", "sash", "polka"] as CardPattern[]
+                              ).map((choice) => (
+                                <button
+                                  key={choice}
+                                  className={
+                                    pattern === choice ? "is-selected" : ""
+                                  }
+                                  type="button"
+                                  onClick={() => setPattern(choice)}
+                                  aria-label={choice}
+                                >
+                                  <CardBand
+                                    cardColor="#f4efe5"
+                                    sealColor="#1c1c1c"
+                                    pattern={choice}
+                                  />
+                                </button>
+                              ))}
+                            </span>
+                          </div>
+                          <button
+                            className="phs-btn-ink"
+                            type="button"
+                            disabled={!note.trim()}
+                            onClick={signWish}
+                          >
+                            sign it and add it to the pile
+                          </button>
+                        </div>
+                        <div className="party-wish-preview">
+                          <article className="party-wish">
+                            <CardBand
+                              cardColor={cardColor}
+                              sealColor={sealColor}
+                              pattern={pattern}
+                            />
+                            <div className="party-wish__body">
+                              <p>{note.trim() || "your wish goes here…"}</p>
+                              <strong>— {identity.name}</strong>
+                              <small>today · {getCurrentPlace()}</small>
+                            </div>
+                          </article>
+                          <small>yours, before you sign it</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>,
+                  document.body,
+                )}
             </section>
           );
         },
