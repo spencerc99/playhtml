@@ -46,39 +46,50 @@ function edge(
   trunk: boolean,
   jumps = 1,
   back = 1,
+  flow01 = 0.8,
 ): GalaxyEdge {
-  return { source, target, jumps, back, trunk };
+  return {
+    source,
+    target,
+    jumps,
+    back,
+    trunk,
+    flow: flow01 * 100,
+    flow01,
+  } as GalaxyEdge;
 }
 
 describe("extractLines", () => {
-  test("emits only paths with at least four stops", () => {
+  test("emits ordinary paths with at least five edges", () => {
     const result = extractLines(
       graph(
-        ["a.test", "b.test", "c.test", "d.test", "e.test", "f.test"],
+        ["a.test", "b.test", "c.test", "d.test", "e.test", "f.test", "g.test"],
         [
           edge("a.test", "b.test", true),
           edge("b.test", "c.test", true),
           edge("c.test", "d.test", true),
           edge("d.test", "e.test", true),
-          edge("c.test", "f.test", true),
+          edge("e.test", "f.test", true),
+          edge("c.test", "g.test", true),
         ],
       ),
     );
 
     expect(result.meta.totalLines).toBe(1);
-    expect(result.meta.coverage).toBe(4 / 5);
+    expect(result.meta.coverage).toBe(5 / 6);
     expect(result.lines[0].stops).toEqual([
       "a.test",
       "b.test",
       "c.test",
       "d.test",
       "e.test",
+      "f.test",
     ]);
     expect("spur" in result.lines[0]).toBe(false);
     expect(result.interchanges).toEqual([]);
   });
 
-  test("filters hubs and requires mutual roads at interchanges", () => {
+  test("filters hubs and edges below the flow threshold", () => {
     const result = extractLines(
       graph(
         [
@@ -95,7 +106,7 @@ describe("extractLines", () => {
           edge("b.test", "c.test", true),
           edge("c.test", "d.test", true),
           edge("d.test", "ix.test", true),
-          edge("ix.test", "z.test", true, 1, 0),
+          edge("ix.test", "z.test", true, 1, 0, 0.34),
           edge("a.test", "hub.test", true),
         ],
         {
@@ -107,7 +118,7 @@ describe("extractLines", () => {
     );
 
     expect(result.meta.totalLines).toBe(1);
-    expect(result.meta.coverage).toBe(4 / 6);
+    expect(result.meta.coverage).toBe(1);
     expect(result.lines[0].name).toBe("a.test line");
     expect(result.lines[0].stops).toEqual([
       "a.test",
@@ -118,26 +129,96 @@ describe("extractLines", () => {
     ]);
   });
 
-  test("favors mutual corridors when choosing the spanning forest", () => {
+  test("stops below sixty percent of the running median flow", () => {
     const result = extractLines(
       graph(
         ["a.test", "b.test", "c.test", "d.test"],
         [
-          edge("a.test", "b.test", true),
-          edge("b.test", "c.test", true),
-          edge("c.test", "d.test", true),
-          edge("a.test", "d.test", true, 4, 0),
+          edge("a.test", "b.test", false, 1, 0, 0.59),
+          edge("b.test", "c.test", false, 1, 0, 1),
+          edge("c.test", "d.test", false, 1, 0, 0.59),
         ],
       ),
     );
 
-    expect(result.lines[0].stops).toEqual([
+    expect(result.meta.totalLines).toBe(0);
+    expect(result.meta.coverage).toBe(0);
+  });
+
+  test("caps every line at sixteen stops", () => {
+    const domains = Array.from({ length: 20 }, (_, index) => `s${index}.test`);
+    const edges = domains
+      .slice(1)
+      .map((domain, index) => edge(domains[index], domain, false, 1, 1, 0.8));
+
+    const result = extractLines(graph(domains, edges));
+
+    expect(result.lines.some((line) => line.stops.length === 16)).toBe(true);
+    expect(result.lines.every((line) => line.stops.length <= 16)).toBe(true);
+  });
+
+  test("requires five edges unless a seed or interchange is present", () => {
+    const domains = ["a.test", "b.test", "c.test", "d.test", "e.test"];
+    const edges = [
+      edge("a.test", "b.test", false),
+      edge("b.test", "c.test", false),
+      edge("c.test", "d.test", false),
+      edge("d.test", "e.test", false),
+    ];
+
+    expect(extractLines(graph(domains, edges)).lines).toHaveLength(0);
+    expect(
+      extractLines(graph(domains, edges, { "a.test": { kind: "seed" } })).lines,
+    ).toHaveLength(1);
+    expect(
+      extractLines(graph(domains, edges, { "c.test": { kind: "interchange" } }))
+        .lines,
+    ).toHaveLength(1);
+  });
+
+  test("blocks cross-cluster extensions unless their edge is mutual", () => {
+    const domains = [
       "a.test",
       "b.test",
       "c.test",
       "d.test",
+      "e.test",
+      "f.test",
+      "g.test",
+    ];
+    const nodeOverrides = { "g.test": { cluster: 1 } };
+    const corridor = [
+      edge("a.test", "b.test", false, 1, 1, 1),
+      edge("b.test", "c.test", false, 1, 1, 0.9),
+      edge("c.test", "d.test", false, 1, 1, 0.8),
+      edge("d.test", "e.test", false, 1, 1, 0.7),
+      edge("e.test", "f.test", false, 1, 1, 0.7),
+    ];
+
+    const oneWay = extractLines(
+      graph(
+        domains,
+        [...corridor, edge("f.test", "g.test", false, 1, 0, 0.7)],
+        nodeOverrides,
+      ),
+    );
+    const mutual = extractLines(
+      graph(
+        domains,
+        [...corridor, edge("f.test", "g.test", false, 1, 1, 0.7)],
+        nodeOverrides,
+      ),
+    );
+
+    expect(oneWay.lines[0].stops).toEqual([
+      "a.test",
+      "b.test",
+      "c.test",
+      "d.test",
+      "e.test",
+      "f.test",
     ]);
-    expect(result.meta.coverage).toBe(3 / 4);
+    expect(mutual.lines[0].stops).toEqual(domains);
   });
 
   test("lists shared stops as interchanges and separates their colors", () => {
@@ -155,15 +236,67 @@ describe("extractLines", () => {
       graph(domains, edges, { "x.test": { kind: "interchange" } }),
     );
 
-    expect(result.meta.totalLines).toBe(3);
+    expect(result.meta.totalLines).toBe(5);
     expect(result.meta.coverage).toBe(1);
-    expect(result.interchanges).toEqual([
-      {
-        domain: "x.test",
-        lines: result.lines.map((line) => line.id).sort(),
-      },
+    expect(result.interchanges).toContainEqual({
+      domain: "x.test",
+      lines: result.lines.map((line) => line.id).sort(),
+    });
+    expect(new Set(result.lines.map((line) => line.color)).size).toBe(5);
+    expect(result.lines.every((line) => line.sharedWith.length > 0)).toBe(true);
+  });
+
+  test("traverses claimed corridor edges to reach unclaimed territory", () => {
+    const result = extractLines(
+      graph(
+        [
+          "a0.test",
+          "a1.test",
+          "a2.test",
+          "c0.test",
+          "c1.test",
+          "c2.test",
+          "d.test",
+          "e.test",
+          "x.test",
+          "y.test",
+        ],
+        [
+          edge("a0.test", "a1.test", false, 1, 0, 1),
+          edge("a1.test", "a2.test", false, 1, 0, 1),
+          edge("a2.test", "x.test", false, 1, 0, 0.95),
+          edge("c0.test", "c1.test", false, 1, 0, 0.945),
+          edge("c1.test", "c2.test", false, 1, 0, 0.94),
+          edge("c2.test", "x.test", false, 1, 0, 0.93),
+          edge("x.test", "y.test", false, 1, 0, 0.9),
+          edge("y.test", "d.test", false, 1, 0, 0.85),
+          edge("d.test", "e.test", false, 1, 0, 0.84),
+        ],
+      ),
+    );
+
+    expect(result.lines).toHaveLength(2);
+    expect(result.lines.map((line) => line.stops)).toContainEqual([
+      "a0.test",
+      "a1.test",
+      "a2.test",
+      "x.test",
+      "c2.test",
+      "c1.test",
+      "c0.test",
     ]);
-    expect(new Set(result.lines.map((line) => line.color)).size).toBe(3);
+    expect(result.lines.map((line) => line.stops)).toContainEqual([
+      "a0.test",
+      "a1.test",
+      "a2.test",
+      "x.test",
+      "y.test",
+      "d.test",
+      "e.test",
+    ]);
+    expect(result.lines.every((line) => line.sharedWith.length === 1)).toBe(
+      true,
+    );
   });
 
   test("assigns unique names without Roman numeral suffixes", () => {
@@ -191,7 +324,9 @@ describe("extractLines", () => {
 
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain("x.test line");
-    expect(names.some((name) => name.startsWith("x.test line via "))).toBe(true);
+    expect(names.some((name) => name.startsWith("x.test line via "))).toBe(
+      true,
+    );
     expect(names.every((name) => !/\b[IVXLCDM]+$/.test(name))).toBe(true);
   });
 
@@ -224,6 +359,7 @@ describe("route narration", () => {
         color: "#A65D57",
         loop: false,
         stops: ["a.test", "b.test", "c.test", "d.test"],
+        sharedWith: [],
       },
     ],
     interchanges: [],

@@ -1,700 +1,2812 @@
 {
   "meta": {
-    "generatedAt": "2026-08-28T20:56:13.841Z",
-    "totalLines": 43,
-    "coverage": 0.021360759493670885
+    "generatedAt": "2026-08-30T01:50:06.540Z",
+    "totalLines": 66,
+    "coverage": 0.030431893687707642
   },
   "lines": [
     {
-      "id": "line-878559cc",
-      "name": "are.na line",
+      "id": "line-a6b3807c",
+      "name": "spencer.place line",
       "color": "#A65D57",
+      "loop": false,
+      "stops": [
+        "ifeelsomuchsha.me",
+        "jackieis.online",
+        "tiat.place",
+        "spencer.place",
+        "liuleslie.github.io",
+        "gossipsweb.net",
+        "kwon.nyc",
+        "nownownow.com",
+        "henry.codes",
+        "spencerchang.me",
+        "kayserifserif.place",
+        "shen.land",
+        "manuelmoreale.com",
+        "tinyawards.net",
+        "webcurios.co.uk",
+        "waxy.org"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-233043b0",
+        "line-244af6de",
+        "line-28ac84dd",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-664b30dc",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-792236ca",
+        "line-7a96a1e5",
+        "line-8181e6ac",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-987eb336",
+        "line-9a2bec96",
+        "line-9c7d1a89",
+        "line-9fe06aaa",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a880a03f",
+        "line-ae5f0ce1",
+        "line-af47a085",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-bb5651fd",
+        "line-ca1f6b04",
+        "line-cd1a9247",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487",
+        "line-e7773a8f",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fa7119b6",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-244af6de",
+      "name": "artforum.com line",
+      "color": "#B0783C",
+      "loop": false,
+      "stops": [
+        "artforum.com",
+        "sbnation.com",
+        "eater.com",
+        "thrillist.com",
+        "voxmedia.com",
+        "ethanmarcotte.com",
+        "waxy.org",
+        "ellesho.me",
+        "tinyawards.net",
+        "manuelmoreale.com",
+        "shen.land",
+        "kayserifserif.place",
+        "spencer.place",
+        "tiat.place",
+        "jackieis.online"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-792236ca",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-997f57f7",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-ae5f0ce1",
+        "line-af47a085",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b8deed84",
+        "line-b9b8ef04",
+        "line-bb5651fd",
+        "line-cd1a9247",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e46204ef",
+        "line-e7773a8f",
+        "line-edf1c383",
+        "line-f69decea",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fa7119b6",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-205dc90c",
+      "name": "metalabel.com line",
+      "color": "#A18A3F",
+      "loop": false,
+      "stops": [
+        "elan.place",
+        "escapethealgorithm.substack.com",
+        "spencerchang.me",
+        "leiac.me",
+        "fidgetcamp.com",
+        "imempowa.com",
+        "metalabel.com",
+        "metalabel.substack.com",
+        "tinyawards.net",
+        "manuelmoreale.com",
+        "shen.land",
+        "kayserifserif.place",
+        "spencer.place",
+        "tiat.place",
+        "jackieis.online",
+        "ifeelsomuchsha.me"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-792236ca",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-997f57f7",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-ae5f0ce1",
+        "line-af47a085",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-bb5651fd",
+        "line-c8f8ca19",
+        "line-cd1a9247",
+        "line-e7773a8f",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fa7119b6",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-3f972fae",
+      "name": "waxy.org line",
+      "color": "#6F8A4A",
+      "loop": false,
+      "stops": [
+        "kayserifserif.place",
+        "shen.land",
+        "nownownow.com",
+        "kwon.nyc",
+        "gossipsweb.net",
+        "ellesho.me",
+        "waxy.org",
+        "manuelmoreale.com",
+        "tinyawards.net",
+        "webcurios.co.uk",
+        "henry.codes",
+        "spencerchang.me",
+        "liuleslie.github.io"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-7a96a1e5",
+        "line-8181e6ac",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-987eb336",
+        "line-9a2bec96",
+        "line-9c7d1a89",
+        "line-9fe06aaa",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-af47a085",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-bb5651fd",
+        "line-cd1a9247",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-7047e369",
+      "name": "eater.com line",
+      "color": "#3F8B6C",
+      "loop": false,
+      "stops": [
+        "lareviewofbooks.org",
+        "webcurios.co.uk",
+        "tinyawards.net",
+        "manuelmoreale.com",
+        "waxy.org",
+        "eater.com",
+        "thrillist.com",
+        "voxmedia.com",
+        "grubstreet.com",
+        "vulture.com",
+        "indiewire.com",
+        "ampav.com",
+        "artforum.com",
+        "sbnation.com",
+        "sportico.com",
+        "popsugar.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-997f57f7",
+        "line-9c7d1a89",
+        "line-a090c38b",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-b8deed84",
+        "line-cd1a9247",
+        "line-d3f7f4de",
+        "line-d5d72651",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e46204ef",
+        "line-edf1c383",
+        "line-f69decea",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-57c2ba84",
+      "name": "enable-javascript.com line",
+      "color": "#3F8790",
+      "loop": false,
+      "stops": [
+        "chia.design",
+        "escapethealgorithm.substack.com",
+        "linksiwouldgchatyou.substack.com",
+        "enable-javascript.com",
+        "metalabel.substack.com",
+        "metalabel.com",
+        "jackieis.online",
+        "tinyawards.net",
+        "manuelmoreale.com",
+        "shen.land",
+        "kayserifserif.place"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-997f57f7",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a53dbc61",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-a828276f",
+        "line-a880a03f",
+        "line-ae5f0ce1",
+        "line-af47a085",
+        "line-bb5651fd",
+        "line-c8f8ca19",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-2c28cb40",
+      "name": "jackieis.online line",
+      "color": "#4D78A8",
+      "loop": false,
+      "stops": [
+        "manuelmoreale.com",
+        "tinyawards.net",
+        "jackieis.online",
+        "tiat.place",
+        "spencer.place",
+        "movingimage.org",
+        "givelively.org",
+        "movingimage.us",
+        "spencerchang.me"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-3c50ce02",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-792236ca",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-af47a085",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-cd1a9247",
+        "line-e7773a8f",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fa7119b6",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-edf1c383",
+      "name": "wired.com line",
+      "color": "#6B6FA8",
+      "loop": false,
+      "stops": [
+        "lareviewofbooks.org",
+        "mayaontheinter.net",
+        "metalabel.com",
+        "metalabel.substack.com",
+        "ystrickler.com",
+        "manuelmoreale.com",
+        "tinyawards.net",
+        "webcurios.co.uk",
+        "linksiwouldgchatyou.substack.com",
+        "escapethealgorithm.substack.com",
+        "wired.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-997f57f7",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a53dbc61",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-a828276f",
+        "line-af47a085",
+        "line-c8f8ca19",
+        "line-cd1a9247",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-716f54d7",
+      "name": "ampav.com line",
+      "color": "#8063A0",
+      "loop": false,
+      "stops": [
+        "ampav.com",
+        "vibe.com",
+        "waxy.org",
+        "manuelmoreale.com",
+        "tinyawards.net",
+        "webcurios.co.uk",
+        "eater.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-d5d72651",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-987eb336",
+      "name": "ystrickler.com line",
+      "color": "#9A5E8A",
+      "loop": false,
+      "stops": [
+        "metalabel.substack.com",
+        "metalabel.com",
+        "artistcorporations.com",
+        "ystrickler.com",
+        "shen.land",
+        "manuelmoreale.com",
+        "tinyawards.net"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-997f57f7",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-ae5f0ce1",
+        "line-af47a085",
+        "line-bb5651fd",
+        "line-c8f8ca19",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-bb5651fd",
+      "name": "shen.land line",
+      "color": "#A75F72",
+      "loop": false,
+      "stops": [
+        "eieio.games",
+        "jvns.ca",
+        "jzhao.xyz",
+        "spencerchang.me",
+        "kayserifserif.place",
+        "shen.land",
+        "manuelmoreale.com"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-233043b0",
+        "line-244af6de",
+        "line-28ac84dd",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-664b30dc",
+        "line-792236ca",
+        "line-987eb336",
+        "line-a2bc2b90",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-ae5f0ce1",
+        "line-ca1f6b04"
+      ]
+    },
+    {
+      "id": "line-cd1a9247",
+      "name": "ign.com line",
+      "color": "#8A6F5A",
+      "loop": false,
+      "stops": [
+        "askmen.com",
+        "ziffdavis.com",
+        "eurogamer.net",
+        "waxy.org",
+        "manuelmoreale.com",
+        "tinyawards.net",
+        "webcurios.co.uk",
+        "rockpapershotgun.com",
+        "ign.com",
+        "gamer.network",
+        "indiedb.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-bbb7084e",
+        "line-dfe959a4",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-a2bc2b90",
+      "name": "rhizome.org line",
+      "color": "#3F8B6C",
+      "loop": false,
+      "stops": [
+        "rhizome.org",
+        "mindyseu.com",
+        "shen.land",
+        "manuelmoreale.com",
+        "tinyawards.net"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9a9ab5e5",
+        "line-9c7d1a89",
+        "line-9fb40cba",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-ae5f0ce1",
+        "line-af47a085",
+        "line-bb5651fd",
+        "line-c8f8ca19",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-74d3562f",
+      "name": "itsnicethat.com line",
+      "color": "#A75F72",
+      "loop": false,
+      "stops": [
+        "henry.codes",
+        "itsnicethat.com",
+        "jackieis.online",
+        "tinyawards.net",
+        "manuelmoreale.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-9fe06aaa",
+      "name": "liuleslie.github.io line",
+      "color": "#B0783C",
+      "loop": false,
+      "stops": [
+        "manuelmoreale.com",
+        "kwon.nyc",
+        "gossipsweb.net",
+        "liuleslie.github.io",
+        "nownownow.com"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487"
+      ]
+    },
+    {
+      "id": "line-ae5f0ce1",
+      "name": "maxy.world line",
+      "color": "#4D78A8",
+      "loop": false,
+      "stops": [
+        "kayserifserif.place",
+        "thehtml.review",
+        "maxy.world",
+        "shen.land",
+        "manuelmoreale.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-57c2ba84",
+        "line-987eb336",
+        "line-a2bc2b90",
+        "line-a6b3807c",
+        "line-bb5651fd",
+        "line-d87b9a45"
+      ]
+    },
+    {
+      "id": "line-8181e6ac",
+      "name": "itch.io line",
+      "color": "#6F8A4A",
       "loop": false,
       "stops": [
         "coolmathgames.com",
         "itch.io",
         "jackieis.online",
-        "tiat.place",
-        "leiac.me",
-        "spencer.place",
-        "are.na",
-        "tomcritchlow.com",
-        "searchleaders.ai"
+        "tinyawards.net",
+        "manuelmoreale.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
       ]
     },
     {
-      "id": "line-2902af8a",
-      "name": "elliott.computer line",
-      "color": "#B0783C",
+      "id": "line-9c7d1a89",
+      "name": "codepen.io line",
+      "color": "#6B6FA8",
       "loop": false,
       "stops": [
         "blog.codepen.io",
         "codepen.io",
-        "henry.codes",
-        "spencer.place",
-        "liuleslie.github.io",
-        "gossipsweb.net",
-        "zinzy.website",
-        "elliott.computer",
-        "extrapractice.space",
-        "bnjmnearl.eu"
+        "jackieis.online",
+        "tinyawards.net",
+        "manuelmoreale.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
       ]
     },
     {
-      "id": "line-d0aa07b5",
-      "name": "spencer.place line",
+      "id": "line-f74abd5b",
+      "name": "culturehub.org line",
+      "color": "#8063A0",
+      "loop": false,
+      "stops": [
+        "eepurl.com",
+        "culturehub.org",
+        "jackieis.online",
+        "tinyawards.net",
+        "manuelmoreale.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "id": "line-f7e0eda3",
+      "name": "tinyawards.net line",
       "color": "#A18A3F",
       "loop": false,
       "stops": [
-        "204cherrydrive.com",
-        "boboland.xyz",
-        "spencer.place",
-        "kayserifserif.place",
-        "shen.land",
-        "manuelmoreale.com"
+        "kinopio.club",
+        "pketh.org",
+        "manuelmoreale.com",
+        "tinyawards.net",
+        "webcurios.co.uk"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-fdbf3bfd"
       ]
     },
     {
-      "id": "line-0c96d532",
-      "name": "jzhao.xyz line",
-      "color": "#6F8A4A",
+      "id": "line-a55a3040",
+      "name": "penguinrandomhouse.com line",
+      "color": "#A65D57",
       "loop": false,
       "stops": [
-        "andymatuschak.org",
-        "matthewsiu.com",
-        "spencer.place",
-        "jzhao.xyz",
-        "themarginalian.org"
+        "aliceyuanzhang.com",
+        "penguinrandomhouse.com",
+        "ystrickler.com",
+        "manuelmoreale.com",
+        "tinyawards.net"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
       ]
     },
     {
-      "id": "line-fd0a9537",
-      "name": "cloudlord.management line",
-      "color": "#3F8B6C",
-      "loop": false,
-      "stops": [
-        "diagram.website",
-        "cloudlord.management",
-        "spencer.place",
-        "elan.place",
-        "elankiderman.com"
-      ]
-    },
-    {
-      "id": "line-36c9eb08",
-      "name": "spencerchang.substack.com line",
+      "id": "line-af47a085",
+      "name": "bandcamp.com line",
       "color": "#3F8790",
       "loop": false,
       "stops": [
-        "alicebucknell.com",
-        "hyperwhisper.net",
-        "spencer.place",
-        "spencerchang.substack.com"
+        "bandcamp.help",
+        "bandcamp.com",
+        "ystrickler.com",
+        "manuelmoreale.com",
+        "tinyawards.net"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
       ]
     },
     {
-      "id": "line-be967c68",
+      "id": "line-fdbf3bfd",
+      "name": "pketh.org line",
+      "color": "#9A5E8A",
+      "loop": false,
+      "stops": [
+        "kinopio.club",
+        "internetphonebook.net",
+        "pketh.org",
+        "manuelmoreale.com",
+        "tinyawards.net"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3"
+      ]
+    },
+    {
+      "id": "line-a880a03f",
+      "name": "leiac.me line",
+      "color": "#6B6FA8",
+      "loop": false,
+      "stops": [
+        "shen.land",
+        "kayserifserif.place",
+        "leiac.me",
+        "spencer.place",
+        "tiat.place"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-bb5651fd",
+        "line-e7773a8f",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "id": "line-12f8695d",
+      "name": "html.energy line",
+      "color": "#8063A0",
+      "loop": false,
+      "stops": [
+        "buttondown.com",
+        "html.energy",
+        "stripe.com",
+        "henry.codes",
+        "spencerchang.me",
+        "kayserifserif.place",
+        "shen.land"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-233043b0",
+        "line-244af6de",
+        "line-28ac84dd",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-664b30dc",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-bb5651fd",
+        "line-ca1f6b04"
+      ]
+    },
+    {
+      "id": "line-792236ca",
+      "name": "spencerchang.me line",
+      "color": "#3F8B6C",
+      "loop": false,
+      "stops": [
+        "kayserifserif.place",
+        "spencerchang.me",
+        "geidai.ac.jp",
+        "spencer.place",
+        "tiat.place"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-233043b0",
+        "line-244af6de",
+        "line-28ac84dd",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-664b30dc",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-bb5651fd",
+        "line-ca1f6b04",
+        "line-e7773a8f",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "id": "line-0390a868",
+      "name": "kayserifserif.place line",
+      "color": "#9A5E8A",
+      "loop": false,
+      "stops": [
+        "gossipsweb.net",
+        "kwon.nyc",
+        "nownownow.com",
+        "tracydurnell.com",
+        "kayserifserif.place"
+      ],
+      "sharedWith": [
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487"
+      ]
+    },
+    {
+      "id": "line-664b30dc",
+      "name": "technologyreview.com line",
+      "color": "#8A6F5A",
+      "loop": false,
+      "stops": [
+        "kayserifserif.place",
+        "spencerchang.me",
+        "jzhao.xyz",
+        "arxiv.org",
+        "technologyreview.com"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-233043b0",
+        "line-28ac84dd",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-bb5651fd",
+        "line-ca1f6b04"
+      ]
+    },
+    {
+      "id": "line-ca1f6b04",
+      "name": "bentoism.org line",
+      "color": "#B0783C",
+      "loop": false,
+      "stops": [
+        "kayserifserif.place",
+        "spencerchang.me",
+        "jzhao.xyz",
+        "bentoism.org",
+        "ystrickler.com"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-233043b0",
+        "line-28ac84dd",
+        "line-664b30dc",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-bb5651fd"
+      ]
+    },
+    {
+      "id": "line-233043b0",
+      "name": "jzhao.xyz line",
+      "color": "#3F8790",
+      "loop": false,
+      "stops": [
+        "casholman.com",
+        "we-b.site",
+        "jzhao.xyz",
+        "spencerchang.me",
+        "kayserifserif.place"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-28ac84dd",
+        "line-664b30dc",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-bb5651fd",
+        "line-ca1f6b04"
+      ]
+    },
+    {
+      "id": "line-28ac84dd",
+      "name": "springer.com line",
+      "color": "#6B6FA8",
+      "loop": false,
+      "stops": [
+        "kayserifserif.place",
+        "spencerchang.me",
+        "jzhao.xyz",
+        "springer.com",
+        "nature.com"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-233043b0",
+        "line-664b30dc",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-bb5651fd",
+        "line-ca1f6b04"
+      ]
+    },
+    {
+      "id": "line-b265b2d7",
+      "name": "henry.codes line",
+      "color": "#9A5E8A",
+      "loop": false,
+      "stops": [
+        "henry.codes",
+        "spencerchang.me",
+        "we-b.site",
+        "playhtml.fun",
+        "spencer.place",
+        "tiat.place",
+        "jackieis.online"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-3f972fae",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-e7773a8f",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "id": "line-b47afe24",
+      "name": "tiat.place line",
+      "color": "#3F8790",
+      "loop": false,
+      "stops": [
+        "henry.codes",
+        "spencerchang.me",
+        "hyperwhisper.net",
+        "spencer.place",
+        "tiat.place"
+      ],
+      "sharedWith": [
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-3f972fae",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b9b8ef04",
+        "line-e7773a8f",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "id": "line-fa7119b6",
+      "name": "fidgetcamp.com line",
+      "color": "#6F8A4A",
+      "loop": false,
+      "stops": [
+        "leiac.me",
+        "fidgetcamp.com",
+        "spencerchang.me",
+        "spencer.place",
+        "tiat.place"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-e7773a8f"
+      ]
+    },
+    {
+      "id": "line-7a96a1e5",
+      "name": "thehtml.review line",
+      "color": "#8A6F5A",
+      "loop": false,
+      "stops": [
+        "laurelschwulst.com",
+        "megmiller.world",
+        "thehtml.review",
+        "gossipsweb.net",
+        "kwon.nyc",
+        "nownownow.com",
+        "shen.land"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-9fb40cba",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487"
+      ]
+    },
+    {
+      "id": "line-e2975487",
+      "name": "elliott.computer line",
+      "color": "#A18A3F",
+      "loop": false,
+      "stops": [
+        "extrapractice.space",
+        "elliott.computer",
+        "zinzy.website",
+        "gossipsweb.net",
+        "kwon.nyc",
+        "nownownow.com",
+        "shen.land"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45"
+      ]
+    },
+    {
+      "id": "line-997f57f7",
       "name": "indiewire.com line",
       "color": "#A65D57",
       "loop": false,
       "stops": [
-        "outofprint.com",
-        "penguinrandomhouse.com",
-        "pinterest.com",
+        "linksiwouldgchatyou.substack.com",
+        "wired.com",
+        "escapethealgorithm.substack.com",
+        "metalabel.com",
+        "metalabel.substack.com",
+        "joshuacitarella.substack.com",
+        "artforum.com",
+        "thrillist.com",
+        "eater.com",
+        "sbnation.com",
         "indiewire.com",
-        "sheknows.com",
-        "punchdrink.com",
-        "aboutads.info",
-        "popsugar.com",
-        "voxmedia.com",
-        "nymag.com",
-        "curbed.com",
-        "vulture.com",
-        "vulturefestival.com"
+        "ampav.com",
+        "onetrust.com",
+        "technologyreview.com",
+        "mit.edu",
+        "sxsw.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-57c2ba84",
+        "line-6584b58e",
+        "line-7047e369",
+        "line-987eb336",
+        "line-a53dbc61",
+        "line-b8deed84",
+        "line-c8f8ca19",
+        "line-d3f7f4de",
+        "line-d5d72651",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e46204ef",
+        "line-e77e8f00",
+        "line-edf1c383",
+        "line-ee847f7f",
+        "line-f69decea"
       ]
     },
     {
-      "id": "line-7cfc6db4",
-      "name": "rollingstone.com line",
-      "color": "#B0783C",
-      "loop": false,
-      "stops": [
-        "8newsnow.com",
-        "rollingstone.com",
-        "vibe.com",
-        "punchdrink.com",
-        "dickclark.com",
-        "goldenglobes.com",
-        "snapchat.com",
-        "nbcnews.com",
-        "zendesk.com",
-        "zendesk.de"
-      ]
-    },
-    {
-      "id": "line-6f7f5a11",
-      "name": "sxsw.com line",
+      "id": "line-f69decea",
+      "name": "shemedia.com line",
       "color": "#A18A3F",
       "loop": false,
       "stops": [
-        "newmuseum.org",
-        "rhizome.org",
-        "feedburner.com",
+        "onetrust.com",
+        "ampav.com",
+        "indiewire.com",
         "punchdrink.com",
-        "sxsw.com",
-        "sxswedu.com"
+        "artforum.com",
+        "sbnation.com",
+        "eater.com",
+        "thrillist.com",
+        "voxmedia.com",
+        "thedodo.com",
+        "vibe.com",
+        "shemedia.com",
+        "stylecaster.com"
+      ],
+      "sharedWith": [
+        "line-244af6de",
+        "line-7047e369",
+        "line-997f57f7",
+        "line-a090c38b",
+        "line-b8deed84",
+        "line-d3f7f4de",
+        "line-d5d72651",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e46204ef"
       ]
     },
     {
-      "id": "line-a984beb6",
-      "name": "artforum.com line",
+      "id": "line-b8deed84",
+      "name": "sbnation.com line",
       "color": "#6F8A4A",
       "loop": false,
       "stops": [
-        "com.cn",
-        "artforum.com",
-        "punchdrink.com",
-        "eater.com",
-        "eaterwineclub.com"
-      ]
-    },
-    {
-      "id": "line-bd35986f",
-      "name": "sportico.com line",
-      "color": "#3F8B6C",
-      "loop": false,
-      "stops": [
-        "acmepackingcompany.com",
+        "annali.me",
+        "pudding.cool",
+        "soundcloud.com",
+        "microsoft.com",
+        "ampav.com",
+        "indiewire.com",
         "sbnation.com",
-        "punchdrink.com",
+        "eater.com",
+        "thrillist.com"
+      ],
+      "sharedWith": [
+        "line-244af6de",
+        "line-7047e369",
+        "line-92de7612",
+        "line-997f57f7",
+        "line-d3f7f4de",
+        "line-d5d72651",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e46204ef",
+        "line-f69decea"
+      ]
+    },
+    {
+      "id": "line-de9e3514",
+      "name": "popsugar.com line",
+      "color": "#3F8790",
+      "loop": false,
+      "stops": [
+        "grubstreet.com",
+        "eater.com",
+        "thrillist.com",
+        "voxmedia.com",
+        "popsugar.com",
+        "artforum.com",
+        "sbnation.com"
+      ],
+      "sharedWith": [
+        "line-244af6de",
+        "line-7047e369",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-e46204ef",
+        "line-f69decea"
+      ]
+    },
+    {
+      "id": "line-ddf0faf1",
+      "name": "sportico.com line",
+      "color": "#4D78A8",
+      "loop": false,
+      "stops": [
         "sportico.com",
-        "espn.com"
+        "punchdrink.com",
+        "artforum.com",
+        "theflowspace.com",
+        "sbnation.com",
+        "eater.com",
+        "thrillist.com"
+      ],
+      "sharedWith": [
+        "line-244af6de",
+        "line-7047e369",
+        "line-997f57f7",
+        "line-a090c38b",
+        "line-b8deed84",
+        "line-d7e02563",
+        "line-de9e3514",
+        "line-e46204ef",
+        "line-f69decea"
       ]
     },
     {
-      "id": "line-4257b277",
-      "name": "ign.com line",
-      "color": "#A65D57",
+      "id": "line-d3f7f4de",
+      "name": "vibe.com line",
+      "color": "#6B6FA8",
       "loop": false,
       "stops": [
-        "cbsnews.com",
-        "ziffdavis.com",
-        "howlongtobeat.com",
-        "ign.com",
-        "rockpapershotgun.com",
-        "eurogamer.net",
-        "eurogamer.de"
+        "artforum.com",
+        "vibe.com",
+        "shemedia.com",
+        "stylecaster.com",
+        "indiewire.com",
+        "ampav.com",
+        "eater.com"
+      ],
+      "sharedWith": [
+        "line-7047e369",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-d5d72651",
+        "line-f69decea"
       ]
     },
     {
-      "id": "line-97bfddde",
-      "name": "thehtml.review line",
-      "color": "#B0783C",
+      "id": "line-e46204ef",
+      "name": "thrillist.com line",
+      "color": "#9A5E8A",
       "loop": false,
       "stops": [
-        "10kdrummachines.com",
-        "maxy.world",
-        "thehtml.review",
-        "megmiller.world",
-        "are.na",
-        "abcdinamo.com",
+        "thrillist.com",
+        "eater.com",
+        "sxsw.com",
+        "mit.edu",
+        "technologyreview.com",
+        "nature.com",
+        "wired.com"
+      ],
+      "sharedWith": [
+        "line-244af6de",
+        "line-6584b58e",
+        "line-7047e369",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e77e8f00",
+        "line-ee847f7f",
+        "line-f69decea"
+      ]
+    },
+    {
+      "id": "line-b9b8ef04",
+      "name": "internetphonebook.net line",
+      "color": "#8A6F5A",
+      "loop": false,
+      "stops": [
+        "html.energy",
         "internetphonebook.net",
-        "buttondown.email"
+        "spencer.place",
+        "tiat.place",
+        "jackieis.online"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-e7773a8f",
+        "line-fa7119b6"
       ]
     },
     {
-      "id": "line-e2b1bd5a",
-      "name": "tiat.place line",
-      "color": "#B0783C",
+      "id": "line-d5d72651",
+      "name": "punchdrink.com line",
+      "color": "#A75F72",
+      "loop": false,
+      "stops": [
+        "eater.com",
+        "punchdrink.com",
+        "vibe.com",
+        "ampav.com",
+        "indiewire.com",
+        "vulture.com",
+        "mgm.com"
+      ],
+      "sharedWith": [
+        "line-7047e369",
+        "line-716f54d7",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-d3f7f4de",
+        "line-f69decea"
+      ]
+    },
+    {
+      "id": "line-d7e02563",
+      "name": "theflowspace.com line",
+      "color": "#8A6F5A",
+      "loop": false,
+      "stops": [
+        "alifewortheating.com",
+        "grubstreet.com",
+        "voxmedia.com",
+        "thrillist.com",
+        "eater.com",
+        "theflowspace.com",
+        "sxsw.com"
+      ],
+      "sharedWith": [
+        "line-244af6de",
+        "line-7047e369",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e46204ef",
+        "line-f69decea"
+      ]
+    },
+    {
+      "id": "line-e7773a8f",
+      "name": "imempowa.com line",
+      "color": "#8063A0",
       "loop": false,
       "stops": [
         "antiagingsoftware.org",
         "imempowa.com",
         "tiat.place",
-        "fidgetcamp.com",
-        "charliestigler.com",
-        "boxshopsf.org"
+        "spencer.place",
+        "liuleslie.github.io"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-fa7119b6"
       ]
     },
     {
-      "id": "line-31fbba63",
-      "name": "html.energy line",
-      "color": "#A18A3F",
+      "id": "line-3c50ce02",
+      "name": "zainshah.me line",
+      "color": "#A75F72",
+      "loop": false,
+      "stops": [
+        "archive.house",
+        "zainshah.me",
+        "tiat.place",
+        "spencer.place",
+        "liuleslie.github.io"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-e7773a8f",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "id": "line-8fb74aa6",
+      "name": "voxmedia.com line",
+      "color": "#4D78A8",
+      "loop": false,
+      "stops": [
+        "liuleslie.github.io",
+        "gossipsweb.net",
+        "kwon.nyc",
+        "vulture.com",
+        "voxmedia.com"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-9a2bec96",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487"
+      ]
+    },
+    {
+      "id": "line-8f52bdc6",
+      "name": "aidanquinlan.net line",
+      "color": "#3F8B6C",
       "loop": false,
       "stops": [
         "aidanquinlan.net",
         "html.energy",
-        "are.na",
-        "aliceyuanzhang.com",
-        "virtualcarelab.com"
+        "liuleslie.github.io",
+        "gossipsweb.net",
+        "kwon.nyc"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487"
       ]
     },
     {
-      "id": "line-518c0959",
-      "name": "rockpapershotgun.com line",
-      "color": "#B0783C",
+      "id": "line-d46bd315",
+      "name": "tilde.town line",
+      "color": "#3F8790",
       "loop": false,
       "stops": [
-        "gamescom.global",
-        "gamesindustry.biz",
-        "rockpapershotgun.com",
-        "vg247.com",
-        "monsterhunternow.com"
+        "bbj-dev.github.io",
+        "tilde.town",
+        "gossipsweb.net",
+        "kwon.nyc",
+        "nownownow.com"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d87b9a45",
+        "line-e2975487"
       ]
     },
     {
-      "id": "line-6f00cd92",
-      "name": "luma.com line",
-      "color": "#A18A3F",
-      "loop": false,
-      "stops": [
-        "deskstop.computer",
-        "tiat.place",
-        "luma.com",
-        "clay.com",
-        "enterprisetech30.com"
-      ]
-    },
-    {
-      "id": "line-d6ac0ee3",
-      "name": "gamer.network line",
-      "color": "#A18A3F",
-      "loop": false,
-      "stops": [
-        "indiedb.com",
-        "gamer.network",
-        "rockpapershotgun.com",
-        "mapgenie.io",
-        "planetpokemon.net"
-      ]
-    },
-    {
-      "id": "line-14ea1b3a",
-      "name": "madsci.io line",
-      "color": "#6F8A4A",
-      "loop": false,
-      "stops": [
-        "givebutter.com",
-        "tiat.place",
-        "zainshah.me",
-        "madsci.io"
-      ]
-    },
-    {
-      "id": "line-3dc47821",
-      "name": "connie.surf line",
-      "color": "#6F8A4A",
-      "loop": false,
-      "stops": [
-        "corny.substack.com",
-        "connie.surf",
-        "are.na",
-        "nextjs.org"
-      ]
-    },
-    {
-      "id": "line-41a612b5",
-      "name": "dicebreaker.com line",
-      "color": "#6F8A4A",
-      "loop": false,
-      "stops": [
-        "dicebreaker.com",
-        "rockpapershotgun.com",
-        "steampowered.com",
-        "steamcommunity.com"
-      ]
-    },
-    {
-      "id": "line-4c3d571d",
-      "name": "sheknows.com line",
-      "color": "#B0783C",
-      "loop": false,
-      "stops": [
-        "robshuter.substack.com",
-        "stylecaster.com",
-        "sheknows.com",
-        "theflowspace.com",
-        "whatsapp.com"
-      ]
-    },
-    {
-      "id": "line-513de072",
-      "name": "shemedia.com line",
-      "color": "#A18A3F",
-      "loop": false,
-      "stops": [
-        "adage.com",
-        "shemedia.com",
-        "sheknows.com",
-        "goldderby.com",
-        "emmys.com"
-      ]
-    },
-    {
-      "id": "line-cb3252ed",
-      "name": "thrillist.com line",
-      "color": "#B0783C",
-      "loop": false,
-      "stops": [
-        "beckervineyards.com",
-        "thrillist.com",
-        "voxmedia.com",
-        "vox.com",
-        "howtogeek.com"
-      ]
-    },
-    {
-      "id": "line-84c57192",
-      "name": "thedodo.com line",
-      "color": "#A18A3F",
-      "loop": false,
-      "stops": [
-        "concert.io",
-        "voxmedia.com",
-        "thedodo.com",
-        "thedo.do"
-      ]
-    },
-    {
-      "id": "line-bd46552e",
+      "id": "line-d87b9a45",
       "name": "mayaontheinter.net line",
-      "color": "#A65D57",
+      "color": "#8063A0",
       "loop": false,
       "stops": [
-        "032c.com",
-        "mayaontheinter.net",
-        "shen.land",
-        "morgangallant.com"
+        "kwon.nyc",
+        "gossipsweb.net",
+        "thehtml.review",
+        "maxy.world",
+        "mayaontheinter.net"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-ae5f0ce1",
+        "line-d46bd315",
+        "line-e2975487"
       ]
     },
     {
-      "id": "line-c6722d53",
-      "name": "shen.land line",
+      "id": "line-9a2bec96",
+      "name": "naiveyearly.com line",
+      "color": "#6B6FA8",
+      "loop": false,
+      "stops": [
+        "elliott.computer",
+        "naiveyearly.com",
+        "thehtml.review",
+        "gossipsweb.net",
+        "kwon.nyc"
+      ],
+      "sharedWith": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487"
+      ]
+    },
+    {
+      "id": "line-a090c38b",
+      "name": "goldderby.com line",
+      "color": "#9A5E8A",
+      "loop": false,
+      "stops": [
+        "ampav.com",
+        "goldderby.com",
+        "artforum.com",
+        "punchdrink.com",
+        "sportico.com",
+        "popsugar.com",
+        "stylecaster.com"
+      ],
+      "sharedWith": [
+        "line-7047e369",
+        "line-ddf0faf1",
+        "line-f69decea"
+      ]
+    },
+    {
+      "id": "line-e77e8f00",
+      "name": "sxsw.com line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
-        "ambient.institute",
-        "chia.design",
-        "shen.land",
-        "ariellelok.com"
+        "indiewire.com",
+        "tmz.com",
+        "pagesix.com",
+        "onetrust.com",
+        "technologyreview.com",
+        "mit.edu",
+        "sxsw.com"
+      ],
+      "sharedWith": [
+        "line-6584b58e",
+        "line-997f57f7",
+        "line-e46204ef",
+        "line-ee847f7f"
       ]
     },
     {
-      "id": "line-e5ea8602",
-      "name": "enable-javascript.com line",
-      "color": "#A65D57",
+      "id": "line-9fb40cba",
+      "name": "laurelschwulst.com line",
+      "color": "#6F8A4A",
       "loop": false,
       "stops": [
-        "mananamariee.substack.com",
-        "open.substack.com",
-        "joshuacitarella.substack.com",
-        "enable-javascript.com",
-        "metalabel.substack.com",
-        "pca.st"
+        "metalabel.com",
+        "mindyseu.com",
+        "rhizome.org",
+        "laurelschwulst.com",
+        "megmiller.world",
+        "frieze.com",
+        "onetrust.com"
+      ],
+      "sharedWith": [
+        "line-7a96a1e5",
+        "line-9a9ab5e5",
+        "line-a2bc2b90",
+        "line-c8f8ca19"
       ]
     },
     {
-      "id": "line-2aaec00e",
-      "name": "thecut.com line",
+      "id": "line-c8f8ca19",
+      "name": "mindyseu.com line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
-        "autumnfourkiller.com",
-        "thecut.com",
-        "curbed.com",
-        "grubstreet.com",
-        "thecornerstoresoho.com"
+        "luckysoap.com",
+        "rhizome.org",
+        "mindyseu.com",
+        "metalabel.com",
+        "metalabel.substack.com"
+      ],
+      "sharedWith": [
+        "line-205dc90c",
+        "line-57c2ba84",
+        "line-987eb336",
+        "line-997f57f7",
+        "line-9a9ab5e5",
+        "line-9fb40cba",
+        "line-a2bc2b90",
+        "line-edf1c383"
       ]
     },
     {
-      "id": "line-7a9dece6",
-      "name": "aboutads.info line",
-      "color": "#B0783C",
+      "id": "line-6584b58e",
+      "name": "nih.gov line",
+      "color": "#3F8B6C",
       "loop": false,
       "stops": [
-        "condenast.com",
-        "arstechnica.com",
-        "aboutads.info",
-        "newyorker.com",
-        "condenaststore.com"
+        "nih.gov",
+        "vice.com",
+        "404media.co",
+        "anildash.com",
+        "mit.edu",
+        "technologyreview.com",
+        "onetrust.com",
+        "pagesix.com",
+        "tmz.com"
+      ],
+      "sharedWith": [
+        "line-997f57f7",
+        "line-e46204ef",
+        "line-e77e8f00",
+        "line-ee847f7f"
       ]
     },
     {
-      "id": "line-7c0620e2",
+      "id": "line-ee847f7f",
+      "name": "harvard.edu line",
+      "color": "#3F8790",
+      "loop": false,
+      "stops": [
+        "doaks.org",
+        "harvard.edu",
+        "jvns.ca",
+        "mit.edu",
+        "technologyreview.com",
+        "onetrust.com",
+        "pagesix.com"
+      ],
+      "sharedWith": [
+        "line-6584b58e",
+        "line-997f57f7",
+        "line-e46204ef",
+        "line-e77e8f00"
+      ]
+    },
+    {
+      "id": "line-a53dbc61",
       "name": "escapethealgorithm.substack.com line",
       "color": "#B0783C",
       "loop": false,
       "stops": [
-        "caitlindewey.com",
+        "agenticcommerce.dev",
+        "stripe.com",
+        "enable-javascript.com",
+        "linksiwouldgchatyou.substack.com",
+        "escapethealgorithm.substack.com",
+        "wired.com",
+        "cna.st"
+      ],
+      "sharedWith": [
+        "line-57c2ba84",
+        "line-997f57f7",
+        "line-a828276f",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "id": "line-a828276f",
+      "name": "linksiwouldgchatyou.substack.com line",
+      "color": "#6F8A4A",
+      "loop": false,
+      "stops": [
+        "abcglossary.xyz",
+        "escapethealgorithm.substack.com",
         "linksiwouldgchatyou.substack.com",
         "enable-javascript.com",
-        "escapethealgorithm.substack.com",
-        "livenearfriends.com"
+        "reboothq.substack.com",
+        "gettogether.substack.com"
+      ],
+      "sharedWith": [
+        "line-57c2ba84",
+        "line-a53dbc61",
+        "line-edf1c383"
       ]
     },
     {
-      "id": "line-db0e8707",
-      "name": "artnews.com line",
-      "color": "#B0783C",
-      "loop": false,
-      "stops": [
-        "artnews.com",
-        "indiewire.com",
-        "ampav.com",
-        "swoogo.com",
-        "mintlify.com"
-      ]
-    },
-    {
-      "id": "line-21191788",
-      "name": "maxroll.gg line",
-      "color": "#B0783C",
-      "loop": false,
-      "stops": [
-        "planet-pokemon.com",
-        "ign.com",
-        "maxroll.gg",
-        "starforgesystems.com"
-      ]
-    },
-    {
-      "id": "line-d56eeaed",
-      "name": "rhizome.org line",
+      "id": "line-9a9ab5e5",
+      "name": "grayarea.org line",
       "color": "#A65D57",
       "loop": false,
       "stops": [
-        "4a.com.au",
-        "mindyseu.com",
+        "ayanazairecotton.com",
+        "grayarea.org",
         "rhizome.org",
-        "keela.co"
+        "mindyseu.com",
+        "hyundai.com",
+        "genesis.com"
+      ],
+      "sharedWith": [
+        "line-9fb40cba",
+        "line-a2bc2b90",
+        "line-c8f8ca19"
       ]
     },
     {
-      "id": "line-9fc7570e",
-      "name": "ystrickler.com line",
+      "id": "line-bbb7084e",
+      "name": "rockpapershotgun.com line",
       "color": "#A65D57",
       "loop": false,
       "stops": [
-        "bentoism.substack.com",
-        "bentoism.org",
-        "ystrickler.com",
-        "dfos.com",
-        "artistcorporations.com",
-        "colorado.gov"
+        "appgala.events",
+        "gamesindustry.biz",
+        "rockpapershotgun.com",
+        "ign.com",
+        "ziffdavis.com",
+        "eurogamer.net",
+        "mapgenie.io",
+        "division2map.com"
+      ],
+      "sharedWith": [
+        "line-cd1a9247",
+        "line-dfe959a4"
       ]
     },
     {
-      "id": "line-8c9bf5d0",
-      "name": "nih.gov line",
-      "color": "#A65D57",
+      "id": "line-dfe959a4",
+      "name": "eurogamer.net line",
+      "color": "#B0783C",
       "loop": false,
       "stops": [
-        "hhs.gov",
-        "nih.gov",
-        "nature.com",
-        "springer.com",
-        "surveymonkey.com"
+        "indiedb.com",
+        "gamer.network",
+        "ign.com",
+        "rockpapershotgun.com",
+        "eurogamer.net",
+        "vg247.com",
+        "monsterhunternow.com"
+      ],
+      "sharedWith": [
+        "line-bbb7084e",
+        "line-cd1a9247"
       ]
     },
     {
-      "id": "line-a625471a",
-      "name": "laurelschwulst.com line",
+      "id": "line-92de7612",
+      "name": "aboutads.info line",
       "color": "#A65D57",
       "loop": false,
       "stops": [
-        "ultralight.school",
-        "laurelschwulst.com",
-        "statcounter.com",
-        "sfpc.study",
-        "withfriends.co"
+        "annali.me",
+        "pudding.cool",
+        "soundcloud.com",
+        "microsoft.com",
+        "stanford.edu",
+        "aboutads.info",
+        "arstechnica.com",
+        "condenast.com"
+      ],
+      "sharedWith": [
+        "line-b8deed84"
       ]
     },
     {
-      "id": "line-645fce23",
-      "name": "pketh.org line",
+      "id": "line-ef9a4eed",
+      "name": "are.na line",
       "color": "#A65D57",
       "loop": false,
       "stops": [
-        "c.im",
-        "pketh.org",
-        "kinopio.club",
-        "producthunt.com"
-      ]
-    },
-    {
-      "id": "line-6e471863",
-      "name": "waxy.org line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "ellesho.me",
-        "tinyawards.net",
-        "waxy.org",
-        "xoxo.zone"
-      ]
-    },
-    {
-      "id": "line-b2f7932a",
-      "name": "culturehub.org line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "app.link",
-        "eepurl.com",
-        "culturehub.org",
-        "tinyurl.com"
-      ]
-    },
-    {
-      "id": "line-bff82751",
-      "name": "givelively.org line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "angel.co",
-        "givelively.org",
-        "movingimage.org",
-        "leeser.com"
-      ]
-    },
-    {
-      "id": "line-e8298879",
-      "name": "cnn.com line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "tmztour.com",
-        "tmz.com",
-        "cnn.com",
-        "wbd.com"
-      ]
-    },
-    {
-      "id": "line-fa069da1",
-      "name": "frieze.com line",
-      "color": "#A65D57",
-      "loop": false,
-      "stops": [
-        "demos.co.uk",
-        "frieze.com",
-        "onetrust.com",
-        "mckinsey.com"
-      ]
+        "notion.co",
+        "notion.dev",
+        "notion.site",
+        "are.na",
+        "abcdinamo.com",
+        "nts.live"
+      ],
+      "sharedWith": []
     }
   ],
   "interchanges": [
     {
-      "domain": "aboutads.info",
+      "domain": "ampav.com",
       "lines": [
-        "line-7a9dece6",
-        "line-be967c68"
+        "line-7047e369",
+        "line-716f54d7",
+        "line-997f57f7",
+        "line-a090c38b",
+        "line-b8deed84",
+        "line-d3f7f4de",
+        "line-d5d72651",
+        "line-f69decea"
       ]
     },
     {
-      "domain": "are.na",
+      "domain": "annali.me",
       "lines": [
-        "line-31fbba63",
-        "line-3dc47821",
-        "line-878559cc",
-        "line-97bfddde"
+        "line-92de7612",
+        "line-b8deed84"
       ]
     },
     {
-      "domain": "curbed.com",
+      "domain": "artforum.com",
       "lines": [
-        "line-2aaec00e",
-        "line-be967c68"
+        "line-244af6de",
+        "line-7047e369",
+        "line-997f57f7",
+        "line-a090c38b",
+        "line-d3f7f4de",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-f69decea"
+      ]
+    },
+    {
+      "domain": "eater.com",
+      "lines": [
+        "line-244af6de",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-d3f7f4de",
+        "line-d5d72651",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e46204ef",
+        "line-f69decea"
+      ]
+    },
+    {
+      "domain": "ellesho.me",
+      "lines": [
+        "line-244af6de",
+        "line-3f972fae"
+      ]
+    },
+    {
+      "domain": "elliott.computer",
+      "lines": [
+        "line-9a2bec96",
+        "line-e2975487"
       ]
     },
     {
       "domain": "enable-javascript.com",
       "lines": [
-        "line-7c0620e2",
-        "line-e5ea8602"
+        "line-57c2ba84",
+        "line-a53dbc61",
+        "line-a828276f"
+      ]
+    },
+    {
+      "domain": "escapethealgorithm.substack.com",
+      "lines": [
+        "line-205dc90c",
+        "line-57c2ba84",
+        "line-997f57f7",
+        "line-a53dbc61",
+        "line-a828276f",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "domain": "eurogamer.net",
+      "lines": [
+        "line-bbb7084e",
+        "line-cd1a9247",
+        "line-dfe959a4"
+      ]
+    },
+    {
+      "domain": "fidgetcamp.com",
+      "lines": [
+        "line-205dc90c",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "domain": "gamer.network",
+      "lines": [
+        "line-cd1a9247",
+        "line-dfe959a4"
+      ]
+    },
+    {
+      "domain": "gossipsweb.net",
+      "lines": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487"
+      ]
+    },
+    {
+      "domain": "grubstreet.com",
+      "lines": [
+        "line-7047e369",
+        "line-d7e02563",
+        "line-de9e3514"
+      ]
+    },
+    {
+      "domain": "henry.codes",
+      "lines": [
+        "line-12f8695d",
+        "line-3f972fae",
+        "line-74d3562f",
+        "line-a6b3807c",
+        "line-b265b2d7",
+        "line-b47afe24"
+      ]
+    },
+    {
+      "domain": "html.energy",
+      "lines": [
+        "line-12f8695d",
+        "line-8f52bdc6",
+        "line-b9b8ef04"
+      ]
+    },
+    {
+      "domain": "ifeelsomuchsha.me",
+      "lines": [
+        "line-205dc90c",
+        "line-a6b3807c"
       ]
     },
     {
       "domain": "ign.com",
       "lines": [
-        "line-21191788",
-        "line-4257b277"
+        "line-bbb7084e",
+        "line-cd1a9247",
+        "line-dfe959a4"
+      ]
+    },
+    {
+      "domain": "imempowa.com",
+      "lines": [
+        "line-205dc90c",
+        "line-e7773a8f"
+      ]
+    },
+    {
+      "domain": "indiedb.com",
+      "lines": [
+        "line-cd1a9247",
+        "line-dfe959a4"
       ]
     },
     {
       "domain": "indiewire.com",
       "lines": [
-        "line-be967c68",
-        "line-db0e8707"
+        "line-7047e369",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-d3f7f4de",
+        "line-d5d72651",
+        "line-e77e8f00",
+        "line-f69decea"
+      ]
+    },
+    {
+      "domain": "internetphonebook.net",
+      "lines": [
+        "line-b9b8ef04",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "domain": "jackieis.online",
+      "lines": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-57c2ba84",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-9c7d1a89",
+        "line-a6b3807c",
+        "line-b265b2d7",
+        "line-b9b8ef04",
+        "line-f74abd5b"
+      ]
+    },
+    {
+      "domain": "jvns.ca",
+      "lines": [
+        "line-bb5651fd",
+        "line-ee847f7f"
+      ]
+    },
+    {
+      "domain": "jzhao.xyz",
+      "lines": [
+        "line-233043b0",
+        "line-28ac84dd",
+        "line-664b30dc",
+        "line-bb5651fd",
+        "line-ca1f6b04"
+      ]
+    },
+    {
+      "domain": "kayserifserif.place",
+      "lines": [
+        "line-0390a868",
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-233043b0",
+        "line-244af6de",
+        "line-28ac84dd",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-664b30dc",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-ae5f0ce1",
+        "line-bb5651fd",
+        "line-ca1f6b04"
+      ]
+    },
+    {
+      "domain": "kinopio.club",
+      "lines": [
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "domain": "kwon.nyc",
+      "lines": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9a2bec96",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-d87b9a45",
+        "line-e2975487"
+      ]
+    },
+    {
+      "domain": "lareviewofbooks.org",
+      "lines": [
+        "line-7047e369",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "domain": "laurelschwulst.com",
+      "lines": [
+        "line-7a96a1e5",
+        "line-9fb40cba"
+      ]
+    },
+    {
+      "domain": "leiac.me",
+      "lines": [
+        "line-205dc90c",
+        "line-a880a03f",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "domain": "linksiwouldgchatyou.substack.com",
+      "lines": [
+        "line-57c2ba84",
+        "line-997f57f7",
+        "line-a53dbc61",
+        "line-a828276f",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "domain": "liuleslie.github.io",
+      "lines": [
+        "line-3c50ce02",
+        "line-3f972fae",
+        "line-8f52bdc6",
+        "line-8fb74aa6",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-e7773a8f"
+      ]
+    },
+    {
+      "domain": "manuelmoreale.com",
+      "lines": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-9fe06aaa",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-ae5f0ce1",
+        "line-af47a085",
+        "line-bb5651fd",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "domain": "maxy.world",
+      "lines": [
+        "line-ae5f0ce1",
+        "line-d87b9a45"
+      ]
+    },
+    {
+      "domain": "mayaontheinter.net",
+      "lines": [
+        "line-d87b9a45",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "domain": "megmiller.world",
+      "lines": [
+        "line-7a96a1e5",
+        "line-9fb40cba"
+      ]
+    },
+    {
+      "domain": "metalabel.com",
+      "lines": [
+        "line-205dc90c",
+        "line-57c2ba84",
+        "line-987eb336",
+        "line-997f57f7",
+        "line-9fb40cba",
+        "line-c8f8ca19",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "domain": "metalabel.substack.com",
+      "lines": [
+        "line-205dc90c",
+        "line-57c2ba84",
+        "line-987eb336",
+        "line-997f57f7",
+        "line-c8f8ca19",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "domain": "microsoft.com",
+      "lines": [
+        "line-92de7612",
+        "line-b8deed84"
+      ]
+    },
+    {
+      "domain": "mindyseu.com",
+      "lines": [
+        "line-9a9ab5e5",
+        "line-9fb40cba",
+        "line-a2bc2b90",
+        "line-c8f8ca19"
+      ]
+    },
+    {
+      "domain": "mit.edu",
+      "lines": [
+        "line-6584b58e",
+        "line-997f57f7",
+        "line-e46204ef",
+        "line-e77e8f00",
+        "line-ee847f7f"
+      ]
+    },
+    {
+      "domain": "nature.com",
+      "lines": [
+        "line-28ac84dd",
+        "line-e46204ef"
+      ]
+    },
+    {
+      "domain": "nownownow.com",
+      "lines": [
+        "line-0390a868",
+        "line-3f972fae",
+        "line-7a96a1e5",
+        "line-9fe06aaa",
+        "line-a6b3807c",
+        "line-d46bd315",
+        "line-e2975487"
+      ]
+    },
+    {
+      "domain": "onetrust.com",
+      "lines": [
+        "line-6584b58e",
+        "line-997f57f7",
+        "line-9fb40cba",
+        "line-e77e8f00",
+        "line-ee847f7f",
+        "line-f69decea"
+      ]
+    },
+    {
+      "domain": "pagesix.com",
+      "lines": [
+        "line-6584b58e",
+        "line-e77e8f00",
+        "line-ee847f7f"
+      ]
+    },
+    {
+      "domain": "pketh.org",
+      "lines": [
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "domain": "popsugar.com",
+      "lines": [
+        "line-7047e369",
+        "line-a090c38b",
+        "line-de9e3514"
+      ]
+    },
+    {
+      "domain": "pudding.cool",
+      "lines": [
+        "line-92de7612",
+        "line-b8deed84"
       ]
     },
     {
       "domain": "punchdrink.com",
       "lines": [
-        "line-6f7f5a11",
-        "line-7cfc6db4",
-        "line-a984beb6",
-        "line-bd35986f",
-        "line-be967c68"
+        "line-a090c38b",
+        "line-d5d72651",
+        "line-ddf0faf1",
+        "line-f69decea"
       ]
     },
     {
       "domain": "rhizome.org",
       "lines": [
-        "line-6f7f5a11",
-        "line-d56eeaed"
+        "line-9a9ab5e5",
+        "line-9fb40cba",
+        "line-a2bc2b90",
+        "line-c8f8ca19"
       ]
     },
     {
       "domain": "rockpapershotgun.com",
       "lines": [
-        "line-41a612b5",
-        "line-4257b277",
-        "line-518c0959",
-        "line-d6ac0ee3"
+        "line-bbb7084e",
+        "line-cd1a9247",
+        "line-dfe959a4"
       ]
     },
     {
-      "domain": "sheknows.com",
+      "domain": "sbnation.com",
       "lines": [
-        "line-4c3d571d",
-        "line-513de072",
-        "line-be967c68"
+        "line-244af6de",
+        "line-7047e369",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-f69decea"
+      ]
+    },
+    {
+      "domain": "shemedia.com",
+      "lines": [
+        "line-d3f7f4de",
+        "line-f69decea"
       ]
     },
     {
       "domain": "shen.land",
       "lines": [
-        "line-bd46552e",
-        "line-c6722d53",
-        "line-d0aa07b5"
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-244af6de",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7a96a1e5",
+        "line-987eb336",
+        "line-a2bc2b90",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-ae5f0ce1",
+        "line-bb5651fd",
+        "line-e2975487"
+      ]
+    },
+    {
+      "domain": "soundcloud.com",
+      "lines": [
+        "line-92de7612",
+        "line-b8deed84"
       ]
     },
     {
       "domain": "spencer.place",
       "lines": [
-        "line-0c96d532",
-        "line-2902af8a",
-        "line-36c9eb08",
-        "line-878559cc",
-        "line-d0aa07b5",
-        "line-fd0a9537"
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-e7773a8f",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "domain": "spencerchang.me",
+      "lines": [
+        "line-12f8695d",
+        "line-205dc90c",
+        "line-233043b0",
+        "line-28ac84dd",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-664b30dc",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-bb5651fd",
+        "line-ca1f6b04",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "domain": "sportico.com",
+      "lines": [
+        "line-7047e369",
+        "line-a090c38b",
+        "line-ddf0faf1"
+      ]
+    },
+    {
+      "domain": "stripe.com",
+      "lines": [
+        "line-12f8695d",
+        "line-a53dbc61"
+      ]
+    },
+    {
+      "domain": "stylecaster.com",
+      "lines": [
+        "line-a090c38b",
+        "line-d3f7f4de",
+        "line-f69decea"
+      ]
+    },
+    {
+      "domain": "sxsw.com",
+      "lines": [
+        "line-997f57f7",
+        "line-d7e02563",
+        "line-e46204ef",
+        "line-e77e8f00"
+      ]
+    },
+    {
+      "domain": "technologyreview.com",
+      "lines": [
+        "line-6584b58e",
+        "line-664b30dc",
+        "line-997f57f7",
+        "line-e46204ef",
+        "line-e77e8f00",
+        "line-ee847f7f"
+      ]
+    },
+    {
+      "domain": "theflowspace.com",
+      "lines": [
+        "line-d7e02563",
+        "line-ddf0faf1"
+      ]
+    },
+    {
+      "domain": "thehtml.review",
+      "lines": [
+        "line-7a96a1e5",
+        "line-9a2bec96",
+        "line-ae5f0ce1",
+        "line-d87b9a45"
+      ]
+    },
+    {
+      "domain": "thrillist.com",
+      "lines": [
+        "line-244af6de",
+        "line-7047e369",
+        "line-997f57f7",
+        "line-b8deed84",
+        "line-d7e02563",
+        "line-ddf0faf1",
+        "line-de9e3514",
+        "line-e46204ef",
+        "line-f69decea"
       ]
     },
     {
       "domain": "tiat.place",
       "lines": [
-        "line-14ea1b3a",
-        "line-6f00cd92",
-        "line-878559cc",
-        "line-e2b1bd5a"
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3c50ce02",
+        "line-792236ca",
+        "line-a6b3807c",
+        "line-a880a03f",
+        "line-b265b2d7",
+        "line-b47afe24",
+        "line-b9b8ef04",
+        "line-e7773a8f",
+        "line-fa7119b6"
+      ]
+    },
+    {
+      "domain": "tinyawards.net",
+      "lines": [
+        "line-205dc90c",
+        "line-244af6de",
+        "line-2c28cb40",
+        "line-3f972fae",
+        "line-57c2ba84",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-74d3562f",
+        "line-8181e6ac",
+        "line-987eb336",
+        "line-9c7d1a89",
+        "line-a2bc2b90",
+        "line-a55a3040",
+        "line-a6b3807c",
+        "line-af47a085",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f74abd5b",
+        "line-f7e0eda3",
+        "line-fdbf3bfd"
+      ]
+    },
+    {
+      "domain": "tmz.com",
+      "lines": [
+        "line-6584b58e",
+        "line-e77e8f00"
+      ]
+    },
+    {
+      "domain": "vibe.com",
+      "lines": [
+        "line-716f54d7",
+        "line-d3f7f4de",
+        "line-d5d72651",
+        "line-f69decea"
       ]
     },
     {
       "domain": "voxmedia.com",
       "lines": [
-        "line-84c57192",
-        "line-be967c68",
-        "line-cb3252ed"
+        "line-244af6de",
+        "line-7047e369",
+        "line-8fb74aa6",
+        "line-d7e02563",
+        "line-de9e3514",
+        "line-f69decea"
+      ]
+    },
+    {
+      "domain": "vulture.com",
+      "lines": [
+        "line-7047e369",
+        "line-8fb74aa6",
+        "line-d5d72651"
+      ]
+    },
+    {
+      "domain": "waxy.org",
+      "lines": [
+        "line-244af6de",
+        "line-3f972fae",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-a6b3807c",
+        "line-cd1a9247"
+      ]
+    },
+    {
+      "domain": "we-b.site",
+      "lines": [
+        "line-233043b0",
+        "line-b265b2d7"
+      ]
+    },
+    {
+      "domain": "webcurios.co.uk",
+      "lines": [
+        "line-3f972fae",
+        "line-7047e369",
+        "line-716f54d7",
+        "line-a6b3807c",
+        "line-cd1a9247",
+        "line-edf1c383",
+        "line-f7e0eda3"
+      ]
+    },
+    {
+      "domain": "wired.com",
+      "lines": [
+        "line-997f57f7",
+        "line-a53dbc61",
+        "line-e46204ef",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "domain": "ystrickler.com",
+      "lines": [
+        "line-987eb336",
+        "line-a55a3040",
+        "line-af47a085",
+        "line-ca1f6b04",
+        "line-edf1c383"
+      ]
+    },
+    {
+      "domain": "ziffdavis.com",
+      "lines": [
+        "line-bbb7084e",
+        "line-cd1a9247"
       ]
     }
   ]

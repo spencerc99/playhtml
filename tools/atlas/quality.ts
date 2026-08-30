@@ -21,10 +21,15 @@ const PARTICIPANT_BUCKET_COUNT = 256;
 const DOMAIN_BUCKET_COUNT = 128;
 const MAX_INTERVAL_MS = 30 * 60 * 1000;
 const MAX_SESSION_DOMAIN_MS = 15 * 60 * 1000;
+const MAX_SPRINGBOARD_DOWNSTREAM_MS = 10 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FLUSH_EVERY_ROWS = 100_000;
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
-const OUTPUT_PATH = path.join(path.dirname(SCRIPT_PATH), "out", "wwo-quality.json");
+const OUTPUT_PATH = path.join(
+  path.dirname(SCRIPT_PATH),
+  "out",
+  "wwo-quality.json",
+);
 const EXTRA_REGISTRY_SUFFIXES = new Set([
   "co.id",
   "or.id",
@@ -41,7 +46,7 @@ const EXTRA_REGISTRY_SUFFIXES = new Set([
 
 type EventClass = "start" | "end" | "other";
 
-interface SessionEvent {
+export interface SessionEvent {
   sessionId: string;
   timestamp: number;
   ordinal: number;
@@ -52,13 +57,14 @@ interface SessionEvent {
   utcDay: number;
 }
 
-interface ParticipantVisit {
+export interface ParticipantVisit {
   participantId: string;
   timestamp: number;
   sessionId: string;
   ordinal: number;
   domain: string;
   fromDomain: string | null;
+  downstreamEngagedMs: number;
 }
 
 interface DomainSession {
@@ -68,7 +74,7 @@ interface DomainSession {
   participantDays: Set<string>;
 }
 
-interface DomainAggregate {
+export interface DomainAggregate {
   domain: string;
   quality: number;
   engagedMs: number;
@@ -77,6 +83,12 @@ interface DomainAggregate {
   returnDays: number;
   breadthMean: number;
   springboards: number;
+  downstreamMs: number;
+}
+
+interface SpringboardSignals {
+  springboards: number;
+  downstreamMs: number;
 }
 
 interface BucketPaths {
@@ -103,9 +115,8 @@ async function* readLines(filePath: string): AsyncGenerator<string> {
     while (true) {
       const newline = text.indexOf("\n", start);
       if (newline < 0) break;
-      const end = newline > start && text[newline - 1] === "\r"
-        ? newline - 1
-        : newline;
+      const end =
+        newline > start && text[newline - 1] === "\r" ? newline - 1 : newline;
       yield text.slice(start, end);
       start = newline + 1;
     }
@@ -144,23 +155,27 @@ function classifyEvent(data: string): EventClass {
   if (event === "focus" || (event === "pageshow" && visibility === "visible")) {
     return "start";
   }
-  if (event === "blur" || event === "pagehide" || event === "beforeunload" || event === "unload") {
+  if (
+    event === "blur" ||
+    event === "pagehide" ||
+    event === "beforeunload" ||
+    event === "unload"
+  ) {
     return "end";
   }
   return "other";
 }
 
 function parseTimestamp(value: string): number {
-  const isoTimestamp = value
-    .replace(" ", "T")
-    .replace(/([+-]\d{2})$/, "$1:00");
+  const isoTimestamp = value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
   return Date.parse(isoTimestamp);
 }
 
 function normalizeUrl(rawUrl: string): { domain: string; url: string } | null {
   try {
     const parsed = new URL(rawUrl);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      return null;
     parsed.search = "";
     parsed.hash = "";
     return { domain: baseDomain(parsed.hostname), url: parsed.href };
@@ -172,7 +187,10 @@ function normalizeUrl(rawUrl: string): { domain: string; url: string } | null {
 function createBucketPaths(tempDirectory: string): BucketPaths {
   const makePaths = (prefix: string, count: number) =>
     Array.from({ length: count }, (_, index) =>
-      path.join(tempDirectory, `${prefix}-${index.toString().padStart(3, "0")}.tsv`)
+      path.join(
+        tempDirectory,
+        `${prefix}-${index.toString().padStart(3, "0")}.tsv`,
+      ),
     );
   return {
     sessions: makePaths("sessions", SESSION_BUCKET_COUNT),
@@ -231,7 +249,7 @@ async function bucketInput(
       const bucket = hash(sessionId) % SESSION_BUCKET_COUNT;
       sinks[bucket].write(
         `${sessionId}\t${timestamp}\t${ordinal}\t${participantId}\t${normalized.domain}\t` +
-          `${normalized.url}\t${eventClass}\t${Math.floor(timestamp / DAY_MS)}\n`
+          `${normalized.url}\t${eventClass}\t${Math.floor(timestamp / DAY_MS)}\n`,
       );
       validRows++;
       if (validRows % FLUSH_EVERY_ROWS === 0) await flushSinks(sinks);
@@ -315,6 +333,7 @@ export function aggregateSession(events: SessionEvent[]): {
         ordinal: event.ordinal,
         domain: event.domain,
         fromDomain: previousDomain,
+        downstreamEngagedMs: 0,
       });
     }
 
@@ -330,6 +349,10 @@ export function aggregateSession(events: SessionEvent[]): {
     previousDomain = event.domain;
   }
 
+  for (const visit of visits) {
+    visit.downstreamEngagedMs = domains.get(visit.domain)?.engagedMs ?? 0;
+  }
+
   return { domains, visits };
 }
 
@@ -341,7 +364,7 @@ function writeDomainSession(
 ): void {
   const bucket = hash(domain) % DOMAIN_BUCKET_COUNT;
   sinks[bucket].write(
-    `${domain}\tS\t${sessionId}\t${aggregate.engagedMs}\t${aggregate.urls.size}\n`
+    `${domain}\tS\t${sessionId}\t${aggregate.engagedMs}\t${aggregate.urls.size}\n`,
   );
   for (const participantId of aggregate.participants) {
     sinks[bucket].write(`${domain}\tP\t${participantId}\n`);
@@ -351,15 +374,20 @@ function writeDomainSession(
   }
 }
 
-function writeParticipantVisit(sinks: WriteStream[], visit: ParticipantVisit): void {
+function writeParticipantVisit(
+  sinks: WriteStream[],
+  visit: ParticipantVisit,
+): void {
   const bucket = hash(visit.participantId) % PARTICIPANT_BUCKET_COUNT;
   sinks[bucket].write(
     `${visit.participantId}\t${visit.timestamp}\t${visit.sessionId}\t${visit.ordinal}\t` +
-      `${visit.domain}\t${visit.fromDomain ?? ""}\n`
+      `${visit.domain}\t${visit.fromDomain ?? ""}\t${visit.downstreamEngagedMs}\n`,
   );
 }
 
-async function processSessionBuckets(bucketPaths: BucketPaths): Promise<number> {
+async function processSessionBuckets(
+  bucketPaths: BucketPaths,
+): Promise<number> {
   const participantSinks = createSinks(bucketPaths.participants);
   const domainSinks = createSinks(bucketPaths.domains);
   let sessionCount = 0;
@@ -390,7 +418,8 @@ async function processSessionBuckets(bucketPaths: BucketPaths): Promise<number> 
             aggregate,
           );
         }
-        for (const visit of result.visits) writeParticipantVisit(participantSinks, visit);
+        for (const visit of result.visits)
+          writeParticipantVisit(participantSinks, visit);
         sessionCount++;
         start = end;
       }
@@ -420,6 +449,7 @@ function parseParticipantVisit(line: string): ParticipantVisit {
     ordinal: Number(columns[3]),
     domain: columns[4],
     fromDomain: columns[5] || null,
+    downstreamEngagedMs: Number(columns[6]),
   };
 }
 
@@ -435,45 +465,68 @@ function compareParticipantVisits(
   );
 }
 
-async function countSpringboards(participantPaths: string[]): Promise<Map<string, number>> {
-  const springboards = new Map<string, number>();
+export function countParticipantSpringboards(
+  visits: ParticipantVisit[],
+): Map<string, SpringboardSignals> {
+  const signals = new Map<string, SpringboardSignals>();
+  let participantId: string | null = null;
+  let visitedDomains = new Set<string>();
+  let start = 0;
+  while (start < visits.length) {
+    let end = start + 1;
+    while (
+      end < visits.length &&
+      visits[end].participantId === visits[start].participantId &&
+      visits[end].timestamp === visits[start].timestamp
+    ) {
+      end++;
+    }
+    const visit = visits[start];
+    if (visit.participantId !== participantId) {
+      participantId = visit.participantId;
+      visitedDomains = new Set();
+    }
+    for (let index = start; index < end; index++) {
+      const current = visits[index];
+      if (current.fromDomain !== null && !visitedDomains.has(current.domain)) {
+        const aggregate = signals.get(current.fromDomain) ?? {
+          springboards: 0,
+          downstreamMs: 0,
+        };
+        aggregate.springboards++;
+        aggregate.downstreamMs += Math.min(
+          MAX_SPRINGBOARD_DOWNSTREAM_MS,
+          current.downstreamEngagedMs,
+        );
+        signals.set(current.fromDomain, aggregate);
+      }
+    }
+    for (let index = start; index < end; index++) {
+      visitedDomains.add(visits[index].domain);
+    }
+    start = end;
+  }
+  return signals;
+}
+
+async function countSpringboards(
+  participantPaths: string[],
+): Promise<Map<string, SpringboardSignals>> {
+  const totals = new Map<string, SpringboardSignals>();
   for (let bucket = 0; bucket < participantPaths.length; bucket++) {
     const visits: ParticipantVisit[] = [];
     for await (const line of readLines(participantPaths[bucket])) {
       if (line.length > 0) visits.push(parseParticipantVisit(line));
     }
     visits.sort(compareParticipantVisits);
-
-    let participantId: string | null = null;
-    let visitedDomains = new Set<string>();
-    let start = 0;
-    while (start < visits.length) {
-      let end = start + 1;
-      while (
-        end < visits.length &&
-        visits[end].participantId === visits[start].participantId &&
-        visits[end].timestamp === visits[start].timestamp
-      ) {
-        end++;
-      }
-      const visit = visits[start];
-      if (visit.participantId !== participantId) {
-        participantId = visit.participantId;
-        visitedDomains = new Set();
-      }
-      for (let index = start; index < end; index++) {
-        const current = visits[index];
-        if (current.fromDomain !== null && !visitedDomains.has(current.domain)) {
-          springboards.set(
-            current.fromDomain,
-            (springboards.get(current.fromDomain) ?? 0) + 1,
-          );
-        }
-      }
-      for (let index = start; index < end; index++) {
-        visitedDomains.add(visits[index].domain);
-      }
-      start = end;
+    for (const [domain, signals] of countParticipantSpringboards(visits)) {
+      const aggregate = totals.get(domain) ?? {
+        springboards: 0,
+        downstreamMs: 0,
+      };
+      aggregate.springboards += signals.springboards;
+      aggregate.downstreamMs += signals.downstreamMs;
+      totals.set(domain, aggregate);
     }
 
     rmSync(participantPaths[bucket]);
@@ -483,12 +536,12 @@ async function countSpringboards(participantPaths: string[]): Promise<Map<string
     );
   }
   process.stderr.write("\n");
-  return springboards;
+  return totals;
 }
 
 async function aggregateDomains(
   domainPaths: string[],
-  springboards: Map<string, number>,
+  springboards: Map<string, SpringboardSignals>,
 ): Promise<DomainAggregate[]> {
   const results: DomainAggregate[] = [];
   for (let bucket = 0; bucket < domainPaths.length; bucket++) {
@@ -536,7 +589,8 @@ async function aggregateDomains(
         participants: aggregate.participants.size,
         returnDays: aggregate.participantDays.size,
         breadthMean: aggregate.breadthTotal / aggregate.sessions,
-        springboards: springboards.get(domain) ?? 0,
+        springboards: springboards.get(domain)?.springboards ?? 0,
+        downstreamMs: springboards.get(domain)?.downstreamMs ?? 0,
       });
     }
     rmSync(domainPaths[bucket]);
@@ -557,15 +611,19 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function qualityComponents(domain: DomainAggregate): {
-  breadth: number;
-  loyalty: number;
-  depth: number;
+export function qualityComponents(domain: DomainAggregate): {
+  reach: number;
+  generosity: number;
+  launch: number;
+  return: number;
 } {
   return {
-    breadth: clamp01((domain.breadthMean - 1) / 5),
-    loyalty: clamp01(domain.returnDays / domain.participants / 8),
-    depth: clamp01(domain.engagedMs / domain.sessions / 600_000),
+    reach: clamp01(domain.participants / 25),
+    generosity: clamp01(domain.springboards / domain.sessions / 0.5),
+    launch: clamp01(
+      domain.downstreamMs / Math.max(1, domain.springboards) / 300_000,
+    ),
+    return: clamp01(domain.returnDays / domain.participants / 3),
   };
 }
 
@@ -573,13 +631,17 @@ export function scoreDomains(domains: DomainAggregate[]): DomainAggregate[] {
   const included = domains.filter((domain) => !isJunkDomain(domain.domain));
   for (const domain of included) domain.quality = 0;
   const qualified = included.filter(
-    (domain) => domain.participants >= 3 && domain.sessions >= 5,
+    (domain) => domain.participants >= 2 && domain.sessions >= 4,
   );
 
   for (const domain of qualified) {
     const components = qualityComponents(domain);
-    const product = components.breadth * components.loyalty * components.depth;
-    domain.quality = Math.round(Math.cbrt(product) * 1000) / 1000;
+    const product =
+      components.reach *
+      components.generosity *
+      components.launch *
+      components.return;
+    domain.quality = Math.round(product ** 0.25 * 1000) / 1000;
   }
   return included.sort(
     (left, right) =>
@@ -589,11 +651,20 @@ export function scoreDomains(domains: DomainAggregate[]): DomainAggregate[] {
 
 function printResults(domains: DomainAggregate[]): void {
   const sanityDomains = new Set([
+    "are.na",
+    "thehtml.review",
+    "nownownow.com",
+    "gossipsweb.net",
+    "spencer.place",
+    "jzhao.xyz",
+    "waxy.org",
+    "manuelmoreale.com",
+    "atlassian.net",
+    "spicychat.ai",
+    "watchpeopledie.tv",
+    "weebcentral.com",
     "youtube.com",
-    "netflix.com",
-    "twitch.tv",
     "instagram.com",
-    "4chan.org",
   ]);
   const rows = [
     ...domains.slice(0, 25),
@@ -602,17 +673,18 @@ function printResults(domains: DomainAggregate[]): void {
     ),
   ];
   console.log(
-    "domain\tquality\tnBreadth\tnLoyalty\tnDepth\tengagedMs\tsessions\t" +
-      "participants\treturnDays\tbreadthMean\tspringboards",
+    "domain\tquality\tnReach\tnGenerosity\tnLaunch\tnReturn\tdownstreamMs\t" +
+      "sessions\tparticipants\treturnDays\tspringboards\tengagedMs\tbreadthMean",
   );
   for (const domain of rows) {
     const components = qualityComponents(domain);
     console.log(
       `${domain.domain}\t${domain.quality.toFixed(3)}\t` +
-        `${components.breadth.toFixed(3)}\t${components.loyalty.toFixed(3)}\t` +
-        `${components.depth.toFixed(3)}\t${domain.engagedMs}\t${domain.sessions}\t` +
-        `${domain.participants}\t${domain.returnDays}\t` +
-        `${domain.breadthMean.toFixed(3)}\t${domain.springboards}`,
+        `${components.reach.toFixed(3)}\t${components.generosity.toFixed(3)}\t` +
+        `${components.launch.toFixed(3)}\t${components.return.toFixed(3)}\t` +
+        `${domain.downstreamMs}\t${domain.sessions}\t${domain.participants}\t` +
+        `${domain.returnDays}\t${domain.springboards}\t${domain.engagedMs}\t` +
+        `${domain.breadthMean.toFixed(3)}`,
     );
   }
 }
@@ -644,7 +716,9 @@ async function main(): Promise<void> {
   try {
     process.stderr.write("Bucketing input by session...\n");
     const validRows = await bucketInput(inputPath, bucketPaths);
-    process.stderr.write(`Bucketed ${validRows.toLocaleString()} valid rows.\n`);
+    process.stderr.write(
+      `Bucketed ${validRows.toLocaleString()} valid rows.\n`,
+    );
     const sessions = await processSessionBuckets(bucketPaths);
     process.stderr.write(`Aggregated ${sessions.toLocaleString()} sessions.\n`);
     const springboards = await countSpringboards(bucketPaths.participants);

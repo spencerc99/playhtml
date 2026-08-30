@@ -23,7 +23,9 @@ const DEFAULT_GRAPH_PATH = path.join(
   "galaxy-graph.json",
 );
 const DEFAULT_LINES_PATH = path.join(import.meta.dir, "out", "lines.json");
-const MIN_LINE_STOPS = 4;
+const DEFAULT_MIN_LINE_EDGES = 5;
+const CONNECTOR_MIN_LINE_EDGES = 4;
+const MAX_LINE_STOPS = 16;
 
 export const LINE_COLORS = [
   "#A65D57",
@@ -46,6 +48,7 @@ export interface TransitLine {
   color: string;
   loop: boolean;
   stops: string[];
+  sharedWith: string[];
 }
 
 export interface TransitInterchange {
@@ -65,7 +68,7 @@ export interface TransitLinesFile {
 
 interface WeightedEdge extends GalaxyEdge {
   key: string;
-  weight: number;
+  flow01: number;
 }
 
 interface Neighbor {
@@ -73,60 +76,9 @@ interface Neighbor {
   edge: WeightedEdge;
 }
 
-interface PathCandidate {
-  stops: string[];
-  weight: number;
-}
-
 interface LineDraft {
   stops: string[];
-}
-
-interface ComponentTask {
-  edges: Map<string, WeightedEdge>;
-  candidate: PathCandidate;
-}
-
-class RankedQueue<T> {
-  private values: T[] = [];
-
-  constructor(private compare: (left: T, right: T) => number) {}
-
-  push(value: T): void {
-    this.values.push(value);
-    let index = this.values.length - 1;
-    while (index > 0) {
-      const parent = Math.floor((index - 1) / 2);
-      if (this.compare(this.values[parent], value) <= 0) break;
-      this.values[index] = this.values[parent];
-      index = parent;
-    }
-    this.values[index] = value;
-  }
-
-  pop(): T | undefined {
-    const first = this.values[0];
-    const last = this.values.pop();
-    if (first === undefined || last === undefined || this.values.length === 0) {
-      return first;
-    }
-    let index = 0;
-    while (true) {
-      const left = index * 2 + 1;
-      const right = left + 1;
-      if (left >= this.values.length) break;
-      const child =
-        right < this.values.length &&
-        this.compare(this.values[right], this.values[left]) < 0
-          ? right
-          : left;
-      if (this.compare(last, this.values[child]) <= 0) break;
-      this.values[index] = this.values[child];
-      index = child;
-    }
-    this.values[index] = last;
-    return first;
-  }
+  edgeKeys: string[];
 }
 
 interface RideSegment {
@@ -150,13 +102,9 @@ function edgeKey(left: string, right: string): string {
   return left < right ? `${left}\0${right}` : `${right}\0${left}`;
 }
 
-function edgeWeight(edge: GalaxyEdge): number {
-  return 4 * Math.min(edge.jumps, edge.back) + Math.max(edge.jumps, edge.back);
-}
-
 function compareEdges(left: WeightedEdge, right: WeightedEdge): number {
   return (
-    right.weight - left.weight ||
+    right.flow01 - left.flow01 ||
     left.source.localeCompare(right.source) ||
     left.target.localeCompare(right.target)
   );
@@ -165,16 +113,6 @@ function compareEdges(left: WeightedEdge, right: WeightedEdge): number {
 function canonicalStops(stops: string[]): string[] {
   const reversed = [...stops].reverse();
   return stops.join("\0") <= reversed.join("\0") ? stops : reversed;
-}
-
-function compareCandidates(left: PathCandidate, right: PathCandidate): number {
-  return (
-    right.weight - left.weight ||
-    right.stops.length - left.stops.length ||
-    canonicalStops(left.stops)
-      .join("\0")
-      .localeCompare(canonicalStops(right.stops).join("\0"))
-  );
 }
 
 function makeAdjacency(
@@ -198,166 +136,189 @@ function makeAdjacency(
   return adjacency;
 }
 
-function splitComponents(
-  availableEdges: Map<string, WeightedEdge>,
-): Map<string, WeightedEdge>[] {
-  const nodes = new Set<string>();
-  for (const edge of availableEdges.values()) {
-    nodes.add(edge.source);
-    nodes.add(edge.target);
-  }
-  const adjacency = makeAdjacency(nodes, availableEdges.values());
-  const unseen = new Set(nodes);
-  const componentByDomain = new Map<string, number>();
-  let componentIndex = 0;
-  for (const start of [...nodes].sort()) {
-    if (!unseen.has(start)) continue;
-    const pending = [start];
-    unseen.delete(start);
-    while (pending.length > 0) {
-      const current = pending.pop()!;
-      componentByDomain.set(current, componentIndex);
-      for (const neighbor of adjacency.get(current)!) {
-        if (!unseen.delete(neighbor.domain)) continue;
-        pending.push(neighbor.domain);
-      }
-    }
-    componentIndex++;
-  }
-  const components = Array.from(
-    { length: componentIndex },
-    () => new Map<string, WeightedEdge>(),
-  );
-  for (const edge of availableEdges.values()) {
-    components[componentByDomain.get(edge.source)!].set(edge.key, edge);
-  }
-  return components;
+function sharedEdgeCount(edgeKeys: string[], claimed: Set<string>): number {
+  return edgeKeys.reduce((count, key) => count + Number(claimed.has(key)), 0);
 }
 
-function sweepTree(
-  start: string,
-  component: Set<string>,
-  adjacency: Map<string, Neighbor[]>,
-): PathCandidate {
-  const visited = new Set([start]);
-  const parent = new Map<string, string>();
-  const distances = new Map<string, number>([[start, 0]]);
-  const depths = new Map<string, number>([[start, 0]]);
-  const pending = [start];
-  while (pending.length > 0) {
-    const current = pending.pop()!;
-    const neighbors = adjacency.get(current) ?? [];
-    for (let index = neighbors.length - 1; index >= 0; index--) {
-      const neighbor = neighbors[index];
-      if (!component.has(neighbor.domain) || visited.has(neighbor.domain)) {
+function minimumLineEdges(
+  stops: string[],
+  nodeByDomain: Map<string, GalaxyGraph["nodes"][number]>,
+): number {
+  return stops.some((stop) => {
+    const kind = nodeByDomain.get(stop)!.kind;
+    return kind === "seed" || kind === "interchange";
+  })
+    ? CONNECTOR_MIN_LINE_EDGES
+    : DEFAULT_MIN_LINE_EDGES;
+}
+
+function medianFlow(
+  edgeKeys: string[],
+  edgeByKey: Map<string, WeightedEdge>,
+): number {
+  const flows = edgeKeys
+    .map((key) => edgeByKey.get(key)!.flow01)
+    .sort((left, right) => left - right);
+  const middle = Math.floor(flows.length / 2);
+  return flows.length % 2 === 1
+    ? flows[middle]
+    : (flows[middle - 1] + flows[middle]) / 2;
+}
+
+function enforceSharedEdgeCap(
+  stops: string[],
+  edgeKeys: string[],
+  seedIndex: number,
+  claimed: Set<string>,
+  edgeByKey: Map<string, WeightedEdge>,
+  nodeByDomain: Map<string, GalaxyGraph["nodes"][number]>,
+): LineDraft | null {
+  if (sharedEdgeCount(edgeKeys, claimed) * 2 <= edgeKeys.length) {
+    return { stops, edgeKeys };
+  }
+
+  let best: LineDraft | null = null;
+  let bestFlow = -1;
+  for (let start = 0; start <= seedIndex; start++) {
+    let shared = 0;
+    let flow = 0;
+    for (let end = start; end < edgeKeys.length; end++) {
+      const key = edgeKeys[end];
+      shared += Number(claimed.has(key));
+      flow += edgeByKey.get(key)!.flow01;
+      const length = end - start + 1;
+      const candidateStops = stops.slice(start, end + 2);
+      if (
+        end < seedIndex ||
+        candidateStops.length - 1 <
+          minimumLineEdges(candidateStops, nodeByDomain)
+      ) {
         continue;
       }
-      visited.add(neighbor.domain);
-      parent.set(neighbor.domain, current);
-      distances.set(
-        neighbor.domain,
-        distances.get(current)! + neighbor.edge.weight,
-      );
-      depths.set(neighbor.domain, depths.get(current)! + 1);
-      pending.push(neighbor.domain);
+      if (shared * 2 > length) continue;
+      const candidate = {
+        stops: candidateStops,
+        edgeKeys: edgeKeys.slice(start, end + 1),
+      };
+      if (
+        best === null ||
+        candidate.edgeKeys.length > best.edgeKeys.length ||
+        (candidate.edgeKeys.length === best.edgeKeys.length &&
+          flow > bestFlow) ||
+        (candidate.edgeKeys.length === best.edgeKeys.length &&
+          flow === bestFlow &&
+          canonicalStops(candidate.stops).join("\0") <
+            canonicalStops(best.stops).join("\0"))
+      ) {
+        best = candidate;
+        bestFlow = flow;
+      }
     }
   }
-  const end = [...visited].sort(
-    (left, right) =>
-      distances.get(right)! - distances.get(left)! ||
-      depths.get(right)! - depths.get(left)! ||
-      left.localeCompare(right),
-  )[0];
-  const stops = [end];
-  let current = end;
-  while (current !== start) {
-    current = parent.get(current)!;
-    stops.push(current);
-  }
-  stops.reverse();
-  return { stops, weight: distances.get(end)! };
+  return best;
 }
 
-function maximumWeightForest(edges: WeightedEdge[]): Set<string> {
-  const parent = new Map<string, string>();
-  const find = (domain: string): string => {
-    const current = parent.get(domain) ?? domain;
-    if (current === domain) {
-      parent.set(domain, domain);
-      return domain;
+function growLine(
+  seed: WeightedEdge,
+  adjacency: Map<string, Neighbor[]>,
+  claimed: Set<string>,
+  edgeByKey: Map<string, WeightedEdge>,
+  nodeByDomain: Map<string, GalaxyGraph["nodes"][number]>,
+): LineDraft | null {
+  const stops = [seed.source, seed.target];
+  const edgeKeys = [seed.key];
+  const usedStops = new Set(stops);
+  const usedEdges = new Set(edgeKeys);
+  let seedIndex = 0;
+
+  while (stops.length < MAX_LINE_STOPS) {
+    const choices: Array<Neighbor & { side: "left" | "right" }> = [];
+    const minimumFlow = medianFlow(edgeKeys, edgeByKey) * 0.6;
+    for (const side of ["left", "right"] as const) {
+      const stop = side === "left" ? stops[0] : stops[stops.length - 1];
+      for (const neighbor of adjacency.get(stop) ?? []) {
+        if (usedStops.has(neighbor.domain) || usedEdges.has(neighbor.edge.key))
+          continue;
+        if (neighbor.edge.flow01 < minimumFlow) continue;
+        const cluster = nodeByDomain.get(neighbor.domain)!.cluster;
+        const sharesCluster = stops.some(
+          (lineStop) => nodeByDomain.get(lineStop)!.cluster === cluster,
+        );
+        const mutual = Math.min(neighbor.edge.jumps, neighbor.edge.back) > 0;
+        if (!sharesCluster && !mutual) continue;
+        choices.push({ ...neighbor, side });
+      }
     }
-    const root = find(current);
-    parent.set(domain, root);
-    return root;
-  };
-  const forest = new Set<string>();
-  for (const edge of [...edges].sort(compareEdges)) {
-    const sourceRoot = find(edge.source);
-    const targetRoot = find(edge.target);
-    if (sourceRoot === targetRoot) continue;
-    parent.set(targetRoot, sourceRoot);
-    forest.add(edge.key);
+    choices.sort(
+      (left, right) =>
+        compareEdges(left.edge, right.edge) ||
+        left.side.localeCompare(right.side) ||
+        left.domain.localeCompare(right.domain),
+    );
+    const choice = choices[0];
+    if (choice === undefined) break;
+    usedStops.add(choice.domain);
+    usedEdges.add(choice.edge.key);
+    if (choice.side === "left") {
+      stops.unshift(choice.domain);
+      edgeKeys.unshift(choice.edge.key);
+      seedIndex++;
+    } else {
+      stops.push(choice.domain);
+      edgeKeys.push(choice.edge.key);
+    }
   }
-  return forest;
-}
 
-// The longest-path heuristic first breaks cycles with a deterministic maximum-
-// weight spanning forest, then takes exact weighted diameters from its residual trees.
-function makeComponentTask(edges: Map<string, WeightedEdge>): ComponentTask {
-  const nodes = new Set<string>();
-  for (const edge of edges.values()) {
-    nodes.add(edge.source);
-    nodes.add(edge.target);
-  }
-  const domains = [...nodes].sort();
-  const adjacency = makeAdjacency(domains, edges.values());
-  const component = new Set(domains);
-  const firstSweep = sweepTree(domains[0], component, adjacency);
-  return {
-    edges,
-    candidate: sweepTree(
-      firstSweep.stops[firstSweep.stops.length - 1],
-      component,
-      adjacency,
-    ),
-  };
+  return enforceSharedEdgeCap(
+    stops,
+    edgeKeys,
+    seedIndex,
+    claimed,
+    edgeByKey,
+    nodeByDomain,
+  );
 }
 
 function extractLineDrafts(
-  availableEdges: Map<string, WeightedEdge>,
+  edges: WeightedEdge[],
+  nodeByDomain: Map<string, GalaxyGraph["nodes"][number]>,
 ): LineDraft[] {
-  const lines: LineDraft[] = [];
-  const forestKeys = maximumWeightForest([...availableEdges.values()]);
-  const forestEdges = new Map<string, WeightedEdge>();
-  for (const key of forestKeys) {
-    forestEdges.set(key, availableEdges.get(key)!);
-    availableEdges.delete(key);
-  }
-  const tasks = new RankedQueue<ComponentTask>((left, right) =>
-    compareCandidates(left.candidate, right.candidate),
-  );
-  for (const component of splitComponents(forestEdges)) {
-    tasks.push(makeComponentTask(component));
-  }
+  const edgeByKey = new Map(edges.map((edge) => [edge.key, edge]));
+  const nodes = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+  const adjacency = makeAdjacency(nodes, edges);
+  const claimed = new Set<string>();
+  const rejectedSeeds = new Set<string>();
+  const terminusPairs = new Set<string>();
+  const drafts: LineDraft[] = [];
+
   while (true) {
-    const task = tasks.pop();
-    if (!task) break;
-    if (task.candidate.stops.length < MIN_LINE_STOPS) {
-      for (const edge of task.edges.values()) {
-        availableEdges.set(edge.key, edge);
-      }
+    const seed = edges.find(
+      (edge) => !claimed.has(edge.key) && !rejectedSeeds.has(edge.key),
+    );
+    if (seed === undefined) break;
+    const draft = growLine(seed, adjacency, claimed, edgeByKey, nodeByDomain);
+    if (
+      draft === null ||
+      draft.stops.length - 1 < minimumLineEdges(draft.stops, nodeByDomain)
+    ) {
+      rejectedSeeds.add(seed.key);
       continue;
     }
-    const stops = canonicalStops(task.candidate.stops);
-    for (let index = 1; index < stops.length; index++) {
-      task.edges.delete(edgeKey(stops[index - 1], stops[index]));
+    const stops = canonicalStops(draft.stops);
+    const terminusPair = `${stops[0]}\0${stops[stops.length - 1]}`;
+    if (terminusPairs.has(terminusPair)) {
+      rejectedSeeds.add(seed.key);
+      continue;
     }
-    lines.push({ stops });
-    for (const component of splitComponents(task.edges)) {
-      tasks.push(makeComponentTask(component));
-    }
+    terminusPairs.add(terminusPair);
+    drafts.push({
+      stops,
+      edgeKeys:
+        stops === draft.stops ? draft.edgeKeys : [...draft.edgeKeys].reverse(),
+    });
+    for (const key of draft.edgeKeys) claimed.add(key);
   }
-  return lines;
+  return drafts;
 }
 
 export function fnv1a(value: string): string {
@@ -471,35 +432,29 @@ export function extractLines(graph: GalaxyGraph): TransitLinesFile {
     }
     return node.visits;
   };
-  const allTrunkEdges = graph.edges.filter((edge) => edge.trunk);
-  const lineEdges = allTrunkEdges
+  const lineEdges = graph.edges
     .filter((edge) => {
       const sourceKind = nodeByDomain.get(edge.source)?.kind;
       const targetKind = nodeByDomain.get(edge.target)?.kind;
       if (!sourceKind)
-        throw new Error(`Trunk edge references missing node ${edge.source}`);
+        throw new Error(`Graph edge references missing node ${edge.source}`);
       if (!targetKind)
-        throw new Error(`Trunk edge references missing node ${edge.target}`);
+        throw new Error(`Graph edge references missing node ${edge.target}`);
       if (sourceKind === "hub" || targetKind === "hub") return false;
-      const touchesInterchange =
-        sourceKind === "interchange" || targetKind === "interchange";
-      return !touchesInterchange || Math.min(edge.jumps, edge.back) > 0;
+      const flow01 = (edge as GalaxyEdge & { flow01?: number }).flow01;
+      return flow01 !== undefined && flow01 >= 0.35;
     })
     .map((edge) => ({
       ...edge,
       key: edgeKey(edge.source, edge.target),
-      weight: edgeWeight(edge),
+      flow01: (edge as GalaxyEdge & { flow01: number }).flow01,
     }))
     .sort(compareEdges);
-  const trunkKeys = new Set(
-    allTrunkEdges.map((edge) => edgeKey(edge.source, edge.target)),
-  );
-  if (trunkKeys.size !== allTrunkEdges.length) {
-    throw new Error("Trunk graph contains duplicate undirected edges");
-  }
   const lineEdgeKeys = new Set(lineEdges.map((edge) => edge.key));
-  const availableEdges = new Map(lineEdges.map((edge) => [edge.key, edge]));
-  const drafts = extractLineDrafts(availableEdges).filter((draft) =>
+  if (lineEdgeKeys.size !== lineEdges.length) {
+    throw new Error("High-flow graph contains duplicate undirected edges");
+  }
+  const drafts = extractLineDrafts(lineEdges, nodeByDomain).filter((draft) =>
     draft.stops.some((stop) => {
       const kind = nodeByDomain.get(stop)!.kind;
       return kind !== "hub" && kind !== "interchange";
@@ -507,23 +462,26 @@ export function extractLines(graph: GalaxyGraph): TransitLinesFile {
   );
   const ids = new Set<string>();
   const names = assignLineNames(drafts, nodeByDomain, visitsFor);
-  const lines = drafts.map((draft, index) => {
+  const lines: TransitLine[] = drafts.map((draft, index) => {
     const id = lineId(draft.stops);
-    if (!ids.add(id)) {
+    if (ids.has(id)) {
       throw new Error(`Multiple lines resolve to ${id}`);
     }
+    ids.add(id);
     return {
       id,
       name: names[index],
       color: "",
       loop: false,
       stops: draft.stops,
+      sharedWith: [],
     };
   });
   lines.sort((left, right) => left.id.localeCompare(right.id));
   assignColors(lines);
 
   const assignedEdges = new Set<string>();
+  const linesAtEdge = new Map<string, string[]>();
   const linesAtStop = new Map<string, string[]>();
   for (const line of lines) {
     for (let index = 1; index < line.stops.length; index++) {
@@ -531,9 +489,10 @@ export function extractLines(graph: GalaxyGraph): TransitLinesFile {
       if (!lineEdgeKeys.has(key)) {
         throw new Error(`Line ${line.id} contains ineligible edge ${key}`);
       }
-      if (!assignedEdges.add(key)) {
-        throw new Error(`Trunk edge ${key} belongs to multiple lines`);
-      }
+      assignedEdges.add(key);
+      const lineIds = linesAtEdge.get(key) ?? [];
+      lineIds.push(line.id);
+      linesAtEdge.set(key, lineIds);
     }
     for (const stop of new Set(line.stops)) {
       const lineIds = linesAtStop.get(stop) ?? [];
@@ -541,6 +500,19 @@ export function extractLines(graph: GalaxyGraph): TransitLinesFile {
       linesAtStop.set(stop, lineIds);
     }
   }
+  const lineById = new Map(lines.map((line) => [line.id, line]));
+  for (const lineIds of linesAtEdge.values()) {
+    if (lineIds.length < 2) continue;
+    for (const lineId of lineIds) {
+      const line = lineById.get(lineId)!;
+      for (const sharedId of lineIds) {
+        if (sharedId !== lineId && !line.sharedWith.includes(sharedId)) {
+          line.sharedWith.push(sharedId);
+        }
+      }
+    }
+  }
+  for (const line of lines) line.sharedWith.sort();
   const interchanges = [...linesAtStop.entries()]
     .filter(([, lineIds]) => lineIds.length >= 2)
     .map(([domain, lineIds]) => ({ domain, lines: lineIds.sort() }))
@@ -550,9 +522,7 @@ export function extractLines(graph: GalaxyGraph): TransitLinesFile {
       generatedAt: new Date().toISOString(),
       totalLines: lines.length,
       coverage:
-        allTrunkEdges.length === 0
-          ? 1
-          : assignedEdges.size / allTrunkEdges.length,
+        lineEdges.length === 0 ? 1 : assignedEdges.size / lineEdges.length,
     },
     lines,
     interchanges,
@@ -707,7 +677,7 @@ function runExtraction(args: string[]): void {
   writeFileSync(outputPath, JSON.stringify(lineFile, null, 2) + "\n");
   console.log(
     `wrote ${lineFile.meta.totalLines} lines with ` +
-      `${(lineFile.meta.coverage * 100).toFixed(2)}% trunk coverage to ${outputPath}`,
+      `${(lineFile.meta.coverage * 100).toFixed(2)}% high-flow coverage to ${outputPath}`,
   );
 }
 
