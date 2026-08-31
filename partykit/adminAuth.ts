@@ -4,7 +4,21 @@ export function getAdminAuthError(
   request: Request,
   adminToken: string | undefined
 ): Response | null {
-  if (!adminToken) return null;
+  // Fail closed: a missing ADMIN_TOKEN (unset secret, misconfigured
+  // deployment) must not silently authorize every admin request — these
+  // routes can overwrite or destroy live room data.
+  if (!adminToken) {
+    return new Response(
+      JSON.stringify({ error: "Admin endpoint misconfigured: ADMIN_TOKEN is not set" }),
+      {
+        status: 500,
+        headers: {
+          "content-type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
+  }
 
   const url = new URL(request.url);
   const token =
