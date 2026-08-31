@@ -1,13 +1,13 @@
 // ABOUTME: Verifies that the full Internet Scraps archive is windowed to the scroll viewport.
-// ABOUTME: Keeps archive-mode DOM work bounded while preserving the complete layout.
+// ABOUTME: Keeps archive layout work bounded and limits the visible stacking depth.
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildArchiveWindow,
   ScrapCollage,
   curateScraps,
-  scrapsNearViewport,
   type ScrapItem,
 } from "../ScrapCollage";
 
@@ -25,25 +25,24 @@ function buildItems(count: number): ScrapItem[] {
   }));
 }
 
-describe("scrapsNearViewport", () => {
-  const scraps = [
-    { key: "above", y: 0, height: 20 },
-    { key: "overscan-above", y: 70, height: 20 },
-    { key: "visible", y: 120, height: 20 },
-    { key: "overscan-below", y: 210, height: 20 },
-    { key: "below", y: 240, height: 20 },
-  ];
+describe("buildArchiveWindow", () => {
+  it("lays out only nearby rows and limits their stacking depth", () => {
+    const items = buildItems(5_000);
+    const initial = buildArchiveWindow(items, 900, 0, 600, 1);
+    const scrolled = buildArchiveWindow(items, 900, 20_000, 600, 1);
 
-  it("keeps visible scraps plus a quarter viewport of overscan", () => {
-    expect(scrapsNearViewport(scraps, 100, 100).map((scrap) => scrap.key)).toEqual([
-      "overscan-above",
-      "visible",
-      "overscan-below",
-    ]);
+    expect(initial.fieldHeight).toBeGreaterThan(600);
+    expect(initial.layout.length).toBeLessThan(100);
+    expect(scrolled.layout.length).toBeLessThan(100);
+    expect(Math.max(...initial.layout.map((scrap) => scrap.zIndex))).toBe(3);
+    expect(scrolled.layout[0]?.item.key).not.toBe(initial.layout[0]?.item.key);
   });
 
-  it("renders nothing before the viewport has a measurable height", () => {
-    expect(scrapsNearViewport(scraps, 0, 0)).toEqual([]);
+  it("renders nothing before the viewport has measurable dimensions", () => {
+    expect(buildArchiveWindow(buildItems(10), 0, 0, 600, 1)).toEqual({
+      fieldHeight: 0,
+      layout: [],
+    });
   });
 });
 

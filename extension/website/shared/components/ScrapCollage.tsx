@@ -87,7 +87,10 @@ const DEFAULT_TARGET_COUNT = 200;
 const SCRAPS_PER_VIEWPORT_AREA = 8_000;
 const MIN_AUTO_TARGET_COUNT = 100;
 const MAX_AUTO_TARGET_COUNT = 400;
+const ARCHIVE_CELL_WIDTH = 160;
+const ARCHIVE_ROW_HEIGHT = 112;
 const ARCHIVE_OVERSCAN_VIEWPORTS = 0.25;
+const ARCHIVE_STACK_LAYER_COUNT = 3;
 const TIDE_WASH_OUT_MS = 1400;
 /** Bounds of the jittered gap between tide events. */
 const TIDE_GAP_MIN_MS = 1000;
@@ -526,41 +529,75 @@ function tierForItem(
       : 2;
 }
 
-/**
- * Field height for archive mode: the container's fixed width is kept,
- * but there's no fixed height to fit into, so rows are derived from the tile
- * count instead of the field being clamped to the container. Column count
- * uses the same sqrt-of-area formula as the fit-to-container layout,
- * treating the container's own (measured) height as the reference aspect
- * ratio so column width stays visually consistent between the two modes.
- * Row height is the actual average tile height (via the same size-tier
- * logic buildLayout uses), not a placeholder square cell, so the estimate
- * tracks the real mix of image/button/icon/cursor tile sizes.
- */
-function computeArchiveFieldHeight(
+export function buildArchiveWindow(
   items: ScrapItem[],
   width: number,
-  referenceHeight: number,
+  scrollTop: number,
+  viewportHeight: number,
   seed: number,
-): number {
-  if (items.length === 0 || width === 0 || referenceHeight === 0) return 0;
+  sizeBounds = tierBounds(items),
+): { fieldHeight: number; layout: ScrapLayout[] } {
+  if (items.length === 0 || width <= 0 || viewportHeight <= 0) {
+    return { fieldHeight: 0, layout: [] };
+  }
 
-  const aspectRatio = width / referenceHeight;
-  const columnCount = Math.max(
-    1,
-    Math.ceil(Math.sqrt(items.length * aspectRatio)),
-  );
+  const columnCount = Math.max(1, Math.floor(width / ARCHIVE_CELL_WIDTH));
   const rowCount = Math.ceil(items.length / columnCount);
+  const fieldHeight = Math.max(viewportHeight, rowCount * ARCHIVE_ROW_HEIGHT);
+  const cellWidth = width / columnCount;
+  const overscan = viewportHeight * ARCHIVE_OVERSCAN_VIEWPORTS;
+  const firstRow = Math.max(
+    0,
+    Math.floor((scrollTop - overscan) / ARCHIVE_ROW_HEIGHT),
+  );
+  const lastRow = Math.min(
+    rowCount - 1,
+    Math.ceil((scrollTop + viewportHeight + overscan) / ARCHIVE_ROW_HEIGHT),
+  );
+  const firstIndex = firstRow * columnCount;
+  const lastIndex = Math.min(items.length, (lastRow + 1) * columnCount);
+  const layout: ScrapLayout[] = [];
 
-  const { lowerArea, upperArea } = tierBounds(items);
-  const averageCellHeight =
-    items.reduce((sum, item) => {
-      const tier = tierForItem(item, lowerArea, upperArea);
-      const itemSeed = seed + hashString(item.key);
-      return sum + itemSize(item, tier, itemSeed).height;
-    }, 0) / items.length;
+  for (let index = firstIndex; index < lastIndex; index += 1) {
+    const item = items[index];
+    const itemSeed = seed + hashString(item.key);
+    const tier = tierForItem(
+      item,
+      sizeBounds.lowerArea,
+      sizeBounds.upperArea,
+    );
+    const dimensions = itemSize(item, tier, itemSeed);
+    const column = index % columnCount;
+    const row = Math.floor(index / columnCount);
+    const jitterX = (seededRandom(itemSeed, 2) - 0.5) * cellWidth * 0.45;
+    const jitterY =
+      (seededRandom(itemSeed, 3) - 0.5) * ARCHIVE_ROW_HEIGHT * 0.35;
+    const unclampedX =
+      (column + 0.5) * cellWidth + jitterX - dimensions.width / 2;
+    const unclampedY =
+      (row + 0.5) * ARCHIVE_ROW_HEIGHT + jitterY - dimensions.height / 2;
+    const x = Math.max(4, Math.min(width - dimensions.width - 4, unclampedX));
+    const y = Math.max(
+      4,
+      Math.min(fieldHeight - dimensions.height - 4, unclampedY),
+    );
 
-  return rowCount * averageCellHeight;
+    layout.push({
+      item,
+      slotIndex: index,
+      x,
+      y,
+      width: dimensions.width,
+      height: dimensions.height,
+      rotation: seededRandom(itemSeed, 4) * 12 - 6,
+      zIndex:
+        Math.floor(seededRandom(itemSeed, 5) * ARCHIVE_STACK_LAYER_COUNT) + 1,
+      cardAbove: y - scrollTop > viewportHeight * 0.58,
+      cardRightAligned: x > width * 0.68,
+    });
+  }
+
+  return { fieldHeight, layout };
 }
 
 /**
@@ -627,26 +664,6 @@ function buildLayout(
       },
     ];
   });
-}
-
-interface ScrapViewportBounds {
-  y: number;
-  height: number;
-}
-
-export function scrapsNearViewport<T extends ScrapViewportBounds>(
-  scraps: T[],
-  scrollTop: number,
-  viewportHeight: number,
-): T[] {
-  if (viewportHeight <= 0) return [];
-
-  const overscan = viewportHeight * ARCHIVE_OVERSCAN_VIEWPORTS;
-  const minimumY = Math.max(0, scrollTop - overscan);
-  const maximumY = scrollTop + viewportHeight + overscan;
-  return scraps.filter(
-    (scrap) => scrap.y + scrap.height >= minimumY && scrap.y <= maximumY,
-  );
 }
 
 const COLLAGE_STYLES = `
@@ -1356,6 +1373,10 @@ export function ScrapCollage({
       ),
     [filteredItems],
   );
+  const archiveSizeBounds = useMemo(
+    () => tierBounds(archiveScraps),
+    [archiveScraps],
+  );
   const curatedScraps = useMemo(
     () =>
       curateScraps(filteredItems, {
@@ -1402,47 +1423,46 @@ export function ScrapCollage({
    * off and nothing has yet washed back in.
    */
   const slots = useMemo<(ScrapItem | null)[]>(() => {
-    if (archiveMode) return archiveScraps;
     if (!tide) return curatedScraps;
     return tide.ashore.map((key) =>
       key === null ? null : poolByKey.get(key) ?? null,
     );
-  }, [archiveMode, archiveScraps, curatedScraps, poolByKey, tide]);
-  const fieldHeight = useMemo(
+  }, [curatedScraps, poolByKey, tide]);
+  const archiveWindow = useMemo(
     () =>
       archiveMode
-        ? Math.max(
+        ? buildArchiveWindow(
+            archiveScraps,
+            containerSize.width,
+            archiveScrollTop,
             containerSize.height,
-            computeArchiveFieldHeight(
-              slots.filter((item): item is ScrapItem => item !== null),
-              containerSize.width,
-              containerSize.height,
-              layoutSeed,
-            ),
+            layoutSeed,
+            archiveSizeBounds,
           )
-        : containerSize.height,
+        : { fieldHeight: 0, layout: [] },
     [
-      containerSize.height,
-      containerSize.width,
-      slots,
       archiveMode,
+      archiveScraps,
+      archiveScrollTop,
+      archiveSizeBounds,
+      containerSize,
       layoutSeed,
     ],
   );
+  const fieldHeight = archiveMode
+    ? archiveWindow.fieldHeight
+    : containerSize.height;
   const layout = useMemo(
-    () => buildLayout(slots, containerSize.width, fieldHeight, layoutSeed),
-    [containerSize.width, slots, fieldHeight, layoutSeed],
-  );
-  const renderedLayout = useMemo(
     () =>
       archiveMode
-        ? scrapsNearViewport(
-            layout,
-            archiveScrollTop,
+        ? archiveWindow.layout
+        : buildLayout(
+            slots,
+            containerSize.width,
             containerSize.height,
-          )
-        : layout,
-    [archiveMode, archiveScrollTop, containerSize.height, layout],
+            layoutSeed,
+          ),
+    [archiveMode, archiveWindow.layout, containerSize, layoutSeed, slots],
   );
 
   const layoutRef = useRef(layout);
@@ -1822,7 +1842,7 @@ export function ScrapCollage({
   }
   renderedKeysRef.current = new Set(layout.map((scrap) => scrap.item.key));
 
-  const tiles = renderedLayout.map((scrap) =>
+  const tiles = layout.map((scrap) =>
     renderTile(
       scrap,
       washInKeys.has(scrap.item.key)
