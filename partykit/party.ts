@@ -3099,14 +3099,21 @@ export class PartyServer extends YServer {
         documentSaveRetry !== null &&
         documentSaveRetry.retryAt <= Date.now()
       ) {
-        await this.clearDocumentSaveRetry();
         if (this.roomState() === "ready") {
+          await this.clearDocumentSaveRetry();
           try {
             await this.persistLiveDocument({ allowCompaction: false });
           } catch (error) {
             await this.scheduleDocumentSaveRetry();
             throw error;
           }
+        } else {
+          // Room isn't ready yet (e.g. a concurrent admin operation such as
+          // restoreFromSnapshot/hard-reset holds the write lock). Keep the
+          // retry marker and try again on the next alarm instead of clearing
+          // it here — clearing unconditionally would silently drop this save
+          // forever if no further edit ever re-triggers persistence.
+          await this.scheduleDocumentSaveRetry();
         }
       }
 

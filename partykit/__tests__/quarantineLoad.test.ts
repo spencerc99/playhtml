@@ -2864,7 +2864,7 @@ describe("quarantine data safety", () => {
     expect(persistedRow.document).toBe(candidate.base64);
   });
 
-  test("an unavailable room consumes an expired save retry", async () => {
+  test("an unavailable room reschedules (does not drop) an expired save retry", async () => {
     const { room, storage } = createRoom();
     room.documentLoadCompleted = true;
     room.persistenceMode = {
@@ -2876,7 +2876,13 @@ describe("quarantine data safety", () => {
 
     await room.onAlarm();
 
-    expect(storage.values.has("documentSaveRetry")).toBe(false);
+    // The room can't persist while transient, but the retry must survive so a
+    // later alarm can try again once persistence recovers — dropping it here
+    // would silently lose the pending save if no further edit ever occurs.
+    expect(storage.values.has("documentSaveRetry")).toBe(true);
+    expect(
+      (storage.values.get("documentSaveRetry") as { retryAt: number }).retryAt
+    ).toBeGreaterThan(Date.now());
     expect(upsertCalls).toEqual([]);
   });
 
