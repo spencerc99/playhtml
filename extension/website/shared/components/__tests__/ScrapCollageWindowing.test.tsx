@@ -1,5 +1,5 @@
 // ABOUTME: Verifies that the full Internet Scraps archive is windowed to the scroll viewport.
-// ABOUTME: Keeps everything-mode DOM work bounded while preserving the complete layout.
+// ABOUTME: Keeps archive-mode DOM work bounded while preserving the complete layout.
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -47,7 +47,7 @@ describe("scrapsNearViewport", () => {
   });
 });
 
-describe("everything-mode identity", () => {
+describe("archive-mode identity", () => {
   it("keeps the newest scrap when archive records reuse a render key", () => {
     const [older, newer] = buildItems(2);
     older.key = "shared-key";
@@ -65,7 +65,7 @@ describe("everything-mode identity", () => {
   });
 });
 
-describe("ScrapCollage everything-mode windowing", () => {
+describe("ScrapCollage archive-mode windowing", () => {
   let container: HTMLDivElement;
   let root: Root;
   let originalRect: typeof Element.prototype.getBoundingClientRect;
@@ -116,14 +116,12 @@ describe("ScrapCollage everything-mode windowing", () => {
       );
     });
 
-    const amount = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Number of scraps shown"]',
+    const archive = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Scrap view"] button:last-child',
     );
-    expect(amount).not.toBeNull();
+    expect(archive).not.toBeNull();
     act(() => {
-      if (!amount) return;
-      amount.value = "everything";
-      amount.dispatchEvent(new Event("change", { bubbles: true }));
+      archive?.click();
     });
 
     const scroll = container.querySelector<HTMLDivElement>(
@@ -135,6 +133,7 @@ describe("ScrapCollage everything-mode windowing", () => {
     );
     expect(initialKeys.length).toBeGreaterThan(0);
     expect(initialKeys.length).toBeLessThan(5_000);
+    expect(initialKeys[0]).toBe("s4999");
 
     act(() => {
       if (!scroll) return;

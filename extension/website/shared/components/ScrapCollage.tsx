@@ -65,7 +65,8 @@ interface ScrapCollageProps {
   showKindFilter?: boolean;
 }
 
-type VisibleScrapCount = "auto" | "everything" | 100 | 200 | 300 | 500;
+type ScrapView = "drift" | "archive";
+type VisibleScrapCount = "auto" | 100 | 200 | 300 | 500;
 
 interface ScrapLayout {
   item: ScrapItem;
@@ -86,7 +87,7 @@ const DEFAULT_TARGET_COUNT = 200;
 const SCRAPS_PER_VIEWPORT_AREA = 8_000;
 const MIN_AUTO_TARGET_COUNT = 100;
 const MAX_AUTO_TARGET_COUNT = 400;
-const EVERYTHING_OVERSCAN_VIEWPORTS = 0.25;
+const ARCHIVE_OVERSCAN_VIEWPORTS = 0.25;
 const TIDE_WASH_OUT_MS = 1400;
 /** Bounds of the jittered gap between tide events. */
 const TIDE_GAP_MIN_MS = 1000;
@@ -526,7 +527,7 @@ function tierForItem(
 }
 
 /**
- * Field height for "everything" mode: the container's fixed width is kept,
+ * Field height for archive mode: the container's fixed width is kept,
  * but there's no fixed height to fit into, so rows are derived from the tile
  * count instead of the field being clamped to the container. Column count
  * uses the same sqrt-of-area formula as the fit-to-container layout,
@@ -536,7 +537,7 @@ function tierForItem(
  * logic buildLayout uses), not a placeholder square cell, so the estimate
  * tracks the real mix of image/button/icon/cursor tile sizes.
  */
-function computeEverythingFieldHeight(
+function computeArchiveFieldHeight(
   items: ScrapItem[],
   width: number,
   referenceHeight: number,
@@ -640,7 +641,7 @@ export function scrapsNearViewport<T extends ScrapViewportBounds>(
 ): T[] {
   if (viewportHeight <= 0) return [];
 
-  const overscan = viewportHeight * EVERYTHING_OVERSCAN_VIEWPORTS;
+  const overscan = viewportHeight * ARCHIVE_OVERSCAN_VIEWPORTS;
   const minimumY = Math.max(0, scrollTop - overscan);
   const maximumY = scrollTop + viewportHeight + overscan;
   return scraps.filter(
@@ -655,9 +656,9 @@ const COLLAGE_STYLES = `
     left: 50%;
     z-index: 300;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
     box-sizing: border-box;
     max-width: calc(100% - 24px);
     padding: 7px;
@@ -680,6 +681,59 @@ const COLLAGE_STYLES = `
     display: flex;
     align-items: center;
     gap: 5px;
+  }
+
+  .scrap-collage__controls-header,
+  .scrap-collage__controls-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .scrap-collage__controls-header {
+    justify-content: space-between;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(61, 56, 51, 0.12);
+  }
+
+  .scrap-collage__view-switch {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 999px;
+    background: rgba(61, 56, 51, 0.05);
+  }
+
+  .scrap-collage__view-option {
+    appearance: none;
+    padding: 3px 12px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #827a72;
+    cursor: pointer;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
+  .scrap-collage__view-option[aria-pressed="true"] {
+    background: #faf9f6;
+    box-shadow: 0 1px 4px rgba(61, 56, 51, 0.18);
+    color: #3d3833;
+  }
+
+  .scrap-collage__view-option:focus-visible {
+    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline-offset: 1px;
+  }
+
+  .scrap-collage__archive-summary {
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    white-space: nowrap;
   }
 
   .scrap-collage__control-label {
@@ -768,25 +822,6 @@ const COLLAGE_STYLES = `
     outline-offset: 2px;
   }
 
-  .scrap-collage__filter--everything[aria-pressed="true"] {
-    border-color: #c4724e;
-    background: rgba(196, 114, 78, 0.1);
-    color: #c4724e;
-  }
-
-  .scrap-collage__filter--everything[aria-pressed="true"] .scrap-collage__filter-count {
-    color: #c4724e;
-  }
-
-  .scrap-collage__filter--everything:hover,
-  .scrap-collage__filter--everything:focus-visible {
-    border-color: #c4724e;
-  }
-
-  .scrap-collage__filter--everything:focus-visible {
-    outline-color: rgba(196, 114, 78, 0.45);
-  }
-
   .scrap-collage__filter--cycle {
     gap: 6px;
   }
@@ -831,10 +866,14 @@ const COLLAGE_STYLES = `
   @media (max-width: 620px) {
     .scrap-collage__controls:not(.scrap-collage__controls--collapsed) {
       width: calc(100% - 24px);
+      align-items: stretch;
+    }
+
+    .scrap-collage__controls-body {
       flex-wrap: wrap;
     }
 
-    .scrap-collage__control-group {
+    .scrap-collage__controls-body .scrap-collage__control-group {
       flex: 1 1 auto;
     }
 
@@ -1240,9 +1279,10 @@ export function ScrapCollage({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [selectedKind, setSelectedKind] =
     useState<ScrapKindFilter>("all");
+  const [view, setView] = useState<ScrapView>("drift");
   const [visibleScrapCount, setVisibleScrapCount] =
     useState<VisibleScrapCount>("auto");
-  const [everythingScrollTop, setEverythingScrollTop] = useState(0);
+  const [archiveScrollTop, setArchiveScrollTop] = useState(0);
   const [controlsExpanded, setControlsExpanded] = useState(true);
   const [shuffleIndex, setShuffleIndex] = useState(0);
   const [failedScraps, setFailedScraps] = useState<Set<string>>(
@@ -1277,11 +1317,11 @@ export function ScrapCollage({
   // Rendered tile elements by scrap key, so arrow-key navigation can re-anchor
   // the examine view on the next scrap's actual slot.
   const tileElementsRef = useRef(new Map<string, HTMLElement>());
-  const everythingMode = visibleScrapCount === "everything";
+  const archiveMode = view === "archive";
   const layoutSeed = seed + shuffleIndex * 10_007;
   const selectedTargetCount =
     targetCount ??
-    (visibleScrapCount === "auto" || visibleScrapCount === "everything"
+    (visibleScrapCount === "auto"
       ? responsiveTargetCount(containerSize.width, containerSize.height)
       : visibleScrapCount);
 
@@ -1308,14 +1348,13 @@ export function ScrapCollage({
         : items.filter((item) => item.kind === selectedKind),
     [items, selectedKind],
   );
-  const everythingScraps = useMemo(
+  const archiveScraps = useMemo(
     () =>
-      curateScraps(filteredItems, {
-        seed: layoutSeed,
-        perDomainCap: Infinity,
-        targetCount: Infinity,
-      }),
-    [filteredItems, layoutSeed],
+      newestUniqueScraps(filteredItems).sort(
+        (first, second) =>
+          second.ts - first.ts || first.key.localeCompare(second.key),
+      ),
+    [filteredItems],
   );
   const curatedScraps = useMemo(
     () =>
@@ -1332,15 +1371,15 @@ export function ScrapCollage({
    * waits its turn in the order `curateScraps` would have reached it.
    */
   const tidePool = useMemo(() => {
-    const byKey = new Map(everythingScraps.map((item) => [item.key, item]));
+    const byKey = new Map(archiveScraps.map((item) => [item.key, item]));
     const ordered: ScrapItem[] = [];
     for (const item of curatedScraps) {
       if (byKey.delete(item.key)) ordered.push(item);
     }
     return [...ordered, ...byKey.values()];
-  }, [curatedScraps, everythingScraps]);
+  }, [archiveScraps, curatedScraps]);
   const tideCapacity = Math.min(curatedScraps.length, tidePool.length);
-  const tideAvailable = !everythingMode && tidePool.length > tideCapacity;
+  const tideAvailable = !archiveMode && tidePool.length > tideCapacity;
   const poolByKey = useMemo(
     () => new Map(tidePool.map((item) => [item.key, item])),
     [tidePool],
@@ -1363,18 +1402,18 @@ export function ScrapCollage({
    * off and nothing has yet washed back in.
    */
   const slots = useMemo<(ScrapItem | null)[]>(() => {
-    if (everythingMode) return everythingScraps;
+    if (archiveMode) return archiveScraps;
     if (!tide) return curatedScraps;
     return tide.ashore.map((key) =>
       key === null ? null : poolByKey.get(key) ?? null,
     );
-  }, [curatedScraps, everythingMode, everythingScraps, poolByKey, tide]);
+  }, [archiveMode, archiveScraps, curatedScraps, poolByKey, tide]);
   const fieldHeight = useMemo(
     () =>
-      everythingMode
+      archiveMode
         ? Math.max(
             containerSize.height,
-            computeEverythingFieldHeight(
+            computeArchiveFieldHeight(
               slots.filter((item): item is ScrapItem => item !== null),
               containerSize.width,
               containerSize.height,
@@ -1386,7 +1425,7 @@ export function ScrapCollage({
       containerSize.height,
       containerSize.width,
       slots,
-      everythingMode,
+      archiveMode,
       layoutSeed,
     ],
   );
@@ -1396,14 +1435,14 @@ export function ScrapCollage({
   );
   const renderedLayout = useMemo(
     () =>
-      everythingMode
+      archiveMode
         ? scrapsNearViewport(
             layout,
-            everythingScrollTop,
+            archiveScrollTop,
             containerSize.height,
           )
         : layout,
-    [containerSize.height, everythingMode, everythingScrollTop, layout],
+    [archiveMode, archiveScrollTop, containerSize.height, layout],
   );
 
   const layoutRef = useRef(layout);
@@ -1419,8 +1458,8 @@ export function ScrapCollage({
   }, [kindCounts, selectedKind]);
 
   useEffect(() => {
-    if (!everythingMode) setEverythingScrollTop(0);
-  }, [everythingMode]);
+    if (!archiveMode) setArchiveScrollTop(0);
+  }, [archiveMode]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -1774,7 +1813,7 @@ export function ScrapCollage({
   };
 
   const washInKeys = new Set<string>();
-  if (!everythingMode && !prefersReducedMotion && renderedKeysRef.current) {
+  if (!archiveMode && !prefersReducedMotion && renderedKeysRef.current) {
     for (const scrap of layout) {
       if (!renderedKeysRef.current.has(scrap.item.key)) {
         washInKeys.add(scrap.item.key);
@@ -1807,82 +1846,119 @@ export function ScrapCollage({
         >
           {controlsExpanded ? (
             <>
-              <label className="scrap-collage__control-group">
-                <span className="scrap-collage__control-label">show</span>
-                <select
-                  className="scrap-collage__select"
-                  aria-label="Kinds of scraps shown"
-                  value={selectedKind}
-                  onChange={(event) =>
-                    setSelectedKind(event.currentTarget.value as ScrapKindFilter)
-                  }
+              <div className="scrap-collage__controls-header">
+                <div
+                  className="scrap-collage__view-switch"
+                  role="group"
+                  aria-label="Scrap view"
                 >
-                  <option value="all">all · {totalScrapCount}</option>
-                  {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
-                    kindCounts[kind] > 0 ? (
-                      <option key={kind} value={kind}>
-                        {label} · {kindCounts[kind]}
-                      </option>
-                    ) : null,
-                  )}
-                </select>
-              </label>
-              <label className="scrap-collage__control-group">
-                <span className="scrap-collage__control-label">amount</span>
-                <select
-                  className="scrap-collage__select"
-                  aria-label="Number of scraps shown"
-                  value={visibleScrapCount}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setVisibleScrapCount(
-                      value === "auto" || value === "everything"
-                        ? value
-                        : (Number(value) as VisibleScrapCount),
-                    );
-                  }}
-                >
-                  <option value="auto">fill screen · {selectedTargetCount}</option>
-                  <option value="100">100</option>
-                  <option value="200">200</option>
-                  <option value="300">300</option>
-                  <option value="500">500</option>
-                  <option value="everything">
-                    everything · {everythingScraps.length}
-                  </option>
-                </select>
-              </label>
-              <button
-                type="button"
-                className="scrap-collage__filter"
-                onClick={() => setShuffleIndex((current) => current + 1)}
-              >
-                shuffle
-              </button>
-              {tideAvailable && (
+                  <button
+                    type="button"
+                    className="scrap-collage__view-option"
+                    aria-pressed={!archiveMode}
+                    onClick={() => setView("drift")}
+                  >
+                    drift
+                  </button>
+                  <button
+                    type="button"
+                    className="scrap-collage__view-option"
+                    aria-pressed={archiveMode}
+                    onClick={() => setView("archive")}
+                  >
+                    archive
+                  </button>
+                </div>
                 <button
                   type="button"
-                  className="scrap-collage__filter scrap-collage__filter--cycle"
-                  aria-pressed={!tidePaused}
-                  title="Turn automatic cycling on or off (spacebar)"
-                  onClick={() => setTidePaused((current) => !current)}
+                  className="scrap-collage__filter scrap-collage__filter--collapse"
+                  aria-label="Collapse scrap controls"
+                  title="Collapse controls"
+                  onClick={() => setControlsExpanded(false)}
                 >
-                  <span
-                    className="scrap-collage__cycle-status"
-                    aria-hidden="true"
-                  />
-                  cycle
+                  ↓
                 </button>
-              )}
-              <button
-                type="button"
-                className="scrap-collage__filter scrap-collage__filter--collapse"
-                aria-label="Collapse scrap controls"
-                title="Collapse controls"
-                onClick={() => setControlsExpanded(false)}
-              >
-                ↓
-              </button>
+              </div>
+              <div className="scrap-collage__controls-body">
+                <label className="scrap-collage__control-group">
+                  <span className="scrap-collage__control-label">show</span>
+                  <select
+                    className="scrap-collage__select"
+                    aria-label="Kinds of scraps shown"
+                    value={selectedKind}
+                    onChange={(event) =>
+                      setSelectedKind(
+                        event.currentTarget.value as ScrapKindFilter,
+                      )
+                    }
+                  >
+                    <option value="all">all · {totalScrapCount}</option>
+                    {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
+                      kindCounts[kind] > 0 ? (
+                        <option key={kind} value={kind}>
+                          {label} · {kindCounts[kind]}
+                        </option>
+                      ) : null,
+                    )}
+                  </select>
+                </label>
+                {archiveMode ? (
+                  <span className="scrap-collage__archive-summary">
+                    newest first · {archiveScraps.length}
+                  </span>
+                ) : (
+                  <>
+                    <label className="scrap-collage__control-group">
+                      <span className="scrap-collage__control-label">
+                        amount
+                      </span>
+                      <select
+                        className="scrap-collage__select"
+                        aria-label="Number of scraps shown"
+                        value={visibleScrapCount}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setVisibleScrapCount(
+                            value === "auto"
+                              ? value
+                              : (Number(value) as VisibleScrapCount),
+                          );
+                        }}
+                      >
+                        <option value="auto">
+                          fill screen · {selectedTargetCount}
+                        </option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="300">300</option>
+                        <option value="500">500</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="scrap-collage__filter"
+                      onClick={() => setShuffleIndex((current) => current + 1)}
+                    >
+                      shuffle
+                    </button>
+                    {tideAvailable && (
+                      <button
+                        type="button"
+                        className="scrap-collage__filter scrap-collage__filter--cycle"
+                        aria-pressed={!tidePaused}
+                        title="Turn automatic cycling on or off (spacebar)"
+                        onClick={() => setTidePaused((current) => !current)}
+                      >
+                        <span
+                          className="scrap-collage__cycle-status"
+                          aria-hidden="true"
+                        />
+                        cycle
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </>
           ) : (
             <button
@@ -1901,11 +1977,11 @@ export function ScrapCollage({
           {renderTile(scrap.layout, " scrap-collage__tile--washing-out")}
         </React.Fragment>
       ))}
-      {everythingMode ? (
+      {archiveMode ? (
         <div
           className="scrap-collage__scroll"
           onScroll={(event) =>
-            setEverythingScrollTop(event.currentTarget.scrollTop)
+            setArchiveScrollTop(event.currentTarget.scrollTop)
           }
         >
           <div

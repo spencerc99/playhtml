@@ -1,5 +1,5 @@
 // ABOUTME: Verifies responsive density and the compact internet-scraps control pane.
-// ABOUTME: Covers amount, kind, shuffle, and collapse controls on the collage.
+// ABOUTME: Covers view, amount, kind, shuffle, cycle, and collapse controls.
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -154,5 +154,30 @@ describe("ScrapCollage controls", () => {
 
     act(() => cycle?.click());
     expect(cycle?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("separates drift controls from the chronological archive", () => {
+    render();
+    const view = container.querySelector('[aria-label="Scrap view"]');
+    const drift = view?.querySelector<HTMLButtonElement>("button:first-child");
+    const archive = view?.querySelector<HTMLButtonElement>("button:last-child");
+
+    expect(drift?.getAttribute("aria-pressed")).toBe("true");
+    expect(archive?.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => archive?.click());
+
+    expect(drift?.getAttribute("aria-pressed")).toBe("false");
+    expect(archive?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.textContent).toContain("newest first · 500");
+    expect(
+      container.querySelector('[aria-label="Number of scraps shown"]'),
+    ).toBeNull();
+    expect(container.querySelector(".scrap-collage__filter--cycle")).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll("button")).some(
+        (button) => button.textContent === "shuffle",
+      ),
+    ).toBe(false);
   });
 });
