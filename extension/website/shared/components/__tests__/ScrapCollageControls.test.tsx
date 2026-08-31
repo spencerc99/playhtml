@@ -32,9 +32,9 @@ function buildItems(count: number): ScrapItem[] {
 describe("responsiveTargetCount", () => {
   it("scales with viewport area inside a bounded range", () => {
     expect(responsiveTargetCount(0, 0)).toBe(200);
-    expect(responsiveTargetCount(1_000, 800)).toBe(100);
-    expect(responsiveTargetCount(1_600, 1_000)).toBe(200);
-    expect(responsiveTargetCount(2_400, 1_600)).toBe(400);
+    expect(responsiveTargetCount(1_000, 800)).toBe(143);
+    expect(responsiveTargetCount(1_600, 1_000)).toBe(286);
+    expect(responsiveTargetCount(2_400, 1_600)).toBe(500);
   });
 });
 
@@ -96,7 +96,7 @@ describe("ScrapCollage controls", () => {
 
   it("fills the viewport by default and allows a fixed visible amount", () => {
     render();
-    expect(tiles()).toHaveLength(200);
+    expect(tiles()).toHaveLength(286);
 
     const amount = container.querySelector<HTMLSelectElement>(
       '[aria-label="Number of scraps shown"]',
