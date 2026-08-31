@@ -18,6 +18,7 @@ import {
 } from '@playhtml/extension-types';
 
 const COMPLETED_TRAIN_RETENTION_MS = 60_000;
+export const COMMUTE_TRAIN_RIDER_LEASE_MS = 20_000;
 export const MAX_RETAINED_COMMUTE_TRAINS = 64;
 
 export class CommuteTrainCapacityError extends Error {
@@ -29,6 +30,7 @@ export class CommuteTrainCapacityError extends Error {
 
 interface CommuteTrainRider {
   requestedStop: CommuteTrainStopRequest;
+  activeUntil?: number;
 }
 
 interface StoredDomainStop extends CommuteTrainDomainStop {
@@ -71,8 +73,25 @@ function getJoinableUntil(train: CommuteTrainRecord): number {
 
 function isTrainJoinable(train: CommuteTrainRecord, now: number): boolean {
   return (
-    Object.keys(train.riders).length < COMMUTE_TRAIN_CAPACITY &&
+    getActiveRiderCount(train, now) < COMMUTE_TRAIN_CAPACITY &&
     now < getJoinableUntil(train)
+  );
+}
+
+function getActiveRiderCount(train: CommuteTrainRecord, now: number): number {
+  return Object.values(train.riders).filter((rider) =>
+    isRiderActive(train, rider, now),
+  ).length;
+}
+
+function isRiderActive(
+  train: CommuteTrainRecord,
+  rider: CommuteTrainRider,
+  now: number,
+): boolean {
+  return (
+    (rider.activeUntil ??
+      getCommuteTrainRouteEndsAt(train.createdAt, train.stops.length)) > now
   );
 }
 
@@ -102,7 +121,7 @@ function assignmentFor(
       train.stops.length,
     ),
     routeVersion: train.routeVersion,
-    riderCount: Object.keys(train.riders).length,
+    riderCount: getActiveRiderCount(train, now),
     capacity: COMMUTE_TRAIN_CAPACITY,
     joinable: isTrainJoinable(train, now),
     phase: getTrainPhase(train, now),
@@ -149,9 +168,27 @@ export class CommuteTrainDispatcher {
     this.state.trains = retainedTrains.slice(-MAX_RETAINED_COMMUTE_TRAINS);
   }
 
+  getRecentCommunalDomains(now: number): Set<string> {
+    this.cleanup(now);
+    const domains = new Set<string>();
+    for (const train of this.state.trains) {
+      for (const stop of train.stops) {
+        if (stop.kind === 'communal') domains.add(stop.domain);
+      }
+    }
+    return domains;
+  }
+
   needsCommunalStops(riderToken: string, now: number): boolean {
     this.cleanup(now);
-    if (this.findActiveRiderTrain(riderToken, now)) return false;
+    const currentTrain = this.findCurrentRiderTrain(riderToken, now);
+    if (
+      currentTrain &&
+      (isRiderActive(currentTrain, currentTrain.riders[riderToken], now) ||
+        isTrainJoinable(currentTrain, now))
+    ) {
+      return false;
+    }
     if (this.state.trains.some((train) => isTrainJoinable(train, now))) {
       return false;
     }
@@ -168,8 +205,21 @@ export class CommuteTrainDispatcher {
   ): CommuteTrainAssignment {
     this.cleanup(now);
 
-    const existingTrain = this.findActiveRiderTrain(request.riderToken, now);
-    if (existingTrain) return assignmentFor(existingTrain, now);
+    const existingTrain = this.findCurrentRiderTrain(request.riderToken, now);
+    if (
+      existingTrain &&
+      (isRiderActive(
+        existingTrain,
+        existingTrain.riders[request.riderToken],
+        now,
+      ) ||
+        isTrainJoinable(existingTrain, now))
+    ) {
+      existingTrain.riders[request.riderToken].activeUntil =
+        now + COMMUTE_TRAIN_RIDER_LEASE_MS;
+      return assignmentFor(existingTrain, now);
+    }
+    if (existingTrain) delete existingTrain.riders[request.riderToken];
 
     let train = [...this.state.trains]
       .sort((left, right) => left.createdAt - right.createdAt)
@@ -195,6 +245,7 @@ export class CommuteTrainDispatcher {
 
     train.riders[request.riderToken] = {
       requestedStop: request.requestedStop,
+      activeUntil: now + COMMUTE_TRAIN_RIDER_LEASE_MS,
     };
     this.addRequestedStop(train, request.riderToken, request.requestedStop, now);
     train.routeVersion += 1;
@@ -213,7 +264,7 @@ export class CommuteTrainDispatcher {
     return cleanupAt;
   }
 
-  private findActiveRiderTrain(
+  private findCurrentRiderTrain(
     riderToken: string,
     now: number,
   ): CommuteTrainRecord | null {
