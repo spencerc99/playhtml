@@ -537,10 +537,10 @@ h1 {
 
 .party-hat-pile {
   position: absolute;
-  top: 684px;
-  left: 34px;
+  top: 604px;
+  left: 1508px;
   z-index: 7;
-  width: 126px;
+  width: 184px;
   padding: 10px 10px 8px;
   border: 2px solid var(--ph-ink);
   background: rgba(244, 239, 229, 0.92);
@@ -643,6 +643,12 @@ h1 {
 }
 .party-hat--ultramarine {
   --party-hat-color: var(--ph-ultramarine);
+}
+.party-hat--sage {
+  --party-hat-color: var(--ph-sage-deep);
+}
+.party-hat--pink {
+  --party-hat-color: #ff4fa6;
 }
 
 .party-arrival {
@@ -2061,13 +2067,15 @@ h1 {
 }
 .party-cursor-hat {
   position: fixed;
-  width: 28px;
-  height: 34px;
-  transform: translate(-9px, -30px);
+  width: 16px;
+  height: 19px;
+  transform: translate(-4px, -17px);
   transform-origin: bottom center;
 }
 .party-cursor-hat .party-hat {
   filter: drop-shadow(1px 2px 0 rgba(28, 28, 28, 0.24));
+  transform: scale(0.56) rotate(-9deg);
+  transform-origin: bottom left;
 }
 .party-cursor-nametag {
   --party-cursor-color: var(--ph-ultramarine);

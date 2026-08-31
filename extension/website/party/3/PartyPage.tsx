@@ -103,7 +103,13 @@ const SEAL_COLORS = [
   "var(--ph-brick)",
 ];
 const CARD_PATTERNS = ["cross", "sash", "polka"] as const;
-const PARTY_HATS = ["brick", "mustard", "ultramarine"] as const;
+const PARTY_HATS = [
+  "brick",
+  "mustard",
+  "ultramarine",
+  "sage",
+  "pink",
+] as const;
 
 type PartyHat = (typeof PARTY_HATS)[number];
 
