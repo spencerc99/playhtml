@@ -411,10 +411,10 @@ h1 {
 .party-room__door {
   position: absolute;
   top: 176px;
-  left: 2780px;
+  left: 2766px;
   z-index: 3;
   display: block;
-  width: 250px;
+  width: 278px;
   height: 520px;
   border: 7px solid var(--ph-paper);
   background:
@@ -436,8 +436,10 @@ h1 {
 }
 .party-room__door-panels {
   position: absolute;
-  inset: 0;
+  inset: 0 9px;
   display: block;
+  border-right: 3px solid #f4e5c5;
+  border-left: 3px solid #f4e5c5;
   perspective: 900px;
 }
 .party-room__door-panel {
@@ -500,8 +502,8 @@ h1 {
 .party-room__door::after {
   position: absolute;
   bottom: -15px;
-  left: -15px;
-  width: 255px;
+  left: -12px;
+  width: calc(100% + 24px);
   height: 13px;
   border: 2px solid var(--ph-ink);
   background: var(--ph-paper-warm);
@@ -2069,10 +2071,13 @@ h1 {
   position: fixed;
   width: 16px;
   height: 19px;
-  transform: translate(-4px, -17px);
+  transform: translate(-4px, -25px);
   transform-origin: bottom center;
 }
 .party-cursor-hat .party-hat {
+  position: absolute;
+  bottom: 0;
+  left: 0;
   filter: drop-shadow(1px 2px 0 rgba(28, 28, 28, 0.24));
   transform: scale(0.56) rotate(-9deg);
   transform-origin: bottom left;
