@@ -141,4 +141,18 @@ describe("ScrapCollage controls", () => {
       container.querySelector('[aria-label="Number of scraps shown"]'),
     ).toBeNull();
   });
+
+  it("shows whether automatic cycling is on", () => {
+    render();
+    const cycle = container.querySelector<HTMLButtonElement>(
+      ".scrap-collage__filter--cycle",
+    );
+
+    expect(cycle?.textContent).toContain("cycle");
+    expect(cycle?.getAttribute("aria-pressed")).toBe("true");
+    expect(cycle?.querySelector(".scrap-collage__cycle-status")).not.toBeNull();
+
+    act(() => cycle?.click());
+    expect(cycle?.getAttribute("aria-pressed")).toBe("false");
+  });
 });

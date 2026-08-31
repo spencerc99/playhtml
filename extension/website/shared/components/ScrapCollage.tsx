@@ -787,19 +787,37 @@ const COLLAGE_STYLES = `
     outline-color: rgba(196, 114, 78, 0.45);
   }
 
-  .scrap-collage__filter--tide[aria-pressed="true"] {
-    border-color: #5b8db8;
-    background: rgba(91, 141, 184, 0.1);
-    color: #5b8db8;
+  .scrap-collage__filter--cycle {
+    gap: 6px;
   }
 
-  .scrap-collage__filter--tide:hover,
-  .scrap-collage__filter--tide:focus-visible {
-    border-color: #5b8db8;
+  .scrap-collage__cycle-status {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #aaa59d;
+    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.12);
+    transition: background 140ms ease, box-shadow 140ms ease;
   }
 
-  .scrap-collage__filter--tide:focus-visible {
-    outline-color: rgba(91, 141, 184, 0.45);
+  .scrap-collage__filter--cycle[aria-pressed="true"] {
+    border-color: #4a9a70;
+    background: rgba(74, 154, 112, 0.1);
+    color: #3f855f;
+  }
+
+  .scrap-collage__filter--cycle[aria-pressed="true"] .scrap-collage__cycle-status {
+    background: #4a9a70;
+    box-shadow: 0 0 0 2px rgba(74, 154, 112, 0.16);
+  }
+
+  .scrap-collage__filter--cycle:hover,
+  .scrap-collage__filter--cycle:focus-visible {
+    border-color: #4a9a70;
+  }
+
+  .scrap-collage__filter--cycle:focus-visible {
+    outline-color: rgba(74, 154, 112, 0.45);
   }
 
   .scrap-collage__scroll {
@@ -1844,12 +1862,16 @@ export function ScrapCollage({
               {tideAvailable && (
                 <button
                   type="button"
-                  className="scrap-collage__filter scrap-collage__filter--tide"
+                  className="scrap-collage__filter scrap-collage__filter--cycle"
                   aria-pressed={!tidePaused}
-                  title="Pause or resume the tide (spacebar)"
+                  title="Turn automatic cycling on or off (spacebar)"
                   onClick={() => setTidePaused((current) => !current)}
                 >
-                  {tidePaused ? "tide paused" : "tide moving"}
+                  <span
+                    className="scrap-collage__cycle-status"
+                    aria-hidden="true"
+                  />
+                  cycle
                 </button>
               )}
               <button
