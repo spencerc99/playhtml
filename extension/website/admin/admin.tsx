@@ -9,6 +9,7 @@ import {
   getAccessOverview,
   parsePeopleInput,
   parsePersonInput,
+  PersonInputError,
   reviewAccessRequest,
   updateCohortFeatures,
   updateFeatureStage,
@@ -63,7 +64,7 @@ function InternalOffice() {
   const [approvalCohortId, setApprovalCohortId] = useState("closed-beta");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
-  const [addPersonError, setAddPersonError] = useState("");
+  const [addPersonError, setAddPersonError] = useState<PersonInputError | null>(null);
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -118,13 +119,17 @@ function InternalOffice() {
 
   const submitPerson = async (event: FormEvent) => {
     event.preventDefault();
-    setAddPersonError("");
+    setAddPersonError(null);
     let person;
     try {
       person = parsePersonInput(publicId, email);
     } catch (inputError) {
       setNotice("");
-      setAddPersonError(inputError instanceof Error ? inputError.message : String(inputError));
+      if (inputError instanceof PersonInputError) {
+        setAddPersonError(inputError);
+      } else {
+        setError(inputError instanceof Error ? inputError.message : String(inputError));
+      }
       return;
     }
     await mutate(async () => {
@@ -227,18 +232,25 @@ function InternalOffice() {
             <div className="office-list-header"><div><span className="office-section-number">DESK 03</span><h3>Add person</h3></div></div>
             <form className="office-add office-add--person" onSubmit={submitPerson}>
               <label><span>Public ID</span><input aria-label="Public ID" value={publicId}
-                aria-invalid={Boolean(addPersonError)} aria-describedby={addPersonError ? "add-person-error" : undefined}
+                aria-invalid={addPersonError?.field === "publicId"}
+                aria-describedby={addPersonError?.field === "publicId" ? "add-person-public-id-error" : undefined}
                 onChange={(event) => {
                   setPublicId(event.target.value);
-                  setAddPersonError("");
+                  if (addPersonError?.field === "publicId") setAddPersonError(null);
                 }} placeholder="pk_…" spellCheck={false} autoComplete="off" /></label>
               <label><span>Email <small>optional</small></span><input aria-label="Email" type="email" value={email}
-                onChange={(event) => setEmail(event.target.value)} placeholder="tester@example.com" autoComplete="off" /></label>
+                aria-invalid={addPersonError?.field === "email"}
+                aria-describedby={addPersonError?.field === "email" ? "add-person-email-error" : undefined}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  if (addPersonError?.field === "email") setAddPersonError(null);
+                }} placeholder="tester@example.com" autoComplete="off" /></label>
               <label><span>Cohort</span><select aria-label="Cohort" value={cohortId} onChange={(event) => setCohortId(event.target.value)}>
                 {overview.cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
               </select></label>
               <button type="submit" disabled={!publicId.trim() || saving}>Add person</button>
-              {addPersonError && <p id="add-person-error" className="office-add__error" role="alert">{addPersonError}</p>}
+              {addPersonError && <p id={`add-person-${addPersonError.field === "publicId" ? "public-id" : "email"}-error`}
+                className="office-add__error" role="alert">{addPersonError.message}</p>}
               {notice && <p className="office-add__success" role="status">{notice}</p>}
             </form>
             <details className="office-bulk-import">

@@ -41,6 +41,17 @@ export type AccessOverview = {
 };
 
 export type PersonInput = { publicId: string; email: string | null };
+export type PersonInputField = "publicId" | "email";
+
+export class PersonInputError extends Error {
+  constructor(
+    readonly field: PersonInputField,
+    message: string,
+  ) {
+    super(message);
+    this.name = "PersonInputError";
+  }
+}
 
 const PUBLIC_ID_PATTERN = /^pk_[0-9a-f]{130}$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -51,9 +62,13 @@ export function isValidPublicId(publicId: string): boolean {
 
 export function parsePersonInput(publicIdValue: string, emailValue: string): PersonInput {
   const publicId = publicIdValue.trim().toLowerCase();
-  if (!isValidPublicId(publicId)) throw new Error("Enter a valid public ID");
+  if (!isValidPublicId(publicId)) {
+    throw new PersonInputError("publicId", "Enter a valid public ID");
+  }
   const email = emailValue.trim().toLowerCase() || null;
-  if (email && !EMAIL_PATTERN.test(email)) throw new Error("Enter a valid email");
+  if (email && !EMAIL_PATTERN.test(email)) {
+    throw new PersonInputError("email", "Enter a valid email");
+  }
   return { publicId, email };
 }
 

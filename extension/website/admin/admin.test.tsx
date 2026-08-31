@@ -1,5 +1,5 @@
 // ABOUTME: Verifies feedback from the WWO access-control admin form.
-// ABOUTME: Covers invalid public IDs without making a Worker request.
+// ABOUTME: Covers field-specific validation without making a Worker request.
 
 // @vitest-environment jsdom
 
@@ -29,14 +29,25 @@ describe("WWO admin access form", () => {
     await screen.findByRole("heading", { name: "Add person" });
   });
 
-  it("shows invalid public ID feedback next to the form", () => {
+  it("associates validation feedback with the invalid field", () => {
     const publicIdInput = screen.getByRole("textbox", { name: "Public ID" });
+    const emailInput = screen.getByRole("textbox", { name: "Email" });
     fireEvent.change(publicIdInput, { target: { value: "pk_short" } });
     fireEvent.click(screen.getByRole("button", { name: "Add person" }));
 
     expect(screen.getByRole("alert").textContent).toBe("Enter a valid public ID");
     expect(publicIdInput.getAttribute("aria-invalid")).toBe("true");
-    expect(publicIdInput.getAttribute("aria-describedby")).toBe("add-person-error");
+    expect(publicIdInput.getAttribute("aria-describedby")).toBe("add-person-public-id-error");
+    expect(emailInput.getAttribute("aria-invalid")).toBe("false");
+
+    fireEvent.change(publicIdInput, { target: { value: `pk_${"a".repeat(130)}` } });
+    fireEvent.change(emailInput, { target: { value: "user@localhost" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add person" }));
+
+    expect(screen.getByRole("alert").textContent).toBe("Enter a valid email");
+    expect(publicIdInput.getAttribute("aria-invalid")).toBe("false");
+    expect(emailInput.getAttribute("aria-invalid")).toBe("true");
+    expect(emailInput.getAttribute("aria-describedby")).toBe("add-person-email-error");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
