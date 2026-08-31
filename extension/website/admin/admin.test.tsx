@@ -4,6 +4,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, screen } from "@testing-library/react";
+import { act } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@movement/config", () => ({ WORKER_URL: "https://worker.example" }));
@@ -25,24 +26,30 @@ describe("WWO admin access form", () => {
     document.body.innerHTML = '<div id="root"></div>';
     sessionStorage.setItem("wwo-admin-token", "secret");
     vi.stubGlobal("fetch", fetchMock);
-    await import("./admin");
+    await act(async () => {
+      await import("./admin");
+    });
     await screen.findByRole("heading", { name: "Add person" });
   });
 
-  it("associates validation feedback with the invalid field", () => {
+  it("associates validation feedback with the invalid field", async () => {
     const publicIdInput = screen.getByRole("textbox", { name: "Public ID" });
     const emailInput = screen.getByRole("textbox", { name: "Email" });
-    fireEvent.change(publicIdInput, { target: { value: "pk_short" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add person" }));
+    await act(async () => {
+      fireEvent.change(publicIdInput, { target: { value: "pk_short" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add person" }));
+    });
 
     expect(screen.getByRole("alert").textContent).toBe("Enter a valid public ID");
     expect(publicIdInput.getAttribute("aria-invalid")).toBe("true");
     expect(publicIdInput.getAttribute("aria-describedby")).toBe("add-person-public-id-error");
     expect(emailInput.getAttribute("aria-invalid")).toBe("false");
 
-    fireEvent.change(publicIdInput, { target: { value: `pk_${"a".repeat(130)}` } });
-    fireEvent.change(emailInput, { target: { value: "user@localhost" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add person" }));
+    await act(async () => {
+      fireEvent.change(publicIdInput, { target: { value: `pk_${"a".repeat(130)}` } });
+      fireEvent.change(emailInput, { target: { value: "user@localhost" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add person" }));
+    });
 
     expect(screen.getByRole("alert").textContent).toBe("Enter a valid email");
     expect(publicIdInput.getAttribute("aria-invalid")).toBe("false");
