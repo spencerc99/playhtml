@@ -273,14 +273,20 @@ export function CanPlayElement<T extends object, V = any>({
         (fnOrValue as (el: HTMLElement) => V)(ref.current as HTMLElement)
       : fnOrValue;
 
+  // Function-form defaultData/myDefaultAwareness receive the real element, but
+  // `ref.current` is still null during this first render (React hasn't attached
+  // the ref yet) — resolving them here would call the consumer's function with
+  // null and crash. Seed with a plain value only; resolve the function form in
+  // a layout effect below, once ref.current is populated.
   const [data, setData] = useState<T | undefined>(
-    defaultData !== undefined
-      ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
+    defaultData !== undefined && typeof defaultData !== "function"
+      ? (defaultData as T)
       : undefined,
   );
-  const initialAwareness = resolveDefaultAwareness(
-    myDefaultAwareness as V | ((el: HTMLElement) => V) | undefined,
-  );
+  const initialAwareness =
+    typeof myDefaultAwareness === "function"
+      ? undefined
+      : (myDefaultAwareness as V | undefined);
   const [awareness, setAwareness] = useState<V[]>(
     initialAwareness ? [initialAwareness] : [],
   );
@@ -290,6 +296,28 @@ export function CanPlayElement<T extends object, V = any>({
   const [myAwareness, setMyAwareness] = useState<V | undefined>(
     initialAwareness,
   );
+
+  useElementRegistrationEffect(() => {
+    if (typeof defaultData === "function") {
+      setData((prev) =>
+        prev === undefined
+          ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
+          : prev,
+      );
+    }
+    if (typeof myDefaultAwareness === "function") {
+      const resolved = resolveDefaultAwareness(
+        myDefaultAwareness as (el: HTMLElement) => V,
+      );
+      if (resolved !== undefined) {
+        setMyAwareness((prev) => (prev === undefined ? resolved : prev));
+        setAwareness((prev) => (prev.length === 0 ? [resolved] : prev));
+      }
+    }
+    // Resolve function-form defaults exactly once, right after the element
+    // mounts — not on every re-render of this effect's inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Capture the capability's original updateElement/updateElementAwareness so we can
   // compose them with the React state updater below. These come from the built-in

@@ -128,6 +128,56 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect((element as any).onDrag).toBe(capabilityOnDrag);
   });
 
+  it("resolves function-form defaultData against the real element instead of null", async () => {
+    // Regression test: resolving this synchronously during render (before
+    // ref.current is attached) throws `Cannot read properties of null`.
+    const { container } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanMove]}
+        defaultData={(el: HTMLElement) => ({ tag: el.tagName })}
+        defaultLocalData={{ startMouseX: 0, startMouseY: 0 }}
+        updateElement={() => {}}
+        resetShortcut="shiftKey"
+      >
+        {({ data }) => <div id="fn-default-data-child">{JSON.stringify(data)}</div>}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-move]") as HTMLElement;
+    expect(element).toBeTruthy();
+
+    await act(async () => {});
+
+    const child = container.querySelector("#fn-default-data-child") as HTMLElement;
+    expect(child.textContent).toBe(JSON.stringify({ tag: element.tagName }));
+  });
+
+  it("resolves function-form myDefaultAwareness against the real element instead of null", async () => {
+    const { container } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanHover]}
+        defaultData={{}}
+        myDefaultAwareness={(el: HTMLElement) => ({ tag: el.tagName })}
+        updateElement={() => {}}
+        updateElementAwareness={() => {}}
+      >
+        {({ myAwareness }) => (
+          <div id="fn-default-awareness-child">{JSON.stringify(myAwareness)}</div>
+        )}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-hover]") as HTMLElement;
+    expect(element).toBeTruthy();
+
+    await act(async () => {});
+
+    const child = container.querySelector("#fn-default-awareness-child") as HTMLElement;
+    expect(child.textContent).toBe(JSON.stringify({ tag: element.tagName }));
+  });
+
   it("does not remove the element when synced data updates React state", () => {
     const setupSpy = vi
       .spyOn(playhtml, "setupPlayElement")
