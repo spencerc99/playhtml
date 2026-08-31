@@ -19,6 +19,19 @@ export function canPanPartyRoomWithPointer(pointerType: string): boolean {
   return pointerType === "touch";
 }
 
+export function shouldShowArrivalNametag({
+  hasArrivedBefore,
+  name,
+  skipEntry,
+}: {
+  hasArrivedBefore: boolean;
+  name: string | undefined;
+  skipEntry: boolean;
+}): boolean {
+  if (skipEntry) return false;
+  return !hasArrivedBefore || !name?.trim();
+}
+
 export interface PartyIdentity {
   pid: string;
   name: string;

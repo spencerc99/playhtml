@@ -14,6 +14,7 @@ import {
   getDriftPosition,
   getFlowerSegments,
   getPlaceFromTimezone,
+  shouldShowArrivalNametag,
   type CakeData,
 } from "./partyState";
 
@@ -60,6 +61,40 @@ describe("cake erosion", () => {
 });
 
 describe("party labels and drift", () => {
+  it("shows the arrival nametag again when no name was saved", () => {
+    expect(
+      shouldShowArrivalNametag({
+        hasArrivedBefore: true,
+        name: undefined,
+        skipEntry: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowArrivalNametag({
+        hasArrivedBefore: true,
+        name: "  ",
+        skipEntry: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps the review shortcut and a completed nametag out of the way", () => {
+    expect(
+      shouldShowArrivalNametag({
+        hasArrivedBefore: false,
+        name: undefined,
+        skipEntry: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowArrivalNametag({
+        hasArrivedBefore: true,
+        name: "Spencer",
+        skipEntry: false,
+      }),
+    ).toBe(false);
+  });
+
   it("reserves drag panning for touch input", () => {
     expect(canPanPartyRoomWithPointer("touch")).toBe(true);
     expect(canPanPartyRoomWithPointer("mouse")).toBe(false);

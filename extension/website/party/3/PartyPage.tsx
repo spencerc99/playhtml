@@ -7,14 +7,17 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
   CanToggleElement,
   playhtml,
+  useCursorPresences,
   usePlayContext,
   usePlayerIdentity,
+  usePresence,
   useUsers,
   withSharedState,
 } from "@playhtml/react";
@@ -31,6 +34,7 @@ import {
   getDriftPosition,
   getInflatedBalloonScale,
   isCakeCellFinished,
+  shouldShowArrivalNametag,
   type BalloonsData,
   type CakeData,
   type CardPattern,
@@ -99,6 +103,13 @@ const SEAL_COLORS = [
   "var(--ph-brick)",
 ];
 const CARD_PATTERNS = ["cross", "sash", "polka"] as const;
+const PARTY_HATS = ["brick", "mustard", "ultramarine"] as const;
+
+type PartyHat = (typeof PARTY_HATS)[number];
+
+type PartyHatPresence = {
+  hat: PartyHat;
+};
 
 type PartyEffect = "confetti" | "popper" | "balloon-pop" | "cake-finale";
 
@@ -300,6 +311,96 @@ function ArrivalNametag({
         </div>
       </form>
     </div>
+  );
+}
+
+function isPartyHat(value: unknown): value is PartyHat {
+  return PARTY_HATS.some((hat) => hat === value);
+}
+
+function PartyHatShape({ hat }: { hat: PartyHat }) {
+  return (
+    <span className={`party-hat party-hat--${hat}`} aria-hidden="true">
+      <i />
+    </span>
+  );
+}
+
+function PartyHatPile({ identity }: { identity: PartyIdentity }) {
+  const { presences, setMyPresence } = usePresence<
+    "partyHat",
+    PartyHatPresence
+  >("partyHat");
+  const selectedHat = presences.get(identity.pid)?.partyHat?.hat;
+
+  return (
+    <section className="party-hat-pile" aria-labelledby="party-hat-pile-title">
+      <p id="party-hat-pile-title">grab a party hat</p>
+      <div>
+        {PARTY_HATS.map((hat) => {
+          const selected = selectedHat === hat;
+          return (
+            <button
+              key={hat}
+              type="button"
+              className={selected ? "is-selected" : ""}
+              aria-label={`${selected ? "Take off" : "Wear"} ${hat} party hat`}
+              aria-pressed={selected}
+              onClick={() => {
+                if (selected) {
+                  playhtml.presence.setMyPresence("partyHat", null);
+                  return;
+                }
+                setMyPresence({ hat });
+              }}
+            >
+              <PartyHatShape hat={hat} />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PartyCursorAccessories() {
+  const cursorPresences = useCursorPresences();
+  const { presences } = usePresence<"partyHat", PartyHatPresence>("partyHat");
+  const playerIdentity = usePlayerIdentity();
+  const myCursor = playerIdentity.pid
+    ? cursorPresences.get(playerIdentity.pid)?.cursor
+    : null;
+
+  return createPortal(
+    <div className="party-cursor-accessories" aria-hidden="true">
+      {[...presences].map(([pid, presence]) => {
+        const hat = presence.partyHat?.hat;
+        const cursor = cursorPresences.get(pid)?.cursor;
+        if (!cursor || !isPartyHat(hat)) return null;
+        return (
+          <span
+            className="party-cursor-hat"
+            key={pid}
+            style={{ left: cursor.x, top: cursor.y }}
+          >
+            <PartyHatShape hat={hat} />
+          </span>
+        );
+      })}
+      {myCursor && playerIdentity.name?.trim() && (
+        <span
+          className="party-cursor-nametag"
+          style={{
+            left: myCursor.x,
+            top: myCursor.y,
+            "--party-cursor-color": playerIdentity.color,
+          } as CSSProperties}
+        >
+          {playerIdentity.name}
+        </span>
+      )}
+    </div>,
+    document.body,
   );
 }
 
@@ -2075,8 +2176,15 @@ function PartyRoom({
                   href="/"
                   aria-label="Leave the party and return to the home page"
                 >
-                  <img src="/party/3/assets/bright-blue-door.jpg" alt="" />
-                  <span>leave the party</span>
+                  <span className="party-room__door-panels" aria-hidden="true">
+                    <span className="party-room__door-panel party-room__door-panel--left">
+                      <img src="/party/3/assets/bright-blue-door.jpg" alt="" />
+                    </span>
+                    <span className="party-room__door-panel party-room__door-panel--right">
+                      <img src="/party/3/assets/bright-blue-door.jpg" alt="" />
+                    </span>
+                  </span>
+                  <span className="party-room__door-label">leave the party</span>
                 </a>
                 <div className="party-room__credits">
                   <a
@@ -2094,6 +2202,7 @@ function PartyRoom({
                     door photo by the iop
                   </a>
                 </div>
+                <PartyHatPile identity={props.identity} />
                 <CakeStation
                   identity={props.identity}
                   emitEvent={emitEvent}
@@ -2110,6 +2219,7 @@ function PartyRoom({
                   soundOn={soundOn}
                 />
               </div>
+              <PartyCursorAccessories />
               {eventLine && (
                 <p
                   className="party-event-line"
@@ -2166,12 +2276,19 @@ export function PartyPage() {
   const [soundOn, setSoundOnState] = useState(true);
 
   useEffect(() => {
+    if (isLoading) return;
     const skipEntry = new URLSearchParams(window.location.search).has(
       "skipEntry",
     );
-    setArrived(skipEntry || localStorage.getItem(ARRIVAL_KEY) === "true");
+    setArrived(
+      !shouldShowArrivalNametag({
+        hasArrivedBefore: localStorage.getItem(ARRIVAL_KEY) === "true",
+        name: playerIdentity.name,
+        skipEntry,
+      }),
+    );
     setSoundOnState(localStorage.getItem(SOUND_KEY) !== "off");
-  }, []);
+  }, [isLoading, playerIdentity.name]);
 
   const setSoundOn = useCallback((value: boolean) => {
     setSoundOnState(value);
@@ -2201,7 +2318,11 @@ export function PartyPage() {
           onEnter={(name, color) => {
             playhtml.users.me.name = name || undefined;
             playhtml.users.me.color = color;
-            localStorage.setItem(ARRIVAL_KEY, "true");
+            if (name) {
+              localStorage.setItem(ARRIVAL_KEY, "true");
+            } else {
+              localStorage.removeItem(ARRIVAL_KEY);
+            }
             setArrived(true);
             playPartySound("chime", soundOn);
           }}

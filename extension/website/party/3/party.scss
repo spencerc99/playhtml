@@ -417,24 +417,72 @@ h1 {
   width: 250px;
   height: 520px;
   border: 7px solid var(--ph-paper);
-  background: var(--ph-ultramarine);
+  background:
+    radial-gradient(circle at 72% 45%, rgba(255, 222, 141, 0.95), transparent 34%),
+    linear-gradient(90deg, #2f2923, #71634e);
   box-shadow: 8px 9px 0 var(--ph-ultramarine-deep);
   color: var(--ph-ink);
-  transition: transform 150ms ease;
+  perspective: 900px;
 }
 .party-room__door:hover,
 .party-room__door:focus-visible {
-  transform: translate(-2px, -3px) rotate(-0.4deg);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255, 222, 141, 0.98), transparent 42%),
+    linear-gradient(90deg, #2f2923, #71634e);
 }
 .party-room__door:focus-visible {
   outline: 4px solid var(--ph-mustard);
   outline-offset: 5px;
 }
-.party-room__door img {
+.party-room__door-panels {
+  position: absolute;
+  inset: 0;
   display: block;
-  width: 100%;
+  perspective: 900px;
+}
+.party-room__door-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: block;
+  width: 50%;
+  overflow: hidden;
+  transition:
+    filter 220ms ease,
+    transform 320ms cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+.party-room__door-panel--left {
+  left: 0;
+  transform-origin: left center;
+}
+.party-room__door-panel--right {
+  right: 0;
+  transform-origin: right center;
+}
+.party-room__door-panel img {
+  position: absolute;
+  top: 0;
+  display: block;
+  width: 200%;
   height: 100%;
-  object-fit: cover;
+}
+.party-room__door-panel--left img {
+  left: 0;
+}
+.party-room__door-panel--right img {
+  left: -100%;
+}
+.party-room__door:hover .party-room__door-panel,
+.party-room__door:focus-visible .party-room__door-panel {
+  filter: brightness(0.88);
+}
+.party-room__door:hover .party-room__door-panel--left,
+.party-room__door:focus-visible .party-room__door-panel--left {
+  transform: rotateY(32deg);
+}
+.party-room__door:hover .party-room__door-panel--right,
+.party-room__door:focus-visible .party-room__door-panel--right {
+  transform: rotateY(-32deg);
 }
 .party-room__door::before {
   position: absolute;
@@ -460,7 +508,7 @@ h1 {
   box-shadow: 4px 3px 0 rgba(28, 28, 28, 0.22);
   content: "";
 }
-.party-room__door span {
+.party-room__door-label {
   position: absolute;
   bottom: 34px;
   left: 50%;
@@ -485,6 +533,116 @@ h1 {
 }
 .party-room__credits a {
   color: var(--ph-ink-3);
+}
+
+.party-hat-pile {
+  position: absolute;
+  top: 684px;
+  left: 34px;
+  z-index: 7;
+  width: 126px;
+  padding: 10px 10px 8px;
+  border: 2px solid var(--ph-ink);
+  background: rgba(244, 239, 229, 0.92);
+  box-shadow: 4px 5px 0 rgba(28, 28, 28, 0.26);
+  text-align: center;
+  transform: rotate(-2deg);
+}
+.party-hat-pile::after {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  left: -8px;
+  height: 15px;
+  border: 2px solid var(--ph-ink);
+  background: var(--ph-mustard-wash);
+  content: "";
+  transform: rotate(1deg);
+}
+.party-hat-pile p {
+  margin: 0 0 5px;
+  font: 0.72rem/1.1 var(--ph-font-wordmark);
+}
+.party-hat-pile > div {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+}
+.party-hat-pile button {
+  position: relative;
+  z-index: 1;
+  width: 32px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.party-hat-pile button:hover,
+.party-hat-pile button:focus-visible,
+.party-hat-pile button.is-selected {
+  transform: translateY(-5px) rotate(-4deg);
+}
+.party-hat-pile button.is-selected::after {
+  position: absolute;
+  right: 0;
+  bottom: -4px;
+  left: 0;
+  color: var(--ph-ink);
+  content: "wearing";
+  font: 0.48rem var(--ph-font-body);
+}
+.party-hat {
+  position: relative;
+  display: block;
+  width: 28px;
+  height: 34px;
+  transform: rotate(-9deg);
+  transform-origin: bottom center;
+}
+.party-hat::before {
+  position: absolute;
+  right: 2px;
+  bottom: 3px;
+  left: 2px;
+  height: 28px;
+  border: 1.5px solid var(--ph-ink);
+  background: var(--party-hat-color);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  content: "";
+}
+.party-hat::after {
+  position: absolute;
+  top: -1px;
+  left: 10px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 50%;
+  background: var(--ph-paper);
+  content: "";
+}
+.party-hat i {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  height: 7px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 50%;
+  background: var(--ph-paper);
+}
+.party-hat--brick {
+  --party-hat-color: var(--ph-brick);
+}
+.party-hat--mustard {
+  --party-hat-color: var(--ph-mustard);
+}
+.party-hat--ultramarine {
+  --party-hat-color: var(--ph-ultramarine);
 }
 
 .party-arrival {
@@ -1893,6 +2051,47 @@ h1 {
   width: 8px;
   height: 12px;
   animation: ph-fall linear infinite;
+}
+
+.party-cursor-accessories {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483644;
+  pointer-events: none;
+}
+.party-cursor-hat {
+  position: fixed;
+  width: 28px;
+  height: 34px;
+  transform: translate(-9px, -30px);
+  transform-origin: bottom center;
+}
+.party-cursor-hat .party-hat {
+  filter: drop-shadow(1px 2px 0 rgba(28, 28, 28, 0.24));
+}
+.party-cursor-nametag {
+  --party-cursor-color: var(--ph-ultramarine);
+  position: fixed;
+  min-width: 46px;
+  padding: 10px 6px 2px;
+  border: 1px solid var(--ph-ink);
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 1.5px 1.5px 0 rgba(28, 28, 28, 0.55);
+  color: var(--ph-ink);
+  font: 600 0.72rem var(--ph-font-note);
+  text-align: center;
+  transform: translate(18px, 18px);
+}
+.party-cursor-nametag::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 9px;
+  background: var(--party-cursor-color);
+  color: #fff;
+  content: "HI I'M";
+  font: 0.4rem var(--ph-font-body);
+  letter-spacing: 0.12em;
 }
 
 .playhtml-cursor-other .playhtml-cursor-name {
