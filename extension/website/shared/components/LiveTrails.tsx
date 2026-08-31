@@ -1,20 +1,30 @@
-// ABOUTME: Live cursor-trail animator. Renders the current trail set directly
-// ABOUTME: (id-keyed, React owns add/remove/grow); the rAF loop draws each trail
-// ABOUTME: by its own progress since first seen. No snapshot/eviction state.
+// ABOUTME: Animates id-keyed live cursor trails and their click ripples.
+// ABOUTME: React owns trail lifetimes while one frame loop draws current progress.
 
 import React, { useEffect, useRef, useState, memo } from "react";
-import { TrailState } from "../types";
+import type { TrailState } from "../types";
+import type { SoundEngine } from "../sound/SoundEngine";
+import type { TrailSoundFrame } from "../sound/types";
 import { getTrailRenderer } from "../styles/trailRenderers";
+import { RippleEffect, type RippleSettings } from "./ClickRipple";
+import {
+  collectDueClickEffects,
+  retainClickEffectsForActiveTrails,
+  type LiveClickEffect,
+} from "./clickEffects";
+import { pathLength } from "../utils/trailSequence";
 import {
   TrailPath,
   TrailCursor,
   COMPLETED_OPACITY,
-  EVICTION_FADE_MS,
   type ImperativeTrailHandle,
   type ImperativeTrailCursorHandle,
 } from "./trailPrimitives";
-
-const HIDDEN_TAB_TICK_MS = 100;
+import {
+  getTrailVisibility,
+  startTrailVisibilityTransition,
+  type TrailVisibilityTransition,
+} from "./trailVisibility";
 
 // A trail that hasn't gained a point in this long (and has drawn up to its tip)
 // has finished tracing and settles from the live full opacity to the completed
@@ -32,16 +42,158 @@ const DIM_FADE_MS = 1200;
 // so a flick still reads and a very long idle span doesn't take minutes to draw.
 const MIN_DRAW_MS = 600;
 const MAX_DRAW_MS = 30000;
+const MAX_DRAW_SPEED_PX_PER_SECOND = 600;
+const MIN_DRAW_MS_PER_SEGMENT = 32;
 
 // Once a trail has settled (dimmed, done tracing), keep it on screen this long
 // before removing it, so finished trails persist as a dim backdrop rather than
 // vanishing. After this it depart-fades out. (The maxGroups cap upstream also
 // bounds how many accumulate regardless.)
-const REMOVE_AFTER_DIM_MS = 20_000;
+const REMOVE_AFTER_DIM_MS = 60_000;
 
-// A removed trail fades out over this long instead of popping — matches the
-// archive's eviction fade (EVICTION_FADE_MS).
-const KEEP_AFTER_DEPART_MS = EVICTION_FADE_MS;
+export interface LiveTrailDrawState {
+  seenAt: number;
+  total: number;
+  variedTotal: number;
+  drawProgress: number;
+  grewAt: number;
+  caughtUpAt: number | null;
+  settled: boolean;
+  settledAt: number | null;
+  dimmedAt: number | null;
+  activeFromVariedPoint: number | null;
+  activeDimmedAt: number | null;
+}
+
+export function shouldDepartTrail(
+  draw: LiveTrailDrawState | undefined,
+  clockMs: number,
+  resumed = false,
+): boolean {
+  return Boolean(
+    !resumed &&
+      draw?.settled &&
+      draw.settledAt !== null &&
+      clockMs - draw.settledAt >= REMOVE_AFTER_DIM_MS,
+  );
+}
+
+export function getLiveTrailOpacity(
+  draw: LiveTrailDrawState,
+  clockMs: number,
+): number {
+  if (draw.dimmedAt === null) return 1;
+
+  const dimProgress = Math.min(1, (clockMs - draw.dimmedAt) / DIM_FADE_MS);
+  return 1 - (1 - COMPLETED_OPACITY) * dimProgress;
+}
+
+export function getActiveTrailOpacity(
+  draw: LiveTrailDrawState,
+  clockMs: number,
+): number {
+  if (draw.activeFromVariedPoint === null) return 0;
+  if (draw.activeDimmedAt === null) return 1;
+
+  return Math.max(0, 1 - (clockMs - draw.activeDimmedAt) / DIM_FADE_MS);
+}
+
+export function advanceDrawState(
+  draw: LiveTrailDrawState,
+  pointCount: number,
+  variedPointCount: number,
+  clockMs: number,
+  drawDuration: number,
+): void {
+  if (pointCount <= draw.total) return;
+
+  const priorLastIndex = Math.max(1, draw.variedTotal - 1);
+  const nextLastIndex = Math.max(1, variedPointCount - 1);
+  const preservedProgress =
+    (draw.drawProgress * priorLastIndex) / nextLastIndex;
+  draw.seenAt = clockMs - preservedProgress * drawDuration;
+  draw.drawProgress = preservedProgress;
+
+  if (draw.settled) {
+    draw.activeFromVariedPoint = priorLastIndex;
+    draw.activeDimmedAt = null;
+    draw.settled = false;
+    draw.settledAt = null;
+  }
+
+  draw.total = pointCount;
+  draw.variedTotal = variedPointCount;
+  draw.grewAt = clockMs;
+  draw.caughtUpAt = null;
+}
+
+export function getLiveDrawDuration(trailState: TrailState): number {
+  const spatialDuration =
+    (pathLength(trailState.variedPoints) / MAX_DRAW_SPEED_PX_PER_SECOND) * 1000;
+  const segmentDuration =
+    Math.max(0, trailState.variedPoints.length - 1) *
+    MIN_DRAW_MS_PER_SEGMENT;
+  return Math.max(
+    MIN_DRAW_MS,
+    Math.min(MAX_DRAW_MS, trailState.durationMs),
+    spatialDuration,
+    segmentDuration,
+  );
+}
+
+export function advanceSettlingState(
+  draw: LiveTrailDrawState,
+  caughtUp: boolean,
+  clockMs: number,
+): void {
+  if (!caughtUp) {
+    draw.caughtUpAt = null;
+    return;
+  }
+
+  draw.caughtUpAt ??= clockMs;
+  if (draw.settled || clockMs - draw.caughtUpAt < SETTLE_MS) return;
+
+  draw.settled = true;
+  draw.settledAt = clockMs;
+  if (draw.activeFromVariedPoint === null) {
+    draw.dimmedAt ??= clockMs;
+  } else {
+    draw.activeDimmedAt = clockMs;
+  }
+}
+
+export function getDrawClockTime(
+  performanceNow: number,
+  pausedAccumMs: number,
+  pauseStartedAt: number | null,
+): number {
+  return (pauseStartedAt ?? performanceNow) - pausedAccumMs;
+}
+
+export function createLiveSoundFrame(
+  trailIndex: number,
+  trailState: TrailState,
+  cursorPosition: { x: number; y: number },
+  trailProgress: number,
+): TrailSoundFrame {
+  const points = trailState.trail.points;
+  const cursorPointIndex = Math.min(
+    Math.floor((points.length - 1) * trailProgress),
+    points.length - 1,
+  );
+  return {
+    trailIndex,
+    x: cursorPosition.x,
+    y: cursorPosition.y,
+    prevX: cursorPosition.x,
+    prevY: cursorPosition.y,
+    cursorType: points[cursorPointIndex]?.cursor,
+    progress: trailProgress,
+    color: trailState.trail.color,
+    isNewlyActive: false,
+  };
+}
 
 /** Tiny deterministic hash of a string to a small int, for per-trail variation. */
 function hashKey(key: string): number {
@@ -52,21 +204,22 @@ function hashKey(key: string): number {
   return Math.abs(h);
 }
 
-/** A trail LiveTrails is keeping on screen. `departedAt` is null while the trail
- * is still in the live window; once it leaves, it's the wall-clock time the fade
- * started. */
+/** A trail LiveTrails is keeping on screen, including its current arrival or
+ * departure transition. */
 interface KeptTrail {
   trail: TrailState;
-  departedAt: number | null;
+  visibility: TrailVisibilityTransition | null;
 }
 
 interface LiveTrailsProps {
   trailStates: TrailState[];
   frozen?: boolean;
+  showClickRipples?: boolean;
+  soundEngine?: SoundEngine | null;
   /** Called with trail ids once they have fully faded out and been removed, so
    * the owner can free their accumulated events. */
   onTrailsRemoved?: (ids: string[]) => void;
-  settings: {
+  settings: RippleSettings & {
     strokeWidth: number;
     trailOpacity: number;
     animationSpeed: number;
@@ -75,14 +228,31 @@ interface LiveTrailsProps {
 }
 
 export const LiveTrails: React.FC<LiveTrailsProps> = memo(
-  ({ trailStates, frozen = false, onTrailsRemoved, settings }) => {
+  ({
+    trailStates,
+    frozen = false,
+    showClickRipples = false,
+    soundEngine = null,
+    onTrailsRemoved,
+    settings,
+  }) => {
+    const [activeClickEffects, setActiveClickEffects] = useState<
+      LiveClickEffect[]
+    >([]);
+    const activeClickEffectsRef = useRef(activeClickEffects);
+    useEffect(() => {
+      activeClickEffectsRef.current = activeClickEffects;
+    }, [activeClickEffects]);
     const svgRef = useRef<SVGSVGElement>(null);
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
-    const timeoutRef = useRef<number | undefined>(undefined);
     const consecutiveErrorsRef = useRef(0);
 
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
+    const rendererRef = useRef(renderer);
+    useEffect(() => {
+      rendererRef.current = renderer;
+    }, [renderer]);
 
     // Settings via refs so the loop reads latest without restarting.
     const strokeWidthRef = useRef(settings.strokeWidth);
@@ -97,32 +267,47 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       frozenRef.current = frozen;
     }, [frozen]);
 
+    const showClickRipplesRef = useRef(showClickRipples);
+    useEffect(() => {
+      showClickRipplesRef.current = showClickRipples;
+      if (!showClickRipples) setActiveClickEffects([]);
+    }, [showClickRipples]);
+
+    const soundEngineRef = useRef(soundEngine);
+    useEffect(() => {
+      soundEngineRef.current = soundEngine;
+    }, [soundEngine]);
+    const soundFramesRef = useRef<TrailSoundFrame[]>([]);
+    const soundTrailIndicesRef = useRef<Map<string, number>>(new Map());
+    const nextSoundTrailIndexRef = useRef(0);
+    const retiredSoundTrailIndicesRef = useRef<number[]>([]);
+    const queueSoundTrailRetirement = (trailId: string) => {
+      const soundTrailIndex = soundTrailIndicesRef.current.get(trailId);
+      if (soundTrailIndex !== undefined) {
+        retiredSoundTrailIndicesRef.current.push(soundTrailIndex);
+      }
+      soundTrailIndicesRef.current.delete(trailId);
+    };
+
+    const spawnedClickKeysByTrailRef = useRef<Map<string, Set<string>>>(
+      new Map(),
+    );
+
     // Per-trail draw state. `seenAt` is the clock time the trail began drawing;
     // progress = (clock - seenAt) / drawDuration, so it traces over its real
     // duration like the archive. As new points arrive the duration grows, so the
     // draw keeps going (catches up) instead of snapping to the end. `total` and
     // `grewAt` track the latest point count and when it last grew, to decide when
     // a caught-up trail has settled.
-    const drawRef = useRef<
-      Map<
-        string,
-        {
-          seenAt: number;
-          total: number;
-          grewAt: number;
-          settled: boolean;
-          settledAt: number | null;
-        }
-      >
-    >(new Map());
+    const drawRef = useRef<Map<string, LiveTrailDrawState>>(new Map());
 
     // Trails LiveTrails keeps on screen — the current live trails plus recently
     // departed ones still fading out. Owned here (not just `trailStates`) so a
     // trail's lifetime is decoupled from the churning event window. Each entry
-    // tracks `departedAt` (null while still live). Updated ONLY in the effect
-    // below (never during render) so the rendered keys are always unique.
+    // tracks its current visibility transition. Updated ONLY in the effect below
+    // (never during render) so the rendered keys are always unique.
     const [kept, setKept] = useState<KeptTrail[]>(() =>
-      trailStates.map((trail) => ({ trail, departedAt: null })),
+      trailStates.map((trail) => ({ trail, visibility: null })),
     );
     const keptRef = useRef<KeptTrail[]>(kept);
 
@@ -137,9 +322,20 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
     useEffect(() => {
       keptRef.current = kept;
+      if (retiredSoundTrailIndicesRef.current.length > 0) {
+        const trailIndices = retiredSoundTrailIndicesRef.current;
+        retiredSoundTrailIndicesRef.current = [];
+        for (const trailIndex of trailIndices) {
+          soundEngineRef.current?.retireTrail(trailIndex);
+        }
+      }
       if (removedIdsRef.current.length > 0) {
         const ids = removedIdsRef.current;
         removedIdsRef.current = [];
+        const removed = new Set(ids);
+        setActiveClickEffects((effects) =>
+          retainClickEffectsForActiveTrails(effects, removed),
+        );
         onRemovedRef.current?.(ids);
       }
     }, [kept]);
@@ -162,28 +358,42 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           // A trail that has been dimmed (settled) for REMOVE_AFTER_DIM_MS starts
           // departing even though it is still in the live data.
           const d = draws.get(id);
-          const dimExpired =
-            d?.settled &&
-            d.settledAt !== null &&
-            now - d.settledAt >= REMOVE_AFTER_DIM_MS;
+          const resumed =
+            live !== undefined &&
+            d !== undefined &&
+            live.trail.points.length > d.total;
+          const dimExpired = shouldDepartTrail(d, now, resumed);
           if (live && !dimExpired) {
-            // Still live — refresh geometry, clear any departed mark.
-            next.push({ trail: live, departedAt: null });
-          } else if (entry.departedAt === null) {
+            // Still live — refresh geometry and ease back if it was departing.
+            const visibility =
+              entry.visibility?.toOpacity === 0
+                ? startTrailVisibilityTransition(entry.visibility, now, true)
+                : entry.visibility;
+            next.push({ trail: live, visibility });
+          } else if (entry.visibility?.toOpacity !== 0) {
             // Left, or dimmed long enough — start its fade.
-            next.push({ trail: live ?? entry.trail, departedAt: now });
-          } else if (now - entry.departedAt < KEEP_AFTER_DEPART_MS) {
+            next.push({
+              trail: live ?? entry.trail,
+              visibility: startTrailVisibilityTransition(
+                entry.visibility,
+                now,
+                false,
+              ),
+            });
+          } else if (getTrailVisibility(entry.visibility, now) > 0) {
             // Still fading — keep.
             next.push(entry);
           } else {
             // Fully faded — drop, and report so its events can be freed.
             removedIdsRef.current.push(id);
+            spawnedClickKeysByTrailRef.current.delete(id);
+            queueSoundTrailRetirement(id);
           }
         }
         // Brand-new live trails not already in `kept`.
         for (const t of trailStates) {
           if (!handled.has(t.trail.id)) {
-            next.push({ trail: t, departedAt: null });
+            next.push({ trail: t, visibility: null });
           }
         }
         return next;
@@ -207,23 +417,29 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           for (const entry of prev) {
             const tid = entry.trail.trail.id;
             const d = draws.get(tid);
-            const dimExpired =
-              d?.settled &&
-              d.settledAt !== null &&
-              now - d.settledAt >= REMOVE_AFTER_DIM_MS;
-            if (entry.departedAt === null) {
-              if (dimExpired) {
-                next.push({ trail: entry.trail, departedAt: now });
-                changed = true;
-              } else {
-                next.push(entry);
-              }
-            } else if (now - entry.departedAt < KEEP_AFTER_DEPART_MS) {
+            const dimExpired = shouldDepartTrail(d, now);
+            const departing = entry.visibility?.toOpacity === 0;
+            if (dimExpired && !departing) {
+              next.push({
+                trail: entry.trail,
+                visibility: startTrailVisibilityTransition(
+                  entry.visibility,
+                  now,
+                  false,
+                ),
+              });
+              changed = true;
+            } else if (
+              !departing ||
+              getTrailVisibility(entry.visibility, now) > 0
+            ) {
               next.push(entry);
             } else {
               // Fully faded — drop, and report so its events can be freed.
               changed = true;
               removedIdsRef.current.push(tid);
+              spawnedClickKeysByTrailRef.current.delete(tid);
+              queueSoundTrailRetirement(tid);
             }
           }
           return changed ? next : prev;
@@ -232,11 +448,21 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       return () => window.clearInterval(id);
     }, []);
 
+    useEffect(
+      () => () => {
+        for (const trailIndex of soundTrailIndicesRef.current.values()) {
+          soundEngineRef.current?.retireTrail(trailIndex);
+        }
+      },
+      [],
+    );
+
     // Per-trail imperative handles, keyed by stable trail id.
     const trailHandles = useRef<Map<string, ImperativeTrailHandle>>(new Map());
     const cursorHandles = useRef<Map<string, ImperativeTrailCursorHandle>>(
       new Map(),
     );
+    const rippleGroups = useRef<Map<string, SVGGElement>>(new Map());
 
     // Accumulated paused wall-clock, subtracted from the clock so trails don't
     // leap when resumed.
@@ -246,7 +472,12 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     // The draw clock: wall-clock minus time spent paused. Depart timestamps and
     // fades MUST use this (not raw performance.now()) so a depart-fade that's in
     // progress when the canvas pauses doesn't keep accruing during the pause.
-    const drawClock = () => performance.now() - pausedAccumMsRef.current;
+    const drawClock = () =>
+      getDrawClockTime(
+        performance.now(),
+        pausedAccumMsRef.current,
+        pauseStartedAtRef.current,
+      );
 
     useEffect(() => {
       const clearScheduled = () => {
@@ -254,19 +485,25 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           cancelAnimationFrame(animationRef.current);
           animationRef.current = undefined;
         }
-        if (timeoutRef.current !== undefined) {
-          window.clearTimeout(timeoutRef.current);
-          timeoutRef.current = undefined;
+      };
+
+      const pauseDrawClock = (perfNow: number) => {
+        if (pauseStartedAtRef.current === null) {
+          pauseStartedAtRef.current = perfNow;
+        }
+      };
+
+      const resumeDrawClock = (perfNow: number) => {
+        if (pauseStartedAtRef.current !== null) {
+          pausedAccumMsRef.current += perfNow - pauseStartedAtRef.current;
+          pauseStartedAtRef.current = null;
         }
       };
 
       const scheduleNext = () => {
         clearScheduled();
         if (document.visibilityState === "hidden") {
-          timeoutRef.current = window.setTimeout(
-            () => tick(performance.now()),
-            HIDDEN_TAB_TICK_MS,
-          );
+          pauseDrawClock(performance.now());
           return;
         }
         animationRef.current = requestAnimationFrame(tick);
@@ -297,21 +534,28 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
       const runFrame = (perfNow: number) => {
         if (frozenRef.current) {
-          if (pauseStartedAtRef.current === null) {
-            pauseStartedAtRef.current = perfNow;
-          }
+          pauseDrawClock(perfNow);
+          soundEngineRef.current?.tick(
+            getDrawClockTime(
+              perfNow,
+              pausedAccumMsRef.current,
+              pauseStartedAtRef.current,
+            ),
+            [],
+          );
           return;
         }
-        if (pauseStartedAtRef.current !== null) {
-          pausedAccumMsRef.current += perfNow - pauseStartedAtRef.current;
-          pauseStartedAtRef.current = null;
-        }
+        resumeDrawClock(perfNow);
 
         const entries = keptRef.current;
         const clockMs = perfNow - pausedAccumMsRef.current;
         const trailOpacity = trailOpacityRef.current;
         const strokeWidth = strokeWidthRef.current;
         const drawMap = drawRef.current;
+        const soundEngine = soundEngineRef.current;
+        const soundFrames = soundFramesRef.current;
+        soundFrames.length = 0;
+        const visibilityByTrail = new Map<string, number>();
 
         const present = new Set<string>();
 
@@ -324,76 +568,126 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
 
           const pts = ts.trail.points.length;
           let draw = drawMap.get(key);
+          const drawDuration = getLiveDrawDuration(ts);
           if (draw === undefined) {
             // New trail: anchor its draw clock to now.
             draw = {
               seenAt: clockMs,
               total: pts,
+              variedTotal: ts.variedPoints.length,
+              drawProgress: 0,
               grewAt: clockMs,
+              caughtUpAt: null,
               settled: false,
               settledAt: null,
+              dimmedAt: null,
+              activeFromVariedPoint: null,
+              activeDimmedAt: null,
             };
             drawMap.set(key, draw);
-          } else if (pts > draw.total && !draw.settled) {
-            // Gained points while still live — there's more to draw, so refresh
-            // the activity clock. Once settled we IGNORE new points for liveness
-            // (a dimmed trail never brightens again, even if the person resumes).
-            draw.total = pts;
-            draw.grewAt = clockMs;
+          } else {
+            advanceDrawState(
+              draw,
+              pts,
+              ts.variedPoints.length,
+              clockMs,
+              drawDuration,
+            );
           }
 
           // Draw over the trail's real duration (clamped), like the archive: a
           // trail spanning 20s of activity traces over ~20s. As points arrive the
           // duration grows, so progress doesn't snap to the end — the draw keeps
           // going and naturally catches up to live.
-          const drawDuration = Math.min(
-            MAX_DRAW_MS,
-            Math.max(MIN_DRAW_MS, ts.durationMs),
-          );
           const drawProgress = Math.min(
             1,
             (clockMs - draw.seenAt) / drawDuration,
           );
           const caughtUp = drawProgress >= 1;
 
-          // Latch "settled" once a trail has fully drawn and gone quiet for
-          // SETTLE_MS. Settling is one-way: a settled trail stays dimmed for the
-          // rest of its life (it never un-dims), per the design.
-          if (!draw.settled && caughtUp && clockMs - draw.grewAt >= SETTLE_MS) {
-            draw.settled = true;
-            draw.settledAt = clockMs;
-          }
+          advanceSettlingState(draw, caughtUp, clockMs);
           // A settled trail always shows its full current geometry (dimmed); a
           // live one draws progressively toward its tip.
           const progress = draw.settled ? 1 : drawProgress;
+          draw.drawProgress = progress;
 
-          // Departed trails fade from their current opacity to 0 over the keep
-          // window, then the reconcile effect drops them.
-          let departFade = 1;
-          if (entry.departedAt !== null) {
-            departFade = Math.max(
-              0,
-              1 - (clockMs - entry.departedAt) / KEEP_AFTER_DEPART_MS,
-            );
-          }
-
-          // Live (tracing) trails are full opacity; settled ones ease down to
-          // COMPLETED_OPACITY over DIM_FADE_MS (no jarring snap). Depart fade
-          // multiplies on top.
-          let settleOpacity = 1;
-          if (draw.settled && draw.settledAt !== null) {
-            const dimT = Math.min(1, (clockMs - draw.settledAt) / DIM_FADE_MS);
-            settleOpacity = 1 - (1 - COMPLETED_OPACITY) * dimT;
-          }
-          const groupFade = settleOpacity * departFade;
+          // Completed ink remains dim while a resumed portion draws at the live
+          // opacity. When that portion settles, it fades into the dim base.
+          const settleOpacity = getLiveTrailOpacity(draw, clockMs);
+          const activeOpacity = getActiveTrailOpacity(draw, clockMs);
+          const visibility = getTrailVisibility(entry.visibility, clockMs);
+          visibilityByTrail.set(key, visibility);
+          const activeStartProgress =
+            draw.activeFromVariedPoint === null || ts.variedPoints.length < 2
+              ? null
+              : draw.activeFromVariedPoint / (ts.variedPoints.length - 1);
 
           const result = handle.update(
             0,
-            trailOpacity,
+            trailOpacity * settleOpacity,
             strokeWidth,
-            groupFade,
+            visibility,
             progress,
+            activeStartProgress === null || activeOpacity <= 0
+              ? undefined
+              : {
+                  startProgress: activeStartProgress,
+                  baseProgress:
+                    draw.activeDimmedAt === null
+                      ? activeStartProgress
+                      : progress,
+                  opacity: trailOpacity * activeOpacity,
+                },
           );
+
+          const activelyTracing =
+            result &&
+            !caughtUp &&
+            !draw.settled &&
+            entry.visibility?.toOpacity !== 0;
+          if (soundEngine && activelyTracing) {
+            let soundTrailIndex = soundTrailIndicesRef.current.get(key);
+            if (soundTrailIndex === undefined) {
+              soundTrailIndex = nextSoundTrailIndexRef.current++;
+              soundTrailIndicesRef.current.set(key, soundTrailIndex);
+            }
+            soundFrames.push(
+              createLiveSoundFrame(
+                soundTrailIndex,
+                ts,
+                result.cursorPosition,
+                result.trailProgress,
+              ),
+            );
+          }
+
+          if (result && showClickRipplesRef.current) {
+            let spawnedClickKeys = spawnedClickKeysByTrailRef.current.get(key);
+            if (!spawnedClickKeys) {
+              spawnedClickKeys = new Set();
+              spawnedClickKeysByTrailRef.current.set(key, spawnedClickKeys);
+            }
+            const effects = collectDueClickEffects(
+              ts,
+              result.trailProgress,
+              spawnedClickKeys,
+              result.cursorPosition,
+              rendererRef.current.getClickColor(ts.trail.color),
+              Date.now(),
+            );
+            if (effects.length > 0) {
+              if (soundEngine) {
+                for (const effect of effects) {
+                  soundEngine.triggerClick({
+                    x: effect.x,
+                    y: effect.y,
+                    holdDuration: effect.holdDuration,
+                  });
+                }
+              }
+              setActiveClickEffects((active) => [...active, ...effects]);
+            }
+          }
 
           // Show the cursor at the moving draw-head while the trail is still
           // actively tracing (not caught up, not settled, not departing).
@@ -404,7 +698,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             result.cursorPosition &&
             !caughtUp &&
             !draw.settled &&
-            entry.departedAt === null
+            entry.visibility?.toOpacity !== 0
           ) {
             const cpIdx = Math.min(
               Math.floor((pts - 1) * (result.trailProgress ?? progress)),
@@ -415,12 +709,23 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               ts.trail.points[cpIdx]?.cursor,
               false,
               progress,
-              groupFade,
+              visibility,
             );
           } else {
             cursorHandle?.hide();
           }
         }
+
+        for (const effect of activeClickEffectsRef.current) {
+          const group = rippleGroups.current.get(effect.id);
+          if (!group) continue;
+          const opacity = String(visibilityByTrail.get(effect.trailId) ?? 0);
+          if (group.getAttribute("opacity") !== opacity) {
+            group.setAttribute("opacity", opacity);
+          }
+        }
+
+        soundEngine?.tick(clockMs, soundFrames);
 
         // Prune draw tracking for trails that left so the map can't grow.
         if (drawMap.size > present.size) {
@@ -438,7 +743,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         document.removeEventListener("visibilitychange", onVisibility);
         clearScheduled();
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (
@@ -450,6 +754,18 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         preserveAspectRatio="none"
         style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
       >
+        {showClickRipples &&
+          activeClickEffects.map((effect) => (
+            <g
+              key={effect.id}
+              ref={(group) => {
+                if (group) rippleGroups.current.set(effect.id, group);
+                else rippleGroups.current.delete(effect.id);
+              }}
+            >
+              <RippleEffect effect={effect} settings={settings} />
+            </g>
+          ))}
         <g ref={pathLayerRef}>
           {kept.map((entry) => {
             const ts = entry.trail;

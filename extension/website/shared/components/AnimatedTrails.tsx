@@ -10,12 +10,14 @@ import React, {
 } from "react";
 import { TrailState, ClickEffect } from "../types";
 import { RippleEffect } from "./ClickRipple";
+import { createClickEffect } from "./clickEffects";
 import { useDebugHover } from "./DebugHover";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import {
   buildStraightPathSegment,
+  didPlaybackCycleWrap,
   getFinishedTrailRenderRange,
 } from "../utils/trailAnimation";
 import {
@@ -48,6 +50,13 @@ interface AnimatedTrailsProps {
   cinematic?: CinematicConfig | null;
   // Increment to ask the cinematic camera to jump to a new subject now.
   cinematicNextSignal?: number;
+  // Multi-screen installation clock. When provided and it returns a non-null
+  // number, that value is used as the RAW scaled-elapsed for this frame and the
+  // local accumulation is skipped — every window computes the same time from a
+  // shared wall-clock epoch, so no window depends on another's rAF. Read each
+  // frame through this accessor (never as a raw value) so the clock's internal
+  // state changes don't re-run the animation-loop effect.
+  getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   soundEngine?: SoundEngine | null;
   settings: {
     strokeWidth: number;
@@ -78,6 +87,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     documentSpace = false,
     cinematic = null,
     cinematicNextSignal = 0,
+    getInstallationElapsedMs,
     soundEngine = null,
     settings,
   }) => {
@@ -174,6 +184,14 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     useEffect(() => {
       cinematicRef.current = cinematic;
     }, [cinematic]);
+
+    // Installation-clock accessors read by the rAF loop. Kept current via a
+    // separate effect so the loop reads xxxRef.current and its dep array does
+    // NOT include per-frame-changing values (which would restart the clock).
+    const getInstallationElapsedMsRef = useRef(getInstallationElapsedMs);
+    useEffect(() => {
+      getInstallationElapsedMsRef.current = getInstallationElapsedMs;
+    }, [getInstallationElapsedMs]);
 
     const cameraRef = useRef<CinematicCamera | null>(null);
     if (cinematic && cameraRef.current === null) {
@@ -374,12 +392,26 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // pause) doesn't accumulate a huge jump when the loop resumes.
         const frameDelta = Math.min(250, timestamp - lastTimestamp);
         lastTimestamp = timestamp;
-        accumulatedScaled += frameDelta * animationSpeedRef.current;
-        const scaledElapsed = accumulatedScaled;
+
+        // Multi-screen installation: every window computes its OWN scaled-
+        // elapsed from a shared wall-clock epoch, so a throttled/backgrounded
+        // window just renders fewer FRAMES rather than falling behind — it
+        // jumps to the correct current time when refocused. Standalone windows
+        // (and the brief moment before an epoch is known) accumulate locally.
+        const inst =
+          getInstallationElapsedMsRef.current?.(animationSpeedRef.current) ??
+          null;
+        let scaledElapsed: number;
+        if (inst !== null) {
+          scaledElapsed = inst;
+        } else {
+          accumulatedScaled += frameDelta * animationSpeedRef.current;
+          scaledElapsed = accumulatedScaled;
+        }
         const loopedElapsed = scaledElapsed % timeRange.duration;
 
         // Detect loop wrap
-        if (loopedElapsed < prevElapsedRef.current) {
+        if (didPlaybackCycleWrap(prevElapsedRef.current, loopedElapsed)) {
           resetPlaybackTrackers();
           setActiveClickEffects([]);
           soundEngineRef.current?.reset();
@@ -562,17 +594,18 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
                 holdDuration: click.duration,
               });
 
-              pendingClicks.current.push({
-                id: `${idx}-${clickIdx}-${Date.now()}`,
-                x: result.cursorPosition.x,
-                y: result.cursorPosition.y,
-                color: rendererRef.current.getClickColor(ts.trail.color),
-                radiusFactor: Math.random(),
-                durationFactor: Math.random(),
-                startTime: Date.now(),
-                trailIndex: idx,
-                holdDuration: click.duration,
-              });
+              const clickStartTime = Date.now();
+              pendingClicks.current.push(
+                createClickEffect({
+                  id: `${idx}-${clickIdx}-${clickStartTime}`,
+                  x: result.cursorPosition.x,
+                  y: result.cursorPosition.y,
+                  color: rendererRef.current.getClickColor(ts.trail.color),
+                  startTime: clickStartTime,
+                  trailIndex: idx,
+                  holdDuration: click.duration,
+                }),
+              );
 
               clickIdx++;
             }
@@ -620,7 +653,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         }
 
         // Feed sound engine with collected trail frames
-        if (soundFrames.length > 0 && soundEngine) {
+        if (soundEngine) {
           soundEngine.tick(loopedElapsed, soundFrames);
         }
 

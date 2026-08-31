@@ -11,7 +11,9 @@ import {
   CanGrowElement,
   CanHoverElement,
   CanDuplicateElement,
+  usePageData,
   withSharedState,
+  useUsers,
 } from "@playhtml/react";
 
 const ShootingStarEventType = "shootingStar";
@@ -66,7 +68,26 @@ function ShootingStar() {
   );
 }
 
-// Reaction button - tracks who has reacted using localStorage
+function PeopleHere() {
+  const users = useUsers();
+
+  return (
+    <section style={{ color: "#2800ff" }}>
+      <h2>people here</h2>
+      <p>{users.length === 1 ? "1 person here" : `${users.length} people here`}</p>
+      <ul>
+        {users.map((user) => (
+          <li key={user.pid} style={{ color: user.color }}>
+            {user.name ?? "anonymous"}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// withSharedState is the React API for custom collaborative elements.
+// Vanilla HTML uses playhtml.register(elementOrId, initializer) for the same role.
 const ReactionButton = withSharedState(
   { defaultData: { count: 0 } },
   ({ data, setData, ref }) => {
@@ -80,6 +101,7 @@ const ReactionButton = withSharedState(
 
     return (
       <button
+        id="reaction-button"
         onClick={() => {
           if (hasReacted) {
             setData((draft) => {
@@ -107,6 +129,16 @@ const ReactionButton = withSharedState(
     );
   }
 );
+
+function VisitCounter() {
+  const [count, setCount] = usePageData("visit-count", 0);
+
+  return (
+    <button onClick={() => setCount((value) => value + 1)}>
+      {count} visits
+    </button>
+  );
+}
 
 function App() {
   const [highlightedCapability, setHighlightedCapability] = useState<string | null>(null);
@@ -139,9 +171,12 @@ function App() {
             Hello World!
           </h1>
 
+          <PeopleHere />
+
           <CanSpinElement>
             <img
-              src="https://cdn.glitch.com/a9975ea6-8949-4bab-addb-8a95021dc2da%2Fillustration.svg?v=1618177344016"
+              id="illustration"
+              src="/illustration.svg"
               alt="Editor illustration"
               style={{ maxWidth: "300px", display: "block", margin: "2rem auto", cursor: "pointer" }}
             />
@@ -150,6 +185,7 @@ function App() {
           <div style={{ marginBottom: "2em" }}>
             <CanMoveElement>
               <img
+                id="open-sign"
                 src="https://media2.giphy.com/media/lL7A3Li0YtFHq/giphy.gif"
                 alt="Open sign"
                 style={{ cursor: "move", display: "block" }}
@@ -158,6 +194,7 @@ function App() {
 
             <CanToggleElement>
               <img
+                id="lamp"
                 src="https://png.pngtree.com/png-vector/20230909/ourmid/pngtree-paper-lamp-paper-png-image_9211580.png"
                 alt="Lamp"
                 style={{ width: "200px", position: "absolute", top: 0, right: "-16px" }}
@@ -260,6 +297,11 @@ function App() {
           <div style={{ marginTop: "2rem" }}>
             <p>Here's a reaction button! Everyone can see how many people have reacted</p>
             <ReactionButton />
+          </div>
+
+          <div style={{ marginTop: "2rem" }}>
+            <p>Here's a page-level visit counter!</p>
+            <VisitCounter />
           </div>
 
           <hr style={{ margin: "3rem 0", border: "none", borderTop: "4px solid #fff" }} />

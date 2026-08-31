@@ -64,6 +64,19 @@ describe("createPresenceAPI identity propagation", () => {
     expect(awareness.getLocalState()?.[IDENTITY_FIELD]).toEqual(identity);
   });
 
+  it("leaves main-room identity publication to the users module", () => {
+    const awareness = makeAwareness(1);
+    const api = createPresenceAPI({
+      getAwareness: () => awareness,
+      getPlayerIdentity: () => makeIdentity("pk_local"),
+      publishIdentity: false,
+    });
+
+    api.getPresences();
+
+    expect(awareness.getLocalState()?.[IDENTITY_FIELD]).toBeUndefined();
+  });
+
   it("resolves remote peer playerIdentity from __playhtml_identity__ when no cursor field", () => {
     const awareness = makeAwareness(1);
     const localIdentity = makeIdentity("pk_local");

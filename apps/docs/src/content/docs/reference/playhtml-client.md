@@ -5,15 +5,24 @@ sidebar:
   order: 4
 ---
 
-The `playhtml` object is the library entry point. Import it from the package, or use `window.playhtml` after a script tag loads.
+The `playhtml` object is the library entry point. Import it from the package or from a CDN.
+
+**npm with a bundler:**
 
 ```js
-// ES module
 import { playhtml } from "playhtml";
 
-// Script tag (CDN) — available as window.playhtml after the script loads
-// <script type="module" src="https://unpkg.com/playhtml/dist/index.js"></script>
-playhtml.init();
+await playhtml.init();
+```
+
+**CDN without a bundler:**
+
+```html
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml";
+
+  await playhtml.init();
+</script>
 ```
 
 **API groups at a glance:**
@@ -22,11 +31,11 @@ playhtml.init();
 |---|---|
 | Lifecycle | `init`, `configure`, `ready`, `isLoading`, `handleNavigation` |
 | Element setup & teardown | `setupPlayElements`, `setupPlayElement`, `setupPlayElementForTag`, `removePlayElement`, `deleteElementData` |
-| Custom elements _(experimental)_ | `register`, `define`, `getHandle` |
+| Custom elements | `register`, `define`, `getHandle` |
 | Events | `dispatchPlayEvent`, `registerPlayEventListener`, `removePlayEventListener` |
 | Page data | `createPageData` |
 | Presence | `presence`, `createPresenceRoom`, `cursorClient` |
-| Inspection | `roomId`, `host`, `syncedStore`, `elementHandlers`, `eventHandlers`, `listSharedElements` |
+| Inspection | `roomId`, `host`, `syncedStore`, `listSharedElements` |
 
 ---
 
@@ -123,11 +132,13 @@ See [Navigation & SPAs](/docs/advanced/navigation/) for a full guide and framewo
 
 **Signature:** `setupPlayElement(element: Element, options?: { ignoreIfAlreadySetup?: boolean }): void`
 
-Registers one element after `init()`. Use for elements added dynamically.
+Registers one element after `init()`. Use for dynamically added built-in or defined capabilities.
 
 Pass `{ ignoreIfAlreadySetup: true }` to skip elements that are already registered.
 
 The element needs a unique `id`.
+
+For a one-off custom element, use [`register(elementOrId, initializer)`](#registerelementorid-init). It binds the element automatically, so it does not need a separate `setupPlayElement` call.
 
 ```js
 const card = document.createElement("div");
@@ -143,7 +154,7 @@ playhtml.setupPlayElement(card);
 
 **Signature:** `setupPlayElements(): void`
 
-Scans the entire document and registers every element that carries a playhtml capability attribute. Called internally at the end of `init()`. Useful if you inject a batch of playhtml elements into the DOM at once and want to activate them all in one pass.
+Scans the entire document and registers elements that carry a playhtml capability attribute. Elements already bound to the same DOM node are skipped. Called internally at the end of `init()`. Use it after injecting a batch of playhtml elements into the DOM.
 
 ```js
 container.innerHTML = serverRenderedHtml;
@@ -196,30 +207,44 @@ Throws a console warning if called before `init()` completes sync.
 
 ---
 
-## Custom elements (experimental)
+## Custom elements
 
-:::caution[Experimental]
-`register`, `define`, and `getHandle` are part of the new view API and are **experimental** — signatures may change in a future minor release. The imperative `can-play` path (`updateElement`) is unaffected. Feedback welcome on [#95](https://github.com/spencerc99/playhtml/issues/95).
-:::
+Use `register` for one custom element and `define` for a reusable capability. Both accept an `ElementInitializer` with either the supported imperative `updateElement` renderer or the experimental declarative `view` renderer. See [Registration API](/docs/reference/view-api/).
 
-These three methods are part of the experimental view API. See [View API](/docs/reference/view-api/).
+### `register(elementOrId, init)`
 
-### `register(elementId, init)`
+**Signatures:**
 
-**Signature:** `register<T, U, V>(elementId: string, init: ElementInitializer<T, U, V>): PlayElementHandle<T, U, V>`
+```ts
+register<T, U, V>(
+  elementId: string,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>
 
-Binds an initializer to one element by id. Returns a handle for reads and writes from outside the element's own callbacks. Callable before or after `init()` and before or after the element exists in the DOM.
+register<T, U, V>(
+  element: HTMLElement,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>
+```
+
+Binds an initializer to one element. Pass a string id before the element exists, or pass an existing HTML element to bind that node directly. The element form requires a non-empty `id`. Both forms return a handle for reads and writes outside the element's callbacks.
 
 ```js
-const handle = playhtml.register("my-counter", {
+const counter = document.getElementById("my-counter");
+const handle = playhtml.register(counter, {
   defaultData: { count: 0 },
-  view: ({ data, setData }) => html`
-    <button @click=${() => setData(d => { d.count++ })}>
-      Clicked ${data.count} times
-    </button>
-  `,
+  onClick: (_event, { setData }) => {
+    setData((data) => {
+      data.count += 1;
+    });
+  },
+  updateElement: ({ element, data }) => {
+    element.textContent = `Clicked ${data.count} times`;
+  },
 });
 ```
+
+Directly assigning initializer fields to an element remains supported for compatibility, but is deprecated for vanilla code.
 
 ---
 
@@ -227,7 +252,7 @@ const handle = playhtml.register("my-counter", {
 
 **Signature:** `define<T, U, V>(capabilityName: string, init: ElementInitializer<T, U, V>): void`
 
-Registers a reusable capability under an attribute name. Every element carrying `[capabilityName]` binds, including elements added to the DOM later. The runtime equivalent of `init({ extraCapabilities })`.
+Registers a reusable capability under an attribute name. Matching elements already on the page bind immediately, as do matching descendants rendered by a registered view. Call `setupPlayElement(element)` for other elements added after initialization. `define` is the runtime equivalent of `init({ extraCapabilities })`.
 
 ```js
 playhtml.define("can-note", {
@@ -341,7 +366,7 @@ views.onUpdate((n) => {
 | Method | Description |
 |---|---|
 | `getData(): T` | Returns the current value. |
-| `setData(data: T \| ((draft: T) => void)): void` | Updates the value. Pass a mutator function for nested objects. |
+| `setData(data: T \| updater): void` | Updates the value. Mutate object/array drafts in place; an updater for a primitive returns its next value. |
 | `onUpdate(callback: (data: T) => void): () => void` | Subscribes to changes. Returns an unsubscribe function. |
 | `destroy(): void` | Tears down the channel and removes all subscriptions. |
 
@@ -352,6 +377,25 @@ Throws if called before `init()` completes sync.
 ## Presence
 
 Presence tracks who is in the room and what they are doing. See [Presence & identity](/docs/reference/presence/) for types and API details. Usage guide: [Presence](/docs/data/presence/).
+
+### `users`
+
+**Type:** `{ me, getAll(), onChange(cb) }`
+
+Durable user identity (name and color) for everyone in the room, whether or not cursors are enabled. Throws if accessed before `init()` completes. Usage guide: [Users](/docs/data/presence/users/).
+
+```js
+await playhtml.ready;
+
+playhtml.users.me.name = "Alice";
+
+const everyone = playhtml.users.getAll(); // [{ pid, name, color, isMe }, ...]
+const unsubscribe = playhtml.users.onChange((users) => {
+  console.log(`${users.length} people here`);
+});
+```
+
+---
 
 ### `presence`
 
@@ -463,19 +507,3 @@ See [Shared elements](/docs/advanced/shared-elements/) for the full guide.
 **Type:** `ReadOnlyStore<PlayStore["play"]>` _(read-only)_
 
 A read-only view into the underlying synced data store, keyed by capability tag then element id. Useful for inspecting the raw shared state of all elements in the devtools console. Do not write to this object — mutations will not be validated or synced correctly. Use `setData` from an element handler instead.
-
----
-
-### `elementHandlers`
-
-**Type:** `Map<string, Map<string, ElementHandler>>`
-
-A nested map of all active element handlers, keyed first by capability tag, then by element id. Useful in devtools for inspecting which elements are registered and accessing their current data.
-
----
-
-### `eventHandlers`
-
-**Type:** `Map<string, Array<RegisteredPlayEvent>>`
-
-A map of all registered event listeners, keyed by event type. Useful for verifying that event listeners were registered correctly and checking for duplicates.

@@ -18,29 +18,19 @@ const PROD_WORKER_URL = 'https://playhtml-game-api.spencerc99.workers.dev';
  * Development worker URL (localhost)
  * Run with: cd extension/worker && wrangler dev
  */
-const DEV_WORKER_URL = 'http://localhost:8787';
+const DEV_WORKER_URL =
+  import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
 
 /**
  * Detect if we're in development mode
  * Checks build environment (WXT sets this when running `wxt dev`)
  */
 function isDevelopment(): boolean {
-  try {
-    // Check build mode (WXT sets this when running `wxt dev`)
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      const isDev = import.meta.env.DEV === true || import.meta.env.MODE === 'development';
-      if (isDev && VERBOSE) {
-        console.log('[Sync] Development mode detected from build environment');
-      }
-      return isDev;
-    }
-    
-    return false;
-  } catch (error) {
-    // Service worker context may lack DOM APIs — this is expected, not an error.
-    if (VERBOSE) console.warn('[Sync] Error detecting development mode:', error);
-    return false;
+  const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
+  if (isDev && VERBOSE) {
+    console.log('[Sync] Development mode detected from build environment');
   }
+  return isDev;
 }
 
 /**

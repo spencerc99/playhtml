@@ -5,8 +5,16 @@ import { describe, expect, it } from "vitest";
 import {
   buildFreehandPathSegment,
   buildStraightPathSegment,
+  didPlaybackCycleWrap,
   getFinishedTrailRenderRange,
 } from "../trailAnimation";
+
+describe("didPlaybackCycleWrap", () => {
+  it("detects the transition from the end of one batch to its beginning", () => {
+    expect(didPlaybackCycleWrap(999, 0)).toBe(true);
+    expect(didPlaybackCycleWrap(500, 600)).toBe(false);
+  });
+});
 
 describe("buildStraightPathSegment", () => {
   it("builds the same straight path shape with an interpolated head point", () => {
@@ -56,6 +64,28 @@ describe("buildFreehandPathSegment", () => {
     const thick = buildFreehandPathSegment(points, 0, 3, 8, true);
 
     expect(thick).not.toBe(thin);
+  });
+
+  it("can derive width variation from the cursor point spacing", () => {
+    const evenlySpaced = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 20, y: 0 },
+      { x: 30, y: 0 },
+    ];
+    const unevenlySpaced = [
+      { x: 0, y: 0 },
+      { x: 2, y: 0 },
+      { x: 5, y: 0 },
+      { x: 30, y: 0 },
+    ];
+    const style = { thinning: 0.55, simulatePressure: true };
+
+    expect(
+      buildFreehandPathSegment(evenlySpaced, 0, 3, 4, true, undefined, style),
+    ).not.toBe(
+      buildFreehandPathSegment(unevenlySpaced, 0, 3, 4, true, undefined, style),
+    );
   });
 
   it("returns an empty path for an empty window", () => {

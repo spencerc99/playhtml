@@ -147,6 +147,10 @@ body {
   position: relative;
   min-height: 100vh;
 }
+
+body:has(#examples-catalogue-results) {
+  --sl-content-width: min(100%, 110rem);
+}
 body::before {
   content: "";
   position: fixed;
@@ -171,6 +175,10 @@ body > * {
   z-index: 1;
 }
 
+.content-panel + .content-panel {
+  border-top: 0;
+}
+
 /* ---------------------------------------------------------------------
    4. Typography
    --------------------------------------------------------------------- */
@@ -181,47 +189,50 @@ h3,
 h4,
 h5,
 h6,
-.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+.sl-markdown-content
+  :is(h1, h2, h3, h4, h5, h6):not(:where(.not-content *)) {
   font-family: var(--ph-font-display);
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--ph-ink);
 }
 
-.sl-markdown-content h1 {
+.sl-markdown-content h1:not(:where(.not-content *)) {
   font-size: clamp(2.1rem, 1.4rem + 2.4vw, 3.1rem);
   font-weight: 800;
   letter-spacing: -0.02em;
 }
-.sl-markdown-content h2 {
+.sl-markdown-content h2:not(:where(.not-content *)) {
   font-size: clamp(1.55rem, 1.15rem + 1.4vw, 2.05rem);
   margin-top: 2.6rem;
   padding-top: 1.2rem;
   border-top: 1px solid var(--ph-hairline-soft);
 }
-.sl-markdown-content h3 {
+.sl-markdown-content h3:not(:where(.not-content *)) {
   font-size: 1.25rem;
   margin-top: 2rem;
 }
 
-.sl-markdown-content p,
-.sl-markdown-content li {
+.sl-markdown-content p:not(:where(.not-content *)),
+.sl-markdown-content li:not(:where(.not-content *)) {
   font-family: var(--ph-font-body);
   font-size: 1rem;
   line-height: 1.7;
   letter-spacing: 0.005em;
 }
-.sl-markdown-content p {
+.sl-markdown-content p:not(:where(.not-content *)) {
   max-width: 68ch;
 }
 
-.sl-markdown-content a:not(.sl-link-card, .sl-link-button) {
+.sl-markdown-content
+  a:not(.sl-link-card, .sl-link-button, :where(.not-content *)) {
   color: var(--ph-ultramarine-deep);
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
   transition: color var(--ph-motion-fast);
 }
-.sl-markdown-content a:not(.sl-link-card, .sl-link-button):hover {
+.sl-markdown-content
+  a:not(.sl-link-card, .sl-link-button, :where(.not-content *)):hover {
   color: var(--ph-ink);
   background: var(--ph-mustard-wash);
 }
@@ -1726,81 +1737,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   line-height: 1.6;
 }
 
-.ph-canmirror-vignette {
-  width: min(100%, 34rem);
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.75rem;
-}
-.ph-canmirror-vignette__textarea {
-  width: 100%;
-  min-height: 8rem;
-  resize: vertical;
-  padding: 0.85rem 0.95rem;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  color: var(--ph-ink);
-  box-shadow: var(--ph-shadow-small);
-  font-family: var(--ph-font-body);
-  font-size: 1.75rem;
-  line-height: 1.35;
-}
-.ph-canmirror-vignette__textarea:focus {
-  outline: 3px solid color-mix(in srgb, var(--ph-sage-deep) 45%, transparent);
-  outline-offset: 2px;
-}
-.ph-canmirror-vignette__hint {
-  margin: 0;
-  font-family: var(--ph-font-mono);
-  font-size: 0.74rem;
-  line-height: 1.5;
-  color: var(--ph-ink-3);
-  text-align: center;
-}
-.ph-canmirror-vignette__list {
-  display: flex;
-  min-height: 8.5rem;
-  max-height: 14rem;
-  flex-direction: column;
-  gap: 0.45rem;
-  margin: 0;
-  padding: 0.75rem 0.9rem 0.75rem 1.8rem;
-  overflow: auto;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  box-shadow: var(--ph-shadow-small);
-  color: var(--ph-ink);
-  font-family: var(--ph-font-mono);
-  font-size: 0.86rem;
-}
-.ph-canmirror-vignette__list li::marker {
-  color: var(--ph-coral);
-}
-.ph-canmirror-vignette__button {
-  align-self: flex-start;
-  min-height: 2.4rem;
-  padding: 0.45rem 0.75rem;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 4px;
-  background: var(--ph-sun);
-  color: var(--ph-ink);
-  box-shadow: var(--ph-shadow-small);
-  font-family: var(--ph-font-mono);
-  font-weight: 700;
-  cursor: pointer;
-}
-.ph-canmirror-vignette__button:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--ph-shadow-brick);
-}
-.ph-canmirror-vignette__button:active {
-  transform: translate(0, 0);
-  box-shadow: var(--ph-shadow-small);
-}
-
 /* Media placeholder: renders where a real photo will eventually sit. The
    author grep's for "TODO-IMAGE" to find every instance. Keep this VERY
    obviously a placeholder — we don't want it to read as finished. */
@@ -2084,60 +2020,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
    17e. Capabilities page — inline demos (can-move … can-duplicate)
    --------------------------------------------------------------------- */
 
-.ph-move-arena {
-  position: relative;
-  width: 100%;
-  max-width: 640px;
-  /* Taller than the long-cat sprite so can-move-bounds has comfortable vertical slack */
-  height: 236px;
-  margin: 0 auto;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ph-paper) 88%, var(--ph-sage-wash));
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
-  overflow: hidden;
-}
-.ph-move-piece {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 52px;
-  height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-  line-height: 1;
-  user-select: none;
-  cursor: grab;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-}
-.ph-move-piece--img {
-  width: 72px;
-  height: 72px;
-  padding: 0;
-}
-/* long-cat.png is 180×326 — portrait hit box so clamp matches what you see */
-.ph-move-piece--cat {
-  --ph-long-cat-w: 180;
-  --ph-long-cat-h: 326;
-  width: calc(152px * var(--ph-long-cat-w) / var(--ph-long-cat-h));
-  height: 152px;
-  max-width: 100%;
-}
-.ph-move-piece__img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-  pointer-events: none;
-}
-.ph-move-piece:active {
-  cursor: grabbing;
-}
-
 /* Splash-page lamp: same Noguchi hanging lamp the marketing homepage uses
    (see `website/home.scss .lamp`). The "lit" class brightens + drops a
    warm glow so the toggled state reads instantly without needing a label. */
@@ -2235,32 +2117,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   pointer-events: none;
   border-radius: 50%;
   border: none;
-}
-
-.ph-can-hover-pad {
-  min-height: 120px;
-  margin: 0 auto;
-  max-width: 360px;
-  padding: 1rem 1.1rem;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 8px;
-  box-shadow: var(--ph-shadow-brick);
-  background: linear-gradient(135deg, var(--ph-paper-warm), var(--ph-paper-deep));
-  transition:
-    background 0.15s ease,
-    transform 0.15s ease;
-}
-.ph-can-hover-pad[data-playhtml-hover] {
-  background: linear-gradient(135deg, var(--ph-mustard), var(--ph-paper-deep));
-  transform: translateY(-2px);
-}
-.ph-can-hover-pad__label {
-  margin: 0;
-  font-family: var(--ph-font-body);
-  font-size: 0.92rem;
-  line-height: 1.45;
-  color: var(--ph-ink);
-  text-shadow: 0 1px 0 rgba(244, 239, 229, 0.9);
 }
 
 /* Capabilities slot: let the burrow use full width and shrink so the meadow can wrap/scroll. */
@@ -2697,259 +2553,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ------------------------------------------------------------------
-   DocsGuestbook — can-play triptych, slot 2 (shared log)
-   ------------------------------------------------------------------ */
-
-.ph-docs-guestbook {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  width: 100%;
-  max-width: 360px;
-  font-family: var(--ph-font-body);
-  color: var(--ph-ink);
-}
-
-.ph-docs-guestbook__form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.ph-docs-guestbook__prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0;
-  margin: 0;
-  border: 0;
-}
-
-.ph-docs-guestbook__legend {
-  font-family: var(--ph-font-mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-  padding: 0 0 0.25rem;
-}
-
-.ph-docs-guestbook__prompt {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.32rem 0.6rem;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  font-family: var(--ph-font-mono);
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: background 120ms ease, transform 120ms ease;
-}
-
-.ph-docs-guestbook__prompt:hover {
-  background: var(--ph-paper-warm);
-}
-
-.ph-docs-guestbook__prompt.is-active {
-  background: var(--ph-sage-wash);
-  transform: translateY(-1px);
-  box-shadow: var(--ph-shadow-brick);
-}
-
-.ph-docs-guestbook__prompt input {
-  /* Keep the native radio for a11y, hide it visually. */
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-  width: 1px;
-  height: 1px;
-}
-
-.ph-docs-guestbook__prompt:focus-within {
-  outline: 2px solid var(--ph-sage-deep);
-  outline-offset: 2px;
-}
-
-.ph-docs-guestbook__field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.ph-docs-guestbook__label {
-  font-family: var(--ph-font-mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-}
-
-.ph-docs-guestbook__textarea {
-  width: 100%;
-  min-height: 3.4rem;
-  padding: 0.55rem 0.7rem;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  color: var(--ph-ink);
-  font-family: var(--ph-font-body);
-  font-size: 0.92rem;
-  line-height: 1.45;
-  resize: vertical;
-  outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-
-.ph-docs-guestbook__textarea:focus {
-  border-color: var(--ph-sage-deep);
-  box-shadow: var(--ph-shadow-brick);
-}
-
-.ph-docs-guestbook__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.ph-docs-guestbook__count {
-  font-family: var(--ph-font-mono);
-  font-size: 0.72rem;
-  color: var(--ph-ink-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.ph-docs-guestbook__count.is-tight {
-  color: var(--ph-ink-2);
-}
-
-.ph-docs-guestbook__submit {
-  padding: 0.42rem 0.95rem;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  font-family: var(--ph-font-mono);
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ph-ink);
-  cursor: pointer;
-  box-shadow: var(--ph-shadow-brick);
-  transition: transform 100ms ease, box-shadow 100ms ease, opacity 120ms ease;
-}
-
-.ph-docs-guestbook__submit:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 0 var(--ph-ink);
-}
-
-.ph-docs-guestbook__submit:active:not(:disabled) {
-  transform: translate(1px, 1px);
-  box-shadow: var(--ph-shadow-brick-pressed);
-}
-
-.ph-docs-guestbook__submit:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-/* List + fade-out overflow gradient */
-.ph-docs-guestbook__list-wrap {
-  position: relative;
-}
-
-.ph-docs-guestbook__list-wrap::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 28px;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in srgb, var(--ph-paper) 92%, transparent)
-  );
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
-}
-
-.ph-docs-guestbook__list {
-  list-style: none;
-  margin: 0;
-  padding: 0.3rem 0.2rem;
-  max-height: 260px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  border: 1px dashed var(--ph-ink-3);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ph-paper) 94%, var(--ph-sage-wash));
-}
-
-.ph-docs-guestbook__empty {
-  padding: 0.8rem 0.6rem;
-  text-align: center;
-  font-family: var(--ph-font-mono);
-  font-size: 0.78rem;
-  color: var(--ph-ink-3);
-}
-
-.ph-docs-guestbook__entry {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas:
-    "kicker time"
-    "text   text";
-  column-gap: 0.5rem;
-  row-gap: 0.15rem;
-  padding: 0.45rem 0.55rem;
-  border-radius: 5px;
-  background: var(--ph-paper);
-  border: 1px solid color-mix(in srgb, var(--ph-ink) 12%, transparent);
-}
-
-.ph-docs-guestbook__kicker {
-  grid-area: kicker;
-  font-family: var(--ph-font-mono);
-  font-size: 0.64rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ph-ink-2);
-}
-
-.ph-docs-guestbook__kicker--building {
-  color: var(--ph-sage-deep);
-}
-
-.ph-docs-guestbook__kicker--learned {
-  color: var(--ph-ink-2);
-}
-
-.ph-docs-guestbook__text {
-  grid-area: text;
-  margin: 0;
-  font-family: var(--ph-font-body);
-  font-size: 0.92rem;
-  line-height: 1.4;
-  color: var(--ph-ink);
-  word-break: break-word;
-}
-
-.ph-docs-guestbook__time {
-  grid-area: time;
-  font-family: var(--ph-font-mono);
-  font-size: 0.66rem;
-  color: var(--ph-ink-3);
-  white-space: nowrap;
-}
-
-/* ------------------------------------------------------------------
    DocsSpinner — can-play triptych, slot 1 (wheel)
    ------------------------------------------------------------------
    Six-slice synced prize wheel. Lives inside a sage-washed
@@ -3137,32 +2740,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ph-sage-deep);
-}
-
-/* Shared click-counter demo button (DocsCounter). */
-.ph-counter {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  font-family: var(--ph-font-mono);
-  font-size: 1.1rem;
-  color: var(--ph-ink);
-  background: var(--ph-paper);
-  border: 1.5px solid var(--ph-sage-deep);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: transform 0.08s ease, box-shadow 0.12s ease;
-}
-.ph-counter:hover {
-  box-shadow: var(--ph-shadow-brick);
-}
-.ph-counter:active {
-  transform: translateY(1px);
-}
-.ph-counter__count {
-  font-weight: 600;
   color: var(--ph-sage-deep);
 }
 

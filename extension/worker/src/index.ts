@@ -1,5 +1,5 @@
 // ABOUTME: Cloudflare Worker entry point for the event collection API.
-// ABOUTME: Routes HTTP requests to ingest, recent, stats, export, participant, and subscribe handlers.
+// ABOUTME: Routes HTTP requests to event, participant, subscribe, and feedback handlers.
 
 import { handleIngest } from './routes/ingest';
 import { handleRecent } from './routes/recent';
@@ -8,12 +8,31 @@ import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
 import { handleParticipantUpsert } from './routes/participants';
 import { handleSubscribe } from './routes/subscribe';
+import { handleFeedback } from './routes/feedback';
 import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
+import {
+  handleQuarantineVerdict,
+  handleQuarantineStrip,
+  handleQuarantineRip,
+} from './routes/quarantine';
+import { handleCommute } from './routes/commute';
+import { handleCommuteTrainBoard } from './routes/commuteTrains';
+import {
+  handleAccessRequest,
+  handleAdminAccessOverview,
+  handleAdminAccessRequestReview,
+  handleAdminCohortFeaturesUpdate,
+  handleAdminFeatureStageUpdate,
+  handleAdminPeopleAdd,
+  handleAdminPersonCohortsUpdate,
+  handleFeatureAccessCheck,
+} from './routes/accessControl';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
 export { LiveEventsHub } from './live/LiveEventsHub';
+export { CommuteTrainDispatcherObject } from './commuteTrainDispatcherObject';
 
 /**
  * Cloudflare Worker entry point
@@ -29,7 +48,7 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         },
       });
@@ -50,6 +69,17 @@ export default {
       return handleRecent(request, env);
     }
 
+    if (path === '/commute/recent' && request.method === 'GET') {
+      // This response is reduced to public destinations, domain-only scenery,
+      // and aggregate counts. Extension-page GETs can omit Origin and Referer.
+      return handleCommute(request, env);
+    }
+
+    if (path === '/commute/trains/board' && request.method === 'POST') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleCommuteTrainBoard(request, env);
+    }
+
     if (path === '/events/daily-counts' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleDailyCounts(request, env);
@@ -65,6 +95,79 @@ export default {
 
     if (path === '/subscribe' && request.method === 'POST') {
       return handleSubscribe(request, env);
+    }
+
+    if (path === '/feedback' && request.method === 'POST') {
+      return handleFeedback(request, env);
+    }
+
+    // Quarantine tape — public (called from content scripts on arbitrary pages)
+    if (path === '/quarantine/verdict' && request.method === 'GET') {
+      return handleQuarantineVerdict(request, env);
+    }
+
+    if (path === '/quarantine/strip' && request.method === 'POST') {
+      return handleQuarantineStrip(request, env);
+    }
+
+    if (path === '/quarantine/rip' && request.method === 'POST') {
+      return handleQuarantineRip(request, env);
+    }
+
+    const featureAccessMatch = path.match(/^\/feature-access\/(.+)$/);
+    if (featureAccessMatch && request.method === 'GET') {
+      return handleFeatureAccessCheck(
+        env,
+        decodeURIComponent(featureAccessMatch[1]),
+      );
+    }
+
+    if (path === '/access-requests' && request.method === 'POST') {
+      return handleAccessRequest(request, env);
+    }
+
+    if (path === '/admin/access-control' && request.method === 'GET') {
+      return handleAdminAccessOverview(request, env);
+    }
+
+    if (path === '/admin/access-control/people' && request.method === 'POST') {
+      return handleAdminPeopleAdd(request, env);
+    }
+
+    const adminFeatureMatch = path.match(/^\/admin\/access-control\/features\/([^/]+)$/);
+    if (adminFeatureMatch && request.method === 'PUT') {
+      return handleAdminFeatureStageUpdate(
+        request,
+        env,
+        decodeURIComponent(adminFeatureMatch[1]),
+      );
+    }
+
+    const adminCohortMatch = path.match(/^\/admin\/access-control\/cohorts\/([^/]+)$/);
+    if (adminCohortMatch && request.method === 'PUT') {
+      return handleAdminCohortFeaturesUpdate(
+        request,
+        env,
+        decodeURIComponent(adminCohortMatch[1]),
+      );
+    }
+
+    const adminPersonMatch = path.match(/^\/admin\/access-control\/people\/([^/]+)$/);
+    if (adminPersonMatch && request.method === 'PUT') {
+      return handleAdminPersonCohortsUpdate(
+        request,
+        env,
+        decodeURIComponent(adminPersonMatch[1]),
+      );
+    }
+
+    const adminRequestMatch = path.match(/^\/admin\/access-control\/requests\/(\d+)$/);
+    if (adminRequestMatch && request.method === 'PUT') {
+      return handleAdminAccessRequestReview(
+        request,
+        env,
+        Number(adminRequestMatch[1]),
+      );
     }
 
     if (path === '/page-meta' && request.method === 'GET') {

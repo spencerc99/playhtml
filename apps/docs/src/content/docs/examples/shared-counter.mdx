@@ -1,0 +1,47 @@
+---
+title: "Shared click counter"
+description: "Increment one persistent count with a merge-safe can-play data update."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { sharedCounterRecipe } from "@/components/playground/recipes/shared-state-basics";
+
+This counter stores `{ count: 0 }` as shared data. Each click mutates the
+current count so concurrent clicks merge without replacing newer values.
+
+<RecipeExample recipe={sharedCounterRecipe} client:load />
+
+<RecipeCodeTabs recipe={sharedCounterRecipe} />
+
+## Increment from the click handler
+
+Pass the click handler and renderer in one registered initializer. Write shared
+data only from the user event:
+
+```js
+playhtml.register("ph-docs-counter", {
+  defaultData: { count: 0 },
+  onClick: (_event, { setData }) => {
+    setData((draft) => {
+      draft.count += 1;
+    });
+  },
+  updateElement: ({ element, data }) => {
+    element.querySelector("[data-count]").textContent = String(data.count);
+  },
+});
+```
+
+Don't rebuild the value from rendered text. The rendered value may be behind a
+remote update.
+
+## Render the current count
+
+`updateElement` in the registered initializer reads shared data without writing
+it. playhtml calls it after initialization and whenever the shared count changes.
+
+See [Data essentials](/docs/data/data-essentials/) for mutator and replacement
+writes.

@@ -10,9 +10,12 @@ import {
   PlayContext,
   withSharedState,
   useCursorPresences,
+  usePlayerIdentity,
 } from "../packages/react/src";
 import React, { useContext, useEffect, useState, useRef } from "react";
 import { PlayProvider } from "../packages/react/src";
+import { canDeleteFridgeWord, DeleteWordLimit } from "./fridgeDeletion";
+import { getDefaultFridgeWordId } from "./fridgeWordIdentity";
 import { useLocation } from "./useLocation";
 
 // Detect mobile viewport
@@ -228,7 +231,6 @@ interface Props extends FridgeWordType {
 }
 
 const DefaultRoom = "fridge";
-const DeleteWordLimit = 3;
 const DeleteWordInterval = 1000 * 60 * 10; // 10 minutes
 const DeleteLimitReachedKey = "fridge-lastDeleteTime";
 const RestrictedWords = [...profaneWords];
@@ -447,6 +449,14 @@ interface ToolboxProps {
   currentPan?: { x: number; y: number };
 }
 
+// Isolated so the per-tick cursor-presence updates re-render only this span.
+// Calling useCursorPresences inside WordControls re-rendered the entire word
+// list (~3,000 components) on every presence tick.
+function OnlineCount() {
+  const onlineCount = useCursorPresences().size;
+  return <>{onlineCount} online</>;
+}
+
 const WordControls = withSharedState<FridgeWordType[]>(
   {
     defaultData: [] as FridgeWordType[],
@@ -468,10 +478,10 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [wallInputValue, setWallInputValue] = React.useState(wall);
     const [showWallControls, setShowWallControls] = React.useState(true);
     const { deleteElementData } = useContext(PlayContext);
+    const { pid } = usePlayerIdentity();
     const userColor =
       window.cursors?.color || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
-    const onlineCount = useCursorPresences().size;
 
     // Convert screen coordinates to fridge-relative content coordinates,
     // accounting for the zoom/pan transform on .content
@@ -587,7 +597,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
       word: string,
       color: string | undefined,
     ) {
-      if (deleteCount >= DeleteWordLimit) {
+      if (!canDeleteFridgeWord(deleteCount, pid)) {
         // Track delete overload
         window.plausible?.("DeleteWordOverload", {
           props: {
@@ -631,9 +641,11 @@ const WordControls = withSharedState<FridgeWordType[]>(
       setData((d) => {
         d.splice(idxToDelete, 1);
       });
-      setDeleteCount(deleteCount + 1);
-      if (deleteCount + 1 === DeleteWordLimit) {
-        localStorage.setItem(DeleteLimitReachedKey, Date.now().toString());
+      if (!canDeleteFridgeWord(DeleteWordLimit, pid)) {
+        setDeleteCount(deleteCount + 1);
+        if (deleteCount + 1 === DeleteWordLimit) {
+          localStorage.setItem(DeleteLimitReachedKey, Date.now().toString());
+        }
       }
     }
 
@@ -838,7 +850,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
                     display: "inline-block",
                   }}
                 />
-                {onlineCount} online
+                <OnlineCount />
               </span>
               <span
                 title="contributors"
@@ -1118,12 +1130,12 @@ const FridgeWordsContent = withSharedState(
       currentZoom,
       currentPan,
     } = props;
-    const { hasSynced } = useContext(PlayContext);
+    const { isLoading } = useContext(PlayContext);
     const { search } = useLocation();
     const params = new URLSearchParams(search);
     const isAdmin = params.get("admin") !== null;
 
-    return !hasSynced ? (
+    return isLoading ? (
       <div
         className="loading"
         style={{
@@ -1155,7 +1167,9 @@ const FridgeWordsContent = withSharedState(
     ) : (
       <>
         {data.showDefaultWords &&
-          Words.map((w, i) => <FridgeWord key={i} word={w} />)}
+          Words.map((w, i) => (
+            <FridgeWord id={getDefaultFridgeWordId(i)} key={i} word={w} />
+          ))}
         <WordControls
           wall={wall}
           onChangeWall={onChangeWall}

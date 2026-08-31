@@ -4,7 +4,7 @@
 import { useMemo } from "react";
 import { CollectionEvent, ScrollAnimation } from "../types";
 import {
-  getColorForParticipant,
+  getColorForEvent,
   eventMatchesAnyFilter,
   SCROLL_SESSION_THRESHOLD,
   SCROLL_TIME_COMPRESSION,
@@ -359,7 +359,7 @@ export function useViewportScroll(
             pageUrl: animUrl,
             pageTitle: metadata?.title,
             faviconUrl: metadata?.favicon,
-            color: getColorForParticipant(mergedSessionEvents[0].meta.pid),
+            color: getColorForEvent(mergedSessionEvents[0], startTime),
             scrollEvents:
               cappedScrollEvents.length > 0 ? cappedScrollEvents : [],
             resizeEvents:

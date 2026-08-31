@@ -8,16 +8,20 @@ declare namespace Cloudflare {
     durableNamespaces: "PartyServer" | "PresenceServer";
   }
   interface StagingEnv {
+    QUARANTINE_CONTROL: KVNamespace;
     SUPABASE_URL: string;
     SUPABASE_KEY: string;
     ADMIN_TOKEN: string;
+    PARTYKIT_BRIDGE_SECRET: string;
     Main: DurableObjectNamespace<import("./partykit/party").PartyServer>;
     Presence: DurableObjectNamespace<import("./partykit/party").PresenceServer>;
   }
   interface Env {
+    QUARANTINE_CONTROL: KVNamespace;
     SUPABASE_URL: string;
     SUPABASE_KEY: string;
     ADMIN_TOKEN: string;
+    PARTYKIT_BRIDGE_SECRET: string;
     Main: DurableObjectNamespace<import("./partykit/party").PartyServer>;
     Presence: DurableObjectNamespace<import("./partykit/party").PresenceServer>;
   }

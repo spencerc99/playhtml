@@ -13,6 +13,9 @@ export interface Item {
   icon: string;
   /** Author/player color carried for experiments to use (e.g. an armed edge glow); inventory itself doesn't render it yet. */
   accent?: string;
+  /** This item renders its own armed cursor (e.g. a placement ghost), so the
+   * inventory suppresses the generic wield icon beside the cursor for it. */
+  ownsArmedCursor?: boolean;
 }
 
 export interface ArmedTool {
@@ -37,6 +40,16 @@ export interface InventoryAPI {
   getArmed(): ArmedTool | null;
   /** Subscribe to arm/disarm changes. Returns an unsubscribe fn. */
   onArmedChange(cb: (armed: ArmedTool | null) => void): () => void;
+  /** Hide the satchel and every object registered through it on this page. */
+  hidePageObjects(): void;
+  /** Hide page objects now and save that default for this site. */
+  hidePageObjectsOnSite(): Promise<void>;
+  /** Restore the satchel and its registered page objects. */
+  showPageObjects(): void;
+  /** Whether the satchel and its registered page objects are visible. */
+  arePageObjectsVisible(): boolean;
+  /** Subscribe to page-object visibility changes. Returns an unsubscribe fn. */
+  onPageObjectsVisibilityChange(cb: (visible: boolean) => void): () => void;
   /** Count for an item. Infinite (system) items return Infinity. */
   count(itemId: string): number;
 }

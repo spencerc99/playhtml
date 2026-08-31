@@ -19,6 +19,13 @@ const extensionTypesSource = fileURLToPath(
 
 export default defineConfig({
   root: rootDir,
+  css: {
+    preprocessorOptions: {
+      scss: {
+        silenceDeprecations: ["legacy-js-api"],
+      },
+    },
+  },
   resolve: {
     alias: {
       "@extension": extensionSource,
@@ -30,14 +37,18 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    poolOptions: {
+      forks: { execArgv: ["--no-experimental-webstorage"] },
+      threads: { execArgv: ["--no-experimental-webstorage"] },
+    },
     exclude: ["node_modules/**", "dist/**", ".output/**"],
     setupFiles: [setupFile],
     include: [
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
       "scripts/**/*.test.mjs",
-      "website/shared/**/*.test.ts",
-      "website/shared/**/*.test.tsx",
+      "website/**/*.test.ts",
+      "website/**/*.test.tsx",
     ],
   },
 });

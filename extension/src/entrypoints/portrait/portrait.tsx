@@ -1,7 +1,14 @@
 // ABOUTME: Portrait page entrypoint — full movement visualization using local IndexedDB data
 // ABOUTME: Loads all locally-collected events and passes them to MovementCanvas for rendering
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
+import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import { PortraitCard } from "../../components/PortraitCard";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
@@ -15,9 +22,14 @@ import {
   deriveRequiredEventTypes,
 } from "@movement/components/registry";
 import { DomainPortraitExport } from "../../components/DomainPortraitExport";
-import { captureDomPortrait, domainPortraitFilename } from "../../utils/portraitExport";
+import {
+  captureDomPortrait,
+  domainPortraitFilename,
+} from "../../utils/portraitExport";
 import type { PortraitCardProps } from "../../components/PortraitCard";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
+import { portraitDayFromSearch } from "../../utils/portraitDay";
+import { calculateCursorDistance } from "../../utils/cursorDistance";
 
 /** Convert sessions to hour buckets (total ms per hour-of-day) for PortraitCard */
 function sessionsToHourBuckets(sessions: ScreenTimeSession[]): number[] {
@@ -35,45 +47,52 @@ const PortraitPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [hovering, setHovering] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(() =>
+    portraitDayFromSearch(window.location.search),
+  );
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
-  const [activeVisualizations, setActiveVisualizations] = useState<string[]>(DEFAULT_ACTIVE_VISUALIZATIONS);
+  const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
+    DEFAULT_ACTIVE_VISUALIZATIONS,
+  );
   const [cardMinimized, setCardMinimized] = useState(false);
   const exportContainerRef = useRef<HTMLDivElement>(null);
 
-  const loadEvents = useCallback(async (day?: string | null) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const options: Record<string, unknown> = { limit: 10_000 };
-      const requiredTypes = deriveRequiredEventTypes(activeVisualizations);
-      if (requiredTypes.size === 0) {
-        setEvents([]);
-        return;
+  const loadEvents = useCallback(
+    async (day?: string | null) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const options: Record<string, unknown> = { limit: 10_000 };
+        const requiredTypes = deriveRequiredEventTypes(activeVisualizations);
+        if (requiredTypes.size === 0) {
+          setEvents([]);
+          return;
+        }
+        options.types = Array.from(requiredTypes);
+        if (day) {
+          options.startTs = new Date(day + "T00:00:00").getTime();
+          options.endTs = new Date(day + "T23:59:59.999").getTime();
+          delete options.limit; // Fetch all events for the selected day
+        }
+        const res: any = await browser.runtime.sendMessage({
+          type: "GET_ALL_EVENTS",
+          options,
+        });
+        setEvents((res?.events ?? []) as CollectionEvent[]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("64MiB") || msg.includes("maximum allowed size")) {
+          setError("Too much data to load at once. Try clearing old events.");
+        } else {
+          setError(msg || "Failed to load local events");
+        }
+        console.error("Error loading local events:", err);
+      } finally {
+        setLoading(false);
       }
-      options.types = Array.from(requiredTypes);
-      if (day) {
-        options.startTs = new Date(day + "T00:00:00").getTime();
-        options.endTs = new Date(day + "T23:59:59.999").getTime();
-        delete options.limit; // Fetch all events for the selected day
-      }
-      const res: any = await browser.runtime.sendMessage({
-        type: "GET_ALL_EVENTS",
-        options,
-      });
-      setEvents((res?.events ?? []) as CollectionEvent[]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("64MiB") || msg.includes("maximum allowed size")) {
-        setError("Too much data to load at once. Try clearing old events.");
-      } else {
-        setError(msg || "Failed to load local events");
-      }
-      console.error("Error loading local events:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeVisualizations]);
+    },
+    [activeVisualizations],
+  );
 
   useEffect(() => {
     loadEvents(selectedDay);
@@ -84,19 +103,27 @@ const PortraitPage = () => {
     if (loading) return;
 
     const run = () => {
-      browser.runtime.sendMessage({ type: 'GET_DAY_COUNTS' })
-      .then((res: any) => {
-        if (res?.success && res.counts) {
-          setDayCounts(new Map(Object.entries(res.counts) as [string, number][]));
-        }
-      })
-      .catch((e: unknown) => console.error('[Portrait] GET_DAY_COUNTS error:', e));
+      browser.runtime
+        .sendMessage({ type: "GET_DAY_COUNTS" })
+        .then((res: any) => {
+          if (res?.success && res.counts) {
+            setDayCounts(
+              new Map(Object.entries(res.counts) as [string, number][]),
+            );
+          }
+        })
+        .catch((e: unknown) =>
+          console.error("[Portrait] GET_DAY_COUNTS error:", e),
+        );
     };
 
-    const idle = (window as typeof window & {
-      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+    const idle = window as typeof window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout: number },
+      ) => number;
       cancelIdleCallback?: (handle: number) => void;
-    });
+    };
     if (idle.requestIdleCallback) {
       const handle = idle.requestIdleCallback(run, { timeout: 2_000 });
       return () => idle.cancelIdleCallback?.(handle);
@@ -128,18 +155,22 @@ const PortraitPage = () => {
       setDayScreenTime(null);
       const startTs = new Date(selectedDay + "T00:00:00").getTime();
       const endTs = new Date(selectedDay + "T23:59:59.999").getTime();
-      browser.runtime.sendMessage({ type: 'GET_SCREEN_TIME', options: { startTs, endTs } })
+      browser.runtime
+        .sendMessage({ type: "GET_SCREEN_TIME", options: { startTs, endTs } })
         .then((res: any) => {
           if (res?.success) {
             setDayScreenTime({ totalMs: res.totalMs, sessions: res.sessions });
           }
         })
-        .catch((e: unknown) => console.error('[Portrait] GET_SCREEN_TIME error:', e));
+        .catch((e: unknown) =>
+          console.error("[Portrait] GET_SCREEN_TIME error:", e),
+        );
       return;
     }
     // No day filter: use pre-computed global stats (O(1) read)
     setDayScreenTime(null);
-    browser.runtime.sendMessage({ type: 'GET_GLOBAL_STATS' })
+    browser.runtime
+      .sendMessage({ type: "GET_GLOBAL_STATS" })
       .then((res: any) => {
         if (res?.success && res.stats) {
           setGlobalStats({
@@ -153,23 +184,14 @@ const PortraitPage = () => {
           setGlobalStats(null);
         }
       })
-      .catch((e: unknown) => console.error('[Portrait] GET_GLOBAL_STATS error:', e));
+      .catch((e: unknown) =>
+        console.error("[Portrait] GET_GLOBAL_STATS error:", e),
+      );
   }, [selectedDay]);
 
   // Build portrait card props from whichever data source is available.
   const portraitStats = useMemo((): PortraitCardProps | null => {
-    // Cursor distance is always derived from the (capped) event set
-    const cursorMoves = events
-      .filter((e) => e.type === "cursor" && (e.data as any).event === "move")
-      .sort((a, b) => a.ts - b.ts);
-    let cursorDistancePx = 0;
-    for (let i = 1; i < cursorMoves.length; i++) {
-      const prev = cursorMoves[i - 1].data as any;
-      const curr = cursorMoves[i].data as any;
-      const dx = (curr.x - prev.x) * 1920;
-      const dy = (curr.y - prev.y) * 1080;
-      cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
-    }
+    const cursorDistancePx = calculateCursorDistance(events);
 
     // Unfiltered: use pre-computed global aggregate
     if (globalStats && !selectedDay) {
@@ -178,12 +200,13 @@ const PortraitPage = () => {
         totalTimeMs: globalStats.totalTimeMs,
         hourBuckets: globalStats.hourBuckets,
         cursorDistancePx,
-        dateRange: globalStats.firstVisit && globalStats.lastVisit
-          ? {
-              oldest: new Date(globalStats.firstVisit).toLocaleDateString(),
-              newest: new Date(globalStats.lastVisit).toLocaleDateString(),
-            }
-          : null,
+        dateRange:
+          globalStats.firstVisit && globalStats.lastVisit
+            ? {
+                oldest: new Date(globalStats.firstVisit).toLocaleDateString(),
+                newest: new Date(globalStats.lastVisit).toLocaleDateString(),
+              }
+            : null,
         uniquePageCount: globalStats.uniqueUrlCount,
       };
     }
@@ -269,7 +292,9 @@ const PortraitPage = () => {
     );
 
     // Wait two frames for React to flush and paint
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
 
     const el = container.querySelector("div") as HTMLElement | null;
     if (el) {
@@ -299,28 +324,18 @@ const PortraitPage = () => {
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
-      {/* Header bar — wordmark only; the time link now lives on the portrait card */}
       <div
         style={{
           position: "absolute",
           top: 0,
           left: 0,
+          right: 0,
           zIndex: 200,
           padding: "14px 20px",
-          pointerEvents: "none",
+          pointerEvents: "auto",
         }}
       >
-        <span
-          style={{
-            fontFamily: "'Source Serif 4', 'Lora', Georgia, serif",
-            fontStyle: "italic",
-            fontWeight: 200,
-            fontSize: "20px",
-            color: "var(--text)",
-          }}
-        >
-          we were online
-        </span>
+        <ExtensionPageNav currentPage="portrait" />
       </div>
 
       {/* Portrait card — bottom-right, with footer link and minimize toggle */}
@@ -391,7 +406,9 @@ const PortraitPage = () => {
             <button
               type="button"
               onClick={() => setCardMinimized((v) => !v)}
-              title={cardMinimized ? "Show portrait card" : "Hide portrait card"}
+              title={
+                cardMinimized ? "Show portrait card" : "Hide portrait card"
+              }
               style={{
                 background: "none",
                 border: "none",

@@ -154,9 +154,15 @@ Syncing on every `mousemove` or `scroll` will flood the socket and eat your Part
 **Use built-in handlers.** `onDrag`, `onMount` already debounce:
 
 ```js
-element.onDrag = (e, { setData }) => {
-  setData({ x: e.clientX, y: e.clientY });
-};
+playhtml.register("draggable", {
+  defaultData: { x: 0, y: 0 },
+  onDrag: (event, { setData }) => {
+    setData({ x: event.clientX, y: event.clientY });
+  },
+  updateElement: ({ element, data }) => {
+    element.style.translate = `${data.x}px ${data.y}px`;
+  },
+});
 ```
 
 **Debounce yourself** when you need your own event:
@@ -318,7 +324,7 @@ When you delete an element at runtime, its playhtml data stays behind by default
 playhtml.deleteElementData("can-move", elementId);
 ```
 
-This removes the SyncedStore entry, observer subscriptions, element handlers, and any legacy globalData entries.
+This removes the SyncedStore entry, observer subscriptions, and element handlers.
 
 Example, a fridge magnet app deleting words:
 

@@ -18,23 +18,49 @@ import { CursorCollector } from "../collectors/CursorCollector";
 import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
+import { ScrapCollector } from "../collectors/ScrapCollector";
+import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+} from "../collectors/modes";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
-import { FLAGS } from "../flags";
-import { shouldStartExtensionPresence } from "./content/presencePolicy";
+import { isFeatureEnabled } from "../features/featureAccess";
+import {
+  shouldInitializeCopresence,
+  shouldStartExtensionPresence,
+} from "./content/presencePolicy";
+import { markExtensionInstalled } from "../utils/extensionInstallMarker";
+import { isExtensionPageUrl } from "../utils/extensionPage";
+import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
+
+// Scraps are local-only, so normalize any unsupported stored mode before the
+// collector starts.
+async function ensureScrapCollectionMode(): Promise<void> {
+  const key = collectionModeStorageKey("element");
+  const result = await browser.storage.local.get(key);
+  const stored = result[key];
+  const normalized = normalizeCollectionMode("element", stored);
+  if (stored !== normalized) {
+    await browser.storage.local.set({ [key]: normalized });
+  }
+}
 
 export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_idle",
   cssInjectionMode: "manifest",
-  main() {
+  main(ctx) {
     // Don't run collectors or extension features on extension-internal pages
     // (portrait, popup, options, etc.) — they generate noise and can trigger
     // the 64MiB sendMessage limit when the portrait page requests all events.
-    const proto = window.location.protocol;
-    if (proto === "chrome-extension:" || proto === "moz-extension:") {
+    if (isExtensionPageUrl(window.location.href)) {
       return;
     }
+
+    markExtensionInstalled(document.documentElement);
+    const removeSlowModeBridge = initHostedSlowModeContentBridge();
+    ctx?.onInvalidated(removeSlowModeBridge);
 
     let currentPresenceCount = 0;
 
@@ -44,6 +70,7 @@ export default defineContentScript({
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
       private emoteCleanup: (() => void) | null = null;
+      private customSiteCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
       private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
@@ -75,7 +102,7 @@ export default defineContentScript({
           this.setupElementPicker();
           this.setupPresenceDetection();
 
-          if (await this.areInternalDevFeaturesEnabled()) {
+          if (await isFeatureEnabled("PAGE_COLLECTION")) {
             // Check if this is a new site discovery
             await this.checkSiteDiscovery();
 
@@ -86,17 +113,6 @@ export default defineContentScript({
           this.isInitialized = true;
         } catch (error) {
           console.error("Failed to initialize PlayHTML Extension:", error);
-        }
-      }
-
-      private async areInternalDevFeaturesEnabled(): Promise<boolean> {
-        try {
-          const result = await browser.storage.local.get([
-            "internalDevFeaturesEnabled",
-          ]);
-          return result.internalDevFeaturesEnabled === true;
-        } catch {
-          return false;
         }
       }
 
@@ -1005,8 +1021,8 @@ export default defineContentScript({
           // No instance yet (normal or native-playhtml page): stand up our own,
           // in an extension-owned room isolated from any site's playhtml room so
           // WWO data can't be read/written by the host site. The room is
-          // auto-prefixed with the page host; we add a `wwo` segment + the path
-          // so it stays per-page but never collides with the site's own room.
+          // auto-prefixed with the page host; we add a `wwo` segment; the room
+          // is domain-scoped (one guestbook per site).
           //
           // NOTE: on custom cursor-sites we instead REUSE the cursor instance
           // (set in setupPresence), whose room is the SITE's room — so bottles
@@ -1015,9 +1031,11 @@ export default defineContentScript({
           const { playhtml } = await import("playhtml");
           await playhtml.init({
             cursors: { enabled: false },
-            // Function form so the room recomputes on SPA navigation — bottles
-            // follow the URL instead of staying pinned to the initial path.
-            room: () => `wwo${window.location.pathname}`,
+            // Domain-scoped: one room per site (auto-prefixed with the host).
+            // Bottles form one guestbook per domain; page scoping happens at
+            // render (records carry pageUrl). A future per-page experiment
+            // should namespace its channel key by path instead.
+            room: "wwo",
           });
           this.playhtmlInstance = playhtml;
         }
@@ -1058,6 +1076,20 @@ export default defineContentScript({
       }
 
       private async setupPresence() {
+        const { getCustomSiteSettings, initCustomSite } = await import(
+          "../custom-sites"
+        );
+        const customSiteSettings = getCustomSiteSettings();
+        if (
+          !shouldInitializeCopresence({
+            featureEnabled: await isFeatureEnabled("COPRESENCE"),
+            customSiteCursorsEnabled:
+              customSiteSettings?.cursorsEnabled ?? false,
+          })
+        ) {
+          return;
+        }
+
         // On pages that already run playhtml, defer presence/cursors to the
         // page's instance (we only inject our identity). We don't stand up our
         // own cursor instance here — but bottles still get one later via
@@ -1080,10 +1112,6 @@ export default defineContentScript({
         }
 
         // Initialize PlayHTML only for sites with explicit extension cursor support.
-        const { getCustomSiteSettings, initCustomSite } = await import(
-          "../custom-sites"
-        );
-        const customSiteSettings = getCustomSiteSettings();
         const enableCursors = customSiteSettings?.cursorsEnabled ?? false;
         if (
           !shouldStartExtensionPresence({
@@ -1110,7 +1138,9 @@ export default defineContentScript({
         // instance just inited above.
         if (enableCursors) {
           try {
-            await initCustomSite({
+            // Retain the cleanup so its presence-room socket and listeners are
+            // torn down on unload/invalidation instead of leaking per navigation.
+            this.customSiteCleanup = await initCustomSite({
               createPageData: playhtml.createPageData,
               createPresenceRoom: playhtml.createPresenceRoom,
               presence: playhtml.presence,
@@ -1124,10 +1154,9 @@ export default defineContentScript({
           }
           // Emote wheel rides the same cursor layer; peers are only present
           // where cursors are enabled, so it lives inside this block. Gated
-          // behind internal-dev mode (Cmd+Shift+. in the popup) while it's still
-          // in progress — not shipped to all users yet.
+          // behind its feature gate while it is still in progress.
           const cursorClient = playhtml.cursorClient;
-          if (cursorClient && (await this.areInternalDevFeaturesEnabled())) {
+          if (cursorClient && (await isFeatureEnabled("EMOTES"))) {
             try {
               const { initEmotes } = await import("../features/emotes");
               this.emoteCleanup = initEmotes({
@@ -1150,6 +1179,30 @@ export default defineContentScript({
 
         (window as any).cursors.on("allColors", emit);
         emit(); // read initial value
+      }
+
+      // Release the collaborative-feature resources this instance owns (custom
+      // site presence-room socket + listeners, emote wheel, global features) so
+      // they don't leak across page navigation or extension invalidation. Safe
+      // to call more than once; each cleanup is cleared after running.
+      teardown() {
+        this.customSiteCleanup?.();
+        this.customSiteCleanup = null;
+        this.emoteCleanup?.();
+        this.emoteCleanup = null;
+        this.globalCleanup?.();
+        this.globalCleanup = null;
+      }
+
+      // Recreate the collaborative-feature resources torn down before the page
+      // entered bfcache. Called from the pageshow-restore path. The underlying
+      // playhtml instance is never torn down (only the presence-room socket and
+      // feature listeners are), so this re-runs the same presence setup that
+      // created those cleanups; each init helper is self-gating or was cleared
+      // by teardown, so re-running rebuilds exactly what was released.
+      async reinitCollaboration() {
+        if (!this.isInitialized) return;
+        await this.setupPresenceDetection();
       }
     }
 
@@ -1248,6 +1301,12 @@ export default defineContentScript({
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
 
+        if (await isFeatureEnabled("SCRAPS")) {
+          await ensureScrapCollectionMode();
+          const scrapCollector = new ScrapCollector();
+          collectorManager.registerCollector(scrapCollector);
+        }
+
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
 
@@ -1295,21 +1354,44 @@ export default defineContentScript({
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
-        if (FLAGS.COPRESENCE) {
-          extensionInstance = new PlayHTMLExtension();
-          extensionInstance.init();
-        }
+        extensionInstance = new PlayHTMLExtension();
+        extensionInstance.init();
         initializeCollectors().catch(console.error);
         setupModeChangeListener();
       });
     } else {
-      if (FLAGS.COPRESENCE) {
-        extensionInstance = new PlayHTMLExtension();
-        extensionInstance.init();
-      }
+      extensionInstance = new PlayHTMLExtension();
+      extensionInstance.init();
       initializeCollectors().catch(console.error);
       setupModeChangeListener();
     }
+
+    // Tear down the extension's collaborative-feature resources when the page
+    // goes away or the extension is invalidated, and restore them if the page
+    // comes back from the bfcache.
+    //
+    // pagehide fires both on real unload AND when the page is frozen into the
+    // bfcache for back/forward navigation (event.persisted === true). We tear
+    // down in both cases: the collaborative features hold open WebSockets, which
+    // Chrome won't keep alive in the bfcache anyway, so leaving them running
+    // would just leak a stale connection into a frozen page. The listeners are
+    // NOT { once: true } — a restored page can navigate away again and must be
+    // able to tear down (and re-restore) on each round trip.
+    //
+    // pageshow with event.persisted === true means the page was restored from
+    // the bfcache with its script state intact but its resources released on
+    // pagehide; re-establish the collaborative features so the resumed page
+    // isn't left with dead collaboration. teardown is idempotent, so a
+    // beforeunload+pagehide pair before a real unload is harmless.
+    const teardownExtension = () => extensionInstance?.teardown();
+    window.addEventListener("pagehide", teardownExtension);
+    window.addEventListener("beforeunload", teardownExtension);
+    window.addEventListener("pageshow", (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        void extensionInstance?.reinitCollaboration();
+      }
+    });
+    ctx?.onInvalidated(teardownExtension);
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
     document.addEventListener("keydown", (e) => {

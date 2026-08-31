@@ -4,12 +4,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getCustomSiteSettingsForHostname,
+  getCustomSiteSettingsForLocation,
   initCustomSite,
   resolveCustomSiteSettingsForHostname,
   shouldEnableCursorsForHostname,
 } from "../custom-sites";
 import { initWikipedia } from "../custom-sites/wikipedia";
-import { shouldStartExtensionPresence } from "../entrypoints/content/presencePolicy";
+import {
+  shouldInitializeCopresence,
+  shouldStartExtensionPresence,
+} from "../entrypoints/content/presencePolicy";
 
 vi.mock("../custom-sites/wikipedia", () => ({
   initWikipedia: vi.fn(() => null),
@@ -26,6 +30,36 @@ const customSiteDeps = {
 afterEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("launched copresence surfaces", () => {
+  it("keeps Wikipedia launched without experiment access", () => {
+    const wikipediaCursorsEnabled =
+      shouldEnableCursorsForHostname("en.wikipedia.org");
+
+    expect(
+      shouldInitializeCopresence({
+        featureEnabled: false,
+        customSiteCursorsEnabled: wikipediaCursorsEnabled,
+      }),
+    ).toBe(true);
+    expect(
+      shouldStartExtensionPresence({
+        nativePlayhtmlDetected: false,
+        cursorsEnabled: wikipediaCursorsEnabled,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps unsupported sites disabled when the global feature is disabled", () => {
+    expect(
+      shouldInitializeCopresence({
+        featureEnabled: false,
+        customSiteCursorsEnabled:
+          shouldEnableCursorsForHostname("www.youtube.com"),
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("shouldStartExtensionPresence", () => {
@@ -88,6 +122,49 @@ describe("shouldEnableCursors", () => {
 describe("custom site settings", () => {
   it("uses default supported-site settings for Wikipedia", () => {
     expect(getCustomSiteSettingsForHostname("en.wikipedia.org")).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: false },
+    });
+  });
+
+  it("preserves query parameters for Wikipedia editing rooms", () => {
+    expect(
+      getCustomSiteSettingsForLocation(
+        "en.wikipedia.org",
+        "/w/index.php",
+        "?title=Max_Polyakov&gesuggestededit=1&veaction=edit",
+      ),
+    ).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: true },
+    });
+    expect(
+      getCustomSiteSettingsForLocation(
+        "en.wikipedia.org",
+        "/wiki/Max_Polyakov",
+        "?veaction=edit",
+      ),
+    ).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: true },
+    });
+    expect(
+      getCustomSiteSettingsForLocation(
+        "en.wikipedia.org",
+        "/wiki/Max_Polyakov",
+        "?action=edit",
+      ),
+    ).toEqual({
+      cursorsEnabled: true,
+      defaultRoomOptions: { includeSearch: true },
+    });
+    expect(
+      getCustomSiteSettingsForLocation(
+        "en.wikipedia.org",
+        "/w/index.php",
+        "?title=Max_Polyakov&oldid=123",
+      ),
+    ).toEqual({
       cursorsEnabled: true,
       defaultRoomOptions: { includeSearch: false },
     });

@@ -5,27 +5,26 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import browser from "webextension-polyfill";
 import type { PresenceAPI, PresenceView } from "@playhtml/common";
 import { ChatManager } from "../features/ChatManager";
-import { _resetForTest as resetHandle } from "../features/chat-handle";
 
-function setupStorage(value: string | null = null): Record<string, unknown> {
-  const data: Record<string, unknown> = {};
-  if (value !== null) data["wiki_chat_handle"] = value;
-  vi.mocked(browser.storage.local.get).mockImplementation((keys: any) => {
-    if (typeof keys === "string") return Promise.resolve({ [keys]: data[keys] });
-    if (Array.isArray(keys)) {
-      const out: Record<string, unknown> = {};
-      keys.forEach((k) => {
-        out[k] = data[k];
-      });
-      return Promise.resolve(out);
+let emitHandleChange: (handle: string) => void = () => {};
+
+function setupHandleMessages(handle = "TestHandle"): void {
+  vi.mocked(browser.runtime.sendMessage).mockImplementation((message: any) => {
+    if (message.type === "REROLL_WIKIPEDIA_HANDLE") {
+      return Promise.resolve({ handle: "Rerolled Name" });
     }
-    return Promise.resolve({ ...data });
+    if (message.type === "SET_WIKIPEDIA_HANDLE") {
+      return Promise.resolve({ handle: message.title });
+    }
+    return Promise.resolve({ handle });
   });
-  vi.mocked(browser.storage.local.set).mockImplementation((items: any) => {
-    Object.assign(data, items);
-    return Promise.resolve();
+  let listener: ((changes: Record<string, { newValue?: unknown }>, areaName: string) => void) | null = null;
+  vi.mocked(browser.storage.onChanged.addListener).mockImplementation((nextListener: any) => {
+    listener = nextListener;
   });
-  return data;
+  emitHandleChange = (nextHandle) => {
+    listener?.({ wiki_chat_handle: { newValue: nextHandle } }, "local");
+  };
 }
 
 function makeFakePresence(
@@ -92,8 +91,7 @@ function peerView(pid: string, color: string, chat: unknown): PresenceView {
 describe("ChatManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setupStorage("TestHandle");
-    resetHandle();
+    setupHandleMessages();
     vi.useFakeTimers();
   });
 
@@ -111,6 +109,34 @@ describe("ChatManager", () => {
     expect(mgr.getState().articleTitle).toBe("Octopus");
     expect(mgr.getState().isOpen).toBe(false);
     expect(mgr.getState().unread).toBe(false);
+    mgr.destroy();
+  });
+
+  it("updates an open tab when another tab changes the handle", async () => {
+    const fake = makeFakePresence();
+    const mgr = new ChatManager(fake.api, "Octopus");
+    await mgr.init();
+
+    emitHandleChange("Shared Name");
+
+    expect(mgr.getState().handle).toBe("Shared Name");
+    mgr.destroy();
+  });
+
+  it("does not overwrite a rename that arrives during initialization", async () => {
+    let resolveInitialHandle!: (value: unknown) => void;
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(
+      () => new Promise((resolve) => { resolveInitialHandle = resolve; }),
+    );
+    const fake = makeFakePresence();
+    const mgr = new ChatManager(fake.api, "Octopus");
+
+    const initializing = mgr.init();
+    emitHandleChange("Shared Name");
+    resolveInitialHandle({ handle: "Stale Name" });
+    await initializing;
+
+    expect(mgr.getState().handle).toBe("Shared Name");
     mgr.destroy();
   });
 
@@ -324,10 +350,6 @@ describe("ChatManager", () => {
 
   it("reroll updates handle and notifies", async () => {
     const fake = makeFakePresence();
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ title: "Rerolled Name" }),
-    } as Response) as typeof fetch;
     const mgr = new ChatManager(fake.api, "Octopus");
     await mgr.init();
     await mgr.reroll();

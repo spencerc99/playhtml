@@ -14,6 +14,12 @@ site-dist
 dist-ssr
 *.local
 
+# TypeScript emit beside source files
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+extension/src/**/*.js
+extension/src/**/*.js.map
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -32,6 +38,7 @@ dist-ssr
 # secrets
 .env
 .dev.vars
+/.dev.vars.supabase
 
 .claude
 .codex/

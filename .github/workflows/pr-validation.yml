@@ -23,30 +23,29 @@ jobs:
       with:
         bun-version: latest
 
-    - name: Install dependencies
-      run: bun install
+    - name: Prepare workspace
+      run: bun run setup
 
-    - name: Build packages
-      run: bun build-packages
+    - name: Run common tests
+      run: bun run test:common
 
     - name: Run core tests
-      run: cd packages/playhtml && bun run test
+      run: bun run test:playhtml
 
     - name: Run docs tests
-      run: cd apps/docs && bun run test
+      run: bun run test:docs
 
     - name: Run react tests
-      run: cd packages/react && bun run test
+      run: bun run test:react
 
     - name: Run extension tests
-      # The extension's `test` script is bare `vitest` (watch mode), so invoke
-      # `vitest run` explicitly here. Depends on the built @playhtml/common
-      # dist from the Build packages step above.
-      run: cd extension && bunx vitest run
+      run: bun run test:extension
+
+    - name: Run extension Worker tests
+      run: bun run test:extension-worker
 
     - name: Lint
       run: bun run lint
-      continue-on-error: true  # Report lint results but do not block merge
 
     - name: Build site
       run: bun build-site
@@ -54,6 +53,9 @@ jobs:
     - name: Install Playwright browsers
       run: bunx playwright install --with-deps chromium
       working-directory: smoke-tests
+
+    - name: Run extension smoke tests
+      run: bun run smoke:extension
 
     - name: Run smoke tests
       run: bun smoke

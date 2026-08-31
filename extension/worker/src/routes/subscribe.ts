@@ -3,6 +3,7 @@
 
 import { createResendClient, type SignupSource } from '../lib/resend';
 import type { Env } from '../lib/supabase';
+import { createIpRateLimiter } from '../lib/ipRateLimit';
 import { VERBOSE } from '../config';
 
 const CORS_HEADERS = {
@@ -13,35 +14,7 @@ const CORS_HEADERS = {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_SOURCES: SignupSource[] = ['website', 'extension-setup'];
 
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-// Hard cap on the in-memory map. Workers isolates are short-lived so this
-// rarely matters, but a long-lived isolate seeing 100k unique IPs would
-// otherwise grow ipHits unboundedly. When we hit the cap, drop the oldest
-// half to keep the most recent activity.
-const RATE_LIMIT_MAX_TRACKED_IPS = 10_000;
-const ipHits = new Map<string, number[]>();
-
-function rateLimited(ip: string, now: number): boolean {
-  const cutoff = now - RATE_LIMIT_WINDOW_MS;
-  const hits = (ipHits.get(ip) || []).filter((t) => t > cutoff);
-  if (hits.length >= RATE_LIMIT_MAX) {
-    ipHits.set(ip, hits);
-    return true;
-  }
-  hits.push(now);
-  ipHits.set(ip, hits);
-  if (ipHits.size > RATE_LIMIT_MAX_TRACKED_IPS) {
-    // Drop oldest entries (Map iteration is insertion-ordered).
-    const toDrop = Math.floor(RATE_LIMIT_MAX_TRACKED_IPS / 2);
-    let i = 0;
-    for (const key of ipHits.keys()) {
-      if (i++ >= toDrop) break;
-      ipHits.delete(key);
-    }
-  }
-  return false;
-}
+const rateLimiter = createIpRateLimiter(5, 60_000);
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: CORS_HEADERS });
@@ -55,7 +28,7 @@ interface SubscribeBody {
 export async function handleSubscribe(request: Request, env: Env): Promise<Response> {
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
 
-  if (rateLimited(ip, Date.now())) {
+  if (rateLimiter.isLimited(ip, Date.now())) {
     return jsonResponse(429, { error: 'Too many requests. Try again in a minute.' });
   }
 
@@ -115,5 +88,5 @@ export async function handleSubscribe(request: Request, env: Env): Promise<Respo
 
 // Exported for tests that want to clear in-memory rate-limit state between cases.
 export function __resetRateLimitForTests(): void {
-  ipHits.clear();
+  rateLimiter.reset();
 }

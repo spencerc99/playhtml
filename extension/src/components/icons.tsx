@@ -20,6 +20,25 @@ export function CursorSvg({ size = 14, color = TEXT_COLOR }: SizeProps & { color
   );
 }
 
+export function GearSvg({ size = 14 }: SizeProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export function KeyboardSvg({ size = 14 }: SizeProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -56,11 +75,22 @@ export function ViewportSvg({ size = 14 }: SizeProps) {
   );
 }
 
+export function ElementSvg({ size = 14 }: SizeProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="6" width="10" height="11" rx="1" fill={SURFACE_COLOR} stroke={TEXT_COLOR} />
+      <rect x="10" y="4" width="10" height="9" rx="1" fill={SURFACE_COLOR} stroke={TEXT_COLOR} />
+      <circle cx="6" cy="19" r="2" fill={TEXT_COLOR} />
+    </svg>
+  );
+}
+
 /** Returns the collector icon for a given type, or null for unknown types */
 export function CollectorIcon({ type, size = 14 }: { type: string; size?: number }) {
   if (type === "cursor") return <CursorSvg size={size} />;
   if (type === "keyboard") return <KeyboardSvg size={size} />;
   if (type === "navigation") return <NavigationSvg size={size} />;
   if (type === "viewport") return <ViewportSvg size={size} />;
+  if (type === "element") return <ElementSvg size={size} />;
   return null;
 }

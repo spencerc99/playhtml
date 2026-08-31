@@ -8,6 +8,7 @@ import { FollowManager } from "../features/FollowManager";
 export interface WikiPresenceFields {
   navigatingTo?: { url: string; title: string } | null;
   following?: string | null;
+  online?: true | null;
   page?: {
     url: string;
     title: string;
@@ -291,6 +292,7 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   if (typeof deps.createPresenceRoom === "function") {
     const lobby = deps.createPresenceRoom("lobby");
     const publishLobbyPage = () => {
+      lobby.presence.setMyPresence("online", true);
       if (
         document.visibilityState !== "visible" ||
         !isWikipediaPortalArticleUrl(location.href)
@@ -307,20 +309,22 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
         lastSeenAt: Date.now(),
       });
     };
-    const clearLobbyPage = () => {
+    const clearLobbyPresence = () => {
       lobby.presence.setMyPresence("page", null);
+      lobby.presence.setMyPresence("online", null);
     };
     publishLobbyPage();
     const lobbyHeartbeat = window.setInterval(publishLobbyPage, 10_000);
     window.addEventListener("focus", publishLobbyPage);
-    window.addEventListener("pagehide", clearLobbyPage);
+    window.addEventListener("pagehide", clearLobbyPresence);
     document.addEventListener("visibilitychange", publishLobbyPage);
     lobbyPresence = lobby.presence;
     cleanups.push(() => {
       window.clearInterval(lobbyHeartbeat);
       window.removeEventListener("focus", publishLobbyPage);
-      window.removeEventListener("pagehide", clearLobbyPage);
+      window.removeEventListener("pagehide", clearLobbyPresence);
       document.removeEventListener("visibilitychange", publishLobbyPage);
+      clearLobbyPresence();
       lobby.destroy();
     });
   }
@@ -373,6 +377,11 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
       document.removeEventListener("visibilitychange", broadcastFocused);
     });
   }
+
+  const { WikipediaLiveSelections } = await import("../features/WikipediaLiveSelections");
+  const liveSelections = new WikipediaLiveSelections(deps.presence, deps.playerColor);
+  liveSelections.init();
+  cleanups.push(() => liveSelections.destroy());
 
   // === Chat: per-article live chat (manager first, pill wired to it) ===
   const { ChatManager } = await import("../features/ChatManager");

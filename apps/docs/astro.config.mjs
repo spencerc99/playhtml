@@ -9,6 +9,7 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 // https://astro.build/config
 export default defineConfig({
+  site: "https://playhtml.fun",
   base: "/docs",
   outDir: path.resolve(repoRoot, "site-dist/docs"),
   // Shiki's dual-theme mode. Starlight's Expressive Code integration is
@@ -35,8 +36,14 @@ export default defineConfig({
     resolve: {
       alias: {
         playhtml: path.resolve(repoRoot, "packages/playhtml/src/index.ts"),
-        "@playhtml/react": path.resolve(repoRoot, "packages/react/src/index.tsx"),
-        "@playhtml/common": path.resolve(repoRoot, "packages/common/src/index.ts"),
+        "@playhtml/react": path.resolve(
+          repoRoot,
+          "packages/react/src/index.tsx",
+        ),
+        "@playhtml/common": path.resolve(
+          repoRoot,
+          "packages/common/src/index.ts",
+        ),
       },
       // The docs app itself doesn't depend on yjs — it's a transitive dep of
       // playhtml. We still ask Vite to dedupe it here because the monorepo can
@@ -87,6 +94,7 @@ export default defineConfig({
       //
       //   Start        → getting-started, concepts, using-react
       //   Capabilities → capabilities (single page)
+      //   Examples     → autogenerate (examples/)
       //   Data         → autogenerate (data/)
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
@@ -97,7 +105,7 @@ export default defineConfig({
       // reasons — so they have to be hand-rolled. Everything below is in a
       // real subdirectory, so we let Starlight autogenerate from the
       // `sidebar.order` frontmatter on each page. New pages added to
-      // data/ / advanced/ / integrations/ / reference/ show up in the
+      // examples/ / data/ / advanced/ / integrations/ / reference/ show up in the
       // sidebar automatically — set `sidebar.order` in the page frontmatter
       // to control position within its group.
       //
@@ -132,6 +140,7 @@ export default defineConfig({
             { label: "Custom elements", slug: "custom-elements" },
           ],
         },
+        { label: "Examples", autogenerate: { directory: "examples" } },
         { label: "Data", autogenerate: { directory: "data" } },
         { label: "Advanced", autogenerate: { directory: "advanced" } },
         { label: "Integrations", autogenerate: { directory: "integrations" } },

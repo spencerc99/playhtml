@@ -4,9 +4,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
-const capabilitiesPage = readFileSync(join(import.meta.dir, "capabilities.mdx"), "utf8");
-const vignetteScript = readFileSync(
-  join(import.meta.dir, "../../../public/can-mirror-vignettes.js"),
+const capabilitiesPage = readFileSync(
+  join(import.meta.dir, "capabilities.mdx"),
+  "utf8",
+);
+const customElementsPage = readFileSync(
+  join(import.meta.dir, "custom-elements.mdx"),
+  "utf8",
+);
+const mirrorRecipes = readFileSync(
+  join(import.meta.dir, "../../components/playground/recipes/mirror-basics.ts"),
   "utf8",
 );
 
@@ -19,21 +26,23 @@ describe("capabilities can-mirror vignettes", () => {
     expect(capabilitiesPage).toContain(
       "the [mirror playground](/docs/advanced/mirror-playground/)",
     );
-    expect(vignetteScript).toContain('emojiOnly = /\\p{Extended_Pictographic}/gu');
-    expect(vignetteScript).toContain('emojiPad.addEventListener("input"');
+    expect(customElementsPage).toContain("<RecipeExample");
+    expect(customElementsPage).toContain("recipe={emojiMirrorRecipe}");
+    expect(customElementsPage).toContain("recipe={growingListMirrorRecipe}");
+    expect(mirrorRecipes).toContain('emojiPad.addEventListener("input"');
   });
 
-  test("keeps can-mirror vignette support available for linked examples", () => {
-    expect(vignetteScript).toContain("appendChild(");
-    expect(vignetteScript).toContain("new Date().toLocaleTimeString()");
+  test("keeps both can-mirror demos in the canonical recipe registry", () => {
+    expect(mirrorRecipes).toContain('id: "emoji-mirror"');
+    expect(mirrorRecipes).toContain('id: "growing-list-mirror"');
+    expect(mirrorRecipes).toContain("list.appendChild(item)");
   });
 });
 
 describe("capabilities can-hover demo", () => {
-  test("renders the built-in can-hover React component", () => {
-    expect(capabilitiesPage).toContain(
-      "import { CanHoverDemo } from '@/components/react/capability-demos/CanHoverDemo';",
-    );
-    expect(capabilitiesPage).toContain("<CanHoverDemo client:only=\"react\" />");
+  test("renders the canonical can-hover recipe", () => {
+    expect(capabilitiesPage).toContain("canHoverRecipe,");
+    expect(capabilitiesPage).toContain("<RecipeExample");
+    expect(capabilitiesPage).toContain("recipe={canHoverRecipe}");
   });
 });

@@ -84,8 +84,9 @@
       <ul>
         <li>
           <strong>Inventory satchel</strong> — the backpack <em>edge nub</em> on the
-          right. Drag it, click to open the cozy kit, click an item to arm it
-          (it rides next to your cursor). Press <code>Esc</code> to disarm.
+          left. Drag it, click to open the cozy kit, or press
+          <code>Cmd/Ctrl+Shift+I</code>. Click an item to arm it (it rides next to
+          your cursor). Press <code>Esc</code> to disarm.
         </li>
         <li>
           <strong>Bottles</strong> — a message bottle places itself somewhere on
@@ -116,7 +117,13 @@
         <label style="display: flex; align-items: center; gap: 6px; color: #5c554d">
           <input type="checkbox" id="bp-empty" /> empty prompt bottle
         </label>
+        <label style="display: flex; align-items: center; gap: 6px; color: #5c554d">
+          <input type="checkbox" id="bp-canreply" checked /> can reply
+        </label>
         <button id="bp-reset">reset bottle</button>
+        <button id="bp-seed" title="fill the bottle with a long thread of random-styled letters">
+          seed 12 letters
+        </button>
       </div>
       <div
         id="bottle-stage"

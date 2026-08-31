@@ -1,7 +1,7 @@
 // ABOUTME: End-to-end tests for playhtml.handleNavigation — room switch
 // ABOUTME: detection, playhtml:navigated dispatch, and fire-when-cursors-disabled.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { playhtml, resetPlayHTML } from "../index";
+import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 
 describe("playhtml.handleNavigation", () => {
   beforeEach(async () => {
@@ -255,18 +255,18 @@ describe("playhtml.handleNavigation", () => {
     document.body.innerHTML = `<div id="survivor" can-move style="width:10px;height:10px;">x</div>`;
     await playhtml.init({ host: "http://localhost:1999", room: "/stay" } as any);
 
-    const sizeBefore = playhtml.elementHandlers.get("can-move")?.size ?? 0;
+    const sizeBefore = elementHandlers.get("can-move")?.size ?? 0;
     expect(sizeBefore).toBe(1);
 
     await playhtml.handleNavigation();
     await playhtml.handleNavigation();
     await playhtml.handleNavigation();
 
-    const sizeAfter = playhtml.elementHandlers.get("can-move")?.size ?? 0;
+    const sizeAfter = elementHandlers.get("can-move")?.size ?? 0;
     expect(sizeAfter).toBe(1);
 
     // The handler should still point at the live DOM node.
-    const handler = playhtml.elementHandlers.get("can-move")?.get("survivor");
+    const handler = elementHandlers.get("can-move")?.get("survivor");
     expect(handler).toBeTruthy();
     expect((handler as any).element).toBe(document.getElementById("survivor"));
   });
@@ -274,13 +274,13 @@ describe("playhtml.handleNavigation", () => {
   it("drops handlers for elements removed from the DOM during navigation", async () => {
     document.body.innerHTML = `<div id="doomed" can-move style="width:10px;height:10px;">x</div>`;
     await playhtml.init({ host: "http://localhost:1999", room: "/drop" } as any);
-    expect(playhtml.elementHandlers.get("can-move")?.has("doomed")).toBe(true);
+    expect(elementHandlers.get("can-move")?.has("doomed")).toBe(true);
 
     // Simulate a body-swap that removes the element from the DOM.
     document.body.innerHTML = "";
     await playhtml.handleNavigation();
 
-    expect(playhtml.elementHandlers.get("can-move")?.has("doomed")).toBe(false);
+    expect(elementHandlers.get("can-move")?.has("doomed")).toBe(false);
   });
 
   it("does not carry page-data into the next room on navigation", async () => {
@@ -619,7 +619,7 @@ describe("playhtml.handleNavigation", () => {
       };
 
       await playhtml.init({ host: "http://localhost:1999" } as any);
-      const handler = playhtml.elementHandlers.get("can-play")?.get("counter");
+      const handler = elementHandlers.get("can-play")?.get("counter");
       expect(handler).toBeTruthy();
       handler?.setData({ count: 7 });
       await new Promise((r) => queueMicrotask(r));
@@ -780,7 +780,7 @@ describe("playhtml.handleNavigation", () => {
       const page = playhtml.createPageData("p", { v: 0 });
       page.setData({ v: 9 });
       await new Promise((r) => queueMicrotask(r));
-      expect(playhtml.elementHandlers.get("can-move")?.has("el")).toBe(true);
+      expect(elementHandlers.get("can-move")?.has("el")).toBe(true);
 
       history.replaceState(null, "", "/coexist-b");
       await playhtml.handleNavigation();
@@ -789,7 +789,7 @@ describe("playhtml.handleNavigation", () => {
       // Page data reset…
       expect(page.getData()).toEqual({ v: 0 });
       // …and the still-connected element keeps its handler.
-      expect(playhtml.elementHandlers.get("can-move")?.has("el")).toBe(true);
+      expect(elementHandlers.get("can-move")?.has("el")).toBe(true);
     } finally {
       document.body.innerHTML = "";
       history.replaceState(null, "", origPath);

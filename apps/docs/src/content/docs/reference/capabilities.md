@@ -70,9 +70,8 @@ can-move-bounds=".arenas"       <!-- CSS selector — first match wins -->
 
 An id lookup is tried first; if that fails, the value is used as a CSS selector.
 
-The cursor can move past the edge; only the element's position is clamped.
-
-On mount, playhtml re-clamps stored positions that now fall outside the container.
+While dragging, the cursor can move past the edge; only the element's position is clamped.
+Setup leaves the element's initial CSS layout and persisted position unchanged.
 
 #### `can-move-bounds-min-visible`
 
@@ -376,7 +375,7 @@ No reset shortcut.
 Define your own shared data and how the element renders (`updateElement` or experimental `view`). Use it for counters, guestbooks, games, and anything the built-ins do not cover.
 
 **Guide:** [Custom elements](/docs/custom-elements/)  
-**Reference:** [Element API](/docs/reference/element-api/) · [View API](/docs/reference/view-api/)
+**Reference:** [Element API](/docs/reference/element-api/) · [Registration API](/docs/reference/view-api/)
 
 ---
 

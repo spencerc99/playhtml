@@ -1,6 +1,7 @@
-// ABOUTME: Entry point for @playhtml/extension-types.
-// ABOUTME: Shared event-type contract + URL canonicalization helpers used by the
-// ABOUTME: extension client and the (private) Cloudflare Worker.
+// ABOUTME: Entry point for the shared extension and Worker data contract.
+// ABOUTME: Exports event, metadata, URL, and Internet Commute types.
 
 export * from "./types";
 export * from "./pageMetadata";
+export * from "./commute";
+export * from "./commuteTrain";

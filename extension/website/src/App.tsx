@@ -1,25 +1,42 @@
 // ABOUTME: Homepage for wewere.online
 // ABOUTME: Single-page landing — hero with downloads, three pull-quote beats with living elements, guestbook
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import {
+  Suspense,
+  lazy,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { LiveIndicator } from "@movement/components/LiveIndicator";
 import { WordmarkClock } from "@movement/components/WordmarkClock";
+import { CLICK_DEFAULTS } from "@movement/components/clickDefaults";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { summarizeActiveLocations } from "@movement/utils/eventUtils";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
 import { useAccumulatedEvents } from "@movement/hooks/useAccumulatedEvents";
 import { PresenceIndicator } from "./components/PresenceIndicator";
-import { AuraGuestbook } from "./components/AuraGuestbook";
 import { Bench } from "./components/Bench";
 import { CoffeeMachine } from "./components/CoffeeMachine";
 import { DownloadGate } from "./components/DownloadGate";
+import { TrainCrossing } from "./components/TrainCrossing";
+import { WikipediaDemo } from "./components/WikipediaDemo";
 import {
   CHANGELOG_URL,
   isNavigationPathActive,
   LIVE_PORTRAIT_URL,
 } from "./navigation";
 import styles from "./App.module.scss";
+
+const LazyAuraGuestbook = lazy(() =>
+  import("./components/AuraGuestbook").then(({ AuraGuestbook }) => ({
+    default: AuraGuestbook,
+  })),
+);
 
 const ALIVE_INTERNET_ESSAY_URL =
   "https://news.spencer.place/p/alive-internet-theory";
@@ -32,6 +49,38 @@ const DISCORD_INVITE = "https://discord.gg/SKbsSf4ptU";
 const HELP_EMAIL_USER = "hi";
 const HELP_EMAIL_DOMAIN = "spencer.place";
 const HELP_EMAIL_SUBJECT = "help build we were online";
+const PARTNER_EMAIL_SUBJECT = "make our site feel inhabited";
+
+// Same scraper-safe pattern as the help-build CTA: assemble the mailto at
+// click time so no literal address sits in the HTML.
+function openHelpEmail(subject: string) {
+  const addr = `${HELP_EMAIL_USER}@${HELP_EMAIL_DOMAIN}`;
+  window.location.href = `mailto:${addr}?subject=${encodeURIComponent(subject)}`;
+}
+
+function BrowserWindow({
+  label,
+  children,
+  bodyClassName,
+}: {
+  label: string;
+  children: ReactNode;
+  bodyClassName?: string;
+}) {
+  return (
+    <div className={styles.browserWindow}>
+      <div className={styles.browserBar}>
+        <span className={styles.browserDots} aria-hidden="true">
+          <span className={styles.browserDot} />
+          <span className={styles.browserDot} />
+          <span className={styles.browserDot} />
+        </span>
+        <span className={styles.browserLabel}>{label}</span>
+      </div>
+      <div className={bodyClassName}>{children}</div>
+    </div>
+  );
+}
 
 function RisoTexture() {
   return (
@@ -83,6 +132,42 @@ function RisoTexture() {
   );
 }
 
+function LazyOnVisible({
+  children,
+  fallback,
+  rootMargin = "600px",
+}: {
+  children: ReactNode;
+  fallback?: ReactNode;
+  rootMargin?: string;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (isVisible) return;
+    const root = rootRef.current;
+    if (!root) return;
+    if (!("IntersectionObserver" in window)) {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setIsVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin },
+    );
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [isVisible, rootMargin]);
+
+  return <div ref={rootRef}>{isVisible ? children : fallback}</div>;
+}
+
 // Deep enough that trails stay on screen for minutes (don't age off the window
 // while you're watching). A live trail leaves only when its events finally fall
 // out of this rolling buffer.
@@ -116,17 +201,8 @@ const ANIMATION_SETTINGS = {
   pointSize: 4,
   trailOpacity: 0.5,
   animationSpeed: 1.0,
-  clickMinRadius: 10,
+  ...CLICK_DEFAULTS,
   clickMaxRadius: 30,
-  clickCoreRadius: 3,
-  clickMinDuration: 600,
-  clickMaxDuration: 1200,
-  clickExpansionDuration: 400,
-  clickStrokeWidth: 1,
-  clickOpacity: 0.4,
-  clickNumRings: 2,
-  clickRingDelayMs: 80,
-  clickAnimationStopPoint: 0.8,
 };
 
 export default function App() {
@@ -179,6 +255,7 @@ export default function App() {
         {trailStates.length > 0 && (
           <LiveTrails
             trailStates={trailStates}
+            showClickRipples
             onTrailsRemoved={handleTrailsRemoved}
             settings={ANIMATION_SETTINGS}
           />
@@ -421,9 +498,199 @@ export default function App() {
           <DownloadGate />
         </section>
 
+        <div className={styles.transitionDivider} aria-hidden="true">
+          <span className={styles.transitionRule} />
+          <span className={styles.transitionLabel}>
+            make the internet feel alive
+          </span>
+          <span className={styles.transitionRule} />
+        </div>
+
+        <section className={styles.featureRows}>
+          <div className={styles.featureCards}>
+            <div className={styles.featureCard}>
+              <BrowserWindow
+                label="your portrait"
+                bodyClassName={styles.featureCardFrame}
+              >
+                <img
+                  className={styles.featureCardImage}
+                  src="/home/cursor-portrait.jpg"
+                  alt="A dense self-portrait drawn from browsing: overlapping cursor trails in purple, blue, red, and green, with concentric rings marking clicks and dark strokes marking keypresses"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+              <h3 className={styles.featureCardTitle}>make a cursor portrait</h3>
+              <p className={styles.featureCardBody}>
+                Your trails, clicks, and keypresses become a self-portrait of
+                your time online. Contribute them to a collective portrait,
+                transforming this traditional surveillance material into
+                expression (fully anonymized).
+              </p>
+            </div>
+
+            <div className={styles.featureCard}>
+              <BrowserWindow
+                label="new tab · how you browsed"
+                bodyClassName={styles.featureCardFrame}
+              >
+                <img
+                  className={styles.featureCardImage}
+                  src="/home/history-week.jpg"
+                  alt="The history page for a week: 18 hours 35 minutes of browsing across 973 pages, a bar of the most-visited sites, and a list of notable new sites explored for the first time"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+              <h3 className={styles.featureCardTitle}>review your browsing</h3>
+              <p className={styles.featureCardBody}>
+                A history page that shows where your time went: the rabbit holes
+                you followed, the smaller places beyond your busiest roads where
+                you settled in, and a cursor portrait from each day.
+              </p>
+            </div>
+          </div>
+
+          <div className={styles.featureRow}>
+            <div className={styles.featureMedia}>
+              <BrowserWindow label="en.wikipedia.org/wiki/Rabbit_hole">
+                <WikipediaDemo />
+              </BrowserWindow>
+            </div>
+            <div className={styles.featureText}>
+              <h2 className={styles.featureHeading}>
+                wikipedia feels inhabited
+              </h2>
+              <p className={styles.featureBody}>
+                Live cursors, article chat, and link patina turn reading into a
+                place where you can cross paths with other visitors and follow
+                each other down rabbit holes.
+              </p>
+              <p className={styles.featureAside}>
+                Wikipedia is the first. If you steward an aligned organization
+                or community site,{" "}
+                <button
+                  type="button"
+                  className={styles.featureAsideLink}
+                  onClick={(e) => {
+                    openHelpEmail(PARTNER_EMAIL_SUBJECT);
+                    e.currentTarget.blur();
+                  }}
+                >
+                  let's make your corner of the web feel inhabited too →
+                </button>
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.comingSoon}>
+          <div className={styles.comingSoonHeader}>
+            <h2 className={styles.featureHeading}>what's coming</h2>
+            <span className={styles.cautionStripe} aria-hidden="true" />
+          </div>
+          <div className={styles.comingSoonGrid}>
+            <div className={`${styles.comingCard} ${styles.comingCardA}`}>
+              <div className={styles.browserWindow}>
+                <div className={styles.browserBar}>
+                  <span className={styles.browserDots} aria-hidden="true">
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                  </span>
+                  <span className={styles.browserLabel}>your shore</span>
+                  <span className={styles.statusChipBeta}>BETA</span>
+                </div>
+                <div className={styles.comingThumbFrame}>
+                  <img
+                    className={styles.comingThumb}
+                    src="/home/scraps-all.jpg"
+                    alt="A dense collage of images, buttons, icons, and screenshots collected while browsing, layered across the page"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+              </div>
+              <h3 className={styles.comingTitle}>internet scraps</h3>
+              <p className={styles.comingBody}>
+                a snapshot of your browsing in the media you pass — images,
+                buttons, icons, cursors.
+              </p>
+            </div>
+
+            <div className={`${styles.comingCard} ${styles.comingCardB}`}>
+              <div className={styles.browserWindow}>
+                <div className={styles.browserBar}>
+                  <span className={styles.browserDots} aria-hidden="true">
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                  </span>
+                  <span className={styles.browserLabel}>somewhere kind</span>
+                  <span className={styles.statusChip}>SOON</span>
+                </div>
+                <div className={styles.comingThumbFrame}>
+                  <img
+                    className={styles.comingThumb}
+                    src="/home/letter-prototype.jpg"
+                    alt="A pink letter card tucked into a web page, opening with a handwritten salutation and dated in the corner"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+              </div>
+              <h3 className={styles.comingTitle}>letters to a website</h3>
+              <p className={styles.comingBody}>
+                tuck a sealed letter into a page for the next person to find and
+                share why the website was meaningful to you.
+              </p>
+            </div>
+
+            <div className={`${styles.comingCard} ${styles.comingCardC}`}>
+              <div className={styles.browserWindow}>
+                <div className={styles.browserBar}>
+                  <span className={styles.browserDots} aria-hidden="true">
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                    <span className={styles.browserDot} />
+                  </span>
+                  <span className={styles.browserLabel}>somewhere sloppy</span>
+                  <span className={styles.statusChip}>SOON</span>
+                </div>
+                <div className={styles.comingThumbFrame}>
+                  <img
+                    className={styles.comingThumb}
+                    src="/home/quarantine-tape.jpg"
+                    alt="A listicle article crossed over with yellow and red caution tape reading AI SLOP and SEO SPAM"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+              </div>
+              <h3 className={styles.comingTitle}>AI slop tape</h3>
+              <p className={styles.comingBody}>
+                Tape off pages and content that are AI-generated slop or SEO
+                spam. Help keep our web clean!
+              </p>
+            </div>
+          </div>
+          <div className={styles.comingSoonCommute}>
+            <TrainCrossing variant="compact" />
+          </div>
+        </section>
+
         <section className={styles.section}>
           <h2 className={styles.sectionHeading}>leave a mark</h2>
-          <AuraGuestbook id="wewere-online-guestbook" />
+          <LazyOnVisible
+            fallback={<div style={{ minHeight: 720 }} aria-hidden="true" />}
+          >
+            <Suspense
+              fallback={<div style={{ minHeight: 720 }} aria-hidden="true" />}
+            >
+              <LazyAuraGuestbook id="wewere-online-guestbook" />
+            </Suspense>
+          </LazyOnVisible>
         </section>
 
         <section className={`${styles.section} ${styles.helpBuild}`}>

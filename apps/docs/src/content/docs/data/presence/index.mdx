@@ -50,7 +50,10 @@ import { usePresence } from "@playhtml/react";
 function StatusList() {
   // presences is the live map (keyed by stable id); setMyPresence writes
   // your own; myIdentity is your name/colors/publicKey.
-  const { presences, setMyPresence, myIdentity } = usePresence<{ text: string }>("status");
+  const { presences, setMyPresence, myIdentity } = usePresence<
+    "status",
+    { text: string }
+  >("status");
 
   return (
     <>
@@ -61,7 +64,7 @@ function StatusList() {
 }
 ```
 
-The hook subscribes and unsubscribes with the component lifecycle. Your channel value lives under the channel name (`p.status`), not flattened onto the view.
+The hook subscribes and unsubscribes with the component lifecycle. Your channel value lives under the channel name (`p.status`), not directly on the view. The value is optional because a peer may not have published to that channel.
   </TabItem>
 </Tabs>
 
@@ -119,21 +122,26 @@ There's no partial/merge update for a channel. When you call `setMyPresence`, yo
 
 Use page-level presence when the signal belongs to the room: online status, cursor position, lobby readiness, or a typing indicator that several parts of the page may read. Use element awareness when the signal only matters for one playhtml element, like "who has joined this widget" or "which color is this reader contributing here".
 
-In vanilla `can-play`, element awareness appears on the element handler data:
+In vanilla HTML, put element awareness in the initializer passed to `register`:
 
 ```html
-<button can-play id="presence-count">0 readers here</button>
+<button id="presence-count">0 readers here</button>
 
-<script>
-  const element = document.getElementById("presence-count");
-  element.myDefaultAwareness = { color: "#3b82f6" };
-  element.onClick = (_event, { setMyAwareness }) => {
-    setMyAwareness({ color: "#f97316" });
-  };
-  element.updateElementAwareness = ({ element, awareness }) => {
-    const label = awareness.length === 1 ? "reader" : "readers";
-    element.textContent = `${awareness.length} ${label} here`;
-  };
+<script type="module">
+  import { playhtml } from "playhtml";
+
+  playhtml.register("presence-count", {
+    myDefaultAwareness: { color: "#3b82f6" },
+    onClick: (_event, { setMyAwareness }) => {
+      setMyAwareness({ color: "#f97316" });
+    },
+    updateElementAwareness: ({ element, awareness }) => {
+      const label = awareness.length === 1 ? "reader" : "readers";
+      element.textContent = `${awareness.length} ${label} here`;
+    },
+  });
+
+  playhtml.init();
 </script>
 ```
 
@@ -190,7 +198,7 @@ function Lobby() {
 
 ## Try it live
 
-<div className="ph-demo-slot" data-label="PRESENCE — online indicator">
+<div id="online-indicator-demo" className="ph-demo-slot" data-label="PRESENCE — online indicator">
   <OnlineIndicatorDemo client:only="react" />
 </div>
 

@@ -19,6 +19,10 @@ const timeFmt = new Intl.DateTimeFormat(undefined, {
   hour12: false,
 });
 
+export function formatWordmarkTimestamp(date: Date): string {
+  return `${dateFmt.format(date)} · ${timeFmt.format(date)} UTC`;
+}
+
 export function WordmarkClock({ style }: { style?: React.CSSProperties }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -41,7 +45,7 @@ export function WordmarkClock({ style }: { style?: React.CSSProperties }) {
         ...style,
       }}
     >
-      {dateFmt.format(now)} · {timeFmt.format(now)} UTC
+      {formatWordmarkTimestamp(now)}
     </span>
   );
 }

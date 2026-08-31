@@ -1,5 +1,7 @@
+// ABOUTME: Covers programmatic element registration, declarative views, and handles.
+// ABOUTME: Verifies lifecycle, validation, composition, and imperative setup behavior.
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
-import { playhtml, html, svg, repeat } from "../index";
+import { elementHandlers, playhtml, html, svg, repeat } from "../index";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -160,6 +162,7 @@ describe("rail 2: lifecycle & guards", () => {
     await tick();
     expect(cleanup).not.toHaveBeenCalled();
 
+    el.remove();
     handle.unregister();
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
@@ -203,6 +206,118 @@ describe("rail 2: lifecycle & guards", () => {
     handle.requestUpdate();
     // No view → requestUpdate should not re-run updateElement.
     expect(updateElement.mock.calls.length).toBe(callsAfterMount);
+  });
+
+  it("binds imperative registrations without copying initializer fields onto the element", async () => {
+    const el = document.createElement("div");
+    el.id = "direct-imperative";
+    document.body.appendChild(el);
+
+    const updateElement = vi.fn(({ element, data }) => {
+      element.textContent = String(data.count);
+    });
+    playhtml.register("direct-imperative", {
+      defaultData: { count: 3 },
+      updateElement,
+    });
+    await tick();
+
+    expect(updateElement).toHaveBeenCalled();
+    expect(el.textContent).toBe("3");
+    expect(el.hasAttribute("can-play")).toBe(false);
+    expect((el as any).defaultData).toBeUndefined();
+    expect((el as any).updateElement).toBeUndefined();
+  });
+
+  it("binds an id registration when its element is inserted after init", async () => {
+    const updateElement = vi.fn(({ element, data }) => {
+      element.textContent = String(data.count);
+    });
+    const handle = playhtml.register("deferred-registration", {
+      defaultData: { count: 5 },
+      updateElement,
+    });
+
+    expect(handle.getElement()).toBeNull();
+
+    const el = document.createElement("div");
+    el.id = "deferred-registration";
+    document.body.appendChild(el);
+    await tick();
+    await tick();
+
+    expect(updateElement).toHaveBeenCalled();
+    expect(el.textContent).toBe("5");
+    expect(handle.getElement()).toBe(el);
+    expect(handle.getData()).toEqual({ count: 5 });
+
+    handle.unregister();
+  });
+
+  it("accepts an element and binds its initializer immediately", async () => {
+    const el = document.createElement("div");
+    el.id = "element-registration";
+    document.body.appendChild(el);
+
+    const handle = playhtml.register(el, {
+      defaultData: { count: 4 },
+      updateElement: ({ element, data }) => {
+        element.textContent = String(data.count);
+      },
+    });
+    await tick();
+
+    expect(handle.id).toBe("element-registration");
+    expect(handle.getElement()).toBe(el);
+    expect(handle.getData()).toEqual({ count: 4 });
+    expect(el.textContent).toBe("4");
+    expect((el as any).defaultData).toBeUndefined();
+    expect((el as any).updateElement).toBeUndefined();
+
+    handle.unregister();
+  });
+
+  it("rejects an element registration without an id", () => {
+    const el = document.createElement("div");
+
+    expect(() =>
+      playhtml.register(el, {
+        defaultData: {},
+        updateElement: () => {},
+      }),
+    ).toThrow(/non-empty id/);
+  });
+
+  it("rejects a non-HTML element registration", () => {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    el.id = "svg-registration";
+
+    expect(() =>
+      (playhtml.register as any)(el, {
+        defaultData: {},
+        updateElement: () => {},
+      }),
+    ).toThrow(/requires an HTML element/);
+  });
+
+  it("uses a registered initializer's element validator without stamping it", async () => {
+    const el = document.createElement("div");
+    el.id = "direct-validator";
+    document.body.appendChild(el);
+
+    const updateElement = vi.fn();
+    const isValidElementForTag = vi.fn(() => false);
+    playhtml.register("direct-validator", {
+      defaultData: { count: 0 },
+      updateElement,
+      isValidElementForTag,
+    });
+    await tick();
+
+    expect(isValidElementForTag).toHaveBeenCalledWith(el);
+    expect(updateElement).not.toHaveBeenCalled();
+    expect(playhtml.getHandle("direct-validator").getData()).toBeUndefined();
+    expect((el as any).isValidElementForTag).toBeUndefined();
   });
 
   it("does not wire onClick when a view is present (React/props path)", async () => {
@@ -292,9 +407,7 @@ describe("rail 2: define + composition", () => {
     el.setAttribute("can-flavor", "");
     document.body.appendChild(el);
 
-    // Bind the define'd capability first. register() below stamps its own
-    // defaultData/view as element props (for can-play), so set up can-flavor
-    // before those props land on the node.
+    // Bind the define'd capability before adding can-play to the same node.
     await playhtml.setupPlayElementForTag(el, "can-flavor");
     await tick();
 
@@ -306,8 +419,8 @@ describe("rail 2: define + composition", () => {
     await tick();
 
     // Both handlers exist keyed by the same id under different tags.
-    expect(playhtml.elementHandlers.get("can-play")!.has("dual-cap")).toBe(true);
-    expect(playhtml.elementHandlers.get("can-flavor")!.has("dual-cap")).toBe(
+    expect(elementHandlers.get("can-play")!.has("dual-cap")).toBe(true);
+    expect(elementHandlers.get("can-flavor")!.has("dual-cap")).toBe(
       true,
     );
 
@@ -344,12 +457,39 @@ describe("rail 2: define + composition", () => {
     await tick();
 
     expect(document.getElementById("chip-1")).not.toBeNull();
-    const chipHandlers = playhtml.elementHandlers.get("can-chip")!;
+    const chipHandlers = elementHandlers.get("can-chip")!;
     expect(chipHandlers.has("chip-1")).toBe(true);
     expect(chipHandlers.has("chip-2")).toBe(true);
     expect(
       document.getElementById("chip-1")!.querySelector(".chip")!.textContent,
     ).toBe("chip");
+  });
+
+  it("binds registered view descendants without a can-play attribute", async () => {
+    playhtml.register<{ label: string }>("registered-child", {
+      defaultData: { label: "ready" },
+      updateElement: ({ element, data }) => {
+        element.textContent = data.label;
+      },
+    });
+
+    const root = document.createElement("div");
+    root.id = "registered-child-root";
+    document.body.appendChild(root);
+
+    playhtml.register("registered-child-root", {
+      defaultData: {},
+      view: () => html`<div id="registered-child"></div>`,
+    });
+    await tick();
+    await tick();
+
+    const child = document.getElementById("registered-child")!;
+    expect(child.textContent).toBe("ready");
+    expect(child.hasAttribute("can-play")).toBe(false);
+    expect(playhtml.getHandle("registered-child").getData()).toEqual({
+      label: "ready",
+    });
   });
 
   it("tears down capability children removed from a keyed list (no leak)", async () => {
@@ -380,7 +520,7 @@ describe("rail 2: define + composition", () => {
     await tick();
     await tick();
 
-    const roomHandlers = playhtml.elementHandlers.get("can-room")!;
+    const roomHandlers = elementHandlers.get("can-room")!;
     expect(roomHandlers.has("room-a")).toBe(true);
     expect(roomHandlers.has("room-b")).toBe(true);
 
@@ -464,7 +604,7 @@ describe("rail 2: final-review fixes", () => {
     await tick();
 
     expect(cleanup).toHaveBeenCalledTimes(1);
-    expect(playhtml.elementHandlers.get("can-play")?.has("nav-leak")).toBe(false);
+    expect(elementHandlers.get("can-play")?.has("nav-leak")).toBe(false);
   });
 
   it("drops updateElement when a view is also present on the shared binding path", async () => {

@@ -6,12 +6,15 @@ sidebar:
 ---
 
 import { Tabs, TabItem, Card } from '@astrojs/starlight/components';
-import { MoveHatCatDemo } from '@/components/react/capability-demos/MoveHatCatDemo';
-import { InteractiveToggleDemo } from '@/components/react/InteractiveToggleDemo';
 import { GrowBalloonDemo } from '@/components/react/capability-demos/GrowBalloonDemo';
 import { SpinWheelDemo } from '@/components/react/capability-demos/SpinWheelDemo';
-import { CanHoverDemo } from '@/components/react/capability-demos/CanHoverDemo';
 import { DuplicateRabbitDemo } from '@/components/react/capability-demos/DuplicateRabbitDemo';
+import { RecipeExample } from '@/components/playground/RecipeExample';
+import {
+  canHoverRecipe,
+  canMoveRecipe,
+  canToggleRecipe,
+} from '@/components/playground/recipes/built-in-capabilities';
 
 Every capability in playhtml is a single HTML attribute. Slap it on an element, give the element an `id`, and the library handles sync, persistence, and event wiring. This page catalogs the eight built-ins plus `can-play`, in order from most-commonly used to most-specialized.
 
@@ -40,7 +43,12 @@ Every section below has the same shape:
 **Use it for:** drag-and-drop affordances such as fridge magnets, game pieces, arrangeable stickers, a puzzle.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-move">
-  <MoveHatCatDemo client:only="react" />
+  <RecipeExample
+    recipe={canMoveRecipe}
+    compact
+    frameHeight="18rem"
+    client:load
+  />
 </div>
 
 <Tabs syncKey="framework">
@@ -70,7 +78,9 @@ import { CanMoveElement } from "@playhtml/react";
 
 ### Constraining the drag area
 
-Use `can-move-bounds` (vanilla) or the `bounds` prop (React) to keep the element inside a container. The value is an element id (with or without the leading `#`) or any valid CSS selector.
+Use `can-move-bounds` (vanilla) or the `bounds` prop (React) to constrain an element while it is dragged.
+The value is an element id (with or without the leading `#`) or any valid CSS selector.
+Bounds apply only during dragging. They do not rewrite the element's initial CSS layout or persisted position during setup.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
@@ -97,7 +107,9 @@ import { CanMoveElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-The **cursor** can go past the container edge; only the element's position is clamped. By default, the whole element stays inside the container. Two knobs let you opt into partial overhang while keeping a visible slice inside:
+The **cursor** can go past the container edge.
+During a drag, only the element's position is clamped. By default, the whole element stays inside the container.
+Two knobs let you opt into partial overhang while keeping a visible slice inside:
 
 - `can-move-bounds-min-visible` / `boundsMinVisible`: fraction `(0–1)` of the element to keep inside. Default `1` pins fully inside; lower values allow part of the element to hang over the edge. `0` drops the fraction constraint entirely.
 - `can-move-bounds-min-visible-px` / `boundsMinVisiblePx`: absolute pixel floor. Default `60`; it applies when `min-visible` allows partial overhang.
@@ -115,7 +127,7 @@ The effective slice on each axis is `max(fraction × size, pxFloor)`. Set both t
   🧲
 </div>
 
-<!-- Default bounds keep the whole magnet visible. -->
+<!-- Default bounds keep the whole magnet visible while dragging. -->
 <div can-move can-move-bounds="fridge" id="tiny-magnet" style="width: 40px;">
   🌶️
 </div>
@@ -145,7 +157,12 @@ import { CanMoveElement } from "@playhtml/react";
 **Use it for:** shared switches, lamps, "is-this-thing-open" signs, per-element read/unread state. The [playhtml homepage](https://playhtml.fun) uses this on the wordmark letters and the hanging lamp; click either to flip it for everyone.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-toggle">
-  <InteractiveToggleDemo client:only="react" />
+  <RecipeExample
+    recipe={canToggleRecipe}
+    compact
+    frameHeight="10rem"
+    client:load
+  />
 </div>
 
 <Tabs syncKey="framework">
@@ -183,6 +200,7 @@ import { CanToggleElement } from "@playhtml/react";
 ```
 
 `CanToggleElement` already wires up the click handler. Don't add your own `onClick`, or you'll toggle twice per click. Render declaratively from `data`.
+
   </TabItem>
 </Tabs>
 
@@ -244,12 +262,17 @@ import { TagType } from "playhtml";
 
 ## can-hover
 
-**What it does.** Shares hover state across everyone on the page. Presence-based, _not_ persistent: when a user leaves, their hover clears.
+**What it does.** Shares hover state across everyone on the page. Presence-based, *not* persistent: when a user leaves, their hover clears.
 
 **Use it for:** "who's looking at this right now" affordances, social read-receipts, zero-latency shared hover effects.
 
 <div class="ph-demo-slot" data-label="LIVE DEMO — can-hover">
-  <CanHoverDemo client:only="react" />
+  <RecipeExample
+    recipe={canHoverRecipe}
+    compact
+    frameHeight="12rem"
+    client:load
+  />
 </div>
 
 **How it works.** While *anyone* (you or another reader) is hovering the element, playhtml sets a `data-playhtml-hover` attribute on it; when nobody is hovering, the attribute is removed. Style the effect by targeting `[data-playhtml-hover]` instead of the `:hover` pseudo-class. That's the only change from a normal hover style, and it's the same attribute whether you use the vanilla capability or the React component.

@@ -1,5 +1,5 @@
 // ABOUTME: Cycling milestone-toast preview for the setup page.
-// ABOUTME: Rotates through all four milestone types to show what users can expect.
+// ABOUTME: Rotates through milestone types to show what users can expect.
 
 import React, { useEffect, useState } from "react";
 import {
@@ -10,6 +10,22 @@ import { MILESTONE_TOAST_CSS } from "../entrypoints/content/milestone-toast-styl
 import { MILESTONE_COPY } from "../milestones/copy";
 
 const SAMPLES: MilestoneToastData[] = [
+  {
+    type: "longGapReturn",
+    displayValue: "15mo",
+    copy: MILESTONE_COPY.longGapReturn[0],
+    ctaLabel: "see your history there",
+    ctaAction: "TOGGLE_HISTORICAL_OVERLAY",
+    period: "alltime",
+    domain: "dearkellyfilm.com",
+    faviconUrl:
+      "https://www.google.com/s2/favicons?domain=dearkellyfilm.com&sz=64",
+    previousVisits: [
+      new Date("2025-04-04T12:00:00").getTime(),
+      new Date("2025-03-18T12:00:00").getTime(),
+      new Date("2025-03-11T12:00:00").getTime(),
+    ],
+  },
   {
     type: "cursorDistance",
     displayValue: "2.4 mi",
@@ -49,12 +65,7 @@ const SAMPLES: MilestoneToastData[] = [
 
 const STYLE_ID = "wwo-milestone-toast-preview-styles";
 
-// Inject styles synchronously at module load — before React renders — so the
-// toast markup never flashes at its natural (unstyled) size on first paint.
-if (
-  typeof document !== "undefined" &&
-  !document.getElementById(STYLE_ID)
-) {
+if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = MILESTONE_TOAST_CSS;
@@ -68,10 +79,10 @@ export function MilestoneToastPreview() {
   const [mountKey, setMountKey] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => {
-      setIndex((i) => (i + 1) % SAMPLES.length);
+    const timer = setInterval(() => {
+      setIndex((current) => (current + 1) % SAMPLES.length);
     }, CYCLE_MS);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -80,7 +91,7 @@ export function MilestoneToastPreview() {
         key={`${index}-${mountKey}`}
         milestone={SAMPLES[index]}
         static={false}
-        onDismiss={() => setMountKey((k) => k + 1)}
+        onDismiss={() => setMountKey((current) => current + 1)}
       />
     </div>
   );

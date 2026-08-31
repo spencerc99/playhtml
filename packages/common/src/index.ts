@@ -1,7 +1,7 @@
 // ABOUTME: Shared types, interfaces, and capability initializers for the playhtml library.
 // ABOUTME: Exports element capabilities, event handler types, and built-in tag definitions.
 import { canMirrorInitializer, type ElementState } from "./canMirror";
-export type { ElementState } from "./canMirror";
+export { observeElementChanges, type ElementState } from "./canMirror";
 
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
 export * from "./presence-protocol";
@@ -65,8 +65,6 @@ export interface ElementInitializer<T = any, U = any, V = any> {
     e: MouseEvent | TouchEvent,
     eventData: ElementEventHandlerData<T, U, V>,
   ) => void;
-  // @deprecated use onMount instead
-  additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
   // Used to set up any additional event handlers. May return a cleanup
   // function (to cancel rAF loops, timers, listeners) that runs when the
   // element is removed/unregistered.
@@ -284,11 +282,6 @@ export type MoveData = {
 export type SpinData = {
   rotation: number;
 };
-export type GrowData = {
-  scale: number;
-  maxScale: number;
-  isHovering: boolean;
-};
 /**
  * Optional container for clones: an element id (with or without leading `#`)
  * or any CSS selector. Defaults to inserting clones after the template.
@@ -296,9 +289,9 @@ export type GrowData = {
 export const CanDuplicateTo = "can-duplicate-to";
 /**
  * Optional id (`my-arena`, `#my-arena`) or selector (`.arena`) of a container;
- * `can-move` clamps the element's position inside it. The cursor itself is
- * unconstrained — you can drag past the edge — the element just stops at the
- * bounds.
+ * `can-move` clamps the element's position inside it while dragging. Initial
+ * layout and persisted positions are not rewritten during setup. The cursor
+ * itself is unconstrained — only the dragged element stops at the bounds.
  */
 export const CanMoveBounds = "can-move-bounds";
 /**
@@ -396,9 +389,13 @@ export * from "./sharedElements";
 export * from "./cursor-types";
 import type { Cursor, PlayerIdentity } from "./cursor-types";
 
+export type PageDataSetter<T> = [T] extends [object]
+  ? T | ((draft: T) => void)
+  : T | ((value: T) => T);
+
 export interface PageDataChannel<T> {
   getData(): T;
-  setData(data: T | ((draft: T) => void)): void;
+  setData(data: PageDataSetter<T>): void;
   onUpdate(callback: (data: T) => void): () => void;
   destroy(): void;
 }
@@ -498,18 +495,6 @@ export const TagTypeToElement: DefaultTagInitializers = {
     defaultLocalData: { startMouseX: 0, startMouseY: 0 },
     updateElement: ({ element, data }) => {
       element.style.transform = `translate(${data.x}px, ${data.y}px)`;
-    },
-    onMount: ({ getData, getElement, setData }) => {
-      const element = getElement();
-      const boundsRoot = getMoveBoundsRoot(element);
-      if (!boundsRoot) return;
-      const data = getData();
-      const clampedData = roundMoveData(
-        getMoveBoundsClamp(element, boundsRoot, data, data),
-      );
-      if (clampedData.x !== data.x || clampedData.y !== data.y) {
-        setData(clampedData);
-      }
     },
     onDragStart: (
       e: MouseEvent | TouchEvent,
