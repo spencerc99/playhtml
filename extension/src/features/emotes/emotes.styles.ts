@@ -87,7 +87,18 @@ export const EMOTES_CSS = `
   box-shadow: 3px 4px 0 rgba(28, 28, 28, 0.42);
 }
 .emote-wheel--pair .emote-item .key {
-  display: none;
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid #1c1c1c;
+  border-radius: 50%;
+  background: #f4efe5;
+  box-shadow: 1px 1px 0 rgba(28, 28, 28, 0.3);
+  opacity: 1;
+  line-height: 1;
 }
 
 @keyframes emote-wheel-open {

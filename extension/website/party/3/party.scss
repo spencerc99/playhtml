@@ -543,23 +543,13 @@ h1 {
   left: 1508px;
   z-index: 7;
   width: 184px;
-  padding: 10px 10px 8px;
+  padding: 10px 10px 6px;
   border: 2px solid var(--ph-ink);
+  border-bottom-width: 7px;
   background: rgba(244, 239, 229, 0.92);
   box-shadow: 4px 5px 0 rgba(28, 28, 28, 0.26);
   text-align: center;
   transform: rotate(-2deg);
-}
-.party-hat-pile::after {
-  position: absolute;
-  right: -8px;
-  bottom: -8px;
-  left: -8px;
-  height: 15px;
-  border: 2px solid var(--ph-ink);
-  background: var(--ph-mustard-wash);
-  content: "";
-  transform: rotate(1deg);
 }
 .party-hat-pile p {
   margin: 0 0 5px;
@@ -2071,7 +2061,7 @@ h1 {
   position: fixed;
   width: 16px;
   height: 19px;
-  transform: translate(-4px, -25px);
+  transform: translate(9px, -7px);
   transform-origin: bottom center;
 }
 .party-cursor-hat .party-hat {
