@@ -2061,16 +2061,21 @@ h1 {
   position: fixed;
   width: 16px;
   height: 19px;
-  transform: translate(9px, -7px);
+  transform: translate(4px, -7px);
   transform-origin: bottom center;
+}
+.party-cursor-hat--attached {
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 .party-cursor-hat .party-hat {
   position: absolute;
   bottom: 0;
   left: 0;
   filter: drop-shadow(1px 2px 0 rgba(28, 28, 28, 0.24));
-  transform: scale(0.56) rotate(-9deg);
-  transform-origin: bottom left;
+  transform: scale(0.56) rotate(10deg);
+  transform-origin: bottom center;
 }
 .party-cursor-nametag {
   --party-cursor-color: var(--ph-ultramarine);

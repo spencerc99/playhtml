@@ -14,6 +14,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           enabled: true,
           enableChat: false,
           coordinateMode: "absolute",
+          onCustomCursorRender: (connectionId, element) => {
+            element.dataset.partyCursorPid = connectionId;
+            return null;
+          },
           room: "page",
         },
       }}

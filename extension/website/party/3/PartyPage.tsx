@@ -383,6 +383,21 @@ function PartyCursorAccessories() {
         const hat = presence.partyHat?.hat;
         const cursor = cursorPresences.get(pid)?.cursor;
         if (!cursor || !isPartyHat(hat)) return null;
+        if (pid !== playerIdentity.pid) {
+          const cursorElement = [
+            ...document.querySelectorAll<HTMLElement>(
+              "[data-party-cursor-pid]",
+            ),
+          ].find((element) => element.dataset.partyCursorPid === pid);
+          if (!cursorElement) return null;
+          return createPortal(
+            <span className="party-cursor-hat party-cursor-hat--attached">
+              <PartyHatShape hat={hat} />
+            </span>,
+            cursorElement,
+            pid,
+          );
+        }
         return (
           <span
             className="party-cursor-hat"
