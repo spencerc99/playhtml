@@ -20,6 +20,14 @@ import { ProceduralLandscape } from "./landscape";
 const PANE_WIDTH = 720;
 const PANE_HEIGHT = 420;
 
+/** The fade the artboard draws: sharp wipe easing back under condensation. */
+const FOG_DECAY_STAGES = [
+  { label: "drawn · sharp", fill: "#a9cfc4", gone: false },
+  { label: "1h · softening", fill: "#c2dcd4", gone: false },
+  { label: "4h · ghost", fill: "#d8e4de", gone: false },
+  { label: "gone · fogged", fill: "#ebe6dc", gone: true },
+];
+
 interface FoggedWindowPaneProps {
   id: string;
   bay: CommuteBay;
@@ -124,9 +132,27 @@ export const FoggedWindowPane = withSharedState<
     return (
       <section id={props.id} ref={ref}>
         <CommuteSideView
+          index="02"
           title="The fogged window"
-          caption="drag across the glass · it fogs back over"
+          caption="drag to clear it · it fogs back over"
           onClose={props.onClose}
+          notes={[
+            {
+              label: "the act",
+              body: (
+                <>
+                  Drag across the glass and it clears. What you clear is a
+                  drawing <em>and</em> a window — where you wipe, you can see
+                  out.
+                </>
+              ),
+            },
+            {
+              label: "at zero riders",
+              tone: "rust",
+              body: "Fully fogged glass is the resting state, not a failure state. Faint ghosts of old drawings say people were here without needing anyone here now.",
+            },
+          ]}
         >
           <div className="fogged-window">
             <div className="fogged-window__landscape" aria-hidden>
@@ -202,9 +228,13 @@ export const FoggedWindowPane = withSharedState<
               ))}
             </svg>
           </div>
-          <p className="fogged-window__caption">
+          <p
+            className={`fogged-window__status ${
+              visibleStrokes.length === 0 ? "" : "fogged-window__status--wiped"
+            }`}
+          >
             {visibleStrokes.length === 0
-              ? "nobody has wiped this pane lately — the glass is yours"
+              ? "fogged over · nobody has wiped this pane lately"
               : `last wiped ${describeAge(
                   visibleStrokes[visibleStrokes.length - 1].drawnAt,
                   now,
@@ -212,6 +242,24 @@ export const FoggedWindowPane = withSharedState<
                   visibleStrokes.length === 1 ? "wipe" : "wipes"
                 } still showing`}
           </p>
+
+          <div className="fog-decay">
+            <span className="fog-decay__label">a drawing&rsquo;s life</span>
+            <div className="fog-decay__scale">
+              {FOG_DECAY_STAGES.map((stage) => (
+                <div className="fog-decay__stage" key={stage.label}>
+                  <span
+                    className={`fog-decay__swatch ${
+                      stage.gone ? "fog-decay__swatch--gone" : ""
+                    }`}
+                    style={{ background: stage.fill }}
+                    aria-hidden
+                  />
+                  <small>{stage.label}</small>
+                </div>
+              ))}
+            </div>
+          </div>
         </CommuteSideView>
       </section>
     );

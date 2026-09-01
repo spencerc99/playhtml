@@ -69,9 +69,27 @@ export const UnderSeatView = withSharedState<
     return (
       <section id={props.id} ref={ref}>
         <CommuteSideView
+          index="01"
           title="Under the seat"
-          caption="what previous riders tucked away"
+          caption="crouch to find what someone left"
           onClose={props.onClose}
+          notes={[
+            {
+              label: "the act",
+              body: "Crouching is the whole interaction. Nothing is listed anywhere; you find notes by looking where people hide things.",
+            },
+            {
+              label: "at zero riders",
+              tone: "rust",
+              body: (
+                <>
+                  Old notes stay tucked and yellow with age. An empty car still
+                  has things under the seats — it reads as <em>long-running</em>
+                  , not abandoned.
+                </>
+              ),
+            },
+          ]}
         >
           <div className="under-seat">
             <ul className="under-seat__notes">
@@ -80,16 +98,22 @@ export const UnderSeatView = withSharedState<
                   nothing under this one yet — leave the first
                 </li>
               )}
-              {notes.map((note) => (
+              {notes.map((note, index) => (
                 <li
                   className="under-seat__note"
                   key={note.id}
                   style={
-                    { "--note-color": note.color } as React.CSSProperties
+                    {
+                      "--note-color": note.color,
+                      // Tucked by hand, so no two sit perfectly square.
+                      "--note-tilt": `${index % 2 === 0 ? -0.7 : 0.6}deg`,
+                    } as React.CSSProperties
                   }
                 >
+                  <span className="under-seat__note-age">
+                    left {getNoteAgeLabel(note.leftAt, now)}
+                  </span>
                   <p>{note.text}</p>
-                  <span>{getNoteAgeLabel(note.leftAt, now)}</span>
                 </li>
               ))}
             </ul>

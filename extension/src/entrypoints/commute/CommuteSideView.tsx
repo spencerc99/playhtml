@@ -3,17 +3,29 @@
 
 import { useEffect, type ReactNode } from "react";
 
+interface CommuteSideViewNote {
+  label: string;
+  body: ReactNode;
+  tone?: "muted" | "rust";
+}
+
 interface CommuteSideViewProps {
+  /** Two-digit plate on the header rule, as drawn on the artboards. */
+  index: string;
   title: string;
   caption?: string;
   children: ReactNode;
+  /** The paired "the act" / "at zero riders" columns under the scene. */
+  notes?: CommuteSideViewNote[];
   onClose: () => void;
 }
 
 export function CommuteSideView({
+  index,
   title,
   caption,
   children,
+  notes,
   onClose,
 }: CommuteSideViewProps) {
   useEffect(() => {
@@ -37,8 +49,13 @@ export function CommuteSideView({
     >
       <div className="commute-side-view__frame">
         <header className="commute-side-view__header">
-          <strong>{title}</strong>
-          {caption && <span>{caption}</span>}
+          <span className="commute-side-view__index" aria-hidden>
+            {index}
+          </span>
+          <h2>{title}</h2>
+          {caption && (
+            <span className="commute-side-view__caption">{caption}</span>
+          )}
           <button
             className="commute-side-view__close"
             type="button"
@@ -48,7 +65,24 @@ export function CommuteSideView({
             esc ×
           </button>
         </header>
-        {children}
+
+        <div className="commute-side-view__scene">{children}</div>
+
+        {notes && notes.length > 0 && (
+          <footer className="commute-side-view__notes">
+            {notes.map((note) => (
+              <div
+                className={`commute-side-view__note commute-side-view__note--${
+                  note.tone ?? "muted"
+                }`}
+                key={note.label}
+              >
+                <span>{note.label}</span>
+                <p>{note.body}</p>
+              </div>
+            ))}
+          </footer>
+        )}
       </div>
     </div>
   );

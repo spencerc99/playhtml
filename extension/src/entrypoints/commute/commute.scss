@@ -10,6 +10,14 @@ $car-metal: #b9b2a7;
 $landscape-paper: #efe6cf;
 $landscape-ink: #5f574a;
 
+// Side-view chrome, lifted from the FoggedWindow / UnderTheSeat artboards.
+$rule: #e0d8cc;
+$paper-edge: #cfc5b4;
+$glass-frame: #b9ad99;
+$fog-glass: #ebe6dc;
+$note-paper: #fffdf6;
+$note-body: #5c554d;
+
 * {
   box-sizing: border-box;
 }
@@ -1583,6 +1591,8 @@ button {
   }
 }
 
+// The two side views are drawn as flat bordered artboards, not floating
+// modals: a ruled header plate, the scene, then the paired reading notes.
 .commute-side-view {
   position: fixed;
   inset: 0;
@@ -1590,44 +1600,68 @@ button {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba($text, 0.55);
+  background: rgba($text, 0.5);
   animation: side-view-push-in 260ms ease-out;
 
   &__frame {
-    width: min(780px, 100%);
-    padding: 18px;
-    border: 2px solid $text;
-    border-radius: 14px;
+    width: min(1180px, 100%);
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid $border-strong;
     background: $bg;
-    box-shadow: 0 18px 44px rgba(90, 78, 65, 0.35);
+    color: $text;
+    font-family: $font-body;
+    box-shadow: 0 18px 44px rgba(90, 78, 65, 0.32);
   }
 
   &__header {
-    margin-bottom: 12px;
+    padding: 26px 34px 16px;
     display: flex;
     align-items: baseline;
-    gap: 12px;
+    gap: 14px;
+    border-bottom: 1px solid $rule;
 
-    strong {
+    h2 {
+      margin: 0;
       font-family: $font-heading;
-      font-size: 18px;
+      font-weight: 600;
+      font-size: 25px;
     }
+  }
 
-    span {
-      color: $text-muted;
-      font-size: 12px;
-    }
+  &__index {
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  &__caption {
+    color: $text-muted;
+    font-size: 14px;
+  }
+
+  &__scene {
+    flex-grow: 1;
+    padding: 30px 34px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
   }
 
   &__close {
     margin-left: auto;
-    padding: 3px 9px;
-    border: 1px solid $border-strong;
-    border-radius: 4px;
-    background: $surface;
+    align-self: center;
+    padding: 4px 10px;
     color: $text-muted;
+    border: 1px solid $rule;
+    background: $surface;
     font-family: $font-mono;
-    font-size: 10px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     cursor: pointer;
 
     &:hover {
@@ -1635,15 +1669,57 @@ button {
       border-color: $text;
     }
   }
+
+  // "the act" / "at zero riders", as ruled off on the artboards.
+  &__notes {
+    padding: 16px 34px 26px;
+    display: flex;
+    gap: 30px;
+    align-items: flex-start;
+    border-top: 1px solid $rule;
+  }
+
+  &__note {
+    flex-grow: 1;
+    flex-basis: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+
+    > span {
+      font-family: $font-mono;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    > p {
+      margin: 0;
+      color: $note-body;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    &--muted > span {
+      color: $text-muted;
+    }
+
+    &--rust > span {
+      color: $accent-rust;
+    }
+  }
 }
 
 .fogged-window {
+  width: min(100%, 583px);
+  height: 340px;
   position: relative;
-  aspect-ratio: 720 / 420;
+  flex-shrink: 0;
+  margin: 0 auto;
   overflow: hidden;
-  border: 2px solid $car-metal;
-  border-radius: 6px;
-  background: $landscape-paper;
+  border: 2px solid $glass-frame;
+  border-radius: 4px;
+  background: $fog-glass;
 
   &__landscape {
     position: absolute;
@@ -1664,98 +1740,168 @@ button {
     touch-action: none;
   }
 
+  // Condensation is the fog itself: the wipe mask cuts the view back out of it.
   &__condensation {
-    fill: rgba(244, 246, 247, 0.93);
+    fill: rgba(235, 230, 220, 0.94);
   }
 
-  &__caption {
-    margin: 10px 0 0;
+  &__status {
+    width: min(100%, 583px);
+    margin: 9px auto 0;
     color: $text-muted;
     font-family: $font-mono;
-    font-size: 10px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+
+    &--wiped {
+      color: $accent-teal;
+    }
+  }
+}
+
+// The decay strip: how a wipe returns to fog.
+.fog-decay {
+  margin-top: 24px;
+  padding: 16px 20px;
+  border: 1px solid $rule;
+  background: $surface;
+
+  &__label {
+    display: block;
+    margin-bottom: 12px;
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  &__scale {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    align-items: end;
+  }
+
+  &__stage {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+
+    small {
+      color: $note-body;
+      font-size: 12px;
+    }
+  }
+
+  &__swatch {
+    height: 42px;
+
+    &--gone {
+      border: 1px dashed $paper-edge;
+    }
   }
 }
 
 .under-seat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 30px;
+  align-items: start;
+
   &__notes {
-    max-height: 320px;
+    max-height: 300px;
     margin: 0;
-    padding: 0;
+    padding: 2px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
     list-style: none;
   }
 
   &__empty {
-    padding: 18px;
-    border: 1px dashed $border-strong;
-    border-radius: 6px;
+    padding: 22px;
+    border: 1px dashed $paper-edge;
     color: $text-muted;
     font-family: $font-mono;
-    font-size: 11px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     text-align: center;
   }
 
+  // A note reads as paper somebody folded under the seat, not a list row.
   &__note {
-    padding: 9px 12px;
-    border: 1px solid $border;
-    border-left: 3px solid var(--note-color, #{$accent-rust});
-    border-radius: 4px;
-    background: $surface;
+    padding: 13px 15px;
+    border: 1.5px solid var(--note-color, #{$accent-teal});
+    background: $note-paper;
+    box-shadow: 3px 4px 0 rgba(74, 154, 138, 0.14);
+    transform: rotate(var(--note-tilt, 0deg));
 
     p {
       margin: 0;
-      font-size: 13px;
+      color: $text;
+      font-family: $font-heading;
+      font-style: italic;
+      font-size: 15px;
       line-height: 1.45;
-    }
-
-    span {
-      color: $text-muted;
-      font-family: $font-mono;
-      font-size: 9px;
     }
   }
 
+  &__note-age {
+    display: block;
+    margin-bottom: 7px;
+    color: var(--note-color, #{$accent-teal});
+    font-family: $font-mono;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
   &__compose {
-    margin-top: 14px;
+    padding: 16px 18px;
     display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 8px;
-    align-items: center;
+    gap: 9px;
+    border: 1px solid $rule;
+    background: $surface;
 
     label {
-      grid-column: 1 / -1;
       color: $text-muted;
       font-family: $font-mono;
       font-size: 9px;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
     }
 
     input {
-      padding: 8px 10px;
-      border: 1px solid $border-strong;
-      border-radius: 4px;
+      padding: 9px 11px;
+      border: 1.5px solid $paper-edge;
       background: $bg;
       color: $text;
       font-family: $font-body;
       font-size: 13px;
+
+      &:focus-visible {
+        outline: none;
+        border-color: $accent-teal;
+      }
     }
 
     button {
-      padding: 8px 14px;
+      padding: 9px 14px;
       border: 1px solid $text;
-      border-radius: 4px;
-      background: $accent-teal;
+      background: $text;
       color: $bg;
       font-family: $font-mono;
-      font-size: 11px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
       cursor: pointer;
 
       &:disabled {
-        opacity: 0.45;
+        opacity: 0.4;
         cursor: default;
       }
     }
