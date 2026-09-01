@@ -79,6 +79,7 @@ import {
   getBayStandingPosition,
   type CommuteBay,
 } from "./commuteBays";
+import { FoggedWindowPane } from "./FoggedWindowPane";
 import { ProceduralLandscape } from "./landscape";
 import "./commute.scss";
 
@@ -683,6 +684,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const avatarPositionRef = useRef<CommutePoint>(initialAvatarPosition);
     const clickDestination = useRef<CommutePoint | null>(null);
     const pendingSeatId = useRef<number | null>(null);
+    const pendingBayId = useRef<string | null>(null);
+    const [openBayId, setOpenBayId] = useState<string | null>(null);
     const pressedKeys = useRef(new Set<string>());
     const mobileActionRef = useRef<CommuteMobileAction | null>(null);
     const exitPending = useRef(false);
@@ -811,6 +814,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       mobileBoarded && mySeatId === null
         ? findNearbyCommuteBay(avatarPosition)
         : null;
+    const openBay =
+      COMMUTE_BAYS.find((candidate) => candidate.id === openBayId) ?? null;
 
     useEffect(() => {
       onSeatStateChange(mySeatId !== null);
@@ -838,6 +843,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       if (occupant && mySeatId !== seatId) return;
 
       pendingSeatId.current = null;
+      pendingBayId.current = null;
       clickDestination.current = null;
       if (mySeatId === seatId) {
         const seat = SEATS.find((candidate) => candidate.id === seatId);
@@ -865,6 +871,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
 
     const walkToBay = (bay: CommuteBay) => {
       pendingSeatId.current = null;
+      pendingBayId.current = null;
+      pendingBayId.current = bay.id;
       setMyAwareness({ seatId: null });
       clickDestination.current = getBayStandingPosition(bay);
       setAvatarWalking(true);
@@ -880,6 +888,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
 
       setMyAwareness({ seatId: null });
       pendingSeatId.current = null;
+      pendingBayId.current = null;
       clickDestination.current = getCommutePointFromClient(
         { x: event.clientX, y: event.clientY },
         bounds,
@@ -917,6 +926,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const standUp = () => {
       if (mySeatId === null) return;
       pendingSeatId.current = null;
+      pendingBayId.current = null;
       clickDestination.current = null;
       const seat = SEATS.find((candidate) => candidate.id === mySeatId);
       setMyAwareness({ seatId: null });
@@ -1016,6 +1026,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         const hasManualMovement = Math.hypot(vector.x, vector.y) >= 0.15;
         if (hasManualMovement) {
           pendingSeatId.current = null;
+          pendingBayId.current = null;
           clickDestination.current = null;
           if (mySeatId !== null) {
             const seat = SEATS.find((candidate) => candidate.id === mySeatId);
@@ -1068,11 +1079,16 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         updateAvatarPosition(movement.position);
         if (movement.arrived) {
           const seatId = pendingSeatId.current;
+          const bayId = pendingBayId.current;
           pendingSeatId.current = null;
+          pendingBayId.current = null;
           clickDestination.current = null;
           setAvatarWalking(false);
           if (seatId !== null) {
             setMyAwarenessRef.current({ seatId });
+          }
+          if (bayId !== null) {
+            setOpenBayId(bayId);
           }
         }
       };
@@ -1217,6 +1233,14 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             </span>
           )}
         </section>
+        {openBay && (
+          <FoggedWindowPane
+            id={`internet-commute-pane-${openBay.id}`}
+            bay={openBay}
+            currentStop={props.currentStop}
+            onClose={() => setOpenBayId(null)}
+          />
+        )}
         {toast && (
           <div className="commute-toast" role="status">
             {toast}
@@ -1228,6 +1252,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             boarded={mobileBoarded}
             onBoard={() => {
               pendingSeatId.current = null;
+              pendingBayId.current = null;
               clickDestination.current = null;
               updateAvatarPosition(initialAvatarPosition);
               onMobileBoardStateChange(true);
