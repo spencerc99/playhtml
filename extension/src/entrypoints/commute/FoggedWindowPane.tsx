@@ -54,6 +54,7 @@ export const FoggedWindowPane = withSharedState<
     const { cursors } = usePlayContext();
     const [now] = useState(() => Date.now());
     const [draft, setDraft] = useState<number[] | null>(null);
+    const draftRef = useRef<number[] | null>(null);
     const drawing = useRef(false);
     const surfaceRef = useRef<SVGSVGElement | null>(null);
 
@@ -75,6 +76,7 @@ export const FoggedWindowPane = withSharedState<
       const point = readPoint(event);
       if (!point) return;
       drawing.current = true;
+      draftRef.current = point;
       setDraft(point);
       event.currentTarget.setPointerCapture(event.pointerId);
     };
@@ -83,7 +85,9 @@ export const FoggedWindowPane = withSharedState<
       if (!drawing.current) return;
       const point = readPoint(event);
       if (!point) return;
-      setDraft((current) => (current ? [...current, ...point] : point));
+      const next = draftRef.current ? [...draftRef.current, ...point] : point;
+      draftRef.current = next;
+      setDraft(next);
     };
 
     // Committed only on pointer release — an explicit user event, never a
@@ -92,29 +96,28 @@ export const FoggedWindowPane = withSharedState<
       if (!drawing.current) return;
       drawing.current = false;
 
-      setDraft((current) => {
-        if (!current || current.length < 4) return null;
+      const points = draftRef.current;
+      draftRef.current = null;
+      setDraft(null);
+      if (!points || points.length < 4) return;
 
-        const stroke: FoggedStroke = {
-          id: createStrokeId(),
-          color: cursors.color || "#4a9a8a",
-          drawnAt: Date.now(),
-          points: simplifyStrokePoints(current),
-        };
-        const bayId = props.bay.id;
+      const stroke: FoggedStroke = {
+        id: createStrokeId(),
+        color: cursors.color || "#4a9a8a",
+        drawnAt: Date.now(),
+        points: simplifyStrokePoints(points),
+      };
+      const bayId = props.bay.id;
 
-        setData((current) => {
-          if (!current[bayId]) current[bayId] = {};
-          current[bayId][stroke.id] = stroke;
-          for (const expiredId of getExpiredStrokeIds(
-            current[bayId],
-            stroke.drawnAt,
-          )) {
-            delete current[bayId][expiredId];
-          }
-        });
-
-        return null;
+      setData((current) => {
+        if (!current[bayId]) current[bayId] = {};
+        current[bayId][stroke.id] = stroke;
+        for (const expiredId of getExpiredStrokeIds(
+          current[bayId],
+          stroke.drawnAt,
+        )) {
+          delete current[bayId][expiredId];
+        }
       });
     }, [cursors.color, props.bay.id, setData]);
 
