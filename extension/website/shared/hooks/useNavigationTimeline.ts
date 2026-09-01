@@ -12,6 +12,7 @@ import {
 import {
   RISO_COLORS,
   eventMatchesAnyFilter,
+  extractDomain,
   type FilterChip,
 } from "../utils/eventUtils";
 

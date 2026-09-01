@@ -33,4 +33,28 @@ describe("buildShareUrl", () => {
 
     expect(new URL(url).searchParams.has("s")).toBe(true);
   });
+
+  it("preserves live installation screen identity across URL rewrites", () => {
+    const originalUrl = window.location.href;
+    window.history.replaceState(
+      null,
+      "",
+      "/installation/live/?view=follow&slot=2&slots=4",
+    );
+
+    try {
+      const url = new URL(
+        buildShareUrl({
+          settings: DEFAULT_SETTINGS,
+          activeVisualizations: DEFAULT_ACTIVE_VISUALIZATIONS,
+          selectedTimeRange: null,
+        }),
+      );
+      expect(url.searchParams.get("view")).toBe("follow");
+      expect(url.searchParams.get("slot")).toBe("2");
+      expect(url.searchParams.get("slots")).toBe("4");
+    } finally {
+      window.history.replaceState(null, "", originalUrl);
+    }
+  });
 });

@@ -18,7 +18,7 @@ export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
 export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
 
-/** WebSocket endpoint for the live cursor-event stream. Derived from
+/** WebSocket endpoint for the live movement-event stream. Derived from
  * WORKER_URL by swapping the http(s) scheme for ws(s). */
 export const STREAM_URL = `${WORKER_URL.replace(/^http/, "ws")}/stream`;
 

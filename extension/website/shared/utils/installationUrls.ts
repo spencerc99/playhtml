@@ -83,3 +83,50 @@ export function buildInstallationScreens(
 
   return screens;
 }
+
+/** Build the independent cross-computer URLs for the hybrid live installation.
+ * Participant ownership is encoded by numeric slot, so every follower can
+ * reconstruct the same disjoint assignment without a shared browser channel. */
+export function buildLiveInstallationScreens(
+  origin: string,
+  followerCount: number = 4,
+): InstallationScreen[] {
+  if (!Number.isFinite(followerCount)) {
+    throw new Error("Installation follower count must be finite");
+  }
+  const count = Math.min(32, Math.max(1, Math.floor(followerCount)));
+  const base = new URL("/installation/live/", origin);
+  base.searchParams.set("clean", "2");
+  base.searchParams.set("slots", String(count));
+
+  const withParams = (params: Record<string, string>): string => {
+    const url = new URL(base.toString());
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+    return url.toString();
+  };
+
+  const screens: InstallationScreen[] = [
+    {
+      label: "field",
+      role: "master",
+      url: withParams({ view: "field" }),
+    },
+  ];
+
+  for (let slot = 0; slot < count; slot++) {
+    screens.push({
+      label: `follower ${slot + 1}`,
+      role: "follower",
+      followerId: String(slot),
+      url: withParams({
+        view: "follow",
+        slot: String(slot),
+        cinematic: "follow",
+      }),
+    });
+  }
+
+  return screens;
+}

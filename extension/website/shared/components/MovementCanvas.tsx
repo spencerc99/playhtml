@@ -355,6 +355,8 @@ interface MovementCanvasProps {
   defaultSoundEnabled?: boolean;
   /** Route-specific defaults applied before stored settings and URL overrides. */
   defaultSettings?: Partial<MovementSettings>;
+  /** Route-enforced presentation floor. URL clean levels can still raise it. */
+  minimumCleanLevel?: 0 | 1 | 2;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
@@ -387,6 +389,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   onSetActiveVisualizations,
   defaultSoundEnabled = false,
   defaultSettings,
+  minimumCleanLevel = 0,
   live = false,
   connected = false,
   getInstallationElapsedMs,
@@ -472,6 +475,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [captureCleanOverride, setCaptureCleanOverride] = useState(false);
   const cleanLevel = Math.max(
     cleanFromUrl,
+    minimumCleanLevel,
     captureCleanOverride ? 1 : 0,
   ) as 0 | 1 | 2;
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts

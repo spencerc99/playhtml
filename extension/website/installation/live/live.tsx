@@ -1,0 +1,80 @@
+// ABOUTME: Renders the dedicated WWO live installation field or deterministic follower view.
+// ABOUTME: Inserts dense live chapters between progressively older archive chapters.
+
+import "../../shared/portrait-styles.scss";
+import React, { useEffect, useMemo, useState } from "react";
+import ReactDOM from "react-dom/client";
+import { MovementCanvas } from "../../shared/components/MovementCanvas";
+import { LiveIndicator } from "../../shared/components/LiveIndicator";
+import {
+  parseDayFromUrl,
+  parseTimeOfDayFromUrl,
+  parseVizFromUrl,
+} from "../../shared/config";
+import { useHybridInstallationEvents } from "../../shared/hooks/useHybridInstallationEvents";
+import { summarizeActiveLocations } from "../../shared/utils/eventUtils";
+import {
+  LIVE_INSTALLATION_VISUALIZATIONS,
+  parseLiveInstallationScreen,
+} from "../../shared/utils/liveInstallation";
+
+const LiveInstallation = () => {
+  const screen = useMemo(() => parseLiveInstallationScreen(), []);
+  const selectedDay = parseDayFromUrl() ?? null;
+  const timeOfDay = parseTimeOfDayFromUrl() ?? null;
+  const [activeVisualizations] = useState<string[]>(() => {
+    const requested = parseVizFromUrl();
+    if (requested === undefined) return [...LIVE_INSTALLATION_VISUALIZATIONS];
+    const allowed = requested.filter((id) =>
+      LIVE_INSTALLATION_VISUALIZATIONS.includes(
+        id as (typeof LIVE_INSTALLATION_VISUALIZATIONS)[number],
+      ),
+    );
+    return allowed.length > 0 ? allowed : [...LIVE_INSTALLATION_VISUALIZATIONS];
+  });
+  const hybrid = useHybridInstallationEvents({
+    selectedDay,
+    timeOfDay,
+    serverDomain: "",
+    activeVisualizations,
+    screen,
+  });
+  const activity = useMemo(
+    () => summarizeActiveLocations(hybrid.liveEvents),
+    [hybrid.liveEvents],
+  );
+
+  useEffect(() => {
+    document.body.dataset.installationView = screen.view;
+    document.body.dataset.installationSlot = String(screen.slot);
+    document.body.dataset.installationSource = hybrid.source;
+  }, [hybrid.source, screen.slot, screen.view]);
+
+  return (
+    <>
+      <MovementCanvas
+        events={hybrid.events}
+        loading={hybrid.loading}
+        error={hybrid.error}
+        fetchEvents={hybrid.refresh}
+        activeVisualizations={activeVisualizations}
+        onSetActiveVisualizations={() => {}}
+        minimumCleanLevel={2}
+        playbackKey={hybrid.playbackKey}
+        playbackContextKey={hybrid.playbackContextKey}
+        onPlaybackCycleComplete={hybrid.finishChapter}
+      />
+      {screen.view === "field" && (
+        <LiveIndicator
+          connected={hybrid.connected}
+          peopleCount={activity.people}
+          style={{ position: "absolute", bottom: 20, left: 20, zIndex: 100 }}
+        />
+      )}
+    </>
+  );
+};
+
+ReactDOM.createRoot(
+  document.getElementById("reactContent") as HTMLElement,
+).render(<LiveInstallation />);

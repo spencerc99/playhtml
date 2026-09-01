@@ -102,6 +102,9 @@ export function buildShareUrl({
       "cinemaStartZoom",
       "role",
       "follower",
+      "view",
+      "slot",
+      "slots",
     ];
     for (const key of PRESERVE) {
       const val = current.get(key);

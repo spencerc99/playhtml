@@ -1,4 +1,4 @@
-// ABOUTME: Forwards newly ingested cursor events to the LiveEventsHub durable object.
+// ABOUTME: Forwards renderable movement events to the LiveEventsHub durable object.
 // ABOUTME: Enriches events with participant cursor colors; fire-and-forget, never fails ingest.
 
 import type { CollectionEvent } from '@playhtml/extension-types';
@@ -12,6 +12,7 @@ import { HUB_NAME } from './constants';
  */
 const COLOR_TTL_MS = 5 * 60 * 1000;
 const colorCache = new Map<string, { color: string | null; at: number }>();
+const LIVE_EVENT_TYPES = new Set(['cursor', 'viewport', 'navigation']);
 
 /** Fetch cursor colors for pids not in the cache (or whose cache entry expired),
  * then return a pid -> color map covering all requested pids. Best-effort: on
@@ -71,14 +72,14 @@ export async function broadcastLiveEvents(
   events: CollectionEvent[],
   nowMs: number,
 ): Promise<void> {
-  const cursorEvents = events.filter((e) => e.type === 'cursor');
-  if (cursorEvents.length === 0) return;
+  const liveEvents = events.filter((event) => LIVE_EVENT_TYPES.has(event.type));
+  if (liveEvents.length === 0) return;
 
   try {
-    const pids = [...new Set(cursorEvents.map((e) => e.meta.pid))];
+    const pids = [...new Set(liveEvents.map((event) => event.meta.pid))];
     const colors = await resolveCursorColors(env, pids, nowMs);
 
-    const enriched = cursorEvents.map((e) => {
+    const enriched = liveEvents.map((e) => {
       const color = colors.get(e.meta.pid);
       if (!color) return e;
       return { ...e, meta: { ...e.meta, cursor_color: color } };
