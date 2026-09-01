@@ -1044,12 +1044,22 @@ export default defineContentScript({
           this.presencePlayerIdentity?.playerStyle.colorPalette[0] ?? "#4a9a8a";
         const pid = this.presencePlayerIdentity?.publicKey ?? "anon";
 
+        const signPlayerPayload = async (payload: string): Promise<string | null> => {
+          const { getStoredPlayerIdentity, signPlayerIdentityPayload } = await import(
+            "../storage/playerIdentity"
+          );
+          const stored = await getStoredPlayerIdentity();
+          if (!stored) return null;
+          return signPlayerIdentityPayload(stored.privateKey, payload);
+        };
+
         try {
           this.globalCleanup = await initGlobalFeatures({
             createPageData: this.playhtmlInstance.createPageData,
             presence: this.playhtmlInstance.presence,
             playerColor: color,
             playerPid: pid,
+            signPlayerPayload,
           });
         } catch (err) {
           console.error("[we-were-online] initGlobalFeatures failed:", err);

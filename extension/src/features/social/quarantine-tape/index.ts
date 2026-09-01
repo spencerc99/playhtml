@@ -33,7 +33,7 @@ export const quarantineTapeExperiment: SocialExperiment = {
   id: "quarantine-tape",
   flag: "QUARANTINE_TAPE",
   async init(deps: GlobalFeatureDeps) {
-    const manager = new QuarantineTapeManager(deps.playerPid);
+    const manager = new QuarantineTapeManager(deps.playerPid, deps.signPlayerPayload);
 
     deps.inventory.register({
       id: ITEM_SLOP,
