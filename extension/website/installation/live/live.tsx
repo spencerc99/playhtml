@@ -71,6 +71,7 @@ const LiveInstallation = () => {
         defaultSettings={LIVE_INSTALLATION_SETTINGS_DEFAULTS}
         minimumCleanLevel={2}
         playbackKey={hybrid.playbackKey}
+        playbackSource={hybrid.source}
         playbackContextKey={hybrid.playbackContextKey}
         onPlaybackCycleComplete={hybrid.finishChapter}
       />
