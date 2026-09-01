@@ -7,8 +7,8 @@ import { hashString } from "./styleUtils";
 export const LIVE_INSTALLATION_VISUALIZATIONS = [
   "trails",
   "clicks",
+  "typing",
   "scrolling",
-  "navigation",
 ] as const;
 
 export const DEFAULT_LIVE_INSTALLATION_VISUALIZATIONS = ["trails"] as const;
@@ -143,16 +143,8 @@ export function liveChapterIsReady(
     return true;
   }
 
-  const navigationSessions = new Map<string, number>();
-  if (enabled.has("navigation")) {
-    for (const event of events) {
-      if (event.type !== "navigation") continue;
-      const key = `${event.meta.pid}|${event.meta.sid}`;
-      const count = (navigationSessions.get(key) ?? 0) + 1;
-      if (count >= 3) return true;
-      navigationSessions.set(key, count);
-    }
-  }
+  const keyboardEvents = events.filter((event) => event.type === "keyboard");
+  if (enabled.has("typing") && keyboardEvents.length >= 2) return true;
 
   return false;
 }

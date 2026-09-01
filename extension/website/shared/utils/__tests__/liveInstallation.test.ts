@@ -57,8 +57,9 @@ describe("live installation visualizations", () => {
     expect(resolveLiveInstallationVisualizations(["scrolling"])).toEqual([
       "scrolling",
     ]);
-    expect(resolveLiveInstallationVisualizations(["navigation"])).toEqual([
-      "navigation",
+    expect(resolveLiveInstallationVisualizations(["navigation"])).toEqual([]);
+    expect(resolveLiveInstallationVisualizations(["typing"])).toEqual([
+      "typing",
     ]);
   });
 
@@ -144,13 +145,12 @@ describe("live chapter selection", () => {
     expect(liveChapterIsReady(events, ["trails"])).toBe(true);
   });
 
-  it("accepts navigation once one session forms a three-step path", () => {
+  it("accepts a chapter with multiple keyboard events", () => {
     const events = [
       event("start", "cursor", 0, "a"),
-      event("n1", "navigation", 30_000, "a", "focus", "journey"),
-      event("n2", "navigation", 31_000, "a", "popstate", "journey"),
-      event("n3", "navigation", 32_000, "a", "beforeunload", "journey"),
+      event("k1", "keyboard", 30_000, "a", "move", "typing"),
+      event("k2", "keyboard", 31_000, "a", "move", "typing"),
     ];
-    expect(liveChapterIsReady(events, ["navigation"])).toBe(true);
+    expect(liveChapterIsReady(events, ["typing"])).toBe(true);
   });
 });

@@ -350,6 +350,8 @@ interface MovementCanvasProps {
   onSetFilters?: (filters: FilterChip[]) => void;
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
+  /** Route-specific visualization ids shown in the developer controls. */
+  availableVisualizations?: readonly string[];
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
@@ -387,6 +389,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   onSetFilters,
   activeVisualizations,
   onSetActiveVisualizations,
+  availableVisualizations,
   defaultSoundEnabled = false,
   defaultSettings,
   minimumCleanLevel = 0,
@@ -1346,6 +1349,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         timeRange={timeRange}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={onSetActiveVisualizations}
+        availableVisualizations={availableVisualizations}
         selectedTimeRange={selectedTimeRange}
         onSelectTimeRange={setSelectedTimeRange}
       />

@@ -48,7 +48,7 @@ describe('broadcastLiveEvents', () => {
     mockColorRows.length = 0;
   });
 
-  it('forwards cursor, viewport, and navigation events to the DO', async () => {
+  it('forwards cursor, viewport, and keyboard events to the DO', async () => {
     const stubFetch = vi.fn(async () => new Response(null, { status: 204 }));
     const ns = fakeNamespace(stubFetch);
     const pid = uniquePid();
@@ -68,7 +68,7 @@ describe('broadcastLiveEvents', () => {
     expect(stubFetch).toHaveBeenCalledTimes(1);
     const sentReq = (stubFetch.mock.calls[0] as unknown[])[0] as Request;
     const body = (await sentReq.json()) as { events: CollectionEvent[] };
-    expect(body.events.map((e) => e.id)).toEqual(['a', 'b', 'c']);
+    expect(body.events.map((e) => e.id)).toEqual(['a', 'c', 'd']);
   });
 
   it('enriches forwarded events with the participant cursor color', async () => {
@@ -99,7 +99,7 @@ describe('broadcastLiveEvents', () => {
   it('does nothing when there are no renderable live events', async () => {
     const stubFetch = vi.fn(async () => new Response(null, { status: 204 }));
     const ns = fakeNamespace(stubFetch);
-    await broadcastLiveEvents(ns, ENV, [ev('b', 'keyboard')], 1000);
+    await broadcastLiveEvents(ns, ENV, [ev('b', 'navigation')], 1000);
     expect(stubFetch).not.toHaveBeenCalled();
   });
 
