@@ -24,7 +24,7 @@ import {
 } from '../storage/playerIdentity'
 import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
-import { gzipString, gunzipToString } from '../utils/dataTransfer'
+import { gzipEventExport, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
 import {
   loadState,
@@ -1009,13 +1009,11 @@ export default defineBackground(() => {
         try {
           const events = await store.getAllEvents()
           const identity = await getPublicPlayerIdentity()
-          const payload = JSON.stringify({
-            version: 1,
-            exportedAt: Date.now(),
+          const compressed = await gzipEventExport(
             events,
             identity,
-          })
-          const compressed = await gzipString(payload)
+            Date.now(),
+          )
           reply({ success: true, data: Array.from(compressed) })
         } catch (e) {
           console.error('[Background] EXPORT_EVENTS error:', e)
