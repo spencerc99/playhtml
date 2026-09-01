@@ -26,6 +26,6 @@
       "@extension/*": ["../src/*"]
     }
   },
-  "include": ["src", "party"],
+  "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
