@@ -80,6 +80,7 @@ import {
   type CommuteBay,
 } from "./commuteBays";
 import { FoggedWindowPane } from "./FoggedWindowPane";
+import { UnderSeatView } from "./UnderSeatView";
 import { ProceduralLandscape } from "./landscape";
 import "./commute.scss";
 
@@ -436,12 +437,14 @@ function Seat({
   isMine,
   isNearby,
   onSelect,
+  onLookUnder,
 }: {
   seat: SeatDefinition;
   occupant?: { color: string; label?: string };
   isMine: boolean;
   isNearby: boolean;
   onSelect: () => void;
+  onLookUnder: () => void;
 }) {
   const unavailable = Boolean(occupant && !isMine);
   const isPriority =
@@ -449,33 +452,47 @@ function Seat({
   const fabric = isPriority ? "plum" : seat.bank === 1 ? "gold" : "teal";
 
   return (
-    <button
-      className={`train-seat train-seat--${seat.row} train-seat--${fabric} ${
-        isMine ? "train-seat--mine" : ""
-      } ${isNearby ? "train-seat--nearby" : ""}`}
-      style={{ left: seat.x, top: seat.y }}
-      type="button"
-      data-seat-id={seat.id}
-      aria-label={
-        isMine
-          ? "Stand up"
-          : unavailable
-            ? "Seat occupied by another rider"
-            : "Sit here"
-      }
-      aria-pressed={isMine}
-      disabled={unavailable}
-      onClick={onSelect}
-    >
-      {occupant && (
-        <CursorRider
-          color={occupant.color}
-          label={occupant.label}
-          isYou={isMine}
-        />
-      )}
-      {!occupant && <span className="train-seat__prompt">sit</span>}
-    </button>
+    <>
+      <button
+        className={`train-seat train-seat--${seat.row} train-seat--${fabric} ${
+          isMine ? "train-seat--mine" : ""
+        } ${isNearby ? "train-seat--nearby" : ""}`}
+        style={{ left: seat.x, top: seat.y }}
+        type="button"
+        data-seat-id={seat.id}
+        aria-label={
+          isMine
+            ? "Stand up"
+            : unavailable
+              ? "Seat occupied by another rider"
+              : "Sit here"
+        }
+        aria-pressed={isMine}
+        disabled={unavailable}
+        onClick={onSelect}
+      >
+        {occupant && (
+          <CursorRider
+            color={occupant.color}
+            label={occupant.label}
+            isYou={isMine}
+          />
+        )}
+        {!occupant && <span className="train-seat__prompt">sit</span>}
+      </button>
+      <button
+        className={`seat-underside seat-underside--${seat.row} ${
+          isNearby ? "seat-underside--nearby" : ""
+        }`}
+        style={{ left: seat.x, top: seat.y }}
+        type="button"
+        data-seat-underside-id={seat.id}
+        aria-label="Look under this seat"
+        onClick={onLookUnder}
+      >
+        <span className="train-seat__prompt">look under</span>
+      </button>
+    </>
   );
 }
 
@@ -685,7 +702,9 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const clickDestination = useRef<CommutePoint | null>(null);
     const pendingSeatId = useRef<number | null>(null);
     const pendingBayId = useRef<string | null>(null);
+    const pendingUnderSeatId = useRef<number | null>(null);
     const [openBayId, setOpenBayId] = useState<string | null>(null);
+    const [openUnderSeatId, setOpenUnderSeatId] = useState<number | null>(null);
     const pressedKeys = useRef(new Set<string>());
     const mobileActionRef = useRef<CommuteMobileAction | null>(null);
     const exitPending = useRef(false);
@@ -844,6 +863,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
 
       pendingSeatId.current = null;
       pendingBayId.current = null;
+      pendingUnderSeatId.current = null;
       clickDestination.current = null;
       if (mySeatId === seatId) {
         const seat = SEATS.find((candidate) => candidate.id === seatId);
@@ -871,10 +891,19 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
 
     const walkToBay = (bay: CommuteBay) => {
       pendingSeatId.current = null;
-      pendingBayId.current = null;
+      pendingUnderSeatId.current = null;
       pendingBayId.current = bay.id;
       setMyAwareness({ seatId: null });
       clickDestination.current = getBayStandingPosition(bay);
+      setAvatarWalking(true);
+    };
+
+    const lookUnderSeat = (seat: CommuteSeatGeometry) => {
+      pendingSeatId.current = null;
+      pendingBayId.current = null;
+      pendingUnderSeatId.current = seat.id;
+      setMyAwareness({ seatId: null });
+      clickDestination.current = getStandingPosition(seat);
       setAvatarWalking(true);
     };
 
@@ -889,6 +918,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       setMyAwareness({ seatId: null });
       pendingSeatId.current = null;
       pendingBayId.current = null;
+      pendingUnderSeatId.current = null;
       clickDestination.current = getCommutePointFromClient(
         { x: event.clientX, y: event.clientY },
         bounds,
@@ -927,6 +957,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       if (mySeatId === null) return;
       pendingSeatId.current = null;
       pendingBayId.current = null;
+      pendingUnderSeatId.current = null;
       clickDestination.current = null;
       const seat = SEATS.find((candidate) => candidate.id === mySeatId);
       setMyAwareness({ seatId: null });
@@ -961,6 +992,15 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       };
     }
     mobileActionRef.current = mobileAction;
+
+    // "look under" rides alongside "sit" rather than competing with it.
+    const secondaryMobileAction: CommuteMobileAction | null = nearbySeat
+      ? {
+          label: "look under",
+          tone: "peek",
+          onSelect: () => lookUnderSeat(nearbySeat),
+        }
+      : null;
 
     const updateMovement = useCallback((vector: CommutePoint) => {
       movementVector.current = vector;
@@ -1027,6 +1067,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         if (hasManualMovement) {
           pendingSeatId.current = null;
           pendingBayId.current = null;
+          pendingUnderSeatId.current = null;
           clickDestination.current = null;
           if (mySeatId !== null) {
             const seat = SEATS.find((candidate) => candidate.id === mySeatId);
@@ -1080,8 +1121,10 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         if (movement.arrived) {
           const seatId = pendingSeatId.current;
           const bayId = pendingBayId.current;
+          const underSeatId = pendingUnderSeatId.current;
           pendingSeatId.current = null;
           pendingBayId.current = null;
+          pendingUnderSeatId.current = null;
           clickDestination.current = null;
           setAvatarWalking(false);
           if (seatId !== null) {
@@ -1089,6 +1132,9 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           }
           if (bayId !== null) {
             setOpenBayId(bayId);
+          }
+          if (underSeatId !== null) {
+            setOpenUnderSeatId(underSeatId);
           }
         }
       };
@@ -1194,6 +1240,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
               isMine={mySeatId === seat.id}
               isNearby={nearbySeat?.id === seat.id}
               onSelect={() => chooseSeat(seat.id)}
+              onLookUnder={() => lookUnderSeat(seat)}
             />
           ))}
 
@@ -1241,6 +1288,13 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             onClose={() => setOpenBayId(null)}
           />
         )}
+        {openUnderSeatId !== null && (
+          <UnderSeatView
+            id={`internet-commute-underseat-${openUnderSeatId}`}
+            seatId={openUnderSeatId}
+            onClose={() => setOpenUnderSeatId(null)}
+          />
+        )}
         {toast && (
           <div className="commute-toast" role="status">
             {toast}
@@ -1249,10 +1303,12 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         {createPortal(
           <CommuteMobileControls
             action={mobileAction}
+            secondaryAction={secondaryMobileAction}
             boarded={mobileBoarded}
             onBoard={() => {
               pendingSeatId.current = null;
               pendingBayId.current = null;
+              pendingUnderSeatId.current = null;
               clickDestination.current = null;
               updateAvatarPosition(initialAvatarPosition);
               onMobileBoardStateChange(true);

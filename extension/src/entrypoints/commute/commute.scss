@@ -1143,6 +1143,124 @@ button {
   }
 }
 
+.under-seat {
+  &__notes {
+    max-height: 320px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    list-style: none;
+  }
+
+  &__empty {
+    padding: 18px;
+    border: 1px dashed $border-strong;
+    border-radius: 6px;
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 11px;
+    text-align: center;
+  }
+
+  &__note {
+    padding: 9px 12px;
+    border: 1px solid $border;
+    border-left: 3px solid var(--note-color, #{$accent-rust});
+    border-radius: 4px;
+    background: $surface;
+
+    p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    span {
+      color: $text-muted;
+      font-family: $font-mono;
+      font-size: 9px;
+    }
+  }
+
+  &__compose {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+
+    label {
+      grid-column: 1 / -1;
+      color: $text-muted;
+      font-family: $font-mono;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    input {
+      padding: 8px 10px;
+      border: 1px solid $border-strong;
+      border-radius: 4px;
+      background: $bg;
+      color: $text;
+      font-family: $font-body;
+      font-size: 13px;
+    }
+
+    button {
+      padding: 8px 14px;
+      border: 1px solid $text;
+      border-radius: 4px;
+      background: $accent-teal;
+      color: $bg;
+      font-family: $font-mono;
+      font-size: 11px;
+      cursor: pointer;
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+    }
+  }
+}
+
+.seat-underside {
+  width: 50px;
+  height: 16px;
+  padding: 0;
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  &--top {
+    margin-top: 44px;
+  }
+
+  &--bottom {
+    margin-top: -16px;
+  }
+
+  &:hover,
+  &:focus-visible {
+    outline: 1px dashed $accent-rust;
+  }
+}
+
+.seat-underside:hover .train-seat__prompt,
+.seat-underside:focus-visible .train-seat__prompt,
+.seat-underside--nearby .train-seat__prompt {
+  opacity: 1;
+}
+
 .window-bay {
   height: 66px;
   padding: 0;
@@ -1669,7 +1787,9 @@ button {
     border-radius: 0;
   }
 
-  .train-seat {
+  .train-seat,
+  .seat-underside,
+  .window-bay {
     pointer-events: none;
   }
 
@@ -1859,6 +1979,12 @@ button {
 
     &--exit {
       background: $accent-rust;
+    }
+
+    // The second verb sits above the primary one rather than over it.
+    &--peek {
+      bottom: calc(110px + env(safe-area-inset-bottom));
+      background: $accent-blue;
     }
   }
 
