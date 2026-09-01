@@ -18,6 +18,7 @@
   --ph-mustard-wash: rgba(232, 166, 58, 0.16);
   --ph-brick: #c0373c;
   --ph-brick-wash: rgba(192, 55, 60, 0.12);
+  --ph-tape-texture: url("/party/3/assets/pink-washi-tape.png");
   --ph-font-display:
     "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --ph-font-body: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
@@ -314,10 +315,10 @@ h1 {
   position: absolute;
   top: -8px;
   left: 50%;
-  width: 48px;
-  height: 15px;
-  background: rgba(239, 222, 178, 0.78);
-  box-shadow: 0 1px 1px rgba(28, 28, 28, 0.12);
+  width: 58px;
+  height: 17px;
+  background: var(--ph-tape-texture) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 1px 1px rgba(28, 28, 28, 0.12));
   content: "";
   transform: translateX(-50%) rotate(-2deg);
 }
@@ -1017,9 +1018,10 @@ h1 {
 .party-station-heading::after {
   position: absolute;
   top: -7px;
-  width: 34px;
-  height: 12px;
-  background: rgba(239, 222, 178, 0.8);
+  width: 46px;
+  height: 14px;
+  background: var(--ph-tape-texture) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 1px 1px rgba(28, 28, 28, 0.12));
   content: "";
 }
 .party-station-heading::before {
