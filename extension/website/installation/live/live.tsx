@@ -14,9 +14,24 @@ import {
 import { useHybridInstallationEvents } from "../../shared/hooks/useHybridInstallationEvents";
 import { summarizeActiveLocations } from "../../shared/utils/eventUtils";
 import {
+  LIVE_INSTALLATION_VISUALIZATIONS,
   parseLiveInstallationScreen,
   resolveLiveInstallationVisualizations,
 } from "../../shared/utils/liveInstallation";
+
+const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
+  scrollSpeed: 1,
+  backgroundOpacity: 0.8,
+  maxConcurrentScrolls: 30,
+  windowScale: 0.5,
+  showPagePreview: false,
+  showTitleBar: true,
+  allowOverlap: true,
+  windowBleed: 0.45,
+  showScrollEvents: true,
+  showResizeEvents: true,
+  showZoomEvents: true,
+};
 
 const LiveInstallation = () => {
   const screen = useMemo(() => parseLiveInstallationScreen(), []);
@@ -52,6 +67,8 @@ const LiveInstallation = () => {
         fetchEvents={hybrid.refresh}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
+        availableVisualizations={LIVE_INSTALLATION_VISUALIZATIONS}
+        defaultSettings={LIVE_INSTALLATION_SETTINGS_DEFAULTS}
         minimumCleanLevel={2}
         playbackKey={hybrid.playbackKey}
         playbackContextKey={hybrid.playbackContextKey}

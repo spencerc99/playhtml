@@ -12,7 +12,7 @@ import { HUB_NAME } from './constants';
  */
 const COLOR_TTL_MS = 5 * 60 * 1000;
 const colorCache = new Map<string, { color: string | null; at: number }>();
-const LIVE_EVENT_TYPES = new Set(['cursor', 'viewport', 'navigation']);
+const LIVE_EVENT_TYPES = new Set(['cursor', 'viewport', 'keyboard']);
 
 /** Fetch cursor colors for pids not in the cache (or whose cache entry expired),
  * then return a pid -> color map covering all requested pids. Best-effort: on
