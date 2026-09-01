@@ -1,7 +1,7 @@
 // ABOUTME: Drives one finite archive playback cycle independently of its visuals.
 // ABOUTME: Advances only when the next event batch is ready, then restarts by key.
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 const HIDDEN_TAB_TICK_MS = 100;
 const EMPTY_PLAYBACK_DURATION_MS = 60000;
@@ -22,12 +22,13 @@ export function usePlaybackCycle(params: {
   animationSpeed: number;
   frozen: boolean;
   onComplete?: () => boolean;
-}): void {
+}): () => number {
   const { enabled, cycleKey, durationMs, animationSpeed, frozen, onComplete } =
     params;
   const animationSpeedRef = useRef(animationSpeed);
   const frozenRef = useRef(frozen);
   const onCompleteRef = useRef(onComplete);
+  const elapsedMsRef = useRef(0);
 
   useEffect(() => {
     animationSpeedRef.current = animationSpeed;
@@ -40,12 +41,12 @@ export function usePlaybackCycle(params: {
   }, [onComplete]);
 
   useEffect(() => {
+    elapsedMsRef.current = 0;
     if (!enabled || durationMs <= 0) return;
 
     let animationFrame: number | undefined;
     let timeout: number | undefined;
     let previousTimestamp: number | null = null;
-    let elapsedMs = 0;
 
     const clearScheduledFrame = () => {
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
@@ -72,12 +73,12 @@ export function usePlaybackCycle(params: {
       previousTimestamp = timestamp;
 
       if (!frozenRef.current) {
-        elapsedMs += frameDelta * animationSpeedRef.current;
+        elapsedMsRef.current += frameDelta * animationSpeedRef.current;
       }
 
-      if (elapsedMs >= durationMs) {
+      if (elapsedMsRef.current >= durationMs) {
         if (onCompleteRef.current?.()) return;
-        elapsedMs %= durationMs;
+        elapsedMsRef.current %= durationMs;
       }
 
       scheduleNextFrame();
@@ -90,5 +91,7 @@ export function usePlaybackCycle(params: {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearScheduledFrame();
     };
-  }, [enabled, cycleKey, durationMs, frozen]);
+  }, [enabled, cycleKey, durationMs]);
+
+  return useCallback(() => elapsedMsRef.current, []);
 }
