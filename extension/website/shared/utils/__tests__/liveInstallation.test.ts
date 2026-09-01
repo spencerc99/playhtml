@@ -8,6 +8,7 @@ import {
   liveChapterIsReady,
   parseLiveInstallationScreen,
   participantInstallationSlot,
+  resolveLiveInstallationVisualizations,
   unconsumedLiveEvents,
 } from "../liveInstallation";
 
@@ -43,6 +44,33 @@ describe("live installation screen config", () => {
       slot: 3,
       slots: 4,
     });
+  });
+});
+
+describe("live installation visualizations", () => {
+  it("shows cursor trails only when the viz query parameter is absent", () => {
+    expect(resolveLiveInstallationVisualizations(undefined)).toEqual(["trails"]);
+  });
+
+  it("allows each additional visualization to be selected explicitly", () => {
+    expect(resolveLiveInstallationVisualizations(["clicks"])).toEqual(["clicks"]);
+    expect(resolveLiveInstallationVisualizations(["scrolling"])).toEqual([
+      "scrolling",
+    ]);
+    expect(resolveLiveInstallationVisualizations(["navigation"])).toEqual([
+      "navigation",
+    ]);
+  });
+
+  it("allows explicit combinations without enabling unrequested visualizations", () => {
+    expect(
+      resolveLiveInstallationVisualizations(["trails", "clicks", "unknown"]),
+    ).toEqual(["trails", "clicks"]);
+  });
+
+  it("keeps an explicitly empty or invalid selection empty", () => {
+    expect(resolveLiveInstallationVisualizations([])).toEqual([]);
+    expect(resolveLiveInstallationVisualizations(["unknown"])).toEqual([]);
   });
 });
 

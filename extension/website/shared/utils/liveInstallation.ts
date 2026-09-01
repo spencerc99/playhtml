@@ -11,12 +11,27 @@ export const LIVE_INSTALLATION_VISUALIZATIONS = [
   "navigation",
 ] as const;
 
+export const DEFAULT_LIVE_INSTALLATION_VISUALIZATIONS = ["trails"] as const;
+
 export type LiveInstallationView = "field" | "follow";
 
 export interface LiveInstallationScreenConfig {
   view: LiveInstallationView;
   slot: number;
   slots: number;
+}
+
+export function resolveLiveInstallationVisualizations(
+  requested: string[] | undefined,
+): string[] {
+  if (requested === undefined) {
+    return [...DEFAULT_LIVE_INSTALLATION_VISUALIZATIONS];
+  }
+  return requested.filter((id) =>
+    LIVE_INSTALLATION_VISUALIZATIONS.includes(
+      id as (typeof LIVE_INSTALLATION_VISUALIZATIONS)[number],
+    ),
+  );
 }
 
 const DEFAULT_FOLLOWER_COUNT = 4;
