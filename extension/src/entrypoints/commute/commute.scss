@@ -1050,6 +1050,90 @@ button {
   }
 }
 
+.window-bay {
+  height: 66px;
+  padding: 0;
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  &--top {
+    top: 2px;
+  }
+
+  &--bottom {
+    bottom: 2px;
+  }
+
+  &__glass {
+    height: 22px;
+    position: absolute;
+    right: 0;
+    left: 0;
+    overflow: hidden;
+    border: 1px solid rgba($accent-teal, 0.75);
+    background: $landscape-paper;
+    color: $landscape-ink;
+
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  }
+
+  &--top &__glass {
+    top: 0;
+  }
+
+  &--bottom &__glass {
+    bottom: 0;
+  }
+
+  &__sill {
+    height: 44px;
+    position: absolute;
+    right: 3px;
+    left: 3px;
+    border: 1px dashed rgba($accent-teal, 0.5);
+    background: rgba($accent-teal, 0.08);
+  }
+
+  &--top &__sill {
+    top: 26px;
+  }
+
+  &--bottom &__sill {
+    bottom: 26px;
+  }
+
+  &:hover,
+  &:focus-visible {
+    outline: 2px dashed $accent-gold;
+    outline-offset: 2px;
+  }
+
+  &--nearby {
+    outline: 2px dashed $accent-gold;
+    outline-offset: 2px;
+  }
+}
+
+.window-bay__prompt {
+  position: relative;
+  z-index: 1;
+}
+
+.window-bay:hover .window-bay__prompt,
+.window-bay:focus-visible .window-bay__prompt,
+.window-bay--nearby .window-bay__prompt {
+  opacity: 1;
+}
+
 .train-seat__prompt {
   padding: 1px 4px;
   color: $bg;
@@ -1061,7 +1145,8 @@ button {
 }
 
 .train-seat:hover .train-seat__prompt,
-.train-seat:focus-visible .train-seat__prompt {
+.train-seat:focus-visible .train-seat__prompt,
+.train-seat--nearby .train-seat__prompt {
   opacity: 1;
 }
 

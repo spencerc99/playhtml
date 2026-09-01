@@ -73,6 +73,12 @@ import {
   type CommutePoint,
   type CommuteSeatGeometry,
 } from "./commuteMobile";
+import {
+  COMMUTE_BAYS,
+  findNearbyCommuteBay,
+  getBayStandingPosition,
+  type CommuteBay,
+} from "./commuteBays";
 import { ProceduralLandscape } from "./landscape";
 import "./commute.scss";
 
@@ -111,20 +117,25 @@ const SEAT_BANKS = [
   [840, 896, 952, 1008],
 ];
 
-const SEATS: SeatDefinition[] = ["top", "bottom"].flatMap((row) =>
-  SEAT_BANKS.flatMap((bank, bankIndex) =>
-    bank.map((x) => ({
-      id:
-        (row === "top" ? 0 : SEAT_BANKS.flat().length) +
-        SEAT_BANKS.slice(0, bankIndex).flat().length +
-        bank.indexOf(x),
-      x,
-      y: row === "top" ? 32 : 284,
-      row: row as SeatDefinition["row"],
-      bank: bankIndex,
-    })),
-  ),
-);
+/** Top-row slots given over to glass — see COMMUTE_BAYS. */
+const WINDOW_BAY_SEAT_X = new Set([156, 532, 952]);
+
+const SEATS: SeatDefinition[] = ["top", "bottom"]
+  .flatMap((row) =>
+    SEAT_BANKS.flatMap((bank, bankIndex) =>
+      bank.map((x) => ({
+        id:
+          (row === "top" ? 0 : SEAT_BANKS.flat().length) +
+          SEAT_BANKS.slice(0, bankIndex).flat().length +
+          bank.indexOf(x),
+        x,
+        y: row === "top" ? 32 : 284,
+        row: row as SeatDefinition["row"],
+        bank: bankIndex,
+      })),
+    ),
+  )
+  .filter((seat) => seat.row !== "top" || !WINDOW_BAY_SEAT_X.has(seat.x));
 
 const DOORS = [276, 696];
 const DOOR_GEOMETRY = DOORS.map((x) => ({ x }));
@@ -467,6 +478,45 @@ function Seat({
   );
 }
 
+function WindowBay({
+  bay,
+  isNearby,
+  onSelect,
+}: {
+  bay: CommuteBay;
+  isNearby: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      className={`window-bay window-bay--${bay.wall} ${
+        isNearby ? "window-bay--nearby" : ""
+      }`}
+      style={{ left: bay.x, width: bay.width }}
+      type="button"
+      data-bay-id={bay.id}
+      aria-label="Wipe the fogged glass"
+      onClick={onSelect}
+    >
+      <span className="window-bay__glass" aria-hidden>
+        <svg viewBox="0 0 54 22" preserveAspectRatio="none" aria-hidden>
+          <path
+            d="M0 14 q14 -7 27 -2 q14 5 27 -3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            opacity="0.55"
+          />
+        </svg>
+      </span>
+      <span className="window-bay__sill" aria-hidden />
+      <span className="train-seat__prompt window-bay__prompt">
+        wipe the glass
+      </span>
+    </button>
+  );
+}
+
 function Platform({
   currentStop,
   visible,
@@ -757,6 +807,10 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         : null;
     const nearDoor =
       mobileBoarded && isNearCommuteDoor(avatarPosition, DOOR_GEOMETRY);
+    const nearbyBay =
+      mobileBoarded && mySeatId === null
+        ? findNearbyCommuteBay(avatarPosition)
+        : null;
 
     useEffect(() => {
       onSeatStateChange(mySeatId !== null);
@@ -806,6 +860,13 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       setMyAwareness({ seatId: null });
       pendingSeatId.current = seatId;
       clickDestination.current = getStandingPosition(seat);
+      setAvatarWalking(true);
+    };
+
+    const walkToBay = (bay: CommuteBay) => {
+      pendingSeatId.current = null;
+      setMyAwareness({ seatId: null });
+      clickDestination.current = getBayStandingPosition(bay);
       setAvatarWalking(true);
     };
 
@@ -881,6 +942,12 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         label: "sit down",
         tone: "sit",
         onSelect: () => chooseSeat(nearbySeat.id),
+      };
+    } else if (nearbyBay) {
+      mobileAction = {
+        label: "wipe the glass",
+        tone: "sit",
+        onSelect: () => walkToBay(nearbyBay),
       };
     }
     mobileActionRef.current = mobileAction;
@@ -1093,6 +1160,15 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           <span className="aisle-rule" />
           <span className="warning-strip warning-strip--left" />
           <span className="warning-strip warning-strip--right" />
+
+          {COMMUTE_BAYS.map((bay) => (
+            <WindowBay
+              key={bay.id}
+              bay={bay}
+              isNearby={nearbyBay?.id === bay.id}
+              onSelect={() => walkToBay(bay)}
+            />
+          ))}
 
           {SEATS.map((seat) => (
             <Seat
