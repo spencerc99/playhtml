@@ -42,12 +42,18 @@ const quarantineKvStub = {
   },
 };
 
+// getAdminAuthError now fails closed on a missing ADMIN_TOKEN, so every admin
+// route exercised below needs both a configured token and a matching one on
+// the request (see the `?token=` suffix on each admin URL below).
+const ADMIN_TOKEN = "test-admin-token";
+
 const workerEnv: Record<string, unknown> = {
   QUARANTINE_CONTROL: quarantineKvStub,
   SUPABASE_LOAD_ATTEMPTS: "3",
   SUPABASE_LOAD_RETRY_DELAY_MS: "1",
   SUPABASE_RECOVERY_RETRY_DELAY_MS: "1",
   SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS: "5",
+  ADMIN_TOKEN,
 };
 
 mock.module("cloudflare:workers", () => ({
@@ -249,7 +255,7 @@ function adminPost(
 ): Promise<Response> {
   return room.adminHandler.handleRequest(
     new Request(
-      `https://example.com/parties/main/example-room/admin/${endpoint}`,
+      `https://example.com/parties/main/example-room/admin/${endpoint}?token=${ADMIN_TOKEN}`,
       {
         method: "POST",
         body: JSON.stringify(body),
@@ -334,7 +340,7 @@ describe("admin mutations use the authoritative live document", () => {
 
     const responsePromise = room.onRequest(
       new Request(
-        "https://example.com/parties/main/example-room/admin/force-save-live",
+        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
         { method: "POST" }
       )
     );
@@ -367,7 +373,7 @@ describe("admin mutations use the authoritative live document", () => {
     try {
       response = await room.onRequest(
         new Request(
-          "https://example.com/parties/main/example-room/admin/force-save-live",
+          `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
           { method: "POST" }
         )
       );
@@ -779,7 +785,7 @@ describe("hydration write guards", () => {
 
     const response = await room.onRequest(
       new Request(
-        "https://example.com/parties/main/example-room/admin/force-save-live",
+        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
         { method: "POST" }
       )
     );
@@ -804,7 +810,7 @@ describe("hydration write guards", () => {
     });
     const adminResponse = await room.onRequest(
       new Request(
-        "https://example.com/parties/main/example-room/admin/force-save-live",
+        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
         { method: "POST" }
       )
     );
@@ -1026,7 +1032,7 @@ describe("load path", () => {
 
     const response = await room.onRequest(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -1045,7 +1051,7 @@ describe("load path", () => {
 
     const response = await room.onRequest(
       new Request(
-        "https://example.com/parties/main/example-room/admin/force-save-live",
+        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
         { method: "POST" }
       )
     );
@@ -1064,7 +1070,7 @@ describe("load path", () => {
 
     const response = await room.onRequest(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-set",
+        `https://example.com/parties/main/example-room/admin/quarantine-set?token=${ADMIN_TOKEN}`,
         {
           method: "POST",
           body: JSON.stringify({ reason: "operator intervention" }),
@@ -1984,8 +1990,9 @@ describe("hardening", () => {
 
 describe("admin quarantine endpoints", () => {
   function adminRequest(path: string, init?: RequestInit) {
+    const separator = path.includes("?") ? "&" : "?";
     return new Request(
-      `https://example.com/parties/main/example-room/admin/${path}`,
+      `https://example.com/parties/main/example-room/admin/${path}${separator}token=${ADMIN_TOKEN}`,
       init
     );
   }
@@ -2899,7 +2906,7 @@ describe("quarantine data safety", () => {
 
     const response = await room.onRequest(
       new Request(
-        "https://example.com/parties/main/example-room/admin/force-save-live",
+        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
         { method: "POST" }
       )
     );
@@ -3058,7 +3065,7 @@ describe("quarantine data safety", () => {
 
     const response = await room.onRequest(
       new Request(
-        "https://example.com/parties/main/example-room/admin/hard-reset",
+        `https://example.com/parties/main/example-room/admin/hard-reset?token=${ADMIN_TOKEN}`,
         { method: "POST" }
       )
     );

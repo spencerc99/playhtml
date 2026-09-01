@@ -33,8 +33,10 @@ const quarantineKvStub = {
   },
 };
 
+const TEST_ADMIN_TOKEN = "test-admin-token";
+
 mock.module("cloudflare:workers", () => ({
-  env: { QUARANTINE_CONTROL: quarantineKvStub },
+  env: { QUARANTINE_CONTROL: quarantineKvStub, ADMIN_TOKEN: TEST_ADMIN_TOKEN },
   DurableObject: class {
     constructor(
       public ctx: unknown,
@@ -271,7 +273,7 @@ describe("alarm entry point", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -348,7 +350,7 @@ describe("persistence recovery admission", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -367,7 +369,7 @@ describe("persistence recovery admission", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -545,7 +547,7 @@ describe("fetch entry point", () => {
 
     const response = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -563,7 +565,7 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -571,7 +573,7 @@ describe("fetch entry point", () => {
 
     const response = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -593,7 +595,7 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -601,7 +603,7 @@ describe("fetch entry point", () => {
 
     const response = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-set",
+        `https://example.com/parties/main/example-room/admin/quarantine-set?token=${TEST_ADMIN_TOKEN}`,
         {
           method: "POST",
           body: JSON.stringify({ reason: "operator stop" }),
@@ -622,7 +624,7 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -631,7 +633,7 @@ describe("fetch entry point", () => {
 
     const cleared = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-clear",
+        `https://example.com/parties/main/example-room/admin/quarantine-clear?token=${TEST_ADMIN_TOKEN}`,
         { method: "POST" }
       )
     );
@@ -643,7 +645,7 @@ describe("fetch entry point", () => {
 
     const status = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
