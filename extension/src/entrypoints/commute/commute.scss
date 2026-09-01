@@ -811,10 +811,10 @@ button {
 }
 
 .station-install-poster {
-  width: 56px;
-  height: 42px;
+  width: 108px;
+  height: 62px;
   position: absolute;
-  top: 8px;
+  top: 6px;
   left: 216px;
   z-index: 1;
   padding: 0;
@@ -825,11 +825,43 @@ button {
   box-shadow: 0 1px 4px rgba(90, 78, 65, 0.18);
   cursor: pointer;
 
+  &--right {
+    left: auto;
+    right: 216px;
+  }
+
   &:hover,
   &:focus-visible {
     border-color: $accent-teal;
     outline: none;
   }
+
+  > img {
+    width: 100%;
+    height: 40px;
+    display: block;
+    object-fit: cover;
+  }
+}
+
+.station-install-poster__accent {
+  height: 5px;
+  display: block;
+}
+
+.station-install-poster__title {
+  height: 13px;
+  padding: 1px 5px 0;
+  display: block;
+  overflow: hidden;
+  font-family: $font-heading;
+  font-size: 9px;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.25;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .station-install-poster__stripe {
@@ -843,17 +875,17 @@ button {
 }
 
 .station-install-poster__copy {
-  padding: 3px 4px;
+  padding: 6px 7px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 1px;
+  gap: 3px;
   text-align: left;
 
   span {
     color: $accent-rust;
     font-family: $font-mono;
-    font-size: 4px;
+    font-size: 6px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     white-space: nowrap;
@@ -861,16 +893,16 @@ button {
 
   strong {
     font-family: $font-heading;
-    font-size: 8px;
+    font-size: 13px;
     font-style: italic;
     font-weight: 400;
     line-height: 1.1;
   }
 
   i {
-    width: 22px;
-    height: 5px;
-    border-radius: 1px;
+    width: 34px;
+    height: 8px;
+    border-radius: 2px;
     background: $text;
   }
 }
@@ -886,14 +918,177 @@ button {
 }
 
 .commute-poster-dialog {
-  width: min(300px, calc(100vw - 48px));
+  width: min(315px, calc(100vw - 48px));
   position: relative;
-  padding: 27px 20px 18px;
   color: $text;
   border: 2px solid rgba($text, 0.35);
   border-radius: 4px;
   background: $bg;
   box-shadow: 0 5px 18px rgba($text, 0.18);
+  transform: rotate(-0.8deg);
+
+  h2 {
+    margin: 0;
+  }
+
+  p {
+    margin: 0;
+  }
+
+  a {
+    align-self: flex-start;
+    padding: 8px 15px;
+    display: inline-block;
+    border-radius: 4px;
+    font-size: 12.5px;
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      filter: brightness(0.94);
+      outline: 2px solid currentColor;
+      outline-offset: 2px;
+    }
+  }
+}
+
+.commute-poster-dialog__artwork {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.commute-poster-dialog__artwork-frame {
+  margin: 12px 12px 0;
+  overflow: hidden;
+  border: 1px solid rgba($bg, 0.25);
+}
+
+.commute-poster-dialog__content {
+  padding: 12px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.commute-poster-dialog__wordmark {
+  font-family: $font-body;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+
+  span {
+    padding: 0 3px;
+    border-radius: 2px;
+    background: #f2d271;
+  }
+}
+
+.commute-poster-dialog__chips {
+  display: flex;
+  gap: 6px;
+
+  span {
+    padding: 3px 8px;
+    border: 1.5px solid rgba($text, 0.3);
+    border-radius: 999px;
+    background: $bg;
+    font-family: $font-mono;
+    font-size: 9px;
+  }
+}
+
+.commute-poster-dialog__byline {
+  color: $text-muted;
+  font-family: $font-mono;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.commute-poster-dialog--playhtml {
+  background: #e7ece2;
+  transform: rotate(-0.7deg);
+
+  .commute-poster-dialog__artwork {
+    border-bottom: 2px solid rgba($text, 0.2);
+  }
+
+  h2 {
+    font-family: $font-body;
+    font-size: 17px;
+    line-height: 1.3;
+  }
+}
+
+.commute-poster-dialog--class {
+  background: #3cb5e6;
+  transform: rotate(0.6deg);
+
+  .commute-poster-dialog__label {
+    color: $bg;
+    opacity: 0.9;
+  }
+
+  h2 {
+    font-family: $font-body;
+    font-size: 16px;
+    line-height: 1.35;
+  }
+}
+
+.commute-poster-dialog--benches {
+  background: #f5f2ea;
+  transform: rotate(-0.5deg);
+
+  .commute-poster-dialog__content {
+    gap: 7px;
+  }
+
+  .commute-poster-dialog__label {
+    color: $accent-rust;
+  }
+
+  h2 {
+    font-family: $font-wordmark;
+    font-size: 22px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+}
+
+.commute-poster-dialog--alive {
+  background: #2b2724;
+  transform: rotate(0.5deg);
+
+  .commute-poster-dialog__content {
+    gap: 7px;
+  }
+
+  .commute-poster-dialog__label {
+    color: $accent-gold;
+  }
+
+  h2 {
+    color: $bg;
+    font-family: $font-wordmark;
+    font-size: 27px;
+    font-style: italic;
+    font-weight: 400;
+    line-height: 1.15;
+  }
+
+  p {
+    color: rgba($bg, 0.72);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+}
+
+.commute-poster-dialog--transit-pass {
+  width: min(300px, calc(100vw - 48px));
+  padding: 27px 20px 18px;
+  background: $bg;
   transform: rotate(-0.8deg);
 
   h2 {
@@ -906,7 +1101,6 @@ button {
   }
 
   p {
-    margin: 0;
     color: $text-muted;
     font-size: 13px;
     line-height: 1.5;
@@ -915,16 +1109,12 @@ button {
   > a {
     margin-top: 12px;
     padding: 8px 16px;
-    display: inline-block;
-    color: $bg;
-    border-radius: 4px;
-    background: $text;
     font-size: 13px;
-    text-decoration: none;
 
     &:hover,
     &:focus-visible {
-      background: $accent-teal;
+      background: $accent-teal !important;
+      filter: none;
       outline: none;
     }
   }
@@ -958,6 +1148,7 @@ button {
   position: absolute;
   top: 15px;
   right: 12px;
+  z-index: 2;
   display: grid;
   place-items: center;
   color: $text-muted;

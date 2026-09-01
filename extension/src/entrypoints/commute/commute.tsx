@@ -473,12 +473,12 @@ function Platform({
   currentStop,
   visible,
   atOrigin,
-  showInstallPoster,
+  showStationPoster,
 }: {
   currentStop: CommuteStop;
   visible: boolean;
   atOrigin: boolean;
-  showInstallPoster: boolean;
+  showStationPoster: boolean;
 }) {
   return (
     <div
@@ -493,7 +493,20 @@ function Platform({
       <span className="station-platform__pillar station-platform__pillar--left" aria-hidden />
       <span className="station-platform__pillar station-platform__pillar--right" aria-hidden />
       <span className="station-platform__edge" aria-hidden />
-      {showInstallPoster && <CommuteStationPoster stationVisible={visible} />}
+      {showStationPoster && (
+        <>
+          <CommuteStationPoster
+            domain={currentStop.domain}
+            stationVisible={visible}
+            side="left"
+          />
+          <CommuteStationPoster
+            domain={currentStop.domain}
+            stationVisible={visible}
+            side="right"
+          />
+        </>
+      )}
       <span className="station-sign" aria-hidden>
         {!atOrigin && <StopFavicon stop={currentStop} />}
         <span className="station-sign__destination">
@@ -559,7 +572,7 @@ function LandscapeWindow({
         currentStop={platformStop}
         visible={stationVisible}
         atOrigin={platformAtOrigin}
-        showInstallPoster={edge === "upper"}
+        showStationPoster={edge === "upper"}
       />
     </div>
   );
