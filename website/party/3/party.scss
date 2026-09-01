@@ -18,7 +18,9 @@
   --ph-mustard-wash: rgba(232, 166, 58, 0.16);
   --ph-brick: #c0373c;
   --ph-brick-wash: rgba(192, 55, 60, 0.12);
-  --ph-tape-texture: url("/party/3/assets/pink-washi-tape.png");
+  --ph-tape-pink: url("/party/3/assets/pink-washi-tape.png");
+  --ph-tape-blue-grey: url("/party/3/assets/washi-tape-blue-grey.png");
+  --ph-tape-yellow: url("/party/3/assets/washi-tape-yellow.png");
   --ph-font-display:
     "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --ph-font-body: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
@@ -317,7 +319,7 @@ h1 {
   left: 50%;
   width: 58px;
   height: 17px;
-  background: var(--ph-tape-texture) center / 100% 100% no-repeat;
+  background: var(--ph-tape-yellow) center / 100% 100% no-repeat;
   filter: drop-shadow(0 1px 1px rgba(28, 28, 28, 0.12));
   content: "";
   transform: translateX(-50%) rotate(-2deg);
@@ -1020,17 +1022,32 @@ h1 {
   top: -7px;
   width: 46px;
   height: 14px;
-  background: var(--ph-tape-texture) center / 100% 100% no-repeat;
   filter: drop-shadow(0 1px 1px rgba(28, 28, 28, 0.12));
   content: "";
 }
 .party-station-heading::before {
   left: 16px;
+  background: var(--party-tape-left, var(--ph-tape-pink)) center / 100% 100%
+    no-repeat;
   transform: rotate(-5deg);
 }
 .party-station-heading::after {
   right: 13px;
+  background: var(--party-tape-right, var(--ph-tape-yellow)) center / 100% 100%
+    no-repeat;
   transform: rotate(4deg);
+}
+.party-station--cake .party-station-heading {
+  --party-tape-left: var(--ph-tape-pink);
+  --party-tape-right: var(--ph-tape-yellow);
+}
+.party-station--balloons .party-station-heading {
+  --party-tape-left: var(--ph-tape-blue-grey);
+  --party-tape-right: var(--ph-tape-yellow);
+}
+.party-station--wishes .party-station-heading {
+  --party-tape-left: var(--ph-tape-yellow);
+  --party-tape-right: var(--ph-tape-pink);
 }
 .party-station-heading span {
   display: inline-flex;
