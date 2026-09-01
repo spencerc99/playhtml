@@ -2,6 +2,7 @@
 // ABOUTME: Verifies handler-level write semantics used by playhtml capabilities.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ElementHandler } from "../elements";
+import { TagType, TagTypeToElement } from "@playhtml/common";
 import type {
   ElementAwarenessEventHandlerData,
   ElementData,
@@ -374,5 +375,71 @@ describe("ElementHandler", () => {
     handler.setMyAwareness({ me: "X" } as any);
     expect(onAwarenessChange).toHaveBeenCalledWith({ me: "X" });
     expect(triggerAwarenessUpdate).toHaveBeenCalled();
+  });
+});
+
+describe("CanGrow onMount cleanup", () => {
+  let element: HTMLElement;
+
+  beforeEach(() => {
+    element = document.createElement("div");
+    document.body.appendChild(element);
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("removes the document-level keydown/keyup listeners on destroy, even without a preceding mouseleave", () => {
+    const canGrow = TagTypeToElement[TagType.CanGrow];
+    const handler = new ElementHandler({
+      element,
+      defaultData: canGrow.defaultData,
+      defaultLocalData: canGrow.defaultLocalData,
+      updateElement: canGrow.updateElement,
+      onMount: canGrow.onMount,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    } as unknown as ElementData);
+
+    // Hover without a mouseleave — the failure scenario from a SPA
+    // navigation/React unmount that removes the element mid-hover.
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+
+    const removeSpy = vi.spyOn(document, "removeEventListener");
+    handler.destroy();
+
+    expect(removeSpy).toHaveBeenCalledWith("keydown", expect.any(Function));
+    expect(removeSpy).toHaveBeenCalledWith("keyup", expect.any(Function));
+    removeSpy.mockRestore();
+  });
+
+  it("does not leave a live keydown listener reacting after destroy", () => {
+    const canGrow = TagTypeToElement[TagType.CanGrow];
+    const handler = new ElementHandler({
+      element,
+      defaultData: canGrow.defaultData,
+      defaultLocalData: canGrow.defaultLocalData,
+      updateElement: canGrow.updateElement,
+      onMount: canGrow.onMount,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    } as unknown as ElementData);
+
+    // mouseenter arms the document keydown/keyup listeners AND sets the
+    // cursor once (no altKey held yet, scale 1 < maxScale 2 -> grow cursor).
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+    const cursorAfterMouseEnter = element.style.cursor;
+    expect(cursorAfterMouseEnter).not.toBe("");
+
+    // No mouseleave — destroy the handler while still "hovering".
+    handler.destroy();
+
+    // A leaked document keydown listener would flip the cursor to the
+    // alt/cut style here; a cleaned-up one leaves it untouched.
+    document.dispatchEvent(new KeyboardEvent("keydown", { altKey: true }));
+    expect(element.style.cursor).toBe(cursorAfterMouseEnter);
   });
 });
