@@ -18,7 +18,7 @@ playhtml has four primitives for moving state between readers. Pick by **lifetim
 | A toggle, position, count, or any state tied to one element | [Element data](/docs/data/data-essentials/) (`defaultData` / `can-play`) | Yes | One element |
 | A page-wide counter, prompt, or vote not tied to a DOM node | [Page data](/docs/data/page-data/) (`playhtml.createPageData`) | Yes | One page |
 | "Who is connected right now?" / "How many readers?" | [Presence](/docs/data/presence/) (`playhtml.presence.getPresences()`) | No | Per-user |
-| "Who's typing in this input?" / live status | [Custom presence channel](/docs/data/presence/#custom-channels) or element awareness | No | Per-user |
+| "Who's typing in this input?" / live status | [Custom presence channel](/docs/data/presence/#custom-channels) or element live data | No | Per-user |
 | "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) | No | Per-user |
 | Confetti burst, chime, notification | [Events](/docs/data/events/) (`dispatchPlayEvent`) | No (fires once) | Broadcast |
 | "How many people reacted to this post?" | Element data (a `count` field) | Yes | One element |
@@ -112,14 +112,14 @@ defaultData: {
 
 ### 2. Don't store computed or derived values
 
-Compute them when you render — in `updateElement` or `view` (vanilla), or the render function (React). Storing them means they go stale whenever the source changes and you forget.
+Compute them when you render — in `update` or `view` (vanilla), or the render function (React). Storing them means they go stale whenever the source changes and you forget.
 
 ```js
 // Good — derive at render time. Either vanilla form works:
 
-// imperative — updateElement
+// imperative — update
 defaultData: { count: 5 }
-updateElement: ({ element, data }) => {
+update: ({ element, data }) => {
   element.textContent = `${data.count} (${data.count % 2 === 0 ? "even" : "odd"})`;
 }
 
@@ -142,7 +142,7 @@ playhtml gives you three places to put state. Use the one that matches the lifet
 | Type | Survives reload | Use for |
 |---|---|---|
 | Persistent (`defaultData`) | Yes | Positions, counts, messages, settings, toggles |
-| Presence, including element awareness | No | Who's online, typing indicators, colors, per-user cursor data |
+| Presence, including element live data | No | Who's online, typing indicators, colors, per-user cursor data |
 | Events | No (fire once) | Confetti bursts, notifications, chimes |
 
 If someone refreshes the page and expects the state to still be there, it's persistent data. If a new reader opening the page for the first time should _not_ see a historical replay, it's presence or an event.
@@ -159,7 +159,7 @@ playhtml.register("draggable", {
   onDrag: (event, { setData }) => {
     setData({ x: event.clientX, y: event.clientY });
   },
-  updateElement: ({ element, data }) => {
+  update: ({ element, data }) => {
     element.style.translate = `${data.x}px ${data.y}px`;
   },
 });
@@ -272,7 +272,7 @@ Two reinforcing rules at work here:
 
 If you genuinely need an array (order matters and there's no natural key), then you must both (a) read via a ref as above and (b) make the write converge (dedupe by id into a `Map` and write the deduped result), but a keyed map is almost always the better shape.
 
-The same rule applies to vanilla `updateElement`: never call `setData` from inside `updateElement` (which runs on every data change) without a guard that provably converges. When in doubt, write only from explicit user events, not from reactive callbacks.
+The same rule applies to vanilla `update`: never call `setData` from inside `update` (which runs on every data change) without a guard that provably converges. When in doubt, write only from explicit user events, not from reactive callbacks.
 
 ### 8. Use `localStorage` for per-user preferences
 

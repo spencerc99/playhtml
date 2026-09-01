@@ -1,10 +1,15 @@
 // ABOUTME: Tests React hooks and element bindings against the real playhtml core.
 // ABOUTME: Verifies binding cleanup and presence-room readiness across navigation.
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { elementHandlers, playhtml, resetPlayHTML, TagType } from "playhtml";
-import { PlayProvider, usePresenceRoom, withSharedState } from "../index";
+import {
+  CanMoveElement,
+  PlayProvider,
+  usePresenceRoom,
+  withSharedState,
+} from "../index";
 
 describe("CanPlayElement binding lifecycle", () => {
   beforeEach(async () => {
@@ -58,6 +63,24 @@ describe("CanPlayElement binding lifecycle", () => {
     ).toBe(false);
 
     unmount();
+  });
+
+  it("registers built-in capabilities with one renderer name", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <CanMoveElement standalone>
+        <div id="moving-card">move me</div>
+      </CanMoveElement>,
+    );
+
+    await waitFor(() => {
+      expect(
+        elementHandlers.get(TagType.CanMove)?.get("moving-card"),
+      ).toBeDefined();
+    });
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("update and updateElement are mutually exclusive"),
+    );
   });
 
   it("lets a newly mounted movable element respond during the same commit", async () => {

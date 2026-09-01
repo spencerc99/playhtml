@@ -23,12 +23,16 @@ export interface PlayableChildren<T = object, V = any> {
 export type ReactElementInitializer<T = object, V = any> = Omit<
   ElementInitializer<T, any, V>,
   | "updateElement"
+  | "update"
   | "defaultData"
   | "defaultLocalData"
   | "myDefaultAwareness"
+  | "live"
   | "updateElementAwareness"
 > & {
   defaultData: T | ((element: HTMLElement) => T);
+  live?: V | ((element: HTMLElement) => V);
+  /** @deprecated Use `live`. */
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
   id?: string;
 } & PlayableChildren<T, V>;

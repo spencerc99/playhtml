@@ -17,6 +17,8 @@ import {
   deepReplaceIntoProxy,
   clonePlain,
   observeElementChanges,
+  type ElementUser,
+  type User,
 } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./shared-elements";
 import {
@@ -216,6 +218,8 @@ let currentCursorRoomId = "";
 // onPresenceChange subscriptions) captured before navigation keep working.
 let presenceFacade: PresenceFacade | null = null;
 let usersAPI: UsersAPI | null = null;
+let usersElementRenderUnsubscribe: (() => void) | null = null;
+let lastElementUsersFingerprint: string | null = null;
 
 // Stable indirection between the page presence client's "cursor" channel and
 // whichever cursor client currently exists. The cursor client is torn down and
@@ -726,6 +730,9 @@ function acquirePresenceTransport(
           identity: resolveMyIdentity(),
           page: getPresencePage(),
         });
+        if (room === elementAwarenessRoom) {
+          elementAwarenessClient?.refresh();
+        }
       } catch (error) {
         // join validates identity and can throw (e.g. an extension-injected
         // identity edge case). Surface it — the empty catch also let latestJoin
@@ -1674,6 +1681,10 @@ async function initPlayHTMLOnce() {
     onCursorPresencesChange: (callback) =>
       cursorClient?.onCursorPresencesChange(callback),
   });
+  lastElementUsersFingerprint = null;
+  usersElementRenderUnsubscribe = usersAPI.onChange(
+    renderElementsWithLiveUsers,
+  );
 
   // Initialize cursor tracking immediately after provider creation
   buildCursors({
@@ -1879,23 +1890,22 @@ function createPlayElementData<T extends TagType, TData = any>(
     tagInfo.defaultData === undefined
       ? undefined
       : ensureElementProxy<TData>(tag, elementId, initialData as TData);
-  const initialAwareness = getElementAwareness(tag, elementId);
+  const publishedLive = getElementAwareness(tag, elementId);
+  const configuredLive =
+    tagInfo.live !== undefined ? tagInfo.live : tagInfo.myDefaultAwareness;
+  const initialLive =
+    publishedLive ??
+    (configuredLive instanceof Function
+      ? configuredLive(element)
+      : configuredLive);
 
   const elementData: ElementData = {
     ...tagInfo,
-    myDefaultAwareness:
-      initialAwareness !== undefined
-        ? initialAwareness
-        : tagInfo.myDefaultAwareness,
+    live: initialLive,
     devMode: configuredOptions?.developmentMode ?? false,
     // Always provide a plain snapshot to render paths
     data: clonePlain(dataProxy),
-    awareness:
-      initialAwareness !== undefined
-        ? [initialAwareness]
-        : tagInfo.myDefaultAwareness !== undefined
-          ? [tagInfo.myDefaultAwareness]
-          : undefined,
+    awareness: initialLive !== undefined ? [initialLive] : undefined,
     element,
     onChange: (newData: TData) => {
       if (dataProxy === undefined) {
@@ -1953,6 +1963,46 @@ function createPlayElementData<T extends TagType, TData = any>(
   return elementData;
 }
 
+function getElementUsers<V>(
+  byStableId: Map<string, V>,
+  selfLive: V | undefined,
+): ElementUser<V>[] {
+  if (!usersAPI) return [];
+
+  const liveByUser = new Map(byStableId);
+  if (selfLive !== undefined) {
+    liveByUser.set(usersAPI.me.pid, selfLive);
+  }
+
+  const result: ElementUser<V>[] = [];
+  for (const user of usersAPI.getAll()) {
+    const live = liveByUser.get(user.pid);
+    if (live === undefined) continue;
+    result.push({ user, live });
+  }
+  return result;
+}
+
+function renderElementsWithLiveUsers(users: User[]): void {
+  const fingerprint = JSON.stringify(
+    [...users].sort((a, b) => a.pid.localeCompare(b.pid)),
+  );
+  if (fingerprint === lastElementUsersFingerprint) return;
+  lastElementUsersFingerprint = fingerprint;
+
+  for (const handlers of elementHandlers.values()) {
+    for (const handler of handlers.values()) {
+      if (
+        handler.selfAwareness === undefined &&
+        handler.awarenessByStableId.size === 0
+      ) {
+        continue;
+      }
+      safeInvoke(() => handler.render(), "element users render");
+    }
+  }
+}
+
 function isCorrectElementInitializer(
   tagInfo: ElementInitializer | Partial<ElementInitializer> | undefined,
 ): tagInfo is ElementInitializer {
@@ -1974,30 +2024,46 @@ function getElementInitializerValidationIssues(
     tagInfo.defaultData !== null &&
     (typeof tagInfo.defaultData === "object" ||
       typeof tagInfo.defaultData === "function");
+  const hasUpdate = typeof tagInfo.update === "function";
   const hasUpdateElement = typeof tagInfo.updateElement === "function";
   const hasView = typeof tagInfo.view === "function";
-  const hasDataUpdate = hasUpdateElement || hasView;
+  const hasNormalUpdate = hasUpdate || hasUpdateElement || hasView;
+  const hasLive = tagInfo.live !== undefined;
   const hasMyDefaultAwareness = tagInfo.myDefaultAwareness !== undefined;
   const hasUpdateElementAwareness =
     typeof tagInfo.updateElementAwareness === "function";
-  const hasUpdateFunction = hasDataUpdate || hasUpdateElementAwareness;
+  const hasUpdateFunction = hasNormalUpdate || hasUpdateElementAwareness;
+
+  if (hasUpdate && hasUpdateElement) {
+    issues.push("update and updateElement are mutually exclusive");
+  }
+
+  if (hasLive && hasMyDefaultAwareness) {
+    issues.push("live and myDefaultAwareness are mutually exclusive");
+  }
 
   if (hasDefaultData && !hasValidDefaultData) {
     issues.push("defaultData must be an object or function");
   }
 
-  if (hasDefaultData && !hasDataUpdate) {
-    issues.push("defaultData requires updateElement or view");
-  } else if (!hasDefaultData && hasDataUpdate) {
-    issues.push("updateElement or view requires defaultData");
+  if (hasDefaultData && !hasNormalUpdate) {
+    issues.push("defaultData requires update, updateElement, or view");
+  } else if (!hasDefaultData && !hasLive && !hasMyDefaultAwareness && hasNormalUpdate) {
+    issues.push("update, updateElement, or view requires defaultData or live");
   }
 
-  if (hasMyDefaultAwareness && !hasUpdateElementAwareness) {
-    issues.push("myDefaultAwareness requires updateElementAwareness");
+  if (hasLive && !hasNormalUpdate) {
+    issues.push("live requires update, updateElement, or view");
+  }
+
+  if (hasMyDefaultAwareness && !hasNormalUpdate && !hasUpdateElementAwareness) {
+    issues.push(
+      "myDefaultAwareness requires update, updateElement, view, or updateElementAwareness",
+    );
   }
 
   if (issues.length === 0 && !hasUpdateFunction) {
-    issues.push("updateElement, view, or updateElementAwareness");
+    issues.push("update, updateElement, view, or updateElementAwareness");
   }
 
   return issues;
@@ -2011,7 +2077,9 @@ function getCustomElementProps(element: HTMLElement) {
   const keys: (keyof ElementInitializer)[] = [
     "defaultData",
     "defaultLocalData",
+    "live",
     "myDefaultAwareness",
+    "update",
     "updateElement",
     "view",
     "updateElementAwareness",
@@ -2453,6 +2521,9 @@ export async function resetPlayHTML(): Promise<void> {
     teardownPresenceClient();
     teardownCursors();
     teardownMainProvider();
+    usersElementRenderUnsubscribe?.();
+    usersElementRenderUnsubscribe = null;
+    lastElementUsersFingerprint = null;
     try { usersAPI?.destroy(); } catch {}
     usersAPI = null;
 
@@ -2732,12 +2803,12 @@ async function setupPlayElementForTag<T extends TagType | string>(
     attachSyncedStoreObserver(tag as string, elementId);
     return;
   } else {
-    const handler = new ElementHandler(
-      elementData,
-      tag === TagType.CanMirror
+    const handler = new ElementHandler(elementData, {
+      getUsers: getElementUsers,
+      ...(tag === TagType.CanMirror
         ? { scheduleSetupDataWrite: (write) => canMirrorDataQueue.queue(write) }
-        : undefined,
-    );
+        : {}),
+    });
     tagElementHandlers.set(elementId, handler);
     // View handlers can emit capability descendants (mount points for
     // `define`d capabilities / `register`ed ids). Bind the current children and
@@ -3004,6 +3075,8 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
   getData(): T | undefined;
   setData(next: T | ((draft: T) => void)): void;
   setLocalData(next: U | ((draft: U) => void)): void;
+  setLive(next: V): void;
+  /** @deprecated Use `setLive`. */
   setMyAwareness(next: V): void;
   /** Re-run the view now (for clock-driven views). No-op without a view. */
   requestUpdate(): void;
@@ -3018,9 +3091,19 @@ function validateRegisteredInitializer(
   name: string,
   init: ElementInitializer,
 ): void {
-  if (init.view && init.updateElement) {
+  if (init.update && init.updateElement) {
     throw new Error(
-      `[playhtml] "${name}" defines both \`view\` and \`updateElement\`. They are mutually exclusive — pick one.`,
+      `[playhtml] "${name}" defines both \`update\` and \`updateElement\`. Pick one imperative renderer.`,
+    );
+  }
+  if (init.live !== undefined && init.myDefaultAwareness !== undefined) {
+    throw new Error(
+      `[playhtml] "${name}" defines both \`live\` and \`myDefaultAwareness\`. Pick one element live default.`,
+    );
+  }
+  if (init.view && (init.update || init.updateElement)) {
+    throw new Error(
+      `[playhtml] "${name}" defines both \`view\` and an imperative update renderer. They are mutually exclusive. Pick one.`,
     );
   }
   if (init.view && (init.onClick || init.onDrag || init.onDragStart)) {
@@ -3103,10 +3186,15 @@ function createPlayElementHandle(
       if (!handler) return warnUnboundHandleWrite("setLocalData", elementId);
       handler.setLocalData(next);
     },
+    setLive: (next) => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("setLive", elementId);
+      handler.setLive(next);
+    },
     setMyAwareness: (next) => {
       const handler = findHandlerForElementId(elementId, tag);
       if (!handler) return warnUnboundHandleWrite("setMyAwareness", elementId);
-      handler.setMyAwareness(next);
+      handler.setLive(next);
     },
     requestUpdate: () => {
       const handler = findHandlerForElementId(elementId, tag);
@@ -3126,7 +3214,7 @@ function createPlayElementHandle(
 }
 
 /**
- * Registers a `view`/`updateElement` initializer for a single element by id or
+ * Registers a `view`/`update` initializer for a single element by id or
  * DOM reference. Callable before or after `init()`. An id registration binds
  * once the element exists; an element registration binds the provided node.
  * Returns a handle for reads/writes from outside the view.
@@ -3458,6 +3546,7 @@ export {
 export type {
   ElementAwarenessEventHandlerData,
   ElementInitializer,
+  ElementUser,
   PageDataChannel,
   PageDataSetter,
   PlayerIdentity,

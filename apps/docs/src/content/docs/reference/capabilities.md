@@ -291,7 +291,7 @@ Surfaces hover state from any visitor on the page. This is **presence-only** —
 
 ### Data
 
-`can-hover` stores no persistent shared data. Hover state is transmitted as **element awareness**: an ephemeral, per-connection signal scoped to this element.
+`can-hover` stores no persistent shared data. Hover state is transmitted as ephemeral live user data scoped to this element.
 
 **Awareness shape (per visitor):** `{ hover: boolean }`
 
@@ -315,7 +315,7 @@ Style the hover effect by targeting this attribute:
 
 ### Reset
 
-No reset shortcut. Hover awareness clears automatically when each visitor stops hovering or disconnects.
+No reset shortcut. Live hover state clears automatically when each visitor stops hovering or disconnects.
 
 ---
 
@@ -336,7 +336,7 @@ Syncs an element's **attributes**, **direct child list**, and **form / contented
 | Contenteditable content | Yes, via `input` and `change` events |
 | Descendant mutations (arbitrary depth) | **No** — `can-mirror` only observes the element itself, not its subtree |
 
-Ephemeral attributes (`data-playhtml-hover`, `data-playhtml-focus`) are not stored in the shared snapshot. They are driven by awareness instead.
+Ephemeral attributes (`data-playhtml-hover`, `data-playhtml-focus`) are not stored in the shared snapshot. They are driven by live user state instead.
 
 ### Data
 
@@ -356,7 +356,7 @@ Ephemeral attributes (`data-playhtml-hover`, `data-playhtml-focus`) are not stor
 
 ### Presence: `data-playhtml-hover` and `data-playhtml-focus`
 
-`can-mirror` also tracks focus state via awareness. When any visitor focuses a descendant of the element, `data-playhtml-focus` is set on the element for all visitors. Style accordingly:
+`can-mirror` also tracks live focus state. When any visitor focuses a descendant of the element, `data-playhtml-focus` is set on the element for all visitors. Style accordingly:
 
 ```css
 #my-editor[data-playhtml-focus] {
@@ -372,7 +372,7 @@ No reset shortcut.
 
 ## `can-play`
 
-Define your own shared data and how the element renders (`updateElement` or experimental `view`). Use it for counters, guestbooks, games, and anything the built-ins do not cover.
+Define your own shared data and how the element renders (`update` or experimental `view`). Use it for counters, guestbooks, games, and anything the built-ins do not cover.
 
 **Guide:** [Custom elements](/docs/custom-elements/)  
 **Reference:** [Element API](/docs/reference/element-api/) · [Registration API](/docs/reference/view-api/)

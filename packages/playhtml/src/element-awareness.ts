@@ -207,7 +207,7 @@ export class ElementAwarenessClient {
       this.publishScheduled = false;
       if (this.destroyed) return;
       if (this.onAwarenessChange) {
-        this.lastAwarenessFingerprint = fingerprintAwareness(
+        this.lastAwarenessFingerprint = this.fingerprintCurrentAwareness(
           this.currentAwareness,
         );
       }
@@ -306,11 +306,42 @@ export class ElementAwarenessClient {
     // (addShardEntries reads only entries), so a keepalive re-stamp — or the
     // periodic sweep touching an unrelated peer — produces an identical
     // fingerprint and does not re-fire the awareness callback.
-    const fingerprint = fingerprintAwareness(awareness);
+    const fingerprint = this.fingerprintCurrentAwareness(awareness);
     if (fingerprint === this.lastAwarenessFingerprint) return;
     this.lastAwarenessFingerprint = fingerprint;
     this.currentAwareness = awareness;
     this.onAwareness(awareness);
+  }
+
+  private fingerprintCurrentAwareness(
+    awareness: ElementAwarenessMap,
+  ): string {
+    const liveFingerprint = fingerprintAwareness(awareness);
+    const liveUserIds = new Set<string>();
+    for (const entry of awareness.values()) {
+      for (const stableId of entry.byStableId.keys()) {
+        liveUserIds.add(stableId);
+      }
+    }
+
+    const identityParts: string[] = [];
+    const selfIdentity = this.getIdentity();
+    if (liveUserIds.has(selfIdentity.publicKey)) {
+      identityParts.push(
+        `${selfIdentity.publicKey}:${JSON.stringify(selfIdentity)}`,
+      );
+    }
+    const peers = this.transport.peers.getPeers();
+    for (const connectionId of Array.from(peers.keys()).sort()) {
+      const channels = peers.get(connectionId);
+      if (!channels) continue;
+      const stableId = getPeerPublicKey(channels) ?? connectionId;
+      if (!liveUserIds.has(stableId)) continue;
+      identityParts.push(
+        `${stableId}:${JSON.stringify(channels.identity ?? null)}`,
+      );
+    }
+    return `${liveFingerprint}|${identityParts.sort().join("|")}`;
   }
 
   private emitLocalAwareness(tag: string, elementId: string): void {
