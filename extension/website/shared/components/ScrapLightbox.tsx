@@ -162,7 +162,19 @@ const LIGHTBOX_STYLES = `
     opacity: 1;
   }
 
+  .scrap-lightbox::before {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 1;
+    height: 68px;
+    border-bottom: 1px solid rgba(61, 56, 51, 0.08);
+    background: #faf7f2;
+    content: "";
+  }
+
   .scrap-lightbox__layout {
+    position: relative;
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -352,7 +364,9 @@ const LIGHTBOX_STYLES = `
     padding: 0;
     border: 1px solid rgba(61, 56, 51, 0.2);
     border-radius: 50%;
-    background: #f5f0e8;
+    z-index: 3;
+    background: #faf7f2;
+    box-shadow: 0 3px 10px rgba(61, 56, 51, 0.12);
     color: #3d3833;
     cursor: pointer;
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
@@ -368,6 +382,7 @@ const LIGHTBOX_STYLES = `
 
   .scrap-lightbox__step {
     position: absolute;
+    z-index: 3;
     top: 50%;
     width: 34px;
     height: 34px;
