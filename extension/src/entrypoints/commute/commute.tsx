@@ -79,6 +79,13 @@ import {
   getBayStandingPosition,
   type CommuteBay,
 } from "./commuteBays";
+import {
+  decaySwing,
+  findStrapGrip,
+  isSameGrip,
+  pumpSwing,
+  type StrapGrip,
+} from "./strapHold";
 import { FoggedWindowPane } from "./FoggedWindowPane";
 import { UnderSeatView } from "./UnderSeatView";
 import { ProceduralLandscape } from "./landscape";
@@ -88,6 +95,8 @@ type CarData = Record<string, never>;
 
 interface RiderAwareness {
   seatId: number | null;
+  /** Realtime only: which strap this rider hangs from, and how hard they swing. */
+  strap?: { bandIndex: number; strapIndex: number; swing: number } | null;
 }
 
 interface SeatDefinition extends CommuteSeatGeometry {
@@ -678,6 +687,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     defaultData: {},
     myDefaultAwareness: {
       seatId: null,
+      strap: null,
     },
   }),
   ({ awarenessByStableId, myAwareness, setMyAwareness, ref }, props) => {
@@ -703,6 +713,9 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const pendingSeatId = useRef<number | null>(null);
     const pendingBayId = useRef<string | null>(null);
     const pendingUnderSeatId = useRef<number | null>(null);
+    const myStrapRef = useRef<StrapGrip | null>(null);
+    const swingRef = useRef(0);
+    const [swing, setSwing] = useState(0);
     const [openBayId, setOpenBayId] = useState<string | null>(null);
     const [openUnderSeatId, setOpenUnderSeatId] = useState<number | null>(null);
     const pressedKeys = useRef(new Set<string>());
@@ -1150,6 +1163,83 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       updateAvatarPosition,
     ]);
 
+    // Hanging is the automatic standing state under a band: no verb to choose.
+    // Awareness only — a swing exists while somebody is here to pump it.
+    useEffect(() => {
+      if (mySeatId !== null) {
+        if (myStrapRef.current !== null) {
+          myStrapRef.current = null;
+          setSwing(0);
+          setMyAwarenessRef.current({ seatId: mySeatId, strap: null });
+        }
+        return;
+      }
+
+      let frame = 0;
+      let lastFrameTime = performance.now();
+      let lastX = avatarPositionRef.current.x;
+      let lastDirection = 0;
+      let currentSwing = swingRef.current;
+      let lastPublished = 0;
+
+      const hang = (frameTime: number) => {
+        frame = window.requestAnimationFrame(hang);
+        const elapsed = Math.min(50, frameTime - lastFrameTime);
+        lastFrameTime = frameTime;
+
+        const position = avatarPositionRef.current;
+        const grip = findStrapGrip(position);
+        const heldGrip = myStrapRef.current;
+
+        if (grip === null) {
+          if (heldGrip !== null) {
+            myStrapRef.current = null;
+            currentSwing = 0;
+            swingRef.current = 0;
+            setSwing(0);
+            setMyAwarenessRef.current({ seatId: null, strap: null });
+          }
+          lastX = position.x;
+          return;
+        }
+
+        const travel = position.x - lastX;
+        const direction = Math.sign(travel);
+        const reversed =
+          Math.abs(travel) > 0.4 && direction !== 0 && direction !== lastDirection;
+        if (direction !== 0) lastDirection = direction;
+        lastX = position.x;
+
+        currentSwing = pumpSwing(
+          decaySwing(currentSwing, elapsed),
+          reversed && isSameGrip(grip, heldGrip),
+          Math.abs(travel),
+        );
+        swingRef.current = currentSwing;
+
+        if (!isSameGrip(grip, heldGrip)) {
+          myStrapRef.current = grip;
+        }
+
+        // Throttled: awareness is a presence stream, not a per-frame firehose.
+        if (frameTime - lastPublished > 90) {
+          lastPublished = frameTime;
+          setSwing(currentSwing);
+          setMyAwarenessRef.current({
+            seatId: null,
+            strap: {
+              bandIndex: grip.bandIndex,
+              strapIndex: grip.strapIndex,
+              swing: Math.round(currentSwing * 10) / 10,
+            },
+          });
+        }
+      };
+
+      frame = window.requestAnimationFrame(hang);
+      return () => window.cancelAnimationFrame(frame);
+    }, [mySeatId]);
+
     useEffect(() => {
       const car = carRef.current;
       if (isLoading || mySeatId !== null || !car) return;
@@ -1169,6 +1259,32 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         }),
       );
     }, [avatarPosition, isLoading, mySeatId]);
+
+    // The brake throws every hanging rider forward at once — nobody triggers it.
+    const braking = props.phase === "arriving";
+    const hangingRiders = useMemo(() => {
+      const hanging: Array<{
+        id: string;
+        color: string;
+        strap: NonNullable<RiderAwareness["strap"]>;
+      }> = [];
+      for (const [stableId, awareness] of awarenessByStableId) {
+        if (!awareness.strap || awareness.seatId !== null) continue;
+        const user = usersById.get(stableId);
+        if (user?.isMe) continue;
+        hanging.push({
+          id: stableId,
+          color: user?.color ?? "#5b8db8",
+          strap: awareness.strap,
+        });
+      }
+      return hanging;
+    }, [awarenessByStableId, usersById]);
+
+    const hangingRiderIds = useMemo(
+      () => new Set(hangingRiders.map((rider) => rider.id)),
+      [hangingRiders],
+    );
 
     const doorOpen = props.phase === "stopped";
     const canExit = doorOpen && !props.atOrigin;
@@ -1244,32 +1360,52 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             />
           ))}
 
-          {standingRiders.map((rider) => (
-            <span
-              className="commute-avatar commute-avatar--remote"
-              style={{
-                left: rider.position.x,
-                top: rider.position.y,
-              }}
-              key={rider.id}
-            >
-              <CursorRider
-                color={rider.color}
-                isYou={false}
-                ariaLabel="Another rider's cursor is aboard the train"
-              />
-            </span>
-          ))}
+          {standingRiders.map((rider) => {
+            const hanging = hangingRiderIds.has(rider.id);
+            const strap = hangingRiders.find(
+              (candidate) => candidate.id === rider.id,
+            )?.strap;
+            return (
+              <span
+                className={`commute-avatar commute-avatar--remote ${
+                  hanging ? "commute-avatar--hanging" : ""
+                } ${hanging && braking ? "commute-avatar--thrown" : ""}`}
+                style={
+                  {
+                    left: rider.position.x,
+                    top: rider.position.y,
+                    "--strap-swing": `${strap ? strap.swing : 0}deg`,
+                  } as React.CSSProperties
+                }
+                key={rider.id}
+              >
+                <CursorRider
+                  color={rider.color}
+                  isYou={false}
+                  ariaLabel={
+                    hanging
+                      ? "Another rider is hanging from a strap"
+                      : "Another rider's cursor is aboard the train"
+                  }
+                />
+              </span>
+            );
+          })}
 
           {mySeatId === null && !showJoiningAnimation && (
             <span
               className={`commute-avatar ${
                 avatarWalking ? "commute-avatar--walking" : ""
+              } ${myStrapRef.current ? "commute-avatar--hanging" : ""} ${
+                myStrapRef.current && braking ? "commute-avatar--thrown" : ""
               }`}
-              style={{
-                left: avatarPosition.x,
-                top: avatarPosition.y,
-              }}
+              style={
+                {
+                  left: avatarPosition.x,
+                  top: avatarPosition.y,
+                  "--strap-swing": `${swing}deg`,
+                } as React.CSSProperties
+              }
             >
               <CursorRider
                 color={cursors.color || "#3d3833"}

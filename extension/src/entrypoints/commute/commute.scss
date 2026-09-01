@@ -1419,6 +1419,18 @@ button {
       animation: cursor-walk 0.32s ease-in-out infinite;
     }
   }
+
+  // Hanging from a strap: sways on the carriage rumble, wider once pumped.
+  &--hanging .cursor-rider {
+    transform-origin: top center;
+    animation: strap-hang 1.7s ease-in-out infinite;
+  }
+
+  // The brake throws every hanging rider forward at once.
+  &--thrown .cursor-rider {
+    transform-origin: top center;
+    animation: strap-brake-throw 1.1s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+  }
 }
 
 @keyframes cursor-walk {
@@ -2045,6 +2057,35 @@ button {
 
   to {
     transform: translateX(-450px);
+  }
+}
+
+@keyframes strap-hang {
+  0%,
+  100% {
+    transform: rotate(calc(-1 * var(--strap-swing, 0deg) - 2deg));
+  }
+
+  50% {
+    transform: rotate(calc(var(--strap-swing, 0deg) + 2deg));
+  }
+}
+
+@keyframes strap-brake-throw {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  35% {
+    transform: rotate(24deg) translateY(-3px);
+  }
+
+  70% {
+    transform: rotate(-9deg);
+  }
+
+  100% {
+    transform: rotate(0deg);
   }
 }
 
