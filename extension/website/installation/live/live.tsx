@@ -14,24 +14,17 @@ import {
 import { useHybridInstallationEvents } from "../../shared/hooks/useHybridInstallationEvents";
 import { summarizeActiveLocations } from "../../shared/utils/eventUtils";
 import {
-  LIVE_INSTALLATION_VISUALIZATIONS,
   parseLiveInstallationScreen,
+  resolveLiveInstallationVisualizations,
 } from "../../shared/utils/liveInstallation";
 
 const LiveInstallation = () => {
   const screen = useMemo(() => parseLiveInstallationScreen(), []);
   const selectedDay = parseDayFromUrl() ?? null;
   const timeOfDay = parseTimeOfDayFromUrl() ?? null;
-  const [activeVisualizations] = useState<string[]>(() => {
-    const requested = parseVizFromUrl();
-    if (requested === undefined) return [...LIVE_INSTALLATION_VISUALIZATIONS];
-    const allowed = requested.filter((id) =>
-      LIVE_INSTALLATION_VISUALIZATIONS.includes(
-        id as (typeof LIVE_INSTALLATION_VISUALIZATIONS)[number],
-      ),
-    );
-    return allowed.length > 0 ? allowed : [...LIVE_INSTALLATION_VISUALIZATIONS];
-  });
+  const [activeVisualizations] = useState<string[]>(() =>
+    resolveLiveInstallationVisualizations(parseVizFromUrl()),
+  );
   const hybrid = useHybridInstallationEvents({
     selectedDay,
     timeOfDay,
