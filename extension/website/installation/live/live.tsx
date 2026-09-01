@@ -22,7 +22,7 @@ const LiveInstallation = () => {
   const screen = useMemo(() => parseLiveInstallationScreen(), []);
   const selectedDay = parseDayFromUrl() ?? null;
   const timeOfDay = parseTimeOfDayFromUrl() ?? null;
-  const [activeVisualizations] = useState<string[]>(() =>
+  const [activeVisualizations, setActiveVisualizations] = useState<string[]>(() =>
     resolveLiveInstallationVisualizations(parseVizFromUrl()),
   );
   const hybrid = useHybridInstallationEvents({
@@ -51,7 +51,7 @@ const LiveInstallation = () => {
         error={hybrid.error}
         fetchEvents={hybrid.refresh}
         activeVisualizations={activeVisualizations}
-        onSetActiveVisualizations={() => {}}
+        onSetActiveVisualizations={setActiveVisualizations}
         minimumCleanLevel={2}
         playbackKey={hybrid.playbackKey}
         playbackContextKey={hybrid.playbackContextKey}
