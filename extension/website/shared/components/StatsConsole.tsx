@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { CollectionEvent } from "../types";
 import { extractDomain } from "../utils/eventUtils";
+import { formatCompactTimeSpan } from "../utils/timeFormat";
 
 interface StatsConsoleProps {
   events: CollectionEvent[];
@@ -167,19 +168,6 @@ function relativeTime(ts: number): string {
     month: "short",
     day: "numeric",
   });
-}
-
-/** Compact duration for the dataset's actual time bounds. The tile tooltip
- * carries the exact start and end timestamps. */
-export function formatCompactTimeSpan(minTs: number, maxTs: number): string {
-  if (!minTs || !maxTs || maxTs <= minTs) return "—";
-  const durationMs = maxTs - minTs;
-  if (durationMs < 60_000) return "<1m";
-  if (durationMs < 60 * 60_000) return `${Math.round(durationMs / 60_000)}m`;
-  if (durationMs < 24 * 60 * 60_000) {
-    return `${(durationMs / (60 * 60_000)).toFixed(1)}h`;
-  }
-  return `${(durationMs / (24 * 60 * 60_000)).toFixed(1)}d`;
 }
 
 function formatPlaybackTimestamp(timestampMs: number, includeDate: boolean): string {

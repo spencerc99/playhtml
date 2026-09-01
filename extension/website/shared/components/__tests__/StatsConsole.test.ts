@@ -2,7 +2,7 @@
 // ABOUTME: Keeps long archive ranges from crowding the top instrumentation bar.
 
 import { describe, expect, it } from "vitest";
-import { formatCompactTimeSpan } from "../StatsConsole";
+import { formatCompactTimeSpan } from "../../utils/timeFormat";
 
 describe("formatCompactTimeSpan", () => {
   it("keeps minute, hour, and day spans compact", () => {
