@@ -100,19 +100,27 @@ export class CommuteTrainDispatcherObject {
     const parsed = await readBoardRequest(request);
     if (!parsed) return jsonResponse(400, { error: 'Invalid boarding request' });
 
-    const now = Date.now();
+    let now = Date.now();
     const dispatcher = await this.ready;
     let assignment: CommuteTrainAssignment;
     try {
-      const communalStops = dispatcher.needsCommunalStops(
-        parsed.riderToken,
-        now,
-      )
-        ? await this.loadCommunalStops(
-            now,
-            dispatcher.getRecentCommunalDomains(now),
-          )
-        : [];
+      let destinations: CommuteDestination[] = [];
+      if (dispatcher.needsCommunalStops(parsed.riderToken, now)) {
+        destinations = await this.loadCommunalDestinations(now);
+        now = Date.now();
+      }
+
+      let communalStops: CommuteTrainCommunalStop[] = [];
+      if (dispatcher.needsCommunalStops(parsed.riderToken, now)) {
+        communalStops = selectCommuteTrainCommunalStops(
+          destinations,
+          dispatcher.getRecentCommunalDomains(now),
+          now,
+        );
+        if (communalStops.length < 2) {
+          throw new Error('Internet Commute requires two unseen communal stops');
+        }
+      }
       assignment = dispatcher.board(parsed, communalStops, now);
     } catch (error) {
       if (!(error instanceof CommuteTrainCapacityError)) throw error;
@@ -133,10 +141,9 @@ export class CommuteTrainDispatcherObject {
     await this.scheduleCleanup(dispatcher);
   }
 
-  private async loadCommunalStops(
+  private async loadCommunalDestinations(
     now: number,
-    recentDomains: Set<string>,
-  ): Promise<CommuteTrainCommunalStop[]> {
+  ): Promise<CommuteDestination[]> {
     let destinations: CommuteDestination[] = [];
     try {
       const response = await getCommuteResponse(
@@ -149,15 +156,7 @@ export class CommuteTrainDispatcherObject {
       console.warn('[commute trains] communal route unavailable:', error);
     }
 
-    const stops = selectCommuteTrainCommunalStops(
-      destinations,
-      recentDomains,
-      now,
-    );
-    if (stops.length < 2) {
-      throw new Error('Internet Commute requires two unseen communal stops');
-    }
-    return stops;
+    return destinations;
   }
 
   private async scheduleCleanup(
