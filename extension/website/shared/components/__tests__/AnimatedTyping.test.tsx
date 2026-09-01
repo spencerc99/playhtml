@@ -6,6 +6,7 @@ import {
   COMPLETED_TYPING_VISIBLE_COUNT,
   buildTypingPlaybackSchedule,
   getRecentCompletedTypingTracks,
+  getTypingPlaybackElapsed,
   getTypingTextAtTime,
 } from "../AnimatedTyping";
 
@@ -41,6 +42,11 @@ function makeTypingState(index: number, sequence: TypingAction[]): TypingState {
 }
 
 describe("AnimatedTyping playback", () => {
+  it("holds finite playback at the end instead of wrapping", () => {
+    expect(getTypingPlaybackElapsed(12_000, 10_000, false)).toBe(10_000);
+    expect(getTypingPlaybackElapsed(12_000, 10_000, true)).toBe(2_000);
+  });
+
   it("keeps completed typing tracks bounded to recent history", () => {
     const states = Array.from({ length: 500 }, (_, index) =>
       makeTypingState(index, [

@@ -14,11 +14,24 @@ export const LIVE_INSTALLATION_VISUALIZATIONS = [
 export const DEFAULT_LIVE_INSTALLATION_VISUALIZATIONS = ["trails"] as const;
 
 export type LiveInstallationView = "field" | "follow";
+export type InstallationChapterSource = "archive" | "live";
+export type InstallationChapterAction =
+  | "advance-archive"
+  | "show-live"
+  | "wait-live";
 
 export interface LiveInstallationScreenConfig {
   view: LiveInstallationView;
   slot: number;
   slots: number;
+}
+
+export function installationChapterAction(
+  source: InstallationChapterSource,
+  liveChapterReady: boolean,
+): InstallationChapterAction {
+  if (liveChapterReady) return "show-live";
+  return source === "live" ? "wait-live" : "advance-archive";
 }
 
 export function resolveLiveInstallationVisualizations(
@@ -61,7 +74,10 @@ export function parseLiveInstallationScreen(
   return { view, slot, slots };
 }
 
-export function participantInstallationSlot(pid: string, slots: number): number {
+export function participantInstallationSlot(
+  pid: string,
+  slots: number,
+): number {
   if (!Number.isInteger(slots) || slots < 1) {
     throw new Error("Installation follower count must be a positive integer");
   }

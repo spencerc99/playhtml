@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 const HIDDEN_TAB_TICK_MS = 100;
 const EMPTY_PLAYBACK_DURATION_MS = 60000;
+const COMPLETION_RETRY_MS = 500;
 
 export function getPlaybackCycleDuration(
   durations: readonly number[],
@@ -47,6 +48,7 @@ export function usePlaybackCycle(params: {
     let animationFrame: number | undefined;
     let timeout: number | undefined;
     let previousTimestamp: number | null = null;
+    let lastCompletionAttempt = -Infinity;
 
     const clearScheduledFrame = () => {
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
@@ -77,8 +79,15 @@ export function usePlaybackCycle(params: {
       }
 
       if (elapsedMsRef.current >= durationMs) {
-        if (onCompleteRef.current?.()) return;
-        elapsedMsRef.current %= durationMs;
+        if (!onCompleteRef.current) {
+          elapsedMsRef.current %= durationMs;
+        } else {
+          elapsedMsRef.current = durationMs;
+          if (timestamp - lastCompletionAttempt >= COMPLETION_RETRY_MS) {
+            lastCompletionAttempt = timestamp;
+            if (onCompleteRef.current()) return;
+          }
+        }
       }
 
       scheduleNextFrame();

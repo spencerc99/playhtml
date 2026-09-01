@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { CollectionEvent } from "../../types";
 import {
   eventsForInstallationScreen,
+  installationChapterAction,
   liveChapterIsReady,
   parseLiveInstallationScreen,
   participantInstallationSlot,
@@ -49,11 +50,15 @@ describe("live installation screen config", () => {
 
 describe("live installation visualizations", () => {
   it("shows cursor trails only when the viz query parameter is absent", () => {
-    expect(resolveLiveInstallationVisualizations(undefined)).toEqual(["trails"]);
+    expect(resolveLiveInstallationVisualizations(undefined)).toEqual([
+      "trails",
+    ]);
   });
 
   it("allows each additional visualization to be selected explicitly", () => {
-    expect(resolveLiveInstallationVisualizations(["clicks"])).toEqual(["clicks"]);
+    expect(resolveLiveInstallationVisualizations(["clicks"])).toEqual([
+      "clicks",
+    ]);
     expect(resolveLiveInstallationVisualizations(["scrolling"])).toEqual([
       "scrolling",
     ]);
@@ -109,14 +114,21 @@ describe("participant ownership", () => {
 });
 
 describe("live chapter selection", () => {
+  it("stays at the live edge after live playback begins", () => {
+    expect(installationChapterAction("archive", false)).toBe("advance-archive");
+    expect(installationChapterAction("archive", true)).toBe("show-live");
+    expect(installationChapterAction("live", false)).toBe("wait-live");
+    expect(installationChapterAction("live", true)).toBe("show-live");
+  });
+
   it("excludes events already represented by the archive or an earlier chapter", () => {
     const events = [
       event("newer", "cursor", 2, "a"),
       event("used", "cursor", 1, "a"),
     ];
-    expect(unconsumedLiveEvents(events, new Set(["used"])).map((item) => item.id)).toEqual([
-      "newer",
-    ]);
+    expect(
+      unconsumedLiveEvents(events, new Set(["used"])).map((item) => item.id),
+    ).toEqual(["newer"]);
   });
 
   it("accepts a 30-second cursor chapter with enough movement from two people", () => {

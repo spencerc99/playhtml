@@ -1,5 +1,5 @@
 // ABOUTME: Renders the dedicated WWO live installation field or deterministic follower view.
-// ABOUTME: Inserts dense live chapters between progressively older archive chapters.
+// ABOUTME: Uses live-forward chapters for movement and rotating reservoirs for typing and scrolling.
 
 import "../../shared/portrait-styles.scss";
 import React, { useEffect, useMemo, useState } from "react";
@@ -56,7 +56,8 @@ const LiveInstallation = () => {
     document.body.dataset.installationView = screen.view;
     document.body.dataset.installationSlot = String(screen.slot);
     document.body.dataset.installationSource = hybrid.source;
-  }, [hybrid.source, screen.slot, screen.view]);
+    document.body.dataset.installationPlaybackKey = hybrid.playbackKey;
+  }, [hybrid.playbackKey, hybrid.source, screen.slot, screen.view]);
 
   return (
     <>

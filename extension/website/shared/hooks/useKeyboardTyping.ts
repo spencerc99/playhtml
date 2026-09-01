@@ -14,6 +14,7 @@ import {
   eventMatchesAnyFilter,
   type FilterChip,
 } from "../utils/eventUtils";
+import { groupTypingEvents } from "../utils/typingEventGroups";
 
 // Settings interface for keyboard typing
 export interface KeyboardTypingSettings {
@@ -55,9 +56,6 @@ export interface UseKeyboardTypingResult {
    * shared animation loop. */
   cycleDuration: number;
 }
-
-// Merge threshold for combining fragmented typing sequences
-const MERGE_THRESHOLD_MS = 35000;
 
 /**
  * Calculate typing duration from a sequence of actions
@@ -101,124 +99,63 @@ export function useKeyboardTyping(
       return [];
     }
 
-    // Apply URL-scope chips and pid filter.
-    let filteredKeyboardEvents = keyboardEvents;
+    // Build the same stable typing-box groups used by installation reservoirs,
+    // then apply URL-scope chips and pid filtering to those groups.
+    let typingEventGroups = groupTypingEvents(keyboardEvents);
     const hasFilters = (settings.filters?.length ?? 0) > 0;
     if (hasFilters || settings.pidFilter) {
-      filteredKeyboardEvents = keyboardEvents.filter((e) => {
-        if (settings.pidFilter && e.meta?.pid !== settings.pidFilter) return false;
-        return eventMatchesAnyFilter(e.meta.url || "", settings.filters);
+      typingEventGroups = typingEventGroups.filter((group) => {
+        const event = group.events[0];
+        if (settings.pidFilter && event.meta?.pid !== settings.pidFilter) {
+          return false;
+        }
+        return eventMatchesAnyFilter(event.meta.url || "", settings.filters);
       });
     }
 
-    // Filter out test data (e.g., "elizabeth" test entries)
-    filteredKeyboardEvents = filteredKeyboardEvents.filter((e) => {
-      const data = e.data as any;
-      return (
-        !data.sequence ||
-        data.sequence.reduce((acc: string, s: any) => acc + (s.text || ""), "") !==
-          "elizabeth"
-      );
-    });
-
-    // Group by participant + session + URL + element selector to merge fragmented typing events
-    const eventsByInputField = new Map<string, CollectionEvent[]>();
-
-    filteredKeyboardEvents.forEach((event) => {
-      const data = event.data as any as KeyboardEventData;
-
-      // Skip events without sequence or ID
-      if (!data.sequence || data.sequence.length === 0 || !event.id) {
-        return;
-      }
-
-      const pid = event.meta.pid;
-      const sid = event.meta.sid;
-      const url = event.meta.url || "";
-      const selector = data.t || "unknown";
-      const key = `${pid}|${sid}|${url}|${selector}`;
-
-      if (!eventsByInputField.has(key)) {
-        eventsByInputField.set(key, []);
-      }
-      eventsByInputField.get(key)!.push(event);
-    });
-
     const animations: TypingAnimation[] = [];
 
-    // Merge fragmented sequences that belong to the same input field
-    eventsByInputField.forEach((groupEvents) => {
-      groupEvents.sort((a, b) => a.ts - b.ts);
+    typingEventGroups.forEach(({ events: group }) => {
+      const firstEvent = group[0];
+      const firstData = firstEvent.data as any as KeyboardEventData;
 
-      // Merge sequences that are close in time
-      const mergedGroups: CollectionEvent[][] = [];
-      let currentGroup: CollectionEvent[] = [];
+      // Merge all sequences from the group
+      const mergedSequence: TypingAction[] = [];
+      let timeOffset = 0;
 
-      groupEvents.forEach((event) => {
-        if (currentGroup.length === 0) {
-          currentGroup.push(event);
-        } else {
-          const lastEvent = currentGroup[currentGroup.length - 1];
-          const timeDiff = event.ts - lastEvent.ts;
+      group.forEach((event, index) => {
+        const data = event.data as any as KeyboardEventData;
+        if (!data.sequence) return;
 
-          if (timeDiff <= MERGE_THRESHOLD_MS) {
-            // Close enough to merge
-            currentGroup.push(event);
-          } else {
-            // Start new group
-            mergedGroups.push(currentGroup);
-            currentGroup = [event];
-          }
+        // Adjust timestamps for continuity
+        const sequenceTimeOffset = index === 0 ? 0 : timeOffset;
+
+        data.sequence.forEach((action) => {
+          mergedSequence.push({
+            ...action,
+            timestamp: action.timestamp + sequenceTimeOffset,
+          });
+        });
+
+        // Update offset for next sequence
+        if (data.sequence.length > 0) {
+          const lastTimestamp =
+            data.sequence[data.sequence.length - 1].timestamp;
+          timeOffset += lastTimestamp + 500; // Add 500ms gap between merged sequences
         }
       });
 
-      if (currentGroup.length > 0) {
-        mergedGroups.push(currentGroup);
-      }
+      // Use first event's position and metadata
+      const x = firstData.x * viewportSize.width;
+      const y = firstData.y * viewportSize.height;
 
-      // Create one animation per merged group
-      mergedGroups.forEach((group) => {
-        const firstEvent = group[0];
-        const firstData = firstEvent.data as any as KeyboardEventData;
-
-        // Merge all sequences from the group
-        const mergedSequence: TypingAction[] = [];
-        let timeOffset = 0;
-
-        group.forEach((event, index) => {
-          const data = event.data as any as KeyboardEventData;
-          if (!data.sequence) return;
-
-          // Adjust timestamps for continuity
-          const sequenceTimeOffset = index === 0 ? 0 : timeOffset;
-
-          data.sequence.forEach((action) => {
-            mergedSequence.push({
-              ...action,
-              timestamp: action.timestamp + sequenceTimeOffset,
-            });
-          });
-
-          // Update offset for next sequence
-          if (data.sequence.length > 0) {
-            const lastTimestamp =
-              data.sequence[data.sequence.length - 1].timestamp;
-            timeOffset += lastTimestamp + 500; // Add 500ms gap between merged sequences
-          }
-        });
-
-        // Use first event's position and metadata
-        const x = firstData.x * viewportSize.width;
-        const y = firstData.y * viewportSize.height;
-
-        animations.push({
-          event: firstEvent,
-          x,
-          y,
-          color: getColorForEvent(firstEvent),
-          startTime: firstEvent.ts,
-          sequence: mergedSequence,
-        });
+      animations.push({
+        event: firstEvent,
+        x,
+        y,
+        color: getColorForEvent(firstEvent),
+        startTime: firstEvent.ts,
+        sequence: mergedSequence,
       });
     });
 

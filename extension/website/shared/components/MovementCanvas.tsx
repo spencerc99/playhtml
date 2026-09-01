@@ -1661,6 +1661,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             typingStates={typingStates}
             timeRange={timeRange}
             settings={typingSettings}
+            repeatAnimations={onPlaybackCycleComplete === undefined}
           />
         )}
 
