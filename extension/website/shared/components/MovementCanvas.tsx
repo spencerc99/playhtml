@@ -1149,7 +1149,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     showTyping,
   ]);
 
-  usePlaybackCycle({
+  const getPlaybackElapsedMs = usePlaybackCycle({
     enabled:
       !live &&
       !scrollingControlsPlayback &&
@@ -1370,6 +1370,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           frozen={paused}
           playbackKey={playbackKey}
           playbackSource={playbackSource}
+          getPlaybackElapsedMs={getPlaybackElapsedMs}
           leftOffset={controlsVisible ? 340 : 16}
           loading={loading}
           error={error}

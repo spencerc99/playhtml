@@ -17,6 +17,7 @@ interface StatsConsoleProps {
   frozen?: boolean;
   playbackKey?: string;
   playbackSource?: "archive" | "live";
+  getPlaybackElapsedMs?: () => number;
   /** Pixels to leave on the left so the console doesn't overlap the dev
    * panel (which is `position: fixed; left: 0` at 320px wide). */
   leftOffset: number;
@@ -191,6 +192,7 @@ const PlaybackTimeValue: React.FC<{
   animationSpeed: number;
   frozen: boolean;
   playbackKey: string;
+  getPlaybackElapsedMs?: () => number;
 }> = ({
   minTs,
   maxTs,
@@ -198,10 +200,12 @@ const PlaybackTimeValue: React.FC<{
   animationSpeed,
   frozen,
   playbackKey,
+  getPlaybackElapsedMs,
 }) => {
   const textRef = useRef<HTMLSpanElement>(null);
   const speedRef = useRef(animationSpeed);
   const frozenRef = useRef(frozen);
+  const elapsedGetterRef = useRef(getPlaybackElapsedMs);
 
   useEffect(() => {
     speedRef.current = animationSpeed;
@@ -209,6 +213,9 @@ const PlaybackTimeValue: React.FC<{
   useEffect(() => {
     frozenRef.current = frozen;
   }, [frozen]);
+  useEffect(() => {
+    elapsedGetterRef.current = getPlaybackElapsedMs;
+  }, [getPlaybackElapsedMs]);
 
   useEffect(() => {
     if (!minTs || !maxTs || cycleDurationMs <= 0) return;
@@ -240,7 +247,12 @@ const PlaybackTimeValue: React.FC<{
       if (previousTimestamp === null) previousTimestamp = timestamp;
       const frameDelta = Math.min(250, timestamp - previousTimestamp);
       previousTimestamp = timestamp;
-      if (!frozenRef.current) elapsedMs += frameDelta * speedRef.current;
+      const playbackElapsedMs = elapsedGetterRef.current?.();
+      if (playbackElapsedMs !== undefined) {
+        elapsedMs = playbackElapsedMs;
+      } else if (!frozenRef.current) {
+        elapsedMs += frameDelta * speedRef.current;
+      }
 
       if (timestamp - lastRenderedAt >= 200) {
         const progress = (elapsedMs % cycleDurationMs) / cycleDurationMs;
@@ -265,9 +277,16 @@ const PlaybackTimeValue: React.FC<{
     };
   }, [cycleDurationMs, maxTs, minTs, playbackKey]);
 
+  const initialElapsedMs = getPlaybackElapsedMs?.() ?? 0;
+  const initialProgress =
+    cycleDurationMs > 0
+      ? (initialElapsedMs % cycleDurationMs) / cycleDurationMs
+      : 0;
+  const initialTimestamp = minTs + (maxTs - minTs) * initialProgress;
+
   return (
     <span ref={textRef} data-testid="playback-current-time">
-      {formatPlaybackTimestamp(minTs, false)}
+      {formatPlaybackTimestamp(initialTimestamp, false)}
     </span>
   );
 };
@@ -297,6 +316,7 @@ export const StatsConsole: React.FC<StatsConsoleProps> = ({
   frozen = false,
   playbackKey = "fixed",
   playbackSource,
+  getPlaybackElapsedMs,
   leftOffset,
   loading,
   error,
@@ -436,6 +456,7 @@ export const StatsConsole: React.FC<StatsConsoleProps> = ({
                   animationSpeed={animationSpeed}
                   frozen={frozen}
                   playbackKey={playbackKey}
+                  getPlaybackElapsedMs={getPlaybackElapsedMs}
                 />
               }
               titleAttr={`Current ${playbackSource} chapter time`}
