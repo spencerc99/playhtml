@@ -369,6 +369,8 @@ interface MovementCanvasProps {
   getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   /** Restarts finite archive playback when the parent swaps event batches. */
   playbackKey?: string;
+  /** Labels the developer-console playhead for hybrid archive/live playback. */
+  playbackSource?: "archive" | "live";
   /** Identifies playback batches that belong to the same archive query. */
   playbackContextKey?: string;
   /** Called when finite archive playback reaches the end of its batch. */
@@ -397,6 +399,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   connected = false,
   getInstallationElapsedMs,
   playbackKey = "fixed",
+  playbackSource,
   playbackContextKey = playbackKey,
   onPlaybackCycleComplete,
 }) => {
@@ -1362,8 +1365,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           events={events}
           filteredEventCount={filteredEvents.length}
           trailCount={trails.length}
-          cycleDurationMs={timeRange.duration}
+          cycleDurationMs={playbackCycleDuration}
           animationSpeed={settings.animationSpeed}
+          frozen={paused}
+          playbackKey={playbackKey}
+          playbackSource={playbackSource}
           leftOffset={controlsVisible ? 340 : 16}
           loading={loading}
           error={error}
