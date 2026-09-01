@@ -255,7 +255,9 @@ const PlaybackTimeValue: React.FC<{
       }
 
       if (timestamp - lastRenderedAt >= 200) {
-        const progress = (elapsedMs % cycleDurationMs) / cycleDurationMs;
+        const progress = elapsedGetterRef.current
+          ? Math.min(elapsedMs / cycleDurationMs, 1)
+          : (elapsedMs % cycleDurationMs) / cycleDurationMs;
         const playbackTimestamp = minTs + (maxTs - minTs) * progress;
         if (textRef.current) {
           textRef.current.textContent = formatPlaybackTimestamp(
@@ -280,7 +282,9 @@ const PlaybackTimeValue: React.FC<{
   const initialElapsedMs = getPlaybackElapsedMs?.() ?? 0;
   const initialProgress =
     cycleDurationMs > 0
-      ? (initialElapsedMs % cycleDurationMs) / cycleDurationMs
+      ? getPlaybackElapsedMs
+        ? Math.min(initialElapsedMs / cycleDurationMs, 1)
+        : (initialElapsedMs % cycleDurationMs) / cycleDurationMs
       : 0;
   const initialTimestamp = minTs + (maxTs - minTs) * initialProgress;
 

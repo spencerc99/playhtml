@@ -31,7 +31,10 @@ describe("StatsConsole playback time", () => {
       IS_REACT_ACT_ENVIRONMENT?: boolean;
     };
     testGlobal.IS_REACT_ACT_ENVIRONMENT = true;
-    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    );
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     const start = 1_700_000_000_000;
     const end = start + 10 * 60_000;
@@ -62,6 +65,57 @@ describe("StatsConsole playback time", () => {
       undefined,
       { hour: "numeric", minute: "2-digit", second: "2-digit" },
     );
+    expect(
+      container.querySelector('[data-testid="playback-current-time"]')
+        ?.textContent,
+    ).toBe(expected);
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+    delete testGlobal.IS_REACT_ACT_ENVIRONMENT;
+  });
+
+  it("holds at the end of finite playback instead of wrapping backward", async () => {
+    const testGlobal = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+    };
+    testGlobal.IS_REACT_ACT_ENVIRONMENT = true;
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const start = 1_700_000_000_000;
+    const end = start + 10 * 60_000;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(StatsConsole, {
+          events: [
+            { type: "keyboard", ts: start },
+            { type: "keyboard", ts: end },
+          ] as CollectionEvent[],
+          trailCount: 0,
+          cycleDurationMs: 10_000,
+          animationSpeed: 1,
+          playbackSource: "live",
+          getPlaybackElapsedMs: () => 10_000,
+          leftOffset: 0,
+          loading: false,
+          error: null,
+        }),
+      );
+    });
+
+    const expected = new Date(end).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    });
     expect(
       container.querySelector('[data-testid="playback-current-time"]')
         ?.textContent,
