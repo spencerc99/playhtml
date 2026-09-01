@@ -14,7 +14,7 @@ export interface TypingEventGroup {
 }
 
 function typingEventText(event: CollectionEvent): string {
-  const data = event.data as KeyboardEventData;
+  const data = event.data as unknown as KeyboardEventData;
   return (data.sequence ?? []).reduce(
     (text, action) => text + (action.text ?? ""),
     "",
@@ -23,13 +23,13 @@ function typingEventText(event: CollectionEvent): string {
 
 function isVisibleTypingEvent(event: CollectionEvent): boolean {
   if (event.type !== "keyboard" || !event.id) return false;
-  const data = event.data as KeyboardEventData;
+  const data = event.data as unknown as KeyboardEventData;
   if (!data.sequence || data.sequence.length === 0) return false;
   return typingEventText(event) !== "elizabeth";
 }
 
 function typingInputId(event: CollectionEvent): string {
-  const data = event.data as KeyboardEventData;
+  const data = event.data as unknown as KeyboardEventData;
   return JSON.stringify([
     event.meta.pid,
     event.meta.sid,
