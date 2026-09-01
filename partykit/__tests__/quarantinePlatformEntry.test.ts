@@ -195,6 +195,34 @@ describe("alarm entry point", () => {
     expect(storage.alarm).toBe(loadRetryAfter);
   });
 
+  test("a due save retry is kept (not dropped) when the room is mid-maintenance instead of ready", async () => {
+    const { server, storage } = createServer();
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+
+    // Simulate a concurrent admin operation (restoreFromSnapshot/hard-reset)
+    // holding the write lock when the retry's alarm fires.
+    (server as any).documentMaintenanceInProgress = true;
+
+    await server.alarm();
+
+    // The retry marker must survive so the next alarm tries again — clearing
+    // it here would silently drop the save forever if no further edit occurs.
+    expect(storage.values.has("documentSaveRetry")).toBe(true);
+    expect((storage.values.get("documentSaveRetry") as { retryAt: number }).retryAt).toBeGreaterThan(
+      Date.now()
+    );
+    expect(storage.alarm).not.toBeNull();
+  });
+
+  test("a due save retry is cleared and the document persisted once the room is ready", async () => {
+    const { server, storage } = createServer();
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+
+    await server.alarm();
+
+    expect(storage.values.has("documentSaveRetry")).toBe(false);
+  });
+
   test("a KV-quarantined room does not hydrate when its alarm fires", async () => {
     const { server } = createServer();
     kvStore.set("quarantine:example-room", "operator stop");
