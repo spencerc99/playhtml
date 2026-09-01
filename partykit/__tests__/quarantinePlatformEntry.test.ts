@@ -123,7 +123,11 @@ class FakeStorage {
  */
 function createServer(
   name = "example-room",
-  connections: Array<{ readyState: number; send(message: unknown): void }> = []
+  connections: Array<{
+    readyState: number;
+    send(message: unknown): void;
+    close?(code: number, reason: string): void;
+  }> = []
 ) {
   const storage = new FakeStorage();
   const ctx = {
@@ -167,12 +171,28 @@ describe("alarm entry point", () => {
   test("a deferred room does not read the document when its alarm fires", async () => {
     const { server, storage } = createServer();
     storage.values.set("quarantineLoadAttempts", 2);
-    storage.values.set("loadRetryAfter", Date.now() + 10 * 60_000);
+    const retryAfter = Date.now() + 10 * 60_000;
+    storage.values.set("loadRetryAfter", retryAfter);
 
     await server.alarm();
 
     expect(documentReadCount).toBe(0);
     expect(server.circuitBreaker.isLoadDeferred()).toBe(true);
+    expect(storage.alarm).toBe(retryAfter);
+  });
+
+  test("a deferred room consumes a stale save retry when its alarm fires", async () => {
+    const { server, storage } = createServer();
+    const loadRetryAfter = Date.now() + 10 * 60_000;
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", loadRetryAfter);
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+
+    await server.alarm();
+
+    expect(documentReadCount).toBe(0);
+    expect(storage.values.has("documentSaveRetry")).toBe(false);
+    expect(storage.alarm).toBe(loadRetryAfter);
   });
 
   test("a KV-quarantined room does not hydrate when its alarm fires", async () => {
@@ -207,6 +227,127 @@ describe("alarm entry point", () => {
 
     expect(documentReadCount).toBe(1);
     expect(server.circuitBreaker.isLoadDeferred()).toBe(false);
+  });
+
+  test("a recovery alarm hydrates a warm transient room without new traffic", async () => {
+    const closeCalls: Array<{ code: number; reason: string }> = [];
+    const { server, storage } = createServer("example-room", [
+      {
+        readyState: 1,
+        send() {},
+        close(code: number, reason: string) {
+          closeCalls.push({ code, reason });
+        },
+      },
+    ]);
+
+    await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+    documentReadCount = 0;
+    (server as any).persistenceMode = {
+      kind: "transient",
+      reason: "database outage",
+      failedAt: Date.now() - 60_000,
+    };
+    (server as any).documentLoadCompleted = false;
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("quarantineLoadAttempts", 1);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+    server.circuitBreaker.setLoadDeferredUntil(Date.now() - 1);
+
+    await server.alarm();
+
+    expect(documentReadCount).toBe(1);
+    expect(server.isPersistenceAvailable()).toBe(true);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+    expect(closeCalls).toEqual([
+      { code: 4000, reason: "Room Persistence Restored" },
+    ]);
+  });
+
+  test("clearing quarantine re-arms recovery without new traffic", async () => {
+    const { server, storage } = createServer();
+    kvStore.set("quarantine:example-room", "operator stop");
+
+    await server.alarm();
+    expect(server.circuitBreaker.isQuarantined()).toBe(true);
+    expect(storage.alarm).toBeNull();
+
+    await server.circuitBreaker.clearQuarantine();
+
+    expect(storage.alarm).toBeNumber();
+    expect(storage.alarm!).toBeLessThanOrEqual(Date.now());
+    expect(server.isPersistenceAvailable()).toBe(false);
+    expect(server.circuitBreaker.isQuarantined()).toBe(false);
+    expect(storage.values.get("loadRetryAfter")).toBeLessThanOrEqual(
+      Date.now()
+    );
+
+    documentReadCount = 0;
+    await server.onAlarm();
+
+    expect(documentReadCount).toBe(1);
+    expect(server.isPersistenceAvailable()).toBe(true);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+  });
+});
+
+describe("persistence recovery admission", () => {
+  test("a restarted isolate runs due persistence recovery through load backoff", async () => {
+    const { server, storage } = createServer();
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("quarantineLoadAttempts", 2);
+    storage.values.set("loadRetryAfter", Date.now() - 1);
+
+    await server.alarm();
+
+    expect(documentReadCount).toBe(1);
+    expect(server.isPersistenceAvailable()).toBe(true);
+    expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
+  });
+
+  test("a restarted isolate honors the durable recovery deadline", async () => {
+    const { server, storage } = createServer();
+    const retryAfter = Date.now() + 10 * 60_000;
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("quarantineLoadAttempts", 1);
+    storage.values.set("loadRetryAfter", retryAfter);
+    storage.alarm = retryAfter;
+
+    await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+
+    expect(documentReadCount).toBe(0);
+    expect((server as any).documentLoadCompleted).toBe(false);
+    expect(storage.alarm).toBe(retryAfter);
+  });
+
+  test("a restarted provider outage honors its deadline without quarantine evidence", async () => {
+    const { server, storage } = createServer();
+    const retryAfter = Date.now() + 10 * 60_000;
+    storage.values.set("persistenceRecoveryPending", true);
+    storage.values.set("loadRetryAfter", retryAfter);
+    storage.alarm = retryAfter;
+
+    await server.fetch(
+      new Request(
+        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        { method: "GET" }
+      )
+    );
+
+    expect(documentReadCount).toBe(0);
+    expect((server as any).documentLoadCompleted).toBe(false);
+    expect(server.circuitBreaker.isQuarantined()).toBe(false);
+    expect(storage.alarm).toBe(retryAfter);
   });
 });
 

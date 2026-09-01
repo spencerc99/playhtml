@@ -7,6 +7,8 @@ import { DownloadGate } from "../DownloadGate";
 
 const EDGE_DOWNLOAD_URL =
   "https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl";
+const SAFARI_DOWNLOAD_URL =
+  "https://apps.apple.com/us/app/we-were-online/id6798847358?mt=12";
 
 vi.mock("../DownloadGate.module.scss", () => ({
   default: {
@@ -35,9 +37,11 @@ describe("DownloadGate", () => {
     expect(html).toContain('>Chrome</a>');
     expect(html).toContain('>Firefox</a>');
     expect(html).toContain('>Edge</a>');
+    expect(html).toContain('>Safari</a>');
     expect(html).not.toContain('install for Chrome');
     expect(html).not.toContain('install for Firefox');
     expect(html).not.toContain('install for Edge');
     expect(html).toContain(`href="${EDGE_DOWNLOAD_URL}"`);
+    expect(html).toContain(`href="${SAFARI_DOWNLOAD_URL}"`);
   });
 });

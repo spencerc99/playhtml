@@ -1,6 +1,7 @@
 // ABOUTME: Styles the extension's bird's-eye Internet Commute carriage.
 // ABOUTME: Translates the authored prototype and its ink-wash moving landscape.
 
+@use "sass:color";
 @use "../../styles/variables" as *;
 
 $car-shell: #e7e0d4;
@@ -113,18 +114,18 @@ button {
 
 .commute-install-cta {
   position: fixed;
-  right: 14px;
-  bottom: 14px;
+  bottom: 20px;
+  left: 50%;
   z-index: 30;
-  min-width: 198px;
-  min-height: 64px;
-  padding: 9px 11px 8px 8px;
+  min-width: 358px;
+  min-height: 100px;
+  padding: 16px 26px 15px 16px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
   overflow: hidden;
   border: 1px dashed rgba($text, 0.32);
-  border-radius: 10px 6px 6px 10px;
+  border-radius: 12px 8px 8px 12px;
   background:
     repeating-linear-gradient(
       90deg,
@@ -133,9 +134,10 @@ button {
     ),
     rgba($surface, 0.96);
   box-shadow:
-    inset 0 3px $accent-teal,
-    0 2px 8px rgba($text, 0.14);
+    inset 0 4px $accent-teal,
+    0 3px 14px rgba($text, 0.16);
   text-decoration: none;
+  transform: translateX(-50%);
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
@@ -145,39 +147,39 @@ button {
   &:focus-visible {
     border-color: rgba($accent-teal, 0.72);
     box-shadow:
-      inset 0 3px $accent-teal,
+      inset 0 4px $accent-teal,
       0 3px 12px rgba($text, 0.18);
     outline: none;
-    transform: translateY(-1px);
+    transform: translate(-50%, -1px);
   }
 
   &::before,
   &::after {
     content: "";
     position: absolute;
-    left: 61px;
-    width: 9px;
-    height: 9px;
+    left: 96px;
+    width: 11px;
+    height: 11px;
     border: 1px dashed rgba($text, 0.28);
     border-radius: 50%;
     background: $bg;
   }
 
   &::before {
-    top: -5px;
+    top: -6px;
   }
 
   &::after {
-    bottom: -5px;
+    bottom: -6px;
   }
 }
 
 .commute-install-cta__icon {
-  width: 44px;
-  height: 44px;
+  width: 66px;
+  height: 66px;
   flex: 0 0 auto;
   border: 1px solid rgba($text, 0.18);
-  border-radius: 6px;
+  border-radius: 8px;
   background-color: $bg;
   background-image: url("../../../public/icon/128.png");
   background-position: center;
@@ -188,23 +190,23 @@ button {
 .commute-install-cta__copy {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   border-left: 1px dashed rgba($text, 0.25);
-  padding-left: 5px;
+  padding-left: 14px;
 
   strong {
-    font-size: 12px;
+    font-size: 21px;
   }
 
   span {
     color: $text-muted;
     font-family: $font-mono;
-    font-size: 8px;
+    font-size: 12px;
   }
 
   .commute-install-cta__label {
     color: $accent-rust;
-    font-size: 7px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -230,6 +232,227 @@ button {
     letter-spacing: 0.01em;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+.slow-mode-progress {
+  width: min(100%, 1100px);
+  margin: 0 auto 8px;
+  padding: 10px 16px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 8px;
+  background: #f5f0e8;
+  box-shadow: 0 1px 4px rgba(90, 78, 65, 0.08);
+
+  &__map {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+
+    > span:not(.slow-mode-progress__origin) {
+      width: 13px;
+      height: 13px;
+      flex: 0 0 13px;
+      box-sizing: border-box;
+      border: 2px solid #b5aea5;
+      border-radius: 50%;
+      background: #f5f0e8;
+
+      &.is-complete {
+        border-color: #4a9a8a;
+        background: #4a9a8a;
+      }
+
+      &.is-destination {
+        border-radius: 3px;
+      }
+    }
+
+    > i {
+      min-width: 12px;
+      flex: 1;
+      border-top: 2px dashed #b5aea5;
+
+      &.is-complete {
+        border-top-style: solid;
+        border-color: #4a9a8a;
+      }
+    }
+  }
+
+  &__origin {
+    color: #8a8279;
+    font-family: var(--wwo-font-mono);
+    font-size: 9px;
+  }
+
+  > strong {
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  &__pill {
+    display: none;
+  }
+}
+
+.slow-mode-sharing,
+.commute-route-notice {
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin: 0 auto 8px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #5f574a;
+  background: rgba(245, 240, 232, 0.92);
+  font-family: var(--wwo-font-mono);
+  font-size: 10px;
+  text-align: center;
+}
+
+.commute-route-notice {
+  color: #fdfaf4;
+  background: #4a9a8a;
+}
+
+.commute-board-status {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  text-align: center;
+
+  strong {
+    font-family: var(--wwo-font-mono);
+    font-size: 15px;
+  }
+
+  button {
+    padding: 8px 12px;
+    border: 1px solid #5f574a;
+    border-radius: 999px;
+    color: #3d3833;
+    background: #f5f0e8;
+    cursor: pointer;
+  }
+}
+
+.slow-mode-teleport {
+  display: block;
+  margin: -4px auto 10px;
+  padding: 3px 7px;
+  border: 0;
+  background: transparent;
+  color: #8a8279;
+  font-family: var(--wwo-font-mono);
+  font-size: 10px;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: #3d3833;
+  }
+}
+
+.slow-mode-portal {
+  position: absolute;
+  z-index: 12;
+  top: 132px;
+  left: 516px;
+  width: 68px;
+  height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: #6a6154;
+  cursor: pointer;
+  user-select: none;
+
+  > span {
+    width: 34px;
+    height: 52px;
+    border: 2px solid #4a9a8a;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, #f5f0e8 0 42%, #73b3a6 46% 52%, transparent 56%);
+    box-shadow: 0 0 8px rgba(74, 154, 138, 0.35);
+    transition: transform 2s linear, box-shadow 2s linear;
+  }
+
+  small {
+    font-family: var(--wwo-font-mono);
+    font-size: 8px;
+    white-space: nowrap;
+  }
+
+  &--holding > span {
+    transform: scale(1.35);
+    box-shadow: 0 0 24px rgba(74, 154, 138, 0.85);
+  }
+}
+
+.slow-mode-summary {
+  width: min(100%, 620px);
+  margin: 24px auto;
+  padding: 28px;
+  box-sizing: border-box;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 12px;
+  background: #f5f0e8;
+
+  > span {
+    color: #8a8279;
+    font-family: var(--wwo-font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    margin: 5px 0 16px;
+    font-size: 22px;
+  }
+
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid rgba(90, 78, 65, 0.15);
+
+    > span,
+    small {
+      color: #8a8279;
+      font-family: var(--wwo-font-mono);
+      font-size: 9px;
+    }
+  }
+
+  button {
+    width: 100%;
+    margin-top: 18px;
+    padding: 10px 14px;
+    border: 1px solid #4a9a8a;
+    border-radius: 7px;
+    background: #4a9a8a;
+    color: #faf7f2;
+    font-family: var(--wwo-font-mono);
+    cursor: pointer;
   }
 }
 
@@ -333,7 +556,7 @@ button {
 .commute-mobile-wordmark,
 .commute-mobile-fullscreen,
 .commute-mobile-joystick,
-.commute-mobile-action {
+.commute-mobile-transit-pass {
   display: none;
 }
 
@@ -391,6 +614,7 @@ button {
   display: flex;
   animation: landscape-scroll 20s linear infinite;
   will-change: transform;
+  pointer-events: none;
 
   svg {
     width: 2200px;
@@ -586,6 +810,181 @@ button {
   );
 }
 
+.station-install-poster {
+  width: 56px;
+  height: 42px;
+  position: absolute;
+  top: 8px;
+  left: 216px;
+  z-index: 1;
+  padding: 0;
+  overflow: hidden;
+  color: $text;
+  border: 1.5px solid rgba($text, 0.35);
+  background: $bg;
+  box-shadow: 0 1px 4px rgba(90, 78, 65, 0.18);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: $accent-teal;
+    outline: none;
+  }
+}
+
+.station-install-poster__stripe {
+  height: 6px;
+  display: block;
+  background: repeating-linear-gradient(
+    90deg,
+    $accent-gold 0 10px,
+    #c9a94a 10px 20px
+  );
+}
+
+.station-install-poster__copy {
+  padding: 3px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+
+  span {
+    color: $accent-rust;
+    font-family: $font-mono;
+    font-size: 4px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  strong {
+    font-family: $font-heading;
+    font-size: 8px;
+    font-style: italic;
+    font-weight: 400;
+    line-height: 1.1;
+  }
+
+  i {
+    width: 22px;
+    height: 5px;
+    border-radius: 1px;
+    background: $text;
+  }
+}
+
+.commute-poster-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba($text, 0.36);
+}
+
+.commute-poster-dialog {
+  width: min(300px, calc(100vw - 48px));
+  position: relative;
+  padding: 27px 20px 18px;
+  color: $text;
+  border: 2px solid rgba($text, 0.35);
+  border-radius: 4px;
+  background: $bg;
+  box-shadow: 0 5px 18px rgba($text, 0.18);
+  transform: rotate(-0.8deg);
+
+  h2 {
+    margin: 7px 0 8px;
+    font-family: $font-heading;
+    font-size: 27px;
+    font-style: italic;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  p {
+    margin: 0;
+    color: $text-muted;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  > a {
+    margin-top: 12px;
+    padding: 8px 16px;
+    display: inline-block;
+    color: $bg;
+    border-radius: 4px;
+    background: $text;
+    font-size: 13px;
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      background: $accent-teal;
+      outline: none;
+    }
+  }
+}
+
+.commute-poster-dialog__stripe {
+  height: 9px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    $accent-gold 0 20px,
+    #c9a94a 20px 40px
+  );
+}
+
+.commute-poster-dialog__label {
+  color: $accent-rust;
+  font-family: $font-mono;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.commute-poster-dialog__close {
+  width: 26px;
+  height: 26px;
+  position: absolute;
+  top: 15px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  color: $text-muted;
+  border: 1px solid rgba($text, 0.2);
+  border-radius: 50%;
+  background: rgba($bg, 0.9);
+  cursor: pointer;
+}
+
+.commute-poster-dialog__tape {
+  width: 32px;
+  height: 11px;
+  position: absolute;
+  top: -8px;
+  background: rgba($accent-gold, 0.55);
+
+  &--left {
+    left: 26px;
+    transform: rotate(-4deg);
+  }
+
+  &--right {
+    right: 26px;
+    transform: rotate(3deg);
+  }
+}
+
 .landscape-window--lower {
   .station-platform {
     background-image: repeating-linear-gradient(
@@ -597,7 +996,8 @@ button {
 
   .station-platform__stripe,
   .station-platform__pillar,
-  .station-sign {
+  .station-sign,
+  .station-install-poster {
     display: none;
   }
 
@@ -662,6 +1062,158 @@ button {
     color: $text-muted;
     font-size: 9px;
     letter-spacing: 0.03em;
+  }
+}
+
+.slow-mode-platform {
+  width: 1100px;
+  height: 340px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba($text, 0.25);
+  border-radius: 10px;
+  background-color: #f1ece0;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(90, 78, 65, 0.06) 0 1px,
+      transparent 1px 34px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(90, 78, 65, 0.06) 0 1px,
+      transparent 1px 46px
+    );
+}
+
+.slow-mode-platform__stripe {
+  height: 14px;
+  position: absolute;
+  top: 64px;
+  right: 0;
+  left: 0;
+  background: $accent-teal;
+  opacity: 0.85;
+}
+
+.slow-mode-platform__pillar {
+  width: 26px;
+  position: absolute;
+  top: 0;
+  bottom: 130px;
+  border: 1px solid rgba($text, 0.18);
+  background: #ded8ca;
+
+  &--left {
+    left: 180px;
+  }
+
+  &--right {
+    right: 180px;
+  }
+}
+
+.slow-mode-platform__edge {
+  height: 10px;
+  position: absolute;
+  right: 0;
+  bottom: 122px;
+  left: 0;
+  border-top: 1px solid rgba($text, 0.15);
+  background: repeating-linear-gradient(
+    90deg,
+    $accent-gold 0 26px,
+    #c9a94a 26px 52px
+  );
+}
+
+.slow-mode-platform__sign {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  z-index: 2;
+  padding: 8px 22px;
+  border: 1px solid rgba($text, 0.2);
+  border-bottom: 3px solid $accent-teal;
+  border-radius: 4px;
+  background: $bg;
+  box-shadow: 0 1px 4px rgba(90, 78, 65, 0.12);
+  font-family: $font-mono;
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  transform: translateX(-50%);
+}
+
+.slow-mode-platform__train {
+  height: 140px;
+  position: absolute;
+  right: 60px;
+  bottom: 8px;
+  left: 60px;
+  z-index: 3;
+  display: grid;
+  place-items: end center;
+  transform: translateX(-115%);
+  transition: transform 2.8s cubic-bezier(0.22, 0.75, 0.35, 1);
+
+  img {
+    width: 100%;
+    height: 130px;
+    display: block;
+    object-fit: contain;
+    filter: sepia(0.18) contrast(0.9);
+    opacity: 0.9;
+  }
+}
+
+.slow-mode-platform--arriving .slow-mode-platform__train,
+.slow-mode-platform--boarding .slow-mode-platform__train {
+  transform: translateX(0);
+}
+
+.slow-mode-platform__service {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  z-index: 1;
+  padding: 2px 12px;
+  color: $accent-gold;
+  border-radius: 4px;
+  background: $text;
+  font-family: $font-mono;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.slow-mode-platform__rider {
+  position: absolute;
+  bottom: 180px;
+  left: 29%;
+  z-index: 2;
+  transform: translateX(-50%);
+}
+
+.slow-mode-platform--boarding .slow-mode-platform__rider {
+  animation: slow-mode-cursor-board 3.4s ease-in-out forwards;
+}
+
+@keyframes slow-mode-cursor-board {
+  0%,
+  18% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+
+  72% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(34px) scale(0.88);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(52px) scale(0.72);
   }
 }
 
@@ -772,26 +1324,7 @@ button {
   }
 }
 
-.train-joiner {
-  position: absolute;
-  top: 140px;
-  left: 5px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  opacity: 0;
-  pointer-events: none;
-  animation: carriage-entry 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) both;
-
-  .cursor-rider {
-    position: relative;
-    top: auto;
-    left: auto;
-  }
-}
-
-.train-joiner__message {
+.commute-avatar__arrival-message {
   padding: 3px 6px;
   color: $text;
   border: 1px solid rgba($text, 0.25);
@@ -1431,6 +1964,10 @@ button {
     transform-origin: top center;
     animation: strap-brake-throw 1.1s cubic-bezier(0.3, 1.4, 0.5, 1) both;
   }
+
+  &--arriving {
+    animation: carriage-entry 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  }
 }
 
 @keyframes cursor-walk {
@@ -1799,19 +2336,13 @@ button {
     border-radius: 0;
   }
 
-  .train-seat,
-  .seat-underside,
-  .window-bay {
-    pointer-events: none;
-  }
-
   .commute-counts {
     width: auto;
     min-width: 280px;
     margin: 0;
     position: fixed;
-    right: calc(20px + env(safe-area-inset-right));
-    bottom: calc(24px + env(safe-area-inset-bottom));
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(10px + env(safe-area-inset-bottom));
     z-index: 30;
     padding: 6px 14px;
     display: flex;
@@ -1932,11 +2463,11 @@ button {
   }
 
   .commute-mobile-joystick {
-    width: 112px;
-    height: 112px;
+    width: 88px;
+    height: 88px;
     position: fixed;
-    bottom: calc(18px + env(safe-area-inset-bottom));
-    left: calc(20px + env(safe-area-inset-left));
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    left: calc(12px + env(safe-area-inset-left));
     z-index: 30;
     display: block;
     border: 1.5px solid rgba($text, 0.35);
@@ -1946,8 +2477,8 @@ button {
     touch-action: none;
 
     span {
-      width: 48px;
-      height: 48px;
+      width: 40px;
+      height: 40px;
       position: absolute;
       top: 50%;
       left: 50%;
@@ -1963,41 +2494,190 @@ button {
     }
   }
 
-  .commute-mobile-action {
-    min-height: 44px;
+  .commute-mobile-transit-pass {
     position: fixed;
-    bottom: calc(58px + env(safe-area-inset-bottom));
-    left: calc(148px + env(safe-area-inset-left));
-    z-index: 30;
-    padding: 9px 20px;
+    inset: 0;
+    z-index: 42;
     display: block;
-    color: $bg;
-    border: 2px solid rgba($text, 0.25);
-    border-radius: 999px;
-    background: $accent-teal;
-    box-shadow: 0 2px 10px rgba($text, 0.3);
-    font-size: 13px;
-    font-weight: 700;
-    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .commute-mobile-transit-pass__tab {
+    min-width: 196px;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    padding: 8px 16px calc(10px + env(safe-area-inset-bottom)) 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: $text;
+    border: 1px dashed rgba($text, 0.32);
+    border-bottom: 0;
+    border-radius: 10px 10px 0 0;
+    background: rgba($surface, 0.96);
+    box-shadow:
+      inset 0 3px $accent-teal,
+      0 -2px 8px rgba($text, 0.14);
+    transform: translateX(-50%);
     cursor: pointer;
+    pointer-events: auto;
 
-    &:active {
-      transform: scale(0.96);
+    svg {
+      flex: 0 0 auto;
+      stroke: $accent-rust;
+      stroke-width: 1.6;
     }
 
-    &--stand {
-      background: $accent-plum;
+    > span:last-child {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0;
     }
 
-    &--exit {
-      background: $accent-rust;
+    small {
+      color: $accent-rust;
+      font-family: $font-mono;
+      font-size: 7px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
-    // The second verb sits above the primary one rather than over it.
-    &--peek {
-      bottom: calc(110px + env(safe-area-inset-bottom));
-      background: $accent-blue;
+    strong {
+      font-size: 12px;
     }
+  }
+
+  .commute-mobile-transit-pass__perforation {
+    width: 9px;
+    height: 9px;
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    border: 1px dashed rgba($text, 0.28);
+    border-radius: 50%;
+    background: $bg;
+    transform: translateX(-50%);
+  }
+
+  .commute-mobile-transit-pass__panel {
+    width: min(340px, calc(100vw - 32px));
+    position: absolute;
+    bottom: calc(66px + env(safe-area-inset-bottom));
+    left: 50%;
+    box-sizing: border-box;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: $text;
+    border: 1px dashed rgba($text, 0.35);
+    border-radius: 10px 6px 6px 10px;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        rgba($accent-gold, 0.04) 0 1px,
+        transparent 1px 5px
+      ),
+      rgba($bg, 0.98);
+    box-shadow:
+      inset 0 3px $accent-teal,
+      0 6px 20px rgba($text, 0.2);
+    transform: translateX(-50%);
+    pointer-events: auto;
+    user-select: text;
+
+    > strong {
+      font-size: 16px;
+    }
+
+    > p {
+      margin: 0;
+      padding-right: 22px;
+      color: $text-muted;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    form {
+      display: grid;
+      gap: 5px;
+    }
+  }
+
+  .commute-mobile-transit-pass__close {
+    width: 22px;
+    height: 22px;
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    color: $text-muted;
+    border: 1px solid rgba($text, 0.2);
+    border-radius: 50%;
+    background: transparent;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .commute-mobile-transit-pass__label {
+    color: $accent-rust;
+    font-family: $font-mono;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .commute-mobile-transit-pass__form-row {
+    display: flex;
+    gap: 8px;
+
+    input,
+    button {
+      min-height: 38px;
+      box-sizing: border-box;
+      border: 1.5px solid rgba($text, 0.35);
+      border-radius: 4px;
+      font: inherit;
+    }
+
+    input {
+      min-width: 0;
+      flex: 1;
+      padding: 9px 12px;
+      color: $text;
+      background: rgba($bg, 0.85);
+      font-size: 15px;
+    }
+
+    button {
+      padding: 9px 16px;
+      color: $bg;
+      border-color: $text;
+      background: $text;
+      font-size: 15px;
+      cursor: pointer;
+    }
+  }
+
+  .commute-mobile-transit-pass__success,
+  .commute-mobile-transit-pass__error {
+    font-family: $font-mono;
+    font-size: 8px;
+    line-height: 1.5;
+  }
+
+  .commute-mobile-transit-pass__success {
+    color: $accent-teal !important;
+  }
+
+  .commute-mobile-transit-pass__error {
+    color: $accent-rust;
   }
 
   .commute-toast {
@@ -2168,24 +2848,43 @@ button {
   }
 }
 
+@media (max-width: 720px) {
+  .slow-mode-progress {
+    width: auto;
+    margin: 0 12px 8px;
+    padding: 7px 10px;
+
+    &__map,
+    > strong {
+      display: none;
+    }
+
+    &__pill {
+      display: inline-flex;
+      margin-left: auto;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #4a9a8a;
+      color: #faf7f2;
+      font-family: var(--wwo-font-mono);
+      font-size: 10px;
+    }
+  }
+}
+
 @keyframes carriage-entry {
   0% {
     opacity: 0;
-    transform: translateX(-30px);
+    transform: translate(-120px, -14px);
   }
 
   18% {
     opacity: 1;
   }
 
-  72% {
-    opacity: 1;
-    transform: translateX(76px);
-  }
-
   100% {
-    opacity: 0;
-    transform: translateX(96px);
+    opacity: 1;
+    transform: translate(-14px, -14px);
   }
 }
 

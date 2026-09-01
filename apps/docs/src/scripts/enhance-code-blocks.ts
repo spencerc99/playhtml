@@ -20,11 +20,9 @@
 //   usually what you want: a tally represents "how many people have copied
 //   THIS exact snippet".
 //
-// - Vanilla API path: we set `element.defaultData`, `element.updateElement`,
-//   and the `can-play` attribute on the wrapper, then call
-//   `playhtml.setupPlayElement` once init is done. Clicks go through the
-//   `ElementHandler.setData` on the registered handler so updates fan out
-//   over Yjs like any other shared element.
+// - Vanilla API path: we register each wrapper and its initializer once
+//   playhtml finishes its initial sync. Clicks use `getHandle` so updates fan
+//   out like any other shared element.
 //
 // - Live copy effect: on click we ALSO dispatch a `docs-code-copy` play event
 //   with the copier's cursor color + a seeded burst of particles. Every
@@ -252,7 +250,6 @@ function enhanceBlock(pre: HTMLPreElement): EnhancedBlock | null {
   const wrap = document.createElement("div");
   wrap.className = "ph-copy";
   wrap.id = elementId;
-  wrap.setAttribute("can-play", "");
   wrap.setAttribute("data-wear", "0");
   wrap.setAttribute("data-pulse", "0");
 
@@ -321,35 +318,28 @@ function enhanceBlock(pre: HTMLPreElement): EnhancedBlock | null {
     });
   });
 
-  // Attach the vanilla-API properties playhtml reads off the DOM element
-  // inside `setupPlayElement`. These have to be set BEFORE the setup call.
-  const el = wrap as HTMLElement & {
-    defaultData?: WearData;
-    updateElement?: (data: { data: WearData }) => void;
-  };
-  el.defaultData = { wear: 0 };
-  // Track the previous wear value so we can distinguish "first paint from
-  // server state" (no animation) from "someone just copied" (per-event
-  // bump). Sentinel -1 means we haven't received any data yet.
-  let lastWear = -1;
-  el.updateElement = ({ data }) => {
-    const wear = Number(data?.wear ?? 0);
-    wrap.setAttribute("data-wear", String(wear));
-    if (lastWear < 0) {
-      renderTallyInitial(tally, wear);
-    } else {
-      bumpTally(tally, wear, lastWear);
-    }
-    lastWear = wear;
-  };
-
   return { wrap, tally, btn, pre, elementId };
 }
 
 async function registerWithPlayhtml(block: EnhancedBlock): Promise<void> {
   try {
     await playhtml.ready;
-    playhtml.setupPlayElement(block.wrap, { ignoreIfAlreadySetup: true });
+    // Track the previous wear value so the first paint from shared state does
+    // not animate. Later shared increments animate the new tally marks.
+    let lastWear = -1;
+    playhtml.register<WearData>(block.wrap, {
+      defaultData: { wear: 0 },
+      updateElement: ({ data }) => {
+        const wear = Number(data?.wear ?? 0);
+        block.wrap.setAttribute("data-wear", String(wear));
+        if (lastWear < 0) {
+          renderTallyInitial(block.tally, wear);
+        } else {
+          bumpTally(block.tally, wear, lastWear);
+        }
+        lastWear = wear;
+      },
+    });
   } catch (err) {
     console.warn("[docs] Failed to register code-block wear handler", err);
   }

@@ -40,6 +40,9 @@ import {
   DEFAULT_SUPABASE_LOAD_ATTEMPTS,
   DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
+  DEFAULT_SUPABASE_RECOVERY_RETRY_DELAY_MS,
+  DEFAULT_SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS,
+  DEFAULT_DOCUMENT_SAVE_RETRY_MS,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
   ORIGIN_S2C,
@@ -90,11 +93,14 @@ import {
 import { BridgeHealth } from "./bridgeHealth";
 import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
 import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
+import { createBridgeRequest, getBridgeAuthFailure } from "./bridgeAuth";
+import { getBridgeApplyRelationship } from "./bridgeRequestPolicy";
+import { mergeSharedReferenceLeases } from "./bridgeLeasePolicy";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
   getErrorMessage,
-  retryWithTimeout,
+  retryWithinTimeout,
   type PersistenceMode,
 } from "./persistenceMode";
 import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
@@ -116,6 +122,7 @@ type PartyServerConnectionState = Record<string, unknown> & {
 type CompactedDocument = {
   base64: string;
   sourceBase64: string;
+  sourceGeneration: number;
   beforeSize: number;
   afterSize: number;
   resetEpoch: number;
@@ -143,6 +150,23 @@ type SaveDocumentOptions = {
   operation?: "shared-data" | "reset" | "quarantine-repair";
 };
 
+type DocumentSaveRetry = {
+  retryAt: number;
+};
+
+type AdminPlayDataMutation<T> =
+  | { kind: "commit"; result: T }
+  | { kind: "skip"; result: T };
+
+type AdminPlayDataMutationResult<T> = {
+  result: T;
+  committed: {
+    documentSize: number;
+    resetEpoch: number;
+    closedConnections: number;
+  } | null;
+};
+
 type UsefulCompactedDocumentOptions = {
   sourceBase64?: string;
   documentSize: number;
@@ -162,11 +186,7 @@ type AutomaticCompactionOptions<T> = {
 // Build a JSON POST request for room-to-room (DO-to-DO) RPC.
 // The URL is synthetic — the target server's onRequest reads the body, not the path.
 function internalRequest(path: string, body: unknown): Request {
-  return new Request(`http://internal${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return createBridgeRequest(path, body, env.PARTYKIT_BRIDGE_SECRET);
 }
 
 function readPositiveNumberEnv(name: string, fallback: number): number {
@@ -191,10 +211,10 @@ export class PartyServer extends YServer {
     hibernate: true,
   };
 
-  // Public flag to pause autosave during administrative resets
-  // This prevents the server from overwriting the clean DB state with
-  // in-memory state while we are performing a reset.
-  public isSkippingSave = false;
+  private documentMaintenanceInProgress = false;
+  private documentWriteTail: Promise<void> = Promise.resolve();
+  private documentGeneration = 0;
+  private persistenceObserverAttached = false;
   private emptyRoomCompactionPromise: Promise<void> | null = null;
   private compactionAutosaveSnapshot: string | null = null;
   private cachedResetEpoch: number | null | undefined;
@@ -244,6 +264,10 @@ export class PartyServer extends YServer {
           failureThreshold: DEFAULT_QUARANTINE_FAILURE_THRESHOLD,
           failureBackoffMs: DEFAULT_FAILURE_BACKOFF_MS,
           failureBackoffMaxMs: DEFAULT_FAILURE_BACKOFF_MAX_MS,
+          observedLoadFailureBackoffMs:
+            DEFAULT_SUPABASE_RECOVERY_RETRY_DELAY_MS,
+          observedLoadFailureBackoffMaxMs:
+            DEFAULT_SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS,
         },
         activateTransientPersistence: (quarantine) => {
           this.persistenceMode = {
@@ -261,9 +285,8 @@ export class PartyServer extends YServer {
             await this.startRealtimeSync();
           }
 
-          const remainingFailures = await this.circuitBreaker.getFailureCount(
-            "load"
-          );
+          const remainingFailures =
+            await this.circuitBreaker.getFailureCount("load");
           if (remainingFailures !== 0 || !this.documentLoadCompleted) {
             return false;
           }
@@ -275,6 +298,7 @@ export class PartyServer extends YServer {
           this.documentLoadCompleted = false;
         },
         clearCompactionSchedule: () => this.clearEmptyRoomCompactAfter(),
+        scheduleRoomWork: () => this.scheduleNextAlarm(),
       });
     }
     return this.roomCircuitBreakerInstance;
@@ -299,7 +323,6 @@ export class PartyServer extends YServer {
       return;
     }
 
-    // Load backoff, evaluated before hydration for the same reason.
     if (await this.circuitBreaker.shouldDeferLoad()) {
       return;
     }
@@ -315,9 +338,10 @@ export class PartyServer extends YServer {
   }
 
   private async completeRoomStartup(): Promise<void> {
+    this.attachPersistenceObserver();
     await this.attachImmediateBridgeObservers();
     await this.pruneBridgeLeases();
-    await this.ensureAlarmScheduled();
+    await this.scheduleNextAlarm();
   }
 
   async getSubscribers(): Promise<Subscriber[]> {
@@ -377,8 +401,34 @@ export class PartyServer extends YServer {
     this.lastKnownDocumentBytes = documentBase64.length;
   }
 
+  private async getDocumentSaveRetry(): Promise<DocumentSaveRetry | null> {
+    const value = await this.ctx.storage.get(STORAGE_KEYS.documentSaveRetry);
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "retryAt" in value &&
+      typeof value.retryAt === "number"
+    ) {
+      return { retryAt: value.retryAt };
+    }
+    return null;
+  }
+
+  private async scheduleDocumentSaveRetry(): Promise<void> {
+    await this.ctx.storage.put(STORAGE_KEYS.documentSaveRetry, {
+      retryAt: Date.now() + DEFAULT_DOCUMENT_SAVE_RETRY_MS,
+    } satisfies DocumentSaveRetry);
+    await this.scheduleNextAlarm();
+  }
+
+  private async clearDocumentSaveRetry(): Promise<void> {
+    await this.ctx.storage.delete(STORAGE_KEYS.documentSaveRetry);
+  }
+
   private async getEmptyRoomCompactAfter(): Promise<number | null> {
-    const value = await this.ctx.storage.get(STORAGE_KEYS.emptyRoomCompactAfter);
+    const value = await this.ctx.storage.get(
+      STORAGE_KEYS.emptyRoomCompactAfter
+    );
     return typeof value === "number" ? value : null;
   }
 
@@ -517,11 +567,30 @@ export class PartyServer extends YServer {
     return this.persistenceMode.kind === "available";
   }
 
+  private runDocumentWrite<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.documentWriteTail ?? Promise.resolve();
+    const result = previous.then(work, work);
+    this.documentWriteTail = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  }
+
+  private attachPersistenceObserver(): void {
+    if (this.persistenceObserverAttached) return;
+    this.documentGeneration ??= 0;
+    this.document.on("update", () => {
+      this.documentGeneration += 1;
+    });
+    this.persistenceObserverAttached = true;
+  }
+
   private roomState(): RoomState {
     if (this.circuitBreaker.isQuarantined()) return "quarantined";
     if (!this.documentLoadCompleted) return "loading";
     if (!this.isPersistenceAvailable()) return "transient";
-    if (this.isSkippingSave) return "save-paused";
+    if (this.documentMaintenanceInProgress) return "save-paused";
     return "ready";
   }
 
@@ -590,6 +659,27 @@ export class PartyServer extends YServer {
         error,
       })
     );
+  }
+
+  private async schedulePersistenceRecovery(
+    loadAttempts: number
+  ): Promise<void> {
+    try {
+      await this.ctx.storage.put(STORAGE_KEYS.persistenceRecoveryPending, true);
+    } catch (error) {
+      console.error(
+        `[PartyServer] Could not persist recovery intent for room=${this.name}: ${getErrorMessage(error)}`
+      );
+    }
+
+    try {
+      await this.circuitBreaker.deferObservedLoadFailure(loadAttempts);
+      await this.scheduleNextAlarm();
+    } catch (error) {
+      console.error(
+        `[PartyServer] Could not schedule persistence recovery for room=${this.name}: ${getErrorMessage(error)}`
+      );
+    }
   }
 
   private async readLimitedJson(request: Request): Promise<unknown | Response> {
@@ -688,6 +778,7 @@ export class PartyServer extends YServer {
       return {
         base64,
         sourceBase64,
+        sourceGeneration: this.documentGeneration ?? 0,
         beforeSize,
         afterSize: base64.length,
         resetEpoch,
@@ -726,15 +817,6 @@ export class PartyServer extends YServer {
     }
   }
 
-  private async restoreResetEpoch(resetEpoch: number | null): Promise<void> {
-    if (resetEpoch === null) {
-      await this.clearResetEpoch();
-      return;
-    }
-
-    await this.setResetEpoch(resetEpoch);
-  }
-
   private async getPersistedDocumentBase64(): Promise<string | null> {
     const { data, error } = await supabase
       .from("documents")
@@ -749,25 +831,15 @@ export class PartyServer extends YServer {
     return typeof data?.document === "string" ? data.document : null;
   }
 
-  async saveDocumentBase64(
+  async saveLiveDocument(): Promise<boolean> {
+    return this.persistLiveDocument({ allowCompaction: false });
+  }
+
+  private async saveDocumentBase64Now(
     documentBase64: string,
     options: SaveDocumentOptions = {}
   ): Promise<void> {
-    const operation = options.operation ?? "shared-data";
-    const state = this.roomState();
-
-    if (operation !== "quarantine-repair") {
-      this.circuitBreaker.assertNotQuarantined("persist document");
-    }
-    const stateAllowsSave =
-      operation === "quarantine-repair" ||
-      state === "ready" ||
-      (operation === "reset" && state === "save-paused");
-    if (!stateAllowsSave) {
-      throw new Error(
-        `Cannot persist document while room state is ${state} (operation=${operation})`
-      );
-    }
+    this.assertDocumentSaveAllowed(options);
 
     const { error } = await supabase.from("documents").upsert(
       {
@@ -784,20 +856,45 @@ export class PartyServer extends YServer {
     this.markDocumentPersisted(documentBase64);
   }
 
+  private assertDocumentSaveAllowed(options: SaveDocumentOptions): void {
+    const operation = options.operation ?? "shared-data";
+    const state = this.roomState();
+
+    if (operation !== "quarantine-repair") {
+      this.circuitBreaker.assertNotQuarantined("persist document");
+    }
+    const stateAllowsSave =
+      operation === "quarantine-repair" ||
+      state === "ready" ||
+      (operation === "reset" && state === "save-paused");
+    if (!stateAllowsSave) {
+      throw new Error(
+        `Cannot persist document while room state is ${state} (operation=${operation})`
+      );
+    }
+  }
+
   private async commitCompactedDocument({
     compactedDocument,
     validatePersistedSource = true,
     beforeCommit,
     afterReplace,
   }: CommitCompactedDocumentOptions): Promise<boolean> {
-    const rollbackResetEpoch = await this.getResetEpoch();
-    let liveDocumentReplaced = false;
-    let autosavePaused = false;
-
+    this.documentMaintenanceInProgress = true;
     try {
+      if (
+        (this.documentGeneration ?? 0) !== compactedDocument.sourceGeneration
+      ) {
+        console.warn(
+          `[PartyServer] Compaction skipped for room=${this.name}: live document changed while the candidate was built`
+        );
+        this.documentMaintenanceInProgress = false;
+        await this.persistLiveDocumentNow({ allowCompaction: false });
+        return false;
+      }
+
       if (validatePersistedSource) {
-        const persistedDocumentBase64 =
-          await this.getPersistedDocumentBase64();
+        const persistedDocumentBase64 = await this.getPersistedDocumentBase64();
         const sourceContainsPersistedDocument =
           persistedDocumentBase64 !== null &&
           documentContainsSnapshot(
@@ -814,7 +911,8 @@ export class PartyServer extends YServer {
           console.warn(
             `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source; saving live document first`
           );
-          await this.persistLiveDocument({ allowCompaction: false });
+          this.documentMaintenanceInProgress = false;
+          await this.persistLiveDocumentNow({ allowCompaction: false });
           return false;
         }
 
@@ -826,33 +924,42 @@ export class PartyServer extends YServer {
         }
       }
 
-      this.isSkippingSave = true;
-      autosavePaused = true;
+      if (
+        (this.documentGeneration ?? 0) !== compactedDocument.sourceGeneration
+      ) {
+        console.warn(
+          `[PartyServer] Compaction skipped for room=${this.name}: live document changed during validation`
+        );
+        this.documentMaintenanceInProgress = false;
+        await this.persistLiveDocumentNow({ allowCompaction: false });
+        return false;
+      }
 
       if (beforeCommit && !(await beforeCommit())) {
         return false;
       }
 
-      await this.setResetEpoch(compactedDocument.resetEpoch);
-      await this.saveDocumentBase64(compactedDocument.base64, {
+      await this.saveDocumentBase64Now(compactedDocument.base64, {
         operation: "reset",
       });
+      await this.setResetEpoch(compactedDocument.resetEpoch);
 
       this.compactionAutosaveSnapshot = compactedDocument.base64;
       replaceDocFromSnapshot(this.document, compactedDocument.base64);
-      liveDocumentReplaced = true;
-      await afterReplace?.();
+      try {
+        await afterReplace?.();
+      } catch (error) {
+        console.error(
+          `[PartyServer] Compaction post-commit cleanup failed for room=${this.name}:`,
+          error
+        );
+      }
       return true;
     } catch (error) {
-      if (!liveDocumentReplaced) {
-        await this.restoreResetEpoch(rollbackResetEpoch);
-      }
       this.compactionAutosaveSnapshot = null;
       throw error;
     } finally {
-      if (autosavePaused) {
-        this.isSkippingSave = false;
-      }
+      this.documentMaintenanceInProgress = false;
     }
   }
 
@@ -870,16 +977,6 @@ export class PartyServer extends YServer {
     this.cachedResetEpoch = epoch;
     try {
       await this.ctx.storage.put(STORAGE_KEYS.resetEpoch, epoch);
-    } catch (error) {
-      this.cachedResetEpoch = undefined;
-      throw error;
-    }
-  }
-
-  private async clearResetEpoch(): Promise<void> {
-    this.cachedResetEpoch = null;
-    try {
-      await this.ctx.storage.delete(STORAGE_KEYS.resetEpoch);
     } catch (error) {
       this.cachedResetEpoch = undefined;
       throw error;
@@ -938,6 +1035,22 @@ export class PartyServer extends YServer {
       : undefined;
   }
 
+  private async closeConnectionWhileLoadDeferred(
+    connection: Party.Connection
+  ): Promise<boolean> {
+    if (this.documentLoadCompleted) return false;
+    const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+    if (loadDeferred === null) return false;
+
+    const retryAfterSeconds = loadDeferred.headers.get("retry-after") ?? "1";
+    console.warn(
+      `[PartyServer] Refusing connection until document hydration recovers: room=${this.name}, ` +
+        `connectionId=${connection.id}, retryAfterSeconds=${retryAfterSeconds}`
+    );
+    connection.close(1013, "Room Loading");
+    return true;
+  }
+
   private getRoomResetMessage(resetEpoch: number): string {
     return JSON.stringify({
       type: "room-reset",
@@ -955,11 +1068,11 @@ export class PartyServer extends YServer {
     connection.close(4000, reason);
   }
 
-  private closeConnections(reason: string): number {
+  private closeConnections(reason: string, code = 4000): number {
     const connections = [...this.getConnections()];
     connections.forEach((conn) => {
       try {
-        conn.close(4000, reason);
+        conn.close(code, reason);
       } catch (error) {
         console.error("[PartyServer] Failed to close connection:", error);
       }
@@ -1014,7 +1127,30 @@ export class PartyServer extends YServer {
    */
   async restoreFromSnapshot(
     snapshotBase64: string,
-    options?: { bumpEpoch?: boolean; allowQuarantined?: boolean }
+    options?: {
+      bumpEpoch?: boolean;
+      allowQuarantined?: boolean;
+      connectionCloseReason?: string;
+      completeHydration?: boolean;
+    }
+  ): Promise<{
+    documentSize: number;
+    resetEpoch: number;
+    closedConnections: number;
+  }> {
+    return this.runDocumentWrite(() =>
+      this.restoreFromSnapshotNow(snapshotBase64, options)
+    );
+  }
+
+  private async restoreFromSnapshotNow(
+    snapshotBase64: string,
+    options?: {
+      bumpEpoch?: boolean;
+      allowQuarantined?: boolean;
+      connectionCloseReason?: string;
+      completeHydration?: boolean;
+    }
   ): Promise<{
     documentSize: number;
     resetEpoch: number;
@@ -1030,36 +1166,40 @@ export class PartyServer extends YServer {
     const roomId = this.name;
     console.log(`[Restore Snapshot] Starting for room: ${roomId}`);
 
-    // Lock autosave immediately
-    this.isSkippingSave = true;
+    const savesWerePaused = this.documentMaintenanceInProgress;
+    this.documentMaintenanceInProgress = true;
+    let committedSnapshotRequiresReload = savesWerePaused;
 
     try {
       // Decode snapshot to Y.Doc so we can ensure metadata is present
       const snapshotDoc = new Y.Doc();
-      Y.applyUpdate(
-        snapshotDoc,
-        new Uint8Array(Buffer.from(snapshotBase64, "base64"))
-      );
+      let resetEpoch: number;
+      let updatedBase64: string;
+      try {
+        Y.applyUpdate(
+          snapshotDoc,
+          new Uint8Array(Buffer.from(snapshotBase64, "base64"))
+        );
 
-      const storedEpoch = await this.getResetEpoch();
-      const resetEpoch = resolveRoomResetEpoch({
-        snapshotEpoch: getDocResetEpoch(snapshotDoc),
-        storedEpoch,
-        bumpEpoch: Boolean(options?.bumpEpoch),
-        now: Date.now(),
-      });
-      setDocResetEpoch(snapshotDoc, resetEpoch);
-
-      const updatedBase64 = encodeDocToBase64(snapshotDoc);
+        const storedEpoch = await this.getResetEpoch();
+        resetEpoch = resolveRoomResetEpoch({
+          snapshotEpoch: getDocResetEpoch(snapshotDoc),
+          storedEpoch,
+          bumpEpoch: Boolean(options?.bumpEpoch),
+          now: Date.now(),
+        });
+        setDocResetEpoch(snapshotDoc, resetEpoch);
+        updatedBase64 = encodeDocToBase64(snapshotDoc);
+      } finally {
+        snapshotDoc.destroy();
+      }
       const documentSize = updatedBase64.length;
 
       // Save to database
       console.log(`[Restore Snapshot] Saving snapshot to database...`);
       try {
-        await this.saveDocumentBase64(updatedBase64, {
-          operation: options?.allowQuarantined
-            ? "quarantine-repair"
-            : "reset",
+        await this.saveDocumentBase64Now(updatedBase64, {
+          operation: options?.allowQuarantined ? "quarantine-repair" : "reset",
         });
       } catch (saveError) {
         console.error(
@@ -1067,9 +1207,14 @@ export class PartyServer extends YServer {
           getErrorMessage(saveError),
           saveError
         );
-        throw new Error(`Failed to save snapshot: ${getErrorMessage(saveError)}`);
+        throw new Error(
+          `Failed to save snapshot: ${getErrorMessage(saveError)}`
+        );
       }
       console.log(`[Restore Snapshot] Successfully saved snapshot to database`);
+      // The persisted snapshot is authoritative now. Keep autosave paused until
+      // the live document catches up so a later save cannot restore stale state.
+      committedSnapshotRequiresReload = true;
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -1082,10 +1227,10 @@ export class PartyServer extends YServer {
       );
 
       // FORCE DISCONNECT: Close all connections
-      const closedCount = this.closeConnections("Room Restored by Admin");
-      console.log(
-        `[Restore Snapshot] Closed ${closedCount} connections`
+      const closedCount = this.closeConnections(
+        options?.connectionCloseReason ?? "Room Restored by Admin"
       );
+      console.log(`[Restore Snapshot] Closed ${closedCount} connections`);
 
       // Flush disconnect work before installing the authoritative snapshot.
       await Promise.resolve();
@@ -1095,7 +1240,10 @@ export class PartyServer extends YServer {
       const liveYDoc = this.document;
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
-      this.markDocumentHydrated();
+      committedSnapshotRequiresReload = false;
+      if (options?.completeHydration !== false) {
+        this.markDocumentHydrated();
+      }
       console.log(`[Restore Snapshot] Successfully reloaded live server`);
 
       console.log(
@@ -1120,8 +1268,12 @@ export class PartyServer extends YServer {
 
       throw error;
     } finally {
-      this.isSkippingSave = false;
-      console.log("[Restore Snapshot] Autosave re-enabled");
+      this.documentMaintenanceInProgress = committedSnapshotRequiresReload;
+      console.log(
+        committedSnapshotRequiresReload
+          ? "[Restore Snapshot] Autosave remains paused until the committed snapshot is loaded"
+          : "[Restore Snapshot] Autosave re-enabled"
+      );
     }
   }
 
@@ -1130,14 +1282,46 @@ export class PartyServer extends YServer {
     resetEpoch: number;
     closedConnections: number;
   }> {
-    const resetEpoch = await this.createResetEpoch();
-    const snapshot = createAdminSnapshotFromPlayData(playData, resetEpoch);
-    return this.restoreFromSnapshot(snapshot.base64, { bumpEpoch: false });
+    return this.runDocumentWrite(() => this.commitAdminPlayDataNow(playData));
   }
 
-  // Ensure an alarm is set for bridge lease pruning or empty-room compaction.
-  private async ensureAlarmScheduled(): Promise<void> {
-    await this.scheduleNextAlarm();
+  private async commitAdminPlayDataNow(playData: Record<string, any>): Promise<{
+    documentSize: number;
+    resetEpoch: number;
+    closedConnections: number;
+  }> {
+    const resetEpoch = await this.createResetEpoch();
+    const snapshot = createAdminSnapshotFromPlayData(playData, resetEpoch);
+    return this.restoreFromSnapshotNow(snapshot.base64, { bumpEpoch: false });
+  }
+
+  async mutateAdminPlayData<T>(
+    mutate: (playData: Record<string, any>) => AdminPlayDataMutation<T>
+  ): Promise<AdminPlayDataMutationResult<T>> {
+    return this.runDocumentWrite(async () => {
+      const unavailable = this.getSharedDataWriteUnavailableResponse();
+      if (unavailable) {
+        throw new Error(
+          `Cannot mutate admin play data while room state is ${this.roomState()}`
+        );
+      }
+
+      this.documentMaintenanceInProgress = true;
+      try {
+        const playData = docToJson(this.document) ?? {};
+        const mutation = mutate(playData);
+        if (mutation.kind === "skip") {
+          return { result: mutation.result, committed: null };
+        }
+        const committed = await this.commitAdminPlayDataNow(playData);
+        return {
+          result: mutation.result,
+          committed,
+        };
+      } finally {
+        this.documentMaintenanceInProgress = false;
+      }
+    });
   }
 
   private async scheduleNextAlarm(): Promise<void> {
@@ -1151,12 +1335,28 @@ export class PartyServer extends YServer {
     const now = Date.now();
     const subs = await this.getSubscribers();
     const refs = await this.getSharedReferences();
-    const nextAlarm = getNextAlarmTime({
+    const maintenanceAlarm = getNextAlarmTime({
       compactAfter: await this.getEmptyRoomCompactAfter(),
       hasBridgeLeases: Boolean(subs.length || refs.length),
       now,
       pruneIntervalMs: DEFAULT_PRUNE_INTERVAL_MS,
     });
+    const documentSaveRetry = await this.getDocumentSaveRetry();
+    const loadRetryAlarm =
+      await this.circuitBreaker.getFailureRetryAfter("load");
+    const nextAlarm = [
+      maintenanceAlarm,
+      documentSaveRetry?.retryAt ?? null,
+      loadRetryAlarm,
+    ].reduce<number | null>(
+      (earliest, candidate) =>
+        candidate === null
+          ? earliest
+          : earliest === null
+            ? candidate
+            : Math.min(earliest, candidate),
+      null
+    );
 
     if (nextAlarm === null) {
       await this.ctx.storage.deleteAlarm?.();
@@ -1226,33 +1426,17 @@ export class PartyServer extends YServer {
     changed: boolean;
   }> {
     const existing = await this.getSharedReferences();
-    const bySource = new Map<string, Set<string>>();
-    for (const e of existing)
-      bySource.set(e.sourceRoomId, new Set(e.elementIds));
-    let changed = false;
-    for (const e of newEntries) {
-      const set = bySource.get(e.sourceRoomId) ?? new Set<string>();
-      const before = set.size;
-      for (const id of e.elementIds) set.add(id);
-      if (!bySource.has(e.sourceRoomId) || set.size !== before) changed = true;
-      bySource.set(e.sourceRoomId, set);
-    }
+    const { entries, changed } = mergeSharedReferenceLeases({
+      existing,
+      requested: newEntries,
+      nowIso: new Date().toISOString(),
+    });
     if (changed) {
-      const nowIso = new Date().toISOString();
-      const merged: Array<SharedRefEntry> = Array.from(bySource.entries()).map(
-        ([sourceRoomId, ids]) => {
-          return {
-            sourceRoomId,
-            elementIds: Array.from(ids),
-            lastSeen: nowIso,
-          };
-        }
-      );
-      await this.setSharedReferences(merged);
-      await this.ensureAlarmScheduled();
-      return { entries: merged, changed: true };
+      await this.setSharedReferences(entries);
+      await this.scheduleNextAlarm();
+      return { entries, changed: true };
     }
-    return { entries: existing, changed: false };
+    return { entries, changed: false };
   }
 
   // --- Helper: subscribe to sources and optionally hydrate immediately
@@ -1537,16 +1721,7 @@ export class PartyServer extends YServer {
   ) {
     this.setConnectionOpenedAt(connection, Date.now());
 
-    const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
-    if (loadDeferred) {
-      const retryAfterSeconds = loadDeferred.headers.get("retry-after") ?? "1";
-      console.warn(
-        `[PartyServer] Refusing connection to deferred room=${this.name}: ` +
-          `connectionId=${connection.id}, retryAfterSeconds=${retryAfterSeconds}`
-      );
-      connection.close(1013, "Room Load Deferred");
-      return;
-    }
+    if (await this.closeConnectionWhileLoadDeferred(connection)) return;
 
     await this.waitForEmptyRoomCompaction();
 
@@ -1590,7 +1765,7 @@ export class PartyServer extends YServer {
     await this.clearEmptyRoomCompactAfter();
 
     // Opportunistically schedule an alarm if bridge leases or compaction need one
-    await this.ensureAlarmScheduled();
+    await this.scheduleNextAlarm();
 
     // Parse shared references from the connecting client (for consumer rooms)
     // Parse from the WebSocket request URL
@@ -1628,6 +1803,8 @@ export class PartyServer extends YServer {
     connection: Party.Connection,
     message: Party.WSMessage
   ): Promise<void> {
+    if (await this.closeConnectionWhileLoadDeferred(connection)) return;
+
     const limitResult = this.checkConnectionMessageRate(connection);
     if (limitResult.violation) {
       console.warn(
@@ -1746,6 +1923,10 @@ export class PartyServer extends YServer {
 
     if (this.circuitBreaker.isLoadDeferred()) return;
 
+    await this.runDocumentWrite(() => this.loadDocument());
+  }
+
+  private async loadDocument(): Promise<void> {
     // Durable BEFORE the risky work: if hydration kills the isolate, this
     // increment survives and the next start counts it.
     const loadAttempts = await this.circuitBreaker.beginRiskyOperation("load");
@@ -1754,9 +1935,12 @@ export class PartyServer extends YServer {
     const timeoutMs = this.getSupabaseLoadTimeoutMs();
     const attempts = this.getSupabaseLoadAttempts();
     const retryDelayMs = this.getSupabaseLoadRetryDelayMs();
+    const loadStartedAt = Date.now();
     let successfulAttempt = 1;
-    const result = await retryWithTimeout(
+    let successfulAttemptElapsedMs = 0;
+    const result = await retryWithinTimeout(
       async (signal, attempt) => {
+        const attemptStartedAt = Date.now();
         successfulAttempt = attempt;
         const queryResult = await supabase
           .from("documents")
@@ -1764,6 +1948,7 @@ export class PartyServer extends YServer {
           .eq("name", this.name)
           .abortSignal(signal)
           .maybeSingle();
+        successfulAttemptElapsedMs = Date.now() - attemptStartedAt;
         if (queryResult.error) {
           throw new Error(queryResult.error.message);
         }
@@ -1774,9 +1959,10 @@ export class PartyServer extends YServer {
         timeoutMs,
         retryDelayMs,
         errorMessage: `Supabase document load timed out after ${timeoutMs}ms`,
-        onRetry: ({ attempt, retryAfterMs, error }) => {
+        onRetry: ({ attempt, elapsedMs, retryAfterMs, error }) => {
+          const timing = elapsedMs >= 1000 ? ` after ${elapsedMs}ms` : "";
           console.warn(
-            `[PartyServer] Supabase document load attempt ${attempt}/${attempts} failed for room=${this.name}; ` +
+            `[PartyServer] Supabase document load attempt ${attempt}/${attempts} failed${timing} for room=${this.name}; ` +
               `retrying in ${retryAfterMs}ms: ${getErrorMessage(error)}`
           );
         },
@@ -1787,20 +1973,34 @@ export class PartyServer extends YServer {
     });
 
     if (result === null) {
-      // Supabase is unreachable, so hydration never ran. Roll the attempt back
-      // rather than zeroing it: a sub-threshold document that OOMs mid-hydration
-      // must still be able to accumulate evidence across an outage.
-      await this.releaseLoadAttempt(loadAttempts);
+      await this.schedulePersistenceRecovery(loadAttempts);
+      this.closeConnections("Room Loading", 1013);
       return;
     }
 
     if (successfulAttempt > 1) {
       console.log(
-        `[PartyServer] Supabase document load recovered for room=${this.name} after ${successfulAttempt} attempts.`
+        `[PartyServer] Supabase document load recovered for room=${this.name} after ${successfulAttempt} attempts ` +
+          `(attemptElapsedMs=${successfulAttemptElapsedMs}, totalElapsedMs=${
+            Date.now() - loadStartedAt
+          }).`
+      );
+    } else if (successfulAttemptElapsedMs >= 1000) {
+      console.warn(
+        `[PartyServer] Slow Supabase document load for room=${this.name}: ` +
+          `elapsedMs=${successfulAttemptElapsedMs}, timeoutMs=${timeoutMs}.`
       );
     }
 
-    this.markPersistenceAvailable();
+    let persistedDocument = result.data?.document;
+    if (persistedDocument === undefined) {
+      const emptyDoc = new Y.Doc();
+      try {
+        persistedDocument = encodeDocToBase64(emptyDoc);
+      } finally {
+        emptyDoc.destroy();
+      }
+    }
 
     if (result.data) {
       // Size is reported, never enforced. Hydration is one copy of the document
@@ -1817,39 +2017,55 @@ export class PartyServer extends YServer {
       }
 
       this.markDocumentPersisted(result.data.document);
-      Y.applyUpdate(
-        this.document,
-        new Uint8Array(Buffer.from(result.data.document, "base64"))
-      );
-
-      const documentResetEpoch = getDocResetEpoch(this.document);
-      const storedResetEpoch = await this.getResetEpoch();
-      if (
-        documentResetEpoch !== null &&
-        (storedResetEpoch === null || documentResetEpoch > storedResetEpoch)
-      ) {
-        await this.setResetEpoch(documentResetEpoch);
-        console.warn(
-          `[PartyServer] Loaded document advanced the server reset epoch for room=${this.name}: ` +
-            `documentResetEpoch=${documentResetEpoch}, storedResetEpoch=${storedResetEpoch ?? "none"}`
-        );
-      }
     }
 
-    // Hydration completed without killing the isolate, so the failure history
-    // and any pending backoff are cleared.
-    await this.circuitBreaker.completeRiskyOperation("load");
-    this.markDocumentHydrated();
-  }
+    const persistenceRecoveryPending =
+      (await this.ctx.storage.get(STORAGE_KEYS.persistenceRecoveryPending)) ===
+      true;
+    if (persistenceRecoveryPending) {
+      // The persisted snapshot is authoritative. Transient and quarantined
+      // rooms may have an in-memory Y.Doc containing state that was never
+      // accepted for persistence, so merging here would resurrect it.
+      await this.restoreFromSnapshotNow(persistedDocument, {
+        bumpEpoch: true,
+        allowQuarantined: true,
+        connectionCloseReason: "Room Persistence Restored",
+        completeHydration: false,
+      });
+      await this.ctx.storage.delete(STORAGE_KEYS.persistenceRecoveryPending);
+    } else {
+      if (result.data) {
+        Y.applyUpdate(
+          this.document,
+          new Uint8Array(Buffer.from(persistedDocument, "base64"))
+        );
+        const documentResetEpoch = getDocResetEpoch(this.document);
+        const storedResetEpoch = await this.getResetEpoch();
+        if (
+          documentResetEpoch !== null &&
+          (storedResetEpoch === null || documentResetEpoch > storedResetEpoch)
+        ) {
+          await this.setResetEpoch(documentResetEpoch);
+          console.warn(
+            `[PartyServer] Loaded document advanced the server reset epoch for room=${this.name}: ` +
+              `documentResetEpoch=${documentResetEpoch}, storedResetEpoch=${storedResetEpoch ?? "none"}`
+          );
+        }
+      }
+      this.markDocumentHydrated();
+    }
 
-  // Undoes this start's increment when the load ended before hydration could be
-  // attempted. Attempts that DID reach hydration stay counted, so the failure
-  // history keeps its evidence even if Supabase is flaky in between.
-  private async releaseLoadAttempt(loadAttempts: number): Promise<void> {
-    await this.circuitBreaker.releaseLoadAttempt(loadAttempts);
+    // Recovery evidence is cleared only after the authoritative reset and
+    // recovery intent cleanup both succeed.
+    this.circuitBreaker.setLoadDeferredUntil(null);
+    await this.circuitBreaker.completeRiskyOperation("load");
+    if (persistenceRecoveryPending) {
+      this.markDocumentHydrated();
+    }
   }
 
   override async onSave(): Promise<void> {
+    this.attachPersistenceObserver();
     await this.persistLiveDocument({ allowCompaction: true });
   }
 
@@ -1978,6 +2194,14 @@ export class PartyServer extends YServer {
   private async persistLiveDocument({
     allowCompaction,
   }: PersistLiveDocumentOptions): Promise<boolean> {
+    return this.runDocumentWrite(() =>
+      this.persistLiveDocumentNow({ allowCompaction })
+    );
+  }
+
+  private async persistLiveDocumentNow({
+    allowCompaction,
+  }: PersistLiveDocumentOptions): Promise<boolean> {
     const doc = this.document;
 
     const state = this.roomState();
@@ -2083,19 +2307,22 @@ export class PartyServer extends YServer {
           `[PartyServer] AUTOSAVE COMPACTION FAILED for room ${this.name}:`,
           error
         );
-        return false;
+        // Compaction is an optimization. A failed compaction must never turn
+        // into a failed save of otherwise valid live data.
       }
     }
 
     try {
-      await this.saveDocumentBase64(documentBase64);
+      await this.saveDocumentBase64Now(documentBase64);
     } catch (error) {
       console.error(
         `[PartyServer] SUPABASE AUTOSAVE FAILED for room ${this.name}:`,
         error
       );
+      await this.scheduleDocumentSaveRetry();
       return false;
     }
+    await this.clearDocumentSaveRetry();
     if (allowCompaction && activeConnectionCount > 0) {
       const compacted = await this.maybeCompactLargeConnectedRoom({
         documentSize,
@@ -2220,7 +2447,11 @@ export class PartyServer extends YServer {
       }
 
       const url = new URL(request.url);
-
+      const isLoadControlRoute = [
+        "/admin/quarantine-status",
+        "/admin/quarantine-set",
+        "/admin/quarantine-clear",
+      ].some((path) => url.pathname.includes(path));
       // Route admin requests to admin handler
       // PartyKit paths are like /parties/main/room-id/admin/inspect
       if (url.pathname.includes("/admin")) {
@@ -2228,11 +2459,6 @@ export class PartyServer extends YServer {
         // operator can inspect or quarantine the room. Every other admin route
         // is blocked: the live document was never hydrated, so a write derived
         // from it could overwrite the real snapshot with an empty document.
-        const isLoadControlRoute = [
-          "/admin/quarantine-status",
-          "/admin/quarantine-set",
-          "/admin/quarantine-clear",
-        ].some((path) => url.pathname.includes(path));
         if (!isLoadControlRoute) {
           const loadDeferred =
             await this.circuitBreaker.getLoadDeferredResponse();
@@ -2244,7 +2470,8 @@ export class PartyServer extends YServer {
       }
 
       // The document was never read, so there is nothing to serve.
-      const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+      const loadDeferred =
+        await this.circuitBreaker.getLoadDeferredResponse();
       if (loadDeferred) return loadDeferred;
 
       if (request.method !== "POST") {
@@ -2257,8 +2484,28 @@ export class PartyServer extends YServer {
       }
 
       if (
+        isSubscribeRequest(body) ||
+        isExportPermissionsRequest(body) ||
+        isApplySubtreesImmediateRequest(body)
+      ) {
+        const bridgeAuthFailure = getBridgeAuthFailure(
+          request,
+          env.PARTYKIT_BRIDGE_SECRET
+        );
+        if (bridgeAuthFailure) return bridgeAuthFailure;
+      }
+
+      const bridgeApplyCanWaitForMaintenance =
+        isApplySubtreesImmediateRequest(body) &&
+        this.documentLoadCompleted &&
+        this.isPersistenceAvailable() &&
+        !this.circuitBreaker.isQuarantined() &&
+        this.documentMaintenanceInProgress;
+      if (
         !this.canWriteSharedData() &&
-        (isSubscribeRequest(body) || isApplySubtreesImmediateRequest(body))
+        (isSubscribeRequest(body) ||
+          (isApplySubtreesImmediateRequest(body) &&
+            !bridgeApplyCanWaitForMaintenance))
       ) {
         return new Response(
           JSON.stringify({
@@ -2315,7 +2562,7 @@ export class PartyServer extends YServer {
           found.lastSeen = nowIso;
         }
         await this.setSubscribers(existing);
-        await this.ensureAlarmScheduled();
+        await this.scheduleNextAlarm();
         // A resubscribe means a fresh client load on the consumer side. Reopen
         // its circuit so a genuine new visitor always gets a clean bridge attempt
         // even if the pair had previously tripped from a stale-epoch storm.
@@ -2356,93 +2603,139 @@ export class PartyServer extends YServer {
       }
 
       if (isApplySubtreesImmediateRequest(body)) {
-        if (!this.canWriteSharedData()) {
-          console.warn(
-            `[Bridge] Ignoring apply-subtrees for room ${this.name}: document hydration or persistence unavailable.`
-          );
-          const response: ApplySubtreesResponse = { ok: true, applied: false };
-          return new Response(JSON.stringify(response), {
-            headers: { "content-type": "application/json" },
-          });
-        }
-
         // Applies provided subtrees immediately and marks origin to suppress echo
         const { subtrees, sender, originKind } = body;
 
         const yDoc = this.document;
-        const subscribers = await this.getSubscribers();
-        const sharedRefs = await this.getSharedReferences();
         const senderResetEpoch =
           typeof body.resetEpoch === "number" ? body.resetEpoch : null;
-        const serverResetEpoch = await this.getResetEpoch();
+        const applyResult = await this.runDocumentWrite(async () => {
+          if (!this.canWriteSharedData()) {
+            return { kind: "unavailable" } as const;
+          }
 
-        if (this.isEpochStale(senderResetEpoch, serverResetEpoch)) {
+          const subscribers = await this.getSubscribers();
+          const sharedRefs = await this.getSharedReferences();
+          const relationship = getBridgeApplyRelationship({
+            sender,
+            originKind,
+            subscriberRoomIds: subscribers.map(
+              (subscriber) => subscriber.consumerRoomId
+            ),
+            sourceRoomIds: sharedRefs.map(
+              (reference) => reference.sourceRoomId
+            ),
+          });
+          if (relationship === null) {
+            return { kind: "relationship-not-found" } as const;
+          }
+
+          const currentServerResetEpoch = await this.getResetEpoch();
+          if (this.isEpochStale(senderResetEpoch, currentServerResetEpoch)) {
+            return {
+              kind: "stale-epoch",
+              serverResetEpoch: currentServerResetEpoch,
+            } as const;
+          }
+
+          const receivingFromConsumer = relationship === "consumer";
+          const receivingFromSource = relationship === "source";
+          let subtreesToApply: Record<string, Record<string, any>> = subtrees;
+          if (receivingFromConsumer) {
+            // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
+            // the source of truth is derived from the source room and not consumer-added capabilities.
+            const play = yDoc.getMap("play") as Y.Map<any>;
+            const filtered: Record<string, Record<string, any>> = {};
+            Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+              const tagMap = play.get?.(tag) as Y.Map<any> | undefined;
+              if (!(tagMap instanceof Y.Map)) return;
+              const kept: Record<string, any> = {};
+              Object.entries(elements).forEach(([elementId, data]) => {
+                if (tagMap.has(elementId)) kept[elementId] = data;
+              });
+              if (Object.keys(kept).length) filtered[tag] = kept;
+            });
+            // Enforce simple permissions: read-only shared elements on this source room cannot be modified by consumers
+            const perms = await this.getSharedPermissions();
+            const filteredByPerms: Record<string, Record<string, any>> = {};
+            Object.entries(filtered).forEach(([tag, elements]) => {
+              const kept: Record<string, any> = {};
+              Object.entries(elements).forEach(([elementId, data]) => {
+                // Only allow writes to elements explicitly shared as read-write
+                // This handles both read-only elements and ones that aren't even shared
+                if (perms[elementId] !== "read-write") {
+                  return;
+                }
+                kept[elementId] = data;
+              });
+              if (Object.keys(kept).length) filteredByPerms[tag] = kept;
+            });
+            subtreesToApply = filteredByPerms;
+          } else if (receivingFromSource) {
+            // Consumer: apply only the elementIds we are subscribed to for this sender/source
+            const ref = sharedRefs.find((r) => r.sourceRoomId === sender);
+            const allowed = new Set(ref?.elementIds || []);
+            if (allowed.size > 0) {
+              const filteredByRefs: Record<string, Record<string, any>> = {};
+              Object.entries(subtreesToApply).forEach(([tag, elements]) => {
+                const kept: Record<string, any> = {};
+                Object.entries(elements).forEach(([elementId, data]) => {
+                  if (allowed.has(elementId)) kept[elementId] = data;
+                });
+                if (Object.keys(kept).length) filteredByRefs[tag] = kept;
+              });
+              subtreesToApply = filteredByRefs;
+            } else {
+              subtreesToApply = {};
+            }
+          }
+          if (!Object.keys(subtreesToApply).length) {
+            return { kind: "empty" } as const;
+          }
+
+          const ORIGIN = originKind === "consumer" ? ORIGIN_C2S : ORIGIN_S2C;
+          yDoc.transact(
+            () => this.assignPlaySubtrees(yDoc, subtreesToApply),
+            ORIGIN
+          );
+          return {
+            kind: "applied",
+            receivingFromConsumer,
+            subtreesToApply,
+          } as const;
+        });
+
+        if (applyResult.kind === "unavailable") {
           console.warn(
-            `[Bridge] Ignoring apply-subtrees from ${sender} (${originKind}) due to stale reset epoch (sender=${senderResetEpoch}, server=${serverResetEpoch})`
+            `[Bridge] Ignoring apply-subtrees for room ${this.name}: document hydration or persistence unavailable after waiting for document maintenance.`
           );
           const response: ApplySubtreesResponse = { ok: true, applied: false };
           return new Response(JSON.stringify(response), {
             headers: { "content-type": "application/json" },
           });
         }
-
-        const receivingFromConsumer =
-          originKind === "consumer" &&
-          subscribers.some((s) => s.consumerRoomId === sender);
-        const receivingFromSource =
-          originKind === "source" &&
-          sharedRefs.some((r) => r.sourceRoomId === sender);
-
-        let subtreesToApply: Record<string, Record<string, any>> = subtrees;
-        if (receivingFromConsumer) {
-          // IMPORTANT: Only apply tags/elementIds that already exist in the source's doc to ensure
-          // the source of truth is derived from the source room and not consumer-added capabilities.
-          const play = yDoc.getMap("play") as Y.Map<any>;
-          const filtered: Record<string, Record<string, any>> = {};
-          Object.entries(subtreesToApply).forEach(([tag, elements]) => {
-            const tagMap = play.get?.(tag) as Y.Map<any> | undefined;
-            if (!(tagMap instanceof Y.Map)) return;
-            const kept: Record<string, any> = {};
-            Object.entries(elements).forEach(([elementId, data]) => {
-              if (tagMap.has(elementId)) kept[elementId] = data;
-            });
-            if (Object.keys(kept).length) filtered[tag] = kept;
-          });
-          // Enforce simple permissions: read-only shared elements on this source room cannot be modified by consumers
-          const perms = await this.getSharedPermissions();
-          const filteredByPerms: Record<string, Record<string, any>> = {};
-          Object.entries(filtered).forEach(([tag, elements]) => {
-            const kept: Record<string, any> = {};
-            Object.entries(elements).forEach(([elementId, data]) => {
-              // Only allow writes to elements explicitly shared as read-write
-              // This handles both read-only elements and ones that aren't even shared
-              if (perms[elementId] !== "read-write") {
-                return;
-              }
-              kept[elementId] = data;
-            });
-            if (Object.keys(kept).length) filteredByPerms[tag] = kept;
-          });
-          subtreesToApply = filteredByPerms;
-        } else if (receivingFromSource) {
-          // Consumer: apply only the elementIds we are subscribed to for this sender/source
-          const ref = sharedRefs.find((r) => r.sourceRoomId === sender);
-          const allowed = new Set(ref?.elementIds || []);
-          if (allowed.size > 0) {
-            const filteredByRefs: Record<string, Record<string, any>> = {};
-            Object.entries(subtreesToApply).forEach(([tag, elements]) => {
-              const kept: Record<string, any> = {};
-              Object.entries(elements).forEach(([elementId, data]) => {
-                if (allowed.has(elementId)) kept[elementId] = data;
-              });
-              if (Object.keys(kept).length) filteredByRefs[tag] = kept;
-            });
-            subtreesToApply = filteredByRefs;
-          } else {
-            subtreesToApply = {};
-          }
+        if (applyResult.kind === "relationship-not-found") {
+          return new Response(
+            JSON.stringify({
+              error: "bridge_relationship_not_found",
+              message: "The sending room has no registered bridge relationship",
+            }),
+            {
+              status: 403,
+              headers: { "content-type": "application/json" },
+            }
+          );
         }
-        if (!Object.keys(subtreesToApply).length) {
+        if (applyResult.kind === "stale-epoch") {
+          console.warn(
+            `[Bridge] Ignoring apply-subtrees from ${sender} (${originKind}) due to stale reset epoch after waiting for document maintenance (sender=${senderResetEpoch}, server=${applyResult.serverResetEpoch})`
+          );
+          const response: ApplySubtreesResponse = { ok: true, applied: false };
+          return new Response(JSON.stringify(response), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (applyResult.kind === "empty") {
           // Nothing to apply (filtered to empty). Not a failure — report applied
           // so it does not count against the sender's circuit breaker.
           const response: ApplySubtreesResponse = { ok: true, applied: true };
@@ -2450,11 +2743,7 @@ export class PartyServer extends YServer {
             headers: { "content-type": "application/json" },
           });
         }
-        const ORIGIN = originKind === "consumer" ? ORIGIN_C2S : ORIGIN_S2C;
-        yDoc.transact(
-          () => this.assignPlaySubtrees(yDoc, subtreesToApply),
-          ORIGIN
-        );
+        const { receivingFromConsumer, subtreesToApply } = applyResult;
 
         // If this is a SOURCE room receiving from a CONSUMER, immediately fanout to other consumers (excluding sender if provided)
         if (receivingFromConsumer) {
@@ -2535,6 +2824,15 @@ export class PartyServer extends YServer {
     resetEpoch: number;
     closedConnections: number;
   }> {
+    return this.runDocumentWrite(() => this.performHardResetNow());
+  }
+
+  private async performHardResetNow(): Promise<{
+    beforeSize: number;
+    afterSize: number;
+    resetEpoch: number;
+    closedConnections: number;
+  }> {
     // A hard reset derives its new document from the live doc, which is empty
     // for a quarantined room, and falls back to re-reading the persisted one.
     // Both outcomes are exactly what quarantine exists to prevent.
@@ -2542,9 +2840,6 @@ export class PartyServer extends YServer {
 
     const roomId = this.name;
     console.log(`[Hard Reset] Starting for room: ${roomId}`);
-
-    // Lock autosave immediately
-    this.isSkippingSave = true;
 
     try {
       // Get current live doc state
@@ -2652,43 +2947,10 @@ export class PartyServer extends YServer {
       // Release it before the database write and live-document replacement.
       currentPlayData = null;
 
-      // Save to database
-      console.log(`[Hard Reset] Saving fresh doc to database...`);
-      try {
-        await this.saveDocumentBase64(freshBase64, { operation: "reset" });
-      } catch (saveError) {
-        console.error(
-          `[Hard Reset] Database save failed:`,
-          getErrorMessage(saveError),
-          saveError
-        );
-        throw new Error(
-          `Failed to save reset document: ${getErrorMessage(saveError)}`
-        );
-      }
-      console.log(`[Hard Reset] Successfully saved fresh doc to database`);
-
-      // Set reset epoch for client detection
-      await this.setResetEpoch(resetEpoch);
-      console.log(`[Hard Reset] Set resetEpoch: ${resetEpoch}`);
-
-      // Broadcast a "room-reset" message to all connected clients
-      this.broadcastCustomMessage(this.getRoomResetMessage(resetEpoch));
-      console.log(`[Hard Reset] Broadcasted room-reset signal to all clients`);
-
-      // FORCE DISCONNECT: Close all connections to ensure no lingering clients
-      // push their old state back to the server
-      const closedCount = this.closeConnections("Room Reset by Admin");
-      console.log(`[Hard Reset] Closed ${closedCount} connections`);
-
-      // Flush disconnect work before installing the authoritative snapshot.
-      await Promise.resolve();
-
-      // Reload the live server from the snapshot
-      console.log(`[Hard Reset] Reloading live server from snapshot...`);
-      replaceDocFromSnapshot(liveYDoc, freshBase64);
-      setDocResetEpoch(liveYDoc, resetEpoch);
-      console.log(`[Hard Reset] Successfully reloaded live server`);
+      const restored = await this.restoreFromSnapshotNow(freshBase64, {
+        bumpEpoch: false,
+        connectionCloseReason: "Room Reset by Admin",
+      });
 
       const sizeReduction = beforeSize - afterSize;
       const sizeReductionPercent = ((sizeReduction / beforeSize) * 100).toFixed(
@@ -2702,8 +2964,8 @@ export class PartyServer extends YServer {
       return {
         beforeSize,
         afterSize,
-        resetEpoch,
-        closedConnections: closedCount,
+        resetEpoch: restored.resetEpoch,
+        closedConnections: restored.closedConnections,
       };
     } catch (error: unknown) {
       const errorMessage =
@@ -2717,9 +2979,6 @@ export class PartyServer extends YServer {
       );
 
       throw error;
-    } finally {
-      this.isSkippingSave = false;
-      console.log("[Hard Reset] Autosave re-enabled");
     }
   }
 
@@ -2779,7 +3038,8 @@ export class PartyServer extends YServer {
       await this.runAutomaticCompaction({
         onDeferred: (retryAt) => this.setEmptyRoomCompactAfter(retryAt),
         onDisabled: () => this.clearEmptyRoomCompactAfter(),
-        run: () => this.compactEmptyRoomDocumentOnce(),
+        run: () =>
+          this.runDocumentWrite(() => this.compactEmptyRoomDocumentOnce()),
       });
     };
 
@@ -2819,9 +3079,37 @@ export class PartyServer extends YServer {
 
   // PartyKit Alarm: invoked when storage alarm rings
   override async onAlarm(): Promise<void> {
+    const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
+    if (loadDeferred) {
+      const documentSaveRetry = await this.getDocumentSaveRetry();
+      if (
+        documentSaveRetry !== null &&
+        documentSaveRetry.retryAt <= Date.now()
+      ) {
+        await this.clearDocumentSaveRetry();
+      }
+      await this.scheduleNextAlarm();
+      return;
+    }
     if (!(await this.circuitBreaker.shouldRunAlarm())) return;
 
     try {
+      const documentSaveRetry = await this.getDocumentSaveRetry();
+      if (
+        documentSaveRetry !== null &&
+        documentSaveRetry.retryAt <= Date.now()
+      ) {
+        await this.clearDocumentSaveRetry();
+        if (this.roomState() === "ready") {
+          try {
+            await this.persistLiveDocument({ allowCompaction: false });
+          } catch (error) {
+            await this.scheduleDocumentSaveRetry();
+            throw error;
+          }
+        }
+      }
+
       const compactAfter = await this.getEmptyRoomCompactAfter();
       if (compactAfter !== null && compactAfter <= Date.now()) {
         if (this.getOpenConnectionCount() === 0) {

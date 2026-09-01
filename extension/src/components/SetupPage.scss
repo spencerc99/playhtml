@@ -19,7 +19,7 @@
     max-width: 560px;
 
     &--complete {
-      max-width: 720px;
+      max-width: 840px;
     }
   }
 
@@ -68,12 +68,6 @@
   &--complete {
     .setup-step__desc {
       max-width: 620px;
-    }
-
-    .setup-step__portrait-preview {
-      width: 100%;
-      max-width: 380px;
-      height: 180px;
     }
 
     .setup-step__wiki-preview {
@@ -149,9 +143,56 @@
 
   &__field-help {
     max-width: 320px;
-    color: $text-faint;
-    font-size: 11px;
-    line-height: 1.45;
+    color: $text-muted;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  &__discord-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding: 12px;
+    border: 1px solid rgba($accent-teal, 0.25);
+    border-radius: 10px;
+    background: $surface;
+  }
+
+  &__discord-copy {
+    min-width: 0;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+
+    strong {
+      @include heading;
+      font-size: 14px;
+    }
+
+    span {
+      color: $text-muted;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+  }
+
+  &__discord-button {
+    @include btn-teal;
+    flex: 0 0 auto;
+    text-decoration: none;
+  }
+
+  &__welcome-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    span {
+      color: $text-faint;
+      font-size: 14px;
+    }
   }
 
   // ── Preset tabs ─────────────────────────────────────────────────────────────
@@ -232,9 +273,9 @@
   }
 
   &__preset-description {
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.55;
-    color: $text;
+    color: $text-muted;
     margin: 8px 0 12px;
   }
 
@@ -244,13 +285,13 @@
   }
 
   &__trust {
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1.5;
     color: $text-muted;
-    padding: 10px 12px;
+    padding: 12px 14px;
     background: $surface;
     border: 1px solid $border;
-    border-radius: 8px;
+    border-radius: 10px;
     margin-bottom: 16px;
   }
 
@@ -270,7 +311,7 @@
   &__website-access-hint,
   &__website-access-error,
   &__website-access-success {
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1.5;
   }
 
@@ -292,12 +333,12 @@
   }
 
   &__website-access-success {
-    padding: 10px 12px;
+    padding: 12px 14px;
     margin-bottom: 20px;
     color: $accent-teal;
     background: $surface;
     border: 1px solid $border;
-    border-radius: 8px;
+    border-radius: 10px;
   }
 
   // ── Collector list (reuses Collections card styles) ─────────────────────────
@@ -331,9 +372,6 @@
 
   &__reroll-btn {
     @include btn-secondary;
-    padding: 8px 10px;
-    font-size: 14px;
-    border-radius: 6px;
   }
 
   &__cursor-preview {
@@ -367,7 +405,7 @@
   // Faux browser window around the history-page preview, so the step reads as
   // "this is what the new tab becomes".
   &__newtab-preview {
-    margin: 20px 0 16px;
+    margin: 12px 0;
     border: 1px solid $border;
     border-radius: 10px;
     overflow: hidden;
@@ -408,7 +446,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 20px;
+    margin: 12px 0 0;
     font-family: $font-mono;
     font-size: 12px;
     color: $text;
@@ -421,9 +459,9 @@
 
   // Stands in for the opt-in checkbox where the browser has no new tab override.
   &__newtab-note {
-    margin-bottom: 20px;
-    font-family: $font-mono;
-    font-size: 12px;
+    margin: 12px 0 0;
+    font-family: $font-body;
+    font-size: 14px;
     line-height: 1.5;
     color: $text-muted;
   }
@@ -439,11 +477,32 @@
   // ── Completion page ─────────────────────────────────────────────────────────
 
   &__tip {
-    margin-bottom: 20px;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid $border;
+    border-radius: 10px;
+    background: $surface;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 
     > .setup-step__desc {
       margin-bottom: 10px;
     }
+  }
+
+  &__tip--trail {
+    .setup-step__trail-preview {
+      flex: 1;
+      min-height: 0;
+    }
+  }
+
+  &__tips-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
   }
 
   &__kbd {
@@ -493,23 +552,64 @@
     margin-top: 12px;
   }
 
-  &__portrait-preview {
+  &__trail-preview {
     position: relative;
-    width: 250px;
-    height: 132px;
-    margin-top: 12px;
+    width: 100%;
+    min-height: 140px;
+    margin: 12px 0;
     overflow: hidden;
-    border: 1px solid $border;
-    border-radius: 7px;
-    box-shadow: 0 2px 8px rgba($text, 0.06);
+    border: 1px solid $border-strong;
+    border-radius: 10px;
+    background: white;
+  }
+
+  &__trail-lines {
+    position: absolute;
+    inset: 18px 20px;
+
+    i {
+      display: block;
+      width: 72%;
+      height: 5px;
+      margin-bottom: 14px;
+      border-radius: 999px;
+      background: rgba($text-muted, 0.16);
+
+      &:nth-child(2) {
+        width: 54%;
+      }
+
+      &:nth-child(3) {
+        width: 82%;
+      }
+
+      &:nth-child(4) {
+        width: 64%;
+      }
+
+      &:nth-child(5) {
+        width: 76%;
+      }
+
+      &:nth-child(6) {
+        width: 42%;
+      }
+    }
+
+    + svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
   }
 
   &__progress-note {
     margin: -3px 0 0;
-    color: $text-faint;
-    font-family: $font-mono;
-    font-size: 9px;
-    line-height: 1.4;
+    color: $text-muted;
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 460px;
   }
 
   &__text-link {
@@ -517,8 +617,8 @@
     border: 0;
     background: transparent;
     color: $accent-teal;
-    font-family: $font-mono;
-    font-size: 11px;
+    font-family: $font-body;
+    font-size: 14px;
     cursor: pointer;
     text-decoration: underline;
     text-decoration-color: rgba($accent-teal, 0.35);
@@ -535,7 +635,7 @@
     margin: 12px 0 10px;
     overflow: hidden;
     border: 1px solid $border;
-    border-radius: 7px;
+    border-radius: 10px;
     background: #fff;
     box-shadow: 0 2px 8px rgba($text, 0.06);
   }
@@ -644,5 +744,26 @@
 @media (prefers-reduced-motion: reduce) {
   .setup-step__wiki-cursor {
     animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .setup-page {
+    padding: 16px;
+  }
+
+  .setup-step {
+    &__discord-card {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    &__discord-button {
+      margin-left: 0;
+    }
+
+    &__tips-grid {
+      grid-template-columns: 1fr;
+    }
   }
 }

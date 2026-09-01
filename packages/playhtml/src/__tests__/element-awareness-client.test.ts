@@ -208,6 +208,46 @@ describe("ElementAwarenessClient", () => {
     expect(entry.byStableId.size).toBe(1);
   });
 
+  it("re-keys every local element when the identity changes", () => {
+    let identity = IDENTITY;
+    const socket = new FakeSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "/page",
+      socketFactory: () => socket as any,
+    });
+    const client = new ElementAwarenessClient({
+      transport,
+      getIdentity: () => identity,
+      getPage: () => "/page",
+      onAwareness: () => {},
+      onAwarenessChange: () => {},
+    });
+    client.setLocalAwareness("can-play", "card-a", { active: false });
+    client.setLocalAwareness("can-play", "card-b", { active: false });
+
+    identity = {
+      publicKey: "pk_replaced",
+      playerStyle: { colorPalette: ["green"] },
+    };
+    client.setLocalAwareness("can-play", "card-a", { active: true });
+    client.setLocalAwareness("can-play", "card-b", { active: true });
+
+    expect(
+      Array.from(
+        client.getAwareness("can-play", "card-a")!.byStableId.keys(),
+      ),
+    ).toEqual(["pk_replaced"]);
+    expect(
+      Array.from(
+        client.getAwareness("can-play", "card-b")!.byStableId.keys(),
+      ),
+    ).toEqual(["pk_replaced"]);
+
+    client.destroy();
+    transport.destroy();
+  });
+
   it("removes a peer's awareness when its channels are removed on disconnect", () => {
     const { socket, emitted } = createClient();
     socket.receive({

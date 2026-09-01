@@ -81,7 +81,7 @@ describe("wash-out ghost cleanup", () => {
 
   const pauseButton = () =>
     container.querySelector<HTMLButtonElement>(
-      ".scrap-collage__filter--tide",
+      ".scrap-collage__filter--cycle",
     );
 
   it("retires a ghost created before the tide is paused", () => {

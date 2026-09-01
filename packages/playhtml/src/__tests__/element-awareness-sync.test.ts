@@ -183,6 +183,47 @@ describe("element awareness sync", () => {
     expect(calls[0]).toMatchObject({ myAwareness: { active: true } });
   });
 
+  it("preserves remote awareness during a targeted local update", async () => {
+    const calls: any[] = [];
+    const el = document.createElement("div");
+    el.id = "mixed-presence";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).updateElement = () => {};
+    (el as any).updateElementAwareness = (data: any) => calls.push(data);
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote",
+            playerStyle: { colorPalette: ["blue"] },
+          },
+          "element:shard:0": {
+            v: 1,
+            entries: [["can-play", "mixed-presence", { active: "remote" }]],
+          },
+        },
+      },
+    });
+    calls.length = 0;
+
+    elementHandlers.get("can-play")!.get("mixed-presence")!
+      .setMyAwareness({ active: "local" } as any);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].awarenessByStableId.get("pk_remote")).toEqual({
+      active: "remote",
+    });
+    expect(calls[0].awarenessByStableId.get(playhtml.users.me.pid)).toEqual({
+      active: "local",
+    });
+  });
+
   it("keeps existing local awareness when a handler is recreated", async () => {
     const el = document.createElement("div");
     el.id = "seeded-presence";
@@ -233,5 +274,35 @@ describe("element awareness sync", () => {
     const finalShard = JSON.stringify(updates.at(-1));
     expect(finalShard).toContain("burst-0");
     expect(finalShard).toContain("burst-99");
+  });
+
+  it("updates only the element whose local awareness changed", async () => {
+    const updateCounts = new Map<string, number>();
+    for (let i = 0; i < 100; i += 1) {
+      const elementId = `targeted-${i}`;
+      const el = document.createElement("div");
+      el.id = elementId;
+      el.setAttribute("can-play", "");
+      (el as any).defaultData = {};
+      (el as any).myDefaultAwareness = { active: false };
+      (el as any).updateElement = () => {};
+      (el as any).updateElementAwareness = () => {
+        updateCounts.set(elementId, (updateCounts.get(elementId) ?? 0) + 1);
+      };
+      document.body.appendChild(el);
+    }
+    playhtml.setupPlayElements();
+    await flushPresencePublishes();
+    expect(updateCounts.size).toBe(100);
+    expect(Array.from(updateCounts.values()).every((count) => count === 1)).toBe(
+      true,
+    );
+    updateCounts.clear();
+
+    playhtml
+      .getHandle("targeted-50", "can-play")
+      .setMyAwareness({ active: true });
+
+    expect(updateCounts).toEqual(new Map([["targeted-50", 1]]));
   });
 });

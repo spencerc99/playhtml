@@ -5,9 +5,14 @@ import browser from "webextension-polyfill";
 import { PlayerIdentityCard } from "./PlayerIdentityCard";
 import type { PlayerIdentity } from "../types";
 import type { CollectorStatus } from "../collectors/types";
+import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+  type CollectionMode,
+} from "../collectors/modes";
 import { TinyMovementPreview } from "./TinyMovementPreview";
 import { PortraitCard } from "./PortraitCard";
-import { CollectorIcon } from "./icons";
+import { CollectorIcon, GearSvg } from "./icons";
 import "./InternetPortraitHome.scss";
 import { PostcardStack } from "../announcements/PostcardStack";
 import { FeedbackForm } from "./FeedbackForm";
@@ -15,15 +20,13 @@ import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
 import { FeatureGate } from "./FeatureGate";
 import { useFeatureState } from "../features/useFeatureAccess";
 import { PopupNav, WALKING_RECORD_PAGE } from "./PopupNav";
+import { SlowModeSettings } from "./SlowModeSettings";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
   discoveredSites: string[];
-  onViewCollections: () => void;
+  onOpenSettings: () => void;
   onViewHistory: () => void;
-  onViewProfile?: () => void;
-  onViewBagSettings?: () => void;
-  onViewDeveloperFeatures?: () => void;
   onViewCommute?: () => void;
   commuteIsOpen?: boolean;
   onViewBrowsingHistory: () => void;
@@ -46,11 +49,8 @@ interface PortraitStats {
 export function InternetPortraitHome({
   playerIdentity,
   discoveredSites,
-  onViewCollections,
+  onOpenSettings,
   onViewHistory,
-  onViewProfile,
-  onViewBagSettings,
-  onViewDeveloperFeatures,
   onViewCommute,
   commuteIsOpen = false,
   onViewBrowsingHistory,
@@ -60,6 +60,9 @@ export function InternetPortraitHome({
   onShowSatchel,
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
+  const [collectorModes, setCollectorModes] = useState<
+    Record<string, CollectionMode>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState<number | null>(null);
   const [portraitStats, setPortraitStats] = useState<PortraitStats | null>(
@@ -81,6 +84,21 @@ export function InternetPortraitHome({
         });
         if (response && Array.isArray(response.statuses)) {
           setCollectors(response.statuses);
+          const keys = response.statuses.map((status: CollectorStatus) =>
+            collectionModeStorageKey(status.type),
+          );
+          const stored = await browser.storage.local.get(keys);
+          setCollectorModes(
+            Object.fromEntries(
+              response.statuses.map((status: CollectorStatus) => [
+                status.type,
+                normalizeCollectionMode(
+                  status.type,
+                  stored[collectionModeStorageKey(status.type)],
+                ),
+              ]),
+            ),
+          );
           setError(null);
         } else {
           setCollectors(null);
@@ -108,7 +126,7 @@ export function InternetPortraitHome({
           return;
         }
         const url = new URL(tab.url);
-        const domain = url.hostname.replace(/^www\./, '');
+        const domain = url.hostname.replace(/^www\./, "");
         const response = await browser.runtime.sendMessage({
           type: "GET_DOMAIN_STATS",
           domain,
@@ -125,10 +143,15 @@ export function InternetPortraitHome({
   useEffect(() => {
     if (!copresenceEnabled) return;
     (async () => {
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
       if (!tab?.id) return;
       try {
-        const { count } = await browser.tabs.sendMessage(tab.id, { type: "GET_PRESENCE_COUNT" });
+        const { count } = await browser.tabs.sendMessage(tab.id, {
+          type: "GET_PRESENCE_COUNT",
+        });
         setPresenceCount(count);
       } catch {} // content script may not be ready
     })();
@@ -145,7 +168,7 @@ export function InternetPortraitHome({
               playerIdentity={playerIdentity}
               discoveredSites={discoveredSites}
               compact
-              onClick={onViewProfile}
+              onClick={onOpenSettings}
             />
           )}
         </div>
@@ -161,7 +184,9 @@ export function InternetPortraitHome({
                 return;
               }
               void (async () => {
-                await browser.tabs.create({ url: browser.runtime.getURL(path) });
+                await browser.tabs.create({
+                  url: browser.runtime.getURL(path),
+                });
                 window.close();
               })();
             }}
@@ -183,36 +208,37 @@ export function InternetPortraitHome({
         )}
         <FeatureGate feature="COMMUTE">
           {onViewCommute && (
-            <button
-              className="commute-entry"
-              onClick={onViewCommute}
-              aria-label={
-                commuteIsOpen
-                  ? "Return to the Internet Commute"
-                  : "Board the Internet Commute"
-              }
-            >
-              <span className="commute-entry__route" aria-hidden="true">
-                <span className="commute-entry__stop commute-entry__stop--blue" />
-                <span className="commute-entry__stop commute-entry__stop--gold" />
-                <span className="commute-entry__stop commute-entry__stop--rust" />
-              </span>
-              <span className="commute-entry__copy">
-                <span className="commute-entry__eyebrow">
-                  BOARDING NOW
+            <>
+              <button
+                className="commute-entry"
+                onClick={onViewCommute}
+                aria-label={
+                  commuteIsOpen
+                    ? "Return to the Internet Commute"
+                    : "Board the Internet Commute"
+                }
+              >
+                <span className="commute-entry__route" aria-hidden="true">
+                  <span className="commute-entry__stop commute-entry__stop--blue" />
+                  <span className="commute-entry__stop commute-entry__stop--gold" />
+                  <span className="commute-entry__stop commute-entry__stop--rust" />
                 </span>
-                <strong>
-                  {commuteIsOpen
-                    ? "Return to the internet commute"
-                    : "Board the internet commute"}
-                </strong>
-                <span>A slow train through pages people found lately.</span>
-              </span>
-              <span className="commute-entry__door" aria-hidden="true">
-                <span />
-                <span />
-              </span>
-            </button>
+                <span className="commute-entry__copy">
+                  <span className="commute-entry__eyebrow">BOARDING NOW</span>
+                  <strong>
+                    {commuteIsOpen
+                      ? "Return to the internet commute"
+                      : "Board the internet commute"}
+                  </strong>
+                  <span>A slow train through pages people found lately.</span>
+                </span>
+                <span className="commute-entry__door" aria-hidden="true">
+                  <span />
+                  <span />
+                </span>
+              </button>
+              <SlowModeSettings />
+            </>
           )}
         </FeatureGate>
         <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -236,7 +262,9 @@ export function InternetPortraitHome({
                 <PortraitCard
                   domain={portraitStats.domain}
                   totalTimeMs={portraitStats.totalTimeMs}
-                  hourBuckets={portraitStats.hourBuckets ?? new Array(24).fill(0)}
+                  hourBuckets={
+                    portraitStats.hourBuckets ?? new Array(24).fill(0)
+                  }
                   cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
                   dateRange={portraitStats.dateRange}
                   uniquePageCount={portraitStats.uniquePageCount}
@@ -251,23 +279,13 @@ export function InternetPortraitHome({
               <div className="preview-card__label">Open Portrait Overlay</div>
             </div>
           </div>
-          <FeatureGate feature="BAG_SETTINGS">
-            {onViewBagSettings && (
-              <button
-                className="portrait-home__nav-link portrait-home__bag-settings-link"
-                onClick={onViewBagSettings}
-              >
-                bag settings
-              </button>
-            )}
-          </FeatureGate>
         </section>
 
         <section className="collection-status">
           <div className="collection-status__header-row">
             <h3>Your Collection Status</h3>
             <button
-              onClick={onViewCollections}
+              onClick={onOpenSettings}
               title="Data settings"
               className="collection-status__settings-link"
             >
@@ -286,11 +304,9 @@ export function InternetPortraitHome({
                     <span className="collector-pill__name">{c.type}</span>
                   </div>
                   <span
-                    className={`collector-pill__state collector-pill__state--${
-                      c.enabled ? "on" : "off"
-                    }`}
+                    className={`collector-pill__state collector-pill__state--${collectorModes[c.type] ?? "off"}`}
                   >
-                    {c.enabled ? "On" : "Off"}
+                    {collectorModes[c.type] ?? "off"}
                   </span>
                 </div>
               ))}
@@ -300,15 +316,15 @@ export function InternetPortraitHome({
       </main>
 
       <footer className="portrait-home__footer">
-        <span>Beta</span>
-        {onViewDeveloperFeatures && (
-          <button
-            className="portrait-home__internal-link"
-            onClick={onViewDeveloperFeatures}
-          >
-            experiments
-          </button>
-        )}
+        <button
+          type="button"
+          aria-label="settings"
+          title="Settings"
+          className="portrait-home__changelog-link portrait-home__settings-link"
+          onClick={onOpenSettings}
+        >
+          <GearSvg size={14} />
+        </button>
         <button
           type="button"
           className="portrait-home__changelog-link"

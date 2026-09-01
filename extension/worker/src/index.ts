@@ -11,7 +11,13 @@ import { handleSubscribe } from './routes/subscribe';
 import { handleFeedback } from './routes/feedback';
 import { handlePageMeta } from './routes/pageMeta';
 import { handleStream } from './routes/stream';
+import {
+  handleQuarantineVerdict,
+  handleQuarantineStrip,
+  handleQuarantineRip,
+} from './routes/quarantine';
 import { handleCommute } from './routes/commute';
+import { handleCommuteTrainBoard } from './routes/commuteTrains';
 import {
   handleAccessRequest,
   handleAdminAccessOverview,
@@ -26,6 +32,7 @@ import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
 export { LiveEventsHub } from './live/LiveEventsHub';
+export { CommuteTrainDispatcherObject } from './commuteTrainDispatcherObject';
 
 /**
  * Cloudflare Worker entry point
@@ -68,6 +75,11 @@ export default {
       return handleCommute(request, env);
     }
 
+    if (path === '/commute/trains/board' && request.method === 'POST') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleCommuteTrainBoard(request, env);
+    }
+
     if (path === '/events/daily-counts' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleDailyCounts(request, env);
@@ -87,6 +99,19 @@ export default {
 
     if (path === '/feedback' && request.method === 'POST') {
       return handleFeedback(request, env);
+    }
+
+    // Quarantine tape — public (called from content scripts on arbitrary pages)
+    if (path === '/quarantine/verdict' && request.method === 'GET') {
+      return handleQuarantineVerdict(request, env);
+    }
+
+    if (path === '/quarantine/strip' && request.method === 'POST') {
+      return handleQuarantineStrip(request, env);
+    }
+
+    if (path === '/quarantine/rip' && request.method === 'POST') {
+      return handleQuarantineRip(request, env);
     }
 
     const featureAccessMatch = path.match(/^\/feature-access\/(.+)$/);

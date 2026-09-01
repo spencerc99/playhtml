@@ -124,19 +124,25 @@ jobs:
         run: bun run build-packages
 
       - name: Build Chrome zip
+        id: build-chrome
         if: env.SKIP_CHROME != 'true' || env.SKIP_EDGE != 'true'
+        continue-on-error: true
         working-directory: extension
         run: |
           WXT_OUT_DIR=publish bun run zip
           node scripts/validateExtensionBuild.mjs publish/chrome-mv3
 
       - name: Build Firefox zip
+        id: build-firefox
         if: env.SKIP_FIREFOX != 'true'
+        continue-on-error: true
         working-directory: extension
         run: WXT_OUT_DIR=publish bun run zip:firefox
 
       - name: Build Safari zip
+        id: build-safari
         if: env.SKIP_SAFARI != 'true'
+        continue-on-error: true
         working-directory: extension
         run: |
           WXT_OUT_DIR=publish bun run zip:safari
@@ -144,6 +150,7 @@ jobs:
 
       - name: Resolve zip paths
         id: zips
+        if: always()
         working-directory: extension
         run: |
           CHROME_ZIP=$(ls publish/*-"$VERSION"-chrome.zip 2>/dev/null | head -1 || true)
@@ -157,7 +164,10 @@ jobs:
           echo "Built artifacts:"
           ls -la publish/
 
-      - name: Submit to stores
+      - name: Submit to Chrome
+        id: submit-chrome
+        if: always() && env.SKIP_CHROME != 'true' && steps.build-chrome.outcome == 'success'
+        continue-on-error: true
         working-directory: extension
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
@@ -168,53 +178,63 @@ jobs:
           CHROME_DEPLOY_PERCENTAGE: ${{ secrets.CHROME_DEPLOY_PERCENTAGE }}
           CHROME_REVIEW_EXEMPTION: ${{ secrets.CHROME_REVIEW_EXEMPTION }}
           CHROME_SKIP_SUBMIT_REVIEW: ${{ secrets.CHROME_SKIP_SUBMIT_REVIEW }}
+          CHROME_ZIP: ${{ steps.zips.outputs.chrome }}
+        run: |
+          if [ -z "$CHROME_ZIP" ]; then
+            echo "Chrome zip was not found."
+            exit 1
+          fi
+          node scripts/submitChrome.mjs
+
+      - name: Submit to Edge
+        id: submit-edge
+        if: always() && env.SKIP_EDGE != 'true' && steps.build-chrome.outcome == 'success'
+        continue-on-error: true
+        working-directory: extension
+        env:
           EDGE_PRODUCT_ID: ${{ secrets.EDGE_PRODUCT_ID }}
           EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
           EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
           EDGE_CERTIFICATION_NOTES: ${{ secrets.EDGE_CERTIFICATION_NOTES }}
+          CHROME_ZIP: ${{ steps.zips.outputs.chrome }}
+        run: |
+          if [ -z "$CHROME_ZIP" ]; then
+            echo "Chrome zip was not found for Edge submission."
+            exit 1
+          fi
+          EDGE_ZIP="$CHROME_ZIP" node scripts/submitEdge.mjs
+
+      - name: Submit to Firefox
+        id: submit-firefox
+        if: always() && env.SKIP_FIREFOX != 'true' && steps.build-firefox.outcome == 'success'
+        continue-on-error: true
+        working-directory: extension
+        env:
           FIREFOX_EXTENSION_ID: ${{ secrets.FIREFOX_EXTENSION_ID }}
           FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
           FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
-          CHROME_ZIP: ${{ steps.zips.outputs.chrome }}
           FIREFOX_ZIP: ${{ steps.zips.outputs.firefox }}
           SOURCES_ZIP: ${{ steps.zips.outputs.sources }}
         run: |
-          if [ "$SKIP_CHROME" != "true" ]; then
-            if [ -z "$CHROME_ZIP" ]; then
-              echo "Chrome zip was not found."
-              exit 1
-            fi
-            node scripts/submitChrome.mjs
+          if [ -z "$FIREFOX_ZIP" ]; then
+            echo "Firefox zip was not found."
+            exit 1
           fi
-
-          if [ "$SKIP_EDGE" != "true" ]; then
-            if [ -z "$CHROME_ZIP" ]; then
-              echo "Chrome zip was not found for Edge submission."
-              exit 1
-            fi
-            EDGE_ZIP="$CHROME_ZIP" node scripts/submitEdge.mjs
+          if [ -z "$SOURCES_ZIP" ]; then
+            echo "Firefox sources zip was not found."
+            exit 1
           fi
-
-          if [ "$SKIP_FIREFOX" != "true" ]; then
-            if [ -z "$FIREFOX_ZIP" ]; then
-              echo "Firefox zip was not found."
-              exit 1
-            fi
-            if [ -z "$SOURCES_ZIP" ]; then
-              echo "Firefox sources zip was not found."
-              exit 1
-            fi
-            FIREFOX_ARGS=(--firefox-zip "$FIREFOX_ZIP" --firefox-sources-zip "$SOURCES_ZIP")
-            if [ "$DRY_RUN" = "true" ]; then
-              scripts/submitFirefox.sh --dry-run "${FIREFOX_ARGS[@]}"
-            else
-              scripts/submitFirefox.sh "${FIREFOX_ARGS[@]}"
-            fi
+          FIREFOX_ARGS=(--firefox-zip "$FIREFOX_ZIP" --firefox-sources-zip "$SOURCES_ZIP")
+          if [ "$DRY_RUN" = "true" ]; then
+            scripts/submitFirefox.sh --dry-run "${FIREFOX_ARGS[@]}"
+          else
+            scripts/submitFirefox.sh "${FIREFOX_ARGS[@]}"
           fi
 
       - name: Prepare App Store Connect key
         id: apple-key
-        if: env.SKIP_SAFARI != 'true' && env.DRY_RUN != 'true'
+        if: always() && env.SKIP_SAFARI != 'true' && env.DRY_RUN != 'true' && steps.build-safari.outcome == 'success'
+        continue-on-error: true
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
@@ -229,7 +249,9 @@ jobs:
           echo "path=$KEY_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Package and submit Safari app
-        if: env.SKIP_SAFARI != 'true'
+        id: submit-safari
+        if: always() && env.SKIP_SAFARI != 'true' && steps.build-safari.outcome == 'success'
+        continue-on-error: true
         working-directory: extension
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -248,6 +270,51 @@ jobs:
           else
             scripts/submitSafari.sh
           fi
+
+      - name: Check store submissions
+        if: always()
+        env:
+          BUILD_CHROME_OUTCOME: ${{ steps.build-chrome.outcome }}
+          BUILD_FIREFOX_OUTCOME: ${{ steps.build-firefox.outcome }}
+          BUILD_SAFARI_OUTCOME: ${{ steps.build-safari.outcome }}
+          CHROME_OUTCOME: ${{ steps.submit-chrome.outcome }}
+          EDGE_OUTCOME: ${{ steps.submit-edge.outcome }}
+          FIREFOX_OUTCOME: ${{ steps.submit-firefox.outcome }}
+          APPLE_KEY_OUTCOME: ${{ steps.apple-key.outcome }}
+          SAFARI_OUTCOME: ${{ steps.submit-safari.outcome }}
+        run: |
+          FAILED=0
+
+          check_outcome() {
+            STORE="$1"
+            OUTCOME="$2"
+            if [ "$OUTCOME" != "success" ]; then
+              echo "::error::$STORE failed with outcome: $OUTCOME"
+              FAILED=1
+            fi
+          }
+
+          if [ "$SKIP_CHROME" != "true" ]; then
+            check_outcome "Chrome build" "$BUILD_CHROME_OUTCOME"
+            check_outcome "Chrome submission" "$CHROME_OUTCOME"
+          fi
+          if [ "$SKIP_EDGE" != "true" ]; then
+            check_outcome "Edge build" "$BUILD_CHROME_OUTCOME"
+            check_outcome "Edge submission" "$EDGE_OUTCOME"
+          fi
+          if [ "$SKIP_FIREFOX" != "true" ]; then
+            check_outcome "Firefox build" "$BUILD_FIREFOX_OUTCOME"
+            check_outcome "Firefox submission" "$FIREFOX_OUTCOME"
+          fi
+          if [ "$SKIP_SAFARI" != "true" ]; then
+            check_outcome "Safari build" "$BUILD_SAFARI_OUTCOME"
+            if [ "$DRY_RUN" != "true" ]; then
+              check_outcome "App Store Connect key" "$APPLE_KEY_OUTCOME"
+            fi
+            check_outcome "Safari submission" "$SAFARI_OUTCOME"
+          fi
+
+          exit "$FAILED"
 
       - name: Tag release
         id: tag

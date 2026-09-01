@@ -356,10 +356,14 @@ The type parameters describe the channel name and its payload. No runtime valida
 Subscribe to a [page-level data channel](/docs/data/page-data/), persistent state not tied to any element. The shape mirrors `useState`.
 
 ```tsx
+type PageDataSetter<T> = T extends object
+  ? T | ((draft: T) => void)
+  : T | ((value: T) => T);
+
 function usePageData<T>(
   name: string,
   defaultValue: T,
-): [T, (data: T | ((draft: T) => void)) => void];
+): [T, (data: PageDataSetter<T>) => void];
 ```
 
 ```tsx
@@ -367,7 +371,14 @@ const [counter, setCounter] = usePageData("visits", { count: 0 });
 setCounter((draft) => { draft.count += 1; });
 ```
 
-`defaultValue` is read only on first mount and when `name` changes. `setCounter` accepts a replacement value or a mutator function, with the same merge semantics as element `setData`.
+For primitive channels, a functional update returns the next value:
+
+```tsx
+const [viewCount, setViewCount] = usePageData("viewCount", 0);
+setViewCount((value) => value + 1);
+```
+
+`defaultValue` is read only on first mount and when `name` changes. `setCounter` accepts a replacement value or a mutator function. Object and array mutators edit their draft in place; primitive updaters return the next value.
 
 ### `usePresenceRoom`
 

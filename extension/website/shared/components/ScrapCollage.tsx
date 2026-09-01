@@ -2,6 +2,7 @@
 // ABOUTME: Shows source provenance on hover and links each surviving image to its page.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
 import {
@@ -64,6 +65,9 @@ interface ScrapCollageProps {
   showKindFilter?: boolean;
 }
 
+type ScrapView = "drift" | "archive";
+type VisibleScrapCount = "auto" | 100 | 200 | 300 | 500;
+
 interface ScrapLayout {
   item: ScrapItem;
   /** Position in the tide's slot array, so a departing scrap keeps its place. */
@@ -80,6 +84,13 @@ interface ScrapLayout {
 
 const DEFAULT_PER_DOMAIN_CAP = 4;
 const DEFAULT_TARGET_COUNT = 200;
+const SCRAPS_PER_VIEWPORT_AREA = 5_600;
+const MIN_AUTO_TARGET_COUNT = 100;
+const MAX_AUTO_TARGET_COUNT = 500;
+const ARCHIVE_CELL_WIDTH = 160;
+const ARCHIVE_ROW_HEIGHT = 112;
+const ARCHIVE_OVERSCAN_VIEWPORTS = 0.25;
+const ARCHIVE_STACK_LAYER_COUNT = 3;
 const TIDE_WASH_OUT_MS = 1400;
 /** Bounds of the jittered gap between tide events. */
 const TIDE_GAP_MIN_MS = 1000;
@@ -108,6 +119,15 @@ const SCRAP_KIND_OPTIONS = [
 
 type ScrapKind = ScrapItem["kind"];
 type ScrapKindFilter = "all" | ScrapKind;
+
+export function responsiveTargetCount(width: number, height: number): number {
+  if (width <= 0 || height <= 0) return DEFAULT_TARGET_COUNT;
+  return clamp(
+    MIN_AUTO_TARGET_COUNT,
+    MAX_AUTO_TARGET_COUNT,
+    Math.round((width * height) / SCRAPS_PER_VIEWPORT_AREA),
+  );
+}
 
 function naturalArea(item: ScrapItem): number {
   switch (item.kind) {
@@ -160,6 +180,26 @@ function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
   return a.key.localeCompare(b.key);
 }
 
+function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
+  const newestByCanonicalKey = new Map<string, ScrapItem>();
+  for (const item of items) {
+    const canonicalKey = canonicalScrapKey(item);
+    const current = newestByCanonicalKey.get(canonicalKey);
+    if (!current || item.ts > current.ts) {
+      newestByCanonicalKey.set(canonicalKey, item);
+    }
+  }
+
+  const newestByKey = new Map<string, ScrapItem>();
+  for (const item of newestByCanonicalKey.values()) {
+    const current = newestByKey.get(item.key);
+    if (!current || item.ts > current.ts) {
+      newestByKey.set(item.key, item);
+    }
+  }
+  return Array.from(newestByKey.values());
+}
+
 export function curateScraps(
   items: ScrapItem[],
   opts: CurateScrapsOptions,
@@ -174,17 +214,8 @@ export function curateScraps(
   );
   if (perDomainCap === 0 || targetCount === 0) return [];
 
-  const newestByCanonicalKey = new Map<string, ScrapItem>();
-  for (const item of items) {
-    const canonicalKey = canonicalScrapKey(item);
-    const current = newestByCanonicalKey.get(canonicalKey);
-    if (!current || item.ts > current.ts) {
-      newestByCanonicalKey.set(canonicalKey, item);
-    }
-  }
-
   const scrapsByDomain = new Map<string, ScrapItem[]>();
-  for (const item of newestByCanonicalKey.values()) {
+  for (const item of newestUniqueScraps(items)) {
     const domainScraps = scrapsByDomain.get(item.domain);
     if (domainScraps) {
       domainScraps.push(item);
@@ -498,41 +529,75 @@ function tierForItem(
       : 2;
 }
 
-/**
- * Field height for "everything" mode: the container's fixed width is kept,
- * but there's no fixed height to fit into, so rows are derived from the tile
- * count instead of the field being clamped to the container. Column count
- * uses the same sqrt-of-area formula as the fit-to-container layout,
- * treating the container's own (measured) height as the reference aspect
- * ratio so column width stays visually consistent between the two modes.
- * Row height is the actual average tile height (via the same size-tier
- * logic buildLayout uses), not a placeholder square cell, so the estimate
- * tracks the real mix of image/button/icon/cursor tile sizes.
- */
-function computeEverythingFieldHeight(
+export function buildArchiveWindow(
   items: ScrapItem[],
   width: number,
-  referenceHeight: number,
+  scrollTop: number,
+  viewportHeight: number,
   seed: number,
-): number {
-  if (items.length === 0 || width === 0 || referenceHeight === 0) return 0;
+  sizeBounds = tierBounds(items),
+): { fieldHeight: number; layout: ScrapLayout[] } {
+  if (items.length === 0 || width <= 0 || viewportHeight <= 0) {
+    return { fieldHeight: 0, layout: [] };
+  }
 
-  const aspectRatio = width / referenceHeight;
-  const columnCount = Math.max(
-    1,
-    Math.ceil(Math.sqrt(items.length * aspectRatio)),
-  );
+  const columnCount = Math.max(1, Math.floor(width / ARCHIVE_CELL_WIDTH));
   const rowCount = Math.ceil(items.length / columnCount);
+  const fieldHeight = Math.max(viewportHeight, rowCount * ARCHIVE_ROW_HEIGHT);
+  const cellWidth = width / columnCount;
+  const overscan = viewportHeight * ARCHIVE_OVERSCAN_VIEWPORTS;
+  const firstRow = Math.max(
+    0,
+    Math.floor((scrollTop - overscan) / ARCHIVE_ROW_HEIGHT),
+  );
+  const lastRow = Math.min(
+    rowCount - 1,
+    Math.ceil((scrollTop + viewportHeight + overscan) / ARCHIVE_ROW_HEIGHT),
+  );
+  const firstIndex = firstRow * columnCount;
+  const lastIndex = Math.min(items.length, (lastRow + 1) * columnCount);
+  const layout: ScrapLayout[] = [];
 
-  const { lowerArea, upperArea } = tierBounds(items);
-  const averageCellHeight =
-    items.reduce((sum, item) => {
-      const tier = tierForItem(item, lowerArea, upperArea);
-      const itemSeed = seed + hashString(item.key);
-      return sum + itemSize(item, tier, itemSeed).height;
-    }, 0) / items.length;
+  for (let index = firstIndex; index < lastIndex; index += 1) {
+    const item = items[index];
+    const itemSeed = seed + hashString(item.key);
+    const tier = tierForItem(
+      item,
+      sizeBounds.lowerArea,
+      sizeBounds.upperArea,
+    );
+    const dimensions = itemSize(item, tier, itemSeed);
+    const column = index % columnCount;
+    const row = Math.floor(index / columnCount);
+    const jitterX = (seededRandom(itemSeed, 2) - 0.5) * cellWidth * 0.45;
+    const jitterY =
+      (seededRandom(itemSeed, 3) - 0.5) * ARCHIVE_ROW_HEIGHT * 0.35;
+    const unclampedX =
+      (column + 0.5) * cellWidth + jitterX - dimensions.width / 2;
+    const unclampedY =
+      (row + 0.5) * ARCHIVE_ROW_HEIGHT + jitterY - dimensions.height / 2;
+    const x = Math.max(4, Math.min(width - dimensions.width - 4, unclampedX));
+    const y = Math.max(
+      4,
+      Math.min(fieldHeight - dimensions.height - 4, unclampedY),
+    );
 
-  return rowCount * averageCellHeight;
+    layout.push({
+      item,
+      slotIndex: index,
+      x,
+      y,
+      width: dimensions.width,
+      height: dimensions.height,
+      rotation: seededRandom(itemSeed, 4) * 12 - 6,
+      zIndex:
+        Math.floor(seededRandom(itemSeed, 5) * ARCHIVE_STACK_LAYER_COUNT) + 1,
+      cardAbove: y - scrollTop > viewportHeight * 0.58,
+      cardRightAligned: x > width * 0.68,
+    });
+  }
+
+  return { fieldHeight, layout };
 }
 
 /**
@@ -602,18 +667,119 @@ function buildLayout(
 }
 
 const COLLAGE_STYLES = `
-  .scrap-collage__filters {
+  .scrap-collage__controls {
     position: absolute;
-    top: 12px;
+    bottom: 12px;
     left: 50%;
     z-index: 300;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
+    box-sizing: border-box;
+    max-width: calc(100% - 24px);
+    padding: 7px;
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 5px;
+    background: #f5f0e8;
+    box-shadow: 0 8px 24px rgba(61, 56, 51, 0.2);
+    pointer-events: auto;
+    transform: translateX(-50%);
+  }
+
+  .scrap-collage__controls--collapsed {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .scrap-collage__control-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .scrap-collage__controls-header,
+  .scrap-collage__controls-body {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    max-width: calc(100% - 24px);
-    pointer-events: auto;
-    transform: translateX(-50%);
+  }
+
+  .scrap-collage__controls-header {
+    justify-content: space-between;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(61, 56, 51, 0.12);
+  }
+
+  .scrap-collage__view-switch {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 999px;
+    background: rgba(61, 56, 51, 0.05);
+  }
+
+  .scrap-collage__view-option {
+    appearance: none;
+    padding: 3px 12px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #827a72;
+    cursor: pointer;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
+  .scrap-collage__view-option[aria-pressed="true"] {
+    background: #faf9f6;
+    box-shadow: 0 1px 4px rgba(61, 56, 51, 0.18);
+    color: #3d3833;
+  }
+
+  .scrap-collage__view-option:focus-visible {
+    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline-offset: 1px;
+  }
+
+  .scrap-collage__archive-summary {
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    white-space: nowrap;
+  }
+
+  .scrap-collage__control-label {
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    letter-spacing: 0.03em;
+  }
+
+  .scrap-collage__select {
+    appearance: none;
+    min-width: 112px;
+    padding: 4px 24px 4px 9px;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 3px;
+    background-color: #faf9f6;
+    background-image:
+      linear-gradient(45deg, transparent 50%, #827a72 50%),
+      linear-gradient(135deg, #827a72 50%, transparent 50%);
+    background-position:
+      calc(100% - 11px) 50%,
+      calc(100% - 7px) 50%;
+    background-repeat: no-repeat;
+    background-size: 4px 4px, 4px 4px;
+    color: #3d3833;
+    cursor: pointer;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    line-height: 1.4;
   }
 
   .scrap-collage__filter {
@@ -634,6 +800,11 @@ const COLLAGE_STYLES = `
       border-color 140ms ease,
       background-color 140ms ease,
       color 140ms ease;
+  }
+
+  .scrap-collage__filter--collapse {
+    min-width: 30px;
+    padding-inline: 8px;
   }
 
   .scrap-collage__filter-count {
@@ -657,43 +828,48 @@ const COLLAGE_STYLES = `
     transform: translateY(-2px);
   }
 
+  .scrap-collage__select:focus-visible {
+    border-color: #4a9a8a;
+    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline-offset: 2px;
+  }
+
   .scrap-collage__filter:focus-visible {
     outline: 2px solid rgba(74, 154, 138, 0.45);
     outline-offset: 2px;
   }
 
-  .scrap-collage__filter--everything[aria-pressed="true"] {
-    border-color: #c4724e;
-    background: rgba(196, 114, 78, 0.1);
-    color: #c4724e;
+  .scrap-collage__filter--cycle {
+    gap: 6px;
   }
 
-  .scrap-collage__filter--everything[aria-pressed="true"] .scrap-collage__filter-count {
-    color: #c4724e;
+  .scrap-collage__cycle-status {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #aaa59d;
+    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.12);
+    transition: background 140ms ease, box-shadow 140ms ease;
   }
 
-  .scrap-collage__filter--everything:hover,
-  .scrap-collage__filter--everything:focus-visible {
-    border-color: #c4724e;
+  .scrap-collage__filter--cycle[aria-pressed="true"] {
+    border-color: #4a9a70;
+    background: rgba(74, 154, 112, 0.1);
+    color: #3f855f;
   }
 
-  .scrap-collage__filter--everything:focus-visible {
-    outline-color: rgba(196, 114, 78, 0.45);
+  .scrap-collage__filter--cycle[aria-pressed="true"] .scrap-collage__cycle-status {
+    background: #4a9a70;
+    box-shadow: 0 0 0 2px rgba(74, 154, 112, 0.16);
   }
 
-  .scrap-collage__filter--tide[aria-pressed="true"] {
-    border-color: #5b8db8;
-    background: rgba(91, 141, 184, 0.1);
-    color: #5b8db8;
+  .scrap-collage__filter--cycle:hover,
+  .scrap-collage__filter--cycle:focus-visible {
+    border-color: #4a9a70;
   }
 
-  .scrap-collage__filter--tide:hover,
-  .scrap-collage__filter--tide:focus-visible {
-    border-color: #5b8db8;
-  }
-
-  .scrap-collage__filter--tide:focus-visible {
-    outline-color: rgba(91, 141, 184, 0.45);
+  .scrap-collage__filter--cycle:focus-visible {
+    outline-color: rgba(74, 154, 112, 0.45);
   }
 
   .scrap-collage__scroll {
@@ -702,6 +878,26 @@ const COLLAGE_STYLES = `
     overflow-y: auto;
     overflow-x: hidden;
     height: 100%;
+  }
+
+  @media (max-width: 620px) {
+    .scrap-collage__controls:not(.scrap-collage__controls--collapsed) {
+      width: calc(100% - 24px);
+      align-items: stretch;
+    }
+
+    .scrap-collage__controls-body {
+      flex-wrap: wrap;
+    }
+
+    .scrap-collage__controls-body .scrap-collage__control-group {
+      flex: 1 1 auto;
+    }
+
+    .scrap-collage__select {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
   }
 
   .scrap-collage__field {
@@ -1100,7 +1296,12 @@ export function ScrapCollage({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [selectedKind, setSelectedKind] =
     useState<ScrapKindFilter>("all");
-  const [everythingMode, setEverythingMode] = useState(false);
+  const [view, setView] = useState<ScrapView>("drift");
+  const [visibleScrapCount, setVisibleScrapCount] =
+    useState<VisibleScrapCount>("auto");
+  const [archiveScrollTop, setArchiveScrollTop] = useState(0);
+  const [controlsExpanded, setControlsExpanded] = useState(true);
+  const [shuffleIndex, setShuffleIndex] = useState(0);
   const [failedScraps, setFailedScraps] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1113,6 +1314,7 @@ export function ScrapCollage({
   const prefersReducedMotion = usePrefersReducedMotion();
   const [tidePaused, setTidePaused] = useState(prefersReducedMotion);
   const [tide, setTide] = useState<TideState | null>(null);
+  const tideShuffleIndexRef = useRef(shuffleIndex);
   const tideRef = useRef(tide);
   tideRef.current = tide;
   const [washingOut, setWashingOut] = useState<WashingOutScrap[]>([]);
@@ -1132,6 +1334,13 @@ export function ScrapCollage({
   // Rendered tile elements by scrap key, so arrow-key navigation can re-anchor
   // the examine view on the next scrap's actual slot.
   const tileElementsRef = useRef(new Map<string, HTMLElement>());
+  const archiveMode = view === "archive";
+  const layoutSeed = seed + shuffleIndex * 10_007;
+  const selectedTargetCount =
+    targetCount ??
+    (visibleScrapCount === "auto"
+      ? responsiveTargetCount(containerSize.width, containerSize.height)
+      : visibleScrapCount);
 
   const kindCounts = useMemo(() => {
     const counts: Record<ScrapKind, number> = {
@@ -1140,15 +1349,15 @@ export function ScrapCollage({
       "svg-icon": 0,
       cursor: 0,
     };
-    const seenCanonicalKeys = new Set<string>();
-    for (const item of items) {
-      const canonicalKey = canonicalScrapKey(item);
-      if (seenCanonicalKeys.has(canonicalKey)) continue;
-      seenCanonicalKeys.add(canonicalKey);
+    for (const item of newestUniqueScraps(items)) {
       counts[item.kind] += 1;
     }
     return counts;
   }, [items]);
+  const totalScrapCount = Object.values(kindCounts).reduce(
+    (total, count) => total + count,
+    0,
+  );
   const filteredItems = useMemo(
     () =>
       selectedKind === "all"
@@ -1156,18 +1365,26 @@ export function ScrapCollage({
         : items.filter((item) => item.kind === selectedKind),
     [items, selectedKind],
   );
-  const everythingScraps = useMemo(
+  const archiveScraps = useMemo(
     () =>
-      curateScraps(filteredItems, {
-        seed,
-        perDomainCap: Infinity,
-        targetCount: Infinity,
-      }),
-    [filteredItems, seed],
+      newestUniqueScraps(filteredItems).sort(
+        (first, second) =>
+          second.ts - first.ts || first.key.localeCompare(second.key),
+      ),
+    [filteredItems],
+  );
+  const archiveSizeBounds = useMemo(
+    () => tierBounds(archiveScraps),
+    [archiveScraps],
   );
   const curatedScraps = useMemo(
-    () => curateScraps(filteredItems, { seed, targetCount, perDomainCap }),
-    [filteredItems, perDomainCap, seed, targetCount],
+    () =>
+      curateScraps(filteredItems, {
+        seed: layoutSeed,
+        targetCount: selectedTargetCount,
+        perDomainCap,
+      }),
+    [filteredItems, layoutSeed, perDomainCap, selectedTargetCount],
   );
   /**
    * Every scrap the tide can reach, ordered so the front of the queue is the
@@ -1175,59 +1392,77 @@ export function ScrapCollage({
    * waits its turn in the order `curateScraps` would have reached it.
    */
   const tidePool = useMemo(() => {
-    const byKey = new Map(everythingScraps.map((item) => [item.key, item]));
+    const byKey = new Map(archiveScraps.map((item) => [item.key, item]));
     const ordered: ScrapItem[] = [];
     for (const item of curatedScraps) {
       if (byKey.delete(item.key)) ordered.push(item);
     }
     return [...ordered, ...byKey.values()];
-  }, [curatedScraps, everythingScraps]);
+  }, [archiveScraps, curatedScraps]);
   const tideCapacity = Math.min(curatedScraps.length, tidePool.length);
-  const tideAvailable = !everythingMode && tidePool.length > tideCapacity;
+  const tideAvailable = !archiveMode && tidePool.length > tideCapacity;
   const poolByKey = useMemo(
     () => new Map(tidePool.map((item) => [item.key, item])),
     [tidePool],
   );
 
   useEffect(() => {
-    setTide((current) =>
-      deriveTideState(
+    setTide((current) => {
+      const shuffled = tideShuffleIndexRef.current !== shuffleIndex;
+      tideShuffleIndexRef.current = shuffleIndex;
+      return deriveTideState(
         tidePool.map((item) => item.key),
         tideCapacity,
-        current ?? undefined,
-      ),
-    );
-  }, [tideCapacity, tidePool]);
+        shuffled ? undefined : current ?? undefined,
+      );
+    });
+  }, [shuffleIndex, tideCapacity, tidePool]);
 
   /**
    * The shore as slots: one entry per position, `null` where a scrap has washed
    * off and nothing has yet washed back in.
    */
   const slots = useMemo<(ScrapItem | null)[]>(() => {
-    if (everythingMode) return everythingScraps;
     if (!tide) return curatedScraps;
     return tide.ashore.map((key) =>
       key === null ? null : poolByKey.get(key) ?? null,
     );
-  }, [curatedScraps, everythingMode, everythingScraps, poolByKey, tide]);
-  const fieldHeight = useMemo(
+  }, [curatedScraps, poolByKey, tide]);
+  const archiveWindow = useMemo(
     () =>
-      everythingMode
-        ? Math.max(
+      archiveMode
+        ? buildArchiveWindow(
+            archiveScraps,
+            containerSize.width,
+            archiveScrollTop,
             containerSize.height,
-            computeEverythingFieldHeight(
-              slots.filter((item): item is ScrapItem => item !== null),
-              containerSize.width,
-              containerSize.height,
-              seed,
-            ),
+            layoutSeed,
+            archiveSizeBounds,
           )
-        : containerSize.height,
-    [containerSize.height, containerSize.width, slots, everythingMode, seed],
+        : { fieldHeight: 0, layout: [] },
+    [
+      archiveMode,
+      archiveScraps,
+      archiveScrollTop,
+      archiveSizeBounds,
+      containerSize,
+      layoutSeed,
+    ],
   );
+  const fieldHeight = archiveMode
+    ? archiveWindow.fieldHeight
+    : containerSize.height;
   const layout = useMemo(
-    () => buildLayout(slots, containerSize.width, fieldHeight, seed),
-    [containerSize.width, slots, fieldHeight, seed],
+    () =>
+      archiveMode
+        ? archiveWindow.layout
+        : buildLayout(
+            slots,
+            containerSize.width,
+            containerSize.height,
+            layoutSeed,
+          ),
+    [archiveMode, archiveWindow.layout, containerSize, layoutSeed, slots],
   );
 
   const layoutRef = useRef(layout);
@@ -1241,6 +1476,10 @@ export function ScrapCollage({
       setSelectedKind("all");
     }
   }, [kindCounts, selectedKind]);
+
+  useEffect(() => {
+    if (!archiveMode) setArchiveScrollTop(0);
+  }, [archiveMode]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -1594,7 +1833,7 @@ export function ScrapCollage({
   };
 
   const washInKeys = new Set<string>();
-  if (!everythingMode && !prefersReducedMotion && renderedKeysRef.current) {
+  if (!archiveMode && !prefersReducedMotion && renderedKeysRef.current) {
     for (const scrap of layout) {
       if (!renderedKeysRef.current.has(scrap.item.key)) {
         washInKeys.add(scrap.item.key);
@@ -1619,52 +1858,136 @@ export function ScrapCollage({
     >
       <style>{COLLAGE_STYLES}</style>
       {showKindFilter && (
-        <div className="scrap-collage__filters" aria-label="Filter scraps">
-          <button
-            type="button"
-            className="scrap-collage__filter"
-            aria-pressed={selectedKind === "all"}
-            onClick={() => setSelectedKind("all")}
-          >
-            all{" "}
-            <span className="scrap-collage__filter-count">{items.length}</span>
-          </button>
-          {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
-            kindCounts[kind] > 0 ? (
-              <button
-                key={kind}
-                type="button"
-                className="scrap-collage__filter"
-                aria-pressed={selectedKind === kind}
-                onClick={() => setSelectedKind(kind)}
-              >
-                {label}{" "}
-                <span className="scrap-collage__filter-count">
-                  {kindCounts[kind]}
-                </span>
-              </button>
-            ) : null,
-          )}
-          <button
-            type="button"
-            className="scrap-collage__filter scrap-collage__filter--everything"
-            aria-pressed={everythingMode}
-            onClick={() => setEverythingMode((current) => !current)}
-          >
-            everything{" "}
-            <span className="scrap-collage__filter-count">
-              {everythingScraps.length}
-            </span>
-          </button>
-          {tideAvailable && (
+        <div
+          className={`scrap-collage__controls${
+            controlsExpanded ? "" : " scrap-collage__controls--collapsed"
+          }`}
+          aria-label="Scrap controls"
+        >
+          {controlsExpanded ? (
+            <>
+              <div className="scrap-collage__controls-header">
+                <div
+                  className="scrap-collage__view-switch"
+                  role="group"
+                  aria-label="Scrap view"
+                >
+                  <button
+                    type="button"
+                    className="scrap-collage__view-option"
+                    aria-pressed={!archiveMode}
+                    onClick={() => setView("drift")}
+                  >
+                    drift
+                  </button>
+                  <button
+                    type="button"
+                    className="scrap-collage__view-option"
+                    aria-pressed={archiveMode}
+                    onClick={() => setView("archive")}
+                  >
+                    archive
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="scrap-collage__filter scrap-collage__filter--collapse"
+                  aria-label="Collapse scrap controls"
+                  title="Collapse controls"
+                  onClick={() => setControlsExpanded(false)}
+                >
+                  ↓
+                </button>
+              </div>
+              <div className="scrap-collage__controls-body">
+                <label className="scrap-collage__control-group">
+                  <span className="scrap-collage__control-label">show</span>
+                  <select
+                    className="scrap-collage__select"
+                    aria-label="Kinds of scraps shown"
+                    value={selectedKind}
+                    onChange={(event) =>
+                      setSelectedKind(
+                        event.currentTarget.value as ScrapKindFilter,
+                      )
+                    }
+                  >
+                    <option value="all">all · {totalScrapCount}</option>
+                    {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
+                      kindCounts[kind] > 0 ? (
+                        <option key={kind} value={kind}>
+                          {label} · {kindCounts[kind]}
+                        </option>
+                      ) : null,
+                    )}
+                  </select>
+                </label>
+                {archiveMode ? (
+                  <span className="scrap-collage__archive-summary">
+                    newest first · {archiveScraps.length}
+                  </span>
+                ) : (
+                  <>
+                    <label className="scrap-collage__control-group">
+                      <span className="scrap-collage__control-label">
+                        amount
+                      </span>
+                      <select
+                        className="scrap-collage__select"
+                        aria-label="Number of scraps shown"
+                        value={visibleScrapCount}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setVisibleScrapCount(
+                            value === "auto"
+                              ? value
+                              : (Number(value) as VisibleScrapCount),
+                          );
+                        }}
+                      >
+                        <option value="auto">
+                          fill screen · {selectedTargetCount}
+                        </option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="300">300</option>
+                        <option value="500">500</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="scrap-collage__filter"
+                      onClick={() => setShuffleIndex((current) => current + 1)}
+                    >
+                      shuffle
+                    </button>
+                    {tideAvailable && (
+                      <button
+                        type="button"
+                        className="scrap-collage__filter scrap-collage__filter--cycle"
+                        aria-pressed={!tidePaused}
+                        title="Turn automatic cycling on or off (spacebar)"
+                        onClick={() => setTidePaused((current) => !current)}
+                      >
+                        <span
+                          className="scrap-collage__cycle-status"
+                          aria-hidden="true"
+                        />
+                        cycle
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
             <button
               type="button"
-              className="scrap-collage__filter scrap-collage__filter--tide"
-              aria-pressed={!tidePaused}
-              title="Pause or resume the tide (spacebar)"
-              onClick={() => setTidePaused((current) => !current)}
+              className="scrap-collage__filter"
+              aria-expanded="false"
+              onClick={() => setControlsExpanded(true)}
             >
-              {tidePaused ? "◼ tide paused" : "◆ tide"}
+              controls ↑
             </button>
           )}
         </div>
@@ -1674,8 +1997,13 @@ export function ScrapCollage({
           {renderTile(scrap.layout, " scrap-collage__tile--washing-out")}
         </React.Fragment>
       ))}
-      {everythingMode ? (
-        <div className="scrap-collage__scroll">
+      {archiveMode ? (
+        <div
+          className="scrap-collage__scroll"
+          onScroll={(event) =>
+            setArchiveScrollTop(event.currentTarget.scrollTop)
+          }
+        >
           <div
             className="scrap-collage__field"
             style={{ height: fieldHeight }}
@@ -1686,43 +2014,46 @@ export function ScrapCollage({
       ) : (
         tiles
       )}
-      {examining && examinedItem && (
-        <ScrapLightbox
-          key={examinedItem.key}
-          item={examinedItem}
-          origin={examining.origin}
-          faviconSrc={
-            examinedItem.faviconUrl ||
-            `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
-              examinedItem.domain,
-            )}&sz=64`
-          }
-          faviconAvailable={!failedFavicons.has(examinedItem.domain)}
-          onFaviconError={() => markFaviconFailed(examinedItem.domain)}
-          placeholderColor={placeholderColor(examinedItem.domain)}
-          hasPrevious={examineIndex > 0}
-          hasNext={examineIndex < examinableScraps.length - 1}
-          prefersReducedMotion={prefersReducedMotion}
-          currentOrigin={() => {
-            const element = tileElementsRef.current.get(examinedItem.key);
-            if (!element?.isConnected) return null;
-            const bounds = element.getBoundingClientRect();
-            const layoutEntry = layoutRef.current.find(
-              (scrap) => scrap.item.key === examinedItem.key,
-            );
-            return {
-              left: bounds.left,
-              top: bounds.top,
-              width: bounds.width,
-              height: bounds.height,
-              rotation: layoutEntry?.rotation ?? 0,
-            };
-          }}
-          onClose={closeExamine}
-          onPrevious={() => stepExamine(-1)}
-          onNext={() => stepExamine(1)}
-        />
-      )}
+      {examining &&
+        examinedItem &&
+        createPortal(
+          <ScrapLightbox
+            key={examinedItem.key}
+            item={examinedItem}
+            origin={examining.origin}
+            faviconSrc={
+              examinedItem.faviconUrl ||
+              `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+                examinedItem.domain,
+              )}&sz=64`
+            }
+            faviconAvailable={!failedFavicons.has(examinedItem.domain)}
+            onFaviconError={() => markFaviconFailed(examinedItem.domain)}
+            placeholderColor={placeholderColor(examinedItem.domain)}
+            hasPrevious={examineIndex > 0}
+            hasNext={examineIndex < examinableScraps.length - 1}
+            prefersReducedMotion={prefersReducedMotion}
+            currentOrigin={() => {
+              const element = tileElementsRef.current.get(examinedItem.key);
+              if (!element?.isConnected) return null;
+              const bounds = element.getBoundingClientRect();
+              const layoutEntry = layoutRef.current.find(
+                (scrap) => scrap.item.key === examinedItem.key,
+              );
+              return {
+                left: bounds.left,
+                top: bounds.top,
+                width: bounds.width,
+                height: bounds.height,
+                rotation: layoutEntry?.rotation ?? 0,
+              };
+            }}
+            onClose={closeExamine}
+            onPrevious={() => stepExamine(-1)}
+            onNext={() => stepExamine(1)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
