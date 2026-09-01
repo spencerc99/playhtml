@@ -2,6 +2,7 @@
 // ABOUTME: Loads communal routes only when a new bounded train must be created.
 
 import type {
+  CommuteDestination,
   CommuteTrainAssignment,
   CommuteTrainBoardRequest,
   CommuteTrainCommunalStop,
@@ -39,6 +40,39 @@ const FALLBACK_COMMUNAL_STOPS: CommuteTrainCommunalStop[] = [
   },
 ];
 
+export function selectCommuteTrainCommunalStops(
+  destinations: CommuteDestination[],
+  recentDomains: Set<string>,
+  now: number,
+): CommuteTrainCommunalStop[] {
+  const stops: CommuteTrainCommunalStop[] = [];
+  const selectedDomains = new Set<string>();
+  for (const destination of destinations) {
+    if (
+      recentDomains.has(destination.domain) ||
+      selectedDomains.has(destination.domain)
+    ) {
+      continue;
+    }
+    stops.push({ kind: 'communal', ...destination });
+    selectedDomains.add(destination.domain);
+    if (stops.length === 2) return stops;
+  }
+
+  for (const fallback of FALLBACK_COMMUNAL_STOPS) {
+    if (
+      recentDomains.has(fallback.domain) ||
+      selectedDomains.has(fallback.domain)
+    ) {
+      continue;
+    }
+    stops.push({ ...fallback, visitedAt: now });
+    selectedDomains.add(fallback.domain);
+    if (stops.length === 2) return stops;
+  }
+  return stops;
+}
+
 export class CommuteTrainDispatcherObject {
   private readonly ready: Promise<CommuteTrainDispatcher>;
 
@@ -66,16 +100,27 @@ export class CommuteTrainDispatcherObject {
     const parsed = await readBoardRequest(request);
     if (!parsed) return jsonResponse(400, { error: 'Invalid boarding request' });
 
-    const now = Date.now();
+    let now = Date.now();
     const dispatcher = await this.ready;
     let assignment: CommuteTrainAssignment;
     try {
-      const communalStops = dispatcher.needsCommunalStops(
-        parsed.riderToken,
-        now,
-      )
-        ? await this.loadCommunalStops(now)
-        : [];
+      let destinations: CommuteDestination[] = [];
+      if (dispatcher.needsCommunalStops(parsed.riderToken, now)) {
+        destinations = await this.loadCommunalDestinations(now);
+        now = Date.now();
+      }
+
+      let communalStops: CommuteTrainCommunalStop[] = [];
+      if (dispatcher.needsCommunalStops(parsed.riderToken, now)) {
+        communalStops = selectCommuteTrainCommunalStops(
+          destinations,
+          dispatcher.getRecentCommunalDomains(now),
+          now,
+        );
+        if (communalStops.length < 2) {
+          throw new Error('Internet Commute requires two unseen communal stops');
+        }
+      }
       assignment = dispatcher.board(parsed, communalStops, now);
     } catch (error) {
       if (!(error instanceof CommuteTrainCapacityError)) throw error;
@@ -96,36 +141,21 @@ export class CommuteTrainDispatcherObject {
     await this.scheduleCleanup(dispatcher);
   }
 
-  private async loadCommunalStops(
+  private async loadCommunalDestinations(
     now: number,
-  ): Promise<CommuteTrainCommunalStop[]> {
-    let destinations: CommuteTrainCommunalStop[] = [];
+  ): Promise<CommuteDestination[]> {
+    let destinations: CommuteDestination[] = [];
     try {
       const response = await getCommuteResponse(
         new Request('https://dispatcher.internal/commute/recent'),
         this.env,
         now,
       );
-      destinations = response.destinations.slice(0, 2).map((destination) => ({
-        kind: 'communal',
-        id: destination.id,
-        domain: destination.domain,
-        url: destination.url,
-        title: destination.title,
-        visitedAt: destination.visitedAt,
-        hue: destination.hue,
-      }));
+      destinations = response.destinations;
     } catch (error) {
       console.warn('[commute trains] communal route unavailable:', error);
     }
 
-    const domains = new Set(destinations.map((stop) => stop.domain));
-    for (const fallback of FALLBACK_COMMUNAL_STOPS) {
-      if (destinations.length === 2) break;
-      if (domains.has(fallback.domain)) continue;
-      destinations.push({ ...fallback, visitedAt: now });
-      domains.add(fallback.domain);
-    }
     return destinations;
   }
 

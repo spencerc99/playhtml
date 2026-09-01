@@ -305,6 +305,7 @@ function useCommuteTrain(
           refreshTimer = window.setTimeout(() => void board(), 3_000);
         } else {
           setConnection((current) => ({ ...current, status: "error" }));
+          refreshTimer = window.setTimeout(() => void board(), 3_000);
         }
       }
     };
