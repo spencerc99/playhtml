@@ -30,8 +30,11 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun dev-extension`: Extension dev server (WXT hot reload)
 - `bun build-packages`: Build all library packages
 - `bun run lint`: Type-check all packages
+- `bun run format:check -- <file...>`: Check up to 50 explicit source files
+- `bun run format:write -- <file...>`: Format up to 50 explicit source files
 - `bun run smoke:extension-worker`: bundle the extension Worker without deploying or starting a watcher
 - `bun run smoke:extension`: build and load the real extension in isolated headless Chromium with a loopback-only backend
+
 
 Per-package and deploy scripts are in the root `package.json`.
 
