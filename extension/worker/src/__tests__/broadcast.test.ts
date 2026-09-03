@@ -1,5 +1,5 @@
 // ABOUTME: Tests for the ingest→DO broadcast forwarder.
-// ABOUTME: Verifies cursor-only forwarding, cursor-color enrichment, and that failures never throw.
+// ABOUTME: Verifies renderable event forwarding, cursor-color enrichment, and failure isolation.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -48,7 +48,7 @@ describe('broadcastLiveEvents', () => {
     mockColorRows.length = 0;
   });
 
-  it('forwards only cursor events to the DO', async () => {
+  it('forwards cursor, viewport, and keyboard events to the DO', async () => {
     const stubFetch = vi.fn(async () => new Response(null, { status: 204 }));
     const ns = fakeNamespace(stubFetch);
     const pid = uniquePid();
@@ -56,14 +56,19 @@ describe('broadcastLiveEvents', () => {
     await broadcastLiveEvents(
       ns,
       ENV,
-      [ev('a', 'cursor', pid), ev('b', 'navigation', pid), ev('c', 'cursor', pid)],
+      [
+        ev('a', 'cursor', pid),
+        ev('b', 'navigation', pid),
+        ev('c', 'viewport', pid),
+        ev('d', 'keyboard', pid),
+      ],
       1000,
     );
 
     expect(stubFetch).toHaveBeenCalledTimes(1);
     const sentReq = (stubFetch.mock.calls[0] as unknown[])[0] as Request;
     const body = (await sentReq.json()) as { events: CollectionEvent[] };
-    expect(body.events.map((e) => e.id)).toEqual(['a', 'c']);
+    expect(body.events.map((e) => e.id)).toEqual(['a', 'c', 'd']);
   });
 
   it('enriches forwarded events with the participant cursor color', async () => {
@@ -91,7 +96,7 @@ describe('broadcastLiveEvents', () => {
     expect(body.events[0].meta.cursor_color).toBeUndefined();
   });
 
-  it('does nothing when there are no cursor events', async () => {
+  it('does nothing when there are no renderable live events', async () => {
     const stubFetch = vi.fn(async () => new Response(null, { status: 204 }));
     const ns = fakeNamespace(stubFetch);
     await broadcastLiveEvents(ns, ENV, [ev('b', 'navigation')], 1000);

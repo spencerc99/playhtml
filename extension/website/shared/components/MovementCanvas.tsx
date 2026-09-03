@@ -350,11 +350,15 @@ interface MovementCanvasProps {
   onSetFilters?: (filters: FilterChip[]) => void;
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
+  /** Route-specific visualization ids shown in the developer controls. */
+  availableVisualizations?: readonly string[];
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
   /** Route-specific defaults applied before stored settings and URL overrides. */
   defaultSettings?: Partial<MovementSettings>;
+  /** Route-enforced presentation floor. URL clean levels can still raise it. */
+  minimumCleanLevel?: 0 | 1 | 2;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
@@ -365,6 +369,8 @@ interface MovementCanvasProps {
   getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   /** Restarts finite archive playback when the parent swaps event batches. */
   playbackKey?: string;
+  /** Labels the developer-console playhead for hybrid archive/live playback. */
+  playbackSource?: "archive" | "live";
   /** Identifies playback batches that belong to the same archive query. */
   playbackContextKey?: string;
   /** Called when finite archive playback reaches the end of its batch. */
@@ -385,12 +391,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   onSetFilters,
   activeVisualizations,
   onSetActiveVisualizations,
+  availableVisualizations,
   defaultSoundEnabled = false,
   defaultSettings,
+  minimumCleanLevel = 0,
   live = false,
   connected = false,
   getInstallationElapsedMs,
   playbackKey = "fixed",
+  playbackSource,
   playbackContextKey = playbackKey,
   onPlaybackCycleComplete,
 }) => {
@@ -472,6 +481,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [captureCleanOverride, setCaptureCleanOverride] = useState(false);
   const cleanLevel = Math.max(
     cleanFromUrl,
+    minimumCleanLevel,
     captureCleanOverride ? 1 : 0,
   ) as 0 | 1 | 2;
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
@@ -1139,7 +1149,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     showTyping,
   ]);
 
-  usePlaybackCycle({
+  const getPlaybackElapsedMs = usePlaybackCycle({
     enabled:
       !live &&
       !scrollingControlsPlayback &&
@@ -1342,6 +1352,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         timeRange={timeRange}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={onSetActiveVisualizations}
+        availableVisualizations={availableVisualizations}
         selectedTimeRange={selectedTimeRange}
         onSelectTimeRange={setSelectedTimeRange}
       />
@@ -1354,8 +1365,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           events={events}
           filteredEventCount={filteredEvents.length}
           trailCount={trails.length}
-          cycleDurationMs={timeRange.duration}
+          cycleDurationMs={playbackCycleDuration}
           animationSpeed={settings.animationSpeed}
+          frozen={paused}
+          playbackKey={playbackKey}
+          playbackSource={playbackSource}
+          getPlaybackElapsedMs={getPlaybackElapsedMs}
           leftOffset={controlsVisible ? 340 : 16}
           loading={loading}
           error={error}
@@ -1646,6 +1661,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             typingStates={typingStates}
             timeRange={timeRange}
             settings={typingSettings}
+            repeatAnimations={onPlaybackCycleComplete === undefined}
           />
         )}
 

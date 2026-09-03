@@ -1,9 +1,10 @@
-// ABOUTME: Top-of-canvas instrument console showing dataset scale at a glance
-// ABOUTME: Mirrors the ActivityStrip's bottom-of-screen role with totals + breakdowns
+// ABOUTME: Top-of-canvas instrument console showing dataset scale and playback time.
+// ABOUTME: Mirrors the ActivityStrip with compact totals, timing, and event breakdowns.
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { CollectionEvent } from "../types";
 import { extractDomain } from "../utils/eventUtils";
+import { formatCompactTimeSpan } from "../utils/timeFormat";
 
 interface StatsConsoleProps {
   events: CollectionEvent[];
@@ -13,6 +14,10 @@ interface StatsConsoleProps {
   trailCount: number;
   cycleDurationMs: number;
   animationSpeed: number;
+  frozen?: boolean;
+  playbackKey?: string;
+  playbackSource?: "archive" | "live";
+  getPlaybackElapsedMs?: () => number;
   /** Pixels to leave on the left so the console doesn't overlap the dev
    * panel (which is `position: fixed; left: 0` at 320px wide). */
   leftOffset: number;
@@ -31,7 +36,7 @@ const LABEL_FONT = "'Martian Mono', 'Space Mono', monospace";
  * uppercase label below. Stack horizontally to form the console. */
 const Tile: React.FC<{
   label: string;
-  value: string;
+  value: React.ReactNode;
   /** Smaller subtitle/unit shown after the value (e.g. "min" on cycle). */
   unit?: string;
   /** Optional accent color for the value — used to color-code event
@@ -166,33 +171,129 @@ function relativeTime(ts: number): string {
   });
 }
 
-/** Compact start→end date range for the dataset's actual time bounds.
- *
- *   Same day: "May 11 9:14 AM → 5:42 PM"
- *   Multi-day: "Apr 27 → May 11"
- *   Hover/title carries the exact unrounded timestamps.
- *
- * We previously rendered just a duration ("14 days") which left the user
- * guessing which 14 days. The absolute range is much more informative for
- * picking out art-piece moments. */
-function formatTimeSpan(minTs: number, maxTs: number): string {
-  if (!minTs || !maxTs || maxTs <= minTs) return "—";
-  const start = new Date(minTs);
-  const end = new Date(maxTs);
-  const sameDay = start.toDateString() === end.toDateString();
-  const dateFmt: Intl.DateTimeFormatOptions = {
+function formatPlaybackTimestamp(timestampMs: number, includeDate: boolean): string {
+  const date = new Date(timestampMs);
+  const time = date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  if (!includeDate) return time;
+  return `${date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
-  };
-  if (sameDay) {
-    const timeFmt: Intl.DateTimeFormatOptions = {
-      hour: "numeric",
-      minute: "2-digit",
-    };
-    return `${start.toLocaleDateString(undefined, dateFmt)} ${start.toLocaleTimeString(undefined, timeFmt)} → ${end.toLocaleTimeString(undefined, timeFmt)}`;
-  }
-  return `${start.toLocaleDateString(undefined, dateFmt)} → ${end.toLocaleDateString(undefined, dateFmt)}`;
+  })} ${time}`;
 }
+
+const PlaybackTimeValue: React.FC<{
+  minTs: number;
+  maxTs: number;
+  cycleDurationMs: number;
+  animationSpeed: number;
+  frozen: boolean;
+  playbackKey: string;
+  getPlaybackElapsedMs?: () => number;
+}> = ({
+  minTs,
+  maxTs,
+  cycleDurationMs,
+  animationSpeed,
+  frozen,
+  playbackKey,
+  getPlaybackElapsedMs,
+}) => {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const speedRef = useRef(animationSpeed);
+  const frozenRef = useRef(frozen);
+  const elapsedGetterRef = useRef(getPlaybackElapsedMs);
+
+  useEffect(() => {
+    speedRef.current = animationSpeed;
+  }, [animationSpeed]);
+  useEffect(() => {
+    frozenRef.current = frozen;
+  }, [frozen]);
+  useEffect(() => {
+    elapsedGetterRef.current = getPlaybackElapsedMs;
+  }, [getPlaybackElapsedMs]);
+
+  useEffect(() => {
+    if (!minTs || !maxTs || cycleDurationMs <= 0) return;
+    let frame: number | undefined;
+    let timeout: number | undefined;
+    let previousTimestamp: number | null = null;
+    let elapsedMs = 0;
+    let lastRenderedAt = -Infinity;
+    const includeDate =
+      new Date(minTs).toDateString() !== new Date(maxTs).toDateString();
+
+    const clearScheduledTick = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      frame = undefined;
+      timeout = undefined;
+    };
+
+    const schedule = () => {
+      clearScheduledTick();
+      if (document.visibilityState === "hidden") {
+        timeout = window.setTimeout(() => tick(performance.now()), 100);
+      } else {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+
+    const tick = (timestamp: number) => {
+      if (previousTimestamp === null) previousTimestamp = timestamp;
+      const frameDelta = Math.min(250, timestamp - previousTimestamp);
+      previousTimestamp = timestamp;
+      const playbackElapsedMs = elapsedGetterRef.current?.();
+      if (playbackElapsedMs !== undefined) {
+        elapsedMs = playbackElapsedMs;
+      } else if (!frozenRef.current) {
+        elapsedMs += frameDelta * speedRef.current;
+      }
+
+      if (timestamp - lastRenderedAt >= 200) {
+        const progress = elapsedGetterRef.current
+          ? Math.min(elapsedMs / cycleDurationMs, 1)
+          : (elapsedMs % cycleDurationMs) / cycleDurationMs;
+        const playbackTimestamp = minTs + (maxTs - minTs) * progress;
+        if (textRef.current) {
+          textRef.current.textContent = formatPlaybackTimestamp(
+            playbackTimestamp,
+            includeDate,
+          );
+        }
+        lastRenderedAt = timestamp;
+      }
+      schedule();
+    };
+
+    const handleVisibilityChange = () => schedule();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    schedule();
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearScheduledTick();
+    };
+  }, [cycleDurationMs, maxTs, minTs, playbackKey]);
+
+  const initialElapsedMs = getPlaybackElapsedMs?.() ?? 0;
+  const initialProgress =
+    cycleDurationMs > 0
+      ? getPlaybackElapsedMs
+        ? Math.min(initialElapsedMs / cycleDurationMs, 1)
+        : (initialElapsedMs % cycleDurationMs) / cycleDurationMs
+      : 0;
+  const initialTimestamp = minTs + (maxTs - minTs) * initialProgress;
+
+  return (
+    <span ref={textRef} data-testid="playback-current-time">
+      {formatPlaybackTimestamp(initialTimestamp, false)}
+    </span>
+  );
+};
 
 /** Top-level event-type labels — these mirror the registry but stay
  * separate so we can keep the console rendering independent of viz IDs. */
@@ -216,6 +317,10 @@ export const StatsConsole: React.FC<StatsConsoleProps> = ({
   trailCount,
   cycleDurationMs,
   animationSpeed,
+  frozen = false,
+  playbackKey = "fixed",
+  playbackSource,
+  getPlaybackElapsedMs,
   leftOffset,
   loading,
   error,
@@ -226,7 +331,7 @@ export const StatsConsole: React.FC<StatsConsoleProps> = ({
     filteredEventCount !== events.length;
 
   const cycleMin = cycleDurationMs > 0 ? cycleDurationMs / 60000 : 0;
-  const timeSpan = formatTimeSpan(stats.minTs, stats.maxTs);
+  const timeSpan = formatCompactTimeSpan(stats.minTs, stats.maxTs);
   const lastSeen = relativeTime(stats.maxTs);
 
   // High-level event-type tiles: only render the types that have data.
@@ -344,7 +449,27 @@ export const StatsConsole: React.FC<StatsConsoleProps> = ({
             />
           )}
 
-          {lastSeen && (
+          {playbackSource && stats.minTs > 0 && stats.maxTs > stats.minTs && (
+            <Tile
+              label={playbackSource}
+              value={
+                <PlaybackTimeValue
+                  minTs={stats.minTs}
+                  maxTs={stats.maxTs}
+                  cycleDurationMs={cycleDurationMs}
+                  animationSpeed={animationSpeed}
+                  frozen={frozen}
+                  playbackKey={playbackKey}
+                  getPlaybackElapsedMs={getPlaybackElapsedMs}
+                />
+              }
+              titleAttr={`Current ${playbackSource} chapter time`}
+              accent={playbackSource === "live" ? ACCENTS.rust : ACCENTS.blue}
+              minWidth={104}
+            />
+          )}
+
+          {!playbackSource && lastSeen && (
             <Tile
               label="Last Seen"
               value={lastSeen}
