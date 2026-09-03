@@ -1,5 +1,11 @@
 # @playhtml/extension-types
 
+## 0.6.0
+
+### Minor Changes
+
+- 769bba1: Add the synchronized Internet Commute train assignment contract so the extension, hosted page, and Worker can share bounded train routes without exposing exact Slow Mode destination URLs.
+
 ## 0.5.0
 
 ### Minor Changes

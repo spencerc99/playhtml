@@ -1,5 +1,19 @@
 # Change Log
 
+## 2.1.1
+
+### Patch Changes
+
+- bddcd97: Register newly mounted interactive elements before the browser can receive input so they respond immediately without requiring a refresh.
+- 68aa385: Fix function-form `defaultData`/`myDefaultAwareness` (e.g. `(el) => ({ text: el.id })`) being resolved against `null` during the initial render instead of the real element, crashing on mount. It now resolves once the element is attached.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 732acd2: Stop cursor-presence updates from re-rendering every playhtml component on the page. PlayProvider no longer stores live cursor positions in context state (the context value is now memoized and the presence map keeps a stable identity; reactive consumers use the useCursorPresences hook, which is unchanged), and usePlayerIdentity only re-renders its consumers when the identity actually changes rather than on every presence tick. On a room with ~3,000 elements this reduced renders during a one-second drag from ~340,000 to just the elements whose data changed.
+- Updated dependencies [74e4d35]
+- Updated dependencies [ad66821]
+- Updated dependencies [23e3b32]
+- Updated dependencies [fb24e9b]
+  - playhtml@2.14.2
+
 ## 2.1.0
 
 ### Minor Changes
