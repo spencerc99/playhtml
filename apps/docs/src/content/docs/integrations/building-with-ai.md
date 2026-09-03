@@ -5,7 +5,24 @@ sidebar:
   order: 1
 ---
 
-playhtml plays well with AI coding assistants. There are two supported paths, depending on which assistant you use.
+playhtml works with coding assistants that can read project files and run local commands. Start with the agent setup page to install the library, then use either the Claude Code plugin or the prompt template to build an element.
+
+## Install with an agent
+
+Give a command-capable agent this prompt:
+
+```text
+Install playhtml for me.
+
+Read https://playhtml.fun/docs/agent-setup/ and install playhtml in this project.
+Use the package manager already configured in the project. Run the project's normal
+build, type-check, or test command after setup.
+
+If you cannot install packages or run local commands in this chat, tell me to use a
+command-capable agent.
+```
+
+The [agent setup guide](/docs/agent-setup/) covers the install commands, verification, and a prefilled GitHub feedback form for playhtml.
 
 ## Claude Code plugin (recommended)
 
