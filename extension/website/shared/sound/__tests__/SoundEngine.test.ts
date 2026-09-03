@@ -1703,6 +1703,73 @@ describe("SoundEngine cursor instruments", () => {
     expect(firstRamp.time).toBeLessThan(context.currentTime + 0.5);
   });
 
+  it("leads every sounding voice onto the new chord, moving or not", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({
+      mode: "spotlight",
+      trailVoices: true,
+      chordRotation: true,
+      swells: true,
+      progression: "lament",
+    });
+
+    const state = engine as unknown as {
+      voices: Map<number, { currentFrequency: number }>;
+    };
+
+    const COUNT = 8;
+    const xs = Array.from({ length: COUNT }, () => 500);
+    const ys = Array.from({ length: COUNT }, (_, i) => 30 + i * 20);
+    // Each trail creeps on its own compass heading, so between them the crowd
+    // holds every degree of the palette rather than one shared note.
+    let stalled = false;
+    const step = (elapsed: number) => {
+      context.currentTime += 1 / 60;
+      const frames = xs.map((_, i) => {
+        const angle = (i * Math.PI * 2) / COUNT;
+        const prevX = xs[i];
+        const prevY = ys[i];
+        const speed = stalled ? 0.01 : 2;
+        xs[i] += Math.cos(angle) * speed;
+        ys[i] += Math.sin(angle) * speed;
+        return {
+          ...soloFrame(i, xs[i], ys[i]),
+          prevX,
+          prevY,
+          identityKey: `person-${i}`,
+        };
+      });
+      engine.tick(elapsed, frames);
+    };
+
+    let elapsed = 0;
+    for (; elapsed < CHORD_DWELL_MS - 400; elapsed += 16) step(elapsed);
+    // Stall the whole crowd just before the rotation lands. A stalled trail is
+    // faded rather than released, so its voice keeps sounding while the tick
+    // loop skips the pitch update that would otherwise move it onto the new
+    // chord — the case that used to leave a previous-chord tone ringing.
+    stalled = true;
+    for (; elapsed < CHORD_DWELL_MS; elapsed += 16) step(elapsed);
+
+    const before = engine.getCurrentChordName();
+    for (; elapsed < CHORD_DWELL_MS + 1500; elapsed += 16) step(elapsed);
+    const after = engine.getCurrentChordName();
+    expect(after).not.toBe(before);
+
+    const palette = PROGRESSIONS.lament.chords.find(
+      (chord) => chord.name === after,
+    )!.pitches;
+    for (const [trailIndex, voice] of state.voices) {
+      expect(
+        voice.currentFrequency,
+        `trail ${trailIndex} is still sounding a tone from outside ${after}`,
+      ).toBeGreaterThan(0);
+      expectPitchClassInPalette(voice.currentFrequency, palette);
+    }
+  });
+
   it("cycles whichever progression is selected", async () => {
     const engine = new SoundEngine();
     await engine.init();

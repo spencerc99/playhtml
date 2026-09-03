@@ -1143,6 +1143,12 @@ export class SoundEngine {
   /** Index into CHORD_PROGRESSION, and when the current chord started. */
   private chordIndex = 0;
   private chordStartedMs = 0;
+  /**
+   * Palette every sounding voice was last led onto. When it differs from the
+   * one in force the progression has turned since the last re-lead, which is
+   * what `releadSoundingVoices` watches for.
+   */
+  private lastReleadScale: number[] | null = null;
   /** Smoothed 0-1 scene energy driving the swell. */
   private energy = 0;
   private lastEnergyTickMs: number | null = null;
@@ -1443,6 +1449,9 @@ export class SoundEngine {
       // here rather than through the sustained voice loop below.
       this.updateEnergy(elapsedMs, activeTrails);
       this.updateChord(elapsedMs);
+      // Notes mode holds no sustained voices of its own, but the map may still
+      // carry voices from a mode switch, so the palette stays tracked here too.
+      this.releadSoundingVoices();
       this.updateEnergyReverb();
       // The accent instruments sit outside the mode split — they mark scene
       // and structure, not trail motion, so they sound the same either way.
@@ -1469,6 +1478,9 @@ export class SoundEngine {
     // since the master gain below folds in its swell.
     this.updateEnergy(elapsedMs, activeTrails);
     this.updateChord(elapsedMs);
+    // Before the voice loop: a rotation must reach every sounding voice, not
+    // only the ones whose trails happen to select a new note this frame.
+    this.releadSoundingVoices();
     this.updateEnergyReverb();
     this.updateBassPedal();
     this.updateArrivals(elapsedMs, activeTrails);
@@ -2882,6 +2894,54 @@ export class SoundEngine {
     if (elapsedMs - this.chordStartedMs >= dwell) {
       this.chordIndex = (this.chordIndex + 1) % progression.chords.length;
       this.chordStartedMs = elapsedMs;
+    }
+  }
+
+  /**
+   * Move every sounding voice onto the palette now in force.
+   *
+   * A voice only re-pitches when its trail's motion selects a different note,
+   * so a trail that has stalled — faded but not released, which is what a
+   * paused cursor does while swells are on — holds its previous chord's tone
+   * for the whole of the next chord. That held tone is the discordant string
+   * heard over a rotation, and the swell keeps it audible. Re-leading here
+   * makes the rotation reach the whole ensemble rather than only the trails
+   * that happen to still be moving.
+   *
+   * Each voice glides to the nearest tone of the new palette folded into its
+   * own register band, over the same `VOICE_LEADING_GLIDE_SECONDS` a moving
+   * voice uses, so the ensemble leans into the chord rather than snapping onto
+   * it. A voice already inside the new palette is left alone.
+   */
+  private releadSoundingVoices(): void {
+    const scale = this.currentScale();
+    if (!scale) {
+      this.lastReleadScale = null;
+      return;
+    }
+    if (this.lastReleadScale === scale) return;
+    this.lastReleadScale = scale;
+
+    for (const [trailIndex, voice] of this.voices) {
+      if (!voice.oscillator || voice.currentFrequency <= 0) continue;
+
+      // Fold the palette into the band this trail sings in, so "nearest" is
+      // measured among the tones the voice can actually take. Without a
+      // fingerprint the voice sings the palette as written.
+      const band = this.fingerprints.get(trailIndex)?.band;
+      const candidates = band
+        ? scale.map((pitch) => foldPitchIntoBand(pitch, band))
+        : scale;
+
+      const led = leadHomeTone(voice.currentFrequency, candidates);
+      if (led === voice.currentFrequency) continue;
+
+      this.setVoiceFrequency(voice, led, VOICE_LEADING_GLIDE_SECONDS);
+      voice.currentFrequency = led;
+      voice.lastPitchScale = scale;
+      // The glide is the note change, so the ordinary note-interval guard must
+      // not let motion re-pitch this voice out from under it mid-slide.
+      voice.lastNoteTimeMs = this.lastTickMs;
     }
   }
 
