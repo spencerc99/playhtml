@@ -3,7 +3,11 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SoundEngine } from "../SoundEngine";
-import { CLICK_BELL } from "../instruments";
+import {
+  CLICK_BELL,
+  CURSOR_INSTRUMENTS,
+  getInstrument,
+} from "../instruments";
 import { SOUND_LAYERS } from "../types";
 import {
   bellScaleForChord,
@@ -243,6 +247,23 @@ function soloFrame(trailIndex: number, x: number, y: number) {
     isNewlyActive: false,
   };
 }
+
+describe("cursor type aliases", () => {
+  it("voices aliased cursor types as the pointer they name", async () => {
+    // `auto` is the commonest value in recorded browsing and means the same
+    // arrow `default` does, so the two must stay the same instrument rather
+    // than `auto` landing on the fallback by accident.
+    expect(getInstrument("auto")).toBe(CURSOR_INSTRUMENTS.default);
+    expect(getInstrument("all-scroll")).toBe(CURSOR_INSTRUMENTS.move);
+    expect(getInstrument("default")).toBe(CURSOR_INSTRUMENTS.default);
+
+    // An unmapped value still falls back, and that fallback is not the arrow —
+    // which is the divergence the alias exists to protect `auto` from.
+    const unknown = getInstrument("zoom-in");
+    expect(unknown).not.toBe(CURSOR_INSTRUMENTS.default);
+    expect(getInstrument(undefined)).toBe(unknown);
+  });
+});
 
 describe("SoundEngine cursor instruments", () => {
   it("does not restart the master gain ramp when trail count is unchanged", async () => {
