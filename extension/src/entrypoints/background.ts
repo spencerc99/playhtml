@@ -316,9 +316,10 @@ export default defineBackground(() => {
   // false in extensions regardless of actual protection status (known
   // Chromium issue #357622670), so it's a misleading signal to rely on.
 
-  // Opt-in: send new browser tabs to the walking record instead of the
-  // default new tab page. Off unless the user turns it on.
-  initNewTabTakeover()
+  // Chromium opt-in: send new browser tabs to the walking record instead of
+  // the default new tab page. Firefox uses the manifest override so the
+  // address bar keeps native new-tab behavior.
+  if (!import.meta.env.FIREFOX) initNewTabTakeover()
   initSlowModeInterception()
 
   // Forward the manifest "open-inventory" command to the active tab's content script.

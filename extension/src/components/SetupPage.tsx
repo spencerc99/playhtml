@@ -19,7 +19,10 @@ import { LEGIBILITY_KEY } from "../utils/keyboardRedaction";
 import "./SetupPage.scss";
 import { hslToHex } from "../utils/color";
 import { MilestoneToastPreview } from "./MilestoneToastPreview";
-import { isSafariExtensionPageUrl } from "../utils/extensionPage";
+import {
+  isFirefoxExtensionPageUrl,
+  isSafariExtensionPageUrl,
+} from "../utils/extensionPage";
 import { WORKER_URL } from "@movement/config";
 import {
   hasSafariWebsiteAccess,
@@ -129,6 +132,7 @@ export default function SetupPage() {
   const heroRef = useRef<HTMLDivElement>(null);
   const [heroSize, setHeroSize] = useState({ width: 0, height: 0 });
   const isSafari = isSafariExtensionPageUrl(window.location.href);
+  const isFirefox = isFirefoxExtensionPageUrl(window.location.href);
   const [websiteAccess, setWebsiteAccess] = useState<WebsiteAccess>(
     isSafari ? "checking" : "granted",
   );
@@ -561,6 +565,11 @@ export default function SetupPage() {
                       Open History ↗
                     </a>
                   </>
+                ) : isFirefox ? (
+                  <p className="setup-step__newtab-note">
+                    Firefox will ask you to confirm the new tab page. Choose
+                    Keep Changes to use History when you open a new tab.
+                  </p>
                 ) : (
                   <label className="setup-step__newtab-optin">
                     <input

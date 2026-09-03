@@ -22,7 +22,10 @@ import {
   PLAYER_IDENTITY_STORAGE_KEY,
 } from "../storage/playerIdentity";
 import { hslToHex } from "../utils/color";
-import { isSafariExtensionPageUrl } from "../utils/extensionPage";
+import {
+  isFirefoxExtensionPageUrl,
+  isSafariExtensionPageUrl,
+} from "../utils/extensionPage";
 import { NEWTAB_TAKEOVER_KEY } from "../features/newtab/takeover";
 import {
   useExperimentAccess,
@@ -182,6 +185,7 @@ export function OptionsPage() {
   const experimentAccess = useExperimentAccess();
   const bagSettingsEnabled = useFeatureState("BAG_SETTINGS").enabled;
   const isSafari = isSafariExtensionPageUrl(window.location.href);
+  const isFirefox = isFirefoxExtensionPageUrl(window.location.href);
 
   const sections = bagSettingsEnabled
     ? SECTIONS
@@ -406,6 +410,11 @@ export function OptionsPage() {
               <p className="options-page__mono-note">
                 Safari doesn't let extensions change the new tab — bookmark or
                 pin the history page to keep it a click away.
+              </p>
+            ) : isFirefox ? (
+              <p className="options-page__mono-note">
+                Firefox manages this new tab page. Use Firefox's new-tab prompt
+                to keep History or change it.
               </p>
             ) : (
               <label className="options-page__checkbox">
