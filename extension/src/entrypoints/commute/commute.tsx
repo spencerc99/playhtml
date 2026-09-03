@@ -66,6 +66,21 @@ import {
   type CommutePoint,
   type CommuteSeatGeometry,
 } from "./commuteMobile";
+import {
+  COMMUTE_BAYS,
+  findNearbyCommuteBay,
+  getBayStandingPosition,
+  type CommuteBay,
+} from "./commuteBays";
+import {
+  decaySwing,
+  findStrapGrip,
+  isSameGrip,
+  pumpSwing,
+  type StrapGrip,
+} from "./strapHold";
+import { FoggedWindowPane } from "./FoggedWindowPane";
+import { UnderSeatView } from "./UnderSeatView";
 import { ProceduralLandscape } from "./landscape";
 import {
   getHostedSlowModeRideId,
@@ -90,6 +105,8 @@ type CarData = Record<string, never>;
 
 interface RiderAwareness {
   seatId: number | null;
+  /** Realtime only: which strap this rider hangs from, and how hard they swing. */
+  strap?: { bandIndex: number; strapIndex: number; swing: number } | null;
   position?: CommutePoint;
   positionSequence?: number;
 }
@@ -126,20 +143,25 @@ const SEAT_BANKS = [
   [840, 896, 952, 1008],
 ];
 
-const SEATS: SeatDefinition[] = ["top", "bottom"].flatMap((row) =>
-  SEAT_BANKS.flatMap((bank, bankIndex) =>
-    bank.map((x) => ({
-      id:
-        (row === "top" ? 0 : SEAT_BANKS.flat().length) +
-        SEAT_BANKS.slice(0, bankIndex).flat().length +
-        bank.indexOf(x),
-      x,
-      y: row === "top" ? 32 : 284,
-      row: row as SeatDefinition["row"],
-      bank: bankIndex,
-    })),
-  ),
-);
+/** Top-row slots given over to glass — see COMMUTE_BAYS. */
+const WINDOW_BAY_SEAT_X = new Set([156, 532, 952]);
+
+const SEATS: SeatDefinition[] = ["top", "bottom"]
+  .flatMap((row) =>
+    SEAT_BANKS.flatMap((bank, bankIndex) =>
+      bank.map((x) => ({
+        id:
+          (row === "top" ? 0 : SEAT_BANKS.flat().length) +
+          SEAT_BANKS.slice(0, bankIndex).flat().length +
+          bank.indexOf(x),
+        x,
+        y: row === "top" ? 32 : 284,
+        row: row as SeatDefinition["row"],
+        bank: bankIndex,
+      })),
+    ),
+  )
+  .filter((seat) => seat.row !== "top" || !WINDOW_BAY_SEAT_X.has(seat.x));
 
 const DOORS = [276, 696];
 const DOOR_GEOMETRY = DOORS.map((x) => ({ x }));
@@ -427,12 +449,14 @@ function Seat({
   isMine,
   isNearby,
   onSelect,
+  onLookUnder,
 }: {
   seat: SeatDefinition;
   occupant?: { color: string; label?: string };
   isMine: boolean;
   isNearby: boolean;
   onSelect: () => void;
+  onLookUnder: () => void;
 }) {
   const unavailable = Boolean(occupant && !isMine);
   const isPriority =
@@ -440,32 +464,85 @@ function Seat({
   const fabric = isPriority ? "plum" : seat.bank === 1 ? "gold" : "teal";
 
   return (
+    <>
+      <button
+        className={`train-seat train-seat--${seat.row} train-seat--${fabric} ${
+          isMine ? "train-seat--mine" : ""
+        } ${isNearby ? "train-seat--nearby" : ""}`}
+        style={{ left: seat.x, top: seat.y }}
+        type="button"
+        data-seat-id={seat.id}
+        aria-label={
+          isMine
+            ? "Stand up"
+            : unavailable
+              ? "Seat occupied by another rider"
+              : "Sit here"
+        }
+        aria-pressed={isMine}
+        disabled={unavailable}
+        onClick={onSelect}
+      >
+        {occupant && (
+          <CursorRider
+            color={occupant.color}
+            label={occupant.label}
+            isYou={isMine}
+          />
+        )}
+        {!occupant && <span className="train-seat__prompt">sit</span>}
+      </button>
+      <button
+        className={`seat-underside seat-underside--${seat.row} ${
+          isNearby ? "seat-underside--nearby" : ""
+        }`}
+        style={{ left: seat.x, top: seat.y }}
+        type="button"
+        data-seat-underside-id={seat.id}
+        aria-label="Look under this seat"
+        onClick={onLookUnder}
+      >
+        <span className="train-seat__prompt">look under</span>
+      </button>
+    </>
+  );
+}
+
+function WindowBay({
+  bay,
+  isNearby,
+  onSelect,
+}: {
+  bay: CommuteBay;
+  isNearby: boolean;
+  onSelect: () => void;
+}) {
+  return (
     <button
-      className={`train-seat train-seat--${seat.row} train-seat--${fabric} ${
-        isMine ? "train-seat--mine" : ""
-      } ${isNearby ? "train-seat--nearby" : ""}`}
-      style={{ left: seat.x, top: seat.y }}
+      className={`window-bay window-bay--${bay.wall} ${
+        isNearby ? "window-bay--nearby" : ""
+      }`}
+      style={{ left: bay.x, width: bay.width }}
       type="button"
-      data-seat-id={seat.id}
-      aria-label={
-        isMine
-          ? "Stand up"
-          : unavailable
-            ? "Seat occupied by another rider"
-            : "Sit here"
-      }
-      aria-pressed={isMine}
-      disabled={unavailable}
+      data-bay-id={bay.id}
+      aria-label="Wipe the fogged glass"
       onClick={onSelect}
     >
-      {occupant && (
-        <CursorRider
-          color={occupant.color}
-          label={occupant.label}
-          isYou={isMine}
-        />
-      )}
-      {!occupant && <span className="train-seat__prompt">sit</span>}
+      <span className="window-bay__glass" aria-hidden>
+        <svg viewBox="0 0 54 22" preserveAspectRatio="none" aria-hidden>
+          <path
+            d="M0 14 q14 -7 27 -2 q14 5 27 -3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            opacity="0.55"
+          />
+        </svg>
+      </span>
+      <span className="window-bay__sill" aria-hidden />
+      <span className="train-seat__prompt window-bay__prompt">
+        wipe the glass
+      </span>
     </button>
   );
 }
@@ -616,6 +693,7 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     defaultData: {},
     myDefaultAwareness: {
       seatId: null,
+      strap: null,
     },
   }),
   ({ awarenessByStableId, myAwareness, setMyAwareness, ref }, props) => {
@@ -665,6 +743,17 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const avatarPositionRef = useRef<CommutePoint>(initialAvatarPosition);
     const clickDestination = useRef<CommutePoint | null>(null);
     const pendingSeatId = useRef<number | null>(null);
+    const pendingBayId = useRef<string | null>(null);
+    const pendingUnderSeatId = useRef<number | null>(null);
+    const myStrapRef = useRef<StrapGrip | null>(null);
+    const publishedStrap = useRef<RiderAwareness["strap"]>(null);
+    const publishStrapRef = useRef<(strap: RiderAwareness["strap"]) => void>(
+      () => {},
+    );
+    const swingRef = useRef(0);
+    const [swing, setSwing] = useState(0);
+    const [openBayId, setOpenBayId] = useState<string | null>(null);
+    const [openUnderSeatId, setOpenUnderSeatId] = useState<number | null>(null);
     const pressedKeys = useRef(new Set<string>());
     const exitPending = useRef(false);
     const portalTimer = useRef<number | undefined>(undefined);
@@ -680,12 +769,24 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         positionSequence.current += 1;
         setMyAwarenessRef.current({
           seatId,
+          strap: publishedStrap.current,
           position,
           positionSequence: positionSequence.current,
         });
       },
       [],
     );
+
+    // The swing loop and the walking loop share one awareness record, so a
+    // strap update republishes the position it was standing at.
+    const publishStrap = useCallback(
+      (strap: RiderAwareness["strap"]) => {
+        publishedStrap.current = strap ?? null;
+        publishPosition(mySeatIdRef.current, avatarPositionRef.current);
+      },
+      [publishPosition],
+    );
+    publishStrapRef.current = publishStrap;
 
     const updateAvatarPosition = useCallback((position: CommutePoint) => {
       avatarPositionRef.current = position;
@@ -887,6 +988,13 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       mobileBoarded && mySeatId === null
         ? findNearbyCommuteSeat(avatarPosition, SEATS, occupiedSeatIds)
         : null;
+    const nearbyBay =
+      mobileBoarded && mySeatId === null
+        ? findNearbyCommuteBay(avatarPosition)
+        : null;
+    const openBay =
+      COMMUTE_BAYS.find((candidate) => candidate.id === openBayId) ?? null;
+
     useEffect(() => {
       onSeatStateChange(mySeatId !== null);
     }, [mySeatId, onSeatStateChange]);
@@ -913,6 +1021,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       if (occupant && mySeatId !== seatId) return;
 
       pendingSeatId.current = null;
+      pendingBayId.current = null;
+      pendingUnderSeatId.current = null;
       clickDestination.current = null;
       if (mySeatId === seatId) {
         const seat = SEATS.find((candidate) => candidate.id === seatId);
@@ -938,6 +1048,24 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       setAvatarWalking(true);
     };
 
+    const walkToBay = (bay: CommuteBay) => {
+      pendingSeatId.current = null;
+      pendingUnderSeatId.current = null;
+      pendingBayId.current = bay.id;
+      setMyAwareness({ seatId: null });
+      clickDestination.current = getBayStandingPosition(bay);
+      setAvatarWalking(true);
+    };
+
+    const lookUnderSeat = (seat: CommuteSeatGeometry) => {
+      pendingSeatId.current = null;
+      pendingBayId.current = null;
+      pendingUnderSeatId.current = seat.id;
+      setMyAwareness({ seatId: null });
+      clickDestination.current = getStandingPosition(seat);
+      setAvatarWalking(true);
+    };
+
     const moveCursorToClick = (event: React.MouseEvent<HTMLElement>) => {
       if ((event.target as HTMLElement).closest("button")) return;
 
@@ -948,6 +1076,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
 
       publishPosition(null, avatarPositionRef.current);
       pendingSeatId.current = null;
+      pendingBayId.current = null;
+      pendingUnderSeatId.current = null;
       clickDestination.current = getCommutePointFromClient(
         { x: event.clientX, y: event.clientY },
         bounds,
@@ -1058,6 +1188,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         const hasManualMovement = Math.hypot(vector.x, vector.y) >= 0.15;
         if (hasManualMovement) {
           pendingSeatId.current = null;
+          pendingBayId.current = null;
+          pendingUnderSeatId.current = null;
           clickDestination.current = null;
           if (mySeatId !== null) {
             const seat = SEATS.find((candidate) => candidate.id === mySeatId);
@@ -1110,12 +1242,22 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         updateAvatarPosition(movement.position);
         if (movement.arrived) {
           const seatId = pendingSeatId.current;
+          const bayId = pendingBayId.current;
+          const underSeatId = pendingUnderSeatId.current;
           pendingSeatId.current = null;
+          pendingBayId.current = null;
+          pendingUnderSeatId.current = null;
           clickDestination.current = null;
           setAvatarWalking(false);
           if (seatId !== null) {
             cancelPositionPublish();
             setMyAwarenessRef.current({ seatId });
+          }
+          if (bayId !== null) {
+            setOpenBayId(bayId);
+          }
+          if (underSeatId !== null) {
+            setOpenUnderSeatId(underSeatId);
           }
         }
       };
@@ -1133,6 +1275,80 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       updateAvatarPosition,
     ]);
 
+    // Hanging is the automatic standing state under a band: no verb to choose.
+    // Awareness only — a swing exists while somebody is here to pump it.
+    useEffect(() => {
+      if (mySeatId !== null) {
+        if (myStrapRef.current !== null) {
+          myStrapRef.current = null;
+          setSwing(0);
+          publishStrapRef.current(null);
+        }
+        return;
+      }
+
+      let frame = 0;
+      let lastFrameTime = performance.now();
+      let lastX = avatarPositionRef.current.x;
+      let lastDirection = 0;
+      let currentSwing = swingRef.current;
+      let lastPublished = 0;
+
+      const hang = (frameTime: number) => {
+        frame = window.requestAnimationFrame(hang);
+        const elapsed = Math.min(50, frameTime - lastFrameTime);
+        lastFrameTime = frameTime;
+
+        const position = avatarPositionRef.current;
+        const grip = findStrapGrip(position);
+        const heldGrip = myStrapRef.current;
+
+        if (grip === null) {
+          if (heldGrip !== null) {
+            myStrapRef.current = null;
+            currentSwing = 0;
+            swingRef.current = 0;
+            setSwing(0);
+            publishStrapRef.current(null);
+          }
+          lastX = position.x;
+          return;
+        }
+
+        const travel = position.x - lastX;
+        const direction = Math.sign(travel);
+        const reversed =
+          Math.abs(travel) > 0.4 && direction !== 0 && direction !== lastDirection;
+        if (direction !== 0) lastDirection = direction;
+        lastX = position.x;
+
+        currentSwing = pumpSwing(
+          decaySwing(currentSwing, elapsed),
+          reversed && isSameGrip(grip, heldGrip),
+          Math.abs(travel),
+        );
+        swingRef.current = currentSwing;
+
+        if (!isSameGrip(grip, heldGrip)) {
+          myStrapRef.current = grip;
+        }
+
+        // Throttled: awareness is a presence stream, not a per-frame firehose.
+        if (frameTime - lastPublished > 90) {
+          lastPublished = frameTime;
+          setSwing(currentSwing);
+          publishStrapRef.current({
+            bandIndex: grip.bandIndex,
+            strapIndex: grip.strapIndex,
+            swing: Math.round(currentSwing * 10) / 10,
+          });
+        }
+      };
+
+      frame = window.requestAnimationFrame(hang);
+      return () => window.cancelAnimationFrame(frame);
+    }, [mySeatId]);
+
     useEffect(
       () => () => {
         if (positionPublishTimer.current !== undefined) {
@@ -1143,6 +1359,32 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
         }
       },
       [],
+    );
+
+    // The brake throws every hanging rider forward at once — nobody triggers it.
+    const braking = props.phase === "arriving";
+    const hangingRiders = useMemo(() => {
+      const hanging: Array<{
+        id: string;
+        color: string;
+        strap: NonNullable<RiderAwareness["strap"]>;
+      }> = [];
+      for (const [stableId, awareness] of awarenessByStableId) {
+        if (!awareness.strap || awareness.seatId !== null) continue;
+        const user = usersById.get(stableId);
+        if (user?.isMe) continue;
+        hanging.push({
+          id: stableId,
+          color: user?.color ?? "#5b8db8",
+          strap: awareness.strap,
+        });
+      }
+      return hanging;
+    }, [awarenessByStableId, usersById]);
+
+    const hangingRiderIds = useMemo(
+      () => new Set(hangingRiders.map((rider) => rider.id)),
+      [hangingRiders],
     );
 
     const doorOpen = props.phase === "stopped";
@@ -1203,6 +1445,15 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
           <span className="warning-strip warning-strip--left" />
           <span className="warning-strip warning-strip--right" />
 
+          {COMMUTE_BAYS.map((bay) => (
+            <WindowBay
+              key={bay.id}
+              bay={bay}
+              isNearby={nearbyBay?.id === bay.id}
+              onSelect={() => walkToBay(bay)}
+            />
+          ))}
+
           {SEATS.map((seat) => (
             <Seat
               key={seat.id}
@@ -1211,44 +1462,64 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
               isMine={mySeatId === seat.id}
               isNearby={nearbySeat?.id === seat.id}
               onSelect={() => chooseSeat(seat.id)}
+              onLookUnder={() => lookUnderSeat(seat)}
             />
           ))}
 
-          {standingRiders.map((rider) => (
-            <span
-              className={`commute-avatar commute-avatar--remote ${
-                arrivingRiderIds.has(rider.id)
-                  ? "commute-avatar--arriving"
-                  : ""
-              }`}
-              style={{
-                left: rider.position.x,
-                top: rider.position.y,
-              }}
-              key={rider.id}
-            >
-              <CursorRider
-                color={rider.color}
-                isYou={false}
-                ariaLabel="Another rider's cursor is aboard the train"
-              />
-              {arrivingRiderIds.has(rider.id) && (
-                <span className="commute-avatar__arrival-message">
-                  joining from the next carriage
-                </span>
-              )}
-            </span>
-          ))}
+          {standingRiders.map((rider) => {
+            const hanging = hangingRiderIds.has(rider.id);
+            const arriving = arrivingRiderIds.has(rider.id);
+            const strap = hangingRiders.find(
+              (candidate) => candidate.id === rider.id,
+            )?.strap;
+            return (
+              <span
+                className={`commute-avatar commute-avatar--remote ${
+                  hanging ? "commute-avatar--hanging" : ""
+                } ${hanging && braking ? "commute-avatar--thrown" : ""} ${
+                  arriving ? "commute-avatar--arriving" : ""
+                }`}
+                style={
+                  {
+                    left: rider.position.x,
+                    top: rider.position.y,
+                    "--strap-swing": `${strap ? strap.swing : 0}deg`,
+                  } as React.CSSProperties
+                }
+                key={rider.id}
+              >
+                <CursorRider
+                  color={rider.color}
+                  isYou={false}
+                  ariaLabel={
+                    hanging
+                      ? "Another rider is hanging from a strap"
+                      : "Another rider's cursor is aboard the train"
+                  }
+                />
+                {arriving && (
+                  <span className="commute-avatar__arrival-message">
+                    joining from the next carriage
+                  </span>
+                )}
+              </span>
+            );
+          })}
 
           {mySeatId === null && hasEnteredCar && (
             <span
               className={`commute-avatar ${
                 avatarWalking ? "commute-avatar--walking" : ""
+              } ${myStrapRef.current ? "commute-avatar--hanging" : ""} ${
+                myStrapRef.current && braking ? "commute-avatar--thrown" : ""
               } ${isArriving ? "commute-avatar--arriving" : ""}`}
-              style={{
-                left: avatarPosition.x,
-                top: avatarPosition.y,
-              }}
+              style={
+                {
+                  left: avatarPosition.x,
+                  top: avatarPosition.y,
+                  "--strap-swing": `${swing}deg`,
+                } as React.CSSProperties
+              }
             >
               <CursorRider
                 color={cursors.color || "#3d3833"}
@@ -1264,6 +1535,21 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             </span>
           )}
         </section>
+        {openBay && (
+          <FoggedWindowPane
+            id={`internet-commute-pane-${openBay.id}`}
+            bay={openBay}
+            currentStop={props.currentStop}
+            onClose={() => setOpenBayId(null)}
+          />
+        )}
+        {openUnderSeatId !== null && (
+          <UnderSeatView
+            id={`internet-commute-underseat-${openUnderSeatId}`}
+            seatId={openUnderSeatId}
+            onClose={() => setOpenUnderSeatId(null)}
+          />
+        )}
         {toast && (
           <div className="commute-toast" role="status">
             {toast}
@@ -1274,6 +1560,8 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
             boarded={mobileBoarded}
             onBoard={() => {
               pendingSeatId.current = null;
+              pendingBayId.current = null;
+              pendingUnderSeatId.current = null;
               clickDestination.current = null;
               onMobileBoardStateChange(true);
             }}
