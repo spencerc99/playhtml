@@ -383,6 +383,12 @@ const PAD_DEFAULTS = {
   navigationSounds: true,
   trailVoices: true,
   swells: true,
+  /**
+   * Per-cursor-type timbres. On by default here so the pad opens on the
+   * arrangement being auditioned; the live pages keep it off through their own
+   * settings defaults.
+   */
+  cursorInstruments: true,
   bassPedal: false,
   choralTimbre: false,
   crossings: "off" as CrossingFlavor,
@@ -473,6 +479,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   const trailVoicesRef = useRef(PAD_DEFAULTS.trailVoices);
   const crossingsRef = useRef<CrossingFlavor>(PAD_DEFAULTS.crossings);
   const swellsRef = useRef(PAD_DEFAULTS.swells);
+  const cursorInstrumentsRef = useRef(PAD_DEFAULTS.cursorInstruments);
   const choralTimbreRef = useRef(PAD_DEFAULTS.choralTimbre);
   const cantusRef = useRef<CantusVariant | null>(PAD_DEFAULTS.cantus);
   const nextTrailIndexRef = useRef(1);
@@ -500,6 +507,9 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
     PAD_DEFAULTS.crossings,
   );
   const [swells, setSwells] = useState(PAD_DEFAULTS.swells);
+  const [cursorInstruments, setCursorInstruments] = useState(
+    PAD_DEFAULTS.cursorInstruments,
+  );
   const [choralTimbre, setChoralTimbre] = useState(
     PAD_DEFAULTS.choralTimbre,
   );
@@ -551,8 +561,9 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   useEffect(() => {
     swellsRef.current = swells;
     choralTimbreRef.current = choralTimbre;
-    engineRef.current?.setConfig({ swells, choralTimbre });
-  }, [swells, choralTimbre]);
+    cursorInstrumentsRef.current = cursorInstruments;
+    engineRef.current?.setConfig({ swells, choralTimbre, cursorInstruments });
+  }, [swells, choralTimbre, cursorInstruments]);
 
   useEffect(() => {
     cantusRef.current = cantus;
@@ -579,6 +590,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         crossings: crossingsRef.current,
         swells: swellsRef.current,
         choralTimbre: choralTimbreRef.current,
+        cursorInstruments: cursorInstrumentsRef.current,
       });
       engine.setCantus(cantusRef.current);
       engine.setVolume(volume);
@@ -903,9 +915,18 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         >
           choral timbre
         </button>
+        <button
+          onClick={() => setCursorInstruments((v) => !v)}
+          style={cursorInstruments ? buttonActiveStyle : buttonStyle}
+        >
+          cursor instruments
+        </button>
         <span style={labelStyle}>
           each composes with any mode above — trail voices also sets each
-          trail's register from its colour (cool low, warm high)
+          trail's register from its colour (cool low, warm high). cursor
+          instruments gives each cursor type its own timbre (a text cursor
+          becomes a repeating pluck); with trail voices on, the timbre comes
+          from the cursor and the detune and vibrato from the trail.
         </span>
       </div>
 
