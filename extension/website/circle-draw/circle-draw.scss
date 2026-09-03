@@ -1,0 +1,134 @@
+// ABOUTME: Styles the circle collection page as an open full-screen drawing field.
+// ABOUTME: Keeps guides faint while the visitor's live cursor trail stays legible.
+
+:root {
+  font-family: "Martian Mono", monospace;
+  color: #2f2b27;
+  background: #faf7f2;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+.circle-page {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 22% 32%, rgb(246 228 211 / 55%), transparent 36%),
+    radial-gradient(circle at 76% 72%, rgb(225 236 218 / 55%), transparent 38%),
+    #faf7f2;
+}
+
+.circle-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px;
+  pointer-events: none;
+
+  h1 {
+    margin: 0;
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: clamp(28px, 3.5vw, 54px);
+    font-style: italic;
+    font-weight: 200;
+    line-height: 1;
+  }
+
+  p {
+    margin: 10px 0 0;
+    color: #756d64;
+    font-size: clamp(9px, 1vw, 12px);
+    letter-spacing: 0.02em;
+  }
+
+  a {
+    color: #2f2b27;
+    font-size: 10px;
+    pointer-events: auto;
+  }
+}
+
+.circle-guides {
+  position: absolute;
+  inset: 0;
+}
+
+.circle-guide {
+  position: absolute;
+  aspect-ratio: 1;
+  border: 2px dashed rgb(85 76 68 / 22%);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 10px rgb(255 255 255 / 22%),
+    inset 0 0 45px rgb(255 255 255 / 28%);
+}
+
+.local-trail {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+
+  path {
+    fill: none;
+    stroke: #201d1a;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.5;
+  }
+}
+
+footer {
+  position: absolute;
+  z-index: 3;
+  right: 24px;
+  bottom: 20px;
+  max-width: 430px;
+  color: #756d64;
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: right;
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .circle-header {
+    display: block;
+    padding: 18px;
+
+    a {
+      display: inline-block;
+      margin-top: 12px;
+    }
+  }
+
+  .circle-guide:nth-child(3),
+  .circle-guide:nth-child(6) {
+    display: none;
+  }
+
+  footer {
+    right: 18px;
+    bottom: 16px;
+    left: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .local-trail {
+    display: none;
+  }
+}
