@@ -57,7 +57,12 @@ export async function loadMap(
   onProgress: (msg: string, pct: number) => void,
 ): Promise<MapData> {
   onProgress("header", 0.05);
-  const head: Header = await (await fetch(`${dir}/map.json`)).json();
+  const headRes = await fetch(`${dir}/map.json`);
+  // A missing bundle comes back as the SPA's HTML fallback, not a 404.
+  if (!headRes.ok || (headRes.headers.get("content-type") ?? "").includes("text/html")) {
+    throw new Error(`no map bundle at ${dir}`);
+  }
+  const head: Header = await headRes.json();
 
   onProgress("positions", 0.15);
   const bin = await (await fetch(`${dir}/map.bin`)).arrayBuffer();

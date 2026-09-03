@@ -61,7 +61,15 @@ await Promise.all([
   (document as any).fonts.load('15px "MEKDings"'),
 ]).catch(() => {});
 
-const data: MapData = await loadMap(DATA, boot);
+let data: MapData;
+try {
+  data = await loadMap(DATA, boot);
+} catch (err) {
+  $("#bootmsg").textContent =
+    "this deployment has no map data — bundles carry real browsing traces and ship separately";
+  ($("#bootbar").parentElement as HTMLElement).style.display = "none";
+  throw err;
+}
 const { A, labels, head } = data;
 
 const canvas = $("#map") as HTMLCanvasElement;
