@@ -3,18 +3,23 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundEngine } from "../shared/sound/SoundEngine";
+import { TrailSoundFrame } from "../shared/sound/types";
 import {
-  ClickPercussionVariant,
-  PizzicatoVariant,
-  PIZZICATO_VARIANTS,
-  TimpaniVariant,
-  TIMPANI_VARIANTS,
-  TrailSoundFrame,
-} from "../shared/sound/types";
+  isPizzicato,
+  isTimpani,
+  VoicingSettings,
+  VOICING_DEFAULTS,
+} from "./voicing";
 import { RECENT_EVENTS_URL } from "../shared/config";
 import bundledSample from "./sampleEvents.json";
 
 const PAD_HEIGHT = 300;
+/**
+ * Trail index for the person at the keyboard. Reserved rather than allocated,
+ * so their voice is stable across loops and never collides with a replayed
+ * participant's. Sample trails count up from CURSOR_TRAIL_INDEX + 1.
+ */
+const CURSOR_TRAIL_INDEX = 100000;
 /** Points kept per participant for the on-canvas ribbon. */
 const TRAIL_LENGTH = 50;
 /** How long a participant stays drawn after their last event (ms of replay). */
@@ -463,63 +468,6 @@ const selectStyle: React.CSSProperties = {
 };
 
 /**
- * How the replay voices each family of event when percussion is on.
- *
- * Pad-only, and off by default: with `enabled` false the replay behaves
- * exactly as it always has (pitched bells for clicks, the gong for
- * navigations, nothing at all for keyboard and viewport events).
- */
-export interface PercussionSettings {
-  enabled: boolean;
-  click: ClickVoice;
-  typing: boolean;
-  scroll: boolean;
-  /** Timpani roll under a held click, in place of the stretched bell. */
-  hold: boolean;
-  /** Which timpani variant the roll uses. */
-  timpani: TimpaniVariant;
-}
-
-/**
- * How the replay voices a click. The percussion variants and the pizzicato
- * variants sit in one list because they are alternatives to each other — a
- * click gets exactly one voice, and "bells" is the shipped one.
- */
-type ClickVoice = ClickPercussionVariant | PizzicatoVariant;
-
-/** The pizzicato half of that list, so the driver knows which call to make. */
-const isPizzicato = (voice: ClickVoice): voice is PizzicatoVariant =>
-  (PIZZICATO_VARIANTS as string[]).includes(voice);
-
-const PERCUSSION_DEFAULTS: PercussionSettings = {
-  enabled: false,
-  click: "bells",
-  typing: true,
-  scroll: true,
-  hold: true,
-  timpani: "root",
-};
-
-const CLICK_VARIANTS: Array<{
-  variant: ClickVoice;
-  label: string;
-}> = [
-  { variant: "bells", label: "bells (current)" },
-  { variant: "tap", label: "tap" },
-  { variant: "tapNoThump", label: "tap, no thump" },
-  { variant: "hybrid", label: "tap + bell ghost" },
-  { variant: "soft", label: "pizz. soft" },
-  { variant: "crisp", label: "pizz. crisp" },
-  { variant: "double", label: "pizz. double" },
-];
-
-const TIMPANI_LABELS: Record<TimpaniVariant, string> = {
-  root: "root",
-  rootFifth: "root + fifth",
-  swell: "swell",
-};
-
-/**
  * Longest a recorded typing sequence may be stretched over before its ticks
  * are compressed. A sequence's own timestamps span the whole 5s debounce
  * window the collector batches on, and scheduling ticks that far out would let
@@ -580,17 +528,22 @@ export function keystrokeSchedule(
 
 interface SamplePlaybackProps {
   /**
-   * The engine the pad already owns, so the sample plays through whatever
-   * toggles are currently set rather than through a second configuration.
+   * The shared engine, so the replay plays through whatever the panel above
+   * has set rather than through a second configuration of its own.
    */
   getEngine: () => Promise<SoundEngine>;
+  /** How each event family is voiced, decided by the Sound Layers panel. */
+  voicing: VoicingSettings;
 }
 
 /**
  * Replays a real browsing sample through the pad's engine, so sound settings
  * can be judged against genuine cursor motion rather than random walkers.
  */
-export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
+export const SamplePlayback = ({
+  getEngine,
+  voicing,
+}: SamplePlaybackProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SoundEngine | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -601,10 +554,22 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
   const trailsRef = useRef<Map<string, SampleTrail>>(new Map());
   const nextTrailIndexRef = useRef(0);
   const cursorRef = useRef(0);
+  /**
+   * The live cursor, drawn and sounded alongside the replayed crowd so a
+   * setting can be judged on your own motion against real traffic.
+   */
+  const liveCursorRef = useRef<{
+    x: number;
+    y: number;
+    prevX: number;
+    prevY: number;
+    inside: boolean;
+    points: Array<{ x: number; y: number }>;
+  }>({ x: 0, y: 0, prevX: 0, prevY: 0, inside: false, points: [] });
   const startedAtRef = useRef(0);
   const speedRef = useRef<Speed>(1);
   const loopCountRef = useRef(0);
-  const percussionRef = useRef<PercussionSettings>(PERCUSSION_DEFAULTS);
+  const voicingRef = useRef<VoicingSettings>(VOICING_DEFAULTS);
   /**
    * Keystrokes waiting for their moment on the sample clock. A recorded typing
    * event holds a whole sequence, so its ticks are queued here and drained as
@@ -626,22 +591,17 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
     summarizeSample(bundledSample as SampleEvent[]),
   );
   const [readout, setReadout] = useState({ position: 0, active: 0, loops: 0 });
-  const [percussion, setPercussion] = useState<PercussionSettings>(
-    PERCUSSION_DEFAULTS,
-  );
 
   useEffect(() => {
     speedRef.current = speed;
   }, [speed]);
 
   useEffect(() => {
-    percussionRef.current = percussion;
+    voicingRef.current = voicing;
     // Queued ticks belong to the settings that queued them; turning typing off
     // mid-replay should stop it now rather than after the backlog drains.
-    if (!percussion.enabled || !percussion.typing) {
-      keystrokeQueueRef.current = [];
-    }
-  }, [percussion]);
+    if (!voicing.typing) keystrokeQueueRef.current = [];
+  }, [voicing]);
 
   const sampleDurationMs = summary.spanMs;
 
@@ -691,7 +651,7 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
       const event = events[cursorRef.current++];
       const x = (event.x ?? 0.5) * width;
       const y = (event.y ?? 0.5) * height;
-      const percussion = percussionRef.current;
+      const voicing = voicingRef.current;
 
       if (event.type === "navigation") {
         // Only real page arrivals sound; blur and beforeunload are departures.
@@ -702,7 +662,7 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
       }
 
       if (event.type === "keyboard") {
-        if (!percussion.enabled || !percussion.typing) continue;
+        if (!voicing.typing) continue;
         // Queue the sequence's ticks rather than firing them here: they are
         // spread over the seconds the person actually spent typing.
         for (const tick of keystrokeSchedule(event.keys ?? [])) {
@@ -717,7 +677,7 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
       }
 
       if (event.type === "viewport") {
-        if (!percussion.enabled || !percussion.scroll) continue;
+        if (!voicing.scroll) continue;
         // Resizes and zooms are not motion through a page, so only scrolls
         // get a brush stroke.
         if (event.event !== "scroll") continue;
@@ -753,22 +713,19 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
 
       if (event.event === "click" || event.event === "hold") {
         const isHold = event.event === "hold" || event.duration !== undefined;
-        const rollThisHold =
-          percussion.enabled && percussion.hold && isHold;
+        const rollThisHold = isHold && isTimpani(voicing.hold);
         if (rollThisHold) {
           // The recorded hold's own length drives the roll, so a long press
           // sounds long rather than every hold sounding the same.
           engine.triggerHold(
             x,
-            percussion.timpani,
+            voicing.hold,
             event.duration === undefined ? undefined : event.duration / 1000,
           );
         }
 
-        if (percussion.enabled && isPizzicato(percussion.click)) {
-          engine.triggerClickPizzicato(x, y, percussion.click);
-        } else if (percussion.enabled && percussion.click !== "bells") {
-          engine.triggerClickPercussion(x, percussion.click);
+        if (isPizzicato(voicing.click)) {
+          engine.triggerClickPizzicato(x, y, voicing.click);
         } else if (!rollThisHold) {
           // The shipped bell, unless the hold roll has already taken this
           // event — the roll replaces the stretched bell rather than layering
@@ -823,6 +780,27 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
     }
 
     const frames: TrailSoundFrame[] = [];
+    const liveCursor = liveCursorRef.current;
+    if (liveCursor.inside) {
+      frames.push({
+        trailIndex: CURSOR_TRAIL_INDEX,
+        x: liveCursor.x,
+        y: liveCursor.y,
+        prevX: liveCursor.prevX,
+        prevY: liveCursor.prevY,
+        cursorType: "default",
+        progress: 0,
+        color: "#3d3833",
+        isNewlyActive: liveCursor.points.length === 0,
+        identityKey: "live-cursor",
+      });
+      liveCursor.points.push({ x: liveCursor.x, y: liveCursor.y });
+      if (liveCursor.points.length > TRAIL_LENGTH) liveCursor.points.shift();
+      // Consumed: the next pointer event sets a fresh previous position, and
+      // without this a still cursor would keep reporting its last motion.
+      liveCursor.prevX = liveCursor.x;
+      liveCursor.prevY = liveCursor.y;
+    }
     for (const trail of trailsRef.current.values()) {
       frames.push({
         trailIndex: trail.trailIndex,
@@ -881,6 +859,25 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         ctx.fillStyle = trail.color;
         ctx.fill();
       }
+
+      if (liveCursor.inside) {
+        const points = liveCursor.points;
+        for (let i = 1; i < points.length; i++) {
+          const t = i / points.length;
+          ctx.beginPath();
+          ctx.moveTo(points[i - 1].x, points[i - 1].y);
+          ctx.lineTo(points[i].x, points[i].y);
+          ctx.globalAlpha = t * 0.95;
+          ctx.lineWidth = 1 + t * 3;
+          ctx.strokeStyle = "#3d3833";
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(liveCursor.x, liveCursor.y, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#3d3833";
+        ctx.fill();
+      }
     }
 
     // Loop from the top, with a full rewind so the next pass starts from the
@@ -920,8 +917,36 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
     }
     setRunning(false);
     rewind();
+    liveCursorRef.current.points = [];
+    liveCursorRef.current.inside = false;
     engineRef.current?.reset();
   }, [rewind]);
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const cursor = liveCursorRef.current;
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      // A cursor that has just entered has no motion yet, so it starts from
+      // where it is rather than from wherever it last left the canvas.
+      if (!cursor.inside) {
+        cursor.prevX = x;
+        cursor.prevY = y;
+      }
+      cursor.x = x;
+      cursor.y = y;
+      cursor.inside = true;
+    },
+    [],
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    const cursor = liveCursorRef.current;
+    cursor.inside = false;
+    cursor.points = [];
+    engineRef.current?.retireTrail(CURSOR_TRAIL_INDEX);
+  }, []);
 
   const handleLoadLive = useCallback(async () => {
     setLoadState("loading");
@@ -970,15 +995,16 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
           fontSize: "11px",
         }}
       >
-        Real Event Sample
+        Replay
       </div>
       <div style={{ ...labelStyle, marginBottom: "12px" }}>
-        Replays real browsing through the same engine the pad drives, so
-        settings can be judged against genuine cursor motion at the density the
-        archive page actually shows. Every toggle above applies. Ships with a
-        bundled anonymized sample; loading live events pulls a fresh window and
-        falls back to the bundle offline. Cursor, navigation, keyboard and
-        viewport events all replay — turn percussion on to hear the last two.
+        Replays real browsing at the density the archive page actually shows, so
+        settings can be judged against genuine cursor motion. Move your own
+        cursor over the canvas to hear yourself in the crowd. Everything in
+        Sound Layers above applies. Ships with a bundled anonymized sample;
+        loading live events pulls a fresh window and falls back to the bundle
+        offline. Cursor, click, navigation, keyboard and viewport events all
+        replay.
       </div>
 
       <div
@@ -1033,145 +1059,18 @@ export const SamplePlayback = ({ getEngine }: SamplePlaybackProps) => {
         </button>
       </div>
 
-      <div
-        style={{
-          border: "1px solid #e0dbd4",
-          background: "#faf7f2",
-          padding: "10px",
-          marginBottom: "12px",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <button
-            onClick={() =>
-              setPercussion((current) => ({
-                ...current,
-                enabled: !current.enabled,
-              }))
-            }
-            style={percussion.enabled ? buttonActiveStyle : buttonStyle}
-          >
-            percussion
-          </button>
-          <span style={labelStyle}>
-            drives the unpitched candidates from this sample's real events.
-            Pad-only — no live page plays them.
-          </span>
-        </div>
-
-        {percussion.enabled ? (
-          <div style={{ marginTop: "10px" }}>
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                flexWrap: "wrap",
-                alignItems: "center",
-                marginBottom: "8px",
-              }}
-            >
-              <span style={labelStyle}>click</span>
-              {CLICK_VARIANTS.map(({ variant, label }) => (
-                <button
-                  key={variant}
-                  onClick={() =>
-                    setPercussion((current) => ({ ...current, click: variant }))
-                  }
-                  style={
-                    percussion.click === variant
-                      ? buttonActiveStyle
-                      : buttonStyle
-                  }
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
-              <button
-                onClick={() =>
-                  setPercussion((current) => ({
-                    ...current,
-                    typing: !current.typing,
-                  }))
-                }
-                style={percussion.typing ? buttonActiveStyle : buttonStyle}
-              >
-                typing ticks
-              </button>
-              <button
-                onClick={() =>
-                  setPercussion((current) => ({
-                    ...current,
-                    scroll: !current.scroll,
-                  }))
-                }
-                style={percussion.scroll ? buttonActiveStyle : buttonStyle}
-              >
-                scroll brush
-              </button>
-              <button
-                onClick={() =>
-                  setPercussion((current) => ({
-                    ...current,
-                    hold: !current.hold,
-                  }))
-                }
-                style={percussion.hold ? buttonActiveStyle : buttonStyle}
-              >
-                timpani on holds
-              </button>
-              {TIMPANI_VARIANTS.map((variant) => (
-                <button
-                  key={variant}
-                  onClick={() =>
-                    setPercussion((current) => ({
-                      ...current,
-                      hold: true,
-                      timpani: variant,
-                    }))
-                  }
-                  style={
-                    percussion.hold && percussion.timpani === variant
-                      ? buttonActiveStyle
-                      : buttonStyle
-                  }
-                >
-                  {TIMPANI_LABELS[variant]}
-                </button>
-              ))}
-              <span style={labelStyle}>
-                ticks follow each recorded typing sequence's own cadence; the
-                timpani replaces the stretched bell on a held click, pitched on
-                the chord root and as long as the hold actually was
-              </span>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
       <canvas
         ref={canvasRef}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
         style={{
           width: "100%",
           height: `${PAD_HEIGHT}px`,
           border: "1px solid #e0dbd4",
           background: "#f5f0e8",
           display: "block",
+          cursor: "crosshair",
+          touchAction: "none",
         }}
       />
 

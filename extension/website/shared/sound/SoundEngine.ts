@@ -3059,7 +3059,7 @@ export class SoundEngine {
 
   /**
    * The chord tone a trail is currently biased toward, or null when it has no
-   * fingerprint (diagnostics, and how the TrailPad labels each trail).
+   * fingerprint (diagnostics, and how the playground labels each trail).
    */
   getHomeTone(trailIndex: number): number | null {
     if (!this.config.trailVoices) return null;
@@ -3068,7 +3068,7 @@ export class SoundEngine {
 
   /**
    * The choral part a trail is singing, or null when it has no fingerprint.
-   * The TrailPad shows this beside the home tone so the colour-to-register
+   * The playground shows this beside the home tone so the colour-to-register
    * mapping can be checked by eye against what is being heard.
    */
   getRegisterBand(trailIndex: number): RegisterBand | null {
