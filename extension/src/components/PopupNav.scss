@@ -18,12 +18,12 @@
     font-family: $font-mono;
     font-size: 12px;
     text-transform: lowercase;
-    color: $text;
+    color: var(--text);
     cursor: pointer;
     transition: color 0.12s;
 
     &:hover {
-      color: $accent-teal;
+      color: var(--accent-teal);
 
       .popup-nav__arrow {
         color: inherit;
@@ -31,14 +31,14 @@
     }
 
     &:focus-visible {
-      outline: 2px solid $accent-teal;
+      outline: 2px solid var(--accent-teal);
       outline-offset: 2px;
     }
   }
 
   &__arrow {
     font-size: 10px;
-    color: $text-muted;
+    color: var(--text-muted);
     transition: color 0.12s;
   }
 }

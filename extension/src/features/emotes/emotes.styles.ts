@@ -12,11 +12,11 @@ export const EMOTES_CSS = `
 .emote-ring {
   position: absolute;
   border-radius: 50%;
-  background: #f5f0e8;
+  background: var(--surface, #f5f0e8);
   box-shadow:
-    inset 0 0 0 1px rgba(61, 56, 51, 0.1),
-    inset 0 0 0 33px rgba(61, 56, 51, 0),
-    0 10px 30px rgba(61, 56, 51, 0.16);
+    inset 0 0 0 1px var(--border, rgba(61, 56, 51, 0.1)),
+    inset 0 0 0 33px transparent,
+    0 10px 30px var(--shadow-strong, rgba(61, 56, 51, 0.16));
 }
 /* second faint guide ring, drawn as a pseudo-inset via a radial highlight */
 .emote-ring::after {
@@ -24,7 +24,7 @@ export const EMOTES_CSS = `
   position: absolute;
   inset: 32px;
   border-radius: 50%;
-  border: 1px solid rgba(61, 56, 51, 0.08);
+  border: 1px solid var(--border, rgba(61, 56, 51, 0.08));
 }
 .emote-item {
   position: absolute;
@@ -38,16 +38,16 @@ export const EMOTES_CSS = `
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #3d3833;
+  color: var(--text, #3d3833);
   padding: 0;
   transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1),
     background 0.12s ease, color 0.12s ease;
 }
 .emote-item:hover {
   transform: scale(1.16);
-  background: #eaf5f2;
-  color: #0f6e56;
-  box-shadow: 0 0 0 2px #4a9a8a;
+  background: var(--active-bg, #eaf5f2);
+  color: var(--accent-teal, #0f6e56);
+  box-shadow: 0 0 0 2px var(--accent-teal, #4a9a8a);
 }
 .emote-item .glyph {
   display: flex;
@@ -117,12 +117,12 @@ export const EMOTES_CSS = `
   pointer-events: none;
   font-family: "Martian Mono", ui-monospace, monospace;
   font-size: 11px;
-  color: #3d3833;
-  background: #f5f0e8;
-  border: 1px solid rgba(61, 56, 51, 0.15);
+  color: var(--text, #3d3833);
+  background: var(--surface, #f5f0e8);
+  border: 1px solid var(--border, rgba(61, 56, 51, 0.15));
   border-radius: 8px;
   padding: 5px 10px;
-  box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
+  box-shadow: 0 4px 14px var(--shadow-strong, rgba(61, 56, 51, 0.18));
   opacity: 0;
   transform: translateY(4px);
   transition: opacity 0.25s ease, transform 0.25s ease;
@@ -135,10 +135,10 @@ export const EMOTES_CSS = `
 .emote-react-hint kbd {
   font-family: inherit;
   font-size: 10px;
-  border: 1px solid rgba(61, 56, 51, 0.3);
+  border: 1px solid var(--border-strong, rgba(61, 56, 51, 0.3));
   border-radius: 4px;
   padding: 1px 4px;
   margin: 0 2px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--bg, rgba(255, 255, 255, 0.5));
 }
 `;
