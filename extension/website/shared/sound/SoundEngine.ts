@@ -165,6 +165,21 @@ export interface SoundConfig {
   navigationSounds: boolean;
   /** A sustained low drone on the current chord root, under everything. */
   bassPedal: boolean;
+  /**
+   * How far the mix leans toward following one cursor rather than telling one
+   * story, from 0 (story) to 1 (traceable).
+   *
+   * At 0 the scene is at the values everything else was tuned against: trails
+   * settle onto their home tone often, so the crowd voices a chord, and swells
+   * take their time, so the bed breathes as one ensemble. Turning it up loosens
+   * both — trails follow their own motion more of the time and swells respond
+   * faster — so an individual cursor becomes easier to pick out of the crowd,
+   * at the cost of the arrangement holding together.
+   *
+   * `TRAIL_VOICE_TUNING.homeToneBias` and `SWELL_TUNING` remain the source of
+   * truth for the story end; this only interpolates away from them.
+   */
+  traceability: number;
 }
 
 /**
@@ -191,6 +206,19 @@ const DEFAULT_CONFIG: SoundConfig = {
   trailArrivals: false,
   navigationSounds: false,
   bassPedal: false,
+  traceability: 0,
+};
+
+/**
+ * What the traceability dial reaches at its traceable end. The story end is
+ * whatever `TRAIL_VOICE_TUNING` and `SWELL_TUNING` already say, so those stay
+ * the single place the tuned arrangement is written down.
+ */
+const TRACEABILITY_LIMITS = {
+  /** Trails take their own motion's note far more often than the chord tone. */
+  homeToneBias: 0.1,
+  /** Swell onset and crescendo, as a fraction of their story-end lengths. */
+  swellTimeScale: 0.4,
 };
 
 /**
@@ -2407,6 +2435,34 @@ export class SoundEngine {
     return fingerprint.homeTone;
   }
 
+  /** The dial's position, clamped, so a caller cannot push past either end. */
+  private traceability(): number {
+    return Math.min(1, Math.max(0, this.config.traceability));
+  }
+
+  /**
+   * How often a note change lands on the trail's home tone rather than on the
+   * note its heading picked. Falls as the dial moves toward traceable, so the
+   * crowd stops collectively voicing the chord and each trail's own motion
+   * comes through instead.
+   */
+  private homeToneBias(): number {
+    const { homeToneBias } = TRAIL_VOICE_TUNING;
+    return (
+      homeToneBias +
+      (TRACEABILITY_LIMITS.homeToneBias - homeToneBias) * this.traceability()
+    );
+  }
+
+  /**
+   * Multiplier on how long a swell takes to start and to build. Shortens
+   * toward the traceable end so a gesture is heard as it happens rather than
+   * arriving as part of a slower ensemble breath.
+   */
+  private swellTimeScale(): number {
+    return 1 + (TRACEABILITY_LIMITS.swellTimeScale - 1) * this.traceability();
+  }
+
   /**
    * Bias a direction-derived pitch toward the trail's home tone. The choice is
    * deterministic in the pitch being replaced rather than random, so a trail
@@ -2420,7 +2476,7 @@ export class SoundEngine {
     const roll = hashUnit(fingerprint.hash ^ Math.round(frequency * 100), 7);
     // Both branches are voiced in the trail's own part: the melody a trail
     // sings still comes from its motion, but it sings it in its own register.
-    return roll < TRAIL_VOICE_TUNING.homeToneBias
+    return roll < this.homeToneBias()
       ? home
       : foldPitchIntoBand(frequency, fingerprint.band);
   }
@@ -2989,6 +3045,19 @@ export class SoundEngine {
   }
 
   /**
+   * Move the story-to-traceable dial. 0 holds the tuned arrangement; 1 lets
+   * each trail's own motion through at the cost of the crowd voicing one chord.
+   */
+  setTraceability(traceability: number): void {
+    this.setConfig({ traceability });
+  }
+
+  /** Where the dial currently sits, clamped to 0-1. */
+  getTraceability(): number {
+    return this.traceability();
+  }
+
+  /**
    * The chord tone a trail is currently biased toward, or null when it has no
    * fingerprint (diagnostics, and how the TrailPad labels each trail).
    */
@@ -3236,13 +3305,17 @@ export class SoundEngine {
     if (!this.config.swells) return 1;
 
     const {
-      onsetMs,
-      crescendoSeconds,
       peakScale,
       releaseSeconds,
       movingVelocity,
       motionGraceMs,
     } = SWELL_TUNING;
+    // Only the onset and the build shorten with the dial. The release is how
+    // a stopped trail falls away, which is a property of the instrument rather
+    // than of how traceable the scene should be.
+    const timeScale = this.swellTimeScale();
+    const onsetMs = SWELL_TUNING.onsetMs * timeScale;
+    const crescendoSeconds = SWELL_TUNING.crescendoSeconds * timeScale;
 
     let state = this.swells.get(trailIndex);
     if (!state) {

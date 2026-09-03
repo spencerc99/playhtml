@@ -1770,6 +1770,40 @@ describe("SoundEngine cursor instruments", () => {
     }
   });
 
+  it("moves home-tone bias and swell timing together on the traceability dial", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailVoices: true, swells: true });
+
+    const internals = engine as unknown as {
+      homeToneBias(): number;
+      swellTimeScale(): number;
+    };
+
+    // The story end is whatever the tuning constants say, untouched.
+    expect(engine.getTraceability()).toBe(0);
+    const storyBias = internals.homeToneBias();
+    expect(storyBias).toBeCloseTo(0.4, 5);
+    expect(internals.swellTimeScale()).toBeCloseTo(1, 5);
+
+    engine.setTraceability(1);
+    expect(engine.getTraceability()).toBe(1);
+    expect(internals.homeToneBias()).toBeCloseTo(0.1, 5);
+    expect(internals.swellTimeScale()).toBeCloseTo(0.4, 5);
+
+    // Halfway sits halfway along both, so the dial reads as one control.
+    engine.setTraceability(0.5);
+    expect(internals.homeToneBias()).toBeCloseTo(0.25, 5);
+    expect(internals.swellTimeScale()).toBeCloseTo(0.7, 5);
+
+    // Out-of-range positions clamp rather than pushing past either end.
+    engine.setTraceability(2);
+    expect(internals.homeToneBias()).toBeCloseTo(0.1, 5);
+    engine.setTraceability(-1);
+    expect(internals.homeToneBias()).toBeCloseTo(0.4, 5);
+  });
+
   it("cycles whichever progression is selected", async () => {
     const engine = new SoundEngine();
     await engine.init();

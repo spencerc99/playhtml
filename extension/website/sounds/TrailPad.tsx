@@ -398,6 +398,11 @@ const PAD_DEFAULTS = {
    * than something already sounding when the pad opens.
    */
   cantus: null as CantusVariant | null,
+  /**
+   * The story end: the values everything else on the pad was tuned against.
+   * The dial only ever moves away from them.
+   */
+  traceability: 0,
 };
 
 /** One titled grid of audition buttons, each with the event it stands for. */
@@ -482,6 +487,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   const cursorInstrumentsRef = useRef(PAD_DEFAULTS.cursorInstruments);
   const choralTimbreRef = useRef(PAD_DEFAULTS.choralTimbre);
   const cantusRef = useRef<CantusVariant | null>(PAD_DEFAULTS.cantus);
+  const traceabilityRef = useRef(PAD_DEFAULTS.traceability);
   const nextTrailIndexRef = useRef(1);
 
   const [running, setRunning] = useState(false);
@@ -516,6 +522,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   const [cantus, setCantus] = useState<CantusVariant | null>(
     PAD_DEFAULTS.cantus,
   );
+  const [traceability, setTraceability] = useState(PAD_DEFAULTS.traceability);
   const [readout, setReadout] = useState({
     notes: 0,
     soloist: null as number | null,
@@ -571,6 +578,11 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
   }, [cantus]);
 
   useEffect(() => {
+    traceabilityRef.current = traceability;
+    engineRef.current?.setTraceability(traceability);
+  }, [traceability]);
+
+  useEffect(() => {
     engineRef.current?.setVolume(volume);
   }, [volume]);
 
@@ -591,6 +603,7 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
         swells: swellsRef.current,
         choralTimbre: choralTimbreRef.current,
         cursorInstruments: cursorInstrumentsRef.current,
+        traceability: traceabilityRef.current,
       });
       engine.setCantus(cantusRef.current);
       engine.setVolume(volume);
@@ -1060,6 +1073,31 @@ export const TrailPad = ({ onEngineReady }: TrailPadProps = {}) => {
           clear
         </button>
         <span style={labelStyle}>{agentCount} wandering</span>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <label style={labelStyle}>
+          <span style={{ marginRight: "12px" }}>story</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={traceability}
+            onChange={(e) => setTraceability(Number(e.target.value))}
+            style={{ verticalAlign: "middle", width: "200px" }}
+          />
+          <span style={{ marginLeft: "12px" }}>traceable</span>
+          <span style={{ marginLeft: "12px" }}>
+            {traceability.toFixed(2)}
+          </span>
+        </label>
+        <div style={{ ...labelStyle, marginTop: "6px", lineHeight: 1.4 }}>
+          how far the mix leans toward following one cursor rather than telling
+          one story. at story the crowd settles onto the chord and swells take
+          their time; turning it up lets each trail's own motion through and
+          shortens the swell, so a single cursor is easier to pick out.
+        </div>
       </div>
 
       <div style={{ marginBottom: "12px" }}>
