@@ -1,5 +1,13 @@
 # @playhtml/extension
 
+## 0.1.25 (2026-09-03)
+
+- Slow Mode commute rides now connect reliably when the hosted route loads before the extension.
+- Internet Commute now stops counting riders after they leave and always shows the train pull-up and cursor boarding intro for Slow Mode rides.
+- Internet Commute now starts a fresh route after returning to home station.
+- Internet Commute now keeps active riders together and gives each new train different stops.
+
+
 ## 0.1.24 (2026-08-27)
 
 - Fix a bug with Wikipedia part showing up
