@@ -129,6 +129,8 @@ describe("advanceSettlingState", () => {
     const draw = {
       seenAt: 0,
       total: 20,
+      variedTotal: 20,
+      drawProgress: 1,
       grewAt: 0,
       caughtUpAt: null,
       settled: false,
@@ -155,6 +157,8 @@ describe("advanceSettlingState", () => {
     const draw = {
       seenAt: 0,
       total: 4,
+      variedTotal: 4,
+      drawProgress: 1,
       grewAt: 0,
       caughtUpAt: 10_000,
       settled: false,

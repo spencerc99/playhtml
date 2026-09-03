@@ -1,7 +1,7 @@
 // ABOUTME: Tests the internet-scraps examine view: provenance derivation and lift geometry.
 // ABOUTME: Also covers opening from a collage tile, Escape closing, and arrow navigation.
 
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScrapCollage, type ScrapItem } from "../ScrapCollage";
