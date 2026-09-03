@@ -1,4 +1,4 @@
-// ABOUTME: Forwards newly ingested cursor events to the LiveEventsHub durable object.
+// ABOUTME: Forwards newly ingested cursor and navigation events to the LiveEventsHub durable object.
 // ABOUTME: Enriches events with participant cursor colors; fire-and-forget, never fails ingest.
 
 import type { CollectionEvent } from '@playhtml/extension-types';
@@ -65,20 +65,24 @@ async function resolveCursorColors(
   return result;
 }
 
+/** Event types forwarded to the live stream hub. Sockets pick which of these
+ * they receive via the /stream `types` query param. */
+const LIVE_TYPES = new Set<CollectionEvent['type']>(['cursor', 'navigation']);
+
 export async function broadcastLiveEvents(
   namespace: DurableObjectNamespace,
   env: Env,
   events: CollectionEvent[],
   nowMs: number,
 ): Promise<void> {
-  const cursorEvents = events.filter((e) => e.type === 'cursor');
-  if (cursorEvents.length === 0) return;
+  const liveEvents = events.filter((e) => LIVE_TYPES.has(e.type));
+  if (liveEvents.length === 0) return;
 
   try {
-    const pids = [...new Set(cursorEvents.map((e) => e.meta.pid))];
+    const pids = [...new Set(liveEvents.map((e) => e.meta.pid))];
     const colors = await resolveCursorColors(env, pids, nowMs);
 
-    const enriched = cursorEvents.map((e) => {
+    const enriched = liveEvents.map((e) => {
       const color = colors.get(e.meta.pid);
       if (!color) return e;
       return { ...e, meta: { ...e.meta, cursor_color: color } };

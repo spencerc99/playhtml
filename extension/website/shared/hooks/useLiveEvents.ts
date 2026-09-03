@@ -12,6 +12,9 @@ interface StreamFrame {
 interface UseLiveEventsOptions {
   /** Max events retained in memory. Older events fall off the front. */
   maxEvents?: number;
+  /** Event types to subscribe to. The server defaults to cursor-only when
+   * omitted, so existing consumers keep their behavior. */
+  types?: string[];
 }
 
 interface UseLiveEventsResult {
@@ -29,6 +32,7 @@ export function useLiveEvents(
   options: UseLiveEventsOptions = {},
 ): UseLiveEventsResult {
   const maxEvents = options.maxEvents ?? 500;
+  const typesKey = options.types?.join(",") ?? "";
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const maxRef = useRef(maxEvents);
@@ -55,7 +59,10 @@ export function useLiveEvents(
 
     const connect = () => {
       if (closed) return;
-      ws = new WebSocket(STREAM_URL);
+      const url = typesKey
+        ? `${STREAM_URL}?types=${encodeURIComponent(typesKey)}`
+        : STREAM_URL;
+      ws = new WebSocket(url);
 
       ws.onopen = () => {
         setConnected(true);
@@ -128,7 +135,7 @@ export function useLiveEvents(
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, []);
+  }, [typesKey]);
 
   return { events, connected };
 }

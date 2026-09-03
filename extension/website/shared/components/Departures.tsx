@@ -1,0 +1,259 @@
+// ABOUTME: Train-station departures board rendering navigation events as departures.
+// ABOUTME: Rows show traveler color, favicon + destination, origin, dwell time, time, and status.
+
+import React, { useEffect, useMemo, useState } from "react";
+import { CollectionEvent } from "../types";
+import { extractDomain, getColorForEvent } from "../utils/eventUtils";
+import "./Departures.scss";
+
+export interface DepartureRow {
+  id: string;
+  domain: string;
+  ts: number;
+  color: string;
+  faviconUrl: string | null;
+  /** Domain the traveler was on before this one. */
+  from: string | null;
+  /** Time between arriving on the previous domain and departing it. */
+  spentMs: number | null;
+  participantId: string;
+  /** Whether this is the domain the traveler was last seen on. */
+  current: boolean;
+}
+
+export interface DeparturesProps {
+  events: CollectionEvent[];
+  maxRows?: number;
+  /** Scrolling notice text along the bottom bar. */
+  notice?: string;
+}
+
+/** Departures fresher than this flicker as "departing". Kept tight so the
+ * status only marks genuinely live activity. */
+const DEPARTING_WINDOW_MS = 2 * 60 * 1000;
+/** Gaps longer than this mean the traveler was away, not dwelling. */
+const MAX_DWELL_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * Collapse navigation events into departures: one row each time a traveler
+ * moves to a different domain than the one they were last seen on. The board
+ * keeps only the newest row per traveler+domain, so a traveler ping-ponging
+ * between two sites holds two slots instead of filling the board.
+ */
+export function deriveDepartures(
+  events: CollectionEvent[],
+  maxRows: number,
+): DepartureRow[] {
+  const navEvents = events
+    .filter((e) => e.type === "navigation" && e.meta?.url)
+    .sort((a, b) => a.ts - b.ts);
+
+  const stopByParticipant = new Map<
+    string,
+    { domain: string; arrivedAt: number }
+  >();
+  const domainFavicons = new Map<string, string>();
+  const rows: DepartureRow[] = [];
+  // Participant clocks can run fast; clamp timestamps so a skewed "future"
+  // departure can't pin itself above genuinely new rows.
+  const nowTs = Date.now();
+
+  for (const event of navEvents) {
+    const domain = extractDomain(event.meta.url);
+    if (!domain) continue;
+
+    const faviconUrl = ((event.data as any)?.favicon_url as string) || null;
+    if (faviconUrl) domainFavicons.set(domain, faviconUrl);
+
+    const pid = event.meta.pid;
+    const prev = stopByParticipant.get(pid);
+    // Staying on the same domain keeps the original arrival time, so dwell is
+    // measured from when the traveler got there rather than their last move.
+    if (prev?.domain === domain) continue;
+    stopByParticipant.set(pid, { domain, arrivedAt: event.ts });
+
+    const dwellMs = prev ? event.ts - prev.arrivedAt : null;
+    rows.push({
+      id: event.id,
+      domain,
+      ts: Math.min(event.ts, nowTs),
+      color: getColorForEvent(event),
+      faviconUrl: faviconUrl || domainFavicons.get(domain) || null,
+      from: prev?.domain ?? null,
+      spentMs:
+        dwellMs !== null && dwellMs >= 0 && dwellMs <= MAX_DWELL_MS
+          ? dwellMs
+          : null,
+      participantId: pid,
+      current: false,
+    });
+  }
+
+  // The map's final state is where each traveler is now.
+  for (const row of rows) {
+    row.current = stopByParticipant.get(row.participantId)?.domain === row.domain;
+  }
+
+  // Keep only the newest row per traveler+domain, preserving newest-first
+  // order (iterate from the end — later events win).
+  const seen = new Set<string>();
+  const deduped: DepartureRow[] = [];
+  for (let i = rows.length - 1; i >= 0 && deduped.length < maxRows; i--) {
+    const key = `${rows[i].participantId}|${rows[i].domain}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(rows[i]);
+  }
+  return deduped.sort((a, b) => b.ts - a.ts);
+}
+
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function formatDuration(ms: number): string {
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 1) return "<1m";
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h${minutes}m` : `${hours}h`;
+}
+
+function faviconFor(row: DepartureRow): string {
+  return (
+    row.faviconUrl ||
+    `https://www.google.com/s2/favicons?domain=${row.domain}&sz=32`
+  );
+}
+
+function BoardClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const day = now
+    .toLocaleDateString("en-US", { weekday: "short" })
+    .toUpperCase();
+  const date = String(now.getDate()).padStart(2, "0");
+  const month = now
+    .toLocaleDateString("en-US", { month: "short" })
+    .toUpperCase();
+  const time = `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes(),
+  ).padStart(2, "0")}`;
+
+  return (
+    <div className="departures-clock">
+      <div className="departures-clock-date">
+        <span>{day}</span>
+        <span>{date}</span>
+        <span>{month}</span>
+      </div>
+      <div className="departures-clock-time">{time}</div>
+    </div>
+  );
+}
+
+export function Departures({
+  events,
+  maxRows = 12,
+  notice = "we were online · somewhere, someone is departing for another website",
+}: DeparturesProps) {
+  const rows = useMemo(() => deriveDepartures(events, maxRows), [
+    events,
+    maxRows,
+  ]);
+  // Ticking clock so a "departing" row settles as it ages, not just when new
+  // data arrives.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="departures-board">
+      <header className="departures-header">
+        <h1>Departures</h1>
+      </header>
+
+      <div className="departures-columns">
+        <span aria-hidden="true" />
+        <span>destination</span>
+        <span>from</span>
+        <span>spent</span>
+        <span>time</span>
+        <span>status</span>
+      </div>
+
+      <div className="departures-rows">
+        {rows.length === 0 ? (
+          <div className="departures-row departures-row-empty">
+            <span className="departures-destination">NO DEPARTURES</span>
+          </div>
+        ) : (
+          rows.map((row, index) => {
+            const fresh = now - row.ts < DEPARTING_WINDOW_MS;
+            const status = !row.current
+              ? "departed"
+              : fresh
+                ? "departing"
+                : "arrived";
+            return (
+              <div
+                className="departures-row"
+                key={row.id}
+                style={{ animationDelay: `${index * 70}ms` }}
+              >
+                <span className="departures-traveler">
+                  <span
+                    className="departures-traveler-dot"
+                    style={{ backgroundColor: row.color }}
+                  />
+                </span>
+                <span className="departures-destination" title={row.domain}>
+                  <img
+                    className="departures-favicon"
+                    src={faviconFor(row)}
+                    alt=""
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.style.visibility = "hidden";
+                    }}
+                  />
+                  {row.domain.toUpperCase()}
+                </span>
+                <span className="departures-from" title={row.from ?? undefined}>
+                  {row.from ? row.from.toUpperCase() : "—"}
+                </span>
+                <span className="departures-spent">
+                  {row.spentMs !== null ? formatDuration(row.spentMs) : "—"}
+                </span>
+                <span className="departures-time">{formatTime(row.ts)}</span>
+                <span className={`departures-status departures-status-${status}`}>
+                  {status}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <footer className="departures-footer">
+        <BoardClock />
+        <div className="departures-notice">
+          <div className="departures-notice-track">
+            <span>{notice.toUpperCase()}</span>
+            <span aria-hidden="true">{notice.toUpperCase()}</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
