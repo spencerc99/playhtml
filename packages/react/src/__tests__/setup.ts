@@ -31,6 +31,18 @@ function notifyUsersChange() {
   for (const cb of usersChangeListeners) cb(snapshot);
 }
 
+// Mutable so tests can simulate an identity change (e.g. the extension
+// injecting identity post-sync) and assert usePresence().myIdentity updates.
+const mockPlayerIdentity = {
+  publicKey: "me",
+  name: "Me" as string | undefined,
+  playerStyle: {
+    colorPalette: ["#fff"] as string[],
+    cursorStyle: undefined as string | undefined,
+  },
+  createdAt: undefined as number | undefined,
+};
+
 function mockGetAllUsers(): Array<Record<string, unknown>> {
   return [
     {
@@ -155,9 +167,18 @@ const mockedPlayhtml = {
         return () => set!.delete(callback);
       },
     ),
-    getMyIdentity: vi.fn(() => ({ stableId: "me", name: "Me", color: "#fff" })),
+    getMyIdentity: vi.fn(() => ({
+      publicKey: mockPlayerIdentity.publicKey,
+      name: mockPlayerIdentity.name,
+      playerStyle: { ...mockPlayerIdentity.playerStyle },
+      createdAt: mockPlayerIdentity.createdAt,
+    })),
   },
   users: mockUsers,
+  setMockPlayerIdentity: (next: Partial<typeof mockPlayerIdentity>) => {
+    Object.assign(mockPlayerIdentity, next);
+    notifyUsersChange();
+  },
   createPageData: vi.fn((_name: string, defaultValue: unknown) => {
     let data = defaultValue;
     const listeners = new Set<(d: unknown) => void>();
