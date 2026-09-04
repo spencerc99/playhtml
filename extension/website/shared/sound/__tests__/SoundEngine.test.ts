@@ -8,7 +8,7 @@ import {
   CURSOR_INSTRUMENTS,
   getInstrument,
 } from "../instruments";
-import { SOUND_LAYERS } from "../types";
+import { SOUND_LAYERS, SoundNotice } from "../types";
 import {
   bellScaleForChord,
   CHORD_DWELL_MS,
@@ -2667,6 +2667,154 @@ describe("SoundEngine cursor instruments", () => {
     context.oscillators[0].onended?.();
 
     expect(primaryLevel.connections).toEqual([]);
+  });
+});
+
+describe("sound notices", () => {
+  /**
+   * A visual standing for a sound has to be fired by that sound. The engine
+   * drops arrivals for a per-trail debounce and a global rate cap, and drops
+   * navigations inside their minimum interval; anything drawing on its own
+   * schedule would show gestures for notes that never played. These pin the
+   * notice to the note.
+   */
+
+  it("reports an arrival with the schedule of the chime that sounded", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    const notices: SoundNotice[] = [];
+    engine.setSoundNoticeListener((notice) => notices.push(notice));
+
+    engine.tick(0, [soloFrame(7, 10, 10)]);
+
+    expect(notices).toHaveLength(1);
+    const notice = notices[0];
+    expect(notice.kind).toBe("arrival");
+    if (notice.kind !== "arrival") throw new Error("expected an arrival");
+    expect(notice.trailIndex).toBe(7);
+    expect(notice.rising).toBe(true);
+    // One offset per note of the cluster, in order, starting at the chime's
+    // own first note rather than at a time of the visual's choosing.
+    expect(notice.noteOffsetsSeconds.length).toBeGreaterThanOrEqual(3);
+    expect(notice.noteOffsetsSeconds.length).toBeLessThanOrEqual(5);
+    expect(notice.noteOffsetsSeconds[0]).toBe(0);
+    for (let i = 1; i < notice.noteOffsetsSeconds.length; i++) {
+      expect(notice.noteOffsetsSeconds[i]).toBeGreaterThan(
+        notice.noteOffsetsSeconds[i - 1],
+      );
+    }
+  });
+
+  it("reports a falling notice when a trail's departure chime sounds", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    engine.tick(0, [soloFrame(7, 10, 10)]);
+    const notices: SoundNotice[] = [];
+    engine.setSoundNoticeListener((notice) => notices.push(notice));
+
+    engine.retireTrail(7);
+
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      kind: "arrival",
+      trailIndex: 7,
+      rising: false,
+    });
+  });
+
+  it("reports nothing for an arrival the engine dropped", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: true });
+
+    const notices: SoundNotice[] = [];
+    engine.setSoundNoticeListener((notice) => notices.push(notice));
+
+    // Thirty trails on one frame, as on a day swap. Only what the global
+    // per-second budget lets through sounds, so only that much is reported.
+    engine.tick(0, Array.from({ length: 30 }, (_, i) => soloFrame(i, i * 10, 10)));
+    expect(notices).toHaveLength(2);
+
+    // Staying present is not arriving again, so nothing further is reported.
+    notices.length = 0;
+    for (let step = 1; step < 20; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [soloFrame(0, 10 + step, 10)]);
+    }
+    expect(notices).toHaveLength(0);
+  });
+
+  it("reports nothing at all when arrivals are switched off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ trailArrivals: false });
+
+    const notices: SoundNotice[] = [];
+    engine.setSoundNoticeListener((notice) => notices.push(notice));
+
+    engine.tick(0, [soloFrame(7, 10, 10)]);
+    engine.retireTrail(7);
+    expect(notices).toHaveLength(0);
+  });
+
+  it("reports each navigation gong that sounds, and no dropped one", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ navigationSounds: true });
+
+    const notices: SoundNotice[] = [];
+    engine.setSoundNoticeListener((notice) => notices.push(notice));
+
+    engine.tick(0, []);
+    engine.triggerNavigation({ x: 500, trailIndex: 4 });
+    expect(notices).toEqual([{ kind: "navigation", trailIndex: 4, x: 500 }]);
+
+    // Inside the rate limit the note is dropped, so its gesture is too.
+    context.currentTime += 0.5;
+    engine.triggerNavigation({ x: 500, trailIndex: 4 });
+    expect(notices).toHaveLength(1);
+
+    // Past the limit it sounds again, and reports again.
+    context.currentTime += 2;
+    engine.triggerNavigation({ x: 600, trailIndex: 4 });
+    expect(notices).toHaveLength(2);
+  });
+
+  it("reports no navigation when the gong is switched off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ navigationSounds: false });
+
+    const notices: SoundNotice[] = [];
+    engine.setSoundNoticeListener((notice) => notices.push(notice));
+
+    engine.triggerNavigation({ x: 500, trailIndex: 4 });
+    expect(notices).toHaveLength(0);
+  });
+
+  it("keeps sounding when a listener throws", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ navigationSounds: true });
+    engine.setSoundNoticeListener(() => {
+      throw new Error("a drawing bug is not an audio bug");
+    });
+
+    engine.tick(0, []);
+    const before = context.oscillators.length;
+    expect(() => engine.triggerNavigation({ x: 500 })).not.toThrow();
+    expect(context.oscillators.length).toBeGreaterThan(before);
   });
 });
 

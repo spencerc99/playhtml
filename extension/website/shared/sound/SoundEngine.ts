@@ -12,6 +12,8 @@ import {
   TimpaniVariant,
   CantusVariant,
   SoundLayer,
+  SoundNotice,
+  SoundNoticeListener,
   SOUND_LAYERS,
 } from "./types";
 import {
@@ -1177,6 +1179,11 @@ export class SoundEngine {
   private arrivalsSuppressedUntilMs = Number.NEGATIVE_INFINITY;
   /** When the last navigation note fired, for the global rate limit. */
   private lastNavigationNoteMs = Number.NEGATIVE_INFINITY;
+  /**
+   * Whoever is drawing the scene, told about each sound as it is scheduled.
+   * Optional — nothing in the engine depends on anybody listening.
+   */
+  private noticeListener: SoundNoticeListener | null = null;
   /** The bass pedal voices currently sounding — two only while crossfading. */
   private bassPedalVoices: BassPedalVoice[] = [];
   /** Chord root the pedal is currently holding, so it only moves on a change. */
@@ -1316,6 +1323,25 @@ export class SoundEngine {
   setCanvasWidth(width: number): void {
     this.canvasWidth = width;
     this.notesEngine.setCanvasWidth(width);
+  }
+
+  /**
+   * Listen for the sounds the engine commits to, so a visual standing for a
+   * sound is fired by that sound rather than by a second copy of the rules
+   * deciding when it should have happened. Pass null to stop listening.
+   */
+  setSoundNoticeListener(listener: SoundNoticeListener | null): void {
+    this.noticeListener = listener;
+  }
+
+  /** Tell the listener about a sound. A throwing listener never breaks audio. */
+  private emitNotice(notice: SoundNotice): void {
+    if (!this.noticeListener) return;
+    try {
+      this.noticeListener(notice);
+    } catch (err) {
+      console.warn("Sound notice listener threw:", err);
+    }
   }
 
   /** Update sound configuration (mode, chord voicing, instruments, crossings) */
@@ -2767,6 +2793,8 @@ export class SoundEngine {
         false,
         this.arrivalSeeds.get(trailIndex) ?? hashIdentity(String(trailIndex)),
         this.arrivalBands.get(trailIndex) ?? "alto",
+        0,
+        trailIndex,
       );
     }
     this.arrivalTimesMs.delete(trailIndex);
@@ -3473,6 +3501,8 @@ export class SoundEngine {
         true,
         this.arrivalSeeds.get(frame.trailIndex)!,
         band,
+        0,
+        frame.trailIndex,
       );
     }
   }
@@ -3514,6 +3544,12 @@ export class SoundEngine {
     band: RegisterBand,
     /** Push the whole cluster into the future, for auditioning two in a row. */
     startDelaySeconds = 0,
+    /**
+     * The trail this figure belongs to. Given for a real arrival or departure
+     * and omitted by the audition buttons, which chime for no trail — only a
+     * figure with a trail behind it is worth reporting to a visual.
+     */
+    trailIndex?: number,
   ): void {
     if (!this.ctx) return;
 
@@ -3578,7 +3614,11 @@ export class SoundEngine {
       noteGain * (rising ? 1 : departureGainScale) * bandTimbre.gainScale[band];
 
     let delaySeconds = startDelaySeconds;
+    // When each note lands, collected as the cluster is scheduled so a visual
+    // can be paced by the chime it stands for rather than by its own timing.
+    const noteOffsetsSeconds: number[] = [];
     pitches.forEach((pitch, order) => {
+      noteOffsetsSeconds.push(delaySeconds);
       const decay =
         (rising
           ? minDecaySeconds +
@@ -3599,6 +3639,15 @@ export class SoundEngine {
         minSpacingSeconds +
         hashUnit(seed, 80 + order) * (maxSpacingSeconds - minSpacingSeconds);
     });
+
+    if (trailIndex !== undefined) {
+      this.emitNotice({
+        kind: "arrival",
+        trailIndex,
+        rising,
+        noteOffsetsSeconds,
+      });
+    }
   }
 
   /**
@@ -3622,6 +3671,11 @@ export class SoundEngine {
       return;
     }
     this.lastNavigationNoteMs = nowMs;
+    this.emitNotice({
+      kind: "navigation",
+      trailIndex: event.trailIndex,
+      x: event.x,
+    });
     const {
       registerMultiplier,
       detuneCents,
@@ -5315,6 +5369,7 @@ export class SoundEngine {
 
   dispose(): void {
     this.enabled = false;
+    this.noticeListener = null;
     this.notesEngine.detach();
     this.clearFlourish();
     this.releaseBassPedal();

@@ -41,7 +41,46 @@ export interface ClickSoundEvent {
 export interface NavigationSoundEvent {
   /** Canvas x of the arriving node, used for stereo placement. Centred if omitted. */
   x?: number;
+  /**
+   * Which trail navigated, so a visual can be drawn at that trail's position.
+   * The sound itself is placed from `x` alone and does not read this.
+   */
+  trailIndex?: number;
 }
+
+/**
+ * A sound the engine has just committed to playing, reported to whoever is
+ * drawing the scene.
+ *
+ * A visual that stands for a sound has to be fired by the sound, not alongside
+ * it: the engine drops arrivals for its per-trail debounce and its global rate
+ * cap, and drops navigations inside their minimum interval, so anything
+ * deciding on its own when to draw would show gestures for notes that never
+ * sounded. Every notice here is emitted at the point the notes are actually
+ * scheduled.
+ */
+export type SoundNotice =
+  | {
+      kind: "arrival";
+      trailIndex: number;
+      /** True for a trail entering, false for one leaving. */
+      rising: boolean;
+      /**
+       * When each note of the chime lands, in seconds from the moment the
+       * figure was triggered. One entry per note, in order.
+       */
+      noteOffsetsSeconds: number[];
+    }
+  | {
+      kind: "navigation";
+      /** The trail that navigated, when the caller named one. */
+      trailIndex?: number;
+      /** Canvas x the note was panned to. */
+      x?: number;
+    };
+
+/** Receives every sound the engine commits to. */
+export type SoundNoticeListener = (notice: SoundNotice) => void;
 
 /**
  * How a click is voiced when percussion is driving the replay.
