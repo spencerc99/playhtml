@@ -4,13 +4,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { SoundEngine } from "../shared/sound/SoundEngine";
-import { CantusVariant } from "../shared/sound/types";
 import { DEFAULT_PROGRESSION_ID } from "../shared/sound/scales";
 import { SamplePlayback } from "./SamplePlayback";
 import { SoundLayers } from "./SoundLayers";
 import { SoundLibrary } from "./SoundLibrary";
 import { GlobalSettings, Globals } from "./Globals";
 import { VoicingSettings, VOICING_DEFAULTS } from "./voicing";
+import {
+  buildPersistedConfig,
+  clearSavedConfig,
+  LayerConfig,
+  loadSavedConfig,
+  restoreConfig,
+  saveConfig,
+} from "./persistedConfig";
 
 const styles = {
   page: {
@@ -56,15 +63,6 @@ const GLOBAL_DEFAULTS: GlobalSettings = {
   volume: 0.5,
 };
 
-/** What the Sound Layers panel switches on, and how loud each family sits. */
-interface LayerConfig {
-  bassPedal: boolean;
-  trailArrivals: boolean;
-  navigationSounds: boolean;
-  crossings: "off" | "dissonance" | "merge";
-  cantus: CantusVariant | null;
-}
-
 const LAYER_DEFAULTS: LayerConfig = {
   bassPedal: false,
   trailArrivals: true,
@@ -78,19 +76,33 @@ const LAYER_DEFAULTS: LayerConfig = {
   cantus: null,
 };
 
+// Read once at module init rather than per-render: the saved config only
+// changes through this page's own save/reset actions, both of which reload.
+const initialSaved = loadSavedConfig();
+const initialRestored = restoreConfig(
+  initialSaved?.config,
+  GLOBAL_DEFAULTS,
+  LAYER_DEFAULTS,
+);
+
 const SoundPlayground = () => {
   const engineRef = useRef<SoundEngine | null>(null);
-  const [globals, setGlobals] = useState<GlobalSettings>(GLOBAL_DEFAULTS);
-  const [layers, setLayers] = useState<LayerConfig>(LAYER_DEFAULTS);
-  const [voicing, setVoicing] = useState<VoicingSettings>(VOICING_DEFAULTS);
+  const [globals, setGlobals] = useState<GlobalSettings>(initialRestored.globals);
+  const [layers, setLayers] = useState<LayerConfig>(initialRestored.layers);
+  const [voicing, setVoicing] = useState<VoicingSettings>(initialRestored.voicing);
   const [readout, setReadout] = useState({ chord: "Dm", energy: 0 });
+  const [savedAt, setSavedAt] = useState<string | null>(
+    initialSaved?.savedAt ?? null,
+  );
 
   // Every section drives this one engine, so a setting means the same thing
   // wherever it is changed and whatever is currently making sound.
   const globalsRef = useRef(globals);
   const layersRef = useRef(layers);
+  const voicingRef = useRef(voicing);
   globalsRef.current = globals;
   layersRef.current = layers;
+  voicingRef.current = voicing;
 
   const ensureEngine = useCallback(async () => {
     if (!engineRef.current) {
@@ -183,6 +195,25 @@ const SoundPlayground = () => {
     [],
   );
 
+  const handleSaveDefault = useCallback(() => {
+    const config = buildPersistedConfig(
+      globalsRef.current,
+      layersRef.current,
+      voicingRef.current,
+    );
+    if (saveConfig(config)) {
+      setSavedAt(new Date().toISOString());
+    }
+  }, []);
+
+  const handleResetDefault = useCallback(() => {
+    clearSavedConfig();
+    setSavedAt(null);
+    setGlobals(GLOBAL_DEFAULTS);
+    setLayers(LAYER_DEFAULTS);
+    setVoicing(VOICING_DEFAULTS);
+  }, []);
+
   const layerConfig = useMemo(
     () => ({
       bassPedal: layers.bassPedal,
@@ -206,6 +237,9 @@ const SoundPlayground = () => {
         settings={globals}
         onChange={handleGlobalsChange}
         readout={readout}
+        savedAt={savedAt}
+        onSaveDefault={handleSaveDefault}
+        onResetDefault={handleResetDefault}
       />
 
       <SoundLayers

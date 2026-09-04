@@ -58,6 +58,10 @@ interface GlobalsProps {
   onChange: (next: Partial<GlobalSettings>) => void;
   /** Chord and energy readout, so the harmony row shows where it currently is. */
   readout: { chord: string; energy: number };
+  /** ISO timestamp of the saved default in use, or null when none is saved. */
+  savedAt: string | null;
+  onSaveDefault: () => void;
+  onResetDefault: () => void;
 }
 
 /**
@@ -65,19 +69,46 @@ interface GlobalsProps {
  * sounds like. These shape every layer at once, so they sit above the panel
  * rather than as a row inside it.
  */
-export const Globals = ({ settings, onChange, readout }: GlobalsProps) => (
+export const Globals = ({
+  settings,
+  onChange,
+  readout,
+  savedAt,
+  onSaveDefault,
+  onResetDefault,
+}: GlobalsProps) => (
   <div style={{ marginBottom: "32px" }}>
     <div
       style={{
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "1px",
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: "8px",
         marginBottom: "12px",
-        fontFamily: "'Martian Mono', monospace",
-        fontSize: "11px",
       }}
     >
-      Scene
+      <div
+        style={{
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+          fontFamily: "'Martian Mono', monospace",
+          fontSize: "11px",
+        }}
+      >
+        Scene
+      </div>
+      <button onClick={onSaveDefault} style={buttonStyle}>
+        save as my default
+      </button>
+      <button onClick={onResetDefault} style={buttonStyle}>
+        reset to shipped default
+      </button>
+      {savedAt ? (
+        <span style={labelStyle}>
+          using saved config from {new Date(savedAt).toLocaleString()}
+        </span>
+      ) : null}
     </div>
 
     <div style={rowStyle}>
