@@ -484,9 +484,14 @@ export function leadHomeTone(currentHome: number, scale: number[]): number {
 /**
  * A register the trails sing in, named for the choral part it occupies.
  *
- * The four bands span roughly D2-D6 and overlap by a little, the way real
+ * The four bands span roughly D2-C5 and overlap generously, the way real
  * voice parts do — a hard split at the octave makes the crowd sound like four
- * separate instruments rather than one choir.
+ * separate instruments rather than one choir. Bass and tenor keep their full
+ * octave-plus-a-semitone width; alto and soprano are compressed into a
+ * smaller top of the range (each a clean octave, overlapping the neighbours
+ * on both sides by more than the original semitone) so the ensemble's
+ * ceiling sits at C5 rather than reaching into D6 — nothing sustained should
+ * ring above about C5.
  */
 export type RegisterBand = "bass" | "tenor" | "alto" | "soprano";
 
@@ -501,9 +506,11 @@ export const REGISTER_BANDS: RegisterBand[] = [
 /**
  * The pitch window each band voices in (Hz), low bound inclusive.
  *
- * Anchored on D so the bounds land on octaves of the key's root: D2 ~73Hz,
- * D3 ~147Hz, D4 ~294Hz, D5 ~587Hz, D6 ~1175Hz. Each band is a little over an
- * octave wide, which is enough room for a palette's worth of tones.
+ * Bass and tenor are anchored on D so their bounds land on octaves of the
+ * key's root: D2 ~73Hz, D3 ~147Hz, each a little over an octave wide. Alto
+ * and soprano are compressed to fit the remaining room under the C5 ceiling —
+ * A3-A4 and C4-C5, each a clean octave — rather than continuing the D-anchored
+ * ladder up to D6.
  */
 export const REGISTER_BAND_RANGES: Record<
   RegisterBand,
@@ -511,8 +518,8 @@ export const REGISTER_BAND_RANGES: Record<
 > = {
   bass: { minHz: 73.42, maxHz: 155.56 },
   tenor: { minHz: 146.83, maxHz: 311.13 },
-  alto: { minHz: 293.66, maxHz: 622.25 },
-  soprano: { minHz: 587.33, maxHz: 1244.51 },
+  alto: { minHz: 220.0, maxHz: 440.0 },
+  soprano: { minHz: 261.63, maxHz: 523.25 },
 };
 
 /**
@@ -530,10 +537,10 @@ export type RegisterMappingMode = "hue" | "luminance";
  * Hue is split into four quadrants and each takes one choral part, cool to
  * warm, low to high:
  *
- *   blue/purple  (hue 200-289) -> bass     (D2-D3)
- *   cyan/green   (hue 110-199) -> tenor    (D3-D4)
- *   yellow/lime  (hue  50-109) -> alto     (D4-D5)
- *   red/pink     (hue 290-49)  -> soprano  (D5-D6)
+ *   blue/purple  (hue 200-289) -> bass     (D2-D#3)
+ *   cyan/green   (hue 110-199) -> tenor    (D3-D#4)
+ *   yellow/lime  (hue  50-109) -> alto     (A3-A4)
+ *   red/pink     (hue 290-49)  -> soprano  (C4-C5)
  *
  * Cool colours sit low and warm colours sit high: a blue trail rumbles, a red
  * one rings out on top. The boundaries are rotated off the multiples of 90 so

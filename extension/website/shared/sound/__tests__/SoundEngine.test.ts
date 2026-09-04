@@ -770,7 +770,7 @@ describe("SoundEngine cursor instruments", () => {
 
     // Top of the pad maps to the top of the scale, unchanged from before the
     // progression existed.
-    expect(context.oscillators[before].frequency.value).toBe(587.33);
+    expect(context.oscillators[before].frequency.value).toBe(523.25);
   });
 
   it("rings click bells from the active chord while rotation is on", async () => {
@@ -1012,10 +1012,13 @@ describe("SoundEngine cursor instruments", () => {
     );
 
     expect(pitches.length).toBeGreaterThan(0);
-    // Every note is a palette pitch, possibly shifted an octave for register.
+    // Every note is a palette pitch, possibly shifted up by one of the
+    // quantized register steps (two-semitone increments up to a major
+    // third — the window the register ceiling now allows).
+    const registerSteps = [0, 1, 2].map((step) => 2 ** (step / 6));
     for (const pitch of pitches) {
-      const inPalette = palette.some(
-        (p) => Math.abs(p - pitch) < 0.01 || Math.abs(p * 2 - pitch) < 0.01,
+      const inPalette = palette.some((p) =>
+        registerSteps.some((step) => Math.abs(p * step - pitch) < 0.01),
       );
       expect(inPalette).toBe(true);
     }
@@ -1197,13 +1200,13 @@ describe("SoundEngine cursor instruments", () => {
     const notes = [...state.flourishNotes];
     expect(notes.length).toBeGreaterThanOrEqual(3);
 
-    // The chime draws only from the top of the palette, doubled — so it rings
-    // above the sustained bed rather than inside it, and stays in key. With
-    // rotation off the palette is the base D minor pentatonic.
+    // The chime draws only from the top of the palette, at registerMultiplier
+    // — so it rings above the sustained bed rather than inside it, and stays
+    // in key. With rotation off the palette is the base D minor pentatonic.
     const top = [...D_MINOR_PENTATONIC]
       .sort((a, b) => a - b)
       .slice(-5)
-      .map((hz) => hz * 2);
+      .map((hz) => hz * 1);
     for (const note of notes) {
       const hz = note.oscillator.frequency.value;
       const isChimeTone = top.some(

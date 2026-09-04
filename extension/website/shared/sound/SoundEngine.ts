@@ -396,6 +396,14 @@ export type CrossingTensionVariant = "shimmer" | "suspension" | "harsh";
 export const REGISTER_MAPPING: RegisterMappingMode = "hue";
 
 /**
+ * Fixed octave step separating the arrival chime's bands, bass to soprano.
+ * Bass, tenor and alto's chime registers are tuned against this baseline —
+ * see `triggerArrivalFigure` — independent of `ARRIVAL_TUNING.registerMultiplier`,
+ * which only moves the soprano ceiling.
+ */
+const ARRIVAL_REGISTER_STEP = 2;
+
+/**
  * Trail arrival/departure tuning. A trail entering the scene rises through two
  * notes, one leaving falls through them, so the population of the canvas is
  * audible without needing to watch it.
@@ -403,10 +411,11 @@ export const REGISTER_MAPPING: RegisterMappingMode = "hue";
 const ARRIVAL_TUNING = {
   /**
    * Octave multiplier placing the chime above the bed. The palettes sit in
-   * D3-C5, so the top of the palette doubled lands the cluster around C5-D6 —
-   * the register a door chime actually occupies.
+   * D3-C5, so the top of the palette at this multiplier lands the soprano
+   * chime at C5 — the ensemble ceiling — rather than reaching an octave above
+   * it into C6-D6.
    */
-  registerMultiplier: 2,
+  registerMultiplier: 1,
   /** How many notes an arrival chime scatters. */
   minNotes: 3,
   maxNotes: 5,
@@ -940,12 +949,17 @@ const FLOURISH_TUNING = {
   /** Velocity that maps to the top of the register range. */
   registerFullVelocity: 30,
   /**
-   * Register window the flourish selects across, as octave multipliers on the
-   * chosen palette pitch. The palettes sit in D3-C5, so 1x-2x covers D3-C6
-   * without ever leaving the key.
+   * Register window the flourish selects across, as multipliers on the
+   * chosen palette pitch. The palettes sit in D3-C5, so a full octave of
+   * climb (1x-2x) would carry the top of the palette to C6, past the
+   * ensemble's ceiling. The window is capped at a major third instead
+   * (1x-1.26x), so the worst case — the palette's own C5 — climbs to E5, a
+   * few semitones over the ceiling rather than a whole octave over it. See
+   * `advanceFlourish`'s quantization, which steps in two-semitone degrees
+   * across this narrower window rather than in whole octaves.
    */
   registerMinMultiplier: 1,
-  registerMaxMultiplier: 2,
+  registerMaxMultiplier: 2 ** (4 / 12),
   /** The resolving note played once on demotion. */
   resolveDecaySeconds: 2.2,
   resolveGainScale: 0.8,
@@ -958,7 +972,6 @@ const FIXED_BELL_SCALE = [
   392.0,  // G4
   440.0,  // A4
   523.25, // C5
-  587.33, // D5
 ];
 
 /** Cursor types that use repeating pluck instead of sustained tone */
@@ -3580,12 +3593,23 @@ export class SoundEngine {
     }
 
     // Soprano is the register the chime was tuned in, so it is the reference:
-    // the doubled palette top, unchanged. The lower parts drop from there by
-    // whole octaves, which keeps every chime note the same pitch class as the
-    // soprano one — the same chime, sung lower, rather than a different figure.
+    // the palette top at registerMultiplier, unchanged. The lower parts drop
+    // from there by whole octaves, which keeps every chime note the same
+    // pitch class as the soprano one — the same chime, sung lower, rather
+    // than a different figure.
+    //
+    // The octave step itself is fixed at the ARRIVAL_REGISTER_STEP baseline
+    // rather than at `registerMultiplier`: bass, tenor and alto were each
+    // tuned to land inside their own REGISTER_BAND_RANGES against that
+    // baseline, and those bands did not move when the soprano ceiling did.
+    // Deriving the step from `registerMultiplier` directly would drag every
+    // lower band down with it whenever the ceiling changes.
     const octavesBelowSoprano =
       REGISTER_BANDS.length - 1 - REGISTER_BANDS.indexOf(band);
-    const bandMultiplier = registerMultiplier / 2 ** octavesBelowSoprano;
+    const bandMultiplier =
+      band === "soprano"
+        ? registerMultiplier
+        : ARRIVAL_REGISTER_STEP / 2 ** octavesBelowSoprano;
 
     const gain =
       noteGain * (rising ? 1 : departureGainScale) * bandTimbre.gainScale[band];
@@ -3745,18 +3769,20 @@ export class SoundEngine {
       }
       case "soloistFlourish": {
         // A representative mid-velocity note: the same palette walk and
-        // quantized octave selection the soloist uses, at half the velocity
-        // that reaches the top register.
+        // quantized register selection the soloist uses, at half the
+        // velocity that reaches the top register.
         const palette = this.flourishPalette();
         const normalized = 0.5;
         const {
           registerMinMultiplier: registerMin,
           registerMaxMultiplier: registerMax,
         } = FLOURISH_TUNING;
-        const octaves = Math.round(
-          Math.log2(registerMin) +
-            normalized * (Math.log2(registerMax) - Math.log2(registerMin)),
-        );
+        const octaves =
+          Math.round(
+            (Math.log2(registerMin) +
+              normalized * (Math.log2(registerMax) - Math.log2(registerMin))) *
+              6,
+          ) / 6;
         const decay =
           FLOURISH_TUNING.decayMinSeconds +
           normalized *
@@ -5108,12 +5134,17 @@ export class SoundEngine {
       registerMinMultiplier: registerMin,
       registerMaxMultiplier: registerMax,
     } = FLOURISH_TUNING;
-    // Octave selection is quantized, so the run lands on real octaves of the
-    // palette pitch rather than sliding between them.
-    const octaves = Math.round(
-      Math.log2(registerMin) +
-        normalized * (Math.log2(registerMax) - Math.log2(registerMin)),
-    );
+    // Register selection is quantized to two-semitone steps rather than
+    // sliding continuously, so the run still lands on discrete degrees. A
+    // full-octave step no longer fits under the register ceiling — the
+    // window only reaches a major third above the base pitch — so the
+    // quantum has to be finer than an octave to produce any audible climb.
+    const octaves =
+      Math.round(
+        (Math.log2(registerMin) +
+          normalized * (Math.log2(registerMax) - Math.log2(registerMin))) *
+          6,
+      ) / 6;
 
     const decay =
       FLOURISH_TUNING.decayMinSeconds +
