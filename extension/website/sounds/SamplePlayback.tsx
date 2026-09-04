@@ -753,20 +753,23 @@ export const SamplePlayback = ({
 
       if (event.event === "click" || event.event === "hold") {
         const isHold = event.event === "hold" || event.duration !== undefined;
-        const rollThisHold = isHold && isTimpani(voicing.hold);
-        if (rollThisHold) {
+        // The hold voice narrowed to a roll, or null for the stretched bell —
+        // which is not a timpani variant and is played by the click path below.
+        const holdRoll =
+          isHold && isTimpani(voicing.hold) ? voicing.hold : null;
+        if (holdRoll) {
           // The recorded hold's own length drives the roll, so a long press
           // sounds long rather than every hold sounding the same.
           engine.triggerHold(
             x,
-            voicing.hold,
+            holdRoll,
             event.duration === undefined ? undefined : event.duration / 1000,
           );
         }
 
         if (isPizzicato(voicing.click)) {
           engine.triggerClickPizzicato(x, y, voicing.click);
-        } else if (!rollThisHold) {
+        } else if (!holdRoll) {
           // The shipped bell, unless the hold roll has already taken this
           // event — the roll replaces the stretched bell rather than layering
           // on top of it.
