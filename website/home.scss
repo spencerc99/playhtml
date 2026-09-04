@@ -4,7 +4,7 @@
 $color-text-light: hsl(140, 5%, 12%);
 :root {
   color-scheme: light dark;
-  --background: hsl(139, 22%, 85%, 1);
+  --background: hsl(160, 10%, 88%, 1);
   --color-text: hsl(140, 5%, 12%);
   --color-text-accent: hsl(33, 7%, 29%);
   --color-text-translucent: hsla(140, 5%, 12%, 0.3);
@@ -12,7 +12,7 @@ $color-text-light: hsl(140, 5%, 12%);
   --color-text-link: hsl(218, 87%, 40%);
 
   @media (prefers-color-scheme: dark) {
-    --background: hsl(139, 14%, 18%, 1);
+    --background: hsl(160, 8%, 18%, 1);
     --color-text: hsl(140, 5%, 85%);
     --color-text-accent: hsl(33, 7%, 81%);
     --color-text-translucent: hsla(140, 5%, 85%, 0.3);
@@ -664,8 +664,8 @@ footer {
 // Uses party.scss visual tokens (paper, ink, mustard, brick, ultramarine, sage)
 // and the washi-tape PNG assets from /party/3/assets/.
 
-$ph-paper: #f4efe5;
-$ph-paper-warm: #ebe4d5;
+$ph-paper: #f3f1ed;
+$ph-paper-warm: #e8e5dd;
 $ph-ink: #1c1c1c;
 $ph-mustard: #e8a63a;
 $ph-brick: #c0373c;
@@ -677,6 +677,7 @@ $ph-sage: #c3d1b7;
   position: relative;
   float: right;
   width: 220px;
+  box-sizing: border-box;
   margin: 6px 0 20px 28px;
   padding: 26px 16px 16px;
   background: $ph-paper;
