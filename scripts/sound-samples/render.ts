@@ -1,11 +1,14 @@
 // ABOUTME: Renders the orchestral sound candidates as long solos and against the real event fixture.
 // ABOUTME: Writes deterministic stereo WAV files and rejects silent or clipped output.
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OfflineAudioContext } from "node-web-audio-api";
-import { SoundEngine } from "../../extension/website/shared/sound/SoundEngine";
+import {
+  SoundEngine,
+  type CrossingFlavor,
+} from "../../extension/website/shared/sound/SoundEngine";
 import {
   PROGRESSIONS,
   PROGRESSION_IDS,
@@ -1329,6 +1332,16 @@ const SIXTEEN_BIT_FLOOR_DBFS = -96;
  * `spotlight` is deliberately absent: the engine derives it from `mode`, and
  * setting it explicitly would suppress that derivation.
  */
+/**
+ * `crossings` is overridable via the `HARMONY_CROSSINGS` env var (one of
+ * `CrossingFlavor`) so the harmony renders can be re-run under a different
+ * crossings setting without editing this file. Everything else in the
+ * arrangement is fixed.
+ */
+const HARMONY_CROSSINGS: CrossingFlavor =
+  (process.env.HARMONY_CROSSINGS as CrossingFlavor | undefined) ??
+  "dissonance";
+
 const HARMONY_ARRANGEMENT = {
   globals: {
     mode: "spotlight",
@@ -1344,7 +1357,7 @@ const HARMONY_ARRANGEMENT = {
     bassPedal: true,
     trailArrivals: true,
     navigationSounds: true,
-    crossings: "dissonance",
+    crossings: HARMONY_CROSSINGS,
   },
   cantus: "soprano",
   voicing: { click: "bells", hold: "rootFifth" },
@@ -1355,8 +1368,12 @@ const HARMONY_ARRANGEMENT = {
 const HARMONY_CONFIG_SUMMARY =
   "spotlight, chordRotation, energyArc, trailVoices, swells, choralTimbre, " +
   "cursorInstruments, traceability 0, volume 0.5; bassPedal, trailArrivals, " +
-  "navigationSounds, crossings dissonance, cantus soprano; " +
+  `navigationSounds, crossings ${HARMONY_CROSSINGS}, cantus soprano; ` +
   "click bells, hold timp. rootFifth";
+
+/** Filename suffix for a harmony render when crossings is overridden. */
+const HARMONY_FILENAME_SUFFIX =
+  HARMONY_CROSSINGS === "dissonance" ? "" : `-${HARMONY_CROSSINGS === "off" ? "nocross" : HARMONY_CROSSINGS}`;
 
 /** Tail left after the rotation closes, so the last chord is heard settling. */
 const HARMONY_TAIL_SECONDS = 3;
@@ -1399,7 +1416,7 @@ interface ChordChange {
 const renderHarmony = async (
   progression: ProgressionId,
 ): Promise<RenderResult> => {
-  const id = `harmony-${progression}`;
+  const id = `harmony-${progression}${HARMONY_FILENAME_SUFFIX}`;
   Math.random = seededRandom(hash(id));
 
   const { audioContext, setClock } = createDrivenContext(HARMONY_MAX_SECONDS);
@@ -1696,6 +1713,39 @@ bun run render
 `;
 };
 
+/**
+ * A second table appended to `harmony-README.md`, for a harmony re-render
+ * under a `HARMONY_CROSSINGS` override that differs from the shipped
+ * arrangement. Kept separate from `harmonyReadme` so a `HARMONY_ONLY` run
+ * can splice this into the existing file rather than overwrite it.
+ */
+const harmonyCrossingsSection = (results: RenderResult[]): string => {
+  const rows = results
+    .map(({ filename, demonstrates, durationSeconds, peakDbfs, chordChanges }) =>
+      `| [${filename}](./${filename}) | ${demonstrates} | ${durationSeconds}s | ${peakDbfs.toFixed(2)} dBFS | ${(
+        chordChanges ?? []
+      )
+        .map(
+          (change) =>
+            `${change.name} (${change.index + 1}) ${change.atSeconds.toFixed(1)}s`,
+        )
+        .join(", ")} |`,
+    )
+    .join("\n");
+
+  return `## Files (crossings ${HARMONY_CROSSINGS})
+
+Same arrangement as above, with \`crossings\` set to \`${HARMONY_CROSSINGS}\`
+instead of \`dissonance\`.
+
+**Arrangement:** ${HARMONY_CONFIG_SUMMARY}.
+
+| File | Rotation | Duration | Peak | Chord changes |
+| --- | --- | --- | --- | --- |
+${rows}
+`;
+};
+
 // ---------------------------------------------------------------------------
 // README
 // ---------------------------------------------------------------------------
@@ -1878,6 +1928,14 @@ for (const progression of Object.values(PROGRESSIONS)) {
     (DEMO_CHORD_DWELL_MS / BASE_CHORD_DWELL_MS);
 }
 
+/**
+ * When set, only the harmony renders run — the candidate solos, A/B and stem
+ * renders (and the plain `README.md` they produce) are skipped. Used to
+ * re-render the harmony set alone under a different `HARMONY_CROSSINGS`
+ * without touching the unrelated candidate files.
+ */
+const HARMONY_ONLY = process.env.HARMONY_ONLY === "1";
+
 const results: RenderResult[] = [];
 const harmonyResults: RenderResult[] = [];
 try {
@@ -1885,6 +1943,7 @@ try {
     harmonyResults.push(await renderHarmony(progression));
   }
 
+  if (!HARMONY_ONLY) {
   for (const variant of ["soft", "crisp", "double"] as PizzicatoVariant[]) {
     results.push(await renderPizzicatoSolo(variant));
   }
@@ -1968,20 +2027,40 @@ try {
       band: CANTUS_BAND,
     }),
   );
+  }
 } finally {
   for (const progression of Object.values(PROGRESSIONS)) {
     progression.dwellScale = originalDwellScales.get(progression.id) ?? 1;
   }
 }
 
-await writeFile(
-  resolve(outputDirectory, "README.md"),
-  readme(results, CONTEXT_EVENTS),
-);
-await writeFile(
-  resolve(outputDirectory, "harmony-README.md"),
-  harmonyReadme(harmonyResults),
-);
+const harmonyReadmePath = resolve(outputDirectory, "harmony-README.md");
+
+if (HARMONY_ONLY) {
+  // Re-render under an overridden HARMONY_CROSSINGS: leave README.md and the
+  // harmony README's existing table alone, and splice a second table in
+  // before "## Regenerate" rather than overwrite the file.
+  const existing = await readFile(harmonyReadmePath, "utf8");
+  const marker = "\n## Regenerate\n";
+  const spliceAt = existing.indexOf(marker);
+  if (spliceAt === -1) {
+    throw new Error(
+      `harmony-README.md is missing the "${marker.trim()}" section; cannot splice in the crossings comparison`,
+    );
+  }
+  const updated =
+    existing.slice(0, spliceAt) +
+    "\n" +
+    harmonyCrossingsSection(harmonyResults) +
+    existing.slice(spliceAt);
+  await writeFile(harmonyReadmePath, updated);
+} else {
+  await writeFile(
+    resolve(outputDirectory, "README.md"),
+    readme(results, CONTEXT_EVENTS),
+  );
+  await writeFile(harmonyReadmePath, harmonyReadme(harmonyResults));
+}
 console.log(
   `\nRendered ${results.length + harmonyResults.length} files to ${outputDirectory}`,
 );
