@@ -4,7 +4,7 @@
 $color-text-light: hsl(140, 5%, 12%);
 :root {
   color-scheme: light dark;
-  --background: hsl(139, 22%, 85%, 1);
+  --background: hsl(160, 10%, 88%, 1);
   --color-text: hsl(140, 5%, 12%);
   --color-text-accent: hsl(33, 7%, 29%);
   --color-text-translucent: hsla(140, 5%, 12%, 0.3);
@@ -12,7 +12,7 @@ $color-text-light: hsl(140, 5%, 12%);
   --color-text-link: hsl(218, 87%, 40%);
 
   @media (prefers-color-scheme: dark) {
-    --background: hsl(139, 14%, 18%, 1);
+    --background: hsl(160, 8%, 18%, 1);
     --color-text: hsl(140, 5%, 85%);
     --color-text-accent: hsl(33, 7%, 81%);
     --color-text-translucent: hsla(140, 5%, 85%, 0.3);
@@ -659,6 +659,308 @@ footer {
   }
 }
 
+// ─── Party invitation poster ────────────────────────────────────────────────
+// Taped onto the homepage mid-page, near the live examples area.
+// Uses party.scss visual tokens (paper, ink, mustard, brick, ultramarine, sage)
+// and the washi-tape PNG assets from /party/3/assets/.
+
+$ph-paper: #f3f1ed;
+$ph-paper-warm: #e8e5dd;
+$ph-ink: #1c1c1c;
+$ph-mustard: #e8a63a;
+$ph-brick: #c0373c;
+$ph-ultramarine: #274b9e;
+$ph-sage: #c3d1b7;
+
+#party-poster {
+  display: block;
+  position: relative;
+  float: right;
+  width: 220px;
+  box-sizing: border-box;
+  margin: 6px 0 20px 28px;
+  padding: 26px 16px 16px;
+  background: $ph-paper;
+  border: 1.5px solid $ph-ink;
+  border-radius: 3px;
+  box-shadow: 2px 2px 0 0 $ph-ink;
+  color: $ph-ink;
+  text-decoration: none;
+  transform: rotate(1.4deg);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  // layer over the absolute-positioned candle
+  z-index: 6;
+
+  &:hover,
+  &:focus-visible {
+    transform: rotate(0.4deg) translate(-1px, -1px);
+    box-shadow: 3px 3px 0 0 $ph-ink;
+    // undo any link color from the outer stylesheet
+    color: $ph-ink;
+  }
+
+  &:focus-visible {
+    outline: 3px solid $ph-mustard;
+    outline-offset: 4px;
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+// Washi tape strips — positoned at the top corners of the poster
+.party-poster__tape {
+  position: absolute;
+  top: -9px;
+  width: 52px;
+  height: 16px;
+  filter: drop-shadow(0 1px 1px rgba($ph-ink, 0.14));
+}
+
+.party-poster__tape--a {
+  left: 18px;
+  background: url("/party/3/assets/pink-washi-tape.png") center / 100% 100% no-repeat;
+  transform: rotate(-4deg);
+}
+
+.party-poster__tape--b {
+  right: 14px;
+  background: url("/party/3/assets/washi-tape-yellow.png") center / 100% 100% no-repeat;
+  transform: rotate(3deg);
+}
+
+// ── Preview window: a cropped "room scene" ────────────────────────────────────
+.party-poster__window {
+  position: relative;
+  width: 100%;
+  height: 130px;
+  overflow: hidden;
+  border: 1px solid rgba($ph-ink, 0.28);
+  border-radius: 3px;
+  background: $ph-paper-warm;
+  margin-bottom: 12px;
+}
+
+// Wall (top third, light wallpaper feel)
+.party-poster__wall {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 42%;
+  background: rgba($ph-paper, 0.72) url("/party/3/assets/party-wallpaper.png") repeat;
+  background-size: 72px 72px;
+}
+
+// Floor (bottom two-thirds, gridded parquet)
+.party-poster__floor {
+  position: absolute;
+  top: 42%;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #fbf8f1;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      rgba($ph-ink, 0.1) 0 1px,
+      transparent 1px 34px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba($ph-ink, 0.1) 0 1px,
+      transparent 1px 34px
+    );
+}
+
+// ── Cake ──────────────────────────────────────────────────────────────────────
+.party-poster__cake-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.party-poster__candles {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  margin-bottom: 1px;
+  z-index: 2;
+  position: relative;
+
+  img {
+    image-rendering: pixelated;
+    width: 10px;
+    height: 16px;
+  }
+}
+
+.party-poster__cake {
+  position: relative;
+  width: 96px;
+  height: 60px;
+  border: 1px solid $ph-ink;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #fbf8f0;
+
+  img {
+    position: absolute;
+    object-fit: cover;
+  }
+}
+
+// Reproduce the party room's cake slice proportions at miniature scale
+.party-poster__cake-choc    { top: 0;   left: 0;   width: 40%; height: 60%; }
+.party-poster__cake-peach   { top: 0;   left: 40%; width: 35%; height: 45%; }
+.party-poster__cake-matcha  { top: 0;   left: 75%; width: 25%; height: 60%; }
+.party-poster__cake-vanilla { top: 45%; left: 40%; width: 35%; height: 55%; }
+.party-poster__cake-pecan   { top: 60%; left: 0;   width: 40%; height: 40%; }
+.party-poster__cake-lemon   { top: 60%; left: 75%; width: 25%; height: 40%; }
+
+// ── Party hats (pure CSS, mirrors party.scss's .party-hat pattern) ────────────
+.party-poster__hats {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.party-poster__hat {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 22px;
+
+  &::before {
+    content: "";
+    position: absolute;
+    bottom: 4px;
+    left: 1px;
+    right: 1px;
+    height: 16px;
+    border: 1px solid $ph-ink;
+    background: var(--hat-color);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: -1px;
+    right: -1px;
+    height: 5px;
+    border: 1px solid $ph-ink;
+    border-radius: 50%;
+    background: $ph-paper;
+  }
+}
+
+// ── Balloon (pure CSS, mirrors party.scss's .party-balloon pattern) ───────────
+.party-poster__balloon {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  display: block;
+  width: 22px;
+  height: 36px;
+}
+
+.party-poster__balloon-body {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 26px;
+  border-radius: 50% 50% 48% 48%;
+  background: radial-gradient(
+    circle at 34% 26%,
+    #ffe3e8 2%,
+    #ff8fa1 42%,
+    #e8425c 100%
+  );
+  box-shadow: inset -2px -3px 8px rgba(120, 20, 40, 0.35);
+}
+
+.party-poster__balloon-hl {
+  position: absolute;
+  display: block;
+  top: 4px;
+  left: 5px;
+  width: 5px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.58);
+  filter: blur(0.5px);
+  transform: rotate(-22deg);
+}
+
+.party-poster__balloon-knot {
+  display: block;
+  width: 5px;
+  height: 4px;
+  background: #e8425c;
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+  margin: 0 auto;
+}
+
+.party-poster__balloon-string {
+  display: block;
+  width: 5px;
+  height: 10px;
+  margin: 0 auto 0 8px;
+  border-bottom: 1px solid rgba($ph-ink, 0.4);
+  border-left: 1px solid rgba($ph-ink, 0.4);
+  border-radius: 0 0 0 5px;
+}
+
+// ── Wish card peeking out bottom-left ─────────────────────────────────────────
+.party-poster__wish {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
+  display: block;
+  width: 30px;
+  height: 38px;
+  background: $ph-paper-warm;
+  border: 1px solid rgba($ph-ink, 0.4);
+  border-radius: 2px;
+  box-shadow: 1px 1px 0 rgba($ph-ink, 0.14);
+  transform: rotate(-6deg);
+}
+
+.party-poster__wish-band {
+  display: block;
+  height: 9px;
+  border-bottom: 1px solid rgba($ph-ink, 0.3);
+  background: $ph-brick;
+  opacity: 0.75;
+}
+
+// ── Poster text ───────────────────────────────────────────────────────────────
+.party-poster__headline {
+  font-family: "Carter One", serif;
+  font-size: 1.05rem;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: $ph-ink;
+  margin-bottom: 4px !important;
+}
+
+.party-poster__invite {
+  font-family: "Carter One", serif;
+  font-size: 0.82rem;
+  color: $ph-ultramarine;
+  letter-spacing: 0.01em;
+}
+
 @media screen and (max-width: 760px) {
   body {
     margin-bottom: calc(116px + env(safe-area-inset-bottom));
@@ -717,6 +1019,21 @@ footer {
 
   .site-console__menu {
     right: 8px;
+  }
+
+  // Party poster: stop floating on narrow viewports; let it be a block element
+  // so it doesn't clip over text or cause overflow.
+  #party-poster {
+    float: none;
+    width: 100%;
+    max-width: 300px;
+    margin: 12px auto 20px;
+    transform: rotate(0.6deg);
+
+    &:hover,
+    &:focus-visible {
+      transform: rotate(0deg) translate(-1px, -1px);
+    }
   }
 
 }
