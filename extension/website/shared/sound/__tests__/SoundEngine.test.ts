@@ -2930,76 +2930,11 @@ describe("percussion candidates", () => {
     expect(hybrid[0]).toBeLessThan(CLICK_BELL.gain);
   });
 
-  it("keeps a typing tick short and a burst irregular", async () => {
-    const single = await startedEngine();
-    single.audition("typingTick");
-    expect(context.bufferSources.length).toBe(1);
-    const tick = context.bufferSources[0];
-    const duration = tick.stopTimes[0]! - tick.startTimes[0];
-    // A keystroke has to be over before the next one lands.
-    expect(duration).toBeGreaterThan(0);
-    expect(duration).toBeLessThanOrEqual(0.005);
-
-    createdNodes = [];
-    context = new TestAudioContext();
-    const burst = await startedEngine();
-    burst.audition("typingBurst");
-    const starts = context.bufferSources.map((source) => source.startTimes[0]);
-    expect(starts.length).toBeGreaterThanOrEqual(6);
-    expect(starts.length).toBeLessThanOrEqual(10);
-
-    // Human cadence: the gaps vary rather than sitting on a grid, and each
-    // falls inside the range a typist's hand actually produces.
-    const gaps = starts.slice(1).map((start, i) => start - starts[i]);
-    expect(new Set(gaps.map((gap) => gap.toFixed(4))).size).toBeGreaterThan(1);
-    for (const gap of gaps) {
-      expect(gap).toBeGreaterThanOrEqual(0.06);
-      expect(gap).toBeLessThanOrEqual(0.14);
-    }
-  });
-
-  it("plays the same typing burst every time it is auditioned", async () => {
-    const burstStarts = async () => {
-      createdNodes = [];
-      context = new TestAudioContext();
-      const engine = await startedEngine();
-      engine.audition("typingBurst");
-      return context.bufferSources.map((source) => source.startTimes[0]);
-    };
-    expect(await burstStarts()).toEqual(await burstStarts());
-  });
-
-  it("swells and drifts the scroll brush across the stereo field", async () => {
-    const engine = await startedEngine();
-    engine.audition("scrollBrush");
-
-    const lowpass = createdNodes.find(
-      (node): node is TestBiquadFilterNode =>
-        node instanceof TestBiquadFilterNode && node.type === "lowpass",
-    );
-    expect(lowpass).toBeDefined();
-
-    // The pan travels rather than sitting still — that motion is what makes
-    // it a brush stroke instead of a wash of noise.
-    const panner = createdNodes.find(
-      (node): node is TestStereoPannerNode =>
-        node instanceof TestStereoPannerNode &&
-        node.pan.events.some((event) => event.method === "linearRamp"),
-    );
-    expect(panner).toBeDefined();
-    const [from, to] = panner!.pan.events
-      .filter((event) => event.value !== undefined)
-      .map((event) => event.value!);
-    expect(to).toBeGreaterThan(from);
-  });
-
   it("self-disconnects every percussion graph when its source ends", async () => {
     for (const accent of [
       "clickTap",
       "clickTapNoThump",
       "clickTapHybrid",
-      "typingTick",
-      "scrollBrush",
     ] as const) {
       createdNodes = [];
       context = new TestAudioContext();
@@ -3105,15 +3040,13 @@ describe("percussion candidates", () => {
   });
 
   it("plays percussion when the replay driver asks for it explicitly", async () => {
-    // The playground's replay calls these against real recorded events, which
-    // is the whole reason they are public. Each has to actually sound, or the
+    // The playground's replay calls this against real recorded events, which
+    // is the whole reason it is public. It has to actually sound, or the
     // guard above would be passing for the wrong reason.
     const engine = await startedEngine();
 
     engine.triggerClickPercussion(100, "tap");
-    engine.triggerKeystroke(200, 0.5);
-    engine.triggerScroll(300);
-    expect(context.bufferSources.length).toBe(3);
+    expect(context.bufferSources.length).toBe(1);
 
     const oscillatorsBefore = context.oscillators.length;
     engine.triggerHold(400);
@@ -3128,18 +3061,6 @@ describe("percussion candidates", () => {
     const engine = await startedEngine();
     engine.triggerClickPercussion(100, "bells");
     expect(context.bufferSources.length).toBe(0);
-  });
-
-  it("routes typing and brush to their own mixer families", async () => {
-    // Each percussion family needs its own bus, or the mixer strip cannot
-    // silence ticks without also silencing the click bells.
-    const engine = await startedEngine();
-    engine.setLayerMuted("typing", true);
-    engine.setLayerMuted("brush", true);
-
-    const mix = engine.getLayerMix();
-    expect(mix.muted).toContain("typing");
-    expect(mix.muted).toContain("brush");
   });
 });
 

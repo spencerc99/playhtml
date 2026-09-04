@@ -58,8 +58,6 @@ describe("persistedConfig round trip", () => {
     const voicing: VoicingSettings = {
       click: "crisp",
       hold: "rootFifth",
-      typing: false,
-      scroll: false,
     };
 
     const config = buildPersistedConfig(globals, layers, voicing);
@@ -115,8 +113,8 @@ describe("per-field fallback", () => {
     expect(restored.layers.cantus).toBe(LAYER_DEFAULTS.cantus);
 
     expect(restored.voicing.click).toBe("soft");
+    // The legacy save never had `hold`, so it falls back per-field too.
     expect(restored.voicing.hold).toBe(VOICING_DEFAULTS.hold);
-    expect(restored.voicing.typing).toBe(VOICING_DEFAULTS.typing);
   });
 
   it("ignores unknown fields a save carries from a removed feature", () => {

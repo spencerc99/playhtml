@@ -8,10 +8,8 @@ import {
   densestWindow,
   interpolateTrackPosition,
   keystrokeCadence,
-  keystrokeSchedule,
   summarizeSample,
   MAX_INTERPOLATION_GAP_MS,
-  MAX_KEYSTROKE_SPREAD_MS,
   type MoveTrack,
   type SampleEvent,
 } from "../SamplePlayback";
@@ -51,8 +49,8 @@ describe("bundled sample events", () => {
     expect(kinds).toContain("cursor:click");
     expect(kinds).toContain("cursor:hold");
     expect(kinds).toContain("navigation:focus");
-    // The percussion families need their own events, or turning percussion on
-    // would change nothing audible in the replay.
+    // Keyboard and viewport events sound nothing, but they still flow through
+    // the fetch and the readout, so the fixture keeps them for that.
     expect(kinds).toContain("keyboard:type");
     expect(kinds).toContain("viewport:scroll");
   });
@@ -80,9 +78,9 @@ describe("bundled sample events", () => {
     }
   });
 
-  it("holds enough keystrokes and scrolls to hear percussion as texture", () => {
-    // One tick or one swish proves the wiring but not the character. The point
-    // of replaying against real data is hearing how often these actually land.
+  it("holds enough keystrokes and scrolls for the readout to be meaningful", () => {
+    // Neither sounds, but both still count toward the summary readout, so a
+    // thin fixture would make that readout misleading.
     const summary = summarizeSample(events);
     expect(summary.keypresses).toBeGreaterThan(200);
     expect(summary.scrolls).toBeGreaterThan(100);
@@ -206,53 +204,6 @@ describe("keystrokeCadence", () => {
     // The collector stores null when legibility leaves nothing to record.
     expect(keystrokeCadence({ event: "type", sequence: null })).toEqual([]);
     expect(keystrokeCadence({ event: "focus" })).toEqual([]);
-  });
-});
-
-describe("keystrokeSchedule", () => {
-  it("spreads a group's keys across the gap to the next one", () => {
-    // A stored group is "N characters, starting here". Firing them together
-    // would be a click, not typing — they belong across the time that passed.
-    const schedule = keystrokeSchedule([
-      { dt: 0, count: 4 },
-      { dt: 400, count: 1 },
-    ]);
-
-    expect(schedule.map((tick) => tick.at)).toEqual([0, 100, 200, 300, 400]);
-  });
-
-  it("gives the last group the pace of the one before it", () => {
-    // The final group has no following gap to divide, so it borrows one
-    // rather than stacking every remaining key on a single instant.
-    const schedule = keystrokeSchedule([
-      { dt: 0, count: 1 },
-      { dt: 200, count: 2 },
-    ]);
-    const [, first, second] = schedule;
-    expect(second.at).toBeGreaterThan(first.at);
-  });
-
-  it("compresses a sequence recorded over too long a span", () => {
-    // The collector batches over a 5s debounce, and ticks scheduled that far
-    // out would outlive a loop of the sample.
-    const schedule = keystrokeSchedule([
-      { dt: 0, count: 1 },
-      { dt: 20_000, count: 1 },
-    ]);
-    expect(schedule.at(-1)!.at).toBeLessThanOrEqual(MAX_KEYSTROKE_SPREAD_MS);
-  });
-
-  it("varies weight across a run without using randomness", () => {
-    // The same recorded event has to sound the same on every loop, so the
-    // jitter is derived from the beat rather than drawn fresh.
-    const beats = [{ dt: 0, count: 6 }];
-    const first = keystrokeSchedule(beats);
-    expect(keystrokeSchedule(beats)).toEqual(first);
-    expect(new Set(first.map((tick) => tick.jitter)).size).toBeGreaterThan(1);
-  });
-
-  it("has nothing to schedule for an event with no keystrokes", () => {
-    expect(keystrokeSchedule([])).toEqual([]);
   });
 });
 

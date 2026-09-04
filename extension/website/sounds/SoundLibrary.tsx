@@ -120,24 +120,6 @@ const PERCUSSION_CARDS: Array<{
     description:
       "The same tap with a faint short bell underneath, at a quarter of the current click-bell level. Pure vs hybrid, back to back.",
   },
-  {
-    accent: "typingTick",
-    label: "typing tick",
-    description:
-      "For one keystroke. A few milliseconds of bandpassed noise, small enough to fire as often as typing does.",
-  },
-  {
-    accent: "typingBurst",
-    label: "typing burst",
-    description:
-      "The same tick as a run of six to ten, at a human cadence, so it can be judged as rhythm.",
-  },
-  {
-    accent: "scrollBrush",
-    label: "scroll brush",
-    description:
-      "For a scroll. Lowpassed noise swelling and fading with the pan drifting across it, like a brush on a drumhead.",
-  },
 ];
 
 

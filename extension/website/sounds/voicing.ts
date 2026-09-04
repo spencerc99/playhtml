@@ -29,17 +29,11 @@ export type HoldVoice = "bell" | TimpaniVariant;
 export interface VoicingSettings {
   click: ClickVoice;
   hold: HoldVoice;
-  /** Keystroke ticks, which only the sample replay can drive. */
-  typing: boolean;
-  /** Scroll brushes, likewise replay-only. */
-  scroll: boolean;
 }
 
 export const VOICING_DEFAULTS: VoicingSettings = {
   click: "bells",
   hold: "bell",
-  typing: true,
-  scroll: true,
 };
 
 export const CLICK_VOICES: Array<{ voice: ClickVoice; label: string }> = [

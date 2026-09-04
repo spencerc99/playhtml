@@ -150,9 +150,6 @@ export type AuditionAccent =
   | "clickTap"
   | "clickTapNoThump"
   | "clickTapHybrid"
-  | "typingTick"
-  | "typingBurst"
-  | "scrollBrush"
   /**
    * Pitched orchestral instruments, each in its variants. Same standing as the
    * percussion above — the pad auditions them and the replay drives them, and
@@ -189,14 +186,6 @@ export type SoundLayer =
   | "bassPedal"
   /** Both crossing accents: the dissonant interval and the merged dyad. */
   | "crossing"
-  /** Keystroke ticks. Percussion, so only the playground's replay feeds it. */
-  | "typing"
-  /**
-   * The scroll brush. Its own family rather than part of `typing`, because a
-   * swish and a tick are the two percussion textures most worth hearing
-   * against each other.
-   */
-  | "brush"
   /**
    * The autonomous cantus firmus line. Its own family because it belongs to no
    * trail and no event — it has to be silenceable on its own to judge whether
@@ -213,8 +202,6 @@ export const SOUND_LAYERS: SoundLayer[] = [
   "navigation",
   "bassPedal",
   "crossing",
-  "typing",
-  "brush",
   "cantus",
 ];
 

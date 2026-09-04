@@ -315,20 +315,6 @@ export const SoundLayers = ({
         </select>
       ),
     },
-    {
-      layer: "typing",
-      name: "typing",
-      hint: "keystroke ticks, from the replay",
-      enabled: voicing.typing,
-      onEnabledChange: (typing) => onVoicingChange({ typing }),
-    },
-    {
-      layer: "brush",
-      name: "brush",
-      hint: "scroll swishes, from the replay",
-      enabled: voicing.scroll,
-      onEnabledChange: (scroll) => onVoicingChange({ scroll }),
-    },
   ];
 
   return (

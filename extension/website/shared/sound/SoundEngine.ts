@@ -542,43 +542,6 @@ const PERCUSSION_TUNING = {
     /** Pitch of the bell ghost. Fixed, so the hybrid stays unpitched in feel. */
     ghostHz: 880,
   },
-  /**
-   * The typing tick: the smallest sound in the set. A keystroke happens often
-   * enough that anything with a tail would smear into the next one.
-   */
-  typing: {
-    durationSeconds: 0.004,
-    filterHz: 3000,
-    filterQ: 3,
-    gain: 0.022,
-    /** Notes in the demo burst, and the human-ish gap between them. */
-    minBurstTicks: 6,
-    maxBurstTicks: 10,
-    minGapSeconds: 0.06,
-    maxGapSeconds: 0.14,
-    /**
-     * Per-tick gain and filter jitter, either side. Identical ticks read as a
-     * machine; a typist's hand varies both how hard and how squarely each key
-     * is hit.
-     */
-    gainJitter: 0.35,
-    filterJitterHz: 700,
-  },
-  /**
-   * The scroll brush: lowpassed noise swelling and fading, with the pan
-   * drifting across the swell — a brush dragged over a drumhead rather than
-   * struck.
-   */
-  scroll: {
-    durationSeconds: 0.4,
-    filterHz: 900,
-    filterQ: 0.7,
-    gain: 0.03,
-    /** Fraction of the duration spent swelling before the fade begins. */
-    swellFraction: 0.35,
-    /** How far the pan travels across the swish, either side of centre. */
-    panTravel: 0.35,
-  },
   /** Seconds of noise generated per buffer, reused by every noise source. */
   noiseBufferSeconds: 1,
 };
@@ -3848,15 +3811,6 @@ export class SoundEngine {
       case "clickTapHybrid":
         this.triggerClickTap(centre, "hybrid");
         return;
-      case "typingTick":
-        this.triggerTypingTick(centre);
-        return;
-      case "typingBurst":
-        this.triggerTypingBurst(centre, hashIdentity("audition-typing"));
-        return;
-      case "scrollBrush":
-        this.triggerScrollBrush(centre);
-        return;
       // Auditioned at mid-window height, which puts the pluck in the middle of
       // the bell palette — the representative note rather than an extreme.
       case "pizzicatoSoft":
@@ -4088,125 +4042,6 @@ export class SoundEngine {
       CLICK_BELL.gain * ghostGainScale,
       ghostDecaySeconds,
       { attackSeconds, layer: "clickBell" },
-    );
-  }
-
-  /**
-   * One keystroke: a noise transient a few milliseconds long through a narrow
-   * bandpass. Small enough that a fast typist's run of them reads as cadence
-   * rather than as a sound effect firing repeatedly.
-   *
-   * `jitter` varies the level and the filter centre a little, so a burst does
-   * not sound like the same sample retriggered.
-   */
-  private triggerTypingTick(
-    x: number,
-    options: { startAt?: number; jitter?: number } = {},
-  ): void {
-    if (!this.ctx) return;
-    const {
-      durationSeconds,
-      filterHz,
-      filterQ,
-      gain,
-      gainJitter,
-      filterJitterHz,
-    } = PERCUSSION_TUNING.typing;
-    const startAt = options.startAt ?? this.ctx.currentTime;
-    // 0 means dead centre: a single tick auditioned on its own should be the
-    // nominal sound, not a random one.
-    const jitter = options.jitter ?? 0;
-
-    const burst = this.startNoiseBurst(
-      startAt,
-      durationSeconds,
-      {
-        type: "bandpass",
-        frequency: filterHz + jitter * filterJitterHz,
-        Q: filterQ,
-      },
-      positionToPan(x, this.canvasWidth),
-      "typing",
-    );
-    if (!burst) return;
-
-    const peak = gain * (1 + jitter * gainJitter);
-    burst.gain.gain.setValueAtTime(0, startAt);
-    burst.gain.gain.linearRampToValueAtTime(peak, startAt + durationSeconds / 3);
-    burst.gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      startAt + durationSeconds,
-    );
-  }
-
-  /**
-   * A short run of keystrokes at a human cadence — uneven gaps, uneven weight
-   * — so the tick can be judged as rhythm rather than as one isolated sound.
-   * Seeded, so the same burst plays every time the button is pressed.
-   */
-  private triggerTypingBurst(x: number, seed: number): void {
-    if (!this.ctx) return;
-    const {
-      minBurstTicks,
-      maxBurstTicks,
-      minGapSeconds,
-      maxGapSeconds,
-    } = PERCUSSION_TUNING.typing;
-
-    const tickCount =
-      minBurstTicks +
-      Math.floor(hashUnit(seed, 1) * (maxBurstTicks - minBurstTicks + 1));
-
-    let at = this.ctx.currentTime;
-    for (let i = 0; i < tickCount; i++) {
-      this.triggerTypingTick(x, {
-        startAt: at,
-        jitter: hashUnit(seed, 30 + i) * 2 - 1,
-      });
-      at +=
-        minGapSeconds +
-        hashUnit(seed, 60 + i) * (maxGapSeconds - minGapSeconds);
-    }
-  }
-
-  /**
-   * A soft noise swish for a scroll: lowpassed noise swelling then fading,
-   * with the pan drifting across it. Continuous rather than struck, which is
-   * what separates a scroll from a click in the ear.
-   */
-  private triggerScrollBrush(x: number): void {
-    if (!this.ctx) return;
-    const now = this.ctx.currentTime;
-    const {
-      durationSeconds,
-      filterHz,
-      filterQ,
-      gain,
-      swellFraction,
-      panTravel,
-    } = PERCUSSION_TUNING.scroll;
-    const pan = positionToPan(x, this.canvasWidth);
-
-    const burst = this.startNoiseBurst(
-      now,
-      durationSeconds,
-      { type: "lowpass", frequency: filterHz, Q: filterQ },
-      pan - panTravel,
-      "brush",
-    );
-    if (!burst) return;
-
-    const peakAt = now + durationSeconds * swellFraction;
-    burst.gain.gain.setValueAtTime(0, now);
-    burst.gain.gain.linearRampToValueAtTime(gain, peakAt);
-    burst.gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSeconds);
-
-    // The drift is what makes it a brush stroke rather than a wash — the
-    // sound travels the way the page does.
-    burst.panNode.pan.setValueAtTime(pan - panTravel, now);
-    burst.panNode.pan.linearRampToValueAtTime(
-      pan + panTravel,
-      now + durationSeconds,
     );
   }
 
@@ -4735,23 +4570,6 @@ export class SoundEngine {
   triggerClickPercussion(x: number, variant: ClickPercussionVariant): void {
     if (!this.enabled || variant === "bells") return;
     this.triggerClickTap(x, variant);
-  }
-
-  /**
-   * One keystroke. The replay fires these at the cadence the recorded typing
-   * actually had, so a burst is the participant's own rhythm rather than a
-   * synthetic one. `jitter` (-1..1) varies weight and filter centre so a run
-   * does not read as one sample retriggered.
-   */
-  triggerKeystroke(x: number, jitter = 0): void {
-    if (!this.enabled) return;
-    this.triggerTypingTick(x, { jitter });
-  }
-
-  /** A scroll, voiced as a brush stroke across the stereo field. */
-  triggerScroll(x: number): void {
-    if (!this.enabled) return;
-    this.triggerScrollBrush(x);
   }
 
   /**

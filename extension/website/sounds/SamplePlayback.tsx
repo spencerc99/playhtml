@@ -50,8 +50,8 @@ export interface SampleEvent {
    */
   keys?: KeystrokeBeat[];
   /**
-   * How far a viewport scroll travelled, in pixels. Drives the brush's weight;
-   * the normalized scroll position itself is not needed to hear it.
+   * How far a viewport scroll travelled, in pixels. Carried for the readout
+   * only — no sound is derived from it.
    */
   scrollDistancePx?: number;
 }
@@ -467,65 +467,6 @@ const selectStyle: React.CSSProperties = {
   padding: "8px 10px",
 };
 
-/**
- * Longest a recorded typing sequence may be stretched over before its ticks
- * are compressed. A sequence's own timestamps span the whole 5s debounce
- * window the collector batches on, and scheduling ticks that far out would let
- * them outlive a loop; past this the cadence is squeezed to fit.
- */
-export const MAX_KEYSTROKE_SPREAD_MS = 3000;
-
-/**
- * How late a queued keystroke may be and still sound. A backgrounded tab
- * stops the rAF loop while the sample clock keeps running, so returning to it
- * finds a backlog; firing that as one volley would be a burst of static rather
- * than typing.
- */
-export const LATE_KEYSTROKE_MS = 250;
-
-/**
- * When each keystroke of a recorded typing event should sound, in ms from the
- * event itself, and how hard.
- *
- * A recorded group is "these N characters, starting at this offset", so its
- * keys are spread evenly across the gap to the next group — which is what
- * turns a stored batch back into something with a typist's rhythm rather than
- * N ticks stacked on one instant. The final group has no following gap, so it
- * borrows the previous one's pace.
- */
-export function keystrokeSchedule(
-  beats: KeystrokeBeat[],
-): Array<{ at: number; jitter: number }> {
-  if (beats.length === 0) return [];
-
-  const span = beats[beats.length - 1].dt;
-  const squeeze = span > MAX_KEYSTROKE_SPREAD_MS ? MAX_KEYSTROKE_SPREAD_MS / span : 1;
-
-  const schedule: Array<{ at: number; jitter: number }> = [];
-  for (let i = 0; i < beats.length; i++) {
-    const beat = beats[i];
-    const next = beats[i + 1];
-    const previous = beats[i - 1];
-    const groupSpan = next
-      ? next.dt - beat.dt
-      : previous
-        ? beat.dt - previous.dt
-        : // A lone group: give it a plain typist's pace to spread over.
-          beat.count * 120;
-    const perKey = beat.count > 0 ? groupSpan / beat.count : 0;
-    for (let k = 0; k < beat.count; k++) {
-      schedule.push({
-        at: (beat.dt + perKey * k) * squeeze,
-        // Deterministic weight variation across the run, so a burst does not
-        // read as one sample retriggered. No randomness: the same recorded
-        // event must sound the same on every loop.
-        jitter: Math.sin((beat.dt + k) * 12.9898) * 0.8,
-      });
-    }
-  }
-  return schedule;
-}
-
 interface SamplePlaybackProps {
   /**
    * The shared engine, so the replay plays through whatever the panel above
@@ -570,15 +511,6 @@ export const SamplePlayback = ({
   const speedRef = useRef<Speed>(1);
   const loopCountRef = useRef(0);
   const voicingRef = useRef<VoicingSettings>(VOICING_DEFAULTS);
-  /**
-   * Keystrokes waiting for their moment on the sample clock. A recorded typing
-   * event holds a whole sequence, so its ticks are queued here and drained as
-   * playback reaches each one rather than fired together when the event lands.
-   * Kept sorted by `at`, which is how it is built.
-   */
-  const keystrokeQueueRef = useRef<Array<{ at: number; x: number; jitter: number }>>(
-    [],
-  );
 
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState<Speed>(1);
@@ -598,9 +530,6 @@ export const SamplePlayback = ({
 
   useEffect(() => {
     voicingRef.current = voicing;
-    // Queued ticks belong to the settings that queued them; turning typing off
-    // mid-replay should stop it now rather than after the backlog drains.
-    if (!voicing.typing) keystrokeQueueRef.current = [];
   }, [voicing]);
 
   const sampleDurationMs = summary.spanMs;
@@ -613,7 +542,6 @@ export const SamplePlayback = ({
     trailsRef.current.clear();
     cursorRef.current = 0;
     nextTrailIndexRef.current = 0;
-    keystrokeQueueRef.current = [];
   }, []);
 
   /** Swap in a freshly loaded sample and restart playback from its top. */
@@ -661,30 +589,11 @@ export const SamplePlayback = ({
         continue;
       }
 
-      if (event.type === "keyboard") {
-        if (!voicing.typing) continue;
-        // Queue the sequence's ticks rather than firing them here: they are
-        // spread over the seconds the person actually spent typing.
-        for (const tick of keystrokeSchedule(event.keys ?? [])) {
-          keystrokeQueueRef.current.push({
-            at: event.t + tick.at,
-            x,
-            jitter: tick.jitter,
-          });
-        }
-        keystrokeQueueRef.current.sort((a, b) => a.at - b.at);
-        continue;
-      }
-
-      if (event.type === "viewport") {
-        if (!voicing.scroll) continue;
-        // Resizes and zooms are not motion through a page, so only scrolls
-        // get a brush stroke.
-        if (event.event !== "scroll") continue;
-        // A viewport event carries no coordinate of its own. Placing the brush
-        // where the same person's cursor is keeps their scroll and their
-        // motion in the same part of the stereo field.
-        engine.triggerScroll(trailsRef.current.get(event.pid)?.x ?? x);
+      // Keyboard and viewport events stay in the fetched sample and the
+      // summary readout, but neither drives a sound: both read as too
+      // detached from what is visibly happening on the canvas to place a
+      // sound at their source.
+      if (event.type === "keyboard" || event.type === "viewport") {
         continue;
       }
 
@@ -733,21 +642,6 @@ export const SamplePlayback = ({
           engine.triggerClick({ x, y, holdDuration: event.duration });
         }
       }
-    }
-
-    // Drain every keystroke whose moment has arrived. Ticks are tiny, but a
-    // long stall (a background tab) could leave a large backlog, so anything
-    // more than a beat late is dropped rather than fired as a volley.
-    if (keystrokeQueueRef.current.length > 0) {
-      const queue = keystrokeQueueRef.current;
-      let drained = 0;
-      while (drained < queue.length && queue[drained].at <= sampleMs) {
-        const tick = queue[drained++];
-        if (sampleMs - tick.at <= LATE_KEYSTROKE_MS) {
-          engine.triggerKeystroke(tick.x, tick.jitter);
-        }
-      }
-      if (drained > 0) queue.splice(0, drained);
     }
 
     // Advance every live trail to its interpolated position for this instant.
