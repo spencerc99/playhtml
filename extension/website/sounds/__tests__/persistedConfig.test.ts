@@ -12,6 +12,7 @@ import {
 } from "../persistedConfig";
 import { GlobalSettings } from "../Globals";
 import { VoicingSettings, VOICING_DEFAULTS } from "../voicing";
+import { VisualConfig, VISUAL_DEFAULTS } from "../soundVisuals";
 import { DEFAULT_PROGRESSION_ID } from "../../shared/sound/scales";
 
 const GLOBAL_DEFAULTS: GlobalSettings = {
@@ -60,7 +61,14 @@ describe("persistedConfig round trip", () => {
       hold: "rootFifth",
     };
 
-    const config = buildPersistedConfig(globals, layers, voicing);
+    const visuals: VisualConfig = {
+      gathering: false,
+      knot: false,
+      lightnessSurge: false,
+      hueTilt: true,
+    };
+
+    const config = buildPersistedConfig(globals, layers, voicing, visuals);
     expect(config.v).toBe(1);
     expect(saveConfig(config)).toBe(true);
 
@@ -72,17 +80,28 @@ describe("persistedConfig round trip", () => {
     expect(restored.globals).toEqual(globals);
     expect(restored.layers).toEqual(layers);
     expect(restored.voicing).toEqual(voicing);
+    expect(restored.visuals).toEqual(visuals);
   });
 
   it("excludes mixer solo/mute state — it was never part of the serialized config", () => {
-    const config = buildPersistedConfig(GLOBAL_DEFAULTS, LAYER_DEFAULTS, VOICING_DEFAULTS);
+    const config = buildPersistedConfig(
+      GLOBAL_DEFAULTS,
+      LAYER_DEFAULTS,
+      VOICING_DEFAULTS,
+      VISUAL_DEFAULTS,
+    );
     const serialized = JSON.stringify(config);
     expect(serialized).not.toMatch(/solo/i);
     expect(serialized).not.toMatch(/mute/i);
   });
 
   it("clearSavedConfig removes the save so the next load falls back to defaults", () => {
-    saveConfig(buildPersistedConfig(GLOBAL_DEFAULTS, LAYER_DEFAULTS, VOICING_DEFAULTS));
+    saveConfig(buildPersistedConfig(
+      GLOBAL_DEFAULTS,
+      LAYER_DEFAULTS,
+      VOICING_DEFAULTS,
+      VISUAL_DEFAULTS,
+    ));
     expect(loadSavedConfig()).not.toBeNull();
 
     expect(clearSavedConfig()).toBe(true);
@@ -115,6 +134,10 @@ describe("per-field fallback", () => {
     expect(restored.voicing.click).toBe("soft");
     // The legacy save never had `hold`, so it falls back per-field too.
     expect(restored.voicing.hold).toBe(VOICING_DEFAULTS.hold);
+
+    // The visual gestures are a later addition, so a save from before them
+    // has no `visuals` at all and takes the whole shipped set.
+    expect(restored.visuals).toEqual(VISUAL_DEFAULTS);
   });
 
   it("ignores unknown fields a save carries from a removed feature", () => {
@@ -135,6 +158,7 @@ describe("per-field fallback", () => {
     expect(restored.globals).toEqual(GLOBAL_DEFAULTS);
     expect(restored.layers).toEqual(LAYER_DEFAULTS);
     expect(restored.voicing).toEqual(VOICING_DEFAULTS);
+    expect(restored.visuals).toEqual(VISUAL_DEFAULTS);
   });
 });
 

@@ -3,6 +3,7 @@
 
 import { GlobalSettings } from "./Globals";
 import { VoicingSettings, VOICING_DEFAULTS } from "./voicing";
+import { VisualConfig, VISUAL_DEFAULTS } from "./soundVisuals";
 import { CantusVariant } from "../shared/sound/types";
 
 const STORAGE_KEY = "playhtml-sound-playground-config";
@@ -27,17 +28,20 @@ export interface PersistedConfig {
   globals: GlobalSettings;
   layers: LayerConfig;
   voicing: VoicingSettings;
+  visuals: VisualConfig;
 }
 
 export const buildPersistedConfig = (
   globals: GlobalSettings,
   layers: LayerConfig,
   voicing: VoicingSettings,
+  visuals: VisualConfig,
 ): PersistedConfig => ({
   v: CONFIG_VERSION,
   globals: { ...globals },
   layers: { ...layers },
   voicing: { ...voicing },
+  visuals: { ...visuals },
 });
 
 /** Fills in any field missing or unrecognized in a saved value with its shipped default. */
@@ -57,6 +61,7 @@ export interface RestoredConfig {
   globals: GlobalSettings;
   layers: LayerConfig;
   voicing: VoicingSettings;
+  visuals: VisualConfig;
 }
 
 /**
@@ -74,6 +79,7 @@ export const restoreConfig = (
     globals: withFallback(globalDefaults, record.globals),
     layers: withFallback(layerDefaults, record.layers),
     voicing: withFallback(VOICING_DEFAULTS, record.voicing),
+    visuals: withFallback(VISUAL_DEFAULTS, record.visuals),
   };
 };
 

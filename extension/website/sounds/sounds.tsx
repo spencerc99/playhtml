@@ -10,6 +10,7 @@ import { SoundLayers } from "./SoundLayers";
 import { SoundLibrary } from "./SoundLibrary";
 import { GlobalSettings, Globals } from "./Globals";
 import { VoicingSettings, VOICING_DEFAULTS } from "./voicing";
+import { VisualConfig, VISUAL_DEFAULTS } from "./soundVisuals";
 import {
   buildPersistedConfig,
   clearSavedConfig,
@@ -90,6 +91,7 @@ const SoundPlayground = () => {
   const [globals, setGlobals] = useState<GlobalSettings>(initialRestored.globals);
   const [layers, setLayers] = useState<LayerConfig>(initialRestored.layers);
   const [voicing, setVoicing] = useState<VoicingSettings>(initialRestored.voicing);
+  const [visuals, setVisuals] = useState<VisualConfig>(initialRestored.visuals);
   const [readout, setReadout] = useState({ chord: "Dm", energy: 0 });
   const [savedAt, setSavedAt] = useState<string | null>(
     initialSaved?.savedAt ?? null,
@@ -100,9 +102,11 @@ const SoundPlayground = () => {
   const globalsRef = useRef(globals);
   const layersRef = useRef(layers);
   const voicingRef = useRef(voicing);
+  const visualsRef = useRef(visuals);
   globalsRef.current = globals;
   layersRef.current = layers;
   voicingRef.current = voicing;
+  visualsRef.current = visuals;
 
   const ensureEngine = useCallback(async () => {
     if (!engineRef.current) {
@@ -195,11 +199,18 @@ const SoundPlayground = () => {
     [],
   );
 
+  const handleVisualsChange = useCallback(
+    (next: Partial<VisualConfig>) =>
+      setVisuals((current) => ({ ...current, ...next })),
+    [],
+  );
+
   const handleSaveDefault = useCallback(() => {
     const config = buildPersistedConfig(
       globalsRef.current,
       layersRef.current,
       voicingRef.current,
+      visualsRef.current,
     );
     if (saveConfig(config)) {
       setSavedAt(new Date().toISOString());
@@ -212,6 +223,7 @@ const SoundPlayground = () => {
     setGlobals(GLOBAL_DEFAULTS);
     setLayers(LAYER_DEFAULTS);
     setVoicing(VOICING_DEFAULTS);
+    setVisuals(VISUAL_DEFAULTS);
   }, []);
 
   const layerConfig = useMemo(
@@ -248,9 +260,15 @@ const SoundPlayground = () => {
         onConfigChange={handleLayersChange}
         voicing={voicing}
         onVoicingChange={handleVoicingChange}
+        visuals={visuals}
+        onVisualsChange={handleVisualsChange}
       />
 
-      <SamplePlayback getEngine={ensureEngine} voicing={voicing} />
+      <SamplePlayback
+        getEngine={ensureEngine}
+        voicing={voicing}
+        visuals={visuals}
+      />
 
       <SoundLibrary getEngine={ensureEngine} />
     </div>

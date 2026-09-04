@@ -11,6 +11,17 @@ import {
   VOICING_DEFAULTS,
 } from "./voicing";
 import { RECENT_EVENTS_URL } from "../shared/config";
+import {
+  flourishedColor,
+  Gathering,
+  GATHERING_TUNING,
+  Knot,
+  KNOT_TUNING,
+  SoundVisuals,
+  SURGE_TUNING,
+  VISUAL_DEFAULTS,
+  VisualConfig,
+} from "./soundVisuals";
 import bundledSample from "./sampleEvents.json";
 
 const PAD_HEIGHT = 300;
@@ -436,7 +447,91 @@ interface SampleTrail {
   firstSeen: boolean;
   /** Cached cursor into the participant's move track. */
   searchIndex: number;
-  points: Array<{ x: number; y: number }>;
+  /**
+   * The drawn ribbon. Each point carries the replay clock it was laid down at,
+   * so a gesture that reaches back over a span of time — the lightness surge
+   * covers the last stretch travelled — can find where that span begins
+   * without assuming a frame rate.
+   */
+  points: Array<{ x: number; y: number; t: number }>;
+}
+
+/**
+ * Draw one trail's navigation beads. Each is a filled dot a little heavier
+ * than the trail's own line, and a bead that has only just formed also carries
+ * a ring opening out of it — the one moment it announces itself. The beads
+ * themselves persist for as long as the trail does.
+ */
+function drawKnots(
+  ctx: CanvasRenderingContext2D,
+  knots: readonly Knot[],
+  color: string,
+  nowMs: number,
+): void {
+  if (knots.length === 0) return;
+  const radius =
+    KNOT_TUNING.strokeWidthPx * KNOT_TUNING.radiusStrokeMultiple;
+  for (const knot of knots) {
+    ctx.globalAlpha = KNOT_TUNING.alpha;
+    ctx.beginPath();
+    ctx.arc(knot.x, knot.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    const ringProgress =
+      (nowMs - knot.formedMs) / (KNOT_TUNING.ringSeconds * 1000);
+    if (ringProgress >= 0 && ringProgress < 1) {
+      ctx.globalAlpha = KNOT_TUNING.ringPeakAlpha * (1 - ringProgress);
+      ctx.beginPath();
+      ctx.arc(
+        knot.x,
+        knot.y,
+        radius * (1 + ringProgress * (KNOT_TUNING.ringRadiusMultiple - 1)),
+        0,
+        Math.PI * 2,
+      );
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * Draw the arrival and departure gatherings. A speck travels between the
+ * gathering's point and its offset — inward for an arrival, outward for a
+ * departure — fading in as it converges and out as it disperses, so the
+ * gesture reads in the same direction as the chime it belongs to.
+ */
+function drawGatherings(
+  ctx: CanvasRenderingContext2D,
+  gatherings: readonly Gathering[],
+  nowMs: number,
+): void {
+  const travelMs = GATHERING_TUNING.travelSeconds * 1000;
+  for (const gathering of gatherings) {
+    ctx.fillStyle = gathering.color;
+    for (const speck of gathering.specks) {
+      const progress = (nowMs - speck.startMs) / travelMs;
+      if (progress < 0 || progress >= 1) continue;
+      // An arrival closes on the point; a departure opens away from it.
+      const distance = gathering.rising ? 1 - progress : progress;
+      // Brightest mid-flight either way, so nothing pops in or out at an edge.
+      ctx.globalAlpha =
+        GATHERING_TUNING.peakAlpha * Math.sin(progress * Math.PI);
+      ctx.beginPath();
+      ctx.arc(
+        gathering.x + speck.offsetX * distance,
+        gathering.y + speck.offsetY * distance,
+        GATHERING_TUNING.speckRadiusPx,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 const labelStyle: React.CSSProperties = {
@@ -475,6 +570,8 @@ interface SamplePlaybackProps {
   getEngine: () => Promise<SoundEngine>;
   /** How each event family is voiced, decided by the Sound Layers panel. */
   voicing: VoicingSettings;
+  /** Which visual gestures the canvas draws for the sounds it hears. */
+  visuals: VisualConfig;
 }
 
 /**
@@ -484,6 +581,7 @@ interface SamplePlaybackProps {
 export const SamplePlayback = ({
   getEngine,
   voicing,
+  visuals,
 }: SamplePlaybackProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SoundEngine | null>(null);
@@ -493,6 +591,16 @@ export const SamplePlayback = ({
     buildMoveTracks(bundledSample as SampleEvent[]),
   );
   const trailsRef = useRef<Map<string, SampleTrail>>(new Map());
+  /**
+   * Trails by the index the engine knows them by, so a sound notice — which
+   * names a trail index and nothing else — can be placed on the canvas. Kept
+   * alongside the pid-keyed map rather than replacing it because a departure
+   * chime sounds after its trail has already left that map, and the notice
+   * still needs somewhere to read the trail's last position and colour.
+   */
+  const trailsByIndexRef = useRef<Map<number, SampleTrail>>(new Map());
+  const visualsRef = useRef(new SoundVisuals());
+  const visualsConfigRef = useRef<VisualConfig>(VISUAL_DEFAULTS);
   const nextTrailIndexRef = useRef(0);
   const cursorRef = useRef(0);
   /**
@@ -532,6 +640,11 @@ export const SamplePlayback = ({
     voicingRef.current = voicing;
   }, [voicing]);
 
+  useEffect(() => {
+    visualsConfigRef.current = visuals;
+    visualsRef.current.setConfig(visuals);
+  }, [visuals]);
+
   const sampleDurationMs = summary.spanMs;
 
   /** Drop every trail and rewind to the top of the sample. */
@@ -540,6 +653,12 @@ export const SamplePlayback = ({
       engineRef.current?.retireTrail(trail.trailIndex);
     }
     trailsRef.current.clear();
+    trailsByIndexRef.current.clear();
+    // After the retirements, not before: each one may sound a departure chime,
+    // and a chime that sounds is entitled to its gathering. Clearing here is
+    // what makes the next pass a fresh performance — knots re-form at their
+    // own scheduled moments rather than carrying over from the last loop.
+    visualsRef.current.clear();
     cursorRef.current = 0;
     nextTrailIndexRef.current = 0;
   }, []);
@@ -567,6 +686,10 @@ export const SamplePlayback = ({
     const events = eventsRef.current;
     const wallElapsed = performance.now() - startedAtRef.current;
     const sampleMs = wallElapsed * speedRef.current;
+    const soundVisuals = visualsRef.current;
+    // Notices arrive from inside the engine with no clock of their own, so the
+    // replay clock is handed over before anything that can trigger a sound.
+    soundVisuals.setNow(sampleMs);
 
     // Fire every discrete event whose moment has arrived since the last frame.
     // Moves only mark a participant as present — their drawn position comes
@@ -584,7 +707,14 @@ export const SamplePlayback = ({
       if (event.type === "navigation") {
         // Only real page arrivals sound; blur and beforeunload are departures.
         if (event.event === "focus" || event.event === "popstate") {
-          engine.triggerNavigation({ x });
+          // The navigating participant's trail, when they have one on the
+          // canvas. Naming it is what lets the gong's visual land on that
+          // trail rather than in the abstract; the sound is unaffected.
+          const navigating = trailsRef.current.get(event.pid);
+          engine.triggerNavigation({
+            x,
+            trailIndex: navigating?.trailIndex,
+          });
         }
         continue;
       }
@@ -615,6 +745,7 @@ export const SamplePlayback = ({
           points: [],
         };
         trailsRef.current.set(event.pid, trail);
+        trailsByIndexRef.current.set(trailIndex, trail);
       }
 
       trail.lastEventMs = sampleMs;
@@ -660,7 +791,7 @@ export const SamplePlayback = ({
       trail.x = position.x * width;
       trail.y = position.y * height;
       if (position.cursor) trail.cursorType = position.cursor;
-      trail.points.push({ x: trail.x, y: trail.y });
+      trail.points.push({ x: trail.x, y: trail.y, t: sampleMs });
       if (trail.points.length > TRAIL_LENGTH) trail.points.shift();
     }
 
@@ -668,8 +799,13 @@ export const SamplePlayback = ({
     // real visualization does rather than accumulating every participant.
     for (const [pid, trail] of trailsRef.current) {
       if (sampleMs - trail.lastEventMs > TRAIL_IDLE_TIMEOUT_MS) {
+        // The trail stays in the index map across this call: retiring it is
+        // what sounds its departure chime, and that chime's gathering needs
+        // to read the position and colour it is leaving from.
         engine.retireTrail(trail.trailIndex);
         trailsRef.current.delete(pid);
+        trailsByIndexRef.current.delete(trail.trailIndex);
+        soundVisuals.retireTrail(trail.trailIndex);
       }
     }
 
@@ -737,6 +873,27 @@ export const SamplePlayback = ({
 
       for (const trail of trailsRef.current.values()) {
         const points = trail.points;
+        // The colour a gong flourish is currently pushing this trail to. The
+        // trail's own colour is never touched: the tilt and the surge are
+        // transient, and the stored hue is a participant's identity and the
+        // register their sound is voiced in.
+        const flourish = soundVisuals.getFlourish(trail.trailIndex);
+        const flourishElapsed =
+          flourish === undefined ? 0 : sampleMs - flourish.startMs;
+        const visualConfig = visualsConfigRef.current;
+        // The tilt leans the whole ribbon; the surge lifts only the stretch
+        // travelled in the last span, so the brightening reads as the recent
+        // path swelling rather than the whole trail changing colour.
+        const tilted =
+          flourish !== undefined && visualConfig.hueTilt
+            ? flourishedColor(trail.color, flourishElapsed, false, true)
+            : trail.color;
+        const surgedFromMs = sampleMs - SURGE_TUNING.spanMs;
+        const surged =
+          flourish !== undefined && visualConfig.lightnessSurge
+            ? flourishedColor(tilted, flourishElapsed, true, false)
+            : tilted;
+
         for (let i = 1; i < points.length; i++) {
           const t = i / points.length;
           ctx.beginPath();
@@ -744,15 +901,19 @@ export const SamplePlayback = ({
           ctx.lineTo(points[i].x, points[i].y);
           ctx.globalAlpha = t * 0.6;
           ctx.lineWidth = 1 + t * 2;
-          ctx.strokeStyle = trail.color;
+          ctx.strokeStyle = points[i].t >= surgedFromMs ? surged : tilted;
           ctx.stroke();
         }
         ctx.globalAlpha = 1;
         ctx.beginPath();
         ctx.arc(trail.x, trail.y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = trail.color;
+        ctx.fillStyle = surged;
         ctx.fill();
+
+        drawKnots(ctx, soundVisuals.getKnots(trail.trailIndex), trail.color, sampleMs);
       }
+
+      drawGatherings(ctx, soundVisuals.getGatherings(), sampleMs);
 
       if (liveCursor.inside) {
         const points = liveCursor.points;
@@ -774,6 +935,8 @@ export const SamplePlayback = ({
       }
     }
 
+    soundVisuals.prune(sampleMs);
+
     // Loop from the top, with a full rewind so the next pass starts from the
     // same empty scene rather than inheriting the last one's trails.
     if (cursorRef.current >= events.length) {
@@ -791,9 +954,29 @@ export const SamplePlayback = ({
     rafRef.current = requestAnimationFrame(frame);
   }, [rewind, sampleDurationMs]);
 
+  /**
+   * Where the trail a notice names currently is, and what colour it is drawn
+   * in. The engine reports which trail sounded and nothing about the canvas,
+   * so this is how a gesture finds its place.
+   */
+  const locateTrail = useCallback((trailIndex: number) => {
+    const trail = trailsByIndexRef.current.get(trailIndex);
+    if (!trail) return null;
+    return {
+      x: trail.x,
+      y: trail.y,
+      color: trail.color,
+    };
+  }, []);
+
   const handleStart = useCallback(async () => {
     const engine = await getEngine();
     engineRef.current = engine;
+    // Bound here rather than at construction, because the engine is shared
+    // with the rest of the page and only the replay canvas draws for it.
+    engine.setSoundNoticeListener((notice) =>
+      visualsRef.current.handleNotice(notice, locateTrail),
+    );
     const canvas = canvasRef.current;
     engine.setCanvasWidth(canvas?.clientWidth ?? window.innerWidth);
     if (rafRef.current !== null) return;
@@ -802,7 +985,7 @@ export const SamplePlayback = ({
     startedAtRef.current = performance.now();
     setRunning(true);
     rafRef.current = requestAnimationFrame(frame);
-  }, [frame, getEngine, rewind]);
+  }, [frame, getEngine, locateTrail, rewind]);
 
   const handleStop = useCallback(() => {
     if (rafRef.current !== null) {
@@ -810,6 +993,7 @@ export const SamplePlayback = ({
       rafRef.current = null;
     }
     setRunning(false);
+    engineRef.current?.setSoundNoticeListener(null);
     rewind();
     liveCursorRef.current.points = [];
     liveCursorRef.current.inside = false;
