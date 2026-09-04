@@ -6,7 +6,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OfflineAudioContext } from "node-web-audio-api";
 import { SoundEngine } from "../../extension/website/shared/sound/SoundEngine";
-import { PROGRESSIONS } from "../../extension/website/shared/sound/scales";
+import {
+  PROGRESSIONS,
+  PROGRESSION_IDS,
+  type ProgressionId,
+} from "../../extension/website/shared/sound/scales";
 import { SOUND_LAYERS } from "../../extension/website/shared/sound/types";
 import type {
   CantusVariant,
@@ -100,6 +104,12 @@ interface RenderResult {
    * solos and stems, which have no toggle.
    */
   toggleDeltaDb?: number;
+  /**
+   * For a harmony render: when each chord took over, from the start of the
+   * file. Absent everywhere else, where the rotation is incidental rather than
+   * the thing being compared.
+   */
+  chordChanges?: ChordChange[];
 }
 
 const seededRandom = (seed: number): (() => number) => {
@@ -1302,6 +1312,391 @@ const MIN_TOGGLE_DELTA_DB = 3;
 const SIXTEEN_BIT_FLOOR_DBFS = -96;
 
 // ---------------------------------------------------------------------------
+// Harmony comparison: one full round of each progression
+// ---------------------------------------------------------------------------
+
+/**
+ * Spencer's saved arrangement, exactly as the playground stores it.
+ *
+ * The pad splits its state three ways — scene globals, layer settings and
+ * voicing — and pushes the first two into `setConfig` while the third is read
+ * by the replay driver at trigger time. That split is reproduced here so a
+ * field means the same thing in this file as it does on the page: whatever the
+ * pad passes to `setConfig`, this passes to `setConfig`; whatever it passes to
+ * `setCantus` or `setVolume`, this does the same; and `voicing` picks which
+ * trigger a click or a hold calls, as the pad's driver does.
+ *
+ * `spotlight` is deliberately absent: the engine derives it from `mode`, and
+ * setting it explicitly would suppress that derivation.
+ */
+const HARMONY_ARRANGEMENT = {
+  globals: {
+    mode: "spotlight",
+    chordRotation: true,
+    energyArc: true,
+    trailVoices: true,
+    swells: true,
+    choralTimbre: true,
+    cursorInstruments: true,
+    traceability: 0,
+  },
+  layers: {
+    bassPedal: true,
+    trailArrivals: true,
+    navigationSounds: true,
+    crossings: "dissonance",
+  },
+  cantus: "soprano",
+  voicing: { click: "bells", hold: "rootFifth" },
+  volume: 0.5,
+} as const;
+
+/** How the harmony renders describe that arrangement in the README. */
+const HARMONY_CONFIG_SUMMARY =
+  "spotlight, chordRotation, energyArc, trailVoices, swells, choralTimbre, " +
+  "cursorInstruments, traceability 0, volume 0.5; bassPedal, trailArrivals, " +
+  "navigationSounds, crossings dissonance, cantus soprano; " +
+  "click bells, hold timp. rootFifth";
+
+/** Tail left after the rotation closes, so the last chord is heard settling. */
+const HARMONY_TAIL_SECONDS = 3;
+/** Hard ceiling on a harmony file, whatever the dynamic dwell does. */
+const HARMONY_MAX_SECONDS = 150;
+
+/**
+ * The chord index the engine is currently on.
+ *
+ * `getCurrentChordName` cannot answer the question these renders ask: drifter
+ * and dorian each name the same chord twice, so a name returning to "Dm" says
+ * nothing about whether the rotation has closed. The index is the only thing
+ * that does, and it is private, so it is read here the same read-only way the
+ * A/B renders reach `layerBuses`. Nothing in the engine is modified.
+ */
+const chordIndexOf = (engine: SoundEngine): number =>
+  (engine as unknown as { chordIndex: number }).chordIndex;
+
+/** When the chord turned over, and to what. */
+interface ChordChange {
+  atSeconds: number;
+  index: number;
+  name: string;
+}
+
+/**
+ * One progression, played once through, under Spencer's saved arrangement.
+ *
+ * The fixture slice is the same one every other in-context render uses, looped
+ * the way the pad's replay loops when the rotation outlasts it: at the end of
+ * the slice every trail is retired and the cursor rewinds, so each pass starts
+ * from the same empty scene rather than inheriting the last one's trails.
+ *
+ * Length is not fixed in advance. With the energy arc on, dwell scales with
+ * scene energy, so how long a round takes depends on what the fixture happens
+ * to be doing — which is the point of rendering it this way rather than from a
+ * dwell calculation. The context is therefore allocated at the cap and the
+ * render is trimmed to the round it actually produced.
+ */
+const renderHarmony = async (
+  progression: ProgressionId,
+): Promise<RenderResult> => {
+  const id = `harmony-${progression}`;
+  Math.random = seededRandom(hash(id));
+
+  const { audioContext, setClock } = createDrivenContext(HARMONY_MAX_SECONDS);
+  const engine = new SoundEngine(audioContext as unknown as BaseAudioContext);
+  await engine.init();
+  engine.setCanvasWidth(CANVAS_WIDTH);
+  engine.setVolume(HARMONY_ARRANGEMENT.volume);
+  engine.setConfig({
+    ...HARMONY_ARRANGEMENT.globals,
+    ...HARMONY_ARRANGEMENT.layers,
+    progression,
+  });
+  engine.setCantus(HARMONY_ARRANGEMENT.cantus);
+
+  const chordCount = PROGRESSIONS[progression].chords.length;
+  const changes: ChordChange[] = [
+    { atSeconds: 0, index: 0, name: engine.getCurrentChordName() },
+  ];
+  /** Distinct chord positions visited, so a round is "all of them, then home". */
+  const visited = new Set<number>([0]);
+  let previousIndex = 0;
+  /** When the rotation returned to chord 0 having been everywhere. */
+  let closedAtSeconds: number | null = null;
+
+  const trails = new Map<string, ReplayTrail>();
+  let nextTrailIndex = 0;
+  let cursor = 0;
+  /** Where the current pass of the looping fixture began, on the render clock. */
+  let loopOriginMs = 0;
+  const stepMs = 1_000 / REPLAY_FPS;
+  const sliceSpanMs = CONTEXT_EVENTS[CONTEXT_EVENTS.length - 1].t;
+
+  /** Retire every trail and rewind the fixture, as the pad's loop does. */
+  const rewind = (): void => {
+    for (const trail of trails.values()) engine.retireTrail(trail.trailIndex);
+    trails.clear();
+    cursor = 0;
+  };
+
+  for (let frameIndex = 0; ; frameIndex++) {
+    const sampleMs = frameIndex * stepMs;
+    const sampleSeconds = sampleMs / 1_000;
+    if (sampleSeconds > HARMONY_MAX_SECONDS) break;
+    if (
+      closedAtSeconds !== null &&
+      sampleSeconds > closedAtSeconds + HARMONY_TAIL_SECONDS
+    ) {
+      break;
+    }
+    setClock(sampleSeconds);
+
+    // The engine's clock is the render clock; the fixture's is its own, so a
+    // loop rebases the event cursor without the engine ever seeing time move
+    // backwards.
+    const sliceMs = sampleMs - loopOriginMs;
+
+    while (
+      cursor < CONTEXT_EVENTS.length &&
+      CONTEXT_EVENTS[cursor].t <= sliceMs
+    ) {
+      const event = CONTEXT_EVENTS[cursor++];
+      const x = (event.x ?? 0.5) * CANVAS_WIDTH;
+      const y = (event.y ?? 0.5) * CANVAS_HEIGHT;
+
+      if (event.type === "navigation") {
+        if (event.event === "focus" || event.event === "popstate") {
+          engine.triggerNavigation({ x });
+        }
+        continue;
+      }
+      if (event.type !== "cursor") continue;
+
+      let trail = trails.get(event.pid);
+      if (!trail) {
+        const trailIndex = nextTrailIndex++;
+        trail = {
+          trailIndex,
+          pid: event.pid,
+          color: REPLAY_COLORS[trailIndex % REPLAY_COLORS.length],
+          x,
+          y,
+          prevX: x,
+          prevY: y,
+          cursorType: event.cursor,
+          lastEventMs: sampleMs,
+          firstSeen: true,
+          searchIndex: 0,
+        };
+        trails.set(event.pid, trail);
+      }
+
+      trail.lastEventMs = sampleMs;
+      if (event.cursor) trail.cursorType = event.cursor;
+
+      if (event.event !== "click" && event.event !== "hold") continue;
+
+      // The voicing the pad's driver applies: a timpani hold voice takes the
+      // hold, and the bell click voice takes everything the roll did not.
+      const isHold = event.event === "hold" || event.duration !== undefined;
+      const rolled = isHold;
+      if (rolled) {
+        engine.triggerHold(
+          x,
+          HARMONY_ARRANGEMENT.voicing.hold,
+          event.duration === undefined ? undefined : event.duration / 1_000,
+        );
+      } else {
+        engine.triggerClick({ x, y, holdDuration: event.duration });
+      }
+    }
+
+    for (const trail of trails.values()) {
+      const track = CONTEXT_TRACKS.get(trail.pid);
+      if (!track) continue;
+      const position = interpolateTrackPosition(
+        track,
+        sliceMs,
+        trail.searchIndex,
+      );
+      if (!position) continue;
+      trail.searchIndex = position.index;
+      trail.prevX = trail.x;
+      trail.prevY = trail.y;
+      trail.x = position.x * CANVAS_WIDTH;
+      trail.y = position.y * CANVAS_HEIGHT;
+      if (position.cursor) trail.cursorType = position.cursor;
+    }
+
+    for (const [pid, trail] of trails) {
+      if (sampleMs - trail.lastEventMs > TRAIL_IDLE_TIMEOUT_MS) {
+        engine.retireTrail(trail.trailIndex);
+        trails.delete(pid);
+      }
+    }
+
+    const frames: TrailSoundFrame[] = [];
+    for (const trail of trails.values()) {
+      frames.push({
+        trailIndex: trail.trailIndex,
+        x: trail.x,
+        y: trail.y,
+        prevX: trail.prevX,
+        prevY: trail.prevY,
+        cursorType: trail.cursorType,
+        progress: 0,
+        color: trail.color,
+        isNewlyActive: trail.firstSeen,
+        identityKey: `sample-${trail.pid}`,
+      });
+      trail.firstSeen = false;
+    }
+
+    engine.tick(sampleMs, frames);
+
+    // Read after the tick, since that is what advances the rotation.
+    const index = chordIndexOf(engine);
+    if (index !== previousIndex) {
+      previousIndex = index;
+      changes.push({
+        atSeconds: sampleSeconds,
+        index,
+        name: engine.getCurrentChordName(),
+      });
+      visited.add(index);
+      if (index === 0 && visited.size === chordCount && closedAtSeconds === null) {
+        closedAtSeconds = sampleSeconds;
+      }
+    }
+
+    if (cursor >= CONTEXT_EVENTS.length && sliceMs >= sliceSpanMs) {
+      rewind();
+      loopOriginMs = sampleMs;
+    }
+  }
+
+  if (closedAtSeconds === null) {
+    console.warn(
+      `  ${id}: the rotation did not close within the ${HARMONY_MAX_SECONDS}s cap ` +
+        `(reached chord ${previousIndex} of ${chordCount}); the file is capped`,
+    );
+  }
+
+  const durationSeconds = Math.min(
+    HARMONY_MAX_SECONDS,
+    (closedAtSeconds ?? HARMONY_MAX_SECONDS) + HARMONY_TAIL_SECONDS,
+  );
+
+  const full = (await audioContext.startRendering()) as unknown as AudioBuffer;
+  const trimmed = trimBuffer(full, durationSeconds);
+
+  console.log(
+    `  ${id}: ${changes
+      .map(
+        (change) =>
+          `${change.name}(${change.index + 1})@${change.atSeconds.toFixed(2)}s`,
+      )
+      .join(" -> ")}`,
+  );
+
+  const result = await finish(`${id}.wav`, trimmed, {
+    label: id,
+    demonstrates: `${PROGRESSIONS[progression].description} One full round: every chord once, back to the first.`,
+    durationSeconds: Number(durationSeconds.toFixed(2)),
+    config: `${HARMONY_CONFIG_SUMMARY}; progression ${progression}; chord dwell ${DEMO_CHORD_DWELL_MS / 1000}s base`,
+  });
+
+  return { ...result, chordChanges: changes };
+};
+
+/** The first `seconds` of a rendered buffer, as its own buffer. */
+const trimBuffer = (buffer: AudioBuffer, seconds: number): AudioBuffer => {
+  const length = Math.min(
+    buffer.length,
+    Math.ceil(seconds * buffer.sampleRate),
+  );
+  const trimmed = new OfflineAudioContext(
+    buffer.numberOfChannels,
+    length,
+    buffer.sampleRate,
+  ).createBuffer(buffer.numberOfChannels, length, buffer.sampleRate);
+  for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+    trimmed.getChannelData(channel).set(
+      buffer.getChannelData(channel).subarray(0, length),
+    );
+  }
+  return trimmed as unknown as AudioBuffer;
+};
+
+/** The harmony comparison's own README, kept beside the candidate one. */
+const harmonyReadme = (results: RenderResult[]): string => {
+  const rows = results
+    .map(({ filename, demonstrates, durationSeconds, peakDbfs, chordChanges }) =>
+      `| [${filename}](./${filename}) | ${demonstrates} | ${durationSeconds}s | ${peakDbfs.toFixed(2)} dBFS | ${(
+        chordChanges ?? []
+      )
+        .map(
+          (change) =>
+            `${change.name} (${change.index + 1}) ${change.atSeconds.toFixed(1)}s`,
+        )
+        .join(", ")} |`,
+    )
+    .join("\n");
+
+  return `# Harmony comparison
+
+One file per chord progression, each covering one full round: every chord in
+the rotation sounds once and the rotation returns to its first chord, then a
+${HARMONY_TAIL_SECONDS}-second tail so the last chord is heard settling.
+
+Every file is the same arrangement and the same playback — only the progression
+differs — so the rotations can be compared against each other rather than
+against different scenes.
+
+**Arrangement:** ${HARMONY_CONFIG_SUMMARY}.
+
+**Playback:** the same fixture slice every other render here uses
+(\`extension/website/sounds/sampleEvents.json\`), replayed through the engine at
+a simulated 60fps. When a round outlasts the slice the slice loops, retiring
+every trail and rewinding first, as the playground's pad does.
+
+**Length is not fixed.** With the energy arc on, chord dwell scales with scene
+energy, so how long a round takes depends on what the fixture is doing at the
+time. Each render therefore runs until the engine's own rotation closes and is
+trimmed there, rather than to a length computed in advance. The cap is
+${HARMONY_MAX_SECONDS}s.
+
+## Files
+
+\`Chord changes\` lists when each chord takes over, from the start of the file.
+The number in brackets is that chord's position in the rotation, which is what
+separates the two Dm chords in \`dorian\` and the two C chords in \`drifter\` —
+the round closes on a return to position 1, not on a return to a chord name.
+
+| File | Rotation | Duration | Peak | Chord changes |
+| --- | --- | --- | --- | --- |
+${rows}
+
+Each file is checked from its floating-point buffer: peak above
+${SILENCE_THRESHOLD_DBFS} dBFS and no sample above 0 dBFS.
+
+Chord dwell is shortened to ${DEMO_CHORD_DWELL_MS / 1000}s for these renders (the shipped base is
+${BASE_CHORD_DWELL_MS / 1000}s), the same override the candidate renders use, so a round is
+listenable rather than several minutes long. The override lives in the render
+script and applies to the render process only.
+
+## Regenerate
+
+From \`scripts/sound-samples/\`:
+
+\`\`\`sh
+bun install --frozen-lockfile
+bun run render
+\`\`\`
+`;
+};
+
+// ---------------------------------------------------------------------------
 // README
 // ---------------------------------------------------------------------------
 
@@ -1484,7 +1879,12 @@ for (const progression of Object.values(PROGRESSIONS)) {
 }
 
 const results: RenderResult[] = [];
+const harmonyResults: RenderResult[] = [];
 try {
+  for (const progression of PROGRESSION_IDS) {
+    harmonyResults.push(await renderHarmony(progression));
+  }
+
   for (const variant of ["soft", "crisp", "double"] as PizzicatoVariant[]) {
     results.push(await renderPizzicatoSolo(variant));
   }
@@ -1578,4 +1978,10 @@ await writeFile(
   resolve(outputDirectory, "README.md"),
   readme(results, CONTEXT_EVENTS),
 );
-console.log(`\nRendered ${results.length} files to ${outputDirectory}`);
+await writeFile(
+  resolve(outputDirectory, "harmony-README.md"),
+  harmonyReadme(harmonyResults),
+);
+console.log(
+  `\nRendered ${results.length + harmonyResults.length} files to ${outputDirectory}`,
+);
