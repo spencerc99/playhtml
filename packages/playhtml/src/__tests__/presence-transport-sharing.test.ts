@@ -60,6 +60,36 @@ describe("presence transport sharing", () => {
     expect(openRooms).toHaveLength(2);
   });
 
+  it("does not open a Yjs provider for a separate cursor presence room", async () => {
+    const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as Array<{
+      roomname: string;
+    }>;
+
+    await playhtml.init({ cursors: { enabled: true, room: "domain" } });
+
+    expect(providers.map((provider) => provider.roomname)).toEqual([
+      playhtml.roomId,
+    ]);
+  });
+
+  it("uses a separate cursor Yjs provider when presence transport is unavailable", async () => {
+    const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as Array<{
+      roomname: string;
+    }>;
+    const originalWebSocket = (globalThis as any).WebSocket;
+    (globalThis as any).WebSocket = undefined;
+
+    try {
+      await playhtml.init({ cursors: { enabled: true, room: "domain" } });
+
+      expect(providers.map((provider) => provider.roomname)).toHaveLength(2);
+      expect(providers[0]?.roomname).toBe(playhtml.roomId);
+      expect(providers[1]?.roomname).not.toBe(playhtml.roomId);
+    } finally {
+      (globalThis as any).WebSocket = originalWebSocket;
+    }
+  });
+
   it("opens the page-room socket even when cursors are disabled", async () => {
     await playhtml.init({ cursors: { enabled: false } });
     const openRooms = getPresenceSockets()
