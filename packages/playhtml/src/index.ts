@@ -1218,29 +1218,30 @@ function buildCursors(args: {
 
   if (cursorOptions.room) {
     const cursorRoomString = resolveCursorRoom(cursorOptions.room);
-    const cursorRoom = normalizeRoomId(getCurrentRoomHost(), cursorRoomString);
-
-    if (cursorRoom !== mainRoom) {
-      const cursorDoc = new Y.Doc();
-      cursorProvider = new YProvider(
-        partykitHost,
-        cursorRoom,
-        cursorDoc,
-      );
-      cursorProvider.on("error", () => {
-        onError?.();
-      });
-      providerForCursors = cursorProvider;
-      currentCursorRoomId = cursorRoom;
-    } else {
-      currentCursorRoomId = mainRoom;
-    }
+    currentCursorRoomId = normalizeRoomId(
+      getCurrentRoomHost(),
+      cursorRoomString,
+    );
   } else {
     currentCursorRoomId = mainRoom;
   }
 
   const cursorPresenceTransport =
     acquirePresenceTransport(currentCursorRoomId) ?? undefined;
+
+  if (!cursorPresenceTransport && currentCursorRoomId !== mainRoom) {
+    const cursorDoc = new Y.Doc();
+    cursorProvider = new YProvider(
+      partykitHost,
+      currentCursorRoomId,
+      cursorDoc,
+    );
+    cursorProvider.on("error", () => {
+      onError?.();
+    });
+    providerForCursors = cursorProvider;
+  }
+
   cursorPresenceTransportRoom = cursorPresenceTransport
     ? currentCursorRoomId
     : null;
