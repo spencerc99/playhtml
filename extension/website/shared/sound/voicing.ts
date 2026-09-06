@@ -6,7 +6,7 @@ import {
   PizzicatoVariant,
   PIZZICATO_VARIANTS,
   TimpaniVariant,
-} from "../shared/sound/types";
+} from "./types";
 
 /**
  * How a click is voiced. The bell and the pizzicati are alternatives to each

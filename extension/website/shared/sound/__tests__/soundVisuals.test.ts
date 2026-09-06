@@ -13,7 +13,7 @@ import {
   VISUAL_DEFAULTS,
   VisualConfig,
 } from "../soundVisuals";
-import { SoundNotice } from "../../shared/sound/types";
+import { SoundNotice } from "../types";
 
 const TRAIL = 3;
 
@@ -30,23 +30,27 @@ const locateNothing = () => null;
 const arrival = (
   rising: boolean,
   noteOffsetsSeconds: number[] = [0, 0.08, 0.17],
+  played = true,
 ): SoundNotice => ({
   kind: "arrival",
   trailIndex: TRAIL,
   rising,
   noteOffsetsSeconds,
+  played,
 });
 
-const navigation = (): SoundNotice => ({
+const navigation = (played = true): SoundNotice => ({
   kind: "navigation",
   trailIndex: TRAIL,
   x: 100,
+  played,
 });
 
 /** A gong the driver could not attribute to any trail on the canvas. */
 const unattributedNavigation = (): SoundNotice => ({
   kind: "navigation",
   x: 100,
+  played: true,
 });
 
 const withConfig = (overrides: Partial<VisualConfig>): SoundVisuals => {

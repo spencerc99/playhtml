@@ -9,7 +9,7 @@ import {
   isTimpani,
   VoicingSettings,
   VOICING_DEFAULTS,
-} from "./voicing";
+} from "../shared/sound/voicing";
 import { RECENT_EVENTS_URL } from "../shared/config";
 import {
   flourishedColor,
@@ -21,7 +21,7 @@ import {
   SURGE_TUNING,
   VISUAL_DEFAULTS,
   VisualConfig,
-} from "./soundVisuals";
+} from "../shared/sound/soundVisuals";
 import bundledSample from "./sampleEvents.json";
 
 const PAD_HEIGHT = 300;

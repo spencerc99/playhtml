@@ -10,31 +10,13 @@ import {
   restoreConfig,
   saveConfig,
 } from "../persistedConfig";
-import { GlobalSettings } from "../Globals";
+import { GlobalSettings } from "../SceneSettings";
 import { VoicingSettings, VOICING_DEFAULTS } from "../voicing";
 import { VisualConfig, VISUAL_DEFAULTS } from "../soundVisuals";
-import { DEFAULT_PROGRESSION_ID } from "../../shared/sound/scales";
-
-const GLOBAL_DEFAULTS: GlobalSettings = {
-  mode: "spotlight",
-  chordRotation: true,
-  progression: DEFAULT_PROGRESSION_ID,
-  energyArc: true,
-  trailVoices: true,
-  swells: true,
-  choralTimbre: false,
-  cursorInstruments: true,
-  traceability: 0,
-  volume: 0.5,
-};
-
-const LAYER_DEFAULTS: LayerConfig = {
-  bassPedal: false,
-  trailArrivals: true,
-  navigationSounds: true,
-  crossings: "off",
-  cantus: null,
-};
+import {
+  LAYER_DEFAULTS,
+  SCENE_DEFAULTS as GLOBAL_DEFAULTS,
+} from "../useSoundArrangement";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -90,9 +72,20 @@ describe("persistedConfig round trip", () => {
       VOICING_DEFAULTS,
       VISUAL_DEFAULTS,
     );
-    const serialized = JSON.stringify(config);
-    expect(serialized).not.toMatch(/solo/i);
-    expect(serialized).not.toMatch(/mute/i);
+    // Named keys rather than a substring search: `soloistVoice` is part of the
+    // arrangement and contains "solo" without being mixer state.
+    const keys = new Set<string>();
+    const walk = (value: unknown) => {
+      if (typeof value !== "object" || value === null) return;
+      for (const [key, nested] of Object.entries(value)) {
+        keys.add(key);
+        walk(nested);
+      }
+    };
+    walk(config);
+    expect(keys.has("muted")).toBe(false);
+    expect(keys.has("soloed")).toBe(false);
+    expect(keys.has("layerMix")).toBe(false);
   });
 
   it("clearSavedConfig removes the save so the next load falls back to defaults", () => {

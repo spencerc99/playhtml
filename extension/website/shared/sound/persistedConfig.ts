@@ -1,10 +1,10 @@
 // ABOUTME: Serializes the playground's full audible arrangement to one versioned
 // ABOUTME: object and round-trips it through localStorage as the page's own default
 
-import { GlobalSettings } from "./Globals";
+import { GlobalSettings } from "./SceneSettings";
 import { VoicingSettings, VOICING_DEFAULTS } from "./voicing";
 import { VisualConfig, VISUAL_DEFAULTS } from "./soundVisuals";
-import { CantusVariant } from "../shared/sound/types";
+import { CantusVariant } from "./types";
 
 const STORAGE_KEY = "playhtml-sound-playground-config";
 const CONFIG_VERSION = 1;

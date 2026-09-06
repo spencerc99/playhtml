@@ -2,8 +2,8 @@
 // ABOUTME: Each row carries enable, an optional voice selector, and solo/mute
 
 import React, { useCallback, useEffect, useState } from "react";
-import { SoundEngine } from "../shared/sound/SoundEngine";
-import { SoundLayer } from "../shared/sound/types";
+import { SoloistVoice, SOLOIST_VOICES, SoundEngine } from "./SoundEngine";
+import { SoundLayer } from "./types";
 import {
   CLICK_VOICES,
   ClickVoice,
@@ -111,7 +111,20 @@ interface SoundLayersProps {
   /** Which gesture the replay canvas draws for each sound it hears. */
   visuals: VisualConfig;
   onVisualsChange: (next: Partial<VisualConfig>) => void;
+  /**
+   * What the soloist speaks in. It lives with the scene rather than with the
+   * layers — it is one setting on the spotlight, not a family of its own — but
+   * it belongs on the soloist's row, which is here.
+   */
+  soloistVoice: SoloistVoice;
+  onSoloistVoiceChange: (next: SoloistVoice) => void;
 }
+
+const SOLOIST_VOICE_LABELS: Record<SoloistVoice, string> = {
+  bells: "bells",
+  arpeggio: "arpeggio",
+  descant: "descant",
+};
 
 /**
  * The visible half of a sound. Each gesture is fired by the sound it names,
@@ -163,6 +176,8 @@ export const SoundLayers = ({
   onVoicingChange,
   visuals,
   onVisualsChange,
+  soloistVoice,
+  onSoloistVoiceChange,
 }: SoundLayersProps) => {
   const [muted, setMuted] = useState<Set<SoundLayer>>(new Set());
   const [soloed, setSoloed] = useState<Set<SoundLayer>>(new Set());
@@ -232,8 +247,24 @@ export const SoundLayers = ({
     {
       layer: "flourish",
       name: "soloist",
-      hint: "spotlight flourish and resolve",
+      hint: "what the spotlit trail speaks in",
       enabled: null,
+      selector: (
+        <select
+          value={soloistVoice}
+          onChange={(event) =>
+            onSoloistVoiceChange(event.target.value as SoloistVoice)
+          }
+          style={selectStyle}
+          aria-label="Soloist voice"
+        >
+          {SOLOIST_VOICES.map((voice) => (
+            <option key={voice} value={voice}>
+              {SOLOIST_VOICE_LABELS[voice]}
+            </option>
+          ))}
+        </select>
+      ),
     },
     {
       layer: "clickBell",

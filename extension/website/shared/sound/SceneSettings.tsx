@@ -2,12 +2,12 @@
 // ABOUTME: Mode, harmony, the story-to-traceable dial and volume — what the whole mix sits in
 
 import React from "react";
-import { SoundMode } from "../shared/sound/SoundEngine";
+import { SoloistVoice, SoundMode } from "./SoundEngine";
 import {
   PROGRESSION_IDS,
   PROGRESSIONS,
   ProgressionId,
-} from "../shared/sound/scales";
+} from "./scales";
 
 const labelStyle: React.CSSProperties = {
   fontFamily: "'Martian Mono', monospace",
@@ -49,11 +49,17 @@ export interface GlobalSettings {
   swells: boolean;
   choralTimbre: boolean;
   cursorInstruments: boolean;
+  /**
+   * What the spotlit trail speaks in. Lives with the scene because it is a
+   * setting on the spotlight, though its control sits on the soloist's row in
+   * the Sound Layers panel, where the rest of the voice selectors are.
+   */
+  soloistVoice: SoloistVoice;
   traceability: number;
   volume: number;
 }
 
-interface GlobalsProps {
+interface SceneSettingsProps {
   settings: GlobalSettings;
   onChange: (next: Partial<GlobalSettings>) => void;
   /** Chord and energy readout, so the harmony row shows where it currently is. */
@@ -69,14 +75,14 @@ interface GlobalsProps {
  * sounds like. These shape every layer at once, so they sit above the panel
  * rather than as a row inside it.
  */
-export const Globals = ({
+export const SceneSettings = ({
   settings,
   onChange,
   readout,
   savedAt,
   onSaveDefault,
   onResetDefault,
-}: GlobalsProps) => (
+}: SceneSettingsProps) => (
   <div style={{ marginBottom: "32px" }}>
     <div
       style={{

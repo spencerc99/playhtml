@@ -1,13 +1,18 @@
 // ABOUTME: Visual gestures for the replay canvas, each one fired by the sound it stands for
 // ABOUTME: Holds the gathering specks, navigation knots, lightness surge and hue tilt
 
-import { SoundNotice } from "../shared/sound/types";
-import { parseColorToHsl } from "../shared/utils/eventUtils";
+import { SoundNotice } from "./types";
+import { parseColorToHsl } from "../utils/eventUtils";
 
 /**
- * Which visual gestures are drawn. Each pairs with a sound and is fired from
- * that sound's own trigger, so a gesture is only ever seen for a note that
- * actually played.
+ * Which visual gestures are drawn.
+ *
+ * Each pairs with an event the sound engine reports, and is fired from that
+ * event rather than from any view's own idea of when it happened — the engine
+ * is the only thing that knows which arrivals and navigations it actually
+ * counted. A sound toggle decides whether audio plays and a visual toggle
+ * decides whether the gesture is drawn; neither gates the other, so the knot
+ * still marks a page change with the gong switched off.
  */
 export interface VisualConfig {
   /** Specks converging into an arriving trail, dispersing from a leaving one. */
@@ -54,6 +59,13 @@ export const GATHERING_TUNING = {
   travelSeconds: 0.45,
   /** Ceiling on simultaneous gatherings, so a busy stretch stays quiet. */
   maxConcurrent: 12,
+  /**
+   * Most specks one gathering can have. A gathering lays one speck per chime
+   * note, and `ARRIVAL_TUNING.maxNotes` is well under this — the headroom is
+   * what a renderer preallocating elements sizes its pool against, so a longer
+   * chime does not silently lose its last specks.
+   */
+  maxNotesPerGathering: 8,
 };
 
 /**
@@ -200,6 +212,10 @@ export class SoundVisuals {
   ): void {
     if (notice.kind === "arrival") {
       if (!this.config.gathering) return;
+      // The gathering's specks are paced by the chime's own notes, so an
+      // arrival that made no sound has nothing to pace them with. Unlike the
+      // knot, this gesture stands for the notes rather than for the event.
+      if (!notice.played || notice.noteOffsetsSeconds.length === 0) return;
       if (this.gatherings.length >= GATHERING_TUNING.maxConcurrent) return;
       const at = locate(notice.trailIndex);
       if (!at) return;
@@ -250,6 +266,16 @@ export class SoundVisuals {
 
   getKnots(trailIndex: number): readonly Knot[] {
     return this.knots.get(trailIndex) ?? [];
+  }
+
+  /**
+   * Every trail carrying beads. A knot is fixed to the point the trail was at
+   * and persists after that trail has finished drawing, so a renderer has to
+   * ask which trails have marks rather than assuming they are the ones moving
+   * this frame.
+   */
+  getKnottedTrails(): number[] {
+    return [...this.knots.keys()];
   }
 
   getFlourish(trailIndex: number): Flourish | undefined {
