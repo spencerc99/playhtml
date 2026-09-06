@@ -37,6 +37,13 @@ export interface Trail {
    * trails include their segment start so a replacement segment does not reuse
    * the completed draw state of the previous segment. */
   id: string;
+  /**
+   * The participant this trail belongs to. Carried separately from `id`, which
+   * also encodes the page and the segment start — anything matching a trail to
+   * a person (the navigation accent finding whose trail hopped) needs the
+   * participant on its own rather than parsed back out of a composite key.
+   */
+  pid: string;
   startTime: number;
   endTime: number;
   clicks: Array<{

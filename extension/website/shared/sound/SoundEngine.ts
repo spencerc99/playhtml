@@ -45,6 +45,8 @@ import {
   progressionById,
   ProgressionId,
   upperNeighbor,
+  chordTones,
+  nearestChordTone,
   D_MINOR_PENTATONIC,
 } from "./scales";
 import { parseColorToHsl } from "../utils/eventUtils";
@@ -124,6 +126,32 @@ export type SoundMode = "sustained" | "spotlight" | "notes";
  */
 export type CrossingFlavor = "off" | "dissonance" | "merge";
 
+/**
+ * What the soloist plays while it holds the spotlight.
+ *
+ * All three are the same promotion — the same trail, chosen the same way, held
+ * for the same minimum — differing only in what it says. "bells" walks the
+ * whole palette, so the run can pass through colour tones; the other two stay
+ * on the chord, one as discrete notes and one as no notes at all.
+ */
+export type SoloistVoice =
+  /** A run of bells stepping through the palette. The shipped voice. */
+  | "bells"
+  /**
+   * An ascending roll through the chord's own tones, harp-like: softer attack
+   * and a longer, gentler decay than the bell.
+   */
+  | "arpeggio"
+  /**
+   * No discrete notes at all. The trail's own sustained voice lifts an octave
+   * and brightens on promotion, voice-leads through chord tones while it
+   * holds, and returns on demotion.
+   */
+  | "descant";
+
+/** Every soloist voice, in the order a selector should present them. */
+export const SOLOIST_VOICES: SoloistVoice[] = ["bells", "arpeggio", "descant"];
+
 /** Configurable sound modes */
 export interface SoundConfig {
   mode: SoundMode;
@@ -182,6 +210,8 @@ export interface SoundConfig {
    * truth for the story end; this only interpolates away from them.
    */
   traceability: number;
+  /** How the spotlight's soloist speaks — see `SoloistVoice`. */
+  soloistVoice: SoloistVoice;
 }
 
 /**
@@ -209,6 +239,7 @@ const DEFAULT_CONFIG: SoundConfig = {
   navigationSounds: false,
   bassPedal: false,
   traceability: 0,
+  soloistVoice: "bells",
 };
 
 /**
@@ -930,6 +961,69 @@ const FLOURISH_TUNING = {
   resolveGainScale: 0.8,
 };
 
+/**
+ * The arpeggio soloist. Fires on the same distance trigger as the bell run, so
+ * a promotion is paced identically and only the note choice and the envelope
+ * change: the notes come from the chord's own tones, climbing, and each is
+ * plucked rather than struck — a slower attack and a longer, softer decay than
+ * the bell, which is what makes a roll read as harp rather than as chimes.
+ */
+const ARPEGGIO_TUNING = {
+  /** Slower than the bell's 5ms strike, so the note blooms instead of hitting. */
+  attackSeconds: 0.03,
+  /** One ring, long enough that consecutive notes overlap into a roll. */
+  decaySeconds: 1,
+  /** Level of the 3x partial. Under the bell's, so the tone stays warm. */
+  partialGain: 0.15,
+  /**
+   * Where the roll starts in the chord-tone ladder, as a fraction of it. The
+   * run climbs from here and wraps back rather than starting at the bottom
+   * every promotion, so a long solo keeps moving.
+   */
+  startFraction: 0.25,
+};
+
+/**
+ * The descant soloist. The promotion is carried by the trail's own sustained
+ * voice rather than by any new note: it lifts an octave, opens its filter and
+ * swells in, then leads through chord tones for as long as it holds.
+ */
+export const DESCANT_TUNING = {
+  /** How far the sustained voice lifts on promotion. One octave. */
+  liftMultiple: 2,
+  /**
+   * Ceiling on the lifted pitch. Nothing sustained rings above about C5, and
+   * the lift must not be what breaks that — a soprano trail already near the
+   * ceiling stays where it is rather than climbing over it.
+   */
+  ceilingHz: 523.25,
+  /** Filter cutoff while the descant holds, so the lift reads as brighter. */
+  filterHz: 3200,
+  /** Seconds the lift and the brightening take to arrive. */
+  swellSeconds: 0.5,
+  /** Seconds the return to the trail's own register takes on demotion. */
+  returnSeconds: 0.8,
+  /**
+   * Gain multiplier while the descant holds. The lift and the brightness carry
+   * the promotion, so this only keeps the higher octave from sounding thinner
+   * than the register it left.
+   */
+  gain: 1.25,
+};
+
+/**
+ * A chord tone raised into the descant's register: one octave up, unless that
+ * would carry it over the ensemble's ceiling, in which case it stays where it
+ * is. Falling back to the unlifted tone rather than to something between the
+ * two is deliberate — a partial lift lands off the octave and reads as out of
+ * tune, where staying put reads as a voice already at the top of its range.
+ */
+export function descantLift(pitch: number): number {
+  const lifted = pitch * DESCANT_TUNING.liftMultiple;
+  return lifted > DESCANT_TUNING.ceilingHz ? pitch : lifted;
+}
+
+
 /** Click-bell pitches used whenever the chord progression is not rotating. */
 const FIXED_BELL_SCALE = [
   293.66, // D4
@@ -1020,6 +1114,12 @@ interface Voice {
   lastControlTimeMs: number;
   /** True while spotlight brightness owns this voice's filter cutoff. */
   spotlightBrightened: boolean;
+  /**
+   * True while this voice is singing the descant, so the frame it stops is
+   * recognised as the return and glides back rather than waiting out the note
+   * interval like an ordinary pitch change.
+   */
+  descanting: boolean;
   /** Personal vibrato LFO, present only while trail voices are on. */
   vibrato: VibratoNodes | null;
   /** Vowel formant bank, present only while the choral timbre is on. */
@@ -1399,7 +1499,10 @@ export class SoundEngine {
       this.releaseBassPedal();
     }
     if (config.trailArrivals === false) {
-      this.arrivalTimesMs.clear();
+      // The seeds, bands and rate budget are audio state and are dropped. The
+      // arrival times are not: they are how the engine knows which trails have
+      // announced themselves, which decides whether an arrival happened at all
+      // and so is still reported while the chime is off.
       this.arrivalSeeds.clear();
       this.arrivalBands.clear();
       this.recentArrivalsMs.length = 0;
@@ -1597,9 +1700,17 @@ export class SoundEngine {
       const fingerprint = this.config.trailVoices
         ? this.fingerprintFor(frame)
         : null;
-      const frequency = fingerprint
+      const chosenPitch = fingerprint
         ? this.applyHomeToneBias(directionPitch, fingerprint)
         : directionPitch;
+      // The descant is the promotion itself: while this trail holds the
+      // spotlight its own sustained voice sings a chord tone an octave up,
+      // rather than a separate run of notes sounding over it.
+      const frequency = this.descantPitchFor(
+        frame.trailIndex,
+        chosenPitch,
+        scale,
+      );
       const pan = positionToPan(frame.x, this.canvasWidth);
 
       // When cursor instruments are off, use the default instrument for all
@@ -1637,9 +1748,15 @@ export class SoundEngine {
         voice.lastCursorType = frame.cursorType;
       }
 
+      // The descant's lift and its return are the promotion itself, so they
+      // move on the promotion rather than waiting out the note interval — a
+      // trail sustaining one pitch would otherwise hold the wrong octave for
+      // as long as it kept going.
+      const descantMoved =
+        this.isDescanting(frame.trailIndex) !== voice.descanting;
       if (
         frequency !== voice.currentFrequency &&
-        elapsedMs - voice.lastNoteTimeMs > MIN_NOTE_INTERVAL_MS
+        (descantMoved || elapsedMs - voice.lastNoteTimeMs > MIN_NOTE_INTERVAL_MS)
       ) {
         // The first pitch this voice takes from a new palette is its move into
         // the new chord, so it slides rather than snapping. A voice that has
@@ -1649,14 +1766,19 @@ export class SoundEngine {
         this.setVoiceFrequency(
           voice,
           frequency,
-          isVoiceLeadingMove
-            ? VOICE_LEADING_GLIDE_SECONDS
-            : NOTE_GLIDE_SECONDS,
+          descantMoved
+            ? this.isDescanting(frame.trailIndex)
+              ? DESCANT_TUNING.swellSeconds
+              : DESCANT_TUNING.returnSeconds
+            : isVoiceLeadingMove
+              ? VOICE_LEADING_GLIDE_SECONDS
+              : NOTE_GLIDE_SECONDS,
         );
         voice.lastPitchScale = scale ?? null;
         voice.lastNoteTimeMs = elapsedMs;
         voice.currentFrequency = frequency;
       }
+      voice.descanting = this.isDescanting(frame.trailIndex);
 
       // Percussive cursor types (e.g. text) use repeating plucks instead of
       // a sustained tone — like typing rhythm
@@ -2334,6 +2456,7 @@ export class SoundEngine {
       lastPluckMs: 0,
       lastControlTimeMs: Number.NEGATIVE_INFINITY,
       spotlightBrightened: false,
+      descanting: false,
       vibrato: null,
       formants: null,
       appliedDetuneCents: 0,
@@ -2780,11 +2903,21 @@ export class SoundEngine {
     this.notesEngine.retireTrail(trailIndex);
     // Only a trail that announced itself gets a departure, so a trail retired
     // during a suppressed batch does not leave without ever having arrived.
-    if (
-      this.config.trailArrivals &&
+    // That is a question of whether the trail left, so it gates the notice
+    // too; the audio toggle only decides whether the chime sounds.
+    const departed =
       this.lastTickMs >= this.arrivalsSuppressedUntilMs &&
-      this.arrivalTimesMs.has(trailIndex)
-    ) {
+      this.arrivalTimesMs.has(trailIndex);
+    if (departed && !this.config.trailArrivals) {
+      this.emitNotice({
+        kind: "arrival",
+        trailIndex,
+        rising: false,
+        noteOffsetsSeconds: [],
+        played: false,
+      });
+    }
+    if (departed && this.config.trailArrivals) {
       const position = this.prevPositions.get(trailIndex);
       // Departure reuses the arrival's seed and band, so a trail leaves in the
       // same voice and the same register it arrived in.
@@ -3257,13 +3390,18 @@ export class SoundEngine {
   private advanceSpotlightGain(trailIndex: number): number {
     const hasSoloist = this.spotlightTrailIndex !== null;
     const isSoloist = this.spotlightTrailIndex === trailIndex;
+    const descanting = this.isDescanting(trailIndex);
     const target = !hasSoloist
       ? 1
       : isSoloist
-        ? // The soloist's sustained voice steps back while it flourishes, so
-          // the discrete notes carry the promotion instead of competing with a
-          // louder drone from the same trail.
-          SPOTLIGHT_TUNING.soloistGain * FLOURISH_TUNING.sustainedDuck
+        ? descanting
+          ? // The descant has no discrete notes to step back for: its own
+            // sustained voice is the promotion, so it leans in rather than out.
+            SPOTLIGHT_TUNING.soloistGain * DESCANT_TUNING.gain
+          : // The soloist's sustained voice steps back while it flourishes, so
+            // the discrete notes carry the promotion instead of competing with
+            // a louder drone from the same trail.
+            SPOTLIGHT_TUNING.soloistGain * FLOURISH_TUNING.sustainedDuck
         : SPOTLIGHT_TUNING.duckedGain;
 
     const current = this.spotlightGains.get(trailIndex) ?? 1;
@@ -3271,8 +3409,14 @@ export class SoundEngine {
     // but the scene does not pump back up the instant they slow. A demoted
     // soloist gets its own, slower walk back so the drone swells in behind
     // the resolving note rather than snapping back.
-    const durationSeconds =
-      target < current
+    const durationSeconds = descanting
+      ? // The descant enters on its own swell and leaves on its own return, so
+        // the gain moves with the lift instead of on the spotlight's cue-speed
+        // attack.
+        target > current
+          ? DESCANT_TUNING.swellSeconds
+          : DESCANT_TUNING.returnSeconds
+      : target < current
         ? SPOTLIGHT_TUNING.attackSeconds
         : isSoloist || target === 1
           ? Math.max(
@@ -3370,6 +3514,36 @@ export class SoundEngine {
     return 1 + breathDepth * Math.sin(phase);
   }
 
+  /** Whether this trail is currently singing the descant. */
+  private isDescanting(trailIndex: number): boolean {
+    return (
+      this.config.spotlight &&
+      this.config.soloistVoice === "descant" &&
+      this.spotlightTrailIndex === trailIndex
+    );
+  }
+
+  /**
+   * The pitch a trail's sustained voice takes this frame.
+   *
+   * Unchanged for every trail but the descanting soloist. For that one the
+   * pitch is led onto the nearest tone of the chord — never a colour tone, so
+   * the lifted line stays consonant with the bed it is rising out of — and
+   * then raised an octave, capped at the ensemble's own ceiling so a trail
+   * already singing near the top does not climb over it.
+   */
+  private descantPitchFor(
+    trailIndex: number,
+    pitch: number,
+    scale: number[] | undefined,
+  ): number {
+    if (!this.isDescanting(trailIndex)) return pitch;
+    return descantLift(
+      nearestChordTone(pitch, scale ?? this.flourishPalette()),
+    );
+  }
+
+
   /**
    * Open the soloist's filter with velocity. Non-soloists are left entirely
    * alone on their instrument's own cutoff — touching every voice's filter is
@@ -3393,7 +3567,26 @@ export class SoundEngine {
         this.rampParam(
           voice.filterNode.frequency,
           instrument.filterFrequency,
-          SPOTLIGHT_TUNING.releaseSeconds,
+          // A descant hands its brightness back over its own return, so the
+          // lift and the colour fall away together rather than at two rates.
+          this.config.soloistVoice === "descant"
+            ? DESCANT_TUNING.returnSeconds
+            : SPOTLIGHT_TUNING.releaseSeconds,
+        );
+      }
+      return;
+    }
+
+    // The descant's brightness is a fixed opening rather than a velocity
+    // sweep: its promotion is a swell into a higher, brighter register, and a
+    // filter tracking speed on top of that would make the lift waver.
+    if (this.config.soloistVoice === "descant") {
+      if (!voice.spotlightBrightened) {
+        voice.spotlightBrightened = true;
+        this.rampParam(
+          voice.filterNode.frequency,
+          Math.max(instrument.filterFrequency, DESCANT_TUNING.filterHz),
+          DESCANT_TUNING.swellSeconds,
         );
       }
       return;
@@ -3457,18 +3650,16 @@ export class SoundEngine {
    * arriving the first time its index is seen, or when it reappears after the
    * debounce, so a trail flickering across the active-set boundary stays
    * silent.
+   *
+   * The debounce and the still-here test decide whether a trail arrived at
+   * all, so a suppression there is silent for a visual too. The audio toggle
+   * and the rate cap decide only whether the chime sounds, so an arrival they
+   * suppress is still reported — with `played` false.
    */
   private updateArrivals(
     elapsedMs: number,
     activeTrails: TrailSoundFrame[],
   ): void {
-    if (!this.config.trailArrivals) {
-      if (this.arrivalTimesMs.size > 0) this.arrivalTimesMs.clear();
-      this.arrivalSeeds.clear();
-      this.arrivalBands.clear();
-      this.recentArrivalsMs.length = 0;
-      return;
-    }
     if (elapsedMs < this.arrivalsSuppressedUntilMs) return;
 
     for (const frame of activeTrails) {
@@ -3484,7 +3675,19 @@ export class SoundEngine {
       if (lastArrival !== undefined && !frame.isNewlyActive) continue;
 
       this.arrivalTimesMs.set(frame.trailIndex, elapsedMs);
-      if (!this.claimArrivalSlot(elapsedMs)) continue;
+      // The arrival happened either way. The audio toggle and the rate cap
+      // decide only whether it is heard, so a suppression here still reports
+      // the arrival with `played` false.
+      if (!this.config.trailArrivals || !this.claimArrivalSlot(elapsedMs)) {
+        this.emitNotice({
+          kind: "arrival",
+          trailIndex: frame.trailIndex,
+          rising: true,
+          noteOffsetsSeconds: [],
+          played: false,
+        });
+        continue;
+      }
       // Seeded from the trail's own identity, so a participant's chime is
       // recognisably theirs every time they appear.
       this.arrivalSeeds.set(
@@ -3551,7 +3754,19 @@ export class SoundEngine {
      */
     trailIndex?: number,
   ): void {
-    if (!this.ctx) return;
+    if (!this.ctx) {
+      // No graph to sound on, but the arrival still happened.
+      if (trailIndex !== undefined) {
+        this.emitNotice({
+          kind: "arrival",
+          trailIndex,
+          rising,
+          noteOffsetsSeconds: [],
+          played: false,
+        });
+      }
+      return;
+    }
 
     const {
       registerMultiplier,
@@ -3646,6 +3861,7 @@ export class SoundEngine {
         trailIndex,
         rising,
         noteOffsetsSeconds,
+        played: true,
       });
     }
   }
@@ -3655,27 +3871,36 @@ export class SoundEngine {
    * a burst of navigations should read as one structural event, not a run.
    */
   triggerNavigation(event: NavigationSoundEvent = {}): void {
-    if (!this.enabled || !this.ctx || !this.masterGain) return;
-    if (!this.config.navigationSounds) return;
-
+    // The notice reports the navigation, not the note, so it is emitted for
+    // every navigation the engine is told about — before the audio toggle and
+    // before the rate limiter. A visual standing for a page change should be
+    // drawn whether or not the gong is switched on; `played` is how a listener
+    // that cares about the note tells the two apart.
     const ctx = this.ctx;
-    const startTime = ctx.currentTime;
-
+    const startTime = ctx?.currentTime ?? 0;
     // Rate-limit against the audio clock rather than the render tick. The
     // navigation views draw no trails, so tick() never runs there and
     // lastTickMs would stay frozen at 0 — every note after the first would
     // measure a zero-length gap and be dropped. ctx.currentTime always
     // advances, whichever view is on screen.
     const nowMs = startTime * 1000;
-    if (nowMs - this.lastNavigationNoteMs < NAVIGATION_TUNING.minIntervalMs) {
-      return;
-    }
-    this.lastNavigationNoteMs = nowMs;
+    const willPlay =
+      this.enabled &&
+      ctx !== null &&
+      this.masterGain !== null &&
+      this.config.navigationSounds &&
+      nowMs - this.lastNavigationNoteMs >= NAVIGATION_TUNING.minIntervalMs;
+
     this.emitNotice({
       kind: "navigation",
       trailIndex: event.trailIndex,
       x: event.x,
+      played: willPlay,
     });
+
+    if (!willPlay || !ctx) return;
+    this.lastNavigationNoteMs = nowMs;
+
     const {
       registerMultiplier,
       detuneCents,
@@ -3820,6 +4045,46 @@ export class SoundEngine {
           FLOURISH_TUNING.resolveDecaySeconds,
         );
         return;
+      case "soloistArpeggio": {
+        // The whole roll rather than one note of it: an arpeggio is a shape,
+        // and a single plucked chord tone says nothing about it.
+        const tones = chordTones(this.flourishPalette());
+        const start = Math.floor(tones.length * ARPEGGIO_TUNING.startFraction);
+        for (let step = 0; step < Math.min(5, tones.length); step++) {
+          this.triggerFlourishNote(
+            tones[(start + step) % tones.length],
+            centre,
+            FLOURISH_TUNING.noteGain,
+            ARPEGGIO_TUNING.decaySeconds,
+            {
+              delaySeconds: step * 0.12,
+              attackSeconds: ARPEGGIO_TUNING.attackSeconds,
+              partialGain: ARPEGGIO_TUNING.partialGain,
+            },
+          );
+        }
+        return;
+      }
+      case "soloistDescant": {
+        // The descant has no note of its own to play, so the audition stands
+        // one chord tone against the same tone lifted an octave: the interval
+        // the promotion opens, heard without needing a scene to promote in.
+        const tones = chordTones(this.flourishPalette());
+        if (tones.length === 0) return;
+        const base = tones[0];
+        const lifted = descantLift(base);
+        this.triggerFlourishNote(base, centre, FLOURISH_TUNING.noteGain, 2, {
+          attackSeconds: DESCANT_TUNING.swellSeconds,
+        });
+        this.triggerFlourishNote(
+          lifted,
+          centre,
+          FLOURISH_TUNING.noteGain * DESCANT_TUNING.gain,
+          2,
+          { delaySeconds: 0.9, attackSeconds: DESCANT_TUNING.swellSeconds },
+        );
+        return;
+      }
       // Mid-canvas, at the closest distance the detector accepts, so each
       // audition is the loudest version of what a crossing actually sounds.
       // The variant is forced rather than read from scene energy: the point of
@@ -4976,6 +5241,9 @@ export class SoundEngine {
   ): void {
     const state = this.flourish;
     if (!state) return;
+    // The descant is the sustained voice itself lifting, so it has no discrete
+    // notes to advance. Its treatment rides on the voice loop instead.
+    if (this.config.soloistVoice === "descant") return;
 
     state.distanceSinceNote += distance;
 
@@ -4989,6 +5257,11 @@ export class SoundEngine {
 
     state.distanceSinceNote = 0;
     state.lastNoteTimeMs = elapsedMs;
+
+    if (this.config.soloistVoice === "arpeggio") {
+      this.triggerArpeggioNote(state, frame, velocity);
+      return;
+    }
 
     const palette = this.flourishPalette();
     // Walking the palette rather than re-deriving from direction keeps the run
@@ -5028,6 +5301,46 @@ export class SoundEngine {
       frame.x,
       FLOURISH_TUNING.noteGain,
       decay,
+    );
+  }
+
+  /**
+   * One note of an ascending roll through the chord's own tones.
+   *
+   * The pitch is a chord tone and nothing else: no register multiplier is
+   * applied on top, because the ladder already spans the palette's octaves and
+   * multiplying it would carry the roll off the chord and over the ceiling.
+   * Velocity only opens the roll's step, so a faster sweep climbs the chord
+   * faster rather than climbing out of it.
+   */
+  private triggerArpeggioNote(
+    state: FlourishState,
+    frame: TrailSoundFrame,
+    velocity: number,
+  ): void {
+    const tones = chordTones(this.flourishPalette());
+    if (tones.length === 0) return;
+
+    const start = Math.floor(tones.length * ARPEGGIO_TUNING.startFraction);
+    // A faster soloist takes bigger steps up the ladder, so the roll opens out
+    // rather than merely repeating faster.
+    const stride =
+      1 +
+      Math.round(
+        Math.min(1, velocity / FLOURISH_TUNING.registerFullVelocity) * 1,
+      );
+    const pitch = tones[(start + state.paletteStep * stride) % tones.length];
+    state.paletteStep++;
+
+    this.triggerFlourishNote(
+      pitch,
+      frame.x,
+      FLOURISH_TUNING.noteGain,
+      ARPEGGIO_TUNING.decaySeconds,
+      {
+        attackSeconds: ARPEGGIO_TUNING.attackSeconds,
+        partialGain: ARPEGGIO_TUNING.partialGain,
+      },
     );
   }
 

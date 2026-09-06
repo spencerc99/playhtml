@@ -228,6 +228,7 @@ function trailState(): TrailState {
   return {
     trail: {
       id: "participant|https://example.com",
+      pid: "participant",
       points: [
         { x: 0, y: 0, ts: 0 },
         { x: 100, y: 100, ts: 1000 },

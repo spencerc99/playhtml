@@ -337,6 +337,7 @@ export function useCursorTrails(
               // so two segments of the same group don't collide. (Live mode uses
               // singleSegmentPerGroup and a bare groupKey for a stable id.)
               id: `${groupKey}|${startTime}`,
+              pid,
               startTime,
               endTime,
               clicks: [...currentClicks],
@@ -397,6 +398,7 @@ export function useCursorTrails(
           id: settings.singleSegmentPerGroup
             ? buildLiveTrailId(groupKey, startTime)
             : groupKey,
+          pid,
           startTime,
           endTime,
           clicks: [...currentClicks],

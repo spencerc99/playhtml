@@ -49,15 +49,21 @@ export interface NavigationSoundEvent {
 }
 
 /**
- * A sound the engine has just committed to playing, reported to whoever is
- * drawing the scene.
+ * An event the engine has just handled, reported to whoever is drawing the
+ * scene, along with whether it actually made a sound.
  *
- * A visual that stands for a sound has to be fired by the sound, not alongside
- * it: the engine drops arrivals for its per-trail debounce and its global rate
- * cap, and drops navigations inside their minimum interval, so anything
- * deciding on its own when to draw would show gestures for notes that never
- * sounded. Every notice here is emitted at the point the notes are actually
- * scheduled.
+ * A notice is emitted for the event, not for the note. The two are separate
+ * because the toggles are separate: a sound toggle decides whether audio
+ * plays, a visual toggle decides whether a gesture is drawn, and neither
+ * should silently gate the other. Emitting only when a note sounded is what
+ * made the navigation visual invisible whenever navigation audio was off.
+ *
+ * `played` says whether audio actually resulted — the engine drops arrivals
+ * for its per-trail debounce and its global rate cap, and drops navigations
+ * inside their minimum interval. A visual that stands for a note rather than
+ * for the event (the gathering, which is paced by the chime's own notes)
+ * should draw only when this is true; one that stands for the event (the
+ * navigation knot) draws either way.
  */
 export type SoundNotice =
   | {
@@ -67,9 +73,12 @@ export type SoundNotice =
       rising: boolean;
       /**
        * When each note of the chime lands, in seconds from the moment the
-       * figure was triggered. One entry per note, in order.
+       * figure was triggered. One entry per note, in order. Empty when no
+       * chime sounded.
        */
       noteOffsetsSeconds: number[];
+      /** Whether the chime actually sounded. */
+      played: boolean;
     }
   | {
       kind: "navigation";
@@ -77,6 +86,8 @@ export type SoundNotice =
       trailIndex?: number;
       /** Canvas x the note was panned to. */
       x?: number;
+      /** Whether the gong actually sounded. */
+      played: boolean;
     };
 
 /** Receives every sound the engine commits to. */
@@ -167,6 +178,9 @@ export type AuditionAccent =
   | "navigation"
   | "soloistFlourish"
   | "soloistResolve"
+  /** The two alternative soloist voices, each heard as the shape it makes. */
+  | "soloistArpeggio"
+  | "soloistDescant"
   /** The consonant dyad two trails sound when their paths merge. */
   | "crossingMerge"
   /**

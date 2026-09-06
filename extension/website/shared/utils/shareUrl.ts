@@ -3,6 +3,7 @@
 
 import { DEFAULT_ACTIVE_VISUALIZATIONS } from "../components/registry";
 import { serializeSpec, SETTINGS_BLOB_PARAM } from "./settingsSpec";
+import { SOUND_DEV_PARAM } from "../sound/soundDevFlag";
 
 /** Two arrays are "equal" for sharing purposes if they hold the same ids
  * regardless of order. Defaults are sorted, so we sort both before
@@ -102,6 +103,10 @@ export function buildShareUrl({
       "cinemaStartZoom",
       "role",
       "follower",
+      // The sound-dev flag is not settings-shaped either, and dropping it on
+      // the first URL rewrite would take the panel away a second after it
+      // appeared and again on every reload.
+      SOUND_DEV_PARAM,
     ];
     for (const key of PRESERVE) {
       const val = current.get(key);

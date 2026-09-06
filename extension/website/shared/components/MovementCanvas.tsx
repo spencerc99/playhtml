@@ -14,6 +14,13 @@ import { AnimatedTrails } from "./AnimatedTrails";
 import { LiveTrails } from "./LiveTrails";
 import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
+import {
+  isSoundDevEnabled,
+  SoundDevPanel,
+} from "../sound/SoundDevPanel";
+import { useSoundArrangement } from "../sound/useSoundArrangement";
+import { SoundVisuals } from "../sound/soundVisuals";
+import { TrailPositions } from "./trailPositions";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
@@ -95,11 +102,32 @@ export const NavigationSoundDriver: React.FC<{
   animationSpeed: number;
   soundEngine: SoundEngine | null;
   active: boolean;
-}> = ({ schedule, durationMs, animationSpeed, soundEngine, active }) => {
+  /**
+   * Which trail belongs to the person a scheduled hop names, and where that
+   * trail currently is. The schedule knows who navigated but nothing about the
+   * canvas, so without this the accent sounds centred and anything drawing for
+   * it has no trail to anchor to.
+   */
+  locateParticipant?: (
+    pid: string,
+  ) => { trailIndex: number; x: number } | null;
+}> = ({
+  schedule,
+  durationMs,
+  animationSpeed,
+  soundEngine,
+  active,
+  locateParticipant,
+}) => {
   const speedRef = useRef(animationSpeed);
   useEffect(() => {
     speedRef.current = animationSpeed;
   }, [animationSpeed]);
+
+  const locateRef = useRef(locateParticipant);
+  useEffect(() => {
+    locateRef.current = locateParticipant;
+  }, [locateParticipant]);
 
   useEffect(() => {
     if (!active || !soundEngine || durationMs <= 0 || schedule.length === 0)
@@ -120,10 +148,13 @@ export const NavigationSoundDriver: React.FC<{
         looped,
         durationMs,
       );
-      for (const _nav of crossed) {
+      for (const nav of crossed) {
         // The engine's own rate limiter decides whether a dense run of hops
         // reads as one structural event or several.
-        soundEngine.triggerNavigation({});
+        const at = locateRef.current?.(nav.pid) ?? null;
+        soundEngine.triggerNavigation(
+          at === null ? {} : { trailIndex: at.trailIndex, x: at.x },
+        );
       }
       prevLooped = looped;
       raf = requestAnimationFrame(tick);
@@ -514,6 +545,44 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
   const [soundEnabled, setSoundEnabled] = useState(defaultSoundEnabled);
   const soundEngineRef = useRef<SoundEngine | null>(null);
+  /**
+   * Whether this load asked for the sound dev surfaces. Read once: the flag
+   * lives in the URL, and changing it is a navigation.
+   */
+  const [soundDev] = useState(isSoundDevEnabled);
+  const arrangement = useSoundArrangement(soundEngineRef, soundDev);
+  const applyArrangement = arrangement.applyTo;
+
+  /**
+   * Where each trail's head is this frame, and the gestures the engine has
+   * asked for. Both exist only in sound-dev mode: a page without the flag
+   * neither publishes positions nor draws a gesture.
+   */
+  const trailPositions = useMemo(
+    () => (soundDev ? new TrailPositions() : null),
+    [soundDev],
+  );
+  const soundVisuals = useMemo(
+    () => (soundDev ? new SoundVisuals() : null),
+    [soundDev],
+  );
+
+  useEffect(() => {
+    soundVisuals?.setConfig(arrangement.visuals);
+  }, [soundVisuals, arrangement.visuals]);
+
+  /**
+   * Which trail a scheduled navigation belongs to. The schedule names the
+   * person who hopped; this is how that becomes a trail on the canvas, so the
+   * gong pans to where they are and the knot lands on their line.
+   */
+  const locateParticipant = useCallback(
+    (pid: string) => {
+      const at = trailPositions?.forParticipant(pid);
+      return at ? { trailIndex: at.trailIndex, x: at.x } : null;
+    },
+    [trailPositions],
+  );
   // The engine is created inside an async init().then(), so we mirror it into
   // state once ready — refs alone don't trigger re-renders, which means
   // children would never receive the engine as a prop.
@@ -604,6 +673,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             bassPedal: settings.soundBassPedal,
           });
           soundEngineRef.current = engine;
+          // The dev panel's arrangement supersedes the page's settings, so it
+          // lands last — on a page without the panel this does nothing.
+          applyArrangement(engine);
           setSoundEngineReady(engine);
         });
       }
@@ -625,8 +697,24 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     soundEngineRef.current?.setCanvasWidth(viewportSize.width);
   }, [viewportSize.width]);
 
-  // Sync sound config settings to the engine
+  // Every gesture is fired by the engine's own report of the event it stands
+  // for, so a trail's mark lands where that trail is rather than where a view
+  // guessed it would be.
   useEffect(() => {
+    if (!soundEngineReady || !soundVisuals || !trailPositions) return;
+    soundEngineReady.setSoundNoticeListener((notice) =>
+      soundVisuals.handleNotice(notice, (trailIndex) =>
+        trailPositions.get(trailIndex),
+      ),
+    );
+    return () => soundEngineReady.setSoundNoticeListener(null);
+  }, [soundEngineReady, soundVisuals, trailPositions]);
+
+  // Sync sound config settings to the engine. While the dev panel is mounted
+  // its arrangement is what the engine runs, so the page's own sound settings
+  // stand down rather than fighting it for the same fields.
+  useEffect(() => {
+    if (soundDev) return;
     soundEngineRef.current?.setConfig({
       mode: settings.soundMode,
       chordVoicing: settings.soundChordVoicing,
@@ -654,7 +742,29 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     settings.soundTrailArrivals,
     settings.soundNavigationSounds,
     settings.soundBassPedal,
+    soundDev,
   ]);
+
+  /**
+   * Hand the dev panel the running engine, starting sound if it is off. The
+   * panel's audition and mixer commands need a graph, and pressing one of them
+   * is itself the user gesture the autoplay policy asks for.
+   */
+  const getSoundEngine = useCallback(async () => {
+    const existing = soundEngineRef.current;
+    if (existing) {
+      await existing.resume();
+      return existing;
+    }
+    setSoundEnabled(true);
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(window.innerWidth);
+    applyArrangement(engine);
+    soundEngineRef.current = engine;
+    setSoundEngineReady(engine);
+    return engine;
+  }, [applyArrangement]);
 
   // Derive which visualization categories are active
   const vizSet = useMemo(
@@ -1434,6 +1544,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   return (
     <DebugHoverProvider enabled={!!settings.debugMode}>
     <div className="internet-movement">
+      {soundDev && !printMode && (
+        <SoundDevPanel
+          arrangement={arrangement}
+          getEngine={getSoundEngine}
+          engine={soundEngineReady}
+        />
+      )}
+
       <Controls
         visible={controlsVisible}
         settings={settings}
@@ -1716,6 +1834,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               showClickRipples={!showClicks}
               windowSize={settings.maxConcurrentTrails * 2}
               soundEngine={paused || !soundEnabled ? null : soundEngineReady}
+              trailPositions={trailPositions}
+              soundVisuals={soundVisuals}
+              visualConfig={soundDev ? arrangement.visuals : null}
               settings={trailAnimationSettings}
               frozen={paused}
               cinematic={cinematicConfig}
@@ -1735,6 +1856,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             animationSpeed={settings.animationSpeed}
             soundEngine={soundEnabled ? soundEngineReady : null}
             active={showTrails}
+            locateParticipant={locateParticipant}
           />
         )}
 

@@ -2672,11 +2672,15 @@ describe("SoundEngine cursor instruments", () => {
 
 describe("sound notices", () => {
   /**
-   * A visual standing for a sound has to be fired by that sound. The engine
-   * drops arrivals for a per-trail debounce and a global rate cap, and drops
-   * navigations inside their minimum interval; anything drawing on its own
-   * schedule would show gestures for notes that never played. These pin the
-   * notice to the note.
+   * A visual standing for an event has to be fired by that event, reported by
+   * the engine: only the engine knows which arrivals and navigations it
+   * actually counted, so anything drawing on its own schedule would show
+   * gestures for events the engine never registered.
+   *
+   * The notice is for the event, not for the note. The sound toggles gate
+   * audio and the visual toggles gate drawing, and neither gates the other —
+   * so a page change is still reported with the gong switched off, carrying
+   * `played: false`. These pin that separation down.
    */
 
   it("reports an arrival with the schedule of the chime that sounded", async () => {
@@ -2728,7 +2732,7 @@ describe("sound notices", () => {
     });
   });
 
-  it("reports nothing for an arrival the engine dropped", async () => {
+  it("reports an arrival the rate cap silenced, marked as unplayed", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(1000);
@@ -2737,10 +2741,19 @@ describe("sound notices", () => {
     const notices: SoundNotice[] = [];
     engine.setSoundNoticeListener((notice) => notices.push(notice));
 
-    // Thirty trails on one frame, as on a day swap. Only what the global
-    // per-second budget lets through sounds, so only that much is reported.
+    // Thirty trails on one frame, as on a day swap. All thirty arrived; only
+    // what the global per-second budget lets through is heard.
     engine.tick(0, Array.from({ length: 30 }, (_, i) => soloFrame(i, i * 10, 10)));
-    expect(notices).toHaveLength(2);
+    expect(notices).toHaveLength(30);
+    expect(notices.filter((n) => n.kind === "arrival" && n.played)).toHaveLength(
+      2,
+    );
+    for (const notice of notices) {
+      if (notice.kind !== "arrival") throw new Error("expected arrivals");
+      // A silenced arrival carries no note schedule, because there were no
+      // notes: a gesture paced by the chime has nothing to pace itself by.
+      if (!notice.played) expect(notice.noteOffsetsSeconds).toEqual([]);
+    }
 
     // Staying present is not arriving again, so nothing further is reported.
     notices.length = 0;
@@ -2751,7 +2764,7 @@ describe("sound notices", () => {
     expect(notices).toHaveLength(0);
   });
 
-  it("reports nothing at all when arrivals are switched off", async () => {
+  it("still reports arrivals and departures with the chime switched off", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(1000);
@@ -2762,10 +2775,23 @@ describe("sound notices", () => {
 
     engine.tick(0, [soloFrame(7, 10, 10)]);
     engine.retireTrail(7);
-    expect(notices).toHaveLength(0);
+
+    expect(notices).toHaveLength(2);
+    expect(notices[0]).toMatchObject({
+      kind: "arrival",
+      trailIndex: 7,
+      rising: true,
+      played: false,
+    });
+    expect(notices[1]).toMatchObject({
+      kind: "arrival",
+      trailIndex: 7,
+      rising: false,
+      played: false,
+    });
   });
 
-  it("reports each navigation gong that sounds, and no dropped one", async () => {
+  it("reports every navigation, saying which of them sounded", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(1000);
@@ -2776,20 +2802,24 @@ describe("sound notices", () => {
 
     engine.tick(0, []);
     engine.triggerNavigation({ x: 500, trailIndex: 4 });
-    expect(notices).toEqual([{ kind: "navigation", trailIndex: 4, x: 500 }]);
+    expect(notices).toEqual([
+      { kind: "navigation", trailIndex: 4, x: 500, played: true },
+    ]);
 
-    // Inside the rate limit the note is dropped, so its gesture is too.
+    // Inside the rate limit no note sounds, but the page change still happened.
     context.currentTime += 0.5;
     engine.triggerNavigation({ x: 500, trailIndex: 4 });
-    expect(notices).toHaveLength(1);
+    expect(notices).toHaveLength(2);
+    expect(notices[1]).toMatchObject({ kind: "navigation", played: false });
 
-    // Past the limit it sounds again, and reports again.
+    // Past the limit it sounds again.
     context.currentTime += 2;
     engine.triggerNavigation({ x: 600, trailIndex: 4 });
-    expect(notices).toHaveLength(2);
+    expect(notices).toHaveLength(3);
+    expect(notices[2]).toMatchObject({ kind: "navigation", played: true });
   });
 
-  it("reports no navigation when the gong is switched off", async () => {
+  it("reports a navigation with the gong switched off, so its visual still draws", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(1000);
@@ -2799,7 +2829,32 @@ describe("sound notices", () => {
     engine.setSoundNoticeListener((notice) => notices.push(notice));
 
     engine.triggerNavigation({ x: 500, trailIndex: 4 });
-    expect(notices).toHaveLength(0);
+
+    // The bug this pins: the notice used to sit behind the audio toggle, so
+    // switching the gong off silently switched the knot off with it.
+    expect(notices).toEqual([
+      { kind: "navigation", trailIndex: 4, x: 500, played: false },
+    ]);
+  });
+
+  it("carries the trail a navigation names, so a gesture can anchor to it", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ navigationSounds: true });
+
+    const notices: SoundNotice[] = [];
+    engine.setSoundNoticeListener((notice) => notices.push(notice));
+
+    // The live path used to call this with an empty event, so every notice
+    // arrived with no trail and every navigation gesture was dropped.
+    engine.triggerNavigation({ x: 250, trailIndex: 11 });
+
+    expect(notices[0]).toMatchObject({
+      kind: "navigation",
+      trailIndex: 11,
+      x: 250,
+    });
   });
 
   it("keeps sounding when a listener throws", async () => {
