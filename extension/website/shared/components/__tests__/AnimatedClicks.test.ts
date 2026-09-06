@@ -19,26 +19,45 @@ function makeEffect(sourceId: string, startTime: number): VisibleClickEffect {
     durationFactor: 0.5,
     startTime,
     trailIndex: 0,
+    completed: true,
   };
 }
 
 describe("AnimatedClicks residue", () => {
-  it("fades older residue while keeping recent clicks at full opacity", () => {
-    expect(getClickResidueOpacity(0, 100)).toBeCloseTo(0.03);
-    expect(getClickResidueOpacity(49, 100)).toBeGreaterThan(0.03);
-    expect(getClickResidueOpacity(75, 100)).toBe(1);
-    expect(getClickResidueOpacity(99, 100)).toBe(1);
+  it("keeps active ripples fully opaque", () => {
+    expect(getClickResidueOpacity(0, MAX_VISIBLE_CLICK_EFFECTS, false)).toBe(1);
+  });
+
+  it("settles sparse completed ripples to half opacity", () => {
+    expect(getClickResidueOpacity(0, 100, true)).toBe(0.5);
+    expect(getClickResidueOpacity(0, 1000, true)).toBe(0.5);
+    expect(getClickResidueOpacity(3000, MAX_VISIBLE_CLICK_EFFECTS, true)).toBe(
+      0.5,
+    );
+  });
+
+  it("fades retained completed ripples toward transparency near the cap", () => {
+    expect(
+      getClickResidueOpacity(0, MAX_VISIBLE_CLICK_EFFECTS, true),
+    ).toBeCloseTo(0.03);
+    expect(
+      getClickResidueOpacity(1500, MAX_VISIBLE_CLICK_EFFECTS, true),
+    ).toBeGreaterThan(0.03);
+    expect(
+      getClickResidueOpacity(1500, MAX_VISIBLE_CLICK_EFFECTS, true),
+    ).toBeLessThan(0.5);
   });
 
   it("keeps substantially more completed ripples before eviction", () => {
     expect(MAX_VISIBLE_CLICK_EFFECTS).toBeGreaterThanOrEqual(4000);
   });
 
-  it("replaces a replayed click without clearing unrelated marks", () => {
+  it("retains earlier generations when a click is replayed", () => {
     const current = [makeEffect("click-a", 1), makeEffect("click-b", 1)];
     const next = mergeClickEffects(current, [makeEffect("click-a", 2)]);
 
     expect(next.map((effect) => effect.id)).toEqual([
+      "click-a-1",
       "click-b-1",
       "click-a-2",
     ]);

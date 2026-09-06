@@ -21,37 +21,47 @@ export interface ScheduledClick {
 
 export const MAX_VISIBLE_CLICK_EFFECTS = 4000;
 
-const FULL_OPACITY_RESIDUE_FRACTION = 0.25;
+const RECENT_COMPLETED_CLICK_EFFECTS = 1000;
+const COMPLETED_RESIDUE_OPACITY = 0.5;
 const MINIMUM_RESIDUE_OPACITY = 0.03;
 
-export function getClickResidueOpacity(index: number, total: number): number {
-  if (total <= 1) return 1;
+export function getClickResidueOpacity(
+  index: number,
+  total: number,
+  completed: boolean,
+): number {
+  if (!completed) return 1;
 
-  const fadedCount = Math.floor(
-    total * (1 - FULL_OPACITY_RESIDUE_FRACTION),
+  const distanceFromNewest = total - index - 1;
+  if (distanceFromNewest < RECENT_COMPLETED_CLICK_EFFECTS) {
+    return COMPLETED_RESIDUE_OPACITY;
+  }
+
+  const fadedCapacity =
+    MAX_VISIBLE_CLICK_EFFECTS - RECENT_COMPLETED_CLICK_EFFECTS;
+  const fadeProgress = Math.min(
+    1,
+    (distanceFromNewest - RECENT_COMPLETED_CLICK_EFFECTS) /
+      Math.max(1, fadedCapacity - 1),
   );
-  if (index >= fadedCount) return 1;
-
-  const fadeProgress = index / Math.max(1, fadedCount);
   return (
-    MINIMUM_RESIDUE_OPACITY +
-    (1 - MINIMUM_RESIDUE_OPACITY) * fadeProgress * fadeProgress
+    COMPLETED_RESIDUE_OPACITY -
+    (COMPLETED_RESIDUE_OPACITY - MINIMUM_RESIDUE_OPACITY) *
+      fadeProgress *
+      fadeProgress
   );
 }
 
 export type VisibleClickEffect = ClickEffect & {
   sourceId: string;
+  completed: boolean;
 };
 
 export function mergeClickEffects(
   current: VisibleClickEffect[],
   incoming: VisibleClickEffect[],
 ): VisibleClickEffect[] {
-  const incomingSourceIds = new Set(incoming.map((effect) => effect.sourceId));
-  return [
-    ...current.filter((effect) => !incomingSourceIds.has(effect.sourceId)),
-    ...incoming,
-  ].slice(-MAX_VISIBLE_CLICK_EFFECTS);
+  return [...current, ...incoming].slice(-MAX_VISIBLE_CLICK_EFFECTS);
 }
 
 interface AnimatedClicksProps {
@@ -91,6 +101,11 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       if (currentCycleEffectIdsRef.current.has(id)) {
         completedCycleEffectIdsRef.current.add(id);
       }
+      setActiveClickEffects((effects) =>
+        effects.map((effect) =>
+          effect.id === id ? { ...effect, completed: true } : effect,
+        ),
+      );
     }, []);
 
     // Microtask-batched commits so multiple per-frame spawns don't each cause
@@ -188,6 +203,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
               startTime: Date.now(),
               trailIndex: 0,
               holdDuration: sc.holdDuration,
+              completed: false,
             });
           }
         }
@@ -262,8 +278,9 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
             opacity={getClickResidueOpacity(
               index,
               activeClickEffects.length,
+              effect.completed,
             )}
-            style={{ transition: "opacity 200ms linear" }}
+            style={{ transition: "opacity 3000ms ease-out" }}
           >
             <RippleEffect
               effect={effect}
