@@ -84,9 +84,10 @@ export function buildInstallationScreens(
   return screens;
 }
 
-/** Build the independent cross-computer URLs for the hybrid live installation.
- * Participant ownership is encoded by numeric slot, so every follower can
- * reconstruct the same disjoint assignment without a shared browser channel. */
+/** Build the independent cross-computer URLs for the live installation.
+ * The set includes four dedicated event views, a cursor field, and one cursor
+ * follower per slot. Participant ownership is encoded by numeric slot, so every
+ * follower can reconstruct the same disjoint assignment without coordination. */
 export function buildLiveInstallationScreens(
   origin: string,
   followerCount: number = 4,
@@ -95,12 +96,12 @@ export function buildLiveInstallationScreens(
     throw new Error("Installation follower count must be finite");
   }
   const count = Math.min(32, Math.max(1, Math.floor(followerCount)));
-  const base = new URL("/installation/live/", origin);
-  base.searchParams.set("clean", "2");
-  base.searchParams.set("slots", String(count));
-
-  const withParams = (params: Record<string, string>): string => {
-    const url = new URL(base.toString());
+  const withParams = (
+    pathname: string,
+    params: Record<string, string> = {},
+  ): string => {
+    const url = new URL(pathname, origin);
+    url.searchParams.set("clean", "2");
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value);
     }
@@ -109,20 +110,58 @@ export function buildLiveInstallationScreens(
 
   const screens: InstallationScreen[] = [
     {
-      label: "field",
+      label: "scrolling",
       role: "master",
-      url: withParams({ view: "field" }),
+      url: withParams("/installation/live/", {
+        viz: "scrolling",
+        view: "field",
+        slots: String(count),
+      }),
+    },
+    {
+      label: "keypresses",
+      role: "master",
+      url: withParams("/installation/live/", {
+        viz: "typing",
+        view: "field",
+        slots: String(count),
+      }),
+    },
+    {
+      label: "touches",
+      role: "master",
+      url: withParams("/touches/"),
+    },
+    {
+      label: "clicks",
+      role: "master",
+      url: withParams("/installation/live/", {
+        viz: "clicks",
+        view: "field",
+        slots: String(count),
+      }),
+    },
+    {
+      label: "cursor field",
+      role: "master",
+      url: withParams("/installation/live/", {
+        viz: "trails",
+        view: "field",
+        slots: String(count),
+      }),
     },
   ];
 
   for (let slot = 0; slot < count; slot++) {
     screens.push({
-      label: `follower ${slot + 1}`,
+      label: `cursor follower ${slot + 1}`,
       role: "follower",
       followerId: String(slot),
-      url: withParams({
+      url: withParams("/installation/live/", {
+        viz: "trails",
         view: "follow",
         slot: String(slot),
+        slots: String(count),
         cinematic: "follow",
       }),
     });

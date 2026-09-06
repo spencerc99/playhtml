@@ -44,8 +44,9 @@ const LiveInstallationSetup = () => {
         live installation setup
       </h1>
       <p style={{ maxWidth: 620, color: "#726b64", lineHeight: 1.5 }}>
-        Open the field on the main screen and one numbered follower on each close-up
-        screen. Each follower owns a different set of people automatically.
+        Open one link on each display: four event views, the cursor field, and
+        one cursor follower per close-up screen. Each follower owns a different
+        set of people automatically.
       </p>
 
       <div
@@ -60,7 +61,7 @@ const LiveInstallationSetup = () => {
           letterSpacing: "0.05em",
         }}
       >
-        <span>Follower screens</span>
+        <span>Cursor follower screens</span>
         <button
           type="button"
           style={buttonStyle}

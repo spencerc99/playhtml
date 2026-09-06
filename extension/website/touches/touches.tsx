@@ -8,6 +8,7 @@ import {
 } from "../shared/hooks/useCursorTrails";
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { useChromeToggle } from "../shared/hooks/useChromeToggle";
+import { useDailyPageReload } from "../shared/hooks/useDailyPageReload";
 import { detectTouches, buildCoPresenceTimeline } from "./detect";
 import { createTouchesSketch, MarkStyle, SketchSettings } from "./sketch";
 import { createTouchesSketchGlsl } from "./sketchGlsl";
@@ -83,6 +84,7 @@ const styles = {
 };
 
 const CursorTouches = () => {
+  useDailyPageReload();
   const chromeHidden = useChromeToggle(true);
   const { events, loading, deepening, error } = useCursorEventPool(
     "",

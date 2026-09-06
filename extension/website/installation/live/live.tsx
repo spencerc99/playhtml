@@ -12,6 +12,7 @@ import {
   parseVizFromUrl,
 } from "../../shared/config";
 import { useHybridInstallationEvents } from "../../shared/hooks/useHybridInstallationEvents";
+import { useDailyPageReload } from "../../shared/hooks/useDailyPageReload";
 import { summarizeActiveLocations } from "../../shared/utils/eventUtils";
 import {
   LIVE_INSTALLATION_VISUALIZATIONS,
@@ -34,6 +35,7 @@ const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
 };
 
 const LiveInstallation = () => {
+  useDailyPageReload();
   const screen = useMemo(() => parseLiveInstallationScreen(), []);
   const selectedDay = parseDayFromUrl() ?? null;
   const timeOfDay = parseTimeOfDayFromUrl() ?? null;
