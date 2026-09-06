@@ -42,7 +42,7 @@ export function getRippleLifecycle(
     rippleSettings.clickRingDelayMs;
   const completedAt =
     effect.startTime +
-    Math.min(effectTotalDuration, outerRingStartDelay + expansionDuration);
+    Math.max(effectTotalDuration, outerRingStartDelay + expansionDuration);
 
   return {
     holdMultiplier,
