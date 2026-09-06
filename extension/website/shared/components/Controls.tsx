@@ -47,6 +47,7 @@ interface ControlsProps {
   timeRange: { min: number; max: number; duration: number };
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
+  availableVisualizations?: readonly string[];
   /** When non-null, the canvas is scoped to this absolute-time window. */
   selectedTimeRange?: { startMs: number; endMs: number } | null;
   /** Set/clear the canvas time-range filter from the Hotspots panel. */
@@ -724,6 +725,7 @@ export const Controls: React.FC<ControlsProps> = memo(
     timeRange,
     activeVisualizations,
     onSetActiveVisualizations,
+    availableVisualizations,
     selectedTimeRange,
     onSelectTimeRange,
   }) => {
@@ -934,7 +936,11 @@ export const Controls: React.FC<ControlsProps> = memo(
                 marginTop: "4px",
               }}
             >
-              {VISUALIZATIONS.map((viz) => {
+              {VISUALIZATIONS.filter(
+                (viz) =>
+                  availableVisualizations === undefined ||
+                  availableVisualizations.includes(viz.id),
+              ).map((viz) => {
                 const isActive = activeVisualizations.includes(viz.id);
                 return (
                   <React.Fragment key={viz.id}>

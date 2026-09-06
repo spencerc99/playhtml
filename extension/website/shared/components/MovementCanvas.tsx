@@ -56,7 +56,7 @@ import {
   type TimeOfDayFilter,
 } from "../config";
 import type { DayCounts } from "../types";
-import { DEFAULT_SETTINGS } from "./settingsDefaults";
+import { DEFAULT_SETTINGS, type MovementSettings } from "./settingsDefaults";
 import {
   DEFAULT_CINEMATIC_CONFIG,
   type CinematicConfig,
@@ -298,16 +298,17 @@ function playShutterSound() {
 // only persist when the user explicitly modifies a control.
 const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
 
-type MovementSettings = typeof DEFAULT_SETTINGS;
-
 const loadSettings = (
   defaultSettings: Partial<MovementSettings> = {},
+  useStoredSettings = true,
 ): MovementSettings => {
   const defaults = { ...DEFAULT_SETTINGS, ...defaultSettings };
   const urlOverrides = parseSettingsFromUrl();
 
   try {
-    const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const stored = useStoredSettings
+      ? localStorage.getItem(SETTINGS_STORAGE_KEY)
+      : null;
     if (stored) {
       const parsed = JSON.parse(stored);
       return {
@@ -350,11 +351,23 @@ interface MovementCanvasProps {
   onSetFilters?: (filters: FilterChip[]) => void;
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
+  /** Route-specific visualization ids shown in the developer controls. */
+  availableVisualizations?: readonly string[];
   /** Initial sound-on state. The AudioContext will still start suspended
    * until the user's first gesture (browser autoplay policy). */
   defaultSoundEnabled?: boolean;
   /** Route-specific defaults applied before stored settings and URL overrides. */
   defaultSettings?: Partial<MovementSettings>;
+  /** Whether this route should use personal defaults saved in this browser. */
+  useStoredSettings?: boolean;
+  /** Whether settings changes should be mirrored into the current URL. */
+  syncSettingsToUrl?: boolean;
+  /** Named-installation defaults; explicit URL parameters still take precedence. */
+  defaultCinematic?: CinematicConfig | null;
+  installationRole?: "master" | "follower" | null;
+  installationFollowerId?: string | null;
+  /** Route-enforced presentation floor. URL clean levels can still raise it. */
+  minimumCleanLevel?: 0 | 1 | 2;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
@@ -365,6 +378,8 @@ interface MovementCanvasProps {
   getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   /** Restarts finite archive playback when the parent swaps event batches. */
   playbackKey?: string;
+  /** Labels the developer-console playhead for hybrid archive/live playback. */
+  playbackSource?: "archive" | "live";
   /** Identifies playback batches that belong to the same archive query. */
   playbackContextKey?: string;
   /** Called when finite archive playback reaches the end of its batch. */
@@ -385,12 +400,20 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   onSetFilters,
   activeVisualizations,
   onSetActiveVisualizations,
+  availableVisualizations,
   defaultSoundEnabled = false,
   defaultSettings,
+  useStoredSettings = true,
+  syncSettingsToUrl = true,
+  defaultCinematic = null,
+  installationRole = null,
+  installationFollowerId = null,
+  minimumCleanLevel = 0,
   live = false,
   connected = false,
   getInstallationElapsedMs,
   playbackKey = "fixed",
+  playbackSource,
   playbackContextKey = playbackKey,
   onPlaybackCycleComplete,
 }) => {
@@ -398,10 +421,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
     [defaultSettings],
   );
-  const [settings, setSettings] = useState(() => loadSettings(defaultSettings));
+  const [settings, setSettings] = useState(() =>
+    loadSettings(defaultSettings, useStoredSettings),
+  );
   const [controlsVisible, setControlsVisible] = useState(false);
   const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
-    parseCinematicFromUrl(),
+    parseCinematicFromUrl(defaultCinematic),
   );
   // Bumped by the N key to ask the cinematic camera to swap subjects now.
   const [cinematicNextSignal, setCinematicNextSignal] = useState(0);
@@ -410,7 +435,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // filters out cursors other followers are riding so no two screens follow the
   // same cursor. Inert (identity-stable lowest-progress selector, no channel)
   // for every other window. Injected into the cinematic config below.
-  const { isFollower, pickSubject } = useFollowerCoordination();
+  const { isFollower, pickSubject } = useFollowerCoordination({
+    role: installationRole,
+    followerId: installationFollowerId,
+  });
 
   // Merge the coordination selector into the cinematic config in FOLLOW mode
   // only. The camera gives `forcedSubjectIndex` (the `?follow=N` escape hatch)
@@ -472,6 +500,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [captureCleanOverride, setCaptureCleanOverride] = useState(false);
   const cleanLevel = Math.max(
     cleanFromUrl,
+    minimumCleanLevel,
     captureCleanOverride ? 1 : 0,
   ) as 0 | 1 | 2;
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
@@ -631,7 +660,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // history entry. `replaceState` is cheap, but skipping calls until input
   // settles keeps the URL bar visually quiet during interaction.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !syncSettingsToUrl) return;
     const timer = window.setTimeout(() => {
       try {
         const next = buildShareUrl({
@@ -652,7 +681,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       }
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [settings, settingsDefaults, activeVisualizations, selectedTimeRange]);
+  }, [
+    settings,
+    settingsDefaults,
+    activeVisualizations,
+    selectedTimeRange,
+    syncSettingsToUrl,
+  ]);
 
   // Keyboard shortcuts:
   //   double-tap D — toggle controls panel
@@ -1139,7 +1174,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     showTyping,
   ]);
 
-  usePlaybackCycle({
+  const getPlaybackElapsedMs = usePlaybackCycle({
     enabled:
       !live &&
       !scrollingControlsPlayback &&
@@ -1342,6 +1377,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         timeRange={timeRange}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={onSetActiveVisualizations}
+        availableVisualizations={availableVisualizations}
         selectedTimeRange={selectedTimeRange}
         onSelectTimeRange={setSelectedTimeRange}
       />
@@ -1354,8 +1390,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           events={events}
           filteredEventCount={filteredEvents.length}
           trailCount={trails.length}
-          cycleDurationMs={timeRange.duration}
+          cycleDurationMs={playbackCycleDuration}
           animationSpeed={settings.animationSpeed}
+          frozen={paused}
+          playbackKey={playbackKey}
+          playbackSource={playbackSource}
+          getPlaybackElapsedMs={getPlaybackElapsedMs}
           leftOffset={controlsVisible ? 340 : 16}
           loading={loading}
           error={error}
@@ -1646,6 +1686,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             typingStates={typingStates}
             timeRange={timeRange}
             settings={typingSettings}
+            repeatAnimations={onPlaybackCycleComplete === undefined}
           />
         )}
 

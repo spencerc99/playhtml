@@ -19,21 +19,35 @@ export interface ScheduledClick {
   holdDuration?: number;
 }
 
-export const MAX_VISIBLE_CLICK_EFFECTS = 2000;
+export const MAX_VISIBLE_CLICK_EFFECTS = 4000;
+
+const MINIMUM_RESIDUE_OPACITY = 0.03;
+
+export function getClickResidueOpacity(
+  index: number,
+  total: number,
+  completed: boolean,
+): number {
+  if (!completed) return 1;
+
+  const distanceFromNewest = total - index - 1;
+  const fadeProgress = Math.min(
+    1,
+    distanceFromNewest / Math.max(1, MAX_VISIBLE_CLICK_EFFECTS - 1),
+  );
+  return 1 - (1 - MINIMUM_RESIDUE_OPACITY) * fadeProgress;
+}
 
 export type VisibleClickEffect = ClickEffect & {
   sourceId: string;
+  completed: boolean;
 };
 
 export function mergeClickEffects(
   current: VisibleClickEffect[],
   incoming: VisibleClickEffect[],
 ): VisibleClickEffect[] {
-  const incomingSourceIds = new Set(incoming.map((effect) => effect.sourceId));
-  return [
-    ...current.filter((effect) => !incomingSourceIds.has(effect.sourceId)),
-    ...incoming,
-  ].slice(-MAX_VISIBLE_CLICK_EFFECTS);
+  return [...current, ...incoming].slice(-MAX_VISIBLE_CLICK_EFFECTS);
 }
 
 interface AnimatedClicksProps {
@@ -73,6 +87,11 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       if (currentCycleEffectIdsRef.current.has(id)) {
         completedCycleEffectIdsRef.current.add(id);
       }
+      setActiveClickEffects((effects) =>
+        effects.map((effect) =>
+          effect.id === id ? { ...effect, completed: true } : effect,
+        ),
+      );
     }, []);
 
     // Microtask-batched commits so multiple per-frame spawns don't each cause
@@ -170,6 +189,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
               startTime: Date.now(),
               trailIndex: 0,
               holdDuration: sc.holdDuration,
+              completed: false,
             });
           }
         }
@@ -238,13 +258,22 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
           pointerEvents: "none",
         }}
       >
-        {activeClickEffects.map((effect) => (
-          <RippleEffect
+        {activeClickEffects.map((effect, index) => (
+          <g
             key={effect.id}
-            effect={effect}
-            settings={rippleSettings}
-            onComplete={handleClickComplete}
-          />
+            opacity={getClickResidueOpacity(
+              index,
+              activeClickEffects.length,
+              effect.completed,
+            )}
+            style={{ transition: "opacity 200ms linear" }}
+          >
+            <RippleEffect
+              effect={effect}
+              settings={rippleSettings}
+              onComplete={handleClickComplete}
+            />
+          </g>
         ))}
       </svg>
     );
