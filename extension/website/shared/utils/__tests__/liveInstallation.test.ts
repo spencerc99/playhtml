@@ -10,6 +10,7 @@ import {
   parseLiveInstallationScreen,
   participantInstallationSlot,
   resolveLiveInstallationVisualizations,
+  showsInstallationPeopleCount,
   unconsumedLiveEvents,
 } from "../liveInstallation";
 
@@ -77,6 +78,26 @@ describe("live installation visualizations", () => {
   it("keeps an explicitly empty or invalid selection empty", () => {
     expect(resolveLiveInstallationVisualizations([])).toEqual([]);
     expect(resolveLiveInstallationVisualizations(["unknown"])).toEqual([]);
+  });
+});
+
+describe("live installation people count", () => {
+  it("shows only on the cursor field", () => {
+    const field = { view: "field", slot: 0, slots: 4 } as const;
+    expect(
+      showsInstallationPeopleCount(field, ["trails"]),
+    ).toBe(true);
+
+    for (const visualization of ["clicks", "typing", "scrolling"]) {
+      expect(showsInstallationPeopleCount(field, [visualization])).toBe(false);
+    }
+
+    expect(
+      showsInstallationPeopleCount(
+        { view: "follow", slot: 0, slots: 4 },
+        ["trails"],
+      ),
+    ).toBe(false);
   });
 });
 

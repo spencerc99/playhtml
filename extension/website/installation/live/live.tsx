@@ -18,6 +18,7 @@ import {
   LIVE_INSTALLATION_VISUALIZATIONS,
   parseLiveInstallationScreen,
   resolveLiveInstallationVisualizations,
+  showsInstallationPeopleCount,
 } from "../../shared/utils/liveInstallation";
 
 const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
@@ -78,7 +79,7 @@ const LiveInstallation = () => {
         playbackContextKey={hybrid.playbackContextKey}
         onPlaybackCycleComplete={hybrid.finishChapter}
       />
-      {screen.view === "field" && (
+      {showsInstallationPeopleCount(screen, activeVisualizations) && (
         <LiveIndicator
           connected={hybrid.connected}
           peopleCount={activity.people}

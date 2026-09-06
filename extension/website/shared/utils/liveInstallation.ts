@@ -95,6 +95,13 @@ export function eventsForInstallationScreen(
   );
 }
 
+export function showsInstallationPeopleCount(
+  screen: LiveInstallationScreenConfig,
+  activeVisualizations: readonly string[],
+): boolean {
+  return screen.view === "field" && activeVisualizations.includes("trails");
+}
+
 export function unconsumedLiveEvents(
   events: CollectionEvent[],
   consumedIds: ReadonlySet<string>,

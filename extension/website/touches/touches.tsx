@@ -9,6 +9,7 @@ import {
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { useChromeToggle } from "../shared/hooks/useChromeToggle";
 import { useDailyPageReload } from "../shared/hooks/useDailyPageReload";
+import { parseCleanFromUrl } from "../shared/config";
 import { detectTouches, buildCoPresenceTimeline } from "./detect";
 import { createTouchesSketch, MarkStyle, SketchSettings } from "./sketch";
 import { createTouchesSketchGlsl } from "./sketchGlsl";
@@ -86,6 +87,7 @@ const styles = {
 const CursorTouches = () => {
   useDailyPageReload();
   const chromeHidden = useChromeToggle(true);
+  const cleanMode = useMemo(() => parseCleanFromUrl() >= 1, []);
   const { events, loading, deepening, error } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,
@@ -230,19 +232,21 @@ const CursorTouches = () => {
         </div>
       )}
       {!chromeHidden && <div style={styles.status}>{statusText}</div>}
-      <div
-        ref={timeReadoutRef}
-        style={{
-          position: "fixed",
-          bottom: 16,
-          left: 20,
-          fontFamily: "'Martian Mono', monospace",
-          fontSize: "10px",
-          color: "#8a8279",
-          zIndex: 10,
-          pointerEvents: "none",
-        }}
-      />
+      {!cleanMode && (
+        <div
+          ref={timeReadoutRef}
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: 20,
+            fontFamily: "'Martian Mono', monospace",
+            fontSize: "10px",
+            color: "#8a8279",
+            zIndex: 10,
+            pointerEvents: "none",
+          }}
+        />
+      )}
 
       {!chromeHidden && (
         <div style={styles.panel}>
