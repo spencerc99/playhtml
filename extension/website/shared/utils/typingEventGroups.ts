@@ -34,7 +34,7 @@ function typingInputId(event: CollectionEvent): string {
     event.meta.pid,
     event.meta.sid,
     event.meta.url || "",
-    data.t || "unknown",
+    data.t || `${data.x}:${data.y}`,
   ]);
 }
 

@@ -15,7 +15,9 @@ function keyboardEvent(
     pid?: string;
     sid?: string;
     url?: string;
-    selector?: string;
+    selector?: string | null;
+    x?: number;
+    y?: number;
     sequence?: TypingAction[] | null;
   } = {},
 ): CollectionEvent {
@@ -25,9 +27,11 @@ function keyboardEvent(
     ts,
     data: {
       event: "type",
-      x: 0.25,
-      y: 0.75,
-      t: options.selector ?? "#message",
+      x: options.x ?? 0.25,
+      y: options.y ?? 0.75,
+      ...(options.selector === null
+        ? {}
+        : { t: options.selector ?? "#message" }),
       sequence:
         options.sequence === undefined
           ? [{ action: "type", text: id, timestamp: 0 }]
@@ -86,6 +90,18 @@ describe("groupTypingEvents", () => {
       "sid",
       "url",
       "selector",
+    ]);
+  });
+
+  it("uses geometry to keep redacted live inputs separate", () => {
+    const groups = groupTypingEvents([
+      keyboardEvent("first", 0, { selector: null, x: 0.1, y: 0.2 }),
+      keyboardEvent("second", 1, { selector: null, x: 0.7, y: 0.8 }),
+    ]);
+
+    expect(groups.map((group) => group.events[0].id)).toEqual([
+      "first",
+      "second",
     ]);
   });
 
