@@ -1233,6 +1233,12 @@ export class SoundEngine {
    */
   private spotlightSmoothedVelocities: Map<number, number> = new Map();
   private spotlightSceneAverage = 0;
+  /**
+   * When the spotlight last ran, so a tick's real length is known. The
+   * promotion thresholds are per-reference-frame, and playback ticks at
+   * anything from 60fps to the 250ms hidden-tab fallback.
+   */
+  private lastSpotlightTickMs: number | null = null;
   /** Per-trail smoothed spotlight gain multiplier, so ramps stay continuous. */
   private spotlightGains: Map<number, number> = new Map();
   /** Flourish bookkeeping for the trail currently soloing. */
@@ -1553,6 +1559,7 @@ export class SoundEngine {
       this.spotlightSmoothedVelocities.clear();
       this.spotlightTrailIndex = null;
       this.spotlightSceneAverage = 0;
+      this.lastSpotlightTickMs = null;
       this.clearFlourish();
     }
 
@@ -3232,10 +3239,23 @@ export class SoundEngine {
         this.spotlightGains.clear();
         this.clearFlourish();
       }
+      this.lastSpotlightTickMs = null;
       return;
     }
 
     const cutoff = elapsedMs - SPOTLIGHT_TUNING.velocityWindowMs;
+
+    // How long this tick covered. The thresholds below are expressed in pixels
+    // per reference frame, so the raw per-tick distance has to be converted to
+    // that unit before it is compared against them — otherwise the same gesture
+    // measures ~15x larger on a 250ms hidden-tab tick than on a 60fps one, and
+    // the promotion floor means a different speed on every page and tab state.
+    const tickIntervalMs =
+      this.lastSpotlightTickMs === null
+        ? REFERENCE_FRAME_DURATION_MS
+        : Math.max(1, Math.min(500, elapsedMs - this.lastSpotlightTickMs));
+    this.lastSpotlightTickMs = elapsedMs;
+    const perFrame = REFERENCE_FRAME_DURATION_MS / tickIntervalMs;
 
     let soloistIndex: number | null = null;
     let soloistVelocity = 0;
@@ -3246,7 +3266,8 @@ export class SoundEngine {
       // is sampled next frame rather than counted as still.
       if (!prev) continue;
       present.add(frame.trailIndex);
-      const velocity = computeVelocity(prev.x, prev.y, frame.x, frame.y);
+      const velocity =
+        computeVelocity(prev.x, prev.y, frame.x, frame.y) * perFrame;
       let samples = this.spotlightVelocitySamples.get(frame.trailIndex);
       if (!samples) {
         samples = [];
@@ -3257,9 +3278,12 @@ export class SoundEngine {
       const previousSmoothed = this.spotlightSmoothedVelocities.get(
         frame.trailIndex,
       );
+      // The smoothing constant is a duration, so the step has to be the tick's
+      // real length. A fixed FRAME_MS makes a slow tick smooth far too gently,
+      // holding the EMA down for seconds after a sweep has already started.
       const rate = Math.min(
         1,
-        FRAME_MS / SPOTLIGHT_TUNING.velocitySmoothingMs,
+        tickIntervalMs / SPOTLIGHT_TUNING.velocitySmoothingMs,
       );
       const smoothed =
         previousSmoothed === undefined
@@ -5779,6 +5803,9 @@ export class SoundEngine {
     this.spotlightSmoothedVelocities.clear();
     this.spotlightTrailIndex = null;
     this.spotlightSceneAverage = 0;
+    // The playback clock rewinds across a loop boundary, so the next tick must
+    // start a fresh interval rather than measure against the end of last pass.
+    this.lastSpotlightTickMs = null;
     this.clearFlourish();
   }
 

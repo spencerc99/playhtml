@@ -3719,3 +3719,118 @@ describe("offline rendering", () => {
     expect(closed).toBe(false);
   });
 });
+
+describe("spotlight promotion across playback clocks", () => {
+  /**
+   * One fast trail sweeping past a crowd of slow ones, played back at a given
+   * tick interval. The gesture is defined in pixels per millisecond, so the
+   * SAME physical motion is described at every cadence — only the sampling
+   * changes, which is exactly what differs between the replay's 60fps rAF and
+   * the archive page's slower ticks.
+   */
+  const sweep = async (tickMs: number) => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    // The promotion floor is 4px per 1/60s frame, i.e. 0.24 px/ms. The sweeper
+    // travels a little over that — a real archive sweep, not a synthetic
+    // sprint, so the test actually exercises the floor rather than clearing it
+    // by an order of magnitude. The crowd drifts at a fifteenth of the speed,
+    // well outside the 2.5x ratio.
+    const fastPxPerMs = 0.3;
+    const slowPxPerMs = 0.02;
+
+    let promoted = false;
+    for (let step = 0; step <= Math.ceil(3000 / tickMs); step++) {
+      const elapsed = step * tickMs;
+      const frames = [
+        soloFrame(0, 100 + fastPxPerMs * elapsed, 300),
+        soloFrame(1, 200 + slowPxPerMs * elapsed, 400),
+        soloFrame(2, 500 + slowPxPerMs * elapsed, 500),
+        soloFrame(3, 700 + slowPxPerMs * elapsed, 600),
+      ];
+      context.currentTime = elapsed / 1000;
+      engine.tick(elapsed, frames);
+      if (engine.getSoloistTrailIndex() === 0) promoted = true;
+    }
+
+    engine.dispose();
+    return promoted;
+  };
+
+  // The replay's cadence, which is where the thresholds were tuned by ear.
+  it("promotes the outlier at 60fps replay cadence", async () => {
+    expect(await sweep(1000 / 60)).toBe(true);
+  });
+
+  // The archive page's own tick, and the hidden-tab fallback it drops to.
+  // Velocity was measured as raw per-tick distance, so a slower tick inflated
+  // every reading and a faster one shrank it below the promotion floor — the
+  // same sweep promoted or not purely by how often the page happened to tick.
+  it.each([25, 50, 100, 250])(
+    "promotes the same sweep at a %ims tick",
+    async (tickMs) => {
+      expect(await sweep(tickMs)).toBe(true);
+    },
+  );
+
+  /**
+   * The regression this normalization exists for. A raw per-tick distance
+   * shrinks as the page ticks more often, so a sweep that promotes at the
+   * archive's slow tick silently stops promoting once the tab is foregrounded
+   * and rAF speeds up — the soloist "never gets chosen" even though the motion
+   * on screen is identical. 0.26 px/ms sits just over the 0.24 px/ms floor, so
+   * it promotes only when velocity is expressed per reference frame.
+   */
+  it("promotes a just-over-floor sweep at a fast tick, not only a slow one", async () => {
+    const nearFloorSweep = async (tickMs: number) => {
+      const engine = new SoundEngine();
+      await engine.init();
+      engine.setCanvasWidth(1000);
+      engine.setConfig({ mode: "spotlight" });
+
+      let promoted = false;
+      for (let step = 0; step <= Math.ceil(3000 / tickMs); step++) {
+        const elapsed = step * tickMs;
+        const frames = [
+          soloFrame(0, 100 + 0.26 * elapsed, 300),
+          soloFrame(1, 200 + 0.012 * elapsed, 400),
+          soloFrame(2, 500 + 0.012 * elapsed, 500),
+        ];
+        context.currentTime = elapsed / 1000;
+        engine.tick(elapsed, frames);
+        if (engine.getSoloistTrailIndex() === 0) promoted = true;
+      }
+      engine.dispose();
+      return promoted;
+    };
+
+    // 8ms is a 120Hz display, the fastest cadence the page realistically hits.
+    expect(await nearFloorSweep(8)).toBe(true);
+    expect(await nearFloorSweep(1000 / 60)).toBe(true);
+  });
+
+  it("leaves a scene with no outlier unpromoted at every cadence", async () => {
+    for (const tickMs of [1000 / 60, 100, 250]) {
+      const engine = new SoundEngine();
+      await engine.init();
+      engine.setCanvasWidth(1000);
+      engine.setConfig({ mode: "spotlight" });
+
+      for (let step = 0; step <= Math.ceil(3000 / tickMs); step++) {
+        const elapsed = step * tickMs;
+        // Everyone drifts at the same slow rate: no outlier, so the absolute
+        // floor must keep the spotlight off however often the page ticks.
+        const frames = [0, 1, 2, 3].map((i) =>
+          soloFrame(i, 100 + i * 150 + 0.02 * elapsed, 300 + i * 80),
+        );
+        context.currentTime = elapsed / 1000;
+        engine.tick(elapsed, frames);
+        expect(engine.getSoloistTrailIndex()).toBeNull();
+      }
+      engine.dispose();
+    }
+  });
+});
