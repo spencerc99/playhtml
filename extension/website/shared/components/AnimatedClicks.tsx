@@ -19,7 +19,25 @@ export interface ScheduledClick {
   holdDuration?: number;
 }
 
-export const MAX_VISIBLE_CLICK_EFFECTS = 2000;
+export const MAX_VISIBLE_CLICK_EFFECTS = 4000;
+
+const FULL_OPACITY_RESIDUE_FRACTION = 0.25;
+const MINIMUM_RESIDUE_OPACITY = 0.03;
+
+export function getClickResidueOpacity(index: number, total: number): number {
+  if (total <= 1) return 1;
+
+  const fadedCount = Math.floor(
+    total * (1 - FULL_OPACITY_RESIDUE_FRACTION),
+  );
+  if (index >= fadedCount) return 1;
+
+  const fadeProgress = index / Math.max(1, fadedCount);
+  return (
+    MINIMUM_RESIDUE_OPACITY +
+    (1 - MINIMUM_RESIDUE_OPACITY) * fadeProgress * fadeProgress
+  );
+}
 
 export type VisibleClickEffect = ClickEffect & {
   sourceId: string;
@@ -238,13 +256,21 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
           pointerEvents: "none",
         }}
       >
-        {activeClickEffects.map((effect) => (
-          <RippleEffect
+        {activeClickEffects.map((effect, index) => (
+          <g
             key={effect.id}
-            effect={effect}
-            settings={rippleSettings}
-            onComplete={handleClickComplete}
-          />
+            opacity={getClickResidueOpacity(
+              index,
+              activeClickEffects.length,
+            )}
+            style={{ transition: "opacity 200ms linear" }}
+          >
+            <RippleEffect
+              effect={effect}
+              settings={rippleSettings}
+              onComplete={handleClickComplete}
+            />
+          </g>
         ))}
       </svg>
     );
