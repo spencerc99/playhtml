@@ -1,5 +1,5 @@
-// ABOUTME: Verifies the navigation accent fires off the playback clock when the
-// ABOUTME: trails view is active, and stays silent otherwise or without an engine
+// ABOUTME: Verifies the navigation accent fires off the trail layer's playback clock
+// ABOUTME: when the trails view is active, and stays silent otherwise or without an engine
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -17,6 +17,8 @@ const schedule: ScheduledNavigation[] = [
 ];
 
 let frames: FrameRequestCallback[] = [];
+/** Stands in for the trail layer, which owns this object and writes it. */
+let playbackClock = { loopedMs: 0 };
 
 function renderDriver(soundEngine: SoundEngine | null, active = true) {
   const container = document.createElement("div");
@@ -27,21 +29,26 @@ function renderDriver(soundEngine: SoundEngine | null, active = true) {
       React.createElement(NavigationSoundDriver, {
         schedule,
         durationMs: CYCLE_MS,
-        animationSpeed: 1,
         soundEngine,
         active,
+        playbackClock,
       }),
     );
   });
   return { root, container };
 }
 
-/** Advance the driver's own rAF loop to an absolute timestamp. */
-function advanceTo(ms: number) {
+/**
+ * Move the trail layer's clock to a position in the cycle and let the driver
+ * read it. The driver no longer keeps time itself, so the cycle position is
+ * what a test sets rather than a wall-clock timestamp.
+ */
+function playbackAt(loopedMs: number) {
+  playbackClock.loopedMs = loopedMs;
   act(() => {
     const pending = frames;
     frames = [];
-    pending.forEach((cb) => cb(ms));
+    pending.forEach((cb) => cb(loopedMs));
   });
 }
 
@@ -51,6 +58,7 @@ beforeEach(() => {
   };
   testGlobal.IS_REACT_ACT_ENVIRONMENT = true;
   frames = [];
+  playbackClock = { loopedMs: 0 };
   vi.stubGlobal(
     "requestAnimationFrame",
     vi.fn((cb: FrameRequestCallback) => {
@@ -76,17 +84,16 @@ describe("NavigationSoundDriver", () => {
     const engine = fakeEngine();
     const { root, container } = renderDriver(engine);
 
-    // First frame establishes the clock origin at t=0.
-    advanceTo(0);
+    playbackAt(0);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(0);
 
-    advanceTo(1500);
+    playbackAt(1500);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(1);
 
-    advanceTo(5500);
+    playbackAt(5500);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(2);
 
-    advanceTo(9500);
+    playbackAt(9500);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(3);
 
     act(() => root.unmount());
@@ -97,13 +104,40 @@ describe("NavigationSoundDriver", () => {
     const engine = fakeEngine();
     const { root, container } = renderDriver(engine);
 
-    advanceTo(0);
-    advanceTo(9500);
+    playbackAt(0);
+    playbackAt(9500);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(3);
 
-    // Wrap past the cycle end back to the head: the 1000ms moment plays again.
-    advanceTo(11500);
+    // The trail clock wraps to the head of the cycle. Every moment has to be
+    // live again on the new pass, starting with the 1000ms one.
+    playbackAt(1500);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(4);
+
+    playbackAt(5500);
+    expect(engine.triggerNavigation).toHaveBeenCalledTimes(5);
+    playbackAt(9500);
+    expect(engine.triggerNavigation).toHaveBeenCalledTimes(6);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("follows the trail clock rather than keeping time of its own", () => {
+    // The whole point of reading the shared clock: when the trail layer stalls
+    // (a hidden tab, a long frame it clamps away) playback does not advance,
+    // and the gongs must not advance either. A driver keeping its own wall
+    // clock would sail past these moments while the trails stood still.
+    const engine = fakeEngine();
+    const { root, container } = renderDriver(engine);
+
+    playbackAt(0);
+    // Many frames pass, but the trail layer's position never moves.
+    for (let i = 0; i < 30; i++) playbackAt(0);
+    expect(engine.triggerNavigation).toHaveBeenCalledTimes(0);
+
+    // It resumes exactly where the trails resume.
+    playbackAt(1500);
+    expect(engine.triggerNavigation).toHaveBeenCalledTimes(1);
 
     act(() => root.unmount());
     container.remove();
@@ -123,8 +157,8 @@ describe("NavigationSoundDriver", () => {
     // Inactive: the effect returns before scheduling any frame.
     expect(frames).toHaveLength(0);
 
-    advanceTo(0);
-    advanceTo(9500);
+    playbackAt(0);
+    playbackAt(9500);
     expect(engine.triggerNavigation).not.toHaveBeenCalled();
 
     act(() => root.unmount());
@@ -142,15 +176,15 @@ describe("NavigationSoundDriver", () => {
         React.createElement(NavigationSoundDriver, {
           schedule,
           durationMs: CYCLE_MS,
-          animationSpeed: 1,
           soundEngine: engine,
           active: true,
+          playbackClock,
         }),
       );
     });
 
-    advanceTo(0);
-    advanceTo(1500);
+    playbackAt(0);
+    playbackAt(1500);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(1);
     expect(frames.length).toBeGreaterThan(0);
 
@@ -159,9 +193,9 @@ describe("NavigationSoundDriver", () => {
         React.createElement(NavigationSoundDriver, {
           schedule,
           durationMs: CYCLE_MS,
-          animationSpeed: 1,
           soundEngine: engine,
           active: false,
+          playbackClock,
         }),
       );
     });
@@ -169,7 +203,7 @@ describe("NavigationSoundDriver", () => {
     // The inactive effect's cleanup cancels the in-flight frame and the new
     // effect returns before scheduling a replacement, so nothing is pending.
     frames = [];
-    advanceTo(9500);
+    playbackAt(9500);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(1);
     expect(frames).toHaveLength(0);
 

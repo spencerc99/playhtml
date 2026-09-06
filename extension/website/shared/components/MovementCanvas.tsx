@@ -99,7 +99,6 @@ const EMPTY_EVENTS: CollectionEvent[] = [];
 export const NavigationSoundDriver: React.FC<{
   schedule: ScheduledNavigation[];
   durationMs: number;
-  animationSpeed: number;
   soundEngine: SoundEngine | null;
   active: boolean;
   /**
@@ -111,19 +110,21 @@ export const NavigationSoundDriver: React.FC<{
   locateParticipant?: (
     pid: string,
   ) => { trailIndex: number; x: number } | null;
+  /**
+   * The trail layer's own playback position. The gongs mark moments on the
+   * drawn timeline, so they have to be read off the clock that draws it — a
+   * second clock built from raw wall time falls behind by the whole of every
+   * hidden-tab stall the trail clock clamps away, and the gap only ever grows.
+   */
+  playbackClock: { loopedMs: number };
 }> = ({
   schedule,
   durationMs,
-  animationSpeed,
   soundEngine,
   active,
   locateParticipant,
+  playbackClock,
 }) => {
-  const speedRef = useRef(animationSpeed);
-  useEffect(() => {
-    speedRef.current = animationSpeed;
-  }, [animationSpeed]);
-
   const locateRef = useRef(locateParticipant);
   useEffect(() => {
     locateRef.current = locateParticipant;
@@ -134,14 +135,12 @@ export const NavigationSoundDriver: React.FC<{
       return;
 
     let raf = 0;
-    let startedAt: number | null = null;
     // Start just before zero so a moment sitting exactly at offset 0 is
     // crossed on the first frame rather than skipped.
     let prevLooped = -1;
 
-    const tick = (ts: number) => {
-      if (startedAt === null) startedAt = ts;
-      const looped = ((ts - startedAt) * speedRef.current) % durationMs;
+    const tick = () => {
+      const looped = playbackClock.loopedMs;
       const crossed = navigationsCrossed(
         schedule,
         prevLooped,
@@ -162,7 +161,7 @@ export const NavigationSoundDriver: React.FC<{
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [schedule, durationMs, soundEngine, active]);
+  }, [schedule, durationMs, soundEngine, active, playbackClock]);
 
   return null;
 };
@@ -566,6 +565,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     () => (soundDev ? new SoundVisuals() : null),
     [soundDev],
   );
+
+  /**
+   * The one playback position for this canvas. The trail layer writes it every
+   * frame and everything scheduled against the drawn timeline reads it, so a
+   * loop or a stall moves all of them together.
+   */
+  const playbackClock = useMemo(() => ({ loopedMs: 0 }), []);
 
   useEffect(() => {
     soundVisuals?.setConfig(arrangement.visuals);
@@ -1835,6 +1841,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               windowSize={settings.maxConcurrentTrails * 2}
               soundEngine={paused || !soundEnabled ? null : soundEngineReady}
               trailPositions={trailPositions}
+              playbackClock={playbackClock}
               soundVisuals={soundVisuals}
               visualConfig={soundDev ? arrangement.visuals : null}
               settings={trailAnimationSettings}
@@ -1853,10 +1860,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           <NavigationSoundDriver
             schedule={navigationSchedule}
             durationMs={timeRange.duration}
-            animationSpeed={settings.animationSpeed}
             soundEngine={soundEnabled ? soundEngineReady : null}
             active={showTrails}
             locateParticipant={locateParticipant}
+            playbackClock={playbackClock}
           />
         )}
 

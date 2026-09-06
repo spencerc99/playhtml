@@ -68,6 +68,15 @@ interface AnimatedTrailsProps {
    * navigation accent and the gestures a sound notice asks for.
    */
   trailPositions?: TrailPositions | null;
+  /**
+   * Where playback currently is in its cycle, written every frame. Anything
+   * that must stay in step with the drawn trails reads this rather than
+   * deriving its own elapsed time: the trail clock clamps long frame gaps and
+   * switches to a timer when the tab is hidden, so a second clock built from
+   * raw wall time drifts a little further apart on every stall and never
+   * re-converges.
+   */
+  playbackClock?: { loopedMs: number } | null;
   /** Sound visuals to draw over the trail layer, when a caller supplies them. */
   soundVisuals?: SoundVisuals | null;
   /** Which sound gestures are drawn. Nothing is drawn without this. */
@@ -104,6 +113,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     getInstallationElapsedMs,
     soundEngine = null,
     trailPositions = null,
+    playbackClock = null,
     soundVisuals = null,
     visualConfig = null,
     settings,
@@ -197,6 +207,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const documentSpaceRef = useRef(documentSpace);
     const soundEngineRef = useRef(soundEngine);
     const trailPositionsRef = useRef(trailPositions);
+    const playbackClockRef = useRef(playbackClock);
     const soundVisualsRef = useRef(soundVisuals);
     const visualConfigRef = useRef(visualConfig);
     const gesturesRef = useRef<ImperativeSoundGesturesHandle | null>(null);
@@ -248,9 +259,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
     useEffect(() => {
       trailPositionsRef.current = trailPositions;
+      playbackClockRef.current = playbackClock;
       soundVisualsRef.current = soundVisuals;
       visualConfigRef.current = visualConfig;
-    }, [trailPositions, soundVisuals, visualConfig]);
+    }, [trailPositions, playbackClock, soundVisuals, visualConfig]);
     useEffect(() => {
       trailStatesRef.current = trailStates;
     }, [trailStates]);
@@ -440,6 +452,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           scaledElapsed = accumulatedScaled;
         }
         const loopedElapsed = scaledElapsed % timeRange.duration;
+        // Published before anything else reads it, so a listener driven by this
+        // frame sees this frame's time rather than the previous one's.
+        if (playbackClockRef.current) {
+          playbackClockRef.current.loopedMs = loopedElapsed;
+        }
 
         // Detect loop wrap
         if (didPlaybackCycleWrap(prevElapsedRef.current, loopedElapsed)) {
