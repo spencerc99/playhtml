@@ -241,7 +241,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const animationFrameRef = useRef<number | null>(null);
     const lastFillCheckRef = useRef(0);
     const lastFrameUpdateRef = useRef(0);
-    const startTimeRef = useRef<number | null>(null);
+    const lastTimestampRef = useRef<number | null>(null);
+    const playbackTimeRef = useRef(0);
     const completionSignaledRef = useRef(false);
 
     // Settings ref to avoid re-renders
@@ -494,11 +495,10 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       if (animations.length === 0 || canvasSize.width === 0) return;
 
       const animate = (timestamp: number) => {
-        if (startTimeRef.current === null) {
-          startTimeRef.current = timestamp;
-        }
-
-        const currentTime = timestamp - startTimeRef.current;
+        const elapsed = timestamp - (lastTimestampRef.current ?? timestamp);
+        lastTimestampRef.current = timestamp;
+        playbackTimeRef.current += elapsed * settingsRef.current.scrollSpeed;
+        const currentTime = playbackTimeRef.current;
 
         // Update viewport phases
         updateViewports(currentTime);
@@ -518,8 +518,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           }
         }
 
-        if (currentTime - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
-          lastFrameUpdateRef.current = currentTime;
+        if (timestamp - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
+          lastFrameUpdateRef.current = timestamp;
           setFrameTime(currentTime);
         }
 
@@ -848,7 +848,7 @@ const DynamicViewportRect = memo(
     // Calculate animation progress
     const animElapsed = Math.max(
       0,
-      (currentTime - animationStartTime) * settings.scrollSpeed,
+      currentTime - animationStartTime,
     );
     const animProgress =
       durationMs <= 0 ? 1 : Math.min(1, animElapsed / durationMs);

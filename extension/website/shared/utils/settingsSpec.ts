@@ -153,6 +153,8 @@ export const HEADLINE_SPECS: SettingSpec[] = [
   num("trailOpacity", "trailOpacity", "trails"),
   bool("randomizeColors", "randomizeColors"),
 
+  num("scrollSpeed", "scrollSpeed", "scrolling"),
+
   // Navigation — view mode is structurally different (timeline vs radial),
   // so it makes sense to call it out in the URL.
   enumSpec(
@@ -211,6 +213,16 @@ export function parseSpec(params: URLSearchParams): Record<string, unknown> {
     if (domain || path) {
       overrides.filters = [{ domain, path }] satisfies FilterChip[];
     }
+  }
+
+  if (
+    overrides.scrollSpeed !== undefined &&
+    (typeof overrides.scrollSpeed !== "number" ||
+      !Number.isFinite(overrides.scrollSpeed) ||
+      overrides.scrollSpeed < 0.1 ||
+      overrides.scrollSpeed > 10)
+  ) {
+    delete overrides.scrollSpeed;
   }
 
   return overrides;

@@ -1796,12 +1796,13 @@ export const Controls: React.FC<ControlsProps> = memo(
           onToggle={() => toggleSection("scroll")}
         >
           <div className="control-group">
-            <label htmlFor="scroll-speed">Scroll Speed</label>
+            <label htmlFor="scroll-speed">Timeline Speed</label>
             <input
               id="scroll-speed"
               type="range"
+              aria-describedby="scroll-speed-description"
               min="0.1"
-              max="2"
+              max="10"
               step="0.1"
               value={settings.scrollSpeed}
               onChange={(e) =>
@@ -1812,6 +1813,10 @@ export const Controls: React.FC<ControlsProps> = memo(
               }
             />
             <span>{settings.scrollSpeed.toFixed(1)}x</span>
+            <small id="scroll-speed-description">
+              1x plays recorded timing. Higher speeds shorten playback and
+              introduce windows faster. Max Windows sets the density.
+            </small>
           </div>
 
           <div className="control-group">

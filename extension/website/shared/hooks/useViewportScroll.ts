@@ -6,8 +6,6 @@ import { CollectionEvent, ScrollAnimation } from "../types";
 import {
   getColorForEvent,
   eventMatchesAnyFilter,
-  SCROLL_TIME_COMPRESSION,
-  MAX_VIEWPORT_ANIMATION_DURATION,
   type FilterChip,
 } from "../utils/eventUtils";
 import { groupScrollEvents } from "../utils/scrollEventGroups";
@@ -176,133 +174,44 @@ export function useViewportScroll(
         const resizeEvents = sessionResizeEvents;
         const zoomEvents = sessionZoomEvents;
 
-        // Compress timing for scroll events
-        let compressedScrollEvents = scrollEvents;
-        if (scrollEvents.length > 0) {
-          const compressedStartTime = scrollEvents[0].timestamp;
-          compressedScrollEvents = scrollEvents.map((e, i) => {
-            if (i === 0) return e;
-            const prevEvent = scrollEvents[i - 1];
-            const timeDelta = e.timestamp - prevEvent.timestamp;
-            const compressedDelta = timeDelta * SCROLL_TIME_COMPRESSION;
-            return {
-              ...e,
-              timestamp: prevEvent.timestamp + compressedDelta,
-            };
-          });
-
-          // Reset timestamps to start from compressedStartTime
-          const firstTs = compressedScrollEvents[0].timestamp;
-          compressedScrollEvents.forEach((e) => {
-            e.timestamp = e.timestamp - firstTs + compressedStartTime;
-          });
-        }
-
-        // Determine base start time from any event type
-        const baseStartTime =
-          scrollEvents.length > 0
-            ? scrollEvents[0].timestamp
-            : resizeEvents.length > 0
-            ? resizeEvents[0].timestamp
-            : zoomEvents.length > 0
-            ? zoomEvents[0].timestamp
-            : mergedSessionEvents[0].ts;
-
-        // Compress timing for resize events
-        let compressedResizeEvents: typeof resizeEvents = [];
-        if (resizeEvents.length > 0) {
-          compressedResizeEvents = resizeEvents.map((e) => {
-            const timeDelta = e.timestamp - baseStartTime;
-            const compressedDelta = timeDelta * SCROLL_TIME_COMPRESSION;
-            return {
-              ...e,
-              timestamp: baseStartTime + compressedDelta,
-            };
-          });
-        }
-
-        // Compress timing for zoom events
-        let compressedZoomEvents: typeof zoomEvents = [];
-        if (zoomEvents.length > 0) {
-          compressedZoomEvents = zoomEvents.map((e) => {
-            const timeDelta = e.timestamp - baseStartTime;
-            const compressedDelta = timeDelta * SCROLL_TIME_COMPRESSION;
-            return {
-              ...e,
-              timestamp: baseStartTime + compressedDelta,
-            };
-          });
-        }
-
         // Check for actual scrolling
-        const hasScrollingY = compressedScrollEvents.some(
+        const hasScrollingY = scrollEvents.some(
           (e, i) =>
             i > 0 &&
-            Math.abs(e.scrollY - compressedScrollEvents[i - 1].scrollY) >
+            Math.abs(e.scrollY - scrollEvents[i - 1].scrollY) >
               0.000001,
         );
-        const hasScrollingX = compressedScrollEvents.some(
+        const hasScrollingX = scrollEvents.some(
           (e, i) =>
             i > 0 &&
-            Math.abs(e.scrollX - compressedScrollEvents[i - 1].scrollX) >
+            Math.abs(e.scrollX - scrollEvents[i - 1].scrollX) >
               0.000001,
         );
         const hasScrolling = hasScrollingY || hasScrollingX;
-        const hasResize = compressedResizeEvents.length > 0;
-        const hasZoom = compressedZoomEvents.length > 0;
+        const hasResize = resizeEvents.length > 0;
+        const hasZoom = zoomEvents.length > 0;
 
         // Create viewports for any session with scroll, resize, or zoom events
         const hasAnyActivity =
-          (hasScrolling && compressedScrollEvents.length > 1) ||
+          (hasScrolling && scrollEvents.length > 1) ||
           hasResize ||
           hasZoom;
 
         if (hasAnyActivity) {
           // Calculate start/end times from all event types
           const allTimestamps = [
-            ...compressedScrollEvents.map((e) => e.timestamp),
-            ...compressedResizeEvents.map((e) => e.timestamp),
-            ...compressedZoomEvents.map((e) => e.timestamp),
+            ...scrollEvents.map((e) => e.timestamp),
+            ...resizeEvents.map((e) => e.timestamp),
+            ...zoomEvents.map((e) => e.timestamp),
           ];
           const startTime =
             allTimestamps.length > 0
               ? Math.min(...allTimestamps)
-              : baseStartTime;
+              : mergedSessionEvents[0].ts;
           const endTime =
             allTimestamps.length > 0
               ? Math.max(...allTimestamps)
-              : baseStartTime;
-
-          // Cap animation duration
-          const originalDuration = endTime - startTime;
-          let cappedEndTime = endTime;
-          let cappedScrollEvents = compressedScrollEvents;
-          let cappedResizeEvents = compressedResizeEvents;
-          let cappedZoomEvents = compressedZoomEvents;
-
-          if (originalDuration > MAX_VIEWPORT_ANIMATION_DURATION) {
-            cappedEndTime = startTime + MAX_VIEWPORT_ANIMATION_DURATION;
-
-            // Keep only events within the capped duration
-            cappedScrollEvents = compressedScrollEvents.filter(
-              (e) => e.timestamp <= cappedEndTime,
-            );
-            cappedResizeEvents = compressedResizeEvents.filter(
-              (e) => e.timestamp <= cappedEndTime,
-            );
-            cappedZoomEvents = compressedZoomEvents.filter(
-              (e) => e.timestamp <= cappedEndTime,
-            );
-
-            if (scrollAnimations.length < 3) {
-              console.log(
-                `[Scroll] Animation ${scrollAnimations.length} truncated: ` +
-                  `${(originalDuration / 1000).toFixed(1)}s → ${(
-                    MAX_VIEWPORT_ANIMATION_DURATION / 1000
-                  ).toFixed(1)}s`,
-              );
-            }
-          }
+              : mergedSessionEvents[0].ts;
 
           // Determine viewport dimensions
           let startViewportWidth = mergedSessionEvents[0].meta.vw;
@@ -312,20 +221,20 @@ export function useViewportScroll(
           let endViewportHeight =
             mergedSessionEvents[mergedSessionEvents.length - 1].meta.vh;
 
-          if (cappedResizeEvents.length > 0) {
-            startViewportWidth = cappedResizeEvents[0].width;
-            startViewportHeight = cappedResizeEvents[0].height;
+          if (resizeEvents.length > 0) {
+            startViewportWidth = resizeEvents[0].width;
+            startViewportHeight = resizeEvents[0].height;
             endViewportWidth =
-              cappedResizeEvents[cappedResizeEvents.length - 1].width;
+              resizeEvents[resizeEvents.length - 1].width;
             endViewportHeight =
-              cappedResizeEvents[cappedResizeEvents.length - 1].height;
-          } else if (cappedScrollEvents.length > 0) {
-            startViewportWidth = cappedScrollEvents[0].viewportWidth;
-            startViewportHeight = cappedScrollEvents[0].viewportHeight;
+              resizeEvents[resizeEvents.length - 1].height;
+          } else if (scrollEvents.length > 0) {
+            startViewportWidth = scrollEvents[0].viewportWidth;
+            startViewportHeight = scrollEvents[0].viewportHeight;
             endViewportWidth =
-              cappedScrollEvents[cappedScrollEvents.length - 1].viewportWidth;
+              scrollEvents[scrollEvents.length - 1].viewportWidth;
             endViewportHeight =
-              cappedScrollEvents[cappedScrollEvents.length - 1].viewportHeight;
+              scrollEvents[scrollEvents.length - 1].viewportHeight;
           }
 
           const animUrl = mergedSessionEvents[0].meta.url;
@@ -338,13 +247,13 @@ export function useViewportScroll(
             faviconUrl: metadata?.favicon,
             color: getColorForEvent(mergedSessionEvents[0], startTime),
             scrollEvents:
-              cappedScrollEvents.length > 0 ? cappedScrollEvents : [],
+              scrollEvents.length > 0 ? scrollEvents : [],
             resizeEvents:
-              cappedResizeEvents.length > 0 ? cappedResizeEvents : undefined,
+              resizeEvents.length > 0 ? resizeEvents : undefined,
             zoomEvents:
-              cappedZoomEvents.length > 0 ? cappedZoomEvents : undefined,
+              zoomEvents.length > 0 ? zoomEvents : undefined,
             startTime,
-            endTime: cappedEndTime,
+            endTime,
             startViewportWidth,
             startViewportHeight,
             endViewportWidth,
