@@ -269,6 +269,56 @@ export function scaleForChord(chord: Chord): number[] {
 }
 
 /**
+ * How many entries at the front of a palette are the chord's own tones.
+ *
+ * Every palette above is written the same way: root, third and fifth first, in
+ * ascending order, then the colouring tones. A voice that must stay on the
+ * harmony — a soloist arpeggio, a descant leading through the chord — reads
+ * this prefix rather than the whole palette, so it never lands on a colour
+ * tone and never has to guess which entries are consonant.
+ */
+export const CHORD_TONE_COUNT = 3;
+
+/**
+ * The chord's own tones from a palette, low to high, with their octave
+ * duplicates. The palette repeats its pitch classes an octave up in its upper
+ * half, so a voice constrained to chord tones still has a range to move in
+ * rather than three fixed pitches.
+ */
+export function chordTones(scale: number[]): number[] {
+  if (scale.length === 0) return [];
+  const base = scale.slice(0, Math.min(CHORD_TONE_COUNT, scale.length));
+  const classes = base.map(pitchClassOf);
+  const tones = scale.filter((pitch) =>
+    classes.some((cls) => Math.abs(pitchClassOf(pitch) - cls) < 1e-6),
+  );
+  return [...new Set(tones)].sort((a, b) => a - b);
+}
+
+/**
+ * A pitch reduced to its class, as semitones above D0 within one octave. Two
+ * pitches an octave apart share a class, which is how a palette's upper
+ * octave is recognised as the same chord tone.
+ */
+function pitchClassOf(frequency: number): number {
+  const semitones = 12 * Math.log2(frequency / D_NATURAL_MINOR_PITCHES.D3);
+  const wrapped = ((semitones % 12) + 12) % 12;
+  // Anything within a cent of the octave belongs to the class below it, not
+  // to a class of its own just under 12.
+  return wrapped > 12 - 0.01 ? 0 : wrapped;
+}
+
+/**
+ * The chord tone nearest a pitch, so a voice moving onto a new chord steps to
+ * its closest consonance rather than jumping. Returns the pitch unchanged when
+ * the palette has no chord tones to move onto.
+ */
+export function nearestChordTone(pitch: number, scale: number[]): number {
+  const tones = chordTones(scale);
+  return tones.length === 0 ? pitch : leadHomeTone(pitch, tones);
+}
+
+/**
  * The upper reaches of a chord's palette, used for click bells so they ring
  * above the sustained voices while staying inside the current harmony.
  */

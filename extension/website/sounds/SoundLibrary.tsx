@@ -54,6 +54,18 @@ const AUDITION_CARDS: Array<{
     description: "The closing note as the spotlight leaves a trail.",
   },
   {
+    accent: "soloistArpeggio",
+    label: "soloist arpeggio",
+    description:
+      "The arpeggio voice: a roll up the current chord's own tones, plucked rather than struck.",
+  },
+  {
+    accent: "soloistDescant",
+    label: "soloist descant",
+    description:
+      "The descant voice has no note of its own — this is the interval it opens: a chord tone, then the same tone an octave above it, swelling in.",
+  },
+  {
     accent: "crossingShimmer",
     label: "crossing — shimmer",
     description:
