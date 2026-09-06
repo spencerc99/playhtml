@@ -48,6 +48,7 @@ const MOVIE_TV_STREAMING_DOMAINS = [
   'tv.apple.com',
   'video.amazon.com',
   'viki.com',
+  'voir-anime.to',
   'watch.plex.tv',
 ];
 
@@ -85,6 +86,7 @@ const AI_SCENERY_ONLY_DOMAINS = [
 ];
 
 const SCENERY_ONLY_DOMAINS = [
+  '1cloudfile.com',
   'accounts.google.com',
   ...AI_SCENERY_ONLY_DOMAINS,
   'ai.joinhandshake.com',
@@ -92,8 +94,10 @@ const SCENERY_ONLY_DOMAINS = [
   'app.flourish.studio',
   'app.joinhandshake.com',
   'app.mural.co',
+  'app.notion.com',
   'app.slack.com',
   'apply.commonapp.org',
+  'beartracks.ualberta.ca',
   'bing.com',
   'bsky.app',
   'calendar.google.com',
@@ -136,6 +140,7 @@ const SCENERY_ONLY_DOMAINS = [
   'proton.me',
   'safelinks.protection.outlook.com',
   'search.brave.com',
+  'schoology.com',
   'smartapply.indeed.com',
   'snapchat.com',
   'startpage.com',
@@ -195,6 +200,15 @@ const PRODUCT_PATH_PATTERNS = [
 
 const NEVER_SHOW_SUBDOMAIN_LABELS = new Set(['tracking']);
 
+const NEVER_SHOW_PORTS = new Set([
+  '2082',
+  '2083',
+  '2086',
+  '2087',
+  '2095',
+  '2096',
+]);
+
 const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'account',
   'accounts',
@@ -237,6 +251,7 @@ const SCENERY_ONLY_PATH_SEGMENTS = new Set([
   'download',
   'editor',
   'inbox',
+  'legal',
   'login',
   'myschedule',
   'mypolicy',
@@ -276,8 +291,13 @@ const PRIVATE_ROUTE_SEGMENTS = new Set([
 const AUTHENTICATION_PATH_MARKERS = [
   'oauth2callback',
   'saml2acs',
+  'signon',
   'signinoidc',
   'simplesaml',
+];
+
+const SCENERY_ONLY_PATH_PATTERNS = [
+  /^\/d2l\/(?:le\/)?content(?:\/|$)/i,
 ];
 
 const RAW_ASSET_EXTENSIONS = new Set([
@@ -404,7 +424,8 @@ function hasSubdomainLabel(domain: string, labels: Set<string>): boolean {
   );
 }
 
-function isNeverShownHost(
+function isNeverShownSurface(
+  url: URL,
   domain: string,
   registrableDomain: string | null,
 ): boolean {
@@ -413,7 +434,9 @@ function isNeverShownHost(
     domain.endsWith('.localhost') ||
     domain.endsWith('.local') ||
     registrableDomain === null ||
-    hasSubdomainLabel(domain, NEVER_SHOW_SUBDOMAIN_LABELS)
+    hasSubdomainLabel(domain, NEVER_SHOW_SUBDOMAIN_LABELS) ||
+    NEVER_SHOW_PORTS.has(url.port) ||
+    /(?:^|\/)cpsess\d+(?:\/|$)/i.test(url.pathname)
   );
 }
 
@@ -458,6 +481,10 @@ function hasQueryLikePath(pathname: string): boolean {
 
 function hasBlockedPath(pathname: string, domain: string): boolean {
   const normalizedPathname = pathname.toLowerCase();
+  if (SCENERY_ONLY_PATH_PATTERNS.some((pattern) => pattern.test(pathname))) {
+    return true;
+  }
+
   if (
     [...GENERIC_PATHS].some(
       (path) =>
@@ -726,7 +753,13 @@ function hasPersonBoundRoute(url: URL, domain: string): boolean {
     (domainMatches(domain, 'artfight.net') &&
       /^\/~[^/]+(?:\/|$)/.test(url.pathname)) ||
     (domainMatches(domain, 'steamcommunity.com') &&
-      /^\/(?:id|profiles)\/[^/]+(?:\/|$)/.test(url.pathname))
+      /^\/(?:id|profiles)\/[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (domainMatches(domain, 'goodreads.com') &&
+      /^\/user\/show\/[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (getDomainWithoutSuffix(domain, { allowPrivateDomains: true }) ===
+      'fragrantica' && /^\/@[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (domainMatches(domain, 'social.lol') &&
+      /^\/@[^/]+(?:\/|$)/.test(url.pathname))
   );
 }
 
@@ -811,7 +844,7 @@ function toCandidate(event: CollectionEvent): NavigationCandidate | null {
       !registrableDomain ||
       url.username ||
       url.password ||
-      isNeverShownHost(domain, registrableDomain)
+      isNeverShownSurface(url, domain, registrableDomain)
     ) {
       return null;
     }

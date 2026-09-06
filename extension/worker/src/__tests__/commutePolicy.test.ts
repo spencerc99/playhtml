@@ -1201,6 +1201,161 @@ describe('buildCommuteResponse', () => {
     );
   });
 
+  it('keeps course systems, private documents, profiles, downloads, and utility pages domain-only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'university-sign-on',
+          'navigation',
+          'https://beartracks.ualberta.ca/uahebprd/signon.html',
+          900,
+          'sign-on-rider',
+          'University sign on',
+        ),
+        event(
+          'schoology-course',
+          'navigation',
+          'https://d211.schoology.com/course/8476652559/materials',
+          800,
+          'schoology-rider',
+          'Private course materials',
+        ),
+        event(
+          'd2l-course',
+          'navigation',
+          'https://pilot.wright.edu/d2l/le/content/805933/viewContent/5941198/View',
+          700,
+          'd2l-rider',
+          'Fall 2026 course reading',
+        ),
+        event(
+          'notion-document',
+          'navigation',
+          'https://app.notion.com/p/person/private-page-21bce1226ca580209bdadd8e5e1d7a43',
+          600,
+          'notion-rider',
+          'Private notes',
+        ),
+        event(
+          'file-host-download',
+          'navigation',
+          'https://1cloudfile.com/49yR0',
+          500,
+          'download-rider',
+          'Archive.Build.16349391.rar - 1Cloud File',
+        ),
+        event(
+          'goodreads-profile',
+          'navigation',
+          'https://www.goodreads.com/user/show/84023-person',
+          450,
+          'goodreads-rider',
+          'A reader profile',
+        ),
+        event(
+          'fragrantica-profile',
+          'navigation',
+          'https://www.fragrantica.pl/@person',
+          400,
+          'fragrantica-rider',
+          'A fragrance profile',
+        ),
+        event(
+          'social-profile',
+          'navigation',
+          'https://social.lol/@person@example.org',
+          350,
+          'social-rider',
+          'A social profile',
+        ),
+        event(
+          'streaming-page',
+          'navigation',
+          'https://voir-anime.to/anime/example/example-10-vostfr',
+          300,
+          'streaming-rider',
+          'Watch an episode',
+        ),
+        event(
+          'legal-page',
+          'navigation',
+          'https://www.spotify.com/us/legal/end-user-agreement',
+          250,
+          'legal-rider',
+          'Terms and Conditions of Use',
+        ),
+        event(
+          'university-museum',
+          'navigation',
+          'https://museum.example.edu/exhibitions/handmade-web',
+          200,
+          'museum-rider',
+          'Handmade Web Exhibition',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'museum.example.edu',
+    ]);
+    expect(response.scenery.map((item) => item.domain)).toEqual(
+      expect.arrayContaining([
+        'beartracks.ualberta.ca',
+        'd211.schoology.com',
+        'pilot.wright.edu',
+        'app.notion.com',
+        '1cloudfile.com',
+        'goodreads.com',
+        'fragrantica.pl',
+        'social.lol',
+        'voir-anime.to',
+        'spotify.com',
+      ]),
+    );
+  });
+
+  it('omits hosting control panels and their session URLs from scenery', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'control-panel',
+          'navigation',
+          'https://server.truehost.cloud:2083/cpsess1234567890/frontend/jupiter/filemanager/index.html',
+          300,
+          'control-panel-rider',
+          'cPanel File Manager',
+        ),
+        event(
+          'control-panel-session',
+          'navigation',
+          'https://hosting.example/cpsess9876543210/frontend/jupiter/filemanager/index.html',
+          250,
+          'control-panel-session-rider',
+          'cPanel File Manager',
+        ),
+        event(
+          'public-article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          200,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
   it('keeps private chat channels and person-bound Steam profiles domain-only', () => {
     const response = buildCommuteResponse(
       [
