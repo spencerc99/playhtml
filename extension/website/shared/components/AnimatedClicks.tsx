@@ -21,8 +21,6 @@ export interface ScheduledClick {
 
 export const MAX_VISIBLE_CLICK_EFFECTS = 4000;
 
-const RECENT_COMPLETED_CLICK_EFFECTS = 1000;
-const COMPLETED_RESIDUE_OPACITY = 0.5;
 const MINIMUM_RESIDUE_OPACITY = 0.03;
 
 export function getClickResidueOpacity(
@@ -33,23 +31,11 @@ export function getClickResidueOpacity(
   if (!completed) return 1;
 
   const distanceFromNewest = total - index - 1;
-  if (distanceFromNewest < RECENT_COMPLETED_CLICK_EFFECTS) {
-    return COMPLETED_RESIDUE_OPACITY;
-  }
-
-  const fadedCapacity =
-    MAX_VISIBLE_CLICK_EFFECTS - RECENT_COMPLETED_CLICK_EFFECTS;
   const fadeProgress = Math.min(
     1,
-    (distanceFromNewest - RECENT_COMPLETED_CLICK_EFFECTS) /
-      Math.max(1, fadedCapacity - 1),
+    distanceFromNewest / Math.max(1, MAX_VISIBLE_CLICK_EFFECTS - 1),
   );
-  return (
-    COMPLETED_RESIDUE_OPACITY -
-    (COMPLETED_RESIDUE_OPACITY - MINIMUM_RESIDUE_OPACITY) *
-      fadeProgress *
-      fadeProgress
-  );
+  return 1 - (1 - MINIMUM_RESIDUE_OPACITY) * fadeProgress;
 }
 
 export type VisibleClickEffect = ClickEffect & {
@@ -280,7 +266,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
               activeClickEffects.length,
               effect.completed,
             )}
-            style={{ transition: "opacity 3000ms ease-out" }}
+            style={{ transition: "opacity 200ms linear" }}
           >
             <RippleEffect
               effect={effect}

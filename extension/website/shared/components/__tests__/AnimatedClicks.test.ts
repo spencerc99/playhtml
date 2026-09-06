@@ -28,24 +28,34 @@ describe("AnimatedClicks residue", () => {
     expect(getClickResidueOpacity(0, MAX_VISIBLE_CLICK_EFFECTS, false)).toBe(1);
   });
 
-  it("settles sparse completed ripples to half opacity", () => {
-    expect(getClickResidueOpacity(0, 100, true)).toBe(0.5);
-    expect(getClickResidueOpacity(0, 1000, true)).toBe(0.5);
-    expect(getClickResidueOpacity(3000, MAX_VISIBLE_CLICK_EFFECTS, true)).toBe(
-      0.5,
+  it("keeps the newest completed ripple fully opaque", () => {
+    expect(getClickResidueOpacity(99, 100, true)).toBe(1);
+    expect(
+      getClickResidueOpacity(
+        MAX_VISIBLE_CLICK_EFFECTS - 1,
+        MAX_VISIBLE_CLICK_EFFECTS,
+        true,
+      ),
+    ).toBe(1);
+  });
+
+  it("uses fixed distance from newest rather than current list size", () => {
+    expect(getClickResidueOpacity(0, 100, true)).toBeCloseTo(
+      getClickResidueOpacity(3900, MAX_VISIBLE_CLICK_EFFECTS, true),
     );
   });
 
-  it("fades retained completed ripples toward transparency near the cap", () => {
+  it("linearly fades completed ripples toward transparency at the cap", () => {
     expect(
       getClickResidueOpacity(0, MAX_VISIBLE_CLICK_EFFECTS, true),
     ).toBeCloseTo(0.03);
-    expect(
-      getClickResidueOpacity(1500, MAX_VISIBLE_CLICK_EFFECTS, true),
-    ).toBeGreaterThan(0.03);
-    expect(
-      getClickResidueOpacity(1500, MAX_VISIBLE_CLICK_EFFECTS, true),
-    ).toBeLessThan(0.5);
+    const midpointOpacity = getClickResidueOpacity(
+      2000,
+      MAX_VISIBLE_CLICK_EFFECTS,
+      true,
+    );
+    expect(midpointOpacity).toBeGreaterThan(0.5);
+    expect(midpointOpacity).toBeLessThan(0.52);
   });
 
   it("keeps substantially more completed ripples before eviction", () => {
