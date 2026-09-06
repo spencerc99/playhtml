@@ -30,6 +30,7 @@ import {
 const { stateChangeTypes: comboboxStateChangeTypes } = useCombobox;
 
 interface ControlsProps {
+  recordedScrollTiming?: boolean;
   visible: boolean;
   settings: any;
   settingsDefaults: Record<string, unknown>;
@@ -712,6 +713,7 @@ const CollapsibleSection: React.FC<{
 export const Controls: React.FC<ControlsProps> = memo(
   ({
     visible,
+    recordedScrollTiming = false,
     settings,
     settingsDefaults,
     setSettings,
@@ -1796,13 +1798,13 @@ export const Controls: React.FC<ControlsProps> = memo(
           onToggle={() => toggleSection("scroll")}
         >
           <div className="control-group">
-            <label htmlFor="scroll-speed">Timeline Speed</label>
+            <label htmlFor="scroll-speed">{recordedScrollTiming ? "Timeline Speed" : "Scroll Speed"}</label>
             <input
               id="scroll-speed"
               type="range"
-              aria-describedby="scroll-speed-description"
+              aria-describedby={recordedScrollTiming ? "scroll-speed-description" : undefined}
               min="0.1"
-              max="10"
+              max={recordedScrollTiming ? "10" : "2"}
               step="0.1"
               value={settings.scrollSpeed}
               onChange={(e) =>
@@ -1813,10 +1815,10 @@ export const Controls: React.FC<ControlsProps> = memo(
               }
             />
             <span>{settings.scrollSpeed.toFixed(1)}x</span>
-            <small id="scroll-speed-description">
+            {recordedScrollTiming && <small id="scroll-speed-description">
               1x plays recorded timing. Higher speeds shorten playback and
               introduce windows faster. Max Windows sets the density.
-            </small>
+            </small>}
           </div>
 
           <div className="control-group">

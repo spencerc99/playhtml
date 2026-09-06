@@ -76,10 +76,12 @@ describe("scroll playback", () => {
     speed: number,
     animations = [animation],
     complete = () => true,
+    recordedTiming = true,
   ) {
     await act(async () =>
       root.render(
         <AnimatedScrollViewports
+          recordedTiming={recordedTiming}
           animations={animations}
           canvasSize={{ width: 1200, height: 800 }}
           repeatAnimations={false}
@@ -144,6 +146,21 @@ describe("scroll playback", () => {
       expect(windows()).toHaveLength(2);
     },
   );
+
+  it("keeps default playback introductions and lifetime independent of motion speed", async () => {
+    await render(2, [animation, animation], () => true, false);
+    await tick(0);
+    await tick(150);
+    expect(windows()).toHaveLength(0);
+    await tick(150);
+    expect(windows()).toHaveLength(1);
+    await tick(400);
+    await tick(10000);
+    expect(scrollPosition()).toBeCloseTo(0.5);
+    await tick(10000);
+    expect(scrollPosition()).toBeCloseTo(1);
+    expect(windows()).toHaveLength(2);
+  });
 
   it("continues from the current position when speed changes", async () => {
     const animations = [animation];
