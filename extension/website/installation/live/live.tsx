@@ -20,6 +20,7 @@ import {
   resolveLiveInstallationVisualizations,
   showsInstallationPeopleCount,
 } from "../../shared/utils/liveInstallation";
+import { resolveLiveInstallationProfile } from "../../shared/utils/liveInstallationProfiles";
 
 const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
   scrollSpeed: 1,
@@ -37,11 +38,33 @@ const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
 
 const LiveInstallation = () => {
   useDailyPageReload();
-  const screen = useMemo(() => parseLiveInstallationScreen(), []);
+  const profile = useMemo(() => resolveLiveInstallationProfile(), []);
+  const screen = useMemo(
+    () =>
+      parseLiveInstallationScreen(
+        window.location.search,
+        profile?.screen ?? {
+          view: "field",
+          slot: 0,
+          slots: 4,
+        },
+      ),
+    [profile],
+  );
+  const settingsDefaults = useMemo(
+    () => ({
+      ...LIVE_INSTALLATION_SETTINGS_DEFAULTS,
+      ...(profile?.settings ?? {}),
+    }),
+    [profile],
+  );
   const selectedDay = parseDayFromUrl() ?? null;
   const timeOfDay = parseTimeOfDayFromUrl() ?? null;
-  const [activeVisualizations, setActiveVisualizations] = useState<string[]>(() =>
-    resolveLiveInstallationVisualizations(parseVizFromUrl()),
+  const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
+    () =>
+      resolveLiveInstallationVisualizations(
+        parseVizFromUrl() ?? profile?.visualizations,
+      ),
   );
   const hybrid = useHybridInstallationEvents({
     selectedDay,
@@ -72,7 +95,12 @@ const LiveInstallation = () => {
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
         availableVisualizations={LIVE_INSTALLATION_VISUALIZATIONS}
-        defaultSettings={LIVE_INSTALLATION_SETTINGS_DEFAULTS}
+        defaultSettings={settingsDefaults}
+        useStoredSettings={profile === null}
+        syncSettingsToUrl={profile === null}
+        defaultCinematic={profile?.cinematic}
+        installationRole={profile?.role}
+        installationFollowerId={profile?.followerId}
         minimumCleanLevel={2}
         playbackKey={hybrid.playbackKey}
         playbackSource={hybrid.source}

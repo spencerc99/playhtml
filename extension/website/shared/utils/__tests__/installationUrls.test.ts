@@ -26,22 +26,20 @@ describe("buildLiveInstallationScreens", () => {
         const url = new URL(screen.url);
         return {
           path: url.pathname,
-          viz: url.searchParams.get("viz"),
-          view: url.searchParams.get("view"),
+          screen: url.searchParams.get("screen"),
           clean: url.searchParams.get("clean"),
         };
       }),
     ).toEqual([
       {
         path: "/installation/live/",
-        viz: "scrolling",
-        view: "field",
+        screen: "scrolling",
         clean: "2",
       },
-      { path: "/installation/live/", viz: "typing", view: "field", clean: "2" },
-      { path: "/touches/", viz: null, view: null, clean: "2" },
-      { path: "/installation/live/", viz: "clicks", view: "field", clean: "2" },
-      { path: "/installation/live/", viz: "trails", view: "field", clean: "2" },
+      { path: "/installation/live/", screen: "typing", clean: "2" },
+      { path: "/touches/", screen: "touches", clean: "2" },
+      { path: "/installation/live/", screen: "clicks", clean: "2" },
+      { path: "/installation/live/", screen: "cursors", clean: "2" },
     ]);
 
     expect(
@@ -49,44 +47,16 @@ describe("buildLiveInstallationScreens", () => {
         const url = new URL(screen.url);
         return {
           path: url.pathname,
-          viz: url.searchParams.get("viz"),
-          view: url.searchParams.get("view"),
-          slot: url.searchParams.get("slot"),
-          slots: url.searchParams.get("slots"),
-          cinematic: url.searchParams.get("cinematic"),
+          screen: url.searchParams.get("screen"),
           clean: url.searchParams.get("clean"),
         };
       }),
     ).toEqual(
-      ["0", "1", "2", "3"].map((slot) => ({
+      ["a", "b", "c", "d"].map((follower) => ({
         path: "/installation/live/",
-        viz: "trails",
-        view: "follow",
-        slot,
-        slots: "4",
-        cinematic: "follow",
+        screen: `follower-${follower}`,
         clean: "2",
       })),
     );
-  });
-
-  it("updates the follower partition across every cursor URL", () => {
-    const screens = buildLiveInstallationScreens("https://wewere.online", 2);
-
-    expect(screens).toHaveLength(7);
-    expect(
-      screens.map((screen) => new URL(screen.url).searchParams.get("slots")),
-    ).toEqual(["2", "2", null, "2", "2", "2", "2"]);
-    expect(
-      screens
-        .slice(5)
-        .map((screen) => new URL(screen.url).searchParams.get("slot")),
-    ).toEqual(["0", "1"]);
-  });
-
-  it("caps generated followers at the runtime slot limit", () => {
-    expect(
-      buildLiveInstallationScreens("https://wewere.online", 40),
-    ).toHaveLength(37);
   });
 });

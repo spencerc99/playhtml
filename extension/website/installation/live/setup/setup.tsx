@@ -15,11 +15,10 @@ const buttonStyle: React.CSSProperties = {
 };
 
 const LiveInstallationSetup = () => {
-  const [followerCount, setFollowerCount] = useState(4);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const screens = useMemo(
-    () => buildLiveInstallationScreens(window.location.origin, followerCount),
-    [followerCount],
+    () => buildLiveInstallationScreens(window.location.origin),
+    [],
   );
 
   const copy = async (url: string) => {
@@ -45,8 +44,8 @@ const LiveInstallationSetup = () => {
       </h1>
       <p style={{ maxWidth: 620, color: "#726b64", lineHeight: 1.5 }}>
         Open one link on each display: four event views, the cursor field, and
-        one cursor follower per close-up screen. Each follower owns a different
-        set of people automatically.
+        four cursor followers. Each follower owns a different set of people
+        automatically.
       </p>
 
       <div
@@ -61,24 +60,7 @@ const LiveInstallationSetup = () => {
           letterSpacing: "0.05em",
         }}
       >
-        <span>Cursor follower screens</span>
-        <button
-          type="button"
-          style={buttonStyle}
-          onClick={() => setFollowerCount((count) => Math.max(1, count - 1))}
-          aria-label="Remove one follower screen"
-        >
-          −
-        </button>
-        <strong style={{ minWidth: 20, textAlign: "center" }}>{followerCount}</strong>
-        <button
-          type="button"
-          style={buttonStyle}
-          onClick={() => setFollowerCount((count) => Math.min(32, count + 1))}
-          aria-label="Add one follower screen"
-        >
-          +
-        </button>
+        <span>Nine named installation screens</span>
         <button
           type="button"
           style={{ ...buttonStyle, marginLeft: "auto" }}

@@ -10,6 +10,7 @@ import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { useChromeToggle } from "../shared/hooks/useChromeToggle";
 import { useDailyPageReload } from "../shared/hooks/useDailyPageReload";
 import { parseCleanFromUrl } from "../shared/config";
+import { resolveLiveInstallationProfile } from "../shared/utils/liveInstallationProfiles";
 import { detectTouches, buildCoPresenceTimeline } from "./detect";
 import { createTouchesSketch, MarkStyle, SketchSettings } from "./sketch";
 import { createTouchesSketchGlsl } from "./sketchGlsl";
@@ -88,18 +89,32 @@ const CursorTouches = () => {
   useDailyPageReload();
   const chromeHidden = useChromeToggle(true);
   const cleanMode = useMemo(() => parseCleanFromUrl() >= 1, []);
+  const profileSettings = useMemo(
+    () => resolveLiveInstallationProfile()?.touchesSettings,
+    [],
+  );
   const { events, loading, deepening, error } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,
   );
 
-  const [touchRadius, setTouchRadius] = useState(20);
-  const [speed, setSpeed] = useState(1);
-  const [showCursors, setShowCursors] = useState(true);
-  const [samePersonOk, setSamePersonOk] = useState(false);
-  const [night, setNight] = useState(false);
-  const [renderer, setRenderer] = useState<Renderer>("nebula");
-  const [markStyle, setMarkStyle] = useState<MarkStyle>("hands");
+  const [touchRadius, setTouchRadius] = useState(
+    profileSettings?.touchRadius ?? 20,
+  );
+  const [speed, setSpeed] = useState(profileSettings?.speed ?? 1);
+  const [showCursors, setShowCursors] = useState(
+    profileSettings?.showCursors ?? true,
+  );
+  const [samePersonOk, setSamePersonOk] = useState(
+    profileSettings?.samePersonOk ?? false,
+  );
+  const [night, setNight] = useState(profileSettings?.night ?? false);
+  const [renderer, setRenderer] = useState<Renderer>(
+    profileSettings?.renderer ?? "nebula",
+  );
+  const [markStyle, setMarkStyle] = useState<MarkStyle>(
+    profileSettings?.markStyle ?? "hands",
+  );
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -225,9 +240,7 @@ const CursorTouches = () => {
     <div style={{ ...styles.page, background: night ? "#100d13" : "#faf7f2" }}>
       <div ref={hostRef} style={styles.canvasHost} />
       {!chromeHidden && (
-        <div
-          style={{ ...styles.title, color: night ? "#e8e2d8" : "#3d3833" }}
-        >
+        <div style={{ ...styles.title, color: night ? "#e8e2d8" : "#3d3833" }}>
           cursor touches
         </div>
       )}

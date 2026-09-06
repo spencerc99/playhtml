@@ -39,7 +39,7 @@ describe("buildShareUrl", () => {
     window.history.replaceState(
       null,
       "",
-      "/installation/live/?view=follow&slot=2&slots=4",
+      "/installation/live/?screen=follower-c&view=follow&slot=2&slots=4",
     );
 
     try {
@@ -53,6 +53,7 @@ describe("buildShareUrl", () => {
       expect(url.searchParams.get("view")).toBe("follow");
       expect(url.searchParams.get("slot")).toBe("2");
       expect(url.searchParams.get("slots")).toBe("4");
+      expect(url.searchParams.get("screen")).toBe("follower-c");
     } finally {
       window.history.replaceState(null, "", originalUrl);
     }

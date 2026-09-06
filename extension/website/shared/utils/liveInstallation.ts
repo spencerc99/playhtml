@@ -60,16 +60,23 @@ function parseInteger(value: string | null): number | null {
 
 export function parseLiveInstallationScreen(
   search: string = window.location.search,
+  defaults: LiveInstallationScreenConfig = {
+    view: "field",
+    slot: 0,
+    slots: DEFAULT_FOLLOWER_COUNT,
+  },
 ): LiveInstallationScreenConfig {
   const params = new URLSearchParams(search);
-  const view = params.get("view") === "follow" ? "follow" : "field";
+  const rawView = params.get("view");
+  const view =
+    rawView === "follow" || rawView === "field" ? rawView : defaults.view;
   const requestedSlots = parseInteger(params.get("slots"));
   const slots = Math.min(
     MAX_FOLLOWER_COUNT,
-    Math.max(1, requestedSlots ?? DEFAULT_FOLLOWER_COUNT),
+    Math.max(1, requestedSlots ?? defaults.slots),
   );
   const requestedSlot = parseInteger(params.get("slot"));
-  const slot = Math.min(slots - 1, requestedSlot ?? 0);
+  const slot = Math.min(slots - 1, requestedSlot ?? defaults.slot);
 
   return { view, slot, slots };
 }

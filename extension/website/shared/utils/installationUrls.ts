@@ -1,6 +1,11 @@
 // ABOUTME: Turns a saved archive/share URL into a matched set of installation
 // ABOUTME: screen URLs — one master + N coordinated followers — for multi-screen.
 
+import {
+  LIVE_INSTALLATION_PROFILES,
+  LIVE_INSTALLATION_PROFILE_NAMES,
+} from "./liveInstallationProfiles";
+
 /** One screen in a generated installation set. */
 export interface InstallationScreen {
   /** "master" (full field, drives the clock) or "follower N" (zoomed). */
@@ -84,88 +89,20 @@ export function buildInstallationScreens(
   return screens;
 }
 
-/** Build the independent cross-computer URLs for the live installation.
- * The set includes four dedicated event views, a cursor field, and one cursor
- * follower per slot. Participant ownership is encoded by numeric slot, so every
- * follower can reconstruct the same disjoint assignment without coordination. */
+/** Build stable named URLs for the nine-screen live installation. */
 export function buildLiveInstallationScreens(
   origin: string,
-  followerCount: number = 4,
 ): InstallationScreen[] {
-  if (!Number.isFinite(followerCount)) {
-    throw new Error("Installation follower count must be finite");
-  }
-  const count = Math.min(32, Math.max(1, Math.floor(followerCount)));
-  const withParams = (
-    pathname: string,
-    params: Record<string, string> = {},
-  ): string => {
-    const url = new URL(pathname, origin);
+  return LIVE_INSTALLATION_PROFILE_NAMES.map((name) => {
+    const profile = LIVE_INSTALLATION_PROFILES[name];
+    const url = new URL(profile.pathname, origin);
     url.searchParams.set("clean", "2");
-    for (const [key, value] of Object.entries(params)) {
-      url.searchParams.set(key, value);
-    }
-    return url.toString();
-  };
-
-  const screens: InstallationScreen[] = [
-    {
-      label: "scrolling",
-      role: "master",
-      url: withParams("/installation/live/", {
-        viz: "scrolling",
-        view: "field",
-        slots: String(count),
-      }),
-    },
-    {
-      label: "keypresses",
-      role: "master",
-      url: withParams("/installation/live/", {
-        viz: "typing",
-        view: "field",
-        slots: String(count),
-      }),
-    },
-    {
-      label: "touches",
-      role: "master",
-      url: withParams("/touches/"),
-    },
-    {
-      label: "clicks",
-      role: "master",
-      url: withParams("/installation/live/", {
-        viz: "clicks",
-        view: "field",
-        slots: String(count),
-      }),
-    },
-    {
-      label: "cursor field",
-      role: "master",
-      url: withParams("/installation/live/", {
-        viz: "trails",
-        view: "field",
-        slots: String(count),
-      }),
-    },
-  ];
-
-  for (let slot = 0; slot < count; slot++) {
-    screens.push({
-      label: `cursor follower ${slot + 1}`,
-      role: "follower",
-      followerId: String(slot),
-      url: withParams("/installation/live/", {
-        viz: "trails",
-        view: "follow",
-        slot: String(slot),
-        slots: String(count),
-        cinematic: "follow",
-      }),
-    });
-  }
-
-  return screens;
+    url.searchParams.set("screen", name);
+    return {
+      label: profile.label,
+      role: profile.role,
+      followerId: profile.role === "follower" ? name : undefined,
+      url: url.toString(),
+    };
+  });
 }
