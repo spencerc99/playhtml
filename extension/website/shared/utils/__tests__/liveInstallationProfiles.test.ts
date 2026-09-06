@@ -45,6 +45,15 @@ describe("live installation profiles", () => {
     });
   });
 
+  it("enables sound only on the main cursor field", () => {
+    expect(LIVE_INSTALLATION_PROFILES.cursors.defaultSoundEnabled).toBe(true);
+
+    for (const [name, profile] of Object.entries(LIVE_INSTALLATION_PROFILES)) {
+      if (name === "cursors") continue;
+      expect(profile.defaultSoundEnabled).not.toBe(true);
+    }
+  });
+
   it("uses explicit follower query parameters over profile defaults", () => {
     const profile = LIVE_INSTALLATION_PROFILES["follower-c"];
     expect(parseLiveInstallationScreen("", profile.screen)).toEqual({

@@ -127,12 +127,11 @@ export class SoundEngine {
 
     this.enabled = true;
 
-    // init() is triggered by a user gesture (sound-toggle click), so resuming
-    // here satisfies the browser autoplay policy. Without this, the context
-    // stays suspended until tick() happens to fire from AnimatedTrails' rAF
-    // loop, which can delay audible sound by seconds.
+    // The installation cursor profile can initialize sound before a gesture.
+    // Keep the graph available for a later user gesture or wake-time retry if
+    // the browser's autoplay policy leaves this resume request pending.
     if (this.ctx.state === "suspended") {
-      await this.ctx.resume();
+      void this.resume().catch(() => undefined);
     }
   }
 
@@ -185,10 +184,6 @@ export class SoundEngine {
 
   tick(elapsedMs: number, activeTrails: TrailSoundFrame[]): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
-
-    if (this.ctx.state === "suspended") {
-      this.ctx.resume();
-    }
 
     const activeIndices = new Set(activeTrails.map((t) => t.trailIndex));
     if (activeTrails.length !== this.lastActiveTrailCount) {
