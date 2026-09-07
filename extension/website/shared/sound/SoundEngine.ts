@@ -1697,6 +1697,7 @@ export class SoundEngine {
     this.bedSendGain.gain.value = this.layerGainValue("bed");
     this.bedSendGain.connect(this.reverbSendBus);
 
+
     this.masterGain.connect(this.compressor);
     this.reverbSendBus.connect(this.reverbGain);
     this.reverbGain.connect(this.convolver);
@@ -2874,6 +2875,16 @@ export class SoundEngine {
     // The voice's own tap into the room, at the level the single global send
     // used to apply to everything. At rest every voice sends exactly what it
     // sent before; presence is the only thing that moves one of them.
+    //
+    // Still tapped off the pan node, ahead of the routes, and so still
+    // mirroring the bed's own mute — a promoted voice's dry path leaves
+    // through the soloist bus while its reverb keeps gating on the bed. The
+    // dry path is what "solo the soloist" and "mute the soloist" are about, so
+    // this does not affect either; what it means is that soloing the soloist
+    // gives the promoted voice without the room it was sitting in. Left as it
+    // is rather than fixed by tapping the routes, which would put the send
+    // downstream of the crossfade but upstream of the layer buses, so the wet
+    // path would escape the very mixer it is here to obey.
     let reverbSend: GainNode | null = null;
     if (this.bedSendGain) {
       reverbSend = ctx.createGain();
@@ -4196,14 +4207,8 @@ export class SoundEngine {
    * Edge-triggered, like everything else presence does — re-ramping an
    * unchanged pair every tick is the zipper noise the throttle exists to avoid.
    *
-   * The reverb send is deliberately left alone. It taps the pan node, upstream
-   * of both routes, and mirrors the *bed* bus so a muted bed does not leave its
-   * room ringing. A promoted voice therefore keeps sending to the room through
-   * the bed's wet path while its dry path leaves through the soloist's, which
-   * is the same asymmetry the bed's send already has and not something this
-   * move introduces: presence has already dried the voice to
-   * `reverbSendScale`, so what remains is a fraction of a signal that was
-   * quiet in the room to begin with.
+   * Only the dry path moves; the reverb send stays on the bed's mirror. See
+   * the send's own note in `createVoice` for why, and for what that costs.
    */
   private routeVoiceToSoloist(voice: Voice, toSoloist: boolean): void {
     if (!this.ctx || voice.routedToSoloist === toSoloist) return;
