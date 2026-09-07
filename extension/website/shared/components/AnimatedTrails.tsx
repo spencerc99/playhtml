@@ -464,6 +464,13 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           setActiveClickEffects([]);
           soundEngineRef.current?.reset();
           cameraRef.current?.reset();
+          // The same fresh start the first pass gets. Without these two the
+          // gestures from the pass just ended are still on the canvas while
+          // the next pass re-fires them, so knots stack up on a trail and a
+          // participant's stale position steers the first gongs of the new
+          // pass to where they were rather than where they are.
+          soundVisualsRef.current?.clear();
+          trailPositionsRef.current?.clear();
         }
         prevElapsedRef.current = loopedElapsed;
 
