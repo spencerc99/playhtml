@@ -11,7 +11,6 @@ import {
   HoldVoice,
   VoicingSettings,
 } from "./voicing";
-import { VisualConfig } from "./soundVisuals";
 
 const labelStyle: React.CSSProperties = {
   fontFamily: "'Martian Mono', monospace",
@@ -108,9 +107,6 @@ interface SoundLayersProps {
   /** How each event family is voiced, which the sample replay reads back. */
   voicing: VoicingSettings;
   onVoicingChange: (next: Partial<VoicingSettings>) => void;
-  /** Which gesture the replay canvas draws for each sound it hears. */
-  visuals: VisualConfig;
-  onVisualsChange: (next: Partial<VisualConfig>) => void;
   /**
    * What the soloist speaks in. It lives with the scene rather than with the
    * layers — it is one setting on the spotlight, not a family of its own — but
@@ -125,38 +121,6 @@ const SOLOIST_VOICE_LABELS: Record<SoloistVoice, string> = {
   arpeggio: "arpeggio",
   presence: "presence",
 };
-
-/**
- * The visible half of a sound. Each gesture is fired by the sound it names,
- * from that sound's own trigger, so switching one on adds a thing to see at
- * the moment there is something to hear and nothing at any other moment.
- */
-const VISUAL_ROWS: Array<{
-  key: keyof VisualConfig;
-  name: string;
-  hint: string;
-}> = [
-  {
-    key: "gathering",
-    name: "gathering",
-    hint: "specks drawing in on an arrival chime, out on a departure",
-  },
-  {
-    key: "knot",
-    name: "knot",
-    hint: "a bead left on the trail at each navigation gong",
-  },
-  {
-    key: "lightnessSurge",
-    name: "lightness surge",
-    hint: "the recent path brightening on the gong, then settling",
-  },
-  {
-    key: "hueTilt",
-    name: "hue tilt",
-    hint: "the trail's hue leaning aside on the gong, then returning",
-  },
-];
 
 /**
  * The single place that answers "what is sounding, and how loud". Enabling a
@@ -174,8 +138,6 @@ export const SoundLayers = ({
   onConfigChange,
   voicing,
   onVoicingChange,
-  visuals,
-  onVisualsChange,
   soloistVoice,
   onSoloistVoiceChange,
 }: SoundLayersProps) => {
@@ -509,64 +471,6 @@ export const SoundLayers = ({
             start the replay to arm solo and mute
           </span>
         )}
-      </div>
-
-      <div
-        style={{
-          marginTop: "24px",
-          paddingTop: "16px",
-          borderTop: "1px solid #d8d1c7",
-        }}
-      >
-        <div
-          style={{
-            fontFamily: "'Martian Mono', monospace",
-            fontSize: "11px",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "1px",
-            marginBottom: "8px",
-          }}
-        >
-          Sound Visuals
-        </div>
-        <div style={{ ...labelStyle, marginBottom: "12px" }}>
-          What each sound looks like on the replay canvas. Every gesture is
-          fired by its own sound, so a sound that is switched off or dropped
-          draws nothing. The surge and the tilt are two flavours of the same
-          moment — the navigation gong — and can be run together or compared.
-        </div>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {VISUAL_ROWS.map((row) => {
-            const on = visuals[row.key];
-            return (
-              <button
-                key={row.key}
-                onClick={() => onVisualsChange({ [row.key]: !on })}
-                style={{
-                  ...(on ? buttonOn : buttonBase),
-                  padding: "8px 12px",
-                  textAlign: "left",
-                  maxWidth: "220px",
-                }}
-                aria-pressed={on}
-                title={row.hint}
-              >
-                <div style={{ fontSize: "11px" }}>{row.name}</div>
-                <div
-                  style={{
-                    fontSize: "9px",
-                    opacity: 0.75,
-                    marginTop: "2px",
-                    whiteSpace: "normal",
-                  }}
-                >
-                  {row.hint}
-                </div>
-              </button>
-            );
-          })}
-        </div>
       </div>
     </div>
   );

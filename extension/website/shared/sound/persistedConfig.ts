@@ -4,7 +4,6 @@
 import { GlobalSettings } from "./SceneSettings";
 import { DEFAULT_PROGRESSION_ID } from "./scales";
 import { VoicingSettings, VOICING_DEFAULTS } from "./voicing";
-import { VisualConfig, VISUAL_DEFAULTS } from "./soundVisuals";
 import { CantusVariant } from "./types";
 
 const STORAGE_KEY = "playhtml-sound-playground-config";
@@ -68,20 +67,17 @@ export interface PersistedConfig {
   globals: GlobalSettings;
   layers: LayerConfig;
   voicing: VoicingSettings;
-  visuals: VisualConfig;
 }
 
 export const buildPersistedConfig = (
   globals: GlobalSettings,
   layers: LayerConfig,
   voicing: VoicingSettings,
-  visuals: VisualConfig,
 ): PersistedConfig => ({
   v: CONFIG_VERSION,
   globals: { ...globals },
   layers: { ...layers },
   voicing: { ...voicing },
-  visuals: { ...visuals },
 });
 
 /** Fills in any field missing or unrecognized in a saved value with its shipped default. */
@@ -115,7 +111,6 @@ export interface RestoredConfig {
   globals: GlobalSettings;
   layers: LayerConfig;
   voicing: VoicingSettings;
-  visuals: VisualConfig;
 }
 
 /**
@@ -133,7 +128,6 @@ export const restoreConfig = (saved: unknown): RestoredConfig => {
     globals: migrateGlobals(withFallback(SCENE_DEFAULTS, record.globals)),
     layers: withFallback(LAYER_DEFAULTS, record.layers),
     voicing: withFallback(VOICING_DEFAULTS, record.voicing),
-    visuals: withFallback(VISUAL_DEFAULTS, record.visuals),
   };
 };
 

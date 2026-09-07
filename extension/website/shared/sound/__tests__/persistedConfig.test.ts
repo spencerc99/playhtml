@@ -12,7 +12,6 @@ import {
 } from "../persistedConfig";
 import { GlobalSettings } from "../SceneSettings";
 import { VoicingSettings, VOICING_DEFAULTS } from "../voicing";
-import { VisualConfig, VISUAL_DEFAULTS } from "../soundVisuals";
 import {
   LAYER_DEFAULTS,
   SCENE_DEFAULTS as GLOBAL_DEFAULTS,
@@ -81,14 +80,7 @@ describe("persistedConfig round trip", () => {
       hold: "rootFifth",
     };
 
-    const visuals: VisualConfig = {
-      gathering: false,
-      knot: false,
-      lightnessSurge: false,
-      hueTilt: true,
-    };
-
-    const config = buildPersistedConfig(globals, layers, voicing, visuals);
+    const config = buildPersistedConfig(globals, layers, voicing);
     expect(config.v).toBe(1);
     expect(saveConfig(config)).toBe(true);
 
@@ -100,7 +92,6 @@ describe("persistedConfig round trip", () => {
     expect(restored.globals).toEqual(globals);
     expect(restored.layers).toEqual(layers);
     expect(restored.voicing).toEqual(voicing);
-    expect(restored.visuals).toEqual(visuals);
   });
 
   it("excludes mixer solo/mute state — it was never part of the serialized config", () => {
@@ -108,7 +99,6 @@ describe("persistedConfig round trip", () => {
       GLOBAL_DEFAULTS,
       LAYER_DEFAULTS,
       VOICING_DEFAULTS,
-      VISUAL_DEFAULTS,
     );
     // Named keys rather than a substring search: `soloistVoice` is part of the
     // arrangement and contains "solo" without being mixer state.
@@ -127,12 +117,9 @@ describe("persistedConfig round trip", () => {
   });
 
   it("clearSavedConfig removes the save so the next load falls back to defaults", () => {
-    saveConfig(buildPersistedConfig(
-      GLOBAL_DEFAULTS,
-      LAYER_DEFAULTS,
-      VOICING_DEFAULTS,
-      VISUAL_DEFAULTS,
-    ));
+    saveConfig(
+      buildPersistedConfig(GLOBAL_DEFAULTS, LAYER_DEFAULTS, VOICING_DEFAULTS),
+    );
     expect(loadSavedConfig()).not.toBeNull();
 
     expect(clearSavedConfig()).toBe(true);
@@ -165,10 +152,6 @@ describe("per-field fallback", () => {
     expect(restored.voicing.click).toBe("soft");
     // The legacy save never had `hold`, so it falls back per-field too.
     expect(restored.voicing.hold).toBe(VOICING_DEFAULTS.hold);
-
-    // The visual gestures are a later addition, so a save from before them
-    // has no `visuals` at all and takes the whole shipped set.
-    expect(restored.visuals).toEqual(VISUAL_DEFAULTS);
   });
 
   it("ignores unknown fields a save carries from a removed feature", () => {
@@ -184,12 +167,30 @@ describe("per-field fallback", () => {
     expect("ghostFeature" in restored.globals).toBe(false);
   });
 
+  it("drops a whole section a save carries from a removed feature", () => {
+    // The visual gestures were removed after they had been saved, so a real
+    // save on disk still carries a `visuals` object. Restoring must ignore it
+    // rather than carrying it through onto the arrangement.
+    const savedWithVisuals = {
+      v: 1,
+      globals: { ...GLOBAL_DEFAULTS },
+      layers: { ...LAYER_DEFAULTS },
+      voicing: { ...VOICING_DEFAULTS },
+      visuals: { gathering: true, knot: true, lightnessSurge: true, hueTilt: false },
+    };
+
+    const restored = restoreConfig(savedWithVisuals);
+    expect(restored.globals).toEqual(GLOBAL_DEFAULTS);
+    expect(restored.layers).toEqual(LAYER_DEFAULTS);
+    expect(restored.voicing).toEqual(VOICING_DEFAULTS);
+    expect("visuals" in restored).toBe(false);
+  });
+
   it("falls back entirely to defaults when no config was ever saved", () => {
     const restored = restoreConfig(undefined);
     expect(restored.globals).toEqual(GLOBAL_DEFAULTS);
     expect(restored.layers).toEqual(LAYER_DEFAULTS);
     expect(restored.voicing).toEqual(VOICING_DEFAULTS);
-    expect(restored.visuals).toEqual(VISUAL_DEFAULTS);
   });
 });
 

@@ -1706,9 +1706,15 @@ export class SoundEngine {
   }
 
   /**
-   * Listen for the sounds the engine commits to, so a visual standing for a
+   * Listen for the sounds the engine commits to, so anything standing for a
    * sound is fired by that sound rather than by a second copy of the rules
    * deciding when it should have happened. Pass null to stop listening.
+   *
+   * Nothing consumes this today — the replay canvas's visual gestures were the
+   * one consumer and they were removed. It stays because the engine is the
+   * only thing that knows which arrivals and navigations it actually counted,
+   * and rebuilding that knowledge outside it is what the notice exists to
+   * prevent. With no listener bound, `emitNotice` returns immediately.
    */
   setSoundNoticeListener(listener: SoundNoticeListener | null): void {
     this.noticeListener = listener;

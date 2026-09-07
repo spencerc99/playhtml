@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PRESENCE_TUNING, haloPitch, SoundEngine } from "../SoundEngine";
 import {
-  CLICK_BELL,
   CURSOR_INSTRUMENTS,
   getInstrument,
 } from "../instruments";

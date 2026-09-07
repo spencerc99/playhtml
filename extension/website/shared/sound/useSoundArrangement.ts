@@ -1,11 +1,10 @@
-// ABOUTME: One arrangement — scene, layers, voicing, visuals — held in state and pushed to an engine
+// ABOUTME: One arrangement — scene, layers, voicing — held in state and pushed to an engine
 // ABOUTME: Shared by the sound playground and the dev panel so both mean the same thing by a setting
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SoundEngine } from "./SoundEngine";
 import { GlobalSettings } from "./SceneSettings";
 import { VoicingSettings, VOICING_DEFAULTS } from "./voicing";
-import { VisualConfig, VISUAL_DEFAULTS } from "./soundVisuals";
 import {
   buildPersistedConfig,
   clearSavedConfig,
@@ -24,11 +23,9 @@ export interface SoundArrangement {
   globals: GlobalSettings;
   layers: LayerConfig;
   voicing: VoicingSettings;
-  visuals: VisualConfig;
   setGlobals: (next: Partial<GlobalSettings>) => void;
   setLayers: (next: Partial<LayerConfig>) => void;
   setVoicing: (next: Partial<VoicingSettings>) => void;
-  setVisuals: (next: Partial<VisualConfig>) => void;
   /** ISO timestamp of the saved config in use, or null when none is saved. */
   savedAt: string | null;
   /**
@@ -107,19 +104,14 @@ export const useSoundArrangement = (
   const [voicing, setVoicingState] = useState<VoicingSettings>(
     initial.restored.voicing,
   );
-  const [visuals, setVisualsState] = useState<VisualConfig>(
-    initial.restored.visuals,
-  );
   const [savedAt, setSavedAt] = useState<string | null>(initial.savedAt);
 
   const globalsRef = useRef(globals);
   const layersRef = useRef(layers);
   const voicingRef = useRef(voicing);
-  const visualsRef = useRef(visuals);
   globalsRef.current = globals;
   layersRef.current = layers;
   voicingRef.current = voicing;
-  visualsRef.current = visuals;
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -154,18 +146,12 @@ export const useSoundArrangement = (
       setVoicingState((current) => ({ ...current, ...next })),
     [],
   );
-  const setVisuals = useCallback(
-    (next: Partial<VisualConfig>) =>
-      setVisualsState((current) => ({ ...current, ...next })),
-    [],
-  );
 
   const save = useCallback(() => {
     const config = buildPersistedConfig(
       globalsRef.current,
       layersRef.current,
       voicingRef.current,
-      visualsRef.current,
     );
     if (saveConfig(config)) setSavedAt(new Date().toISOString());
   }, []);
@@ -181,7 +167,7 @@ export const useSoundArrangement = (
       return;
     }
     save();
-  }, [active, autoPersist, globals, layers, voicing, visuals, save]);
+  }, [active, autoPersist, globals, layers, voicing, save]);
 
   const reset = useCallback(() => {
     clearSavedConfig();
@@ -189,18 +175,15 @@ export const useSoundArrangement = (
     setGlobalsState(SCENE_DEFAULTS);
     setLayersState(LAYER_DEFAULTS);
     setVoicingState(VOICING_DEFAULTS);
-    setVisualsState(VISUAL_DEFAULTS);
   }, []);
 
   return {
     globals,
     layers,
     voicing,
-    visuals,
     setGlobals,
     setLayers,
     setVoicing,
-    setVisuals,
     savedAt,
     save,
     reset,

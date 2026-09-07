@@ -99,19 +99,13 @@ const SoundPlayground = () => {
         onConfigChange={arrangement.setLayers}
         voicing={arrangement.voicing}
         onVoicingChange={arrangement.setVoicing}
-        visuals={arrangement.visuals}
-        onVisualsChange={arrangement.setVisuals}
         soloistVoice={arrangement.globals.soloistVoice}
         onSoloistVoiceChange={(soloistVoice) =>
           arrangement.setGlobals({ soloistVoice })
         }
       />
 
-      <SamplePlayback
-        getEngine={ensureEngine}
-        voicing={arrangement.voicing}
-        visuals={arrangement.visuals}
-      />
+      <SamplePlayback getEngine={ensureEngine} voicing={arrangement.voicing} />
 
       <SoundLibrary getEngine={ensureEngine} />
     </div>

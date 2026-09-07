@@ -49,21 +49,18 @@ export interface NavigationSoundEvent {
 }
 
 /**
- * An event the engine has just handled, reported to whoever is drawing the
+ * An event the engine has just handled, reported to whoever is watching the
  * scene, along with whether it actually made a sound.
  *
- * A notice is emitted for the event, not for the note. The two are separate
- * because the toggles are separate: a sound toggle decides whether audio
- * plays, a visual toggle decides whether a gesture is drawn, and neither
- * should silently gate the other. Emitting only when a note sounded is what
- * made the navigation visual invisible whenever navigation audio was off.
+ * A notice is emitted for the event, not for the note, so a consumer that
+ * cares about the event still hears about it when the audio for it was
+ * switched off or dropped. `played` is what separates the two: it says whether
+ * audio actually resulted, and the engine drops arrivals for its per-trail
+ * debounce and its global rate cap, and navigations inside their minimum
+ * interval. Something standing for a note reads `played`; something standing
+ * for the event ignores it.
  *
- * `played` says whether audio actually resulted — the engine drops arrivals
- * for its per-trail debounce and its global rate cap, and drops navigations
- * inside their minimum interval. A visual that stands for a note rather than
- * for the event (the gathering, which is paced by the chime's own notes)
- * should draw only when this is true; one that stands for the event (the
- * navigation knot) draws either way.
+ * Nothing consumes this today. See `SoundEngine.setSoundNoticeListener`.
  */
 export type SoundNotice =
   | {

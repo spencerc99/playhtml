@@ -4,7 +4,6 @@
 import React, { useCallback } from "react";
 import { SoundEngine } from "../shared/sound/SoundEngine";
 import { AuditionAccent } from "../shared/sound/types";
-import { GestureStage } from "./GestureStage";
 
 const labelStyle: React.CSSProperties = {
   fontFamily: "'Martian Mono', monospace",
@@ -260,8 +259,6 @@ export const SoundLibrary = ({ getEngine }: SoundLibraryProps) => {
         layer switched on, and some of these are candidates the panel above does
         not offer as a live voice.
       </div>
-
-      <GestureStage getEngine={getEngine} />
 
       <AuditionSection
         title="Accents"
