@@ -1242,6 +1242,11 @@ export class SoundEngine {
   private readonly providedCtx: BaseAudioContext | null;
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  /**
+   * Pre-master sum feeding the reverb, so the wet path can be scaled per voice.
+   * Carries its own copy of whatever master is scaling by — see `init`.
+   */
+  private reverbSendBus: GainNode | null = null;
   private reverbGain: GainNode | null = null;
   private convolver: ConvolverNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
@@ -1447,8 +1452,25 @@ export class SoundEngine {
       this.layerBuses.set(layer, bus);
     }
 
+    // The reverb is an aux send rather than a tap off the master output: every
+    // bus feeds both the master (dry) and the send (wet). Splitting them is
+    // what lets one voice sit drier than the crowd — a soloist stepping
+    // forward sends less of itself to the room while the room keeps ringing
+    // for everyone else — which a single post-master tap cannot express.
+    //
+    // The send sits pre-master, so it has to carry master's scaling itself or
+    // the two paths drift apart: master ducks for polyphony and rides the
+    // energy arc every few frames, and a send that missed those moves would
+    // make a dense scene progressively wetter and louder than a sparse one.
+    // `updateMasterGainForPolyphony` ramps both together for that reason.
+    this.reverbSendBus = this.ctx.createGain();
+    this.reverbSendBus.gain.value = this.masterGain.gain.value;
+    for (const bus of this.layerBuses.values()) {
+      bus.connect(this.reverbSendBus);
+    }
+
     this.masterGain.connect(this.compressor);
-    this.masterGain.connect(this.reverbGain);
+    this.reverbSendBus.connect(this.reverbGain);
     this.reverbGain.connect(this.convolver);
     this.convolver.connect(this.compressor);
     this.compressor.connect(this.ctx.destination);
@@ -5872,6 +5894,12 @@ export class SoundEngine {
     if (Math.abs(target - this.lastMasterGainTarget) < 0.001) return;
     this.lastMasterGainTarget = target;
     this.rampParam(this.masterGain.gain, target, 0.08);
+    // The send is pre-master, so it only stays in step by taking the same
+    // ramp. Without this the wet path would hold init's level while the dry
+    // path ducked underneath it.
+    if (this.reverbSendBus) {
+      this.rampParam(this.reverbSendBus.gain, target, 0.08);
+    }
   }
 
   private rampParam(
