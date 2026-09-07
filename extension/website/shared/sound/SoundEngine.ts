@@ -65,6 +65,9 @@ const NOTE_GLIDE_SECONDS = 0.08;
  */
 const MIN_EXPONENTIAL_TARGET = 1e-4;
 
+/** How long the fifth takes to fade in or out of a voice's chord voicing. */
+const FIFTH_TOGGLE_SECONDS = 0.3;
+
 /**
  * Pitch a voice's oscillators are built at, before it takes its first note.
  * An instrument crossfade rebuilds them here too, whenever the voice has no
@@ -3020,22 +3023,24 @@ export class SoundEngine {
     });
   }
 
-  /** Enable the fifth oscillator on an existing voice */
+  /**
+   * Enable the fifth oscillator on an existing voice.
+   *
+   * Routed through `rampParam` so the ramp is anchored at the level the fifth
+   * is actually sounding. An unanchored ramp starts from the last automation
+   * event instead — for a fifth toggled twice in quick succession that event
+   * is the previous ramp's endpoint, so the gain jumps there before moving,
+   * and a step in gain is a click.
+   */
   private enableFifth(voice: Voice): void {
     if (!this.ctx || !voice.fifthGainNode) return;
-    voice.fifthGainNode.gain.linearRampToValueAtTime(
-      0.6,
-      this.ctx.currentTime + 0.3,
-    );
+    this.rampParam(voice.fifthGainNode.gain, 0.6, FIFTH_TOGGLE_SECONDS);
   }
 
-  /** Disable the fifth oscillator on an existing voice */
+  /** Disable the fifth oscillator on an existing voice. Anchored, as above. */
   private disableFifth(voice: Voice): void {
     if (!this.ctx || !voice.fifthGainNode) return;
-    voice.fifthGainNode.gain.linearRampToValueAtTime(
-      0,
-      this.ctx.currentTime + 0.3,
-    );
+    this.rampParam(voice.fifthGainNode.gain, 0, FIFTH_TOGGLE_SECONDS);
   }
 
   private setVoiceFrequency(

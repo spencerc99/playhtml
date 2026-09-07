@@ -817,6 +817,52 @@ describe("SoundEngine cursor instruments", () => {
     }
   });
 
+  it("anchors the fifth's gain when chord voicing is toggled", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+    engine.setConfig({ cursorInstruments: true, chordVoicing: true });
+
+    const frame = (x: number) => ({
+      trailIndex: 0,
+      x,
+      y: 0,
+      prevX: 0,
+      prevY: 0,
+      cursorType: "pointer",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: false,
+    });
+    engine.tick(0, [frame(0)]);
+    context.currentTime += 1 / 60;
+    engine.tick(100, [frame(10)]);
+
+    const state = engine as unknown as {
+      voices: Map<number, { fifthGainNode: TestGainNode }>;
+    };
+    const fifthGain = state.voices.get(0)!.fifthGainNode.gain;
+    const before = fifthGain.events.length;
+
+    // Toggle twice, close enough together that the first fade is still in
+    // flight when the second is scheduled.
+    context.currentTime += 0.05;
+    engine.setConfig({ chordVoicing: false });
+    context.currentTime += 0.05;
+    engine.setConfig({ chordVoicing: true });
+
+    const added = fifthGain.events.slice(before);
+    const ramps = added.filter((event) => event.method === "linearRamp");
+    expect(ramps.length).toBeGreaterThan(0);
+
+    // Each toggle must hold first, so the fade starts from the level the
+    // fifth actually sits at rather than from the previous fade's endpoint.
+    for (const ramp of ramps) {
+      const preceding = added[added.indexOf(ramp) - 1];
+      expect(preceding?.method).toBe("cancelAndHold");
+    }
+  });
+
   it("rings click bells from the fixed scale when rotation is off", async () => {
     const engine = new SoundEngine();
     await engine.init();
