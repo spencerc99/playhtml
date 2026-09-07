@@ -53,6 +53,7 @@ function fakeEngine() {
     retireTrail: ReturnType<typeof vi.fn>;
     triggerNavigation: ReturnType<typeof vi.fn>;
     setSoundNoticeListener: ReturnType<typeof vi.fn>;
+    setCanvasWidth: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -237,6 +238,68 @@ describe("GestureStage", () => {
     frames = [];
     advance(1.5);
     expect(engine.triggerNavigation).toHaveBeenCalledTimes(1);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("never hands the engine more travel per frame than a live cursor would", async () => {
+    // A hidden tab clamps the pump to about a second whatever interval it asks
+    // for, and a blocked main thread stretches an animation frame the same way.
+    // Stepping that whole gap at once would put a hundred pixels of travel into
+    // one frame, which the engine's distance-gated paths hear as a sprint and
+    // sound at the top of their range — the blast this stage was reported for.
+    hidden = true;
+    const engine = fakeEngine();
+    const { root, container } = await renderStage(engine);
+
+    await press(container, "all together");
+    // One step per second, which is all a hidden tab actually delivers.
+    advance(11, 1);
+
+    const travels = engine.tick.mock.calls.map(([, frames]) => {
+      const f = frames[0];
+      return Math.hypot(f.x - f.prevX, f.y - f.prevY);
+    });
+    // A 60fps frame on this wander carries about 2.3px. Nothing may exceed the
+    // travel one 1/30s slice covers, whatever the step source did.
+    expect(Math.max(...travels)).toBeLessThan(6);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("fires each scripted beat exactly once, however coarsely it is stepped", async () => {
+    hidden = true;
+    const engine = fakeEngine();
+    const { root, container } = await renderStage(engine);
+
+    await press(container, "all together");
+    advance(12, 1);
+
+    // The script is one arrival, two navigations and one departure. A beat
+    // replayed per step would stack gongs on a single press.
+    expect(engine.triggerNavigation).toHaveBeenCalledTimes(2);
+    const newlyActive = engine.tick.mock.calls.filter(
+      ([, frames]) => frames[0].isNewlyActive,
+    );
+    expect(newlyActive).toHaveLength(1);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("gives the shared engine its own canvas width back when a gesture ends", async () => {
+    // The stage narrows the engine to its 360px scene while it plays. Left
+    // there, every later pan on the page collapses into the stage's width.
+    const engine = fakeEngine();
+    const { root, container } = await renderStage(engine);
+
+    await press(container, "arrival + gathering");
+    expect(engine.setCanvasWidth).toHaveBeenLastCalledWith(360);
+
+    advance(4);
+    expect(engine.setCanvasWidth).toHaveBeenLastCalledWith(window.innerWidth);
 
     act(() => root.unmount());
     container.remove();

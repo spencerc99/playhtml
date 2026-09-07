@@ -47,6 +47,30 @@ const TRAIL_SPAN_MS = 1500;
 export const PUMP_INTERVAL_MS = 1000 / 30;
 
 /**
+ * Longest slice of stage time one simulation step may cover, in ms.
+ *
+ * The step sources do not deliver on the cadence they are asked for. A hidden
+ * tab clamps `setTimeout` to about a second whatever interval it was given,
+ * and a busy main thread stretches an animation frame the same way. Stepping
+ * the whole gap at once hands the engine a single frame carrying every pixel
+ * of travel since the last one — up to about 100px on a one-second gap, where
+ * a 60fps frame carries two.
+ *
+ * The engine gates its loudest per-trail paths on raw per-tick travel: the
+ * soloist flourish fires a bell every `distancePerNotePx` of it, and the notes
+ * palette picks a register and a gain from it directly. One hundred pixels in
+ * one frame therefore reads as a violent sprint rather than a drift, and every
+ * such gate fires at once, at the top of its range. That is heard as a sudden
+ * blast, which is what makes a backgrounded stage painful rather than quiet.
+ *
+ * So a step covers at most this much stage time and the rest is caught up in
+ * further sub-steps of the same size. The gesture still completes on the wall
+ * clock a hidden tab actually offers; it simply reaches the engine as the
+ * motion it was scripted as, at the density the engine's tuning assumes.
+ */
+const MAX_SIMULATION_STEP_MS = 1000 / 30;
+
+/**
  * How long each scripted gesture runs before the stage lets go of the engine.
  * Long enough for the gong's own settle (`SURGE_TUNING` swell plus settle) and
  * for a departure chime's last speck to finish its travel.
@@ -330,10 +354,27 @@ interface Run {
   startedAt: number;
   /** Beats not yet fired, in order. */
   pending: Beat[];
+  /**
+   * Sounding beats this run has left to spend, counted from the script.
+   *
+   * Draining `pending` already fires each beat once, so this is a second lock
+   * on the same door rather than the thing that holds it. It is here because
+   * the failure it guards against is a hearing-safety one: a beat replayed per
+   * step would stack gongs and chimes on one press, and that is not a bug
+   * worth discovering by ear. Anything that would fire past the script is
+   * dropped rather than sounded.
+   */
+  triggerBudget: number;
   /** Whether the trail is currently on stage, so a depart beat is meaningful. */
   present: boolean;
   /** How many lengths of the wander path the cursor has travelled. */
   wanderT: number;
+  /**
+   * Stage time already simulated, in ms from the press. The step sources
+   * deliver on their own irregular cadence, so this is what the run has
+   * actually been advanced through rather than what the wall clock says.
+   */
+  simulatedMs: number;
   /** The drawn ribbon behind the cursor. */
   points: Array<{ x: number; y: number; t: number }>;
 }
@@ -449,6 +490,12 @@ export const GestureStage = ({ getEngine }: GestureStageProps) => {
       engine.retireTrail(STAGE_TRAIL_INDEX);
     }
     engine?.setSoundNoticeListener(null);
+    // The stage narrowed the shared engine to its own 360px scene so a gesture
+    // pans across the stage rather than across the window. Handing that back
+    // matters as much as the listener does: left at 360 it squashes every
+    // later pan on the page — the replay's and the live cursor's — into the
+    // stage's width, which reads as the whole scene collapsing toward centre.
+    if (engine) engine.setCanvasWidth(window.innerWidth);
     visualsRef.current.clear();
     runRef.current = null;
     unschedule();
@@ -458,30 +505,14 @@ export const GestureStage = ({ getEngine }: GestureStageProps) => {
 
   useEffect(() => release, [release]);
 
-  const frame = useCallback(() => {
-    const run = runRef.current;
-    const engine = engineRef.current;
-    if (!run || !engine) return;
-    // The drawing context is looked up but never gates the run: the sound is
-    // the point of a press, and a stage that cannot paint should still be
-    // audible rather than silently doing nothing.
-    const ctx = canvasRef.current?.getContext("2d") ?? null;
-
-    const elapsedMs = performance.now() - run.startedAt;
-    const elapsedSeconds = elapsedMs / 1000;
-    const visuals = visualsRef.current;
-    const visualConfig = GESTURE_VISUALS[run.id];
-
-    // The engine's own clock. Seeded from performance.now() so it is always
-    // far past any arrival suppression a reset elsewhere on the page left
-    // behind, and so it only ever moves forward across separate presses.
-    const engineMs = run.startedAt + elapsedMs;
-    visuals.setNow(engineMs);
-
-    // Read off the same clock the beats and the sounds use, rather than
-    // counted per frame: a throttled or backgrounded tab delivers far fewer
-    // callbacks than 60 a second, and a per-frame step would drift the cursor
-    // out from under the gesture its sound is marking.
+  /**
+   * Advance the run to `toMs` of stage time and sound whatever that covers.
+   * Called once per bounded sub-step, so the travel and the elapsed time it
+   * hands the engine always stand in the ratio a live cursor would produce.
+   */
+  const step = useCallback((run: Run, engine: SoundEngine, toMs: number) => {
+    const elapsedSeconds = toMs / 1000;
+    const engineMs = run.startedAt + toMs;
     const previous = wanderAt(run.wanderT);
     run.wanderT = elapsedSeconds * WANDER_RATE_PER_SECOND;
     const at = wanderAt(run.wanderT);
@@ -490,6 +521,8 @@ export const GestureStage = ({ getEngine }: GestureStageProps) => {
     // rather than one frame behind it.
     while (run.pending.length > 0 && run.pending[0].atSeconds <= elapsedSeconds) {
       const beat = run.pending.shift()!;
+      if (run.triggerBudget <= 0) continue;
+      run.triggerBudget--;
       if (beat.kind === "arrive") {
         run.present = true;
       } else if (beat.kind === "navigate") {
@@ -526,6 +559,43 @@ export const GestureStage = ({ getEngine }: GestureStageProps) => {
         run.points.shift();
       }
     }
+
+    run.simulatedMs = toMs;
+  }, []);
+
+  const frame = useCallback(() => {
+    const run = runRef.current;
+    const engine = engineRef.current;
+    if (!run || !engine) return;
+    // The drawing context is looked up but never gates the run: the sound is
+    // the point of a press, and a stage that cannot paint should still be
+    // audible rather than silently doing nothing.
+    const ctx = canvasRef.current?.getContext("2d") ?? null;
+
+    const elapsedMs = performance.now() - run.startedAt;
+    const elapsedSeconds = elapsedMs / 1000;
+    const visuals = visualsRef.current;
+    const visualConfig = GESTURE_VISUALS[run.id];
+
+    // Catch the simulation up to the wall clock in slices no larger than the
+    // engine's tuning assumes. A step source that arrived a second late is
+    // replayed as the thirty frames of drift it stands for rather than as one
+    // hundred-pixel lunge, which is what the engine's distance-gated paths
+    // would otherwise hear as a sprint and sound at the top of their range.
+    while (run.simulatedMs < elapsedMs) {
+      step(
+        run,
+        engine,
+        Math.min(elapsedMs, run.simulatedMs + MAX_SIMULATION_STEP_MS),
+      );
+    }
+
+    // The engine's own clock. Seeded from performance.now() so it is always
+    // far past any arrival suppression a reset elsewhere on the page left
+    // behind, and so it only ever moves forward across separate presses.
+    const engineMs = run.startedAt + elapsedMs;
+    visuals.setNow(engineMs);
+    const at = wanderAt(run.wanderT);
 
     if (ctx) {
       ctx.clearRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
@@ -581,7 +651,7 @@ export const GestureStage = ({ getEngine }: GestureStageProps) => {
       return;
     }
     schedule();
-  }, [release, schedule]);
+  }, [release, schedule, step]);
 
   useEffect(() => {
     frameRef.current = frame;
@@ -609,8 +679,10 @@ export const GestureStage = ({ getEngine }: GestureStageProps) => {
         id,
         startedAt: performance.now(),
         pending: [...GESTURE_BEATS[id]],
+        triggerBudget: GESTURE_BEATS[id].length,
         present: false,
         wanderT: 0,
+        simulatedMs: 0,
         points: [],
       };
       setPlaying(id);
