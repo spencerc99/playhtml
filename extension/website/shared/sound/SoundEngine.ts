@@ -66,6 +66,24 @@ const NOTE_GLIDE_SECONDS = 0.08;
 const VOICE_LEADING_GLIDE_SECONDS = 1;
 
 /**
+ * How long a retiring trail's voice takes to reach silence.
+ *
+ * Short enough that a departure is not heard lingering, long enough that the
+ * gain reaches zero before the oscillator stops. Everything the voice feeds
+ * has to be silent within it: the graph is disconnected at
+ * `VOICE_RETIREMENT_STOP_SECONDS`, so any node still sounding then is cut
+ * mid-cycle.
+ */
+const VOICE_RETIREMENT_FADE_SECONDS = 0.03;
+
+/**
+ * When a retiring voice's oscillator stops, and with it the disconnection of
+ * the whole voice graph. A margin past the fade, so the ramp has landed on
+ * zero before anything is torn down.
+ */
+const VOICE_RETIREMENT_STOP_SECONDS = VOICE_RETIREMENT_FADE_SECONDS + 0.01;
+
+/**
  * Nominal frame interval, used as the assumed length of the very first tick,
  * before there is a previous tick to measure against. Every subsequent tick
  * measures its own length — see `tickIntervalMs`.
@@ -3151,10 +3169,13 @@ export class SoundEngine {
       if (this.ctx && voice.oscillator) {
         const now = this.ctx.currentTime;
         this.holdParam(voice.gainNode.gain, now);
-        voice.gainNode.gain.linearRampToValueAtTime(0, now + 0.03);
+        voice.gainNode.gain.linearRampToValueAtTime(
+          0,
+          now + VOICE_RETIREMENT_FADE_SECONDS,
+        );
         voice.oscillator.onended = disconnect;
         try {
-          voice.oscillator.stop(now + 0.04);
+          voice.oscillator.stop(now + VOICE_RETIREMENT_STOP_SECONDS);
           disconnectWhenStopped = true;
         } catch { /* already stopped */ }
       }
@@ -3164,11 +3185,19 @@ export class SoundEngine {
       if (voice.fifthOscillator) {
         try {
           voice.fifthOscillator.stop(
-            this.ctx ? this.ctx.currentTime + 0.04 : undefined,
+            this.ctx
+              ? this.ctx.currentTime + VOICE_RETIREMENT_STOP_SECONDS
+              : undefined,
           );
         } catch { /* already stopped */ }
         voice.fifthOscillator = null;
       }
+      // A trail can retire while it still holds presence, and its octave
+      // double is a running oscillator at full gain. Faded over the same
+      // length as the voice's own gain above, so the halo reaches silence
+      // before the pan node it feeds is disconnected; stopping it outright
+      // with the voice cuts it mid-cycle, which is an audible click.
+      this.releaseHalo(voice, VOICE_RETIREMENT_FADE_SECONDS);
       if (!disconnectWhenStopped) {
         disconnect();
       }
@@ -3891,13 +3920,22 @@ export class SoundEngine {
     );
   }
 
-  /** Fade the halo out and tear it down once it is silent. */
-  private releaseHalo(voice: Voice): void {
+  /**
+   * Fade the halo out and tear it down once it is silent.
+   *
+   * `fadeSeconds` exists for the retirement path. A demotion leaves the voice
+   * behind to keep sounding, so the halo can take its time; a retiring trail
+   * disconnects its own pan node — which the halo feeds — within a few frames,
+   * and a fade still running at that point is cut mid-cycle. Retirement
+   * therefore passes its own teardown length, so the halo is silent before the
+   * graph beneath it goes away.
+   */
+  private releaseHalo(voice: Voice, fadeSeconds?: number): void {
     const halo = voice.halo;
     if (!this.ctx || !halo || halo.fading) return;
     halo.fading = true;
     voice.halo = null;
-    const { haloFadeSeconds } = PRESENCE_TUNING;
+    const haloFadeSeconds = fadeSeconds ?? PRESENCE_TUNING.haloFadeSeconds;
     const now = this.ctx.currentTime;
     this.rampParam(halo.gain.gain, 0, haloFadeSeconds);
     halo.oscillator.onended = () => {
@@ -4982,9 +5020,21 @@ export class SoundEngine {
     const level = ctx.createGain();
     const peak = gain * (variant === "swell" ? swellGainScale : 1);
     const build = variant === "swell" ? swellBuildFraction : buildFraction;
+    // The peak has to be held from wherever the build actually ends, not from
+    // a release point derived from the duration alone. On a short stroke those
+    // two cross — a 0.4s hold builds for 0.32s but would start its release at
+    // 0.31s — and a `setValueAtTime` landing inside the rising ramp abandons it
+    // and jumps the gain to peak, which is an audible click. Taking the later
+    // of the two keeps the envelope monotonic at every duration; the release
+    // is shortened rather than the attack being cut.
+    const buildEndsAt = now + durationSeconds * build;
+    const releaseStartsAt = Math.max(
+      buildEndsAt,
+      now + durationSeconds - releaseSeconds,
+    );
     level.gain.setValueAtTime(0, now);
-    level.gain.linearRampToValueAtTime(peak, now + durationSeconds * build);
-    level.gain.setValueAtTime(peak, now + durationSeconds - releaseSeconds);
+    level.gain.linearRampToValueAtTime(peak, buildEndsAt);
+    level.gain.setValueAtTime(peak, releaseStartsAt);
     level.gain.exponentialRampToValueAtTime(0.0001, now + durationSeconds);
 
     const panNode = ctx.createStereoPanner();
