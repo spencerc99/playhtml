@@ -146,6 +146,23 @@ try {
       if (mode === "closed") window.closedCursorProbe = root;
     }
   });
+  await page.evaluate(() => {
+    const host = document.createElement("cursor-probe");
+    host.id = "light-probe";
+    host.innerHTML = '<button style="cursor:pointer">Light DOM cursor</button>';
+    document.querySelector("main").append(host);
+  });
+  const lightButton = page.getByRole("button", {
+    name: "Light DOM cursor",
+    exact: true,
+  });
+  await lightButton.hover();
+  await expect(page.locator("#wwo-installation-cursor")).toBeVisible();
+  await expect
+    .poll(() => lightButton.evaluate((el) => getComputedStyle(el).cursor))
+    .toBe("none");
+  if (evidence)
+    await page.screenshot({ path: resolve(evidence, "cursor-light-dom.png") });
   const shadowButton = page.getByRole("button", {
     name: "open shadow cursor",
     exact: true,
@@ -188,6 +205,9 @@ try {
   await expect(page.locator("#wwo-installation-cursor")).toBeVisible();
   await settings.bringToFront();
   await toggle.uncheck();
+  await expect
+    .poll(() => lightButton.evaluate((el) => getComputedStyle(el).cursor))
+    .toBe("pointer");
   await expect
     .poll(() => shadowButton.evaluate((el) => getComputedStyle(el).cursor))
     .toBe("crosshair");

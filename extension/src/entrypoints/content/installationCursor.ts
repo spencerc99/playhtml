@@ -43,7 +43,11 @@ export function initInstallationCursor(): () => void {
             ).openOrClosedShadowRoot);
       // Opaque custom elements retain their native pointer on browsers without
       // closed-root access, since their internal cursor styles cannot be checked.
-      if (root?.mode === "closed" || (!root && node.localName.includes("-"))) {
+      // A null result confirms there is no root; undefined means access is unavailable.
+      if (
+        root?.mode === "closed" ||
+        (root === undefined && node.localName.includes("-"))
+      ) {
         hide();
         return;
       }
