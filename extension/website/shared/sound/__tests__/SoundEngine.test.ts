@@ -4248,6 +4248,72 @@ describe("envelopes that must not be cut mid-sound", () => {
 
     engine.dispose();
   });
+
+  it("closes a stopped trail's breath without cancelling its envelope", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ trailVoices: true, cursorInstruments: true, swells: true });
+
+    const frame = (x: number, prevX: number) => ({
+      trailIndex: 0,
+      x,
+      y: 0,
+      prevX,
+      prevY: 0,
+      cursorType: "text",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: false,
+    });
+
+    // Move the trail far enough to voice plucks, which schedule attack and
+    // decay ahead of the clock on the voice's envelope gain.
+    let elapsedMs = 0;
+    let x = 0;
+    for (let step = 0; step < 20; step++) {
+      const prevX = x;
+      x += 30;
+      engine.tick(elapsedMs, [frame(x, prevX)]);
+      elapsedMs += 1000 / 60;
+      context.currentTime += 1 / 60;
+    }
+
+    const state = engine as unknown as {
+      voices: Map<number, { gainNode: TestGainNode; fadeNode: TestGainNode }>;
+    };
+    const voice = state.voices.get(0);
+    expect(voice, "the trail never took a voice").toBeDefined();
+
+    const envelopeHoldsWhileMoving = voice!.gainNode.gain.events.filter(
+      (event) => event.method === "cancelAndHold",
+    ).length;
+
+    // Now hold the trail still, which is what closes its breath. An idle trail
+    // is faded on every tick it stays still, so this runs many times over.
+    for (let step = 0; step < 20; step++) {
+      engine.tick(elapsedMs, [frame(x, x)]);
+      elapsedMs += 1000 / 60;
+      context.currentTime += 1 / 60;
+    }
+
+    // The breath is closed on a node of its own, so the fade's repeated
+    // anchoring never reaches the envelope's param. Cancelling there would
+    // truncate a pluck's scheduled decay mid-flight, and a truncated envelope
+    // is a step discontinuity — the ticking this separation exists to remove.
+    expect(
+      voice!.gainNode.gain.events.filter(
+        (event) => event.method === "cancelAndHold",
+      ).length,
+    ).toBe(envelopeHoldsWhileMoving);
+
+    // And the fade actually happened, on the node that owns it.
+    const fadeRamps = voice!.fadeNode.gain.events.filter(
+      (event) => event.method === "linearRamp" && event.value === 0,
+    );
+    expect(fadeRamps.length).toBeGreaterThan(0);
+
+    engine.dispose();
+  });
 });
 
 describe("the one-shot note budget", () => {
