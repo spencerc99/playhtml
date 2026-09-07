@@ -95,6 +95,18 @@ const VOICE_CONTROL_RAMP_SECONDS = 0.07;
 /** Interval between repeated plucks for percussive cursor types like text (ms) */
 const PLUCK_REPEAT_INTERVAL_MS = 120;
 
+/**
+ * How much of the repeat interval one pluck's envelope may occupy.
+ *
+ * A percussive voice is a single gain node retriggered in place rather than a
+ * new node per note, so two envelopes cannot overlap on it — the second
+ * cancels the first mid-ramp, which holds the gain rather than decaying it.
+ * Leaving a margin means each pluck has reached silence before the next is
+ * scheduled, so the retrigger starts from rest and the sequence reads as
+ * separate taps.
+ */
+const PLUCK_DECAY_FRACTION = 0.9;
+
 /** Distance threshold for trail crossing detection (pixels) */
 const CROSSING_DISTANCE_THRESHOLD = 15;
 
@@ -1831,13 +1843,26 @@ export class SoundEngine {
           voice.lastPluckMs = elapsedMs;
           const now = this.ctx.currentTime;
           const pluckGain = gain * instrument.gain * spotlightGain;
-          // Sharp attack, quick decay — percussive envelope
+          // Sharp attack, then a decay that finishes before the next pluck can
+          // begin. The full attack+decay+release of the text instrument runs to
+          // ~390ms, more than three times the repeat interval, so scheduling it
+          // whole means every pluck lands on top of a decay still in flight.
+          // That does not merely overlap: cancelling a running exponential ramp
+          // and immediately ramping again holds the gain at its peak instead of
+          // decaying, and the envelope walks upward from there, so a fast text
+          // cursor turns a sequence of plucks into a rising held tone with a
+          // discontinuity at every retrigger. Fitting the decay inside the
+          // interval lets each pluck complete as the transient it is.
+          const pluckSeconds = Math.min(
+            instrument.attack + instrument.decay + instrument.release,
+            (PLUCK_REPEAT_INTERVAL_MS / 1000) * PLUCK_DECAY_FRACTION,
+          );
           this.holdParam(voice.gainNode.gain, now);
           // Hold the current automation value, then ramp up quickly.
           voice.gainNode.gain.linearRampToValueAtTime(pluckGain, now + 0.005);
           voice.gainNode.gain.exponentialRampToValueAtTime(
             0.001,
-            now + 0.005 + instrument.attack + instrument.decay + instrument.release,
+            now + 0.005 + pluckSeconds,
           );
         }
       } else if (shouldUpdateContinuousParams) {

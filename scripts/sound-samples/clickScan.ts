@@ -451,11 +451,22 @@ const SWEEP_CLICK_INTERVAL_MS = 120;
  * This is deliberately harsher than the archive: a scan that passes here has
  * headroom, and a regression in the soloist or eviction paths shows up as
  * clicks long before a listener would catch it in the fixture.
+ *
+ * `allText` makes every trail a text cursor, and `trailCount` shrinks the
+ * scene. Both exist for one case the many-trail sweep cannot reach: the
+ * percussive pluck retriggers a single gain node in place while the spotlight's
+ * brightened filter sweeps across it, and that combination needs a text cursor
+ * that is both moving fast and *staying* promoted. A ten-trail scene hands the
+ * sweep on every 900ms, so no trail holds the spotlight long enough, and two
+ * trails in three are ordinary cursors anyway — the fault hides completely.
+ * One text trail sweeping alone is promoted at once and stays promoted, which
+ * is what a page with a single busy reader actually looks like.
  */
 const sweepScene = (
   id: string,
   soloistVoice: SoloistVoice,
   durationSeconds: number,
+  { allText = false, trailCount = SWEEP_TRAIL_COUNT } = {},
 ): Scene => {
   let lastClickMs = 0;
   const phase = (index: number): number => index * 0.7;
@@ -466,8 +477,7 @@ const sweepScene = (
     soloistVoice,
     advance: (engine, sampleMs) => {
       const seconds = sampleMs / 1_000;
-      const sweeper = Math.floor(sampleMs / SWEEP_HANDOVER_MS) %
-        SWEEP_TRAIL_COUNT;
+      const sweeper = Math.floor(sampleMs / SWEEP_HANDOVER_MS) % trailCount;
 
       if (sampleMs - lastClickMs >= SWEEP_CLICK_INTERVAL_MS) {
         lastClickMs = sampleMs;
@@ -482,7 +492,7 @@ const sweepScene = (
       }
 
       const frames: TrailSoundFrame[] = [];
-      for (let index = 0; index < SWEEP_TRAIL_COUNT; index++) {
+      for (let index = 0; index < trailCount; index++) {
         // The sweeper races across the full canvas several times a second;
         // everyone else drifts slowly, so the scene average stays low and the
         // sweeper clears the promotion ratio.
@@ -508,7 +518,7 @@ const sweepScene = (
           y,
           prevX,
           prevY,
-          cursorType: index % 3 === 0 ? "text" : "default",
+          cursorType: allText || index % 3 === 0 ? "text" : "default",
           progress: 0,
           color: REPLAY_COLORS[index % REPLAY_COLORS.length],
           isNewlyActive: sampleMs < 1 / REPLAY_FPS,
@@ -659,6 +669,15 @@ try {
     sweepScene("sweeps-bells", "bells", SCAN_SECONDS),
     sweepScene("sweeps-arpeggio", "arpeggio", SCAN_SECONDS),
     sweepScene("sweeps-descant", "descant", SCAN_SECONDS),
+    sweepScene("sweeps-text-bells", "bells", SCAN_SECONDS, { allText: true }),
+    sweepScene("lone-text-bells", "bells", SCAN_SECONDS, {
+      allText: true,
+      trailCount: 1,
+    }),
+    sweepScene("lone-text-arpeggio", "arpeggio", SCAN_SECONDS, {
+      allText: true,
+      trailCount: 1,
+    }),
   );
 
   for (const scene of SCENES) {
