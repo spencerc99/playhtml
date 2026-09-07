@@ -1437,6 +1437,18 @@ export class SoundEngine {
   /** Chord root the pedal is currently holding, so it only moves on a change. */
   private bassPedalFrequency: number | null = null;
   /**
+   * Level the pedal is currently ramping toward, so it only re-ramps on a move.
+   *
+   * The pedal is a continuous drone under the whole mix, and its level follows
+   * the energy arc — which means it has a target on every tick. Scheduling a
+   * half-second ramp toward that target every tick cancels the ramp still in
+   * flight and starts another from wherever it had reached, so the drone
+   * advances as a staircase of held values at the tick rate rather than as one
+   * glide. Under a sustained tone that stepping is a periodic tick, and it
+   * scales with the scene because the arc moves more in a busy one.
+   */
+  private lastBassPedalTarget = Number.NaN;
+  /**
    * The cantus firmus, when it is running. Null whenever it is switched off,
    * which is also how it is stopped — nothing else holds a reference.
    *
@@ -5595,12 +5607,20 @@ export class SoundEngine {
       }
       this.bassPedalVoices = [this.createBassPedalVoice(target, fadeSeconds)];
       this.bassPedalFrequency = target;
+      // The new voice fades in to its own level, so the guard below is
+      // measuring against a voice that no longer exists.
+      this.lastBassPedalTarget = this.bassPedalGain();
       return;
     }
 
-    // Level tracks the energy arc so the floor swells with a busy scene.
+    // Level tracks the energy arc so the floor swells with a busy scene, but
+    // only on a real move — see `lastBassPedalTarget`. The arc is a slow
+    // follower, so this still reaches every level it passes through.
+    const level = this.bassPedalGain();
+    if (Math.abs(level - this.lastBassPedalTarget) < 0.001) return;
+    this.lastBassPedalTarget = level;
     for (const voice of this.bassPedalVoices) {
-      this.rampParam(voice.gainNode.gain, this.bassPedalGain(), 0.5);
+      this.rampParam(voice.gainNode.gain, level, 0.5);
     }
   }
 
@@ -5670,6 +5690,7 @@ export class SoundEngine {
     }
     this.bassPedalVoices = [];
     this.bassPedalFrequency = null;
+    this.lastBassPedalTarget = Number.NaN;
   }
 
   /** Low drone voices currently sounding (diagnostics). */

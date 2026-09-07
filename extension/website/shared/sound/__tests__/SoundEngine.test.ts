@@ -1509,6 +1509,34 @@ describe("SoundEngine cursor instruments", () => {
     expect(firstVoice.oscillator.frequency.events).toHaveLength(0);
   });
 
+  it("only re-ramps the pedal's level when that level actually moves", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    // The energy arc is what gives the pedal a moving level at all; without it
+    // the level is a constant and any implementation passes.
+    engine.setConfig({ bassPedal: true, energyArc: true });
+
+    engine.tick(0, []);
+    const state = engine as unknown as {
+      bassPedalVoices: Array<{ gainNode: { gain: TestAudioParam } }>;
+    };
+    const gain = state.bassPedalVoices[0].gainNode.gain;
+    const afterCreation = gain.events.length;
+
+    // Ticks that do not move the energy follower far enough to change the
+    // pedal's level must schedule nothing. Re-ramping on each of them cancels
+    // the half-second glide still in flight and restarts it from wherever it
+    // had reached, so the drone advances as a staircase of held values at the
+    // tick rate — a periodic tick under the whole mix, and the louder the
+    // scene the more the arc moves and the worse it gets.
+    for (let tickMs = 16; tickMs <= 320; tickMs += 16) {
+      engine.tick(tickMs, []);
+    }
+
+    expect(gain.events.length).toBe(afterCreation);
+  });
+
   it("stays silent and holds no pedal voice while the toggle is off", async () => {
     const engine = new SoundEngine();
     await engine.init();

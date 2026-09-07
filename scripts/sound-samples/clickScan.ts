@@ -5,6 +5,7 @@ import { OfflineAudioContext } from "node-web-audio-api";
 import { SoundEngine } from "../../extension/website/shared/sound/SoundEngine";
 import { PROGRESSIONS } from "../../extension/website/shared/sound/scales";
 import type {
+  CantusVariant,
   SoloistVoice,
   TrailSoundFrame,
 } from "../../extension/website/shared/sound/types";
@@ -191,6 +192,22 @@ interface Scene {
    * driver render both.
    */
   nextStepMs?: (sampleMs: number) => number;
+  /**
+   * Arrangement overrides layered onto `ARRANGEMENT` for this scene.
+   *
+   * The default arrangement turns everything on, which sounds like the safest
+   * thing to scan against and is not: several layers mask each other. The
+   * spotlight ducks the crowd and the soloist's own notes sit on top of it, so
+   * a fault in the sustained bed's gain path is buried under content that is
+   * louder than it. Turning layers OFF is therefore its own coverage, not a
+   * weaker version of the same scan.
+   */
+  config?: Partial<Record<string, unknown>>;
+  /**
+   * The cantus variant to run, if any. Not part of `SoundConfig` — it has its
+   * own setter — so it is carried separately here for the same reason.
+   */
+  cantus?: CantusVariant | null;
 }
 
 /**
@@ -613,7 +630,12 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
   await engine.init();
   engine.setCanvasWidth(CANVAS_WIDTH);
   engine.setVolume(VOLUME);
-  engine.setConfig({ ...ARRANGEMENT, soloistVoice: scene.soloistVoice });
+  engine.setConfig({
+    ...ARRANGEMENT,
+    soloistVoice: scene.soloistVoice,
+    ...scene.config,
+  });
+  if (scene.cantus) engine.setCantus(scene.cantus);
 
   const stepMs = 1_000 / REPLAY_FPS;
   const endMs = scene.durationSeconds * 1_000;
@@ -705,6 +727,35 @@ const verifyThreshold = async (): Promise<void> => {
 
 const SCAN_SECONDS = 40;
 
+/**
+ * The arrangement Spencer is actually listening to, which is not the one
+ * every scene above scans.
+ *
+ * Two of its differences are the whole point of scanning it separately. With
+ * the spotlight off there is no ducking and no soloist, so the sustained bed
+ * carries the mix alone and every voice sits at its own full gain — the crowd
+ * is the loudest thing present rather than the quietest. With cursor
+ * instruments off, no trail takes the percussive pluck path, so every trail
+ * holds one continuously-updated sustained voice for the length of the scene.
+ *
+ * That combination is what puts the throttled control path under the whole
+ * mix instead of under a soloist, which is where a periodic fault at the
+ * throttle's own rate becomes audible as ticking rather than as texture.
+ */
+const SPENCER_ARRANGEMENT = {
+  spotlight: false,
+  cursorInstruments: false,
+  choralTimbre: true,
+  bassPedal: true,
+  swells: true,
+  chordVoicing: true,
+  trailVoices: true,
+  chordRotation: true,
+  energyArc: true,
+  trailArrivals: true,
+  navigationSounds: true,
+} as const;
+
 const SCENES: Scene[] = [];
 
 const report = (scan: ScanReport): void => {
@@ -790,6 +841,29 @@ try {
       reviveTrails: true,
       soloistChurn: true,
     }),
+    // Spencer's own arrangement, on both surfaces. The ticking he hears is
+    // present with the spotlight and the cursor instruments off, so it has to
+    // be scanned with them off: no scene above does that, and the layers they
+    // add are loud enough to bury a fault in the sustained bed underneath.
+    ...([
+      ["sweeps", sweepScene],
+      ["live", liveScene],
+    ] as const).flatMap(([surface, makeScene]) => [
+      {
+        ...makeScene(`${surface}-spencer`, "presence", SCAN_SECONDS),
+        config: SPENCER_ARRANGEMENT,
+        cantus: "tenor" as CantusVariant,
+      },
+      // Denser, because the ticking gets worse as the scene fills. If the
+      // fault is per-voice and periodic, more voices means more of it.
+      {
+        ...makeScene(`${surface}-spencer-dense`, "presence", SCAN_SECONDS, {
+          trailCount: 12,
+        }),
+        config: SPENCER_ARRANGEMENT,
+        cantus: "duet" as CantusVariant,
+      },
+    ]),
   );
 
   for (const scene of SCENES) {
