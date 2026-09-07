@@ -22,6 +22,11 @@ import {
   scanForClicks,
   type ScanReport,
 } from "./clickDetector";
+import {
+  FLUTTER_DEPTH_THRESHOLD,
+  scanForFlutter,
+  type FlutterReport,
+} from "./flutterDetector";
 
 const SAMPLE_RATE = 44_100;
 const CHANNEL_COUNT = 2;
@@ -622,6 +627,136 @@ const liveScene = (
   };
 };
 
+/** How often a typing hand nudges the caret, in ms — roughly 90wpm. */
+const TYPING_KEYSTROKE_MS = 130;
+/** Pixels the caret advances per character in a normal text column. */
+const TYPING_CHARACTER_WIDTH = 8;
+/** Pixels the caret drops when a line wraps. */
+const TYPING_LINE_HEIGHT = 22;
+/** How often the typist stops to think, in ms. */
+const TYPING_PAUSE_INTERVAL_MS = 2_600;
+/** How long a thinking pause lasts, in ms. */
+const TYPING_PAUSE_MS = 700;
+
+/**
+ * Someone typing, which is the one thing no other scene here reproduces.
+ *
+ * Every scene above moves its trails: the sweeper races, the drifters drift,
+ * and even a "still" trail is still crossing the canvas slowly. A typist's
+ * pointer does neither. It sits where it was left and is nudged a character's
+ * width at a time as the caret advances, with the hand's own tremor under
+ * that — which is motion that spends most of its ticks *below*
+ * `SILENCE_VELOCITY_THRESHOLD` and crosses it only on the keystroke frames.
+ *
+ * That is the shape the crackle lives in. Below the threshold the voice's
+ * breath is faded closed; above it, reopened. A pointer jittering across the
+ * threshold therefore drives `fadeVoice` and `openVoiceFade` in alternation at
+ * something close to the keystroke rate, and the text cursor's plucks are
+ * multiplied by that flapping breath on their way out. Neither ramp is
+ * illegal, so nothing here is a discontinuity — which is exactly why this
+ * scene is scanned for flutter as well as for clicks.
+ *
+ * `withPointer` adds an ordinary cursor moving normally alongside the typist,
+ * because a real page rarely has only one person on it and the crowd's own
+ * level is what the flutter has to be audible over.
+ */
+const typingScene = (
+  id: string,
+  soloistVoice: SoloistVoice,
+  durationSeconds: number,
+  { withPointer = false } = {},
+): Scene => {
+  const random = seededRandom(hash(`typing-${id}`));
+  // Where the caret sits: a text column starting near the left margin.
+  let caretX = CANVAS_WIDTH * 0.2;
+  let caretY = CANVAS_HEIGHT * 0.4;
+  let prevCaretX = caretX;
+  let prevCaretY = caretY;
+  let lastKeystrokeMs = 0;
+  let lastClickMs = 0;
+  let firstSeen = true;
+  let pointerFirstSeen = true;
+
+  return {
+    id,
+    durationSeconds,
+    soloistVoice,
+    // The typist's own cadence, not the replay clock: a page being typed on is
+    // a live page, and the engine divides by this interval in three places.
+    nextStepMs: liveStepMs(random),
+    advance: (engine, sampleMs) => {
+      const inPause =
+        sampleMs % TYPING_PAUSE_INTERVAL_MS < TYPING_PAUSE_MS;
+
+      prevCaretX = caretX;
+      prevCaretY = caretY;
+
+      if (!inPause && sampleMs - lastKeystrokeMs >= TYPING_KEYSTROKE_MS) {
+        lastKeystrokeMs = sampleMs;
+        caretX += TYPING_CHARACTER_WIDTH;
+        // The line wraps: the caret returns to the margin and drops a line.
+        // Stepped rather than teleported, because a jump of most of the canvas
+        // in one tick is a velocity no pointer produces and would swamp the
+        // scene average the promotion test reads.
+        if (caretX > CANVAS_WIDTH * 0.5) {
+          caretX = CANVAS_WIDTH * 0.2;
+          caretY += TYPING_LINE_HEIGHT;
+          if (caretY > CANVAS_HEIGHT * 0.7) caretY = CANVAS_HEIGHT * 0.3;
+        }
+      } else {
+        // Between keystrokes the pointer is not perfectly still: a resting
+        // hand and a sub-pixel compositor offset both move it a little. This
+        // is the sub-threshold jitter the fade decision has to absorb.
+        caretX += (random() - 0.5) * 0.09;
+        caretY = caretY + (random() - 0.5) * 0.09;
+      }
+
+      // A typist clicks occasionally — into a field, onto a link.
+      if (sampleMs - lastClickMs > 4_000 && random() < 0.08) {
+        lastClickMs = sampleMs;
+        engine.triggerClick({ x: caretX, y: caretY });
+      }
+
+      const frames: TrailSoundFrame[] = [
+        {
+          trailIndex: 0,
+          x: caretX,
+          y: caretY,
+          prevX: prevCaretX,
+          prevY: prevCaretY,
+          cursorType: "text",
+          progress: 0,
+          color: REPLAY_COLORS[0],
+          isNewlyActive: firstSeen,
+          identityKey: "typing-caret",
+        },
+      ];
+      firstSeen = false;
+
+      if (withPointer) {
+        const seconds = sampleMs / 1_000;
+        const x = CANVAS_WIDTH * (0.5 + 0.35 * Math.sin(seconds * 0.9));
+        const y = CANVAS_HEIGHT * (0.5 + 0.3 * Math.cos(seconds * 0.7));
+        frames.push({
+          trailIndex: 1,
+          x,
+          y,
+          prevX: x,
+          prevY: y,
+          cursorType: "default",
+          progress: 0,
+          color: REPLAY_COLORS[1],
+          isNewlyActive: pointerFirstSeen,
+          identityKey: "typing-pointer",
+        });
+        pointerFirstSeen = false;
+      }
+
+      return frames;
+    },
+  };
+};
+
 /** Drive one scene through the engine and return the rendered buffer. */
 const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
   Math.random = seededRandom(hash(scene.id));
@@ -725,6 +860,97 @@ const verifyThreshold = async (): Promise<void> => {
   );
 };
 
+/**
+ * Prove the flutter threshold discriminates, the same way the click threshold
+ * is proved, and for the same reason: a detector that fired on everything or
+ * on nothing would be worse than none, because its zero would be believed.
+ *
+ * The clean end is a tone with the slow movement the engine actually applies
+ * — a swell over seconds and a vibrato at the top of the musical range — which
+ * must read as nothing. The faulty end is that same tone with its level
+ * alternating between full and near-silent on a tick-rate cycle, each move a
+ * legal linear ramp, which is precisely the shape a breath flapping across the
+ * silence threshold produces and precisely what a click scan cannot see.
+ */
+const verifyFlutterThreshold = async (): Promise<void> => {
+  const TONE_HZ = 440;
+  const TONE_PEAK = 0.35;
+  /** The rate a flapping fade modulates at: one flap per ~33ms tick pair. */
+  const FLUTTER_RATE_HZ = 30;
+  /** How near silence each flap closes the level to. */
+  const FLUTTER_FLOOR = 0.05;
+  /** A musical tremolo, well under the corner, which must read as clean. */
+  const VIBRATO_RATE_HZ = 6;
+
+  const buildTone = async (flapping: boolean): Promise<AudioBuffer> => {
+    const ctx = new OfflineAudioContext(CHANNEL_COUNT, SAMPLE_RATE, SAMPLE_RATE);
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = TONE_HZ;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, 0);
+    // The slow movement every clean render carries: a swell in, then out.
+    gain.gain.linearRampToValueAtTime(TONE_PEAK, 0.3);
+
+    // A musical tremolo under the corner, present in both cases so the clean
+    // reference is not a flat line the detector was never going to flag.
+    const tremolo = ctx.createOscillator();
+    tremolo.type = "sine";
+    tremolo.frequency.value = VIBRATO_RATE_HZ;
+    const tremoloDepth = ctx.createGain();
+    tremoloDepth.gain.value = TONE_PEAK * 0.15;
+    tremolo.connect(tremoloDepth);
+    tremoloDepth.connect(gain.gain);
+    tremolo.start(0);
+
+    const flap = ctx.createGain();
+    flap.gain.setValueAtTime(1, 0);
+    if (flapping) {
+      // The fault: the level driven to near-silence and back once per period,
+      // each leg a linear ramp the engine itself would consider well-formed.
+      // Every ramp ends strictly after the one before it — a schedule whose
+      // endpoints overlap is a different fault, and not the one being proved.
+      const period = 1 / FLUTTER_RATE_HZ;
+      for (let time = 0.3; time < 0.95; time += period) {
+        flap.gain.linearRampToValueAtTime(FLUTTER_FLOOR, time + period / 2);
+        flap.gain.linearRampToValueAtTime(1, time + period);
+      }
+    }
+
+    gain.gain.linearRampToValueAtTime(0, 0.99);
+    osc.connect(gain);
+    gain.connect(flap);
+    flap.connect(ctx.destination);
+    osc.start(0);
+    osc.stop(1);
+    tremolo.stop(1);
+    return (await ctx.startRendering()) as unknown as AudioBuffer;
+  };
+
+  const clean = scanForFlutter(await buildTone(false), "flutter-clean");
+  if (clean.hits.length !== 0) {
+    throw new Error(
+      `flutter calibration failed: a swelling tone with a ${VIBRATO_RATE_HZ}Hz tremolo flagged ` +
+        `${clean.hits.length} windows (depth ${clean.maxDepth.toFixed(4)})`,
+    );
+  }
+
+  const flapping = scanForFlutter(await buildTone(true), "flutter-flapping");
+  if (flapping.hits.length === 0) {
+    throw new Error(
+      `flutter calibration failed: a ${FLUTTER_RATE_HZ}Hz flapping gain was not caught ` +
+        `(depth ${flapping.maxDepth.toFixed(4)})`,
+    );
+  }
+
+  console.log(
+    `flutter calibration ok: clean reads ${clean.maxDepth.toFixed(4)}, ` +
+      `a ${FLUTTER_RATE_HZ}Hz flap reads ${flapping.maxDepth.toFixed(4)}, ` +
+      `threshold ${FLUTTER_DEPTH_THRESHOLD}\n`,
+  );
+};
+
 const SCAN_SECONDS = 40;
 
 /**
@@ -758,7 +984,7 @@ const SPENCER_ARRANGEMENT = {
 
 const SCENES: Scene[] = [];
 
-const report = (scan: ScanReport): void => {
+const report = (scan: ScanReport, flutter: FlutterReport): void => {
   const worst = scan.hits
     .slice(0, 5)
     .map(
@@ -766,10 +992,19 @@ const report = (scan: ScanReport): void => {
         `${hit.seconds.toFixed(3)}s ch${hit.channel} ratio ${hit.ratio.toFixed(2)} amp ${hit.amplitude.toFixed(3)}`,
     )
     .join(", ");
+  const worstFlutter = flutter.hits
+    .slice(0, 5)
+    .map(
+      (hit) =>
+        `${hit.seconds.toFixed(3)}s ch${hit.channel} depth ${hit.depth.toFixed(2)} level ${hit.level.toFixed(3)}`,
+    )
+    .join(", ");
   console.log(
     `${scan.label.padEnd(28)} clicks ${String(scan.hits.length).padStart(5)}  ` +
-      `max ratio ${scan.maxRatio.toFixed(4)}  peak ${scan.peak.toFixed(4)}` +
-      (worst ? `\n${" ".repeat(30)}worst: ${worst}` : ""),
+      `max ratio ${scan.maxRatio.toFixed(4)}  peak ${scan.peak.toFixed(4)}  ` +
+      `flutter ${String(flutter.hits.length).padStart(4)} max depth ${flutter.maxDepth.toFixed(3)}` +
+      (worst ? `\n${" ".repeat(30)}worst: ${worst}` : "") +
+      (worstFlutter ? `\n${" ".repeat(30)}flutter: ${worstFlutter}` : ""),
   );
 };
 
@@ -786,9 +1021,11 @@ for (const progression of Object.values(PROGRESSIONS)) {
 }
 
 let totalClicks = 0;
+let totalFlutter = 0;
 let scannedCount = 0;
 try {
   await verifyThreshold();
+  await verifyFlutterThreshold();
 
   SCENES.push(
     fixtureScene("busy-fixture-bells", "bells", SCAN_SECONDS),
@@ -842,6 +1079,16 @@ try {
       reviveTrails: true,
       soloistChurn: true,
     }),
+    // Someone typing. The one motion no scene above produces: a pointer that
+    // spends most of its ticks under the silence threshold and crosses it on
+    // the keystrokes, which is what flaps the voice's breath open and closed
+    // under the plucks. Scanned in both soloist voices and with the full
+    // default arrangement, plus a variant with an ordinary cursor alongside.
+    typingScene("typing-bells", "bells", SCAN_SECONDS),
+    typingScene("typing-presence", "presence", SCAN_SECONDS),
+    typingScene("typing-crowd-presence", "presence", SCAN_SECONDS, {
+      withPointer: true,
+    }),
     // Spencer's own arrangement, on both surfaces. The ticking he hears is
     // present with the spotlight and the cursor instruments off, so it has to
     // be scanned with them off: no scene above does that, and the layers they
@@ -885,9 +1132,12 @@ try {
   scannedCount = selected.length;
 
   for (const scene of selected) {
-    const scan = scanForClicks(await renderScene(scene), scene.id);
-    report(scan);
+    const buffer = await renderScene(scene);
+    const scan = scanForClicks(buffer, scene.id);
+    const flutter = scanForFlutter(buffer, scene.id);
+    report(scan, flutter);
     totalClicks += scan.hits.length;
+    totalFlutter += flutter.hits.length;
   }
 } finally {
   for (const progression of Object.values(PROGRESSIONS)) {
@@ -895,5 +1145,12 @@ try {
   }
 }
 
-console.log(`\ntotal clicks across ${scannedCount} renders: ${totalClicks}`);
+console.log(
+  `\ntotal clicks across ${scannedCount} renders: ${totalClicks}` +
+    `\ntotal flutter windows across ${scannedCount} renders: ${totalFlutter}` +
+    ` (reported, not gated — see FLUTTER_DEPTH_THRESHOLD)`,
+);
+// Only the click count fails the run. The flutter measure is reported for
+// comparison across changes; its populations overlap, so a count from it is
+// not something a build should be failed on.
 if (totalClicks > 0) process.exitCode = 1;
