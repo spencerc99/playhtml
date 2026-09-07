@@ -121,8 +121,10 @@ const DEFAULT_REVERB_SEND = 0.3;
 /** Duration of cursor-instrument timbre crossfades (seconds). */
 const OSCILLATOR_CROSSFADE_SECONDS = 0.03;
 
+
 /** Minimum velocity to trigger any sound (pixels per frame at ~60fps) */
 const SILENCE_VELOCITY_THRESHOLD = 0.05;
+
 
 /** Reference frame duration used to make cursor velocity independent of rAF lag. */
 const REFERENCE_FRAME_DURATION_MS = 1000 / 60;
@@ -1293,6 +1295,18 @@ interface Voice {
    * end while the breath closes over it.
    */
   fadeNode: GainNode;
+  /**
+   * Whether the breath is currently closed, so opening and closing it are each
+   * edge-triggered on what the node is actually doing.
+   *
+   * Tracked separately from `active` because the two came apart: a percussive
+   * voice goes inactive when its trail stops without its breath being closed,
+   * so `active` no longer answers "is the fade shut". Re-ramping an already
+   * open fade toward the value it already holds is a scheduled automation
+   * event per tick, which is the zipper noise the control throttle exists to
+   * avoid.
+   */
+  fadeClosed: boolean;
   /** Separate gain for the fifth so we can enable/disable it */
   fifthGainNode: GainNode | null;
   filterNode: BiquadFilterNode;
@@ -1984,22 +1998,39 @@ export class SoundEngine {
           // With swells on a stopped trail is released rather than cut, so the
           // bed thins out as breath running out rather than as a gate closing.
           //
-          // A percussive voice is excluded from that long release. It has no
-          // sustained tone to thin out — its gain node carries one pluck's
-          // envelope at a time — so a 1.5s fade there is not a breath but an
-          // automation curve left running across the next several plucks,
-          // which then schedule their own envelopes on top of it. The pluck's
-          // own decay is already the release; the fade only has to close the
-          // gap if the trail never plucks again.
+          // A percussive voice's breath is not cycled at all.
+          //
+          // The breath exists to close a *sustained* tone that would otherwise
+          // hold on after its trail stops. A percussive voice has no such tone
+          // to close: its gain node carries one pluck's envelope at a time and
+          // every pluck decays to silence inside the repeat interval, so
+          // between plucks the voice is already quiet and there is nothing for
+          // a fade to do.
+          //
+          // What the fade does instead is flap. Someone typing leaves the
+          // pointer nearly still and nudges it a character's width on each
+          // keystroke, so the velocity crosses the silence threshold roughly
+          // twenty times a second — closing the breath and reopening it at
+          // that rate. Every ramp is well-formed, so this is not a
+          // discontinuity any click scan would see; it is the level itself
+          // modulating in the band the ear hears as crackle, multiplying the
+          // plucks on their way out. Leaving the breath open removes the
+          // modulation and costs nothing, because a pluck that never comes is
+          // silence already.
           const isPercussiveVoice =
             this.config.cursorInstruments &&
             PERCUSSIVE_CURSOR_TYPES.has(frame.cursorType ?? "");
-          this.fadeVoice(
-            voice,
-            this.config.swells && !isPercussiveVoice
-              ? SWELL_TUNING.releaseSeconds
-              : 0.05,
-          );
+          if (isPercussiveVoice) {
+            // Marked inactive without touching the fade, so the rest of the
+            // engine still treats the trail as stopped — only the breath is
+            // left where it is.
+            voice.active = false;
+          } else {
+            this.fadeVoice(
+              voice,
+              this.config.swells ? SWELL_TUNING.releaseSeconds : 0.05,
+            );
+          }
         }
         // Keep advancing the crescendo so a stopped trail decays toward zero
         // instead of freezing at whatever it had reached.
@@ -2835,6 +2866,7 @@ export class SoundEngine {
       appliedDetuneCents: 0,
       lastPitchScale: null,
       active: false,
+      fadeClosed: false,
     };
   }
 
@@ -3306,18 +3338,25 @@ export class SoundEngine {
   private fadeVoice(voice: Voice, duration: number): void {
     if (!this.ctx) return;
     this.rampParam(voice.fadeNode.gain, 0, duration);
+    voice.fadeClosed = true;
     voice.active = false;
   }
 
-  /** Reopen a voice's breath when its trail starts moving again. */
+  /**
+   * Reopen a voice's breath when its trail starts moving again. A no-op on a
+   * breath that was never closed, so a voice whose fade is left open — see the
+   * percussive case in `tick` — is not handed a fresh ramp every tick.
+   */
   private openVoiceFade(voice: Voice): void {
-    if (!this.ctx) return;
+    if (!this.ctx || !voice.fadeClosed) return;
+    voice.fadeClosed = false;
     this.rampParam(voice.fadeNode.gain, 1, VOICE_CONTROL_RAMP_SECONDS);
   }
 
   private releaseVoice(voice: Voice): void {
     if (!this.ctx) return;
     this.rampParam(voice.fadeNode.gain, 0, 0.5);
+    voice.fadeClosed = true;
     voice.active = false;
   }
 

@@ -3185,6 +3185,7 @@ describe("SoundEngine layer mixer", () => {
     expect(feederCount(navBus)).toBeGreaterThan(navBefore);
     expect(feederCount(clickBus)).toBe(clickBefore);
   });
+
 });
 
 describe("percussion candidates", () => {
@@ -4571,7 +4572,7 @@ describe("envelopes that must not be cut mid-sound", () => {
     engine.dispose();
   });
 
-  it("closes a stopped trail's breath without cancelling its envelope", async () => {
+  it("never flaps a percussive voice's breath as its trail jitters", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setConfig({ trailVoices: true, cursorInstruments: true, swells: true });
@@ -4588,8 +4589,60 @@ describe("envelopes that must not be cut mid-sound", () => {
       isNewlyActive: false,
     });
 
-    // Move the trail far enough to voice plucks, which schedule attack and
-    // decay ahead of the clock on the voice's envelope gain.
+    // Typing, as the engine sees it: the caret is nudged a character's width
+    // on each keystroke and drifts under the silence threshold in between, so
+    // the velocity crosses the threshold many times a second. Closing and
+    // reopening the breath on each crossing modulates the level at that rate,
+    // which is heard as crackle and which no click scan can see, because every
+    // ramp involved is well-formed.
+    let elapsedMs = 0;
+    let x = 0;
+    for (let step = 0; step < 120; step++) {
+      const prevX = x;
+      // One keystroke every eight frames; sub-threshold drift between them.
+      x += step % 8 === 0 ? 8 : 0.01;
+      engine.tick(elapsedMs, [frame(x, prevX)]);
+      elapsedMs += 1000 / 60;
+      context.currentTime += 1 / 60;
+    }
+
+    const state = engine as unknown as {
+      voices: Map<number, { fadeNode: TestGainNode }>;
+    };
+    const fade = state.voices.get(0)!.fadeNode;
+    // The breath is left where it is: no ramp on it at all, in either
+    // direction. A pluck's own envelope is its release, so there is nothing
+    // here for a breath to close.
+    expect(
+      fade.gain.events.filter((event) => event.method === "linearRamp"),
+    ).toEqual([]);
+
+    engine.dispose();
+  });
+
+  it("closes a stopped trail's breath without cancelling its envelope", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ trailVoices: true, cursorInstruments: true, swells: true });
+
+    // A sustained cursor, because only a sustained voice has a breath to
+    // close: a percussive one is left alone so its level does not flap as its
+    // trail jitters across the silence threshold. What is under test here is
+    // the separation between the two nodes, which is the same either way.
+    const frame = (x: number, prevX: number) => ({
+      trailIndex: 0,
+      x,
+      y: 0,
+      prevX,
+      prevY: 0,
+      cursorType: "default",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: false,
+    });
+
+    // Move the trail far enough to voice a tone, whose envelope is scheduled
+    // ahead of the clock on the voice's gain.
     let elapsedMs = 0;
     let x = 0;
     for (let step = 0; step < 20; step++) {
