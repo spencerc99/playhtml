@@ -18,7 +18,11 @@ import {
  */
 export type ClickVoice = "bells" | PizzicatoVariant;
 
-/** How a held click is voiced: the stretched bell, or a timpani roll. */
+/**
+ * How a held click is voiced: the stretched bell, or a timpani roll. The
+ * root+fifth roll is the shipped one — a hold is a weight settling, and the
+ * timpani gives it a floor the stretched bell's decay never had.
+ */
 export type HoldVoice = "bell" | TimpaniVariant;
 
 /**
@@ -33,7 +37,7 @@ export interface VoicingSettings {
 
 export const VOICING_DEFAULTS: VoicingSettings = {
   click: "bells",
-  hold: "bell",
+  hold: "rootFifth",
 };
 
 export const CLICK_VOICES: Array<{ voice: ClickVoice; label: string }> = [

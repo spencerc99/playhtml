@@ -37,24 +37,25 @@ export const SCENE_DEFAULTS: GlobalSettings = {
   energyArc: true,
   trailVoices: true,
   swells: true,
-  choralTimbre: false,
+  choralTimbre: true,
   cursorInstruments: true,
-  soloistVoice: "bells",
-  traceability: 0,
-  volume: 0.5,
+  soloistVoice: "presence",
+  traceability: 0.51,
+  volume: 0.49,
 };
 
 export const LAYER_DEFAULTS: LayerConfig = {
-  bassPedal: false,
+  bassPedal: true,
   trailArrivals: true,
   navigationSounds: true,
   crossings: "off",
   /**
-   * The cantus is off until asked for. It is a whole extra voice with nothing
-   * in the scene prompting it, so it should be a deliberate addition rather
-   * than something already sounding when the page opens.
+   * The soprano cantus sings over the crowd from the start. It carries a line
+   * the trails themselves never hold long enough to state, which is what a
+   * scene of short cursor gestures is otherwise missing; the soprano is the
+   * one that sits clear of the ensemble's own register rather than inside it.
    */
-  cantus: null,
+  cantus: "soprano",
 };
 
 /**

@@ -22,6 +22,44 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
+describe("the shipped arrangement", () => {
+  /**
+   * Written out literally rather than compared against the constants, so this
+   * asserts the arrangement itself rather than restating whatever the file
+   * currently holds. Every value here is one Spencer settled on by ear; a
+   * change to any of them should be a deliberate edit to this list, not a
+   * side effect of touching the defaults.
+   */
+  it("is the combination settled on by ear", () => {
+    expect(GLOBAL_DEFAULTS).toEqual({
+      mode: "spotlight",
+      chordRotation: true,
+      progression: "circular",
+      energyArc: true,
+      trailVoices: true,
+      swells: true,
+      choralTimbre: true,
+      cursorInstruments: true,
+      soloistVoice: "presence",
+      traceability: 0.51,
+      volume: 0.49,
+    });
+
+    expect(LAYER_DEFAULTS).toEqual({
+      bassPedal: true,
+      trailArrivals: true,
+      navigationSounds: true,
+      crossings: "off",
+      cantus: "soprano",
+    });
+
+    expect(VOICING_DEFAULTS).toEqual({
+      click: "bells",
+      hold: "rootFifth",
+    });
+  });
+});
+
 describe("persistedConfig round trip", () => {
   it("serializes the full arrangement and restores it exactly", () => {
     const globals: GlobalSettings = {
