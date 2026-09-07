@@ -180,6 +180,17 @@ interface Scene {
   soloistVoice: SoloistVoice;
   /** Frames for one tick, plus any events the driver should fire first. */
   advance: (engine: SoundEngine, sampleMs: number) => TrailSoundFrame[];
+  /**
+   * How long until the next tick, given the one just rendered. Absent, the
+   * scene runs on the smooth 60fps clock a replay page produces.
+   *
+   * A live page does not tick on that clock. Its rAF is subject to whatever
+   * else the main thread is doing, and the positions it hands the engine are
+   * driven by events arriving in WebSocket batches rather than by a timeline
+   * already in memory. Expressing the cadence per scene is what lets the same
+   * driver render both.
+   */
+  nextStepMs?: (sampleMs: number) => number;
 }
 
 /**
@@ -396,6 +407,204 @@ const sweepScene = (
   };
 };
 
+/**
+ * The cadence the live portrait actually ticks the engine on.
+ *
+ * `LiveTrails` runs one rAF loop, so its nominal step is a frame — but a live
+ * page is not a replay. Every ~1s a WebSocket batch lands, React re-derives
+ * the trail states and the frame that follows does markedly more work, and the
+ * browser periodically hands back a much longer frame than 16ms. The engine
+ * divides by this interval in three separate places (velocity normalization,
+ * the spotlight EMA, and every gain smoother), so the cadence is itself an
+ * input, not scheduling noise.
+ */
+const liveStepMs = (random: () => number) => {
+  let nextBatchMs = 0;
+  let nextStallMs = 3_000;
+  return (sampleMs: number): number => {
+    if (sampleMs >= nextStallMs) {
+      // The long frame: a stalled main thread, a hidden tab coming back, or a
+      // GC pause. Deliberately spans MAX_TICK_INTERVAL_MS so the clamp is
+      // exercised from both sides.
+      nextStallMs = sampleMs + 2_400 + random() * 2_600;
+      return 200 + random() * 300;
+    }
+    if (sampleMs >= nextBatchMs) {
+      // The frame a batch lands on: React work plus a full re-derivation.
+      nextBatchMs = sampleMs + 850 + random() * 400;
+      return 45 + random() * 55;
+    }
+    return 8 + random() * 22;
+  };
+};
+
+/** How often the live scene's stream hands each trail new geometry, in ms. */
+const LIVE_BATCH_INTERVAL_MS = 1_000;
+
+/**
+ * The live portrait, as the engine experiences it.
+ *
+ * The difference from `sweepScene` is not the shape of the motion but where
+ * the motion comes from. A replay interpolates a timeline it already holds, so
+ * a trail's head advances smoothly and the tick that samples it is regular. A
+ * live trail's head is a draw interpolation across points that keep arriving:
+ * when a batch lands, `advanceDrawState` rebases the draw clock so the newly
+ * extended path still reads as continuous, and the head steps to a new place
+ * in one frame. Between batches it coasts, and after ~8s without a batch the
+ * trail settles and stops feeding frames at all — then a later batch revives
+ * it, which is a trail arriving on an index the engine has already voiced.
+ *
+ * `soloistChurn` makes the batches favour a different trail each time, so the
+ * spotlight is re-decided on noisy velocities rather than on a clean sweep.
+ */
+const liveScene = (
+  id: string,
+  soloistVoice: SoloistVoice,
+  durationSeconds: number,
+  {
+    trailCount = 6,
+    allText = false,
+    soloistChurn = false,
+    reviveTrails = false,
+  } = {},
+): Scene => {
+  const random = seededRandom(hash(`live-${id}`));
+
+  interface LiveTrail {
+    trailIndex: number;
+    x: number;
+    y: number;
+    prevX: number;
+    prevY: number;
+    /** Where the draw head is heading, replaced whenever a batch lands. */
+    targetX: number;
+    targetY: number;
+    /** Per-frame fraction of the remaining distance the head covers. */
+    approach: number;
+    lastBatchMs: number;
+    settled: boolean;
+    firstSeen: boolean;
+  }
+
+  const trails: LiveTrail[] = [];
+  for (let index = 0; index < trailCount; index++) {
+    trails.push({
+      trailIndex: index,
+      x: CANVAS_WIDTH * random(),
+      y: CANVAS_HEIGHT * random(),
+      prevX: 0,
+      prevY: 0,
+      targetX: CANVAS_WIDTH * random(),
+      targetY: CANVAS_HEIGHT * random(),
+      approach: 0.04,
+      lastBatchMs: 0,
+      settled: false,
+      firstSeen: true,
+    });
+  }
+
+  let nextBatchMs = 0;
+  let lastClickMs = 0;
+  let batchCount = 0;
+
+  return {
+    id,
+    durationSeconds,
+    soloistVoice,
+    nextStepMs: liveStepMs(random),
+    advance: (engine, sampleMs) => {
+      if (sampleMs >= nextBatchMs) {
+        nextBatchMs = sampleMs + LIVE_BATCH_INTERVAL_MS;
+        const batchIndex = batchCount++;
+        // A batch does not touch every trail: the stream carries whoever
+        // happened to move, so most trails coast through most batches.
+        for (const trail of trails) {
+          const inBatch = random() < 0.55;
+          if (!inBatch) continue;
+          trail.lastBatchMs = sampleMs;
+          trail.settled = false;
+          trail.targetX = CANVAS_WIDTH * random();
+          trail.targetY = CANVAS_HEIGHT * random();
+          // The soloist candidate gets a long fast run; everyone else drifts.
+          // Rotating which trail that is on every batch is what makes the
+          // promotion decision land on noisy, freshly-rebased velocities.
+          const isRunner = soloistChurn
+            ? trail.trailIndex === batchIndex % trails.length
+            : trail.trailIndex === 0;
+          trail.approach = isRunner ? 0.22 + random() * 0.2 : 0.01 + random() * 0.03;
+          // The rebase step: the head does not ease to the new geometry, it
+          // moves to where the extended path says it now is.
+          trail.x += (trail.targetX - trail.x) * (isRunner ? 0.35 : 0.08);
+          trail.y += (trail.targetY - trail.y) * (isRunner ? 0.35 : 0.08);
+        }
+
+        // Clicks arrive with their batch, several at once, rather than spread
+        // evenly the way a replay schedules them off a timeline.
+        const burst = 1 + Math.floor(random() * 4);
+        for (let index = 0; index < burst; index++) {
+          engine.triggerClick({
+            x: CANVAS_WIDTH * random(),
+            y: CANVAS_HEIGHT * random(),
+            holdDuration: random() < 0.25 ? 200 + random() * 900 : undefined,
+          });
+        }
+        if (random() < 0.4) {
+          engine.triggerNavigation({ x: CANVAS_WIDTH * random() });
+        }
+      }
+
+      // A stray click between batches, so the flourish budget still sees
+      // pressure that is not aligned to the batch boundary.
+      if (sampleMs - lastClickMs > 300 && random() < 0.15) {
+        lastClickMs = sampleMs;
+        engine.triggerClick({
+          x: CANVAS_WIDTH * random(),
+          y: CANVAS_HEIGHT * random(),
+          holdDuration: undefined,
+        });
+      }
+
+      const frames: TrailSoundFrame[] = [];
+      for (const trail of trails) {
+        // 8s without new points is `SETTLE_MS`: the trail stops tracing and
+        // LiveTrails stops putting it in the frame list at all.
+        if (sampleMs - trail.lastBatchMs > 8_000) {
+          if (!trail.settled) {
+            trail.settled = true;
+            if (!reviveTrails) engine.retireTrail(trail.trailIndex);
+          }
+          if (!reviveTrails) continue;
+          continue;
+        }
+
+        trail.prevX = trail.x;
+        trail.prevY = trail.y;
+        trail.x += (trail.targetX - trail.x) * trail.approach;
+        trail.y += (trail.targetY - trail.y) * trail.approach;
+
+        frames.push({
+          trailIndex: trail.trailIndex,
+          x: trail.x,
+          y: trail.y,
+          // The live producer sends the head twice, exactly as
+          // `createLiveSoundFrame` does; the engine tracks its own previous
+          // position and this field is not read for velocity.
+          prevX: trail.x,
+          prevY: trail.y,
+          cursorType:
+            allText || trail.trailIndex % 3 === 0 ? "text" : "default",
+          progress: 0,
+          color: REPLAY_COLORS[trail.trailIndex % REPLAY_COLORS.length],
+          isNewlyActive: trail.firstSeen,
+          identityKey: `live-${trail.trailIndex}`,
+        });
+        trail.firstSeen = false;
+      }
+      return frames;
+    },
+  };
+};
+
 /** Drive one scene through the engine and return the rendered buffer. */
 const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
   Math.random = seededRandom(hash(scene.id));
@@ -407,12 +616,12 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
   engine.setConfig({ ...ARRANGEMENT, soloistVoice: scene.soloistVoice });
 
   const stepMs = 1_000 / REPLAY_FPS;
-  for (let frameIndex = 0; ; frameIndex++) {
-    const sampleMs = frameIndex * stepMs;
-    if (sampleMs > scene.durationSeconds * 1_000) break;
+  const endMs = scene.durationSeconds * 1_000;
+  for (let sampleMs = 0; sampleMs <= endMs; ) {
     setClock(sampleMs / 1_000);
     const frames = scene.advance(engine, sampleMs);
     engine.tick(sampleMs, frames);
+    sampleMs += scene.nextStepMs ? scene.nextStepMs(sampleMs) : stepMs;
   }
 
   return (await audioContext.startRendering()) as unknown as AudioBuffer;
@@ -553,6 +762,33 @@ try {
     sweepScene("lone-text-arpeggio", "arpeggio", SCAN_SECONDS, {
       allText: true,
       trailCount: 1,
+    }),
+    // The live portrait's own cadence. Every scene above ticks on a smooth
+    // 60fps clock, which is the one thing the live page never does — so none
+    // of them reach the paths that divide by the tick interval under a tick
+    // interval that actually varies.
+    liveScene("live-bells", "bells", SCAN_SECONDS),
+    liveScene("live-arpeggio", "arpeggio", SCAN_SECONDS),
+    liveScene("live-presence", "presence", SCAN_SECONDS),
+    // The spotlight re-decided on every batch, on velocities that were just
+    // rebased — the case the hysteresis is supposed to absorb.
+    liveScene("live-churn-bells", "bells", SCAN_SECONDS, {
+      soloistChurn: true,
+    }),
+    liveScene("live-churn-presence", "presence", SCAN_SECONDS, {
+      soloistChurn: true,
+    }),
+    // Percussive plucks retriggering under an irregular tick, where the pluck
+    // interval and the tick interval no longer keep step.
+    liveScene("live-text-bells", "bells", SCAN_SECONDS, {
+      allText: true,
+      soloistChurn: true,
+    }),
+    // A trail that settles and is then revived by a later batch, reusing a
+    // trail index the engine still holds a voice for.
+    liveScene("live-revive-presence", "presence", SCAN_SECONDS, {
+      reviveTrails: true,
+      soloistChurn: true,
     }),
   );
 
