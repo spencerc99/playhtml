@@ -310,6 +310,23 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 
 ## Configuration
 
+### Installation cursor
+
+In extension Settings, press Cmd/Ctrl+Shift+8 to reveal **Installation mode**
+under Identity. The checkbox shows the participant's own colored cursor on web
+pages and persists across browser restarts. It starts off; while enabled, its
+checkbox stays visible in Settings. Color changes apply to open pages.
+
+This is a local display setting, independent of feature entitlements and
+collection modes. It does not start cursor presence connections. Browser pages
+and embedded frame contents retain their native cursor.
+
+Build with `bun run build-extension`, then run
+`node smoke-tests/installation-cursor.mjs` to exercise the real Settings flow in
+isolated Chromium. Set `INSTALLATION_EVIDENCE_DIR` to save screenshots.
+
+### Files
+
 - `src/config.ts`: `VERBOSE` debug logging flag
 - `src/flags.ts`: Feature flags (`COPRESENCE: true`)
 - `wxt.config.ts`: Manifest v3, permissions (storage, tabs, http/https host access), React module, ASCII charset output for Chrome compliance
