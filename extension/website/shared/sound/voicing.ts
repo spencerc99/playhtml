@@ -1,20 +1,11 @@
 // ABOUTME: The playground's single source of truth for how each event family is voiced
 // ABOUTME: Owned by the Sound Layers panel and read by the sample replay driver
 
-import {
-  ClickPercussionVariant,
-  PizzicatoVariant,
-  PIZZICATO_VARIANTS,
-  TimpaniVariant,
-} from "./types";
+import { PizzicatoVariant, PIZZICATO_VARIANTS, TimpaniVariant } from "./types";
 
 /**
  * How a click is voiced. The bell and the pizzicati are alternatives to each
  * other: a click gets exactly one voice, and "bells" is the shipped one.
- *
- * The unpitched noise-tap candidates were auditioned and set aside, so they are
- * not offered here. Their audition cards remain in the Sound Library, which is
- * where a sound nobody has chosen belongs.
  */
 export type ClickVoice = "bells" | PizzicatoVariant;
 
@@ -61,13 +52,3 @@ export const isPizzicato = (voice: ClickVoice): voice is PizzicatoVariant =>
 /** Whether a hold voice is a timpani roll rather than the stretched bell. */
 export const isTimpani = (voice: HoldVoice): voice is TimpaniVariant =>
   voice !== "bell";
-
-/**
- * The noise-tap click candidates, kept only so the Sound Library can still
- * audition them. Nothing selects these as a live voice.
- */
-export const SET_ASIDE_CLICK_VARIANTS: ClickPercussionVariant[] = [
-  "tap",
-  "tapNoThump",
-  "hybrid",
-];

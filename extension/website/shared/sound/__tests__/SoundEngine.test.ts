@@ -3344,7 +3344,7 @@ describe("SoundEngine layer mixer", () => {
   });
 });
 
-describe("percussion candidates", () => {
+describe("candidate instruments", () => {
   /** An engine up and running, which is what every audition goes through. */
   const startedEngine = async (): Promise<SoundEngine> => {
     const engine = new SoundEngine();
@@ -3353,134 +3353,11 @@ describe("percussion candidates", () => {
     return engine;
   };
 
-  it("schedules a filtered noise burst and a falling thump for a click tap", async () => {
-    const engine = await startedEngine();
-    engine.audition("clickTap");
-
-    // The noise edge: one looped buffer source through a bandpass, started
-    // and given an explicit stop so it cannot run on.
-    expect(context.bufferSources.length).toBe(1);
-    const source = context.bufferSources[0];
-    expect(source.buffer).not.toBeNull();
-    expect(source.loop).toBe(true);
-    expect(source.startTimes.length).toBe(1);
-    expect(source.stopTimes.length).toBe(1);
-
-    const bandpass = createdNodes.find(
-      (node): node is TestBiquadFilterNode =>
-        node instanceof TestBiquadFilterNode && node.type === "bandpass",
-    );
-    expect(bandpass).toBeDefined();
-
-    // The thump: a sine ramping down in pitch, which is what separates the tap
-    // from a plain noise click.
-    const thump = context.oscillators[context.oscillators.length - 1];
-    const ramps = thump.frequency.events.filter(
-      (event) => event.method === "exponentialRamp",
-    );
-    expect(ramps.length).toBe(1);
-    expect(ramps[0].value!).toBeLessThan(thump.frequency.events[0].value!);
-  });
-
-  it("drops the falling thump in the no-thump variant, keeping the noise edge", async () => {
-    const engine = await startedEngine();
-    engine.audition("clickTapNoThump");
-
-    // The edge survives: the whole point of the variant is the same tap
-    // without its low half.
-    expect(context.bufferSources.length).toBe(1);
-    const bandpass = createdNodes.find(
-      (node): node is TestBiquadFilterNode =>
-        node instanceof TestBiquadFilterNode && node.type === "bandpass",
-    );
-    expect(bandpass).toBeDefined();
-
-    // No falling sine anywhere, which is what separates this from "clickTap".
-    const falling = context.oscillators.filter((osc) =>
-      osc.frequency.events.some((event) => event.method === "exponentialRamp"),
-    );
-    expect(falling).toEqual([]);
-  });
-
-  it("adds a quiet bell under the tap only in the hybrid variant", async () => {
-    const gainsOf = async (accent: "clickTap" | "clickTapHybrid") => {
-      const engine = await startedEngine();
-      const state = engine as unknown as {
-        flourishNotes: Set<{ peakGain: number }>;
-      };
-      engine.audition(accent);
-      return [...state.flourishNotes].map((note) => note.peakGain);
-    };
-
-    // The pure tap has no pitched content at all; the hybrid's ghost is well
-    // under the shipped click bell, so it reads as a hint rather than a bell.
-    expect(await gainsOf("clickTap")).toEqual([]);
-    const hybrid = await gainsOf("clickTapHybrid");
-    expect(hybrid.length).toBe(1);
-    expect(hybrid[0]).toBeLessThan(CLICK_BELL.gain);
-  });
-
-  it("self-disconnects every percussion graph when its source ends", async () => {
-    for (const accent of [
-      "clickTap",
-      "clickTapNoThump",
-      "clickTapHybrid",
-    ] as const) {
-      createdNodes = [];
-      context = new TestAudioContext();
-      const engine = await startedEngine();
-      engine.audition(accent);
-
-      // Firing every onended is what the browser does when the sources stop;
-      // nothing in the graph should still be wired up afterwards.
-      for (const source of context.bufferSources) source.onended?.();
-      for (const osc of context.oscillators) osc.onended?.();
-
-      const stillConnected = createdNodes.filter(
-        (node) => node.connections.length > 0,
-      );
-      // Only the permanent mix graph (master, layer buses, reverb) survives,
-      // and it is built during init rather than by the audition.
-      for (const node of stillConnected) {
-        expect(
-          node instanceof TestBufferSourceNode,
-          `${accent} left a buffer source connected`,
-        ).toBe(false);
-      }
-    }
-  });
-
-  it("never fires a percussion candidate from a live event path", async () => {
-    const engine = await startedEngine();
-    engine.setConfig({ trailArrivals: true, navigationSounds: true });
-
-    const before = context.bufferSources.length;
-
-    // Everything a live page (MovementCanvas, AnimatedTrails, LiveTrails) can
-    // make the engine do: trails moving, a trail arriving and leaving, a
-    // click, a hold, a navigation. None of these reaches percussion — the only
-    // doors onto it are `audition` and the explicit `trigger*` calls below,
-    // and no live page calls either.
-    for (let step = 0; step < 30; step++) {
-      context.currentTime += 1 / 60;
-      engine.tick(step * 16, [
-        { ...soloFrame(0, 100 + step * 6, 100), identityKey: "person-a" },
-        { ...soloFrame(1, 460 - step * 6, 140), identityKey: "person-b" },
-      ]);
-    }
-    engine.triggerClick({ x: 100, y: 100, holdDuration: undefined });
-    engine.triggerClick({ x: 100, y: 100, holdDuration: 900 });
-    engine.triggerNavigation({ x: 200 });
-    engine.retireTrail(0);
-    engine.retireTrail(1);
-
-    expect(context.bufferSources.length).toBe(before);
-  });
-
   it("never fires a pitched candidate instrument from a live event path", async () => {
-    // The same guard as above, for the orchestral instruments. They are
-    // pitched, so a stray one would not show up as a buffer source — count
-    // the notes each would leave behind instead.
+    // The candidate instruments are reachable only through `audition` and the
+    // explicit `trigger*` doors the replay driver calls. They are pitched, so
+    // a stray one would not show up as a buffer source — count the notes and
+    // the swept filters each would leave behind instead.
     const engine = await startedEngine();
     engine.setConfig({ trailArrivals: true, navigationSounds: true });
 
@@ -3527,30 +3404,6 @@ describe("percussion candidates", () => {
     engine.triggerHold(200, "swell");
     // The swell has no tremolo, so it is the three partials alone.
     expect(context.oscillators.length).toBe(afterPluck + 3);
-  });
-
-  it("plays percussion when the replay driver asks for it explicitly", async () => {
-    // The playground's replay calls this against real recorded events, which
-    // is the whole reason it is public. It has to actually sound, or the
-    // guard above would be passing for the wrong reason.
-    const engine = await startedEngine();
-
-    engine.triggerClickPercussion(100, "tap");
-    expect(context.bufferSources.length).toBe(1);
-
-    const oscillatorsBefore = context.oscillators.length;
-    engine.triggerHold(400);
-    // The timpani roll is the tremolo LFO plus three partials, none of them
-    // noise.
-    expect(context.oscillators.length).toBe(oscillatorsBefore + 4);
-  });
-
-  it("treats the bells variant as a request for no percussion at all", async () => {
-    // "bells" means the shipped pitched bell, which the caller rings through
-    // `triggerClick` instead — this must not also lay a tap under it.
-    const engine = await startedEngine();
-    engine.triggerClickPercussion(100, "bells");
-    expect(context.bufferSources.length).toBe(0);
   });
 });
 

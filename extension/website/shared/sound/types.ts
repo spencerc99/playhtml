@@ -94,23 +94,6 @@ export type SoundNotice =
 export type SoundNoticeListener = (notice: SoundNotice) => void;
 
 /**
- * How a click is voiced when percussion is driving the replay.
- *
- * "bells" is what ships: the pitched click bell, no percussion. The other
- * three are the candidates, and they differ only in what sits under the noise
- * edge — nothing, a falling sine, or a falling sine plus a faint bell.
- */
-export type ClickPercussionVariant =
-  /** Noise edge plus the falling sine thump. */
-  | "tap"
-  /** Noise edge alone — the variant for judging whether the thump earns itself. */
-  | "tapNoThump"
-  /** The full tap with a quiet bell ghost underneath. */
-  | "hybrid"
-  /** No percussion: the shipped pitched bell. */
-  | "bells";
-
-/**
  * How a pizzicato click is plucked.
  *
  * All three draw their pitch from the same place the click bell does — the
@@ -196,17 +179,8 @@ export type AuditionAccent =
   /** One sustained voice through its full swell, in the choral timbre. */
   | "choralSwell"
   /**
-   * Unpitched percussion candidates. The playground's replay driver plays
-   * these against real events when its percussion toggles are on; no live page
-   * path triggers any of them.
-   */
-  | "clickTap"
-  | "clickTapNoThump"
-  | "clickTapHybrid"
-  /**
-   * Pitched orchestral instruments, each in its variants. Same standing as the
-   * percussion above — the pad auditions them and the replay drives them, and
-   * no live page path reaches any of them.
+   * Pitched orchestral instruments, each in its variants. The pad auditions
+   * them and the replay drives them; no live page path reaches any of them.
    */
   | "pizzicatoSoft"
   | "pizzicatoCrisp"

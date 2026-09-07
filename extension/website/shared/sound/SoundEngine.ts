@@ -7,7 +7,6 @@ import {
   InstrumentConfig,
   NavigationSoundEvent,
   AuditionAccent,
-  ClickPercussionVariant,
   PizzicatoVariant,
   TimpaniVariant,
   CantusVariant,
@@ -616,58 +615,8 @@ const ARRIVAL_TUNING = {
   resetSuppressionMs: 1500,
 };
 
-/**
- * Unpitched percussion candidates, reachable from the sound playground's
- * audition buttons and from its replay driver. No live page path triggers any
- * of them.
- *
- * Every other accent in the engine is pitched and therefore tied to whatever
- * chord is in force. These are not: a tap is a tap regardless of the harmony,
- * which is the whole reason to try them — the pitched accents have to be
- * rationed because too many of them turn the scene into a chord, and
- * percussion has no such ceiling. The gains sit deliberately under
- * `CLICK_BELL.gain`, so if any of these graduates to a real trigger it lands
- * beneath the bells rather than in front of them.
- */
-const PERCUSSION_TUNING = {
-  /**
-   * The click tap: a filtered noise burst over a fast pitch drop, the two
-   * halves of how a struck woodblock actually reads — a bright edge on the
-   * attack and a body that falls away underneath it.
-   */
-  clickTap: {
-    /** Length of the noise burst. Past ~60ms it stops reading as a tap. */
-    noiseDurationSeconds: 0.045,
-    /** Bandpass centre for the noise edge, and how tight the band is. */
-    noiseFilterHz: 1800,
-    noiseFilterQ: 1.2,
-    noiseGain: 0.05,
-    /**
-     * The thump under the edge: a sine falling fast through its range.
-     *
-     * `thumpGain` is the value to reach for when the taps read as too heavy —
-     * it is the whole low half of the sound, and the "tap (no thump)" variant
-     * is the same sound with this removed entirely rather than turned down.
-     */
-    thumpStartHz: 180,
-    thumpEndHz: 80,
-    thumpDurationSeconds: 0.08,
-    thumpGain: 0.07,
-    attackSeconds: 0.002,
-    /**
-     * Level of the bell ghost in the hybrid variant, relative to the shipped
-     * click bell, and how much of its ring-out is kept. Quiet and short: the
-     * point of the hybrid is a tap with a hint of pitch behind it, not a bell
-     * with a tap stuck on the front.
-     */
-    ghostGainScale: 0.25,
-    ghostDecaySeconds: 0.5,
-    /** Pitch of the bell ghost. Fixed, so the hybrid stays unpitched in feel. */
-    ghostHz: 880,
-  },
-  /** Seconds of noise generated per buffer, reused by every noise source. */
-  noiseBufferSeconds: 1,
-};
+/** Seconds of noise generated per buffer, reused by every noise source. */
+const NOISE_BUFFER_SECONDS = 1;
 
 /**
  * Pizzicato tuning: a plucked string for a click.
@@ -4966,15 +4915,6 @@ export class SoundEngine {
       case "choralSwell":
         this.auditionChoralSwell();
         return;
-      case "clickTap":
-        this.triggerClickTap(centre, "tap");
-        return;
-      case "clickTapNoThump":
-        this.triggerClickTap(centre, "tapNoThump");
-        return;
-      case "clickTapHybrid":
-        this.triggerClickTap(centre, "hybrid");
-        return;
       // Auditioned at mid-window height, which puts the pluck in the middle of
       // the bell palette — the representative note rather than an extreme.
       case "pizzicatoSoft":
@@ -5052,7 +4992,7 @@ export class SoundEngine {
     if (this.noiseBuffer) return this.noiseBuffer;
     const length = Math.max(
       1,
-      Math.floor(ctx.sampleRate * PERCUSSION_TUNING.noiseBufferSeconds),
+      Math.floor(ctx.sampleRate * NOISE_BUFFER_SECONDS),
     );
     const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
     const samples = buffer.getChannelData(0);
@@ -5112,101 +5052,6 @@ export class SoundEngine {
     };
 
     return { gain, panNode };
-  }
-
-  /**
-   * An unpitched percussive tap for a click: a short filtered noise edge over
-   * a sine falling fast from 180Hz to 80Hz. Woodblock rather than bell — no
-   * ring-out, so it can fire as often as a click does without accumulating.
-   *
-   * The variant decides what sits under the edge. "tapNoThump" drops the
-   * falling sine entirely, which is the version to reach for when a run of
-   * taps reads as too heavy in the low end; "hybrid" adds a faint, short bell
-   * at a quarter of the shipped click-bell level.
-   */
-  private triggerClickTap(x: number, variant: ClickPercussionVariant): void {
-    if (!this.ctx) return;
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    const {
-      noiseDurationSeconds,
-      noiseFilterHz,
-      noiseFilterQ,
-      noiseGain,
-      thumpStartHz,
-      thumpEndHz,
-      thumpDurationSeconds,
-      thumpGain,
-      attackSeconds,
-      ghostGainScale,
-      ghostDecaySeconds,
-      ghostHz,
-    } = PERCUSSION_TUNING.clickTap;
-    const pan = positionToPan(x, this.canvasWidth);
-
-    const burst = this.startNoiseBurst(
-      now,
-      noiseDurationSeconds,
-      { type: "bandpass", frequency: noiseFilterHz, Q: noiseFilterQ },
-      pan,
-      "clickBell",
-    );
-    if (burst) {
-      burst.gain.gain.setValueAtTime(0, now);
-      burst.gain.gain.linearRampToValueAtTime(noiseGain, now + attackSeconds);
-      burst.gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        now + noiseDurationSeconds,
-      );
-    }
-
-    if (variant === "tapNoThump") return;
-
-    // The thump. An exponential fall rather than linear, so the pitch drops
-    // away the way a struck body does instead of sliding.
-    const thump = ctx.createOscillator();
-    thump.type = "sine";
-    thump.frequency.setValueAtTime(thumpStartHz, now);
-    thump.frequency.exponentialRampToValueAtTime(
-      thumpEndHz,
-      now + thumpDurationSeconds,
-    );
-
-    const thumpLevel = ctx.createGain();
-    thumpLevel.gain.setValueAtTime(0, now);
-    thumpLevel.gain.linearRampToValueAtTime(thumpGain, now + attackSeconds);
-    thumpLevel.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + thumpDurationSeconds,
-    );
-
-    const thumpPan = ctx.createStereoPanner();
-    thumpPan.pan.value = pan;
-
-    thump.connect(thumpLevel);
-    thumpLevel.connect(thumpPan);
-    thumpPan.connect(this.busFor("clickBell"));
-    thump.start(now);
-    thump.stop(now + thumpDurationSeconds + 0.02);
-    thump.onended = () => {
-      try {
-        thump.disconnect();
-        thumpLevel.disconnect();
-        thumpPan.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    };
-
-    if (variant !== "hybrid") return;
-
-    this.triggerFlourishNote(
-      ghostHz,
-      x,
-      CLICK_BELL.gain * ghostGainScale,
-      ghostDecaySeconds,
-      { attackSeconds, layer: "clickBell" },
-    );
   }
 
   /**
@@ -5729,30 +5574,19 @@ export class SoundEngine {
     };
   }
 
-  // ── Percussion, for the playground's replay driver ────────────────────────
+  // ── Alternative instruments, for the playground's replay driver ───────────
   //
-  // These are the only public doors onto the percussion candidates, and they
-  // exist so real recorded events can drive them in the sound playground. The
-  // engine itself never calls them: no `tick`, `triggerClick`, `triggerNavigation`
-  // or `retireTrail` path reaches percussion, so a live page stays pitched
-  // whatever it does. If percussion graduates, it graduates by the live paths
-  // calling these deliberately.
+  // These are the only public doors onto the alternative click and hold
+  // voices, and they exist so real recorded events can drive them in the sound
+  // playground. The engine itself never calls them: no `tick`, `triggerClick`,
+  // `triggerNavigation` or `retireTrail` path reaches them, so a live page
+  // stays on its shipped voices whatever it does. If one graduates, it
+  // graduates by the live paths calling these deliberately.
 
   /**
-   * A click, voiced as percussion. "bells" is a no-op here — the caller rings
-   * the shipped `triggerClick` bell for that variant instead, so the two never
-   * double up.
-   */
-  triggerClickPercussion(x: number, variant: ClickPercussionVariant): void {
-    if (!this.enabled || variant === "bells") return;
-    this.triggerClickTap(x, variant);
-  }
-
-  /**
-   * A click, voiced as a plucked string on the current chord. Pitched, unlike
-   * `triggerClickPercussion` — the note comes from the click's height the same
-   * way the shipped bell's does, so this is a change of instrument rather than
-   * a change of what a click means.
+   * A click, voiced as a plucked string on the current chord. The note comes
+   * from the click's height the same way the shipped bell's does, so this is a
+   * change of instrument rather than a change of what a click means.
    */
   triggerClickPizzicato(x: number, y: number, variant: PizzicatoVariant): void {
     if (!this.enabled) return;

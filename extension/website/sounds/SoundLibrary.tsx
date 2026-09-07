@@ -106,37 +106,6 @@ const AUDITION_CARDS: Array<{
 
 
 /**
- * Unpitched percussion candidates, in isolation. The sample replay below
- * plays the same sounds against real events; these buttons are for judging
- * one on its own, so each description names the event it maps to.
- */
-const PERCUSSION_CARDS: Array<{
-  accent: AuditionAccent;
-  label: string;
-  description: string;
-}> = [
-  {
-    accent: "clickTap",
-    label: "click tap (pure percussion)",
-    description:
-      "For a click. A filtered noise edge over a fast pitch drop — woodblock, no ring-out.",
-  },
-  {
-    accent: "clickTapNoThump",
-    label: "click tap (no thump)",
-    description:
-      "The same tap with the falling sine removed — the noise edge alone. Reach for this if a run of taps reads as too heavy in the low end.",
-  },
-  {
-    accent: "clickTapHybrid",
-    label: "click tap + bell ghost (hybrid)",
-    description:
-      "The same tap with a faint short bell underneath, at a quarter of the current click-bell level. Pure vs hybrid, back to back.",
-  },
-];
-
-
-/**
  * The pitched orchestral instruments. Unlike the percussion above, every one
  * of these draws its notes from the chord in force, so what they sound depends
  * on where the rotation currently is.
@@ -298,13 +267,6 @@ export const SoundLibrary = ({ getEngine }: SoundLibraryProps) => {
         title="Accents"
         blurb="The figures that mark an event or a moment in the scene."
         cards={AUDITION_CARDS}
-        onAudition={handleAudition}
-      />
-
-      <AuditionSection
-        title="Percussion (candidates)"
-        blurb="Unpitched, so none of these depends on the chord. The noise-tap clicks were auditioned and set aside — they stay here to be heard, but nothing selects them."
-        cards={PERCUSSION_CARDS}
         onAudition={handleAudition}
       />
 
