@@ -19,7 +19,6 @@ import {
   SoundDevPanel,
 } from "../sound/SoundDevPanel";
 import { useSoundArrangement } from "../sound/useSoundArrangement";
-import { SoundVisuals } from "../sound/soundVisuals";
 import { TrailPositions } from "./trailPositions";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
@@ -553,16 +552,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const applyArrangement = arrangement.applyTo;
 
   /**
-   * Where each trail's head is this frame, and the gestures the engine has
-   * asked for. Both exist only in sound-dev mode: a page without the flag
-   * neither publishes positions nor draws a gesture.
+   * Where each trail's head is this frame, so a navigation gong pans to where
+   * the person who hopped actually is. Sound-dev only: a page without the flag
+   * publishes nothing.
    */
   const trailPositions = useMemo(
     () => (soundDev ? new TrailPositions() : null),
-    [soundDev],
-  );
-  const soundVisuals = useMemo(
-    () => (soundDev ? new SoundVisuals() : null),
     [soundDev],
   );
 
@@ -572,10 +567,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
    * loop or a stall moves all of them together.
    */
   const playbackClock = useMemo(() => ({ loopedMs: 0 }), []);
-
-  useEffect(() => {
-    soundVisuals?.setConfig(arrangement.visuals);
-  }, [soundVisuals, arrangement.visuals]);
 
   /**
    * Which trail a scheduled navigation belongs to. The schedule names the
@@ -702,19 +693,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   useEffect(() => {
     soundEngineRef.current?.setCanvasWidth(viewportSize.width);
   }, [viewportSize.width]);
-
-  // Every gesture is fired by the engine's own report of the event it stands
-  // for, so a trail's mark lands where that trail is rather than where a view
-  // guessed it would be.
-  useEffect(() => {
-    if (!soundEngineReady || !soundVisuals || !trailPositions) return;
-    soundEngineReady.setSoundNoticeListener((notice) =>
-      soundVisuals.handleNotice(notice, (trailIndex) =>
-        trailPositions.get(trailIndex),
-      ),
-    );
-    return () => soundEngineReady.setSoundNoticeListener(null);
-  }, [soundEngineReady, soundVisuals, trailPositions]);
 
   // Sync sound config settings to the engine. While the dev panel is mounted
   // its arrangement is what the engine runs, so the page's own sound settings
@@ -1842,8 +1820,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               soundEngine={paused || !soundEnabled ? null : soundEngineReady}
               trailPositions={trailPositions}
               playbackClock={playbackClock}
-              soundVisuals={soundVisuals}
-              visualConfig={soundDev ? arrangement.visuals : null}
               settings={trailAnimationSettings}
               frozen={paused}
               cinematic={cinematicConfig}

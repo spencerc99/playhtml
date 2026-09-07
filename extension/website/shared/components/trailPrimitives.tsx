@@ -158,13 +158,6 @@ export interface ImperativeTrailHandle {
       baseProgress: number;
       opacity: number;
     },
-    /**
-     * Draw the path in this colour instead of the trail's own, for the length
-     * of one frame. Used by the transient flourishes a navigation gong asks
-     * for — the stored colour is never touched, because it is a participant's
-     * identity and the register their sound is voiced in.
-     */
-    colorOverride?: string,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
   getGroup(): SVGGElement | null;
   hide(): void;
@@ -234,7 +227,6 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
           evictionFade,
           progressOverride,
           activeSegment,
-          colorOverride,
         ) {
           const group = groupRef.current;
           if (!group) return null;
@@ -284,7 +276,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
           }
 
           const { trailProgress, cursorPosition } = frame;
-          const drawnColor = colorOverride ?? trailState.trail.color;
+          const drawnColor = trailState.trail.color;
           const baseFrame = activeSegment
             ? computeTrailFrame(
                 trailState,

@@ -30,9 +30,6 @@ import {
 } from "./trailPrimitives";
 import { CinematicCamera, type CinematicConfig } from "../utils/cinematicCamera";
 import { TrailPositions } from "./trailPositions";
-import { flourishedColor } from "../sound/soundVisuals";
-import type { SoundVisuals, VisualConfig } from "../sound/soundVisuals";
-import { SoundGestures, type ImperativeSoundGesturesHandle } from "./SoundGestures";
 
 // Hidden tabs heavily throttle rAF; 100ms (~10fps) keeps audio/time progression
 // alive without spending too much background CPU.
@@ -77,10 +74,6 @@ interface AnimatedTrailsProps {
    * re-converges.
    */
   playbackClock?: { loopedMs: number } | null;
-  /** Sound visuals to draw over the trail layer, when a caller supplies them. */
-  soundVisuals?: SoundVisuals | null;
-  /** Which sound gestures are drawn. Nothing is drawn without this. */
-  visualConfig?: VisualConfig | null;
   settings: {
     strokeWidth: number;
     trailOpacity: number;
@@ -114,8 +107,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     soundEngine = null,
     trailPositions = null,
     playbackClock = null,
-    soundVisuals = null,
-    visualConfig = null,
     settings,
   }) => {
     const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
@@ -208,9 +199,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const soundEngineRef = useRef(soundEngine);
     const trailPositionsRef = useRef(trailPositions);
     const playbackClockRef = useRef(playbackClock);
-    const soundVisualsRef = useRef(soundVisuals);
-    const visualConfigRef = useRef(visualConfig);
-    const gesturesRef = useRef<ImperativeSoundGesturesHandle | null>(null);
 
     const cinematicRef = useRef(cinematic);
     useEffect(() => {
@@ -260,9 +248,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     useEffect(() => {
       trailPositionsRef.current = trailPositions;
       playbackClockRef.current = playbackClock;
-      soundVisualsRef.current = soundVisuals;
-      visualConfigRef.current = visualConfig;
-    }, [trailPositions, playbackClock, soundVisuals, visualConfig]);
+    }, [trailPositions, playbackClock]);
     useEffect(() => {
       trailStatesRef.current = trailStates;
     }, [trailStates]);
@@ -361,9 +347,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       nextStartOrderIndexRef.current = 0;
       setActiveClickEffects([]);
       soundEngineRef.current?.reset();
-      // Each pass through the data is a fresh performance: knots re-form where
-      // the navigations are, rather than accumulating across loops.
-      soundVisualsRef.current?.clear();
+      // Each pass through the data is a fresh performance, so nothing a
+      // previous pass published is still standing when this one starts.
       trailPositionsRef.current?.clear();
 
       let startTime: number | null = null;
@@ -464,12 +449,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           setActiveClickEffects([]);
           soundEngineRef.current?.reset();
           cameraRef.current?.reset();
-          // The same fresh start the first pass gets. Without these two the
-          // gestures from the pass just ended are still on the canvas while
-          // the next pass re-fires them, so knots stack up on a trail and a
+          // The same fresh start the first pass gets. Without this a
           // participant's stale position steers the first gongs of the new
           // pass to where they were rather than where they are.
-          soundVisualsRef.current?.clear();
           trailPositionsRef.current?.clear();
         }
         prevElapsedRef.current = loopedElapsed;
@@ -567,36 +549,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           );
           if (fade <= 0) continue;
 
-          // A gong flourish leans the trail's drawn colour and lets it settle.
-          // The stored colour is untouched: it is a participant's identity and
-          // the register their sound is voiced in.
-          let colorOverride: string | undefined;
-          const flourishVisuals = soundVisualsRef.current;
-          const flourishConfig = visualConfigRef.current;
-          if (
-            flourishVisuals &&
-            flourishConfig &&
-            (flourishConfig.lightnessSurge || flourishConfig.hueTilt)
-          ) {
-            const flourish = flourishVisuals.getFlourish(idx);
-            if (flourish) {
-              colorOverride = flourishedColor(
-                currentTrailStates[idx].trail.color,
-                loopedElapsed - flourish.startMs,
-                flourishConfig.lightnessSurge,
-                flourishConfig.hueTilt,
-              );
-            }
-          }
-
           const result = handle.update(
             loopedElapsed,
             trailOpacity,
             strokeWidth,
             fade,
-            undefined,
-            undefined,
-            colorOverride,
           );
 
           if (result && fade > 0 && result.trailProgress < 1) {
@@ -757,22 +714,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         // Feed sound engine with collected trail frames
         if (soundEngine) {
           soundEngine.tick(loopedElapsed, soundFrames);
-        }
-
-        // The gestures are drawn after the tick, so a notice the engine just
-        // emitted for this frame is already on the books when it is drawn.
-        const gestureVisuals = soundVisualsRef.current;
-        const gestureConfig = visualConfigRef.current;
-        if (gestureVisuals && gestureConfig) {
-          gestureVisuals.setNow(loopedElapsed);
-          // A bead outlives the trail that laid it, so the beads to draw come
-          // from the visuals rather than from whichever trails moved this
-          // frame. The colour comes from the trail's own state, so a bead
-          // always reads as belonging to the line it sits on.
-          gesturesRef.current?.update(loopedElapsed, strokeWidth, (trailIndex) =>
-            currentTrailStates[trailIndex]?.trail.color ?? null,
-          );
-          gestureVisuals.prune(loopedElapsed);
         }
 
         if (visibilityChanged) {
@@ -949,13 +890,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             />
           ))}
         </g>
-        {soundVisuals && visualConfig ? (
-          <SoundGestures
-            ref={gesturesRef}
-            visuals={soundVisuals}
-            config={visualConfig}
-          />
-        ) : null}
         {trailStates.map((ts, idx) => (
           <TrailCursor
             key={`trail-cursor-${idx}`}
@@ -984,8 +918,6 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.cinematicNextSignal === nextProps.cinematicNextSignal &&
       prevProps.soundEngine === nextProps.soundEngine &&
       prevProps.trailPositions === nextProps.trailPositions &&
-      prevProps.soundVisuals === nextProps.soundVisuals &&
-      prevProps.visualConfig === nextProps.visualConfig &&
       prevProps.settings.strokeWidth === nextProps.settings.strokeWidth &&
       prevProps.settings.trailOpacity === nextProps.settings.trailOpacity &&
       prevProps.settings.animationSpeed ===

@@ -9,7 +9,6 @@ import type { TrailState } from "../../types";
 import type { SoundEngine } from "../../sound/SoundEngine";
 import { AnimatedTrails } from "../AnimatedTrails";
 import { TrailPositions } from "../trailPositions";
-import type { SoundVisuals } from "../../sound/soundVisuals";
 import { DEFAULT_SETTINGS } from "../settingsDefaults";
 
 describe("AnimatedTrails sound", () => {
@@ -82,11 +81,9 @@ describe("AnimatedTrails sound", () => {
   });
 
   it("starts each pass through the data from a clean scene", async () => {
-    // A loop wrap is the same fresh start the first pass gets. Gestures and
-    // positions left over from the pass that just ended would otherwise stack
-    // up on the canvas while the new pass re-fires them, and stale positions
-    // would steer the new pass's first gongs to where a participant was rather
-    // than where they are.
+    // A loop wrap is the same fresh start the first pass gets. Positions left
+    // over from the pass that just ended would steer the new pass's first
+    // gongs to where a participant was rather than where they are.
     const testGlobal = globalThis as typeof globalThis & {
       IS_REACT_ACT_ENVIRONMENT?: boolean;
     };
@@ -153,7 +150,6 @@ describe("AnimatedTrails sound", () => {
       reset: vi.fn(),
       tick: vi.fn(),
     } as unknown as SoundEngine;
-    const soundVisuals = { clear: vi.fn(), setNow: vi.fn(), setConfig: vi.fn() };
     const trailPositions = new TrailPositions();
     const playbackClock = { loopedMs: 0 };
 
@@ -169,15 +165,11 @@ describe("AnimatedTrails sound", () => {
           showClickRipples: false,
           soundEngine,
           settings: DEFAULT_SETTINGS,
-          soundVisuals: soundVisuals as unknown as SoundVisuals,
           trailPositions,
           playbackClock,
         }),
       );
     });
-
-    // The mount clears once; the wrap is what this test is about.
-    const clearsAfterMount = soundVisuals.clear.mock.calls.length;
 
     // Frame deltas are clamped to 250ms, so the cycle is crossed by stepping
     // rather than by one jump. Run until the published clock rewinds.
@@ -198,9 +190,6 @@ describe("AnimatedTrails sound", () => {
 
     // The clock wrapped, and the scene was emptied along with it.
     expect(wrapped).toBe(true);
-    expect(soundVisuals.clear.mock.calls.length).toBeGreaterThan(
-      clearsAfterMount,
-    );
     // The late participant was on the canvas during the pass that just ended,
     // and is not being drawn at the top of the new one. Its position is gone
     // rather than left pointing at the far corner it reached last pass.
