@@ -59,6 +59,20 @@ const MIN_NOTE_INTERVAL_MS = 80;
 const NOTE_GLIDE_SECONDS = 0.08;
 
 /**
+ * Floor for an exponential ramp's target. An exponential curve cannot cross or
+ * reach zero, and a zero or negative target throws, so pitches are clamped
+ * here rather than trusted to stay positive.
+ */
+const MIN_EXPONENTIAL_TARGET = 1e-4;
+
+/**
+ * Pitch a voice's oscillators are built at, before it takes its first note.
+ * An instrument crossfade rebuilds them here too, whenever the voice has no
+ * note of its own yet to carry over.
+ */
+const VOICE_INITIAL_FREQUENCY = 220;
+
+/**
  * Pitch move onto a newly-led home tone. Long, so a sounding voice slides into
  * the new chord rather than snapping — the rotation should be heard as the
  * ensemble leaning, not as everyone retuning on a downbeat.
@@ -2645,7 +2659,7 @@ export class SoundEngine {
 
     const osc = ctx.createOscillator();
     osc.type = instrument.oscillatorType;
-    osc.frequency.value = 220;
+    osc.frequency.value = VOICE_INITIAL_FREQUENCY;
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
@@ -2686,7 +2700,7 @@ export class SoundEngine {
     // Create fifth oscillator for chord voicing (always created, gain-gated)
     const fifthOsc = ctx.createOscillator();
     fifthOsc.type = instrument.oscillatorType;
-    fifthOsc.frequency.value = 220 * 1.5; // Perfect fifth
+    fifthOsc.frequency.value = VOICE_INITIAL_FREQUENCY * 1.5; // Perfect fifth
 
     const fifthGain = ctx.createGain();
     fifthGain.gain.setValueAtTime(
@@ -3030,18 +3044,53 @@ export class SoundEngine {
     glideSeconds: number = NOTE_GLIDE_SECONDS,
   ): void {
     if (!this.ctx) return;
+    const now = this.ctx.currentTime;
     if (voice.oscillator) {
-      voice.oscillator.frequency.exponentialRampToValueAtTime(
-        frequency,
-        this.ctx.currentTime + glideSeconds,
-      );
+      this.glideParam(voice.oscillator.frequency, frequency, now, glideSeconds);
     }
     if (voice.fifthOscillator) {
-      voice.fifthOscillator.frequency.exponentialRampToValueAtTime(
+      this.glideParam(
+        voice.fifthOscillator.frequency,
         frequency * 1.5, // Perfect fifth
-        this.ctx.currentTime + glideSeconds,
+        now,
+        glideSeconds,
       );
     }
+  }
+
+  /**
+   * Glide a frequency param from the pitch it is sounding to a new one.
+   *
+   * A ramp interpolates from the *previous automation event*, not from the
+   * clock, and cancelling automation removes events without adding one. So a
+   * param that has never been automated — a voice's oscillator on its first
+   * note, or the fresh oscillator an instrument crossfade just built, both of
+   * which carry only an intrinsic `.value` — has no event to ramp from, and
+   * the curve is measured from the start of the timeline instead. By the time
+   * the audio reaches `now` that curve has already run to completion, so the
+   * pitch steps to its target instantly rather than gliding. On a running
+   * oscillator a step in frequency is a step in phase rate, which reads as a
+   * click.
+   *
+   * `holdParam` fixes that: `cancelAndHoldAtTime` plants the param's true
+   * instantaneous value as an event at `now`, so the ramp starts from the
+   * pitch actually sounding — mid-glide included. Nothing else may be written
+   * at `now` afterwards; the voice's own `currentFrequency` is the previous
+   * *target*, not the sounding pitch, so anchoring on it would plant the very
+   * jump this is here to remove. Frequency params carry no scheduled
+   * envelopes, so holding them discards nothing.
+   */
+  private glideParam(
+    param: AudioParam,
+    target: number,
+    now: number,
+    glideSeconds: number,
+  ): void {
+    this.holdParam(param, now);
+    param.exponentialRampToValueAtTime(
+      Math.max(target, MIN_EXPONENTIAL_TARGET),
+      now + glideSeconds,
+    );
   }
 
   private updateVoiceInstrument(
@@ -3066,7 +3115,7 @@ export class SoundEngine {
         voice.oscillatorLevel,
         voice.filterNode,
         instrument.oscillatorType,
-        voice.currentFrequency || 220,
+        voice.currentFrequency || VOICE_INITIAL_FREQUENCY,
       );
       voice.oscillator = primary.oscillator;
       voice.oscillatorLevel = primary.level;
@@ -3081,7 +3130,7 @@ export class SoundEngine {
           voice.fifthOscillatorLevel,
           voice.fifthGainNode,
           instrument.oscillatorType,
-          (voice.currentFrequency || 220) * 1.5,
+          (voice.currentFrequency || VOICE_INITIAL_FREQUENCY) * 1.5,
         );
         voice.fifthOscillator = fifth.oscillator;
         voice.fifthOscillatorLevel = fifth.level;

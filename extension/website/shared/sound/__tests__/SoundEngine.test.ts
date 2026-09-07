@@ -762,6 +762,61 @@ describe("SoundEngine cursor instruments", () => {
     }
   });
 
+  it("glides a voice's pitch from where it sounds rather than stepping", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+
+    const frame = (x: number) => ({
+      trailIndex: 0,
+      x,
+      y: 0,
+      prevX: 0,
+      prevY: 0,
+      cursorType: "pointer",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: false,
+    });
+
+    // Several notes, far enough apart in time that each is a fresh pitch move.
+    engine.tick(0, [frame(0)]);
+    for (let step = 1; step <= 6; step++) {
+      context.currentTime += 0.2;
+      engine.tick(step * 200, [frame(step * 15)]);
+    }
+
+    const state = engine as unknown as {
+      voices: Map<number, { oscillator: TestOscillatorNode }>;
+    };
+    const events = state.voices.get(0)!.oscillator.frequency.events;
+
+    const ramps = events.filter((event) => event.method === "exponentialRamp");
+    expect(ramps.length).toBeGreaterThan(0);
+
+    // Every pitch ramp must be preceded by a hold at the ramp's own start, so
+    // the curve interpolates from the pitch actually sounding. Without it the
+    // ramp is measured from the previous automation event — already long past
+    // — and the pitch steps instantly, which is the click.
+    for (const ramp of ramps) {
+      const rampIndex = events.indexOf(ramp);
+      const preceding = events[rampIndex - 1];
+      expect(preceding?.method).toBe("cancelAndHold");
+      expect(preceding.time).toBeLessThan(ramp.time);
+    }
+
+    // Nothing may be written at the hold's instant afterwards: an explicit
+    // anchor there would plant the jump the hold exists to avoid.
+    for (const ramp of ramps) {
+      const rampIndex = events.indexOf(ramp);
+      const holdTime = events[rampIndex - 1].time;
+      const setsAtHold = events.filter(
+        (event) => event.method === "set" && event.time === holdTime,
+      );
+      expect(setsAtHold).toHaveLength(0);
+    }
+  });
+
   it("rings click bells from the fixed scale when rotation is off", async () => {
     const engine = new SoundEngine();
     await engine.init();
