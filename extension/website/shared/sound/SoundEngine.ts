@@ -93,6 +93,17 @@ const VOICE_CONTROL_INTERVAL_MS = 50;
 const VOICE_CONTROL_RAMP_SECONDS = 0.07;
 
 /**
+ * How long a one-shot note takes to walk from the end of its exponential decay
+ * to true zero.
+ *
+ * An exponential ramp cannot reach zero, so every such envelope levels off at
+ * its 0.001 floor and holds there until its oscillator stops — cutting a tone
+ * that is still sounding. This is the tail that closes that gap; long enough
+ * that the walk is inaudible, short enough not to extend the note.
+ */
+const BELL_SILENCE_SECONDS = 0.1;
+
+/**
  * How long an evicted one-shot note takes to reach silence.
  *
  * Long enough that the fade is a fade rather than a step, short enough that
@@ -2434,9 +2445,14 @@ export class SoundEngine {
       instrument.gain * 0.3 * holdScale,
       now + instrument.attack,
     );
-    gain2.gain.exponentialRampToValueAtTime(
-      0.001,
-      now + instrument.attack + (instrument.release * holdScale) / 2,
+    const partialDecayEndsAt =
+      now + instrument.attack + (instrument.release * holdScale) / 2;
+    gain2.gain.exponentialRampToValueAtTime(0.001, partialDecayEndsAt);
+    // The partial finishes halfway through the fundamental's decay, so it is
+    // walked to true zero there rather than holding at 0.001 for seconds.
+    gain2.gain.linearRampToValueAtTime(
+      0,
+      partialDecayEndsAt + BELL_SILENCE_SECONDS,
     );
 
     const pan = this.ctx.createStereoPanner();
@@ -2450,7 +2466,17 @@ export class SoundEngine {
 
     osc.start(now);
     osc2.start(now);
-    const stopTime = now + instrument.attack + instrument.release * holdScale + 0.1;
+    const decayEndsAt = now + instrument.attack + instrument.release * holdScale;
+    const stopTime = decayEndsAt + BELL_SILENCE_SECONDS;
+    // An exponential ramp cannot reach zero, so both envelopes level off at
+    // 0.001 and hold there until the oscillator stops — which then cuts a
+    // still-sounding tone mid-cycle. One bell's 0.001 is inaudible on its own,
+    // but the click bell's release runs to three seconds (nine on a held
+    // click) while the scene clicks several times a second, so dozens of
+    // bells are in that holding state at once and their cuts land on top of
+    // the mix as crackle. Ramping the last stretch linearly to true zero costs
+    // nothing audible and leaves nothing to cut.
+    gain.gain.linearRampToValueAtTime(0, stopTime);
     osc.stop(stopTime);
     osc2.stop(stopTime);
   }
@@ -5500,14 +5526,19 @@ export class SoundEngine {
     partial.frequency.value = frequency * 3;
     partial.detune.value = detuneCents;
 
+    // Each envelope is walked from its exponential floor to true zero before
+    // its oscillator stops. An exponential ramp never reaches zero, so without
+    // this both level off and hold until the stop cuts them mid-cycle; with
+    // the note budget running sixteen of these at once that is sixteen small
+    // cuts, and they land together on a busy scene.
+    const decayEndsAt = now + attackSeconds + decaySeconds;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(peakGain, now + attackSeconds);
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + attackSeconds + decaySeconds,
-    );
+    gain.gain.exponentialRampToValueAtTime(0.0001, decayEndsAt);
+    gain.gain.linearRampToValueAtTime(0, decayEndsAt + BELL_SILENCE_SECONDS);
 
+    const partialDecayEndsAt = now + attackSeconds + decaySeconds / 2;
     const partialLevel = ctx.createGain();
     partialLevel.gain.setValueAtTime(0, now);
     partialLevel.gain.linearRampToValueAtTime(
@@ -5515,9 +5546,10 @@ export class SoundEngine {
       now + attackSeconds,
     );
     // The partial dies first, so the note softens from struck to hummed.
-    partialLevel.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + attackSeconds + decaySeconds / 2,
+    partialLevel.gain.exponentialRampToValueAtTime(0.0001, partialDecayEndsAt);
+    partialLevel.gain.linearRampToValueAtTime(
+      0,
+      partialDecayEndsAt + BELL_SILENCE_SECONDS,
     );
 
     const pan = ctx.createStereoPanner();
@@ -5546,7 +5578,9 @@ export class SoundEngine {
       this.flourishNotes.delete(note);
     };
 
-    const stopTime = now + attackSeconds + decaySeconds + 0.05;
+    // After the walk to zero, not before it: stopping mid-walk would reinstate
+    // the very cut the walk exists to remove.
+    const stopTime = decayEndsAt + BELL_SILENCE_SECONDS;
     osc.start(now);
     partial.start(now);
     osc.stop(stopTime);
@@ -5618,14 +5652,17 @@ export class SoundEngine {
         // hard-stopping the other leaves the partial's oscillator cut
         // mid-cycle at whatever level it had — a click from the half of the
         // note nobody was looking at.
+        // To zero, not to a small floor: a linear ramp can reach zero, and
+        // stopping the oscillator on a held 0.0001 is the same mid-cycle cut
+        // the fade exists to avoid.
         this.holdParam(note.gainNode.gain, now);
         note.gainNode.gain.linearRampToValueAtTime(
-          0.0001,
+          0,
           now + FLOURISH_EVICTION_FADE_SECONDS,
         );
         this.holdParam(note.partialGainNode.gain, now);
         note.partialGainNode.gain.linearRampToValueAtTime(
-          0.0001,
+          0,
           now + FLOURISH_EVICTION_FADE_SECONDS,
         );
         note.oscillator.stop(now + FLOURISH_EVICTION_FADE_SECONDS + 0.01);
