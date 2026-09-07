@@ -11,22 +11,76 @@ export function initInstallationCursor(): () => void {
   let disposed = false;
   let revision = 0;
   let ui: InjectedReactUI | null = null;
+  const shadowStyles = new Map<ShadowRoot, HTMLStyleElement>();
   const hide = () => {
     if (ui) ui.host.style.visibility = "hidden";
     document.documentElement.removeAttribute("data-wwo-installation-cursor");
+    for (const style of shadowStyles.values()) {
+      if (style.sheet) style.sheet.disabled = true;
+    }
   };
   const remove = () => {
     hide();
     ui?.destroy();
     ui = null;
+    for (const style of shadowStyles.values()) style.remove();
+    shadowStyles.clear();
   };
   const move = (event: PointerEvent) => {
     if (!ui || event.pointerType === "touch") return;
-    ui.host.style.transform = `translate(${event.clientX - 12}px, ${event.clientY - 8.4}px)`;
-    ui.host.style.visibility = "visible";
-    if (!document.documentElement.hasAttribute("data-wwo-installation-cursor")) {
+    const path = event.composedPath();
+    for (const node of path) {
+      if (!(node instanceof HTMLElement)) continue;
+      // Extension APIs can identify closed roots without modifying their contents.
+      const root =
+        node.shadowRoot ??
+        (typeof chrome !== "undefined" && chrome.dom?.openOrClosedShadowRoot
+          ? chrome.dom.openOrClosedShadowRoot(node)
+          : (
+              node as HTMLElement & {
+                openOrClosedShadowRoot?: ShadowRoot | null;
+              }
+            ).openOrClosedShadowRoot);
+      // Opaque custom elements retain their native pointer on browsers without
+      // closed-root access, since their internal cursor styles cannot be checked.
+      if (root?.mode === "closed" || (!root && node.localName.includes("-"))) {
+        hide();
+        return;
+      }
+    }
+    for (const node of path) {
+      if (!(node instanceof ShadowRoot)) continue;
+      let style = shadowStyles.get(node);
+      if (!style?.isConnected) {
+        style = document.createElement("style");
+        style.textContent = "* { cursor: none !important; }";
+        node.append(style);
+        shadowStyles.set(node, style);
+      }
+      if (style.sheet?.disabled) style.sheet.disabled = false;
+    }
+    for (const [root, style] of shadowStyles) {
+      if (!root.host.isConnected) {
+        style.remove();
+        shadowStyles.delete(root);
+      }
+    }
+    if (
+      !document.documentElement.hasAttribute("data-wwo-installation-cursor")
+    ) {
       document.documentElement.setAttribute("data-wwo-installation-cursor", "");
     }
+    // A page can override even an injected rule, for example with inline
+    // !important styles. Keep one native cursor if suppression did not apply.
+    if (
+      path[0] instanceof Element &&
+      getComputedStyle(path[0]).cursor !== "none"
+    ) {
+      hide();
+      return;
+    }
+    ui.host.style.transform = `translate(${event.clientX - 12}px, ${event.clientY - 8.4}px)`;
+    ui.host.style.visibility = "visible";
   };
   const leave = (event: PointerEvent) => {
     if (

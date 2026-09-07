@@ -132,6 +132,71 @@ try {
     await settings.screenshot({ path: resolve(evidence, "settings-on.png") });
   await assertCursor(page);
 
+  // Real custom elements cover nested roots, roots attached while enabled,
+  // and closed-root retargeting without simulating any extension APIs.
+  await page.evaluate(() => {
+    customElements.define("cursor-probe", class extends HTMLElement {});
+    for (const mode of ["open", "closed"]) {
+      const host = document.createElement("cursor-probe");
+      host.id = `${mode}-probe`;
+      host.style.cssText = "display:block;margin:12px 0";
+      document.querySelector("main").append(host);
+      const root = host.attachShadow({ mode });
+      root.innerHTML = `<style>button{cursor:crosshair;padding:12px;font:18px system-ui}</style><button>${mode} shadow cursor</button>`;
+      if (mode === "closed") window.closedCursorProbe = root;
+    }
+  });
+  const shadowButton = page.getByRole("button", {
+    name: "open shadow cursor",
+    exact: true,
+  });
+  await shadowButton.hover();
+  await expect
+    .poll(() => shadowButton.evaluate((el) => getComputedStyle(el).cursor))
+    .toBe("none");
+  await expect(page.locator("#wwo-installation-cursor")).toBeVisible();
+  if (evidence)
+    await page.screenshot({
+      path: resolve(evidence, "cursor-shadow-open.png"),
+    });
+  await page.locator("#closed-probe").hover({ position: { x: 30, y: 20 } });
+  await expect(page.locator("#wwo-installation-cursor")).toBeHidden();
+  assert.equal(
+    await page.evaluate(
+      () =>
+        getComputedStyle(window.closedCursorProbe.querySelector("button"))
+          .cursor,
+    ),
+    "crosshair",
+  );
+  if (evidence)
+    await page.screenshot({
+      path: resolve(evidence, "cursor-shadow-closed.png"),
+    });
+  await page.evaluate(() => {
+    const host = document.createElement("cursor-probe");
+    host.id = "nested-probe";
+    document.querySelector("#open-probe").shadowRoot.append(host);
+    host.attachShadow({ mode: "open" }).innerHTML =
+      '<button style="cursor:help;padding:12px">Nested late shadow cursor</button>';
+  });
+  const nestedButton = page.locator("#nested-probe button");
+  await nestedButton.hover();
+  await expect
+    .poll(() => nestedButton.evaluate((el) => getComputedStyle(el).cursor))
+    .toBe("none");
+  await expect(page.locator("#wwo-installation-cursor")).toBeVisible();
+  await settings.bringToFront();
+  await toggle.uncheck();
+  await expect
+    .poll(() => shadowButton.evaluate((el) => getComputedStyle(el).cursor))
+    .toBe("crosshair");
+  await expect
+    .poll(() => nestedButton.evaluate((el) => getComputedStyle(el).cursor))
+    .toBe("help");
+  await toggle.check();
+  await assertCursor(page);
+
   // Change color through the actual settings form and verify storage and DOM.
   await settings.bringToFront();
   await settings.locator('input[type="color"]').fill("#e04488");

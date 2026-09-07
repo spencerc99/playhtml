@@ -319,7 +319,9 @@ checkbox stays visible in Settings. Color changes apply to open pages.
 
 This is a local display setting, independent of feature entitlements and
 collection modes. It does not start cursor presence connections. Browser pages
-and embedded frame contents retain their native cursor.
+and embedded frame contents retain their native cursor. Open shadow roots receive
+cursor suppression when the pointer enters, including roots attached later.
+Closed roots retain their native cursor while the installation overlay hides.
 
 Build with `bun run build-extension`, then run
 `node smoke-tests/installation-cursor.mjs` to exercise the real Settings flow in
