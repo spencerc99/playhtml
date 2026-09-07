@@ -13,6 +13,7 @@ import {
 } from "../../shared/config";
 import { useHybridInstallationEvents } from "../../shared/hooks/useHybridInstallationEvents";
 import { useDailyPageReload } from "../../shared/hooks/useDailyPageReload";
+import { useInstallationReload } from "../../shared/hooks/useInstallationReload";
 import { summarizeActiveLocations } from "../../shared/utils/eventUtils";
 import {
   LIVE_INSTALLATION_VISUALIZATIONS,
@@ -37,8 +38,9 @@ const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
 };
 
 const LiveInstallation = () => {
-  useDailyPageReload();
   const profile = useMemo(() => resolveLiveInstallationProfile(), []);
+  useDailyPageReload();
+  useInstallationReload({ enabled: profile !== null });
   const screen = useMemo(
     () =>
       parseLiveInstallationScreen(

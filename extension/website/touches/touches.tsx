@@ -9,6 +9,7 @@ import {
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { useChromeToggle } from "../shared/hooks/useChromeToggle";
 import { useDailyPageReload } from "../shared/hooks/useDailyPageReload";
+import { useInstallationReload } from "../shared/hooks/useInstallationReload";
 import { parseCleanFromUrl } from "../shared/config";
 import { resolveLiveInstallationProfile } from "../shared/utils/liveInstallationProfiles";
 import { detectTouches, buildCoPresenceTimeline } from "./detect";
@@ -86,13 +87,12 @@ const styles = {
 };
 
 const CursorTouches = () => {
+  const profile = useMemo(() => resolveLiveInstallationProfile(), []);
   useDailyPageReload();
+  useInstallationReload({ enabled: profile !== null });
   const chromeHidden = useChromeToggle(true);
   const cleanMode = useMemo(() => parseCleanFromUrl() >= 1, []);
-  const profileSettings = useMemo(
-    () => resolveLiveInstallationProfile()?.touchesSettings,
-    [],
-  );
+  const profileSettings = profile?.touchesSettings;
   const { events, loading, deepening, error } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,

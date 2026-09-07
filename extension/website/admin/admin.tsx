@@ -16,10 +16,8 @@ import {
   updatePersonCohorts,
   type AccessOverview,
 } from "./accessControlApi";
+import { AdminHeader, AdminLogin, useAdminToken } from "./adminAuth";
 import "./style.scss";
-
-const TOKEN_STORAGE_KEY = "wwo-admin-token";
-const PLAYHTML_ADMIN_URL = "https://playhtml.fun/admin.html";
 
 const STAGE_LABELS: Record<FeatureStage, string> = {
   internal: "Internal",
@@ -31,31 +29,9 @@ function shortPublicId(publicId: string): string {
   return `${publicId.slice(0, 12)}…${publicId.slice(-10)}`;
 }
 
-function Login({ onLogin }: { onLogin: (token: string) => void }) {
-  const [token, setToken] = useState("");
-  return (
-    <main className="office-login">
-      <div className="office-login__card">
-        <span className="office-kicker">WE WERE ONLINE</span>
-        <h1>Internal Office</h1>
-        <p>Use the Worker admin key to open WWO operator tools.</p>
-        <form onSubmit={(event) => {
-          event.preventDefault();
-          if (token.trim()) onLogin(token.trim());
-        }}>
-          <label htmlFor="admin-token">Admin key</label>
-          <input id="admin-token" type="password" autoComplete="current-password" value={token}
-            onChange={(event) => setToken(event.target.value)} autoFocus />
-          <button type="submit" disabled={!token.trim()}>Enter office</button>
-        </form>
-        <a href={PLAYHTML_ADMIN_URL}>Open PlayHTML room admin →</a>
-      </div>
-    </main>
-  );
-}
-
 function InternalOffice() {
-  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+  const auth = useAdminToken();
+  const { token } = auth;
   const [overview, setOverview] = useState<AccessOverview | null>(null);
   const [publicId, setPublicId] = useState("");
   const [email, setEmail] = useState("");
@@ -111,10 +87,7 @@ function InternalOffice() {
   }, [overview, query]);
 
   if (!token) {
-    return <Login onLogin={(nextToken) => {
-      sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
-      setToken(nextToken);
-    }} />;
+    return <AdminLogin onLogin={auth.login} />;
   }
 
   const submitPerson = async (event: FormEvent) => {
@@ -154,18 +127,7 @@ function InternalOffice() {
 
   return (
     <div className="office-shell">
-      <header className="office-header">
-        <div><span className="office-kicker">WE WERE ONLINE</span><h1>Internal Office</h1></div>
-        <nav aria-label="Internal tools">
-          <a aria-current="page" href="/admin/">Access control</a>
-          <span title="The curation desk will join this office when its branch lands">Commute curation</span>
-          <a href={PLAYHTML_ADMIN_URL}>PlayHTML rooms ↗</a>
-        </nav>
-        <button className="office-header__logout" onClick={() => {
-          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-          setToken("");
-        }}>Lock office</button>
-      </header>
+      <AdminHeader currentPage="access" onLogout={auth.logout} />
 
       <main className="office-main">
         <section className="office-intro">
