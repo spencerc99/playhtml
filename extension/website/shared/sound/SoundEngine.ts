@@ -1073,8 +1073,15 @@ const ARPEGGIO_TUNING = {
  * the front rather than a new singer arrive.
  */
 export const PRESENCE_TUNING = {
-  /** Filter cutoff while presence holds, so stepping forward reads brighter. */
-  filterHz: 3200,
+  /**
+   * Filter cutoff while presence holds, so stepping forward reads brighter.
+   *
+   * Deliberately short of where a "bright" cutoff would sit. The promotion is
+   * a singer leaning in, not a light being switched on: opened far enough and
+   * the upper partials of the cursor instrument's own waveform come forward
+   * on their own, which reads as sheer rather than as close.
+   */
+  filterHz: 2300,
   /** Seconds the brightening, the gain lift and the drying take to arrive. */
   swellSeconds: 0.5,
   /** Seconds the return to the trail's ordinary voice takes on demotion. */
@@ -1085,8 +1092,13 @@ export const PRESENCE_TUNING = {
    * makes the soloist loud rather than close.
    */
   gain: 1.15,
-  /** Vibrato deepens and quickens while presence holds — a singer leaning in. */
-  vibratoDepthScale: 2.5,
+  /**
+   * Vibrato deepens and quickens while presence holds — a singer leaning in.
+   * The depth is a lean, not a wobble: widened far enough the voice sweeps
+   * across neighbouring pitches, which is heard as out of tune rather than as
+   * expressive, and it is what made the promoted voice refuse to blend.
+   */
+  vibratoDepthScale: 1.6,
   vibratoRateScale: 1.2,
   /**
    * Reverb send multiplier for the soloist. Less of it reaches the room while
@@ -1100,7 +1112,12 @@ export const PRESENCE_TUNING = {
    * in and out, and it leaves first on demotion.
    */
   haloOnsetMs: 800,
-  haloGain: 0.35,
+  /**
+   * Quiet enough to be a colour on the voice rather than a second line. At the
+   * level it used to sit, the double was loud enough to be heard as its own
+   * pitch, which is what made a halo landing off the harmony so exposed.
+   */
+  haloGain: 0.2,
   haloMultiple: 2,
   /**
    * Ceiling on the halo's pitch: E5, the top of the soprano band. The halo is
@@ -1108,8 +1125,13 @@ export const PRESENCE_TUNING = {
    * inside the ensemble's range instead of climbing out of it.
    */
   haloCeilingHz: 659.25,
-  /** The halo sits slightly brighter than the voice it doubles. */
-  haloFilterHz: 4200,
+  /**
+   * The halo's own cutoff. Well under the voice's, because the halo is always
+   * a sine: there is nothing above the fundamental to let through, and the
+   * only thing a high cutoff bought was the edge that made the double sit on
+   * top of the voice rather than inside it.
+   */
+  haloFilterHz: 2000,
   haloFadeSeconds: 0.6,
   /**
    * The audition's chord pad: how many chord tones hold under the soloist, how
@@ -1124,14 +1146,47 @@ export const PRESENCE_TUNING = {
 };
 
 /**
- * The halo's pitch: one octave above the soloist, unless that would carry it
- * over the soprano band's ceiling, in which case it stays where it is. Falling
- * back to the undoubled tone rather than to something between the two is
- * deliberate — a partial lift lands off the octave and reads as out of tune.
+ * The halo's pitch: the chord tone nearest the octave above the soloist, taken
+ * in whichever octave sits above the voice and under the soprano band's
+ * ceiling.
+ *
+ * Two things this is not, both of which it used to be. It is not the soloist's
+ * own pitch doubled — the voice spends most of its time on passing tones the
+ * direction mapping hands it, and doubling one of those puts two copies of a
+ * non-harmony note on top of each other, which is the single loudest way for
+ * the promoted voice to refuse to blend. And it is not a unison fallback at
+ * the ceiling: collapsing an octave to a unison the moment the lift would
+ * clear the band is a cliff, audible as the double vanishing into the voice.
+ * Folding keeps it a real second pitch at every soloist pitch.
+ *
+ * `tones` is the chord's own tones. With the progression not rotating there is
+ * no chord to speak of, so the caller passes the D minor pentatonic and the
+ * halo lands on the scale the rest of the scene is drawn from.
  */
-export function haloPitch(pitch: number): number {
-  const lifted = pitch * PRESENCE_TUNING.haloMultiple;
-  return lifted > PRESENCE_TUNING.haloCeilingHz ? pitch : lifted;
+export function haloPitch(pitch: number, tones: number[]): number {
+  const { haloMultiple, haloCeilingHz } = PRESENCE_TUNING;
+  const lifted = pitch * haloMultiple;
+  if (tones.length === 0) return lifted;
+
+  // Every tone, in every octave that fits between the voice and the ceiling.
+  // Folding a tone by octaves never leaves the harmony — it only changes which
+  // octave states it — so this is the full set of pitches the halo may take.
+  const candidates: number[] = [];
+  for (const tone of tones) {
+    let candidate = tone;
+    while (candidate <= pitch) candidate *= 2;
+    while (candidate > haloCeilingHz) candidate /= 2;
+    // Strictly above the voice: a halo at or below the pitch it doubles is
+    // either a unison, which reads as the double vanishing, or an inversion.
+    if (candidate > pitch) candidates.push(candidate);
+  }
+
+  // Nothing of the harmony fits in the gap — the voice is already at the
+  // ceiling. The plain octave is then the honest answer: it is above the
+  // ceiling, but it is still a real interval, where a unison is not.
+  if (candidates.length === 0) return lifted;
+
+  return leadHomeTone(lifted, candidates);
 }
 
 
@@ -1949,10 +2004,19 @@ export class SoundEngine {
       const chosenPitch = fingerprint
         ? this.applyHomeToneBias(directionPitch, fingerprint)
         : directionPitch;
-      // Promotion never moves a trail's pitch: presence steps a voice forward
-      // where it already stands, and the other soloists sound their flourish
-      // over the top of an unchanged sustained line.
-      const frequency = chosenPitch;
+      // Promotion never moves a trail out of its register: presence steps a
+      // voice forward where it already stands, and the other soloists sound
+      // their flourish over the top of an unchanged sustained line.
+      //
+      // It does constrain which notes the promoted voice may take. Held to
+      // the harmony's own tones, a promoted trail cannot land on a passing
+      // tone while every ear in the scene is on it — the voice harmonizes by
+      // construction rather than by luck of where the cursor happened to
+      // point. Demotion drops the constraint on the next note change and the
+      // trail speaks in passing tones again, as one of the crowd.
+      const frequency = this.isPresent(frame.trailIndex)
+        ? this.harmonizePromotedPitch(chosenPitch, fingerprint?.band)
+        : chosenPitch;
       const pan = positionToPan(frame.x, this.canvasWidth);
 
       // When cursor instruments are off, use the default instrument for all
@@ -3996,10 +4060,11 @@ export class SoundEngine {
   }
 
   /**
-   * Fade the halo in once presence has held, and keep it on the octave above
-   * whatever pitch the voice is currently singing — including through a chord
-   * rotation, since the voice it doubles is itself voice-led onto the new
-   * chord.
+   * Fade the halo in once presence has held, and keep it on the chord tone
+   * nearest the octave above whatever pitch the voice is currently singing.
+   * Re-reading the harmony every tick is what carries the double through a
+   * chord rotation: the voice it doubles is voice-led onto the new chord, and
+   * the halo lands on a tone of that chord rather than trailing the old one.
    */
   private updateHalo(
     voice: Voice,
@@ -4017,12 +4082,17 @@ export class SoundEngine {
 
     if (elapsedMs - voice.presentSinceMs < haloOnsetMs) return;
 
-    const pitch = haloPitch(voice.currentFrequency);
+    const pitch = haloPitch(voice.currentFrequency, this.harmonyTones());
 
     if (!voice.halo) {
       const now = ctx.currentTime;
       const oscillator = ctx.createOscillator();
-      oscillator.type = instrument.oscillatorType;
+      // A sine whatever the voice is playing on. Following the instrument's
+      // waveform meant the double arrived with its own partial stack sitting
+      // an octave above the voice's, and the two combs read as sheerness on
+      // top of the singer rather than as depth behind them. A pure tone adds
+      // the pitch and nothing else, which is all a halo is for.
+      oscillator.type = "sine";
       oscillator.frequency.setValueAtTime(pitch, now);
 
       const filter = ctx.createBiquadFilter();
@@ -4180,6 +4250,43 @@ export class SoundEngine {
   /** Palette flourish notes are drawn from this frame. */
   private flourishPalette(): number[] {
     return this.currentScale() ?? D_MINOR_PENTATONIC;
+  }
+
+  /**
+   * The pitches a voice may land on when it must not land on a passing tone —
+   * the halo, and a promoted voice's own note changes.
+   *
+   * While the progression rotates these are the current chord's own tones. It
+   * is not rotating that makes this more than a call to `chordTones`: there is
+   * then no chord for a tone to be "of", and reading three tones out of the
+   * pentatonic would narrow the scene to a triad it was never written as. The
+   * whole pentatonic is the harmony in that case, so the whole pentatonic is
+   * what a voice is held to.
+   */
+  private harmonyTones(): number[] {
+    const scale = this.currentScale();
+    return scale ? chordTones(scale) : D_MINOR_PENTATONIC;
+  }
+
+  /**
+   * The nearest harmony tone to a pitch a promoted voice was about to take,
+   * inside the band that voice sings in.
+   *
+   * Folding into the band before choosing is what keeps the promotion from
+   * being a move in register: "nearest" is measured only among the tones this
+   * part can actually sing, so a promoted bass stays a bass. Without a
+   * fingerprint the trail has no band, and the harmony is taken as written.
+   */
+  private harmonizePromotedPitch(
+    pitch: number,
+    band: RegisterBand | undefined,
+  ): number {
+    const tones = this.harmonyTones();
+    if (tones.length === 0) return pitch;
+    const candidates = band
+      ? tones.map((tone) => foldPitchIntoBand(tone, band))
+      : tones;
+    return leadHomeTone(pitch, candidates);
   }
 
   /** The chord root this frame — the pitch every accent instrument sits on. */
@@ -4646,7 +4753,7 @@ export class SoundEngine {
           { attackSeconds: swellSeconds },
         );
         this.triggerFlourishNote(
-          haloPitch(base),
+          haloPitch(base, this.harmonyTones()),
           centre,
           FLOURISH_TUNING.noteGain * haloGain,
           1.6,

@@ -92,27 +92,104 @@ describe("chord tones", () => {
   });
 });
 
-describe("the presence halo's octave", () => {
-  const CEILING_HZ = PRESENCE_TUNING.haloCeilingHz;
+describe("how far forward presence steps", () => {
+  /**
+   * The retune Spencer asked for after hearing the promoted voice as "too
+   * sharp and sheer". Pinned literally, because each of these was moved down
+   * from a value that measured fine and sounded wrong: a regression here is a
+   * number creeping back up, which no behavioural test would catch.
+   */
+  it("is pinned to the values settled on by ear", () => {
+    expect(PRESENCE_TUNING.filterHz).toBe(2300);
+    expect(PRESENCE_TUNING.vibratoDepthScale).toBe(1.6);
+    expect(PRESENCE_TUNING.haloFilterHz).toBe(2000);
+    expect(PRESENCE_TUNING.haloGain).toBe(0.2);
 
-  it("doubles a chord tone by exactly an octave, so it stays the same chord tone", () => {
-    const dm = PROGRESSIONS.circular.chords[0].pitches;
-    for (const tone of chordTones(dm)) {
-      const lifted = haloPitch(tone);
-      expect(pitchClassDistance(lifted, tone)).toBeLessThan(1e-6);
-    }
+    // The lift and the gain that were kept: the promotion is still carried by
+    // brightness and closeness rather than by volume.
+    expect(PRESENCE_TUNING.vibratoRateScale).toBe(1.2);
+    expect(PRESENCE_TUNING.gain).toBe(1.15);
+    expect(PRESENCE_TUNING.reverbSendScale).toBe(0.4);
+    expect(PRESENCE_TUNING.haloOnsetMs).toBe(800);
   });
 
-  it("never carries the double over the soprano band's ceiling", () => {
+  it("keeps the halo darker than the voice it sits above", () => {
+    // A sine doubling a filtered voice: brighter than the voice bought only
+    // the edge that put the double on top of the singer.
+    expect(PRESENCE_TUNING.haloFilterHz).toBeLessThan(PRESENCE_TUNING.filterHz);
+  });
+});
+
+describe("the presence halo's pitch", () => {
+  const CEILING_HZ = PRESENCE_TUNING.haloCeilingHz;
+
+  /** Whether a pitch is a member of a tone set, allowing for octave folding. */
+  const isMemberOf = (pitch: number, tones: number[]): boolean =>
+    tones.some((tone) => pitchClassDistance(pitch, tone) < 1e-6);
+
+  it("lands on a chord tone whatever pitch the voice is singing", () => {
     for (const id of PROGRESSION_IDS) {
       for (const chord of PROGRESSIONS[id].chords) {
-        for (const tone of chordTones(chord.pitches)) {
-          // A tone already at the top stays where it is rather than climbing
-          // out of the band — the alternative is a partial lift, which lands
-          // off the octave and reads as out of tune.
-          expect(haloPitch(tone)).toBeLessThanOrEqual(CEILING_HZ);
+        const tones = chordTones(chord.pitches);
+        // Every pitch of the palette, not only its chord tones: the voice
+        // spends most of its time on the colour tones the direction mapping
+        // hands it, and those are exactly the cases the halo must not double.
+        for (const pitch of chord.pitches) {
+          const halo = haloPitch(pitch, tones);
+          expect(
+            isMemberOf(halo, tones),
+            `${id}/${chord.name}: halo ${halo} above ${pitch} is off the chord`,
+          ).toBe(true);
         }
       }
     }
+  });
+
+  it("keeps the double under the soprano band's ceiling wherever it can", () => {
+    for (const id of PROGRESSION_IDS) {
+      for (const chord of PROGRESSIONS[id].chords) {
+        const tones = chordTones(chord.pitches);
+        for (const pitch of chord.pitches) {
+          // Only a voice already at the ceiling has no harmony left above it
+          // to reach; every other pitch stays inside the band.
+          if (pitch >= CEILING_HZ) continue;
+          expect(
+            haloPitch(pitch, tones),
+            `${id}/${chord.name}: halo above ${pitch} left the band`,
+          ).toBeLessThanOrEqual(CEILING_HZ);
+        }
+      }
+    }
+  });
+
+  it("is always a real interval above the voice, never a unison", () => {
+    // The tones nearest the top are the ones a lift would carry over the
+    // ceiling. That used to collapse the double onto the voice's own pitch,
+    // which is heard as the halo vanishing — a cliff rather than a limit.
+    for (const id of PROGRESSION_IDS) {
+      for (const chord of PROGRESSIONS[id].chords) {
+        const tones = chordTones(chord.pitches);
+        for (const pitch of chord.pitches) {
+          expect(
+            haloPitch(pitch, tones),
+            `${id}/${chord.name}: halo collapsed onto ${pitch}`,
+          ).toBeGreaterThan(pitch);
+        }
+      }
+    }
+  });
+
+  it("takes the plain octave when the voice is already at the ceiling", () => {
+    const tones = chordTones(PROGRESSIONS.circular.chords[0].pitches);
+    const atCeiling = CEILING_HZ * 2;
+    // Above the ceiling is the honest answer here: there is no harmony left
+    // in the gap, and an octave is still an interval where a unison is not.
+    expect(haloPitch(atCeiling, tones)).toBe(
+      atCeiling * PRESENCE_TUNING.haloMultiple,
+    );
+  });
+
+  it("falls back to the plain octave when there is no harmony to land on", () => {
+    expect(haloPitch(220, [])).toBe(440);
   });
 });

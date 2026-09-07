@@ -4056,11 +4056,17 @@ describe("presence on a driven promotion", () => {
   const promoteSoloist = async (
     soloistVoice: "bells" | "presence",
     steps = 60,
+    chordRotation = false,
   ) => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(8000);
-    engine.setConfig({ mode: "spotlight", soloistVoice, trailVoices: true });
+    engine.setConfig({
+      mode: "spotlight",
+      soloistVoice,
+      trailVoices: true,
+      chordRotation,
+    });
 
     const state = engine as unknown as {
       voices: Map<
@@ -4102,15 +4108,38 @@ describe("presence on a driven promotion", () => {
     expect(present.voice.present).toBe(true);
 
     // The whole point of presence over a descant: the promoted trail keeps the
-    // part its colour assigned it. A promotion that moved the pitch would make
-    // it a different voice rather than the same voice stepping forward.
-    expect(present.voice.currentFrequency).toBeCloseTo(
-      plain.voice.currentFrequency,
-      4,
-    );
+    // part its colour assigned it. Presence constrains which note the voice
+    // takes, so the two need not be the same pitch — but a promotion that
+    // moved the voice out of its band would make it a different singer rather
+    // than the same one stepping forward.
+    const { minHz, maxHz } = REGISTER_BAND_RANGES.soprano;
+    expect(plain.voice.currentFrequency).toBeGreaterThanOrEqual(minHz);
+    expect(present.voice.currentFrequency).toBeGreaterThanOrEqual(minHz);
+    expect(present.voice.currentFrequency).toBeLessThanOrEqual(maxHz);
 
     plain.engine.dispose();
     present.engine.dispose();
+  });
+
+  it("holds the promoted voice to the harmony's own tones", async () => {
+    // The point of the constraint: while every ear in the scene is on this
+    // voice, it cannot be sitting on a passing tone the direction mapping
+    // happened to hand it.
+    const { engine, voice } = await promoteSoloist("presence", 60, true);
+    const tones = (
+      engine as unknown as { harmonyTones(): number[] }
+    ).harmonyTones();
+
+    expect(tones.length).toBeGreaterThan(0);
+    expectPitchClassInPalette(voice.currentFrequency, tones);
+
+    // And inside the band its colour assigned it, so "on the chord" never
+    // becomes an excuse to move register.
+    const { minHz, maxHz } = REGISTER_BAND_RANGES.soprano;
+    expect(voice.currentFrequency).toBeGreaterThanOrEqual(minHz);
+    expect(voice.currentFrequency).toBeLessThanOrEqual(maxHz);
+
+    engine.dispose();
   });
 
   it("opens the filter, leans the gain in and dries the voice out", async () => {
@@ -4160,7 +4189,7 @@ describe("presence on a driven promotion", () => {
     engine.dispose();
   });
 
-  it("holds the halo back until the promotion has lasted, then doubles at the octave", async () => {
+  it("holds the halo back until the promotion has lasted, then doubles on the chord", async () => {
     // Well short of the onset delay: a brief spotlight must not flicker a
     // second voice in and out.
     const early = await promoteSoloist("presence", 20);
@@ -4172,23 +4201,67 @@ describe("presence on a driven promotion", () => {
     const halo = held.voice.halo;
     expect(halo).not.toBeNull();
 
-    // Exactly the octave, or exactly the voice's own pitch when doubling would
-    // climb past the soprano band. Anything in between reads as out of tune.
+    const tones = (
+      held.engine as unknown as { harmonyTones(): number[] }
+    ).harmonyTones();
     expect(halo!.oscillator.frequency.value).toBeCloseTo(
-      haloPitch(held.voice.currentFrequency),
+      haloPitch(held.voice.currentFrequency, tones),
       4,
     );
-    const doubled = held.voice.currentFrequency * PRESENCE_TUNING.haloMultiple;
-    expect(halo!.oscillator.frequency.value).toBe(
-      doubled > PRESENCE_TUNING.haloCeilingHz
-        ? held.voice.currentFrequency
-        : doubled,
-    );
+    // A member of the harmony, never a passing tone doubled on top of itself.
+    expectPitchClassInPalette(halo!.oscillator.frequency.value, tones);
     expect(halo!.oscillator.frequency.value).toBeLessThanOrEqual(
       PRESENCE_TUNING.haloCeilingHz,
     );
+    // A pure tone whatever the voice's own instrument is playing on.
+    expect(halo!.oscillator.type).toBe("sine");
 
     held.engine.dispose();
+  });
+
+  it("keeps the halo on the harmony across a chord change", async () => {
+    // Rotation on from the start, so "the harmony" is a chord that actually
+    // moves rather than the fixed pentatonic a non-rotating scene sits in.
+    const { engine, voice } = await promoteSoloist("presence", 90, true);
+    expect(voice.halo).not.toBeNull();
+
+    // The halo's opening pitch is written with setValueAtTime; every move
+    // after that is a glide, so the last scheduled target is where it is
+    // heading rather than `value`, which stops at the opening note.
+    const read = () => {
+      const tones = (
+        engine as unknown as { harmonyTones(): number[] }
+      ).harmonyTones();
+      const frequency = voice.halo!.oscillator.frequency;
+      const last = frequency.events.at(-1);
+      return { pitch: last?.value ?? frequency.value, tones };
+    };
+    const before = read();
+
+    // Drive past a chord boundary, then keep the promotion alive long enough
+    // for the halo to be re-pointed at the new harmony.
+    const state = engine as unknown as { chordIndex: number };
+    const startIndex = state.chordIndex;
+    let x = 90 * 12;
+    for (let step = 90; step < 3200; step++) {
+      x += 12;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        { ...soloFrame(0, x, 0), color: "#ff4466" },
+        soloFrame(1, 1000 + step * 0.2, 500),
+      ]);
+    }
+    expect(state.chordIndex).not.toBe(startIndex);
+
+    const after = read();
+    // The chord moved, so the tone set the halo is judged against moved too.
+    expectPitchClassInPalette(after.pitch, after.tones);
+    expect(after.pitch).toBeLessThanOrEqual(PRESENCE_TUNING.haloCeilingHz);
+    // And it was judged against the old set before, so this is a real move
+    // rather than a set that happens to contain everything.
+    expectPitchClassInPalette(before.pitch, before.tones);
+
+    engine.dispose();
   });
 });
 
@@ -4214,9 +4287,12 @@ describe("the presence audition", () => {
     const tones = chordTones(
       (engine as unknown as { flourishPalette(): number[] }).flourishPalette(),
     );
+    const harmony = (
+      engine as unknown as { harmonyTones(): number[] }
+    ).harmonyTones();
     const base = tones[0];
     expect(pitches).toContain(base);
-    expect(pitches).toContain(haloPitch(base));
+    expect(pitches).toContain(haloPitch(base, harmony));
 
     // Every tone is drawn from the same chord, so the crowd the voice steps
     // out of is the harmony it is stepping forward within.
@@ -4225,7 +4301,7 @@ describe("the presence audition", () => {
     }
 
     // The pad is a bed, not a second subject.
-    const pair = [base, haloPitch(base)];
+    const pair = [base, haloPitch(base, harmony)];
     const padTones = [...state.flourishNotes].filter(
       (note) => !pair.includes(note.oscillator.frequency.value),
     );
