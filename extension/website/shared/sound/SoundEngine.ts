@@ -1344,6 +1344,14 @@ export class SoundEngine {
   private convolver: ConvolverNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private voices: Map<number, Voice> = new Map();
+  /**
+   * Where the ramp currently running on each param lands. See `rampEndTime`.
+   *
+   * Weak, because the params belong to nodes the engine discards constantly —
+   * a voice's gain outlives this map's interest in it by no time at all, and a
+   * strong map would hold every node the engine ever built.
+   */
+  private rampEnds: WeakMap<AudioParam, number> = new WeakMap();
   private canvasWidth: number = 0;
   private enabled: boolean = false;
   private baseVolume: number = DEFAULT_MASTER_VOLUME;
@@ -2058,11 +2066,14 @@ export class SoundEngine {
             (PLUCK_REPEAT_INTERVAL_MS / 1000) * PLUCK_DECAY_FRACTION,
           );
           this.holdParam(voice.gainNode.gain, now);
-          // Hold the current automation value, then ramp up quickly.
-          voice.gainNode.gain.linearRampToValueAtTime(pluckGain, now + 0.005);
+          // Hold the current automation value, then ramp up quickly. The
+          // attack is clamped past any control ramp still running, so the
+          // pluck never lands inside one; the decay then follows it.
+          const attackEnd = this.rampEndTime(voice.gainNode.gain, now, 0.005);
+          voice.gainNode.gain.linearRampToValueAtTime(pluckGain, attackEnd);
           voice.gainNode.gain.exponentialRampToValueAtTime(
             0.001,
-            now + 0.005 + pluckSeconds,
+            this.rampEndTime(voice.gainNode.gain, attackEnd, pluckSeconds),
           );
         }
       } else if (shouldUpdateContinuousParams) {
@@ -3094,7 +3105,7 @@ export class SoundEngine {
     this.holdParam(param, now);
     param.exponentialRampToValueAtTime(
       Math.max(target, MIN_EXPONENTIAL_TARGET),
-      now + glideSeconds,
+      this.rampEndTime(param, now, glideSeconds),
     );
   }
 
@@ -3268,16 +3279,29 @@ export class SoundEngine {
     if (voice) {
       const disconnect = () => this.disconnectVoice(voice);
       let disconnectWhenStopped = false;
+      // Where the voice's gain actually reaches zero. Everything else the
+      // retirement stops — the fifth, the halo — is timed off this rather
+      // than off `now`, so a fade the clamp lengthened still finishes before
+      // anything feeding it is cut.
+      let fadeEnd = (this.ctx?.currentTime ?? 0) + VOICE_RETIREMENT_FADE_SECONDS;
       if (this.ctx && voice.oscillator) {
         const now = this.ctx.currentTime;
         this.holdParam(voice.gainNode.gain, now);
-        voice.gainNode.gain.linearRampToValueAtTime(
-          0,
-          now + VOICE_RETIREMENT_FADE_SECONDS,
+        // Past any control ramp still running on this gain, so the retirement
+        // fade never lands inside one. The stop follows the fade rather than
+        // the nominal length, or a clamped fade would be cut before it
+        // reached silence.
+        fadeEnd = this.rampEndTime(
+          voice.gainNode.gain,
+          now,
+          VOICE_RETIREMENT_FADE_SECONDS,
         );
+        voice.gainNode.gain.linearRampToValueAtTime(0, fadeEnd);
         voice.oscillator.onended = disconnect;
         try {
-          voice.oscillator.stop(now + VOICE_RETIREMENT_STOP_SECONDS);
+          voice.oscillator.stop(
+            fadeEnd + (VOICE_RETIREMENT_STOP_SECONDS - VOICE_RETIREMENT_FADE_SECONDS),
+          );
           disconnectWhenStopped = true;
         } catch { /* already stopped */ }
       }
@@ -3286,9 +3310,12 @@ export class SoundEngine {
       }
       if (voice.fifthOscillator) {
         try {
+          // The fifth shares the voice's gain, so it is cut when that gain
+          // reaches zero rather than a fixed offset from now.
           voice.fifthOscillator.stop(
             this.ctx
-              ? this.ctx.currentTime + VOICE_RETIREMENT_STOP_SECONDS
+              ? fadeEnd +
+                  (VOICE_RETIREMENT_STOP_SECONDS - VOICE_RETIREMENT_FADE_SECONDS)
               : undefined,
           );
         } catch { /* already stopped */ }
@@ -3299,7 +3326,13 @@ export class SoundEngine {
       // length as the voice's own gain above, so the halo reaches silence
       // before the pan node it feeds is disconnected; stopping it outright
       // with the voice cuts it mid-cycle, which is an audible click.
-      this.releaseHalo(voice, VOICE_RETIREMENT_FADE_SECONDS);
+      this.releaseHalo(
+        voice,
+        Math.max(
+          VOICE_RETIREMENT_FADE_SECONDS,
+          fadeEnd - (this.ctx?.currentTime ?? 0),
+        ),
+      );
       if (!disconnectWhenStopped) {
         disconnect();
       }
@@ -6311,7 +6344,44 @@ export class SoundEngine {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     this.holdParam(param, now);
-    param.linearRampToValueAtTime(targetValue, now + durationSeconds);
+    param.linearRampToValueAtTime(
+      targetValue,
+      this.rampEndTime(param, now, durationSeconds),
+    );
+  }
+
+  /**
+   * When a ramp on this param should land, never inside the ramp already
+   * running on it.
+   *
+   * A held param's next ramp is interpolated from the hold, so a ramp that
+   * ends *before* the one it replaced is an automation shape with two
+   * conflicting answers for the same instant. Web Audio does not define which
+   * one wins, and an implementation that resolves it by extrapolating the old
+   * ramp's slope past the new endpoint lands the param far outside the range
+   * either ramp asked for and holds it there — silence becomes a large
+   * constant offset, which is a click on the way in and a dead voice after.
+   *
+   * The engine reaches that shape whenever a control ramp is interrupted by a
+   * shorter one, which the sustained bed does constantly: a trail that starts
+   * moving opens its breath over `VOICE_CONTROL_RAMP_SECONDS` and a trail that
+   * stops a tick later closes it over a shorter fade, landing inside the open.
+   *
+   * Extending the new ramp to the running one's end is what removes the
+   * ambiguity: the param still travels to the value the caller asked for, by
+   * the only path both ramps agree on, and the few milliseconds of extra glide
+   * are well under what a listener resolves.
+   */
+  private rampEndTime(
+    param: AudioParam,
+    now: number,
+    durationSeconds: number,
+  ): number {
+    const requested = now + durationSeconds;
+    const running = this.rampEnds.get(param);
+    const end = running !== undefined && running > requested ? running : requested;
+    this.rampEnds.set(param, end);
+    return end;
   }
 
   private holdParam(param: AudioParam, time: number): void {

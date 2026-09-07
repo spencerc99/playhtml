@@ -4510,3 +4510,156 @@ describe("the one-shot note budget", () => {
     engine.dispose();
   });
 });
+
+describe("automation timeline", () => {
+  /**
+   * A ramp that lands inside the one already running on the same param is an
+   * automation shape with two answers for the same instant, and Web Audio does
+   * not say which wins. An implementation that resolves it by carrying the
+   * earlier ramp's slope past the new endpoint drives the param far outside
+   * the range either ramp asked for and holds it there — a click going in and
+   * a stuck offset after.
+   *
+   * The sustained bed reaches that shape constantly: a trail that starts
+   * moving opens its breath over the control ramp, and a trail that stops a
+   * tick later closes it over a shorter fade that lands inside the open. This
+   * asserts the engine never emits the shape, on the param it emitted it on.
+   */
+  const assertRampsNeverLandInsideEachOther = (param: TestAudioParam): void => {
+    let runningEnd = Number.NEGATIVE_INFINITY;
+    for (const event of param.events) {
+      if (event.method !== "linearRamp" && event.method !== "exponentialRamp") {
+        if (event.method === "set") runningEnd = Number.NEGATIVE_INFINITY;
+        continue;
+      }
+      expect(
+        event.time,
+        `a ramp ending ${event.time} lands inside the ramp running until ${runningEnd}`,
+      ).toBeGreaterThanOrEqual(runningEnd);
+      runningEnd = event.time;
+    }
+  };
+
+  it("never lands a voice's breath ramp inside the one already running", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+    engine.setConfig({ swells: false, cursorInstruments: false });
+
+    const moving = (x: number) => ({
+      trailIndex: 0,
+      x,
+      y: 0,
+      prevX: x - 20,
+      prevY: 0,
+      cursorType: "default",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: false,
+    });
+    const still = (x: number) => ({ ...moving(x), prevX: x });
+
+    engine.tick(0, [{ ...moving(0), isNewlyActive: true }]);
+
+    // A long stillness first, so the breath is closing over the release ramp,
+    // then one moving frame to reopen it, then stillness again on the very
+    // next frame. The reopen runs the control ramp and the close that follows
+    // it one frame later is shorter, so it lands inside — the shape itself.
+    // The engine reads velocity from its own previous position, so a still
+    // frame has to repeat the position rather than merely claim it did.
+    let x = 20;
+    let frame = 1;
+    const step = (isMoving: boolean) => {
+      context.currentTime += 1 / 60;
+      if (isMoving) x += 40;
+      engine.tick(frame * (1000 / 60), [isMoving ? moving(x) : still(x)]);
+      frame++;
+    };
+
+    for (let round = 0; round < 6; round++) {
+      // Stillness closes the breath, then one moving frame reopens it over the
+      // control ramp, then the very next frame is still again and closes it
+      // over a shorter fade that lands inside the open. That interruption is
+      // the shape.
+      for (let held = 0; held < 4; held++) step(false);
+      step(true);
+      step(false);
+    }
+
+    const fades = context.gains.filter((gain) =>
+      gain.gain.events.some(
+        (event) => event.method === "linearRamp" && event.value === 1,
+      ),
+    );
+    expect(fades.length).toBeGreaterThan(0);
+    for (const fade of fades) assertRampsNeverLandInsideEachOther(fade.gain);
+
+    engine.dispose();
+  });
+
+  it("keeps a retired voice's oscillator running until its fade reaches zero", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(100);
+    engine.setConfig({ swells: true, cursorInstruments: false });
+
+    engine.tick(0, [
+      {
+        trailIndex: 0,
+        x: 0,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "default",
+        progress: 0,
+        color: "#000",
+        isNewlyActive: true,
+      },
+    ]);
+    // Moving, so the voice is sounding and its control ramp is in flight when
+    // the retirement lands and has to be clamped past it.
+    context.currentTime += 1 / 60;
+    engine.tick(1000 / 60, [
+      {
+        trailIndex: 0,
+        x: 40,
+        y: 0,
+        prevX: 0,
+        prevY: 0,
+        cursorType: "default",
+        progress: 0,
+        color: "#000",
+        isNewlyActive: false,
+      },
+    ]);
+    context.currentTime += 1 / 60;
+    engine.retireTrail(0);
+
+    const faded = context.gains.filter((gain) =>
+      gain.gain.events.some(
+        (event) => event.method === "linearRamp" && event.value === 0,
+      ),
+    );
+    expect(faded.length).toBeGreaterThan(0);
+    for (const gain of faded) assertRampsNeverLandInsideEachOther(gain.gain);
+
+    // Every stop lands at or after the fade that precedes it, so nothing is
+    // cut while it is still sounding.
+    for (const oscillator of context.oscillators) {
+      for (const stopTime of oscillator.stopTimes) {
+        if (stopTime === undefined) continue;
+        for (const gain of faded) {
+          const lastZero = [...gain.gain.events]
+            .reverse()
+            .find(
+              (event) => event.method === "linearRamp" && event.value === 0,
+            );
+          if (!lastZero) continue;
+          expect(stopTime).toBeGreaterThanOrEqual(lastZero.time);
+        }
+      }
+    }
+
+    engine.dispose();
+  });
+});
