@@ -58,7 +58,7 @@ describe("persistedConfig round trip", () => {
     expect(loaded).not.toBeNull();
     expect(loaded?.savedAt).toEqual(expect.any(String));
 
-    const restored = restoreConfig(loaded?.config, GLOBAL_DEFAULTS, LAYER_DEFAULTS);
+    const restored = restoreConfig(loaded?.config);
     expect(restored.globals).toEqual(globals);
     expect(restored.layers).toEqual(layers);
     expect(restored.voicing).toEqual(voicing);
@@ -112,7 +112,7 @@ describe("per-field fallback", () => {
       voicing: { click: "soft" },
     };
 
-    const restored = restoreConfig(legacySaved, GLOBAL_DEFAULTS, LAYER_DEFAULTS);
+    const restored = restoreConfig(legacySaved);
 
     expect(restored.globals.mode).toBe("notes");
     expect(restored.globals.volume).toBe(0.9);
@@ -141,13 +141,13 @@ describe("per-field fallback", () => {
       voicing: { ...VOICING_DEFAULTS },
     };
 
-    const restored = restoreConfig(savedWithStaleField, GLOBAL_DEFAULTS, LAYER_DEFAULTS);
+    const restored = restoreConfig(savedWithStaleField);
     expect(restored.globals).toEqual(GLOBAL_DEFAULTS);
     expect("ghostFeature" in restored.globals).toBe(false);
   });
 
   it("falls back entirely to defaults when no config was ever saved", () => {
-    const restored = restoreConfig(undefined, GLOBAL_DEFAULTS, LAYER_DEFAULTS);
+    const restored = restoreConfig(undefined);
     expect(restored.globals).toEqual(GLOBAL_DEFAULTS);
     expect(restored.layers).toEqual(LAYER_DEFAULTS);
     expect(restored.voicing).toEqual(VOICING_DEFAULTS);
@@ -177,7 +177,7 @@ describe("corrupted storage", () => {
   });
 
   it("restoreConfig falls back cleanly when the saved config itself is malformed", () => {
-    const restored = restoreConfig("not an object", GLOBAL_DEFAULTS, LAYER_DEFAULTS);
+    const restored = restoreConfig("not an object");
     expect(restored.globals).toEqual(GLOBAL_DEFAULTS);
     expect(restored.layers).toEqual(LAYER_DEFAULTS);
     expect(restored.voicing).toEqual(VOICING_DEFAULTS);

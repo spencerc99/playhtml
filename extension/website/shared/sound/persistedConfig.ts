@@ -2,6 +2,7 @@
 // ABOUTME: object and round-trips it through localStorage as the page's own default
 
 import { GlobalSettings } from "./SceneSettings";
+import { DEFAULT_PROGRESSION_ID } from "./scales";
 import { VoicingSettings, VOICING_DEFAULTS } from "./voicing";
 import { VisualConfig, VISUAL_DEFAULTS } from "./soundVisuals";
 import { CantusVariant } from "./types";
@@ -17,6 +18,44 @@ export interface LayerConfig {
   crossings: "off" | "dissonance" | "merge";
   cantus: CantusVariant | null;
 }
+
+/**
+ * The arrangement a fresh visit opens on — the combination Spencer settled on
+ * by ear in the playground. A saved config is merged over this, so a setting
+ * added after a save still arrives at its shipped value.
+ *
+ * These live beside `restoreConfig` rather than being handed to it, so every
+ * page restores against the same complete set of keys. Restoring merges saved
+ * values onto the defaults key by key: a defaults object missing a key drops
+ * that key from the result even when the save has it, so a caller able to pass
+ * its own defaults is a caller able to silently lose part of the arrangement.
+ */
+export const SCENE_DEFAULTS: GlobalSettings = {
+  mode: "spotlight",
+  chordRotation: true,
+  progression: DEFAULT_PROGRESSION_ID,
+  energyArc: true,
+  trailVoices: true,
+  swells: true,
+  choralTimbre: false,
+  cursorInstruments: true,
+  soloistVoice: "bells",
+  traceability: 0,
+  volume: 0.5,
+};
+
+export const LAYER_DEFAULTS: LayerConfig = {
+  bassPedal: false,
+  trailArrivals: true,
+  navigationSounds: true,
+  crossings: "off",
+  /**
+   * The cantus is off until asked for. It is a whole extra voice with nothing
+   * in the scene prompting it, so it should be a deliberate addition rather
+   * than something already sounding when the page opens.
+   */
+  cantus: null,
+};
 
 /**
  * The entire audible arrangement, as one versioned object. Mixer solo/mute is
@@ -68,16 +107,16 @@ export interface RestoredConfig {
  * Merges a saved config onto the shipped defaults field by field, so an old
  * save missing a field a later feature added (or carrying a field a later
  * change dropped) still restores cleanly rather than losing the whole save.
+ *
+ * The defaults are this module's own. Every page that reads the arrangement
+ * gets the identical object back from the identical stored value, and no
+ * caller can narrow the set of keys that survives the merge.
  */
-export const restoreConfig = (
-  saved: unknown,
-  globalDefaults: GlobalSettings,
-  layerDefaults: LayerConfig,
-): RestoredConfig => {
+export const restoreConfig = (saved: unknown): RestoredConfig => {
   const record = typeof saved === "object" && saved !== null ? (saved as Record<string, unknown>) : {};
   return {
-    globals: withFallback(globalDefaults, record.globals),
-    layers: withFallback(layerDefaults, record.layers),
+    globals: withFallback(SCENE_DEFAULTS, record.globals),
+    layers: withFallback(LAYER_DEFAULTS, record.layers),
     voicing: withFallback(VOICING_DEFAULTS, record.voicing),
     visuals: withFallback(VISUAL_DEFAULTS, record.visuals),
   };

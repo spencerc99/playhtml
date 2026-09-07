@@ -14,10 +14,8 @@ import { AnimatedTrails } from "./AnimatedTrails";
 import { LiveTrails } from "./LiveTrails";
 import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
-import {
-  isSoundDevEnabled,
-  SoundDevPanel,
-} from "../sound/SoundDevPanel";
+import { isSoundDevEnabled } from "../sound/soundDevFlag";
+import { SoundDevSettings } from "../sound/SoundDevSettings";
 import { useSoundArrangement } from "../sound/useSoundArrangement";
 import { TrailPositions } from "./trailPositions";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
@@ -548,7 +546,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
    * lives in the URL, and changing it is a navigation.
    */
   const [soundDev] = useState(isSoundDevEnabled);
-  const arrangement = useSoundArrangement(soundEngineRef, soundDev);
+  const arrangement = useSoundArrangement(soundEngineRef, {
+    active: soundDev,
+    autoPersist: true,
+  });
   const applyArrangement = arrangement.applyTo;
 
   /**
@@ -1528,14 +1529,6 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   return (
     <DebugHoverProvider enabled={!!settings.debugMode}>
     <div className="internet-movement">
-      {soundDev && !printMode && (
-        <SoundDevPanel
-          arrangement={arrangement}
-          getEngine={getSoundEngine}
-          engine={soundEngineReady}
-        />
-      )}
-
       <Controls
         visible={controlsVisible}
         settings={settings}
@@ -1553,6 +1546,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         onSetActiveVisualizations={onSetActiveVisualizations}
         selectedTimeRange={selectedTimeRange}
         onSelectTimeRange={setSelectedTimeRange}
+        soundSettingsOverride={
+          soundDev && !printMode ? (
+            <SoundDevSettings
+              arrangement={arrangement}
+              getEngine={getSoundEngine}
+              engine={soundEngineReady}
+            />
+          ) : undefined
+        }
       />
 
       {/* Top-of-screen stats console. Paired with the bottom ActivityStrip

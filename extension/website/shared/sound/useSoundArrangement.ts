@@ -3,7 +3,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SoundEngine } from "./SoundEngine";
-import { DEFAULT_PROGRESSION_ID } from "./scales";
 import { GlobalSettings } from "./SceneSettings";
 import { VoicingSettings, VOICING_DEFAULTS } from "./voicing";
 import { VisualConfig, VISUAL_DEFAULTS } from "./soundVisuals";
@@ -11,42 +10,14 @@ import {
   buildPersistedConfig,
   clearSavedConfig,
   LayerConfig,
+  LAYER_DEFAULTS,
   loadSavedConfig,
   restoreConfig,
   saveConfig,
+  SCENE_DEFAULTS,
 } from "./persistedConfig";
 
-/**
- * The arrangement a fresh visit opens on — the combination Spencer settled on
- * by ear in the playground. A saved config is merged over this, so a setting
- * added after a save still arrives at its shipped value.
- */
-export const SCENE_DEFAULTS: GlobalSettings = {
-  mode: "spotlight",
-  chordRotation: true,
-  progression: DEFAULT_PROGRESSION_ID,
-  energyArc: true,
-  trailVoices: true,
-  swells: true,
-  choralTimbre: false,
-  cursorInstruments: true,
-  soloistVoice: "bells",
-  traceability: 0,
-  volume: 0.5,
-};
-
-export const LAYER_DEFAULTS: LayerConfig = {
-  bassPedal: false,
-  trailArrivals: true,
-  navigationSounds: true,
-  crossings: "off",
-  /**
-   * The cantus is off until asked for. It is a whole extra voice with nothing
-   * in the scene prompting it, so it should be a deliberate addition rather
-   * than something already sounding when the page opens.
-   */
-  cantus: null,
-};
+export { LAYER_DEFAULTS, SCENE_DEFAULTS };
 
 /** Everything one arrangement decides, and the handles to change or persist it. */
 export interface SoundArrangement {
@@ -60,6 +31,11 @@ export interface SoundArrangement {
   setVisuals: (next: Partial<VisualConfig>) => void;
   /** ISO timestamp of the saved config in use, or null when none is saved. */
   savedAt: string | null;
+  /**
+   * Write the arrangement to storage as the default every page opens on. The
+   * playground offers this as a button; an auto-persisting caller has it
+   * called for it on every change and need not show one.
+   */
   save: () => void;
   reset: () => void;
   /** The engine settings this arrangement's scene half amounts to. */
@@ -95,19 +71,31 @@ export const engineConfigFor = (
  * changes through this hook's own save and reset, both of which set the state
  * they wrote.
  */
-export const useSoundArrangement = (
-  engineRef: React.MutableRefObject<SoundEngine | null>,
+export interface ArrangementOptions {
   /**
    * Whether this arrangement is in charge. False on a page that did not ask
-   * for the dev panel: nothing is read from storage and nothing is pushed to
-   * the engine, so the page's own settings remain the only thing shaping it.
+   * for the sound dev settings: nothing is read from storage and nothing is
+   * pushed to the engine, so the page's own settings remain the only thing
+   * shaping it.
    */
-  active = true,
+  active?: boolean;
+  /**
+   * Write every change straight to storage. The playground keeps its explicit
+   * save and reset buttons, because a playground is where an arrangement is
+   * tried out and thrown away; the archive's settings are the arrangement, so
+   * turning one on is the act of keeping it.
+   */
+  autoPersist?: boolean;
+}
+
+export const useSoundArrangement = (
+  engineRef: React.MutableRefObject<SoundEngine | null>,
+  { active = true, autoPersist = false }: ArrangementOptions = {},
 ): SoundArrangement => {
   const [initial] = useState(() => {
     const saved = active ? loadSavedConfig() : null;
     return {
-      restored: restoreConfig(saved?.config, SCENE_DEFAULTS, LAYER_DEFAULTS),
+      restored: restoreConfig(saved?.config),
       savedAt: saved?.savedAt ?? null,
     };
   });
@@ -181,6 +169,19 @@ export const useSoundArrangement = (
     );
     if (saveConfig(config)) setSavedAt(new Date().toISOString());
   }, []);
+
+  // An auto-persisting caller keeps every change without being asked. The
+  // first run is skipped: opening a page is not a change, and writing on mount
+  // would turn a visit into a save of whatever happened to be restored.
+  const persistedOnceRef = useRef(false);
+  useEffect(() => {
+    if (!active || !autoPersist) return;
+    if (!persistedOnceRef.current) {
+      persistedOnceRef.current = true;
+      return;
+    }
+    save();
+  }, [active, autoPersist, globals, layers, voicing, visuals, save]);
 
   const reset = useCallback(() => {
     clearSavedConfig();

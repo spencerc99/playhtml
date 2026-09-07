@@ -52,15 +52,51 @@ describe("the live page's arrangement", () => {
 
     const saved = loadSavedConfig();
     expect(saved).not.toBeNull();
-    const restored = restoreConfig(
-      saved?.config,
-      SCENE_DEFAULTS,
-      LAYER_DEFAULTS,
-    );
+    const restored = restoreConfig(saved?.config);
     expect(restored.globals).toEqual(globals);
     expect(restored.layers).toEqual(layers);
     expect(restored.voicing).toEqual(voicing);
     expect(restored.visuals).toEqual(visuals);
+  });
+
+  it("restores an identical arrangement on the archive and the playground", () => {
+    // Both pages restore the same stored value through the same call, with no
+    // defaults of their own to supply. The archive used to come up missing
+    // bassPedal and cantus, because the defaults arrived as a caller argument
+    // and the merge only keeps the keys the defaults name — a caller passing a
+    // narrower set silently dropped whatever it left out. `restoreConfig` now
+    // owns the defaults, so there is no argument left to get wrong.
+    const globals = {
+      ...SCENE_DEFAULTS,
+      mode: "notes" as const,
+      volume: 0.31,
+    };
+    const layers = {
+      ...LAYER_DEFAULTS,
+      bassPedal: true,
+      cantus: "duet" as const,
+    };
+    saveConfig(
+      buildPersistedConfig(globals, layers, VOICING_DEFAULTS, VISUAL_DEFAULTS),
+    );
+
+    const stored = loadSavedConfig()?.config;
+    const onArchive = restoreConfig(stored);
+    const onPlayground = restoreConfig(stored);
+
+    expect(onArchive).toEqual(onPlayground);
+    // And it is the arrangement that was saved, not a default wearing its name.
+    expect(onArchive.layers.bassPedal).toBe(true);
+    expect(onArchive.layers.cantus).toBe("duet");
+    expect(onArchive.globals.volume).toBe(0.31);
+    // Every key of the shipped shape survives on both, so neither page can be
+    // the one with a field missing.
+    expect(Object.keys(onArchive.layers).sort()).toEqual(
+      Object.keys(LAYER_DEFAULTS).sort(),
+    );
+    expect(Object.keys(onArchive.globals).sort()).toEqual(
+      Object.keys(SCENE_DEFAULTS).sort(),
+    );
   });
 
   it("becomes the engine config the panel's settings describe", () => {
@@ -84,11 +120,7 @@ describe("the live page's arrangement", () => {
         hueTilt: true,
       }),
     );
-    const restored = restoreConfig(
-      loadSavedConfig()?.config,
-      SCENE_DEFAULTS,
-      LAYER_DEFAULTS,
-    );
+    const restored = restoreConfig(loadSavedConfig()?.config);
     expect(restored.visuals.hueTilt).toBe(true);
   });
 });
