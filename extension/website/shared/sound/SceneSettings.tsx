@@ -135,8 +135,7 @@ export const SceneSettings = ({
       ))}
       <span style={labelStyle}>
         the fastest clear outlier becomes the soloist: spotlight lifts and
-        brightens it while the rest duck; notes drops the crowd to a sparser
-        register.
+        brightens it while the rest duck.
       </span>
     </div>
 
