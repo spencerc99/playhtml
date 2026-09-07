@@ -273,7 +273,7 @@ export function scaleForChord(chord: Chord): number[] {
  *
  * Every palette above is written the same way: root, third and fifth first, in
  * ascending order, then the colouring tones. A voice that must stay on the
- * harmony — a soloist arpeggio, a descant leading through the chord — reads
+ * harmony — a soloist arpeggio, a presence audition's chord pad — reads
  * this prefix rather than the whole palette, so it never lands on a colour
  * tone and never has to guess which entries are consonant.
  */
