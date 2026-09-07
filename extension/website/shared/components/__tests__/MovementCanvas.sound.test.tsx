@@ -83,6 +83,9 @@ async function flushEngineInit() {
 
 describe("MovementCanvas live-path sound arrangement", () => {
   it("applies a stored arrangement automatically on the live path", async () => {
+    // The saved mode is "notes", which no longer exists. A save on disk still
+    // carries it, so what has to reach the engine is the migrated mode rather
+    // than the dead one.
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -126,7 +129,7 @@ describe("MovementCanvas live-path sound arrangement", () => {
     expect(setConfigMock).toHaveBeenCalled();
     const lastCall =
       setConfigMock.mock.calls[setConfigMock.mock.calls.length - 1][0];
-    expect(lastCall.mode).toBe("notes");
+    expect(lastCall.mode).toBe("sustained");
 
     act(() => root.unmount());
     container.remove();
@@ -164,7 +167,7 @@ describe("MovementCanvas live-path sound arrangement", () => {
         config: {
           v: 1,
           globals: {
-            mode: "notes",
+            mode: "spotlight",
             chordRotation: true,
             progression: "aeolian",
             energyArc: true,
@@ -199,7 +202,7 @@ describe("MovementCanvas live-path sound arrangement", () => {
 
     // Without ?sounddev=1, the archive's own settings.sound* fields (from
     // DEFAULT_SETTINGS, soundMode: "sustained") drive the engine — the saved
-    // arrangement's "notes" mode is never read.
+    // arrangement's "spotlight" mode is never read.
     expect(setConfigMock).toHaveBeenCalled();
     const lastCall =
       setConfigMock.mock.calls[setConfigMock.mock.calls.length - 1][0];

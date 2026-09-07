@@ -103,7 +103,7 @@ export const DEFAULT_SETTINGS = {
   navigationRadialSegmentByDay: true,
   trailVisualStyle: "color",
   /** How trail motion becomes sound. "sustained" holds a continuous voice per
-   * trail; "notes" emits discrete plucks as a trail travels. */
+   * trail; "spotlight" adds the soloist treatment on top of it. */
   soundMode: "sustained" as SoundMode,
   /** Rotate the harmonic root through a slow chord progression. */
   soundChordRotation: false,

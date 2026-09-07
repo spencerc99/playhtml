@@ -94,18 +94,28 @@ const withFallback = <T extends object>(defaults: T, saved: unknown): T => {
 };
 
 /**
- * Carries a saved arrangement onto renamed settings.
+ * Carries a saved arrangement onto settings that were renamed or removed.
+ *
+ * The merge above copies saved values through without checking them against
+ * the type, so a value the type no longer names reaches the engine and matches
+ * nothing there — silently, since the engine falls through rather than
+ * throwing.
  *
  * "descant" became "presence" when the voice stopped lifting an octave and
- * started stepping a voice forward in place. The merge above copies saved
- * values through without checking them against the type, so without this a
- * save from before the rename would hand the engine a soloist voice that
- * matches nothing and silently plays no soloist at all.
+ * started stepping a voice forward in place. The "notes" mode was removed
+ * outright; a save that names it lands on "sustained", the mode it was always
+ * the discrete-event alternative to.
  */
-const migrateGlobals = (globals: GlobalSettings): GlobalSettings =>
-  (globals.soloistVoice as string) === "descant"
-    ? { ...globals, soloistVoice: "presence" }
-    : globals;
+const migrateGlobals = (globals: GlobalSettings): GlobalSettings => {
+  let migrated = globals;
+  if ((migrated.soloistVoice as string) === "descant") {
+    migrated = { ...migrated, soloistVoice: "presence" };
+  }
+  if ((migrated.mode as string) === "notes") {
+    migrated = { ...migrated, mode: "sustained" };
+  }
+  return migrated;
+};
 
 export interface RestoredConfig {
   globals: GlobalSettings;

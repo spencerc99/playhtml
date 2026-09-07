@@ -63,7 +63,7 @@ describe("persistedConfig round trip", () => {
   it("serializes the full arrangement and restores it exactly", () => {
     const globals: GlobalSettings = {
       ...GLOBAL_DEFAULTS,
-      mode: "notes",
+      mode: "sustained",
       chordRotation: false,
       traceability: 0.42,
       volume: 0.77,
@@ -132,14 +132,14 @@ describe("per-field fallback", () => {
     // Simulates a save written before a later feature added new fields.
     const legacySaved = {
       v: 1,
-      globals: { mode: "notes", volume: 0.9 },
+      globals: { mode: "sustained", volume: 0.9 },
       layers: { bassPedal: true },
       voicing: { click: "soft" },
     };
 
     const restored = restoreConfig(legacySaved);
 
-    expect(restored.globals.mode).toBe("notes");
+    expect(restored.globals.mode).toBe("sustained");
     expect(restored.globals.volume).toBe(0.9);
     // Fields the legacy save never had fall back per-field, not the whole save.
     expect(restored.globals.chordRotation).toBe(GLOBAL_DEFAULTS.chordRotation);

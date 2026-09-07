@@ -30,7 +30,6 @@ const SOLOIST_VOICE_LABELS: Record<SoloistVoice, string> = {
 const MODES: Array<[SoundMode, string]> = [
   ["sustained", "sustained"],
   ["spotlight", "spotlight"],
-  ["notes", "notes"],
 ];
 
 const hintStyle: React.CSSProperties = {

@@ -74,6 +74,23 @@ describe("the live page's arrangement", () => {
     expect(restored.globals.soloistVoice).toBe("presence");
   });
 
+  it("restores a saved notes mode as sustained", () => {
+    // The mode was removed outright. The merge copies saved values through
+    // without checking them against the type, so without the migration an old
+    // save would hand the engine a mode matching nothing — and the engine
+    // falls through rather than throwing, so it would go unnoticed.
+    saveConfig(
+      buildPersistedConfig(
+        { ...SCENE_DEFAULTS, mode: "notes" as never },
+        LAYER_DEFAULTS,
+        VOICING_DEFAULTS,
+      ),
+    );
+
+    const restored = restoreConfig(loadSavedConfig()?.config);
+    expect(restored.globals.mode).toBe("sustained");
+  });
+
   it("restores an identical arrangement on the archive and the playground", () => {
     // Both pages restore the same stored value through the same call, with no
     // defaults of their own to supply. The archive used to come up missing
@@ -83,7 +100,7 @@ describe("the live page's arrangement", () => {
     // owns the defaults, so there is no argument left to get wrong.
     const globals = {
       ...SCENE_DEFAULTS,
-      mode: "notes" as const,
+      mode: "sustained" as const,
       volume: 0.31,
     };
     const layers = {

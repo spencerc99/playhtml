@@ -49,7 +49,6 @@ import {
 } from "./scales";
 import { parseColorToHsl } from "../utils/eventUtils";
 import { getInstrument, CLICK_BELL } from "./instruments";
-import { NotesEngine } from "./NotesEngine";
 
 /** Minimum time between note changes for a single voice (ms) */
 const MIN_NOTE_INTERVAL_MS = 80;
@@ -200,11 +199,9 @@ const MIN_POLYPHONY_GAIN_SCALE = 0.35;
  * How trail motion becomes sound.
  * "sustained" holds one continuous oscillator per trail whose pitch and gain
  * follow the cursor. "spotlight" is that same sustained sound with the
- * relative-velocity soloist treatment layered on. "notes" emits discrete
- * plucked events as a trail travels, so movement reads as rhythm and melody
- * rather than a drone.
+ * relative-velocity soloist treatment layered on.
  */
-export type SoundMode = "sustained" | "spotlight" | "notes";
+export type SoundMode = "sustained" | "spotlight";
 
 /**
  * What happens when one trail crosses another's path.
@@ -1433,8 +1430,6 @@ export class SoundEngine {
   private mergePullsUntilMs: Map<number, number> = new Map();
   /** Per-trail crescendo bookkeeping, maintained only while swells are on. */
   private swells: Map<number, SwellState> = new Map();
-  /** Discrete-note path, used only while config.mode is "notes". */
-  private notesEngine: NotesEngine = new NotesEngine();
   /**
    * Rolling velocity samples per trail: [timestampMs, velocity]. Kept per
    * trail so a candidate can be compared against the rest of the scene
@@ -1653,14 +1648,6 @@ export class SoundEngine {
     this.convolver.connect(this.compressor);
     this.compressor.connect(this.ctx.destination);
 
-    // Notes mode keeps its own gentler bus compressor — a one-shot pluck
-    // wants a 3:1 shape, not the sustained path's 12:1 — but that bus feeds
-    // the master rather than the destination, so volume, the polyphony duck
-    // and the master compressor all reach it. Its wet path goes to the shared
-    // send for the same reason.
-    this.notesEngine.attach(this.ctx, this.masterGain, this.reverbSendBus);
-    this.notesEngine.setCursorInstruments(this.config.cursorInstruments);
-
     this.enabled = true;
 
     // init() is triggered by a user gesture (sound-toggle click), so resuming
@@ -1702,7 +1689,6 @@ export class SoundEngine {
 
   setCanvasWidth(width: number): void {
     this.canvasWidth = width;
-    this.notesEngine.setCanvasWidth(width);
   }
 
   /**
@@ -1768,8 +1754,6 @@ export class SoundEngine {
       this.config.spotlight = config.mode === "spotlight";
     }
 
-    this.notesEngine.setCursorInstruments(this.config.cursorInstruments);
-
     // Turning the arc off must hand the reverb back to its fixed default,
     // otherwise it stays frozen at whatever the last energy value set.
     if (config.energyArc === false && this.reverbGain) {
@@ -1826,13 +1810,9 @@ export class SoundEngine {
       for (const [, voice] of this.voices) this.detachFormants(voice);
     }
 
-    // Switching modes mid-session must not leave the other path sounding.
+    // Switching between sustained and spotlight must not leave the soloist
+    // treatment half-applied to whatever was sounding.
     if (prevMode !== this.config.mode) {
-      if (this.config.mode === "notes") {
-        this.releaseAllVoices();
-      } else {
-        this.notesEngine.reset();
-      }
       // Drop smoothing state so the new mode does not inherit a stale duck.
       this.spotlightGains.clear();
       this.spotlightVelocitySamples.clear();
@@ -1868,48 +1848,6 @@ export class SoundEngine {
         : Math.max(1, Math.min(MAX_TICK_INTERVAL_MS, elapsedMs - this.previousTickMs));
     this.previousTickMs = elapsedMs;
     this.lastTickMs = elapsedMs;
-
-    if (this.config.mode === "notes") {
-      // Notes runs its own graph, so it needs the arc and progression applied
-      // here rather than through the sustained voice loop below.
-      this.updateEnergy(elapsedMs, activeTrails);
-      this.updateChord(elapsedMs);
-      // Notes mode holds no sustained voices of its own, but the map may still
-      // carry voices from a mode switch, so the palette stays tracked here too.
-      this.releadSoundingVoices();
-      this.updateEnergyReverb();
-      // The accent instruments sit outside the mode split — they mark scene
-      // and structure, not trail motion, so they sound the same either way.
-      this.updateBassPedal();
-      this.updateArrivals(elapsedMs, activeTrails);
-      this.updateCantus(elapsedMs);
-      this.notesEngine.setScale(this.currentScale());
-      // The master gain is the notes bus's own output stage now, so it has to
-      // be maintained in this mode too. Left to the sustained loop below —
-      // which this branch returns before reaching — it would sit frozen at
-      // whatever the last sustained frame left it, and the volume control
-      // would move nothing until the mode was switched back.
-      // The master gain is the notes bus's own output stage now, so it has to
-      // be maintained in this mode too. Left to the sustained loop below —
-      // which this branch returns before reaching — it would sit frozen at
-      // whatever the last sustained frame left it, and the volume control
-      // would move nothing until the mode was switched back.
-      //
-      // This one call is now the whole scaling for notes mode: volume, the
-      // polyphony duck, the energy arc and the ensemble breath are all in the
-      // target it ramps. The bus itself holds a fixed level, because anything
-      // applied there as well would be squared.
-      this.lastActiveTrailCount = activeTrails.length;
-      this.updateMasterGainForPolyphony(activeTrails.length);
-      this.notesEngine.tick(elapsedMs, activeTrails);
-      // prevPositions feeds the energy measurement above; the sustained loop
-      // that normally maintains it is skipped in this mode.
-      this.prevPositions.clear();
-      for (const frame of activeTrails) {
-        this.prevPositions.set(frame.trailIndex, { x: frame.x, y: frame.y });
-      }
-      return;
-    }
 
     const activeIndices = new Set(activeTrails.map((t) => t.trailIndex));
     this.lastActiveTrailCount = activeTrails.length;
@@ -3348,13 +3286,6 @@ export class SoundEngine {
     return { oscillator: currentOscillator, level: currentLevel };
   }
 
-  /** Release every sustained voice, e.g. when handing off to notes mode. */
-  private releaseAllVoices(): void {
-    for (const [, voice] of this.voices) {
-      if (voice.active || voice.oscillator) this.releaseVoice(voice);
-    }
-  }
-
   /**
    * Close a stopped trail's breath.
    *
@@ -3392,7 +3323,6 @@ export class SoundEngine {
 
   /** Permanently remove a trail's audio graph and cached motion state. */
   retireTrail(trailIndex: number): void {
-    this.notesEngine.retireTrail(trailIndex);
     // Only a trail that announced itself gets a departure, so a trail retired
     // during a suppressed batch does not leave without ever having arrived.
     // That is a question of whether the trail left, so it gates the notice
@@ -6401,11 +6331,6 @@ export class SoundEngine {
     return this.layerBuses.get(layer) ?? this.masterGain!;
   }
 
-  /** Number of one-shot notes currently sounding (notes mode diagnostics). */
-  getActiveNoteCount(): number {
-    return this.notesEngine.getActiveNoteCount();
-  }
-
   /** Flourish notes currently ringing (spotlight mode diagnostics). */
   getActiveFlourishNoteCount(): number {
     return this.flourishNotes.size;
@@ -6413,16 +6338,12 @@ export class SoundEngine {
 
   /** Trail index currently soloing, or null. */
   getSoloistTrailIndex(): number | null {
-    return this.config.spotlight
-      ? this.spotlightTrailIndex
-      : this.notesEngine.getSoloistTrailIndex();
+    return this.config.spotlight ? this.spotlightTrailIndex : null;
   }
 
   /** Rolling scene-average velocity behind the soloist decision. */
   getSceneAverageVelocity(): number {
-    return this.config.spotlight
-      ? this.spotlightSceneAverage
-      : this.notesEngine.getSceneAverageVelocity();
+    return this.config.spotlight ? this.spotlightSceneAverage : 0;
   }
 
   private updateMasterGainForPolyphony(activeTrailCount: number): void {
@@ -6522,7 +6443,6 @@ export class SoundEngine {
   dispose(): void {
     this.enabled = false;
     this.noticeListener = null;
-    this.notesEngine.detach();
     this.clearFlourish();
     this.releaseBassPedal();
     this.arrivalTimesMs.clear();
@@ -6564,7 +6484,6 @@ export class SoundEngine {
   }
 
   reset(): void {
-    this.notesEngine.reset();
     // A reset tears the scene down and immediately rebuilds it. Every trail in
     // the new scene is technically arriving, but sounding that is a volley, so
     // arrivals stay suppressed until the rebuilt scene has settled.

@@ -123,7 +123,6 @@ export const SceneSettings = ({
         [
           ["sustained", "sustained"],
           ["spotlight", "sustained + spotlight"],
-          ["notes", "notes"],
         ] as Array<[SoundMode, string]>
       ).map(([value, label]) => (
         <button
