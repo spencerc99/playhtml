@@ -786,6 +786,7 @@ for (const progression of Object.values(PROGRESSIONS)) {
 }
 
 let totalClicks = 0;
+let scannedCount = 0;
 try {
   await verifyThreshold();
 
@@ -866,7 +867,24 @@ try {
     ]),
   );
 
-  for (const scene of SCENES) {
+  // Scene-id substrings on the command line narrow the run to the scenes that
+  // match, so a single arrangement can be re-scanned in seconds while a gain
+  // path is being changed. With no arguments the whole matrix runs, which is
+  // the only form the acceptance test is read from.
+  const selectors = process.argv.slice(2).filter((arg) => !arg.startsWith("-"));
+  const selected = selectors.length
+    ? SCENES.filter((scene) =>
+        selectors.some((selector) => scene.id.includes(selector)),
+      )
+    : SCENES;
+  if (!selected.length) {
+    throw new Error(
+      `no scene matched ${selectors.join(", ")}; known scenes: ${SCENES.map((scene) => scene.id).join(", ")}`,
+    );
+  }
+  scannedCount = selected.length;
+
+  for (const scene of selected) {
     const scan = scanForClicks(await renderScene(scene), scene.id);
     report(scan);
     totalClicks += scan.hits.length;
@@ -877,5 +895,5 @@ try {
   }
 }
 
-console.log(`\ntotal clicks across ${SCENES.length} renders: ${totalClicks}`);
+console.log(`\ntotal clicks across ${scannedCount} renders: ${totalClicks}`);
 if (totalClicks > 0) process.exitCode = 1;
