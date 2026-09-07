@@ -1736,9 +1736,22 @@ export class SoundEngine {
         if (voice?.active) {
           // With swells on a stopped trail is released rather than cut, so the
           // bed thins out as breath running out rather than as a gate closing.
+          //
+          // A percussive voice is excluded from that long release. It has no
+          // sustained tone to thin out — its gain node carries one pluck's
+          // envelope at a time — so a 1.5s fade there is not a breath but an
+          // automation curve left running across the next several plucks,
+          // which then schedule their own envelopes on top of it. The pluck's
+          // own decay is already the release; the fade only has to close the
+          // gap if the trail never plucks again.
+          const isPercussiveVoice =
+            this.config.cursorInstruments &&
+            PERCUSSIVE_CURSOR_TYPES.has(frame.cursorType ?? "");
           this.fadeVoice(
             voice,
-            this.config.swells ? SWELL_TUNING.releaseSeconds : 0.05,
+            this.config.swells && !isPercussiveVoice
+              ? SWELL_TUNING.releaseSeconds
+              : 0.05,
           );
         }
         // Keep advancing the crescendo so a stopped trail decays toward zero
@@ -2971,10 +2984,11 @@ export class SoundEngine {
 
   private fadeVoice(voice: Voice, duration: number): void {
     if (!this.ctx) return;
-    voice.gainNode.gain.linearRampToValueAtTime(
-      0,
-      this.ctx.currentTime + duration,
-    );
+    // Anchored like every other writer on this param. Without the hold, the
+    // ramp is scheduled from whatever automation was already in flight rather
+    // than from the value the voice actually has, so its start is wherever the
+    // previous ramp happened to be heading rather than where the sound is.
+    this.rampParam(voice.gainNode.gain, 0, duration);
     voice.active = false;
   }
 
