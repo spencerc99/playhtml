@@ -1209,6 +1209,18 @@ interface Voice {
   fifthOscillator: OscillatorNode | null;
   fifthOscillatorLevel: GainNode | null;
   gainNode: GainNode;
+  /**
+   * The voice's breath, in series after `gainNode` and owned solely by the
+   * idle fade and the release.
+   *
+   * `gainNode.gain` carries envelopes that are scheduled ahead of the clock —
+   * a pluck writes its whole attack and decay at trigger time — so a writer
+   * that cancels pending automation to anchor its own ramp truncates them
+   * mid-flight, which is a discontinuity and reads as a click. Fading on a
+   * node of its own means the two never contend: the envelope runs to its own
+   * end while the breath closes over it.
+   */
+  fadeNode: GainNode;
   /** Separate gain for the fifth so we can enable/disable it */
   fifthGainNode: GainNode | null;
   filterNode: BiquadFilterNode;
@@ -1978,6 +1990,12 @@ export class SoundEngine {
       // pitch settles: the halo follows wherever the voice actually went.
       this.applyPresence(voice, frame.trailIndex, elapsedMs, instrument);
 
+      // The trail is moving, so whatever breath a previous stillness closed is
+      // reopened before this tick's level is written. Only on the transition:
+      // re-ramping an already-open fade every tick is the zipper noise the
+      // control throttle exists to avoid.
+      if (!voice.active) this.openVoiceFade(voice);
+
       // Percussive cursor types (e.g. text) use repeating plucks instead of
       // a sustained tone — like typing rhythm
       const isPercussive = this.config.cursorInstruments &&
@@ -2643,8 +2661,13 @@ export class SoundEngine {
     oscillatorLevel.gain.setValueAtTime(1, now);
     osc.connect(oscillatorLevel);
     oscillatorLevel.connect(filter);
+    // The breath sits between the envelope and the pan, so closing it never
+    // touches the envelope's own param. See `Voice.fadeNode`.
+    const fade = ctx.createGain();
+    fade.gain.setValueAtTime(1, now);
     filter.connect(gain);
-    gain.connect(pan);
+    gain.connect(fade);
+    fade.connect(pan);
     pan.connect(this.busFor("bed"));
 
     // The voice's own tap into the room, at the level the single global send
@@ -2684,6 +2707,7 @@ export class SoundEngine {
       fifthOscillator: fifthOsc,
       fifthOscillatorLevel,
       gainNode: gain,
+      fadeNode: fade,
       fifthGainNode: fifthGain,
       filterNode: filter,
       panNode: pan,
@@ -3123,19 +3147,31 @@ export class SoundEngine {
     }
   }
 
+  /**
+   * Close a stopped trail's breath.
+   *
+   * Anchored, so the ramp starts from the level the voice actually has rather
+   * than from wherever an earlier fade was heading — a stopped trail is faded
+   * on every tick it stays still, so this runs repeatedly and each call has to
+   * pick up where the last one reached. That anchoring is why the fade owns a
+   * node of its own: cancelling in-flight automation is correct for a breath
+   * and destructive on the param an envelope is scheduled ahead on.
+   */
   private fadeVoice(voice: Voice, duration: number): void {
     if (!this.ctx) return;
-    // Anchored like every other writer on this param. Without the hold, the
-    // ramp is scheduled from whatever automation was already in flight rather
-    // than from the value the voice actually has, so its start is wherever the
-    // previous ramp happened to be heading rather than where the sound is.
-    this.rampParam(voice.gainNode.gain, 0, duration);
+    this.rampParam(voice.fadeNode.gain, 0, duration);
     voice.active = false;
+  }
+
+  /** Reopen a voice's breath when its trail starts moving again. */
+  private openVoiceFade(voice: Voice): void {
+    if (!this.ctx) return;
+    this.rampParam(voice.fadeNode.gain, 1, VOICE_CONTROL_RAMP_SECONDS);
   }
 
   private releaseVoice(voice: Voice): void {
     if (!this.ctx) return;
-    this.rampParam(voice.gainNode.gain, 0, 0.5);
+    this.rampParam(voice.fadeNode.gain, 0, 0.5);
     voice.active = false;
   }
 
@@ -6074,6 +6110,7 @@ export class SoundEngine {
     voice.fifthGainNode?.disconnect();
     voice.filterNode.disconnect();
     voice.gainNode.disconnect();
+    voice.fadeNode.disconnect();
     voice.panNode.disconnect();
     voice.reverbSend?.disconnect();
   }
