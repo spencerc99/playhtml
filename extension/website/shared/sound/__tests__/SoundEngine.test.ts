@@ -3186,6 +3186,162 @@ describe("SoundEngine layer mixer", () => {
     expect(feederCount(clickBus)).toBe(clickBefore);
   });
 
+  /**
+   * Presence transforms the sustained voice rather than adding notes of its
+   * own, so without an explicit move the promoted voice leaves through the bed
+   * bus and the mixer disagrees with what is being heard: soloing the soloist
+   * silences the trail the spotlight is on, and muting the bed takes it away
+   * with the crowd. These pin the routing, and that it crosses rather than
+   * switches.
+   */
+  describe("a promoted presence voice on the soloist bus", () => {
+    /** Run a scene with one fast trail until it is promoted, in presence. */
+    const promoteOneTrail = async (): Promise<{
+      engine: SoundEngine;
+      voice: {
+        bedRoute: TestGainNode;
+        soloistRoute: TestGainNode;
+      };
+    }> => {
+      const engine = new SoundEngine();
+      await engine.init();
+      engine.setCanvasWidth(1000);
+      engine.setConfig({ mode: "spotlight", soloistVoice: "presence" });
+
+      for (let step = 0; step < 40; step++) {
+        context.currentTime += 1 / 60;
+        engine.tick(step * 16, [
+          soloFrame(0, 10 + step * 12, 10),
+          soloFrame(1, 10 + step * 2, 50),
+          soloFrame(2, 10 + step * 2, 90),
+          soloFrame(3, 10 + step * 2, 130),
+        ]);
+      }
+      expect(engine.getSoloistTrailIndex()).toBe(0);
+
+      const state = engine as unknown as {
+        voices: Map<
+          number,
+          { bedRoute: TestGainNode; soloistRoute: TestGainNode }
+        >;
+      };
+      return { engine, voice: state.voices.get(0)! };
+    };
+
+    it("sends the promoted voice to the soloist bus and away from the bed", async () => {
+      const { engine, voice } = await promoteOneTrail();
+
+      const master = context.gains[0];
+      const buses = layerBuses(master);
+      expect(voice.soloistRoute.connections).toContain(
+        buses[ALL_LAYERS.indexOf("flourish")],
+      );
+      expect(voice.bedRoute.connections).toContain(
+        buses[ALL_LAYERS.indexOf("bed")],
+      );
+
+      // Promotion moves the level, not the connection: the soloist route opens
+      // and the bed route closes.
+      expect(voice.soloistRoute.gain.events.at(-1)).toMatchObject({ value: 1 });
+      expect(voice.bedRoute.gain.events.at(-1)).toMatchObject({ value: 0 });
+
+      engine.dispose();
+    });
+
+    it("hands the voice back to the bed bus on demotion", async () => {
+      const { engine, voice } = await promoteOneTrail();
+
+      // The incumbent slows to the crowd's pace while everyone else speeds up,
+      // so it falls under the demotion ratio. Still moving, not stopped: a
+      // stopped trail leaves through the silence path, which is its own case.
+      for (let step = 40; step < 140; step++) {
+        context.currentTime += 1 / 60;
+        engine.tick(step * 16, [
+          soloFrame(0, 500 + step * 2, 10),
+          soloFrame(1, 10 + step * 12, 50),
+          soloFrame(2, 10 + step * 12, 90),
+          soloFrame(3, 10 + step * 12, 130),
+        ]);
+      }
+      expect(engine.getSoloistTrailIndex()).not.toBe(0);
+
+      expect(voice.soloistRoute.gain.events.at(-1)).toMatchObject({ value: 0 });
+      expect(voice.bedRoute.gain.events.at(-1)).toMatchObject({ value: 1 });
+
+      engine.dispose();
+    });
+
+    it("crosses the two routes rather than cutting one", async () => {
+      const { engine, voice } = await promoteOneTrail();
+
+      // Both moves are ramps, and neither route is ever disconnected while it
+      // is carrying signal — a hard switch between buses is a step to zero and
+      // back, which is a click.
+      const bedRamps = voice.bedRoute.gain.events.filter(
+        (event) => event.method === "linearRamp",
+      );
+      const soloistRamps = voice.soloistRoute.gain.events.filter(
+        (event) => event.method === "linearRamp",
+      );
+      expect(bedRamps.length).toBeGreaterThan(0);
+      expect(soloistRamps.length).toBeGreaterThan(0);
+      expect(voice.bedRoute.connections.length).toBeGreaterThan(0);
+      expect(voice.soloistRoute.connections.length).toBeGreaterThan(0);
+
+      engine.dispose();
+    });
+
+    it("hands the voice back even when it is demoted while standing still", async () => {
+      const { engine, voice } = await promoteOneTrail();
+
+      // A trail can lose the spotlight without moving — it slows to a stop and
+      // someone else runs. The stopped trail's frames leave through the
+      // silence path, so if presence is only reconciled on the moving path the
+      // voice keeps the soloist's bus until it happens to move again, and
+      // muting the soloist would silence a member of the crowd.
+      for (let step = 40; step < 140; step++) {
+        context.currentTime += 1 / 60;
+        engine.tick(step * 16, [
+          soloFrame(0, 500, 10),
+          soloFrame(1, 10 + step * 12, 50),
+          soloFrame(2, 10 + step * 12, 90),
+          soloFrame(3, 10 + step * 12, 130),
+        ]);
+      }
+      expect(engine.getSoloistTrailIndex()).not.toBe(0);
+
+      expect(voice.soloistRoute.gain.events.at(-1)).toMatchObject({ value: 0 });
+      expect(voice.bedRoute.gain.events.at(-1)).toMatchObject({ value: 1 });
+
+      engine.dispose();
+    });
+
+    it("leaves an unpromoted voice entirely on the bed bus", async () => {
+      const { engine } = await promoteOneTrail();
+
+      const state = engine as unknown as {
+        voices: Map<
+          number,
+          { bedRoute: TestGainNode; soloistRoute: TestGainNode }
+        >;
+      };
+      // A ducked voice is still one of the crowd. Moving every voice would
+      // make the soloist bus the whole bed and the mixer meaningless.
+      for (const index of [1, 2, 3]) {
+        const other = state.voices.get(index)!;
+        expect(other.soloistRoute.gain.value).toBe(0);
+        // The initial levels the routes are built at are not a move; only a
+        // ramp is. An unpromoted voice must never have been handed one.
+        for (const route of [other.soloistRoute, other.bedRoute]) {
+          expect(
+            route.gain.events.filter((event) => event.method === "linearRamp"),
+          ).toEqual([]);
+        }
+      }
+
+      engine.dispose();
+    });
+  });
 });
 
 describe("percussion candidates", () => {

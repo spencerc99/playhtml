@@ -121,6 +121,16 @@ const DEFAULT_REVERB_SEND = 0.3;
 /** Duration of cursor-instrument timbre crossfades (seconds). */
 const OSCILLATOR_CROSSFADE_SECONDS = 0.03;
 
+/**
+ * How long a voice takes to cross between the bed bus and the soloist bus.
+ *
+ * Short enough that the move is over well inside the promotion's own swell, so
+ * a listener hears one gesture rather than a routing change followed by a
+ * treatment; long enough that the pair of complementary ramps is a crossfade
+ * rather than a step. The same span the timbre crossfade uses, for the same
+ * reason.
+ */
+const ROUTE_CROSSOVER_SECONDS = 0.04;
 
 /** Minimum velocity to trigger any sound (pixels per frame at ~60fps) */
 const SILENCE_VELOCITY_THRESHOLD = 0.05;
@@ -366,7 +376,7 @@ const TRAIL_VOICE_TUNING = {
  * breathes: a trail that keeps moving leans in over seconds, and one that
  * stops falls away rather than cutting.
  */
-const SWELL_TUNING = {
+export const SWELL_TUNING = {
   /**
    * How long a trail must move continuously before the crescendo begins. Short
    * gestures finish inside this window and so keep the responsive, unswelled
@@ -932,7 +942,7 @@ const ENERGY_TUNING = {
  * soloist rules so the two modes promote the same trails, but the treatment
  * here is gain/brightness on continuous voices rather than note selection.
  */
-const SPOTLIGHT_TUNING = {
+export const SPOTLIGHT_TUNING = {
   /** Seconds of velocity history behind the rolling scene average. */
   velocityWindowMs: 3000,
   /** Velocity ratio vs the rest of the scene that promotes a trail to soloist. */
@@ -1307,6 +1317,29 @@ interface Voice {
    * avoid.
    */
   fadeClosed: boolean;
+  /**
+   * The voice's two routes out, one per mixer family, crossfaded between.
+   *
+   * A voice belongs to the bed while it is one of the crowd and to the soloist
+   * while presence has it stepped forward — and the mixer strip is how that
+   * claim is checked, so it has to be true of the routing rather than only of
+   * the treatment. Presence transforms the sustained voice in place, so
+   * without this the promoted voice still leaves through the bed bus: soloing
+   * "flourish" silences the very voice the spotlight is on, and muting the bed
+   * takes it with the crowd.
+   *
+   * Two gains rather than one reconnected output, because switching a live
+   * connection means disconnecting a node that is sounding, which is a step to
+   * zero and back — a click. Held at 1 and 0 and crossfaded, the sum stays
+   * unity throughout and nothing is ever disconnected while it carries signal.
+   *
+   * The halo needs no route of its own: it feeds `panNode`, upstream of both,
+   * so it follows the voice across without being moved.
+   */
+  bedRoute: GainNode;
+  soloistRoute: GainNode;
+  /** Whether the voice is currently routed to the soloist bus. */
+  routedToSoloist: boolean;
   /** Separate gain for the fifth so we can enable/disable it */
   fifthGainNode: GainNode | null;
   filterNode: BiquadFilterNode;
@@ -2031,6 +2064,25 @@ export class SoundEngine {
               this.config.swells ? SWELL_TUNING.releaseSeconds : 0.05,
             );
           }
+        }
+        // A trail can lose the spotlight while it is standing still, and
+        // presence is otherwise only reconciled on the moving path below — so
+        // a voice demoted while stopped would keep the promoted treatment, and
+        // its output would stay on the soloist bus, until it happened to move
+        // again. Outside the `active` check above, because a trail that has
+        // been still for more than one tick is already inactive and it is
+        // exactly those ticks the demotion is likely to land on. A no-op on a
+        // voice whose presence has not changed: every branch of it is
+        // edge-triggered.
+        if (voice) {
+          this.applyPresence(
+            voice,
+            frame.trailIndex,
+            elapsedMs,
+            this.config.cursorInstruments
+              ? getInstrument(frame.cursorType)
+              : getInstrument(undefined),
+          );
         }
         // Keep advancing the crescendo so a stopped trail decays toward zero
         // instead of freezing at whatever it had reached.
@@ -2808,7 +2860,16 @@ export class SoundEngine {
     filter.connect(gain);
     gain.connect(fade);
     fade.connect(pan);
-    pan.connect(this.busFor("bed"));
+    // Both routes exist for the life of the voice; presence moves the level
+    // between them rather than moving the connection. See `Voice.bedRoute`.
+    const bedRoute = ctx.createGain();
+    bedRoute.gain.setValueAtTime(1, now);
+    const soloistRoute = ctx.createGain();
+    soloistRoute.gain.setValueAtTime(0, now);
+    pan.connect(bedRoute);
+    pan.connect(soloistRoute);
+    bedRoute.connect(this.busFor("bed"));
+    soloistRoute.connect(this.busFor("flourish"));
 
     // The voice's own tap into the room, at the level the single global send
     // used to apply to everything. At rest every voice sends exactly what it
@@ -2867,6 +2928,9 @@ export class SoundEngine {
       lastPitchScale: null,
       active: false,
       fadeClosed: false,
+      bedRoute,
+      soloistRoute,
+      routedToSoloist: false,
     };
   }
 
@@ -4080,6 +4144,9 @@ export class SoundEngine {
       if (voice.reverbSend) {
         this.rampParam(voice.reverbSend.gain, reverbSendScale, swellSeconds);
       }
+      // The voice leaves the crowd's bus for the soloist's, so the mixer
+      // strip agrees with what is being heard. See `Voice.bedRoute`.
+      this.routeVoiceToSoloist(voice, true);
       return;
     }
 
@@ -4104,6 +4171,8 @@ export class SoundEngine {
       if (voice.reverbSend) {
         this.rampParam(voice.reverbSend.gain, 1, returnSeconds);
       }
+      // Back to the crowd's bus, on the same crossover it took to leave.
+      this.routeVoiceToSoloist(voice, false);
       // The halo leaves first, so the voice is alone again before it finishes
       // stepping back.
       this.releaseHalo(voice);
@@ -4113,6 +4182,42 @@ export class SoundEngine {
     if (present) {
       this.updateHalo(voice, elapsedMs, instrument);
     }
+  }
+
+  /**
+   * Move a voice between the bed bus and the soloist bus, click-free.
+   *
+   * The two routes are both connected for the whole life of the voice and
+   * carry complementary levels, so this is a crossfade rather than a
+   * reconnection: nothing is disconnected while it is sounding, and the sum of
+   * the two stays at unity throughout, which is what keeps the move inaudible
+   * as anything but the promotion it accompanies.
+   *
+   * Edge-triggered, like everything else presence does — re-ramping an
+   * unchanged pair every tick is the zipper noise the throttle exists to avoid.
+   *
+   * The reverb send is deliberately left alone. It taps the pan node, upstream
+   * of both routes, and mirrors the *bed* bus so a muted bed does not leave its
+   * room ringing. A promoted voice therefore keeps sending to the room through
+   * the bed's wet path while its dry path leaves through the soloist's, which
+   * is the same asymmetry the bed's send already has and not something this
+   * move introduces: presence has already dried the voice to
+   * `reverbSendScale`, so what remains is a fraction of a signal that was
+   * quiet in the room to begin with.
+   */
+  private routeVoiceToSoloist(voice: Voice, toSoloist: boolean): void {
+    if (!this.ctx || voice.routedToSoloist === toSoloist) return;
+    voice.routedToSoloist = toSoloist;
+    this.rampParam(
+      voice.soloistRoute.gain,
+      toSoloist ? 1 : 0,
+      ROUTE_CROSSOVER_SECONDS,
+    );
+    this.rampParam(
+      voice.bedRoute.gain,
+      toSoloist ? 0 : 1,
+      ROUTE_CROSSOVER_SECONDS,
+    );
   }
 
   /**
@@ -6362,6 +6467,8 @@ export class SoundEngine {
     voice.gainNode.disconnect();
     voice.fadeNode.disconnect();
     voice.panNode.disconnect();
+    voice.bedRoute.disconnect();
+    voice.soloistRoute.disconnect();
     voice.reverbSend?.disconnect();
   }
 
