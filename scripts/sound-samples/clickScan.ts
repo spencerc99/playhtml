@@ -37,41 +37,43 @@ Object.assign(globalThis, {
 });
 
 /**
- * What separates a click from a loud note, and why a raw jump threshold will
- * not do it.
+ * What separates a click from a loud note, and why the obvious measures do not.
  *
- * The obvious detector — flag any sample-to-sample step above some size — has
- * no setting that works. Set against full scale it is useless here: the whole
- * arrangement peaks around 0.3 and one flourish note peaks at 0.056, so every
- * note in the engine could be hard-cut without tripping a 0.25 threshold and
- * the scan would report zero on a thoroughly broken engine. Set low enough to
- * catch a cut of one note, it fires constantly on legitimate high-frequency
- * content, whose own per-sample slew is amplitude x omega / rate — a clean
- * 3.15kHz tone at 0.35 steps by 0.15 every sample, three times larger than the
- * cut we need to catch.
+ * Flagging any sample-to-sample step above some size has no workable setting.
+ * Against full scale it is useless here: the arrangement peaks around 0.3 and
+ * one flourish note peaks at 0.056, so every note in the engine could be
+ * hard-cut without tripping a 0.25 threshold and a thoroughly broken engine
+ * would still scan clean. Set low enough to catch a cut of one note, it fires
+ * on ordinary content, whose own per-sample slew is amplitude x omega / rate —
+ * a clean 3.15kHz tone at 0.35 steps by 0.15 every sample, three times larger
+ * than the fault. Normalising the second difference by local amplitude helps
+ * but does not settle it: that measure still rises with frequency, reading
+ * 0.20 for a clean 3.15kHz tone and 0.69 at 6kHz, which is where the
+ * spotlight's brightened filter puts real content.
  *
- * So the measure is the second difference — how much the waveform's slope
- * changes in one sample — normalised by the local amplitude. A band-limited
- * waveform's slope turns gradually, giving a ratio of roughly (omega / rate)^2;
- * a discontinuity removes the whole local amplitude in one step, so its second
- * difference is as large as the amplitude itself and the ratio approaches 1.
+ * So the measure is prediction error instead. Any single sinusoid satisfies
+ * x[n] = a*x[n-1] - x[n-2] exactly, with a = 2cos(omega) — the recurrence holds
+ * at every frequency, so fitting `a` over a short window by least squares and
+ * predicting the next sample gives a residual near zero for periodic content
+ * whatever its pitch, while a discontinuity is by definition what the past
+ * does not predict.
  *
- * Measured across the frequencies the engine reaches: clean tones read 0.0014
- * at 200Hz, 0.0062 at 440Hz, 0.041 at 1.4kHz and 0.20 at 3.15kHz, while a hard
- * cut reads 1.00 to 1.20 at every one of those frequencies and at any
- * amplitude, the normalisation having removed the level from the measure.
+ * Measured across the frequencies the engine reaches, clean tones read 0.0009
+ * at 200Hz, 0.0030 at 1.4kHz, 0.0068 at 3.15kHz and 0.0117 at 6kHz, while a
+ * hard cut reads 0.99 to 1.00 at every one of them and at any amplitude, the
+ * normalisation having removed level from the measure.
  *
- * 0.5 sits between the two populations with more than a factor of two of
- * margin on each side. `verifyThreshold` re-proves both ends on every run.
+ * 0.5 sits between two populations nearly two orders of magnitude apart.
+ * `verifyThreshold` re-proves both ends on every run.
  */
 const CLICK_RATIO_THRESHOLD = 0.5;
 
 /**
- * Window used for the local amplitude estimate, in samples — about 1.5ms,
- * short enough to track an envelope and long enough to span a cycle of
- * everything above roughly 700Hz.
+ * Window the predictor is fitted over, in samples — about 3ms, long enough to
+ * span a cycle of everything above roughly 350Hz and short enough that an
+ * envelope does not move much across it.
  */
-const AMPLITUDE_WINDOW = 64;
+const AMPLITUDE_WINDOW = 128;
 
 /**
  * Amplitude below which a discontinuity is not worth reporting. A step inside
@@ -92,7 +94,7 @@ interface ClickHit {
   channel: number;
   sampleIndex: number;
   seconds: number;
-  /** Second difference over local amplitude — see CLICK_RATIO_THRESHOLD. */
+  /** Prediction error over local amplitude — see CLICK_RATIO_THRESHOLD. */
   ratio: number;
   amplitude: number;
 }
@@ -153,18 +155,30 @@ const scanForClicks = (buffer: AudioBuffer, label: string): ScanReport => {
     }
 
     let lastHitIndex = Number.NEGATIVE_INFINITY;
-    for (let index = AMPLITUDE_WINDOW; index < samples.length; index++) {
+    // Two samples of headroom past the window, so the fit's own lookback never
+    // reads before the start of the buffer.
+    for (let index = AMPLITUDE_WINDOW + 2; index < samples.length; index++) {
+      // Fit the order-two recurrence over the preceding window and record the
+      // window's peak, which normalises the residual into a fraction of the
+      // amplitude a cut would have removed.
+      let numerator = 0;
+      let denominator = 0;
       let amplitude = 0;
       for (let k = index - AMPLITUDE_WINDOW; k < index; k++) {
+        const previous = samples[k - 1];
+        numerator += (samples[k] + samples[k - 2]) * previous;
+        denominator += previous * previous;
         const magnitude = Math.abs(samples[k]);
         if (magnitude > amplitude) amplitude = magnitude;
       }
       if (amplitude < MIN_AUDIBLE_AMPLITUDE) continue;
+      // A window with no energy to fit against cannot predict anything; the
+      // amplitude gate above has already skipped everything inaudible.
+      if (denominator < 1e-12) continue;
 
-      const secondDifference = Math.abs(
-        samples[index] - 2 * samples[index - 1] + samples[index - 2],
-      );
-      const ratio = secondDifference / amplitude;
+      const coefficient = numerator / denominator;
+      const predicted = coefficient * samples[index - 1] - samples[index - 2];
+      const ratio = Math.abs(samples[index] - predicted) / amplitude;
       if (ratio > maxRatio) maxRatio = ratio;
       if (ratio <= CLICK_RATIO_THRESHOLD) continue;
 
@@ -532,30 +546,33 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
  * Prove the threshold discriminates before trusting any count it produces.
  *
  * A scanner whose threshold sits above anything the engine can produce would
- * report zero on a thoroughly broken engine, so neither end is assumed. Each
- * run renders a clean tone at the arrangement's own peak level with the
- * fastest envelope the engine uses and asserts zero hits, then hard-stops a
- * tone at one note's peak level and asserts the cut is caught.
+ * report zero on a thoroughly broken engine, so neither end is assumed. Both
+ * are re-proved across the whole frequency range the engine reaches, because a
+ * detector that only discriminated in the middle of that range would be
+ * trustworthy on the sustained bed and blind on the brightened soloist.
  */
 const verifyThreshold = async (): Promise<void> => {
-  /**
-   * The clean reference runs at the arrangement's peak and above the top of
-   * the sustained voices' register, so its own waveform slew is at least as
-   * steep as anything a real render contains.
-   */
+  /** The arrangement's own peak, for the clean reference. */
   const CLEAN_PEAK = 0.35;
-  const CLEAN_HZ = 1_400;
+  /**
+   * The span the engine covers: the bass pedal's register at the bottom, the
+   * spotlight's brightened filter ceiling at the top.
+   */
+  const CALIBRATION_FREQUENCIES = [200, 440, 1_400, 3_150, 6_000];
   /** The engine's fastest envelope: the percussive pluck's 5ms attack. */
   const FASTEST_ATTACK_SECONDS = 0.005;
 
-  const buildTone = async (hardCut: boolean): Promise<AudioBuffer> => {
+  const buildTone = async (
+    hz: number,
+    hardCut: boolean,
+  ): Promise<AudioBuffer> => {
     const ctx = new OfflineAudioContext(CHANNEL_COUNT, SAMPLE_RATE, SAMPLE_RATE);
     const osc = ctx.createOscillator();
     // A sine, because a sawtooth's own reset edge is a real discontinuity and
     // would be flagged correctly. The engine's sawtooth and square voices are
     // the band-limited built-ins, which contain no such edge.
     osc.type = "sine";
-    osc.frequency.value = CLEAN_HZ;
+    osc.frequency.value = hz;
     const peak = hardCut ? SINGLE_NOTE_PEAK : CLEAN_PEAK;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, 0);
@@ -569,27 +586,35 @@ const verifyThreshold = async (): Promise<void> => {
     // stop time is a quarter cycle past a whole number of periods, so it lands
     // on the crest rather than on a zero crossing where a cut would leave no
     // step at all. The clean tone instead reaches silence before its own stop.
-    osc.stop(hardCut ? 0.5 + 0.25 / CLEAN_HZ : 1);
+    osc.stop(hardCut ? 0.5 + 0.25 / hz : 1);
     return (await ctx.startRendering()) as unknown as AudioBuffer;
   };
 
-  const clean = scanForClicks(await buildTone(false), "calibration-clean");
-  if (clean.hits.length !== 0) {
-    throw new Error(
-      `threshold calibration failed: a clean envelope flagged ${clean.hits.length} clicks (max ratio ${clean.maxRatio.toFixed(4)})`,
-    );
-  }
+  let worstClean = 0;
+  let weakestCut = Number.POSITIVE_INFINITY;
 
-  const cut = scanForClicks(await buildTone(true), "calibration-hard-cut");
-  if (cut.hits.length === 0) {
-    throw new Error(
-      `threshold calibration failed: a hard cut of one note's amplitude was not caught (max ratio ${cut.maxRatio.toFixed(4)})`,
-    );
+  for (const hz of CALIBRATION_FREQUENCIES) {
+    const clean = scanForClicks(await buildTone(hz, false), `clean-${hz}`);
+    if (clean.hits.length !== 0) {
+      throw new Error(
+        `threshold calibration failed: a clean ${hz}Hz envelope at peak ${CLEAN_PEAK} flagged ${clean.hits.length} clicks (ratio ${clean.maxRatio.toFixed(4)})`,
+      );
+    }
+    worstClean = Math.max(worstClean, clean.maxRatio);
+
+    const cut = scanForClicks(await buildTone(hz, true), `cut-${hz}`);
+    if (cut.hits.length === 0) {
+      throw new Error(
+        `threshold calibration failed: a hard cut of one note at ${hz}Hz was not caught (ratio ${cut.maxRatio.toFixed(4)})`,
+      );
+    }
+    weakestCut = Math.min(weakestCut, cut.maxRatio);
   }
 
   console.log(
-    `calibration ok: clean ${CLEAN_HZ}Hz at peak ${CLEAN_PEAK} reads ${clean.maxRatio.toFixed(4)}, ` +
-      `one-note hard cut reads ${cut.maxRatio.toFixed(4)}, threshold ${CLICK_RATIO_THRESHOLD}\n`,
+    `calibration ok across ${CALIBRATION_FREQUENCIES[0]}-${CALIBRATION_FREQUENCIES[CALIBRATION_FREQUENCIES.length - 1]}Hz: ` +
+      `worst clean reads ${worstClean.toFixed(4)}, weakest one-note cut reads ${weakestCut.toFixed(4)}, ` +
+      `threshold ${CLICK_RATIO_THRESHOLD}\n`,
   );
 };
 
