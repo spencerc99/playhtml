@@ -63,9 +63,20 @@ export const NOTES_TUNING = {
   maxConcurrentNotes: 32,
 };
 
-/** Master output shaping for notes mode — gentler than the sustained path. */
+/** Bus output shaping for notes mode — gentler than the sustained path. */
 const COMPRESSOR_THRESHOLD = -18;
 const COMPRESSOR_RATIO = 3;
+
+/**
+ * The fixed level notes mode sums to before its own compressor.
+ *
+ * The compressor's threshold was chosen against a bus that sat at the master
+ * volume's own default, so pinning the bus there keeps it seeing the input it
+ * was shaped for. Nothing else is applied here: volume, the polyphony duck,
+ * the energy arc and the ensemble breath are all in the master gain this bus
+ * feeds, and repeating any of them here would square it.
+ */
+const BUS_LEVEL = 0.5;
 
 interface TrailState {
   /** Distance traveled since the last note. */
@@ -96,7 +107,6 @@ export class NotesEngine {
   private compressor: DynamicsCompressorNode | null = null;
   private reverbGain: GainNode | null = null;
   private canvasWidth = 0;
-  private baseVolume = 0.5;
   private trails: Map<number, TrailState> = new Map();
   private activeNotes: Set<ActiveNote> = new Set();
   /** Rolling velocity samples across all trails: [timestampMs, velocity]. */
@@ -107,15 +117,33 @@ export class NotesEngine {
   private soloistTrailIndex: number | null = null;
   private sceneAverageVelocity = 0;
 
+  /**
+   * Build the notes bus and hang it off the caller's chain.
+   *
+   * `destination` is the sustained path's master gain, not the context's
+   * output. Notes mode keeps its own gentler compressor as bus-level
+   * processing — a one-shot pluck wants a 3:1 shape, not the sustained path's
+   * 12:1 — but that bus now runs into the master rather than around it.
+   *
+   * Attached to the destination it was a second output stage in parallel with
+   * the master, and it had to re-derive by hand everything the master already
+   * does. It re-derived volume and the energy arc, and simply did without the
+   * polyphony duck, the ensemble breath and the master compressor — so a
+   * scene dense enough to duck the sustained path did not duck here, and
+   * nothing downstream caught the peaks that ducking exists to avoid.
+   *
+   * `reverbSend` is likewise the shared send bus, so the wet path takes the
+   * same master scaling as the dry one instead of drifting above it.
+   */
   attach(
     ctx: AudioContext,
     destination: AudioNode,
-    convolver: ConvolverNode | null,
+    reverbSend: AudioNode | null,
   ): void {
     this.ctx = ctx;
 
     this.masterGain = ctx.createGain();
-    this.masterGain.gain.value = this.baseVolume;
+    this.masterGain.gain.value = BUS_LEVEL;
 
     this.compressor = ctx.createDynamicsCompressor();
     this.compressor.threshold.value = COMPRESSOR_THRESHOLD;
@@ -126,11 +154,11 @@ export class NotesEngine {
 
     this.masterGain.connect(this.compressor);
 
-    if (convolver) {
+    if (reverbSend) {
       this.reverbGain = ctx.createGain();
       this.reverbGain.gain.value = 0.25;
       this.masterGain.connect(this.reverbGain);
-      this.reverbGain.connect(convolver);
+      this.reverbGain.connect(reverbSend);
     }
 
     this.compressor.connect(destination);
@@ -151,15 +179,6 @@ export class NotesEngine {
    */
   setScale(scale: number[] | undefined): void {
     this.scale = scale;
-  }
-
-  setVolume(volume: number): void {
-    this.baseVolume = Math.max(0, Math.min(1, volume));
-    if (this.masterGain && this.ctx) {
-      const now = this.ctx.currentTime;
-      this.masterGain.gain.cancelScheduledValues(now);
-      this.masterGain.gain.linearRampToValueAtTime(this.baseVolume, now + 0.05);
-    }
   }
 
   tick(elapsedMs: number, activeTrails: TrailSoundFrame[]): void {

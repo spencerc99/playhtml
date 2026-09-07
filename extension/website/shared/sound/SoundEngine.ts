@@ -1656,11 +1656,12 @@ export class SoundEngine {
     this.convolver.connect(this.compressor);
     this.compressor.connect(this.ctx.destination);
 
-    // Notes mode runs its own gain/compressor chain straight to the
-    // destination, so it never inherits the sustained path's polyphony
-    // ducking or 12:1 compression.
-    this.notesEngine.attach(this.ctx, this.ctx.destination, this.convolver);
-    this.notesEngine.setVolume(this.baseVolume);
+    // Notes mode keeps its own gentler bus compressor — a one-shot pluck
+    // wants a 3:1 shape, not the sustained path's 12:1 — but that bus feeds
+    // the master rather than the destination, so volume, the polyphony duck
+    // and the master compressor all reach it. Its wet path goes to the shared
+    // send for the same reason.
+    this.notesEngine.attach(this.ctx, this.masterGain, this.reverbSendBus);
     this.notesEngine.setCursorInstruments(this.config.cursorInstruments);
 
     this.enabled = true;
@@ -1880,7 +1881,23 @@ export class SoundEngine {
       this.updateArrivals(elapsedMs, activeTrails);
       this.updateCantus(elapsedMs);
       this.notesEngine.setScale(this.currentScale());
-      this.notesEngine.setVolume(this.baseVolume * this.energyGainScale());
+      // The master gain is the notes bus's own output stage now, so it has to
+      // be maintained in this mode too. Left to the sustained loop below —
+      // which this branch returns before reaching — it would sit frozen at
+      // whatever the last sustained frame left it, and the volume control
+      // would move nothing until the mode was switched back.
+      // The master gain is the notes bus's own output stage now, so it has to
+      // be maintained in this mode too. Left to the sustained loop below —
+      // which this branch returns before reaching — it would sit frozen at
+      // whatever the last sustained frame left it, and the volume control
+      // would move nothing until the mode was switched back.
+      //
+      // This one call is now the whole scaling for notes mode: volume, the
+      // polyphony duck, the energy arc and the ensemble breath are all in the
+      // target it ramps. The bus itself holds a fixed level, because anything
+      // applied there as well would be squared.
+      this.lastActiveTrailCount = activeTrails.length;
+      this.updateMasterGainForPolyphony(activeTrails.length);
       this.notesEngine.tick(elapsedMs, activeTrails);
       // prevPositions feeds the energy measurement above; the sustained loop
       // that normally maintains it is skipped in this mode.
@@ -6309,10 +6326,14 @@ export class SoundEngine {
     voice.reverbSend?.disconnect();
   }
 
+  /**
+   * The page's volume, for every mode. Notes mode is not addressed separately
+   * because its bus feeds the master gain this ramps, which is the whole
+   * reason the control reaches it at all.
+   */
   setVolume(volume: number): void {
     this.baseVolume = Math.max(0, Math.min(1, volume));
     this.updateMasterGainForPolyphony(this.lastActiveTrailCount);
-    this.notesEngine.setVolume(this.baseVolume);
   }
 
   // ── Layer mixer ───────────────────────────────────────────────────────────

@@ -4265,6 +4265,151 @@ describe("presence on a driven promotion", () => {
   });
 });
 
+describe("notes mode's place in the output chain", () => {
+  /**
+   * Bring up an engine in notes mode and hand back the master gain along with
+   * the notes bus hanging off it.
+   */
+  const notesEngineChain = async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "notes" });
+
+    const state = engine as unknown as {
+      masterGain: TestGainNode;
+      notesEngine: {
+        masterGain: TestGainNode;
+        compressor: TestDynamicsCompressorNode;
+      };
+    };
+    return { engine, state };
+  };
+
+  it("runs the notes bus into the master gain rather than around it", async () => {
+    const { engine, state } = await notesEngineChain();
+
+    // The bus keeps its own gentler compressor — a one-shot pluck wants a 3:1
+    // shape, not the sustained path's 12:1 — but that compressor's output
+    // goes to the master, not to the context's own destination. Attached
+    // straight to the destination it bypassed volume, the polyphony duck and
+    // the master compressor all at once.
+    expect(state.notesEngine.compressor.connections).toContain(
+      state.masterGain as unknown as TestAudioNode,
+    );
+    expect(state.notesEngine.compressor.connections).not.toContain(
+      context.destination,
+    );
+    expect(state.notesEngine.compressor.ratio.value).toBe(3);
+
+    engine.dispose();
+  });
+
+  it("scales notes-mode output with the page's volume", async () => {
+    const { engine, state } = await notesEngineChain();
+
+    /**
+     * What a note actually leaves by, end to end: every gain between the
+     * notes bus and the context's destination, multiplied together.
+     *
+     * Reading the master gain alone would not settle this, and neither would
+     * reading the notes bus alone: volume has been applied at one or the
+     * other across both routings. The product is what has to hold, because it
+     * is the only reading that catches volume being applied twice as readily
+     * as it catches volume not being applied at all.
+     */
+    const outputScale = (): number => {
+      const level = (node: TestGainNode): number =>
+        node.gain.events.at(-1)?.value ?? node.gain.value;
+
+      let scale = level(state.notesEngine.masterGain);
+      let node: TestAudioNode =
+        state.notesEngine.compressor as unknown as TestAudioNode;
+      const seen = new Set<TestAudioNode>();
+      while (node !== (context.destination as unknown as TestAudioNode)) {
+        expect(seen.has(node), "notes bus loops before the output").toBe(false);
+        seen.add(node);
+        const next = node.connections.find(
+          (candidate) => !(candidate instanceof TestConvolverNode),
+        );
+        expect(next, "notes bus never reaches the destination").toBeDefined();
+        node = next!;
+        if (node instanceof TestGainNode) scale *= level(node);
+      }
+      return scale;
+    };
+
+    const drive = (elapsedMs: number) => {
+      context.currentTime += 1 / 60;
+      engine.tick(elapsedMs, [soloFrame(0, elapsedMs, 0)]);
+    };
+
+    // A frame at full volume, then the same scene at a quarter of it.
+    engine.setVolume(1);
+    drive(16);
+    const loud = outputScale();
+
+    engine.setVolume(0.25);
+    drive(32);
+    const quiet = outputScale();
+
+    expect(loud).toBeGreaterThan(0);
+    expect(quiet).toBeLessThan(loud);
+    // Exactly once, not twice: a quarter-volume page plays notes mode at a
+    // quarter, which is the trap in routing a bus that carried its own volume
+    // into a master that carries volume as well.
+    expect(quiet / loud).toBeCloseTo(0.25, 5);
+
+    engine.dispose();
+  });
+
+  it("ducks notes mode for polyphony, as the sustained path already did", async () => {
+    const { engine, state } = await notesEngineChain();
+    engine.setVolume(1);
+
+    const drive = (elapsedMs: number, trails: number) => {
+      context.currentTime += 1 / 60;
+      engine.tick(
+        elapsedMs,
+        Array.from({ length: trails }, (_unused, index) =>
+          soloFrame(index, elapsedMs + index * 40, index * 30),
+        ),
+      );
+    };
+
+    drive(16, 1);
+    const sparse = state.masterGain.gain.events.at(-1)?.value;
+
+    drive(32, 24);
+    const dense = state.masterGain.gain.events.at(-1)?.value;
+
+    // The duck is the reason the master exists as a shared stage. Running as
+    // its own output stage, notes mode never ducked at all, so a crowded
+    // scene summed to whatever it summed to.
+    expect(sparse).toBeGreaterThan(0);
+    expect(dense!).toBeLessThan(sparse!);
+
+    engine.dispose();
+  });
+
+  it("holds the notes bus itself at a fixed level, so nothing is squared", async () => {
+    const { engine, state } = await notesEngineChain();
+    const busLevel = state.notesEngine.masterGain.gain.value;
+
+    engine.setVolume(0.2);
+    context.currentTime += 1 / 60;
+    engine.tick(16, [soloFrame(0, 16, 0)]);
+
+    // Volume moved the master; the bus beneath it did not budge. Applying it
+    // in both places would attenuate twice — a fifth-volume page would play
+    // notes mode at a twenty-fifth.
+    expect(state.notesEngine.masterGain.gain.value).toBe(busLevel);
+    expect(state.notesEngine.masterGain.gain.events).toHaveLength(0);
+
+    engine.dispose();
+  });
+});
+
 describe("the presence audition", () => {
   it("leans one chord tone forward over a quiet pad, with its double behind it", async () => {
     const engine = new SoundEngine();
