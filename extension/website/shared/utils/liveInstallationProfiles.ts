@@ -37,6 +37,7 @@ export interface LiveInstallationProfile {
   label: string;
   pathname: "/installation/live/" | "/touches/";
   role: "master" | "follower";
+  defaultSoundEnabled?: boolean;
   followerId?: string;
   cinematic: CinematicConfig | null;
   visualizations: string[];
@@ -177,6 +178,7 @@ export const LIVE_INSTALLATION_PROFILES: Record<
     label: "cursor field",
     pathname: "/installation/live/",
     role: "master",
+    defaultSoundEnabled: true,
     cinematic: null,
     visualizations: ["trails"],
     screen: field(),

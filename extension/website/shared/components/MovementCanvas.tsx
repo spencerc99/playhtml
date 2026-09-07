@@ -14,6 +14,7 @@ import { AnimatedTrails } from "./AnimatedTrails";
 import { LiveTrails } from "./LiveTrails";
 import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
+import { attachSoundWakeListeners } from "../sound/soundWake";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
@@ -354,8 +355,8 @@ interface MovementCanvasProps {
   onSetActiveVisualizations: (vizIds: string[]) => void;
   /** Route-specific visualization ids shown in the developer controls. */
   availableVisualizations?: readonly string[];
-  /** Initial sound-on state. The AudioContext will still start suspended
-   * until the user's first gesture (browser autoplay policy). */
+  /** Initial sound-on state. The AudioContext may remain suspended until the
+   * browser permits playback through interaction or autoplay policy. */
   defaultSoundEnabled?: boolean;
   /** Route-specific defaults applied before stored settings and URL overrides. */
   defaultSettings?: Partial<MovementSettings>;
@@ -574,6 +575,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       soundEngineRef.current = null;
       setSoundEngineReady(null);
     };
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    if (!soundEnabled) return;
+    return attachSoundWakeListeners(() => soundEngineRef.current?.resume());
   }, [soundEnabled]);
 
   useEffect(() => {
