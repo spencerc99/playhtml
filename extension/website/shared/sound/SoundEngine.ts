@@ -92,6 +92,14 @@ const VOICE_CONTROL_INTERVAL_MS = 50;
  */
 const VOICE_CONTROL_RAMP_SECONDS = 0.07;
 
+/**
+ * How long an evicted one-shot note takes to reach silence.
+ *
+ * Long enough that the fade is a fade rather than a step, short enough that
+ * the slot it frees is genuinely free by the time the next note wants it.
+ */
+const FLOURISH_EVICTION_FADE_SECONDS = 0.025;
+
 /** Interval between repeated plucks for percussive cursor types like text (ms) */
 const PLUCK_REPEAT_INTERVAL_MS = 120;
 
@@ -1190,6 +1198,12 @@ interface FlourishNote {
   panNode: StereoPannerNode;
   peakGain: number;
   startedAtMs: number;
+  /**
+   * How long this note's envelope runs from `startedAtMs`, in ms. The budget
+   * evicts whichever note is furthest through its own envelope, which needs
+   * the length as well as the start.
+   */
+  durationMs: number;
 }
 
 export class SoundEngine {
@@ -5523,6 +5537,7 @@ export class SoundEngine {
       panNode: pan,
       peakGain,
       startedAtMs: now * 1000,
+      durationMs: (attackSeconds + decaySeconds) * 1000,
     };
     this.flourishNotes.add(note);
 
@@ -5539,21 +5554,44 @@ export class SoundEngine {
   }
 
   /**
-   * Keep the flourish note count bounded. At the cap the quietest note is cut
-   * (ties broken by age) rather than refusing the new one — dropping a note
-   * that is already ringing out is far less noticeable than a missing attack.
+   * Keep the one-shot note count bounded by cutting whichever note has least
+   * of itself left to sound.
+   *
+   * The intent has always been that a note already ringing out is the cheapest
+   * to lose, and a note that has not yet spoken the dearest. Choosing by peak
+   * gain did not do that: peak gain is fixed at scheduling time and varies by
+   * family rather than by age, so it silently ranked one family below another
+   * for the whole life of the engine.
+   *
+   * That is what buried the arrival chimes. The chime's peak is 0.026 against
+   * the flourish's 0.055, so a chime was always the quietest note present, and
+   * a busy scene evicted every one of them — measured, 74 of 74, with 46 cut
+   * before their scheduled start had even arrived and the rest at the instant
+   * of their attack. Soloing the chime bus made them audible again only
+   * because a solo removes the flourish that was doing the evicting, which is
+   * why the chimes sounded fine alone and vanished in the mix.
+   *
+   * Remaining life is the honest measure of what a cut costs, so the victim is
+   * the note furthest through its own envelope. A note still waiting to start
+   * has all of its life ahead of it and is never chosen while any sounding
+   * note remains.
    */
   private enforceFlourishBudget(): void {
     while (this.flourishNotes.size >= FLOURISH_TUNING.maxConcurrentNotes) {
+      const nowMs = (this.ctx?.currentTime ?? 0) * 1000;
       let victim: FlourishNote | null = null;
+      let victimProgress = Number.NEGATIVE_INFINITY;
       for (const note of this.flourishNotes) {
-        if (
-          !victim ||
-          note.peakGain < victim.peakGain ||
-          (note.peakGain === victim.peakGain &&
-            note.startedAtMs < victim.startedAtMs)
-        ) {
+        // Above 1 the note has finished and is merely awaiting its own
+        // `onended`; below 0 it has not started. Both orderings fall out of
+        // the same number, so the comparison needs no special cases.
+        const progress =
+          note.durationMs <= 0
+            ? 1
+            : (nowMs - note.startedAtMs) / note.durationMs;
+        if (victim === null || progress > victimProgress) {
           victim = note;
+          victimProgress = progress;
         }
       }
       if (!victim) return;
@@ -5563,11 +5601,39 @@ export class SoundEngine {
 
   private stopFlourishNote(note: FlourishNote): void {
     const now = this.ctx?.currentTime ?? 0;
+    // How much of the note's own envelope is still to come. A note evicted
+    // near the end of its decay has less left than the forced fade would take,
+    // and cutting it short there is louder than simply letting it finish:
+    // the fade re-anchors the gain and then walks it down on a straight line
+    // from wherever the exponential decay had reached, which is a sharper
+    // corner than the decay itself.
+    const remainingSeconds = Math.max(
+      0,
+      (note.startedAtMs + note.durationMs) / 1000 - now,
+    );
     try {
-      this.holdParam(note.gainNode.gain, now);
-      note.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.02);
-      note.oscillator.stop(now + 0.03);
-      note.partial.stop(now + 0.03);
+      if (remainingSeconds > FLOURISH_EVICTION_FADE_SECONDS) {
+        // Both envelopes fade, not only the fundamental's. The partial has its
+        // own gain node and reaches the bus independently, so fading one and
+        // hard-stopping the other leaves the partial's oscillator cut
+        // mid-cycle at whatever level it had — a click from the half of the
+        // note nobody was looking at.
+        this.holdParam(note.gainNode.gain, now);
+        note.gainNode.gain.linearRampToValueAtTime(
+          0.0001,
+          now + FLOURISH_EVICTION_FADE_SECONDS,
+        );
+        this.holdParam(note.partialGainNode.gain, now);
+        note.partialGainNode.gain.linearRampToValueAtTime(
+          0.0001,
+          now + FLOURISH_EVICTION_FADE_SECONDS,
+        );
+        note.oscillator.stop(now + FLOURISH_EVICTION_FADE_SECONDS + 0.01);
+        note.partial.stop(now + FLOURISH_EVICTION_FADE_SECONDS + 0.01);
+      }
+      // Otherwise the note is left to reach silence on its own envelope. It is
+      // dropped from the budget either way, so the slot is freed now and the
+      // graph is cleaned up by the `onended` already scheduled on it.
     } catch {
       /* already stopped */
     }

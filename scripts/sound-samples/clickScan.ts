@@ -51,29 +51,52 @@ Object.assign(globalThis, {
  * 0.20 for a clean 3.15kHz tone and 0.69 at 6kHz, which is where the
  * spotlight's brightened filter puts real content.
  *
- * So the measure is prediction error instead. Any single sinusoid satisfies
- * x[n] = a*x[n-1] - x[n-2] exactly, with a = 2cos(omega) — the recurrence holds
- * at every frequency, so fitting `a` over a short window by least squares and
- * predicting the next sample gives a residual near zero for periodic content
- * whatever its pitch, while a discontinuity is by definition what the past
- * does not predict.
+ * So the measure is prediction error instead. A sum of up to `PREDICTOR_ORDER`
+ * / 2 sinusoids satisfies a linear recurrence over its own past exactly, at any
+ * frequencies, so fitting that recurrence over a short window by least squares
+ * and predicting the next sample leaves a residual near zero for periodic
+ * content of any pitch or chord, while a discontinuity is by definition what
+ * the past does not predict.
  *
- * Measured across the frequencies the engine reaches, clean tones read 0.0009
- * at 200Hz, 0.0030 at 1.4kHz, 0.0068 at 3.15kHz and 0.0117 at 6kHz, while a
- * hard cut reads 0.99 to 1.00 at every one of them and at any amplitude, the
- * normalisation having removed level from the measure.
+ * Order matters here. An order-two fit models one sinusoid, which is enough
+ * for a single voice but not for what this engine actually renders: a chime
+ * cluster is three to five detuned notes plus their partials sounding at once,
+ * and an order-two model reads 0.066 on such a cluster — still under
+ * threshold, but only by a factor of eight, and the margin closes further on
+ * a busy mix. Order eight models four simultaneous sinusoids exactly and
+ * reads 0.0003 on the same cluster.
  *
- * 0.5 sits between two populations nearly two orders of magnitude apart.
+ * Measured at order eight: clean content reads 0.0000 for one tone, 0.0003 for
+ * a seven-tone cluster and 0.0000 at 6kHz, while hard cuts read 2.4 for a lone
+ * note and 5.1 for one note cut out of a cluster — the normalisation having
+ * removed level from the measure.
+ *
+ * 0.5 sits between two populations three to four orders of magnitude apart.
  * `verifyThreshold` re-proves both ends on every run.
  */
 const CLICK_RATIO_THRESHOLD = 0.5;
 
 /**
- * Window the predictor is fitted over, in samples — about 3ms, long enough to
- * span a cycle of everything above roughly 350Hz and short enough that an
- * envelope does not move much across it.
+ * How many past samples the predictor fits against. Each pair of coefficients
+ * buys one simultaneous sinusoid, so eight covers a chime cluster's notes plus
+ * the bed underneath them.
  */
-const AMPLITUDE_WINDOW = 128;
+const PREDICTOR_ORDER = 8;
+
+/**
+ * Window the predictor is fitted over, in samples — about 6ms, long enough to
+ * constrain eight coefficients and to span a cycle of everything above roughly
+ * 170Hz, short enough that an envelope does not move much across it.
+ */
+const AMPLITUDE_WINDOW = 256;
+
+/**
+ * How often the sliding autocorrelation is rebuilt from the window rather than
+ * updated incrementally, in samples. One window's worth: often enough that no
+ * drift accumulates, rare enough that the rebuild costs a constant factor
+ * rather than a whole order of magnitude.
+ */
+const PREDICTOR_REFRESH_SAMPLES = AMPLITUDE_WINDOW;
 
 /**
  * Amplitude below which a discontinuity is not worth reporting. A step inside
@@ -142,10 +165,66 @@ const hash = (value: string): number => {
  */
 const CLICK_MERGE_SAMPLES = 32;
 
+/**
+ * Solve the normal equations for the predictor by Cholesky, in place.
+ *
+ * Returns false when the matrix is not positive definite, which happens on a
+ * window with no usable structure; the caller skips such a sample rather than
+ * trusting a degenerate fit.
+ */
+const solveNormalEquations = (
+  matrix: Float64Array,
+  rhs: Float64Array,
+  out: Float64Array,
+  order: number,
+): boolean => {
+  // A small ridge term keeps the solve stable on a near-silent or perfectly
+  // periodic window, where the matrix is singular to floating point.
+  const ridge = 1e-9 * matrix[0] + 1e-15;
+  for (let p = 0; p < order; p++) matrix[p * order + p] += ridge;
+
+  const lower = new Float64Array(order * order);
+  for (let p = 0; p < order; p++) {
+    for (let q = 0; q <= p; q++) {
+      let sum = matrix[p * order + q];
+      for (let t = 0; t < q; t++) {
+        sum -= lower[p * order + t] * lower[q * order + t];
+      }
+      if (p === q) {
+        if (sum <= 0) return false;
+        lower[p * order + p] = Math.sqrt(sum);
+      } else {
+        lower[p * order + q] = sum / lower[q * order + q];
+      }
+    }
+  }
+
+  const intermediate = new Float64Array(order);
+  for (let p = 0; p < order; p++) {
+    let sum = rhs[p];
+    for (let t = 0; t < p; t++) sum -= lower[p * order + t] * intermediate[t];
+    intermediate[p] = sum / lower[p * order + p];
+  }
+  for (let p = order - 1; p >= 0; p--) {
+    let sum = intermediate[p];
+    for (let t = p + 1; t < order; t++) sum -= lower[t * order + p] * out[t];
+    out[p] = sum / lower[p * order + p];
+  }
+  return true;
+};
+
 const scanForClicks = (buffer: AudioBuffer, label: string): ScanReport => {
   const hits: ClickHit[] = [];
   let maxRatio = 0;
   let peak = 0;
+
+  const order = PREDICTOR_ORDER;
+  const matrix = new Float64Array(order * order);
+  const rhs = new Float64Array(order);
+  const coefficients = new Float64Array(order);
+  // Running autocorrelation sums over the sliding window, so each sample costs
+  // O(order^2) rather than O(window x order^2).
+  const running = new Float64Array((order + 1) * (order + 1));
 
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
     const samples = buffer.getChannelData(channel);
@@ -154,31 +233,79 @@ const scanForClicks = (buffer: AudioBuffer, label: string): ScanReport => {
       if (magnitude > peak) peak = magnitude;
     }
 
+    running.fill(0);
+    const first = AMPLITUDE_WINDOW + order;
+    // Prime the running sums over the window preceding the first tested sample.
+    for (let k = first - AMPLITUDE_WINDOW; k < first; k++) {
+      for (let p = 0; p <= order; p++) {
+        for (let q = p; q <= order; q++) {
+          running[p * (order + 1) + q] += samples[k - p] * samples[k - q];
+        }
+      }
+    }
+
     let lastHitIndex = Number.NEGATIVE_INFINITY;
-    // Two samples of headroom past the window, so the fit's own lookback never
-    // reads before the start of the buffer.
-    for (let index = AMPLITUDE_WINDOW + 2; index < samples.length; index++) {
-      // Fit the order-two recurrence over the preceding window and record the
-      // window's peak, which normalises the residual into a fraction of the
+    for (let index = first; index < samples.length; index++) {
+      // The window's peak normalises the residual into a fraction of the
       // amplitude a cut would have removed.
-      let numerator = 0;
-      let denominator = 0;
       let amplitude = 0;
       for (let k = index - AMPLITUDE_WINDOW; k < index; k++) {
-        const previous = samples[k - 1];
-        numerator += (samples[k] + samples[k - 2]) * previous;
-        denominator += previous * previous;
         const magnitude = Math.abs(samples[k]);
         if (magnitude > amplitude) amplitude = magnitude;
       }
-      if (amplitude < MIN_AUDIBLE_AMPLITUDE) continue;
-      // A window with no energy to fit against cannot predict anything; the
-      // amplitude gate above has already skipped everything inaudible.
-      if (denominator < 1e-12) continue;
 
-      const coefficient = numerator / denominator;
-      const predicted = coefficient * samples[index - 1] - samples[index - 2];
-      const ratio = Math.abs(samples[index] - predicted) / amplitude;
+      let ratio = 0;
+      if (amplitude >= MIN_AUDIBLE_AMPLITUDE) {
+        for (let p = 0; p < order; p++) {
+          rhs[p] = running[0 * (order + 1) + (p + 1)];
+          for (let q = 0; q < order; q++) {
+            const lo = Math.min(p + 1, q + 1);
+            const hi = Math.max(p + 1, q + 1);
+            matrix[p * order + q] = running[lo * (order + 1) + hi];
+          }
+        }
+        if (solveNormalEquations(matrix, rhs, coefficients, order)) {
+          let predicted = 0;
+          for (let p = 0; p < order; p++) {
+            predicted += coefficients[p] * samples[index - 1 - p];
+          }
+          ratio = Math.abs(samples[index] - predicted) / amplitude;
+        }
+      }
+
+      // Slide the window forward one sample before the next iteration.
+      //
+      // Rebuilt from scratch periodically rather than only updated. Each step
+      // adds one product and subtracts another of nearly equal size, so the
+      // running sums lose a little precision every time; across a forty-second
+      // render that is millions of steps, and the drift eventually swamps the
+      // sums themselves. Left uncorrected it manufactures large residuals at
+      // perfectly smooth points — a scanner reporting clicks that are not
+      // there, which is exactly as useless as one missing clicks that are.
+      if ((index - first) % PREDICTOR_REFRESH_SAMPLES === 0) {
+        running.fill(0);
+        // The window the NEXT iteration will fit against: it ends at `index`
+        // inclusive, because by then `index` is part of the past. Including
+        // `index + 1` here would let the sample under test into its own fit.
+        for (let k = index + 1 - AMPLITUDE_WINDOW; k <= index; k++) {
+          for (let p = 0; p <= order; p++) {
+            for (let q = p; q <= order; q++) {
+              running[p * (order + 1) + q] += samples[k - p] * samples[k - q];
+            }
+          }
+        }
+      } else {
+        const entering = index;
+        const leaving = index - AMPLITUDE_WINDOW;
+        for (let p = 0; p <= order; p++) {
+          for (let q = p; q <= order; q++) {
+            running[p * (order + 1) + q] +=
+              samples[entering - p] * samples[entering - q] -
+              samples[leaving - p] * samples[leaving - q];
+          }
+        }
+      }
+
       if (ratio > maxRatio) maxRatio = ratio;
       if (ratio <= CLICK_RATIO_THRESHOLD) continue;
 
