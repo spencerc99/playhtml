@@ -51,14 +51,6 @@ jobs:
       - name: Bundle extension Worker
         run: bun run smoke:extension-worker
 
-      - name: Apply extension Worker database migrations
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: bun
-          command: d1 migrations apply wwo-admin --remote --config extension/worker/wrangler.toml
-
       - name: Deploy extension Worker
         uses: cloudflare/wrangler-action@v4
         with:
@@ -66,6 +58,28 @@ jobs:
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: bun
           command: deploy --config extension/worker/wrangler.toml
+
+      - name: Verify production installation control
+        run: |
+          headers="$(mktemp)"
+          trap 'rm -f "$headers"' EXIT
+          response="$(curl --fail-with-body --silent --show-error \
+            --dump-header "$headers" \
+            "https://playhtml-game-api.spencerc99.workers.dev/installation/control")"
+
+          if ! awk 'BEGIN { IGNORECASE = 1 } /^access-control-allow-origin: \*/ { cors = 1 } /^cache-control: no-store/ { cache = 1 } END { exit !(cors && cache) }' "$headers"; then
+            echo "Production installation control response is missing the expected CORS or cache headers"
+            exit 1
+          fi
+
+          if ! jq -e '
+            type == "object" and
+            (.generation | type == "number" and . >= 0 and floor == .) and
+            (.updatedAt | type == "string" and length > 0)
+          ' <<<"$response" > /dev/null; then
+            echo "Production installation control response does not match the expected contract"
+            exit 1
+          fi
 
       - name: Verify production boarding
         env:
