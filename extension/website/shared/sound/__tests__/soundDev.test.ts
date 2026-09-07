@@ -44,7 +44,7 @@ describe("the live page's arrangement", () => {
     // Saved as the playground would save it, then read back the way a live
     // page reads it. One key, one shape — a setting means the same thing on
     // both pages or the panel is not the playground's panel at all.
-    const globals = { ...SCENE_DEFAULTS, soloistVoice: "descant" as const };
+    const globals = { ...SCENE_DEFAULTS, soloistVoice: "presence" as const };
     const layers = { ...LAYER_DEFAULTS, bassPedal: true };
     const voicing = { ...VOICING_DEFAULTS, click: "crisp" as const };
     const visuals = { ...VISUAL_DEFAULTS, hueTilt: true };
@@ -57,6 +57,25 @@ describe("the live page's arrangement", () => {
     expect(restored.layers).toEqual(layers);
     expect(restored.voicing).toEqual(voicing);
     expect(restored.visuals).toEqual(visuals);
+  });
+
+  it("restores a saved descant as presence", () => {
+    // The voice was renamed when it stopped lifting an octave and started
+    // stepping a voice forward in place. The merge copies saved values through
+    // without checking them against the type, so without the migration an old
+    // save would hand the engine a soloist voice matching nothing and silently
+    // play no soloist at all.
+    saveConfig(
+      buildPersistedConfig(
+        { ...SCENE_DEFAULTS, soloistVoice: "descant" as never },
+        LAYER_DEFAULTS,
+        VOICING_DEFAULTS,
+        VISUAL_DEFAULTS,
+      ),
+    );
+
+    const restored = restoreConfig(loadSavedConfig()?.config);
+    expect(restored.globals.soloistVoice).toBe("presence");
   });
 
   it("restores an identical arrangement on the archive and the playground", () => {

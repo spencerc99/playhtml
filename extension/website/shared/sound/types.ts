@@ -180,7 +180,7 @@ export type AuditionAccent =
   | "soloistResolve"
   /** The two alternative soloist voices, each heard as the shape it makes. */
   | "soloistArpeggio"
-  | "soloistDescant"
+  | "soloistPresence"
   /** The consonant dyad two trails sound when their paths merge. */
   | "crossingMerge"
   /**

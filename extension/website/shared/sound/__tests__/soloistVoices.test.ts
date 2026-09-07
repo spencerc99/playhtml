@@ -1,4 +1,4 @@
-// ABOUTME: The arpeggio and descant soloist voices stay on the chord and under the ceiling
+// ABOUTME: The arpeggio soloist and the presence halo stay on the chord and under the ceiling
 // ABOUTME: Both are constrained to chord tones, which is what separates them from the bell run
 
 import { describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import {
   PROGRESSIONS,
   PROGRESSION_IDS,
 } from "../scales";
-import { descantLift, DESCANT_TUNING } from "../SoundEngine";
+import { haloPitch, PRESENCE_TUNING } from "../SoundEngine";
 
 /** How many semitones apart two pitches are, ignoring direction and octave. */
 const pitchClassDistance = (a: number, b: number): number => {
@@ -92,25 +92,25 @@ describe("chord tones", () => {
   });
 });
 
-describe("the descant's lift", () => {
-  const CEILING_HZ = DESCANT_TUNING.ceilingHz;
+describe("the presence halo's octave", () => {
+  const CEILING_HZ = PRESENCE_TUNING.haloCeilingHz;
 
-  it("raises a chord tone by exactly an octave, so it stays the same chord tone", () => {
+  it("doubles a chord tone by exactly an octave, so it stays the same chord tone", () => {
     const dm = PROGRESSIONS.circular.chords[0].pitches;
     for (const tone of chordTones(dm)) {
-      const lifted = descantLift(tone);
+      const lifted = haloPitch(tone);
       expect(pitchClassDistance(lifted, tone)).toBeLessThan(1e-6);
     }
   });
 
-  it("never carries a voice over the ensemble's ceiling", () => {
+  it("never carries the double over the soprano band's ceiling", () => {
     for (const id of PROGRESSION_IDS) {
       for (const chord of PROGRESSIONS[id].chords) {
         for (const tone of chordTones(chord.pitches)) {
           // A tone already at the top stays where it is rather than climbing
           // out of the band — the alternative is a partial lift, which lands
           // off the octave and reads as out of tune.
-          expect(descantLift(tone)).toBeLessThanOrEqual(CEILING_HZ);
+          expect(haloPitch(tone)).toBeLessThanOrEqual(CEILING_HZ);
         }
       }
     }

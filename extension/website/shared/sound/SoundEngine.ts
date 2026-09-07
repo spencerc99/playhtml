@@ -46,7 +46,6 @@ import {
   ProgressionId,
   upperNeighbor,
   chordTones,
-  nearestChordTone,
   D_MINOR_PENTATONIC,
 } from "./scales";
 import { parseColorToHsl } from "../utils/eventUtils";
@@ -186,14 +185,15 @@ export type SoloistVoice =
    */
   | "arpeggio"
   /**
-   * No discrete notes at all. The trail's own sustained voice lifts an octave
-   * and brightens on promotion, voice-leads through chord tones while it
-   * holds, and returns on demotion.
+   * No discrete notes at all, and no move in register either. The trail's own
+   * sustained voice stays exactly where it sits and instead steps forward:
+   * brighter, deeper vibrato, a little louder, drier than the room, with a
+   * quiet double an octave above it. The crowd ducks behind it as before.
    */
-  | "descant";
+  | "presence";
 
 /** Every soloist voice, in the order a selector should present them. */
-export const SOLOIST_VOICES: SoloistVoice[] = ["bells", "arpeggio", "descant"];
+export const SOLOIST_VOICES: SoloistVoice[] = ["bells", "arpeggio", "presence"];
 
 /** Configurable sound modes */
 export interface SoundConfig {
@@ -1027,41 +1027,61 @@ const ARPEGGIO_TUNING = {
 };
 
 /**
- * The descant soloist. The promotion is carried by the trail's own sustained
- * voice rather than by any new note: it lifts an octave, opens its filter and
- * swells in, then leads through chord tones for as long as it holds.
+ * The presence soloist. The promotion is carried by the trail's own sustained
+ * voice rather than by any new note, and — unlike a descant — it does not move
+ * in register at all. Lifting an octave made the promoted trail a different
+ * voice: it left the part its colour assigned it, and in a thin scene the
+ * crowd it was meant to rise out of was not there to rise out of. So the voice
+ * stays exactly where it sits and steps forward in every other dimension
+ * instead — brighter, wider vibrato, slightly louder, drier than the room,
+ * with a quiet double an octave up. The listener hears the same singer move to
+ * the front rather than a new singer arrive.
  */
-export const DESCANT_TUNING = {
-  /** How far the sustained voice lifts on promotion. One octave. */
-  liftMultiple: 2,
-  /**
-   * Ceiling on the lifted pitch: C6, an octave above the top of the soprano
-   * band the ensemble sings in.
-   *
-   * The descant is the one voice that rises above the choir, so its ceiling has
-   * to sit above the choir's. Capping it at the ensemble's own top (C5) meant
-   * every trail from the middle of the tenor band upward — the alto and soprano
-   * bands entirely, so half the hue wheel — doubled straight past the cap and
-   * fell back to the pitch it started on. The filter opened and the gain leaned
-   * in, but the pitch never moved, which is a promotion nobody can hear.
-   */
-  ceilingHz: 1046.5,
-  /** Filter cutoff while the descant holds, so the lift reads as brighter. */
+export const PRESENCE_TUNING = {
+  /** Filter cutoff while presence holds, so stepping forward reads brighter. */
   filterHz: 3200,
-  /** Seconds the lift and the brightening take to arrive. */
+  /** Seconds the brightening, the gain lift and the drying take to arrive. */
   swellSeconds: 0.5,
-  /** Seconds the return to the trail's own register takes on demotion. */
+  /** Seconds the return to the trail's ordinary voice takes on demotion. */
   returnSeconds: 0.8,
   /**
-   * Gain multiplier while the descant holds. The lift and the brightness carry
-   * the promotion, so this only keeps the higher octave from sounding thinner
-   * than the register it left.
+   * Gain multiplier while presence holds. Deliberately modest: the brightness,
+   * the vibrato and the drying carry the promotion, and a bigger number just
+   * makes the soloist loud rather than close.
    */
-  gain: 1.25,
+  gain: 1.15,
+  /** Vibrato deepens and quickens while presence holds — a singer leaning in. */
+  vibratoDepthScale: 2.5,
+  vibratoRateScale: 1.2,
   /**
-   * The audition's chord pad: how many chord tones hold under the lift, how
+   * Reverb send multiplier for the soloist. Less of it reaches the room while
+   * the room keeps ringing for everyone else, which is what puts the voice in
+   * front of the reverb rather than inside it.
+   */
+  reverbSendScale: 0.4,
+  /**
+   * The quiet double an octave above the soloist. It fades in only after the
+   * promotion has held, so a brief spotlight does not flicker a second voice
+   * in and out, and it leaves first on demotion.
+   */
+  haloOnsetMs: 800,
+  haloGain: 0.35,
+  haloMultiple: 2,
+  /**
+   * Ceiling on the halo's pitch: E5, the top of the soprano band. The halo is
+   * a colour above the soloist rather than a voice of its own, so it stays
+   * inside the ensemble's range instead of climbing out of it.
+   */
+  haloCeilingHz: 659.25,
+  /** The halo sits slightly brighter than the voice it doubles. */
+  haloFilterHz: 4200,
+  haloFadeSeconds: 0.6,
+  /**
+   * The audition's chord pad: how many chord tones hold under the soloist, how
    * quietly, and for how long. Quiet enough to stay a bed rather than a second
-   * subject, and long enough to still be sounding when the lifted tone arrives.
+   * subject, and long enough that the promoted voice is heard against it —
+   * which is the whole point, since presence is a change in how a voice sits
+   * in the crowd rather than a pitch anyone could hear on its own.
    */
   auditionPadTones: 2,
   auditionPadGain: 0.28,
@@ -1069,15 +1089,14 @@ export const DESCANT_TUNING = {
 };
 
 /**
- * A chord tone raised into the descant's register: one octave up, unless that
- * would carry it over the ensemble's ceiling, in which case it stays where it
- * is. Falling back to the unlifted tone rather than to something between the
- * two is deliberate — a partial lift lands off the octave and reads as out of
- * tune, where staying put reads as a voice already at the top of its range.
+ * The halo's pitch: one octave above the soloist, unless that would carry it
+ * over the soprano band's ceiling, in which case it stays where it is. Falling
+ * back to the undoubled tone rather than to something between the two is
+ * deliberate — a partial lift lands off the octave and reads as out of tune.
  */
-export function descantLift(pitch: number): number {
-  const lifted = pitch * DESCANT_TUNING.liftMultiple;
-  return lifted > DESCANT_TUNING.ceilingHz ? pitch : lifted;
+export function haloPitch(pitch: number): number {
+  const lifted = pitch * PRESENCE_TUNING.haloMultiple;
+  return lifted > PRESENCE_TUNING.haloCeilingHz ? pitch : lifted;
 }
 
 
@@ -1141,6 +1160,19 @@ interface FormantNodes {
   lastOpenness: number;
 }
 
+/**
+ * The quiet double that fades in above a voice holding presence. Its own
+ * oscillator and filter rather than a tap off the voice's, so it can sit
+ * brighter than what it doubles and fade independently on demotion.
+ */
+interface HaloNodes {
+  oscillator: OscillatorNode;
+  filter: BiquadFilterNode;
+  gain: GainNode;
+  /** True once the halo has been told to fade out, so it is not re-ramped. */
+  fading: boolean;
+}
+
 /** How long a trail has been moving, and where its swell has got to. */
 interface SwellState {
   /** Tick time continuous motion began, or null while the trail is stopped. */
@@ -1172,11 +1204,20 @@ interface Voice {
   /** True while spotlight brightness owns this voice's filter cutoff. */
   spotlightBrightened: boolean;
   /**
-   * True while this voice is singing the descant, so the frame it stops is
-   * recognised as the return and glides back rather than waiting out the note
-   * interval like an ordinary pitch change.
+   * Per-voice reverb send. Every voice has one, summing to the level the
+   * single global send used to carry, so presence can dry one voice without
+   * touching the room the rest of the crowd sings into.
    */
-  descanting: boolean;
+  reverbSend: GainNode | null;
+  /**
+   * True while this voice holds presence, so the frame it starts and the frame
+   * it stops are each recognised once rather than re-ramped every tick.
+   */
+  present: boolean;
+  /** When presence began, so the halo's onset delay can be measured. */
+  presentSinceMs: number;
+  /** The quiet octave double, created only once presence has held. */
+  halo: HaloNodes | null;
   /** Personal vibrato LFO, present only while trail voices are on. */
   vibrato: VibratoNodes | null;
   /** Vowel formant bank, present only while the choral timbre is on. */
@@ -1247,6 +1288,11 @@ export class SoundEngine {
    * Carries its own copy of whatever master is scaling by — see `init`.
    */
   private reverbSendBus: GainNode | null = null;
+  /**
+   * Where the sustained voices' individual sends sum, mirroring the bed bus so
+   * the wet path mutes and solos with the dry one.
+   */
+  private bedSendGain: GainNode | null = null;
   private reverbGain: GainNode | null = null;
   private convolver: ConvolverNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
@@ -1465,9 +1511,22 @@ export class SoundEngine {
     // `updateMasterGainForPolyphony` ramps both together for that reason.
     this.reverbSendBus = this.ctx.createGain();
     this.reverbSendBus.gain.value = this.masterGain.gain.value;
-    for (const bus of this.layerBuses.values()) {
+    for (const [layer, bus] of this.layerBuses) {
+      // The bed reaches the room one voice at a time instead, through the
+      // per-voice sends `createVoice` builds, so that presence can dry a
+      // single trail. Sending the bus as well would double every bed voice
+      // into the reverb.
+      if (layer === "bed") continue;
       bus.connect(this.reverbSendBus);
     }
+
+    // A per-voice send taps the voice ahead of its layer bus, so it would
+    // otherwise miss the mixer: muting the bed would silence the voices and
+    // leave their reverb ringing. This gain mirrors the bed bus so the wet
+    // path mutes with the dry one.
+    this.bedSendGain = this.ctx.createGain();
+    this.bedSendGain.gain.value = this.layerGainValue("bed");
+    this.bedSendGain.connect(this.reverbSendBus);
 
     this.masterGain.connect(this.compressor);
     this.reverbSendBus.connect(this.reverbGain);
@@ -1823,14 +1882,10 @@ export class SoundEngine {
       const chosenPitch = fingerprint
         ? this.applyHomeToneBias(directionPitch, fingerprint)
         : directionPitch;
-      // The descant is the promotion itself: while this trail holds the
-      // spotlight its own sustained voice sings a chord tone an octave up,
-      // rather than a separate run of notes sounding over it.
-      const frequency = this.descantPitchFor(
-        frame.trailIndex,
-        chosenPitch,
-        scale,
-      );
+      // Promotion never moves a trail's pitch: presence steps a voice forward
+      // where it already stands, and the other soloists sound their flourish
+      // over the top of an unchanged sustained line.
+      const frequency = chosenPitch;
       const pan = positionToPan(frame.x, this.canvasWidth);
 
       // When cursor instruments are off, use the default instrument for all
@@ -1868,15 +1923,9 @@ export class SoundEngine {
         voice.lastCursorType = frame.cursorType;
       }
 
-      // The descant's lift and its return are the promotion itself, so they
-      // move on the promotion rather than waiting out the note interval — a
-      // trail sustaining one pitch would otherwise hold the wrong octave for
-      // as long as it kept going.
-      const descantMoved =
-        this.isDescanting(frame.trailIndex) !== voice.descanting;
       if (
         frequency !== voice.currentFrequency &&
-        (descantMoved || elapsedMs - voice.lastNoteTimeMs > MIN_NOTE_INTERVAL_MS)
+        elapsedMs - voice.lastNoteTimeMs > MIN_NOTE_INTERVAL_MS
       ) {
         // The first pitch this voice takes from a new palette is its move into
         // the new chord, so it slides rather than snapping. A voice that has
@@ -1886,19 +1935,18 @@ export class SoundEngine {
         this.setVoiceFrequency(
           voice,
           frequency,
-          descantMoved
-            ? this.isDescanting(frame.trailIndex)
-              ? DESCANT_TUNING.swellSeconds
-              : DESCANT_TUNING.returnSeconds
-            : isVoiceLeadingMove
-              ? VOICE_LEADING_GLIDE_SECONDS
-              : NOTE_GLIDE_SECONDS,
+          isVoiceLeadingMove
+            ? VOICE_LEADING_GLIDE_SECONDS
+            : NOTE_GLIDE_SECONDS,
         );
         voice.lastPitchScale = scale ?? null;
         voice.lastNoteTimeMs = elapsedMs;
         voice.currentFrequency = frequency;
       }
-      voice.descanting = this.isDescanting(frame.trailIndex);
+
+      // Presence rides on the voice's own pitch, so it is applied after the
+      // pitch settles: the halo follows wherever the voice actually went.
+      this.applyPresence(voice, frame.trailIndex, elapsedMs, instrument);
 
       // Percussive cursor types (e.g. text) use repeating plucks instead of
       // a sustained tone — like typing rhythm
@@ -2569,6 +2617,17 @@ export class SoundEngine {
     gain.connect(pan);
     pan.connect(this.busFor("bed"));
 
+    // The voice's own tap into the room, at the level the single global send
+    // used to apply to everything. At rest every voice sends exactly what it
+    // sent before; presence is the only thing that moves one of them.
+    let reverbSend: GainNode | null = null;
+    if (this.bedSendGain) {
+      reverbSend = ctx.createGain();
+      reverbSend.gain.setValueAtTime(1, now);
+      pan.connect(reverbSend);
+      reverbSend.connect(this.bedSendGain);
+    }
+
     osc.start(now);
 
     // Create fifth oscillator for chord voicing (always created, gain-gated)
@@ -2604,7 +2663,10 @@ export class SoundEngine {
       lastPluckMs: 0,
       lastControlTimeMs: Number.NEGATIVE_INFINITY,
       spotlightBrightened: false,
-      descanting: false,
+      reverbSend,
+      present: false,
+      presentSinceMs: 0,
+      halo: null,
       vibrato: null,
       formants: null,
       appliedDetuneCents: 0,
@@ -3556,14 +3618,14 @@ export class SoundEngine {
   private advanceSpotlightGain(trailIndex: number): number {
     const hasSoloist = this.spotlightTrailIndex !== null;
     const isSoloist = this.spotlightTrailIndex === trailIndex;
-    const descanting = this.isDescanting(trailIndex);
+    const present = this.isPresent(trailIndex);
     const target = !hasSoloist
       ? 1
       : isSoloist
-        ? descanting
-          ? // The descant has no discrete notes to step back for: its own
-            // sustained voice is the promotion, so it leans in rather than out.
-            SPOTLIGHT_TUNING.soloistGain * DESCANT_TUNING.gain
+        ? present
+          ? // Presence has no discrete notes to step back for: the sustained
+            // voice is the promotion, so it leans in rather than out.
+            SPOTLIGHT_TUNING.soloistGain * PRESENCE_TUNING.gain
           : // The soloist's sustained voice steps back while it flourishes, so
             // the discrete notes carry the promotion instead of competing with
             // a louder drone from the same trail.
@@ -3575,13 +3637,13 @@ export class SoundEngine {
     // but the scene does not pump back up the instant they slow. A demoted
     // soloist gets its own, slower walk back so the drone swells in behind
     // the resolving note rather than snapping back.
-    const durationSeconds = descanting
-      ? // The descant enters on its own swell and leaves on its own return, so
-        // the gain moves with the lift instead of on the spotlight's cue-speed
-        // attack.
+    const durationSeconds = present
+      ? // Presence steps forward on its own swell and back on its own return,
+        // so the gain moves with those instead of on the spotlight's
+        // cue-speed attack.
         target > current
-          ? DESCANT_TUNING.swellSeconds
-          : DESCANT_TUNING.returnSeconds
+          ? PRESENCE_TUNING.swellSeconds
+          : PRESENCE_TUNING.returnSeconds
       : target < current
         ? SPOTLIGHT_TUNING.attackSeconds
         : isSoloist || target === 1
@@ -3680,33 +3742,174 @@ export class SoundEngine {
     return 1 + breathDepth * Math.sin(phase);
   }
 
-  /** Whether this trail is currently singing the descant. */
-  private isDescanting(trailIndex: number): boolean {
+  /** Whether this trail currently holds presence. */
+  private isPresent(trailIndex: number): boolean {
     return (
       this.config.spotlight &&
-      this.config.soloistVoice === "descant" &&
+      this.config.soloistVoice === "presence" &&
       this.spotlightTrailIndex === trailIndex
     );
   }
 
   /**
-   * The pitch a trail's sustained voice takes this frame.
+   * Step one voice forward, or hand it back to the crowd.
    *
-   * Unchanged for every trail but the descanting soloist. For that one the
-   * pitch is led onto the nearest tone of the chord — never a colour tone, so
-   * the lifted line stays consonant with the bed it is rising out of — and
-   * then raised an octave, capped at the ensemble's own ceiling so a trail
-   * already singing near the top does not climb over it.
+   * Everything here is edge-triggered off `voice.present`: the promotion and
+   * the demotion each schedule one set of ramps, and the frames in between
+   * only follow the halo's pitch. Re-ramping an unchanged target every tick is
+   * audible as zipper noise, which is the same reason the filter path is
+   * written this way.
+   *
+   * The filter is left to `applySpotlightBrightness`, which already owns every
+   * soloist's cutoff.
    */
-  private descantPitchFor(
+  private applyPresence(
+    voice: Voice,
     trailIndex: number,
-    pitch: number,
-    scale: number[] | undefined,
-  ): number {
-    if (!this.isDescanting(trailIndex)) return pitch;
-    return descantLift(
-      nearestChordTone(pitch, scale ?? this.flourishPalette()),
+    elapsedMs: number,
+    instrument: InstrumentConfig,
+  ): void {
+    if (!this.ctx) return;
+    const present = this.isPresent(trailIndex);
+
+    if (present && !voice.present) {
+      voice.present = true;
+      voice.presentSinceMs = elapsedMs;
+      const { swellSeconds, vibratoDepthScale, vibratoRateScale, reverbSendScale } =
+        PRESENCE_TUNING;
+      // A singer leaning in: the vibrato widens and quickens with the voice.
+      if (voice.vibrato) {
+        const fingerprint = this.fingerprints.get(trailIndex);
+        if (fingerprint) {
+          this.rampParam(
+            voice.vibrato.depth.gain,
+            fingerprint.vibratoDepthCents * vibratoDepthScale,
+            swellSeconds,
+          );
+          this.rampParam(
+            voice.vibrato.oscillator.frequency,
+            fingerprint.vibratoRateHz * vibratoRateScale,
+            swellSeconds,
+          );
+        }
+      }
+      if (voice.reverbSend) {
+        this.rampParam(voice.reverbSend.gain, reverbSendScale, swellSeconds);
+      }
+      return;
+    }
+
+    if (!present && voice.present) {
+      voice.present = false;
+      const { returnSeconds } = PRESENCE_TUNING;
+      if (voice.vibrato) {
+        const fingerprint = this.fingerprints.get(trailIndex);
+        if (fingerprint) {
+          this.rampParam(
+            voice.vibrato.depth.gain,
+            fingerprint.vibratoDepthCents,
+            returnSeconds,
+          );
+          this.rampParam(
+            voice.vibrato.oscillator.frequency,
+            fingerprint.vibratoRateHz,
+            returnSeconds,
+          );
+        }
+      }
+      if (voice.reverbSend) {
+        this.rampParam(voice.reverbSend.gain, 1, returnSeconds);
+      }
+      // The halo leaves first, so the voice is alone again before it finishes
+      // stepping back.
+      this.releaseHalo(voice);
+      return;
+    }
+
+    if (present) {
+      this.updateHalo(voice, elapsedMs, instrument);
+    }
+  }
+
+  /**
+   * Fade the halo in once presence has held, and keep it on the octave above
+   * whatever pitch the voice is currently singing — including through a chord
+   * rotation, since the voice it doubles is itself voice-led onto the new
+   * chord.
+   */
+  private updateHalo(
+    voice: Voice,
+    elapsedMs: number,
+    instrument: InstrumentConfig,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx || !voice.currentFrequency) return;
+    const {
+      haloOnsetMs,
+      haloGain,
+      haloFilterHz,
+      haloFadeSeconds,
+    } = PRESENCE_TUNING;
+
+    if (elapsedMs - voice.presentSinceMs < haloOnsetMs) return;
+
+    const pitch = haloPitch(voice.currentFrequency);
+
+    if (!voice.halo) {
+      const now = ctx.currentTime;
+      const oscillator = ctx.createOscillator();
+      oscillator.type = instrument.oscillatorType;
+      oscillator.frequency.setValueAtTime(pitch, now);
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(haloFilterHz, now);
+      filter.Q.setValueAtTime(instrument.filterQ, now);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(haloGain, now + haloFadeSeconds);
+
+      oscillator.connect(filter);
+      filter.connect(gain);
+      // Into the voice's own pan and send, so the double sits where the voice
+      // sits and dries along with it rather than ringing on in the room.
+      gain.connect(voice.panNode);
+      oscillator.start(now);
+
+      voice.halo = { oscillator, filter, gain, fading: false };
+      return;
+    }
+
+    if (voice.halo.fading) return;
+    // Follows the voice at the octave, on the same glide the voice took, so a
+    // voice-leading move carries the double with it.
+    this.rampParam(
+      voice.halo.oscillator.frequency,
+      pitch,
+      VOICE_LEADING_GLIDE_SECONDS,
     );
+  }
+
+  /** Fade the halo out and tear it down once it is silent. */
+  private releaseHalo(voice: Voice): void {
+    const halo = voice.halo;
+    if (!this.ctx || !halo || halo.fading) return;
+    halo.fading = true;
+    voice.halo = null;
+    const { haloFadeSeconds } = PRESENCE_TUNING;
+    const now = this.ctx.currentTime;
+    this.rampParam(halo.gain.gain, 0, haloFadeSeconds);
+    halo.oscillator.onended = () => {
+      halo.oscillator.disconnect();
+      halo.filter.disconnect();
+      halo.gain.disconnect();
+    };
+    try {
+      halo.oscillator.stop(now + haloFadeSeconds + 0.02);
+    } catch {
+      /* already stopped */
+    }
   }
 
 
@@ -3733,26 +3936,26 @@ export class SoundEngine {
         this.rampParam(
           voice.filterNode.frequency,
           instrument.filterFrequency,
-          // A descant hands its brightness back over its own return, so the
-          // lift and the colour fall away together rather than at two rates.
-          this.config.soloistVoice === "descant"
-            ? DESCANT_TUNING.returnSeconds
+          // Presence hands its brightness back over its own return, so the
+          // colour and the gain fall away together rather than at two rates.
+          this.config.soloistVoice === "presence"
+            ? PRESENCE_TUNING.returnSeconds
             : SPOTLIGHT_TUNING.releaseSeconds,
         );
       }
       return;
     }
 
-    // The descant's brightness is a fixed opening rather than a velocity
-    // sweep: its promotion is a swell into a higher, brighter register, and a
-    // filter tracking speed on top of that would make the lift waver.
-    if (this.config.soloistVoice === "descant") {
+    // Presence opens the filter to a fixed cutoff rather than sweeping it with
+    // velocity: the promotion is a voice stepping forward and holding there,
+    // and a filter tracking speed on top of that would make it waver.
+    if (this.config.soloistVoice === "presence") {
       if (!voice.spotlightBrightened) {
         voice.spotlightBrightened = true;
         this.rampParam(
           voice.filterNode.frequency,
-          Math.max(instrument.filterFrequency, DESCANT_TUNING.filterHz),
-          DESCANT_TUNING.swellSeconds,
+          Math.max(instrument.filterFrequency, PRESENCE_TUNING.filterHz),
+          PRESENCE_TUNING.swellSeconds,
         );
       }
       return;
@@ -4231,37 +4434,53 @@ export class SoundEngine {
         }
         return;
       }
-      case "soloistDescant": {
-        // The descant has no note of its own to play, so the audition stands
-        // one chord tone against the same tone lifted an octave: the interval
-        // the promotion opens, heard without needing a scene to promote in.
+      case "soloistPresence": {
+        // Presence has no note of its own to play, and no interval either — it
+        // is a change in how one voice sits among the others. So the audition
+        // is that relationship: a soft chord pad holds, one tone of it leans
+        // forward at the promoted gain, and its quiet octave double arrives
+        // after the same onset delay the halo waits out in a real scene.
         //
-        // A quiet pad of the neighbouring chord tones holds underneath, because
-        // the point of this voice is that it rises above a choir. Two lone
-        // tones in sequence demonstrate an octave; the same two over a held
-        // chord demonstrate a descant.
+        // The pad is what makes this legible. The promoted tone alone is just
+        // a note; heard against the crowd it is a singer stepping to the
+        // front, which is the whole subject of this voice.
         const tones = chordTones(this.flourishPalette());
         if (tones.length === 0) return;
         const base = tones[0];
-        const lifted = descantLift(base);
-        for (const tone of tones.slice(1, 1 + DESCANT_TUNING.auditionPadTones)) {
+        const {
+          auditionPadTones,
+          auditionPadGain,
+          auditionPadSeconds,
+          swellSeconds,
+          gain,
+          haloOnsetMs,
+          haloGain,
+        } = PRESENCE_TUNING;
+        for (const tone of tones.slice(1, 1 + auditionPadTones)) {
           this.triggerFlourishNote(
             tone,
             centre,
-            FLOURISH_TUNING.noteGain * DESCANT_TUNING.auditionPadGain,
-            DESCANT_TUNING.auditionPadSeconds,
-            { attackSeconds: DESCANT_TUNING.swellSeconds },
+            FLOURISH_TUNING.noteGain * auditionPadGain,
+            auditionPadSeconds,
+            { attackSeconds: swellSeconds },
           );
         }
-        this.triggerFlourishNote(base, centre, FLOURISH_TUNING.noteGain, 2, {
-          attackSeconds: DESCANT_TUNING.swellSeconds,
-        });
         this.triggerFlourishNote(
-          lifted,
+          base,
           centre,
-          FLOURISH_TUNING.noteGain * DESCANT_TUNING.gain,
-          2,
-          { delaySeconds: 0.9, attackSeconds: DESCANT_TUNING.swellSeconds },
+          FLOURISH_TUNING.noteGain * gain,
+          2.4,
+          { attackSeconds: swellSeconds },
+        );
+        this.triggerFlourishNote(
+          haloPitch(base),
+          centre,
+          FLOURISH_TUNING.noteGain * haloGain,
+          1.6,
+          {
+            delaySeconds: haloOnsetMs / 1000,
+            attackSeconds: swellSeconds,
+          },
         );
         return;
       }
@@ -5421,9 +5640,9 @@ export class SoundEngine {
   ): void {
     const state = this.flourish;
     if (!state) return;
-    // The descant is the sustained voice itself lifting, so it has no discrete
-    // notes to advance. Its treatment rides on the voice loop instead.
-    if (this.config.soloistVoice === "descant") return;
+    // Presence is the sustained voice itself stepping forward, so it has no
+    // discrete notes to advance. Its treatment rides on the voice loop instead.
+    if (this.config.soloistVoice === "presence") return;
 
     state.distanceSinceNote += distance;
 
@@ -5765,12 +5984,27 @@ export class SoundEngine {
   private disconnectVoice(voice: Voice): void {
     this.stopVibrato(voice);
     this.detachFormants(voice);
+    // A trail can be retired mid-presence, so the halo is stopped here rather
+    // than only on demotion; otherwise its oscillator outlives the voice.
+    const halo = voice.halo;
+    if (halo) {
+      voice.halo = null;
+      try {
+        halo.oscillator.stop();
+      } catch {
+        /* already stopped */
+      }
+      halo.oscillator.disconnect();
+      halo.filter.disconnect();
+      halo.gain.disconnect();
+    }
     voice.oscillatorLevel?.disconnect();
     voice.fifthOscillatorLevel?.disconnect();
     voice.fifthGainNode?.disconnect();
     voice.filterNode.disconnect();
     voice.gainNode.disconnect();
     voice.panNode.disconnect();
+    voice.reverbSend?.disconnect();
   }
 
   setVolume(volume: number): void {
@@ -5837,6 +6071,11 @@ export class SoundEngine {
       // A short ramp rather than a hard step, so toggling a sustained layer
       // does not click.
       this.rampParam(bus.gain, this.layerGainValue(layer), 0.02);
+    }
+    // The bed's voices send to the room ahead of their bus, so the wet path
+    // needs the same move to mute and solo with them.
+    if (this.bedSendGain) {
+      this.rampParam(this.bedSendGain.gain, this.layerGainValue("bed"), 0.02);
     }
   }
 

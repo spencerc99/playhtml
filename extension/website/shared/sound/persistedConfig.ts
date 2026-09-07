@@ -96,6 +96,20 @@ const withFallback = <T extends object>(defaults: T, saved: unknown): T => {
   return result;
 };
 
+/**
+ * Carries a saved arrangement onto renamed settings.
+ *
+ * "descant" became "presence" when the voice stopped lifting an octave and
+ * started stepping a voice forward in place. The merge above copies saved
+ * values through without checking them against the type, so without this a
+ * save from before the rename would hand the engine a soloist voice that
+ * matches nothing and silently plays no soloist at all.
+ */
+const migrateGlobals = (globals: GlobalSettings): GlobalSettings =>
+  (globals.soloistVoice as string) === "descant"
+    ? { ...globals, soloistVoice: "presence" }
+    : globals;
+
 export interface RestoredConfig {
   globals: GlobalSettings;
   layers: LayerConfig;
@@ -115,7 +129,7 @@ export interface RestoredConfig {
 export const restoreConfig = (saved: unknown): RestoredConfig => {
   const record = typeof saved === "object" && saved !== null ? (saved as Record<string, unknown>) : {};
   return {
-    globals: withFallback(SCENE_DEFAULTS, record.globals),
+    globals: migrateGlobals(withFallback(SCENE_DEFAULTS, record.globals)),
     layers: withFallback(LAYER_DEFAULTS, record.layers),
     voicing: withFallback(VOICING_DEFAULTS, record.voicing),
     visuals: withFallback(VISUAL_DEFAULTS, record.visuals),

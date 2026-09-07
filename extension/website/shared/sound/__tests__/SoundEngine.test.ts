@@ -2,7 +2,7 @@
 // ABOUTME: Verifies cursor timbre changes crossfade without stacking full-level oscillators.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DESCANT_TUNING, descantLift, SoundEngine } from "../SoundEngine";
+import { PRESENCE_TUNING, haloPitch, SoundEngine } from "../SoundEngine";
 import {
   CLICK_BELL,
   CURSOR_INSTRUMENTS,
@@ -3916,14 +3916,18 @@ describe("smoothing that must advance on real elapsed time", () => {
   });
 });
 
-describe("the descant on a driven promotion", () => {
+describe("presence on a driven promotion", () => {
   /**
    * Sweep one trail fast enough to take the spotlight while a second trail
    * crawls, and report what the soloist's own sustained voice ended up doing.
    * The trail is coloured into the soprano band deliberately: that is the
-   * register the lift used to be silently cancelled in.
+   * register the old descant's lift was silently cancelled in, and the
+   * register presence must now leave alone.
    */
-  const promoteSoloist = async (soloistVoice: "bells" | "descant") => {
+  const promoteSoloist = async (
+    soloistVoice: "bells" | "presence",
+    steps = 60,
+  ) => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(8000);
@@ -3934,7 +3938,9 @@ describe("the descant on a driven promotion", () => {
         number,
         {
           currentFrequency: number;
-          descanting: boolean;
+          present: boolean;
+          halo: { oscillator: TestOscillatorNode; gain: { gain: TestAudioParam } } | null;
+          reverbSend: { gain: TestAudioParam } | null;
           filterNode: { frequency: TestAudioParam };
         }
       >;
@@ -3942,7 +3948,7 @@ describe("the descant on a driven promotion", () => {
     };
 
     let x = 0;
-    for (let step = 0; step < 60; step++) {
+    for (let step = 0; step < steps; step++) {
       x += 12;
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
@@ -3960,86 +3966,142 @@ describe("the descant on a driven promotion", () => {
     };
   };
 
-  it("lifts the soloist's sustained voice an octave above the register it sings in", async () => {
+  it("leaves the soloist in the register it was already singing in", async () => {
     const plain = await promoteSoloist("bells");
-    const descant = await promoteSoloist("descant");
+    const present = await promoteSoloist("presence");
 
-    expect(descant.voice.descanting).toBe(true);
+    expect(present.voice.present).toBe(true);
 
-    // The pitch is the promotion. A descant that lands on the same frequency
-    // the trail was already singing is the bug this guards: the lift used to
-    // be capped at the ensemble's own ceiling, so every trail in the alto or
-    // soprano band doubled straight past the cap and fell back where it was.
-    expect(descant.voice.currentFrequency).toBeCloseTo(
-      plain.voice.currentFrequency * DESCANT_TUNING.liftMultiple,
+    // The whole point of presence over a descant: the promoted trail keeps the
+    // part its colour assigned it. A promotion that moved the pitch would make
+    // it a different voice rather than the same voice stepping forward.
+    expect(present.voice.currentFrequency).toBeCloseTo(
+      plain.voice.currentFrequency,
       4,
-    );
-    expect(descant.voice.currentFrequency).toBeLessThanOrEqual(
-      DESCANT_TUNING.ceilingHz,
     );
 
     plain.engine.dispose();
-    descant.engine.dispose();
+    present.engine.dispose();
   });
 
-  it("opens the soloist's filter to the descant's own cutoff and leans its gain in", async () => {
-    const { engine, voice, spotlightGain } = await promoteSoloist("descant");
+  it("opens the filter, leans the gain in and dries the voice out", async () => {
+    const { engine, voice, spotlightGain } = await promoteSoloist("presence");
 
     const ramps = voice.filterNode.frequency.events.filter(
       (event) => event.method === "linearRamp",
     );
-    const target = ramps[ramps.length - 1]?.value;
-    expect(target).toBe(DESCANT_TUNING.filterHz);
+    expect(ramps[ramps.length - 1]?.value).toBe(PRESENCE_TUNING.filterHz);
 
     // The flourish soloist ducks its sustained voice so its discrete notes can
-    // carry the promotion. The descant has no discrete notes, so it must lean
-    // in instead — a duck here would cancel the very lift it is promoting on.
+    // carry the promotion. Presence has no discrete notes, so it leans in
+    // instead — a duck here would cancel the promotion it is carrying.
     expect(spotlightGain).toBeGreaterThan(1);
+
+    // Less of the soloist reaches the room, which is what puts it in front of
+    // the reverb rather than inside it.
+    const sendRamps = voice.reverbSend!.gain.events.filter(
+      (event) => event.method === "linearRamp",
+    );
+    expect(sendRamps[sendRamps.length - 1]?.value).toBe(
+      PRESENCE_TUNING.reverbSendScale,
+    );
 
     engine.dispose();
   });
+
+  it("returns the send to the room when the promotion ends", async () => {
+    const { engine, voice } = await promoteSoloist("presence");
+    expect(voice.present).toBe(true);
+
+    // Demote by handing the spotlight to nobody: presence must hand back
+    // everything it took, or a trail that once soloed stays permanently dry.
+    engine.setConfig({ mode: "sustained" });
+    context.currentTime += 1 / 60;
+    engine.tick(2000, [{ ...soloFrame(0, 900, 0), color: "#ff4466" }]);
+
+    expect(voice.present).toBe(false);
+    const sendRamps = voice.reverbSend!.gain.events.filter(
+      (event) => event.method === "linearRamp",
+    );
+    expect(sendRamps[sendRamps.length - 1]?.value).toBe(1);
+    // The halo leaves first, so the voice is alone again before it finishes
+    // stepping back.
+    expect(voice.halo).toBeNull();
+
+    engine.dispose();
+  });
+
+  it("holds the halo back until the promotion has lasted, then doubles at the octave", async () => {
+    // Well short of the onset delay: a brief spotlight must not flicker a
+    // second voice in and out.
+    const early = await promoteSoloist("presence", 20);
+    expect(early.voice.present).toBe(true);
+    expect(early.voice.halo).toBeNull();
+    early.engine.dispose();
+
+    const held = await promoteSoloist("presence", 90);
+    const halo = held.voice.halo;
+    expect(halo).not.toBeNull();
+
+    // Exactly the octave, or exactly the voice's own pitch when doubling would
+    // climb past the soprano band. Anything in between reads as out of tune.
+    expect(halo!.oscillator.frequency.value).toBeCloseTo(
+      haloPitch(held.voice.currentFrequency),
+      4,
+    );
+    const doubled = held.voice.currentFrequency * PRESENCE_TUNING.haloMultiple;
+    expect(halo!.oscillator.frequency.value).toBe(
+      doubled > PRESENCE_TUNING.haloCeilingHz
+        ? held.voice.currentFrequency
+        : doubled,
+    );
+    expect(halo!.oscillator.frequency.value).toBeLessThanOrEqual(
+      PRESENCE_TUNING.haloCeilingHz,
+    );
+
+    held.engine.dispose();
+  });
 });
 
-describe("the descant audition", () => {
-  it("holds a quiet chord pad under the lift, so the button shows a voice above a choir", async () => {
+describe("the presence audition", () => {
+  it("leans one chord tone forward over a quiet pad, with its double behind it", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(1000);
-    engine.setConfig({ soloistVoice: "descant" });
+    engine.setConfig({ soloistVoice: "presence" });
 
     const state = engine as unknown as {
       flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
     };
-    engine.audition("soloistDescant");
+    engine.audition("soloistPresence");
 
     const pitches = [...state.flourishNotes].map(
       (note) => note.oscillator.frequency.value,
     );
 
-    // The pair the audition is built around, plus one voice per pad tone.
-    expect(pitches).toHaveLength(2 + DESCANT_TUNING.auditionPadTones);
+    // The leaning tone and its double, plus one voice per pad tone.
+    expect(pitches).toHaveLength(2 + PRESENCE_TUNING.auditionPadTones);
 
     const tones = chordTones(
       (engine as unknown as { flourishPalette(): number[] }).flourishPalette(),
     );
     const base = tones[0];
     expect(pitches).toContain(base);
-    expect(pitches).toContain(descantLift(base));
+    expect(pitches).toContain(haloPitch(base));
 
-    // Every pad tone is drawn from the same chord, so the bed the descant
-    // rises out of is the harmony it is rising within.
+    // Every tone is drawn from the same chord, so the crowd the voice steps
+    // out of is the harmony it is stepping forward within.
     for (const pitch of pitches) {
       expectPitchClassInPalette(pitch, tones);
     }
 
-    // The pad is a bed, not a second subject: every tone under the pair is
-    // quieter than the base tone the descant lifts away from.
-    const pair = [base, descantLift(base)];
+    // The pad is a bed, not a second subject.
+    const pair = [base, haloPitch(base)];
     const padTones = [...state.flourishNotes].filter(
       (note) => !pair.includes(note.oscillator.frequency.value),
     );
-    expect(padTones).toHaveLength(DESCANT_TUNING.auditionPadTones);
-    expect(DESCANT_TUNING.auditionPadGain).toBeLessThan(1);
+    expect(padTones).toHaveLength(PRESENCE_TUNING.auditionPadTones);
+    expect(PRESENCE_TUNING.auditionPadGain).toBeLessThan(1);
 
     engine.dispose();
   });

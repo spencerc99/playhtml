@@ -123,7 +123,7 @@ interface SoundLayersProps {
 const SOLOIST_VOICE_LABELS: Record<SoloistVoice, string> = {
   bells: "bells",
   arpeggio: "arpeggio",
-  descant: "descant",
+  presence: "presence",
 };
 
 /**

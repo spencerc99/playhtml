@@ -61,10 +61,10 @@ const AUDITION_CARDS: Array<{
       "The arpeggio voice: a roll up the current chord's own tones, plucked rather than struck.",
   },
   {
-    accent: "soloistDescant",
-    label: "soloist descant",
+    accent: "soloistPresence",
+    label: "soloist presence",
     description:
-      "The descant voice has no note of its own — this is the interval it opens: a chord tone, then the same tone an octave above it, swelling in.",
+      "The presence voice has no note of its own and no interval either — it is one voice stepping forward out of the crowd. A soft chord holds, one tone of it leans in brighter and louder, and its quiet octave double arrives a moment later.",
   },
   {
     accent: "crossingShimmer",

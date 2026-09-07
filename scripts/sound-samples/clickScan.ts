@@ -795,7 +795,7 @@ try {
     fixtureScene("busy-fixture-arpeggio", "arpeggio", SCAN_SECONDS),
     sweepScene("sweeps-bells", "bells", SCAN_SECONDS),
     sweepScene("sweeps-arpeggio", "arpeggio", SCAN_SECONDS),
-    sweepScene("sweeps-descant", "descant", SCAN_SECONDS),
+    sweepScene("sweeps-presence", "presence", SCAN_SECONDS),
     sweepScene("sweeps-text-bells", "bells", SCAN_SECONDS, { allText: true }),
     sweepScene("lone-text-bells", "bells", SCAN_SECONDS, {
       allText: true,
