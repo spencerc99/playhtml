@@ -3964,3 +3964,212 @@ describe("the descant audition", () => {
     engine.dispose();
   });
 });
+
+describe("envelopes that must not be cut mid-sound", () => {
+  /**
+   * The last value an envelope is scheduled to reach, and when. A one-shot
+   * note's oscillator is stopped at a fixed time, so whatever the envelope is
+   * holding at that moment is cut mid-cycle — which is only silent if the
+   * envelope actually reached zero first.
+   */
+  const finalRamp = (param: TestAudioParam) => {
+    const ramps = param.events.filter(
+      (event) => event.method === "linearRamp" || event.method === "exponentialRamp",
+    );
+    return ramps[ramps.length - 1];
+  };
+
+  it("walks the click bell to true zero before stopping its oscillators", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ trailVoices: true });
+
+    const gainsBefore = context.gains.length;
+    const oscillatorsBefore = context.oscillators.length;
+    engine.triggerClick({ x: 10, y: 10, holdDuration: undefined });
+
+    // The bell's two envelopes, in the order triggerClick builds them.
+    const [fundamental, partial] = context.gains.slice(gainsBefore);
+    for (const envelope of [fundamental, partial]) {
+      const last = finalRamp(envelope.gain);
+      // An exponential ramp cannot reach zero; without a final linear walk the
+      // envelope levels off at its floor and the stop cuts a sounding tone.
+      expect(last?.method).toBe("linearRamp");
+      expect(last?.value).toBe(0);
+    }
+
+    // And every oscillator stops at or after its envelope reaches silence,
+    // never before it.
+    const silentAt = finalRamp(fundamental.gain)!.time;
+    for (const oscillator of context.oscillators.slice(oscillatorsBefore)) {
+      for (const stopTime of oscillator.stopTimes) {
+        expect(stopTime).toBeGreaterThanOrEqual(silentAt);
+      }
+    }
+
+    engine.dispose();
+  });
+
+  it("fits a repeated pluck's envelope inside its own repeat interval", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ trailVoices: true, cursorInstruments: true });
+
+    const frame = (x: number, prevX: number) => ({
+      trailIndex: 0,
+      x,
+      y: 0,
+      prevX,
+      prevY: 0,
+      cursorType: "text",
+      progress: 0,
+      color: "#000",
+      isNewlyActive: false,
+    });
+
+    // A percussive voice retriggers one gain node in place every
+    // PLUCK_REPEAT_INTERVAL_MS, so its envelope has to have finished before
+    // the next pluck is scheduled. An envelope longer than the interval means
+    // every pluck cancels a decay still in flight, which holds the gain at its
+    // peak rather than decaying it — the gain then walks upward pluck by pluck
+    // and steps at each retrigger.
+    const PLUCK_REPEAT_INTERVAL_MS = 120;
+
+    // Drive the trail long enough to voice two plucks, so the second one's
+    // schedule can be measured against the first one's envelope.
+    const pluckTimes: number[] = [];
+    let elapsedMs = 0;
+    let x = 0;
+    for (let step = 0; step < 30; step++) {
+      const prevX = x;
+      x += 30;
+      engine.tick(elapsedMs, [frame(x, prevX)]);
+      const voice = context.gains.find((gain) =>
+        gain.gain.events.some((event) => event.method === "exponentialRamp"),
+      );
+      if (voice && pluckTimes.length < voice.gain.events.filter(
+        (event) => event.method === "exponentialRamp",
+      ).length) {
+        pluckTimes.push(context.currentTime);
+      }
+      elapsedMs += 1000 / 60;
+      context.currentTime += 1 / 60;
+    }
+
+    const voiceGain = context.gains.find((gain) =>
+      gain.gain.events.some((event) => event.method === "exponentialRamp"),
+    );
+    expect(voiceGain, "the text cursor never voiced a pluck").toBeDefined();
+
+    const decays = voiceGain!.gain.events.filter(
+      (event) => event.method === "exponentialRamp",
+    );
+    expect(decays.length).toBeGreaterThan(0);
+
+    // Each decay must land within one repeat interval of the pluck that
+    // scheduled it.
+    decays.forEach((decay, index) => {
+      const scheduledAt = pluckTimes[index];
+      expect(scheduledAt, `no recorded start for decay ${index}`).toBeDefined();
+      expect(decay.time - scheduledAt).toBeLessThanOrEqual(
+        PLUCK_REPEAT_INTERVAL_MS / 1000,
+      );
+    });
+
+    engine.dispose();
+  });
+});
+
+describe("the one-shot note budget", () => {
+  it("cuts the note furthest through its envelope, not the quietest", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{
+        peakGain: number;
+        startedAtMs: number;
+        durationMs: number;
+      }>;
+      enforceFlourishBudget(): void;
+    };
+
+    // An arrival chime is quieter than a flourish note by design, so a budget
+    // that chose by peak gain evicted every chime the engine ever scheduled
+    // and none of the flourish notes competing with them.
+    const chime = { peakGain: 0.026, startedAtMs: 900, durationMs: 2000 };
+    const flourish = { peakGain: 0.055, startedAtMs: 0, durationMs: 1000 };
+
+    const nowMs = context.currentTime * 1000;
+    // The flourish is further through its own envelope than the chime, so it
+    // is what a cut costs least.
+    expect((nowMs - flourish.startedAtMs) / flourish.durationMs).toBeGreaterThan(
+      (nowMs - chime.startedAtMs) / chime.durationMs,
+    );
+
+    const cap = 16;
+    for (let index = 0; index < cap - 2; index++) {
+      state.flourishNotes.add({
+        peakGain: 0.055,
+        startedAtMs: 800,
+        durationMs: 5000,
+      });
+    }
+    state.flourishNotes.add(chime as never);
+    state.flourishNotes.add(flourish as never);
+    expect(state.flourishNotes.size).toBe(cap);
+
+    state.enforceFlourishBudget();
+
+    expect(state.flourishNotes.has(chime as never)).toBe(true);
+    expect(state.flourishNotes.has(flourish as never)).toBe(false);
+
+    engine.dispose();
+  });
+
+  it("never evicts a note that has not started while a sounding one remains", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{
+        peakGain: number;
+        startedAtMs: number;
+        durationMs: number;
+      }>;
+      enforceFlourishBudget(): void;
+    };
+
+    const nowMs = context.currentTime * 1000;
+    // A chime cluster is scheduled with delays, so several of its notes are
+    // still in the future when the next note wants a slot. Cutting one of
+    // those silences a chime that never sounded at all.
+    const pending = {
+      peakGain: 0.026,
+      startedAtMs: nowMs + 500,
+      durationMs: 2000,
+    };
+    const sounding = {
+      peakGain: 0.055,
+      startedAtMs: nowMs - 900,
+      durationMs: 1000,
+    };
+
+    for (let index = 0; index < 14; index++) {
+      state.flourishNotes.add({
+        peakGain: 0.055,
+        startedAtMs: nowMs - 100,
+        durationMs: 5000,
+      });
+    }
+    state.flourishNotes.add(pending as never);
+    state.flourishNotes.add(sounding as never);
+
+    state.enforceFlourishBudget();
+
+    expect(state.flourishNotes.has(pending as never)).toBe(true);
+    expect(state.flourishNotes.has(sounding as never)).toBe(false);
+
+    engine.dispose();
+  });
+});
