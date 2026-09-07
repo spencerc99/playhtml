@@ -1015,6 +1015,14 @@ export const DESCANT_TUNING = {
    * than the register it left.
    */
   gain: 1.25,
+  /**
+   * The audition's chord pad: how many chord tones hold under the lift, how
+   * quietly, and for how long. Quiet enough to stay a bed rather than a second
+   * subject, and long enough to still be sounding when the lifted tone arrives.
+   */
+  auditionPadTones: 2,
+  auditionPadGain: 0.28,
+  auditionPadSeconds: 3.4,
 };
 
 /**
@@ -4099,10 +4107,24 @@ export class SoundEngine {
         // The descant has no note of its own to play, so the audition stands
         // one chord tone against the same tone lifted an octave: the interval
         // the promotion opens, heard without needing a scene to promote in.
+        //
+        // A quiet pad of the neighbouring chord tones holds underneath, because
+        // the point of this voice is that it rises above a choir. Two lone
+        // tones in sequence demonstrate an octave; the same two over a held
+        // chord demonstrate a descant.
         const tones = chordTones(this.flourishPalette());
         if (tones.length === 0) return;
         const base = tones[0];
         const lifted = descantLift(base);
+        for (const tone of tones.slice(1, 1 + DESCANT_TUNING.auditionPadTones)) {
+          this.triggerFlourishNote(
+            tone,
+            centre,
+            FLOURISH_TUNING.noteGain * DESCANT_TUNING.auditionPadGain,
+            DESCANT_TUNING.auditionPadSeconds,
+            { attackSeconds: DESCANT_TUNING.swellSeconds },
+          );
+        }
         this.triggerFlourishNote(base, centre, FLOURISH_TUNING.noteGain, 2, {
           attackSeconds: DESCANT_TUNING.swellSeconds,
         });

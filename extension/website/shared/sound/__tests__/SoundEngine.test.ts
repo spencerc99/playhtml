@@ -2,7 +2,7 @@
 // ABOUTME: Verifies cursor timbre changes crossfade without stacking full-level oscillators.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DESCANT_TUNING, SoundEngine } from "../SoundEngine";
+import { DESCANT_TUNING, descantLift, SoundEngine } from "../SoundEngine";
 import {
   CLICK_BELL,
   CURSOR_INSTRUMENTS,
@@ -11,6 +11,7 @@ import {
 import { SOUND_LAYERS, SoundNotice } from "../types";
 import {
   bellScaleForChord,
+  chordTones,
   CHORD_DWELL_MS,
   CHORD_PROGRESSION,
   D_MINOR_PENTATONIC,
@@ -3914,6 +3915,51 @@ describe("the descant on a driven promotion", () => {
     // carry the promotion. The descant has no discrete notes, so it must lean
     // in instead — a duck here would cancel the very lift it is promoting on.
     expect(spotlightGain).toBeGreaterThan(1);
+
+    engine.dispose();
+  });
+});
+
+describe("the descant audition", () => {
+  it("holds a quiet chord pad under the lift, so the button shows a voice above a choir", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ soloistVoice: "descant" });
+
+    const state = engine as unknown as {
+      flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
+    };
+    engine.audition("soloistDescant");
+
+    const pitches = [...state.flourishNotes].map(
+      (note) => note.oscillator.frequency.value,
+    );
+
+    // The pair the audition is built around, plus one voice per pad tone.
+    expect(pitches).toHaveLength(2 + DESCANT_TUNING.auditionPadTones);
+
+    const tones = chordTones(
+      (engine as unknown as { flourishPalette(): number[] }).flourishPalette(),
+    );
+    const base = tones[0];
+    expect(pitches).toContain(base);
+    expect(pitches).toContain(descantLift(base));
+
+    // Every pad tone is drawn from the same chord, so the bed the descant
+    // rises out of is the harmony it is rising within.
+    for (const pitch of pitches) {
+      expectPitchClassInPalette(pitch, tones);
+    }
+
+    // The pad is a bed, not a second subject: every tone under the pair is
+    // quieter than the base tone the descant lifts away from.
+    const pair = [base, descantLift(base)];
+    const padTones = [...state.flourishNotes].filter(
+      (note) => !pair.includes(note.oscillator.frequency.value),
+    );
+    expect(padTones).toHaveLength(DESCANT_TUNING.auditionPadTones);
+    expect(DESCANT_TUNING.auditionPadGain).toBeLessThan(1);
 
     engine.dispose();
   });
