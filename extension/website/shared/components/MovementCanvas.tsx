@@ -546,16 +546,24 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
    * lives in the URL, and changing it is a navigation.
    */
   const [soundDev] = useState(isSoundDevEnabled);
+  /**
+   * The live portrait has no panel and no URL flag — it always reads the
+   * saved arrangement (falling back to shipped defaults) and applies it, the
+   * same object the sound playground writes. `autoPersist` stays off for it:
+   * nothing on the live page edits the arrangement, so there is nothing to
+   * write back.
+   */
   const arrangement = useSoundArrangement(soundEngineRef, {
-    active: soundDev,
-    autoPersist: true,
+    active: soundDev || live,
+    autoPersist: soundDev,
   });
   const applyArrangement = arrangement.applyTo;
 
   /**
    * Where each trail's head is this frame, so a navigation gong pans to where
    * the person who hopped actually is. Sound-dev only: a page without the flag
-   * publishes nothing.
+   * publishes nothing. The live path never triggers the gong (see
+   * NavigationSoundDriver's `active` prop below), so it has no need for this.
    */
   const trailPositions = useMemo(
     () => (soundDev ? new TrailPositions() : null),
@@ -671,8 +679,9 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             bassPedal: settings.soundBassPedal,
           });
           soundEngineRef.current = engine;
-          // The dev panel's arrangement supersedes the page's settings, so it
-          // lands last — on a page without the panel this does nothing.
+          // The arrangement (dev panel, or the live path's always-on saved
+          // config) supersedes the page's settings, so it lands last — on
+          // the archive without the panel this does nothing.
           applyArrangement(engine);
           setSoundEngineReady(engine);
         });
@@ -695,11 +704,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     soundEngineRef.current?.setCanvasWidth(viewportSize.width);
   }, [viewportSize.width]);
 
-  // Sync sound config settings to the engine. While the dev panel is mounted
-  // its arrangement is what the engine runs, so the page's own sound settings
-  // stand down rather than fighting it for the same fields.
+  // Sync sound config settings to the engine. While the dev panel is mounted,
+  // or on the live path (which always runs the saved/default arrangement
+  // instead), the arrangement is what the engine runs, so the page's own
+  // sound settings stand down rather than fighting it for the same fields.
   useEffect(() => {
-    if (soundDev) return;
+    if (soundDev || live) return;
     soundEngineRef.current?.setConfig({
       mode: settings.soundMode,
       chordVoicing: settings.soundChordVoicing,
@@ -728,6 +738,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     settings.soundNavigationSounds,
     settings.soundBassPedal,
     soundDev,
+    live,
   ]);
 
   /**
@@ -1833,13 +1844,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         {/* The schedule itself is view-independent (built from the data, not
             any view's rendering), but the gong is a trails-view accent: gate
             playback on showTrails so it stays silent in the navigation
-            timeline/radial views and other view modes. */}
+            timeline/radial views and other view modes. Also silent on the
+            live portrait — the gong is an archive/replay accent, not part of
+            the live listening experience. */}
         {!paused && (
           <NavigationSoundDriver
             schedule={navigationSchedule}
             durationMs={timeRange.duration}
             soundEngine={soundEnabled ? soundEngineReady : null}
-            active={showTrails}
+            active={showTrails && !live}
             locateParticipant={locateParticipant}
             playbackClock={playbackClock}
           />
