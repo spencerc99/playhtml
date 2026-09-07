@@ -992,11 +992,17 @@ export const DESCANT_TUNING = {
   /** How far the sustained voice lifts on promotion. One octave. */
   liftMultiple: 2,
   /**
-   * Ceiling on the lifted pitch. Nothing sustained rings above about C5, and
-   * the lift must not be what breaks that — a soprano trail already near the
-   * ceiling stays where it is rather than climbing over it.
+   * Ceiling on the lifted pitch: C6, an octave above the top of the soprano
+   * band the ensemble sings in.
+   *
+   * The descant is the one voice that rises above the choir, so its ceiling has
+   * to sit above the choir's. Capping it at the ensemble's own top (C5) meant
+   * every trail from the middle of the tenor band upward — the alto and soprano
+   * bands entirely, so half the hue wheel — doubled straight past the cap and
+   * fell back to the pitch it started on. The filter opened and the gain leaned
+   * in, but the pitch never moved, which is a promotion nobody can hear.
    */
-  ceilingHz: 523.25,
+  ceilingHz: 1046.5,
   /** Filter cutoff while the descant holds, so the lift reads as brighter. */
   filterHz: 3200,
   /** Seconds the lift and the brightening take to arrive. */

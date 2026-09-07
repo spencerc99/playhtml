@@ -2,7 +2,7 @@
 // ABOUTME: Verifies cursor timbre changes crossfade without stacking full-level oscillators.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SoundEngine } from "../SoundEngine";
+import { DESCANT_TUNING, SoundEngine } from "../SoundEngine";
 import {
   CLICK_BELL,
   CURSOR_INSTRUMENTS,
@@ -3832,5 +3832,89 @@ describe("spotlight promotion across playback clocks", () => {
       }
       engine.dispose();
     }
+  });
+});
+
+describe("the descant on a driven promotion", () => {
+  /**
+   * Sweep one trail fast enough to take the spotlight while a second trail
+   * crawls, and report what the soloist's own sustained voice ended up doing.
+   * The trail is coloured into the soprano band deliberately: that is the
+   * register the lift used to be silently cancelled in.
+   */
+  const promoteSoloist = async (soloistVoice: "bells" | "descant") => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(8000);
+    engine.setConfig({ mode: "spotlight", soloistVoice, trailVoices: true });
+
+    const state = engine as unknown as {
+      voices: Map<
+        number,
+        {
+          currentFrequency: number;
+          descanting: boolean;
+          filterNode: { frequency: TestAudioParam };
+        }
+      >;
+      spotlightGains: Map<number, number>;
+    };
+
+    let x = 0;
+    for (let step = 0; step < 60; step++) {
+      x += 12;
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        { ...soloFrame(0, x, 0), color: "#ff4466" },
+        soloFrame(1, 1000 + step * 0.2, 500),
+      ]);
+    }
+
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+    const voice = state.voices.get(0)!;
+    return {
+      engine,
+      voice,
+      spotlightGain: state.spotlightGains.get(0)!,
+    };
+  };
+
+  it("lifts the soloist's sustained voice an octave above the register it sings in", async () => {
+    const plain = await promoteSoloist("bells");
+    const descant = await promoteSoloist("descant");
+
+    expect(descant.voice.descanting).toBe(true);
+
+    // The pitch is the promotion. A descant that lands on the same frequency
+    // the trail was already singing is the bug this guards: the lift used to
+    // be capped at the ensemble's own ceiling, so every trail in the alto or
+    // soprano band doubled straight past the cap and fell back where it was.
+    expect(descant.voice.currentFrequency).toBeCloseTo(
+      plain.voice.currentFrequency * DESCANT_TUNING.liftMultiple,
+      4,
+    );
+    expect(descant.voice.currentFrequency).toBeLessThanOrEqual(
+      DESCANT_TUNING.ceilingHz,
+    );
+
+    plain.engine.dispose();
+    descant.engine.dispose();
+  });
+
+  it("opens the soloist's filter to the descant's own cutoff and leans its gain in", async () => {
+    const { engine, voice, spotlightGain } = await promoteSoloist("descant");
+
+    const ramps = voice.filterNode.frequency.events.filter(
+      (event) => event.method === "linearRamp",
+    );
+    const target = ramps[ramps.length - 1]?.value;
+    expect(target).toBe(DESCANT_TUNING.filterHz);
+
+    // The flourish soloist ducks its sustained voice so its discrete notes can
+    // carry the promotion. The descant has no discrete notes, so it must lean
+    // in instead — a duck here would cancel the very lift it is promoting on.
+    expect(spotlightGain).toBeGreaterThan(1);
+
+    engine.dispose();
   });
 });
