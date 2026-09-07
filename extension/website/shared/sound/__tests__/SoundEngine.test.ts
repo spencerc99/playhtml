@@ -3836,6 +3836,86 @@ describe("spotlight promotion across playback clocks", () => {
   });
 });
 
+describe("smoothing that must advance on real elapsed time", () => {
+  /**
+   * The engine's exponential smoothers express their speed as a duration, so
+   * the same wall-clock stretch has to advance one of them by the same amount
+   * however it is cut into ticks. Stepping by a fixed nominal frame instead
+   * means a slow tick advances fifteen times too little, and a ramp specified
+   * as half a second takes most of a minute on a backgrounded tab.
+   */
+  interface SmoothingState {
+    spotlightGains: Map<number, number>;
+    swells: Map<number, { progress: number }>;
+  }
+
+  const sweepFor = async (
+    tickMs: number,
+    tickCount: number,
+    read: (state: SmoothingState) => number,
+  ) => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(8000);
+    engine.setConfig({ mode: "spotlight", swells: true });
+
+    let x = 0;
+    for (let step = 1; step <= tickCount; step++) {
+      // Same distance per millisecond either way, so the two runs are the same
+      // gesture sampled at two rates rather than two different gestures.
+      x += 0.75 * tickMs;
+      context.currentTime += tickMs / 1000;
+      engine.tick(step * tickMs, [
+        soloFrame(0, x, 0),
+        soloFrame(1, 1000 + step * 0.01, 500),
+      ]);
+    }
+
+    const value = read(
+      engine as unknown as {
+        spotlightGains: Map<number, number>;
+        swells: Map<number, { progress: number }>;
+      },
+    );
+    engine.dispose();
+    return value;
+  };
+
+  // Both rates stay inside the swell's motion grace window, so the two runs
+  // differ only in how finely the same 3s of travel is sampled.
+  const COARSE_TICK_MS = 200;
+  const FINE_TICK_MS = 25;
+  const SPAN_MS = 3000;
+
+  it("advances the spotlight gain the same over 3s of coarse ticks as of fine ones", async () => {
+    const read = (s: { spotlightGains: Map<number, number> }) =>
+      s.spotlightGains.get(0)!;
+    const coarse = await sweepFor(COARSE_TICK_MS, SPAN_MS / COARSE_TICK_MS, read);
+    const fine = await sweepFor(FINE_TICK_MS, SPAN_MS / FINE_TICK_MS, read);
+
+    // Both runs cover the same span, so the smoothed multiplier has reached
+    // the same place. Exponential smoothing is not exactly rate-invariant, so
+    // this is a tolerance rather than an equality — but a fixed-frame step
+    // would leave the coarse run far short of the fine one, well outside it.
+    // The soloist here is a bell voice, whose sustained tone ducks under its
+    // own flourish, so the multiplier has travelled down from 1 rather than up.
+    expect(coarse).toBeLessThan(1);
+    expect(fine).toBeLessThan(1);
+    expect(coarse).toBeCloseTo(fine, 1);
+  });
+
+  it("advances the swell the same over 3s of coarse ticks as of fine ones", async () => {
+    const read = (s: { swells: Map<number, { progress: number }> }) =>
+      s.swells.get(0)!.progress;
+    const coarse = await sweepFor(COARSE_TICK_MS, SPAN_MS / COARSE_TICK_MS, read);
+    const fine = await sweepFor(FINE_TICK_MS, SPAN_MS / FINE_TICK_MS, read);
+
+    expect(coarse).toBeGreaterThan(0);
+    expect(fine).toBeGreaterThan(0);
+    expect(coarse).toBeCloseTo(fine, 1);
+  });
+});
+
 describe("the descant on a driven promotion", () => {
   /**
    * Sweep one trail fast enough to take the spotlight while a second trail

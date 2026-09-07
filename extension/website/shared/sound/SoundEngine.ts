@@ -66,8 +66,20 @@ const NOTE_GLIDE_SECONDS = 0.08;
  */
 const VOICE_LEADING_GLIDE_SECONDS = 1;
 
-/** Nominal frame interval, used to rate-limit per-frame smoothing. */
+/**
+ * Nominal frame interval, used as the assumed length of the very first tick,
+ * before there is a previous tick to measure against. Every subsequent tick
+ * measures its own length — see `tickIntervalMs`.
+ */
 const FRAME_MS = 16;
+
+/**
+ * Longest a tick is allowed to count as, in ms. A backgrounded tab or a
+ * blocked main thread can leave seconds between ticks; letting that full gap
+ * drive a smoothing step would snap the value straight to its target the frame
+ * the page comes back, which is heard as a jump rather than as a ramp.
+ */
+const MAX_TICK_INTERVAL_MS = 500;
 
 /** Fixed reverb send used whenever the energy arc is not driving it. */
 const DEFAULT_REVERB_SEND = 0.3;
@@ -1330,6 +1342,16 @@ export class SoundEngine {
   /** Latest tick time, so retireTrail can rate-limit without its own clock. */
   private lastTickMs = 0;
   /**
+   * How long the tick being processed covered. Every exponential smoother in
+   * the engine expresses its speed as a duration, so the step it takes has to
+   * be the tick's real length: a fixed 16ms makes a 250ms hidden-tab tick
+   * smooth fifteen times too gently, so a ramp specified as half a second
+   * takes the better part of a minute to arrive.
+   */
+  private tickIntervalMs = FRAME_MS;
+  /** Tick time of the previous tick, or null before the first one. */
+  private previousTickMs: number | null = null;
+  /**
    * Tick time until which arrivals stay silent. A reset tears the scene down
    * and rebuilds it, and sounding every trail in the new scene is a volley.
    */
@@ -1633,6 +1655,11 @@ export class SoundEngine {
       this.ctx.resume();
     }
 
+    this.tickIntervalMs =
+      this.previousTickMs === null
+        ? FRAME_MS
+        : Math.max(1, Math.min(MAX_TICK_INTERVAL_MS, elapsedMs - this.previousTickMs));
+    this.previousTickMs = elapsedMs;
     this.lastTickMs = elapsedMs;
 
     if (this.config.mode === "notes") {
@@ -3541,7 +3568,7 @@ export class SoundEngine {
               FLOURISH_TUNING.sustainedRecoverySeconds,
             )
           : SPOTLIGHT_TUNING.releaseSeconds;
-    const rate = Math.min(1, FRAME_MS / (durationSeconds * 1000));
+    const rate = Math.min(1, this.tickIntervalMs / (durationSeconds * 1000));
     const next = current + (target - current) * rate;
     this.spotlightGains.set(trailIndex, next);
     return next;
@@ -3609,7 +3636,7 @@ export class SoundEngine {
     // Rising and falling use their own durations: leaning in is slower than
     // the release, so a trail that stops does not hang at full swell.
     const durationSeconds = sustained ? crescendoSeconds : releaseSeconds;
-    const rate = Math.min(1, FRAME_MS / (durationSeconds * 1000));
+    const rate = Math.min(1, this.tickIntervalMs / (durationSeconds * 1000));
     state.progress += (target - state.progress) * rate;
 
     // Ease-in on the way up so the lean is felt as a build rather than as a
@@ -5976,6 +6003,7 @@ export class SoundEngine {
     // The playback clock rewinds across a loop boundary, so the next tick must
     // start a fresh interval rather than measure against the end of last pass.
     this.lastSpotlightTickMs = null;
+    this.previousTickMs = null;
     this.clearFlourish();
   }
 
