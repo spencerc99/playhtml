@@ -13,6 +13,7 @@ const POLL_JITTER_MS = 10_000;
 const reloadCurrentPage = () => window.location.reload();
 
 type InstallationReloadOptions = {
+  enabled?: boolean;
   getControl?: () => Promise<InstallationControl>;
   reloadPage?: () => void;
   storage?: Storage;
@@ -27,12 +28,15 @@ function storedGeneration(storage: Storage): number | null {
 }
 
 export function useInstallationReload({
+  enabled = true,
   getControl = getInstallationControl,
   reloadPage = reloadCurrentPage,
   storage = window.sessionStorage,
   random = Math.random,
 }: InstallationReloadOptions = {}): void {
   useEffect(() => {
+    if (!enabled) return;
+
     let active = true;
     let checking = false;
     let timer: number | undefined;
@@ -83,5 +87,5 @@ export function useInstallationReload({
       document.removeEventListener("visibilitychange", checkWhenVisible);
       window.removeEventListener("online", checkWhenOnline);
     };
-  }, [getControl, random, reloadPage, storage]);
+  }, [enabled, getControl, random, reloadPage, storage]);
 }

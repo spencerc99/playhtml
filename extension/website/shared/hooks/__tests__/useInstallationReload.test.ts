@@ -57,6 +57,24 @@ describe("installation reload polling", () => {
     await unmount();
   });
 
+  it("does not poll or attach wake checks when disabled", async () => {
+    const getControl = vi.fn();
+    const unmount = await renderReloadHook({
+      enabled: false,
+      getControl,
+      reloadPage: vi.fn(),
+    });
+
+    window.dispatchEvent(new Event("online"));
+    setVisibility("visible");
+    await act(async () => vi.advanceTimersByTime(65_000));
+    await flush();
+
+    expect(getControl).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+    await unmount();
+  });
+
   it("persists a higher generation before reloading and does not repeat it", async () => {
     sessionStorage.setItem(STORAGE_KEY, "8");
     const reloadPage = vi.fn(() => {

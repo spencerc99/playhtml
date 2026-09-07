@@ -87,14 +87,12 @@ const styles = {
 };
 
 const CursorTouches = () => {
+  const profile = useMemo(() => resolveLiveInstallationProfile(), []);
   useDailyPageReload();
-  useInstallationReload();
+  useInstallationReload({ enabled: profile !== null });
   const chromeHidden = useChromeToggle(true);
   const cleanMode = useMemo(() => parseCleanFromUrl() >= 1, []);
-  const profileSettings = useMemo(
-    () => resolveLiveInstallationProfile()?.touchesSettings,
-    [],
-  );
+  const profileSettings = profile?.touchesSettings;
   const { events, loading, deepening, error } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,

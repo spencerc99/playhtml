@@ -38,9 +38,9 @@ const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
 };
 
 const LiveInstallation = () => {
-  useDailyPageReload();
-  useInstallationReload();
   const profile = useMemo(() => resolveLiveInstallationProfile(), []);
+  useDailyPageReload();
+  useInstallationReload({ enabled: profile !== null });
   const screen = useMemo(
     () =>
       parseLiveInstallationScreen(
