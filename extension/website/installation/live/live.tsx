@@ -97,6 +97,7 @@ const LiveInstallation = () => {
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
         availableVisualizations={LIVE_INSTALLATION_VISUALIZATIONS}
+        defaultSoundEnabled={profile?.defaultSoundEnabled}
         defaultSettings={settingsDefaults}
         useStoredSettings={profile === null}
         syncSettingsToUrl={profile === null}
