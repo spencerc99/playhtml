@@ -1,7 +1,7 @@
 // ABOUTME: Tests audio-graph transitions in the movement visualization sound engine.
 // ABOUTME: Verifies cursor timbre changes crossfade without stacking full-level oscillators.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PRESENCE_TUNING, haloPitch, SoundEngine } from "../SoundEngine";
 import {
   CURSOR_INSTRUMENTS,
@@ -2991,14 +2991,22 @@ describe("sound notices", () => {
     await engine.init();
     engine.setCanvasWidth(1000);
     engine.setConfig({ navigationSounds: true });
+    const error = new Error("a drawing bug is not an audio bug");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     engine.setSoundNoticeListener(() => {
-      throw new Error("a drawing bug is not an audio bug");
+      throw error;
     });
 
     engine.tick(0, []);
     const before = context.oscillators.length;
-    expect(() => engine.triggerNavigation({ x: 500 })).not.toThrow();
-    expect(context.oscillators.length).toBeGreaterThan(before);
+    try {
+      expect(() => engine.triggerNavigation({ x: 500 })).not.toThrow();
+      expect(context.oscillators.length).toBeGreaterThan(before);
+      expect(warning).toHaveBeenCalledTimes(1);
+      expect(warning).toHaveBeenCalledWith("Sound notice listener threw:", error);
+    } finally {
+      warning.mockRestore();
+    }
   });
 });
 
