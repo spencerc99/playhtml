@@ -546,6 +546,19 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
    * lives in the URL, and changing it is a navigation.
    */
   const [soundDev] = useState(isSoundDevEnabled);
+  const soundPerformanceRef = useRef<HTMLOutputElement | null>(null);
+  useEffect(() => {
+    if (!soundDev || !live) return;
+    const id = window.setInterval(() => {
+      const element = soundPerformanceRef.current;
+      if (!element) return;
+      const sample = soundEngineRef.current?.getPerformanceSnapshot();
+      element.textContent = sample
+        ? JSON.stringify(sample, null, 2)
+        : "Audio not started";
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [soundDev, live]);
   /**
    * The live portrait has no panel and no URL flag — it always reads the
    * saved arrangement (falling back to shipped defaults) and applies it, the
@@ -662,6 +675,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     if (soundEnabled) {
       if (!soundEngineRef.current) {
         const engine = new SoundEngine();
+        if (soundDev && live) engine.enablePerformanceMonitoring();
         engine.init().then(() => {
           engine.setCanvasWidth(viewportSize.width);
           engine.setConfig({
@@ -754,13 +768,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     }
     setSoundEnabled(true);
     const engine = new SoundEngine();
+    if (soundDev && live) engine.enablePerformanceMonitoring();
     await engine.init();
     engine.setCanvasWidth(window.innerWidth);
     applyArrangement(engine);
     soundEngineRef.current = engine;
     setSoundEngineReady(engine);
     return engine;
-  }, [applyArrangement]);
+  }, [applyArrangement, soundDev, live]);
 
   // Derive which visualization categories are active
   const vizSet = useMemo(
@@ -1567,6 +1582,26 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           ) : undefined
         }
       />
+
+      {soundDev && live && !printMode && (
+        <output
+          id="sound-performance"
+          ref={soundPerformanceRef}
+          style={{
+            position: "fixed",
+            right: 8,
+            bottom: 48,
+            zIndex: 1000,
+            padding: 8,
+            background: "#faf7f2",
+            color: "#3d3833",
+            border: "1px solid #8a8279",
+            font: "10px monospace",
+            whiteSpace: "pre",
+            pointerEvents: "none",
+          }}
+        >Audio not started</output>
+      )}
 
       {/* Top-of-screen stats console. Paired with the bottom ActivityStrip
           (same gating + leftOffset math) so the dev surface has a
