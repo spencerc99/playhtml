@@ -15,8 +15,8 @@ export const ClickCanvas = memo(function ClickCanvas({
   onComplete: (id: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<ClickCanvasRenderer>();
-  const tickRef = useRef<() => void>();
+  const rendererRef = useRef<ClickCanvasRenderer | undefined>(undefined);
+  const tickRef = useRef<(() => void) | undefined>(undefined);
   const completeRef = useRef(onComplete);
   useEffect(() => {
     completeRef.current = onComplete;
