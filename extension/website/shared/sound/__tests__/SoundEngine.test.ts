@@ -37,6 +37,12 @@ type ParamEvent = {
   time: number;
 };
 
+/** A hold's incoming curve endpoint is an anchor, not a requested target. */
+const isRampTarget = (event: ParamEvent, index: number, events: ParamEvent[]): boolean => {
+  const preceding = events[index - 1];
+  return preceding?.method !== "cancelAndHold" || preceding.time !== event.time;
+};
+
 class TestAudioParam {
   value = 0;
   events: ParamEvent[] = [];
@@ -764,7 +770,7 @@ describe("SoundEngine cursor instruments", () => {
       voices: Map<number, { filterNode: TestBiquadFilterNode }>;
     };
     const events = state.voices.get(0)!.filterNode.frequency.events;
-    const ramps = events.filter((event) => event.method === "linearRamp");
+    const ramps = events.filter(isRampTarget).filter((event) => event.method === "linearRamp");
     expect(ramps.length).toBeGreaterThan(0);
     for (const ramp of ramps) {
       expect(ramp.value).toBeGreaterThanOrEqual(2000);
@@ -841,7 +847,7 @@ describe("SoundEngine cursor instruments", () => {
 
     // A changing cutoff needs a full control ramp; a held target needs no
     // successor until the requested brightness changes.
-    const ramps = events.filter((event) => event.method === "linearRamp");
+    const ramps = events.filter(isRampTarget).filter((event) => event.method === "linearRamp");
     expect(holds.length).toBeGreaterThan(0);
     expect(ramps).toHaveLength(holds.length);
     for (let i = 0; i < holds.length; i++) {
@@ -882,26 +888,16 @@ describe("SoundEngine cursor instruments", () => {
     const ramps = events.filter((event) => event.method === "exponentialRamp");
     expect(ramps.length).toBeGreaterThan(0);
 
-    // Every pitch ramp must be preceded by a hold at the ramp's own start, so
-    // the curve interpolates from the pitch actually sounding. Without it the
-    // ramp is measured from the previous automation event — already long past
-    // — and the pitch steps instantly, which is the click.
+    // Scheduling assertions complement the native rendered-audio regression.
+    // A hold ends an incoming ramp or places a constant anchor before the next.
     for (const ramp of ramps) {
       const rampIndex = events.indexOf(ramp);
       const preceding = events[rampIndex - 1];
-      expect(preceding?.method).toBe("cancelAndHold");
+      if (preceding.method === "cancelAndHold" && preceding.time === ramp.time) continue;
+      const hold = events[rampIndex - 2];
+      expect(hold?.method).toBe("cancelAndHold");
+      expect(preceding.time).toBe(hold.time);
       expect(preceding.time).toBeLessThan(ramp.time);
-    }
-
-    // Nothing may be written at the hold's instant afterwards: an explicit
-    // anchor there would plant the jump the hold exists to avoid.
-    for (const ramp of ramps) {
-      const rampIndex = events.indexOf(ramp);
-      const holdTime = events[rampIndex - 1].time;
-      const setsAtHold = events.filter(
-        (event) => event.method === "set" && event.time === holdTime,
-      );
-      expect(setsAtHold).toHaveLength(0);
     }
   });
 
@@ -946,8 +942,13 @@ describe("SoundEngine cursor instruments", () => {
     // Each toggle must hold first, so the fade starts from the level the
     // fifth actually sits at rather than from the previous fade's endpoint.
     for (const ramp of ramps) {
-      const preceding = added[added.indexOf(ramp) - 1];
-      expect(preceding?.method).toBe("cancelAndHold");
+      const index = added.indexOf(ramp);
+      const preceding = added[index - 1];
+      if (preceding.method === "cancelAndHold" && preceding.time === ramp.time) continue;
+      const hold = added[index - 2];
+      expect(hold?.method).toBe("cancelAndHold");
+      expect(preceding.time).toBe(hold.time);
+      expect(preceding.time).toBeLessThan(ramp.time);
     }
   });
 
@@ -2144,6 +2145,7 @@ describe("SoundEngine cursor instruments", () => {
     expect(engine.getCurrentChordName()).toBe("G");
 
     const pitches = context.oscillators[0].frequency.events
+      .filter(isRampTarget)
       .filter((event) => event.method === "exponentialRamp")
       .map((event) => event.value!);
     expect(pitches.length).toBeGreaterThan(0);
@@ -2246,6 +2248,7 @@ describe("SoundEngine cursor instruments", () => {
 
     const { minHz, maxHz } = REGISTER_BAND_RANGES.soprano;
     const pitches = context.oscillators[0].frequency.events
+      .filter(isRampTarget)
       .filter((event) => event.method === "exponentialRamp")
       .map((event) => event.value!);
     expect(pitches.length).toBeGreaterThan(2);
@@ -5178,7 +5181,7 @@ describe("automation timeline", () => {
    */
   const assertRampsNeverLandInsideEachOther = (param: TestAudioParam): void => {
     let runningEnd = Number.NEGATIVE_INFINITY;
-    for (const event of param.events) {
+    for (const event of param.events.filter(isRampTarget)) {
       if (event.method !== "linearRamp" && event.method !== "exponentialRamp") {
         if (event.method === "set") runningEnd = Number.NEGATIVE_INFINITY;
         continue;
