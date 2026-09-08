@@ -1,12 +1,13 @@
 // ABOUTME: Renders busy scenes offline and scans the float buffers for sample-to-sample discontinuities.
 // ABOUTME: Mechanical acceptance test for crackle, run before and after every gain-path change.
 
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 import { OfflineAudioContext } from "node-web-audio-api";
-import { SoundEngine } from "../../extension/website/shared/sound/SoundEngine";
+import { SoundEngine, type SoloistVoice } from "../../extension/website/shared/sound/SoundEngine";
 import { PROGRESSIONS } from "../../extension/website/shared/sound/scales";
 import type {
   CantusVariant,
-  SoloistVoice,
   TrailSoundFrame,
 } from "../../extension/website/shared/sound/types";
 import {
@@ -479,7 +480,7 @@ const LIVE_BATCH_INTERVAL_MS = 1_000;
  * `soloistChurn` makes the batches favour a different trail each time, so the
  * spotlight is re-decided on noisy velocities rather than on a clean sweep.
  */
-const liveScene = (
+export const liveScene = (
   id: string,
   soloistVoice: SoloistVoice,
   durationSeconds: number,
@@ -714,7 +715,7 @@ const typingScene = (
       // A typist clicks occasionally — into a field, onto a link.
       if (sampleMs - lastClickMs > 4_000 && random() < 0.08) {
         lastClickMs = sampleMs;
-        engine.triggerClick({ x: caretX, y: caretY });
+        engine.triggerClick({ x: caretX, y: caretY, holdDuration: undefined });
       }
 
       const frames: TrailSoundFrame[] = [
@@ -758,7 +759,10 @@ const typingScene = (
 };
 
 /** Drive one scene through the engine and return the rendered buffer. */
-const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
+export const renderScene = async (
+  scene: Scene,
+  configure?: (engine: SoundEngine) => void,
+): Promise<AudioBuffer> => {
   Math.random = seededRandom(hash(scene.id));
   const { audioContext, setClock } = createDrivenContext(scene.durationSeconds);
   const engine = new SoundEngine(audioContext as unknown as BaseAudioContext);
@@ -771,6 +775,7 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
     ...scene.config,
   });
   if (scene.cantus) engine.setCantus(scene.cantus);
+  configure?.(engine);
 
   const stepMs = 1_000 / REPLAY_FPS;
   const endMs = scene.durationSeconds * 1_000;
@@ -968,7 +973,7 @@ const SCAN_SECONDS = 40;
  * mix instead of under a soloist, which is where a periodic fault at the
  * throttle's own rate becomes audible as ticking rather than as texture.
  */
-const SPENCER_ARRANGEMENT = {
+export const SPENCER_ARRANGEMENT = {
   spotlight: false,
   cursorInstruments: false,
   choralTimbre: true,
@@ -1008,149 +1013,151 @@ const report = (scan: ScanReport, flutter: FlutterReport): void => {
   );
 };
 
-const originalDwellScales = new Map(
-  Object.values(PROGRESSIONS).map((progression) => [
-    progression.id,
-    progression.dwellScale,
-  ]),
-);
-for (const progression of Object.values(PROGRESSIONS)) {
-  progression.dwellScale =
-    (originalDwellScales.get(progression.id) ?? 1) *
-    (DEMO_CHORD_DWELL_MS / BASE_CHORD_DWELL_MS);
-}
-
-let totalClicks = 0;
-let totalFlutter = 0;
-let scannedCount = 0;
-try {
-  await verifyThreshold();
-  await verifyFlutterThreshold();
-
-  SCENES.push(
-    fixtureScene("busy-fixture-bells", "bells", SCAN_SECONDS),
-    fixtureScene("busy-fixture-arpeggio", "arpeggio", SCAN_SECONDS),
-    // Presence on real fixture data, not only on the synthetic sweep. The
-    // sweep never retires a trail, so it cannot reach the one path where
-    // presence and departure meet — a trail leaving while it still holds the
-    // spotlight, taking its octave double with it. That combination clicked
-    // while every scene here scanned clean.
-    fixtureScene("busy-fixture-presence", "presence", SCAN_SECONDS),
-    // The timpani hold voicing, which the bell path above never reaches.
-    fixtureScene("busy-fixture-timpani", "presence", SCAN_SECONDS, {
-      timpaniHolds: true,
-    }),
-    sweepScene("sweeps-bells", "bells", SCAN_SECONDS),
-    sweepScene("sweeps-arpeggio", "arpeggio", SCAN_SECONDS),
-    sweepScene("sweeps-presence", "presence", SCAN_SECONDS),
-    sweepScene("sweeps-text-bells", "bells", SCAN_SECONDS, { allText: true }),
-    sweepScene("lone-text-bells", "bells", SCAN_SECONDS, {
-      allText: true,
-      trailCount: 1,
-    }),
-    sweepScene("lone-text-arpeggio", "arpeggio", SCAN_SECONDS, {
-      allText: true,
-      trailCount: 1,
-    }),
-    // The live portrait's own cadence. Every scene above ticks on a smooth
-    // 60fps clock, which is the one thing the live page never does — so none
-    // of them reach the paths that divide by the tick interval under a tick
-    // interval that actually varies.
-    liveScene("live-bells", "bells", SCAN_SECONDS),
-    liveScene("live-arpeggio", "arpeggio", SCAN_SECONDS),
-    liveScene("live-presence", "presence", SCAN_SECONDS),
-    // The spotlight re-decided on every batch, on velocities that were just
-    // rebased — the case the hysteresis is supposed to absorb.
-    liveScene("live-churn-bells", "bells", SCAN_SECONDS, {
-      soloistChurn: true,
-    }),
-    liveScene("live-churn-presence", "presence", SCAN_SECONDS, {
-      soloistChurn: true,
-    }),
-    // Percussive plucks retriggering under an irregular tick, where the pluck
-    // interval and the tick interval no longer keep step.
-    liveScene("live-text-bells", "bells", SCAN_SECONDS, {
-      allText: true,
-      soloistChurn: true,
-    }),
-    // A trail that settles and is then revived by a later batch, reusing a
-    // trail index the engine still holds a voice for.
-    liveScene("live-revive-presence", "presence", SCAN_SECONDS, {
-      reviveTrails: true,
-      soloistChurn: true,
-    }),
-    // Someone typing. The one motion no scene above produces: a pointer that
-    // spends most of its ticks under the silence threshold and crosses it on
-    // the keystrokes, which is what flaps the voice's breath open and closed
-    // under the plucks. Scanned in both soloist voices and with the full
-    // default arrangement, plus a variant with an ordinary cursor alongside.
-    typingScene("typing-bells", "bells", SCAN_SECONDS),
-    typingScene("typing-presence", "presence", SCAN_SECONDS),
-    typingScene("typing-crowd-presence", "presence", SCAN_SECONDS, {
-      withPointer: true,
-    }),
-    // Spencer's own arrangement, on both surfaces. The ticking he hears is
-    // present with the spotlight and the cursor instruments off, so it has to
-    // be scanned with them off: no scene above does that, and the layers they
-    // add are loud enough to bury a fault in the sustained bed underneath.
-    ...([
-      ["sweeps", sweepScene],
-      ["live", liveScene],
-    ] as const).flatMap(([surface, makeScene]) => [
-      {
-        ...makeScene(`${surface}-spencer`, "presence", SCAN_SECONDS),
-        config: SPENCER_ARRANGEMENT,
-        cantus: "tenor" as CantusVariant,
-      },
-      // Denser, because the ticking gets worse as the scene fills. If the
-      // fault is per-voice and periodic, more voices means more of it.
-      {
-        ...makeScene(`${surface}-spencer-dense`, "presence", SCAN_SECONDS, {
-          trailCount: 12,
-        }),
-        config: SPENCER_ARRANGEMENT,
-        cantus: "duet" as CantusVariant,
-      },
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+  const originalDwellScales = new Map(
+    Object.values(PROGRESSIONS).map((progression) => [
+      progression.id,
+      progression.dwellScale,
     ]),
   );
-
-  // Scene-id substrings on the command line narrow the run to the scenes that
-  // match, so a single arrangement can be re-scanned in seconds while a gain
-  // path is being changed. With no arguments the whole matrix runs, which is
-  // the only form the acceptance test is read from.
-  const selectors = process.argv.slice(2).filter((arg) => !arg.startsWith("-"));
-  const selected = selectors.length
-    ? SCENES.filter((scene) =>
-        selectors.some((selector) => scene.id.includes(selector)),
-      )
-    : SCENES;
-  if (!selected.length) {
-    throw new Error(
-      `no scene matched ${selectors.join(", ")}; known scenes: ${SCENES.map((scene) => scene.id).join(", ")}`,
-    );
-  }
-  scannedCount = selected.length;
-
-  for (const scene of selected) {
-    const buffer = await renderScene(scene);
-    const scan = scanForClicks(buffer, scene.id);
-    const flutter = scanForFlutter(buffer, scene.id);
-    report(scan, flutter);
-    totalClicks += scan.hits.length;
-    totalFlutter += flutter.hits.length;
-  }
-} finally {
   for (const progression of Object.values(PROGRESSIONS)) {
-    progression.dwellScale = originalDwellScales.get(progression.id) ?? 1;
+    progression.dwellScale =
+      (originalDwellScales.get(progression.id) ?? 1) *
+      (DEMO_CHORD_DWELL_MS / BASE_CHORD_DWELL_MS);
   }
-}
 
-console.log(
-  `\ntotal clicks across ${scannedCount} renders: ${totalClicks}` +
-    `\ntotal flutter windows across ${scannedCount} renders: ${totalFlutter}` +
-    ` (reported, not gated — see FLUTTER_DEPTH_THRESHOLD)`,
-);
-// Only the click count fails the run. The flutter measure is reported for
-// comparison across changes; its populations overlap, so a count from it is
-// not something a build should be failed on.
-if (totalClicks > 0) process.exitCode = 1;
+  let totalClicks = 0;
+  let totalFlutter = 0;
+  let scannedCount = 0;
+  try {
+    await verifyThreshold();
+    await verifyFlutterThreshold();
+
+    SCENES.push(
+      fixtureScene("busy-fixture-bells", "bells", SCAN_SECONDS),
+      fixtureScene("busy-fixture-arpeggio", "arpeggio", SCAN_SECONDS),
+      // Presence on real fixture data, not only on the synthetic sweep. The
+      // sweep never retires a trail, so it cannot reach the one path where
+      // presence and departure meet — a trail leaving while it still holds the
+      // spotlight, taking its octave double with it. That combination clicked
+      // while every scene here scanned clean.
+      fixtureScene("busy-fixture-presence", "presence", SCAN_SECONDS),
+      // The timpani hold voicing, which the bell path above never reaches.
+      fixtureScene("busy-fixture-timpani", "presence", SCAN_SECONDS, {
+        timpaniHolds: true,
+      }),
+      sweepScene("sweeps-bells", "bells", SCAN_SECONDS),
+      sweepScene("sweeps-arpeggio", "arpeggio", SCAN_SECONDS),
+      sweepScene("sweeps-presence", "presence", SCAN_SECONDS),
+      sweepScene("sweeps-text-bells", "bells", SCAN_SECONDS, { allText: true }),
+      sweepScene("lone-text-bells", "bells", SCAN_SECONDS, {
+        allText: true,
+        trailCount: 1,
+      }),
+      sweepScene("lone-text-arpeggio", "arpeggio", SCAN_SECONDS, {
+        allText: true,
+        trailCount: 1,
+      }),
+      // The live portrait's own cadence. Every scene above ticks on a smooth
+      // 60fps clock, which is the one thing the live page never does — so none
+      // of them reach the paths that divide by the tick interval under a tick
+      // interval that actually varies.
+      liveScene("live-bells", "bells", SCAN_SECONDS),
+      liveScene("live-arpeggio", "arpeggio", SCAN_SECONDS),
+      liveScene("live-presence", "presence", SCAN_SECONDS),
+      // The spotlight re-decided on every batch, on velocities that were just
+      // rebased — the case the hysteresis is supposed to absorb.
+      liveScene("live-churn-bells", "bells", SCAN_SECONDS, {
+        soloistChurn: true,
+      }),
+      liveScene("live-churn-presence", "presence", SCAN_SECONDS, {
+        soloistChurn: true,
+      }),
+      // Percussive plucks retriggering under an irregular tick, where the pluck
+      // interval and the tick interval no longer keep step.
+      liveScene("live-text-bells", "bells", SCAN_SECONDS, {
+        allText: true,
+        soloistChurn: true,
+      }),
+      // A trail that settles and is then revived by a later batch, reusing a
+      // trail index the engine still holds a voice for.
+      liveScene("live-revive-presence", "presence", SCAN_SECONDS, {
+        reviveTrails: true,
+        soloistChurn: true,
+      }),
+      // Someone typing. The one motion no scene above produces: a pointer that
+      // spends most of its ticks under the silence threshold and crosses it on
+      // the keystrokes, which is what flaps the voice's breath open and closed
+      // under the plucks. Scanned in both soloist voices and with the full
+      // default arrangement, plus a variant with an ordinary cursor alongside.
+      typingScene("typing-bells", "bells", SCAN_SECONDS),
+      typingScene("typing-presence", "presence", SCAN_SECONDS),
+      typingScene("typing-crowd-presence", "presence", SCAN_SECONDS, {
+        withPointer: true,
+      }),
+      // Spencer's own arrangement, on both surfaces. The ticking he hears is
+      // present with the spotlight and the cursor instruments off, so it has to
+      // be scanned with them off: no scene above does that, and the layers they
+      // add are loud enough to bury a fault in the sustained bed underneath.
+      ...([
+        ["sweeps", sweepScene],
+        ["live", liveScene],
+      ] as const).flatMap(([surface, makeScene]) => [
+        {
+          ...makeScene(`${surface}-spencer`, "presence", SCAN_SECONDS),
+          config: SPENCER_ARRANGEMENT,
+          cantus: "tenor" as CantusVariant,
+        },
+        // Denser, because the ticking gets worse as the scene fills. If the
+        // fault is per-voice and periodic, more voices means more of it.
+        {
+          ...makeScene(`${surface}-spencer-dense`, "presence", SCAN_SECONDS, {
+            trailCount: 12,
+          }),
+          config: SPENCER_ARRANGEMENT,
+          cantus: "duet" as CantusVariant,
+        },
+      ]),
+    );
+
+    // Scene-id substrings on the command line narrow the run to the scenes that
+    // match, so a single arrangement can be re-scanned in seconds while a gain
+    // path is being changed. With no arguments the whole matrix runs, which is
+    // the only form the acceptance test is read from.
+    const selectors = process.argv.slice(2).filter((arg) => !arg.startsWith("-"));
+    const selected = selectors.length
+      ? SCENES.filter((scene) =>
+          selectors.some((selector) => scene.id.includes(selector)),
+        )
+      : SCENES;
+    if (!selected.length) {
+      throw new Error(
+        `no scene matched ${selectors.join(", ")}; known scenes: ${SCENES.map((scene) => scene.id).join(", ")}`,
+      );
+    }
+    scannedCount = selected.length;
+
+    for (const scene of selected) {
+      const buffer = await renderScene(scene);
+      const scan = scanForClicks(buffer, scene.id);
+      const flutter = scanForFlutter(buffer, scene.id);
+      report(scan, flutter);
+      totalClicks += scan.hits.length;
+      totalFlutter += flutter.hits.length;
+    }
+  } finally {
+    for (const progression of Object.values(PROGRESSIONS)) {
+      progression.dwellScale = originalDwellScales.get(progression.id) ?? 1;
+    }
+  }
+
+  console.log(
+    `\ntotal clicks across ${scannedCount} renders: ${totalClicks}` +
+      `\ntotal flutter windows across ${scannedCount} renders: ${totalFlutter}` +
+      ` (reported, not gated — see FLUTTER_DEPTH_THRESHOLD)`,
+  );
+  // Only the click count fails the run. The flutter measure is reported for
+  // comparison across changes; its populations overlap, so a count from it is
+  // not something a build should be failed on.
+  if (totalClicks > 0) process.exitCode = 1;
+}
