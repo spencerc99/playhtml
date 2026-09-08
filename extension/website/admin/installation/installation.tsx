@@ -122,6 +122,18 @@ export function InstallationOffice() {
             </li>)}
           </ol>
         </section>
+
+        <section className="office-panel">
+          <div className="office-list-header">
+            <div><span className="office-section-number">BROWSING MACHINE</span><h3>Installation mode</h3></div>
+          </div>
+          <p>
+            On the machine visitors browse from, open the extension's Settings, press
+            Cmd/Ctrl+Shift+8, and check Installation mode. The frame, the live cursor trace,
+            the sound, and the faster collection pace follow them onto every site, and the
+            frame's "about this" corner explains the piece to whoever sits down.
+          </p>
+        </section>
       </main>
     </div>
   );

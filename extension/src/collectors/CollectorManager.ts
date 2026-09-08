@@ -11,6 +11,11 @@ import {
   isCollectionMode,
   normalizeCollectionMode,
 } from './modes';
+import { CursorCollector } from './CursorCollector';
+import {
+  INSTALLATION_PACE,
+  watchInstallationMode,
+} from '../features/installationMode';
 
 const STORAGE_KEY = 'collection_enabled_collectors';
 
@@ -26,9 +31,36 @@ export class CollectorManager {
   private collectors: Map<CollectionEventType, BaseCollector<any>> = new Map();
   private eventBuffer: EventBuffer;
   private initialized = false;
-  
+  private stopInstallationPaceWatch: (() => void) | null = null;
+
   constructor() {
     this.eventBuffer = new EventBuffer();
+  }
+
+  /**
+   * Installation machines collect at a faster pace so their marks reach the
+   * screens close to live. Everywhere else keeps the default batching.
+   */
+  private applyInstallationPace(enabled: boolean): void {
+    this.eventBuffer.setPace(
+      enabled
+        ? {
+            storeIntervalMs: INSTALLATION_PACE.storeBatchIntervalMs,
+            batchIntervalMs: INSTALLATION_PACE.uploadBatchIntervalMs,
+          }
+        : null,
+    );
+    const cursor = this.collectors.get('cursor');
+    if (cursor instanceof CursorCollector) {
+      cursor.setPace(
+        enabled
+          ? {
+              sampleRateMs: INSTALLATION_PACE.cursorSampleRateMs,
+              movementThresholdPx: INSTALLATION_PACE.cursorMovementThresholdPx,
+            }
+          : null,
+      );
+    }
   }
   
   /**
@@ -37,6 +69,10 @@ export class CollectorManager {
   async init(): Promise<void> {
     if (this.initialized) return;
     
+    this.stopInstallationPaceWatch = watchInstallationMode((enabled) =>
+      this.applyInstallationPace(enabled),
+    );
+
     // First, apply 3-way modes (off/local/shared) if present
     await this.applyModesFromStorage();
     // Then, load legacy enabled flags for backward compatibility
@@ -234,6 +270,8 @@ export class CollectorManager {
    * Browser unload callers should treat this as best effort.
    */
   async stopAll(): Promise<void> {
+    this.stopInstallationPaceWatch?.();
+    this.stopInstallationPaceWatch = null;
     const stoppingCollectors: BaseCollector<any>[] = [];
     for (const collector of this.collectors.values()) {
       if (collector.isEnabled()) {
