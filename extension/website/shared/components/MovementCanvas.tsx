@@ -461,6 +461,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     if (!isFollower || cinematic.mode !== "follow") return cinematic;
     return { ...cinematic, pickSubject };
   }, [cinematic, isFollower, pickSubject]);
+  // Each follow layer centers its own cursor, so only one may be visible.
+  const followsCursor = cinematicConfig?.mode === "follow";
 
   /** When set, only events whose timestamp falls in [start, end) are passed
    * downstream to the visualization hooks. Used by the Hotspots dev tool to
@@ -1693,9 +1695,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
                 position: "absolute",
                 inset: 0,
                 zIndex: 2,
-                opacity: archiveFallback.visible ? 1 : 0,
+                opacity: followsCursor
+                  ? 1
+                  : archiveFallback.visible ? 1 : 0,
+                visibility: followsCursor && !archiveFallback.visible
+                  ? "hidden"
+                  : "visible",
                 pointerEvents: "none",
-                transition: `opacity ${archiveFallback.fadeMs}ms ease-in-out`,
+                transition: followsCursor
+                  ? undefined
+                  : `opacity ${archiveFallback.fadeMs}ms ease-in-out`,
               }}
             >
               <AnimatedTrails
@@ -1718,6 +1727,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             <LiveTrails
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
+              visible={!(followsCursor && archiveFallback?.visible &&
+                archiveFallbackTrailStates.length > 0)}
               cinematic={cinematicConfig}
               cinematicNextSignal={cinematicNextSignal}
               frozen={paused}
