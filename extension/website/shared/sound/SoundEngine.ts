@@ -1196,6 +1196,8 @@ interface TrailFingerprint {
 interface VibratoNodes {
   oscillator: OscillatorNode;
   depth: GainNode;
+  parkAt: number | null;
+  parked: boolean;
 }
 
 /**
@@ -1862,6 +1864,12 @@ export class SoundEngine {
     for (const voice of this.voices.values()) {
       if (voice.fifthSilentAt !== null && this.ctx.currentTime >= voice.fifthSilentAt) {
         this.stopFifth(voice);
+      }
+      const vibrato = voice.vibrato;
+      if (vibrato && vibrato.parkAt !== null && this.ctx.currentTime >= vibrato.parkAt) {
+        vibrato.depth.disconnect();
+        vibrato.parked = true;
+        vibrato.parkAt = null;
       }
     }
 
@@ -2638,6 +2646,7 @@ export class SoundEngine {
       // having been briefly aligned.
       this.rampTargets.delete(voice.vibrato.depth.gain);
       voice.vibrato.depth.gain.linearRampToValueAtTime(0, now + glideSeconds);
+      voice.vibrato.parkAt = now + glideSeconds;
     }
   }
 
@@ -2660,6 +2669,7 @@ export class SoundEngine {
       fingerprint.detuneCents,
       now + driftSeconds,
     );
+    this.resumeVibrato(voice);
     if (voice.vibrato) this.rampTargets.delete(voice.vibrato.depth.gain);
     voice.vibrato?.depth.gain.linearRampToValueAtTime(
       fingerprint.vibratoDepthCents,
@@ -3016,8 +3026,9 @@ export class SoundEngine {
       lfo.connect(depth);
       depth.connect(voice.oscillator.detune);
       lfo.start(now);
-      voice.vibrato = { oscillator: lfo, depth };
+      voice.vibrato = { oscillator: lfo, depth, parkAt: null, parked: false };
     }
+    this.resumeVibrato(voice);
     this.rampTargets.delete(voice.vibrato.oscillator.frequency);
     this.rampTargets.delete(voice.vibrato.depth.gain);
     voice.vibrato.oscillator.frequency.setValueAtTime(
@@ -3025,6 +3036,7 @@ export class SoundEngine {
       now,
     );
     voice.vibrato.depth.gain.setValueAtTime(fingerprint.vibratoDepthCents, now);
+    if (fingerprint.vibratoDepthCents === 0) voice.vibrato.parkAt = now;
   }
 
   /** Return a voice to the shared, unfingerprinted timbre. */
@@ -3032,6 +3044,17 @@ export class SoundEngine {
     if (!this.ctx) return;
     this.setVoiceDetune(voice, 0);
     this.stopVibrato(voice);
+  }
+
+  /** Reconnect zero-depth modulation without restarting the LFO's phase. */
+  private resumeVibrato(voice: Voice): void {
+    const vibrato = voice.vibrato;
+    if (!vibrato || !voice.oscillator) return;
+    if (vibrato.parked) {
+      vibrato.depth.connect(voice.oscillator.detune);
+      vibrato.parked = false;
+    }
+    vibrato.parkAt = null;
   }
 
   /** Stop and detach a voice's vibrato LFO, if it has one. */
@@ -3095,7 +3118,10 @@ export class SoundEngine {
   private detachFormants(voice: Voice): void {
     if (!voice.formants) return;
     try {
-      for (const filter of voice.formants.filters) filter.disconnect();
+      for (const filter of voice.formants.filters) {
+        voice.filterNode.disconnect(filter);
+        filter.disconnect();
+      }
       voice.formants.mix.disconnect();
     } catch {
       /* already disconnected */
@@ -3306,7 +3332,7 @@ export class SoundEngine {
         );
         if (voice.vibrato && voice.oscillator) {
           voice.vibrato.depth.disconnect();
-          voice.vibrato.depth.connect(voice.oscillator.detune);
+          if (!voice.vibrato.parked) voice.vibrato.depth.connect(voice.oscillator.detune);
         }
       }
     }
@@ -4085,6 +4111,7 @@ export class SoundEngine {
       if (voice.vibrato) {
         const fingerprint = this.fingerprints.get(trailIndex);
         if (fingerprint) {
+          this.resumeVibrato(voice);
           this.rampParam(
             voice.vibrato.depth.gain,
             fingerprint.vibratoDepthCents * vibratoDepthScale,
@@ -4112,6 +4139,7 @@ export class SoundEngine {
       if (voice.vibrato) {
         const fingerprint = this.fingerprints.get(trailIndex);
         if (fingerprint) {
+          this.resumeVibrato(voice);
           this.rampParam(
             voice.vibrato.depth.gain,
             fingerprint.vibratoDepthCents,
