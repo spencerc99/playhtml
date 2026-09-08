@@ -50,7 +50,7 @@ const MIN_DRAW_MS_PER_SEGMENT = 32;
 // before removing it, so finished trails persist as a dim backdrop rather than
 // vanishing. After this it depart-fades out. (The maxGroups cap upstream also
 // bounds how many accumulate regardless.)
-const REMOVE_AFTER_DIM_MS = 60_000;
+const REMOVE_AFTER_DIM_MS = 120_000;
 
 export interface LiveTrailDrawState {
   seenAt: number;
