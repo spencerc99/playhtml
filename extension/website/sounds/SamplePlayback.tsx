@@ -514,6 +514,7 @@ export const SamplePlayback = ({
     points: Array<{ x: number; y: number }>;
   }>({ x: 0, y: 0, prevX: 0, prevY: 0, inside: false, points: [] });
   const startedAtRef = useRef(0);
+  const sampleOffsetRef = useRef(0);
   const speedRef = useRef<Speed>(1);
   const loopCountRef = useRef(0);
   const voicingRef = useRef<VoicingSettings>(VOICING_DEFAULTS);
@@ -531,6 +532,12 @@ export const SamplePlayback = ({
   const [readout, setReadout] = useState({ position: 0, active: 0, loops: 0 });
 
   useEffect(() => {
+    const now = performance.now();
+    if (rafRef.current !== null) {
+      sampleOffsetRef.current +=
+        (now - startedAtRef.current) * speedRef.current;
+    }
+    startedAtRef.current = now;
     speedRef.current = speed;
   }, [speed]);
 
@@ -547,6 +554,7 @@ export const SamplePlayback = ({
     }
     trailsRef.current.clear();
     cursorRef.current = 0;
+    sampleOffsetRef.current = 0;
     nextTrailIndexRef.current = 0;
   }, []);
 
@@ -572,7 +580,7 @@ export const SamplePlayback = ({
     const height = canvas.clientHeight;
     const events = eventsRef.current;
     const wallElapsed = performance.now() - startedAtRef.current;
-    const sampleMs = wallElapsed * speedRef.current;
+    const sampleMs = sampleOffsetRef.current + wallElapsed * speedRef.current;
     // Fire every discrete event whose moment has arrived since the last frame.
     // Moves only mark a participant as present — their drawn position comes
     // from interpolating the move track below, so the cursor glides between
@@ -627,27 +635,21 @@ export const SamplePlayback = ({
 
       if (event.event === "click" || event.event === "hold") {
         const isHold = event.event === "hold" || event.duration !== undefined;
-        // The hold voice narrowed to a roll, or null for the stretched bell —
-        // which is not a timpani variant and is played by the click path below.
-        const holdRoll =
-          isHold && isTimpani(voicing.hold) ? voicing.hold : null;
-        if (holdRoll) {
-          // The recorded hold's own length drives the roll, so a long press
-          // sounds long rather than every hold sounding the same.
-          engine.triggerHold(
-            x,
-            holdRoll,
-            event.duration === undefined ? undefined : event.duration / 1000,
-          );
-        }
-
-        if (isPizzicato(voicing.click)) {
+        if (isHold) {
+          if (isTimpani(voicing.hold)) {
+            // The recorded hold's own length drives the selected roll.
+            engine.triggerHold(
+              x,
+              voicing.hold,
+              event.duration === undefined ? undefined : event.duration / 1000,
+            );
+          } else {
+            engine.triggerClick({ x, y, holdDuration: event.duration });
+          }
+        } else if (isPizzicato(voicing.click)) {
           engine.triggerClickPizzicato(x, y, voicing.click);
-        } else if (!holdRoll) {
-          // The shipped bell, unless the hold roll has already taken this
-          // event — the roll replaces the stretched bell rather than layering
-          // on top of it.
-          engine.triggerClick({ x, y, holdDuration: event.duration });
+        } else {
+          engine.triggerClick({ x, y, holdDuration: undefined });
         }
       }
     }

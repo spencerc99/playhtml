@@ -1831,8 +1831,10 @@ export class SoundEngine {
   /** Smoothed 0-1 scene energy driving the swell. */
   private energy = 0;
   private lastEnergyTickMs: number | null = null;
-  /** Trails that have already sounded an arrival, and when they last did. */
+  /** Trails that have announced an arrival, and when they last did. */
   private arrivalTimesMs: Map<number, number> = new Map();
+  /** Trails whose current arrival scheduled at least one chime note. */
+  private audibleArrivals: Set<number> = new Set();
   /** Chime seed per trail, so its arrival and departure share one pattern. */
   private arrivalSeeds: Map<number, number> = new Map();
   /**
@@ -2129,6 +2131,7 @@ export class SoundEngine {
       // announced themselves, which decides whether an arrival happened at all
       // and so is still reported while the chime is off.
       this.arrivalSeeds.clear();
+      this.audibleArrivals.clear();
       this.arrivalBands.clear();
       this.recentArrivalsMs.length = 0;
     }
@@ -3928,7 +3931,7 @@ export class SoundEngine {
     const departed =
       this.lastTickMs >= this.arrivalsSuppressedUntilMs &&
       this.arrivalTimesMs.has(trailIndex);
-    if (departed && !this.config.trailArrivals) {
+    if (departed && (!this.config.trailArrivals || !this.audibleArrivals.has(trailIndex))) {
       this.emitNotice({
         kind: "arrival",
         trailIndex,
@@ -3937,7 +3940,7 @@ export class SoundEngine {
         played: false,
       });
     }
-    if (departed && this.config.trailArrivals) {
+    if (departed && this.config.trailArrivals && this.audibleArrivals.has(trailIndex)) {
       const position = this.prevPositions.get(trailIndex);
       // Departure reuses the arrival's seed and band, so a trail leaves in the
       // same voice and the same register it arrived in.
@@ -3951,6 +3954,7 @@ export class SoundEngine {
       );
     }
     this.arrivalTimesMs.delete(trailIndex);
+    this.audibleArrivals.delete(trailIndex);
     this.arrivalSeeds.delete(trailIndex);
     this.arrivalBands.delete(trailIndex);
     const voice = this.voices.get(trailIndex);
@@ -5157,6 +5161,7 @@ export class SoundEngine {
       if (lastArrival !== undefined && !frame.isNewlyActive) continue;
 
       this.arrivalTimesMs.set(frame.trailIndex, elapsedMs);
+      this.audibleArrivals.delete(frame.trailIndex);
       // The arrival happened either way. The audio toggle and the rate cap
       // decide only whether it is heard, so a suppression here still reports
       // the arrival with `played` false.
@@ -5315,13 +5320,12 @@ export class SoundEngine {
     // can be paced by the chime it stands for rather than by its own timing.
     const noteOffsetsSeconds: number[] = [];
     pitches.forEach((pitch, order) => {
-      noteOffsetsSeconds.push(delaySeconds);
       const decay =
         (rising
           ? minDecaySeconds +
             hashUnit(seed, 40 + order) * (maxDecaySeconds - minDecaySeconds)
           : departureDecaySeconds) * bandTimbre.decayScale[band];
-      this.triggerFlourishNote(pitch * bandMultiplier, x, gain, decay, {
+      const played = this.triggerFlourishNote(pitch * bandMultiplier, x, gain, decay, {
         delaySeconds,
         attackSeconds,
         partialGain: partialGain * bandTimbre.partialScale[band],
@@ -5330,6 +5334,7 @@ export class SoundEngine {
         detuneCents: (hashUnit(seed, 60 + order) * 2 - 1) * detuneCents,
         layer: "chime",
       });
+      if (played) noteOffsetsSeconds.push(delaySeconds);
       // Jittered spacing, so the notes land like struck tubes rather than on
       // a grid.
       delaySeconds +=
@@ -5338,12 +5343,15 @@ export class SoundEngine {
     });
 
     if (trailIndex !== undefined) {
+      if (rising && noteOffsetsSeconds.length > 0) {
+        this.audibleArrivals.add(trailIndex);
+      }
       this.emitNotice({
         kind: "arrival",
         trailIndex,
         rising,
         noteOffsetsSeconds,
-        played: true,
+        played: noteOffsetsSeconds.length > 0,
       });
     }
   }
@@ -6889,10 +6897,10 @@ export class SoundEngine {
        */
       layer?: SoundLayer;
     } = {},
-  ): void {
-    if (!this.ctx || !this.masterGain) return;
+  ): boolean {
+    if (!this.ctx || !this.masterGain) return false;
 
-    if (!this.admitFlourishNote()) return;
+    if (!this.admitFlourishNote()) return false;
 
     const ctx = this.ctx;
     const now = ctx.currentTime + (options.delaySeconds ?? 0);
@@ -7018,6 +7026,7 @@ export class SoundEngine {
     partial.start(now);
     osc.stop(stopTime);
     partial.stop(stopTime);
+    return true;
   }
 
   /**
@@ -7415,6 +7424,7 @@ export class SoundEngine {
     this.clearFlourish();
     this.releaseBassPedal();
     this.arrivalTimesMs.clear();
+    this.audibleArrivals.clear();
     this.arrivalSeeds.clear();
     this.arrivalBands.clear();
     this.recentArrivalsMs.length = 0;
@@ -7459,6 +7469,7 @@ export class SoundEngine {
     this.arrivalsSuppressedUntilMs =
       this.lastTickMs + ARRIVAL_TUNING.resetSuppressionMs;
     this.arrivalTimesMs.clear();
+    this.audibleArrivals.clear();
     this.arrivalSeeds.clear();
     this.arrivalBands.clear();
     this.recentArrivalsMs.length = 0;

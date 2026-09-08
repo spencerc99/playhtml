@@ -1369,6 +1369,48 @@ describe("SoundEngine cursor instruments", () => {
     expect(state.flourishNotes.size).toBeGreaterThan(0);
   });
 
+  it("does not chime on departure after the arrival rate cap rejected a trail", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ trailArrivals: true });
+    engine.tick(0, Array.from({ length: 30 }, (_, i) => soloFrame(i, i * 10, 10)));
+    const state = engine as unknown as { flourishNotes: Set<unknown> };
+    const arrivals = state.flourishNotes.size;
+    engine.retireTrail(29);
+    expect(state.flourishNotes.size).toBe(arrivals);
+  });
+
+  it("does not chime on departure after arrivals are enabled for an existing trail", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ trailArrivals: false });
+    engine.tick(0, [soloFrame(0, 10, 10)]);
+    engine.setConfig({ trailArrivals: true });
+    const state = engine as unknown as { flourishNotes: Set<unknown> };
+    const notes = state.flourishNotes.size;
+    engine.retireTrail(0);
+    expect(state.flourishNotes.size).toBe(notes);
+  });
+
+  it("does not chime on departure when the note budget rejected its entire arrival", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ trailArrivals: true });
+    const state = engine as unknown as {
+      flourishNotes: Set<unknown>;
+      triggerFlourishNote: (frequency: number, x: number, gain: number, decay: number) => boolean;
+    };
+    for (let i = 0; i < 16; i++) {
+      expect(state.triggerFlourishNote(440, 10, 0.01, 1)).toBe(true);
+    }
+    engine.tick(0, [soloFrame(0, 10, 10)]);
+    // Let the occupied notes finish before testing the departure's eligibility.
+    context.currentTime = 10;
+    state.flourishNotes.clear();
+    engine.retireTrail(0);
+    expect(state.flourishNotes.size).toBe(0);
+  });
+
   it("sounds a departure when an arrived trail is retired", async () => {
     const engine = new SoundEngine();
     await engine.init();
