@@ -54,12 +54,13 @@ describe("live installation profiles", () => {
     }
   });
 
-  it("uses continuous live trails only on the main cursor field", () => {
+  it("uses continuous live trails on the cursor field and every follower", () => {
     expect(LIVE_INSTALLATION_PROFILES.cursors.continuousLiveTrails).toBe(true);
 
     for (const [name, profile] of Object.entries(LIVE_INSTALLATION_PROFILES)) {
-      if (name === "cursors") continue;
-      expect(profile.continuousLiveTrails).not.toBe(true);
+      expect(profile.continuousLiveTrails === true).toBe(
+        name === "cursors" || name.startsWith("follower-"),
+      );
     }
   });
 

@@ -196,6 +196,7 @@ export const LIVE_INSTALLATION_PROFILES: Record<
     cinematic: { ...DEFAULT_CINEMATIC_CONFIG, zoom: 0.1 },
     visualizations: ["trails"],
     screen: follower(0),
+    continuousLiveTrails: true,
     settings: CURSOR_SETTINGS,
   },
   "follower-b": {
@@ -206,6 +207,7 @@ export const LIVE_INSTALLATION_PROFILES: Record<
     cinematic: { ...DEFAULT_CINEMATIC_CONFIG, zoom: 0.125 },
     visualizations: ["trails"],
     screen: follower(1),
+    continuousLiveTrails: true,
     settings: CURSOR_SETTINGS,
   },
   "follower-c": {
@@ -216,6 +218,7 @@ export const LIVE_INSTALLATION_PROFILES: Record<
     cinematic: { ...DEFAULT_CINEMATIC_CONFIG, zoom: 0.125 },
     visualizations: ["trails"],
     screen: follower(2),
+    continuousLiveTrails: true,
     settings: CURSOR_SETTINGS,
   },
   "follower-d": {
@@ -226,6 +229,7 @@ export const LIVE_INSTALLATION_PROFILES: Record<
     cinematic: { ...DEFAULT_CINEMATIC_CONFIG, zoom: 0.1 },
     visualizations: ["trails"],
     screen: follower(3),
+    continuousLiveTrails: true,
     settings: CURSOR_SETTINGS,
   },
 };
