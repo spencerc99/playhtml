@@ -168,6 +168,12 @@ when Xcode or Apple credentials are not available.
 The `extension/website/` Vite app serves both the marketing/landing pages
 (`index.html`, `privacy.html`) and the visualization experiments:
 
+- `extension/website/install/` — `wewere.online/install`, the short URL for
+  loading the extension unpacked on an installation machine before a store
+  release. It serves `public/wwo-extension.zip`; rebuild that zip
+  (`bun run build-extension && (cd extension/dist && zip -r ../website/public/wwo-extension.zip chrome-mv3)`)
+  whenever the machines need a newer build, and drop both once the store
+  version covers it.
 - `extension/website/changelog/` — public extension release notes rendered
   from `extension/CHANGELOG.md`; supports Markdown images and
   `![video: Title](...)` media references.
