@@ -213,6 +213,15 @@ interface Scene {
    * own setter — so it is carried separately here for the same reason.
    */
   cantus?: CantusVariant | null;
+  /**
+   * Engine calls fired mid-scene, each once, when the scene clock passes its
+   * time. This is how a scan reaches the transitions a page makes while sound
+   * is playing — a settings toggle, a data reload calling `reset()` — which no
+   * amount of trail motion produces. Those transitions run against whatever
+   * voices happen to be sounding, which is exactly why they click when a
+   * teardown path cuts instead of fading.
+   */
+  actions?: Array<{ atMs: number; run: (engine: SoundEngine) => void }>;
 }
 
 /**
@@ -774,11 +783,108 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
 
   const stepMs = 1_000 / REPLAY_FPS;
   const endMs = scene.durationSeconds * 1_000;
-  for (let sampleMs = 0; sampleMs <= endMs; ) {
-    setClock(sampleMs / 1_000);
-    const frames = scene.advance(engine, sampleMs);
-    engine.tick(sampleMs, frames);
-    sampleMs += scene.nextStepMs ? scene.nextStepMs(sampleMs) : stepMs;
+  let sampleMs = 0;
+  const driveTo = (untilMs: number): void => {
+    while (sampleMs <= endMs && sampleMs < untilMs) {
+      setClock(sampleMs / 1_000);
+      const frames = scene.advance(engine, sampleMs);
+      engine.tick(sampleMs, frames);
+      sampleMs += scene.nextStepMs ? scene.nextStepMs(sampleMs) : stepMs;
+    }
+  };
+
+  const actions = [...(scene.actions ?? [])].sort((a, b) => a.atMs - b.atMs);
+  if (actions.length === 0) {
+    driveTo(Number.POSITIVE_INFINITY);
+    return (await audioContext.startRendering()) as unknown as AudioBuffer;
+  }
+
+  // A scene with mid-scene actions cannot be driven entirely before rendering
+  // the way the plain scenes are: automation is timestamped, but a `disconnect`
+  // or an un-timed `stop()` takes effect where the render currently stands, so
+  // a teardown "mid-scene" would actually land at time zero and its click could
+  // never appear. Instead the render is suspended at every tick: the engine
+  // always speaks at the render's own clock, actions fire between render
+  // quanta exactly as a real page's do, and pre-scheduling never mixes with
+  // live mutation.
+  //
+  // `sweeps-noop-actions` is the control for this path — same scene, actions
+  // that do nothing. It must scan 0, and any drift between the clock the
+  // engine is handed and the render head shows up there first.
+  const QUANTUM_SECONDS = 128 / SAMPLE_RATE;
+  interface DriveEvent {
+    atMs: number;
+    kind: "action" | "tick";
+    run?: (engine: SoundEngine) => void;
+  }
+  // The tick schedule is a pure function of time, so the whole timeline —
+  // ticks and actions interleaved — is known before rendering starts, which
+  // is what registering the suspensions up front requires.
+  const events: DriveEvent[] = actions.map((action) => ({
+    atMs: action.atMs,
+    kind: "action",
+    run: action.run,
+  }));
+  for (let tickMs = 0; tickMs <= endMs; ) {
+    events.push({ atMs: tickMs, kind: "tick" });
+    tickMs += scene.nextStepMs ? scene.nextStepMs(tickMs) : stepMs;
+  }
+  events.sort((a, b) =>
+    a.atMs === b.atMs
+      ? (a.kind === "action" ? 0 : 1) - (b.kind === "action" ? 0 : 1)
+      : a.atMs - b.atMs,
+  );
+
+  // Group events by the render quantum they suspend on. Suspension times must
+  // be unique and strictly inside the render, so quanta collapse together and
+  // the leading group runs before rendering begins.
+  const groups = new Map<number, DriveEvent[]>();
+  let lastQuantum = -1;
+  for (const event of events) {
+    const quantum = Math.max(
+      lastQuantum === -1 ? 0 : lastQuantum,
+      Math.floor(event.atMs / 1_000 / QUANTUM_SECONDS),
+    );
+    lastQuantum = Math.max(lastQuantum, quantum);
+    const group = groups.get(quantum);
+    if (group) group.push(event);
+    else groups.set(quantum, [event]);
+  }
+
+  const runGroup = (group: DriveEvent[], atSeconds: number): void => {
+    for (const event of group) {
+      // The clock is the render head, not the event's nominal time. Those
+      // differ by up to a quantum, and handing the engine the nominal time
+      // schedules its ramps that far ahead of where the render actually
+      // stands: every one of them then starts from a value the output has not
+      // reached yet, which is a step. A no-op action reproduced it, so this is
+      // the harness's own discontinuity rather than anything the engine did.
+      setClock(atSeconds);
+      if (event.kind === "action") {
+        event.run!(engine);
+      } else {
+        engine.tick(event.atMs, scene.advance(engine, event.atMs));
+      }
+    }
+  };
+
+  const suspendable = audioContext as unknown as {
+    suspend: (seconds: number) => Promise<void>;
+    resume: () => Promise<void>;
+  };
+  const lastRenderableQuantum =
+    Math.floor((scene.durationSeconds - QUANTUM_SECONDS) / QUANTUM_SECONDS);
+  for (const [quantum, group] of groups) {
+    const seconds = quantum * QUANTUM_SECONDS;
+    if (quantum === 0) {
+      runGroup(group, 0);
+      continue;
+    }
+    if (quantum > lastRenderableQuantum) break;
+    void suspendable.suspend(seconds).then(() => {
+      runGroup(group, seconds);
+      void suspendable.resume();
+    });
   }
 
   return (await audioContext.startRendering()) as unknown as AudioBuffer;
@@ -1112,6 +1218,45 @@ try {
         cantus: "duet" as CantusVariant,
       },
     ]),
+  );
+
+  SCENES.push(
+    // The choral timbre toggled off while the bed is sounding, then back on,
+    // then off again. Spencer's arrangement, because that is the one with the
+    // formant banks actually audible: no spotlight duck, no percussive layer
+    // over them, and every voice carrying its vowel at full level when the
+    // toggle lands.
+    {
+      ...sweepScene("sweeps-choral-toggle", "presence", SCAN_SECONDS),
+      config: SPENCER_ARRANGEMENT,
+      cantus: "tenor" as CantusVariant,
+      actions: [
+        { atMs: 12_000, run: (engine) => engine.setConfig({ choralTimbre: false }) },
+        { atMs: 20_000, run: (engine) => engine.setConfig({ choralTimbre: true }) },
+        { atMs: 28_000, run: (engine) => engine.setConfig({ choralTimbre: false }) },
+      ],
+    },
+    {
+      ...sweepScene("sweeps-noop-actions", "presence", SCAN_SECONDS),
+      config: SPENCER_ARRANGEMENT,
+      cantus: "tenor" as CantusVariant,
+      actions: [
+        { atMs: 12_000, run: () => {} },
+        { atMs: 20_000, run: () => {} },
+        { atMs: 28_000, run: () => {} },
+      ],
+    },
+    // `reset()` fired while sustained voices — including a promoted presence
+    // soloist with its halo up — are sounding, which is what a day swap on the
+    // archive page does. The second reset lands while the scene rebuilt from
+    // the first is back at full level.
+    {
+      ...sweepScene("sweeps-reset-presence", "presence", SCAN_SECONDS),
+      actions: [
+        { atMs: 15_000, run: (engine) => engine.reset() },
+        { atMs: 27_000, run: (engine) => engine.reset() },
+      ],
+    },
   );
 
   // Scene-id substrings on the command line narrow the run to the scenes that

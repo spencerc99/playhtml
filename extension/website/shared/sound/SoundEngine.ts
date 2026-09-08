@@ -68,6 +68,14 @@ const MIN_EXPONENTIAL_TARGET = 1e-4;
 const FIFTH_TOGGLE_SECONDS = 0.3;
 
 /**
+ * Fade length for the formant bank when the choral timbre is toggled while
+ * voices are sounding. The bank mixes back in at more than half the voice's
+ * own level, so connecting or disconnecting it instantly steps the output by
+ * that much mid-cycle — an audible click on every toggle.
+ */
+const FORMANT_TOGGLE_SECONDS = 0.3;
+
+/**
  * Pitch a voice's oscillators are built at, before it takes its first note.
  * An instrument crossfade rebuilds them here too, whenever the voice has no
  * note of its own yet to carry over.
@@ -1209,6 +1217,13 @@ interface FormantNodes {
   mix: GainNode;
   /** Last vowel openness scheduled, so an unchanged morph is not re-ramped. */
   lastOpenness: number;
+  /**
+   * When the bank's closing fade reaches silence and it is safe to detach, or
+   * null while the bank is open. Checked on the same tick sweep as the fifth's
+   * `fifthSilentAt` — a bank disconnected before its mix has faded steps the
+   * output by the formant level, which is a click.
+   */
+  silentAt: number | null;
 }
 
 /**
@@ -1834,7 +1849,9 @@ export class SoundEngine {
       }
     }
     if (config.choralTimbre === false) {
-      for (const [, voice] of this.voices) this.detachFormants(voice);
+      // Faded, not detached: the banks are audible on voices already sounding,
+      // and the tick sweep detaches each one once its fade reaches silence.
+      for (const [, voice] of this.voices) this.fadeFormants(voice);
     }
 
     // Switching between sustained and spotlight must not leave the soloist
@@ -1878,6 +1895,14 @@ export class SoundEngine {
         vibrato.depth.disconnect();
         vibrato.parked = true;
         vibrato.parkAt = null;
+      }
+      const formants = voice.formants;
+      if (
+        formants &&
+        formants.silentAt !== null &&
+        this.ctx.currentTime >= formants.silentAt
+      ) {
+        this.detachFormants(voice);
       }
     }
 
@@ -2140,7 +2165,7 @@ export class SoundEngine {
       if (this.config.choralTimbre) {
         this.attachFormants(voice);
       } else if (voice.formants) {
-        this.detachFormants(voice);
+        this.fadeFormants(voice);
       }
 
       if (isPercussive) {
@@ -3099,12 +3124,30 @@ export class SoundEngine {
    * only while the choral timbre is on.
    */
   private attachFormants(voice: Voice): void {
-    if (!this.ctx || voice.formants) return;
+    if (!this.ctx) return;
+    const existing = voice.formants;
+    if (existing) {
+      // A bank still fading out is reopened rather than replaced: its filters
+      // carry state the voice is already sounding through, and the anchored
+      // ramp walks the mix back up from wherever the fade had reached.
+      if (existing.silentAt !== null) {
+        existing.silentAt = null;
+        this.rampParam(
+          existing.mix.gain,
+          CHORAL_TUNING.formantMix,
+          FORMANT_TOGGLE_SECONDS,
+        );
+      }
+      return;
+    }
     const ctx = this.ctx;
     const now = ctx.currentTime;
 
+    // Faded in rather than connected at level: the filters are fed a signal
+    // that is already sounding, and their output arriving at full mix in one
+    // sample is the same step a disconnect makes on the way out.
     const mix = ctx.createGain();
-    mix.gain.setValueAtTime(CHORAL_TUNING.formantMix, now);
+    mix.gain.setValueAtTime(0, now);
 
     const filters = CHORAL_TUNING.closedFormantsHz.map((hz) => {
       const filter = ctx.createBiquadFilter();
@@ -3119,7 +3162,25 @@ export class SoundEngine {
     });
 
     mix.connect(voice.gainNode);
-    voice.formants = { filters, mix, lastOpenness: 0 };
+    voice.formants = { filters, mix, lastOpenness: 0, silentAt: null };
+    this.rampParam(mix.gain, CHORAL_TUNING.formantMix, FORMANT_TOGGLE_SECONDS);
+  }
+
+  /**
+   * Fade a voice's formant bank closed. The bank stays connected until the
+   * fade reaches silence — the tick sweep detaches it once `silentAt` passes —
+   * because disconnecting a bank still carrying signal is an audible click.
+   * Idempotent while a fade is already running, so the tick path can call it
+   * every frame the choral timbre is off.
+   */
+  private fadeFormants(voice: Voice): void {
+    if (!this.ctx || !voice.formants || voice.formants.silentAt !== null) {
+      return;
+    }
+    this.rampParam(voice.formants.mix.gain, 0, FORMANT_TOGGLE_SECONDS);
+    voice.formants.silentAt =
+      this.rampEnds.get(voice.formants.mix.gain) ??
+      this.ctx.currentTime + FORMANT_TOGGLE_SECONDS;
   }
 
   /** Remove a voice's formant bank, returning it to its plain lowpass tone. */
@@ -6326,11 +6387,18 @@ export class SoundEngine {
     }
   }
 
-  /** Silence and tear down every ringing flourish note. */
+  /**
+   * Silence every ringing flourish note and forget the phrase in flight.
+   *
+   * The notes are stopped, not disconnected: `stopFlourishNote` either fades a
+   * note to zero or leaves its own envelope to finish, and disconnecting here
+   * would cut that signal off mid-fade — a click on every reset and mode
+   * switch. Each note's `onended` already tears its graph down when the stop
+   * it has scheduled lands.
+   */
   private clearFlourish(): void {
     for (const note of [...this.flourishNotes]) {
       this.stopFlourishNote(note);
-      this.disconnectFlourishNote(note);
     }
     this.flourishNotes.clear();
     this.flourish = null;
@@ -6629,6 +6697,12 @@ export class SoundEngine {
         this.holdParam(voice.gainNode.gain, now);
         voice.gainNode.gain.linearRampToValueAtTime(0, now + 0.03);
       }
+      // The halo feeds the pan node, downstream of the gain being faded, so
+      // the cut above never reaches it. Left alone it would be stopped at
+      // full level by `disconnectVoice` when the oscillator ends — a
+      // mid-cycle cut. Released here over the same fast fade instead; it
+      // nulls `voice.halo`, so the later disconnect does not touch it again.
+      this.releaseHalo(voice, 0.03);
       if (voice.oscillator) {
         voice.oscillator.onended = () => this.disconnectVoice(voice);
         try {
