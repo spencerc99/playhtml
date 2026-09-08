@@ -129,7 +129,8 @@ const aheadOfHead = ((): {
   drive: <T>(headSeconds: number, run: () => T) => T;
   release: () => void;
 } => {
-  const queue: Array<() => void> = [];
+  /** Queued disconnects, keyed by the node they were called on. */
+  const queue = new Map<object, Array<() => void>>();
   let deferring = false;
   let headSeconds = 0;
 
@@ -166,13 +167,15 @@ const aheadOfHead = ((): {
       ...descriptor,
       value: function (this: object, ...args: unknown[]) {
         if (!deferring) return original.apply(this, args);
-        queue.push(() => {
+        const pending = queue.get(this) ?? [];
+        pending.push(() => {
           try {
             original.apply(this, args);
           } catch {
             /* already disconnected, or its graph is gone */
           }
         });
+        queue.set(this, pending);
         return undefined;
       },
     });
@@ -226,6 +229,27 @@ const aheadOfHead = ((): {
     },
   });
 
+  // A node that is reconnected after a deferred disconnect has to be
+  // disconnected first, or the old edge and the new one both stand and the node
+  // is summed into its destination twice. The vibrato does exactly this — it is
+  // parked by disconnecting its depth and resumed by connecting it again — and
+  // a doubled modulation depth is a jump in pitch, which is a click.
+  for (const proto of nodePrototypes) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, "connect");
+    if (!descriptor || typeof descriptor.value !== "function") continue;
+    const original = descriptor.value as (...args: unknown[]) => unknown;
+    Object.defineProperty(proto, "connect", {
+      ...descriptor,
+      value: function (this: object, ...args: unknown[]) {
+        if (deferring) {
+          for (const apply of queue.get(this) ?? []) apply();
+          queue.delete(this);
+        }
+        return original.apply(this, args);
+      },
+    });
+  }
+
   return {
     drive: (head, run) => {
       const wasDeferring = deferring;
@@ -240,7 +264,10 @@ const aheadOfHead = ((): {
       }
     },
     release: () => {
-      for (const apply of queue.splice(0, queue.length)) apply();
+      for (const pending of [...queue.values()]) {
+        for (const apply of pending) apply();
+      }
+      queue.clear();
     },
     /** Told where the drive's own clock stands, which only the driver knows. */
     setDrivenSeconds: (read: () => number) => {
