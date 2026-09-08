@@ -2,7 +2,13 @@
 // ABOUTME: Verifies cursor timbre changes crossfade without stacking full-level oscillators.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PRESENCE_TUNING, haloPitch, SoundEngine } from "../SoundEngine";
+import {
+  CLICK_STORM_TUNING,
+  PRESENCE_TUNING,
+  haloPitch,
+  pacingFitsBudget,
+  SoundEngine,
+} from "../SoundEngine";
 import {
   CURSOR_INSTRUMENTS,
   getInstrument,
@@ -4564,94 +4570,460 @@ describe("envelopes that must not be cut mid-sound", () => {
 });
 
 describe("the one-shot note budget", () => {
-  it("cuts the note furthest through its envelope, not the quietest", async () => {
+  /** Mirrors FLOURISH_TUNING.maxConcurrentNotes, which is private. */
+  const FLOURISH_CAP = 16;
+
+  type BudgetState = {
+    flourishNotes: Set<FakeFlourishNote>;
+    admitFlourishNote(): boolean;
+  };
+
+  type FakeFlourishNote = {
+    oscillator: TestOscillatorNode;
+    partial: TestOscillatorNode;
+    gainNode: TestGainNode;
+    partialGainNode: TestGainNode;
+    panNode: TestStereoPannerNode;
+    peakGain: number;
+    startedAtMs: number;
+    durationMs: number;
+  };
+
+  /**
+   * A note record shaped like the engine's own, built from real test nodes so
+   * a cut would leave evidence on them. `startedAtMs` and `durationMs` are
+   * what the budget reads; everything else exists so an eviction, if one
+   * happened, would have somewhere to write.
+   */
+  const fakeNote = (
+    startedAtMs: number,
+    durationMs: number,
+    peakGain = 0.055,
+  ): FakeFlourishNote => ({
+    oscillator: new TestOscillatorNode(),
+    partial: new TestOscillatorNode(),
+    gainNode: new TestGainNode(),
+    partialGainNode: new TestGainNode(),
+    panNode: new TestStereoPannerNode(),
+    peakGain,
+    startedAtMs,
+    durationMs,
+  });
+
+  /** Whether anything cut this note short: a forced fade, or a stop. */
+  const wasCut = (note: FakeFlourishNote): boolean =>
+    note.gainNode.gain.events.length > 0 ||
+    note.partialGainNode.gain.events.length > 0 ||
+    note.oscillator.stopTimes.length > 0 ||
+    note.partial.stopTimes.length > 0;
+
+  it("refuses a new note rather than cutting one that is still sounding", async () => {
     const engine = new SoundEngine();
     await engine.init();
-
-    const state = engine as unknown as {
-      flourishNotes: Set<{
-        peakGain: number;
-        startedAtMs: number;
-        durationMs: number;
-      }>;
-      enforceFlourishBudget(): void;
-    };
-
-    // An arrival chime is quieter than a flourish note by design, so a budget
-    // that chose by peak gain evicted every chime the engine ever scheduled
-    // and none of the flourish notes competing with them.
-    const chime = { peakGain: 0.026, startedAtMs: 900, durationMs: 2000 };
-    const flourish = { peakGain: 0.055, startedAtMs: 0, durationMs: 1000 };
+    const state = engine as unknown as BudgetState;
 
     const nowMs = context.currentTime * 1000;
-    // The flourish is further through its own envelope than the chime, so it
-    // is what a cut costs least.
-    expect((nowMs - flourish.startedAtMs) / flourish.durationMs).toBeGreaterThan(
-      (nowMs - chime.startedAtMs) / chime.durationMs,
+    // Every note mid-envelope, including one 900ms into a 1000ms decay — the
+    // note a "cut whatever has least left" budget would have taken, and the
+    // one whose forced fade is the sharpest corner in the mix. Refusing costs
+    // a note nobody has heard yet; cutting costs a note everybody has.
+    const notes = Array.from({ length: FLOURISH_CAP }, (_, index) =>
+      fakeNote(nowMs - (index === 0 ? 900 : 100), index === 0 ? 1000 : 5000),
     );
+    for (const note of notes) state.flourishNotes.add(note);
 
-    const cap = 16;
-    for (let index = 0; index < cap - 2; index++) {
-      state.flourishNotes.add({
-        peakGain: 0.055,
-        startedAtMs: 800,
-        durationMs: 5000,
-      });
+    expect(state.admitFlourishNote()).toBe(false);
+
+    expect(state.flourishNotes.size).toBe(FLOURISH_CAP);
+    for (const note of notes) {
+      expect(state.flourishNotes.has(note)).toBe(true);
+      expect(wasCut(note)).toBe(false);
     }
-    state.flourishNotes.add(chime as never);
-    state.flourishNotes.add(flourish as never);
-    expect(state.flourishNotes.size).toBe(cap);
-
-    state.enforceFlourishBudget();
-
-    expect(state.flourishNotes.has(chime as never)).toBe(true);
-    expect(state.flourishNotes.has(flourish as never)).toBe(false);
 
     engine.dispose();
   });
 
-  it("never evicts a note that has not started while a sounding one remains", async () => {
+  it("never touches a note that has not started", async () => {
     const engine = new SoundEngine();
     await engine.init();
-
-    const state = engine as unknown as {
-      flourishNotes: Set<{
-        peakGain: number;
-        startedAtMs: number;
-        durationMs: number;
-      }>;
-      enforceFlourishBudget(): void;
-    };
+    const state = engine as unknown as BudgetState;
 
     const nowMs = context.currentTime * 1000;
     // A chime cluster is scheduled with delays, so several of its notes are
-    // still in the future when the next note wants a slot. Cutting one of
-    // those silences a chime that never sounded at all.
-    const pending = {
-      peakGain: 0.026,
-      startedAtMs: nowMs + 500,
-      durationMs: 2000,
-    };
-    const sounding = {
-      peakGain: 0.055,
-      startedAtMs: nowMs - 900,
-      durationMs: 1000,
-    };
-
-    for (let index = 0; index < 14; index++) {
-      state.flourishNotes.add({
-        peakGain: 0.055,
-        startedAtMs: nowMs - 100,
-        durationMs: 5000,
-      });
+    // still in the future when the next note wants a slot. Those are the
+    // dearest of all: cutting one silences a chime that never sounded.
+    const pending = fakeNote(nowMs + 500, 2000, 0.026);
+    state.flourishNotes.add(pending);
+    for (let index = 0; index < FLOURISH_CAP - 1; index++) {
+      state.flourishNotes.add(fakeNote(nowMs - 100, 5000));
     }
-    state.flourishNotes.add(pending as never);
-    state.flourishNotes.add(sounding as never);
 
-    state.enforceFlourishBudget();
+    expect(state.admitFlourishNote()).toBe(false);
 
-    expect(state.flourishNotes.has(pending as never)).toBe(true);
-    expect(state.flourishNotes.has(sounding as never)).toBe(false);
+    expect(state.flourishNotes.has(pending)).toBe(true);
+    expect(wasCut(pending)).toBe(false);
+
+    engine.dispose();
+  });
+
+  it("reclaims the slots of notes that have finished sounding", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as BudgetState;
+
+    const nowMs = context.currentTime * 1000;
+    // A note past the end of its own envelope is holding a slot it no longer
+    // needs — it is only waiting for its `onended` to fire. Dropping it is not
+    // a cut, because there is nothing left of it to cut, which is why the
+    // budget reaps these and refuses everything else.
+    const finished = fakeNote(nowMs - 2000, 1000);
+    const sounding = Array.from({ length: FLOURISH_CAP - 1 }, () =>
+      fakeNote(nowMs - 100, 5000),
+    );
+    state.flourishNotes.add(finished);
+    for (const note of sounding) state.flourishNotes.add(note);
+
+    expect(state.admitFlourishNote()).toBe(true);
+
+    expect(state.flourishNotes.has(finished)).toBe(false);
+    // Reaped, not faded: a finished note gets no forced ramp, so nothing is
+    // written to a param that is already at rest.
+    expect(wasCut(finished)).toBe(false);
+    for (const note of sounding) {
+      expect(state.flourishNotes.has(note)).toBe(true);
+      expect(wasCut(note)).toBe(false);
+    }
+
+    engine.dispose();
+  });
+
+  it("builds nothing at all for a note the budget refuses", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as BudgetState & {
+      triggerFlourishNote(
+        frequency: number,
+        x: number,
+        peakGain: number,
+        decaySeconds: number,
+      ): void;
+    };
+
+    const nowMs = context.currentTime * 1000;
+    for (let index = 0; index < FLOURISH_CAP; index++) {
+      state.flourishNotes.add(fakeNote(nowMs - 100, 5000));
+    }
+
+    const nodesBefore = createdNodes.length;
+    const oscillatorsBefore = context.oscillators.length;
+    state.triggerFlourishNote(440, 500, 0.055, 1.2);
+
+    // The refusal happens before any node exists, so a dropped note costs no
+    // oscillator, no gain, no panner and no scheduled automation. That cost
+    // — construction and scheduling, not the sound — is what a storm was
+    // actually spending.
+    expect(context.oscillators.length).toBe(oscillatorsBefore);
+    expect(createdNodes.length).toBe(nodesBefore);
+    expect(state.flourishNotes.size).toBe(FLOURISH_CAP);
+
+    engine.dispose();
+  });
+
+  it("lets an audition through a full budget", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    const state = engine as unknown as BudgetState;
+
+    const nowMs = context.currentTime * 1000;
+    const notes = Array.from({ length: FLOURISH_CAP }, () =>
+      fakeNote(nowMs - 100, 5000),
+    );
+    for (const note of notes) state.flourishNotes.add(note);
+
+    // An audition is an explicit request for one sound, not scene traffic. It
+    // is not budgeted, and it still evicts nothing.
+    const before = context.oscillators.length;
+    engine.audition("soloistFlourish");
+    expect(context.oscillators.length).toBeGreaterThan(before);
+    for (const note of notes) expect(wasCut(note)).toBe(false);
+
+    engine.dispose();
+  });
+});
+
+describe("click storm admission", () => {
+  /** Nodes one admitted click builds: two oscillators, two gains, one panner. */
+  const OSCILLATORS_PER_BELL = 2;
+
+  type ClickState = {
+    clickBellEndsAt: number[];
+    droppedClicks: number;
+  };
+
+  const admittedSince = (before: number): number =>
+    (context.oscillators.length - before) / OSCILLATORS_PER_BELL;
+
+  /**
+   * Drive a storm at `clicksPerSecond` for `seconds`, advancing the context
+   * clock between clicks the way a real one does, and report what sounded.
+   *
+   * `peakConcurrent` is sampled from the engine's own liveness bookkeeping
+   * rather than counted from nodes, because a bell retires by time: the node
+   * count only ever grows, and what the mix has to sum is how many of them
+   * overlap.
+   */
+  const storm = (
+    engine: SoundEngine,
+    state: ClickState,
+    { clicksPerSecond, seconds }: { clicksPerSecond: number; seconds: number },
+  ) => {
+    const step = 1 / clicksPerSecond;
+    const fired = Math.round(clicksPerSecond * seconds);
+    const before = context.oscillators.length;
+    const droppedBefore = state.droppedClicks;
+    const startedAt = context.currentTime;
+    const admittedAt: number[] = [];
+    let peakConcurrent = 0;
+    for (let index = 0; index < fired; index++) {
+      const droppedBeforeClick = state.droppedClicks;
+      engine.triggerClick({ x: 500, y: 400, holdDuration: undefined });
+      // Whether the click sounded, read from the drop counter rather than
+      // from the live-bell count: admission retires expired bells before it
+      // pushes a new one, so the count can be unchanged across an admission.
+      if (state.droppedClicks === droppedBeforeClick) {
+        admittedAt.push(context.currentTime - startedAt);
+      }
+      peakConcurrent = Math.max(peakConcurrent, state.clickBellEndsAt.length);
+      context.currentTime += step;
+    }
+    let longestSilence = 0;
+    for (let index = 1; index < admittedAt.length; index++) {
+      longestSilence = Math.max(
+        longestSilence,
+        admittedAt[index] - admittedAt[index - 1],
+      );
+    }
+    return {
+      fired,
+      admitted: admittedSince(before),
+      dropped: state.droppedClicks - droppedBefore,
+      peakConcurrent,
+      admittedAt,
+      longestSilence,
+    };
+  };
+
+  it("rings an isolated click and a quick burst exactly as before", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as ClickState;
+
+    // One click, alone: the case that must be untouched by any of this.
+    let before = context.oscillators.length;
+    engine.triggerClick({ x: 10, y: 10, holdDuration: undefined });
+    expect(admittedSince(before)).toBe(1);
+    expect(state.droppedClicks).toBe(0);
+
+    // A double-click, a fast triple, an impatient half-dozen — everything the
+    // burst allowance exists to leave alone. Fired inside a single frame, so
+    // the rate limit would catch them if the bucket did not.
+    before = context.oscillators.length;
+    for (let index = 0; index < CLICK_STORM_TUNING.admissionBurst - 1; index++) {
+      context.currentTime += 0.001;
+      engine.triggerClick({ x: 10, y: 10, holdDuration: undefined });
+    }
+    expect(admittedSince(before)).toBe(CLICK_STORM_TUNING.admissionBurst - 1);
+    expect(state.droppedClicks).toBe(0);
+
+    engine.dispose();
+  });
+
+  it("keeps clicking a second apart out of the budget entirely", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as ClickState;
+
+    // Ordinary use: someone clicking around a page. The bell rings for three
+    // seconds, so a few of these do overlap — but never near the cap, and the
+    // bucket refills many times over between them.
+    const result = storm(engine, state, { clicksPerSecond: 1, seconds: 30 });
+
+    expect(result.admitted).toBe(result.fired);
+    expect(result.dropped).toBe(0);
+    expect(result.peakConcurrent).toBeLessThan(
+      CLICK_STORM_TUNING.maxConcurrentBells,
+    );
+
+    engine.dispose();
+  });
+
+  it("holds a pathological storm to the budget and drops the rest", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as ClickState;
+
+    // 50 clicks a second for ten seconds — faster than a person can click,
+    // which is the point: the budget is what makes the ceiling a property of
+    // the engine rather than of the input.
+    const result = storm(engine, state, { clicksPerSecond: 50, seconds: 10 });
+
+    expect(result.fired).toBe(500);
+    expect(result.peakConcurrent).toBeLessThanOrEqual(
+      CLICK_STORM_TUNING.maxConcurrentBells,
+    );
+    expect(result.admitted + result.dropped).toBe(result.fired);
+    expect(result.dropped).toBeGreaterThan(0);
+
+    // Density stays audible: the storm is not throttled down to a trickle,
+    // it is throttled down to as many bells as the mix can carry, at the rate
+    // the budget sustains, for the whole ten seconds.
+    expect(result.admitted).toBeGreaterThan(
+      CLICK_STORM_TUNING.admissionsPerSecond * 9,
+    );
+
+    engine.dispose();
+  });
+
+  it("paces a storm evenly instead of strobing it", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as ClickState;
+
+    // The failure this rules out is not a quieter storm but a pulsing one. A
+    // rate set above what the concurrency cap can sustain fills every slot
+    // inside a second, refuses everything until they expire together, and
+    // then admits another full cap's worth — measured at an earlier tuning,
+    // 16, 0, 0, 16, 0, 0 bells a second, with two and a half seconds of
+    // silence inside a storm of twenty-five clicks a second. Both limits were
+    // honoured throughout; they simply disagreed.
+    const result = storm(engine, state, { clicksPerSecond: 25, seconds: 8 });
+
+    const perSecond = new Array<number>(8).fill(0);
+    for (const admittedAt of result.admittedAt) {
+      const second = Math.floor(admittedAt);
+      if (second < perSecond.length) perSecond[second]++;
+    }
+    // Every second of the storm sounds, and none of them carries a whole
+    // cap's worth. The first is allowed the bucket's burst on top of the rate.
+    for (const [second, count] of perSecond.entries()) {
+      expect(count, `second ${second} of the storm`).toBeGreaterThan(0);
+      expect(count, `second ${second} of the storm`).toBeLessThan(
+        CLICK_STORM_TUNING.maxConcurrentBells,
+      );
+    }
+    expect(result.longestSilence).toBeLessThan(1);
+
+    engine.dispose();
+  });
+
+  it("keeps the admission rate inside what the concurrency cap sustains", () => {
+    // The two limits are the same budget read two ways: a bell holds its slot
+    // for its whole release, so the cap supports cap / release admissions a
+    // second and no more. This is what makes the bucket the pacer and
+    // concurrency the backstop, and it is a relation between three constants
+    // in two files — the tuning here and CLICK_BELL's envelope — so it is
+    // asserted rather than left to hold by coincidence.
+    expect(pacingFitsBudget()).toBe(true);
+  });
+
+  it("creates nothing at all for a click it drops", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as ClickState;
+
+    // Spend the budget, then click again on the same instant. The bucket is
+    // what binds first under a storm this fast, and the assertion below is
+    // about what a refusal costs rather than which limit refused, so it is
+    // enough that the storm is being refused at all.
+    const spent = storm(engine, state, { clicksPerSecond: 200, seconds: 1.5 });
+    expect(spent.dropped).toBeGreaterThan(0);
+    expect(state.clickBellEndsAt.length).toBeLessThanOrEqual(
+      CLICK_STORM_TUNING.maxConcurrentBells,
+    );
+
+    const nodesBefore = createdNodes.length;
+    const oscillatorsBefore = context.oscillators.length;
+    const gainsBefore = context.gains.length;
+    const droppedBefore = state.droppedClicks;
+
+    engine.triggerClick({ x: 500, y: 400, holdDuration: undefined });
+
+    // The refusal comes before construction, so the dropped click costs an
+    // array scan and nothing else. The storm's expense was never the sound of
+    // the extra bells — it was building and scheduling them.
+    expect(state.droppedClicks).toBe(droppedBefore + 1);
+    expect(context.oscillators.length).toBe(oscillatorsBefore);
+    expect(context.gains.length).toBe(gainsBefore);
+    expect(createdNodes.length).toBe(nodesBefore);
+
+    engine.dispose();
+  });
+
+  it("never cuts a bell that is already ringing to admit a newer one", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as ClickState;
+
+    const oscillatorsBefore = context.oscillators.length;
+    const gainsBefore = context.gains.length;
+    storm(engine, state, { clicksPerSecond: 50, seconds: 10 });
+
+    // Every bell that got in rings out on the envelope it was given. A second
+    // stop, or a re-anchoring `cancelAndHold` on its envelope, would mean
+    // something reached back into a sounding note — the forced fade that is
+    // itself the artifact this replaced.
+    for (const oscillator of context.oscillators.slice(oscillatorsBefore)) {
+      expect(oscillator.stopTimes).toHaveLength(1);
+    }
+    for (const gain of context.gains.slice(gainsBefore)) {
+      expect(
+        gain.gain.events.filter((event) => event.method === "cancelAndHold"),
+      ).toHaveLength(0);
+    }
+
+    engine.dispose();
+  });
+
+  it("refills the budget once the storm stops", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as ClickState;
+
+    storm(engine, state, { clicksPerSecond: 50, seconds: 3 });
+    expect(state.droppedClicks).toBeGreaterThan(0);
+
+    // Long enough for every bell to reach silence and the bucket to refill.
+    context.currentTime += 5;
+
+    const before = context.oscillators.length;
+    const droppedBefore = state.droppedClicks;
+    engine.triggerClick({ x: 10, y: 10, holdDuration: undefined });
+    expect(admittedSince(before)).toBe(1);
+    expect(state.droppedClicks).toBe(droppedBefore);
+    expect(state.clickBellEndsAt).toHaveLength(1);
+
+    engine.dispose();
+  });
+
+  it("counts a held click for as long as it actually rings", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    const state = engine as unknown as ClickState;
+
+    // A held click's release is scaled up to three times the ordinary bell's,
+    // so it occupies its slot that much longer. Admission has to read the hold
+    // before it decides, or the budget bounds the wrong quantity.
+    engine.triggerClick({ x: 10, y: 10, holdDuration: 4000 });
+    const [heldEndsAt] = state.clickBellEndsAt;
+
+    context.currentTime += 0.5;
+    engine.triggerClick({ x: 10, y: 10, holdDuration: undefined });
+    const plainEndsAt = state.clickBellEndsAt[1];
+
+    expect(heldEndsAt - context.currentTime).toBeGreaterThan(
+      (plainEndsAt - context.currentTime) * 2,
+    );
 
     engine.dispose();
   });

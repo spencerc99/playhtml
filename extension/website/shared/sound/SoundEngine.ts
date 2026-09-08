@@ -180,34 +180,77 @@ const FLOURISH_EVICTION_FADE_SECONDS = 0.025;
  * scheduling cost of building them.
  *
  * The answer is admission control, not eviction. Density is the point: rapid
- * individual bells are what a storm should sound like, and 15-20 bells per
- * second already reads as "hundreds". So the engine admits clicks at the
- * highest rate it can sound cleanly and silently ignores the rest. A click
- * that is not admitted creates nothing at all — no nodes, no automation — and
- * a click that is admitted rings out in full. Nothing already sounding is ever
- * cut to make room for something newer; that cut *is* the artifact.
+ * individual bells are what a storm should sound like, so the engine admits
+ * clicks at the highest *sustained* rate it can sound cleanly and silently
+ * ignores the rest. A click that is not admitted creates nothing at all — no
+ * nodes, no automation — and a click that is admitted rings out in full.
+ * Nothing already sounding is ever cut to make room for something newer; that
+ * cut *is* the artifact.
  *
- * Isolated clicking never reaches either limit, so ordinary use is untouched.
+ * Sustained is the load-bearing word. The bell rings for three seconds, so
+ * twenty of them sounding at once is five arriving a second, not twenty:
+ * "how many may sound together" and "how many may start each second" are the
+ * same budget read two ways, and setting them independently is what made an
+ * earlier tuning strobe. See `admissionsPerSecond`.
+ *
+ * Isolated clicking never reaches either limit, so ordinary use is untouched:
+ * measured, anything up to four clicks a second sounds every one of them.
  */
-const CLICK_STORM_TUNING = {
+export const CLICK_STORM_TUNING = {
   /**
    * Simultaneously-sounding click bells. Above this the mix is summing more
    * bell than it has headroom for, whatever their individual envelopes say.
    */
-  maxConcurrentBells: 16,
+  maxConcurrentBells: 20,
   /**
-   * Clicks admitted per second, as a token bucket. Concurrency alone is not
-   * enough: the click bell's release runs to three seconds, so a rate that
-   * fills sixteen slots inside a tenth of a second still costs sixteen node
-   * graphs in one audio callback even though the count is legal.
+   * Clicks admitted per second, as a token bucket, and the limit that does
+   * the actual work.
+   *
+   * The rate has to be one the concurrency cap can sustain, because a bell
+   * holds its slot for `CLICK_BELL.release` — three seconds — and a rate above
+   * `maxConcurrentBells / 3s` therefore fills every slot faster than any of
+   * them frees. What happens then is not a lower density but a pulsing one:
+   * measured at 18/s against a cap of 16, a storm admitted sixteen bells in
+   * the first second, refused everything for two and a half, then admitted
+   * sixteen more as the first sixteen expired together — 16, 0, 0, 16, 0, 0
+   * bells per second, with two and a half seconds of total silence in the
+   * middle of someone clicking twenty-five times a second. Both limits were
+   * honoured the whole time; they were simply set to disagree, and the
+   * concurrency cap resolved the disagreement by strobing.
+   *
+   * Five a second fits inside the cap (5 x 3.1s = 15.6 slots of 20), so the
+   * bucket paces admissions and concurrency is only a backstop. The same storm
+   * then admits an even five bells a second for as long as it lasts, which is
+   * what "the storm stays audible" has to mean. `pacingFitsBudget` keeps the
+   * two in step if either is retuned.
    */
-  admissionsPerSecond: 18,
+  admissionsPerSecond: 5,
   /**
    * Bucket depth, in admissions. A burst this size passes at full speed before
    * the rate limit engages, which is what keeps a handful of quick clicks —
    * a double-click, a fast triple — sounding exactly as they always did.
    */
   admissionBurst: 6,
+};
+
+/**
+ * Whether the admission rate is one the concurrency cap can sustain.
+ *
+ * A bell occupies a slot until it reaches silence, so the cap supports
+ * `maxConcurrentBells / bellSeconds` admissions a second and no more. Set the
+ * rate above that and the cap becomes the binding limit, which it is not
+ * shaped to be: it refuses in bunches and frees in bunches, and a storm comes
+ * out as a pulse rather than as density. Exported so a test fails when a
+ * change to either the tuning or the bell's release breaks the relation,
+ * rather than a listener discovering it.
+ */
+export const pacingFitsBudget = (): boolean => {
+  const bellSeconds =
+    CLICK_BELL.attack + CLICK_BELL.release + BELL_SILENCE_SECONDS;
+  return (
+    CLICK_STORM_TUNING.admissionsPerSecond * bellSeconds <=
+    CLICK_STORM_TUNING.maxConcurrentBells
+  );
 };
 
 /** Interval between repeated plucks for percussive cursor types like text (ms) */
@@ -1541,6 +1584,11 @@ export class SoundEngine {
   /** Clicks dropped by admission control, for the dev diagnostics readout. */
   private droppedClicks = 0;
   /**
+   * Whether an audition button press is being served. Auditions bypass the
+   * scene's gating by design; see `audition`.
+   */
+  private auditioning = false;
+  /**
    * A buffer of white noise, the source every percussion sound filters. Built
    * once and shared: each playback gets its own BufferSourceNode, but they all
    * read the same samples, so a burst of ticks does not allocate a buffer per
@@ -2751,11 +2799,14 @@ export class SoundEngine {
    * That is the whole point: the storm's expense was never the sound of the
    * extra bells, it was constructing and scheduling them.
    *
-   * Two limits, both of which have to pass. Concurrency bounds how much bell
-   * is summing at once; the token bucket bounds how many graphs one audio
-   * callback can be asked to build, which concurrency alone does not, because
-   * the bell's three-second release lets sixteen clicks fit inside a tenth of
-   * a second and still be "only sixteen".
+   * Two limits, both of which have to pass, but they are not peers. The token
+   * bucket is what paces a storm: it bounds how many graphs one audio callback
+   * can be asked to build, which concurrency alone does not, because the
+   * bell's three-second release lets a whole cap's worth of clicks fit inside
+   * a tenth of a second and still be "only twenty". Concurrency is the
+   * backstop underneath it, for the cases the rate cannot see — a run of held
+   * clicks, whose releases are three times as long, each holding its slot that
+   * much longer than the rate assumes.
    */
   private admitClick(nowSeconds: number, endsAtSeconds: number): boolean {
     // Retire bells that have finished. Done here rather than on a timer so the
@@ -4899,7 +4950,21 @@ export class SoundEngine {
    */
   audition(accent: AuditionAccent): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    // The one-shot budget is scene gating too, and refusing rather than
+    // evicting made it capable of swallowing an audition outright: a panel
+    // full of ringing notes would answer a button press with silence, which
+    // is exactly what "nothing should swallow it" rules out. A handful of
+    // notes past the cap costs nothing — the cap exists to bound a storm, and
+    // a person pressing buttons is not one.
+    this.auditioning = true;
+    try {
+      this.soundAudition(accent);
+    } finally {
+      this.auditioning = false;
+    }
+  }
 
+  private soundAudition(accent: AuditionAccent): void {
     const centre = this.canvasWidth / 2;
     switch (accent) {
       case "trailArrival":
@@ -6361,6 +6426,7 @@ export class SoundEngine {
    * nothing left of them to cut.
    */
   private admitFlourishNote(): boolean {
+    if (this.auditioning) return true;
     if (this.flourishNotes.size < FLOURISH_TUNING.maxConcurrentNotes) {
       return true;
     }
