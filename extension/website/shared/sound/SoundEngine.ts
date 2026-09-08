@@ -915,11 +915,69 @@ export const SPOTLIGHT_TUNING = {
   /** Absolute floor the soloist must drop below to be demoted. */
   demoteMinVelocity: 2.2,
   /**
-   * Shortest a promotion can last. A flourish needs room to read as a phrase,
-   * so once a trail has the spotlight it keeps it for at least this long even
-   * if it dips.
+   * How long a candidate has to go on clearing the promote test before it is
+   * promoted at all.
+   *
+   * The outlier test above is instantaneous, and a scene produces instantaneous
+   * outliers constantly — a flick of the wrist, a scroll that throws the
+   * pointer across the page. Promoting on the first frame that clears it is
+   * what made the spotlight jump around: it was answering gestures rather than
+   * finding the trail actually driving the scene. The audition asks the
+   * candidate to keep clearing it, which no flick does.
    */
-  minSoloDurationMs: 1000,
+  auditionMs: 500,
+  /**
+   * How long the entrance takes. The gain lift, the drying and the brightening
+   * all ride this one length, so the promotion arrives as a single move rather
+   * than as three that happen to overlap.
+   *
+   * Short: an entrance is a step forward, not a fade-in. Long enough that the
+   * step is not a switch.
+   */
+  entranceMs: 200,
+  /**
+   * Shortest a reign can last. Once a trail is in the spotlight it keeps it for
+   * at least this long, and the demote test is not even consulted until it has
+   * elapsed — the one exception being a trail that leaves the scene, which is
+   * not a judgement about speed and cannot wait.
+   *
+   * A promotion that can be taken away inside a second is not a promotion, it
+   * is a flicker; the listener needs long enough to hear that a voice has moved
+   * to the front before it is allowed to move back.
+   */
+  minReignMs: 3000,
+  /**
+   * How long the reign takes to fully open. The vibrato widens across this
+   * rather than at the entrance, so the voice arrives and then warms, which is
+   * what a singer leaning into a phrase actually does. Sits alongside the
+   * halo's own onset so the two developments overlap instead of queueing.
+   */
+  reignDevelopMs: 1500,
+  /**
+   * How long the step back takes. Slower than the entrance: arriving is an
+   * event and leaving is a subsidence, and a release as quick as the entrance
+   * reads as the voice being cut off rather than as it rejoining the crowd.
+   */
+  releaseMs: 1000,
+  /**
+   * How long after a release before the scene will audition anyone again.
+   *
+   * Without it a scene with two fast trails hands the spotlight back and forth,
+   * and the alternation is more audible than either promotion. The cooldown
+   * makes a promotion an occasion: the scene sings as a crowd for a while
+   * between them.
+   */
+  sceneCooldownMs: 4000,
+  /**
+   * Fewest trails in the scene before anyone may audition.
+   *
+   * A soloist is a voice stepping out of a crowd, so it needs a crowd to step
+   * out of. With one or two cursors on the page there is nothing to be an
+   * outlier against and nothing for the listener to hear the promotion
+   * against — the "promoted" voice is simply the only voice, brighter for no
+   * reason they can hear.
+   */
+  minTrailsForSpotlight: 3,
   /**
    * Time constant of the smoothed velocity the soloist test runs on. Raw
    * per-frame velocity is dominated by rAF jitter and within-sweep speed
@@ -1049,8 +1107,6 @@ export const PRESENCE_TUNING = {
    * on their own, which reads as sheer rather than as close.
    */
   filterHz: 2300,
-  /** Seconds the brightening, the gain lift and the drying take to arrive. */
-  swellSeconds: 0.5,
   /** Seconds the return to the trail's ordinary voice takes on demotion. */
   returnSeconds: 0.8,
   /**
@@ -1110,6 +1166,132 @@ export const PRESENCE_TUNING = {
   auditionPadTones: 2,
   auditionPadGain: 0.28,
   auditionPadSeconds: 3.4,
+};
+
+/**
+ * Where a promotion has got to.
+ *
+ * The spotlight used to be a boolean — a trail either held it or it did not —
+ * and every part of the promotion had to be inferred from the edge where that
+ * boolean changed. That is why the entrance, the warming and the step back
+ * were three unrelated ramp lengths scattered across the voice code, and why
+ * the hysteresis had to stand in for all of the timing.
+ *
+ * Named phases put the shape of a promotion in one place:
+ *
+ *   idle -> auditioning -> entrance -> reign -> release -> cooldown -> idle
+ *
+ * The outlier test still decides *who*; the phases decide *when*, and each one
+ * owns the part of the sound that belongs to it.
+ */
+export type SpotlightPhase =
+  | "idle"
+  | "auditioning"
+  | "entrance"
+  | "reign"
+  | "release"
+  | "cooldown";
+
+/**
+ * The values the soloist lab can move while a scene is playing.
+ *
+ * Everything here already has a default in `SPOTLIGHT_TUNING` or
+ * `PRESENCE_TUNING`; this is the subset an engine holds its own copy of, so a
+ * page can hand it different numbers without rebuilding anything. The split is
+ * deliberate rather than exhaustive — the lifecycle, the tests that gate it,
+ * and the character values that decide what a promoted voice sounds like are
+ * what there is any point in turning by ear. Pitch ceilings and filter shapes
+ * stay constants.
+ */
+export interface SpotlightTuning {
+  /** How long a candidate must keep clearing the promote test. */
+  auditionMs: number;
+  /** How long the gain lift, the drying and the brightening take together. */
+  entranceMs: number;
+  /** Shortest a reign lasts, and how long before demotion is even considered. */
+  minReignMs: number;
+  /** How long the vibrato takes to widen once the reign has begun. */
+  reignDevelopMs: number;
+  /** How long the step back to the crowd takes. */
+  releaseMs: number;
+  /** How long after a release before anyone may audition again. */
+  sceneCooldownMs: number;
+  /** Fewest trails in the scene before anyone may audition. */
+  minTrailsForSpotlight: number;
+  /** Velocity ratio against the rest of the scene that makes a candidate. */
+  velocityRatio: number;
+  /** Absolute velocity floor a candidate must clear. */
+  minVelocity: number;
+  /** Ratio the soloist must fall below to be demoted. */
+  demoteVelocityRatio: number;
+  /** Absolute floor the soloist must fall below to be demoted. */
+  demoteMinVelocity: number;
+  /** Filter cutoff a promoted presence voice opens to. */
+  filterHz: number;
+  /** Gain multiplier a promoted presence voice holds. */
+  gain: number;
+  /** How much wider the promoted voice's vibrato gets. */
+  vibratoDepthScale: number;
+  /** How much quicker the promoted voice's vibrato gets. */
+  vibratoRateScale: number;
+  /** How much of the promoted voice still reaches the room. */
+  reverbSendScale: number;
+  /** How long into the reign the octave double arrives. */
+  haloOnsetMs: number;
+  /** How loud that double sits under the voice. */
+  haloGain: number;
+}
+
+/** The tuning an engine starts with, taken from the two tuning tables. */
+export const SPOTLIGHT_TUNING_DEFAULTS: SpotlightTuning = {
+  auditionMs: SPOTLIGHT_TUNING.auditionMs,
+  entranceMs: SPOTLIGHT_TUNING.entranceMs,
+  minReignMs: SPOTLIGHT_TUNING.minReignMs,
+  reignDevelopMs: SPOTLIGHT_TUNING.reignDevelopMs,
+  releaseMs: SPOTLIGHT_TUNING.releaseMs,
+  sceneCooldownMs: SPOTLIGHT_TUNING.sceneCooldownMs,
+  minTrailsForSpotlight: SPOTLIGHT_TUNING.minTrailsForSpotlight,
+  velocityRatio: SPOTLIGHT_TUNING.velocityRatio,
+  minVelocity: SPOTLIGHT_TUNING.minVelocity,
+  demoteVelocityRatio: SPOTLIGHT_TUNING.demoteVelocityRatio,
+  demoteMinVelocity: SPOTLIGHT_TUNING.demoteMinVelocity,
+  filterHz: PRESENCE_TUNING.filterHz,
+  gain: PRESENCE_TUNING.gain,
+  vibratoDepthScale: PRESENCE_TUNING.vibratoDepthScale,
+  vibratoRateScale: PRESENCE_TUNING.vibratoRateScale,
+  reverbSendScale: PRESENCE_TUNING.reverbSendScale,
+  haloOnsetMs: PRESENCE_TUNING.haloOnsetMs,
+  haloGain: PRESENCE_TUNING.haloGain,
+};
+
+/**
+ * The bounds the lab's sliders move each value between, and the step they move
+ * it by. Kept beside the defaults so a value added above is not silently
+ * missing a control, and so the bounds are stated where the meaning of the
+ * value is rather than in the page that happens to draw them.
+ */
+export const SPOTLIGHT_TUNING_RANGES: Record<
+  keyof SpotlightTuning,
+  { min: number; max: number; step: number; unit: string }
+> = {
+  auditionMs: { min: 0, max: 3_000, step: 50, unit: "ms" },
+  entranceMs: { min: 20, max: 2_000, step: 20, unit: "ms" },
+  minReignMs: { min: 0, max: 12_000, step: 250, unit: "ms" },
+  reignDevelopMs: { min: 0, max: 6_000, step: 100, unit: "ms" },
+  releaseMs: { min: 100, max: 5_000, step: 100, unit: "ms" },
+  sceneCooldownMs: { min: 0, max: 20_000, step: 500, unit: "ms" },
+  minTrailsForSpotlight: { min: 1, max: 10, step: 1, unit: "trails" },
+  velocityRatio: { min: 1, max: 6, step: 0.1, unit: "x scene" },
+  minVelocity: { min: 0, max: 20, step: 0.5, unit: "px/frame" },
+  demoteVelocityRatio: { min: 0.5, max: 4, step: 0.1, unit: "x scene" },
+  demoteMinVelocity: { min: 0, max: 12, step: 0.2, unit: "px/frame" },
+  filterHz: { min: 800, max: 6_000, step: 50, unit: "Hz" },
+  gain: { min: 0.8, max: 2, step: 0.05, unit: "x" },
+  vibratoDepthScale: { min: 1, max: 4, step: 0.1, unit: "x" },
+  vibratoRateScale: { min: 0.5, max: 3, step: 0.05, unit: "x" },
+  reverbSendScale: { min: 0, max: 1.5, step: 0.05, unit: "x" },
+  haloOnsetMs: { min: 0, max: 5_000, step: 100, unit: "ms" },
+  haloGain: { min: 0, max: 0.6, step: 0.01, unit: "x" },
 };
 
 /**
@@ -1330,6 +1512,12 @@ interface Voice {
   present: boolean;
   /** When presence began, so the halo's onset delay can be measured. */
   presentSinceMs: number;
+  /**
+   * Whether the reign's own development — the widening vibrato — has been
+   * scheduled. Separate from `present` because it happens a phase later, and
+   * because a voice promoted and released twice must widen twice.
+   */
+  presenceDeveloped: boolean;
   /** The quiet octave double, created only once presence has held. */
   halo: HaloNodes | null;
   /** Personal vibrato LFO, present only while trail voices are on. */
@@ -1473,10 +1661,29 @@ export class SoundEngine {
    */
   private spotlightVelocitySamples: Map<number, Array<[number, number]>> =
     new Map();
-  /** Trail currently held by the sustained spotlight, or null. */
+  /**
+   * Trail currently held by the sustained spotlight, or null.
+   *
+   * Set from the entrance through the reign and cleared when the release
+   * begins, so everything downstream — the halo, the brightness, the ring the
+   * lab draws — reads one flag and does not have to know about phases.
+   */
   private spotlightTrailIndex: number | null = null;
-  /** When the current soloist was promoted, for the minimum-hold check. */
+  /** Where the promotion has got to. See `SpotlightPhase`. */
+  private spotlightPhase: SpotlightPhase = "idle";
+  /** When the current phase began, which is what every phase length is against. */
+  private spotlightPhaseSinceMs = 0;
+  /**
+   * The trail being auditioned, and since when. A candidate that stops clearing
+   * the promote test for even one tick loses its audition and has to start
+   * over, which is the whole point: an audition is a claim that the trail is
+   * still driving the scene, not that it once was.
+   */
+  private spotlightCandidateIndex: number | null = null;
+  /** When the current soloist was promoted, for the minimum-reign check. */
   private spotlightPromotedAtMs = 0;
+  /** This engine's own copy of the values the lab can move. */
+  private spotlightTuning: SpotlightTuning = { ...SPOTLIGHT_TUNING_DEFAULTS };
   /**
    * Per-trail EMA of velocity. The soloist decision reads this rather than raw
    * per-frame velocity so a single slow frame inside a fast sweep cannot
@@ -1862,6 +2069,11 @@ export class SoundEngine {
       this.spotlightVelocitySamples.clear();
       this.spotlightSmoothedVelocities.clear();
       this.spotlightTrailIndex = null;
+      this.spotlightCandidateIndex = null;
+      // A mode switch is not a release: nothing is stepping back, the whole
+      // treatment is simply gone. So the lifecycle restarts from idle rather
+      // than running out a cooldown for a promotion the new mode never had.
+      this.enterSpotlightPhase("idle", 0);
       this.spotlightSceneAverage = 0;
       this.lastSpotlightTickMs = null;
       this.clearFlourish();
@@ -2876,6 +3088,7 @@ export class SoundEngine {
       reverbSend,
       present: false,
       presentSinceMs: 0,
+      presenceDeveloped: false,
       halo: null,
       vibrato: null,
       formants: null,
@@ -3585,9 +3798,20 @@ export class SoundEngine {
     this.spotlightSmoothedVelocities.delete(trailIndex);
     if (this.spotlightTrailIndex === trailIndex) {
       this.spotlightTrailIndex = null;
+      // A retirement is the one thing the reign's minimum does not hold out
+      // against: there is no trail left to judge. It still goes through the
+      // release rather than straight back to idle, so a trail leaving is not a
+      // way to promote the next one instantly.
+      this.enterSpotlightPhase(
+        "release",
+        this.lastSpotlightTickMs ?? this.spotlightPhaseSinceMs,
+      );
       // No resolving note: the trail is gone rather than slowing, so there is
       // nothing left for the phrase to resolve on.
       this.flourish = null;
+    }
+    if (this.spotlightCandidateIndex === trailIndex) {
+      this.spotlightCandidateIndex = null;
     }
     for (const key of this.crossingCooldowns.keys()) {
       if (
@@ -3824,18 +4048,38 @@ export class SoundEngine {
   }
 
   /**
-   * Pick this frame's soloist: the fastest trail that is both a clear outlier
-   * against the rolling scene average and above an absolute floor. Runs only
-   * while the spotlight is on; otherwise all spotlight state is cleared so
-   * turning it back on starts from a neutral scene.
+   * Advance the promotion lifecycle by one tick.
+   *
+   * Who is measured here is unchanged: the fastest trail, judged a clear
+   * outlier against the rest of the scene and above an absolute floor. What is
+   * new is that clearing that test is the beginning of a promotion rather than
+   * the whole of it. A candidate auditions, enters, reigns, is released, and
+   * the scene then rests before anyone auditions again — see `SpotlightPhase`.
+   *
+   * The hysteresis this replaces is still here, absorbed rather than removed:
+   * the promote ratio and floor are what makes a candidate, the demote ratio
+   * and floor are what ends a reign, and the minimum hold is now the reign's
+   * own minimum. What the phases add is that none of those tests are asked at
+   * moments where their answer would be noise — the demote test is not
+   * consulted at all until the reign has run its minimum, and the promote test
+   * has to be answered the same way for a whole audition before it counts.
+   *
+   * Runs only while the spotlight is on; otherwise all spotlight state is
+   * cleared so turning it back on starts from a neutral scene.
    */
   private updateSpotlight(
     elapsedMs: number,
     activeTrails: TrailSoundFrame[],
   ): void {
     if (!this.config.spotlight) {
-      if (this.spotlightTrailIndex !== null || this.spotlightGains.size > 0) {
+      if (
+        this.spotlightTrailIndex !== null ||
+        this.spotlightPhase !== "idle" ||
+        this.spotlightGains.size > 0
+      ) {
         this.spotlightTrailIndex = null;
+        this.spotlightCandidateIndex = null;
+        this.enterSpotlightPhase("idle", elapsedMs);
         this.spotlightSceneAverage = 0;
         this.spotlightVelocitySamples.clear();
         this.spotlightSmoothedVelocities.clear();
@@ -3915,69 +4159,12 @@ export class SoundEngine {
     this.spotlightSceneAverage =
       this.velocityAverageExcluding(soloistIndex) ?? 0;
 
-    // Promotion and demotion run off different thresholds, and an incumbent is
-    // additionally held for a minimum duration. Judging both directions on one
-    // instantaneous test makes a normal sweep flap several times a second.
-    const current = this.spotlightTrailIndex;
-    const clears = (
-      candidate: number,
-      velocity: number,
-      ratio: number,
-      floor: number,
-    ) => {
-      if (velocity < floor) return false;
-      const rest = this.velocityAverageExcluding(candidate);
-      // With no other trail to compare against, clearing the absolute floor is
-      // enough: a single fast mover is by definition the scene's outlier.
-      return rest === null || velocity > rest * ratio;
-    };
-
-    let nextSoloist: number | null;
-    if (current !== null) {
-      const incumbentVelocity =
-        this.spotlightSmoothedVelocities.get(current) ?? 0;
-      const heldLongEnough =
-        elapsedMs - this.spotlightPromotedAtMs >=
-        SPOTLIGHT_TUNING.minSoloDurationMs;
-      const stillQualifies = clears(
-        current,
-        incumbentVelocity,
-        SPOTLIGHT_TUNING.demoteVelocityRatio,
-        SPOTLIGHT_TUNING.demoteMinVelocity,
-      );
-      // The incumbent keeps the spotlight until it has both held it long
-      // enough and genuinely fallen off, so the flourish always gets a phrase.
-      nextSoloist =
-        heldLongEnough && !stillQualifies
-          ? soloistIndex !== null &&
-            soloistIndex !== current &&
-            clears(
-              soloistIndex,
-              soloistVelocity,
-              SPOTLIGHT_TUNING.velocityRatio,
-              SPOTLIGHT_TUNING.minVelocity,
-            )
-            ? soloistIndex
-            : null
-          : current;
-    } else {
-      nextSoloist =
-        soloistIndex !== null &&
-        clears(
-          soloistIndex,
-          soloistVelocity,
-          SPOTLIGHT_TUNING.velocityRatio,
-          SPOTLIGHT_TUNING.minVelocity,
-        )
-          ? soloistIndex
-          : null;
-    }
-
-    if (nextSoloist !== current) {
-      this.handleSoloistChange(current, nextSoloist, elapsedMs);
-      if (nextSoloist !== null) this.spotlightPromotedAtMs = elapsedMs;
-    }
-    this.spotlightTrailIndex = nextSoloist;
+    this.advanceSpotlightLifecycle(
+      elapsedMs,
+      present,
+      soloistIndex,
+      soloistVelocity,
+    );
 
     // Advance smoothing for every active trail, including ones too slow to
     // voice this frame. Doing it lazily in the voice loop would freeze a
@@ -3991,6 +4178,164 @@ export class SoundEngine {
         this.spotlightGains.delete(index);
       }
     }
+  }
+
+  /**
+   * Does this trail clear an outlier test at this velocity?
+   *
+   * Both the promote and the demote test are this shape and differ only in the
+   * numbers they are given, which is what keeps them a pair: judging both
+   * directions on one threshold is what made a normal sweep flap the spotlight
+   * several times a second.
+   */
+  private clearsSpotlightTest(
+    candidate: number,
+    velocity: number,
+    ratio: number,
+    floor: number,
+  ): boolean {
+    if (velocity < floor) return false;
+    const rest = this.velocityAverageExcluding(candidate);
+    // With no other trail to compare against, clearing the absolute floor is
+    // enough: a single fast mover is by definition the scene's outlier. The
+    // scene still has to be crowded enough to audition at all, which
+    // `minTrailsForSpotlight` decides separately.
+    return rest === null || velocity > rest * ratio;
+  }
+
+  /** Move to a phase and stamp when it began. */
+  private enterSpotlightPhase(phase: SpotlightPhase, elapsedMs: number): void {
+    this.spotlightPhase = phase;
+    this.spotlightPhaseSinceMs = elapsedMs;
+  }
+
+  /** How long the current phase has been running. */
+  private spotlightPhaseAgeMs(elapsedMs: number): number {
+    return elapsedMs - this.spotlightPhaseSinceMs;
+  }
+
+  /**
+   * Run the phase machine for one tick.
+   *
+   * Split out from the measurement above because the two have nothing to say
+   * to each other beyond this frame's fastest trail and how fast it is going:
+   * everything here is about time, and everything above is about speed.
+   */
+  private advanceSpotlightLifecycle(
+    elapsedMs: number,
+    present: Set<number>,
+    fastestIndex: number | null,
+    fastestVelocity: number,
+  ): void {
+    const tuning = this.spotlightTuning;
+    const current = this.spotlightTrailIndex;
+
+    // A trail that leaves the scene is the one thing no phase waits out. It is
+    // not a judgement about speed — there is nothing left to judge — and a
+    // reign held to its minimum over a trail that is gone would hold a voice
+    // in the spotlight after its own voice had been torn down.
+    if (current !== null && !present.has(current)) {
+      this.beginSpotlightRelease(elapsedMs);
+      return;
+    }
+
+    // The cooldown ending and the idle scene looking for a candidate are the
+    // same tick. Waiting a further frame would make the cooldown a frame longer
+    // than it says it is, for no reason a listener could hear.
+    if (
+      this.spotlightPhase === "cooldown" &&
+      this.spotlightPhaseAgeMs(elapsedMs) >= tuning.sceneCooldownMs
+    ) {
+      this.enterSpotlightPhase("idle", elapsedMs);
+    }
+
+    switch (this.spotlightPhase) {
+      case "cooldown":
+        return;
+      case "idle":
+      case "auditioning": {
+        // A soloist is a voice stepping out of a crowd, so there has to be a
+        // crowd. `present` counts trails with a measurable velocity, which is
+        // what the outlier test is drawn from.
+        const candidate =
+          present.size >= tuning.minTrailsForSpotlight &&
+          fastestIndex !== null &&
+          this.clearsSpotlightTest(
+            fastestIndex,
+            fastestVelocity,
+            tuning.velocityRatio,
+            tuning.minVelocity,
+          )
+            ? fastestIndex
+            : null;
+
+        if (candidate === null || candidate !== this.spotlightCandidateIndex) {
+          // Either nobody qualifies, or somebody else does. Both restart the
+          // audition: a candidate is a claim that one trail has been driving
+          // the scene for a while, and neither of those is that claim.
+          this.spotlightCandidateIndex = candidate;
+          this.enterSpotlightPhase(
+            candidate === null ? "idle" : "auditioning",
+            elapsedMs,
+          );
+          return;
+        }
+
+        if (this.spotlightPhaseAgeMs(elapsedMs) < tuning.auditionMs) return;
+        this.spotlightTrailIndex = candidate;
+        this.spotlightCandidateIndex = null;
+        this.spotlightPromotedAtMs = elapsedMs;
+        this.enterSpotlightPhase("entrance", elapsedMs);
+        this.handleSoloistChange(null, candidate, elapsedMs);
+        return;
+      }
+      case "entrance":
+        // The entrance is a length, not a decision: the voice is arriving and
+        // there is nothing to reconsider until it has.
+        if (this.spotlightPhaseAgeMs(elapsedMs) < tuning.entranceMs) return;
+        this.enterSpotlightPhase("reign", elapsedMs);
+        return;
+      case "reign": {
+        if (current === null) {
+          // Nothing to reign — the trail was retired out from under the phase
+          // by a path that does not go through the release.
+          this.beginSpotlightRelease(elapsedMs);
+          return;
+        }
+        if (elapsedMs - this.spotlightPromotedAtMs < tuning.minReignMs) return;
+        const velocity = this.spotlightSmoothedVelocities.get(current) ?? 0;
+        if (
+          this.clearsSpotlightTest(
+            current,
+            velocity,
+            tuning.demoteVelocityRatio,
+            tuning.demoteMinVelocity,
+          )
+        ) {
+          return;
+        }
+        this.beginSpotlightRelease(elapsedMs);
+        return;
+      }
+      case "release":
+        if (this.spotlightPhaseAgeMs(elapsedMs) < tuning.releaseMs) return;
+        this.enterSpotlightPhase("cooldown", elapsedMs);
+        return;
+    }
+  }
+
+  /**
+   * Hand the spotlight back. Clearing `spotlightTrailIndex` is what the voice
+   * code reads as the demotion, so the release's own length is the phase rather
+   * than anything scheduled here; the ramps it starts are the ones the voice
+   * path already owns.
+   */
+  private beginSpotlightRelease(elapsedMs: number): void {
+    const previous = this.spotlightTrailIndex;
+    this.spotlightTrailIndex = null;
+    this.spotlightCandidateIndex = null;
+    this.enterSpotlightPhase("release", elapsedMs);
+    if (previous !== null) this.handleSoloistChange(previous, null, elapsedMs);
   }
 
   /**
@@ -4024,7 +4369,7 @@ export class SoundEngine {
         ? present
           ? // Presence has no discrete notes to step back for: the sustained
             // voice is the promotion, so it leans in rather than out.
-            SPOTLIGHT_TUNING.soloistGain * PRESENCE_TUNING.gain
+            SPOTLIGHT_TUNING.soloistGain * this.spotlightTuning.gain
           : // The soloist's sustained voice steps back while it flourishes, so
             // the discrete notes carry the promotion instead of competing with
             // a louder drone from the same trail.
@@ -4037,12 +4382,13 @@ export class SoundEngine {
     // soloist gets its own, slower walk back so the drone swells in behind
     // the resolving note rather than snapping back.
     const durationSeconds = present
-      ? // Presence steps forward on its own swell and back on its own return,
-        // so the gain moves with those instead of on the spotlight's
-        // cue-speed attack.
+      ? // Presence steps forward on the entrance and back on the release, so
+        // the gain moves with the phases rather than on the spotlight's own
+        // cue-speed attack. The lift shares its length with the drying and the
+        // brightening, which is what makes the three read as one move.
         target > current
-          ? PRESENCE_TUNING.swellSeconds
-          : PRESENCE_TUNING.returnSeconds
+          ? this.entranceSeconds()
+          : this.releaseSeconds()
       : target < current
         ? SPOTLIGHT_TUNING.attackSeconds
         : isSoloist || target === 1
@@ -4174,27 +4520,27 @@ export class SoundEngine {
     if (present && !voice.present) {
       voice.present = true;
       voice.presentSinceMs = elapsedMs;
-      const { swellSeconds, vibratoDepthScale, vibratoRateScale, reverbSendScale } =
-        PRESENCE_TUNING;
-      // A singer leaning in: the vibrato widens and quickens with the voice.
+      voice.presenceDeveloped = false;
+      const { vibratoRateScale, reverbSendScale } = this.spotlightTuning;
+      const entranceSeconds = this.entranceSeconds();
+      // A singer leaning in. The rate quickens with the entrance, because that
+      // is part of arriving; the depth is left where it is and widened later,
+      // during the reign. Widening it here made the promotion land as a wobble
+      // rather than as a voice moving forward, and it is the one dimension of
+      // the treatment that reads as expression rather than as position.
       if (voice.vibrato) {
         const fingerprint = this.fingerprints.get(trailIndex);
         if (fingerprint) {
           this.resumeVibrato(voice);
           this.rampParam(
-            voice.vibrato.depth.gain,
-            fingerprint.vibratoDepthCents * vibratoDepthScale,
-            swellSeconds,
-          );
-          this.rampParam(
             voice.vibrato.oscillator.frequency,
             fingerprint.vibratoRateHz * vibratoRateScale,
-            swellSeconds,
+            entranceSeconds,
           );
         }
       }
       if (voice.reverbSend) {
-        this.rampParam(voice.reverbSend.gain, reverbSendScale, swellSeconds);
+        this.rampParam(voice.reverbSend.gain, reverbSendScale, entranceSeconds);
       }
       // The voice leaves the crowd's bus for the soloist's, so the mixer
       // strip agrees with what is being heard. See `Voice.bedRoute`.
@@ -4204,7 +4550,8 @@ export class SoundEngine {
 
     if (!present && voice.present) {
       voice.present = false;
-      const { returnSeconds } = PRESENCE_TUNING;
+      voice.presenceDeveloped = false;
+      const returnSeconds = this.releaseSeconds();
       if (voice.vibrato) {
         const fingerprint = this.fingerprints.get(trailIndex);
         if (fingerprint) {
@@ -4233,8 +4580,50 @@ export class SoundEngine {
     }
 
     if (present) {
+      this.developPresence(voice, trailIndex);
       this.updateHalo(voice, elapsedMs, instrument);
     }
+  }
+
+  /**
+   * Widen the promoted voice's vibrato, once the reign has begun.
+   *
+   * Held back from the entrance deliberately. The entrance is three moves at
+   * one length — louder, drier, brighter — and adding a fourth of a different
+   * kind to it made the arrival muddy. The vibrato is what the voice does once
+   * it is standing at the front, so it opens across the reign instead, over the
+   * same stretch the halo is fading in across. The two developments overlap and
+   * the voice warms rather than switching.
+   *
+   * Edge-triggered on the phase, like everything else presence does: the ramp
+   * is scheduled once and the frames in between leave it alone.
+   */
+  private developPresence(voice: Voice, trailIndex: number): void {
+    if (voice.presenceDeveloped || this.spotlightPhase !== "reign") return;
+    voice.presenceDeveloped = true;
+    if (!voice.vibrato) return;
+    const fingerprint = this.fingerprints.get(trailIndex);
+    if (!fingerprint) return;
+    this.resumeVibrato(voice);
+    this.rampParam(
+      voice.vibrato.depth.gain,
+      fingerprint.vibratoDepthCents * this.spotlightTuning.vibratoDepthScale,
+      this.spotlightTuning.reignDevelopMs / 1_000,
+    );
+  }
+
+  /**
+   * The entrance's length in seconds. The gain lift, the drying and the
+   * brightening all ask for it here rather than each naming its own, which is
+   * what makes a promotion one move instead of three.
+   */
+  private entranceSeconds(): number {
+    return this.spotlightTuning.entranceMs / 1_000;
+  }
+
+  /** The release's length in seconds, on the same footing as the entrance. */
+  private releaseSeconds(): number {
+    return this.spotlightTuning.releaseMs / 1_000;
   }
 
   /**
@@ -4281,12 +4670,8 @@ export class SoundEngine {
   ): void {
     const ctx = this.ctx;
     if (!ctx || !voice.currentFrequency) return;
-    const {
-      haloOnsetMs,
-      haloGain,
-      haloFilterHz,
-      haloFadeSeconds,
-    } = PRESENCE_TUNING;
+    const { haloFilterHz, haloFadeSeconds } = PRESENCE_TUNING;
+    const { haloOnsetMs, haloGain } = this.spotlightTuning;
 
     if (elapsedMs - voice.presentSinceMs < haloOnsetMs) return;
 
@@ -4390,7 +4775,7 @@ export class SoundEngine {
           // Presence hands its brightness back over its own return, so the
           // colour and the gain fall away together rather than at two rates.
           this.config.soloistVoice === "presence"
-            ? PRESENCE_TUNING.returnSeconds
+            ? this.releaseSeconds()
             : SPOTLIGHT_TUNING.releaseSeconds,
         );
       }
@@ -4405,8 +4790,8 @@ export class SoundEngine {
         voice.spotlightBrightened = true;
         this.rampParam(
           voice.filterNode.frequency,
-          Math.max(instrument.filterFrequency, PRESENCE_TUNING.filterHz),
-          PRESENCE_TUNING.swellSeconds,
+          Math.max(instrument.filterFrequency, this.spotlightTuning.filterHz),
+          this.entranceSeconds(),
         );
       }
       return;
@@ -4935,15 +5320,12 @@ export class SoundEngine {
         const tones = chordTones(this.flourishPalette());
         if (tones.length === 0) return;
         const base = tones[0];
-        const {
-          auditionPadTones,
-          auditionPadGain,
-          auditionPadSeconds,
-          swellSeconds,
-          gain,
-          haloOnsetMs,
-          haloGain,
-        } = PRESENCE_TUNING;
+        const { auditionPadTones, auditionPadGain, auditionPadSeconds } =
+          PRESENCE_TUNING;
+        const { gain, haloOnsetMs, haloGain } = this.spotlightTuning;
+        // The audition's own swell is the entrance the real promotion uses, so
+        // the button and the scene describe the same event at the same speed.
+        const swellSeconds = this.entranceSeconds();
         for (const tone of tones.slice(1, 1 + auditionPadTones)) {
           this.triggerFlourishNote(
             tone,
@@ -6527,6 +6909,56 @@ export class SoundEngine {
     return this.config.spotlight ? this.spotlightTrailIndex : null;
   }
 
+  /**
+   * Where the promotion lifecycle stands. Reported so the lab can show it: the
+   * phases are most of what there is to understand about the spotlight, and
+   * hearing a promotion without seeing which part of it you are hearing is
+   * most of why they were hard to tune.
+   */
+  getSpotlightPhase(): SpotlightPhase {
+    return this.config.spotlight ? this.spotlightPhase : "idle";
+  }
+
+  /**
+   * The trail currently auditioning, or null. Not yet promoted and possibly
+   * never will be — a candidate that stops clearing the promote test loses its
+   * audition — but the lab draws it, because an audition that keeps restarting
+   * is exactly the thing the numbers are being turned to fix.
+   */
+  getSpotlightCandidateTrailIndex(): number | null {
+    return this.config.spotlight ? this.spotlightCandidateIndex : null;
+  }
+
+  /** The tuning this engine is running on. A copy, so callers cannot poke it. */
+  getSpotlightTuning(): SpotlightTuning {
+    return { ...this.spotlightTuning };
+  }
+
+  /**
+   * Move some of the tuning while the scene plays.
+   *
+   * Everything here is read at the moment it is needed rather than captured, so
+   * a change lands on the next promotion, the next entrance or the next tick
+   * without anything being rebuilt. A value already in flight keeps the length
+   * it was scheduled with: a ramp that has started is not re-aimed mid-flight,
+   * which would be a step.
+   *
+   * Values not named are left alone, and a value that is not a finite number is
+   * ignored rather than allowed to poison the lifecycle with a NaN comparison
+   * that is false in both directions.
+   */
+  setSpotlightTuning(overrides: Partial<SpotlightTuning>): void {
+    for (const [key, value] of Object.entries(overrides)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      this.spotlightTuning[key as keyof SpotlightTuning] = value;
+    }
+  }
+
+  /** Put every tuning value back where it started. */
+  resetSpotlightTuning(): void {
+    this.spotlightTuning = { ...SPOTLIGHT_TUNING_DEFAULTS };
+  }
+
   /** Rolling scene-average velocity behind the soloist decision. */
   getSceneAverageVelocity(): number {
     return this.config.spotlight ? this.spotlightSceneAverage : 0;
@@ -6736,6 +7168,8 @@ export class SoundEngine {
     this.spotlightVelocitySamples.clear();
     this.spotlightSmoothedVelocities.clear();
     this.spotlightTrailIndex = null;
+    this.spotlightCandidateIndex = null;
+    this.enterSpotlightPhase("idle", 0);
     this.spotlightSceneAverage = 0;
     // The playback clock rewinds across a loop boundary, so the next tick must
     // start a fresh interval rather than measure against the end of last pass.
