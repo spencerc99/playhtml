@@ -331,6 +331,7 @@ const loadSettings = (
 };
 
 interface MovementCanvasProps {
+  recordedScrollTiming?: boolean;
   events: CollectionEvent[];
   loading: boolean;
   error: string | null;
@@ -404,6 +405,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   availableVisualizations,
   defaultSoundEnabled = false,
   defaultSettings,
+  recordedScrollTiming = false,
   useStoredSettings = true,
   syncSettingsToUrl = true,
   defaultCinematic = null,
@@ -1151,11 +1153,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   const viewportSettings = useMemo(
     () => ({
+      recordedTiming: recordedScrollTiming,
       filters: (settings.filters as FilterChip[] | undefined) ?? [],
       pidFilter: settings.pidFilter,
       viewportEventFilter: settings.viewportEventFilter,
     }),
-    [settings.filters, settings.pidFilter, settings.viewportEventFilter],
+    [recordedScrollTiming, settings.filters, settings.pidFilter, settings.viewportEventFilter],
   );
 
   const { animations: scrollAnimations, urlMetadata: scrollUrlMetadata } =
@@ -1370,6 +1373,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     <div className="internet-movement">
       <Controls
         visible={controlsVisible}
+        recordedScrollTiming={recordedScrollTiming}
         settings={settings}
         settingsDefaults={settingsDefaults}
         setSettings={setSettingsFromControls}
@@ -1699,6 +1703,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         {showScrolling && !paused && scrollAnimations && scrollAnimations.length > 0 && (
           <AnimatedScrollViewports
             key={`scrolling-${playbackKey}`}
+            recordedTiming={recordedScrollTiming}
             animations={scrollAnimations}
             canvasSize={viewportSize}
             repeatAnimations={!scrollingControlsPlayback}

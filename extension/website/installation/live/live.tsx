@@ -90,6 +90,7 @@ const LiveInstallation = () => {
   return (
     <>
       <MovementCanvas
+        recordedScrollTiming
         events={hybrid.events}
         loading={hybrid.loading}
         error={hybrid.error}

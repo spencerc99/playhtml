@@ -33,6 +33,7 @@ const VIEWPORT_MARGIN = 8; // Gap between viewports
 interface AnimatedScrollViewportsProps {
   animations: ScrollAnimation[];
   canvasSize: { width: number; height: number };
+  recordedTiming?: boolean;
   repeatAnimations?: boolean;
   onAnimationsComplete?: () => boolean;
   settings: {
@@ -226,6 +227,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
   memo(({
     animations,
     canvasSize,
+    recordedTiming = false,
     repeatAnimations = true,
     onAnimationsComplete,
     settings,
@@ -241,7 +243,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const animationFrameRef = useRef<number | null>(null);
     const lastFillCheckRef = useRef(0);
     const lastFrameUpdateRef = useRef(0);
-    const startTimeRef = useRef<number | null>(null);
+    const lastTimestampRef = useRef<number | null>(null);
+    const playbackTimeRef = useRef(0);
     const completionSignaledRef = useRef(false);
 
     // Settings ref to avoid re-renders
@@ -494,11 +497,10 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       if (animations.length === 0 || canvasSize.width === 0) return;
 
       const animate = (timestamp: number) => {
-        if (startTimeRef.current === null) {
-          startTimeRef.current = timestamp;
-        }
-
-        const currentTime = timestamp - startTimeRef.current;
+        const elapsed = timestamp - (lastTimestampRef.current ?? timestamp);
+        lastTimestampRef.current = timestamp;
+        playbackTimeRef.current += elapsed * (recordedTiming ? settingsRef.current.scrollSpeed : 1);
+        const currentTime = playbackTimeRef.current;
 
         // Update viewport phases
         updateViewports(currentTime);
@@ -518,8 +520,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           }
         }
 
-        if (currentTime - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
-          lastFrameUpdateRef.current = currentTime;
+        if (timestamp - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
+          lastFrameUpdateRef.current = timestamp;
           setFrameTime(currentTime);
         }
 
@@ -534,6 +536,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         }
       };
     }, [
+      recordedTiming,
       animations.length,
       canvasSize.width,
       onAnimationsComplete,
@@ -608,6 +611,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
               viewport={viewport}
               currentTime={currentTime}
               settings={settingsRef.current}
+              recordedTiming={recordedTiming}
               livePageTitle={live?.title}
               liveFaviconUrl={live?.favicon}
             />
@@ -793,12 +797,14 @@ export function getZoomLevelAtTime(
 const DynamicViewportRect = memo(
   ({
     viewport,
+    recordedTiming,
     currentTime,
     settings,
     livePageTitle,
     liveFaviconUrl,
   }: {
     viewport: ActiveViewport;
+    recordedTiming: boolean;
     currentTime: number;
     settings: {
       scrollSpeed: number;
@@ -848,7 +854,7 @@ const DynamicViewportRect = memo(
     // Calculate animation progress
     const animElapsed = Math.max(
       0,
-      (currentTime - animationStartTime) * settings.scrollSpeed,
+      (currentTime - animationStartTime) * (recordedTiming ? 1 : settings.scrollSpeed),
     );
     const animProgress =
       durationMs <= 0 ? 1 : Math.min(1, animElapsed / durationMs);
