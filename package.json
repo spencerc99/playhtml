@@ -41,6 +41,7 @@
     "test:common": "bun run --cwd packages/common test",
     "test:playhtml": "bun run --cwd packages/playhtml test",
     "test:react": "bun run --cwd packages/react test",
+    "test:sound": "bun scripts/sound-samples/rampScan.ts && bun scripts/sound-samples/liveScan.ts && bun scripts/sound-samples/clickScan.ts",
     "test:extension": "bun run --cwd extension test",
     "test:docs": "bun run --cwd apps/docs test",
     "test:extension-worker": "bun run --cwd extension/worker test",
