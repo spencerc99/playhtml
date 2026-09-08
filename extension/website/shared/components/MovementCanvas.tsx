@@ -385,6 +385,15 @@ interface MovementCanvasProps {
   playbackContextKey?: string;
   /** Called when finite archive playback reaches the end of its batch. */
   onPlaybackCycleComplete?: () => boolean;
+  /** Archived cursor footage shown behind a continuous live cursor field while
+   * that field is quiet. */
+  archiveFallback?: {
+    events: CollectionEvent[];
+    visible: boolean;
+    playbackKey: string;
+    fadeMs: number;
+    onPlaybackCycleComplete: () => boolean;
+  };
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
@@ -417,6 +426,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   playbackSource,
   playbackContextKey = playbackKey,
   onPlaybackCycleComplete,
+  archiveFallback,
 }) => {
   const settingsDefaults = useMemo(
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
@@ -979,6 +989,31 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
   } = useCursorTrails(activeTrailEvents, viewportSize, cursorSettings);
+  const archiveFallbackSettings = useMemo(
+    () => ({
+      ...cursorSettings,
+      trailAnimationMode: settings.trailAnimationMode,
+      singleSegmentPerGroup: false,
+    }),
+    [cursorSettings, settings.trailAnimationMode],
+  );
+  const {
+    trailStates: archiveFallbackTrailStates,
+    timeBounds: archiveFallbackTimeBounds,
+    cycleDuration: archiveFallbackCycleDuration,
+  } = useCursorTrails(
+    archiveFallback?.events ?? EMPTY_EVENTS,
+    viewportSize,
+    archiveFallbackSettings,
+  );
+  const archiveFallbackTimeRange = useMemo(
+    () => ({
+      min: archiveFallbackTimeBounds.min,
+      max: archiveFallbackTimeBounds.max,
+      duration: Math.max(archiveFallbackCycleDuration, 60_000),
+    }),
+    [archiveFallbackCycleDuration, archiveFallbackTimeBounds],
+  );
   const activeTrailIds = useMemo(
     () => new Set(trailStates.map(({ trail }) => trail.id)),
     [trailStates],
@@ -1190,6 +1225,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     animationSpeed: settings.animationSpeed,
     frozen: paused,
     onComplete: onPlaybackCycleComplete,
+  });
+  usePlaybackCycle({
+    enabled:
+      live &&
+      archiveFallback !== undefined &&
+      archiveFallback.visible &&
+      archiveFallbackTrailStates.length > 0,
+    cycleKey: archiveFallback?.playbackKey ?? "archive-fallback",
+    durationMs: archiveFallbackTimeRange.duration,
+    animationSpeed: settings.animationSpeed,
+    frozen: paused,
+    onComplete: archiveFallback?.onPlaybackCycleComplete,
   });
 
   // For viewports whose URL has no captured title (no navigation event), ask
@@ -1635,6 +1682,34 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             style={{ opacity: 0.3 }}
           />
         </svg>
+
+        {showTrails &&
+          live &&
+          archiveFallback &&
+          archiveFallbackTrailStates.length > 0 && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 2,
+                opacity: archiveFallback.visible ? 1 : 0,
+                pointerEvents: "none",
+                transition: `opacity ${archiveFallback.fadeMs}ms ease-in-out`,
+              }}
+            >
+              <AnimatedTrails
+                key={`archive-fallback-${archiveFallback.playbackKey}`}
+                trailStates={archiveFallbackTrailStates}
+                timeRange={archiveFallbackTimeRange}
+                showClickRipples={!showClicks}
+                windowSize={settings.maxConcurrentTrails * 2}
+                soundEngine={null}
+                settings={trailAnimationSettings}
+                frozen={paused}
+              />
+            </div>
+          )}
 
         {showTrails &&
           (live ? (

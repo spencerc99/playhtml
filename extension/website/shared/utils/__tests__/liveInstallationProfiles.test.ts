@@ -54,6 +54,15 @@ describe("live installation profiles", () => {
     }
   });
 
+  it("uses continuous live trails only on the main cursor field", () => {
+    expect(LIVE_INSTALLATION_PROFILES.cursors.continuousLiveTrails).toBe(true);
+
+    for (const [name, profile] of Object.entries(LIVE_INSTALLATION_PROFILES)) {
+      if (name === "cursors") continue;
+      expect(profile.continuousLiveTrails).not.toBe(true);
+    }
+  });
+
   it("uses explicit follower query parameters over profile defaults", () => {
     const profile = LIVE_INSTALLATION_PROFILES["follower-c"];
     expect(parseLiveInstallationScreen("", profile.screen)).toEqual({

@@ -44,6 +44,7 @@ export interface LiveInstallationProfile {
   screen?: LiveInstallationScreenConfig;
   settings: Partial<MovementSettings>;
   touchesSettings?: TouchesProfileSettings;
+  continuousLiveTrails?: boolean;
 }
 
 const CURSOR_SETTINGS = {
@@ -183,6 +184,7 @@ export const LIVE_INSTALLATION_PROFILES: Record<
     visualizations: ["trails"],
     screen: field(),
     settings: CURSOR_SETTINGS,
+    continuousLiveTrails: true,
   },
   "follower-a": {
     label: "cursor follower 1",
