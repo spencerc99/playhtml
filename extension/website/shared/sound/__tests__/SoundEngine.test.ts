@@ -752,12 +752,14 @@ describe("SoundEngine cursor instruments", () => {
     const events = state.voices.get(0)!.filterNode.frequency.events;
     const holds = events.filter((event) => event.method === "cancelAndHold");
 
-    // Consecutive ramps must still be in flight when the next is scheduled.
-    // A ramp that lands before its successor is scheduled leaves a held step,
-    // and a staircase of held steps is the audible crackle.
-    for (let i = 1; i < holds.length; i++) {
-      const gapSeconds = holds[i].time - holds[i - 1].time;
-      expect(gapSeconds).toBeLessThan(0.12);
+    // A changing cutoff needs a full control ramp; a held target needs no
+    // successor until the requested brightness changes.
+    const ramps = events.filter((event) => event.method === "linearRamp");
+    expect(holds.length).toBeGreaterThan(0);
+    expect(ramps).toHaveLength(holds.length);
+    for (let i = 0; i < holds.length; i++) {
+      expect(ramps[i].time - holds[i].time).toBeCloseTo(0.12);
+      if (i > 0) expect(ramps[i].value).not.toBe(ramps[i - 1].value);
     }
   });
 

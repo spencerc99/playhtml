@@ -1411,6 +1411,7 @@ export class SoundEngine {
    * strong map would hold every node the engine ever built.
    */
   private rampEnds: WeakMap<AudioParam, number> = new WeakMap();
+  private rampTargets: WeakMap<AudioParam, number> = new WeakMap();
   private canvasWidth: number = 0;
   private enabled: boolean = false;
   private baseVolume: number = DEFAULT_MASTER_VOLUME;
@@ -2628,6 +2629,7 @@ export class SoundEngine {
       // Depth to zero rather than stopping the LFO: when the pull lapses both
       // voices resume from the same phase, which is what makes them read as
       // having been briefly aligned.
+      this.rampTargets.delete(voice.vibrato.depth.gain);
       voice.vibrato.depth.gain.linearRampToValueAtTime(0, now + glideSeconds);
     }
   }
@@ -2651,6 +2653,7 @@ export class SoundEngine {
       fingerprint.detuneCents,
       now + driftSeconds,
     );
+    if (voice.vibrato) this.rampTargets.delete(voice.vibrato.depth.gain);
     voice.vibrato?.depth.gain.linearRampToValueAtTime(
       fingerprint.vibratoDepthCents,
       now + driftSeconds,
@@ -3023,6 +3026,8 @@ export class SoundEngine {
       lfo.start(now);
       voice.vibrato = { oscillator: lfo, depth };
     }
+    this.rampTargets.delete(voice.vibrato.oscillator.frequency);
+    this.rampTargets.delete(voice.vibrato.depth.gain);
     voice.vibrato.oscillator.frequency.setValueAtTime(
       fingerprint.vibratoRateHz,
       now,
@@ -3198,9 +3203,12 @@ export class SoundEngine {
     now: number,
     glideSeconds: number,
   ): void {
+    const value = Math.max(target, MIN_EXPONENTIAL_TARGET);
+    if (this.rampTargets.get(param) === value) return;
     this.holdParam(param, now);
+    this.rampTargets.set(param, value);
     param.exponentialRampToValueAtTime(
-      Math.max(target, MIN_EXPONENTIAL_TARGET),
+      value,
       this.rampEndTime(param, now, glideSeconds),
     );
   }
@@ -3211,11 +3219,14 @@ export class SoundEngine {
   ): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    voice.filterNode.frequency.linearRampToValueAtTime(
-      instrument.filterFrequency,
-      now + 0.1,
-    );
-    voice.filterNode.Q.linearRampToValueAtTime(instrument.filterQ, now + 0.1);
+    for (const [param, target] of [
+      [voice.filterNode.frequency, instrument.filterFrequency],
+      [voice.filterNode.Q, instrument.filterQ],
+    ] as const) {
+      if (this.rampTargets.get(param) === target) continue;
+      this.rampTargets.set(param, target);
+      param.linearRampToValueAtTime(target, now + 0.1);
+    }
 
     if (
       voice.oscillator &&
@@ -6398,7 +6409,9 @@ export class SoundEngine {
   ): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
+    if (this.rampTargets.get(param) === targetValue) return;
     this.holdParam(param, now);
+    this.rampTargets.set(param, targetValue);
     param.linearRampToValueAtTime(
       targetValue,
       this.rampEndTime(param, now, durationSeconds),
@@ -6440,6 +6453,8 @@ export class SoundEngine {
   }
 
   private holdParam(param: AudioParam, time: number): void {
+    // Envelopes also hold these params, so a hold invalidates any control target.
+    this.rampTargets.delete(param);
     // cancelAndHoldAtTime preserves the instantaneous computed value and avoids
     // discontinuities ("pops") from jumping to AudioParam.value mid-envelope.
     const hold = (param as AudioParam & {
