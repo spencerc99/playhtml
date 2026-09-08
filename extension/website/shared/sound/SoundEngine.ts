@@ -1,6 +1,7 @@
 // ABOUTME: Core generative sound engine driven by cursor trail animation data
 // ABOUTME: Manages Web Audio voices, maps trail frames to musical parameters each animation frame
 
+import { ParameterAutomation } from "./parameterAutomation";
 import { SoundPerformance } from "./SoundPerformance";
 import {
   TrailSoundFrame,
@@ -1709,6 +1710,7 @@ export class SoundEngine {
    * a voice's gain outlives this map's interest in it by no time at all, and a
    * strong map would hold every node the engine ever built.
    */
+  private parameterAutomation = new ParameterAutomation();
   private rampEnds: WeakMap<AudioParam, number> = new WeakMap();
   private rampTargets: WeakMap<AudioParam, number> = new WeakMap();
   private canvasWidth: number = 0;
@@ -2507,10 +2509,17 @@ export class SoundEngine {
           // attack is clamped past any control ramp still running, so the
           // pluck never lands inside one; the decay then follows it.
           const attackEnd = this.rampEndTime(voice.gainNode.gain, now, 0.005);
-          voice.gainNode.gain.linearRampToValueAtTime(pluckGain, attackEnd);
-          voice.gainNode.gain.exponentialRampToValueAtTime(
+          this.parameterAutomation.linear(
+            voice.gainNode.gain,
+            pluckGain,
+            attackEnd,
+            this.ctx!.currentTime,
+          );
+          this.parameterAutomation.exponential(
+            voice.gainNode.gain,
             0.001,
             this.rampEndTime(voice.gainNode.gain, attackEnd, pluckSeconds),
+            this.ctx!.currentTime,
           );
         }
       } else if (shouldUpdateContinuousParams) {
@@ -2704,13 +2713,16 @@ export class SoundEngine {
     if (upper) {
       // The resolution itself: the upper voice glides down onto the tone below
       // it once the suspension has been held.
-      upper.oscillator.frequency.setValueAtTime(
+      this.parameterAutomation.set(
+        upper.oscillator.frequency,
         suspended,
         now + attackSeconds + suspensionSeconds,
       );
-      upper.oscillator.frequency.linearRampToValueAtTime(
+      this.parameterAutomation.linear(
+        upper.oscillator.frequency,
         base,
         now + attackSeconds + suspensionSeconds + 0.12,
+        this.ctx!.currentTime,
       );
     }
 
@@ -2839,14 +2851,25 @@ export class SoundEngine {
     osc.frequency.value = frequency;
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(peakGain, now + attackSeconds);
+    this.parameterAutomation.set(gain.gain, 0, now);
+    this.parameterAutomation.linear(
+      gain.gain,
+      peakGain,
+      now + attackSeconds,
+      this.ctx!.currentTime,
+    );
     if (holdSeconds > 0) {
-      gain.gain.setValueAtTime(peakGain, now + attackSeconds + holdSeconds);
+      this.parameterAutomation.set(
+        gain.gain,
+        peakGain,
+        now + attackSeconds + holdSeconds,
+      );
     }
-    gain.gain.exponentialRampToValueAtTime(
+    this.parameterAutomation.exponential(
+      gain.gain,
       0.0001,
       now + attackSeconds + holdSeconds + decaySeconds,
+      this.ctx!.currentTime,
     );
 
     const pan = ctx.createStereoPanner();
@@ -2993,7 +3016,12 @@ export class SoundEngine {
       // voices resume from the same phase, which is what makes them read as
       // having been briefly aligned.
       this.rampTargets.delete(voice.vibrato.depth.gain);
-      voice.vibrato.depth.gain.linearRampToValueAtTime(0, now + glideSeconds);
+      this.parameterAutomation.linear(
+        voice.vibrato.depth.gain,
+        0,
+        now + glideSeconds,
+        this.ctx!.currentTime,
+      );
       voice.vibrato.parkAt = now + glideSeconds;
     }
   }
@@ -3116,30 +3144,43 @@ export class SoundEngine {
 
     const gain = this.ctx.createGain();
 
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(
+    this.parameterAutomation.set(gain.gain, 0, now);
+    this.parameterAutomation.linear(
+      gain.gain,
       instrument.gain * holdScale,
       now + instrument.attack,
+      this.ctx!.currentTime,
     );
-    gain.gain.exponentialRampToValueAtTime(
+    this.parameterAutomation.exponential(
+      gain.gain,
       0.001,
       now + instrument.attack + instrument.release * holdScale,
+      this.ctx!.currentTime,
     );
 
     const gain2 = this.ctx.createGain();
-    gain2.gain.setValueAtTime(0, now);
-    gain2.gain.linearRampToValueAtTime(
+    this.parameterAutomation.set(gain2.gain, 0, now);
+    this.parameterAutomation.linear(
+      gain2.gain,
       instrument.gain * 0.3 * holdScale,
       now + instrument.attack,
+      this.ctx!.currentTime,
     );
     const partialDecayEndsAt =
       now + instrument.attack + (instrument.release * holdScale) / 2;
-    gain2.gain.exponentialRampToValueAtTime(0.001, partialDecayEndsAt);
+    this.parameterAutomation.exponential(
+      gain2.gain,
+      0.001,
+      partialDecayEndsAt,
+      this.ctx!.currentTime,
+    );
     // The partial finishes halfway through the fundamental's decay, so it is
     // walked to true zero there rather than holding at 0.001 for seconds.
-    gain2.gain.linearRampToValueAtTime(
+    this.parameterAutomation.linear(
+      gain2.gain,
       0,
       partialDecayEndsAt + BELL_SILENCE_SECONDS,
+      this.ctx!.currentTime,
     );
 
     const pan = this.ctx.createStereoPanner();
@@ -3163,7 +3204,12 @@ export class SoundEngine {
     // bells are in that holding state at once and their cuts land on top of
     // the mix as crackle. Ramping the last stretch linearly to true zero costs
     // nothing audible and leaves nothing to cut.
-    gain.gain.linearRampToValueAtTime(0, stopTime);
+    this.parameterAutomation.linear(
+      gain.gain,
+      0,
+      stopTime,
+      this.ctx!.currentTime,
+    );
     osc.stop(stopTime);
     osc2.stop(stopTime);
   }
@@ -3182,27 +3228,27 @@ export class SoundEngine {
     filter.Q.value = instrument.filterQ;
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, now);
+    this.parameterAutomation.set(gain.gain, 0, now);
 
     const pan = ctx.createStereoPanner();
 
     const oscillatorLevel = ctx.createGain();
-    oscillatorLevel.gain.setValueAtTime(1, now);
+    this.parameterAutomation.set(oscillatorLevel.gain, 1, now);
     osc.connect(oscillatorLevel);
     oscillatorLevel.connect(filter);
     // The breath sits between the envelope and the pan, so closing it never
     // touches the envelope's own param. See `Voice.fadeNode`.
     const fade = ctx.createGain();
-    fade.gain.setValueAtTime(1, now);
+    this.parameterAutomation.set(fade.gain, 1, now);
     filter.connect(gain);
     gain.connect(fade);
     fade.connect(pan);
     // Both routes exist for the life of the voice; presence moves the level
     // between them rather than moving the connection. See `Voice.bedRoute`.
     const bedRoute = ctx.createGain();
-    bedRoute.gain.setValueAtTime(1, now);
+    this.parameterAutomation.set(bedRoute.gain, 1, now);
     const soloistRoute = ctx.createGain();
-    soloistRoute.gain.setValueAtTime(0, now);
+    this.parameterAutomation.set(soloistRoute.gain, 0, now);
     pan.connect(bedRoute);
     pan.connect(soloistRoute);
     bedRoute.connect(this.busFor("bed"));
@@ -3224,7 +3270,7 @@ export class SoundEngine {
     let reverbSend: GainNode | null = null;
     if (this.bedSendGain) {
       reverbSend = ctx.createGain();
-      reverbSend.gain.setValueAtTime(1, now);
+      this.parameterAutomation.set(reverbSend.gain, 1, now);
       pan.connect(reverbSend);
       reverbSend.connect(this.bedSendGain);
     }
@@ -3440,11 +3486,16 @@ export class SoundEngine {
     this.resumeVibrato(voice);
     this.rampTargets.delete(voice.vibrato.oscillator.frequency);
     this.rampTargets.delete(voice.vibrato.depth.gain);
-    voice.vibrato.oscillator.frequency.setValueAtTime(
+    this.parameterAutomation.set(
+      voice.vibrato.oscillator.frequency,
       fingerprint.vibratoRateHz,
       now,
     );
-    voice.vibrato.depth.gain.setValueAtTime(fingerprint.vibratoDepthCents, now);
+    this.parameterAutomation.set(
+      voice.vibrato.depth.gain,
+      fingerprint.vibratoDepthCents,
+      now,
+    );
     if (fingerprint.vibratoDepthCents === 0) voice.vibrato.parkAt = now;
   }
 
@@ -3523,13 +3574,13 @@ export class SoundEngine {
     // that is already sounding, and their output arriving at full mix in one
     // sample is the same step a disconnect makes on the way out.
     const mix = ctx.createGain();
-    mix.gain.setValueAtTime(0, now);
+    this.parameterAutomation.set(mix.gain, 0, now);
 
     const filters = CHORAL_TUNING.closedFormantsHz.map((hz) => {
       const filter = ctx.createBiquadFilter();
       filter.type = "bandpass";
-      filter.frequency.setValueAtTime(hz, now);
-      filter.Q.setValueAtTime(CHORAL_TUNING.formantQ, now);
+      this.parameterAutomation.set(filter.frequency, hz, now);
+      this.parameterAutomation.set(filter.Q, CHORAL_TUNING.formantQ, now);
       // Tapped off the voice's own lowpass so the formants sing the same tone
       // the voice is already making, then summed back into its gain stage.
       voice.filterNode.connect(filter);
@@ -3607,9 +3658,9 @@ export class SoundEngine {
     oscillator.frequency.value = voice.oscillator.frequency.value * 1.5;
     oscillator.detune.value = voice.appliedDetuneCents;
     const level = ctx.createGain();
-    level.gain.setValueAtTime(1, now);
+    this.parameterAutomation.set(level.gain, 1, now);
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(gainValue, now);
+    this.parameterAutomation.set(gain.gain, gainValue, now);
     oscillator.connect(level);
     level.connect(gain);
     gain.connect(voice.filterNode);
@@ -3694,10 +3745,9 @@ export class SoundEngine {
    * oscillator a step in frequency is a step in phase rate, which reads as a
    * click.
    *
-   * `holdParam` fixes that: `cancelAndHoldAtTime` plants the param's true
-   * instantaneous value as an event at `now`, so the ramp starts from the
-   * pitch actually sounding — mid-glide included. Nothing else may be written
-   * at `now` afterwards; the voice's own `currentFrequency` is the previous
+   * `holdParam` anchors the rendered value at `now`, so the ramp starts from
+   * the pitch actually sounding, including during a glide. The voice's own
+   * `currentFrequency` is the previous
    * *target*, not the sounding pitch, so anchoring on it would plant the very
    * jump this is here to remove. Frequency params carry no scheduled
    * envelopes, so holding them discards nothing.
@@ -3712,9 +3762,11 @@ export class SoundEngine {
     if (this.rampTargets.get(param) === value) return;
     this.holdParam(param, now);
     this.rampTargets.set(param, value);
-    param.exponentialRampToValueAtTime(
+    this.parameterAutomation.exponential(
+      param,
       value,
       this.rampEndTime(param, now, glideSeconds),
+      this.ctx!.currentTime,
     );
   }
 
@@ -3730,7 +3782,12 @@ export class SoundEngine {
     ] as const) {
       if (this.rampTargets.get(param) === target) continue;
       this.rampTargets.set(param, target);
-      param.linearRampToValueAtTime(target, now + 0.1);
+      this.parameterAutomation.linear(
+        param,
+        target,
+        now + 0.1,
+        this.ctx!.currentTime,
+      );
     }
 
     if (
@@ -3797,19 +3854,23 @@ export class SoundEngine {
 
     currentOscillator.type = oscillatorType;
     currentOscillator.frequency.value = frequency;
-    currentLevel.gain.setValueAtTime(0, now);
+    this.parameterAutomation.set(currentLevel.gain, 0, now);
     currentOscillator.connect(currentLevel);
     currentLevel.connect(destination);
     currentOscillator.start(now);
 
     this.holdParam(level.gain, now);
-    level.gain.linearRampToValueAtTime(
+    this.parameterAutomation.linear(
+      level.gain,
       0,
       now + OSCILLATOR_CROSSFADE_SECONDS,
+      this.ctx!.currentTime,
     );
-    currentLevel.gain.linearRampToValueAtTime(
+    this.parameterAutomation.linear(
+      currentLevel.gain,
       1,
       now + OSCILLATOR_CROSSFADE_SECONDS,
+      this.ctx!.currentTime,
     );
     oscillator.onended = () => level.disconnect();
     oscillator.stop(now + OSCILLATOR_CROSSFADE_SECONDS);
@@ -3907,7 +3968,12 @@ export class SoundEngine {
           now,
           VOICE_RETIREMENT_FADE_SECONDS,
         );
-        voice.gainNode.gain.linearRampToValueAtTime(0, fadeEnd);
+        this.parameterAutomation.linear(
+          voice.gainNode.gain,
+          0,
+          fadeEnd,
+          this.ctx!.currentTime,
+        );
         voice.oscillator.onended = disconnect;
         try {
           voice.oscillator.stop(
@@ -4849,16 +4915,21 @@ export class SoundEngine {
       // top of the singer rather than as depth behind them. A pure tone adds
       // the pitch and nothing else, which is all a halo is for.
       oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(pitch, now);
+      this.parameterAutomation.set(oscillator.frequency, pitch, now);
 
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
-      filter.frequency.setValueAtTime(haloFilterHz, now);
-      filter.Q.setValueAtTime(instrument.filterQ, now);
+      this.parameterAutomation.set(filter.frequency, haloFilterHz, now);
+      this.parameterAutomation.set(filter.Q, instrument.filterQ, now);
 
       const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(haloGain, now + haloFadeSeconds);
+      this.parameterAutomation.set(gain.gain, 0, now);
+      this.parameterAutomation.linear(
+        gain.gain,
+        haloGain,
+        now + haloFadeSeconds,
+        this.ctx!.currentTime,
+      );
 
       oscillator.connect(filter);
       filter.connect(gain);
@@ -5324,11 +5395,18 @@ export class SoundEngine {
     filter.frequency.value = filterHz;
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(peakGain, startTime + attackSeconds);
-    gain.gain.exponentialRampToValueAtTime(
+    this.parameterAutomation.set(gain.gain, 0, startTime);
+    this.parameterAutomation.linear(
+      gain.gain,
+      peakGain,
+      startTime + attackSeconds,
+      this.ctx!.currentTime,
+    );
+    this.parameterAutomation.exponential(
+      gain.gain,
       0.0001,
       startTime + attackSeconds + decaySeconds,
+      this.ctx!.currentTime,
     );
 
     const pan = ctx.createStereoPanner();
@@ -5357,7 +5435,7 @@ export class SoundEngine {
       osc.detune.value = voice.detune;
 
       const level = ctx.createGain();
-      level.gain.setValueAtTime(voice.level, startTime);
+      this.parameterAutomation.set(level.gain, voice.level, startTime);
 
       osc.connect(level);
       level.connect(filter);
@@ -5790,19 +5868,28 @@ export class SoundEngine {
     // fundamental does, which is the difference between a pluck and a beep.
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(tuning.filterStartHz, now);
-    filter.frequency.exponentialRampToValueAtTime(
+    this.parameterAutomation.set(filter.frequency, tuning.filterStartHz, now);
+    this.parameterAutomation.exponential(
+      filter.frequency,
       tuning.filterEndHz,
       now + tuning.attackSeconds + decaySeconds,
+      this.ctx!.currentTime,
     );
     filter.Q.value = tuning.filterQ;
 
     const level = ctx.createGain();
-    level.gain.setValueAtTime(0, now);
-    level.gain.linearRampToValueAtTime(peak, now + tuning.attackSeconds);
-    level.gain.exponentialRampToValueAtTime(
+    this.parameterAutomation.set(level.gain, 0, now);
+    this.parameterAutomation.linear(
+      level.gain,
+      peak,
+      now + tuning.attackSeconds,
+      this.ctx!.currentTime,
+    );
+    this.parameterAutomation.exponential(
+      level.gain,
       0.0001,
       now + tuning.attackSeconds + decaySeconds,
+      this.ctx!.currentTime,
     );
 
     const panNode = ctx.createStereoPanner();
@@ -5864,10 +5951,12 @@ export class SoundEngine {
       "clickBell",
     );
     if (!edge) return;
-    edge.gain.gain.setValueAtTime(edgeGain, now);
-    edge.gain.gain.exponentialRampToValueAtTime(
+    this.parameterAutomation.set(edge.gain.gain, edgeGain, now);
+    this.parameterAutomation.exponential(
+      edge.gain.gain,
       0.0001,
       now + edgeDurationSeconds,
+      this.ctx!.currentTime,
     );
   }
 
@@ -5937,10 +6026,20 @@ export class SoundEngine {
       buildEndsAt,
       now + durationSeconds - releaseSeconds,
     );
-    level.gain.setValueAtTime(0, now);
-    level.gain.linearRampToValueAtTime(peak, buildEndsAt);
-    level.gain.setValueAtTime(peak, releaseStartsAt);
-    level.gain.exponentialRampToValueAtTime(0.0001, now + durationSeconds);
+    this.parameterAutomation.set(level.gain, 0, now);
+    this.parameterAutomation.linear(
+      level.gain,
+      peak,
+      buildEndsAt,
+      this.ctx!.currentTime,
+    );
+    this.parameterAutomation.set(level.gain, peak, releaseStartsAt);
+    this.parameterAutomation.exponential(
+      level.gain,
+      0.0001,
+      now + durationSeconds,
+      this.ctx!.currentTime,
+    );
 
     const panNode = ctx.createStereoPanner();
     panNode.pan.value = positionToPan(x, this.canvasWidth);
@@ -5983,7 +6082,7 @@ export class SoundEngine {
     for (const partial of partials) {
       const osc = ctx.createOscillator();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(root * partial.ratio, now);
+      this.parameterAutomation.set(osc.frequency, root * partial.ratio, now);
 
       // The alternating variant steps the whole partial stack between root and
       // fifth, so the drum reads as retuning between strokes rather than as
@@ -5992,7 +6091,8 @@ export class SoundEngine {
         let at = now + alternateSeconds;
         let onFifth = true;
         while (at < now + durationSeconds) {
-          osc.frequency.setValueAtTime(
+          this.parameterAutomation.set(
+            osc.frequency,
             root * partial.ratio * (onFifth ? 1.5 : 1),
             at,
           );
@@ -6173,20 +6273,36 @@ export class SoundEngine {
     filter.Q.value = filterQ;
 
     const level = ctx.createGain();
-    level.gain.setValueAtTime(0.0001, now);
-    level.gain.linearRampToValueAtTime(peak, now + attackSeconds);
-    level.gain.setValueAtTime(peak, now + attackSeconds + sustainSeconds);
-    level.gain.exponentialRampToValueAtTime(
+    this.parameterAutomation.set(level.gain, 0.0001, now);
+    this.parameterAutomation.linear(
+      level.gain,
+      peak,
+      now + attackSeconds,
+      this.ctx!.currentTime,
+    );
+    this.parameterAutomation.set(
+      level.gain,
+      peak,
+      now + attackSeconds + sustainSeconds,
+    );
+    this.parameterAutomation.exponential(
+      level.gain,
       0.0001,
       now + attackSeconds + sustainSeconds + releaseSeconds,
+      this.ctx!.currentTime,
     );
 
     const panNode = ctx.createStereoPanner();
     const totalSeconds = attackSeconds + sustainSeconds + releaseSeconds;
     const from = Math.max(-1, Math.min(1, pan - panTravel / 2));
     const to = Math.max(-1, Math.min(1, pan + panTravel / 2));
-    panNode.pan.setValueAtTime(from, now);
-    panNode.pan.linearRampToValueAtTime(to, now + totalSeconds);
+    this.parameterAutomation.set(panNode.pan, from, now);
+    this.parameterAutomation.linear(
+      panNode.pan,
+      to,
+      now + totalSeconds,
+      this.ctx!.currentTime,
+    );
 
     const osc = ctx.createOscillator();
     osc.type = "sine";
@@ -6286,14 +6402,26 @@ export class SoundEngine {
     // The full shape: a level onset while the swell has not yet started, the
     // crescendo leaning in, then the slow release.
     const baseGain = 0.09;
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(baseGain, now + 0.15);
-    gain.gain.setValueAtTime(baseGain, now + onsetSeconds);
-    gain.gain.linearRampToValueAtTime(
+    this.parameterAutomation.set(gain.gain, 0, now);
+    this.parameterAutomation.linear(
+      gain.gain,
+      baseGain,
+      now + 0.15,
+      this.ctx!.currentTime,
+    );
+    this.parameterAutomation.set(gain.gain, baseGain, now + onsetSeconds);
+    this.parameterAutomation.linear(
+      gain.gain,
       baseGain * peakScale,
       now + onsetSeconds + crescendoSeconds,
+      this.ctx!.currentTime,
     );
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + totalSeconds);
+    this.parameterAutomation.exponential(
+      gain.gain,
+      0.0001,
+      now + totalSeconds,
+      this.ctx!.currentTime,
+    );
 
     const pan = ctx.createStereoPanner();
     osc.connect(tone);
@@ -6302,17 +6430,19 @@ export class SoundEngine {
     // The same formant bank the live voices use, opening from "ooh" to "ahh"
     // across the crescendo so the vowel morph is audible too.
     const mix = ctx.createGain();
-    mix.gain.setValueAtTime(CHORAL_TUNING.formantMix, now);
+    this.parameterAutomation.set(mix.gain, CHORAL_TUNING.formantMix, now);
     const { closedFormantsHz, openFormantsHz, formantQ } = CHORAL_TUNING;
     const formants = closedFormantsHz.map((hz, i) => {
       const filter = ctx.createBiquadFilter();
       filter.type = "bandpass";
-      filter.frequency.setValueAtTime(hz, now);
-      filter.frequency.linearRampToValueAtTime(
+      this.parameterAutomation.set(filter.frequency, hz, now);
+      this.parameterAutomation.linear(
+        filter.frequency,
         openFormantsHz[i],
         now + onsetSeconds + crescendoSeconds,
+        this.ctx!.currentTime,
       );
-      filter.Q.setValueAtTime(formantQ, now);
+      this.parameterAutomation.set(filter.Q, formantQ, now);
       tone.connect(filter);
       filter.connect(mix);
       return filter;
@@ -6434,10 +6564,20 @@ export class SoundEngine {
 
       const gain = ctx.createGain();
       const attackSeconds = 0.08;
-      gain.gain.setValueAtTime(0, startAt);
-      gain.gain.linearRampToValueAtTime(0.1, startAt + attackSeconds);
-      gain.gain.setValueAtTime(0.1, startAt + holdSeconds - 0.3);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + holdSeconds);
+      this.parameterAutomation.set(gain.gain, 0, startAt);
+      this.parameterAutomation.linear(
+        gain.gain,
+        0.1,
+        startAt + attackSeconds,
+        this.ctx!.currentTime,
+      );
+      this.parameterAutomation.set(gain.gain, 0.1, startAt + holdSeconds - 0.3);
+      this.parameterAutomation.exponential(
+        gain.gain,
+        0.0001,
+        startAt + holdSeconds,
+        this.ctx!.currentTime,
+      );
 
       const pan = ctx.createStereoPanner();
       pan.pan.value = order === 0 ? -0.5 : 0.5;
@@ -6530,8 +6670,13 @@ export class SoundEngine {
     filter.Q.value = BASS_PEDAL_TUNING.filterQ;
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(this.bassPedalGain(), now + fadeSeconds);
+    this.parameterAutomation.set(gain.gain, 0, now);
+    this.parameterAutomation.linear(
+      gain.gain,
+      this.bassPedalGain(),
+      now + fadeSeconds,
+      this.ctx!.currentTime,
+    );
 
     osc.connect(filter);
     filter.connect(gain);
@@ -6775,28 +6920,53 @@ export class SoundEngine {
     if (graph) {
       for (const param of [gain.gain, partialLevel.gain, pan.pan]) {
         param.cancelScheduledValues(0);
+        this.parameterAutomation.reset(param);
         this.rampTargets.delete(param);
         this.rampEnds.delete(param);
       }
       gain.gain.value = 0;
       partialLevel.gain.value = 0;
     }
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(peakGain, now + attackSeconds);
-    gain.gain.exponentialRampToValueAtTime(0.0001, decayEndsAt);
-    gain.gain.linearRampToValueAtTime(0, decayEndsAt + BELL_SILENCE_SECONDS);
+    this.parameterAutomation.set(gain.gain, 0, now);
+    this.parameterAutomation.linear(
+      gain.gain,
+      peakGain,
+      now + attackSeconds,
+      this.ctx!.currentTime,
+    );
+    this.parameterAutomation.exponential(
+      gain.gain,
+      0.0001,
+      decayEndsAt,
+      this.ctx!.currentTime,
+    );
+    this.parameterAutomation.linear(
+      gain.gain,
+      0,
+      decayEndsAt + BELL_SILENCE_SECONDS,
+      this.ctx!.currentTime,
+    );
 
     const partialDecayEndsAt = now + attackSeconds + decaySeconds / 2;
-    partialLevel.gain.setValueAtTime(0, now);
-    partialLevel.gain.linearRampToValueAtTime(
+    this.parameterAutomation.set(partialLevel.gain, 0, now);
+    this.parameterAutomation.linear(
+      partialLevel.gain,
       peakGain * partialGain,
       now + attackSeconds,
+      this.ctx!.currentTime,
     );
     // The partial dies first, so the note softens from struck to hummed.
-    partialLevel.gain.exponentialRampToValueAtTime(0.0001, partialDecayEndsAt);
-    partialLevel.gain.linearRampToValueAtTime(
+    this.parameterAutomation.exponential(
+      partialLevel.gain,
+      0.0001,
+      partialDecayEndsAt,
+      this.ctx!.currentTime,
+    );
+    this.parameterAutomation.linear(
+      partialLevel.gain,
       0,
       partialDecayEndsAt + BELL_SILENCE_SECONDS,
+      this.ctx!.currentTime,
     );
 
     pan.pan.value = positionToPan(x, this.canvasWidth);
@@ -6905,14 +7075,18 @@ export class SoundEngine {
         // stopping the oscillator on a held 0.0001 is the same mid-cycle cut
         // the fade exists to avoid.
         this.holdParam(note.gainNode.gain, now);
-        note.gainNode.gain.linearRampToValueAtTime(
+        this.parameterAutomation.linear(
+          note.gainNode.gain,
           0,
           now + FLOURISH_EVICTION_FADE_SECONDS,
+          this.ctx!.currentTime,
         );
         this.holdParam(note.partialGainNode.gain, now);
-        note.partialGainNode.gain.linearRampToValueAtTime(
+        this.parameterAutomation.linear(
+          note.partialGainNode.gain,
           0,
           now + FLOURISH_EVICTION_FADE_SECONDS,
+          this.ctx!.currentTime,
         );
         note.oscillator.stop(now + FLOURISH_EVICTION_FADE_SECONDS + 0.01);
         note.partial.stop(now + FLOURISH_EVICTION_FADE_SECONDS + 0.01);
@@ -7173,9 +7347,11 @@ export class SoundEngine {
     if (this.rampTargets.get(param) === targetValue) return;
     this.holdParam(param, now);
     this.rampTargets.set(param, targetValue);
-    param.linearRampToValueAtTime(
+    this.parameterAutomation.linear(
+      param,
       targetValue,
       this.rampEndTime(param, now, durationSeconds),
+      this.ctx!.currentTime,
     );
   }
 
@@ -7216,19 +7392,7 @@ export class SoundEngine {
   private holdParam(param: AudioParam, time: number): void {
     // Envelopes also hold these params, so a hold invalidates any control target.
     this.rampTargets.delete(param);
-    // cancelAndHoldAtTime preserves the instantaneous computed value and avoids
-    // discontinuities ("pops") from jumping to AudioParam.value mid-envelope.
-    const hold = (param as AudioParam & {
-      cancelAndHoldAtTime?: (time: number) => void;
-    }).cancelAndHoldAtTime;
-    if (hold) {
-      hold.call(param, time);
-      return;
-    }
-    // Fallback for older browsers lacking cancelAndHoldAtTime.
-    // We intentionally avoid noisy compatibility logs in the audio hot path;
-    // this degrades safely by cancelling future automation only.
-    param.cancelScheduledValues(time);
+    this.parameterAutomation.hold(param, time);
   }
 
   dispose(): void {
@@ -7298,9 +7462,11 @@ export class SoundEngine {
     const now = this.ctx?.currentTime ?? 0;
     for (const [, voice] of this.voices) {
       let disconnectWhenStopped = false;
+      let fadeEnd = now + 0.03;
       if (this.ctx) {
         this.holdParam(voice.gainNode.gain, now);
-        voice.gainNode.gain.linearRampToValueAtTime(0, now + 0.03);
+        fadeEnd = this.rampEndTime(voice.gainNode.gain, now, 0.03);
+        this.parameterAutomation.linear(voice.gainNode.gain, 0, fadeEnd, now);
       }
       // The halo feeds the pan node, downstream of the gain being faded, so
       // the cut above never reaches it. Left alone it would be stopped at
@@ -7311,13 +7477,13 @@ export class SoundEngine {
       if (voice.oscillator) {
         voice.oscillator.onended = () => this.disconnectVoice(voice);
         try {
-          voice.oscillator.stop(now + 0.04);
+          voice.oscillator.stop(fadeEnd + 0.01);
           disconnectWhenStopped = true;
         } catch { /* already stopped */ }
         voice.oscillator = null;
       }
       if (voice.fifthOscillator) {
-        try { voice.fifthOscillator.stop(now + 0.04); } catch { /* already stopped */ }
+        try { voice.fifthOscillator.stop(fadeEnd + 0.01); } catch { /* already stopped */ }
         voice.fifthOscillator = null;
       }
       if (!disconnectWhenStopped) {
