@@ -55,6 +55,7 @@ function renderCanvas(props: { live?: boolean }) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
   const testGlobal = globalThis as typeof globalThis & {
     IS_REACT_ACT_ENVIRONMENT?: boolean;
   };
@@ -69,6 +70,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   window.localStorage.clear();
 });
 
