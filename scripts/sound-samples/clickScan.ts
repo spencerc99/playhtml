@@ -69,6 +69,31 @@ const hash = (value: string): number => {
 };
 
 /**
+ * The context's own `currentTime` getter, taken off the prototype chain before
+ * any instance shadows it.
+ *
+ * A driven context replaces `currentTime` with the clock the replay sets, which
+ * is what lets a whole scene be scheduled ahead of a render that has not
+ * started. The render head underneath is then unreachable through the property
+ * - and a scene that suspends mid-render has to know where the render actually
+ * stands, because an un-timed call lands there and nowhere else.
+ */
+const nativeCurrentTime = ((): ((context: OfflineAudioContext) => number) => {
+  let proto: object | null = Object.getPrototypeOf(
+    new OfflineAudioContext(1, 128, SAMPLE_RATE),
+  );
+  while (proto) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, "currentTime");
+    if (descriptor?.get) {
+      const getter = descriptor.get;
+      return (context) => getter.call(context) as number;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+  throw new Error("no currentTime getter on the OfflineAudioContext prototype");
+})();
+
+/**
  * An offline context whose clock the caller drives, so a synchronous replay
  * renders as the timeline it represents rather than stacking onto instant
  * zero. Same construction the sample renderer uses.
@@ -76,6 +101,8 @@ const hash = (value: string): number => {
 interface DrivenContext {
   audioContext: OfflineAudioContext;
   setClock: (seconds: number) => void;
+  /** Where the render itself stands, which the driven clock hides. */
+  renderHeadSeconds: () => number;
 }
 
 const createDrivenContext = (durationSeconds: number): DrivenContext => {
@@ -97,6 +124,7 @@ const createDrivenContext = (durationSeconds: number): DrivenContext => {
     setClock: (seconds: number) => {
       clockSeconds = seconds;
     },
+    renderHeadSeconds: () => nativeCurrentTime(audioContext),
   };
 };
 
@@ -769,7 +797,9 @@ const typingScene = (
 /** Drive one scene through the engine and return the rendered buffer. */
 const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
   Math.random = seededRandom(hash(scene.id));
-  const { audioContext, setClock } = createDrivenContext(scene.durationSeconds);
+  const { audioContext, setClock, renderHeadSeconds } = createDrivenContext(
+    scene.durationSeconds,
+  );
   const engine = new SoundEngine(audioContext as unknown as BaseAudioContext);
   await engine.init();
   engine.setCanvasWidth(CANVAS_WIDTH);
@@ -784,9 +814,19 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
   const stepMs = 1_000 / REPLAY_FPS;
   const endMs = scene.durationSeconds * 1_000;
   let sampleMs = 0;
+  /**
+   * Where the render stands. Zero until the first suspension, which covers the
+   * whole of a scene without actions: it is driven before rendering begins, so
+   * everything it schedules lies ahead of a render that has not started.
+   */
+  let headSeconds = 0;
   const driveTo = (untilMs: number): void => {
     while (sampleMs <= endMs && sampleMs < untilMs) {
-      setClock(sampleMs / 1_000);
+      // Never behind the render head. A tick whose nominal time has already
+      // been rendered would anchor its ramps in the past, where they read a
+      // start value the output has moved on from, and that is a step. Ahead of
+      // the head is the ordinary case and the only one a plain scene has.
+      setClock(Math.max(sampleMs / 1_000, headSeconds));
       const frames = scene.advance(engine, sampleMs);
       engine.tick(sampleMs, frames);
       sampleMs += scene.nextStepMs ? scene.nextStepMs(sampleMs) : stepMs;
@@ -803,89 +843,91 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
   // the way the plain scenes are: automation is timestamped, but a `disconnect`
   // or an un-timed `stop()` takes effect where the render currently stands, so
   // a teardown "mid-scene" would actually land at time zero and its click could
-  // never appear. Instead the render is suspended at every tick: the engine
-  // always speaks at the render's own clock, actions fire between render
-  // quanta exactly as a real page's do, and pre-scheduling never mixes with
-  // live mutation.
+  // never appear. The render is suspended at each action instead, and the
+  // stretch of scene after it is driven from inside that suspension, ahead of
+  // the head, the same way a plain scene drives all of it.
   //
-  // `sweeps-noop-actions` is the control for this path — same scene, actions
-  // that do nothing. It must scan 0, and any drift between the clock the
-  // engine is handed and the render head shows up there first.
+  // `sweeps-noop-actions` is the control for this path - the same scene, the
+  // same suspensions, actions that do nothing. It must scan 0, and anything the
+  // harness does to the timeline rather than to the engine lands there first.
+  // What that control certifies is the stretch between one action and the next:
+  // an un-timed call a tick in that stretch makes lands on the head its
+  // suspension stopped at rather than at the tick's own time, so an action
+  // scene keeps its actions no further apart than the control's are.
   const QUANTUM_SECONDS = 128 / SAMPLE_RATE;
-  interface DriveEvent {
+  /**
+   * The render head a suspension asked for at `atMs` is granted at. Suspension
+   * lands on a render quantum boundary, rounding up, so this is the first
+   * quantum not yet rendered when the action comes due.
+   *
+   * Rounding down is what the harness did first, and it left the engine's clock
+   * a quantum behind the render: every ramp anchored there began from a value
+   * the output had already passed, which is a step, and the no-op control is
+   * what reported it.
+   */
+  const quantumFor = (atMs: number): number =>
+    Math.ceil(atMs / 1_000 / QUANTUM_SECONDS);
+
+  interface Stop {
+    quantum: number;
     atMs: number;
-    kind: "action" | "tick";
-    run?: (engine: SoundEngine) => void;
+    runs: Array<(engine: SoundEngine) => void>;
   }
-  // The tick schedule is a pure function of time, so the whole timeline —
-  // ticks and actions interleaved — is known before rendering starts, which
-  // is what registering the suspensions up front requires.
-  const events: DriveEvent[] = actions.map((action) => ({
-    atMs: action.atMs,
-    kind: "action",
-    run: action.run,
-  }));
-  for (let tickMs = 0; tickMs <= endMs; ) {
-    events.push({ atMs: tickMs, kind: "tick" });
-    tickMs += scene.nextStepMs ? scene.nextStepMs(tickMs) : stepMs;
-  }
-  events.sort((a, b) =>
-    a.atMs === b.atMs
-      ? (a.kind === "action" ? 0 : 1) - (b.kind === "action" ? 0 : 1)
-      : a.atMs - b.atMs,
-  );
-
-  // Group events by the render quantum they suspend on. Suspension times must
-  // be unique and strictly inside the render, so quanta collapse together and
-  // the leading group runs before rendering begins.
-  const groups = new Map<number, DriveEvent[]>();
-  let lastQuantum = -1;
-  for (const event of events) {
-    const quantum = Math.max(
-      lastQuantum === -1 ? 0 : lastQuantum,
-      Math.floor(event.atMs / 1_000 / QUANTUM_SECONDS),
-    );
-    lastQuantum = Math.max(lastQuantum, quantum);
-    const group = groups.get(quantum);
-    if (group) group.push(event);
-    else groups.set(quantum, [event]);
-  }
-
-  const runGroup = (group: DriveEvent[], atSeconds: number): void => {
-    for (const event of group) {
-      // The clock is the render head, not the event's nominal time. Those
-      // differ by up to a quantum, and handing the engine the nominal time
-      // schedules its ramps that far ahead of where the render actually
-      // stands: every one of them then starts from a value the output has not
-      // reached yet, which is a step. A no-op action reproduced it, so this is
-      // the harness's own discontinuity rather than anything the engine did.
-      setClock(atSeconds);
-      if (event.kind === "action") {
-        event.run!(engine);
-      } else {
-        engine.tick(event.atMs, scene.advance(engine, event.atMs));
-      }
+  // Actions sharing a quantum share its suspension: a suspension time has to be
+  // unique, and two calls one render quantum apart are simultaneous as far as
+  // the graph is concerned anyway.
+  const stops: Stop[] = [];
+  const byQuantum = new Map<number, Stop>();
+  for (const action of actions) {
+    const quantum = quantumFor(action.atMs);
+    const existing = byQuantum.get(quantum);
+    if (existing) {
+      existing.runs.push(action.run);
+      continue;
     }
-  };
+    const stop: Stop = { quantum, atMs: action.atMs, runs: [action.run] };
+    byQuantum.set(quantum, stop);
+    stops.push(stop);
+  }
+
+  // A suspension has to land strictly inside the render. Quantum zero is before
+  // it has begun and anything past the buffer is after it has ended; either way
+  // there is no head to run against but the one the drive already stands at.
+  const suspended: Stop[] = [];
+  for (const stop of stops) {
+    if (
+      stop.quantum > 0 &&
+      stop.quantum * QUANTUM_SECONDS < scene.durationSeconds
+    ) {
+      suspended.push(stop);
+      continue;
+    }
+    driveTo(stop.atMs);
+    setClock(Math.max(stop.atMs / 1_000, headSeconds));
+    for (const run of stop.runs) run(engine);
+  }
+
+  driveTo(suspended.length ? suspended[0].atMs : Number.POSITIVE_INFINITY);
 
   const suspendable = audioContext as unknown as {
     suspend: (seconds: number) => Promise<void>;
     resume: () => Promise<void>;
   };
-  const lastRenderableQuantum =
-    Math.floor((scene.durationSeconds - QUANTUM_SECONDS) / QUANTUM_SECONDS);
-  for (const [quantum, group] of groups) {
-    const seconds = quantum * QUANTUM_SECONDS;
-    if (quantum === 0) {
-      runGroup(group, 0);
-      continue;
-    }
-    if (quantum > lastRenderableQuantum) break;
-    void suspendable.suspend(seconds).then(() => {
-      runGroup(group, seconds);
+  suspended.forEach((stop, index) => {
+    void suspendable.suspend(stop.quantum * QUANTUM_SECONDS).then(() => {
+      // The clock is the render head itself, read from the context rather than
+      // computed from the suspension request. An action is an un-timed call
+      // that takes effect exactly where the render stands, and telling the
+      // engine anything else anchors its ramps at a value the output has not
+      // reached yet.
+      headSeconds = renderHeadSeconds();
+      setClock(headSeconds);
+      for (const run of stop.runs) run(engine);
+      const next = suspended[index + 1];
+      driveTo(next ? next.atMs : Number.POSITIVE_INFINITY);
       void suspendable.resume();
     });
-  }
+  });
 
   return (await audioContext.startRendering()) as unknown as AudioBuffer;
 };
@@ -1220,6 +1262,25 @@ try {
     ]),
   );
 
+  // The action scenes and their controls all run on one shape: a stretch long
+  // enough for the bed to fill, an action every `ACTION_SPACING_MS` after that,
+  // and the same again as a tail. The spacing is what the control certifies -
+  // it is the stretch of scene driven inside one suspension - so the scenes
+  // here keep to it rather than each choosing its own.
+  const ACTION_SPACING_MS = 8_000;
+  const actionTimes = (count: number): number[] =>
+    Array.from(
+      { length: count },
+      (_, index) => ACTION_SPACING_MS * (index + 1),
+    );
+  const actionSceneSeconds = (count: number): number =>
+    (ACTION_SPACING_MS * (count + 1)) / 1_000;
+
+  const TOGGLE_TIMES = actionTimes(3);
+  const TOGGLE_SECONDS = actionSceneSeconds(3);
+  const RESET_TIMES = actionTimes(2);
+  const RESET_SECONDS = actionSceneSeconds(2);
+
   SCENES.push(
     // The choral timbre toggled off while the bed is sounding, then back on,
     // then off again. Spencer's arrangement, because that is the one with the
@@ -1227,35 +1288,49 @@ try {
     // over them, and every voice carrying its vowel at full level when the
     // toggle lands.
     {
-      ...sweepScene("sweeps-choral-toggle", "presence", SCAN_SECONDS),
+      ...sweepScene("sweeps-choral-toggle", "presence", TOGGLE_SECONDS),
       config: SPENCER_ARRANGEMENT,
       cantus: "tenor" as CantusVariant,
       actions: [
-        { atMs: 12_000, run: (engine) => engine.setConfig({ choralTimbre: false }) },
-        { atMs: 20_000, run: (engine) => engine.setConfig({ choralTimbre: true }) },
-        { atMs: 28_000, run: (engine) => engine.setConfig({ choralTimbre: false }) },
+        {
+          atMs: TOGGLE_TIMES[0],
+          run: (engine) => engine.setConfig({ choralTimbre: false }),
+        },
+        {
+          atMs: TOGGLE_TIMES[1],
+          run: (engine) => engine.setConfig({ choralTimbre: true }),
+        },
+        {
+          atMs: TOGGLE_TIMES[2],
+          run: (engine) => engine.setConfig({ choralTimbre: false }),
+        },
       ],
     },
+    // The control. The same scene, the same suspensions, actions that do
+    // nothing, so anything it reports is the harness rather than the engine.
     {
-      ...sweepScene("sweeps-noop-actions", "presence", SCAN_SECONDS),
+      ...sweepScene("sweeps-noop-actions", "presence", TOGGLE_SECONDS),
       config: SPENCER_ARRANGEMENT,
       cantus: "tenor" as CantusVariant,
-      actions: [
-        { atMs: 12_000, run: () => {} },
-        { atMs: 20_000, run: () => {} },
-        { atMs: 28_000, run: () => {} },
-      ],
+      actions: TOGGLE_TIMES.map((atMs) => ({ atMs, run: () => {} })),
     },
-    // `reset()` fired while sustained voices — including a promoted presence
-    // soloist with its halo up — are sounding, which is what a day swap on the
+    // `reset()` fired while sustained voices - including a promoted presence
+    // soloist with its halo up - are sounding, which is what a day swap on the
     // archive page does. The second reset lands while the scene rebuilt from
     // the first is back at full level.
     {
-      ...sweepScene("sweeps-reset-presence", "presence", SCAN_SECONDS),
-      actions: [
-        { atMs: 15_000, run: (engine) => engine.reset() },
-        { atMs: 27_000, run: (engine) => engine.reset() },
-      ],
+      ...sweepScene("sweeps-reset-presence", "presence", RESET_SECONDS),
+      actions: RESET_TIMES.map((atMs) => ({
+        atMs,
+        run: (engine: SoundEngine) => engine.reset(),
+      })),
+    },
+    // The control again on the reset scene's own arrangement and shape: the
+    // default arrangement reaches voices Spencer's does not, and a control that
+    // only ever ran one of them would certify only that one.
+    {
+      ...sweepScene("sweeps-noop-reset-shape", "presence", RESET_SECONDS),
+      actions: RESET_TIMES.map((atMs) => ({ atMs, run: () => {} })),
     },
   );
 
