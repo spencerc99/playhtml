@@ -41,10 +41,23 @@ const SoundPlayground = () => {
   const arrangement = useSoundArrangement(engineRef);
   const [readout, setReadout] = useState({ chord: "Dm", energy: 0 });
 
+  const performanceRef = useRef<HTMLOutputElement | null>(null);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const id = window.setInterval(() => {
+      const element = performanceRef.current;
+      if (!element) return;
+      const sample = engineRef.current?.getPerformanceSnapshot();
+      element.textContent = sample ? JSON.stringify(sample, null, 2) : "Audio not started";
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const applyArrangement = arrangement.applyTo;
   const ensureEngine = useCallback(async () => {
     if (!engineRef.current) {
       const engine = new SoundEngine();
+      if (import.meta.env.DEV) engine.enablePerformanceMonitoring();
       await engine.init();
       applyArrangement(engine);
       engine.setCanvasWidth(window.innerWidth);
@@ -78,6 +91,13 @@ const SoundPlayground = () => {
 
   return (
     <div style={styles.page}>
+      {import.meta.env.DEV && (
+        <output
+          id="sound-performance"
+          ref={performanceRef}
+          style={{ position: "fixed", right: 8, bottom: 8, zIndex: 1000, padding: 8, background: "#faf7f2", border: "1px solid #8a8279", font: "10px monospace", whiteSpace: "pre", pointerEvents: "none" }}
+        >Audio not started</output>
+      )}
       <div style={styles.title}>sound playground</div>
       <div style={styles.subtitle}>
         how browsing becomes sound. set the scene, decide what sounds and how,

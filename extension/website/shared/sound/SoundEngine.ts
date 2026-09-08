@@ -1,6 +1,7 @@
 // ABOUTME: Core generative sound engine driven by cursor trail animation data
 // ABOUTME: Manages Web Audio voices, maps trail frames to musical parameters each animation frame
 
+import { SoundPerformance } from "./SoundPerformance";
 import {
   TrailSoundFrame,
   ClickSoundEvent,
@@ -1377,6 +1378,16 @@ export class SoundEngine {
    */
   private readonly providedCtx: BaseAudioContext | null;
   private ctx: AudioContext | null = null;
+  private performanceMonitoring = false;
+  private performanceMonitor: SoundPerformance | null = null;
+
+  enablePerformanceMonitoring(): void {
+    this.performanceMonitoring = true;
+  }
+
+  getPerformanceSnapshot() {
+    return this.performanceMonitor?.snapshot() ?? null;
+  }
   private masterGain: GainNode | null = null;
   /**
    * Pre-master sum feeding the reverb, so the wet path can be scaled per voice.
@@ -1582,6 +1593,10 @@ export class SoundEngine {
     // identical either way. The cast keeps the rest of the class typed against
     // the live context it usually holds.
     this.ctx = (this.providedCtx ?? new AudioContext()) as AudioContext;
+
+    if (this.performanceMonitoring) {
+      this.performanceMonitor = new SoundPerformance(this.ctx);
+    }
 
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = this.baseVolume;
@@ -6441,6 +6456,8 @@ export class SoundEngine {
   }
 
   dispose(): void {
+    this.performanceMonitor?.stop();
+    this.performanceMonitor = null;
     this.enabled = false;
     this.noticeListener = null;
     this.clearFlourish();
