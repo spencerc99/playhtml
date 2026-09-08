@@ -2004,19 +2004,18 @@ export class SoundEngine {
 
     this.enabled = true;
 
-    // init() is triggered by a user gesture (sound-toggle click), so resuming
-    // here satisfies the browser autoplay policy. Without this, the context
-    // stays suspended until tick() happens to fire from AnimatedTrails' rAF
-    // loop, which can delay audible sound by seconds.
-    // An offline context is rendered rather than played, so it has no resume
-    // to call and never reaches this state in the first place.
-    if (this.ctx.state === "suspended" && this.ctx.resume) {
-      await this.ctx.resume();
+    // The installation cursor profile can initialize sound before a gesture.
+    // Keep the graph available for a later user gesture or wake-time retry if
+    // the browser's autoplay policy leaves this resume request pending.
+    if (this.ctx.state === "suspended") {
+      void this.resume().catch(() => undefined);
     }
   }
 
   async resume(): Promise<void> {
-    if (this.ctx && this.ctx.state === "suspended") {
+    // An offline context is rendered rather than played, so it has no resume
+    // to call — the click scanner drives the engine through one.
+    if (this.ctx && this.ctx.state === "suspended" && this.ctx.resume) {
       await this.ctx.resume();
     }
   }
@@ -2199,10 +2198,9 @@ export class SoundEngine {
   tick(elapsedMs: number, activeTrails: TrailSoundFrame[]): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
 
-    if (this.ctx.state === "suspended") {
-      this.ctx.resume();
-    }
-
+    // No resume here: the context is resumed at init and retried on wake, so a
+    // tick that finds it suspended is a page the browser has not yet let play
+    // rather than something to nudge every frame.
     for (const voice of this.voices.values()) {
       if (voice.fifthSilentAt !== null && this.ctx.currentTime >= voice.fifthSilentAt) {
         this.stopFifth(voice);

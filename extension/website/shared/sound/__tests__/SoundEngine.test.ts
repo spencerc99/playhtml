@@ -304,6 +304,32 @@ describe("cursor type aliases", () => {
 });
 
 describe("SoundEngine cursor instruments", () => {
+  it("keeps the audio graph initialized when autoplay blocks its first resume", async () => {
+    context.state = "suspended";
+    const resume = vi
+      .spyOn(context, "resume")
+      .mockRejectedValue(new Error("NotAllowedError"));
+    const engine = new SoundEngine();
+
+    await expect(engine.init()).resolves.toBeUndefined();
+
+    expect(resume).toHaveBeenCalledOnce();
+    expect(engine.isEnabled()).toBe(true);
+  });
+
+  it("finishes initialization while an autoplay resume request remains pending", async () => {
+    context.state = "suspended";
+    const resume = vi
+      .spyOn(context, "resume")
+      .mockReturnValue(new Promise(() => {}));
+    const engine = new SoundEngine();
+
+    await expect(engine.init()).resolves.toBeUndefined();
+
+    expect(resume).toHaveBeenCalledOnce();
+    expect(engine.isEnabled()).toBe(true);
+  });
+
   it("does not restart the master gain ramp when trail count is unchanged", async () => {
     const engine = new SoundEngine();
     await engine.init();
