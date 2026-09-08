@@ -133,3 +133,5 @@ export const DEFAULT_SETTINGS = {
   // setting you'd want baked into a saved/shared URL.
   debugMode: false,
 };
+
+export type MovementSettings = typeof DEFAULT_SETTINGS;

@@ -14,12 +14,13 @@ import { AnimatedTrails } from "./AnimatedTrails";
 import { LiveTrails } from "./LiveTrails";
 import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
+import { attachSoundWakeListeners } from "../sound/soundWake";
 import { isSoundDevEnabled } from "../sound/soundDevFlag";
 import { SoundDevSettings } from "../sound/SoundDevSettings";
 import { useSoundArrangement } from "../sound/useSoundArrangement";
 import { TrailPositions } from "./trailPositions";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
-import { AnimatedTyping } from "./AnimatedTyping";
+import { AnimatedTyping, ContinuousTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
 import { AnimatedNavigation } from "./AnimatedNavigation";
 import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
@@ -65,7 +66,7 @@ import {
   type TimeOfDayFilter,
 } from "../config";
 import type { DayCounts } from "../types";
-import { DEFAULT_SETTINGS } from "./settingsDefaults";
+import { DEFAULT_SETTINGS, type MovementSettings } from "./settingsDefaults";
 import {
   DEFAULT_CINEMATIC_CONFIG,
   type CinematicConfig,
@@ -392,16 +393,17 @@ function playShutterSound() {
 // only persist when the user explicitly modifies a control.
 const SETTINGS_STORAGE_KEY = "internet-movement-settings-v2";
 
-type MovementSettings = typeof DEFAULT_SETTINGS;
-
 const loadSettings = (
   defaultSettings: Partial<MovementSettings> = {},
+  useStoredSettings = true,
 ): MovementSettings => {
   const defaults = { ...DEFAULT_SETTINGS, ...defaultSettings };
   const urlOverrides = parseSettingsFromUrl();
 
   try {
-    const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const stored = useStoredSettings
+      ? localStorage.getItem(SETTINGS_STORAGE_KEY)
+      : null;
     if (stored) {
       const parsed = JSON.parse(stored);
       return {
@@ -423,6 +425,7 @@ const loadSettings = (
 };
 
 interface MovementCanvasProps {
+  installationRecordings?: { liveEventIds: ReadonlySet<string> };
   events: CollectionEvent[];
   loading: boolean;
   error: string | null;
@@ -444,11 +447,23 @@ interface MovementCanvasProps {
   onSetFilters?: (filters: FilterChip[]) => void;
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
-  /** Initial sound-on state. The AudioContext will still start suspended
-   * until the user's first gesture (browser autoplay policy). */
+  /** Route-specific visualization ids shown in the developer controls. */
+  availableVisualizations?: readonly string[];
+  /** Initial sound-on state. The AudioContext may remain suspended until the
+   * browser permits playback through interaction or autoplay policy. */
   defaultSoundEnabled?: boolean;
   /** Route-specific defaults applied before stored settings and URL overrides. */
   defaultSettings?: Partial<MovementSettings>;
+  /** Whether this route should use personal defaults saved in this browser. */
+  useStoredSettings?: boolean;
+  /** Whether settings changes should be mirrored into the current URL. */
+  syncSettingsToUrl?: boolean;
+  /** Named-installation defaults; explicit URL parameters still take precedence. */
+  defaultCinematic?: CinematicConfig | null;
+  installationRole?: "master" | "follower" | null;
+  installationFollowerId?: string | null;
+  /** Route-enforced presentation floor. URL clean levels can still raise it. */
+  minimumCleanLevel?: 0 | 1 | 2;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
   connected?: boolean;
@@ -459,13 +474,25 @@ interface MovementCanvasProps {
   getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   /** Restarts finite archive playback when the parent swaps event batches. */
   playbackKey?: string;
+  /** Labels the developer-console playhead for hybrid archive/live playback. */
+  playbackSource?: "archive" | "live";
   /** Identifies playback batches that belong to the same archive query. */
   playbackContextKey?: string;
   /** Called when finite archive playback reaches the end of its batch. */
   onPlaybackCycleComplete?: () => boolean;
+  /** Archived cursor footage shown behind a continuous live cursor field while
+   * that field is quiet. */
+  archiveFallback?: {
+    events: CollectionEvent[];
+    visible: boolean;
+    playbackKey: string;
+    fadeMs: number;
+    onPlaybackCycleComplete: () => boolean;
+  };
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
+  installationRecordings,
   events,
   loading,
   error,
@@ -479,23 +506,40 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   onSetFilters,
   activeVisualizations,
   onSetActiveVisualizations,
+  availableVisualizations,
   defaultSoundEnabled = false,
   defaultSettings,
+  useStoredSettings = true,
+  syncSettingsToUrl = true,
+  defaultCinematic = null,
+  installationRole = null,
+  installationFollowerId = null,
+  minimumCleanLevel = 0,
   live = false,
   connected = false,
   getInstallationElapsedMs,
   playbackKey = "fixed",
+  playbackSource,
   playbackContextKey = playbackKey,
   onPlaybackCycleComplete,
+  archiveFallback,
 }) => {
   const settingsDefaults = useMemo(
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
     [defaultSettings],
   );
-  const [settings, setSettings] = useState(() => loadSettings(defaultSettings));
+  const [selectedSettings, setSettings] = useState(() =>
+    loadSettings(defaultSettings, useStoredSettings),
+  );
+  const settings = useMemo(
+    () => installationRole
+      ? { ...selectedSettings, randomizeColors: false }
+      : selectedSettings,
+    [installationRole, selectedSettings],
+  );
   const [controlsVisible, setControlsVisible] = useState(false);
   const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
-    parseCinematicFromUrl(),
+    parseCinematicFromUrl(defaultCinematic),
   );
   // Bumped by the N key to ask the cinematic camera to swap subjects now.
   const [cinematicNextSignal, setCinematicNextSignal] = useState(0);
@@ -504,7 +548,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // filters out cursors other followers are riding so no two screens follow the
   // same cursor. Inert (identity-stable lowest-progress selector, no channel)
   // for every other window. Injected into the cinematic config below.
-  const { isFollower, pickSubject } = useFollowerCoordination();
+  const { isFollower, pickSubject } = useFollowerCoordination({
+    role: installationRole,
+    followerId: installationFollowerId,
+  });
 
   // Merge the coordination selector into the cinematic config in FOLLOW mode
   // only. The camera gives `forcedSubjectIndex` (the `?follow=N` escape hatch)
@@ -516,6 +563,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     if (!isFollower || cinematic.mode !== "follow") return cinematic;
     return { ...cinematic, pickSubject };
   }, [cinematic, isFollower, pickSubject]);
+  // Each follow layer centers its own cursor, so only one may be visible.
+  const followsCursor = cinematicConfig?.mode === "follow";
 
   /** When set, only events whose timestamp falls in [start, end) are passed
    * downstream to the visualization hooks. Used by the Hotspots dev tool to
@@ -627,6 +676,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const [captureCleanOverride, setCaptureCleanOverride] = useState(false);
   const cleanLevel = Math.max(
     cleanFromUrl,
+    minimumCleanLevel,
     captureCleanOverride ? 1 : 0,
   ) as 0 | 1 | 2;
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
@@ -712,6 +762,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       soundEngineRef.current = null;
       setSoundEngineReady(null);
     };
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    if (!soundEnabled) return;
+    return attachSoundWakeListeners(() => soundEngineRef.current?.resume());
   }, [soundEnabled]);
 
   useEffect(() => {
@@ -846,7 +901,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // history entry. `replaceState` is cheap, but skipping calls until input
   // settles keeps the URL bar visually quiet during interaction.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !syncSettingsToUrl) return;
     const timer = window.setTimeout(() => {
       try {
         const next = buildShareUrl({
@@ -867,7 +922,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       }
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [settings, settingsDefaults, activeVisualizations, selectedTimeRange]);
+  }, [
+    settings,
+    settingsDefaults,
+    activeVisualizations,
+    selectedTimeRange,
+    syncSettingsToUrl,
+  ]);
 
   // Keyboard shortcuts:
   //   double-tap D — toggle controls panel
@@ -1153,6 +1214,39 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
   } = useCursorTrails(activeTrailEvents, viewportSize, cursorSettings);
+  const archiveFallbackSettings = useMemo(
+    () => ({
+      ...cursorSettings,
+      trailAnimationMode: settings.trailAnimationMode,
+      singleSegmentPerGroup: false,
+    }),
+    [cursorSettings, settings.trailAnimationMode],
+  );
+  const {
+    trailStates: archiveFallbackTrailStates,
+    timeBounds: archiveFallbackTimeBounds,
+    cycleDuration: archiveFallbackCycleDuration,
+  } = useCursorTrails(
+    archiveFallback?.events ?? EMPTY_EVENTS,
+    viewportSize,
+    archiveFallbackSettings,
+  );
+  const renderedArchiveFallbackTrailStates = useArchiveTrailHandoff(
+    archiveFallbackTrailStates,
+    archiveFallback?.playbackKey ?? "archive-fallback",
+    playbackContextKey,
+    archiveFallback !== undefined,
+    settings.maxConcurrentTrails * 2,
+    COMPLETION_FADE_MS,
+  );
+  const archiveFallbackTimeRange = useMemo(
+    () => ({
+      min: archiveFallbackTimeBounds.min,
+      max: archiveFallbackTimeBounds.max,
+      duration: Math.max(archiveFallbackCycleDuration, 60_000),
+    }),
+    [archiveFallbackCycleDuration, archiveFallbackTimeBounds],
+  );
   const activeTrailIds = useMemo(
     () => new Set(trailStates.map(({ trail }) => trail.id)),
     [trailStates],
@@ -1338,11 +1432,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   const viewportSettings = useMemo(
     () => ({
+      recordedTiming: installationRecordings !== undefined,
       filters: (settings.filters as FilterChip[] | undefined) ?? [],
       pidFilter: settings.pidFilter,
       viewportEventFilter: settings.viewportEventFilter,
     }),
-    [settings.filters, settings.pidFilter, settings.viewportEventFilter],
+    [
+      settings.filters,
+      settings.pidFilter,
+      settings.viewportEventFilter,
+      installationRecordings !== undefined,
+    ],
   );
 
   const { animations: scrollAnimations, urlMetadata: scrollUrlMetadata } =
@@ -1367,10 +1467,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     showTyping,
   ]);
 
-  usePlaybackCycle({
+  const getPlaybackElapsedMs = usePlaybackCycle({
     enabled:
       !live &&
       !scrollingControlsPlayback &&
+      installationRecordings === undefined &&
       onPlaybackCycleComplete !== undefined,
     cycleKey: playbackKey,
     durationMs: playbackCycleDuration,
@@ -1378,6 +1479,29 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     frozen: paused,
     onComplete: onPlaybackCycleComplete,
   });
+  const getArchiveFallbackElapsedMs = usePlaybackCycle({
+    enabled:
+      live &&
+      archiveFallback !== undefined &&
+      archiveFallbackTrailStates.length > 0,
+    cycleKey: archiveFallback?.playbackKey ?? "archive-fallback",
+    durationMs: archiveFallbackTimeRange.duration,
+    animationSpeed: settings.animationSpeed,
+    frozen: paused || !archiveFallback?.visible,
+    onComplete: () =>
+      archiveFallback?.visible
+        ? archiveFallback.onPlaybackCycleComplete()
+        : false,
+  });
+
+  const getArchiveFallbackFrameMs = useCallback(
+    () =>
+      Math.min(
+        getArchiveFallbackElapsedMs(),
+        Math.max(0, archiveFallbackTimeRange.duration - 1),
+      ),
+    [getArchiveFallbackElapsedMs, archiveFallbackTimeRange.duration],
+  );
 
   // For viewports whose URL has no captured title (no navigation event), ask
   // the worker's /page-meta endpoint to resolve title + favicon live (oEmbed
@@ -1570,6 +1694,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         timeRange={timeRange}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={onSetActiveVisualizations}
+        availableVisualizations={availableVisualizations}
         selectedTimeRange={selectedTimeRange}
         onSelectTimeRange={setSelectedTimeRange}
         soundSettingsOverride={
@@ -1611,8 +1736,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           events={events}
           filteredEventCount={filteredEvents.length}
           trailCount={trails.length}
-          cycleDurationMs={timeRange.duration}
+          cycleDurationMs={playbackCycleDuration}
           animationSpeed={settings.animationSpeed}
+          frozen={paused}
+          playbackKey={playbackKey}
+          playbackSource={playbackSource}
+          getPlaybackElapsedMs={getPlaybackElapsedMs}
           leftOffset={controlsVisible ? 340 : 16}
           loading={loading}
           error={error}
@@ -1848,10 +1977,51 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         </svg>
 
         {showTrails &&
+          live &&
+          archiveFallback &&
+          archiveFallbackTrailStates.length > 0 && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 2,
+                opacity: followsCursor
+                  ? 1
+                  : archiveFallback.visible ? 1 : 0,
+                visibility: followsCursor && !archiveFallback.visible
+                  ? "hidden"
+                  : "visible",
+                pointerEvents: "none",
+                transition: followsCursor
+                  ? undefined
+                  : `opacity ${archiveFallback.fadeMs}ms ease-in-out`,
+              }}
+            >
+              <AnimatedTrails
+                cinematic={cinematicConfig}
+                cinematicNextSignal={cinematicNextSignal}
+                trailStates={renderedArchiveFallbackTrailStates}
+                getInstallationElapsedMs={getArchiveFallbackFrameMs}
+                timeRange={archiveFallbackTimeRange}
+                showClickRipples={!showClicks}
+                windowSize={settings.maxConcurrentTrails * 2}
+                soundEngine={null}
+                settings={trailAnimationSettings}
+                frozen={paused}
+              />
+            </div>
+          )}
+
+        {showTrails &&
           (live ? (
             <LiveTrails
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
+              visible={!(followsCursor && archiveFallback?.visible &&
+                archiveFallbackTrailStates.length > 0)}
+              cinematic={cinematicConfig}
+              cinematicNextSignal={cinematicNextSignal}
               frozen={paused}
               showClickRipples={!showClicks}
               soundEngine={!soundEnabled ? null : soundEngineReady}
@@ -1916,19 +2086,29 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {showTyping && !paused && (
+        {showTyping && !paused && installationRecordings && (
+          <ContinuousTyping
+            key={`typing-${playbackContextKey}`}
+            typingStates={typingStates}
+            settings={typingSettings}
+            liveEventIds={installationRecordings.liveEventIds}
+          />
+        )}
+        {showTyping && !paused && !installationRecordings && (
           <AnimatedTyping
             key={`typing-${playbackKey}`}
             typingStates={typingStates}
             timeRange={timeRange}
             settings={typingSettings}
+            repeatAnimations={onPlaybackCycleComplete === undefined}
           />
         )}
 
-        {showScrolling && !paused && scrollAnimations && scrollAnimations.length > 0 && (
+        {showScrolling && !paused && scrollAnimations && (installationRecordings || scrollAnimations.length > 0) && (
           <AnimatedScrollViewports
             key={`scrolling-${playbackKey}`}
             animations={scrollAnimations}
+            installationLiveEventIds={installationRecordings?.liveEventIds}
             canvasSize={viewportSize}
             repeatAnimations={!scrollingControlsPlayback}
             onAnimationsComplete={

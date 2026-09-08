@@ -33,6 +33,7 @@ import {
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
+import { initInstallationCursor } from "./content/installationCursor";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -61,6 +62,8 @@ export default defineContentScript({
     markExtensionInstalled(document.documentElement);
     const removeSlowModeBridge = initHostedSlowModeContentBridge();
     ctx?.onInvalidated(removeSlowModeBridge);
+    const removeInstallationCursor = initInstallationCursor();
+    ctx?.onInvalidated(removeInstallationCursor);
 
     let currentPresenceCount = 0;
 

@@ -2,6 +2,11 @@
 /* ABOUTME: Only contains styles that must affect host page elements directly. */
 /* All extension-owned UI (toasts, overlays) uses Shadow DOM with inline styles — see content.ts. */
 
+html[data-wwo-installation-cursor],
+html[data-wwo-installation-cursor] * {
+  cursor: none !important;
+}
+
 .playhtml-extension-element-picker {
   outline: 2px dashed #6366f1 !important;
   background: rgba(99, 102, 241, 0.1) !important;

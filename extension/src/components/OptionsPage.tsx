@@ -6,6 +6,7 @@ import browser from "webextension-polyfill";
 import { WORKER_URL } from "@movement/config";
 import type { GameInventory, PlayerIdentity, PlayHTMLStatus } from "../types";
 import { CursorSvg } from "./icons";
+import { InstallationModeSettings } from "./InstallationModeSettings";
 import {
   DataCollectionSection,
   DeveloperModeSection,
@@ -329,6 +330,7 @@ export function OptionsPage() {
         <section id="identity" className="options-page__section">
           <h1>Identity</h1>
           <div className="options-page__card">
+            <InstallationModeSettings />
             <div className="options-page__setting-row">
               <div>
                 <h2>Cursor color</h2>
