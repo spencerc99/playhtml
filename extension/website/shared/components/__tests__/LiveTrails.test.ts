@@ -19,6 +19,7 @@ import {
   LiveTrails,
   shouldDepartTrail,
 } from "../LiveTrails";
+import { DEFAULT_CINEMATIC_CONFIG } from "../../utils/cinematicCamera";
 import { COMPLETED_OPACITY } from "../trailPrimitives";
 import {
   DEPART_FADE_MS,
@@ -435,5 +436,64 @@ describe("LiveTrails sound", () => {
     container.remove();
     vi.unstubAllGlobals();
     delete testGlobal.IS_REACT_ACT_ENVIRONMENT;
+  });
+});
+
+describe("LiveTrails camera", () => {
+  it("follows an extending trail without restarting and releases the camera when disabled", async () => {
+    const testGlobal = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+    };
+    testGlobal.IS_REACT_ACT_ENVIRONMENT = true;
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const state = trailState();
+    const cinematic = { ...DEFAULT_CINEMATIC_CONFIG, zoom: 0.1 };
+    const render = async (enabled: boolean, frozen = false) => {
+      await act(async () => root.render(React.createElement(LiveTrails, {
+        trailStates: [state],
+        cinematic: enabled ? cinematic : null,
+        settings: DEFAULT_SETTINGS,
+        frozen,
+      })));
+    };
+    try {
+      await render(true);
+      act(() => frames.shift()?.(1000));
+      act(() => frames.shift()?.(1500));
+      const svg = container.querySelector("svg.trails-svg")!;
+      const box = () => svg.getAttribute("viewBox")!.split(" ").map(Number);
+      expect(box()[2]).toBeCloseTo(window.innerWidth * 0.1);
+      const initial = box();
+      act(() => frames.shift()?.(1700));
+      expect(box()[0]).toBeGreaterThan(initial[0]);
+      const beforeGrowth = box();
+      state.trail.points.push({ x: 200, y: 200, ts: 2000 });
+      state.variedPoints.push({ x: 200, y: 200 });
+      state.durationMs = 2000;
+      await render(true);
+      act(() => frames.shift()?.(1700));
+      expect(box()[0]).toBeCloseTo(beforeGrowth[0]);
+      act(() => frames.shift()?.(1900));
+      expect(box()[0]).toBeGreaterThan(beforeGrowth[0]);
+      await render(true, true);
+      const paused = svg.getAttribute("viewBox");
+      act(() => frames.shift()?.(2100));
+      expect(svg.getAttribute("viewBox")).toBe(paused);
+      await render(false);
+      expect(svg.hasAttribute("viewBox")).toBe(false);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+      delete testGlobal.IS_REACT_ACT_ENVIRONMENT;
+    }
   });
 });

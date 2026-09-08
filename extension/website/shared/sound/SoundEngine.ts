@@ -176,6 +176,91 @@ const BELL_SILENCE_SECONDS = 0.1;
  */
 const FLOURISH_EVICTION_FADE_SECONDS = 0.025;
 
+/**
+ * What a click storm is allowed to cost.
+ *
+ * Real archives contain storms: one participant clicking hundreds of times in
+ * a few seconds along a moving path. Each click was building an unbudgeted
+ * four-node graph with its own three-second envelope, so a couple of hundred
+ * of them put several hundred oscillators and a thousand scheduled automation
+ * events into the graph at once. That is what the crackle was — not any one
+ * note's shape but the sheer count of them summing past the mix and the
+ * scheduling cost of building them.
+ *
+ * The answer is admission control, not eviction. Density is the point: rapid
+ * individual bells are what a storm should sound like, so the engine admits
+ * clicks at the highest *sustained* rate it can sound cleanly and silently
+ * ignores the rest. A click that is not admitted creates nothing at all — no
+ * nodes, no automation — and a click that is admitted rings out in full.
+ * Nothing already sounding is ever cut to make room for something newer; that
+ * cut *is* the artifact.
+ *
+ * Sustained is the load-bearing word. The bell rings for three seconds, so
+ * twenty of them sounding at once is five arriving a second, not twenty:
+ * "how many may sound together" and "how many may start each second" are the
+ * same budget read two ways, and setting them independently is what made an
+ * earlier tuning strobe. See `admissionsPerSecond`.
+ *
+ * Isolated clicking never reaches either limit, so ordinary use is untouched:
+ * measured, anything up to four clicks a second sounds every one of them.
+ */
+export const CLICK_STORM_TUNING = {
+  /**
+   * Simultaneously-sounding click bells. Above this the mix is summing more
+   * bell than it has headroom for, whatever their individual envelopes say.
+   */
+  maxConcurrentBells: 20,
+  /**
+   * Clicks admitted per second, as a token bucket, and the limit that does
+   * the actual work.
+   *
+   * The rate has to be one the concurrency cap can sustain, because a bell
+   * holds its slot for `CLICK_BELL.release` — three seconds — and a rate above
+   * `maxConcurrentBells / 3s` therefore fills every slot faster than any of
+   * them frees. What happens then is not a lower density but a pulsing one:
+   * measured at 18/s against a cap of 16, a storm admitted sixteen bells in
+   * the first second, refused everything for two and a half, then admitted
+   * sixteen more as the first sixteen expired together — 16, 0, 0, 16, 0, 0
+   * bells per second, with two and a half seconds of total silence in the
+   * middle of someone clicking twenty-five times a second. Both limits were
+   * honoured the whole time; they were simply set to disagree, and the
+   * concurrency cap resolved the disagreement by strobing.
+   *
+   * Five a second fits inside the cap (5 x 3.1s = 15.6 slots of 20), so the
+   * bucket paces admissions and concurrency is only a backstop. The same storm
+   * then admits an even five bells a second for as long as it lasts, which is
+   * what "the storm stays audible" has to mean. `pacingFitsBudget` keeps the
+   * two in step if either is retuned.
+   */
+  admissionsPerSecond: 5,
+  /**
+   * Bucket depth, in admissions. A burst this size passes at full speed before
+   * the rate limit engages, which is what keeps a handful of quick clicks —
+   * a double-click, a fast triple — sounding exactly as they always did.
+   */
+  admissionBurst: 6,
+};
+
+/**
+ * Whether the admission rate is one the concurrency cap can sustain.
+ *
+ * A bell occupies a slot until it reaches silence, so the cap supports
+ * `maxConcurrentBells / bellSeconds` admissions a second and no more. Set the
+ * rate above that and the cap becomes the binding limit, which it is not
+ * shaped to be: it refuses in bunches and frees in bunches, and a storm comes
+ * out as a pulse rather than as density. Exported so a test fails when a
+ * change to either the tuning or the bell's release breaks the relation,
+ * rather than a listener discovering it.
+ */
+export const pacingFitsBudget = (): boolean => {
+  const bellSeconds =
+    CLICK_BELL.attack + CLICK_BELL.release + BELL_SILENCE_SECONDS;
+  return (
+    CLICK_STORM_TUNING.admissionsPerSecond * bellSeconds <=
+    CLICK_STORM_TUNING.maxConcurrentBells
+  );
+};
+
 /** Interval between repeated plucks for percussive cursor types like text (ms) */
 const PLUCK_REPEAT_INTERVAL_MS = 120;
 
@@ -1598,6 +1683,8 @@ export class SoundEngine {
       activeVoiceCount: this.voices.size,
       pooledNoteGraphCount: this.flourishGraphs.length,
       reusedNoteGraphCount: this.reusedFlourishGraphs,
+      soundingClickBellCount: this.clickBellEndsAt.length,
+      droppedClickCount: this.droppedClicks,
     } : null;
   }
   private masterGain: GainNode | null = null;
@@ -1705,6 +1792,24 @@ export class SoundEngine {
   private flourishNotes: Set<FlourishNote> = new Set();
   private flourishGraphs: Array<Pick<FlourishNote, "gainNode" | "partialGainNode" | "panNode">> = [];
   private reusedFlourishGraphs = 0;
+  /**
+   * When each currently-sounding click bell reaches silence, in context
+   * seconds. A plain array rather than a set of note records: the click path
+   * needs only the count, and entries retire by time rather than by callback,
+   * so nothing here has to survive the note it describes.
+   */
+  private clickBellEndsAt: number[] = [];
+  /** Admission tokens left in the click bucket. See `CLICK_STORM_TUNING`. */
+  private clickTokens = CLICK_STORM_TUNING.admissionBurst;
+  /** Context time the bucket was last refilled, in seconds. */
+  private clickTokensAtSeconds: number | null = null;
+  /** Clicks dropped by admission control, for the dev diagnostics readout. */
+  private droppedClicks = 0;
+  /**
+   * Whether an audition button press is being served. Auditions bypass the
+   * scene's gating by design; see `audition`.
+   */
+  private auditioning = false;
   /**
    * A buffer of white noise, the source every percussion sound filters. Built
    * once and shared: each playback gets its own BufferSourceNode, but they all
@@ -1899,19 +2004,18 @@ export class SoundEngine {
 
     this.enabled = true;
 
-    // init() is triggered by a user gesture (sound-toggle click), so resuming
-    // here satisfies the browser autoplay policy. Without this, the context
-    // stays suspended until tick() happens to fire from AnimatedTrails' rAF
-    // loop, which can delay audible sound by seconds.
-    // An offline context is rendered rather than played, so it has no resume
-    // to call and never reaches this state in the first place.
-    if (this.ctx.state === "suspended" && this.ctx.resume) {
-      await this.ctx.resume();
+    // The installation cursor profile can initialize sound before a gesture.
+    // Keep the graph available for a later user gesture or wake-time retry if
+    // the browser's autoplay policy leaves this resume request pending.
+    if (this.ctx.state === "suspended") {
+      void this.resume().catch(() => undefined);
     }
   }
 
   async resume(): Promise<void> {
-    if (this.ctx && this.ctx.state === "suspended") {
+    // An offline context is rendered rather than played, so it has no resume
+    // to call — the click scanner drives the engine through one.
+    if (this.ctx && this.ctx.state === "suspended" && this.ctx.resume) {
       await this.ctx.resume();
     }
   }
@@ -2094,10 +2198,9 @@ export class SoundEngine {
   tick(elapsedMs: number, activeTrails: TrailSoundFrame[]): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
 
-    if (this.ctx.state === "suspended") {
-      this.ctx.resume();
-    }
-
+    // No resume here: the context is resumed at init and retried on wake, so a
+    // tick that finds it suspended is a page the browser has not yet let play
+    // rather than something to nudge every frame.
     for (const voice of this.voices.values()) {
       if (voice.fifthSilentAt !== null && this.ctx.currentTime >= voice.fifthSilentAt) {
         this.stopFifth(voice);
@@ -2922,6 +3025,58 @@ export class SoundEngine {
     );
   }
 
+  /**
+   * Whether this click gets to sound, and the bookkeeping that goes with a
+   * yes.
+   *
+   * Called before anything is built, so a refused click costs one array scan
+   * and nothing else — no oscillators, no gain nodes, no scheduled automation.
+   * That is the whole point: the storm's expense was never the sound of the
+   * extra bells, it was constructing and scheduling them.
+   *
+   * Two limits, both of which have to pass, but they are not peers. The token
+   * bucket is what paces a storm: it bounds how many graphs one audio callback
+   * can be asked to build, which concurrency alone does not, because the
+   * bell's three-second release lets a whole cap's worth of clicks fit inside
+   * a tenth of a second and still be "only twenty". Concurrency is the
+   * backstop underneath it, for the cases the rate cannot see — a run of held
+   * clicks, whose releases are three times as long, each holding its slot that
+   * much longer than the rate assumes.
+   */
+  private admitClick(nowSeconds: number, endsAtSeconds: number): boolean {
+    // Retire bells that have finished. Done here rather than on a timer so the
+    // list is only ever walked when a click is actually asking for a slot.
+    let live = 0;
+    for (const endsAt of this.clickBellEndsAt) {
+      if (endsAt > nowSeconds) this.clickBellEndsAt[live++] = endsAt;
+    }
+    this.clickBellEndsAt.length = live;
+
+    if (live >= CLICK_STORM_TUNING.maxConcurrentBells) {
+      this.droppedClicks++;
+      return false;
+    }
+
+    const { admissionsPerSecond, admissionBurst } = CLICK_STORM_TUNING;
+    const since =
+      this.clickTokensAtSeconds === null
+        ? 0
+        : Math.max(0, nowSeconds - this.clickTokensAtSeconds);
+    this.clickTokens = Math.min(
+      admissionBurst,
+      this.clickTokens + since * admissionsPerSecond,
+    );
+    this.clickTokensAtSeconds = nowSeconds;
+    if (this.clickTokens < 1) {
+      this.droppedClicks++;
+      return false;
+    }
+    this.clickTokens -= 1;
+
+    this.clickBellEndsAt.push(endsAtSeconds);
+    return true;
+  }
+
   triggerClick(click: ClickSoundEvent): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
 
@@ -2931,6 +3086,17 @@ export class SoundEngine {
     // arrives ~16ms before the SVG circle appears on screen.
     const VISUAL_SYNC_DELAY = 0.016;
     const now = this.ctx.currentTime + VISUAL_SYNC_DELAY;
+
+    // The hold scale is read here rather than where the envelope is written,
+    // because it sets how long this bell will occupy a slot and admission has
+    // to know that before deciding.
+    const holdScale = click.holdDuration
+      ? Math.min(3, 1 + click.holdDuration / 1000)
+      : 1;
+    const bellEndsAt =
+      now + instrument.attack + instrument.release * holdScale +
+      BELL_SILENCE_SECONDS;
+    if (!this.admitClick(this.ctx.currentTime, bellEndsAt)) return;
 
     const osc = this.ctx.createOscillator();
     osc.type = instrument.oscillatorType;
@@ -2949,9 +3115,6 @@ export class SoundEngine {
     osc2.frequency.value = baseFreq * 3;
 
     const gain = this.ctx.createGain();
-    const holdScale = click.holdDuration
-      ? Math.min(3, 1 + click.holdDuration / 1000)
-      : 1;
 
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(
@@ -5231,7 +5394,21 @@ export class SoundEngine {
    */
   audition(accent: AuditionAccent): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    // The one-shot budget is scene gating too, and refusing rather than
+    // evicting made it capable of swallowing an audition outright: a panel
+    // full of ringing notes would answer a button press with silence, which
+    // is exactly what "nothing should swallow it" rules out. A handful of
+    // notes past the cap costs nothing — the cap exists to bound a storm, and
+    // a person pressing buttons is not one.
+    this.auditioning = true;
+    try {
+      this.soundAudition(accent);
+    } finally {
+      this.auditioning = false;
+    }
+  }
 
+  private soundAudition(accent: AuditionAccent): void {
     const centre = this.canvasWidth / 2;
     switch (accent) {
       case "trailArrival":
@@ -6564,7 +6741,7 @@ export class SoundEngine {
   ): void {
     if (!this.ctx || !this.masterGain) return;
 
-    this.enforceFlourishBudget();
+    if (!this.admitFlourishNote()) return;
 
     const ctx = this.ctx;
     const now = ctx.currentTime + (options.delaySeconds ?? 0);
@@ -6668,49 +6845,41 @@ export class SoundEngine {
   }
 
   /**
-   * Keep the one-shot note count bounded by cutting whichever note has least
-   * of itself left to sound.
+   * Whether a new one-shot note may be scheduled, given how many are already
+   * sounding. A no means the note is never built.
    *
-   * The intent has always been that a note already ringing out is the cheapest
-   * to lose, and a note that has not yet spoken the dearest. Choosing by peak
-   * gain did not do that: peak gain is fixed at scheduling time and varies by
-   * family rather than by age, so it silently ranked one family below another
-   * for the whole life of the engine.
+   * The budget used to make room by cutting whichever note had least of itself
+   * left to sound. Choosing the note furthest through its envelope was the
+   * right *victim* — it replaced a peak-gain comparison that ranked whole
+   * families against each other and buried every arrival chime the engine ever
+   * scheduled — but the choice was between bad options. Cutting a note that is
+   * still sounding is itself an artifact: the forced fade re-anchors the gain
+   * and walks it down on a straight line from wherever the exponential decay
+   * had reached, a sharper corner than the decay it interrupts. Under a click
+   * storm that happens continuously, and it is one of the things the crackle
+   * was made of.
    *
-   * That is what buried the arrival chimes. The chime's peak is 0.026 against
-   * the flourish's 0.055, so a chime was always the quietest note present, and
-   * a busy scene evicted every one of them — measured, 74 of 74, with 46 cut
-   * before their scheduled start had even arrived and the rest at the instant
-   * of their attack. Soloing the chime bus made them audible again only
-   * because a solo removes the flourish that was doing the evicting, which is
-   * why the chimes sounded fine alone and vanished in the mix.
-   *
-   * Remaining life is the honest measure of what a cut costs, so the victim is
-   * the note furthest through its own envelope. A note still waiting to start
-   * has all of its life ahead of it and is never chosen while any sounding
-   * note remains.
+   * So the budget refuses rather than evicts. A note that gets in rings out in
+   * full; a note that cannot get in never starts, and silence where a note
+   * would have been is not an artifact. Notes that have finished their own
+   * envelope and are merely awaiting `onended` still hold a slot they no
+   * longer need, so those are reaped first — that is not a cut, there is
+   * nothing left of them to cut.
    */
-  private enforceFlourishBudget(): void {
-    while (this.flourishNotes.size >= FLOURISH_TUNING.maxConcurrentNotes) {
-      const nowMs = (this.ctx?.currentTime ?? 0) * 1000;
-      let victim: FlourishNote | null = null;
-      let victimProgress = Number.NEGATIVE_INFINITY;
-      for (const note of this.flourishNotes) {
-        // Above 1 the note has finished and is merely awaiting its own
-        // `onended`; below 0 it has not started. Both orderings fall out of
-        // the same number, so the comparison needs no special cases.
-        const progress =
-          note.durationMs <= 0
-            ? 1
-            : (nowMs - note.startedAtMs) / note.durationMs;
-        if (victim === null || progress > victimProgress) {
-          victim = note;
-          victimProgress = progress;
-        }
-      }
-      if (!victim) return;
-      this.stopFlourishNote(victim);
+  private admitFlourishNote(): boolean {
+    if (this.auditioning) return true;
+    if (this.flourishNotes.size < FLOURISH_TUNING.maxConcurrentNotes) {
+      return true;
     }
+    const nowMs = (this.ctx?.currentTime ?? 0) * 1000;
+    for (const note of [...this.flourishNotes]) {
+      // Above 1 the note has finished sounding. Below 0 it has not started;
+      // those are the dearest of all and are never touched.
+      const progress =
+        note.durationMs <= 0 ? 1 : (nowMs - note.startedAtMs) / note.durationMs;
+      if (progress >= 1) this.stopFlourishNote(note);
+    }
+    return this.flourishNotes.size < FLOURISH_TUNING.maxConcurrentNotes;
   }
 
   private stopFlourishNote(note: FlourishNote): void {
@@ -7067,6 +7236,10 @@ export class SoundEngine {
     this.performanceMonitor = null;
     this.flourishGraphs.length = 0;
     this.reusedFlourishGraphs = 0;
+    this.clickBellEndsAt.length = 0;
+    this.clickTokens = CLICK_STORM_TUNING.admissionBurst;
+    this.clickTokensAtSeconds = null;
+    this.droppedClicks = 0;
     this.enabled = false;
     this.noticeListener = null;
     this.clearFlourish();

@@ -514,6 +514,118 @@ button {
   color: #9b4228;
 }
 
+.office-warning,
+.office-notice {
+  margin: 22px 0 0;
+  padding: 13px 16px;
+  border: 1px solid #d1b685;
+  border-radius: 6px;
+  background: #fff8e7;
+  color: #68552f;
+  font: 12px/1.5 "Lora", serif;
+}
+
+.office-notice {
+  border-color: #a9c5b9;
+  background: #edf6f1;
+  color: #236859;
+}
+
+.installation-control {
+  padding: 22px 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 28px;
+
+  h3 {
+    margin: 4px 0;
+    font: 600 20px "Lora", serif;
+  }
+
+  p {
+    margin: 0;
+    color: #6a6d66;
+    font: 13px/1.5 "Lora", serif;
+  }
+
+  dl {
+    margin: 0;
+    display: flex;
+    gap: 22px;
+  }
+
+  dl div {
+    min-width: 90px;
+  }
+
+  dt {
+    margin-bottom: 4px;
+    color: #81827b;
+    font-size: 8px;
+    text-transform: uppercase;
+  }
+
+  dd {
+    margin: 0;
+    color: #35483f;
+    font-size: 11px;
+  }
+}
+
+.office-button--danger {
+  border-color: #9b4228;
+  background: #9b4228;
+  white-space: nowrap;
+}
+
+.installation-links {
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    padding: 12px 24px;
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #e0ded5;
+  }
+
+  li:last-child {
+    border-bottom: 0;
+  }
+
+  li > span {
+    color: #a34f32;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  code {
+    overflow: hidden;
+    padding: 8px 9px;
+    border-radius: 4px;
+    background: #f2f0e8;
+    color: #315d52;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  li button {
+    padding: 7px 10px;
+    border-color: #aaa99f;
+    background: #fffefa;
+    color: #51554f;
+  }
+}
+
 .office-roadmap {
   margin-top: 28px;
   padding: 22px 24px;
@@ -628,5 +740,22 @@ button {
   .office-memberships {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .installation-control {
+    grid-template-columns: 1fr;
+  }
+
+  .installation-control dl {
+    flex-wrap: wrap;
+  }
+
+  .installation-links li {
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .installation-links code {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }

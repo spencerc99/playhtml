@@ -1,5 +1,5 @@
 // ABOUTME: Durable Object that holds website WebSocket connections and a ring buffer.
-// ABOUTME: Replays recent cursor events on connect, then broadcasts live events from ingest.
+// ABOUTME: Replays recent renderable events on connect, then broadcasts new events from ingest.
 
 import type { Env } from '../lib/supabase';
 import type { CollectionEvent } from '@playhtml/extension-types';
@@ -10,8 +10,7 @@ import type { CollectionEvent } from '@playhtml/extension-types';
 const MAX_AGE_MS = 2 * 60_000;
 
 // Hard cap on buffered events as a memory backstop for traffic spikes, applied
-// on top of the time window. At ~10 events per trail this is roughly one
-// canvas-worth (~60 trails); a viral burst is trimmed to the most recent.
+// on top of the time window. A traffic burst is trimmed to the most recent.
 const MAX_BUFFER = 600;
 
 interface BroadcastBody {

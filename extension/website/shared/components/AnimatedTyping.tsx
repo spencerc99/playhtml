@@ -33,10 +33,20 @@ interface AnimatedTypingProps {
   typingStates: TypingState[];
   timeRange: { min: number; max: number; duration: number };
   settings: TypingSettings;
+  repeatAnimations?: boolean;
 }
 
 export const COMPLETED_TYPING_VISIBLE_COUNT = 50;
 const HIDDEN_TAB_TICK_MS = 100;
+
+export function getTypingPlaybackElapsed(
+  elapsedMs: number,
+  durationMs: number,
+  repeat: boolean,
+): number {
+  if (durationMs <= 0) return 0;
+  return repeat ? elapsedMs % durationMs : Math.min(elapsedMs, durationMs);
+}
 
 interface TypingTrackAction extends TypingAction {
   endTimestamp: number;
@@ -484,7 +494,7 @@ const TypingBox = memo(
 );
 
 export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
-  ({ typingStates, timeRange, settings }) => {
+  ({ typingStates, timeRange, settings, repeatAnimations = true }) => {
     const [activeTypings, setActiveTypings] = useState<ActiveTyping[]>([]);
     const animationRef = useRef<number | undefined>(undefined);
     const timeoutRef = useRef<number | undefined>(undefined);
@@ -583,9 +593,13 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
 
         const realElapsed = timestamp - startTime;
         const scaledElapsed = realElapsed * settingsRef.current.animationSpeed;
-        const loopedElapsed = scaledElapsed % timeRange.duration;
+        const loopedElapsed = getTypingPlaybackElapsed(
+          scaledElapsed,
+          timeRange.duration,
+          repeatAnimations,
+        );
 
-        if (loopedElapsed < prevElapsedRef.current) {
+        if (repeatAnimations && loopedElapsed < prevElapsedRef.current) {
           resetPlaybackTrackers();
         }
         prevElapsedRef.current = loopedElapsed;
@@ -744,7 +758,7 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
       scheduleNextFrame();
 
       return clearScheduledFrame;
-    }, [schedule, timeRange.duration, typingStates.length]);
+    }, [repeatAnimations, schedule, timeRange.duration, typingStates.length]);
 
     const tracksById = useMemo(() => {
       const m = new Map<string, TypingTrack>();

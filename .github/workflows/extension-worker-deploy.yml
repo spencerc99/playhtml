@@ -59,6 +59,28 @@ jobs:
           packageManager: bun
           command: deploy --config extension/worker/wrangler.toml
 
+      - name: Verify production installation control
+        run: |
+          headers="$(mktemp)"
+          trap 'rm -f "$headers"' EXIT
+          response="$(curl --fail-with-body --silent --show-error \
+            --dump-header "$headers" \
+            "https://playhtml-game-api.spencerc99.workers.dev/installation/control")"
+
+          if ! awk 'BEGIN { IGNORECASE = 1 } /^access-control-allow-origin: \*/ { cors = 1 } /^cache-control: no-store/ { cache = 1 } END { exit !(cors && cache) }' "$headers"; then
+            echo "Production installation control response is missing the expected CORS or cache headers"
+            exit 1
+          fi
+
+          if ! jq -e '
+            type == "object" and
+            (.generation | type == "number" and . >= 0 and floor == .) and
+            (.updatedAt | type == "string" and length > 0)
+          ' <<<"$response" > /dev/null; then
+            echo "Production installation control response does not match the expected contract"
+            exit 1
+          fi
+
       - name: Verify production boarding
         env:
           BOARDING_URL: https://playhtml-game-api.spencerc99.workers.dev/commute/trains/board

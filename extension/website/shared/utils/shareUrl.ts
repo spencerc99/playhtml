@@ -103,6 +103,10 @@ export function buildShareUrl({
       "cinemaStartZoom",
       "role",
       "follower",
+      "view",
+      "slot",
+      "slots",
+      "screen",
       // The sound-dev flag is not settings-shaped either, and dropping it on
       // the first URL rewrite would take the panel away a second after it
       // appeared and again on every reload.
