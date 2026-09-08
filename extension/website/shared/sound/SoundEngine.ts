@@ -1389,7 +1389,13 @@ export class SoundEngine {
   }
 
   getPerformanceSnapshot() {
-    return this.performanceMonitor?.snapshot() ?? null;
+    const sample = this.performanceMonitor?.snapshot();
+    return sample ? {
+      ...sample,
+      activeVoiceCount: this.voices.size,
+      pooledNoteGraphCount: this.flourishGraphs.length,
+      reusedNoteGraphCount: this.reusedFlourishGraphs,
+    } : null;
   }
   private masterGain: GainNode | null = null;
   /**
@@ -1475,6 +1481,8 @@ export class SoundEngine {
   private flourish: FlourishState | null = null;
   /** One-shot flourish notes still ringing. */
   private flourishNotes: Set<FlourishNote> = new Set();
+  private flourishGraphs: Array<Pick<FlourishNote, "gainNode" | "partialGainNode" | "panNode">> = [];
+  private reusedFlourishGraphs = 0;
   /**
    * A buffer of white noise, the source every percussion sound filters. Built
    * once and shared: each playback gets its own BufferSourceNode, but they all
@@ -6139,14 +6147,26 @@ export class SoundEngine {
     // the note budget running sixteen of these at once that is sixteen small
     // cuts, and they land together on a busy scene.
     const decayEndsAt = now + attackSeconds + decaySeconds;
-    const gain = ctx.createGain();
+    const graph = this.flourishGraphs.pop();
+    if (graph) this.reusedFlourishGraphs++;
+    const gain = graph?.gainNode ?? ctx.createGain();
+    const partialLevel = graph?.partialGainNode ?? ctx.createGain();
+    const pan = graph?.panNode ?? ctx.createStereoPanner();
+    if (graph) {
+      for (const param of [gain.gain, partialLevel.gain, pan.pan]) {
+        param.cancelScheduledValues(0);
+        this.rampTargets.delete(param);
+        this.rampEnds.delete(param);
+      }
+      gain.gain.value = 0;
+      partialLevel.gain.value = 0;
+    }
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(peakGain, now + attackSeconds);
     gain.gain.exponentialRampToValueAtTime(0.0001, decayEndsAt);
     gain.gain.linearRampToValueAtTime(0, decayEndsAt + BELL_SILENCE_SECONDS);
 
     const partialDecayEndsAt = now + attackSeconds + decaySeconds / 2;
-    const partialLevel = ctx.createGain();
     partialLevel.gain.setValueAtTime(0, now);
     partialLevel.gain.linearRampToValueAtTime(
       peakGain * partialGain,
@@ -6159,7 +6179,6 @@ export class SoundEngine {
       partialDecayEndsAt + BELL_SILENCE_SECONDS,
     );
 
-    const pan = ctx.createStereoPanner();
     pan.pan.value = positionToPan(x, this.canvasWidth);
 
     osc.connect(gain);
@@ -6180,10 +6199,21 @@ export class SoundEngine {
     };
     this.flourishNotes.add(note);
 
-    osc.onended = () => {
+    let sourcesRemaining = 2;
+    const release = () => {
+      sourcesRemaining--;
+      if (sourcesRemaining !== 0) return;
       this.disconnectFlourishNote(note);
       this.flourishNotes.delete(note);
+      if (
+        this.enabled && this.ctx === gain.context &&
+        this.flourishGraphs.length < FLOURISH_TUNING.maxConcurrentNotes
+      ) {
+        this.flourishGraphs.push({ gainNode: gain, partialGainNode: partialLevel, panNode: pan });
+      }
     };
+    osc.onended = release;
+    partial.onended = release;
 
     // After the walk to zero, not before it: stopping mid-walk would reinstate
     // the very cut the walk exists to remove.
@@ -6535,6 +6565,8 @@ export class SoundEngine {
   dispose(): void {
     this.performanceMonitor?.stop();
     this.performanceMonitor = null;
+    this.flourishGraphs.length = 0;
+    this.reusedFlourishGraphs = 0;
     this.enabled = false;
     this.noticeListener = null;
     this.clearFlourish();
