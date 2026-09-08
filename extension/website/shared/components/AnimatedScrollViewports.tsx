@@ -18,6 +18,12 @@ import {
   colorizeLuminosity,
 } from "../utils/colorStyle";
 import { getViewportTitleText } from "../utils/titleText";
+import {
+  InstallationPlaybackQueue,
+  INSTALLATION_ARRIVAL_MS,
+  INSTALLATION_FADE_MS,
+  INSTALLATION_SCROLL_HOLD_MS,
+} from "../utils/installationPlaybackQueue";
 import { PagePreview } from "./PagePreview";
 import { useDebugHover } from "./DebugHover";
 
@@ -36,6 +42,7 @@ interface AnimatedScrollViewportsProps {
   canvasSize: { width: number; height: number };
   repeatAnimations?: boolean;
   onAnimationsComplete?: () => boolean;
+  installationLiveEventIds?: ReadonlySet<string>;
   settings: {
     scrollSpeed: number;
     backgroundOpacity: number;
@@ -234,6 +241,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     canvasSize,
     repeatAnimations = true,
     onAnimationsComplete,
+    installationLiveEventIds,
     settings,
     urlMetadata,
   }) => {
@@ -252,6 +260,10 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const lastFrameUpdateRef = useRef(0);
     const startTimeRef = useRef<number | null>(null);
     const completionSignaledRef = useRef(false);
+    const continuous = installationLiveEventIds !== undefined;
+    const continuousQueue = useRef(new InstallationPlaybackQueue<ScrollAnimation>()).current;
+    const fadeInMs = continuous ? INSTALLATION_FADE_MS : FADE_IN_DURATION;
+    const fadeOutMs = continuous ? INSTALLATION_FADE_MS : FADE_OUT_DURATION;
 
     // Settings ref to avoid re-renders
     const settingsRef = useRef(settings);
@@ -276,6 +288,13 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
 
     // Initialize animation queue when animations change
     useEffect(() => {
+      if (continuous) {
+        continuousQueue.update(animations.map((animation) => {
+          if (!animation.eventId) throw new Error("Installation scroll recording requires an event id");
+          return { id: animation.eventId, live: installationLiveEventIds.has(animation.eventId), value: animation };
+        }));
+        return;
+      }
       if (animations.length > 0) {
         // Shuffle the animations for variety
         const shuffled = [...animations];
@@ -290,10 +309,13 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           `[Scroll Dynamic] Initialized queue with ${shuffled.length} animations`,
         );
       }
-    }, [animations]);
+    }, [animations, continuous, continuousQueue, installationLiveEventIds]);
 
     // Get the next animation from the queue
     const getNextAnimation = useCallback((): ScrollAnimation | null => {
+      if (continuous) {
+        return continuousQueue.take(new Set(activeViewportsRef.current.map((viewport) => viewport.animation.eventId!)));
+      }
       const queue = animationQueueRef.current;
       const nextIndex = getScrollQueueIndex(
         queueIndexRef.current,
@@ -305,7 +327,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       const animation = queue[nextIndex];
       queueIndexRef.current = nextIndex + 1;
       return animation;
-    }, [repeatAnimations]);
+    }, [repeatAnimations, continuous, continuousQueue]);
 
     // Try to add a new viewport to an available space
     const tryAddViewport = useCallback(
@@ -315,10 +337,10 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           (v) => v.phase !== "fade-out",
         );
 
-        // Count non-fading-out viewports
-        const activeCount = visibleViewports.length;
+        // Every visible window counts toward the installation cap.
+        const activeCount = continuous ? activeViewportsRef.current.length : visibleViewports.length;
 
-        if (activeCount >= maxConcurrentScrolls) {
+        if (activeCount >= (continuous ? Math.min(30, maxConcurrentScrolls) : maxConcurrentScrolls)) {
           return; // At capacity
         }
 
@@ -430,7 +452,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           rect: { ...position, width: size.width, height: size.height },
           phase: "fade-in",
           phaseStartTime: currentTime,
-          animationStartTime: currentTime + FADE_IN_DURATION,
+          animationStartTime: currentTime + fadeInMs,
           durationMs: animation.endTime - animation.startTime,
           backgroundSeed: seed,
         };
@@ -442,7 +464,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           } active`,
         );
       },
-      [canvasSize, commitActiveViewports, getNextAnimation],
+      [canvasSize, commitActiveViewports, getNextAnimation, continuous, fadeInMs],
     );
 
     // Update viewport phases based on time
@@ -456,7 +478,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           // Check phase transitions
           if (viewport.phase === "fade-in") {
             const fadeInElapsed = currentTime - viewport.phaseStartTime;
-            if (fadeInElapsed >= FADE_IN_DURATION) {
+            if (fadeInElapsed >= fadeInMs) {
               changed = true;
               return {
                 ...viewport,
@@ -466,7 +488,9 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
             }
           } else if (viewport.phase === "animating") {
             const animElapsed = currentTime - viewport.animationStartTime;
-            if (animElapsed >= viewport.durationMs + FADE_OUT_DELAY) {
+            if (animElapsed >= (continuous
+              ? viewport.durationMs / settingsRef.current.scrollSpeed + INSTALLATION_SCROLL_HOLD_MS
+              : viewport.durationMs + FADE_OUT_DELAY)) {
               changed = true;
               return {
                 ...viewport,
@@ -482,7 +506,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         const filtered = updated.filter((viewport) => {
           if (viewport.phase === "fade-out") {
             const fadeOutElapsed = currentTime - viewport.phaseStartTime;
-            if (fadeOutElapsed >= FADE_OUT_DURATION) {
+            if (fadeOutElapsed >= fadeOutMs) {
               changed = true;
               console.log(`[Scroll Dynamic] Removed viewport ${viewport.id}`);
               return false;
@@ -495,12 +519,12 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           commitActiveViewports(() => filtered);
         }
       },
-      [commitActiveViewports],
+      [commitActiveViewports, continuous, fadeInMs, fadeOutMs],
     );
 
     // Main animation loop
     useEffect(() => {
-      if (animations.length === 0 || canvasSize.width === 0) return;
+      if ((!continuous && animations.length === 0) || canvasSize.width === 0) return;
 
       const animate = (timestamp: number) => {
         if (startTimeRef.current === null) {
@@ -513,10 +537,11 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         updateViewports(currentTime);
 
         // Periodically try to fill empty spaces
-        if (currentTime - lastFillCheckRef.current >= FILL_CHECK_INTERVAL) {
+        if (currentTime - lastFillCheckRef.current >= (continuous ? INSTALLATION_ARRIVAL_MS : FILL_CHECK_INTERVAL)) {
           lastFillCheckRef.current = currentTime;
           tryAddViewport(currentTime);
           if (
+            !continuous &&
             !repeatAnimations &&
             queueIndexRef.current >= animationQueueRef.current.length &&
             activeViewportsRef.current.length === 0 &&
@@ -545,6 +570,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       };
     }, [
       animations.length,
+      continuous,
       clock,
       canvasSize.width,
       onAnimationsComplete,
@@ -553,7 +579,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       tryAddViewport,
     ]);
 
-    if (animations.length === 0) {
+    if (!continuous && animations.length === 0) {
       return null;
     }
 
@@ -616,7 +642,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
               key={viewport.id}
               viewport={viewport}
               clock={clock}
-              settings={settings}
+              settings={{ ...settings, installationPlayback: continuous }}
               livePageTitle={live?.title}
               liveFaviconUrl={live?.favicon}
             />
@@ -803,6 +829,7 @@ export function getViewportFrame(
   timeline: ViewportAnimationTimeline,
   currentTime: number,
   scrollSpeed: number,
+  installationPlayback = false,
 ) {
   const {
     animation,
@@ -817,13 +844,13 @@ export function getViewportFrame(
   if (phase === "fade-in") {
     const fadeProgress = Math.min(
       1,
-      (currentTime - phaseStartTime) / FADE_IN_DURATION,
+      (currentTime - phaseStartTime) / (installationPlayback ? INSTALLATION_FADE_MS : FADE_IN_DURATION),
     );
     opacity = fadeProgress;
   } else if (phase === "fade-out") {
     const fadeProgress = Math.min(
       1,
-      (currentTime - phaseStartTime) / FADE_OUT_DURATION,
+      (currentTime - phaseStartTime) / (installationPlayback ? INSTALLATION_FADE_MS : FADE_OUT_DURATION),
     );
     opacity = 1 - fadeProgress;
   }
@@ -952,6 +979,7 @@ const DynamicViewportRect = memo(
     clock: ViewportClock;
     settings: {
       scrollSpeed: number;
+      installationPlayback?: boolean;
       backgroundOpacity: number;
       randomizeColors?: boolean;
       showPagePreview?: boolean;
@@ -977,6 +1005,7 @@ const DynamicViewportRect = memo(
       timeline,
       clock.currentTime,
       settings.scrollSpeed,
+      settings.installationPlayback,
     );
     const {
       opacity,
@@ -1008,6 +1037,7 @@ const DynamicViewportRect = memo(
           timeline,
           currentTime,
           settings.scrollSpeed,
+          settings.installationPlayback,
         );
         // Geometry and iframe previews need React; scroll and fade only change SVG attributes.
         if (
@@ -1613,6 +1643,8 @@ const DynamicViewportRect = memo(
     return (
       <g
         ref={groupRef}
+        data-scroll-recording={animation.eventId}
+        data-scroll-phase={viewport.phase}
         opacity={opacity}
         style={{
           transition: "opacity 0.1s ease-out",

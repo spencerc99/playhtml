@@ -4,6 +4,12 @@ import React, { useState, useEffect, useRef, memo, useMemo } from "react";
 import { TypingState, TypingAction, ActiveTyping } from "../types";
 import { useDebugHover } from "./DebugHover";
 import { redactWithLegibility } from "@extension/utils/keyboardRedaction";
+import {
+  InstallationPlaybackQueue,
+  INSTALLATION_TYPING_ARRIVAL_MS,
+  INSTALLATION_FADE_MS,
+  INSTALLATION_TYPING_HOLD_MS,
+} from "../utils/installationPlaybackQueue";
 import { RISO_COLORS } from "../utils/eventUtils";
 import {
   isMonochromeStyle,
@@ -783,3 +789,128 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
     );
   },
 );
+
+interface VisibleTypingRecording {
+  track: TypingTrack;
+  startedAt: number;
+  speed: number;
+  durationMs: number;
+}
+
+export function ContinuousTyping({
+  typingStates,
+  settings,
+  liveEventIds,
+}: {
+  typingStates: TypingState[];
+  settings: TypingSettings;
+  liveEventIds: ReadonlySet<string>;
+}) {
+  const queue = useRef(new InstallationPlaybackQueue<TypingTrack>()).current;
+  const visible = useRef<VisibleTypingRecording[]>([]);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const [frame, setFrame] = useState({
+    now: 0,
+    recordings: [] as VisibleTypingRecording[],
+  });
+
+  useEffect(() => {
+    const schedule = buildTypingPlaybackSchedule(typingStates);
+    queue.update(
+      schedule.tracks.map((track) => {
+        const id = track.state.animation.event.id;
+        return { id, live: liveEventIds.has(id), value: { ...track, id } };
+      }),
+    );
+  }, [queue, typingStates, liveEventIds]);
+
+  useEffect(() => {
+    let frameId = 0;
+    let lastArrival = -Infinity;
+    let lastFrame = -Infinity;
+    const animate = (now: number) => {
+      if (now - lastFrame >= 1000 / 30) {
+        lastFrame = now;
+        visible.current = visible.current.filter(
+          (recording) =>
+            now - recording.startedAt <
+            recording.durationMs +
+              INSTALLATION_TYPING_HOLD_MS +
+              INSTALLATION_FADE_MS,
+        );
+        if (
+          visible.current.length <
+            Math.min(30, settingsRef.current.maxConcurrentTyping) &&
+          now - lastArrival >= INSTALLATION_TYPING_ARRIVAL_MS
+        ) {
+          const track = queue.take(
+            new Set(visible.current.map((recording) => recording.track.id)),
+          );
+          if (track) {
+            const speed =
+              settingsRef.current.keyboardAnimationSpeed *
+              settingsRef.current.animationSpeed;
+            visible.current.push({
+              track,
+              startedAt: now,
+              speed,
+              durationMs: track.state.durationMs / speed,
+            });
+            lastArrival = now;
+          }
+        }
+        setFrame({ now, recordings: [...visible.current] });
+      }
+      frameId = requestAnimationFrame(animate);
+    };
+    frameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frameId);
+  }, [queue]);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      {frame.recordings.map(({ track, startedAt, speed, durationMs }) => {
+        const elapsed = frame.now - startedAt;
+        const typingElapsed = elapsed;
+        const typing = typingElapsed < durationMs;
+        const fadeStart =
+          durationMs + INSTALLATION_TYPING_HOLD_MS;
+        const opacity = Math.max(
+          0,
+          Math.min(
+            1,
+            1 - (elapsed - fadeStart) / INSTALLATION_FADE_MS,
+          ),
+        );
+        const state = track.state;
+        const active: ActiveTyping = {
+          id: track.id,
+          x: state.animation.x,
+          y: state.animation.y,
+          color: state.animation.color,
+          currentText: typing
+            ? getTypingTextAtTime(track, typingElapsed, speed)
+            : track.finalText,
+          showCaret: typing && Math.floor(typingElapsed / 530) % 2 === 0,
+          textboxSize: state.textboxSize,
+          fontSize: state.fontSize,
+          positionOffset: state.positionOffset,
+          style: state.style,
+        };
+        return (
+          <div
+            key={track.id}
+            data-typing-recording={track.id}
+            data-typing-phase={
+              typing ? "typing" : elapsed >= fadeStart ? "fade-out" : "hold"
+            }
+            style={{ position: "absolute", inset: 0, opacity }}
+          >
+            <TypingBox typing={active} settings={settings} track={track} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
