@@ -72,22 +72,18 @@ describe("presence transport sharing", () => {
     ]);
   });
 
-  it("uses a separate cursor Yjs provider when presence transport is unavailable", async () => {
+  it("uses only the main Yjs provider with a custom cursor room", async () => {
     const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as Array<{
       roomname: string;
     }>;
-    const originalWebSocket = (globalThis as any).WebSocket;
-    (globalThis as any).WebSocket = undefined;
+    await playhtml.init({
+      cursors: { enabled: true, room: () => "/shared-cursors" },
+    });
 
-    try {
-      await playhtml.init({ cursors: { enabled: true, room: "domain" } });
-
-      expect(providers.map((provider) => provider.roomname)).toHaveLength(2);
-      expect(providers[0]?.roomname).toBe(playhtml.roomId);
-      expect(providers[1]?.roomname).not.toBe(playhtml.roomId);
-    } finally {
-      (globalThis as any).WebSocket = originalWebSocket;
-    }
+    expect(providers.map((provider) => provider.roomname)).toEqual([
+      playhtml.roomId,
+    ]);
+    expect(getPresenceSockets().filter((socket) => !socket.closed)).toHaveLength(2);
   });
 
   it("opens the page-room socket even when cursors are disabled", async () => {

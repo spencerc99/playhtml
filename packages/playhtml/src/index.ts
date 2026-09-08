@@ -207,7 +207,6 @@ function getCurrentRoomHost(): string {
 }
 
 let yprovider: YProvider;
-let cursorProvider: YProvider | null = null;
 let cursorClient: CursorClientAwareness | null = null;
 let currentCursorRoomId = "";
 // The stable object returned by playhtml.presence for the instance lifetime.
@@ -980,7 +979,7 @@ function buildMainProvider(args: {
   return { sharedReferences };
 }
 
-/** Disconnect and destroy the cursor client + cursor provider. */
+/** Destroy the cursor client and release its presence transport. */
 function teardownCursors(): void {
   cursorPresenceHub.disconnect();
   try { cursorClient?.destroy?.(); } catch {}
@@ -989,9 +988,6 @@ function teardownCursors(): void {
     releasePresenceTransport(cursorPresenceTransportRoom);
     cursorPresenceTransportRoom = null;
   }
-  try { cursorProvider?.disconnect?.(); } catch {}
-  try { cursorProvider?.destroy?.(); } catch {}
-  cursorProvider = null;
 }
 
 /** Disconnect and destroy the main Yjs provider. */
@@ -1188,20 +1184,18 @@ function bindAwarenessListener(): void {
 }
 
 /**
- * Builds the cursor client and optional separate cursor provider for the
- * given main room. Side effects: assigns module-level `cursorProvider` and
- * `cursorClient`, and `currentCursorRoomId`. Returns without awaiting sync.
+ * Builds the cursor client for the given main room. Side effects: assigns
+ * module-level `cursorClient` and `currentCursorRoomId`.
+ * Returns without awaiting sync.
  *
- * Safe to call multiple times — assumes prior cursorClient/cursorProvider
- * were already torn down by the caller.
+ * Safe to call multiple times — assumes the prior cursor client
+ * was already torn down by the caller.
  */
 function buildCursors(args: {
   cursors: CursorOptions;
   mainRoom: string;
-  partykitHost: string;
-  onError: (() => void) | undefined;
 }): void {
-  const { cursors, mainRoom, partykitHost, onError } = args;
+  const { cursors, mainRoom } = args;
 
   if (!cursors.enabled) {
     currentCursorRoomId = "";
@@ -1213,8 +1207,6 @@ function buildCursors(args: {
   }
 
   const cursorOptions: CursorOptions = { ...cursors };
-
-  let providerForCursors: YProvider = yprovider;
 
   if (cursorOptions.room) {
     const cursorRoomString = resolveCursorRoom(cursorOptions.room);
@@ -1229,24 +1221,11 @@ function buildCursors(args: {
   const cursorPresenceTransport =
     acquirePresenceTransport(currentCursorRoomId) ?? undefined;
 
-  if (!cursorPresenceTransport && currentCursorRoomId !== mainRoom) {
-    const cursorDoc = new Y.Doc();
-    cursorProvider = new YProvider(
-      partykitHost,
-      currentCursorRoomId,
-      cursorDoc,
-    );
-    cursorProvider.on("error", () => {
-      onError?.();
-    });
-    providerForCursors = cursorProvider;
-  }
-
   cursorPresenceTransportRoom = cursorPresenceTransport
     ? currentCursorRoomId
     : null;
   cursorClient = new CursorClientAwareness(
-    providerForCursors,
+    yprovider,
     cursorOptions,
     cursorPresenceTransport,
     usersAPI,
@@ -1366,8 +1345,6 @@ async function resetCurrentRoomFromServer(): Promise<void> {
     buildCursors({
       cursors,
       mainRoom: __currentRoomId,
-      partykitHost: __currentHost,
-      onError: configuredOptions?.onError,
     });
   }
   usersAPI?.getAll();
@@ -1517,8 +1494,6 @@ async function runHandleNavigation(): Promise<void> {
       buildCursors({
         cursors: cursorOptions,
         mainRoom: newMainRoom,
-        partykitHost: __currentHost,
-        onError: configuredOptions?.onError,
       });
     }
   }
@@ -1680,8 +1655,6 @@ async function initPlayHTMLOnce() {
   buildCursors({
     cursors,
     mainRoom: room,
-    partykitHost,
-    onError,
   });
   usersAPI.getAll();
 
