@@ -461,7 +461,8 @@ interface MovementCanvasProps {
   defaultCinematic?: CinematicConfig | null;
   installationRole?: "master" | "follower" | null;
   installationFollowerId?: string | null;
-  /** Route-enforced presentation floor. URL clean levels can still raise it. */
+  /** Route-enforced presentation floor. URL clean levels can still raise it,
+   * and `?sounddev=1` waives it so the sound surfaces can be tuned in place. */
   minimumCleanLevel?: 0 | 1 | 2;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
@@ -661,12 +662,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   /** Clean-presentation level. URL sets the baseline; the save-image
    * flow can bump it transiently. We take the max of the two so a
    * `?clean=2` URL never gets *downgraded* mid-capture. See `CleanLevel`
-   * docs in `../config.ts` for what each tier hides. */
+   * docs in `../config.ts` for what each tier hides.
+   *
+   * `?sounddev=1` waives the route's floor. An installation route pins a floor
+   * of 2 so the screen reads as a finished piece, which also hides the sound
+   * panel and the performance readout — the two surfaces the flag exists to
+   * show. Asking for the flag is asking for those, so the floor stands down
+   * and only an explicit `?clean=` in the same URL still raises the level. */
   const cleanFromUrl = useMemo(() => parseCleanFromUrl(), []);
   const [captureCleanOverride, setCaptureCleanOverride] = useState(false);
   const cleanLevel = Math.max(
     cleanFromUrl,
-    minimumCleanLevel,
+    soundDev ? 0 : minimumCleanLevel,
     captureCleanOverride ? 1 : 0,
   ) as 0 | 1 | 2;
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
