@@ -88,6 +88,10 @@ const styles = {
 
 const CursorTouches = () => {
   const profile = useMemo(() => resolveLiveInstallationProfile(), []);
+  const scale = useMemo(() => {
+    const value = Number(new URLSearchParams(window.location.search).get("scale"));
+    return Number.isFinite(value) && value > 0 ? Math.min(value, 4) : 1;
+  }, []);
   useDailyPageReload();
   useInstallationReload({ enabled: profile !== null });
   const chromeHidden = useChromeToggle(true);
@@ -238,7 +242,10 @@ const CursorTouches = () => {
 
   return (
     <div style={{ ...styles.page, background: night ? "#100d13" : "#faf7f2" }}>
-      <div ref={hostRef} style={styles.canvasHost} />
+      <div
+        ref={hostRef}
+        style={{ ...styles.canvasHost, transform: `scale(${scale})` }}
+      />
       {!chromeHidden && (
         <div style={{ ...styles.title, color: night ? "#e8e2d8" : "#3d3833" }}>
           cursor touches
