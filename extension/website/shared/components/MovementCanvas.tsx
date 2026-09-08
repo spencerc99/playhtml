@@ -1006,6 +1006,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     viewportSize,
     archiveFallbackSettings,
   );
+  const renderedArchiveFallbackTrailStates = useArchiveTrailHandoff(
+    archiveFallbackTrailStates,
+    archiveFallback?.playbackKey ?? "archive-fallback",
+    playbackContextKey,
+    archiveFallback !== undefined,
+    settings.maxConcurrentTrails * 2,
+    COMPLETION_FADE_MS,
+  );
   const archiveFallbackTimeRange = useMemo(
     () => ({
       min: archiveFallbackTimeBounds.min,
@@ -1226,7 +1234,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     frozen: paused,
     onComplete: onPlaybackCycleComplete,
   });
-  usePlaybackCycle({
+  const getArchiveFallbackElapsedMs = usePlaybackCycle({
     enabled:
       live &&
       archiveFallback !== undefined &&
@@ -1238,6 +1246,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     frozen: paused,
     onComplete: archiveFallback?.onPlaybackCycleComplete,
   });
+
+  const getArchiveFallbackFrameMs = useCallback(
+    () => Math.min(
+      getArchiveFallbackElapsedMs(),
+      Math.max(0, archiveFallbackTimeRange.duration - 1),
+    ),
+    [getArchiveFallbackElapsedMs, archiveFallbackTimeRange.duration],
+  );
 
   // For viewports whose URL has no captured title (no navigation event), ask
   // the worker's /page-meta endpoint to resolve title + favicon live (oEmbed
@@ -1699,10 +1715,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               }}
             >
               <AnimatedTrails
-                key={`archive-fallback-${archiveFallback.playbackKey}`}
                 cinematic={cinematicConfig}
                 cinematicNextSignal={cinematicNextSignal}
-                trailStates={archiveFallbackTrailStates}
+                trailStates={renderedArchiveFallbackTrailStates}
+                getInstallationElapsedMs={getArchiveFallbackFrameMs}
                 timeRange={archiveFallbackTimeRange}
                 showClickRipples={!showClicks}
                 windowSize={settings.maxConcurrentTrails * 2}
