@@ -55,6 +55,62 @@ export function getRippleLifecycle(
   };
 }
 
+export function getRippleGeometry(
+  effect: ClickEffect,
+  rippleSettings: RippleSettings,
+) {
+  const lifecycle = getRippleLifecycle(
+    effect,
+    rippleSettings,
+    effect.startTime,
+  );
+  const { holdMultiplier, expansionDuration } = lifecycle;
+
+  const baseMaxRadius =
+    rippleSettings.clickMinRadius +
+    effect.radiusFactor *
+      (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
+  const effectMaxRadius = baseMaxRadius * holdMultiplier;
+
+  // Honor the configured ring delay directly — staggering is when each ring
+  // BEGINS expanding. The visual density comes from each ring freezing at
+  // a different target radius (see ring rendering below), not time stagger.
+  const ringStaggerMs = rippleSettings.clickRingDelayMs;
+  const numRings = Math.max(1, rippleSettings.clickNumRings);
+
+  // Each ring freezes at its own target radius — spaced from a small fixed
+  // core out to (effectMaxRadius * clickAnimationStopPoint). Rings expand
+  // from 0 → their target at constant velocity, so the outermost ring
+  // takes the full expansionDuration and inner rings finish sooner.
+  // Pinning the innermost ring to clickCoreRadius (with ±2px jitter via
+  // radiusFactor) guarantees every ripple has a visible "core" mark where
+  // the click landed, regardless of size.
+  const outerTargetRadius =
+    effectMaxRadius * rippleSettings.clickAnimationStopPoint;
+  const coreJitterPx = (effect.radiusFactor - 0.5) * 4;
+  const coreRadius = Math.max(
+    1,
+    Math.min(rippleSettings.clickCoreRadius + coreJitterPx, outerTargetRadius),
+  );
+  const expansionVelocity = outerTargetRadius / expansionDuration;
+
+  const rings = Array.from({ length: numRings }, (_, i) => {
+    const ringStartTime = effect.startTime + i * ringStaggerMs;
+
+    // Innermost ring sits at the core mark; outer rings interpolate
+    // linearly from core out to outerTargetRadius. With numRings === 1
+    // the lone ring goes all the way out (otherwise it'd be a tiny dot).
+    const ringTargetRadius =
+      numRings === 1
+        ? outerTargetRadius
+        : coreRadius + (outerTargetRadius - coreRadius) * (i / (numRings - 1));
+
+    const ringDuration = Math.max(1, ringTargetRadius / expansionVelocity);
+    return { ringStartTime, ringTargetRadius, ringDuration };
+  });
+  return { rings, lifecycle };
+}
+
 export const RippleEffect = memo(
   ({
     effect,
@@ -73,62 +129,10 @@ export const RippleEffect = memo(
       onCompleteRef.current = onComplete;
     }, [onComplete]);
 
-    const geometry = useMemo(() => {
-      const lifecycle = getRippleLifecycle(
-        effect,
-        rippleSettings,
-        effect.startTime,
-      );
-      const { holdMultiplier, expansionDuration } = lifecycle;
-
-      const baseMaxRadius =
-        rippleSettings.clickMinRadius +
-        effect.radiusFactor *
-          (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
-      const effectMaxRadius = baseMaxRadius * holdMultiplier;
-
-      // Honor the configured ring delay directly — staggering is when each ring
-      // BEGINS expanding. The visual density comes from each ring freezing at
-      // a different target radius (see ring rendering below), not time stagger.
-      const ringStaggerMs = rippleSettings.clickRingDelayMs;
-      const numRings = Math.max(1, rippleSettings.clickNumRings);
-
-      // Each ring freezes at its own target radius — spaced from a small fixed
-      // core out to (effectMaxRadius * clickAnimationStopPoint). Rings expand
-      // from 0 → their target at constant velocity, so the outermost ring
-      // takes the full expansionDuration and inner rings finish sooner.
-      // Pinning the innermost ring to clickCoreRadius (with ±2px jitter via
-      // radiusFactor) guarantees every ripple has a visible "core" mark where
-      // the click landed, regardless of size.
-      const outerTargetRadius =
-        effectMaxRadius * rippleSettings.clickAnimationStopPoint;
-      const coreJitterPx = (effect.radiusFactor - 0.5) * 4;
-      const coreRadius = Math.max(
-        1,
-        Math.min(
-          rippleSettings.clickCoreRadius + coreJitterPx,
-          outerTargetRadius,
-        ),
-      );
-      const expansionVelocity = outerTargetRadius / expansionDuration;
-
-      const rings = Array.from({ length: numRings }, (_, i) => {
-        const ringStartTime = effect.startTime + i * ringStaggerMs;
-
-        // Innermost ring sits at the core mark; outer rings interpolate
-        // linearly from core out to outerTargetRadius. With numRings === 1
-        // the lone ring goes all the way out (otherwise it'd be a tiny dot).
-        const ringTargetRadius =
-          numRings === 1
-            ? outerTargetRadius
-            : coreRadius +
-              (outerTargetRadius - coreRadius) * (i / (numRings - 1));
-
-        const ringDuration = Math.max(1, ringTargetRadius / expansionVelocity);
-        return { ringStartTime, ringTargetRadius, ringDuration };
-      });
-      return { rings, lifecycle };
-    }, [effect, rippleSettings]);
+    const geometry = useMemo(
+      () => getRippleGeometry(effect, rippleSettings),
+      [effect, rippleSettings],
+    );
 
     useEffect(() => {
       const previousRadii = new Array<number>(geometry.rings.length);

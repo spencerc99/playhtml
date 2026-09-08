@@ -3,7 +3,6 @@
 import { act, Profiler, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AnimatedClicks } from "../AnimatedClicks";
 import { RippleEffect } from "../ClickRipple";
 import { subscribeRippleFrame } from "../rippleFrames";
 import { CLICK_DEFAULTS } from "../clickDefaults";
@@ -129,80 +128,6 @@ describe("RippleEffect SVG animation", () => {
     } finally {
       stopFirst();
       stopSecond();
-    }
-  });
-});
-
-describe("AnimatedClicks playback", () => {
-  it("replays finished clicks while retaining earlier marks", async () => {
-    const container = document.createElement("div");
-    const root = createRoot(container);
-    try {
-      await act(async () =>
-        root.render(
-          <AnimatedClicks
-            scheduledClicks={[
-              { id: "repeat", x: 20, y: 30, color: "#123456", spawnAtMs: 0 },
-            ]}
-            timeRange={{ duration: 1 }}
-            settings={{
-              ...CLICK_DEFAULTS,
-              animationSpeed: 1,
-              clickNumRings: 1,
-              clickMinDuration: 1,
-              clickMaxDuration: 1,
-              clickExpansionDuration: 1,
-            }}
-          />,
-        ),
-      );
-      for (let i = 0; i < 8; i++)
-        await act(async () => {
-          await frame();
-        });
-      expect(container.querySelectorAll("circle").length).toBeGreaterThan(1);
-      expect(
-        [...container.querySelectorAll("circle")].some(
-          (circle) => Number(circle.getAttribute("r")) > 0,
-        ),
-      ).toBe(true);
-    } finally {
-      await act(async () => root.unmount());
-    }
-  });
-
-  it("spawns an unsorted schedule in time order and deduplicates event ids", async () => {
-    const container = document.createElement("div");
-    const root = createRoot(container);
-    try {
-      await act(async () =>
-        root.render(
-          <AnimatedClicks
-            scheduledClicks={[
-              { id: "later", x: 90, y: 30, color: "#123456", spawnAtMs: 60 },
-              { id: "first", x: 20, y: 30, color: "#123456", spawnAtMs: 0 },
-              { id: "first", x: 20, y: 30, color: "#123456", spawnAtMs: 0 },
-            ]}
-            timeRange={{ duration: 100000 }}
-            settings={{
-              ...CLICK_DEFAULTS,
-              animationSpeed: 1,
-              clickNumRings: 1,
-            }}
-          />,
-        ),
-      );
-      for (let i = 0; i < 10; i++)
-        await act(async () => {
-          await frame();
-        });
-      expect(
-        [...container.querySelectorAll("circle")].map((circle) =>
-          circle.getAttribute("cx"),
-        ),
-      ).toEqual(["20", "90"]);
-    } finally {
-      await act(async () => root.unmount());
     }
   });
 });

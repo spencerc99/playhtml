@@ -1,5 +1,5 @@
 // ABOUTME: Standalone click/hold ripple visualizer
-// ABOUTME: Uses same ripple logic as AnimatedTrails but renders only ripples (no trails/path/cursor)
+// ABOUTME: Schedules click sounds and retains bounded marks for the Canvas renderer.
 import React, {
   useState,
   useEffect,
@@ -8,8 +8,9 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { ClickEffect } from "../types";
-import { RippleEffect, RippleSettings } from "./ClickRipple";
+import { mergeClickEffects, type VisibleClickEffect } from "./clickResidue";
+import { ClickCanvas } from "./ClickCanvas";
+import { RippleSettings } from "./ClickRipple";
 import type { SoundEngine } from "../sound/SoundEngine";
 
 // Hidden tabs heavily throttle rAF; 100ms (~10fps) keeps audio/time progression
@@ -26,36 +27,12 @@ export interface ScheduledClick {
   holdDuration?: number;
 }
 
-export const MAX_VISIBLE_CLICK_EFFECTS = 4000;
-
-const MINIMUM_RESIDUE_OPACITY = 0.03;
-
-export function getClickResidueOpacity(
-  index: number,
-  total: number,
-  completed: boolean,
-): number {
-  if (!completed) return 1;
-
-  const distanceFromNewest = total - index - 1;
-  const fadeProgress = Math.min(
-    1,
-    distanceFromNewest / Math.max(1, MAX_VISIBLE_CLICK_EFFECTS - 1),
-  );
-  return 1 - (1 - MINIMUM_RESIDUE_OPACITY) * fadeProgress;
-}
-
-export type VisibleClickEffect = ClickEffect & {
-  sourceId: string;
-  completed: boolean;
-};
-
-export function mergeClickEffects(
-  current: VisibleClickEffect[],
-  incoming: VisibleClickEffect[],
-): VisibleClickEffect[] {
-  return [...current, ...incoming].slice(-MAX_VISIBLE_CLICK_EFFECTS);
-}
+export {
+  MAX_VISIBLE_CLICK_EFFECTS,
+  getClickResidueOpacity,
+  mergeClickEffects,
+} from "./clickResidue";
+export type { VisibleClickEffect } from "./clickResidue";
 
 interface AnimatedClicksProps {
   scheduledClicks: ScheduledClick[];
@@ -96,6 +73,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
         completedCycleEffectIdsRef.current.add(id);
       }
       const pending = pendingCompletionsRef.current;
+      if (pending.has(id)) return;
       pending.add(id);
       if (pending.size > 1) return;
       queueMicrotask(() => {
@@ -288,35 +266,11 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
     );
 
     return (
-      <svg
-        className="animated-clicks-svg"
-        width="100%"
-        height="100%"
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          pointerEvents: "none",
-        }}
-      >
-        {activeClickEffects.map((effect, index) => (
-          <g
-            key={effect.id}
-            opacity={getClickResidueOpacity(
-              index,
-              activeClickEffects.length,
-              effect.completed,
-            )}
-            style={{ transition: "opacity 200ms linear" }}
-          >
-            <RippleEffect
-              effect={effect}
-              settings={rippleSettings}
-              onComplete={handleClickComplete}
-            />
-          </g>
-        ))}
-      </svg>
+      <ClickCanvas
+        effects={activeClickEffects}
+        settings={rippleSettings}
+        onComplete={handleClickComplete}
+      />
     );
   },
   (prevProps, nextProps) => {
