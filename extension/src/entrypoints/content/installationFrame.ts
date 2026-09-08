@@ -23,7 +23,7 @@ const STROKE_GAP_MS = 1200;
 const MIN_POINT_DISTANCE_PX = 2;
 
 export const INSTALLATION_FRAME_HOST_ID = "wwo-installation-frame";
-const PARTICIPATE_URL = "https://wewere.online/participate/";
+const PROJECT_URL = "https://wewere.online/";
 const PORTRAIT_URL = "https://wewere.online/portrait/";
 
 export interface TracePoint {
@@ -360,9 +360,10 @@ export function initInstallationFrame(): () => void {
         play it.</p>
       <p class="quiet">Recorded as marks: cursor movement, clicks, scrolling,
         the pages visited, and typing rhythm in text boxes (characters are
-        masked). More at <a href="${PARTICIPATE_URL}" target="_blank"
-        rel="noreferrer">wewere.online/participate</a> and the live portrait at
-        <a href="${PORTRAIT_URL}" target="_blank" rel="noreferrer">wewere.online/portrait</a>.</p>
+        masked). The live portrait is at <a href="${PORTRAIT_URL}"
+        target="_blank" rel="noreferrer">wewere.online/portrait</a>, and you can
+        take the whole thing home from <a href="${PROJECT_URL}" target="_blank"
+        rel="noreferrer">wewere.online</a>.</p>
     `;
 
     const setPanelOpen = (open: boolean) => {

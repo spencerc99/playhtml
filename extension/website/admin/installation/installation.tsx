@@ -125,16 +125,14 @@ export function InstallationOffice() {
 
         <section className="office-panel">
           <div className="office-list-header">
-            <div><span className="office-section-number">BROWSING MACHINE</span><h3>Participate page</h3></div>
+            <div><span className="office-section-number">BROWSING MACHINE</span><h3>Installation mode</h3></div>
           </div>
           <p>
-            Set this as the homepage and new-tab page on the machine visitors browse from, and
-            turn on Installation mode in the extension's Settings (Cmd/Ctrl+Shift+8) so the frame,
-            live trace, and sound follow them onto every site.
+            On the machine visitors browse from, open the extension's Settings, press
+            Cmd/Ctrl+Shift+8, and check Installation mode. The frame, the live cursor trace,
+            the sound, and the faster collection pace follow them onto every site, and the
+            frame's "about this" corner explains the piece to whoever sits down.
           </p>
-          <a href={`${PRODUCTION_ORIGIN}/participate/`} target="_blank" rel="noreferrer">
-            wewere.online/participate
-          </a>
         </section>
       </main>
     </div>

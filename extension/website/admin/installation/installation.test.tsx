@@ -42,10 +42,11 @@ describe("installation office", () => {
     expect(screen.getByRole("link", { name: "Installation" }).getAttribute("aria-current")).toBe("page");
   });
 
-  it("links the browsing machine to the participate page", () => {
+  it("tells the operator how to set up the browsing machine", () => {
     expect(
-      screen.getByRole("link", { name: "wewere.online/participate" }).getAttribute("href"),
-    ).toBe("https://wewere.online/participate/");
+      screen.getByRole("heading", { name: "Installation mode" }).textContent,
+    ).toBe("Installation mode");
+    expect(document.body.textContent).toContain("Cmd/Ctrl+Shift+8");
   });
 
   it("does nothing when the production reload is not confirmed", async () => {

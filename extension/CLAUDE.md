@@ -168,9 +168,6 @@ when Xcode or Apple credentials are not available.
 The `extension/website/` Vite app serves both the marketing/landing pages
 (`index.html`, `privacy.html`) and the visualization experiments:
 
-- `extension/website/participate/` — the browse-to-participate page for
-  installation machines; explains the piece, traces the visitor's own cursor as
-  a demonstration, and offers places to start browsing
 - `extension/website/changelog/` — public extension release notes rendered
   from `extension/CHANGELOG.md`; supports Markdown images and
   `![video: Title](...)` media references.
@@ -355,9 +352,9 @@ collection modes. It does not start cursor presence connections. The frame's
 earlier traces and the faster pace only produce marks when cursor collection is
 itself on.
 
-The public-facing half is `extension/website/participate/` — the page to set as
-the homepage and new-tab page on a browsing machine, linked from the
-installation office at `/admin/installation/`.
+Nothing hosted is needed to explain the piece: the frame's "about this" panel is
+the only introduction a visitor gets, and the installation office at
+`/admin/installation/` carries the operator's setup note.
 
 Build with `bun run build-extension`, then run
 `node smoke-tests/installation-cursor.mjs` (cursor) and
