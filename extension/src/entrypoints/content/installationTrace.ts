@@ -47,10 +47,14 @@ const DEPART_MS = 3000;
 /** Bound on retained ink, oldest first. */
 const MAX_STROKES = 48;
 
-/** The screens' live ripple settings (LIVE_CURSOR_CLICK_SETTINGS). */
+/**
+ * The screens' click settings (CLICK_DEFAULTS). The live portrait shrinks the
+ * radius because thousands of people's clicks land in one frame; on one
+ * machine's own page there is room for the full mark.
+ */
 const RIPPLE = {
   minRadius: 12,
-  maxRadius: 30,
+  maxRadius: 80,
   coreRadius: 3,
   minDuration: 500,
   maxDuration: 2500,
@@ -62,8 +66,8 @@ const RIPPLE = {
   animationStopPoint: 0.45,
 };
 const MAX_HOLD_MULTIPLIER = 3;
-/** A ripple fades out over its last stretch instead of vanishing. */
-const RIPPLE_FADE_MS = 600;
+/** Retained click marks, oldest first. */
+const MAX_RIPPLES = 80;
 
 export interface Ripple {
   x: number;
@@ -101,9 +105,15 @@ export function rippleRings(ripple: Ripple, now: number): RippleRing[] {
       totalDuration,
       (RIPPLE.numRings - 1) * RIPPLE.ringDelayMs + expansionDuration,
     );
-  const remaining = completedAt - now;
-  if (remaining <= 0) return [];
-  const fade = Math.min(1, remaining / RIPPLE_FADE_MS);
+  if (now <= ripple.startTime) return [];
+  // Once the rings stop expanding the mark stays, so a click is still there to
+  // see later — the same way the screens keep click residue.
+  const settledFor = now - completedAt;
+  const alpha =
+    settledFor <= 0
+      ? RIPPLE.opacity
+      : restingAlpha(settledFor, RIPPLE.opacity, RIPPLE.opacity * 0.5);
+  if (alpha <= 0.01) return [];
 
   const maxRadius =
     (RIPPLE.minRadius +
@@ -126,17 +136,34 @@ export function rippleRings(ripple: Ripple, now: number): RippleRing[] {
     const started = now - (ripple.startTime + index * RIPPLE.ringDelayMs);
     if (started <= 0) continue;
     const duration = Math.max(1, target / velocity);
-    rings.push({
-      radius: target * Math.min(1, started / duration),
-      alpha: RIPPLE.opacity * fade,
-    });
+    rings.push({ radius: target * Math.min(1, started / duration), alpha });
   }
   return rings;
 }
 
-/** True once a ripple has nothing left to draw. */
+/** True once a click mark has faded out entirely. */
 export function rippleDone(ripple: Ripple, now: number): boolean {
-  return rippleRings(ripple, now).length === 0 && now > ripple.startTime;
+  return now > ripple.startTime && rippleRings(ripple, now).length === 0;
+}
+
+/** True while a click mark is still changing on screen. */
+export function rippleAnimating(ripple: Ripple, now: number): boolean {
+  const holdMultiplier = ripple.holdDuration
+    ? Math.min(MAX_HOLD_MULTIPLIER, 1 + ripple.holdDuration / 1000)
+    : 1;
+  const totalDuration =
+    (RIPPLE.minDuration +
+      ripple.durationFactor * (RIPPLE.maxDuration - RIPPLE.minDuration)) *
+    holdMultiplier;
+  const completedAt =
+    ripple.startTime +
+    Math.max(
+      totalDuration,
+      (RIPPLE.numRings - 1) * RIPPLE.ringDelayMs +
+        RIPPLE.expansionDuration * holdMultiplier,
+    );
+  const settledFor = now - completedAt;
+  return settledFor < DIM_FADE_MS || settledFor >= HOLD_MS;
 }
 
 /**
@@ -172,17 +199,24 @@ export function freehandPath(
   return path;
 }
 
-/** Opacity of a finished stroke, from the live weight down to gone. */
-export function settledAlpha(sinceEndedMs: number): number {
-  if (sinceEndedMs <= 0) return LIVE_ALPHA;
+/**
+ * The lifecycle every finished mark follows: ease from its live weight to a
+ * resting one, hold there so the page keeps what happened on it, then depart.
+ */
+function restingAlpha(sinceEndedMs: number, live: number, rest: number): number {
+  if (sinceEndedMs <= 0) return live;
   if (sinceEndedMs < DIM_FADE_MS) {
-    const t = sinceEndedMs / DIM_FADE_MS;
-    return LIVE_ALPHA + (SETTLED_ALPHA - LIVE_ALPHA) * t;
+    return live + (rest - live) * (sinceEndedMs / DIM_FADE_MS);
   }
   const departing = sinceEndedMs - HOLD_MS;
-  if (departing <= 0) return SETTLED_ALPHA;
+  if (departing <= 0) return rest;
   if (departing >= DEPART_MS) return 0;
-  return SETTLED_ALPHA * (1 - departing / DEPART_MS);
+  return rest * (1 - departing / DEPART_MS);
+}
+
+/** Opacity of a finished stroke, from the live weight down to gone. */
+export function settledAlpha(sinceEndedMs: number): number {
+  return restingAlpha(sinceEndedMs, LIVE_ALPHA, SETTLED_ALPHA);
 }
 
 interface Stroke {
@@ -274,6 +308,7 @@ export function createTraceField(): TraceField {
         radiusFactor: Math.random(),
         durationFactor: Math.random(),
       });
+      if (ripples.length > MAX_RIPPLES) ripples = ripples.slice(-MAX_RIPPLES);
     },
     setPrevious(next) {
       previous = next.map((points) => ({
@@ -348,13 +383,13 @@ export function createTraceField(): TraceField {
       }
       strokes = kept;
 
-      const liveRipples: Ripple[] = [];
+      const keptRipples: Ripple[] = [];
       context.lineWidth = RIPPLE.strokeWidth;
       for (const ripple of ripples) {
         const rings = rippleRings(ripple, now);
         if (rings.length === 0 && now > ripple.startTime) continue;
-        liveRipples.push(ripple);
-        animating = true;
+        keptRipples.push(ripple);
+        if (rippleAnimating(ripple, now)) animating = true;
         for (const ring of rings) {
           if (ring.radius <= 0.5) continue;
           context.globalAlpha = ring.alpha;
@@ -363,7 +398,7 @@ export function createTraceField(): TraceField {
           context.stroke();
         }
       }
-      ripples = liveRipples;
+      ripples = keptRipples;
 
       context.globalAlpha = 1;
       context.restore();

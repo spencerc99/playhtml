@@ -6,6 +6,7 @@ import { toPreviousStrokes } from "../entrypoints/content/installationFrame";
 import {
   LIVE_ALPHA,
   SETTLED_ALPHA,
+  rippleAnimating,
   rippleRings,
   settledAlpha,
 } from "../entrypoints/content/installationTrace";
@@ -113,19 +114,42 @@ describe("rippleRings", () => {
     );
   });
 
-  it("fades out and then stops drawing", () => {
-    const late = rippleRings(ripple, 3600);
-    expect(late[0].alpha).toBeLessThan(rippleRings(ripple, 1500)[0].alpha);
-    expect(rippleRings(ripple, 10_000)).toEqual([]);
+  it("leaves the mark behind once the rings stop expanding", () => {
+    const opening = rippleRings(ripple, 1500)[0].alpha;
+    // Frozen radii, dimmer but still there, long after the animation ends.
+    const resting = rippleRings(ripple, 20_000);
+    expect(resting).toHaveLength(3);
+    expect(resting[0].alpha).toBeLessThan(opening);
+    expect(resting[0].alpha).toBeGreaterThan(0);
+    expect(resting[2].radius).toBeCloseTo(rippleRings(ripple, 40_000)[2].radius, 5);
+
+    // It departs on the same schedule as the ink rather than staying forever.
+    expect(rippleRings(ripple, 200_000)).toEqual([]);
   });
 
   it("gives a held click a bigger, longer ripple", () => {
     const held = { ...ripple, holdDuration: 2000 };
-    // The plain ripple is over by now; the held one is still opening.
-    expect(rippleRings(ripple, 5000)).toEqual([]);
-    expect(rippleRings(held, 5000)[2].radius).toBeGreaterThan(
-      rippleRings(ripple, 3600)[2].radius,
+    // The plain ripple has settled at its radius; the held one is still opening
+    // toward a larger one.
+    expect(rippleRings(held, 8000)[2].radius).toBeGreaterThan(
+      rippleRings(ripple, 8000)[2].radius,
     );
+  });
+});
+
+describe("rippleAnimating", () => {
+  const ripple = {
+    x: 10,
+    y: 10,
+    startTime: 1000,
+    radiusFactor: 0.5,
+    durationFactor: 0.5,
+  };
+
+  it("stops animating once the mark rests, and again while it departs", () => {
+    expect(rippleAnimating(ripple, 2000)).toBe(true);
+    expect(rippleAnimating(ripple, 20_000)).toBe(false);
+    expect(rippleAnimating(ripple, 100_000)).toBe(true);
   });
 });
 

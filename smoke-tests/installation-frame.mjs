@@ -103,8 +103,8 @@ async function traceCursor(page, { steps = 60, stepPx = 10, delayMs = 16 } = {})
 }
 
 /** Counts pixels close to the participant's cursor color in a real screenshot. */
-async function coloredPixelCount(page) {
-  const shot = (await page.screenshot()).toString("base64");
+async function coloredPixelCount(page, clip) {
+  const shot = (await page.screenshot(clip ? { clip } : {})).toString("base64");
   return page.evaluate(async (data) => {
     const response = await fetch(`data:image/png;base64,${data}`);
     const bitmap = await createImageBitmap(await response.blob());
@@ -209,6 +209,25 @@ try {
   if (evidence)
     await page.screenshot({ path: resolve(evidence, "frame-trace.png") });
 
+  // A click leaves a mark that is still on the page long after the rings stop.
+  // Measured in a band below the traced path, so settling ink can't be mistaken
+  // for the click marks.
+  const clickBand = { x: 200, y: 470, width: 700, height: 170 };
+  const beforeClicks = await coloredPixelCount(page, clickBand);
+  for (const [x, y] of [[300, 520], [520, 560], [760, 540]]) {
+    await page.mouse.move(x, y);
+    await page.mouse.click(x, y);
+    await page.waitForTimeout(250);
+  }
+  await page.waitForTimeout(6000);
+  const afterClicks = await coloredPixelCount(page, clickBand);
+  assert.ok(
+    afterClicks > beforeClicks + 50,
+    `clicks stay visible after their ripples finish (${beforeClicks} → ${afterClicks} colored pixels)`,
+  );
+  if (evidence)
+    await page.screenshot({ path: resolve(evidence, "frame-clicks.png") });
+
   // Sound starts on the first gesture and reports itself on the host.
   await expect
     .poll(() => frame.getAttribute("data-wwo-sound"))
@@ -295,6 +314,7 @@ try {
         result: "passed",
         browser: context.browser()?.version(),
         tracedPixels,
+        clickPixels: { beforeClicks, afterClicks },
         fastCount,
         slowCount,
         fastLatency,
