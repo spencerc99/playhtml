@@ -758,6 +758,128 @@ const typingScene = (
   };
 };
 
+/** Trails moving under a storm, so it is never scanned on an empty canvas. */
+const STORM_CROWD_TRAILS = 8;
+/** How long the scene keeps running after the storm stops, in seconds. */
+const STORM_TAIL_SECONDS = 6;
+
+/**
+ * One participant clicking far faster than the mix can carry, amid a scene
+ * that is already busy.
+ *
+ * This is the case the click budget exists for, and no scene above reaches it:
+ * `sweepScene` clicks every 120ms, which is eight a second and never comes
+ * near the budget, and the fixture's densest slice is slower still. A storm is
+ * two orders of magnitude denser than that — hundreds of clicks in a few
+ * seconds from a single pointer, each one previously building a four-node
+ * graph with a three-second envelope and its own scheduled automation. What
+ * summed past the mix was the count.
+ *
+ * The storming pointer moves while it clicks, so every bell lands at its own
+ * pitch and its own pan rather than stacking one note in one place — a storm
+ * of the same bell is a much easier thing to sound clean than a storm across
+ * the scale, and the easier one is not what the archive contains.
+ *
+ * The crowd underneath matters as much as the storm: the budget refuses new
+ * bells rather than cutting sounding ones, so what has to be proved is that
+ * everything else in the scene keeps sounding *through* a storm. A storm
+ * scanned alone would pass on an engine that silenced the whole mix to serve
+ * it.
+ *
+ * The tail is rendered too. The last admitted bell rings for three seconds
+ * after the storm stops, and a budget that dropped its bookkeeping at the end
+ * of the storm would leave those to be cut.
+ */
+const clickStormScene = (
+  id: string,
+  soloistVoice: SoloistVoice,
+  {
+    clicksPerSecond,
+    stormSeconds,
+    trailCount = STORM_CROWD_TRAILS,
+  }: {
+    clicksPerSecond: number;
+    stormSeconds: number;
+    trailCount?: number;
+  },
+): Scene => {
+  const clickIntervalMs = 1_000 / clicksPerSecond;
+  const phase = (index: number): number => index * 0.7;
+  let nextClickMs = 0;
+  let firstTick = true;
+
+  return {
+    id,
+    durationSeconds: stormSeconds + STORM_TAIL_SECONDS,
+    soloistVoice,
+    advance: (engine, sampleMs) => {
+      const seconds = sampleMs / 1_000;
+
+      // Trail zero is the one clicking. Its path is a slow arc across the
+      // canvas rather than a race, because a storm is someone hammering a
+      // control while the pointer drifts, not someone sweeping.
+      const stormX = CANVAS_WIDTH * (0.15 + 0.7 * (seconds / stormSeconds));
+      const stormY =
+        CANVAS_HEIGHT * (0.5 + 0.3 * Math.sin(seconds * 1.1));
+
+      // A while loop rather than an if: above the tick rate a single tick has
+      // to deliver every click that fell inside it, which is exactly how a
+      // real driver hands a burst to the engine — several clicks sharing one
+      // frame's context time, with no clock advance between them.
+      while (sampleMs <= stormSeconds * 1_000 && nextClickMs <= sampleMs) {
+        const step = Math.round(nextClickMs / clickIntervalMs);
+        engine.triggerClick({
+          // Along the pointer's own path, jittered by a character's width, so
+          // consecutive bells differ in pitch and pan the way real ones do.
+          x: stormX + ((step * 37) % 90) - 45,
+          y: stormY + ((step * 53) % 120) - 60,
+          // Every seventh click is held, so the longer envelope — which
+          // occupies a budget slot three times as long — is in the mix too.
+          holdDuration: step % 7 === 0 ? 900 : undefined,
+        });
+        nextClickMs += clickIntervalMs;
+      }
+
+      const frames: TrailSoundFrame[] = [];
+      for (let index = 0; index < trailCount; index++) {
+        const isStormer = index === 0;
+        const rate = index % 3 === 0 ? 2.4 : 0.4;
+        const prevSeconds = seconds - 1 / REPLAY_FPS;
+        const x = isStormer
+          ? stormX
+          : CANVAS_WIDTH * (0.5 + 0.48 * Math.sin(seconds * rate + phase(index)));
+        const y = isStormer
+          ? stormY
+          : CANVAS_HEIGHT *
+            (0.5 + 0.4 * Math.cos(seconds * rate * 0.83 + phase(index)));
+        const prevX = isStormer
+          ? CANVAS_WIDTH * (0.15 + 0.7 * (prevSeconds / stormSeconds))
+          : CANVAS_WIDTH *
+            (0.5 + 0.48 * Math.sin(prevSeconds * rate + phase(index)));
+        const prevY = isStormer
+          ? CANVAS_HEIGHT * (0.5 + 0.3 * Math.sin(prevSeconds * 1.1))
+          : CANVAS_HEIGHT *
+            (0.5 + 0.4 * Math.cos(prevSeconds * rate * 0.83 + phase(index)));
+
+        frames.push({
+          trailIndex: index,
+          x,
+          y,
+          prevX,
+          prevY,
+          cursorType: index % 3 === 1 ? "pointer" : "default",
+          progress: 0,
+          color: REPLAY_COLORS[index % REPLAY_COLORS.length],
+          isNewlyActive: firstTick,
+          identityKey: `storm-${index}`,
+        });
+      }
+      firstTick = false;
+      return frames;
+    },
+  };
+};
+
 /** Drive one scene through the engine and return the rendered buffer. */
 export const renderScene = async (
   scene: Scene,
@@ -1095,6 +1217,32 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
       typingScene("typing-crowd-presence", "presence", SCAN_SECONDS, {
         withPointer: true,
       }),
+      // A click storm, which is the one pressure no scene above applies: every
+      // other scene's clicks are spaced far enough apart that the budget never
+      // engages. The realistic one is roughly 200 clicks over eight seconds from
+      // a single moving pointer, which is what the archive's worst stretch of
+      // hammering actually looks like; the pathological one is fifty a second
+      // for ten, which no person produces and which is therefore the honest
+      // ceiling test.
+      clickStormScene("click-storm-realistic", "bells", {
+        clicksPerSecond: 25,
+        stormSeconds: 8,
+      }),
+      clickStormScene("click-storm-pathological", "bells", {
+        clicksPerSecond: 50,
+        stormSeconds: 10,
+      }),
+      // The same storms under the arrangement Spencer listens to, where the
+      // spotlight is off and the sustained bed carries the mix at full gain —
+      // the case with the least headroom for a storm to sum into.
+      {
+        ...clickStormScene("click-storm-spencer", "presence", {
+          clicksPerSecond: 50,
+          stormSeconds: 10,
+        }),
+        config: SPENCER_ARRANGEMENT,
+        cantus: "duet" as CantusVariant,
+      },
       // Spencer's own arrangement, on both surfaces. The ticking he hears is
       // present with the spotlight and the cursor instruments off, so it has to
       // be scanned with them off: no scene above does that, and the layers they
