@@ -6,7 +6,7 @@ import { useDebugHover } from "./DebugHover";
 import { redactWithLegibility } from "@extension/utils/keyboardRedaction";
 import {
   InstallationPlaybackQueue,
-  INSTALLATION_ARRIVAL_MS,
+  INSTALLATION_TYPING_ARRIVAL_MS,
   INSTALLATION_FADE_MS,
   INSTALLATION_TYPING_HOLD_MS,
 } from "../utils/installationPlaybackQueue";
@@ -835,15 +835,14 @@ export function ContinuousTyping({
         visible.current = visible.current.filter(
           (recording) =>
             now - recording.startedAt <
-            INSTALLATION_FADE_MS +
-              recording.durationMs +
+            recording.durationMs +
               INSTALLATION_TYPING_HOLD_MS +
               INSTALLATION_FADE_MS,
         );
         if (
           visible.current.length <
             Math.min(30, settingsRef.current.maxConcurrentTyping) &&
-          now - lastArrival >= INSTALLATION_ARRIVAL_MS
+          now - lastArrival >= INSTALLATION_TYPING_ARRIVAL_MS
         ) {
           const track = queue.take(
             new Set(visible.current.map((recording) => recording.track.id)),
@@ -873,15 +872,14 @@ export function ContinuousTyping({
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {frame.recordings.map(({ track, startedAt, speed, durationMs }) => {
         const elapsed = frame.now - startedAt;
-        const typingElapsed = Math.max(0, elapsed - INSTALLATION_FADE_MS);
+        const typingElapsed = elapsed;
         const typing = typingElapsed < durationMs;
         const fadeStart =
-          INSTALLATION_FADE_MS + durationMs + INSTALLATION_TYPING_HOLD_MS;
+          durationMs + INSTALLATION_TYPING_HOLD_MS;
         const opacity = Math.max(
           0,
           Math.min(
             1,
-            elapsed / INSTALLATION_FADE_MS,
             1 - (elapsed - fadeStart) / INSTALLATION_FADE_MS,
           ),
         );

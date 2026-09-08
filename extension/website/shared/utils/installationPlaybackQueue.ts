@@ -46,6 +46,7 @@ export class InstallationPlaybackQueue<T> {
 }
 
 export const INSTALLATION_ARRIVAL_MS = 1500;
+export const INSTALLATION_TYPING_ARRIVAL_MS = 750;
 export const INSTALLATION_FADE_MS = 2000;
 export const INSTALLATION_SCROLL_HOLD_MS = 4000;
 export const INSTALLATION_TYPING_HOLD_MS = 8000;
