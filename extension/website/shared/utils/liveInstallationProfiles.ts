@@ -24,6 +24,7 @@ export type LiveInstallationProfileName =
   (typeof LIVE_INSTALLATION_PROFILE_NAMES)[number];
 
 interface TouchesProfileSettings {
+  scale: number;
   touchRadius: number;
   speed: number;
   showCursors: boolean;
@@ -114,6 +115,7 @@ const CLICK_SETTINGS = {
 } satisfies Partial<MovementSettings>;
 
 const TOUCHES_SETTINGS: TouchesProfileSettings = {
+  scale: 2,
   touchRadius: 20,
   speed: 1,
   showCursors: true,
