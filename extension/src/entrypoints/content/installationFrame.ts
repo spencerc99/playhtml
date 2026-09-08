@@ -13,6 +13,11 @@ import {
   type InstallationSound,
 } from "./installationSound";
 import {
+  colorShade,
+  colorWash,
+  readableTextLightness,
+} from "@movement/utils/colorStyle";
+import {
   createTraceField,
   JUMP_SPLIT_FRACTION,
   STROKE_GAP_MS,
@@ -103,18 +108,17 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: n
   opacity: 0.45; border-radius: 2px; pointer-events: none;
 }
 .caption {
-  position: fixed; left: 22px; bottom: 20px; display: flex; align-items: center; gap: 8px;
-  padding: 7px 13px 7px 10px; border-radius: 999px; pointer-events: none;
-  background: rgba(250, 249, 246, 0.92); border: 1px solid rgba(61, 56, 51, 0.14);
-  box-shadow: 0 1px 6px rgba(61, 56, 51, 0.12);
-  color: #3d3833; font-size: 13px; line-height: 1.35; letter-spacing: 0.01em;
+  position: fixed; left: 22px; bottom: 20px; pointer-events: none;
+  padding: 8px 13px; border-radius: 4px;
+  background: var(--wwo-frame-wash); border: 2px solid var(--wwo-frame-line);
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.15), 0 1px 0 rgba(255, 255, 255, 0.8);
+  color: var(--wwo-frame-ink); font-size: 13px; line-height: 1.35; letter-spacing: 0.01em;
   max-width: min(64vw, 620px);
 }
-.caption a { pointer-events: auto; color: inherit; text-decoration-color: rgba(61, 56, 51, 0.35); text-underline-offset: 2px; }
+.caption a { pointer-events: auto; color: inherit; text-decoration-color: var(--wwo-frame-line); text-underline-offset: 2px; }
 .caption a:hover { text-decoration-color: currentColor; }
 .panel h1 a { color: inherit; text-decoration: none; }
 .panel h1 a:hover { text-decoration: underline; text-underline-offset: 3px; }
-.swatch { width: 11px; height: 11px; border-radius: 50%; background: var(--wwo-frame-color); flex: none; }
 .info {
   position: fixed; right: 22px; bottom: 20px; pointer-events: auto;
   width: 34px; height: 34px; padding: 0; border-radius: 50%;
@@ -323,12 +327,10 @@ export function initInstallationFrame(): () => void {
 
     const caption = document.createElement("div");
     caption.className = "caption";
-    const swatch = document.createElement("span");
-    swatch.className = "swatch";
     const captionText = document.createElement("span");
     captionText.innerHTML =
       `<b>participating in <a href="${PROJECT_URL}" target="_blank" rel="noreferrer">we were online</a></b> — browse to contribute to the portrait`;
-    caption.append(swatch, captionText);
+    caption.append(captionText);
 
     const sound = createInstallationSound(color);
     // Sound comes on with installation mode. There is no switch in the frame —
@@ -372,6 +374,14 @@ export function initInstallationFrame(): () => void {
 
     shadow.append(canvas, edge, caption, info, panel);
     host.style.setProperty("--wwo-frame-color", color);
+    // The same wash the screens give a typed-in box: hue behind, hue border,
+    // hue ink dark enough to read on it.
+    host.style.setProperty("--wwo-frame-wash", colorWash(color, 0.82, 30));
+    host.style.setProperty("--wwo-frame-line", colorWash(color, 0.55, 0));
+    host.style.setProperty(
+      "--wwo-frame-ink",
+      colorShade(color, readableTextLightness(color)),
+    );
     // Only the panel and its button take pointer input; the host stays inert so
     // the page underneath keeps every click.
     const context = canvas.getContext("2d");
