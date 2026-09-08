@@ -218,6 +218,7 @@ interface KeptTrail {
 interface LiveTrailsProps {
   trailStates: TrailState[];
   frozen?: boolean;
+  visible?: boolean;
   cinematic?: CinematicConfig | null;
   cinematicNextSignal?: number;
   showClickRipples?: boolean;
@@ -237,6 +238,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
   ({
     trailStates,
     frozen = false,
+    visible = true,
     cinematic = null,
     cinematicNextSignal = 0,
     showClickRipples = false,
@@ -803,7 +805,13 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         width="100%"
         height="100%"
         preserveAspectRatio="none"
-        style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          pointerEvents: "none",
+          visibility: visible ? "visible" : "hidden",
+        }}
       >
         {showClickRipples &&
           activeClickEffects.map((effect) => (

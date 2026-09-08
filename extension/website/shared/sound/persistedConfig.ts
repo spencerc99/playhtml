@@ -30,7 +30,7 @@ export interface LayerConfig {
  * its own defaults is a caller able to silently lose part of the arrangement.
  */
 export const SCENE_DEFAULTS: GlobalSettings = {
-  mode: "spotlight",
+  mode: "sustained",
   chordRotation: true,
   progression: DEFAULT_PROGRESSION_ID,
   energyArc: true,
@@ -46,7 +46,7 @@ export const SCENE_DEFAULTS: GlobalSettings = {
 export const LAYER_DEFAULTS: LayerConfig = {
   bassPedal: true,
   trailArrivals: true,
-  navigationSounds: true,
+  navigationSounds: false,
   crossings: "off",
   /**
    * The soprano cantus sings over the crowd from the start. It carries a line

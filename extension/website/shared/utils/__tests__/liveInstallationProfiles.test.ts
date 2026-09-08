@@ -12,6 +12,8 @@ import {
   LIVE_INSTALLATION_PROFILES,
   resolveLiveInstallationProfile,
 } from "../liveInstallationProfiles";
+import { DEFAULT_SETTINGS } from "../../components/settingsDefaults";
+import { LIVE_CURSOR_CLICK_SETTINGS } from "../../components/clickDefaults";
 
 describe("live installation profiles", () => {
   it("resolves every named machine profile", () => {
@@ -23,14 +25,14 @@ describe("live installation profiles", () => {
   });
 
   it("keeps the current installation settings in centrally deployed profiles", () => {
-    expect(LIVE_INSTALLATION_PROFILES.scrolling.settings.scrollSpeed).toBe(1);
+    expect(LIVE_INSTALLATION_PROFILES.scrolling.settings.scrollSpeed).toBe(0.35);
     expect(
       LIVE_INSTALLATION_PROFILES.scrolling.settings.maxConcurrentScrolls,
-    ).toBe(42);
+    ).toBe(30);
     expect(LIVE_INSTALLATION_PROFILES.typing.settings).toMatchObject({
       textboxOpacity: 0.85,
       keyboardAnimationSpeed: 0.4,
-      maxConcurrentTyping: 50,
+      maxConcurrentTyping: 30,
     });
     expect(LIVE_INSTALLATION_PROFILES.clicks.settings).toMatchObject({
       clickMaxRadius: 55,
@@ -42,7 +44,30 @@ describe("live installation profiles", () => {
       strokeWidth: 6,
       trailOpacity: 0.9,
       maxConcurrentTrails: 24,
+      clickMaxRadius: 30,
     });
+  });
+
+  it("uses recorded participant colors on every installation screen", () => {
+    for (const profile of Object.values(LIVE_INSTALLATION_PROFILES)) {
+      expect(profile.settings.randomizeColors).toBe(false);
+    }
+  });
+
+  it("uses the homepage click settings on the cursor field and followers", () => {
+    const cursorProfiles = [
+      LIVE_INSTALLATION_PROFILES.cursors,
+      LIVE_INSTALLATION_PROFILES["follower-a"],
+      LIVE_INSTALLATION_PROFILES["follower-b"],
+      LIVE_INSTALLATION_PROFILES["follower-c"],
+      LIVE_INSTALLATION_PROFILES["follower-d"],
+    ];
+
+    for (const profile of cursorProfiles) {
+      expect({ ...DEFAULT_SETTINGS, ...profile.settings }).toMatchObject(
+        LIVE_CURSOR_CLICK_SETTINGS,
+      );
+    }
   });
 
   it("enables sound only on the main cursor field", () => {

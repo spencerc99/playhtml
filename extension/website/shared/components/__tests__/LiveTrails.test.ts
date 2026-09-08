@@ -456,19 +456,20 @@ describe("LiveTrails camera", () => {
     const root = createRoot(container);
     const state = trailState();
     const cinematic = { ...DEFAULT_CINEMATIC_CONFIG, zoom: 0.1 };
-    const render = async (enabled: boolean, frozen = false) => {
+    const render = async (enabled: boolean, frozen = false, visible = true) => {
       await act(async () => root.render(React.createElement(LiveTrails, {
         trailStates: [state],
         cinematic: enabled ? cinematic : null,
         settings: DEFAULT_SETTINGS,
         frozen,
+        visible,
       })));
     };
     try {
       await render(true);
       act(() => frames.shift()?.(1000));
       act(() => frames.shift()?.(1500));
-      const svg = container.querySelector("svg.trails-svg")!;
+      const svg = container.querySelector<SVGSVGElement>("svg.trails-svg")!;
       const box = () => svg.getAttribute("viewBox")!.split(" ").map(Number);
       expect(box()[2]).toBeCloseTo(window.innerWidth * 0.1);
       const initial = box();
@@ -483,6 +484,14 @@ describe("LiveTrails camera", () => {
       expect(box()[0]).toBeCloseTo(beforeGrowth[0]);
       act(() => frames.shift()?.(1900));
       expect(box()[0]).toBeGreaterThan(beforeGrowth[0]);
+      await render(true, false, false);
+      expect(svg.style.visibility).toBe("hidden");
+      const hiddenPosition = box()[0];
+      act(() => frames.shift()?.(2000));
+      expect(box()[0]).toBeGreaterThan(hiddenPosition);
+      await render(true);
+      expect(svg.style.visibility).toBe("visible");
+      expect(box()[0]).toBeGreaterThan(hiddenPosition);
       await render(true, true);
       const paused = svg.getAttribute("viewBox");
       act(() => frames.shift()?.(2100));

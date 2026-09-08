@@ -3,6 +3,7 @@
 
 import type { LiveInstallationScreenConfig } from "./liveInstallation";
 import type { MovementSettings } from "../components/settingsDefaults";
+import { LIVE_CURSOR_CLICK_SETTINGS } from "../components/clickDefaults";
 import {
   DEFAULT_CINEMATIC_CONFIG,
   type CinematicConfig,
@@ -49,23 +50,25 @@ export interface LiveInstallationProfile {
 }
 
 const CURSOR_SETTINGS = {
+  ...LIVE_CURSOR_CLICK_SETTINGS,
+  randomizeColors: false,
   trailAnimationMode: "natural",
   strokeWidth: 6,
   trailOpacity: 0.9,
   maxConcurrentTrails: 24,
-  clickOpacity: 0.3,
   textboxOpacity: 0.2,
 } satisfies Partial<MovementSettings>;
 
 const SCROLLING_SETTINGS = {
+  randomizeColors: false,
   trailOpacity: 0.9,
   strokeWidth: 6.5,
-  animationSpeed: 3,
+  animationSpeed: 1,
   maxConcurrentTrails: 16,
   clickMaxGapMs: 850,
-  scrollSpeed: 1,
+  scrollSpeed: 0.35,
   backgroundOpacity: 0.9,
-  maxConcurrentScrolls: 42,
+  maxConcurrentScrolls: 30,
   allowOverlap: true,
   windowBleed: 0.25,
   windowScale: 0.7,
@@ -74,14 +77,15 @@ const SCROLLING_SETTINGS = {
 } satisfies Partial<MovementSettings>;
 
 const TYPING_SETTINGS = {
+  randomizeColors: false,
   trailOpacity: 0.9,
   strokeWidth: 6.5,
-  animationSpeed: 3,
+  animationSpeed: 1,
   maxConcurrentTrails: 16,
   clickMaxGapMs: 850,
   scrollSpeed: 0.2,
   backgroundOpacity: 1,
-  maxConcurrentScrolls: 42,
+  maxConcurrentScrolls: 30,
   allowOverlap: true,
   windowBleed: 0.25,
   windowScale: 0.7,
@@ -91,12 +95,13 @@ const TYPING_SETTINGS = {
   keyboardAnimationSpeed: 0.4,
   keyboardPositionRandomness: 0.8,
   keyboardRandomizeOrder: true,
-  maxConcurrentTyping: 50,
+  maxConcurrentTyping: 30,
   keyboardSizeCap: 0.3,
   keyboardMaxAspect: 2.5,
 } satisfies Partial<MovementSettings>;
 
 const CLICK_SETTINGS = {
+  randomizeColors: false,
   trailOpacity: 0.9,
   strokeWidth: 6.5,
   animationSpeed: 3,
@@ -165,7 +170,7 @@ export const LIVE_INSTALLATION_PROFILES: Record<
     role: "master",
     cinematic: null,
     visualizations: [],
-    settings: {},
+    settings: { randomizeColors: false },
     touchesSettings: TOUCHES_SETTINGS,
   },
   clicks: {

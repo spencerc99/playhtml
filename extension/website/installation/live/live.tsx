@@ -13,6 +13,7 @@ import {
   parseTimeOfDayFromUrl,
   parseVizFromUrl,
 } from "../../shared/config";
+import { useCursorArchiveEvents } from "../../shared/hooks/useCursorArchiveEvents";
 import { useHybridInstallationEvents } from "../../shared/hooks/useHybridInstallationEvents";
 import { useDailyPageReload } from "../../shared/hooks/useDailyPageReload";
 import { useInstallationReload } from "../../shared/hooks/useInstallationReload";
@@ -27,6 +28,7 @@ import {
 import { resolveLiveInstallationProfile } from "../../shared/utils/liveInstallationProfiles";
 
 const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
+  randomizeColors: false,
   scrollSpeed: 1,
   backgroundOpacity: 0.8,
   maxConcurrentScrolls: 30,
@@ -160,10 +162,10 @@ const LiveInstallation = () => {
     liveScreenEvents,
     continuousLiveTrails,
   );
-  const archiveFallbackEvents = useMemo(() => {
-    const liveIds = new Set(hybrid.liveEvents.map((event) => event.id));
-    return hybrid.archiveEvents.filter((event) => !liveIds.has(event.id));
-  }, [hybrid.archiveEvents, hybrid.liveEvents]);
+  const archiveFallbackEvents = useCursorArchiveEvents(
+    hybrid.archiveEvents,
+    hybrid.liveEvents,
+  );
   const previousFallbackMountedRef = useRef(archiveFallback.mounted);
 
   useEffect(() => {
@@ -227,6 +229,7 @@ const LiveInstallation = () => {
           continuousLiveTrails ? "continuous-live" : hybrid.playbackKey
         }
         playbackSource={continuousLiveTrails ? "live" : hybrid.source}
+        installationRecordings={hybrid.continuousRecordings}
         playbackContextKey={
           continuousLiveTrails ? "continuous-live" : hybrid.playbackContextKey
         }

@@ -156,6 +156,7 @@ export interface ActiveTyping {
 
 // Viewport animation types
 export interface ScrollAnimation {
+  eventId?: string;
   participantId: string;
   sessionId: string;
   pageUrl: string;

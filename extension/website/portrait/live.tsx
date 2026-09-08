@@ -5,6 +5,7 @@ import "../shared/portrait-styles.scss";
 import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { MovementCanvas } from "../shared/components/MovementCanvas";
+import { LIVE_CURSOR_CLICK_SETTINGS } from "../shared/components/clickDefaults";
 import { WordmarkClock } from "../shared/components/WordmarkClock";
 import { DEFAULT_ACTIVE_VISUALIZATIONS } from "../shared/components/registry";
 import { parseFiltersFromUrl, parseVizFromUrl } from "../shared/config";
@@ -15,7 +16,7 @@ import type { FilterChip } from "../shared/utils/eventUtils";
 // Module-scoped so its reference stays stable across the frequent re-renders
 // the live stream triggers (otherwise MovementCanvas reattaches listeners each frame).
 const noOpFetch = () => {};
-const LIVE_SETTINGS_DEFAULTS = { clickMaxRadius: 30 };
+const LIVE_SETTINGS_DEFAULTS = LIVE_CURSOR_CLICK_SETTINGS;
 
 const LivePortrait = () => {
   const { events, connected } = useLiveEvents({ maxEvents: 500 });

@@ -20,7 +20,7 @@ import { SoundDevSettings } from "../sound/SoundDevSettings";
 import { useSoundArrangement } from "../sound/useSoundArrangement";
 import { TrailPositions } from "./trailPositions";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
-import { AnimatedTyping } from "./AnimatedTyping";
+import { AnimatedTyping, ContinuousTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
 import { AnimatedNavigation } from "./AnimatedNavigation";
 import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
@@ -425,6 +425,7 @@ const loadSettings = (
 };
 
 interface MovementCanvasProps {
+  installationRecordings?: { liveEventIds: ReadonlySet<string> };
   events: CollectionEvent[];
   loading: boolean;
   error: string | null;
@@ -492,6 +493,7 @@ interface MovementCanvasProps {
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
+  installationRecordings,
   events,
   loading,
   error,
@@ -527,8 +529,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
     [defaultSettings],
   );
-  const [settings, setSettings] = useState(() =>
+  const [selectedSettings, setSettings] = useState(() =>
     loadSettings(defaultSettings, useStoredSettings),
+  );
+  const settings = useMemo(
+    () => installationRole
+      ? { ...selectedSettings, randomizeColors: false }
+      : selectedSettings,
+    [installationRole, selectedSettings],
   );
   const [controlsVisible, setControlsVisible] = useState(false);
   const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
@@ -556,6 +564,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     if (!isFollower || cinematic.mode !== "follow") return cinematic;
     return { ...cinematic, pickSubject };
   }, [cinematic, isFollower, pickSubject]);
+  // Each follow layer centers its own cursor, so only one may be visible.
+  const followsCursor = cinematicConfig?.mode === "follow";
 
   /** When set, only events whose timestamp falls in [start, end) are passed
    * downstream to the visualization hooks. Used by the Hotspots dev tool to
@@ -1228,6 +1238,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     viewportSize,
     archiveFallbackSettings,
   );
+  const renderedArchiveFallbackTrailStates = useArchiveTrailHandoff(
+    archiveFallbackTrailStates,
+    archiveFallback?.playbackKey ?? "archive-fallback",
+    playbackContextKey,
+    archiveFallback !== undefined,
+    settings.maxConcurrentTrails * 2,
+    COMPLETION_FADE_MS,
+  );
   const archiveFallbackTimeRange = useMemo(
     () => ({
       min: archiveFallbackTimeBounds.min,
@@ -1421,11 +1439,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   const viewportSettings = useMemo(
     () => ({
+      recordedTiming: installationRecordings !== undefined,
       filters: (settings.filters as FilterChip[] | undefined) ?? [],
       pidFilter: settings.pidFilter,
       viewportEventFilter: settings.viewportEventFilter,
     }),
-    [settings.filters, settings.pidFilter, settings.viewportEventFilter],
+    [
+      settings.filters,
+      settings.pidFilter,
+      settings.viewportEventFilter,
+      installationRecordings !== undefined,
+    ],
   );
 
   const { animations: scrollAnimations, urlMetadata: scrollUrlMetadata } =
@@ -1454,6 +1478,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     enabled:
       !live &&
       !scrollingControlsPlayback &&
+      installationRecordings === undefined &&
       onPlaybackCycleComplete !== undefined,
     cycleKey: playbackKey,
     durationMs: playbackCycleDuration,
@@ -1461,18 +1486,29 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     frozen: paused,
     onComplete: onPlaybackCycleComplete,
   });
-  usePlaybackCycle({
+  const getArchiveFallbackElapsedMs = usePlaybackCycle({
     enabled:
       live &&
       archiveFallback !== undefined &&
-      archiveFallback.visible &&
       archiveFallbackTrailStates.length > 0,
     cycleKey: archiveFallback?.playbackKey ?? "archive-fallback",
     durationMs: archiveFallbackTimeRange.duration,
     animationSpeed: settings.animationSpeed,
-    frozen: paused,
-    onComplete: archiveFallback?.onPlaybackCycleComplete,
+    frozen: paused || !archiveFallback?.visible,
+    onComplete: () =>
+      archiveFallback?.visible
+        ? archiveFallback.onPlaybackCycleComplete()
+        : false,
   });
+
+  const getArchiveFallbackFrameMs = useCallback(
+    () =>
+      Math.min(
+        getArchiveFallbackElapsedMs(),
+        Math.max(0, archiveFallbackTimeRange.duration - 1),
+      ),
+    [getArchiveFallbackElapsedMs, archiveFallbackTimeRange.duration],
+  );
 
   // For viewports whose URL has no captured title (no navigation event), ask
   // the worker's /page-meta endpoint to resolve title + favicon live (oEmbed
@@ -1957,16 +1993,23 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
                 position: "absolute",
                 inset: 0,
                 zIndex: 2,
-                opacity: archiveFallback.visible ? 1 : 0,
+                opacity: followsCursor
+                  ? 1
+                  : archiveFallback.visible ? 1 : 0,
+                visibility: followsCursor && !archiveFallback.visible
+                  ? "hidden"
+                  : "visible",
                 pointerEvents: "none",
-                transition: `opacity ${archiveFallback.fadeMs}ms ease-in-out`,
+                transition: followsCursor
+                  ? undefined
+                  : `opacity ${archiveFallback.fadeMs}ms ease-in-out`,
               }}
             >
               <AnimatedTrails
-                key={`archive-fallback-${archiveFallback.playbackKey}`}
                 cinematic={cinematicConfig}
                 cinematicNextSignal={cinematicNextSignal}
-                trailStates={archiveFallbackTrailStates}
+                trailStates={renderedArchiveFallbackTrailStates}
+                getInstallationElapsedMs={getArchiveFallbackFrameMs}
                 timeRange={archiveFallbackTimeRange}
                 showClickRipples={!showClicks}
                 windowSize={settings.maxConcurrentTrails * 2}
@@ -1982,6 +2025,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             <LiveTrails
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
+              visible={!(followsCursor && archiveFallback?.visible &&
+                archiveFallbackTrailStates.length > 0)}
               cinematic={cinematicConfig}
               cinematicNextSignal={cinematicNextSignal}
               frozen={paused}
@@ -2048,7 +2093,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {showTyping && !paused && (
+        {showTyping && !paused && installationRecordings && (
+          <ContinuousTyping
+            key={`typing-${playbackContextKey}`}
+            typingStates={typingStates}
+            settings={typingSettings}
+            liveEventIds={installationRecordings.liveEventIds}
+          />
+        )}
+        {showTyping && !paused && !installationRecordings && (
           <AnimatedTyping
             key={`typing-${playbackKey}`}
             typingStates={typingStates}
@@ -2058,10 +2111,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {showScrolling && !paused && scrollAnimations && scrollAnimations.length > 0 && (
+        {showScrolling && !paused && scrollAnimations && (installationRecordings || scrollAnimations.length > 0) && (
           <AnimatedScrollViewports
             key={`scrolling-${playbackKey}`}
             animations={scrollAnimations}
+            installationLiveEventIds={installationRecordings?.liveEventIds}
             canvasSize={viewportSize}
             repeatAnimations={!scrollingControlsPlayback}
             onAnimationsComplete={
