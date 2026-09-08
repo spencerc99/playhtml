@@ -1,7 +1,7 @@
 // ABOUTME: Verifies rendered ripple geometry and completion across animation frames.
 // ABOUTME: Covers staggered rings, settings changes, residue, and effect cleanup.
 
-import React, { act, Profiler, StrictMode } from "react";
+import { act, Profiler, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RippleEffect } from "../ClickRipple";

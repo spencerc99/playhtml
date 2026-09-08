@@ -28,14 +28,14 @@ it("retains pending evictions until an accumulation pass consumes them", async (
     return null;
   }
   try {
-    await act(async () => root.render(<Probe incoming={events} />));
+    await act(async () => root.render(React.createElement(Probe, { incoming: events })));
     evictIdsRef.current.add("p|u");
-    await act(async () => root.render(<Probe incoming={events} />));
+    await act(async () => root.render(React.createElement(Probe, { incoming: events })));
     expect(evictIdsRef.current.has("p|u")).toBe(true);
-    await act(async () => root.render(<Probe incoming={[...events]} />));
+    await act(async () => root.render(React.createElement(Probe, { incoming: [...events] })));
     expect(rendered).toEqual([]);
     expect(evictIdsRef.current.size).toBe(0);
-    await act(async () => root.render(<Probe incoming={[...events]} />));
+    await act(async () => root.render(React.createElement(Probe, { incoming: [...events] })));
     expect(rendered).toEqual([]);
   } finally {
     await act(async () => root.unmount());
@@ -60,12 +60,12 @@ it("does not replay density-evicted history when its participant moves again", a
     return null;
   }
   try {
-    await act(async () => root.render(<Probe incoming={history} />));
+    await act(async () => root.render(React.createElement(Probe, { incoming: history })));
     const crowded = [...history, event("c", "q", 300)];
-    await act(async () => root.render(<Probe incoming={crowded} />));
+    await act(async () => root.render(React.createElement(Probe, { incoming: crowded })));
     expect(rendered.map((item) => item.id)).toEqual(["c"]);
     const resumed = [...crowded, event("d", "p", 400)];
-    await act(async () => root.render(<Probe incoming={resumed} />));
+    await act(async () => root.render(React.createElement(Probe, { incoming: resumed })));
     expect(rendered.map((item) => item.id)).toEqual(["d"]);
   } finally {
     await act(async () => root.unmount());

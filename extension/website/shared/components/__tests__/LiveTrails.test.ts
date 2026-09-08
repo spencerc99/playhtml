@@ -469,7 +469,7 @@ describe("LiveTrails camera", () => {
       await render(true);
       act(() => frames.shift()?.(1000));
       act(() => frames.shift()?.(1500));
-      const svg = container.querySelector("svg.trails-svg")!;
+      const svg = container.querySelector<SVGSVGElement>("svg.trails-svg")!;
       const box = () => svg.getAttribute("viewBox")!.split(" ").map(Number);
       expect(box()[2]).toBeCloseTo(window.innerWidth * 0.1);
       const initial = box();
