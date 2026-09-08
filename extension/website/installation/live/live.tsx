@@ -13,6 +13,7 @@ import {
   parseTimeOfDayFromUrl,
   parseVizFromUrl,
 } from "../../shared/config";
+import { useCursorArchiveEvents } from "../../shared/hooks/useCursorArchiveEvents";
 import { useHybridInstallationEvents } from "../../shared/hooks/useHybridInstallationEvents";
 import { useDailyPageReload } from "../../shared/hooks/useDailyPageReload";
 import { useInstallationReload } from "../../shared/hooks/useInstallationReload";
@@ -161,10 +162,10 @@ const LiveInstallation = () => {
     liveScreenEvents,
     continuousLiveTrails,
   );
-  const archiveFallbackEvents = useMemo(() => {
-    const liveIds = new Set(hybrid.liveEvents.map((event) => event.id));
-    return hybrid.archiveEvents.filter((event) => !liveIds.has(event.id));
-  }, [hybrid.archiveEvents, hybrid.liveEvents]);
+  const archiveFallbackEvents = useCursorArchiveEvents(
+    hybrid.archiveEvents,
+    hybrid.liveEvents,
+  );
   const previousFallbackMountedRef = useRef(archiveFallback.mounted);
 
   useEffect(() => {
