@@ -64,6 +64,17 @@ describe("live installation profiles", () => {
     }
   });
 
+  it("puts the sounding cursor field on the live sound path", () => {
+    // `live.tsx` passes `live={continuousLiveTrails}` to the canvas, and the
+    // canvas applies the saved arrangement (or the shipped defaults) whenever
+    // `live` is set. So the profile that turns sound on has to be a live one,
+    // or the installation would sound the archive's settings instead of the
+    // arrangement Spencer converged on.
+    const cursors = LIVE_INSTALLATION_PROFILES.cursors;
+    expect(cursors.defaultSoundEnabled).toBe(true);
+    expect(cursors.continuousLiveTrails).toBe(true);
+  });
+
   it("uses explicit follower query parameters over profile defaults", () => {
     const profile = LIVE_INSTALLATION_PROFILES["follower-c"];
     expect(parseLiveInstallationScreen("", profile.screen)).toEqual({
