@@ -90,8 +90,10 @@ const CursorTouches = () => {
   const profile = useMemo(() => resolveLiveInstallationProfile(), []);
   const scale = useMemo(() => {
     const value = Number(new URLSearchParams(window.location.search).get("scale"));
-    return Number.isFinite(value) && value > 0 ? Math.min(value, 4) : 1;
-  }, []);
+    return Number.isFinite(value) && value > 0
+      ? Math.min(value, 4)
+      : (profile?.touchesSettings?.scale ?? 1);
+  }, [profile]);
   useDailyPageReload();
   useInstallationReload({ enabled: profile !== null });
   const chromeHidden = useChromeToggle(true);
