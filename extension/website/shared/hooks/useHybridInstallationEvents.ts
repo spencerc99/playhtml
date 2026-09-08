@@ -30,6 +30,7 @@ type ChapterSource = "archive" | "live";
 
 export interface HybridInstallationEventsState {
   events: CollectionEvent[];
+  archiveEvents: CollectionEvent[];
   liveEvents: CollectionEvent[];
   connected: boolean;
   loading: boolean;
@@ -38,6 +39,8 @@ export interface HybridInstallationEventsState {
   playbackKey: string;
   playbackContextKey: string;
   finishChapter: () => boolean;
+  advanceArchive: () => boolean;
+  archivePlaybackKey: string;
   source: ChapterSource;
 }
 
@@ -259,6 +262,7 @@ export function useHybridInstallationEvents(params: {
 
   return {
     events,
+    archiveEvents: eventsForInstallationScreen(archive.events, screen),
     liveEvents: live.events,
     connected: live.connected,
     loading: archive.loading,
@@ -277,6 +281,8 @@ export function useHybridInstallationEvents(params: {
         ? `scrolling:${typingContextKey}`
         : `hybrid:${archive.batchContextKey}`,
     finishChapter,
+    advanceArchive: archive.advanceBatch,
+    archivePlaybackKey: `archive:${archive.batchKey}`,
     source: reservoirOnly ? "archive" : source,
   };
 }
