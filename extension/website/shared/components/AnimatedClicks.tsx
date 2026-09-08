@@ -1,6 +1,13 @@
 // ABOUTME: Standalone click/hold ripple visualizer
 // ABOUTME: Uses same ripple logic as AnimatedTrails but renders only ripples (no trails/path/cursor)
-import React, { useState, useEffect, useRef, memo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  memo,
+  useCallback,
+  useMemo,
+} from "react";
 import { ClickEffect } from "../types";
 import { RippleEffect, RippleSettings } from "./ClickRipple";
 import type { SoundEngine } from "../sound/SoundEngine";
@@ -83,15 +90,22 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
     // Finished ripples remain as residue while their event ids are replayed.
     // Track the current pass by rendered id so completions from a previous
     // archive batch cannot make the next pass finish early.
+    const pendingCompletionsRef = useRef(new Set<string>());
     const handleClickComplete = useCallback((id: string) => {
       if (currentCycleEffectIdsRef.current.has(id)) {
         completedCycleEffectIdsRef.current.add(id);
       }
-      setActiveClickEffects((effects) =>
-        effects.map((effect) =>
-          effect.id === id ? { ...effect, completed: true } : effect,
-        ),
-      );
+      const pending = pendingCompletionsRef.current;
+      pending.add(id);
+      if (pending.size > 1) return;
+      queueMicrotask(() => {
+        pendingCompletionsRef.current = new Set();
+        setActiveClickEffects((effects) =>
+          effects.map((effect) =>
+            pending.has(effect.id) ? { ...effect, completed: true } : effect,
+          ),
+        );
+      });
     }, []);
 
     // Microtask-batched commits so multiple per-frame spawns don't each cause
@@ -133,6 +147,10 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       soundEngineRef.current?.reset();
       pendingSpawnsRef.current = [];
 
+      const orderedClicks = [...scheduledClicks].sort(
+        (a, b) => a.spawnAtMs - b.spawnAtMs,
+      );
+      let nextClickIndex = 0;
       let startTime: number | null = null;
 
       const clearScheduledFrame = () => {
@@ -168,8 +186,12 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
         const scaledElapsed = realElapsed * animationSpeedRef.current;
 
         const spawned = spawnedThisCycleRef.current;
-        for (const sc of scheduledClicks) {
-          if (scaledElapsed >= sc.spawnAtMs && !spawned.has(sc.id)) {
+        while (
+          nextClickIndex < orderedClicks.length &&
+          scaledElapsed >= orderedClicks[nextClickIndex].spawnAtMs
+        ) {
+          const sc = orderedClicks[nextClickIndex++];
+          if (!spawned.has(sc.id)) {
             spawned.add(sc.id);
             soundEngineRef.current?.triggerClick({
               x: sc.x,
@@ -205,6 +227,7 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
 
         if (allSpawned && allDone) {
           startTime = timestamp;
+          nextClickIndex = 0;
           spawnedThisCycleRef.current.clear();
           currentCycleEffectIdsRef.current.clear();
           completedCycleEffectIdsRef.current.clear();
@@ -224,7 +247,10 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       scheduleNextFrame();
 
       return () => {
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange,
+        );
         clearScheduledFrame();
         // Drop pending spawns so a queued microtask cannot commit after unmount.
         pendingSpawnsRef.current = [];
@@ -232,19 +258,34 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       };
     }, [scheduledClicks, timeRange.duration, scheduleFlushSpawns]);
 
-    const rippleSettings: RippleSettings = {
-      clickMinRadius: settings.clickMinRadius,
-      clickMaxRadius: settings.clickMaxRadius,
-      clickCoreRadius: settings.clickCoreRadius,
-      clickMinDuration: settings.clickMinDuration,
-      clickMaxDuration: settings.clickMaxDuration,
-      clickExpansionDuration: settings.clickExpansionDuration,
-      clickStrokeWidth: settings.clickStrokeWidth,
-      clickOpacity: settings.clickOpacity,
-      clickNumRings: settings.clickNumRings,
-      clickRingDelayMs: settings.clickRingDelayMs,
-      clickAnimationStopPoint: settings.clickAnimationStopPoint,
-    };
+    const rippleSettings: RippleSettings = useMemo(
+      () => ({
+        clickMinRadius: settings.clickMinRadius,
+        clickMaxRadius: settings.clickMaxRadius,
+        clickCoreRadius: settings.clickCoreRadius,
+        clickMinDuration: settings.clickMinDuration,
+        clickMaxDuration: settings.clickMaxDuration,
+        clickExpansionDuration: settings.clickExpansionDuration,
+        clickStrokeWidth: settings.clickStrokeWidth,
+        clickOpacity: settings.clickOpacity,
+        clickNumRings: settings.clickNumRings,
+        clickRingDelayMs: settings.clickRingDelayMs,
+        clickAnimationStopPoint: settings.clickAnimationStopPoint,
+      }),
+      [
+        settings.clickMinRadius,
+        settings.clickMaxRadius,
+        settings.clickCoreRadius,
+        settings.clickMinDuration,
+        settings.clickMaxDuration,
+        settings.clickExpansionDuration,
+        settings.clickStrokeWidth,
+        settings.clickOpacity,
+        settings.clickNumRings,
+        settings.clickRingDelayMs,
+        settings.clickAnimationStopPoint,
+      ],
+    );
 
     return (
       <svg
@@ -285,7 +326,8 @@ export const AnimatedClicks: React.FC<AnimatedClicksProps> = memo(
       prevProps.settings.animationSpeed === nextProps.settings.animationSpeed &&
       prevProps.settings.clickMinRadius === nextProps.settings.clickMinRadius &&
       prevProps.settings.clickMaxRadius === nextProps.settings.clickMaxRadius &&
-      prevProps.settings.clickCoreRadius === nextProps.settings.clickCoreRadius &&
+      prevProps.settings.clickCoreRadius ===
+        nextProps.settings.clickCoreRadius &&
       prevProps.settings.clickMinDuration ===
         nextProps.settings.clickMinDuration &&
       prevProps.settings.clickMaxDuration ===
