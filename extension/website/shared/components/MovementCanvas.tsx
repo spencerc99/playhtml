@@ -1238,20 +1238,23 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     enabled:
       live &&
       archiveFallback !== undefined &&
-      archiveFallback.visible &&
       archiveFallbackTrailStates.length > 0,
     cycleKey: archiveFallback?.playbackKey ?? "archive-fallback",
     durationMs: archiveFallbackTimeRange.duration,
     animationSpeed: settings.animationSpeed,
-    frozen: paused,
-    onComplete: archiveFallback?.onPlaybackCycleComplete,
+    frozen: paused || !archiveFallback?.visible,
+    onComplete: () =>
+      archiveFallback?.visible
+        ? archiveFallback.onPlaybackCycleComplete()
+        : false,
   });
 
   const getArchiveFallbackFrameMs = useCallback(
-    () => Math.min(
-      getArchiveFallbackElapsedMs(),
-      Math.max(0, archiveFallbackTimeRange.duration - 1),
-    ),
+    () =>
+      Math.min(
+        getArchiveFallbackElapsedMs(),
+        Math.max(0, archiveFallbackTimeRange.duration - 1),
+      ),
     [getArchiveFallbackElapsedMs, archiveFallbackTimeRange.duration],
   );
 
