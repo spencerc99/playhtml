@@ -14,6 +14,12 @@ type RenderCapacity = {
   stop(): void;
 };
 
+type PlaybackStats = {
+  readonly underrunDuration: number;
+  readonly underrunEvents: number;
+  readonly totalDuration: number;
+};
+
 export class SoundPerformance {
   private liveNodes = 0;
   private automationEvents = 0;
@@ -108,9 +114,17 @@ export class SoundPerformance {
   snapshot() {
     const now = performance.now();
     const sampleSeconds = (now - this.sampledAt) / 1000;
+    const playback = (this.ctx as AudioContext & {
+      playbackStats?: PlaybackStats;
+    }).playbackStats;
     const sample = {
       renderCapacitySupported: this.capacity !== undefined,
       capacity: this.capacitySample,
+      playback: playback ? {
+        underrunDuration: playback.underrunDuration,
+        underrunEvents: playback.underrunEvents,
+        totalDuration: playback.totalDuration,
+      } : null,
       contextState: this.ctx.state,
       audioTime: this.ctx.currentTime,
       sampleRate: this.ctx.sampleRate,
