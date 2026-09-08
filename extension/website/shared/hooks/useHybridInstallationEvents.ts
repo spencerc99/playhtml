@@ -249,6 +249,10 @@ export function useHybridInstallationEvents(params: {
     typingOnly,
   ]);
 
+  const archiveEvents = useMemo(
+    () => eventsForInstallationScreen(archive.events, screen),
+    [archive.events, screen],
+  );
   const chapterEvents = source === "live" ? liveChapter : archive.events;
   const hybridEvents = useMemo(
     () => eventsForInstallationScreen(chapterEvents, screen),
@@ -262,7 +266,7 @@ export function useHybridInstallationEvents(params: {
 
   return {
     events,
-    archiveEvents: eventsForInstallationScreen(archive.events, screen),
+    archiveEvents,
     liveEvents: live.events,
     connected: live.connected,
     loading: archive.loading,
