@@ -761,6 +761,27 @@ export const SamplePlayback = ({
         ctx.arc(trail.x, trail.y, 3, 0, Math.PI * 2);
         ctx.fillStyle = trail.color;
         ctx.fill();
+
+        // Who is soloing, and who is only auditioning. A promotion is audible
+        // but not obviously attributable — the replay has a dozen cursors on it
+        // — and the whole treatment is a change in how one voice sits among the
+        // others, which is far easier to hear once you know which one to
+        // listen to. Solid is promoted; dashed is still auditioning and may
+        // come to nothing.
+        const soloist = engine.getSoloistTrailIndex();
+        const candidate = engine.getSpotlightCandidateTrailIndex();
+        if (trail.trailIndex === soloist || trail.trailIndex === candidate) {
+          const auditioning = trail.trailIndex !== soloist;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(trail.x, trail.y, auditioning ? 11 : 15, 0, Math.PI * 2);
+          ctx.strokeStyle = trail.color;
+          ctx.lineWidth = auditioning ? 1 : 2;
+          ctx.globalAlpha = auditioning ? 0.55 : 1;
+          ctx.setLineDash(auditioning ? [3, 4] : []);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
 
       if (liveCursor.inside) {

@@ -2,7 +2,14 @@
 // ABOUTME: Verifies cursor timbre changes crossfade without stacking full-level oscillators.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PRESENCE_TUNING, haloPitch, SoundEngine } from "../SoundEngine";
+import {
+  PRESENCE_TUNING,
+  SPOTLIGHT_TUNING_DEFAULTS,
+  SPOTLIGHT_TUNING_RANGES,
+  SoundEngine,
+  haloPitch,
+  type SpotlightTuning,
+} from "../SoundEngine";
 import {
   CURSOR_INSTRUMENTS,
   getInstrument,
@@ -247,6 +254,35 @@ function soloFrame(trailIndex: number, x: number, y: number) {
     isNewlyActive: false,
   };
 }
+
+/**
+ * Slow trails, to make a crowd.
+ *
+ * Nothing auditions in a scene thinner than `minTrailsForSpotlight`: a soloist
+ * is a voice stepping out of a crowd, so a test about one fast trail has to put
+ * it among enough others for there to be a front to step to.
+ */
+function crowdFrames(step: number, count = 3, fromIndex = 1) {
+  return Array.from({ length: count }, (_, offset) =>
+    soloFrame(fromIndex + offset, 10 + step * 2, 50 + offset * 40),
+  );
+}
+
+/**
+ * Ticks at 16ms to drive before a promotion has certainly landed and settled
+ * into its reign: enough sweep for the velocity EMA to settle, then the
+ * audition, then the entrance. Named rather than repeated, because it is one
+ * fact about the lifecycle and not twenty independent numbers.
+ */
+const STEPS_TO_REIGN = 110;
+
+/**
+ * Ticks at 16ms to drive a slowed soloist all the way to its release. The
+ * demote test is not consulted at all until the reign has run `minReignMs`, so
+ * a trail that stops being an outlier keeps the spotlight for a while yet —
+ * which is the point of the minimum, and what this number covers.
+ */
+const STEPS_TO_RELEASE = 300;
 
 describe("cursor type aliases", () => {
   it("voices aliased cursor types as the pointer they name", async () => {
@@ -592,18 +628,40 @@ describe("SoundEngine cursor instruments", () => {
     expect(delayedFrameTarget).toBeLessThan(regularFrameTarget! / 2);
   });
 
-  it("promotes a lone fast trail with no other trail to compare against", async () => {
+  it("never promotes a lone cursor, however fast it sweeps", async () => {
     const engine = new SoundEngine();
     await engine.init();
     engine.setCanvasWidth(1000);
     engine.setConfig({ mode: "spotlight" });
 
-    // A single cursor sweeping steadily. The candidate must not be measured
-    // against a scene average that includes its own samples, or the bar rises
-    // with the very speed being measured and nothing is ever promoted.
-    for (let step = 0; step < 20; step++) {
+    // A single cursor sweeping steadily, for far longer than a promotion takes.
+    // There is no crowd for it to step out of, so the promotion would be a
+    // voice getting brighter for no reason the listener could hear.
+    for (let step = 0; step < STEPS_TO_REIGN * 2; step++) {
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [soloFrame(0, step * 12, 0)]);
+    }
+
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+    expect(engine.getSpotlightPhase()).toBe("idle");
+  });
+
+  it("measures a candidate against the rest of the scene, not the pool", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+    engine.setConfig({ mode: "spotlight" });
+
+    // One cursor moving an order of magnitude faster than a thin crowd. The
+    // candidate must not be measured against an average that includes its own
+    // samples, or the bar rises with the very speed being measured and a scene
+    // this thin can never promote anyone.
+    for (let step = 0; step < STEPS_TO_REIGN; step++) {
+      context.currentTime += 1 / 60;
+      engine.tick(step * 16, [
+        soloFrame(0, step * 12, 0),
+        ...crowdFrames(step, 2),
+      ]);
     }
 
     expect(engine.getSoloistTrailIndex()).toBe(0);
@@ -615,13 +673,11 @@ describe("SoundEngine cursor instruments", () => {
     engine.setCanvasWidth(1000);
     engine.setConfig({ mode: "spotlight" });
 
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < STEPS_TO_REIGN; step++) {
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
         soloFrame(0, 10 + step * 12, 10),
-        soloFrame(1, 10 + step * 2, 50),
-        soloFrame(2, 10 + step * 2, 90),
-        soloFrame(3, 10 + step * 2, 130),
+        ...crowdFrames(step),
       ]);
     }
 
@@ -634,13 +690,11 @@ describe("SoundEngine cursor instruments", () => {
     engine.setCanvasWidth(1000);
     engine.setConfig({ mode: "spotlight" });
 
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < STEPS_TO_REIGN; step++) {
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
         soloFrame(0, 10 + step * 12, 10),
-        soloFrame(1, 10 + step * 2, 50),
-        soloFrame(2, 10 + step * 2, 90),
-        soloFrame(3, 10 + step * 2, 130),
+        ...crowdFrames(step),
       ]);
     }
 
@@ -667,9 +721,15 @@ describe("SoundEngine cursor instruments", () => {
 
     // Fast enough to promote, slow enough that a low mapping floor would pull
     // the cutoff down rather than open it.
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < STEPS_TO_REIGN; step++) {
       context.currentTime += 1 / 60;
-      engine.tick(step * 16, [soloFrame(0, step * 5, 0)]);
+      engine.tick(step * 16, [
+        soloFrame(0, step * 5, 0),
+        ...crowdFrames(step, 3, 1).map((frame) => ({
+          ...frame,
+          x: 600 + step * 0.4,
+        })),
+      ]);
     }
 
     const state = engine as unknown as {
@@ -689,13 +749,11 @@ describe("SoundEngine cursor instruments", () => {
     engine.setCanvasWidth(1000);
     engine.setConfig({ mode: "spotlight" });
 
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < STEPS_TO_REIGN; step++) {
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
         soloFrame(0, 10 + step * 12, 10),
-        soloFrame(1, 10 + step * 2, 50),
-        soloFrame(2, 10 + step * 2, 90),
-        soloFrame(3, 10 + step * 2, 130),
+        ...crowdFrames(step),
       ]);
     }
     expect(engine.getSoloistTrailIndex()).toBe(0);
@@ -705,18 +763,17 @@ describe("SoundEngine cursor instruments", () => {
     };
     const events = state.voices.get(0)!.filterNode.frequency.events;
 
-    // Trail 0 slows to match the crowd, so it stops being an outlier. The
-    // hysteresis holds the spotlight through the deceleration, so the ramp
-    // count is measured from the frame the demotion actually lands on.
+    // Trail 0 slows to match the crowd, so it stops being an outlier. The reign
+    // holds the spotlight through the deceleration and for its own minimum
+    // besides, so the ramp count is measured from the frame the release
+    // actually lands on.
     let demotedCount: number | null = null;
-    for (let step = 40; step < 90; step++) {
+    for (let step = STEPS_TO_REIGN; step < STEPS_TO_RELEASE; step++) {
       const beforeTick = events.length;
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
-        soloFrame(0, 490 + (step - 40) * 2, 10),
-        soloFrame(1, 10 + step * 2, 50),
-        soloFrame(2, 10 + step * 2, 90),
-        soloFrame(3, 10 + step * 2, 130),
+        soloFrame(0, 10 + STEPS_TO_REIGN * 12 + (step - STEPS_TO_REIGN) * 2, 10),
+        ...crowdFrames(step),
       ]);
       if (demotedCount === null && engine.getSoloistTrailIndex() === null) {
         demotedCount = beforeTick;
@@ -740,9 +797,12 @@ describe("SoundEngine cursor instruments", () => {
     engine.setCanvasWidth(1000);
     engine.setConfig({ mode: "spotlight" });
 
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < STEPS_TO_REIGN; step++) {
       context.currentTime += 1 / 60;
-      engine.tick(step * 16, [soloFrame(0, step * 12, 0)]);
+      engine.tick(step * 16, [
+        soloFrame(0, step * 12, 0),
+        ...crowdFrames(step),
+      ]);
     }
 
     const state = engine as unknown as {
@@ -904,7 +964,10 @@ describe("SoundEngine cursor instruments", () => {
 
     for (let step = 0; step < 40; step++) {
       context.currentTime += 1 / 60;
-      engine.tick(step * 16, [soloFrame(0, step * 12, 0)]);
+      engine.tick(step * 16, [
+        soloFrame(0, step * 12, 0),
+        ...crowdFrames(step),
+      ]);
     }
 
     expect(engine.getSoloistTrailIndex()).toBe(0);
@@ -942,7 +1005,10 @@ describe("SoundEngine cursor instruments", () => {
       x += step % 2 === 0 ? 14 : 3;
       context.currentTime += 1 / 60;
       const before = state.flourishNotes.size;
-      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+      engine.tick(step * 16, [
+        soloFrame(0, x, 0),
+        ...crowdFrames(step),
+      ]);
 
       const soloist = engine.getSoloistTrailIndex();
       if (soloist !== previousSoloist) {
@@ -989,7 +1055,10 @@ describe("SoundEngine cursor instruments", () => {
       const ramp = 2 + 18 * Math.sin(Math.PI * (step / frames));
       x += ramp * jitter();
       context.currentTime += 1 / 60;
-      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+      engine.tick(step * 16, [
+        soloFrame(0, x, 0),
+        ...crowdFrames(step),
+      ]);
 
       const soloist = engine.getSoloistTrailIndex();
       if (soloist !== previousSoloist) {
@@ -1030,7 +1099,10 @@ describe("SoundEngine cursor instruments", () => {
       x += step % 2 === 0 ? 14 : 3;
       context.currentTime += 1 / 60;
       const before = state.flourishNotes.size;
-      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+      engine.tick(step * 16, [
+        soloFrame(0, x, 0),
+        ...crowdFrames(step),
+      ]);
 
       if (!promoted) {
         promoted = engine.getSoloistTrailIndex() !== null;
@@ -1067,7 +1139,10 @@ describe("SoundEngine cursor instruments", () => {
     for (let step = 0; step < 40; step++) {
       x += 12;
       context.currentTime += 1 / 60;
-      engine.tick(step * 16, [soloFrame(0, x, 0)]);
+      engine.tick(step * 16, [
+        soloFrame(0, x, 0),
+        ...crowdFrames(step),
+      ]);
     }
     expect(engine.getSoloistTrailIndex()).toBe(0);
 
@@ -1102,7 +1177,10 @@ describe("SoundEngine cursor instruments", () => {
 
     for (let step = 0; step < 40; step++) {
       context.currentTime += 1 / 60;
-      engine.tick(step * 16, [soloFrame(0, step * 12, 0)]);
+      engine.tick(step * 16, [
+        soloFrame(0, step * 12, 0),
+        ...crowdFrames(step),
+      ]);
     }
 
     const state = engine as unknown as {
@@ -1132,13 +1210,11 @@ describe("SoundEngine cursor instruments", () => {
     engine.setCanvasWidth(1000);
     engine.setConfig({ mode: "spotlight" });
 
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < STEPS_TO_REIGN; step++) {
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
         soloFrame(0, 10 + step * 12, 10),
-        soloFrame(1, 10 + step * 2, 50),
-        soloFrame(2, 10 + step * 2, 90),
-        soloFrame(3, 10 + step * 2, 130),
+        ...crowdFrames(step),
       ]);
     }
     expect(engine.getSoloistTrailIndex()).toBe(0);
@@ -1147,17 +1223,16 @@ describe("SoundEngine cursor instruments", () => {
       spotlightGains: Map<number, number>;
       flourishNotes: Set<{ oscillator: TestOscillatorNode }>;
     };
-    for (let step = 40; step < 90; step++) {
-      // The hysteresis holds the spotlight through the deceleration, so the
-      // run keeps playing until the demotion actually lands. Clearing before
-      // every tick leaves the demotion's own note as the only survivor.
+    for (let step = STEPS_TO_REIGN; step < STEPS_TO_RELEASE; step++) {
+      // The reign holds the spotlight through the deceleration and for its own
+      // minimum besides, so the run keeps playing until the release actually
+      // lands. Clearing before every tick leaves the release's own note as the
+      // only survivor.
       state.flourishNotes.clear();
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
-        soloFrame(0, 490 + (step - 40) * 2, 10),
-        soloFrame(1, 10 + step * 2, 50),
-        soloFrame(2, 10 + step * 2, 90),
-        soloFrame(3, 10 + step * 2, 130),
+        soloFrame(0, 10 + STEPS_TO_REIGN * 12 + (step - STEPS_TO_REIGN) * 2, 10),
+        ...crowdFrames(step),
       ]);
       if (engine.getSoloistTrailIndex() === null) break;
     }
@@ -2732,14 +2807,30 @@ describe("SoundEngine cursor instruments", () => {
     engine.tick(16, [frame(8)]);
     expect(state.voices.get(0)!.formants).toBeNull();
 
-    // Switching on attaches the bank; switching back off tears it down at
-    // once, without waiting for a tick a paused canvas may never send.
+    // Switching on attaches the bank. Switching back off fades it rather than
+    // detaching it: the bank is audible on a voice already sounding, and
+    // dropping it in one sample steps the output by the whole formant level.
+    // The tick sweep detaches it once the fade has reached silence.
     engine.setConfig({ choralTimbre: true });
     context.currentTime += 1 / 60;
     engine.tick(32, [frame(16)]);
-    expect(state.voices.get(0)!.formants).not.toBeNull();
+    const attached = state.voices.get(0)!.formants as {
+      mix: TestGainNode;
+      silentAt: number | null;
+    } | null;
+    expect(attached).not.toBeNull();
 
     engine.setConfig({ choralTimbre: false });
+    expect(state.voices.get(0)!.formants).not.toBeNull();
+    expect(attached!.silentAt).not.toBeNull();
+    expect(attached!.mix.gain.events.at(-1)).toMatchObject({
+      method: "linearRamp",
+      value: 0,
+    });
+
+    // Past the fade's own end, the next tick lets the bank go.
+    context.currentTime = attached!.silentAt! + 0.01;
+    engine.tick(48, [frame(24)]);
     expect(state.voices.get(0)!.formants).toBeNull();
   });
 
@@ -3216,13 +3307,11 @@ describe("SoundEngine layer mixer", () => {
       engine.setCanvasWidth(1000);
       engine.setConfig({ mode: "spotlight", soloistVoice: "presence" });
 
-      for (let step = 0; step < 40; step++) {
+      for (let step = 0; step < STEPS_TO_REIGN; step++) {
         context.currentTime += 1 / 60;
         engine.tick(step * 16, [
           soloFrame(0, 10 + step * 12, 10),
-          soloFrame(1, 10 + step * 2, 50),
-          soloFrame(2, 10 + step * 2, 90),
-          soloFrame(3, 10 + step * 2, 130),
+          ...crowdFrames(step),
         ]);
       }
       expect(engine.getSoloistTrailIndex()).toBe(0);
@@ -3262,7 +3351,7 @@ describe("SoundEngine layer mixer", () => {
       // The incumbent slows to the crowd's pace while everyone else speeds up,
       // so it falls under the demotion ratio. Still moving, not stopped: a
       // stopped trail leaves through the silence path, which is its own case.
-      for (let step = 40; step < 140; step++) {
+      for (let step = STEPS_TO_REIGN; step < STEPS_TO_RELEASE; step++) {
         context.currentTime += 1 / 60;
         engine.tick(step * 16, [
           soloFrame(0, 500 + step * 2, 10),
@@ -3307,7 +3396,7 @@ describe("SoundEngine layer mixer", () => {
       // silence path, so if presence is only reconciled on the moving path the
       // voice keeps the soloist's bus until it happens to move again, and
       // muting the soloist would silence a member of the crowd.
-      for (let step = 40; step < 140; step++) {
+      for (let step = STEPS_TO_REIGN; step < STEPS_TO_RELEASE; step++) {
         context.currentTime += 1 / 60;
         engine.tick(step * 16, [
           soloFrame(0, 500, 10),
@@ -4015,6 +4104,7 @@ describe("smoothing that must advance on real elapsed time", () => {
       engine.tick(step * tickMs, [
         soloFrame(0, x, 0),
         soloFrame(1, 1000 + step * 0.01, 500),
+        soloFrame(2, 1400 + step * 0.01, 560),
       ]);
     }
 
@@ -4065,15 +4155,22 @@ describe("smoothing that must advance on real elapsed time", () => {
 
 describe("presence on a driven promotion", () => {
   /**
-   * Sweep one trail fast enough to take the spotlight while a second trail
+   * Sweep one trail fast enough to take the spotlight while a small crowd
    * crawls, and report what the soloist's own sustained voice ended up doing.
    * The trail is coloured into the soprano band deliberately: that is the
    * register the old descant's lift was silently cancelled in, and the
    * register presence must now leave alone.
+   *
+   * The crowd is `minTrailsForSpotlight` strong because nothing auditions in a
+   * scene thinner than that. The sweep runs until the promotion actually lands
+   * rather than for a fixed count — how long the audition takes is the
+   * lifecycle's business and not something each test should have to restate —
+   * and `heldMs` then says how far into the reign to look, which is what the
+   * halo's onset and the reign's own development are measured against.
    */
   const promoteSoloist = async (
     soloistVoice: "bells" | "presence",
-    steps = 60,
+    heldMs = 1_500,
     chordRotation = false,
   ) => {
     const engine = new SoundEngine();
@@ -4101,14 +4198,28 @@ describe("presence on a driven promotion", () => {
     };
 
     let x = 0;
-    for (let step = 0; step < steps; step++) {
+    let step = 0;
+    const sweep = () => {
       x += 12;
       context.currentTime += 1 / 60;
       engine.tick(step * 16, [
         { ...soloFrame(0, x, 0), color: "#ff4466" },
         soloFrame(1, 1000 + step * 0.2, 500),
+        soloFrame(2, 1400 + step * 0.2, 560),
       ]);
+      step++;
+    };
+
+    // Sweep until the promotion lands. The cap is a runaway guard, not a
+    // schedule: a lifecycle that never promotes this trail should fail the
+    // assertion below rather than loop.
+    while (engine.getSoloistTrailIndex() === null && step < STEPS_TO_RELEASE) {
+      sweep();
     }
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+
+    const heldUntil = step + Math.round(heldMs / 16);
+    while (step < heldUntil) sweep();
 
     expect(engine.getSoloistTrailIndex()).toBe(0);
     const voice = state.voices.get(0)!;
@@ -4143,7 +4254,7 @@ describe("presence on a driven promotion", () => {
     // The point of the constraint: while every ear in the scene is on this
     // voice, it cannot be sitting on a passing tone the direction mapping
     // happened to hand it.
-    const { engine, voice } = await promoteSoloist("presence", 60, true);
+    const { engine, voice } = await promoteSoloist("presence", 1_000, true);
     const tones = (
       engine as unknown as { harmonyTones(): number[] }
     ).harmonyTones();
@@ -4210,12 +4321,12 @@ describe("presence on a driven promotion", () => {
   it("holds the halo back until the promotion has lasted, then doubles on the chord", async () => {
     // Well short of the onset delay: a brief spotlight must not flicker a
     // second voice in and out.
-    const early = await promoteSoloist("presence", 20);
+    const early = await promoteSoloist("presence", 100);
     expect(early.voice.present).toBe(true);
     expect(early.voice.halo).toBeNull();
     early.engine.dispose();
 
-    const held = await promoteSoloist("presence", 90);
+    const held = await promoteSoloist("presence", 1_500);
     const halo = held.voice.halo;
     expect(halo).not.toBeNull();
 
@@ -4240,7 +4351,7 @@ describe("presence on a driven promotion", () => {
   it("keeps the halo on the harmony across a chord change", async () => {
     // Rotation on from the start, so "the harmony" is a chord that actually
     // moves rather than the fixed pentatonic a non-rotating scene sits in.
-    const { engine, voice } = await promoteSoloist("presence", 90, true);
+    const { engine, voice } = await promoteSoloist("presence", 1_500, true);
     expect(voice.halo).not.toBeNull();
 
     // The halo's opening pitch is written with setValueAtTime; every move
@@ -4807,5 +4918,386 @@ describe("automation timeline", () => {
     }
 
     engine.dispose();
+  });
+});
+
+/**
+ * The promotion lifecycle, driven a tick at a time on a clock the test owns.
+ *
+ * Every assertion here is about *when* something happens, so nothing is left to
+ * a real clock or to how long a loop happens to run: the scene is advanced by a
+ * stated number of milliseconds and the phase is read. The tuning is turned
+ * down to short, round numbers first, which is also what proves the overlay is
+ * actually what the lifecycle reads rather than a copy of the defaults.
+ */
+describe("the spotlight lifecycle", () => {
+  const TICK_MS = 20;
+
+  /** Short, round phase lengths, so a test can say "now" and mean it. */
+  const FAST_LIFECYCLE = {
+    auditionMs: 200,
+    entranceMs: 100,
+    minReignMs: 600,
+    reignDevelopMs: 200,
+    releaseMs: 300,
+    sceneCooldownMs: 500,
+  };
+
+  /**
+   * A scene the lifecycle can run in: one trail sweeping fast enough to be an
+   * outlier, and a crowd crawling behind it.
+   */
+  const buildScene = async (
+    overrides: Partial<Parameters<SoundEngine["setSpotlightTuning"]>[0]> = {},
+  ) => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(8000);
+    engine.setConfig({
+      mode: "spotlight",
+      soloistVoice: "presence",
+      trailVoices: true,
+    });
+    engine.setSpotlightTuning({ ...FAST_LIFECYCLE, ...overrides });
+
+    let elapsedMs = 0;
+    let fastX = 0;
+    let crowdX = 0;
+
+    /** Advance the scene, with the lead trail either sweeping or crawling. */
+    const advance = (durationMs: number, lead: "fast" | "slow"): void => {
+      const ticks = Math.round(durationMs / TICK_MS);
+      for (let step = 0; step < ticks; step++) {
+        fastX += lead === "fast" ? 30 : 1;
+        crowdX += 1;
+        elapsedMs += TICK_MS;
+        context.currentTime += TICK_MS / 1000;
+        engine.tick(elapsedMs, [
+          soloFrame(0, fastX, 10),
+          soloFrame(1, crowdX, 200),
+          soloFrame(2, crowdX, 260),
+          soloFrame(3, crowdX, 320),
+        ]);
+      }
+    };
+
+    /** Advance with the lead trail gone from the scene entirely. */
+    const advanceWithoutLead = (durationMs: number): void => {
+      const ticks = Math.round(durationMs / TICK_MS);
+      for (let step = 0; step < ticks; step++) {
+        crowdX += 1;
+        elapsedMs += TICK_MS;
+        context.currentTime += TICK_MS / 1000;
+        engine.tick(elapsedMs, [
+          soloFrame(1, crowdX, 200),
+          soloFrame(2, crowdX, 260),
+          soloFrame(3, crowdX, 320),
+        ]);
+      }
+    };
+
+    /**
+     * Advance in single ticks until the phase is no longer `from`, and report
+     * how long that took. Phase lengths are the subject here, so a test that
+     * jumped a whole phase's worth at once could not tell a boundary from an
+     * overshoot.
+     */
+    const advanceUntilPhaseLeaves = (
+      from: string,
+      lead: "fast" | "slow",
+      capMs = 10_000,
+    ): number => {
+      let waitedMs = 0;
+      while (engine.getSpotlightPhase() === from && waitedMs < capMs) {
+        advance(TICK_MS, lead);
+        waitedMs += TICK_MS;
+      }
+      return waitedMs;
+    };
+
+    /** Sweep until the reign has begun, so a test can start from there. */
+    const reachReign = (): void => {
+      for (let guard = 0; guard < 200; guard++) {
+        advance(TICK_MS, "fast");
+        if (engine.getSpotlightPhase() === "reign") return;
+      }
+      throw new Error(
+        `never reached the reign; stopped in ${engine.getSpotlightPhase()}`,
+      );
+    };
+
+    return {
+      engine,
+      advance,
+      advanceWithoutLead,
+      advanceUntilPhaseLeaves,
+      reachReign,
+    };
+  };
+
+  it("auditions a candidate before promoting it", async () => {
+    const { engine, advance } = await buildScene();
+
+    // Long enough for the smoothed velocity to make trail 0 an outlier, and
+    // well short of the audition. A candidate exists; a soloist does not.
+    advance(140, "fast");
+    expect(engine.getSpotlightPhase()).toBe("auditioning");
+    expect(engine.getSpotlightCandidateTrailIndex()).toBe(0);
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+
+    advance(FAST_LIFECYCLE.auditionMs, "fast");
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+    expect(engine.getSpotlightCandidateTrailIndex()).toBeNull();
+
+    engine.dispose();
+  });
+
+  it("drops an audition the moment its candidate stops qualifying", async () => {
+    // A long audition, so the flick below is unmistakably shorter than it even
+    // after the smoothed velocity has taken its own time to fall back.
+    const { engine, advance } = await buildScene({ auditionMs: 1_000 });
+
+    advance(200, "fast");
+    expect(engine.getSpotlightPhase()).toBe("auditioning");
+
+    // The flick ends well inside the audition. An audition is a claim that one
+    // trail is driving the scene, and a trail that has stopped is not making
+    // it — so the claim lapses rather than being carried to a promotion.
+    advance(500, "slow");
+    expect(engine.getSpotlightPhase()).toBe("idle");
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+
+    engine.dispose();
+  });
+
+  it("makes an audition start over rather than accumulate", async () => {
+    const { engine, advance } = await buildScene({ auditionMs: 1_000 });
+
+    // Two flicks, each most of an audition, with a gap between them. Together
+    // they are longer than one audition; neither is one.
+    advance(800, "fast");
+    advance(500, "slow");
+    advance(800, "fast");
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+
+    engine.dispose();
+  });
+
+  it("runs the entrance before the reign", async () => {
+    const { engine, advance } = await buildScene();
+
+    for (let guard = 0; guard < 200; guard++) {
+      advance(TICK_MS, "fast");
+      if (engine.getSpotlightPhase() === "entrance") break;
+    }
+    expect(engine.getSpotlightPhase()).toBe("entrance");
+    // The trail holds the spotlight from the entrance onward — the voice is
+    // arriving, not waiting to.
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+
+    advance(FAST_LIFECYCLE.entranceMs, "fast");
+    expect(engine.getSpotlightPhase()).toBe("reign");
+
+    engine.dispose();
+  });
+
+  it("holds the reign for its minimum even after the trail stops leading", async () => {
+    const { engine, advance, advanceUntilPhaseLeaves, reachReign } =
+      await buildScene();
+    reachReign();
+
+    // The trail drops to the crowd's pace at once. The demote test is not even
+    // consulted until the reign's minimum has run, so it keeps the spotlight.
+    advance(FAST_LIFECYCLE.minReignMs / 2, "slow");
+    expect(engine.getSpotlightPhase()).toBe("reign");
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+
+    // Measured from the promotion rather than from the reign's own start: the
+    // minimum is how long a trail keeps the spotlight, and it has held it since
+    // the entrance began.
+    const reignedMs =
+      FAST_LIFECYCLE.minReignMs / 2 + advanceUntilPhaseLeaves("reign", "slow");
+    expect(reignedMs + FAST_LIFECYCLE.entranceMs).toBeGreaterThanOrEqual(
+      FAST_LIFECYCLE.minReignMs,
+    );
+    expect(engine.getSpotlightPhase()).toBe("release");
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+
+    engine.dispose();
+  });
+
+  it("keeps a soloist that is still leading past the reign's minimum", async () => {
+    const { engine, advance, reachReign } = await buildScene();
+    reachReign();
+
+    advance(FAST_LIFECYCLE.minReignMs * 3, "fast");
+    expect(engine.getSpotlightPhase()).toBe("reign");
+    expect(engine.getSoloistTrailIndex()).toBe(0);
+
+    engine.dispose();
+  });
+
+  it("releases a trail that leaves the scene without waiting out the reign", async () => {
+    const { engine, advanceWithoutLead, reachReign } = await buildScene();
+    reachReign();
+
+    // The one exception to the reign's minimum. There is no trail left to
+    // judge, and a reign held over a trail that is gone would hold a voice in
+    // the spotlight after its own voice had been torn down.
+    advanceWithoutLead(TICK_MS * 2);
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+    expect(engine.getSpotlightPhase()).toBe("release");
+
+    engine.dispose();
+  });
+
+  it("rests the scene for the cooldown before auditioning anyone again", async () => {
+    const { engine, advance, advanceUntilPhaseLeaves, reachReign } =
+      await buildScene();
+    reachReign();
+
+    advanceUntilPhaseLeaves("reign", "slow");
+    expect(engine.getSpotlightPhase()).toBe("release");
+
+    const releasedMs = advanceUntilPhaseLeaves("release", "slow");
+    expect(releasedMs).toBeGreaterThanOrEqual(FAST_LIFECYCLE.releaseMs);
+    expect(engine.getSpotlightPhase()).toBe("cooldown");
+
+    // The same trail sprints again immediately. Nothing auditions: the scene
+    // sings as a crowd for a while between promotions, which is what stops two
+    // fast trails handing the spotlight back and forth.
+    advance(FAST_LIFECYCLE.sceneCooldownMs / 2, "fast");
+    expect(engine.getSpotlightPhase()).toBe("cooldown");
+    expect(engine.getSpotlightCandidateTrailIndex()).toBeNull();
+
+    advance(FAST_LIFECYCLE.sceneCooldownMs, "fast");
+    expect(engine.getSpotlightPhase()).not.toBe("cooldown");
+
+    engine.dispose();
+  });
+
+  it("never auditions in a scene thinner than the crowd it needs", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(8000);
+    engine.setConfig({ mode: "spotlight", soloistVoice: "presence" });
+    engine.setSpotlightTuning(FAST_LIFECYCLE);
+
+    // One cursor, sweeping for many auditions' worth of time. A soloist is a
+    // voice stepping out of a crowd, and there is no crowd here.
+    let x = 0;
+    for (let step = 0; step < 400; step++) {
+      x += 30;
+      context.currentTime += TICK_MS / 1000;
+      engine.tick(step * TICK_MS, [soloFrame(0, x, 10)]);
+    }
+
+    expect(engine.getSoloistTrailIndex()).toBeNull();
+    expect(engine.getSpotlightPhase()).toBe("idle");
+
+    engine.dispose();
+  });
+
+  it("widens the vibrato during the reign rather than at the entrance", async () => {
+    const { engine, advance } = await buildScene();
+    const state = engine as unknown as {
+      voices: Map<
+        number,
+        {
+          vibrato: { depth: TestGainNode } | null;
+          presenceDeveloped: boolean;
+        }
+      >;
+    };
+
+    for (let guard = 0; guard < 200; guard++) {
+      advance(TICK_MS, "fast");
+      if (engine.getSpotlightPhase() === "entrance") break;
+    }
+    expect(engine.getSpotlightPhase()).toBe("entrance");
+    const voice = state.voices.get(0)!;
+    // The entrance is louder, drier and brighter. The vibrato is what the voice
+    // does once it is standing at the front, and it has not got there yet.
+    expect(voice.presenceDeveloped).toBe(false);
+    const depthAtEntrance = voice.vibrato!.depth.gain.events.length;
+
+    advance(FAST_LIFECYCLE.entranceMs + TICK_MS, "fast");
+    expect(engine.getSpotlightPhase()).toBe("reign");
+    expect(voice.presenceDeveloped).toBe(true);
+    const widening = voice.vibrato!.depth.gain.events.slice(depthAtEntrance);
+    const ramp = widening.find((event) => event.method === "linearRamp");
+    expect(ramp).toBeDefined();
+    // Over the reign's own development length, not the entrance's.
+    const hold = widening.find((event) => event.method === "cancelAndHold")!;
+    expect(ramp!.time - hold.time).toBeCloseTo(
+      FAST_LIFECYCLE.reignDevelopMs / 1000,
+      3,
+    );
+
+    engine.dispose();
+  });
+});
+
+describe("the spotlight tuning overlay", () => {
+  it("reports its defaults, takes overrides, and gives them back", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    expect(engine.getSpotlightTuning()).toEqual(SPOTLIGHT_TUNING_DEFAULTS);
+
+    engine.setSpotlightTuning({ auditionMs: 1_234, haloGain: 0.42 });
+    expect(engine.getSpotlightTuning()).toEqual({
+      ...SPOTLIGHT_TUNING_DEFAULTS,
+      auditionMs: 1_234,
+      haloGain: 0.42,
+    });
+
+    // Values not named are left alone, and a value that is not a finite number
+    // is ignored rather than allowed to poison a comparison the lifecycle makes
+    // every tick with a NaN that is false in both directions.
+    engine.setSpotlightTuning({
+      minReignMs: Number.NaN,
+      entranceMs: Number.POSITIVE_INFINITY,
+    });
+    expect(engine.getSpotlightTuning().minReignMs).toBe(
+      SPOTLIGHT_TUNING_DEFAULTS.minReignMs,
+    );
+    expect(engine.getSpotlightTuning().entranceMs).toBe(
+      SPOTLIGHT_TUNING_DEFAULTS.entranceMs,
+    );
+
+    engine.resetSpotlightTuning();
+    expect(engine.getSpotlightTuning()).toEqual(SPOTLIGHT_TUNING_DEFAULTS);
+
+    engine.dispose();
+  });
+
+  it("hands back a copy rather than the engine's own tuning", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+
+    const tuning = engine.getSpotlightTuning();
+    tuning.minReignMs = 1;
+    expect(engine.getSpotlightTuning().minReignMs).toBe(
+      SPOTLIGHT_TUNING_DEFAULTS.minReignMs,
+    );
+
+    engine.dispose();
+  });
+
+  it("gives every tunable value a range the lab can draw", () => {
+    // A value added to the tuning without a range is a slider the lab silently
+    // cannot show, which is the one way a new knob goes missing.
+    for (const key of Object.keys(SPOTLIGHT_TUNING_DEFAULTS)) {
+      const range = SPOTLIGHT_TUNING_RANGES[key as keyof SpotlightTuning];
+      expect(range, `${key} has no range`).toBeDefined();
+      expect(range.min).toBeLessThan(range.max);
+      expect(range.step).toBeGreaterThan(0);
+      const value = SPOTLIGHT_TUNING_DEFAULTS[key as keyof SpotlightTuning];
+      expect(value, `${key} default is outside its range`).toBeGreaterThanOrEqual(
+        range.min,
+      );
+      expect(value).toBeLessThanOrEqual(range.max);
+    }
   });
 });

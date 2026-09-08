@@ -6,6 +6,7 @@ import ReactDOM from "react-dom/client";
 import { SoundEngine } from "../shared/sound/SoundEngine";
 import { SamplePlayback } from "./SamplePlayback";
 import { SoundLayers } from "../shared/sound/SoundLayers";
+import { SoloistLab } from "./SoloistLab";
 import { SoundLibrary } from "./SoundLibrary";
 import { SceneSettings } from "../shared/sound/SceneSettings";
 import { useSoundArrangement } from "../shared/sound/useSoundArrangement";
@@ -126,6 +127,8 @@ const SoundPlayground = () => {
       />
 
       <SamplePlayback getEngine={ensureEngine} voicing={arrangement.voicing} />
+
+      <SoloistLab getEngine={ensureEngine} />
 
       <SoundLibrary getEngine={ensureEngine} />
     </div>
