@@ -216,18 +216,15 @@ try {
   await traceCursor(page, { steps: 12 });
   await expect.poll(() => frame.getAttribute("data-wwo-sound")).toBe("playing");
 
-  // The frame's own mute switch, clicked where a visitor would click it.
-  await clickInFrameShadow(page, "sound on");
-  await expect.poll(() => frame.getAttribute("data-wwo-sound")).toBe("off");
-  assert.equal(
-    await worker.evaluate(async () => {
-      const stored = await chrome.storage.local.get("wwoInstallationSound");
-      return stored.wwoInstallationSound;
-    }),
-    false,
-    "muting persists for the next page",
+  // No switch in the frame: an operator silences a machine through the
+  // preference, and the open page follows without a reload.
+  await worker.evaluate(() =>
+    chrome.storage.local.set({ wwoInstallationSound: false }),
   );
-  await clickInFrameShadow(page, "sound off");
+  await expect.poll(() => frame.getAttribute("data-wwo-sound")).toBe("off");
+  await worker.evaluate(() =>
+    chrome.storage.local.set({ wwoInstallationSound: true }),
+  );
   await traceCursor(page, { steps: 12 });
   await expect.poll(() => frame.getAttribute("data-wwo-sound")).toBe("playing");
 

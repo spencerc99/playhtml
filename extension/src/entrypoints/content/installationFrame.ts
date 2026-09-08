@@ -110,6 +110,10 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: n
   color: #3d3833; font-size: 13px; line-height: 1.35; letter-spacing: 0.01em;
   max-width: min(64vw, 620px);
 }
+.caption a { pointer-events: auto; color: inherit; text-decoration-color: rgba(61, 56, 51, 0.35); text-underline-offset: 2px; }
+.caption a:hover { text-decoration-color: currentColor; }
+.panel h1 a { color: inherit; text-decoration: none; }
+.panel h1 a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .swatch { width: 11px; height: 11px; border-radius: 50%; background: var(--wwo-frame-color); flex: none; }
 .info {
   position: fixed; right: 22px; bottom: 20px; pointer-events: auto;
@@ -119,7 +123,6 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: n
   color: #3d3833; font-size: 13px; font-family: inherit;
 }
 .info:hover { background: #fff; }
-.info.sound { right: 122px; }
 .panel {
   position: fixed; right: 22px; bottom: 64px; width: min(380px, 84vw); pointer-events: auto;
   padding: 20px 22px 18px; border-radius: 10px;
@@ -322,24 +325,14 @@ export function initInstallationFrame(): () => void {
     swatch.className = "swatch";
     const captionText = document.createElement("span");
     captionText.innerHTML =
-      "<b>participating in we were online</b> — browse to draw in the portrait";
+      `<b>participating in <a href="${PROJECT_URL}" target="_blank" rel="noreferrer">we were online</a></b> — browse to draw in the portrait`;
     caption.append(swatch, captionText);
 
     const sound = createInstallationSound(color);
-    const soundButton = document.createElement("button");
-    soundButton.type = "button";
-    soundButton.className = "info sound";
-    applySound = (on: boolean) => {
-      sound.setEnabled(on);
-      soundButton.textContent = on ? "sound on" : "sound off";
-    };
-    soundButton.addEventListener("click", () => {
-      const next = soundButton.textContent !== "sound on";
-      applySound(next);
-      void browser.storage.local
-        .set({ [INSTALLATION_SOUND_KEY]: next })
-        .catch(() => undefined);
-    });
+    // Sound comes on with installation mode. There is no switch in the frame —
+    // a visitor should not have to turn the piece on — but an operator can
+    // still silence a machine by setting INSTALLATION_SOUND_KEY to false.
+    applySound = (on: boolean) => sound.setEnabled(on);
 
     const info = document.createElement("button");
     info.type = "button";
@@ -351,7 +344,7 @@ export function initInstallationFrame(): () => void {
     panel.hidden = true;
     panel.innerHTML = `
       <button type="button" class="close" aria-label="Close">&times;</button>
-      <h1>we were online</h1>
+      <h1><a href="${PROJECT_URL}" target="_blank" rel="noreferrer">we were online</a></h1>
       <p>This computer is part of an installation by Spencer Chang. Browse
         anywhere you like — your cursor draws itself as you go, and the marks
         you make join the portraits on the screens around you.</p>
@@ -375,7 +368,7 @@ export function initInstallationFrame(): () => void {
       .querySelector<HTMLButtonElement>(".close")
       ?.addEventListener("click", () => setPanelOpen(false));
 
-    shadow.append(canvas, edge, caption, soundButton, info, panel);
+    shadow.append(canvas, edge, caption, info, panel);
     host.style.setProperty("--wwo-frame-color", color);
     // Only the panel and its button take pointer input; the host stays inert so
     // the page underneath keeps every click.

@@ -334,9 +334,10 @@ It turns on five things together:
    skipped by id.
 2. **The frame** (`src/entrypoints/content/installationFrame.ts`). A hairline
    border in the participant's color, a pill reading "participating in we were
-   online — browse to draw in the portrait", a sound switch, and an "about this"
-   panel explaining the piece. Everything lives in a closed shadow root and is
-   inert to pointer input except the two buttons. The canvas draws the live
+   online — browse to draw in the portrait" (the wordmark links to the site),
+   and an "about this" panel explaining the piece. Everything lives in a closed
+   shadow root and is inert to pointer input except the panel, its button, and
+   the pill's link. The canvas draws the live
    trace over the participant's earlier traces on that domain, fetched once per
    page through `GET_RECENT_EVENTS`. The host carries `data-wwo-trace`,
    `data-wwo-previous`, and `data-wwo-sound` so its state is readable without
@@ -354,8 +355,10 @@ It turns on five things together:
    `@movement` `SoundEngine` the screens use, driven by the local cursor: one
    voice follows movement, clicks ring the bell. Browsers require a gesture
    before audio starts, so the engine is created on the first click or keypress.
-   The frame's switch mutes it and persists that under
-   `INSTALLATION_SOUND_KEY`; unset means on.
+   There is no switch in the frame — a visitor should not have to turn the piece
+   on — but an operator can silence one machine by setting
+   `INSTALLATION_SOUND_KEY` to false; unset means on, and an open page follows
+   the change without a reload.
 5. **Installation pace** (`INSTALLATION_PACE` in `src/features/installationMode.ts`).
    Cursor sampling drops from 250ms/15px to 80ms/4px and both EventBuffer hops
    shorten (store 1s → 200ms, upload 3s → 500ms), so marks reach the screens
