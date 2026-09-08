@@ -1289,6 +1289,7 @@ interface Voice {
   routedToSoloist: boolean;
   /** Separate gain for the fifth so we can enable/disable it */
   fifthGainNode: GainNode | null;
+  fifthSilentAt: number | null;
   filterNode: BiquadFilterNode;
   panNode: StereoPannerNode;
   currentFrequency: number;
@@ -1856,6 +1857,12 @@ export class SoundEngine {
 
     if (this.ctx.state === "suspended") {
       this.ctx.resume();
+    }
+
+    for (const voice of this.voices.values()) {
+      if (voice.fifthSilentAt !== null && this.ctx.currentTime >= voice.fifthSilentAt) {
+        this.stopFifth(voice);
+      }
     }
 
     this.tickIntervalMs =
@@ -2806,32 +2813,15 @@ export class SoundEngine {
 
     osc.start(now);
 
-    // Create fifth oscillator for chord voicing (always created, gain-gated)
-    const fifthOsc = ctx.createOscillator();
-    fifthOsc.type = instrument.oscillatorType;
-    fifthOsc.frequency.value = VOICE_INITIAL_FREQUENCY * 1.5; // Perfect fifth
-
-    const fifthGain = ctx.createGain();
-    fifthGain.gain.setValueAtTime(
-      this.config.chordVoicing ? 0.6 : 0,
-      now,
-    );
-
-    const fifthOscillatorLevel = ctx.createGain();
-    fifthOscillatorLevel.gain.setValueAtTime(1, now);
-    fifthOsc.connect(fifthOscillatorLevel);
-    fifthOscillatorLevel.connect(fifthGain);
-    fifthGain.connect(filter);
-    fifthOsc.start(now);
-
-    return {
+    const voice: Voice = {
       oscillator: osc,
       oscillatorLevel,
-      fifthOscillator: fifthOsc,
-      fifthOscillatorLevel,
+      fifthOscillator: null,
+      fifthOscillatorLevel: null,
       gainNode: gain,
       fadeNode: fade,
-      fifthGainNode: fifthGain,
+      fifthGainNode: null,
+      fifthSilentAt: null,
       filterNode: filter,
       panNode: pan,
       currentFrequency: 0,
@@ -2854,6 +2844,8 @@ export class SoundEngine {
       soloistRoute,
       routedToSoloist: false,
     };
+    if (this.config.chordVoicing) this.createFifth(voice, 0.6);
+    return voice;
   }
 
   /**
@@ -3135,6 +3127,32 @@ export class SoundEngine {
     });
   }
 
+  private createFifth(voice: Voice, gainValue: number): void {
+    if (!this.ctx || !voice.oscillator || voice.fifthOscillator) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const oscillator = ctx.createOscillator();
+    oscillator.type = voice.oscillator.type;
+    oscillator.frequency.value = voice.oscillator.frequency.value * 1.5;
+    oscillator.detune.value = voice.appliedDetuneCents;
+    const level = ctx.createGain();
+    level.gain.setValueAtTime(1, now);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(gainValue, now);
+    oscillator.connect(level);
+    level.connect(gain);
+    gain.connect(voice.filterNode);
+    oscillator.start(now);
+    voice.fifthOscillator = oscillator;
+    voice.fifthOscillatorLevel = level;
+    voice.fifthGainNode = gain;
+    // Join the main voice's destination while its pitch is still travelling.
+    const pitchEndsAt = this.rampEnds.get(voice.oscillator.frequency);
+    if (pitchEndsAt !== undefined && pitchEndsAt > now && voice.currentFrequency) {
+      this.glideParam(oscillator.frequency, voice.currentFrequency * 1.5, now, pitchEndsAt - now);
+    }
+  }
+
   /**
    * Enable the fifth oscillator on an existing voice.
    *
@@ -3145,14 +3163,30 @@ export class SoundEngine {
    * and a step in gain is a click.
    */
   private enableFifth(voice: Voice): void {
-    if (!this.ctx || !voice.fifthGainNode) return;
-    this.rampParam(voice.fifthGainNode.gain, 0.6, FIFTH_TOGGLE_SECONDS);
+    if (!this.ctx) return;
+    voice.fifthSilentAt = null;
+    this.createFifth(voice, 0);
+    if (voice.fifthGainNode) this.rampParam(voice.fifthGainNode.gain, 0.6, FIFTH_TOGGLE_SECONDS);
   }
 
   /** Disable the fifth oscillator on an existing voice. Anchored, as above. */
   private disableFifth(voice: Voice): void {
     if (!this.ctx || !voice.fifthGainNode) return;
     this.rampParam(voice.fifthGainNode.gain, 0, FIFTH_TOGGLE_SECONDS);
+    voice.fifthSilentAt = this.rampEnds.get(voice.fifthGainNode.gain)!;
+  }
+
+  private stopFifth(voice: Voice): void {
+    if (voice.fifthOscillator) {
+      try { voice.fifthOscillator.stop(); } catch { /* already stopped */ }
+      voice.fifthOscillator.disconnect();
+    }
+    voice.fifthOscillatorLevel?.disconnect();
+    voice.fifthGainNode?.disconnect();
+    voice.fifthOscillator = null;
+    voice.fifthOscillatorLevel = null;
+    voice.fifthGainNode = null;
+    voice.fifthSilentAt = null;
   }
 
   private setVoiceFrequency(

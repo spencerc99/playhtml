@@ -473,9 +473,8 @@ describe("SoundEngine cursor instruments", () => {
       ]);
     }
 
-    expect(context.oscillators).toHaveLength(2);
+    expect(context.oscillators).toHaveLength(1);
     expect(context.oscillators[0].stopTimes).toEqual([]);
-    expect(context.oscillators[1].stopTimes).toEqual([]);
   });
 
   it("retires all state for a finished live trail", async () => {
