@@ -1238,8 +1238,17 @@ export const renderScene = async (
   }
 
   aheadOfHead.setDrivenSeconds(() => sampleMs / 1_000);
+  // Drive only as far as the head the first suspension is actually granted at,
+  // not as far as the action's nominal time. Suspension rounds up to a quantum
+  // boundary, so a tick between the two would schedule ramps reaching past the
+  // head - and the suspension's own un-timed calls then cancel them mid-flight,
+  // which is a step the engine never asked for and the no-op control reports.
   aheadOfHead.drive(headSeconds, () =>
-    driveTo(suspended.length ? suspended[0].atMs : Number.POSITIVE_INFINITY),
+    driveTo(
+      suspended.length
+        ? suspended[0].quantum * QUANTUM_SECONDS * 1_000
+        : Number.POSITIVE_INFINITY,
+    ),
   );
 
   const suspendable = audioContext as unknown as {
@@ -1264,8 +1273,12 @@ export const renderScene = async (
       // is where the action is.
       for (const run of stop.runs) run(engine);
       const next = suspended[index + 1];
+      // Again only as far as the next suspension's own granted head, for the
+      // same reason the first drive stops there.
       aheadOfHead.drive(headSeconds, () =>
-        driveTo(next ? next.atMs : Number.POSITIVE_INFINITY),
+        driveTo(
+          next ? next.quantum * QUANTUM_SECONDS * 1_000 : Number.POSITIVE_INFINITY,
+        ),
       );
       void suspendable.resume();
     });
