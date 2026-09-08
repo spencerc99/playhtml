@@ -1,6 +1,6 @@
 // ABOUTME: Shared ripple effect for click/hold visualization
 // ABOUTME: Used by AnimatedTrails and AnimatedClicks so ripple logic stays DRY
-import { useState, useEffect, useRef, memo } from "react";
+import { useEffect, useRef, memo } from "react";
 import { ClickEffect } from "../types";
 
 export interface RippleSettings {
@@ -63,10 +63,11 @@ export const RippleEffect = memo(
     settings: RippleSettings;
     onComplete?: (id: string) => void;
   }) => {
-    const [now, setNow] = useState(Date.now());
-    const [isAnimating, setIsAnimating] = useState(true);
-    /** Ensures onComplete runs once — render-phase callbacks can run twice in Strict Mode. */
+    const now = Date.now();
+    const ringRefs = useRef<Array<SVGCircleElement | null>>([]);
+    /** Ensures onComplete runs once even when effects restart in Strict Mode. */
     const completionFiredRef = useRef(false);
+    const completionIdRef = useRef(effect.id);
 
     const lifecycle = getRippleLifecycle(effect, rippleSettings, now);
     const { holdMultiplier, expansionDuration } = lifecycle;
@@ -84,34 +85,47 @@ export const RippleEffect = memo(
     const numRings = Math.max(1, rippleSettings.clickNumRings);
 
     useEffect(() => {
+      if (completionIdRef.current !== effect.id) {
+        completionIdRef.current = effect.id;
+        completionFiredRef.current = false;
+      }
+    }, [effect.id]);
+
+    useEffect(() => {
       let animationFrameId: number;
 
       const animate = () => {
-        setNow(Date.now());
-        animationFrameId = requestAnimationFrame(animate);
+        const timestamp = Date.now();
+        for (let i = 0; i < numRings; i++) {
+          const ring = ringRefs.current[i];
+          if (!ring) continue;
+          const radius = getRingRadius(i, timestamp);
+          if (radius === null) {
+            ring.style.display = "none";
+          } else {
+            ring.style.display = "";
+            const value = String(radius);
+            if (ring.getAttribute("r") !== value) ring.setAttribute("r", value);
+          }
+        }
+        if (getRippleLifecycle(effect, rippleSettings, timestamp).complete) {
+          if (!completionFiredRef.current) {
+            completionFiredRef.current = true;
+            onComplete?.(effect.id);
+          }
+        } else {
+          animationFrameId = requestAnimationFrame(animate);
+        }
       };
 
-      if (isAnimating) {
-        animationFrameId = requestAnimationFrame(animate);
-      }
+      animate();
 
       return () => {
         if (animationFrameId) {
           cancelAnimationFrame(animationFrameId);
         }
       };
-    }, [isAnimating]);
-
-    useEffect(() => {
-      completionFiredRef.current = false;
-    }, [effect.id]);
-
-    useEffect(() => {
-      if (!lifecycle.complete || completionFiredRef.current) return;
-      completionFiredRef.current = true;
-      onComplete?.(effect.id);
-      setIsAnimating(false);
-    }, [effect.id, lifecycle.complete, onComplete]);
+    }, [effect, rippleSettings, onComplete]);
 
     const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
@@ -134,9 +148,9 @@ export const RippleEffect = memo(
     );
     const expansionVelocity = outerTargetRadius / expansionDuration;
 
-    const rings = Array.from({ length: numRings }, (_, i) => {
+    const getRingRadius = (i: number, timestamp: number): number | null => {
       const ringStartTime = effect.startTime + i * ringStaggerMs;
-      const elapsed = now - ringStartTime;
+      const elapsed = timestamp - ringStartTime;
 
       if (elapsed < 0) return null;
 
@@ -151,23 +165,48 @@ export const RippleEffect = memo(
 
       const ringDuration = Math.max(1, ringTargetRadius / expansionVelocity);
       const rawProgress = Math.min(1, elapsed / ringDuration);
-      const ringRadius = ringTargetRadius * easeOutCubic(rawProgress);
+      return ringTargetRadius * easeOutCubic(rawProgress);
+    };
 
+    const rings = Array.from({ length: numRings }, (_, i) => {
+      const ringRadius = getRingRadius(i, now);
       return (
         <circle
           key={i}
+          ref={(ring) => {
+            ringRefs.current[i] = ring;
+          }}
           cx={effect.x}
           cy={effect.y}
-          r={ringRadius}
+          r={ringRadius ?? 0}
           fill="none"
           stroke={effect.color}
           strokeWidth={rippleSettings.clickStrokeWidth}
           opacity={Math.max(0, lifecycle.opacity)}
-          style={{ mixBlendMode: "multiply" }}
+          style={{
+            mixBlendMode: "multiply",
+            display: ringRadius === null ? "none" : "",
+          }}
         />
       );
     });
 
     return <g>{rings}</g>;
   },
+  (previous, next) =>
+    previous.effect === next.effect &&
+    previous.onComplete === next.onComplete &&
+    previous.settings.clickMinRadius === next.settings.clickMinRadius &&
+    previous.settings.clickMaxRadius === next.settings.clickMaxRadius &&
+    previous.settings.clickCoreRadius === next.settings.clickCoreRadius &&
+    previous.settings.clickMinDuration === next.settings.clickMinDuration &&
+    previous.settings.clickMaxDuration === next.settings.clickMaxDuration &&
+    previous.settings.clickExpansionDuration ===
+      next.settings.clickExpansionDuration &&
+    previous.settings.clickStrokeWidth === next.settings.clickStrokeWidth &&
+    previous.settings.clickOpacity === next.settings.clickOpacity &&
+    previous.settings.clickNumRings === next.settings.clickNumRings &&
+    previous.settings.clickRingDelayMs === next.settings.clickRingDelayMs &&
+    previous.settings.clickAnimationStopPoint ===
+      next.settings.clickAnimationStopPoint,
 );
