@@ -3,6 +3,7 @@
 
 import type { LiveInstallationScreenConfig } from "./liveInstallation";
 import type { MovementSettings } from "../components/settingsDefaults";
+import { LIVE_CURSOR_CLICK_SETTINGS } from "../components/clickDefaults";
 import {
   DEFAULT_CINEMATIC_CONFIG,
   type CinematicConfig,
@@ -49,11 +50,11 @@ export interface LiveInstallationProfile {
 }
 
 const CURSOR_SETTINGS = {
+  ...LIVE_CURSOR_CLICK_SETTINGS,
   trailAnimationMode: "natural",
   strokeWidth: 6,
   trailOpacity: 0.9,
   maxConcurrentTrails: 24,
-  clickOpacity: 0.3,
   textboxOpacity: 0.2,
 } satisfies Partial<MovementSettings>;
 
