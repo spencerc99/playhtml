@@ -11,10 +11,11 @@ bun run test:sound
 
 PR Validation runs the same suite in its `sound-regression` job. No browser, audio device, or dev server is required. A failed assertion or detected click exits nonzero.
 
-The suite runs three checks in order:
+The suite runs four checks in order:
 
 - `rampScan.ts` tests completed and interrupted gain/pitch ramps against rendered samples. Each case uses a separate native renderer process and checks the boundary step and final target.
 - `liveScan.ts` feeds the engine a 20-second bed-only cursor fixture while rendering is suspended at each recorded update time. It renders 21 seconds, asserts audible output, and requires zero click detections. Scheduling all updates before rendering does not exercise the same failure.
+- `typingScan.ts` isolates a text cursor with intermittent motion and no click events. It requires zero clicks, bounds peak level, and checks that the plucks retain their audible body.
 - `clickScan.ts` renders the full scene collection and requires zero clicks. Flutter is reported separately and is not a pass/fail threshold.
 
 The fixture `fixtures/live-bed.json` retains recorded update times, cursor motion, activation, and trail churn. Participant identifiers are replaced with local ordinal names; colors are fixed, custom cursor image URLs become `default`, and URLs, browsing paths, capture origin, and runtime diagnostic metadata are omitted. The anonymized fixture reproduces the ramp discontinuity independently of the private source trace.
