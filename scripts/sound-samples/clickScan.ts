@@ -93,6 +93,166 @@ const nativeCurrentTime = ((): ((context: OfflineAudioContext) => number) => {
   throw new Error("no currentTime getter on the OfflineAudioContext prototype");
 })();
 
+
+/**
+ * Make a tick driven ahead of the render behave as though the render had got
+ * there.
+ *
+ * Most of what the engine does is timestamped, which is why a whole scene can
+ * be scheduled before rendering starts and come out right. The rest is not:
+ * `disconnect` carries no time, a node joins the graph the moment it is
+ * connected, and `AudioParam.value` takes hold wherever the render currently
+ * stands. On a live page none of that matters, because the engine's clock *is*
+ * the render head and the two moments are the same one. In a scene suspended at
+ * an action they are up to a whole scene apart: a voice retiring thirty seconds
+ * in has its nodes cut at the action's head, and a formant bank attached there
+ * arrives at full level on top of a voice already sounding.
+ *
+ * Every one of those is a step the engine never asked for, and the no-op
+ * control scene is what reports them. So while a tick is driven ahead of the
+ * head, each un-timed effect is redirected to the clock the tick is running on:
+ *
+ *  - a `disconnect` is queued and applied at the next suspension, by which time
+ *    the head has passed the moment it meant. Late costs nothing — the engine
+ *    only ever disconnects what it has already silenced — and early is the
+ *    click.
+ *  - a node's params are pinned to zero between the head and the moment the
+ *    node was built, so a node that does not exist yet contributes nothing.
+ *  - a `value` write is scheduled at the driven clock rather than landing at
+ *    the head.
+ *
+ * The action's own calls are not redirected. An un-timed call at the moment of
+ * the action is exactly what these scenes exist to hear, and there the head is
+ * already the right place.
+ */
+const aheadOfHead = ((): {
+  drive: <T>(headSeconds: number, run: () => T) => T;
+  release: () => void;
+} => {
+  const queue: Array<() => void> = [];
+  let deferring = false;
+  let headSeconds = 0;
+
+  const probe = new OfflineAudioContext(1, 128, SAMPLE_RATE);
+
+  const prototypesOf = (value: object): object[] => {
+    const chain: object[] = [];
+    let proto: object | null = Object.getPrototypeOf(value);
+    while (proto && proto !== Object.prototype) {
+      chain.push(proto);
+      proto = Object.getPrototypeOf(proto);
+    }
+    return chain;
+  };
+
+  // `disconnect`, queued rather than applied.
+  const nodePrototypes = new Set<object>();
+  for (const node of [
+    probe.createGain(),
+    probe.createOscillator(),
+    probe.createBiquadFilter(),
+    probe.createStereoPanner(),
+    probe.createBufferSource(),
+    probe.createConvolver(),
+    probe.createDelay(),
+  ] as object[]) {
+    for (const proto of prototypesOf(node)) nodePrototypes.add(proto);
+  }
+  for (const proto of nodePrototypes) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, "disconnect");
+    if (!descriptor || typeof descriptor.value !== "function") continue;
+    const original = descriptor.value as (...args: unknown[]) => unknown;
+    Object.defineProperty(proto, "disconnect", {
+      ...descriptor,
+      value: function (this: object, ...args: unknown[]) {
+        if (!deferring) return original.apply(this, args);
+        queue.push(() => {
+          try {
+            original.apply(this, args);
+          } catch {
+            /* already disconnected, or its graph is gone */
+          }
+        });
+        return undefined;
+      },
+    });
+  }
+
+  // `AudioParam.value`, scheduled at the driven clock rather than at the head.
+  const paramProto = Object.getPrototypeOf(probe.createGain().gain) as object;
+  const setValueAtTime = Object.getOwnPropertyDescriptor(
+    paramProto,
+    "setValueAtTime",
+  )!.value as (this: AudioParam, value: number, time: number) => AudioParam;
+  const valueDescriptor = Object.getOwnPropertyDescriptor(paramProto, "value")!;
+  Object.defineProperty(paramProto, "value", {
+    configurable: true,
+    get: valueDescriptor.get,
+    set(this: AudioParam, value: number) {
+      if (deferring) {
+        setValueAtTime.call(this, value, drivenSeconds());
+        return;
+      }
+      valueDescriptor.set!.call(this, value);
+    },
+  });
+
+  // A node built ahead of the head contributes nothing until the moment it was
+  // built. Only the params that carry signal are pinned: a frequency or a pan
+  // held at its default for a node that is silent anyway changes nothing, and
+  // pinning them would fight the engine's own first value.
+  const contextProto = prototypesOf(probe).find((proto) =>
+    Object.getOwnPropertyDescriptor(proto, "createGain"),
+  )!;
+  let drivenSecondsRef: () => number = () => 0;
+  const drivenSeconds = (): number => drivenSecondsRef();
+  const createGain = Object.getOwnPropertyDescriptor(
+    contextProto,
+    "createGain",
+  )!.value as (this: BaseAudioContext) => GainNode;
+  Object.defineProperty(contextProto, "createGain", {
+    configurable: true,
+    writable: true,
+    value: function (this: BaseAudioContext) {
+      const gain = createGain.call(this);
+      if (deferring) {
+        const builtAt = drivenSeconds();
+        if (builtAt > headSeconds) {
+          setValueAtTime.call(gain.gain, 0, headSeconds);
+          setValueAtTime.call(gain.gain, 1, builtAt);
+        }
+      }
+      return gain;
+    },
+  });
+
+  return {
+    drive: (head, run) => {
+      const wasDeferring = deferring;
+      const previousHead = headSeconds;
+      deferring = true;
+      headSeconds = head;
+      try {
+        return run();
+      } finally {
+        deferring = wasDeferring;
+        headSeconds = previousHead;
+      }
+    },
+    release: () => {
+      for (const apply of queue.splice(0, queue.length)) apply();
+    },
+    /** Told where the drive's own clock stands, which only the driver knows. */
+    setDrivenSeconds: (read: () => number) => {
+      drivenSecondsRef = read;
+    },
+  } as {
+    drive: <T>(headSeconds: number, run: () => T) => T;
+    release: () => void;
+    setDrivenSeconds: (read: () => number) => void;
+  };
+})();
+
 /**
  * An offline context whose clock the caller drives, so a synchronous replay
  * renders as the timeline it represents rather than stacking onto instant
@@ -374,6 +534,18 @@ const fixtureScene = (
 const SWEEP_TRAIL_COUNT = 10;
 /** How often a different trail is handed the fast sweep, in ms. */
 const SWEEP_HANDOVER_MS = 900;
+/**
+ * A handover slow enough for a whole promotion to happen between one and the
+ * next: the audition, the entrance, the reign's own minimum, the release and
+ * the cooldown, with room left over.
+ *
+ * The default handover is deliberately faster than any of that — it churns the
+ * decision so the paths around it stay under pressure — but a churn that fast
+ * means no promotion ever completes, so the entrance and the release are never
+ * rendered at all. A scene on this cadence is the only one in the matrix that
+ * hears them.
+ */
+const SWEEP_PROMOTION_HANDOVER_MS = 10_000;
 /** How often the synthetic scene fires a click, in ms. */
 const SWEEP_CLICK_INTERVAL_MS = 120;
 
@@ -402,7 +574,11 @@ const sweepScene = (
   id: string,
   soloistVoice: SoloistVoice,
   durationSeconds: number,
-  { allText = false, trailCount = SWEEP_TRAIL_COUNT } = {},
+  {
+    allText = false,
+    trailCount = SWEEP_TRAIL_COUNT,
+    handoverMs = SWEEP_HANDOVER_MS,
+  } = {},
 ): Scene => {
   let lastClickMs = 0;
   const phase = (index: number): number => index * 0.7;
@@ -413,7 +589,7 @@ const sweepScene = (
     soloistVoice,
     advance: (engine, sampleMs) => {
       const seconds = sampleMs / 1_000;
-      const sweeper = Math.floor(sampleMs / SWEEP_HANDOVER_MS) % trailCount;
+      const sweeper = Math.floor(sampleMs / handoverMs) % trailCount;
 
       if (sampleMs - lastClickMs >= SWEEP_CLICK_INTERVAL_MS) {
         lastClickMs = sampleMs;
@@ -907,7 +1083,10 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
     for (const run of stop.runs) run(engine);
   }
 
-  driveTo(suspended.length ? suspended[0].atMs : Number.POSITIVE_INFINITY);
+  aheadOfHead.setDrivenSeconds(() => sampleMs / 1_000);
+  aheadOfHead.drive(headSeconds, () =>
+    driveTo(suspended.length ? suspended[0].atMs : Number.POSITIVE_INFINITY),
+  );
 
   const suspendable = audioContext as unknown as {
     suspend: (seconds: number) => Promise<void>;
@@ -922,9 +1101,18 @@ const renderScene = async (scene: Scene): Promise<AudioBuffer> => {
       // reached yet.
       headSeconds = renderHeadSeconds();
       setClock(headSeconds);
+      // The head has now passed every deferred disconnect's own moment, so
+      // they are safe to apply, and applying them keeps the graph from growing
+      // for the length of the scene.
+      aheadOfHead.release();
+      // The action itself is not deferred: an un-timed call is exactly what it
+      // is being tested for, and here it lands where the render stands, which
+      // is where the action is.
       for (const run of stop.runs) run(engine);
       const next = suspended[index + 1];
-      driveTo(next ? next.atMs : Number.POSITIVE_INFINITY);
+      aheadOfHead.drive(headSeconds, () =>
+        driveTo(next ? next.atMs : Number.POSITIVE_INFINITY),
+      );
       void suspendable.resume();
     });
   });
@@ -1227,6 +1415,25 @@ try {
       reviveTrails: true,
       soloistChurn: true,
     }),
+    // Whole promotions, start to finish, several times over. Every other sweep
+    // here hands the fast trail on faster than a promotion takes, so the
+    // entrance and the release — the two moments where a voice's gain,
+    // brightness, drying and vibrato all move at once — are never rendered.
+    // This scene is where they are, on the default tuning, which is the tuning
+    // anybody actually hears.
+    sweepScene("sweeps-promotion-churn", "presence", SCAN_SECONDS, {
+      handoverMs: SWEEP_PROMOTION_HANDOVER_MS,
+    }),
+    // The same, in Spencer's arrangement: with the spotlight ducking off and
+    // the choral banks up, a promotion moves a voice that is carrying much more
+    // of the mix, and it moves it against a bed rather than under a flourish.
+    {
+      ...sweepScene("sweeps-promotion-churn-spencer", "presence", SCAN_SECONDS, {
+        handoverMs: SWEEP_PROMOTION_HANDOVER_MS,
+      }),
+      config: { ...SPENCER_ARRANGEMENT, spotlight: true },
+      cantus: "tenor" as CantusVariant,
+    },
     // Someone typing. The one motion no scene above produces: a pointer that
     // spends most of its ticks under the silence threshold and crosses it on
     // the keystrokes, which is what flaps the voice's breath open and closed
