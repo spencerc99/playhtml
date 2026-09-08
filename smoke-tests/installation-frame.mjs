@@ -155,12 +155,14 @@ async function clickInFrameShadow(page, label) {
     depth: -1,
     pierce: true,
   });
-  const text = nodes.find(
-    (node) => node.nodeType === 3 && node.nodeValue?.trim() === label,
-  );
-  assert.ok(text, `frame control "${label}" is in the shadow tree`);
+  const button = nodes.find((node) => {
+    const attributes = node.attributes ?? [];
+    const index = attributes.indexOf("aria-label");
+    return index >= 0 && attributes[index + 1] === label;
+  });
+  assert.ok(button, `frame control "${label}" is in the shadow tree`);
   const { model } = await session.send("DOM.getBoxModel", {
-    nodeId: text.parentId,
+    nodeId: button.nodeId,
   });
   const [x1, y1, , , x2, y2] = model.content;
   await page.mouse.click((x1 + x2) / 2, (y1 + y2) / 2);
@@ -228,11 +230,11 @@ try {
   await traceCursor(page, { steps: 12 });
   await expect.poll(() => frame.getAttribute("data-wwo-sound")).toBe("playing");
 
-  // The info panel opens from the corner button a visitor would reach for.
-  await clickInFrameShadow(page, "about this");
+  // The info panel opens from the corner icon a visitor would reach for.
+  await clickInFrameShadow(page, "About this installation");
   if (evidence)
     await page.screenshot({ path: resolve(evidence, "frame-panel.png") });
-  await clickInFrameShadow(page, "hide");
+  await clickInFrameShadow(page, "Close");
 
   // The page underneath keeps working: the frame never swallows input.
   await page.getByRole("textbox").fill("The frame does not block typing.");

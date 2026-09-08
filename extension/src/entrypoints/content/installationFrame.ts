@@ -117,14 +117,16 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: n
 .swatch { width: 11px; height: 11px; border-radius: 50%; background: var(--wwo-frame-color); flex: none; }
 .info {
   position: fixed; right: 22px; bottom: 20px; pointer-events: auto;
-  padding: 7px 15px; border-radius: 999px;
+  width: 34px; height: 34px; padding: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
   background: rgba(250, 249, 246, 0.92); border: 1px solid rgba(61, 56, 51, 0.14);
-  box-shadow: 0 1px 6px rgba(61, 56, 51, 0.12);
-  color: #3d3833; font-size: 13px; font-family: inherit;
+  box-shadow: 0 1px 6px rgba(61, 56, 51, 0.12); color: #3d3833;
 }
+.info svg { width: 19px; height: 19px; display: block; }
 .info:hover { background: #fff; }
+.info[aria-expanded="true"] { background: #fff; border-color: rgba(61, 56, 51, 0.3); }
 .panel {
-  position: fixed; right: 22px; bottom: 64px; width: min(380px, 84vw); pointer-events: auto;
+  position: fixed; right: 22px; bottom: 66px; width: min(380px, 84vw); pointer-events: auto;
   padding: 20px 22px 18px; border-radius: 10px;
   background: #faf9f6; border: 1px solid rgba(61, 56, 51, 0.16);
   box-shadow: 0 10px 34px rgba(61, 56, 51, 0.2);
@@ -325,7 +327,7 @@ export function initInstallationFrame(): () => void {
     swatch.className = "swatch";
     const captionText = document.createElement("span");
     captionText.innerHTML =
-      `<b>participating in <a href="${PROJECT_URL}" target="_blank" rel="noreferrer">we were online</a></b> — browse to draw in the portrait`;
+      `<b>participating in <a href="${PROJECT_URL}" target="_blank" rel="noreferrer">we were online</a></b> — browse to contribute to the portrait`;
     caption.append(swatch, captionText);
 
     const sound = createInstallationSound(color);
@@ -337,7 +339,14 @@ export function initInstallationFrame(): () => void {
     const info = document.createElement("button");
     info.type = "button";
     info.className = "info";
-    info.textContent = "about this";
+    info.setAttribute("aria-label", "About this installation");
+    info.setAttribute("aria-expanded", "false");
+    info.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <circle cx="12" cy="12" r="9.25" />
+        <path d="M12 10.9v6.1" stroke-linecap="round" />
+        <circle cx="12" cy="7.3" r="1.05" fill="currentColor" stroke="none" />
+      </svg>`;
 
     const panel = document.createElement("div");
     panel.className = "panel";
@@ -345,23 +354,16 @@ export function initInstallationFrame(): () => void {
     panel.innerHTML = `
       <button type="button" class="close" aria-label="Close">&times;</button>
       <h1><a href="${PROJECT_URL}" target="_blank" rel="noreferrer">we were online</a></h1>
-      <p>This computer is part of an installation by Spencer Chang. Browse
-        anywhere you like — your cursor draws itself as you go, and the marks
-        you make join the portraits on the screens around you.</p>
-      <p>The faint lines underneath are earlier traces left on this site, and
-        the tones you hear are your own movement, played the way the screens
-        play it.</p>
+      <p>This computer contributing its browsing to a collective portrait of the
+        internet. Browse anywhere you like to participate.</p>
       <p class="quiet">Recorded as marks: cursor movement, clicks, scrolling,
-        the pages visited, and typing rhythm in text boxes (characters are
-        masked). The live portrait is at <a href="${PORTRAIT_URL}"
-        target="_blank" rel="noreferrer">wewere.online/portrait</a>, and you can
-        take the whole thing home from <a href="${PROJECT_URL}" target="_blank"
-        rel="noreferrer">wewere.online</a>.</p>
+        pages visited, and typing. Contribute from your home computer at
+        <a href="${PROJECT_URL}" target="_blank" rel="noreferrer">wewere.online</a>.</p>
     `;
 
     const setPanelOpen = (open: boolean) => {
       panel.hidden = !open;
-      info.textContent = open ? "hide" : "about this";
+      info.setAttribute("aria-expanded", String(open));
     };
     info.addEventListener("click", () => setPanelOpen(panel.hidden));
     panel

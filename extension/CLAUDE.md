@@ -334,10 +334,10 @@ It turns on five things together:
    skipped by id.
 2. **The frame** (`src/entrypoints/content/installationFrame.ts`). A hairline
    border in the participant's color, a pill reading "participating in we were
-   online — browse to draw in the portrait" (the wordmark links to the site),
-   and an "about this" panel explaining the piece. Everything lives in a closed
-   shadow root and is inert to pointer input except the panel, its button, and
-   the pill's link. The canvas draws the live
+   online — browse to contribute to the portrait" (the wordmark links to the
+   site), and an info icon opening a panel that explains the piece. Everything
+   lives in a closed shadow root and is inert to pointer input except the panel,
+   the icon, and the pill's link. The canvas draws the live
    trace over the participant's earlier traces on that domain, fetched once per
    page through `GET_RECENT_EVENTS`. The host carries `data-wwo-trace`,
    `data-wwo-previous`, and `data-wwo-sound` so its state is readable without
