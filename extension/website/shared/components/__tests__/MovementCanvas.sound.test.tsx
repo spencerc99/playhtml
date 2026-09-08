@@ -145,7 +145,8 @@ describe("MovementCanvas live-path sound arrangement", () => {
     const lastCall =
       setConfigMock.mock.calls[setConfigMock.mock.calls.length - 1][0];
     // SCENE_DEFAULTS.mode in persistedConfig.ts
-    expect(lastCall.mode).toBe("spotlight");
+    expect(lastCall.mode).toBe("sustained");
+    expect(lastCall.navigationSounds).toBe(false);
 
     act(() => root.unmount());
     container.remove();

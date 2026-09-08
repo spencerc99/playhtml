@@ -31,7 +31,7 @@ describe("the shipped arrangement", () => {
    */
   it("is the combination settled on by ear", () => {
     expect(GLOBAL_DEFAULTS).toEqual({
-      mode: "spotlight",
+      mode: "sustained",
       chordRotation: true,
       progression: "circular",
       energyArc: true,
@@ -47,7 +47,7 @@ describe("the shipped arrangement", () => {
     expect(LAYER_DEFAULTS).toEqual({
       bassPedal: true,
       trailArrivals: true,
-      navigationSounds: true,
+      navigationSounds: false,
       crossings: "off",
       cantus: "soprano",
     });
