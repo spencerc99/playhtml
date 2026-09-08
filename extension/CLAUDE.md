@@ -323,7 +323,7 @@ under Identity. It is the single switch for everything a browsing machine in the
 installation needs, and it persists across browser restarts. It starts off;
 while enabled, its checkbox stays visible in Settings.
 
-It turns on four things together:
+It turns on five things together:
 
 1. **The cursor.** The participant's own colored cursor replaces the native one
    (`src/entrypoints/content/installationCursor.ts`). Color changes apply to
@@ -336,18 +336,27 @@ It turns on four things together:
    border in the participant's color, a pill reading "participating in we were
    online — browse to draw in the portrait", a sound switch, and an "about this"
    panel explaining the piece. Everything lives in a closed shadow root and is
-   inert to pointer input except the two buttons. A canvas draws the live cursor
-   trace (fading over ~9s) over the participant's earlier traces on that domain,
-   fetched once per page through `GET_RECENT_EVENTS`. The host carries
-   `data-wwo-trace`, `data-wwo-previous`, and `data-wwo-sound` so its state is
-   readable without opening the shadow root.
-3. **Live sound** (`src/entrypoints/content/installationSound.ts`). The same
+   inert to pointer input except the two buttons. The canvas draws the live
+   trace over the participant's earlier traces on that domain, fetched once per
+   page through `GET_RECENT_EVENTS`. The host carries `data-wwo-trace`,
+   `data-wwo-previous`, and `data-wwo-sound` so its state is readable without
+   opening the shadow root.
+3. **The ink** (`src/entrypoints/content/installationTrace.ts`). The trace is
+   drawn the way the screens draw it: `perfect-freehand` outlines filled at the
+   screens' stroke width and opacities, and clicks ringing out with the same
+   ripple geometry as `LIVE_CURSOR_CLICK_SETTINGS`. Strokes settle to a dim,
+   hold, then depart, so browsing accumulates as a portrait rather than a comet
+   tail. Points live in **document space** — the same absolute placement the
+   visualizations use (`x * vw + scrollX`) — so marks stay on the content they
+   were made over when the page scrolls, and a scroll under a still cursor
+   splits the stroke instead of drawing a slash.
+4. **Live sound** (`src/entrypoints/content/installationSound.ts`). The same
    `@movement` `SoundEngine` the screens use, driven by the local cursor: one
    voice follows movement, clicks ring the bell. Browsers require a gesture
    before audio starts, so the engine is created on the first click or keypress.
    The frame's switch mutes it and persists that under
    `INSTALLATION_SOUND_KEY`; unset means on.
-4. **Installation pace** (`INSTALLATION_PACE` in `src/features/installationMode.ts`).
+5. **Installation pace** (`INSTALLATION_PACE` in `src/features/installationMode.ts`).
    Cursor sampling drops from 250ms/15px to 80ms/4px and both EventBuffer hops
    shorten (store 1s → 200ms, upload 3s → 500ms), so marks reach the screens
    close to live. `CollectorManager` applies and reverts this through

@@ -12,13 +12,14 @@ import {
   createInstallationSound,
   type InstallationSound,
 } from "./installationSound";
+import {
+  createTraceField,
+  JUMP_SPLIT_FRACTION,
+  STROKE_GAP_MS,
+  type TracePoint,
+  type TraceField,
+} from "./installationTrace";
 
-/** How long a live stroke stays on screen before it finishes fading out. */
-const TRAIL_MS = 9000;
-/** Cap on retained live points; older points drop first. */
-const MAX_LIVE_POINTS = 1200;
-/** Gap that separates one earlier stroke from the next. */
-const STROKE_GAP_MS = 1200;
 /** Cheapest useful movement resolution — skip points closer than this. */
 const MIN_POINT_DISTANCE_PX = 2;
 
@@ -26,70 +27,70 @@ export const INSTALLATION_FRAME_HOST_ID = "wwo-installation-frame";
 const PROJECT_URL = "https://wewere.online/";
 const PORTRAIT_URL = "https://wewere.online/portrait/";
 
-export interface TracePoint {
-  x: number;
-  y: number;
-  t: number;
-}
-
 interface CursorEventLike {
   ts?: number;
   type?: string;
-  data?: { x?: unknown; y?: unknown; event?: unknown } | null;
+  data?: {
+    x?: unknown;
+    y?: unknown;
+    scrollX?: unknown;
+    scrollY?: unknown;
+  } | null;
+  meta?: { vw?: unknown; vh?: unknown } | null;
 }
 
 /**
- * Turns stored cursor events into viewport-space strokes, splitting wherever
- * browsing paused. Events carry 0-1 normalized coordinates, so they rescale to
- * whatever viewport the installation machine is running at.
+ * Turns stored cursor events into document-space strokes, splitting wherever
+ * browsing paused or the page scrolled out from under a still cursor. Events
+ * carry 0-1 coordinates plus the viewport and scroll they were captured at, so
+ * a mark lands back on the content it was made over.
  */
 export function toPreviousStrokes(
   events: readonly CursorEventLike[],
   size: { width: number; height: number },
 ): TracePoint[][] {
+  const number = (value: unknown, fallback: number) =>
+    typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
   const points = events
     .filter((event) => (event.type ?? "cursor") === "cursor")
-    .map((event) => ({
-      x: Number(event.data?.x),
-      y: Number(event.data?.y),
-      t: Number(event.ts),
-    }))
+    .map((event) => {
+      const x = Number(event.data?.x);
+      const y = Number(event.data?.y);
+      return {
+        x: x * number(event.meta?.vw, size.width) +
+          number(event.data?.scrollX, 0),
+        y: y * number(event.meta?.vh, size.height) +
+          number(event.data?.scrollY, 0),
+        t: Number(event.ts),
+        inRange: x >= 0 && x <= 1 && y >= 0 && y <= 1,
+      };
+    })
     .filter(
       (point) =>
+        point.inRange &&
         Number.isFinite(point.x) &&
         Number.isFinite(point.y) &&
-        Number.isFinite(point.t) &&
-        point.x >= 0 &&
-        point.x <= 1 &&
-        point.y >= 0 &&
-        point.y <= 1,
+        Number.isFinite(point.t),
     )
     .sort((first, second) => first.t - second.t);
 
+  const maxJump = size.height * JUMP_SPLIT_FRACTION;
   const strokes: TracePoint[][] = [];
   let current: TracePoint[] = [];
-  let previousTime = 0;
   for (const point of points) {
-    if (current.length > 0 && point.t - previousTime > STROKE_GAP_MS) {
+    const last = current[current.length - 1];
+    if (
+      last &&
+      (point.t - last.t > STROKE_GAP_MS || Math.abs(point.y - last.y) > maxJump)
+    ) {
       if (current.length > 1) strokes.push(current);
       current = [];
     }
-    current.push({
-      x: point.x * size.width,
-      y: point.y * size.height,
-      t: point.t,
-    });
-    previousTime = point.t;
+    current.push({ x: point.x, y: point.y, t: point.t });
   }
   if (current.length > 1) strokes.push(current);
   return strokes;
-}
-
-/** Opacity of a live point, from solid at capture to zero at TRAIL_MS. */
-export function liveAlpha(age: number): number {
-  if (age <= 0) return 1;
-  if (age >= TRAIL_MS) return 0;
-  return 1 - age / TRAIL_MS;
 }
 
 function frameCss(): string {
@@ -151,16 +152,16 @@ export function initInstallationFrame(): () => void {
     edge: HTMLElement;
     color: string;
     sound: InstallationSound;
+    trace: TraceField;
   } | null = null;
 
   let holdStart: { x: number; y: number; t: number } | null = null;
   /** Set when the frame mounts; toggles the live sound and its button label. */
   let applySound: (on: boolean) => void = () => {};
 
-  let livePoints: TracePoint[] = [];
-  let previousStrokes: TracePoint[][] = [];
   let previousSource: CursorEventLike[] = [];
   let frameRequest = 0;
+  let frameTimer = 0;
 
   const report = (name: string, value: string) => {
     if (!mounted || mounted.host.getAttribute(name) === value) return;
@@ -168,9 +169,10 @@ export function initInstallationFrame(): () => void {
   };
 
   const stopDrawing = () => {
-    if (!frameRequest) return;
-    cancelAnimationFrame(frameRequest);
+    if (frameRequest) cancelAnimationFrame(frameRequest);
+    if (frameTimer) clearTimeout(frameTimer);
     frameRequest = 0;
+    frameTimer = 0;
   };
 
   const resize = () => {
@@ -181,87 +183,81 @@ export function initInstallationFrame(): () => void {
     canvas.width = Math.round(window.innerWidth * ratio);
     canvas.height = Math.round(window.innerHeight * ratio);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    previousStrokes = toPreviousStrokes(previousSource, {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    mounted.trace.setPrevious(
+      toPreviousStrokes(previousSource, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }),
+    );
     schedule();
   };
 
   const draw = () => {
     frameRequest = 0;
     if (!mounted) return;
-    const { context, color } = mounted;
-    const now = Date.now();
-    context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    const { context, color, trace } = mounted;
+    const nextChange = trace.draw(
+      context,
+      color,
+      {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+      },
+      Date.now(),
+    );
 
-    // Earlier browsing on this site, held faintly under the live stroke.
-    context.save();
-    context.globalAlpha = 0.16;
-    context.strokeStyle = color;
-    context.lineWidth = 1.25;
-    context.lineJoin = "round";
-    context.lineCap = "round";
-    for (const stroke of previousStrokes) {
-      context.beginPath();
-      context.moveTo(stroke[0].x, stroke[0].y);
-      for (let index = 1; index < stroke.length; index += 1) {
-        context.lineTo(stroke[index].x, stroke[index].y);
-      }
-      context.stroke();
-    }
-    context.restore();
+    const drawing = trace.liveCount() > 0;
+    if (drawing) mounted.sound.tick();
+    else mounted.sound.idle();
 
-    // Live trace: one fading segment per movement step.
-    livePoints = livePoints.filter((point) => now - point.t < TRAIL_MS);
-    context.save();
-    context.strokeStyle = color;
-    context.lineJoin = "round";
-    context.lineCap = "round";
-    for (let index = 1; index < livePoints.length; index += 1) {
-      const from = livePoints[index - 1];
-      const to = livePoints[index];
-      const alpha = liveAlpha(now - to.t);
-      if (alpha <= 0.01) continue;
-      context.globalAlpha = alpha;
-      context.lineWidth = 1.5 + alpha * 2.5;
-      context.beginPath();
-      context.moveTo(from.x, from.y);
-      context.lineTo(to.x, to.y);
-      context.stroke();
-    }
-    context.restore();
-
-    mounted.sound.tick();
     // Reported on the host so operators (and the smoke test) can read what the
     // frame is doing without opening the shadow root.
-    report("data-wwo-trace", String(livePoints.length));
-    report("data-wwo-previous", String(previousStrokes.length));
+    report("data-wwo-trace", String(trace.liveCount()));
+    report("data-wwo-previous", String(trace.previousCount()));
     report("data-wwo-sound", mounted.sound.state());
-    if (livePoints.length > 0) schedule();
-    else mounted.sound.idle();
+
+    // The ink holds still between fades, so the loop sleeps until the next one.
+    if (nextChange === null) return;
+    if (nextChange <= 0) {
+      schedule();
+      return;
+    }
+    frameTimer = window.setTimeout(() => {
+      frameTimer = 0;
+      schedule();
+    }, nextChange);
   };
 
   function schedule() {
     if (disposed || !mounted || frameRequest) return;
+    if (frameTimer) {
+      clearTimeout(frameTimer);
+      frameTimer = 0;
+    }
     frameRequest = requestAnimationFrame(draw);
   }
 
+  let lastPoint: TracePoint | null = null;
   const move = (event: PointerEvent) => {
     if (!mounted || event.pointerType === "touch") return;
-    const last = livePoints[livePoints.length - 1];
     if (
-      last &&
-      Math.abs(last.x - event.clientX) < MIN_POINT_DISTANCE_PX &&
-      Math.abs(last.y - event.clientY) < MIN_POINT_DISTANCE_PX
+      lastPoint &&
+      Math.abs(lastPoint.x - event.clientX) < MIN_POINT_DISTANCE_PX &&
+      Math.abs(lastPoint.y - event.clientY) < MIN_POINT_DISTANCE_PX
     ) {
       return;
     }
+    const now = Date.now();
+    lastPoint = { x: event.clientX, y: event.clientY, t: now };
     mounted.sound.move(event.clientX, event.clientY, event.target);
-    livePoints.push({ x: event.clientX, y: event.clientY, t: Date.now() });
-    if (livePoints.length > MAX_LIVE_POINTS) {
-      livePoints = livePoints.slice(-MAX_LIVE_POINTS);
-    }
+    mounted.trace.addPoint(
+      event.clientX + window.scrollX,
+      event.clientY + window.scrollY,
+      now,
+      window.innerHeight * JUMP_SPLIT_FRACTION,
+    );
     schedule();
   };
 
@@ -283,17 +279,21 @@ export function initInstallationFrame(): () => void {
     if (!mounted || event.pointerType === "touch") return;
     const held = holdStart ? Date.now() - holdStart.t : 0;
     holdStart = null;
-    mounted.sound.click(
-      event.clientX,
-      event.clientY,
-      held > 250 ? held : undefined,
+    const holdDuration = held > 250 ? held : undefined;
+    mounted.sound.click(event.clientX, event.clientY, holdDuration);
+    mounted.trace.addClick(
+      event.clientX + window.scrollX,
+      event.clientY + window.scrollY,
+      holdDuration,
+      Date.now(),
     );
+    schedule();
   };
 
   const unmount = () => {
     stopDrawing();
-    livePoints = [];
-    previousStrokes = [];
+    mounted?.trace.clear();
+    lastPoint = null;
     previousSource = [];
     mounted?.sound.dispose();
     mounted?.host.remove();
@@ -385,7 +385,7 @@ export function initInstallationFrame(): () => void {
       host.remove();
       return;
     }
-    mounted = { host, canvas, context, edge, color, sound };
+    mounted = { host, canvas, context, edge, color, sound, trace: createTraceField() };
     resize();
     void browser.storage.local
       .get(INSTALLATION_SOUND_KEY)
@@ -407,10 +407,12 @@ export function initInstallationFrame(): () => void {
       if (disposed || currentRevision !== revision || !mounted) return;
       if (!response?.success || !Array.isArray(response.events)) return;
       previousSource = response.events;
-      previousStrokes = toPreviousStrokes(previousSource, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
+      mounted.trace.setPrevious(
+        toPreviousStrokes(previousSource, {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        }),
+      );
       schedule();
     } catch {
       // Earlier traces are decoration; the live trace works without them.
@@ -472,6 +474,7 @@ export function initInstallationFrame(): () => void {
   document.addEventListener("pointerdown", down, { capture: true, passive: true });
   document.addEventListener("pointerup", up, { capture: true, passive: true });
   document.addEventListener("visibilitychange", visibility);
+  window.addEventListener("scroll", schedule, { capture: true, passive: true });
   window.addEventListener("resize", resize);
   window.addEventListener("pageshow", refresh);
   void refresh();
@@ -485,6 +488,7 @@ export function initInstallationFrame(): () => void {
     document.removeEventListener("pointerdown", down, true);
     document.removeEventListener("pointerup", up, true);
     document.removeEventListener("visibilitychange", visibility);
+    window.removeEventListener("scroll", schedule, true);
     window.removeEventListener("resize", resize);
     window.removeEventListener("pageshow", refresh);
   };

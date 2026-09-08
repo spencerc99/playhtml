@@ -2,10 +2,13 @@
 // ABOUTME: Stroke splitting, fade math, and instrument choice run without a browser.
 
 import { describe, it, expect } from "vitest";
+import { toPreviousStrokes } from "../entrypoints/content/installationFrame";
 import {
-  liveAlpha,
-  toPreviousStrokes,
-} from "../entrypoints/content/installationFrame";
+  LIVE_ALPHA,
+  SETTLED_ALPHA,
+  rippleRings,
+  settledAlpha,
+} from "../entrypoints/content/installationTrace";
 import { cursorTypeForTarget } from "../entrypoints/content/installationSound";
 
 const size = { width: 1000, height: 500 };
@@ -71,13 +74,58 @@ describe("toPreviousStrokes", () => {
   });
 });
 
-describe("liveAlpha", () => {
-  it("fades a point from solid to gone", () => {
-    expect(liveAlpha(0)).toBe(1);
-    expect(liveAlpha(-50)).toBe(1);
-    expect(liveAlpha(4500)).toBeCloseTo(0.5, 5);
-    expect(liveAlpha(9000)).toBe(0);
-    expect(liveAlpha(60000)).toBe(0);
+describe("settledAlpha", () => {
+  it("settles a finished stroke, holds it, then lets it depart", () => {
+    expect(settledAlpha(0)).toBe(LIVE_ALPHA);
+    expect(settledAlpha(600)).toBeCloseTo((LIVE_ALPHA + SETTLED_ALPHA) / 2, 5);
+    expect(settledAlpha(1200)).toBeCloseTo(SETTLED_ALPHA, 5);
+    // Held at the dim for the whole hold, then eased out.
+    expect(settledAlpha(30_000)).toBeCloseTo(SETTLED_ALPHA, 5);
+    expect(settledAlpha(46_500)).toBeCloseTo(SETTLED_ALPHA / 2, 5);
+    expect(settledAlpha(48_000)).toBe(0);
+    expect(settledAlpha(90_000)).toBe(0);
+  });
+});
+
+describe("rippleRings", () => {
+  const ripple = {
+    x: 10,
+    y: 10,
+    startTime: 1000,
+    radiusFactor: 0.5,
+    durationFactor: 0.5,
+  };
+
+  it("opens rings one after another, each freezing at its own radius", () => {
+    expect(rippleRings(ripple, 1000)).toEqual([]);
+    const early = rippleRings(ripple, 1100);
+    expect(early).toHaveLength(1);
+    expect(early[0].radius).toBeGreaterThan(0);
+    expect(rippleRings(ripple, 1500)).toHaveLength(3);
+
+    // Every ring expands at the same velocity, so the outer ones start later
+    // and overtake the core, which has already stopped.
+    const late = rippleRings(ripple, 3600);
+    expect(late[0].radius).toBeLessThan(late[2].radius);
+    expect(rippleRings(ripple, 2000)[0].radius).toBeCloseTo(
+      rippleRings(ripple, 3000)[0].radius,
+      5,
+    );
+  });
+
+  it("fades out and then stops drawing", () => {
+    const late = rippleRings(ripple, 3600);
+    expect(late[0].alpha).toBeLessThan(rippleRings(ripple, 1500)[0].alpha);
+    expect(rippleRings(ripple, 10_000)).toEqual([]);
+  });
+
+  it("gives a held click a bigger, longer ripple", () => {
+    const held = { ...ripple, holdDuration: 2000 };
+    // The plain ripple is over by now; the held one is still opening.
+    expect(rippleRings(ripple, 5000)).toEqual([]);
+    expect(rippleRings(held, 5000)[2].radius).toBeGreaterThan(
+      rippleRings(ripple, 3600)[2].radius,
+    );
   });
 });
 
