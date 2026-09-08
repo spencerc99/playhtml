@@ -1700,6 +1700,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             >
               <AnimatedTrails
                 key={`archive-fallback-${archiveFallback.playbackKey}`}
+                cinematic={cinematicConfig}
+                cinematicNextSignal={cinematicNextSignal}
                 trailStates={archiveFallbackTrailStates}
                 timeRange={archiveFallbackTimeRange}
                 showClickRipples={!showClicks}
@@ -1716,6 +1718,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             <LiveTrails
               key={`live-trails-${filtersKey((settings.filters as FilterChip[] | undefined) ?? [])}`}
               trailStates={trailStates}
+              cinematic={cinematicConfig}
+              cinematicNextSignal={cinematicNextSignal}
               frozen={paused}
               showClickRipples={!showClicks}
               soundEngine={!soundEnabled ? null : soundEngineReady}

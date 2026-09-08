@@ -19,6 +19,7 @@ import { useInstallationReload } from "../../shared/hooks/useInstallationReload"
 import { summarizeActiveLocations } from "../../shared/utils/eventUtils";
 import {
   LIVE_INSTALLATION_VISUALIZATIONS,
+  eventsForInstallationScreen,
   parseLiveInstallationScreen,
   resolveLiveInstallationVisualizations,
   showsInstallationPeopleCount,
@@ -146,13 +147,17 @@ const LiveInstallation = () => {
     activeVisualizations,
     screen,
   });
+  const liveScreenEvents = useMemo(
+    () => eventsForInstallationScreen(hybrid.liveEvents, screen),
+    [hybrid.liveEvents, screen],
+  );
   const activity = useMemo(
     () => summarizeActiveLocations(hybrid.liveEvents),
     [hybrid.liveEvents],
   );
   const continuousLiveTrails = profile?.continuousLiveTrails === true;
   const archiveFallback = useCursorArchiveFallback(
-    hybrid.liveEvents,
+    liveScreenEvents,
     continuousLiveTrails,
   );
   const archiveFallbackEvents = useMemo(() => {
@@ -201,7 +206,7 @@ const LiveInstallation = () => {
   return (
     <>
       <MovementCanvas
-        events={continuousLiveTrails ? hybrid.liveEvents : hybrid.events}
+        events={continuousLiveTrails ? liveScreenEvents : hybrid.events}
         loading={hybrid.loading}
         error={hybrid.error}
         fetchEvents={hybrid.refresh}
