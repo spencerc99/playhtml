@@ -3,6 +3,7 @@
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   memo,
   useCallback,
@@ -54,6 +55,11 @@ interface AnimatedScrollViewportsProps {
   // navigation events stream in, even for viewports that were added before
   // the metadata for their URL arrived.
   urlMetadata?: Map<string, { title?: string; favicon?: string }>;
+}
+
+interface ViewportClock {
+  currentTime: number;
+  listeners: Set<(currentTime: number) => void>;
 }
 
 // Generate unique ID for viewports
@@ -234,7 +240,10 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const [activeViewports, setActiveViewports] = useState<ActiveViewport[]>(
       [],
     );
-    const [frameTime, setFrameTime] = useState(0);
+    const clock = useRef<ViewportClock>({
+      currentTime: 0,
+      listeners: new Set(),
+    }).current;
     const activeViewportsRef = useRef<ActiveViewport[]>([]);
     const animationQueueRef = useRef<ScrollAnimation[]>([]);
     const queueIndexRef = useRef(0);
@@ -520,7 +529,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
 
         if (currentTime - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
           lastFrameUpdateRef.current = currentTime;
-          setFrameTime(currentTime);
+          clock.currentTime = currentTime;
+          for (const update of clock.listeners) update(currentTime);
         }
 
         animationFrameRef.current = requestAnimationFrame(animate);
@@ -535,6 +545,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       };
     }, [
       animations.length,
+      clock,
       canvasSize.width,
       onAnimationsComplete,
       repeatAnimations,
@@ -545,8 +556,6 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     if (animations.length === 0) {
       return null;
     }
-
-    const currentTime = frameTime;
 
     return (
       <svg
@@ -606,8 +615,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
             <DynamicViewportRect
               key={viewport.id}
               viewport={viewport}
-              currentTime={currentTime}
-              settings={settingsRef.current}
+              clock={clock}
+              settings={settings}
               livePageTitle={live?.title}
               liveFaviconUrl={live?.favicon}
             />
@@ -789,17 +798,158 @@ export function getZoomLevelAtTime(
   return start.zoom + (end.zoom - start.zoom) * progress;
 }
 
+export function getViewportFrame(
+  viewport: ActiveViewport,
+  timeline: ViewportAnimationTimeline,
+  currentTime: number,
+  scrollSpeed: number,
+) {
+  const {
+    animation,
+    rect,
+    phase,
+    phaseStartTime,
+    animationStartTime,
+    durationMs,
+  } = viewport;
+  // Calculate opacity based on phase
+  let opacity = 1;
+  if (phase === "fade-in") {
+    const fadeProgress = Math.min(
+      1,
+      (currentTime - phaseStartTime) / FADE_IN_DURATION,
+    );
+    opacity = fadeProgress;
+  } else if (phase === "fade-out") {
+    const fadeProgress = Math.min(
+      1,
+      (currentTime - phaseStartTime) / FADE_OUT_DURATION,
+    );
+    opacity = 1 - fadeProgress;
+  }
+
+  // Calculate animation progress
+  const animElapsed = Math.max(
+    0,
+    (currentTime - animationStartTime) * scrollSpeed,
+  );
+  const animProgress =
+    durationMs <= 0 ? 1 : Math.min(1, animElapsed / durationMs);
+  const currentAnimTime = timeline.minTime + animProgress * timeline.timeRange;
+  const scrollRange = timeline.scrollRange;
+
+  // Calculate scroll position
+  let scrollY = 0;
+  if (animation.scrollEvents.length > 0) {
+    const scrollResult = getScrollPositionAtTime(
+      animation.scrollEvents,
+      currentAnimTime,
+    );
+    scrollY = scrollResult.scrollY;
+  }
+
+  // Calculate resize and check if actively resizing
+  let viewportWidth = rect.width;
+  let viewportHeight = rect.height;
+  let isActivelyResizing = false;
+
+  if (animation.resizeEvents && animation.resizeEvents.length > 0) {
+    const resizeData = getResizeDimensionsAtTime(
+      animation.resizeEvents,
+      currentAnimTime,
+      animation.startViewportWidth,
+      animation.startViewportHeight,
+    );
+    const widthScale = rect.width / Math.max(1, animation.startViewportWidth);
+    const heightScale =
+      rect.height / Math.max(1, animation.startViewportHeight);
+    viewportWidth = resizeData.width * widthScale;
+    viewportHeight = resizeData.height * heightScale;
+
+    // Check if actively resizing
+    const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
+    const prevResize = getResizeDimensionsAtTime(
+      animation.resizeEvents,
+      prevTime,
+      animation.startViewportWidth,
+      animation.startViewportHeight,
+    );
+    isActivelyResizing =
+      Math.abs(resizeData.width - prevResize.width) > 1 ||
+      Math.abs(resizeData.height - prevResize.height) > 1;
+  }
+
+  // Calculate zoom and check if actively zooming
+  let zoomLevel = 1.0;
+  let isActivelyZooming = false;
+  if (animation.zoomEvents && animation.zoomEvents.length > 0) {
+    zoomLevel = getZoomLevelAtTime(animation.zoomEvents, currentAnimTime);
+
+    // Check if actively zooming
+    const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
+    const prevZoom = getZoomLevelAtTime(animation.zoomEvents, prevTime);
+    isActivelyZooming = Math.abs(zoomLevel - prevZoom) > 0.005;
+  }
+
+  // Visual calculations
+  const visualWidth = viewportWidth;
+  const visualHeight = viewportHeight;
+  const visualX = rect.x + (rect.width - visualWidth) / 2;
+  const visualY = rect.y + (rect.height - visualHeight) / 2;
+
+  // Page height based on scroll range (bigger range = taller page)
+  // Range of 0.1 (10%) = 2x viewport, range of 1.0 (100%) = 6x viewport
+  const pageMultiplier = 2 + scrollRange * 4;
+  const bgHeight = Math.max(0, Math.min(10000, visualHeight * pageMultiplier));
+  const scrollableHeight = bgHeight - visualHeight;
+  const bgOffsetY = scrollY * scrollableHeight;
+
+  const viewportCenterX = visualX + visualWidth / 2;
+  const viewportCenterY = visualY + visualHeight / 2;
+  const scrolledContentTransform =
+    bgOffsetY === 0 ? undefined : `translate(0 ${-bgOffsetY})`;
+  const zoomTransform =
+    isActivelyZooming && zoomLevel !== 1.0
+      ? `translate(${viewportCenterX}, ${viewportCenterY}) scale(${zoomLevel}) translate(${-viewportCenterX}, ${-viewportCenterY})`
+      : undefined;
+
+  // Scrollbar thumb size based on page length (smaller thumb = longer page)
+  // Direct mapping: scrollRange 0.1 (short scroll) → 36px, scrollRange 1.0 (full page) → 6px
+  const trackHeight = visualHeight - 8;
+  // Normalize scrollRange from 0.1-1.0 to 0-1 for interpolation
+  const normalizedRange = Math.min(1, (scrollRange - 0.1) / 0.9);
+  // Lerp from 36px (short page) to 6px (long page)
+  const thumbHeight = Math.round(36 - normalizedRange * 30);
+  const thumbTravel = trackHeight - thumbHeight;
+  return {
+    opacity,
+    scrollY,
+    scrollRange,
+    visualWidth,
+    visualHeight,
+    visualX,
+    visualY,
+    bgHeight,
+    scrolledContentTransform,
+    zoomTransform,
+    isActivelyResizing,
+    trackHeight,
+    thumbHeight,
+    thumbY: visualY + 4 + scrollY * thumbTravel,
+  };
+}
+
 // Dynamic viewport renderer
 const DynamicViewportRect = memo(
   ({
     viewport,
-    currentTime,
+    clock,
     settings,
     livePageTitle,
     liveFaviconUrl,
   }: {
     viewport: ActiveViewport;
-    currentTime: number;
+    clock: ViewportClock;
     settings: {
       scrollSpeed: number;
       backgroundOpacity: number;
@@ -815,124 +965,101 @@ const DynamicViewportRect = memo(
     livePageTitle?: string;
     liveFaviconUrl?: string;
   }) => {
-    const {
-      animation,
-      rect,
-      phase,
-      phaseStartTime,
-      animationStartTime,
-      durationMs,
-      backgroundSeed,
-    } = viewport;
+    const { animation, backgroundSeed } = viewport;
     const timeline = useMemo(
       () => buildViewportAnimationTimeline(animation),
       [animation],
     );
 
-    // Calculate opacity based on phase
-    let opacity = 1;
-    if (phase === "fade-in") {
-      const fadeProgress = Math.min(
-        1,
-        (currentTime - phaseStartTime) / FADE_IN_DURATION,
-      );
-      opacity = fadeProgress;
-    } else if (phase === "fade-out") {
-      const fadeProgress = Math.min(
-        1,
-        (currentTime - phaseStartTime) / FADE_OUT_DURATION,
-      );
-      opacity = 1 - fadeProgress;
-    }
-
-    // Calculate animation progress
-    const animElapsed = Math.max(
-      0,
-      (currentTime - animationStartTime) * settings.scrollSpeed,
+    const [frameTime, setFrameTime] = useState(clock.currentTime);
+    const frame = getViewportFrame(
+      viewport,
+      timeline,
+      clock.currentTime,
+      settings.scrollSpeed,
     );
-    const animProgress =
-      durationMs <= 0 ? 1 : Math.min(1, animElapsed / durationMs);
-    const currentAnimTime =
-      timeline.minTime + animProgress * timeline.timeRange;
-    const scrollRange = timeline.scrollRange;
+    const {
+      opacity,
+      scrollY,
+      scrollRange,
+      visualWidth,
+      visualHeight,
+      visualX,
+      visualY,
+      bgHeight,
+      scrolledContentTransform,
+      zoomTransform,
+      isActivelyResizing,
+      trackHeight,
+      thumbHeight,
+      thumbY,
+    } = frame;
+    const groupRef = useRef<SVGGElement>(null);
+    const scrollRef = useRef<SVGGElement>(null);
+    const zoomRef = useRef<SVGGElement>(null);
+    const thumbRef = useRef<SVGRectElement>(null);
+    const borderRef = useRef<SVGRectElement>(null);
 
-    // Calculate scroll position
-    let scrollY = 0;
-    if (animation.scrollEvents.length > 0) {
-      const scrollResult = getScrollPositionAtTime(
-        animation.scrollEvents,
-        currentAnimTime,
-      );
-      scrollY = scrollResult.scrollY;
-    }
-
-    // Calculate resize and check if actively resizing
-    let viewportWidth = rect.width;
-    let viewportHeight = rect.height;
-    let isActivelyResizing = false;
-
-    if (animation.resizeEvents && animation.resizeEvents.length > 0) {
-      const resizeData = getResizeDimensionsAtTime(
-        animation.resizeEvents,
-        currentAnimTime,
-        animation.startViewportWidth,
-        animation.startViewportHeight,
-      );
-      const widthScale = rect.width / Math.max(1, animation.startViewportWidth);
-      const heightScale =
-        rect.height / Math.max(1, animation.startViewportHeight);
-      viewportWidth = resizeData.width * widthScale;
-      viewportHeight = resizeData.height * heightScale;
-
-      // Check if actively resizing
-      const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
-      const prevResize = getResizeDimensionsAtTime(
-        animation.resizeEvents,
-        prevTime,
-        animation.startViewportWidth,
-        animation.startViewportHeight,
-      );
-      isActivelyResizing =
-        Math.abs(resizeData.width - prevResize.width) > 1 ||
-        Math.abs(resizeData.height - prevResize.height) > 1;
-    }
-
-    // Calculate zoom and check if actively zooming
-    let zoomLevel = 1.0;
-    let isActivelyZooming = false;
-    if (animation.zoomEvents && animation.zoomEvents.length > 0) {
-      zoomLevel = getZoomLevelAtTime(animation.zoomEvents, currentAnimTime);
-
-      // Check if actively zooming
-      const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
-      const prevZoom = getZoomLevelAtTime(animation.zoomEvents, prevTime);
-      isActivelyZooming = Math.abs(zoomLevel - prevZoom) > 0.005;
-    }
-
-    // Visual calculations
-    const visualWidth = viewportWidth;
-    const visualHeight = viewportHeight;
-    const visualX = rect.x + (rect.width - visualWidth) / 2;
-    const visualY = rect.y + (rect.height - visualHeight) / 2;
-
-    // Page height based on scroll range (bigger range = taller page)
-    // Range of 0.1 (10%) = 2x viewport, range of 1.0 (100%) = 6x viewport
-    const pageMultiplier = 2 + scrollRange * 4;
-    const bgHeight = Math.max(
-      0,
-      Math.min(10000, visualHeight * pageMultiplier),
-    );
-    const scrollableHeight = bgHeight - visualHeight;
-    const bgOffsetY = scrollY * scrollableHeight;
-
-    const viewportCenterX = visualX + visualWidth / 2;
-    const viewportCenterY = visualY + visualHeight / 2;
-    const scrolledContentTransform =
-      bgOffsetY === 0 ? undefined : `translate(0 ${-bgOffsetY})`;
-    const zoomTransform =
-      isActivelyZooming && zoomLevel !== 1.0
-        ? `translate(${viewportCenterX}, ${viewportCenterY}) scale(${zoomLevel}) translate(${-viewportCenterX}, ${-viewportCenterY})`
-        : undefined;
+    useLayoutEffect(() => {
+      let previous: ReturnType<typeof getViewportFrame> | undefined;
+      const update = (currentTime: number) => {
+        const next = getViewportFrame(
+          viewport,
+          timeline,
+          currentTime,
+          settings.scrollSpeed,
+        );
+        // Geometry and iframe previews need React; scroll and fade only change SVG attributes.
+        if (
+          next.visualWidth !== visualWidth ||
+          next.visualHeight !== visualHeight ||
+          (settings.showPagePreview &&
+            previous &&
+            next.scrollY !== previous.scrollY)
+        ) {
+          setFrameTime(currentTime);
+        }
+        if (!previous || next.opacity !== previous.opacity)
+          groupRef.current?.setAttribute("opacity", String(next.opacity));
+        if (
+          !previous ||
+          next.scrolledContentTransform !== previous.scrolledContentTransform
+        ) {
+          scrollRef.current?.setAttribute(
+            "transform",
+            next.scrolledContentTransform ?? "",
+          );
+        }
+        if (!previous || next.zoomTransform !== previous.zoomTransform) {
+          zoomRef.current?.setAttribute("transform", next.zoomTransform ?? "");
+        }
+        if (!previous || next.thumbY !== previous.thumbY)
+          thumbRef.current?.setAttribute("y", String(next.thumbY));
+        if (
+          !previous ||
+          next.isActivelyResizing !== previous.isActivelyResizing
+        ) {
+          borderRef.current?.setAttribute(
+            "stroke-dasharray",
+            next.isActivelyResizing ? "2 2" : "none",
+          );
+        }
+        previous = next;
+      };
+      update(clock.currentTime);
+      clock.listeners.add(update);
+      return () => {
+        clock.listeners.delete(update);
+      };
+    }, [
+      clock,
+      viewport,
+      timeline,
+      settings,
+      visualWidth,
+      visualHeight,
+      frameTime,
+    ]);
 
     // Seeded random for visual variety
     const localSeededRandom = useCallback(
@@ -1437,15 +1564,6 @@ const DynamicViewportRect = memo(
       contentFill,
     ]);
 
-    // Scrollbar thumb size based on page length (smaller thumb = longer page)
-    // Direct mapping: scrollRange 0.1 (short scroll) → 36px, scrollRange 1.0 (full page) → 6px
-    const trackHeight = visualHeight - 8;
-    // Normalize scrollRange from 0.1-1.0 to 0-1 for interpolation
-    const normalizedRange = Math.min(1, (scrollRange - 0.1) / 0.9);
-    // Lerp from 36px (short page) to 6px (long page)
-    const thumbHeight = Math.round(36 - normalizedRange * 30);
-    const thumbTravel = trackHeight - thumbHeight;
-
     // Scrollbar colors — tinted to the window hue in color mode.
     const scrollbarTrackColor = mono
       ? `rgb(200, 200, 200)`
@@ -1494,6 +1612,7 @@ const DynamicViewportRect = memo(
 
     return (
       <g
+        ref={groupRef}
         opacity={opacity}
         style={{
           transition: "opacity 0.1s ease-out",
@@ -1699,8 +1818,8 @@ const DynamicViewportRect = memo(
         </defs>
 
         <g clipPath={`url(#viewport-clip-${viewport.id})`}>
-          <g transform={zoomTransform || undefined}>
-            <g transform={scrolledContentTransform}>
+          <g ref={zoomRef} transform={zoomTransform || undefined}>
+            <g ref={scrollRef} transform={scrolledContentTransform}>
               {/* Background — near-opaque + full-saturation hue in color mode so
                   the paper doesn't bleach the color. */}
               <rect
@@ -1872,6 +1991,7 @@ const DynamicViewportRect = memo(
 
         {/* Viewport border */}
         <rect
+          ref={borderRef}
           x={visualX}
           y={visualY}
           width={visualWidth}
@@ -1897,7 +2017,8 @@ const DynamicViewportRect = memo(
             />
             <rect
               x={visualX + visualWidth - 8}
-              y={visualY + 4 + scrollY * thumbTravel}
+              ref={thumbRef}
+              y={thumbY}
               width={4}
               height={thumbHeight}
               fill={scrollbarThumbColor}
