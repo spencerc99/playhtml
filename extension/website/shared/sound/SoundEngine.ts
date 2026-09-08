@@ -2515,6 +2515,12 @@ export class SoundEngine {
             attackEnd,
             this.ctx!.currentTime,
           );
+          // Hold the pluck's body briefly without extending its release window.
+          this.parameterAutomation.set(
+            voice.gainNode.gain,
+            pluckGain,
+            attackEnd + 0.02,
+          );
           this.parameterAutomation.exponential(
             voice.gainNode.gain,
             0.001,
