@@ -1,0 +1,190 @@
+// ABOUTME: Styles for the browse-to-participate page shown on installation machines.
+// ABOUTME: Sized to read from a step back, in the site's cream-and-ink palette.
+
+$bg: #faf7f2;
+$text: #3d3833;
+$muted: #7c746b;
+$accent: #c2410c;
+$rule: rgba(61, 56, 51, 0.14);
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html,
+body {
+  background: $bg;
+  color: $text;
+  font-family: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  // The frame's hairline, echoed so the page belongs to the same object.
+  &::after {
+    content: "";
+    position: fixed;
+    inset: 10px;
+    border: 1px solid rgba($accent, 0.45);
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 3;
+  }
+}
+
+canvas.trace {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+main {
+  position: relative;
+  z-index: 2;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 68px 40px 72px;
+}
+
+.wordmark {
+  font-family: "Source Serif 4", "Lora", Georgia, serif;
+  font-style: italic;
+  font-weight: 300;
+  font-size: 21px;
+  color: $muted;
+  margin-bottom: 30px;
+}
+
+h1 {
+  font-family: "Lora", Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(40px, 6vw, 62px);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  margin-bottom: 20px;
+}
+
+.lead {
+  font-size: clamp(19px, 2vw, 22px);
+  max-width: 40ch;
+  margin-bottom: 14px;
+}
+
+.hint {
+  font-size: 16px;
+  color: $muted;
+  font-style: italic;
+  margin-bottom: 44px;
+}
+
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 52px;
+  display: grid;
+  gap: 18px;
+  max-width: 46ch;
+
+  li {
+    display: flex;
+    gap: 14px;
+    align-items: baseline;
+    font-size: 17px;
+  }
+}
+
+.step-number {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba($accent, 0.5);
+  color: $accent;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(3px);
+}
+
+.starts {
+  border-top: 1px solid $rule;
+  padding-top: 26px;
+  margin-bottom: 46px;
+
+  h2 {
+    font-family: "Lora", Georgia, serif;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: $muted;
+    margin-bottom: 16px;
+  }
+
+  ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(228px, 1fr));
+    gap: 12px;
+  }
+
+  a {
+    display: block;
+    padding: 15px 17px;
+    border: 1px solid $rule;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.6);
+    color: inherit;
+    text-decoration: none;
+
+    &:hover {
+      border-color: rgba($accent, 0.55);
+      background: #fff;
+    }
+  }
+}
+
+.start-label {
+  display: block;
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+
+.start-detail {
+  display: block;
+  font-size: 13.5px;
+  color: $muted;
+}
+
+footer {
+  border-top: 1px solid $rule;
+  padding-top: 22px;
+  display: grid;
+  gap: 8px;
+  font-size: 13.5px;
+  color: $muted;
+  max-width: 62ch;
+
+  a {
+    color: #2f7f70;
+  }
+}
+
+@media (max-width: 620px) {
+  main {
+    padding: 44px 24px 56px;
+  }
+}

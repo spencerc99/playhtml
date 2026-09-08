@@ -168,6 +168,9 @@ when Xcode or Apple credentials are not available.
 The `extension/website/` Vite app serves both the marketing/landing pages
 (`index.html`, `privacy.html`) and the visualization experiments:
 
+- `extension/website/participate/` — the browse-to-participate page for
+  installation machines; explains the piece, traces the visitor's own cursor as
+  a demonstration, and offers places to start browsing
 - `extension/website/changelog/` — public extension release notes rendered
   from `extension/CHANGELOG.md`; supports Markdown images and
   `![video: Title](...)` media references.
@@ -310,22 +313,58 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 
 ## Configuration
 
-### Installation cursor
+### Installation mode
 
 In extension Settings, press Cmd/Ctrl+Shift+8 to reveal **Installation mode**
-under Identity. The checkbox shows the participant's own colored cursor on web
-pages and persists across browser restarts. It starts off; while enabled, its
-checkbox stays visible in Settings. Color changes apply to open pages.
+under Identity. It is the single switch for everything a browsing machine in the
+installation needs, and it persists across browser restarts. It starts off;
+while enabled, its checkbox stays visible in Settings.
 
-This is a local display setting, independent of feature entitlements and
-collection modes. It does not start cursor presence connections. Browser pages
-and embedded frame contents retain their native cursor. Open shadow roots receive
-cursor suppression when the pointer enters, including roots attached later.
-Closed roots retain their native cursor while the installation overlay hides.
+It turns on four things together:
+
+1. **The cursor.** The participant's own colored cursor replaces the native one
+   (`src/entrypoints/content/installationCursor.ts`). Color changes apply to
+   open pages. Browser pages and embedded frame contents keep their native
+   cursor. Open shadow roots receive cursor suppression when the pointer enters,
+   including roots attached later. Closed roots retain their native cursor while
+   the installation overlay hides — except the frame's own root, which is
+   skipped by id.
+2. **The frame** (`src/entrypoints/content/installationFrame.ts`). A hairline
+   border in the participant's color, a pill reading "participating in we were
+   online — browse to draw in the portrait", a sound switch, and an "about this"
+   panel explaining the piece. Everything lives in a closed shadow root and is
+   inert to pointer input except the two buttons. A canvas draws the live cursor
+   trace (fading over ~9s) over the participant's earlier traces on that domain,
+   fetched once per page through `GET_RECENT_EVENTS`. The host carries
+   `data-wwo-trace`, `data-wwo-previous`, and `data-wwo-sound` so its state is
+   readable without opening the shadow root.
+3. **Live sound** (`src/entrypoints/content/installationSound.ts`). The same
+   `@movement` `SoundEngine` the screens use, driven by the local cursor: one
+   voice follows movement, clicks ring the bell. Browsers require a gesture
+   before audio starts, so the engine is created on the first click or keypress.
+   The frame's switch mutes it and persists that under
+   `INSTALLATION_SOUND_KEY`; unset means on.
+4. **Installation pace** (`INSTALLATION_PACE` in `src/features/installationMode.ts`).
+   Cursor sampling drops from 250ms/15px to 80ms/4px and both EventBuffer hops
+   shorten (store 1s → 200ms, upload 3s → 500ms), so marks reach the screens
+   close to live. `CollectorManager` applies and reverts this through
+   `watchInstallationMode`; ordinary browsing keeps the cheaper defaults.
+
+This is a local machine setting, independent of feature entitlements and
+collection modes. It does not start cursor presence connections. The frame's
+earlier traces and the faster pace only produce marks when cursor collection is
+itself on.
+
+The public-facing half is `extension/website/participate/` — the page to set as
+the homepage and new-tab page on a browsing machine, linked from the
+installation office at `/admin/installation/`.
 
 Build with `bun run build-extension`, then run
-`node smoke-tests/installation-cursor.mjs` to exercise the real Settings flow in
-isolated Chromium. Set `INSTALLATION_EVIDENCE_DIR` to save screenshots.
+`node smoke-tests/installation-cursor.mjs` (cursor) and
+`node smoke-tests/installation-frame.mjs` (frame, trace pixels, earlier traces,
+sound, and pace) in isolated Chromium. Set `INSTALLATION_EVIDENCE_DIR` to save
+screenshots, and `PLAYWRIGHT_CHROMIUM_PATH` when the Chromium build is not the
+Playwright `chromium` channel.
 
 ### Files
 

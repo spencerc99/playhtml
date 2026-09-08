@@ -24,6 +24,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private realTimeRate = 16; // ~60fps for real-time (16ms)
   private lastRealTimeTime = 0;
   private minMovementThreshold = 15; // pixels - minimum movement to trigger a sample
+  /** Collector default, restored when installation pace turns off. */
+  private readonly defaultSampleRate = 250;
+  private readonly defaultMovementThreshold = 15;
 
   // Current cursor state
   private currentX = 0;
@@ -237,6 +240,16 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   /**
    * Schedule a real-time update (throttled to ~60fps)
    */
+  /**
+   * Applies (or clears) installation pace. Faster sampling with a smaller
+   * movement threshold makes a browsing machine's marks arrive close to live.
+   */
+  setPace(pace: { sampleRateMs: number; movementThresholdPx: number } | null): void {
+    this.setSampleRate(pace?.sampleRateMs ?? this.defaultSampleRate);
+    this.minMovementThreshold =
+      pace?.movementThresholdPx ?? this.defaultMovementThreshold;
+  }
+
   private scheduleRealTimeUpdate(): void {
     const now = Date.now();
     if (now - this.lastRealTimeTime >= this.realTimeRate) {

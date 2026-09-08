@@ -42,6 +42,12 @@ describe("installation office", () => {
     expect(screen.getByRole("link", { name: "Installation" }).getAttribute("aria-current")).toBe("page");
   });
 
+  it("links the browsing machine to the participate page", () => {
+    expect(
+      screen.getByRole("link", { name: "wewere.online/participate" }).getAttribute("href"),
+    ).toBe("https://wewere.online/participate/");
+  });
+
   it("does nothing when the production reload is not confirmed", async () => {
     vi.mocked(window.confirm).mockReturnValue(false);
     await act(async () => {

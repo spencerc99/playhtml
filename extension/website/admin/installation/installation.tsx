@@ -122,6 +122,20 @@ export function InstallationOffice() {
             </li>)}
           </ol>
         </section>
+
+        <section className="office-panel">
+          <div className="office-list-header">
+            <div><span className="office-section-number">BROWSING MACHINE</span><h3>Participate page</h3></div>
+          </div>
+          <p>
+            Set this as the homepage and new-tab page on the machine visitors browse from, and
+            turn on Installation mode in the extension's Settings (Cmd/Ctrl+Shift+8) so the frame,
+            live trace, and sound follow them onto every site.
+          </p>
+          <a href={`${PRODUCTION_ORIGIN}/participate/`} target="_blank" rel="noreferrer">
+            wewere.online/participate
+          </a>
+        </section>
       </main>
     </div>
   );
