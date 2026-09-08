@@ -27,6 +27,7 @@ import {
 import { resolveLiveInstallationProfile } from "../../shared/utils/liveInstallationProfiles";
 
 const LIVE_INSTALLATION_SETTINGS_DEFAULTS = {
+  randomizeColors: false,
   scrollSpeed: 1,
   backgroundOpacity: 0.8,
   maxConcurrentScrolls: 30,
@@ -227,6 +228,7 @@ const LiveInstallation = () => {
           continuousLiveTrails ? "continuous-live" : hybrid.playbackKey
         }
         playbackSource={continuousLiveTrails ? "live" : hybrid.source}
+        installationRecordings={hybrid.continuousRecordings}
         playbackContextKey={
           continuousLiveTrails ? "continuous-live" : hybrid.playbackContextKey
         }

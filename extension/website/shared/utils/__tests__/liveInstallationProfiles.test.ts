@@ -23,14 +23,14 @@ describe("live installation profiles", () => {
   });
 
   it("keeps the current installation settings in centrally deployed profiles", () => {
-    expect(LIVE_INSTALLATION_PROFILES.scrolling.settings.scrollSpeed).toBe(1);
+    expect(LIVE_INSTALLATION_PROFILES.scrolling.settings.scrollSpeed).toBe(0.35);
     expect(
       LIVE_INSTALLATION_PROFILES.scrolling.settings.maxConcurrentScrolls,
-    ).toBe(42);
+    ).toBe(30);
     expect(LIVE_INSTALLATION_PROFILES.typing.settings).toMatchObject({
       textboxOpacity: 0.85,
       keyboardAnimationSpeed: 0.4,
-      maxConcurrentTyping: 50,
+      maxConcurrentTyping: 30,
     });
     expect(LIVE_INSTALLATION_PROFILES.clicks.settings).toMatchObject({
       clickMaxRadius: 55,
@@ -43,6 +43,12 @@ describe("live installation profiles", () => {
       trailOpacity: 0.9,
       maxConcurrentTrails: 24,
     });
+  });
+
+  it("uses recorded participant colors on every installation screen", () => {
+    for (const profile of Object.values(LIVE_INSTALLATION_PROFILES)) {
+      expect(profile.settings.randomizeColors).toBe(false);
+    }
   });
 
   it("enables sound only on the main cursor field", () => {

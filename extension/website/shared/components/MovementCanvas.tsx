@@ -16,7 +16,7 @@ import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
 import { attachSoundWakeListeners } from "../sound/soundWake";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
-import { AnimatedTyping } from "./AnimatedTyping";
+import { AnimatedTyping, ContinuousTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
 import { AnimatedNavigation } from "./AnimatedNavigation";
 import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
@@ -331,6 +331,7 @@ const loadSettings = (
 };
 
 interface MovementCanvasProps {
+  installationRecordings?: { liveEventIds: ReadonlySet<string> };
   events: CollectionEvent[];
   loading: boolean;
   error: string | null;
@@ -397,6 +398,7 @@ interface MovementCanvasProps {
 }
 
 export const MovementCanvas: React.FC<MovementCanvasProps> = ({
+  installationRecordings,
   events,
   loading,
   error,
@@ -432,8 +434,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
     [defaultSettings],
   );
-  const [settings, setSettings] = useState(() =>
+  const [selectedSettings, setSettings] = useState(() =>
     loadSettings(defaultSettings, useStoredSettings),
+  );
+  const settings = useMemo(
+    () => installationRole
+      ? { ...selectedSettings, randomizeColors: false }
+      : selectedSettings,
+    [installationRole, selectedSettings],
   );
   const [controlsVisible, setControlsVisible] = useState(false);
   const [cinematic, setCinematic] = useState<CinematicConfig | null>(() =>
@@ -1186,11 +1194,17 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   const viewportSettings = useMemo(
     () => ({
+      recordedTiming: installationRecordings !== undefined,
       filters: (settings.filters as FilterChip[] | undefined) ?? [],
       pidFilter: settings.pidFilter,
       viewportEventFilter: settings.viewportEventFilter,
     }),
-    [settings.filters, settings.pidFilter, settings.viewportEventFilter],
+    [
+      settings.filters,
+      settings.pidFilter,
+      settings.viewportEventFilter,
+      installationRecordings !== undefined,
+    ],
   );
 
   const { animations: scrollAnimations, urlMetadata: scrollUrlMetadata } =
@@ -1219,6 +1233,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     enabled:
       !live &&
       !scrollingControlsPlayback &&
+      installationRecordings === undefined &&
       onPlaybackCycleComplete !== undefined,
     cycleKey: playbackKey,
     durationMs: playbackCycleDuration,
@@ -1765,7 +1780,15 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {showTyping && !paused && (
+        {showTyping && !paused && installationRecordings && (
+          <ContinuousTyping
+            key={`typing-${playbackContextKey}`}
+            typingStates={typingStates}
+            settings={typingSettings}
+            liveEventIds={installationRecordings.liveEventIds}
+          />
+        )}
+        {showTyping && !paused && !installationRecordings && (
           <AnimatedTyping
             key={`typing-${playbackKey}`}
             typingStates={typingStates}
@@ -1775,10 +1798,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           />
         )}
 
-        {showScrolling && !paused && scrollAnimations && scrollAnimations.length > 0 && (
+        {showScrolling && !paused && scrollAnimations && (installationRecordings || scrollAnimations.length > 0) && (
           <AnimatedScrollViewports
             key={`scrolling-${playbackKey}`}
             animations={scrollAnimations}
+            installationLiveEventIds={installationRecordings?.liveEventIds}
             canvasSize={viewportSize}
             repeatAnimations={!scrollingControlsPlayback}
             onAnimationsComplete={
