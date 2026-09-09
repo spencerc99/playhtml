@@ -29,10 +29,10 @@ export function typingBackgroundColor(color: string, alpha: number): string {
   const hsl = parseColorToHsl(color);
   if (!hsl) return colorWash(color, alpha);
   const lifted = hsl.l + 30;
-  // Above 65%, lightness approaches 92% exponentially instead of reaching white.
-  const lightness = lifted <= 65
+  // Above 85%, lightness approaches 98% exponentially instead of reaching white.
+  const lightness = lifted <= 85
     ? lifted
-    : 65 + 27 * (1 - Math.exp(-(lifted - 65) / 27));
+    : 85 + 13 * (1 - Math.exp(-(lifted - 85) / 13));
   return `hsla(${hsl.h}, ${hsl.s}%, ${lightness}%, ${alpha})`;
 }
 
