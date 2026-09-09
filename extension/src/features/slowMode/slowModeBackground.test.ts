@@ -18,7 +18,7 @@ function emptyState(): SlowModeState {
 }
 
 describe("Slow Mode browser interception", () => {
-  it("redirects a qualifying top-frame navigation and records the ride", async () => {
+  it.each(["chrome://newtab/", "https://garden.example/notes"])("redirects a deliberate navigation from %s and records the ride", async (previousUrl) => {
     const stored: Record<string, unknown> = {
       [SLOW_MODE_SETTINGS_KEY]: {
         enabled: true,
@@ -41,7 +41,7 @@ describe("Slow Mode browser interception", () => {
       createRideId: () => "ride_1234567890",
     });
 
-    handler.rememberTabUrl(7, "chrome://newtab/");
+    handler.rememberTabUrl(7, previousUrl);
     await handler.onCommitted({
       tabId: 7,
       frameId: 0,
@@ -68,7 +68,7 @@ describe("Slow Mode browser interception", () => {
     });
   });
 
-  it.each([null, "https://museum.example/exhibit", "https://garden.example/notes"])(
+  it.each([null, "https://museum.example/exhibit"])(
     "leaves an existing tab alone when its remembered URL is %s",
     async (previousUrl) => {
       const state = emptyState();

@@ -71,6 +71,7 @@ export function isSlowModeRideOutcome(
   );
 }
 
+const DELIBERATE_TRANSITIONS = new Set(["typed", "auto_bookmark", "generated"]);
 const NEVER_TRANSITIONS = new Set(["link", "form_submit", "reload"]);
 const PROTECTED_HOST_PREFIXES = ["mail.", "calendar.", "docs."];
 const AUTHENTICATION_HOST_LABELS = new Set([
@@ -195,7 +196,7 @@ export function dayKey(timestamp: number): string {
 }
 
 export function isFarJump(navigation: FarJumpNavigation): boolean {
-  if (!isNewTabUrl(navigation.previousUrl)) return false;
+  if (!navigation.previousUrl) return false;
   if (NEVER_TRANSITIONS.has(navigation.transitionType)) return false;
   if (navigation.transitionQualifiers.includes("forward_back")) return false;
 
@@ -207,7 +208,20 @@ export function isFarJump(navigation: FarJumpNavigation): boolean {
   }
   if (!isWebUrl(destination) || isProtectedDestination(destination)) return false;
 
-  return true;
+  if (isNewTabUrl(navigation.previousUrl)) return true;
+  if (!DELIBERATE_TRANSITIONS.has(navigation.transitionType)) return false;
+
+  try {
+    const previous = new URL(navigation.previousUrl);
+    if (!isWebUrl(previous)) return false;
+    const previousSite = siteDomain(previous);
+    return (
+      previous.hostname !== destination.hostname &&
+      (!previousSite || previousSite !== siteDomain(destination))
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function getCooldownStatus(

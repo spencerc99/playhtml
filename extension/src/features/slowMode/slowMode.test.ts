@@ -27,11 +27,11 @@ function emptyState(): SlowModeState {
 
 describe("isFarJump", () => {
   it.each(["typed", "auto_bookmark", "generated"] as const)(
-    "accepts deliberate %s navigation from a new tab",
+    "accepts deliberate %s navigation from an existing tab",
     (transitionType) => {
       expect(
         isFarJump({
-          previousUrl: "chrome://newtab/",
+          previousUrl: "https://garden.example/notes",
           destinationUrl: "https://museum.example/exhibit",
           transitionType,
           transitionQualifiers: [],
@@ -40,8 +40,8 @@ describe("isFarJump", () => {
     },
   );
 
-  it.each([null, "https://garden.example/notes", "https://museum.example/exhibit"])(
-    "rejects navigation from an existing or unknown page %s",
+  it.each([null, "https://museum.example/exhibit", "about:blank", "invalid"])(
+    "rejects restored or unknown previous page %s",
     (previousUrl) => {
       for (const transitionType of ["typed", "auto_bookmark", "generated", "other"]) {
         expect(isFarJump({
@@ -86,6 +86,18 @@ describe("isFarJump", () => {
           transitionQualifiers: [],
         }),
       ).toBe(false);
+    },
+  );
+
+  it.each(["link", "form_submit", "reload", "other"])(
+    "rejects automatic %s navigation from an existing tab",
+    (transitionType) => {
+      expect(isFarJump({
+        previousUrl: "https://garden.example/notes",
+        destinationUrl: "https://museum.example/exhibit",
+        transitionType,
+        transitionQualifiers: [],
+      })).toBe(false);
     },
   );
 
