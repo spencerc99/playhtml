@@ -41,7 +41,7 @@ describe("Slow Mode browser interception", () => {
       createRideId: () => "ride_1234567890",
     });
 
-    handler.rememberTabUrl(7, "https://garden.example/notes");
+    handler.rememberTabUrl(7, "chrome://newtab/");
     await handler.onCommitted({
       tabId: 7,
       frameId: 0,
@@ -68,6 +68,38 @@ describe("Slow Mode browser interception", () => {
     });
   });
 
+  it.each([null, "https://museum.example/exhibit", "https://garden.example/notes"])(
+    "leaves an existing tab alone when its remembered URL is %s",
+    async (previousUrl) => {
+      const state = emptyState();
+      const handler = createSlowModeNavigationHandler({
+        getStorage: async () => ({
+          [SLOW_MODE_SETTINGS_KEY]: {
+            enabled: true,
+            chancePercent: 100,
+            stopVisibility: "domain",
+          },
+          [SLOW_MODE_STATE_KEY]: state,
+        }),
+        setStorage: async () => { throw new Error("Unexpected ride write"); },
+        getCommutePageUrl: () => "https://wewere.online/commute/",
+        updateTab: async () => { throw new Error("Unexpected tab redirect"); },
+        now: () => Date.now(),
+        random: () => 0,
+        createRideId: () => "ride_1234567890",
+      });
+      if (previousUrl) handler.rememberTabUrl(7, previousUrl);
+      await handler.onCommitted({
+        tabId: 7,
+        frameId: 0,
+        url: "https://museum.example/exhibit",
+        transitionType: "typed",
+        transitionQualifiers: [],
+      });
+      expect(state).toEqual(emptyState());
+    },
+  );
+
   it("does not redirect subframes or link navigations", async () => {
     const updateTab = vi.fn().mockResolvedValue(undefined);
     const handler = createSlowModeNavigationHandler({
@@ -87,7 +119,7 @@ describe("Slow Mode browser interception", () => {
       createRideId: () => "ride_1234567890",
     });
 
-    handler.rememberTabUrl(7, "https://garden.example/notes");
+    handler.rememberTabUrl(7, "chrome://newtab/");
     await handler.onCommitted({
       tabId: 7,
       frameId: 2,
