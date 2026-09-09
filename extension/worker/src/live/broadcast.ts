@@ -3,6 +3,7 @@
 
 import type { CollectionEvent } from '@playhtml/extension-types';
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import { loadParticipantColors } from '../lib/participantColors';
 import { HUB_NAME } from './constants';
 
 /**
@@ -192,15 +193,12 @@ async function resolveCursorColors(
   if (missing.length > 0) {
     try {
       const supabase = createSupabaseClient(env);
-      const { data } = await supabase
-        .from('participants')
-        .select('pid, cursor_color')
-        .in('pid', missing);
-
-      const found = new Map<string, string | null>();
-      for (const row of data ?? []) {
-        found.set(row.pid as string, (row.cursor_color as string) ?? null);
-      }
+      const found = await loadParticipantColors(missing, ids =>
+        supabase
+          .from('participants')
+          .select('pid, cursor_color')
+          .in('pid', ids),
+      );
       // Record every requested-but-missing pid (even those with no row) so we
       // don't re-query for participants who simply have no stored color.
       for (const pid of missing) {
