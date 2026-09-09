@@ -24,6 +24,18 @@ export function colorWash(
   return `hsla(${hsl.h}, ${hsl.s}%, ${l}%, ${alpha})`;
 }
 
+/** Lightens typing fills with a soft ceiling so pale participant hues remain visible. */
+export function typingBackgroundColor(color: string, alpha: number): string {
+  const hsl = parseColorToHsl(color);
+  if (!hsl) return colorWash(color, alpha);
+  const lifted = hsl.l + 30;
+  // Above 65%, lightness approaches 92% exponentially instead of reaching white.
+  const lightness = lifted <= 65
+    ? lifted
+    : 65 + 27 * (1 - Math.exp(-(lifted - 65) / 27));
+  return `hsla(${hsl.h}, ${hsl.s}%, ${lightness}%, ${alpha})`;
+}
+
 /** A solid, readable shade of `color` at a target lightness — used for text and
  * borders so the hue reads as the participant's but stays legible on the warm
  * paper background. */
