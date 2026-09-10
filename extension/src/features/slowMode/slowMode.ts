@@ -71,11 +71,7 @@ export function isSlowModeRideOutcome(
   );
 }
 
-const DELIBERATE_TRANSITIONS = new Set([
-  "typed",
-  "auto_bookmark",
-  "generated",
-]);
+const DELIBERATE_TRANSITIONS = new Set(["typed", "auto_bookmark", "generated"]);
 const NEVER_TRANSITIONS = new Set(["link", "form_submit", "reload"]);
 const PROTECTED_HOST_PREFIXES = ["mail.", "calendar.", "docs."];
 const AUTHENTICATION_HOST_LABELS = new Set([
@@ -127,9 +123,13 @@ function isNewTabUrl(value: string | null): boolean {
   if (!value) return false;
   return (
     value === "about:newtab" ||
+    value === "about:home" ||
     value.startsWith("chrome://newtab") ||
+    value.startsWith("chrome://new-tab-page/") ||
+    value.startsWith("chrome://new-tab-page-third-party/") ||
     value.startsWith("edge://newtab") ||
-    value.startsWith("brave://newtab")
+    value.startsWith("brave://newtab") ||
+    /^(chrome-extension|moz-extension):\/\/[^/]+\/walking-record\.html(?:[?#]|$)/.test(value)
   );
 }
 
@@ -196,6 +196,7 @@ export function dayKey(timestamp: number): string {
 }
 
 export function isFarJump(navigation: FarJumpNavigation): boolean {
+  if (!navigation.previousUrl) return false;
   if (NEVER_TRANSITIONS.has(navigation.transitionType)) return false;
   if (navigation.transitionQualifiers.includes("forward_back")) return false;
 
@@ -207,23 +208,20 @@ export function isFarJump(navigation: FarJumpNavigation): boolean {
   }
   if (!isWebUrl(destination) || isProtectedDestination(destination)) return false;
 
-  if (navigation.previousUrl) {
-    try {
-      const previous = new URL(navigation.previousUrl);
-      const previousSite = siteDomain(previous);
-      const destinationSite = siteDomain(destination);
-      if (previousSite && destinationSite && previousSite === destinationSite) {
-        return false;
-      }
-    } catch {
-      if (!isNewTabUrl(navigation.previousUrl)) return false;
-    }
-  }
+  if (isNewTabUrl(navigation.previousUrl)) return true;
+  if (!DELIBERATE_TRANSITIONS.has(navigation.transitionType)) return false;
 
-  return (
-    DELIBERATE_TRANSITIONS.has(navigation.transitionType) ||
-    isNewTabUrl(navigation.previousUrl)
-  );
+  try {
+    const previous = new URL(navigation.previousUrl);
+    if (!isWebUrl(previous)) return false;
+    const previousSite = siteDomain(previous);
+    return (
+      previous.hostname !== destination.hostname &&
+      (!previousSite || previousSite !== siteDomain(destination))
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function getCooldownStatus(
