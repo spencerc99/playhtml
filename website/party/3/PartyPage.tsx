@@ -749,7 +749,7 @@ function CakeStation({
                 </div>
                 {finishedCount === CAKE_CELL_COUNT && (
                   <div className="party-cake__plaque">
-                    this cake was eaten square by square · august 2026
+                    this cake was eaten square by square · september 2026
                   </div>
                 )}
                 <div className="party-cake__counter">
@@ -1612,7 +1612,7 @@ function WishesStation({
                               <strong>
                                 — {signatureName.trim() || identity.name}
                               </strong>
-                              <small>today · {getCurrentPlace()}</small>
+                              <small>today</small>
                             </div>
                           </article>
                           <small>yours, before you sign it</small>
@@ -1844,13 +1844,6 @@ function PartyRoom({
     (frame.height - PARTY_CHROME_HEIGHT) / PARTY_ROOM_HEIGHT,
   );
   const cameraTravel = Math.max(1, PARTY_ROOM_WIDTH * roomScale - frame.width);
-  const viewportCenter = (camera * cameraTravel + frame.width / 2) / roomScale;
-  const nearestStation = [...PARTY_STATIONS].sort(
-    (a, b) =>
-      Math.abs(a.center - viewportCenter) - Math.abs(b.center - viewportCenter),
-  )[0];
-  const roomHint = hasMovedCamera ? `you’re at ${nearestStation.label}` : null;
-
   useEffect(() => {
     const updateFrame = () =>
       setFrame({ width: window.innerWidth, height: window.innerHeight });
@@ -2045,7 +2038,6 @@ function PartyRoom({
     effect,
     emitEvent,
     eventLine,
-    roomHint,
     roomScale,
     setSoundOn,
     soundOn,
@@ -2058,7 +2050,6 @@ function PartyRoom({
     effect,
     emitEvent,
     eventLine,
-    roomHint,
     roomScale,
     setSoundOn,
     soundOn,
@@ -2096,7 +2087,6 @@ function PartyRoom({
             effect,
             emitEvent,
             eventLine,
-            roomHint,
             roomScale,
             setSoundOn,
             soundOn,
@@ -2141,7 +2131,7 @@ function PartyRoom({
                 </CanToggleElement>
                 <Pennants />
                 <section className="party-hero" data-hero>
-                  <p className="party-hero__date">August 2023–2026</p>
+                  <p className="party-hero__date">August 2023–September 2026</p>
                   <h1>help us celebrate!</h1>
                   <p>
                     three years ago I put <strong>playhtml</strong> on the
@@ -2251,10 +2241,7 @@ function PartyRoom({
                   ✳ {eventLine}
                 </p>
               )}
-              <footer className="party-footer" data-footer>
-                {roomHint && (
-                  <span className="party-footer__location">{roomHint}</span>
-                )}
+                <footer className="party-footer" data-footer>
                 <span className="party-footer__emote-hint">
                   <kbd>E</kbd> to emote
                 </span>
@@ -2278,8 +2265,6 @@ function PartyRoom({
                   {users.length} here
                 </span>
                 <a href="https://playhtml.fun">home</a>
-                <a href="https://playhtml.fun/docs/">docs</a>
-                <a href="https://discord.gg/2FhWH9AmSp">discord</a>
               </footer>
             </div>
           );
