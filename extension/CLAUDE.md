@@ -344,13 +344,16 @@ It turns on five things together:
    opening the shadow root.
 3. **The ink** (`src/entrypoints/content/installationTrace.ts`). The trace is
    drawn the way the screens draw it: `perfect-freehand` outlines filled at the
-   screens' stroke width and opacities, and clicks ringing out with the same
-   ripple geometry as `LIVE_CURSOR_CLICK_SETTINGS`. Strokes settle to a dim,
-   hold, then depart, so browsing accumulates as a portrait rather than a comet
-   tail. Points live in **document space** — the same absolute placement the
-   visualizations use (`x * vw + scrollX`) — so marks stay on the content they
-   were made over when the page scrolls, and a scroll under a still cursor
-   splits the stroke instead of drawing a slash.
+   screens' stroke width and opacities, and clicks ringing out with the screens'
+   ripple geometry at the full `CLICK_DEFAULTS` radius (the live portrait's
+   smaller one exists because thousands of clicks land in one frame). Strokes
+   and click marks share one lifecycle — settle to a resting weight, hold, then
+   depart — so a visit accumulates as a portrait rather than a comet tail, and
+   shows where it stopped as well as where it went. Points live in **document
+   space** — the same absolute placement the visualizations use
+   (`x * vw + scrollX`) — so marks stay on the content they were made over when
+   the page scrolls, and a scroll under a still cursor splits the stroke instead
+   of drawing a slash.
 4. **Live sound** (`src/entrypoints/content/installationSound.ts`). The same
    `@movement` `SoundEngine` the screens use, driven by the local cursor: one
    voice follows movement, clicks ring the bell. Browsers require a gesture
