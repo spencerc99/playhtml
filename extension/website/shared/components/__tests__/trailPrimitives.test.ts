@@ -28,6 +28,17 @@ function trailState(): TrailState {
 }
 
 describe("computeTrailFrame", () => {
+  it.each([0.75, 1])("retains the beginning of a long trail at progress %s", (progress) => {
+    const state = trailState();
+    state.variedPoints = Array.from({ length: 2001 }, (_, x) => ({ x, y: 0 }));
+    const frame = computeTrailFrame(state, progress * state.durationMs, 4);
+    const coordinates = frame!.pathData.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+    const xs = coordinates.filter((_, index) => index % 2 === 0);
+
+    expect(Math.min(...xs)).toBeLessThan(5);
+    expect(Math.max(...xs)).toBeGreaterThan(2000 * progress - 5);
+  });
+
   it("returns null before the trail starts", () => {
     expect(computeTrailFrame(trailState(), -10, 4)).toBeNull();
   });
