@@ -27,7 +27,7 @@ const FEATURE_DEFINITIONS = {
   },
   QUARANTINE_TAPE: {
     name: "Quarantine tape",
-    description: "Mark pages with shared caution tape.",
+    description: "Mark pages and images with shared caution tape.",
     defaultStage: "internal",
     requiresReload: true,
   },
