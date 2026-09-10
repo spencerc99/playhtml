@@ -26,6 +26,6 @@
       "@extension/*": ["../src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "internet-map"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
