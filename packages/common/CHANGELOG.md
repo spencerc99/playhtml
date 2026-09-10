@@ -1,5 +1,14 @@
 # @playhtml/common
 
+## 0.9.1
+
+### Patch Changes
+
+- 74e4d35: Make `playhtml.register(elementOrId, initializer)` the recommended vanilla API for custom elements using either `updateElement` or `view`. Callers can pass an existing HTML element or register by id before the element exists. Registered initializers bind through the standard setup path without being copied onto DOM elements, while direct element-property configuration remains supported for compatibility.
+- c549849: Fix a `can-grow` element leaking document-level keydown/keyup listeners when it's removed from the DOM while hovered (e.g. an SPA route change or React unmount that doesn't fire `mouseleave` first). The listeners are now cleaned up on unmount regardless of hover state.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 75c1cce: Avoid redundant shared-data writes when incoming object and array values are unchanged, preventing unnecessary collaborative document history growth.
+
 ## 0.9.0
 
 ### Minor Changes
