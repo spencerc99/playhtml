@@ -12,6 +12,7 @@ $text-faint:     #b5aea5;
 $border:         rgba(90, 78, 65, 0.12);
 $border-strong:  rgba(90, 78, 65, 0.25);
 $shadow:         rgba(90, 78, 65, 0.08);
+$shadow-strong:  rgba(90, 78, 65, 0.16);
 
 $accent-teal:    #4a9a8a;
 $accent-rust:    #c4724e;
@@ -27,6 +28,9 @@ $error-bg:       rgba(196, 114, 78, 0.08);
 $error-text:     #9a5a3a;
 $gold-bg:        rgba(212, 184, 92, 0.12);
 $gold-text:      #7a6020;
+$btn-fg:         #ffffff;
+$gold-btn-fg:    #3d3833;
+$canvas-paper:   #faf9f6;
 
 // ─── Typography ──────────────────────────────────────────────────────────────
 $font-body:      'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -48,6 +52,7 @@ $font-wordmark:  'Source Serif 4', 'Lora', Georgia, serif;
   --border:         #{$border};
   --border-strong:  #{$border-strong};
   --shadow:         #{$shadow};
+  --shadow-strong:  #{$shadow-strong};
   --accent-teal:    #{$accent-teal};
   --accent-rust:    #{$accent-rust};
   --accent-blue:    #{$accent-blue};
@@ -58,10 +63,43 @@ $font-wordmark:  'Source Serif 4', 'Lora', Georgia, serif;
   --shared-bg:      #{$shared-bg};
   --error-bg:       #{$error-bg};
   --error-text:     #{$error-text};
+  --gold-bg:        #{$gold-bg};
+  --gold-text:      #{$gold-text};
+  --btn-fg:         #{$btn-fg};
+  --gold-btn-fg:    #{$gold-btn-fg};
+  --canvas-paper:   #{$canvas-paper};
   --font-body:      #{$font-body};
   --font-heading:   #{$font-heading};
   --font-mono:      #{$font-mono};
   --font-wordmark:  #{$font-wordmark};
+}
+
+@mixin root-tokens-dark {
+  --bg:             #1f1b17;
+  --surface:        #292420;
+  --surface-hover:  #332d27;
+  --text:           #ece5da;
+  --text-muted:     #a1978a;
+  --text-faint:     #6f655b;
+  --border:         rgba(236, 229, 218, 0.14);
+  --border-strong:  rgba(236, 229, 218, 0.28);
+  --shadow:         rgba(0, 0, 0, 0.3);
+  --shadow-strong:  rgba(0, 0, 0, 0.5);
+  --accent-teal:    #63b3a1;
+  --accent-rust:    #d68a66;
+  --accent-blue:    #7fa9cf;
+  --accent-gold:    #d9c274;
+  --accent-plum:    #a98a9d;
+  --active-bg:      rgba(99, 179, 161, 0.14);
+  --active-border:  rgba(99, 179, 161, 0.35);
+  --shared-bg:      rgba(127, 169, 207, 0.14);
+  --error-bg:       rgba(214, 138, 102, 0.14);
+  --error-text:     #e0a184;
+  --gold-bg:        rgba(217, 194, 116, 0.16);
+  --gold-text:      #dcc98a;
+  --btn-fg:         #1f1b17;
+  --gold-btn-fg:    #1f1b17;
+  --canvas-paper:   #faf9f6;
 }
 
 // ─── Shared component mixins ─────────────────────────────────────────────────
@@ -69,12 +107,12 @@ $font-wordmark:  'Source Serif 4', 'Lora', Georgia, serif;
   font-family: $font-wordmark;
   font-style: italic;
   font-weight: 200;
-  color: $text;
+  color: var(--text);
 }
 
 @mixin heading {
   font-family: $font-heading;
-  color: $text;
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -96,32 +134,32 @@ $font-wordmark:  'Source Serif 4', 'Lora', Georgia, serif;
 
 @mixin btn-primary {
   @include btn-base;
-  background: $text;
-  color: white;
+  background: var(--text);
+  color: var(--btn-fg);
 }
 
 @mixin btn-secondary {
   @include btn-base;
-  background: $surface;
-  color: $text;
-  border: 1px solid $border-strong;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
 }
 
 @mixin btn-teal {
   @include btn-base;
-  background: $accent-teal;
-  color: white;
+  background: var(--accent-teal);
+  color: var(--btn-fg);
 }
 
 @mixin btn-blue {
   @include btn-base;
-  background: $accent-blue;
-  color: white;
+  background: var(--accent-blue);
+  color: var(--btn-fg);
 }
 
 @mixin card {
-  background: $surface;
-  border: 1px solid $border;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
 }
@@ -130,11 +168,11 @@ $font-wordmark:  'Source Serif 4', 'Lora', Georgia, serif;
   padding: 8px 10px;
   font-family: $font-body;
   font-size: 13px;
-  border: 1px solid $border-strong;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: $bg;
-  color: $text;
+  background: var(--bg);
+  color: var(--text);
   outline: none;
 
-  &:focus { border-color: $accent-teal; }
+  &:focus { border-color: var(--accent-teal); }
 }

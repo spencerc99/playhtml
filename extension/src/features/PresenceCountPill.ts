@@ -6,6 +6,10 @@ import {
   isWikipediaPortalArticleUrl,
   type WikiPresenceView,
 } from "../custom-sites/wikipedia";
+import {
+  getHostPageTheme,
+  INJECTED_UI_THEME_TOKENS,
+} from "../entrypoints/content/injected-ui-theme";
 
 // Concentric ellipses suggesting a portal
 const PORTAL_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -24,6 +28,7 @@ export class PresenceCountPill {
   private isHidden = false;
   private chatOpen = false;
   private chatUnread = false;
+  private themeTokens = INJECTED_UI_THEME_TOKENS[getHostPageTheme()];
 
   constructor(
     private presence: PresenceAPI,
@@ -194,9 +199,9 @@ export class PresenceCountPill {
         right: "16px",
         fontFamily: "'Atkinson Hyperlegible', system-ui, sans-serif",
         fontSize: "11px",
-        color: "#8a8279",
-        background: "rgba(250, 247, 242, 0.9)",
-        border: "1px solid rgba(90, 78, 65, 0.15)",
+        color: this.themeTokens["--text-muted"],
+        background: `color-mix(in srgb, ${this.themeTokens["--bg"]} 90%, transparent)`,
+        border: `1px solid ${this.themeTokens["--border"]}`,
         borderRadius: "12px",
         padding: "4px 10px",
         zIndex: "2147483640",
@@ -224,7 +229,9 @@ export class PresenceCountPill {
       if (key && myKey && key === myKey) return;
       if (key && seen.has(key)) return;
       if (key) seen.add(key);
-      const color = p.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#8a8279";
+      const color =
+        p.playerIdentity?.playerStyle?.colorPalette?.[0] ??
+        this.themeTokens["--text-muted"];
       this.element!.appendChild(this.createDot(color));
       dotCount++;
     });
@@ -237,7 +244,9 @@ export class PresenceCountPill {
     // "M elsewhere" if there are people on other pages
     if (elsewhere > 0) {
       const elsewhereLabel = document.createElement("span");
-      Object.assign(elsewhereLabel.style, { color: "#a09890" });
+      Object.assign(elsewhereLabel.style, {
+        color: this.themeTokens["--text-faint"],
+      });
       elsewhereLabel.textContent = `\u00b7 ${elsewhere} elsewhere`;
       this.element.appendChild(elsewhereLabel);
 
@@ -262,8 +271,8 @@ export class PresenceCountPill {
 
     // Pill border accent when chat is open
     this.element.style.borderColor = this.chatOpen
-      ? "rgba(196, 114, 78, 0.4)"
-      : "rgba(90, 78, 65, 0.15)";
+      ? `color-mix(in srgb, ${this.themeTokens["--accent-rust"]} 40%, transparent)`
+      : this.themeTokens["--border"];
   }
 
   private createChatSegment(): HTMLElement {
@@ -279,8 +288,8 @@ export class PresenceCountPill {
       pointerEvents: "auto",
     });
     if (this.chatOpen) {
-      seg.style.background = "rgba(196, 114, 78, 0.15)";
-      seg.style.color = "#c4724e";
+      seg.style.background = this.themeTokens["--error-bg"];
+      seg.style.color = this.themeTokens["--accent-rust"];
     }
 
     const icon = document.createElement("span");
@@ -298,7 +307,7 @@ export class PresenceCountPill {
         width: "5px",
         height: "5px",
         borderRadius: "50%",
-        background: "#c4724e",
+        background: this.themeTokens["--accent-rust"],
         display: "inline-block",
         marginLeft: "2px",
       });
@@ -358,7 +367,7 @@ export class PresenceCountPill {
       padding: "2px",
       display: "flex",
       alignItems: "center",
-      color: "#4a9a8a",
+      color: this.themeTokens["--accent-teal"],
       opacity: "0.7",
       transition: "opacity 0.2s",
       marginLeft: "2px",
@@ -410,9 +419,9 @@ export class PresenceCountPill {
       right: "16px",
       fontFamily: "'Atkinson Hyperlegible', system-ui, sans-serif",
       fontSize: "11px",
-      color: "#8a8279",
-      background: "rgba(250, 247, 242, 0.95)",
-      border: "1px solid rgba(90, 78, 65, 0.15)",
+      color: this.themeTokens["--text-muted"],
+      background: `color-mix(in srgb, ${this.themeTokens["--bg"]} 95%, transparent)`,
+      border: `1px solid ${this.themeTokens["--border"]}`,
       borderRadius: "4px",
       padding: "4px 8px",
       zIndex: "2147483640",

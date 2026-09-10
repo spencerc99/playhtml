@@ -1,5 +1,7 @@
 # Unreleased
 
+- Extension pages now follow your system light or dark appearance.
+- Controls shown on websites now match each site's light or dark appearance.
 - Slow Mode commute rides now connect reliably when the hosted route loads before the extension.
 - Internet Commute now stops counting riders after they leave and always shows the train pull-up and cursor boarding intro for Slow Mode rides.
 - Internet Commute now starts a fresh route after returning to home station.

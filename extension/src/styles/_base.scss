@@ -4,7 +4,14 @@
 @use 'variables' as *;
 
 :root {
+  color-scheme: light dark;
   @include root-tokens;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    @include root-tokens-dark;
+  }
 }
 
 *,
@@ -16,8 +23,8 @@
 body {
   margin: 0;
   font-family: $font-body;
-  background: $bg;
-  color: $text;
+  background: var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -32,7 +39,7 @@ p {
 }
 
 a {
-  color: $accent-blue;
+  color: var(--accent-blue);
   text-decoration: none;
 
   &:hover { text-decoration: underline; }

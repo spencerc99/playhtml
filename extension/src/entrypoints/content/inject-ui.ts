@@ -3,6 +3,11 @@
 
 import { createRoot, type Root } from "react-dom/client";
 import { createElement, type ComponentType } from "react";
+import {
+  getHostPageTheme,
+  INJECTED_UI_THEME_TOKENS,
+  type InjectedUiTheme,
+} from "./injected-ui-theme";
 
 interface ShadowOptions {
   /** Inline CSS for the host element (positioning, z-index). */
@@ -16,6 +21,8 @@ interface ShadowOptions {
   fontUrl?: string;
   /** Optional id for the host element (for later lookup/removal). */
   hostId?: string;
+  /** Theme applied as custom properties on the shadow host. */
+  theme?: InjectedUiTheme;
 }
 
 /**
@@ -29,11 +36,22 @@ export function injectShadow(options: ShadowOptions = {}): {
   host: HTMLElement;
   shadow: ShadowRoot;
 } {
-  const { hostStyle, css, fontUrl, hostId } = options;
+  const {
+    hostStyle,
+    css,
+    fontUrl,
+    hostId,
+    theme = getHostPageTheme(),
+  } = options;
 
   const host = document.createElement("div");
   if (hostId) host.id = hostId;
   if (hostStyle) host.style.cssText = hostStyle;
+  for (const [property, value] of Object.entries(
+    INJECTED_UI_THEME_TOKENS[theme],
+  )) {
+    host.style.setProperty(property, value);
+  }
 
   const shadow = host.attachShadow({ mode: "closed" });
 

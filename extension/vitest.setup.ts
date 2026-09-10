@@ -2,6 +2,14 @@
 // ABOUTME: Stubs window dimensions, devicePixelRatio, and other DOM properties.
 
 import { vi } from "vitest";
+import { JSDOM } from "jsdom";
+
+const storageWindow = new JSDOM("", { url: "https://test.local" }).window;
+Object.defineProperty(globalThis, "localStorage", {
+  value: storageWindow.localStorage,
+  writable: true,
+  configurable: true,
+});
 
 // Mock window dimensions
 Object.defineProperty(window, "innerWidth", { value: 1024, writable: true });

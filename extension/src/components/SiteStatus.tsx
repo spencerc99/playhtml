@@ -10,14 +10,12 @@ interface SiteStatusProps {
 export function SiteStatus({ currentTab, playhtmlStatus }: SiteStatusProps) {
   return (
     <section style={{ marginBottom: "16px" }}>
-      <h3
-        style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#374151" }}
-      >
+      <h3 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "var(--text)" }}>
         Current Site
       </h3>
       <div
         style={{
-          background: "#f9fafb",
+          background: "var(--surface)",
           padding: "8px",
           borderRadius: "6px",
           fontSize: "12px",

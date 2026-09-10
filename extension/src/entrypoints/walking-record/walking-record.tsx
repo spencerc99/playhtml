@@ -366,11 +366,11 @@ const NEWTAB_CONTROL_STYLE = {
   gap: "8px",
   padding: "8px 12px",
   borderRadius: "8px",
-  background: "rgba(250, 247, 242, 0.92)",
-  border: "1px solid rgba(90, 78, 65, 0.25)",
+  background: "color-mix(in srgb, var(--bg) 92%, transparent)",
+  border: "1px solid var(--border-strong)",
   fontFamily: "'Martian Mono', monospace",
   fontSize: "11px",
-  color: "#3d3833",
+  color: "var(--text)",
   zIndex: 50,
 } as const;
 

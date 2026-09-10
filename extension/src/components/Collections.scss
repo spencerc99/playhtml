@@ -21,12 +21,12 @@
       font-family: $font-body;
       margin-bottom: 8px;
       padding: 0;
-      color: $text-muted;
+      color: var(--text-muted);
       line-height: 1;
       transition: color 0.12s;
 
       &:hover {
-        color: $accent-teal;
+        color: var(--accent-teal);
       }
     }
 
@@ -37,14 +37,14 @@
 
     p {
       font-size: 12px;
-      color: $text-muted;
+      color: var(--text-muted);
       margin: 0;
     }
   }
 
   &__header-desc {
     font-size: 12px;
-    color: $text-muted;
+    color: var(--text-muted);
     margin: 0;
   }
 
@@ -58,16 +58,16 @@
   &__loading {
     padding: 20px;
     text-align: center;
-    color: $text;
+    color: var(--text);
   }
 
   &__error {
     margin-bottom: 16px;
     padding: 12px;
-    background: $error-bg;
+    background: var(--error-bg);
     border-radius: 8px;
     font-size: 12px;
-    color: $error-text;
+    color: var(--error-text);
 
     span {
       font-size: 11px;
@@ -78,8 +78,8 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
     gap: 1px;
-    background: $border;
-    border: 1px solid $border;
+    background: var(--border);
+    border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -93,7 +93,7 @@
     margin: 0 0 6px;
     font-size: 11px;
     font-weight: 700;
-    color: $text;
+    color: var(--text);
   }
 
   &__stats-detail {
@@ -103,7 +103,7 @@
     margin-top: 5px;
     font-size: 9px;
     line-height: 1;
-    color: $text-muted;
+    color: var(--text-muted);
     font-family: $font-mono;
   }
 
@@ -121,7 +121,7 @@
     flex: 0 0 auto;
     width: 10px;
     height: 10px;
-    color: $text-muted;
+    color: var(--text-muted);
   }
 
   &__stats-detail-count {
@@ -139,14 +139,14 @@
     justify-content: space-between;
     min-height: 44px;
     padding: 7px 3px 6px;
-    background: $bg;
+    background: var(--bg);
     font-family: $font-mono;
   }
 
   &__stat-value {
     font-size: 12px;
     font-weight: 700;
-    color: $text;
+    color: var(--text);
     line-height: 1.1;
     max-width: 100%;
     white-space: nowrap;
@@ -158,7 +158,7 @@
   &__stat-label {
     font-size: 7px;
     line-height: 1.1;
-    color: $text-muted;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0;
     margin-top: 1px;
@@ -169,23 +169,23 @@
   &__context {
     margin-bottom: 10px;
     padding: 8px 10px;
-    background: $surface;
+    background: var(--surface);
     border-radius: 6px;
     font-size: 12px;
-    color: $text;
+    color: var(--text);
 
     span {
       font-size: 11px;
-      color: $text-muted;
+      color: var(--text-muted);
     }
   }
 
   &__context-link {
-    color: $accent-teal;
+    color: var(--accent-teal);
     text-decoration: underline;
 
     &:hover {
-      color: $text;
+      color: var(--text);
     }
   }
 
@@ -198,14 +198,14 @@
   &__privacy-notice {
     margin-top: 12px;
     padding: 8px 10px;
-    background: $gold-bg;
+    background: var(--gold-bg);
     border-radius: 6px;
     font-size: 11px;
-    color: $gold-text;
+    color: var(--gold-text);
     line-height: 1.5;
 
     a {
-      color: $gold-text;
+      color: var(--gold-text);
       text-decoration: underline;
     }
   }
@@ -223,17 +223,17 @@
     flex: 1;
     padding: 8px;
     background: none;
-    border: 1px solid $border-strong;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     font-family: $font-body;
     font-size: 11px;
-    color: $text-muted;
+    color: var(--text-muted);
     cursor: pointer;
     transition: color 0.15s, border-color 0.15s;
 
     &:hover:not(:disabled) {
-      color: $text;
-      border-color: $accent-teal;
+      color: var(--text);
+      border-color: var(--accent-teal);
     }
 
     &:disabled {
@@ -248,11 +248,11 @@
     font-family: $font-body;
 
     &--success {
-      color: $accent-teal;
+      color: var(--accent-teal);
     }
 
     &--error {
-      color: $error-text;
+      color: var(--error-text);
     }
   }
 
@@ -260,25 +260,25 @@
     margin-top: 12px;
     padding: 5px 10px;
     background: none;
-    border: 1px solid rgba(196, 74, 54, 0.35);
+    border: 1px solid color-mix(in srgb, var(--accent-rust) 35%, transparent);
     border-radius: 5px;
     font-family: $font-body;
     font-size: 10px;
-    color: #b34a38;
+    color: var(--error-text);
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
 
     &:hover {
-      background: rgba(196, 74, 54, 0.08);
-      color: #8f3629;
-      border-color: rgba(196, 74, 54, 0.55);
+      background: var(--error-bg);
+      color: var(--error-text);
+      border-color: var(--accent-rust);
     }
   }
 
   &__dev-mode {
     margin-top: 16px;
     padding-top: 12px;
-    border-top: 1px solid $border;
+    border-top: 1px solid var(--border);
   }
 
   &__dev-mode-label {
@@ -291,7 +291,7 @@
   &__dev-mode-checkbox {
     margin-top: 2px;
     flex-shrink: 0;
-    accent-color: $accent-teal;
+    accent-color: var(--accent-teal);
     width: 14px;
     height: 14px;
     cursor: pointer;
@@ -301,14 +301,14 @@
     display: block;
     font-size: 12px;
     font-weight: 600;
-    color: $text;
+    color: var(--text);
     line-height: 1.3;
   }
 
   &__dev-mode-desc {
     display: block;
     font-size: 11px;
-    color: $text-muted;
+    color: var(--text-muted);
     margin-top: 2px;
     line-height: 1.4;
   }
@@ -317,9 +317,9 @@
 // Individual collector card
 .collector-card {
   padding: 9px 10px;
-  border: 1px solid $border;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: $bg;
+  background: var(--bg);
   position: relative;
   transition: background 0.15s ease, border-color 0.15s ease;
 
@@ -327,8 +327,8 @@
   // Mirrors shared's left-bar treatment so "active" has a shared visual
   // grammar; color carries the meaning (rust = inward, teal = outward).
   &--local {
-    background: rgba(196, 114, 78, 0.06);
-    border-color: rgba(196, 114, 78, 0.22);
+    background: var(--error-bg);
+    border-color: color-mix(in srgb, var(--accent-rust) 22%, transparent);
 
     &::before {
       content: "";
@@ -338,15 +338,15 @@
       left: 0;
       width: 2px;
       border-radius: 0 2px 2px 0;
-      background: $accent-rust;
+      background: var(--accent-rust);
     }
   }
 
   // Shared: teal accent with a thin left edge — data flowing out to the
   // collective portrait. The left bar is the clearest at-a-glance signal.
   &--shared {
-    background: $active-bg;
-    border-color: $active-border;
+    background: var(--active-bg);
+    border-color: var(--active-border);
 
     &::before {
       content: "";
@@ -356,7 +356,7 @@
       left: 0;
       width: 2px;
       border-radius: 0 2px 2px 0;
-      background: $accent-teal;
+      background: var(--accent-teal);
     }
   }
 
@@ -387,19 +387,19 @@
     font-family: $font-body;
     font-size: 12px;
     font-weight: 600;
-    color: $text;
+    color: var(--text);
     text-transform: capitalize;
   }
 
   &__count {
     font-family: $font-mono;
     font-size: 10px;
-    color: $text-muted;
+    color: var(--text-muted);
   }
 
   &__description {
     font-size: 11px;
-    color: $text-muted;
+    color: var(--text-muted);
     line-height: 1.4;
     padding-left: 20px; // align under the name, past icon
   }
@@ -411,20 +411,20 @@
 
     label {
       font-size: 10px;
-      color: $text-muted;
+      color: var(--text-muted);
       display: flex;
       align-items: center;
       gap: 3px;
       cursor: pointer;
 
       &:has(input:checked) {
-        color: $text;
+        color: var(--text);
         font-weight: 600;
       }
     }
 
     input[type='radio'] {
-      accent-color: $accent-teal;
+      accent-color: var(--accent-teal);
       width: 11px;
       height: 11px;
     }
@@ -438,7 +438,7 @@
   &__privacy-section {
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid $border;
+    border-top: 1px solid var(--border);
   }
 
   &__privacy-header {
@@ -450,14 +450,14 @@
   &__privacy-label {
     font-size: 12px;
     font-weight: 500;
-    color: $text;
+    color: var(--text);
     display: block;
     margin-bottom: 4px;
   }
 
   &__privacy-desc {
     font-size: 11px;
-    color: $text-muted;
+    color: var(--text-muted);
   }
 
   &__privacy-select {
@@ -476,7 +476,7 @@
 
     input[type="range"] {
       width: 100%;
-      accent-color: $accent-teal;
+      accent-color: var(--accent-teal);
       cursor: pointer;
     }
   }
@@ -496,19 +496,19 @@
     text-transform: uppercase;
     font-family: 'Martian Mono', monospace;
     background: transparent;
-    color: $text-muted;
-    border: 1px solid $border;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
     border-radius: 4px;
 
     &--active {
-      background: $accent-teal;
-      color: white;
-      border-color: $accent-teal;
+      background: var(--accent-teal);
+      color: var(--btn-fg);
+      border-color: var(--accent-teal);
     }
 
     &:not(&--active):hover {
-      background: $surface-hover;
-      color: $text;
+      background: var(--surface-hover);
+      color: var(--text);
       filter: none;
     }
   }
@@ -516,8 +516,8 @@
   &__privacy-preview {
     margin-top: 10px;
     padding: 8px 10px;
-    background: $surface;
-    border: 1px solid $border;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     display: flex;
     flex-direction: column;
@@ -535,7 +535,7 @@
   &__privacy-preview-label {
     flex-shrink: 0;
     width: 64px;
-    color: $text-muted;
+    color: var(--text-muted);
     font-size: 10px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -544,31 +544,31 @@
 
   &__privacy-preview-value {
     font-family: 'Martian Mono', monospace;
-    color: $text;
+    color: var(--text);
     word-break: break-word;
 
     &--recorded {
-      color: $accent-teal;
+      color: var(--accent-teal);
     }
   }
 
   &__filter-section {
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid $border;
+    border-top: 1px solid var(--border);
   }
 
   &__filter-label {
     font-size: 12px;
     font-weight: 500;
-    color: $text;
+    color: var(--text);
     display: block;
     margin-bottom: 4px;
   }
 
   &__filter-desc {
     font-size: 11px;
-    color: $text-muted;
+    color: var(--text-muted);
     margin-bottom: 8px;
   }
 
@@ -603,15 +603,15 @@
     align-items: center;
     gap: 6px;
     padding: 4px 8px;
-    background: $error-bg;
-    color: $error-text;
+    background: var(--error-bg);
+    color: var(--error-text);
     border-radius: 4px;
     font-size: 11px;
 
     button {
       background: none;
       border: none;
-      color: $error-text;
+      color: var(--error-text);
       cursor: pointer;
       font-size: 14px;
       padding: 0;
@@ -622,7 +622,7 @@
 
   &__filter-empty {
     font-size: 11px;
-    color: $text-faint;
+    color: var(--text-faint);
     font-style: italic;
   }
 }

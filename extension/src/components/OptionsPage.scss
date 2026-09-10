@@ -10,7 +10,7 @@
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
   gap: 32px;
-  color: $text;
+  color: var(--text);
 
   &__rail {
     position: sticky;
@@ -25,15 +25,15 @@
       a {
         padding: 5px 7px;
         border-radius: 5px;
-        color: $text-muted;
+        color: var(--text-muted);
         font-family: $font-mono;
         font-size: 11px;
         text-decoration: none;
 
         &:hover,
         &.options-page__toc-link--active {
-          background: $surface;
-          color: $accent-teal;
+          background: var(--surface);
+          color: var(--accent-teal);
         }
       }
     }
@@ -50,7 +50,7 @@
     }
 
     span {
-      color: $text-faint;
+      color: var(--text-faint);
       font-family: $font-mono;
       font-size: 9px;
       text-transform: uppercase;
@@ -74,9 +74,9 @@
 
   &__card {
     padding: 16px;
-    border: 1px solid $border;
+    border: 1px solid var(--border);
     border-radius: 10px;
-    background: $surface;
+    background: var(--surface);
 
     h2 {
       @include heading;
@@ -85,7 +85,7 @@
     }
 
     p {
-      color: $text-muted;
+      color: var(--text-muted);
       font-size: 12px;
       line-height: 1.5;
     }
@@ -109,7 +109,7 @@
     + .options-page__setting-row {
       margin-top: 16px;
       padding-top: 16px;
-      border-top: 1px solid $border;
+      border-top: 1px solid var(--border);
     }
   }
 
@@ -140,9 +140,9 @@
   &__key-actions code,
   &__email-current code {
     padding: 6px 8px;
-    border: 1px solid $border;
+    border: 1px solid var(--border);
     border-radius: 5px;
-    background: $bg;
+    background: var(--bg);
     font-family: $font-mono;
     font-size: 10px;
   }
@@ -162,7 +162,7 @@
 
   &__access-request {
     strong {
-      color: $accent-teal;
+      color: var(--accent-teal);
       font-size: 12px;
     }
 
@@ -179,7 +179,7 @@
   &__access-request--divided {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid $border;
+    border-top: 1px solid var(--border);
   }
 
   &__developer-mode {
@@ -193,14 +193,14 @@
   &__developer-mode--divided .collections__dev-mode {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid $border;
+    border-top: 1px solid var(--border);
   }
 
   &__discord-band {
     padding: 18px;
-    border: 1px solid $active-border;
+    border: 1px solid var(--active-border);
     border-radius: 10px;
-    background: $active-bg;
+    background: var(--active-bg);
 
     h2 {
       @include heading;
@@ -210,7 +210,7 @@
 
     p {
       margin-bottom: 12px;
-      color: $text-muted;
+      color: var(--text-muted);
       font-size: 12px;
     }
 
@@ -223,7 +223,7 @@
   &__community-email {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid $border;
+    border-top: 1px solid var(--border);
   }
 
   &__collections-card {

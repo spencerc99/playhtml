@@ -5,9 +5,9 @@
 
 .scraps-launch {
   margin: 0 0 48px;
-  border: 1px solid $border-strong;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: $surface;
+  background: var(--surface);
   overflow: hidden;
 }
 
@@ -19,8 +19,8 @@
   gap: 18px;
   height: 120px;
   padding: 0 22px;
-  background: #fdfbf6;
-  border-bottom: 1px dashed $border-strong;
+  background: var(--bg);
+  border-bottom: 1px dashed var(--border-strong);
   overflow: hidden;
 }
 
@@ -38,13 +38,13 @@
 .scraps-launch__piece--button {
   padding: 5px 11px;
   border-radius: 5px;
-  color: #fff;
+  color: var(--btn-fg);
   font-family: $font-body;
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(90, 78, 65, 0.18);
+  box-shadow: 0 1px 2px var(--shadow-strong);
 }
 
 .scraps-launch__strip-chip {
@@ -52,9 +52,9 @@
   right: 10px;
   bottom: 8px;
   padding: 2px 6px;
-  border: 1px dashed $border-strong;
+  border: 1px dashed var(--border-strong);
   border-radius: 3px;
-  color: $text-faint;
+  color: var(--text-faint);
   font-family: $font-mono;
   font-size: 8px;
   letter-spacing: 0.14em;
@@ -77,9 +77,9 @@
   display: inline-block;
   margin-bottom: 8px;
   padding: 2px 6px;
-  border: 1px solid rgba(196, 114, 78, 0.45);
+  border: 1px solid color-mix(in srgb, var(--accent-rust) 45%, transparent);
   border-radius: 3px;
-  color: $accent-rust;
+  color: var(--accent-rust);
   font-family: $font-mono;
   font-size: 8px;
   letter-spacing: 0.16em;
@@ -91,20 +91,20 @@
   font-family: $font-heading;
   font-size: 19px;
   font-weight: 600;
-  color: $text;
+  color: var(--text);
 }
 
 .scraps-launch__text {
   margin: 0 0 8px;
   max-width: 52ch;
-  color: $text-muted;
+  color: var(--text-muted);
   font-size: 13px;
   line-height: 1.5;
 }
 
 .scraps-launch__fine-print {
   margin: 0;
-  color: $text-faint;
+  color: var(--text-faint);
   font-family: $font-mono;
   font-size: 9px;
   line-height: 1.5;
@@ -119,16 +119,16 @@
 }
 
 .scraps-launch__cta {
-  color: $accent-rust;
+  color: var(--accent-rust);
   font-size: 13px;
   font-weight: 700;
   text-decoration: underline;
-  text-decoration-color: rgba(196, 114, 78, 0.4);
+  text-decoration-color: color-mix(in srgb, var(--accent-rust) 40%, transparent);
   text-underline-offset: 3px;
   white-space: nowrap;
 
   &:hover {
-    text-decoration-color: $accent-rust;
+    text-decoration-color: var(--accent-rust);
   }
 }
 
@@ -136,14 +136,14 @@
   padding: 0;
   border: none;
   background: none;
-  color: $text-faint;
+  color: var(--text-faint);
   font-family: $font-mono;
   font-size: 9px;
   letter-spacing: 0.08em;
   cursor: pointer;
 
   &:hover {
-    color: $text-muted;
+    color: var(--text-muted);
   }
 }
 
