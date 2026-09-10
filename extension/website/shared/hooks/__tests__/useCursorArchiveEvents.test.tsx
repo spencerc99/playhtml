@@ -57,19 +57,19 @@ it.each([
     }
     try {
       await act(async () =>
-        root.render(<Probe footage={archive} live={[archive[0]]} />),
+        root.render(React.createElement(Probe, { footage: archive, live: [archive[0]] })),
       );
       expect(rendered.map((event) => event.id)).toEqual(["b", "c"]);
       const initial = rendered;
       await act(async () =>
-        root.render(<Probe footage={archive} live={[...archive]} />),
+        root.render(React.createElement(Probe, { footage: archive, live: [...archive] })),
       );
       expect(rendered).toBe(initial);
-      await act(async () => root.render(<Probe footage={archive} live={[]} />));
+      await act(async () => root.render(React.createElement(Probe, { footage: archive, live: [] })));
       expect(rendered).toBe(initial);
       const next = [...archive, event("d")];
       await act(async () =>
-        root.render(<Probe footage={next} live={archive} />),
+        root.render(React.createElement(Probe, { footage: next, live: archive })),
       );
       expect(rendered.map((event) => event.id)).toEqual(["d"]);
     } finally {

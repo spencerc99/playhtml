@@ -3,6 +3,7 @@
 
 import { CLICK_DEFAULTS } from "./clickDefaults";
 import type { FilterChip } from "../utils/eventUtils";
+import type { CrossingFlavor, SoundMode } from "../sound/SoundEngine";
 
 /** Settings defaults — extracted so the share-URL builder can compare
  * against them and only emit params that diverge. Keep this in sync with
@@ -101,9 +102,31 @@ export const DEFAULT_SETTINGS = {
   navigationRadialBlobValleyDepth: 0.05,
   navigationRadialSegmentByDay: true,
   trailVisualStyle: "color",
+  /** How trail motion becomes sound. "sustained" holds a continuous voice per
+   * trail; "spotlight" adds the soloist treatment on top of it. */
+  soundMode: "sustained" as SoundMode,
+  /** Rotate the harmonic root through a slow chord progression. */
+  soundChordRotation: false,
+  /** Let accumulated scene motion swell and relax the whole mix. */
+  soundEnergyArc: false,
   soundChordVoicing: true,
   soundCursorInstruments: true,
-  soundCrossingDissonance: false,
+  /** What a trail crossing another's path sounds like. The live pages expose
+   * this as an on/off checkbox, which maps to "dissonance"/"off"; the sounds
+   * playground drives the full three-way choice. */
+  soundCrossings: "off" as CrossingFlavor,
+  /** Give each trail a stable home chord tone and its own detune/vibrato. */
+  soundTrailVoices: false,
+  /** Breathing dynamics: per-trail crescendo plus a slow ensemble breath. */
+  soundSwells: false,
+  /** Vowel formant colour over the sustained crowd, for a choir-like bed. */
+  soundChoralTimbre: false,
+  /** Soft two-note figures as trails enter and leave the scene. */
+  soundTrailArrivals: false,
+  /** A deep resonant note on each animated page navigation. */
+  soundNavigationSounds: false,
+  /** A sustained low drone on the chord root, under everything. */
+  soundBassPedal: false,
   // Debug-mode hover: when on, viz items become hoverable and the canvas
   // shows a tooltip with details about the data point under the cursor.
   // Session-only by default — handy when poking at a configuration, not a

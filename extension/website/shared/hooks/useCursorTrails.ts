@@ -293,16 +293,22 @@ export function useCursorTrails(
         // In viewport space mode: scale normalized coords to current canvas size.
         let x: number;
         let y: number;
+        // Only cursor events carry a position, and only cursor events reach
+        // here — but the payload type covers every kind, so read them once and
+        // skip anything that turns out not to have them.
+        const normalizedX = event.data.x;
+        const normalizedY = event.data.y;
+        if (normalizedX === undefined || normalizedY === undefined) return;
         if (settings.documentSpace) {
           const vw = event.meta.vw || viewportSize.width;
           const vh = event.meta.vh || viewportSize.height;
           const scrollX = (event.data as { scrollX?: number }).scrollX ?? 0;
           const scrollY = (event.data as { scrollY?: number }).scrollY ?? 0;
-          x = event.data.x * vw + scrollX;
-          y = event.data.y * vh + scrollY;
+          x = normalizedX * vw + scrollX;
+          y = normalizedY * vh + scrollY;
         } else {
-          x = event.data.x * viewportSize.width;
-          y = event.data.y * viewportSize.height;
+          x = normalizedX * viewportSize.width;
+          y = normalizedY * viewportSize.height;
         }
         const isClick = eventType === "click";
         const isHold = eventType === "hold";
@@ -337,6 +343,7 @@ export function useCursorTrails(
               // so two segments of the same group don't collide. (Live mode uses
               // singleSegmentPerGroup and a bare groupKey for a stable id.)
               id: `${groupKey}|${startTime}`,
+              pid,
               startTime,
               endTime,
               clicks: [...currentClicks],
@@ -397,6 +404,7 @@ export function useCursorTrails(
           id: settings.singleSegmentPerGroup
             ? buildLiveTrailId(groupKey, startTime)
             : groupKey,
+          pid,
           startTime,
           endTime,
           clicks: [...currentClicks],

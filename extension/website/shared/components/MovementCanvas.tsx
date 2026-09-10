@@ -15,6 +15,10 @@ import { LiveTrails } from "./LiveTrails";
 import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
 import { attachSoundWakeListeners } from "../sound/soundWake";
+import { isSoundDevEnabled } from "../sound/soundDevFlag";
+import { SoundDevSettings } from "../sound/SoundDevSettings";
+import { useSoundArrangement } from "../sound/useSoundArrangement";
+import { TrailPositions } from "./trailPositions";
 import { AnimatedClicks, type ScheduledClick } from "./AnimatedClicks";
 import { AnimatedTyping, ContinuousTyping } from "./AnimatedTyping";
 import { AnimatedScrollViewports } from "./AnimatedScrollViewports";
@@ -47,6 +51,11 @@ import {
   type FilterChip,
 } from "../utils/eventUtils";
 import { buildShareUrl } from "../utils/shareUrl";
+import {
+  buildNavigationSchedule,
+  navigationsCrossed,
+  type ScheduledNavigation,
+} from "../utils/navigationSchedule";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import {
   parseSettingsFromUrl,
@@ -69,6 +78,91 @@ import { COMPLETION_FADE_MS } from "./trailPrimitives";
 export { CLICK_DEFAULTS } from "./clickDefaults";
 
 const EMPTY_EVENTS: CollectionEvent[] = [];
+
+/**
+ * Sounds the navigation accent from the data rather than from any one view's
+ * rendering.
+ *
+ * The accent used to hang off the radial view's edge-completion branch, so it
+ * was silent in every other view — including the default timeline. Driving it
+ * from a schedule of navigation moments on its own playback clock, the same
+ * `(realElapsed * speed) % duration` math the readout and trail loop use, makes
+ * it sound wherever playback runs. Renders nothing.
+ *
+ * Gated on `active` (the caller passes whether the trails view is showing):
+ * the gong is a cursor-trail accent, not a navigation-view one, so it should
+ * stay silent in the timeline/radial navigation views even though the
+ * schedule itself is view-independent.
+ */
+export const NavigationSoundDriver: React.FC<{
+  schedule: ScheduledNavigation[];
+  durationMs: number;
+  soundEngine: SoundEngine | null;
+  active: boolean;
+  /**
+   * Which trail belongs to the person a scheduled hop names, and where that
+   * trail currently is. The schedule knows who navigated but nothing about the
+   * canvas, so without this the accent sounds centred and anything drawing for
+   * it has no trail to anchor to.
+   */
+  locateParticipant?: (
+    pid: string,
+  ) => { trailIndex: number; x: number } | null;
+  /**
+   * The trail layer's own playback position. The gongs mark moments on the
+   * drawn timeline, so they have to be read off the clock that draws it — a
+   * second clock built from raw wall time falls behind by the whole of every
+   * hidden-tab stall the trail clock clamps away, and the gap only ever grows.
+   */
+  playbackClock: { loopedMs: number };
+}> = ({
+  schedule,
+  durationMs,
+  soundEngine,
+  active,
+  locateParticipant,
+  playbackClock,
+}) => {
+  const locateRef = useRef(locateParticipant);
+  useEffect(() => {
+    locateRef.current = locateParticipant;
+  }, [locateParticipant]);
+
+  useEffect(() => {
+    if (!active || !soundEngine || durationMs <= 0 || schedule.length === 0)
+      return;
+
+    let raf = 0;
+    // Start just before zero so a moment sitting exactly at offset 0 is
+    // crossed on the first frame rather than skipped.
+    let prevLooped = -1;
+
+    const tick = () => {
+      const looped = playbackClock.loopedMs;
+      const crossed = navigationsCrossed(
+        schedule,
+        prevLooped,
+        looped,
+        durationMs,
+      );
+      for (const nav of crossed) {
+        // The engine's own rate limiter decides whether a dense run of hops
+        // reads as one structural event or several.
+        const at = locateRef.current?.(nav.pid) ?? null;
+        soundEngine.triggerNavigation(
+          at === null ? {} : { trailIndex: at.trailIndex, x: at.x },
+        );
+      }
+      prevLooped = looped;
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [schedule, durationMs, soundEngine, active, playbackClock]);
+
+  return null;
+};
 
 /** Live clock readout shown when trails play in their natural-timestamp order.
  * Mirrors AnimatedTrails' `(realElapsed * speed) % duration` math so the time
@@ -368,7 +462,8 @@ interface MovementCanvasProps {
   defaultCinematic?: CinematicConfig | null;
   installationRole?: "master" | "follower" | null;
   installationFollowerId?: string | null;
-  /** Route-enforced presentation floor. URL clean levels can still raise it. */
+  /** Route-enforced presentation floor. URL clean levels can still raise it,
+   * and `?sounddev=1` waives it so the sound surfaces can be tuned in place. */
   minimumCleanLevel?: 0 | 1 | 2;
   live?: boolean;
   /** Live-stream connection status, gates the people-count readout. */
@@ -496,6 +591,67 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
   const [soundEnabled, setSoundEnabled] = useState(defaultSoundEnabled);
   const soundEngineRef = useRef<SoundEngine | null>(null);
+  /**
+   * Whether this load asked for the sound dev surfaces. Read once: the flag
+   * lives in the URL, and changing it is a navigation.
+   */
+  const [soundDev] = useState(isSoundDevEnabled);
+  const soundPerformanceRef = useRef<HTMLOutputElement | null>(null);
+  useEffect(() => {
+    if (!soundDev || !live) return;
+    const id = window.setInterval(() => {
+      const element = soundPerformanceRef.current;
+      if (!element) return;
+      const sample = soundEngineRef.current?.getPerformanceSnapshot();
+      element.textContent = sample
+        ? JSON.stringify(sample, null, 2)
+        : "Audio not started";
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [soundDev, live]);
+  /**
+   * The live portrait has no panel and no URL flag — it always reads the
+   * saved arrangement (falling back to shipped defaults) and applies it, the
+   * same object the sound playground writes. `autoPersist` stays off for it:
+   * nothing on the live page edits the arrangement, so there is nothing to
+   * write back.
+   */
+  const arrangement = useSoundArrangement(soundEngineRef, {
+    active: soundDev || live,
+    autoPersist: soundDev,
+  });
+  const applyArrangement = arrangement.applyTo;
+
+  /**
+   * Where each trail's head is this frame, so a navigation gong pans to where
+   * the person who hopped actually is. Sound-dev only: a page without the flag
+   * publishes nothing. The live path never triggers the gong (see
+   * NavigationSoundDriver's `active` prop below), so it has no need for this.
+   */
+  const trailPositions = useMemo(
+    () => (soundDev ? new TrailPositions() : null),
+    [soundDev],
+  );
+
+  /**
+   * The one playback position for this canvas. The trail layer writes it every
+   * frame and everything scheduled against the drawn timeline reads it, so a
+   * loop or a stall moves all of them together.
+   */
+  const playbackClock = useMemo(() => ({ loopedMs: 0 }), []);
+
+  /**
+   * Which trail a scheduled navigation belongs to. The schedule names the
+   * person who hopped; this is how that becomes a trail on the canvas, so the
+   * gong pans to where they are and the knot lands on their line.
+   */
+  const locateParticipant = useCallback(
+    (pid: string) => {
+      const at = trailPositions?.forParticipant(pid);
+      return at ? { trailIndex: at.trailIndex, x: at.x } : null;
+    },
+    [trailPositions],
+  );
   // The engine is created inside an async init().then(), so we mirror it into
   // state once ready — refs alone don't trigger re-renders, which means
   // children would never receive the engine as a prop.
@@ -516,12 +672,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   /** Clean-presentation level. URL sets the baseline; the save-image
    * flow can bump it transiently. We take the max of the two so a
    * `?clean=2` URL never gets *downgraded* mid-capture. See `CleanLevel`
-   * docs in `../config.ts` for what each tier hides. */
+   * docs in `../config.ts` for what each tier hides.
+   *
+   * `?sounddev=1` waives the route's floor. An installation route pins a floor
+   * of 2 so the screen reads as a finished piece, which also hides the sound
+   * panel and the performance readout — the two surfaces the flag exists to
+   * show. Asking for the flag is asking for those, so the floor stands down
+   * and only an explicit `?clean=` in the same URL still raises the level. */
   const cleanFromUrl = useMemo(() => parseCleanFromUrl(), []);
   const [captureCleanOverride, setCaptureCleanOverride] = useState(false);
   const cleanLevel = Math.max(
     cleanFromUrl,
-    minimumCleanLevel,
+    soundDev ? 0 : minimumCleanLevel,
     captureCleanOverride ? 1 : 0,
   ) as 0 | 1 | 2;
   const cleanMode = cleanLevel >= 1; // level 1+: hides sound + readouts
@@ -570,14 +732,28 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     if (soundEnabled) {
       if (!soundEngineRef.current) {
         const engine = new SoundEngine();
+        if (soundDev && live) engine.enablePerformanceMonitoring();
         engine.init().then(() => {
           engine.setCanvasWidth(viewportSize.width);
           engine.setConfig({
+            mode: settings.soundMode,
             chordVoicing: settings.soundChordVoicing,
             cursorInstruments: settings.soundCursorInstruments,
-            crossingDissonance: settings.soundCrossingDissonance,
+            crossings: settings.soundCrossings,
+            trailVoices: settings.soundTrailVoices,
+            swells: settings.soundSwells,
+            choralTimbre: settings.soundChoralTimbre,
+            chordRotation: settings.soundChordRotation,
+            energyArc: settings.soundEnergyArc,
+            trailArrivals: settings.soundTrailArrivals,
+            navigationSounds: settings.soundNavigationSounds,
+            bassPedal: settings.soundBassPedal,
           });
           soundEngineRef.current = engine;
+          // The arrangement (dev panel, or the live path's always-on saved
+          // config) supersedes the page's settings, so it lands last — on
+          // the archive without the panel this does nothing.
+          applyArrangement(engine);
           setSoundEngineReady(engine);
         });
       }
@@ -604,18 +780,64 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     soundEngineRef.current?.setCanvasWidth(viewportSize.width);
   }, [viewportSize.width]);
 
-  // Sync sound config settings to the engine
+  // Sync sound config settings to the engine. While the dev panel is mounted,
+  // or on the live path (which always runs the saved/default arrangement
+  // instead), the arrangement is what the engine runs, so the page's own
+  // sound settings stand down rather than fighting it for the same fields.
   useEffect(() => {
+    if (soundDev || live) return;
     soundEngineRef.current?.setConfig({
+      mode: settings.soundMode,
       chordVoicing: settings.soundChordVoicing,
       cursorInstruments: settings.soundCursorInstruments,
-      crossingDissonance: settings.soundCrossingDissonance,
+      crossings: settings.soundCrossings,
+      trailVoices: settings.soundTrailVoices,
+      swells: settings.soundSwells,
+      choralTimbre: settings.soundChoralTimbre,
+      chordRotation: settings.soundChordRotation,
+      energyArc: settings.soundEnergyArc,
+      trailArrivals: settings.soundTrailArrivals,
+      navigationSounds: settings.soundNavigationSounds,
+      bassPedal: settings.soundBassPedal,
     });
   }, [
+    settings.soundMode,
     settings.soundChordVoicing,
     settings.soundCursorInstruments,
-    settings.soundCrossingDissonance,
+    settings.soundCrossings,
+    settings.soundTrailVoices,
+    settings.soundSwells,
+    settings.soundChoralTimbre,
+    settings.soundChordRotation,
+    settings.soundEnergyArc,
+    settings.soundTrailArrivals,
+    settings.soundNavigationSounds,
+    settings.soundBassPedal,
+    soundDev,
+    live,
   ]);
+
+  /**
+   * Hand the dev panel the running engine, starting sound if it is off. The
+   * panel's audition and mixer commands need a graph, and pressing one of them
+   * is itself the user gesture the autoplay policy asks for.
+   */
+  const getSoundEngine = useCallback(async () => {
+    const existing = soundEngineRef.current;
+    if (existing) {
+      await existing.resume();
+      return existing;
+    }
+    setSoundEnabled(true);
+    const engine = new SoundEngine();
+    if (soundDev && live) engine.enablePerformanceMonitoring();
+    await engine.init();
+    engine.setCanvasWidth(window.innerWidth);
+    applyArrangement(engine);
+    soundEngineRef.current = engine;
+    setSoundEngineReady(engine);
+    return engine;
+  }, [applyArrangement, soundDev, live]);
 
   // Derive which visualization categories are active
   const vizSet = useMemo(
@@ -1131,6 +1353,19 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     keyboardCycleDuration,
   ]);
 
+  /** Navigation moments for the current dataset, on the playback timeline.
+   * Rebuilt whenever the events or the range change, so a day swap can't leave
+   * moments from the previous dataset scheduled. */
+  const navigationSchedule = useMemo(
+    () =>
+      buildNavigationSchedule(
+        filteredEvents,
+        timeRange.min,
+        timeRange.duration,
+      ),
+    [filteredEvents, timeRange.min, timeRange.duration],
+  );
+
   const { scheduledClicks, clickCycleDuration } = useMemo(() => {
     if (!showClicks) {
       return { scheduledClicks: [], clickCycleDuration: 0 };
@@ -1469,7 +1704,36 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         availableVisualizations={availableVisualizations}
         selectedTimeRange={selectedTimeRange}
         onSelectTimeRange={setSelectedTimeRange}
+        soundSettingsOverride={
+          soundDev && !printMode ? (
+            <SoundDevSettings
+              arrangement={arrangement}
+              getEngine={getSoundEngine}
+              engine={soundEngineReady}
+            />
+          ) : undefined
+        }
       />
+
+      {soundDev && live && !printMode && (
+        <output
+          id="sound-performance"
+          ref={soundPerformanceRef}
+          style={{
+            position: "fixed",
+            right: 8,
+            bottom: 48,
+            zIndex: 1000,
+            padding: 8,
+            background: "#faf7f2",
+            color: "#3d3833",
+            border: "1px solid #8a8279",
+            font: "10px monospace",
+            whiteSpace: "pre",
+            pointerEvents: "none",
+          }}
+        >Audio not started</output>
+      )}
 
       {/* Top-of-screen stats console. Paired with the bottom ActivityStrip
           (same gating + leftOffset math) so the dev surface has a
@@ -1779,6 +2043,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               showClickRipples={!showClicks}
               windowSize={settings.maxConcurrentTrails * 2}
               soundEngine={paused || !soundEnabled ? null : soundEngineReady}
+              trailPositions={trailPositions}
+              playbackClock={playbackClock}
               settings={trailAnimationSettings}
               frozen={paused}
               cinematic={cinematicConfig}
@@ -1786,6 +2052,23 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
               getInstallationElapsedMs={getInstallationElapsedMs}
             />
           ))}
+
+        {/* The schedule itself is view-independent (built from the data, not
+            any view's rendering), but the gong is a trails-view accent: gate
+            playback on showTrails so it stays silent in the navigation
+            timeline/radial views and other view modes. Also silent on the
+            live portrait — the gong is an archive/replay accent, not part of
+            the live listening experience. */}
+        {!paused && (
+          <NavigationSoundDriver
+            schedule={navigationSchedule}
+            durationMs={timeRange.duration}
+            soundEngine={soundEnabled ? soundEngineReady : null}
+            active={showTrails && !live}
+            locateParticipant={locateParticipant}
+            playbackClock={playbackClock}
+          />
+        )}
 
         {showClicks && !paused && (
           <AnimatedClicks

@@ -101,6 +101,9 @@ function generateAllTrails(w: number, h: number): TrailState[] {
       states.push({
         trail: {
           id: `hero-${batch}-${i}`,
+          // Synthetic decoration, not anybody's browsing: each hero trail is
+          // its own participant so nothing tries to attribute it to a person.
+          pid: `hero-${batch}-${i}`,
           points: tsPoints,
           color,
           opacity: 0.65,
