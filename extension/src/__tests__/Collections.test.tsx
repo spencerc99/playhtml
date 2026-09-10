@@ -131,6 +131,36 @@ describe("Collections", () => {
     }
   });
 
+  it("renders storage stats from a background worker without per-type sizes", async () => {
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(async (message) => {
+      if (message?.type === "GET_STORAGE_STATS") {
+        return {
+          success: true,
+          stats: {
+            totalEvents: 12,
+            estimatedSizeBytes: 1536,
+            localUsageBytes: 2048,
+            oldestEvent: Date.now(),
+            countsByType: { cursor: 12 },
+          },
+        };
+      }
+      return { success: true };
+    });
+
+    const { container, root } = await renderCollections();
+
+    try {
+      const text = container.textContent ?? "";
+
+      expect(text).toContain("12events");
+      expect(text).toContain("1.5 KBevent data");
+      expect(text).not.toContain("internet scraps");
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
   it("hides local storage stats when all collectors are off", async () => {
     vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
       if (
