@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isExtensionPageUrl,
+  isFirefoxExtensionPageUrl,
   isSafariExtensionPageUrl,
 } from "./extensionPage";
 
@@ -33,5 +34,17 @@ describe("isSafariExtensionPageUrl", () => {
       false,
     );
     expect(isSafariExtensionPageUrl("not a url")).toBe(false);
+  });
+});
+
+describe("isFirefoxExtensionPageUrl", () => {
+  it("recognizes Firefox extension pages only", () => {
+    expect(
+      isFirefoxExtensionPageUrl("moz-extension://test/setup.html"),
+    ).toBe(true);
+    expect(isFirefoxExtensionPageUrl("chrome-extension://test/setup.html")).toBe(
+      false,
+    );
+    expect(isFirefoxExtensionPageUrl("not a url")).toBe(false);
   });
 });

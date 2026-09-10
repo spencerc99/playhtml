@@ -37,7 +37,10 @@ import {
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
 import { NEWTAB_TAKEOVER_KEY } from "../../features/newtab/takeover";
-import { isSafariExtensionPageUrl } from "../../utils/extensionPage";
+import {
+  isFirefoxExtensionPageUrl,
+  isSafariExtensionPageUrl,
+} from "../../utils/extensionPage";
 import {
   createMovementLoadingPreview,
   isMovementLoadingPreview,
@@ -377,16 +380,17 @@ const NEWTAB_CONTROL_STYLE = {
 /** Controls whether new browser tabs open this walking record. */
 function NewTabTakeoverToggle() {
   const [enabled, setEnabled] = useState(false);
-  // Safari has no new tab override, so there is no preference to offer.
+  // Browser-managed new tab pages do not use the stored preference.
   const isSafari = isSafariExtensionPageUrl(window.location.href);
+  const isFirefox = isFirefoxExtensionPageUrl(window.location.href);
 
   useEffect(() => {
-    if (isSafari) return;
+    if (isFirefox || isSafari) return;
     browser.storage.local
       .get([NEWTAB_TAKEOVER_KEY])
       .then((result) => setEnabled(Boolean(result[NEWTAB_TAKEOVER_KEY])))
       .catch(() => setEnabled(false));
-  }, [isSafari]);
+  }, [isFirefox, isSafari]);
 
   const toggle = (next: boolean) => {
     setEnabled(next);
@@ -398,6 +402,15 @@ function NewTabTakeoverToggle() {
       <p style={{ ...NEWTAB_CONTROL_STYLE, maxWidth: "320px", margin: 0 }}>
         Safari doesn't let extensions change the new tab — bookmark or pin this
         page to keep it a click away.
+      </p>
+    );
+  }
+
+  if (isFirefox) {
+    return (
+      <p style={{ ...NEWTAB_CONTROL_STYLE, maxWidth: "320px", margin: 0 }}>
+        Firefox manages this new tab page. Use its new-tab prompt to keep or
+        change it.
       </p>
     );
   }

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 
 vi.mock("../utils/extensionPage", () => ({
+  isFirefoxExtensionPageUrl: vi.fn(() => false),
   isSafariExtensionPageUrl: vi.fn(() => true),
 }));
 vi.mock("../storage/playerIdentity", () => ({
