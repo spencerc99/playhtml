@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { SoundEngine } from "../shared/sound/SoundEngine";
 import { SamplePlayback } from "./SamplePlayback";
+import { TrailReplay } from "./TrailReplay";
 import { SoundLayers } from "../shared/sound/SoundLayers";
 import { SoloistLab } from "./SoloistLab";
 import { SoundLibrary } from "./SoundLibrary";
@@ -127,6 +128,8 @@ const SoundPlayground = () => {
       />
 
       <SamplePlayback getEngine={ensureEngine} voicing={arrangement.voicing} />
+
+      <TrailReplay getEngine={ensureEngine} />
 
       <SoloistLab getEngine={ensureEngine} />
 

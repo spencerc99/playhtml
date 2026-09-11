@@ -270,3 +270,42 @@ describe("speed layers", () => {
     expect(reverbSendFor(10)).toBeLessThan(reverbSendFor(2));
   });
 });
+
+describe("the drawing's breath", () => {
+  it("draws a freshly articulated trail more strongly than a settled one", async () => {
+    const { articulationBreath, ARTICULATION_VISUAL } = await import("../tuning");
+    const fresh = articulationBreath(1);
+    const settled = articulationBreath(PHRASING_TUNING.articulationSettleLevel);
+    expect(fresh.opacityScale).toBeGreaterThan(settled.opacityScale);
+    expect(fresh.widthScale).toBeGreaterThan(settled.widthScale);
+    // Full articulation is the drawing as it was before any of this, so a
+    // trail at the top of its swell is never dimmed by the tie-in.
+    expect(fresh.opacityScale).toBeCloseTo(1, 5);
+    expect(fresh.widthScale).toBeCloseTo(1, 5);
+    expect(settled.opacityScale).toBeGreaterThanOrEqual(
+      ARTICULATION_VISUAL.minOpacityScale,
+    );
+  });
+
+  it("leaves an unphrased trail exactly as it was drawn", async () => {
+    const { articulationBreath } = await import("../tuning");
+    expect(articulationBreath(null)).toEqual({ opacityScale: 1, widthScale: 1 });
+    expect(articulationBreath(undefined)).toEqual({
+      opacityScale: 1,
+      widthScale: 1,
+    });
+  });
+
+  it("lands on steps, so a breathing line does not force a repaint every frame", async () => {
+    const { articulationBreath, ARTICULATION_VISUAL } = await import("../tuning");
+    // The renderer caches on the exact opacity and width it last drew; a
+    // continuously varying breath would defeat that for every trail.
+    const scales = new Set<number>();
+    for (let i = 0; i <= 1000; i++) {
+      scales.add(articulationBreath(i / 1000).opacityScale);
+    }
+    expect(scales.size).toBeLessThanOrEqual(
+      Math.ceil(1 / ARTICULATION_VISUAL.quantum) + 2,
+    );
+  });
+});
