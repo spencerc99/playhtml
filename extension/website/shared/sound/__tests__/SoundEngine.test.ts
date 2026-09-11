@@ -32,9 +32,16 @@ import {
 } from "../scales";
 
 type ParamEvent = {
-  method: "cancelAndHold" | "exponentialRamp" | "linearRamp" | "set";
+  method:
+    | "cancelAndHold"
+    | "exponentialRamp"
+    | "linearRamp"
+    | "set"
+    | "setTarget";
   value?: number;
   time: number;
+  /** Only on a `setTarget`: how fast the curve approaches its value. */
+  timeConstant?: number;
 };
 
 /** A hold's incoming curve endpoint is an anchor, not a requested target. */
@@ -64,6 +71,10 @@ class TestAudioParam {
   setValueAtTime(value: number, time: number): void {
     this.value = value;
     this.events.push({ method: "set", value, time });
+  }
+
+  setTargetAtTime(value: number, time: number, timeConstant: number): void {
+    this.events.push({ method: "setTarget", value, time, timeConstant });
   }
 }
 
@@ -5696,5 +5707,185 @@ describe("the spotlight tuning overlay", () => {
       );
       expect(value).toBeLessThanOrEqual(range.max);
     }
+  });
+});
+
+describe("phrasing", () => {
+  /**
+   * Walk a trail along a heading at a fixed speed, one 16ms tick per step.
+   * Returns where the clock got to, so a caller can keep driving.
+   */
+  const walk = (
+    engine: SoundEngine,
+    trailIndex: number,
+    start: { x: number; y: number },
+    step: { x: number; y: number },
+    steps: number,
+    fromMs: number,
+  ): { ms: number; x: number; y: number } => {
+    let { x, y } = start;
+    let ms = fromMs;
+    for (let i = 0; i < steps; i++) {
+      ms += 16;
+      x += step.x;
+      y += step.y;
+      context.currentTime += 0.016;
+      engine.tick(ms, [soloFrame(trailIndex, x, y)]);
+    }
+    return { ms, x, y };
+  };
+
+  /** The oscillator the one trail's voice is singing through. */
+  const voiceOscillator = (): TestOscillatorNode => {
+    // The first oscillator a scene builds is the trail's own voice; the bed's
+    // own layers are only created when their features are on.
+    const oscillator = context.oscillators[0];
+    expect(oscillator).toBeDefined();
+    return oscillator;
+  };
+
+  const pitchTargets = (oscillator: TestOscillatorNode): number[] =>
+    oscillator.frequency.events
+      .filter((event, index, events) => isRampTarget(event, index, events))
+      .filter((event) => event.method === "exponentialRamp")
+      .map((event) => event.value as number);
+
+  it("holds one note through a straight run instead of re-reading it per frame", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ phrasing: true });
+    engine.setCanvasWidth(1000);
+
+    // A gentle arc: the raw per-frame direction wanders across compass arcs
+    // constantly, which is exactly what used to re-pitch the voice every time
+    // it crossed one.
+    let ms = 0;
+    let angle = 0;
+    let x = 500;
+    let y = 300;
+    for (let i = 0; i < 120; i++) {
+      ms += 16;
+      angle += 0.004;
+      x += Math.cos(angle) * 5;
+      y += Math.sin(angle) * 5;
+      context.currentTime += 0.016;
+      engine.tick(ms, [soloFrame(0, x, y)]);
+    }
+
+    // The arc turns about 27 degrees over the run — under the turn threshold —
+    // so it is one note, however many direction arcs it crossed. The lower
+    // bound matters as much as the upper: a voice that never spoke would
+    // otherwise pass this.
+    const targets = pitchTargets(voiceOscillator());
+    expect(targets.length).toBeGreaterThanOrEqual(1);
+    expect(targets.length).toBeLessThanOrEqual(2);
+    engine.dispose();
+  });
+
+  it("takes a new note when the trail turns", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ phrasing: true });
+    engine.setCanvasWidth(1000);
+
+    const run = walk(engine, 0, { x: 200, y: 300 }, { x: 6, y: 0 }, 40, 0);
+    const afterRun = pitchTargets(voiceOscillator()).length;
+    expect(afterRun).toBeGreaterThanOrEqual(1);
+    walk(engine, 0, run, { x: 0, y: 6 }, 60, run.ms);
+
+    expect(pitchTargets(voiceOscillator()).length).toBeGreaterThan(afterRun);
+    engine.dispose();
+  });
+
+  it("re-articulates on every note and then lets the swell settle", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ phrasing: true });
+    engine.setCanvasWidth(1000);
+
+    const run = walk(engine, 0, { x: 200, y: 300 }, { x: 6, y: 0 }, 40, 0);
+    walk(engine, 0, run, { x: 0, y: 6 }, 60, run.ms);
+
+    // The articulation gain is the only param the engine ever hands a target
+    // curve, so finding one at all is finding the swell-and-settle.
+    const settles = createdNodes
+      .filter((node): node is TestGainNode => node instanceof TestGainNode)
+      .flatMap((node) => node.gain.events)
+      .filter((event) => event.method === "setTarget");
+    expect(settles.length).toBeGreaterThan(0);
+    for (const settle of settles) {
+      // Relaxes toward the sustain level rather than releasing to silence: a
+      // moving trail is never allowed to go quiet mid-line.
+      expect(settle.value).toBeGreaterThan(0);
+      expect(settle.timeConstant).toBeGreaterThan(0);
+    }
+    engine.dispose();
+  });
+
+  it("reports what each voice is doing, so the phrasing can be watched", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ phrasing: true });
+    engine.setCanvasWidth(1000);
+
+    walk(engine, 0, { x: 200, y: 300 }, { x: 6, y: 0 }, 60, 0);
+
+    expect(engine.getMotionState(0)).toBe("moving");
+    const articulation = engine.getArticulation(0);
+    expect(articulation).not.toBeNull();
+    expect(articulation!).toBeGreaterThan(0);
+    expect(articulation!).toBeLessThanOrEqual(1);
+
+    const snapshot = engine.getVoiceSnapshot();
+    expect(snapshot.fullVoices).toBe(1);
+    expect(snapshot.voices[0].trailIndex).toBe(0);
+    expect(snapshot.voices[0].state).toBe("moving");
+    expect(snapshot.voices[0].speed).toBeGreaterThan(0);
+    engine.dispose();
+  });
+
+  it("adds an octave layer with speed rather than moving the voice's own pitch", async () => {
+    const slow = new SoundEngine();
+    await slow.init();
+    slow.setConfig({ phrasing: true });
+    slow.setCanvasWidth(1000);
+    walk(slow, 0, { x: 100, y: 300 }, { x: 2, y: 0 }, 60, 0);
+    const slowPitch = slow.getVoiceSnapshot().voices[0].frequency;
+    const slowOscillators = context.oscillators.length;
+    slow.dispose();
+
+    createdNodes = [];
+    context = new TestAudioContext();
+    const fast = new SoundEngine();
+    await fast.init();
+    fast.setConfig({ phrasing: true });
+    fast.setCanvasWidth(1000);
+    walk(fast, 0, { x: 100, y: 300 }, { x: 24, y: 0 }, 60, 0);
+    const snapshot = fast.getVoiceSnapshot();
+
+    // Same heading, so the same palette slot: speed must not have transposed
+    // the line. What it bought instead is the bloom, an extra oscillator.
+    expect(snapshot.voices[0].frequency).toBe(slowPitch);
+    expect(snapshot.voices[0].bloom).toBeGreaterThan(0);
+    expect(context.oscillators.length).toBeGreaterThan(slowOscillators);
+    fast.dispose();
+  });
+
+  it("leaves the unphrased path exactly as it was", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(1000);
+
+    walk(engine, 0, { x: 200, y: 300 }, { x: 6, y: 0 }, 60, 0);
+
+    // Nothing phrased ran: no articulation curve, no motion state to read, and
+    // no bloom oscillator beyond the voice's own.
+    expect(engine.getArticulation(0)).toBeNull();
+    const settles = createdNodes
+      .filter((node): node is TestGainNode => node instanceof TestGainNode)
+      .flatMap((node) => node.gain.events)
+      .filter((event) => event.method === "setTarget");
+    expect(settles).toHaveLength(0);
+    engine.dispose();
   });
 });

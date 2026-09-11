@@ -121,6 +121,12 @@ export const DEFAULT_SETTINGS = {
   soundSwells: false,
   /** Vowel formant colour over the sustained crowd, for a choir-like bed. */
   soundChoralTimbre: false,
+  /**
+   * Phrase each voice: pitch changes on turns rather than every frame, each
+   * note swells and settles, speed blooms an octave layer instead of jumping
+   * the pitch, and a trail pooling in one spot develops the note it holds.
+   */
+  soundPhrasing: true,
   /** Soft two-note figures as trails enter and leave the scene. */
   soundTrailArrivals: false,
   /** A deep resonant note on each animated page navigation. */

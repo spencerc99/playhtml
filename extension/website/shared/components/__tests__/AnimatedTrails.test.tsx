@@ -53,6 +53,9 @@ describe("AnimatedTrails sound", () => {
       isEnabled: vi.fn(() => true),
       reset: vi.fn(),
       tick: vi.fn(),
+      // The draw loop asks each trail how far through its phrase its voice is,
+      // so the drawing can breathe with it. Null is the unphrased answer.
+      getArticulation: vi.fn(() => null),
     } as unknown as SoundEngine;
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -149,6 +152,9 @@ describe("AnimatedTrails sound", () => {
       isEnabled: vi.fn(() => true),
       reset: vi.fn(),
       tick: vi.fn(),
+      // The draw loop asks each trail how far through its phrase its voice is,
+      // so the drawing can breathe with it. Null is the unphrased answer.
+      getArticulation: vi.fn(() => null),
     } as unknown as SoundEngine;
     const trailPositions = new TrailPositions();
     const playbackClock = { loopedMs: 0 };

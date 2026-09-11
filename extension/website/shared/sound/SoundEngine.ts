@@ -51,6 +51,21 @@ import {
 } from "./scales";
 import { parseColorToHsl } from "../utils/eventUtils";
 import { getInstrument, CLICK_BELL } from "./instruments";
+import { PHRASING_TUNING } from "./tuning";
+import {
+  advanceMotion,
+  articulationAt,
+  beginNote,
+  bloomAmountFor,
+  createPhrasingState,
+  glideMsForTurn,
+  PhrasingState,
+  headingAngle,
+  resolveMotionState,
+  reverbSendFor,
+  turnDecision,
+  VoiceMotionState,
+} from "./phrasing";
 
 /** Minimum time between note changes for a single voice (ms) */
 const MIN_NOTE_INTERVAL_MS = 80;
@@ -393,6 +408,16 @@ export interface SoundConfig {
   traceability: number;
   /** How the spotlight's soloist speaks — see `SoloistVoice`. */
   soloistVoice: SoloistVoice;
+  /**
+   * Phrase each voice instead of re-reading it every frame.
+   *
+   * Pitch stops tracking the instantaneous direction and changes only when the
+   * trail turns; gain, brightness, vowel and pan keep following motion. On top
+   * of that a voice swells and settles on every note, blooms an octave with
+   * speed rather than jumping one, and develops when a trail lingers in one
+   * spot instead of holding a flat tone.
+   */
+  phrasing: boolean;
 }
 
 /**
@@ -421,6 +446,7 @@ const DEFAULT_CONFIG: SoundConfig = {
   bassPedal: false,
   traceability: 0,
   soloistVoice: "bells",
+  phrasing: false,
 };
 
 /**
@@ -1606,6 +1632,38 @@ interface Voice {
   presenceDeveloped: boolean;
   /** The quiet octave double, created only once presence has held. */
   halo: HaloNodes | null;
+  /**
+   * The phrase envelope, in series after `gainNode` and multiplying it.
+   *
+   * Every note swells to full and then relaxes toward a sustain level over a
+   * few seconds, so a held line keeps breathing instead of sitting at whatever
+   * level its velocity bought it. A node of its own rather than folding the
+   * factor into the gain target, because the two have completely different
+   * clocks — the gain follows motion at control rate, the articulation runs one
+   * long settle per note — and writing both onto one param means each
+   * interrupts the other.
+   */
+  articulationNode: GainNode;
+  /**
+   * The octave layer speed crossfades in, replacing the old velocity-driven
+   * octave jump. Same shape as the halo and built the same way; it stays inside
+   * the voice's register, so speed can never introduce an out-of-key pitch.
+   */
+  bloom: HaloNodes | null;
+  /** Last bloom gain scheduled, so an unchanged crossfade is not re-ramped. */
+  bloomLevel: number;
+  /**
+   * Whether the lingering development — closed vowel, widened vibrato — has
+   * been scheduled for the current linger. Cleared when the trail moves on, so
+   * a trail that pools twice develops twice.
+   */
+  lingerDeveloped: boolean;
+  /**
+   * The vibrato depth this voice's fingerprint asks for, in cents. Kept on the
+   * voice so a development that widens it has something to hand it back to;
+   * the fingerprint itself is keyed by trail, and a voice has no back-reference.
+   */
+  baseVibratoDepthCents: number;
   /** Personal vibrato LFO, present only while trail voices are on. */
   vibrato: VibratoNodes | null;
   /** Vowel formant bank, present only while the choral timbre is on. */
@@ -1743,6 +1801,13 @@ export class SoundEngine {
   private mergePullsUntilMs: Map<number, number> = new Map();
   /** Per-trail crescendo bookkeeping, maintained only while swells are on. */
   private swells: Map<number, SwellState> = new Map();
+  /**
+   * Per-trail phrasing: smoothed motion, which note is being held, and whether
+   * the trail is moving, lingering or resting. Kept outside `voices` because it
+   * is decided from the frame rather than from the audio graph, and survives a
+   * voice being rebuilt underneath the same trail.
+   */
+  private phrasings: Map<number, PhrasingState> = new Map();
   /**
    * Rolling velocity samples per trail: [timestampMs, velocity]. Kept per
    * trail so a candidate can be compared against the rest of the scene
@@ -2267,9 +2332,28 @@ export class SoundEngine {
         ? REFERENCE_FRAME_DURATION_MS
         : Math.max(1, sampleTimeMs - prevSampleTimeMs);
       const distance = computeVelocity(prevX, prevY, frame.x, frame.y);
-      const velocity =
-        distance * (REFERENCE_FRAME_DURATION_MS / sampleIntervalMs);
-      const gain = velocityToGain(velocity);
+      const frameScale = REFERENCE_FRAME_DURATION_MS / sampleIntervalMs;
+      const velocity = distance * frameScale;
+
+      // Phrasing runs before anything decides what this frame sounds like, and
+      // before the silence check below, because the states it resolves —
+      // moving, lingering, resting — are what that check becomes. Kept up to
+      // date even when phrasing is off so the toggle can be flipped mid-scene
+      // without a voice inheriting a stale heading.
+      const phrasing = this.phrasingFor(frame.trailIndex, elapsedMs);
+      advanceMotion(phrasing, frame.x - prevX, frame.y - prevY, frameScale);
+      const motionState = resolveMotionState(
+        phrasing,
+        frame.x,
+        frame.y,
+        elapsedMs,
+      );
+      phrasing.articulation = articulationAt(phrasing, elapsedMs);
+      // What every instant parameter reads. Phrased voices follow the smoothed
+      // speed so a dropped frame is not a dip in the line; unphrased ones stay
+      // on the raw per-frame velocity they were tuned against.
+      const speaking = this.config.phrasing ? phrasing.speed : velocity;
+      const gain = velocityToGain(speaking);
 
       // Fires before the silence check below: a soloist coasting to a stop
       // still owes its listener the notes it has already traveled for.
@@ -2300,7 +2384,14 @@ export class SoundEngine {
         }
       }
 
-      if (velocity < SILENCE_VELOCITY_THRESHOLD) {
+      // With phrasing on, "stopped" is a state the trail has held rather than a
+      // single slow frame: a gesture that eases through a corner dips under the
+      // raw threshold constantly, and cutting the voice there is what made a
+      // long line read as a stutter.
+      const silent = this.config.phrasing
+        ? motionState === "resting"
+        : velocity < SILENCE_VELOCITY_THRESHOLD;
+      if (silent) {
         const voice = this.voices.get(frame.trailIndex);
         if (voice?.active) {
           // With swells on a stopped trail is released rather than cut, so the
@@ -2336,7 +2427,11 @@ export class SoundEngine {
           } else {
             this.fadeVoice(
               voice,
-              this.config.swells ? SWELL_TUNING.releaseSeconds : 0.05,
+              this.config.phrasing
+                ? PHRASING_TUNING.restFadeSeconds
+                : this.config.swells
+                  ? SWELL_TUNING.releaseSeconds
+                  : 0.05,
             );
           }
         }
@@ -2359,13 +2454,26 @@ export class SoundEngine {
               : getInstrument(undefined),
           );
         }
+        // A resting trail has no octave to double and no phrase to settle: the
+        // layer goes with the note rather than ringing on over silence.
+        if (voice) {
+          this.releaseBloom(voice);
+          voice.lingerDeveloped = false;
+        }
         // Keep advancing the crescendo so a stopped trail decays toward zero
         // instead of freezing at whatever it had reached.
         this.swellGainFor(frame.trailIndex, elapsedMs, 0);
         continue;
       }
 
-      const direction = computeDirection(prevX, prevY, frame.x, frame.y);
+      // The smoothed heading when phrasing, the raw one otherwise. A note is
+      // taken because the trail turned, so the pitch should come from the
+      // direction that earned it rather than from whichever single frame
+      // happened to cross the threshold.
+      const direction = this.config.phrasing
+        ? (headingAngle(phrasing) ??
+          computeDirection(prevX, prevY, frame.x, frame.y))
+        : computeDirection(prevX, prevY, frame.x, frame.y);
       // Only newly-selected pitches use the current chord, so voices already
       // sounding drift into the new harmony at their own next note change
       // rather than all retuning together on the chord boundary.
@@ -2429,22 +2537,39 @@ export class SoundEngine {
         voice.lastCursorType = frame.cursorType;
       }
 
-      if (
-        frequency !== voice.currentFrequency &&
-        elapsedMs - voice.lastNoteTimeMs > MIN_NOTE_INTERVAL_MS
-      ) {
+      // A phrased voice takes a note when the trail turns, not when the
+      // instantaneous direction happens to land in a different 45-degree arc.
+      // `turnDecision` also answers how sharp the turn was, which is what sets
+      // the glide below: a hard corner snaps, a gentle curve slides.
+      const turn = this.config.phrasing
+        ? turnDecision(phrasing, elapsedMs)
+        : null;
+      if (turn) {
+        // The turn is the note, whether or not the palette hands it a
+        // different pitch: a gesture that doubles back onto the same scale
+        // degree is still a fresh bow stroke, so it re-articulates.
+        beginNote(phrasing, elapsedMs);
+        this.articulate(voice);
+        // A new note ends whatever the last one had developed into: the trail
+        // has moved on, so the hum and the widened vibrato go with it.
+        if (voice.lingerDeveloped) this.settleFromLinger(voice);
+      }
+      const takesNote = this.config.phrasing
+        ? turn !== null && frequency !== voice.currentFrequency
+        : frequency !== voice.currentFrequency &&
+          elapsedMs - voice.lastNoteTimeMs > MIN_NOTE_INTERVAL_MS;
+      if (takesNote) {
         // The first pitch this voice takes from a new palette is its move into
         // the new chord, so it slides rather than snapping. A voice that has
         // already spoken in this palette moves at the ordinary note rate.
         const isVoiceLeadingMove =
           voice.lastPitchScale !== null && voice.lastPitchScale !== scale;
-        this.setVoiceFrequency(
-          voice,
-          frequency,
-          isVoiceLeadingMove
-            ? VOICE_LEADING_GLIDE_SECONDS
-            : NOTE_GLIDE_SECONDS,
-        );
+        const glideSeconds = isVoiceLeadingMove
+          ? VOICE_LEADING_GLIDE_SECONDS
+          : turn
+            ? glideMsForTurn(turn.sharpnessDegrees) / 1000
+            : NOTE_GLIDE_SECONDS;
+        this.setVoiceFrequency(voice, frequency, glideSeconds);
         voice.lastPitchScale = scale ?? null;
         voice.lastNoteTimeMs = elapsedMs;
         voice.currentFrequency = frequency;
@@ -2477,7 +2602,7 @@ export class SoundEngine {
       // and there is nothing there to lean into.
       const swellGain = isPercussive
         ? 1
-        : this.swellGainFor(frame.trailIndex, elapsedMs, velocity);
+        : this.swellGainFor(frame.trailIndex, elapsedMs, speaking);
 
       if (this.config.choralTimbre) {
         this.attachFormants(voice);
@@ -2543,7 +2668,12 @@ export class SoundEngine {
       if (shouldUpdateContinuousParams) {
         this.rampParam(voice.panNode.pan, pan, VOICE_CONTROL_RAMP_SECONDS);
         if (this.config.choralTimbre) {
-          this.updateFormants(voice, velocity);
+          // A lingering voice's vowel is owned by its development, which is
+          // closing it onto a hum over two seconds; letting the speed morph
+          // keep writing the same param would pull it straight back open.
+          if (!(this.config.phrasing && voice.lingerDeveloped)) {
+            this.updateFormants(voice, speaking);
+          }
         }
         // Brightness rides the same throttle as gain and pan. Re-ramping the
         // filter every animation frame restarts a 120ms glide every ~16ms, so
@@ -2553,7 +2683,16 @@ export class SoundEngine {
           this.applySpotlightBrightness(
             voice,
             frame.trailIndex,
-            velocity,
+            speaking,
+            instrument,
+          );
+        }
+        if (this.config.phrasing) {
+          this.updatePhrasedVoice(
+            voice,
+            phrasing,
+            motionState,
+            elapsedMs,
             instrument,
           );
         }
@@ -3246,8 +3385,17 @@ export class SoundEngine {
     // touches the envelope's own param. See `Voice.fadeNode`.
     const fade = ctx.createGain();
     this.parameterAutomation.set(fade.gain, 1, now);
+    // The phrase envelope multiplies the motion-following gain. See
+    // `Voice.articulationNode`.
+    const articulation = ctx.createGain();
+    this.parameterAutomation.set(
+      articulation.gain,
+      PHRASING_TUNING.articulationRestLevel,
+      now,
+    );
     filter.connect(gain);
-    gain.connect(fade);
+    gain.connect(articulation);
+    articulation.connect(fade);
     fade.connect(pan);
     // Both routes exist for the life of the voice; presence moves the level
     // between them rather than moving the connection. See `Voice.bedRoute`.
@@ -3305,6 +3453,11 @@ export class SoundEngine {
       presentSinceMs: 0,
       presenceDeveloped: false,
       halo: null,
+      articulationNode: articulation,
+      bloom: null,
+      bloomLevel: 0,
+      lingerDeveloped: false,
+      baseVibratoDepthCents: 0,
       vibrato: null,
       formants: null,
       appliedDetuneCents: 0,
@@ -3502,6 +3655,7 @@ export class SoundEngine {
       fingerprint.vibratoDepthCents,
       now,
     );
+    voice.baseVibratoDepthCents = fingerprint.vibratoDepthCents;
     if (fingerprint.vibratoDepthCents === 0) voice.vibrato.parkAt = now;
   }
 
@@ -4009,13 +4163,12 @@ export class SoundEngine {
       // length as the voice's own gain above, so the halo reaches silence
       // before the pan node it feeds is disconnected; stopping it outright
       // with the voice cuts it mid-cycle, which is an audible click.
-      this.releaseHalo(
-        voice,
-        Math.max(
-          VOICE_RETIREMENT_FADE_SECONDS,
-          fadeEnd - (this.ctx?.currentTime ?? 0),
-        ),
+      const teardownSeconds = Math.max(
+        VOICE_RETIREMENT_FADE_SECONDS,
+        fadeEnd - (this.ctx?.currentTime ?? 0),
       );
+      this.releaseHalo(voice, teardownSeconds);
+      this.releaseBloom(voice, teardownSeconds);
       if (!disconnectWhenStopped) {
         disconnect();
       }
@@ -4028,6 +4181,7 @@ export class SoundEngine {
     this.fingerprintKeys.delete(trailIndex);
     this.mergePullsUntilMs.delete(trailIndex);
     this.swells.delete(trailIndex);
+    this.phrasings.delete(trailIndex);
     this.spotlightGains.delete(trailIndex);
     this.spotlightVelocitySamples.delete(trailIndex);
     this.spotlightSmoothedVelocities.delete(trailIndex);
@@ -4277,6 +4431,81 @@ export class SoundEngine {
    * The playground shows this beside the home tone so the colour-to-register
    * mapping can be checked by eye against what is being heard.
    */
+  /**
+   * How far through its swell-and-settle a trail's voice currently is, 0-1, or
+   * null when the trail has no phrasing yet.
+   *
+   * Exposed so the drawing can breathe with the sound: the same value that
+   * multiplies the voice's gain scales the trail's opacity and stroke width, so
+   * a fresh gesture is drawn as brightly as it is heard. Computed from the
+   * phrasing clock rather than read off the `AudioParam`, which is only
+   * truthfully readable on the audio thread.
+   */
+  getArticulation(trailIndex: number): number | null {
+    if (!this.config.phrasing) return null;
+    return this.phrasings.get(trailIndex)?.articulation ?? null;
+  }
+
+  /** What a trail's voice is doing — moving, lingering or resting. */
+  getMotionState(trailIndex: number): VoiceMotionState | null {
+    return this.phrasings.get(trailIndex)?.state ?? null;
+  }
+
+  /**
+   * A snapshot of the whole arrangement for a debug overlay: the conductor's
+   * readout plus one line per voice. Read-only and allocated per call, so it is
+   * for a dev panel rather than for anything on the audio path.
+   */
+  getVoiceSnapshot(): {
+    energy: number;
+    chord: string;
+    progression: ProgressionId;
+    fullVoices: number;
+    pooledVoices: number;
+    voices: Array<{
+      trailIndex: number;
+      state: VoiceMotionState;
+      speed: number;
+      articulation: number;
+      bloom: number;
+      frequency: number;
+      present: boolean;
+    }>;
+  } {
+    const voices: Array<{
+      trailIndex: number;
+      state: VoiceMotionState;
+      speed: number;
+      articulation: number;
+      bloom: number;
+      frequency: number;
+      present: boolean;
+    }> = [];
+    for (const [trailIndex, voice] of this.voices) {
+      const phrasing = this.phrasings.get(trailIndex);
+      voices.push({
+        trailIndex,
+        state: phrasing?.state ?? "resting",
+        speed: phrasing?.speed ?? 0,
+        articulation: phrasing?.articulation ?? 0,
+        bloom: phrasing?.bloom ?? 0,
+        frequency: voice.currentFrequency,
+        present: voice.present,
+      });
+    }
+    voices.sort((a, b) => a.trailIndex - b.trailIndex);
+    return {
+      energy: this.energy,
+      chord: this.getCurrentChordName(),
+      progression: this.config.progression,
+      // Every sounding trail still gets a voice of its own; the split between
+      // soloists and pooled section pads arrives with the voice manager.
+      fullVoices: voices.length,
+      pooledVoices: Math.max(0, this.lastActiveTrailCount - voices.length),
+      voices,
+    };
+  }
+
   getRegisterBand(trailIndex: number): RegisterBand | null {
     if (!this.config.trailVoices) return null;
     return this.fingerprints.get(trailIndex)?.band ?? null;
@@ -4988,6 +5217,249 @@ export class SoundEngine {
     }
   }
 
+
+  /** This trail's phrasing state, created on first sight. */
+  private phrasingFor(trailIndex: number, elapsedMs: number): PhrasingState {
+    let state = this.phrasings.get(trailIndex);
+    if (!state) {
+      state = createPhrasingState(elapsedMs);
+      this.phrasings.set(trailIndex, state);
+    }
+    return state;
+  }
+
+  /**
+   * Strike this voice's phrase envelope: a fast ramp to full, then a long
+   * exponential relax toward the settled level.
+   *
+   * `setTargetAtTime` rather than a second ramp, because the settle has no
+   * endpoint to be interrupted at — the next note simply bends the curve from
+   * wherever it had reached, which is what makes re-articulation while a line
+   * is still sounding continuous instead of a step.
+   */
+  private articulate(voice: Voice): void {
+    if (!this.ctx || !this.config.phrasing) return;
+    const {
+      articulationAttackMs,
+      articulationSettleDelayMs,
+      articulationSettleLevel,
+      articulationSettleTimeConstant,
+    } = PHRASING_TUNING;
+    const now = this.ctx.currentTime;
+    const param = voice.articulationNode.gain;
+    this.rampParam(param, 1, articulationAttackMs / 1000);
+    const settleFrom = this.rampEndTime(
+      param,
+      now,
+      (articulationAttackMs + articulationSettleDelayMs) / 1000,
+    );
+    // The settle owns the param from here, so the ramp bookkeeping above must
+    // not later think a ramp is still running toward 1.
+    this.rampTargets.delete(param);
+    this.parameterAutomation.target(
+      param,
+      articulationSettleLevel,
+      settleFrom,
+      articulationSettleTimeConstant,
+    );
+  }
+
+  /**
+   * Everything a phrased voice does that is not its pitch: the octave bloom,
+   * the room it sits in, and — while it is pooling in one spot — the slow
+   * development of the note it is holding.
+   */
+  private updatePhrasedVoice(
+    voice: Voice,
+    phrasing: PhrasingState,
+    motionState: VoiceMotionState,
+    elapsedMs: number,
+    instrument: InstrumentConfig,
+  ): void {
+    if (!this.ctx) return;
+    const lingering = motionState === "lingering";
+    const speedBloom = bloomAmountFor(phrasing.speed);
+    const lingerBloom = lingering
+      ? Math.min(
+          1,
+          (elapsedMs - phrasing.stateSinceMs) /
+            (PHRASING_TUNING.lingerBloomRampSeconds * 1000),
+        ) *
+        (PHRASING_TUNING.lingerBloomGain / PHRASING_TUNING.bloomGain)
+      : 0;
+    const bloom = Math.max(speedBloom, lingerBloom);
+    // Smoothed toward its target rather than jumped to it, so a flick fades the
+    // octave in over ~300ms instead of switching it on.
+    const smoothing = Math.min(
+      1,
+      this.tickIntervalMs / PHRASING_TUNING.bloomSmoothingMs,
+    );
+    phrasing.bloom += (bloom - phrasing.bloom) * smoothing;
+
+    // A promoted voice already carries the presence halo an octave above it.
+    // Two octave doubles on one line is a chorus, not depth, so the bloom
+    // stands down for the duration of the reign.
+    if (voice.present) {
+      this.releaseBloom(voice);
+    } else {
+      this.updateBloom(voice, phrasing.bloom, instrument);
+    }
+
+    // Speed drives the room inversely: a fast path is dry and close, a slow one
+    // sits back in it. Presence owns this send while it holds the voice.
+    if (voice.reverbSend && !voice.present) {
+      const scale = reverbSendFor(phrasing.speed) / DEFAULT_REVERB_SEND;
+      this.rampParam(voice.reverbSend.gain, scale, 0.4);
+    }
+
+    if (lingering && !voice.lingerDeveloped) {
+      voice.lingerDeveloped = true;
+      this.developLinger(voice);
+    } else if (!lingering && voice.lingerDeveloped) {
+      this.settleFromLinger(voice);
+    }
+  }
+
+  /**
+   * Let a pooling voice develop the note it is already holding: the vowel eases
+   * onto a closed hum and the vibrato widens over several seconds.
+   *
+   * A trail that stops travelling but keeps moving is a person hovering over
+   * something, and the old behaviour held a flat tone for as long as they did.
+   * Development is what turns that from a stuck note into a held one.
+   */
+  private developLinger(voice: Voice): void {
+    if (!this.ctx) return;
+    const {
+      lingerFormantsHz,
+      lingerFormantEaseSeconds,
+      lingerVibratoRampSeconds,
+      lingerVibratoDepthScale,
+    } = PHRASING_TUNING;
+    if (voice.formants) {
+      voice.formants.filters.forEach((filter, i) => {
+        const hz = lingerFormantsHz[i];
+        if (hz === undefined) return;
+        this.rampParam(filter.frequency, hz, lingerFormantEaseSeconds);
+      });
+      // The morph tracks its own last openness to avoid re-ramping; the hum is
+      // outside that range, so it is invalidated rather than left to think the
+      // vowel is still where the speed put it.
+      voice.formants.lastOpenness = -1;
+    }
+    const vibrato = voice.vibrato;
+    if (vibrato && !vibrato.parked && voice.baseVibratoDepthCents > 0) {
+      this.rampParam(
+        vibrato.depth.gain,
+        voice.baseVibratoDepthCents * lingerVibratoDepthScale,
+        lingerVibratoRampSeconds,
+      );
+    }
+  }
+
+  /** Undo a linger development, handing the vowel and vibrato back to motion. */
+  private settleFromLinger(voice: Voice): void {
+    voice.lingerDeveloped = false;
+    // The speed morph owns the vowel again from the next control tick; its
+    // last-openness cache is invalidated so it actually writes one.
+    if (voice.formants) voice.formants.lastOpenness = -1;
+    const vibrato = voice.vibrato;
+    if (vibrato && !vibrato.parked && voice.baseVibratoDepthCents > 0) {
+      this.rampParam(
+        vibrato.depth.gain,
+        voice.baseVibratoDepthCents,
+        PHRASING_TUNING.lingerFormantEaseSeconds,
+      );
+    }
+  }
+
+  /**
+   * Crossfade the voice's octave layer to `amount` of its full level.
+   *
+   * This is what replaced the velocity-driven octave jump. A jump moved the
+   * voice's own pitch, so a fast cursor could land a fourth above the chord it
+   * was doubling; a layer adds the octave underneath the line the voice is
+   * already singing, which is always in key by construction. It is built on
+   * first need and then left in place, because creating and destroying an
+   * oscillator per gesture is exactly the graph churn the tick path avoids.
+   */
+  private updateBloom(
+    voice: Voice,
+    amount: number,
+    instrument: InstrumentConfig,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx || !voice.currentFrequency) return;
+    const {
+      bloomMultiple,
+      bloomFilterHz,
+      bloomFadeSeconds,
+      bloomGain,
+    } = PHRASING_TUNING;
+    const level = bloomGain * Math.min(1, Math.max(0, amount));
+    if (!voice.bloom) {
+      // Nothing to fade in yet, and no reason to build a graph for silence.
+      if (level <= 0) return;
+      const now = ctx.currentTime;
+      const oscillator = ctx.createOscillator();
+      // A sine for the same reason the halo is one: the layer is here to add a
+      // pitch, not a second partial stack sitting above the voice's own.
+      oscillator.type = "sine";
+      this.parameterAutomation.set(
+        oscillator.frequency,
+        voice.currentFrequency * bloomMultiple,
+        now,
+      );
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      this.parameterAutomation.set(filter.frequency, bloomFilterHz, now);
+      this.parameterAutomation.set(filter.Q, instrument.filterQ, now);
+
+      const gain = ctx.createGain();
+      this.parameterAutomation.set(gain.gain, 0, now);
+
+      oscillator.connect(filter);
+      filter.connect(gain);
+      // Into the voice's own pan, so the octave sits where the voice sits and
+      // follows it across the soloist crossfade without being moved.
+      gain.connect(voice.panNode);
+      oscillator.start(now);
+      voice.bloom = { oscillator, filter, gain, fading: false };
+      voice.bloomLevel = 0;
+    }
+    if (voice.bloom.fading) return;
+    this.rampParam(
+      voice.bloom.oscillator.frequency,
+      voice.currentFrequency * bloomMultiple,
+      VOICE_LEADING_GLIDE_SECONDS,
+    );
+    if (Math.abs(level - voice.bloomLevel) < 0.005) return;
+    voice.bloomLevel = level;
+    this.rampParam(voice.bloom.gain.gain, level, bloomFadeSeconds);
+  }
+
+  /** Fade the octave layer out and tear it down once it is silent. */
+  private releaseBloom(voice: Voice, fadeSeconds?: number): void {
+    const bloom = voice.bloom;
+    if (!this.ctx || !bloom || bloom.fading) return;
+    bloom.fading = true;
+    voice.bloom = null;
+    voice.bloomLevel = 0;
+    const seconds = fadeSeconds ?? PHRASING_TUNING.bloomFadeSeconds;
+    const now = this.ctx.currentTime;
+    this.rampParam(bloom.gain.gain, 0, seconds);
+    bloom.oscillator.onended = () => {
+      bloom.oscillator.disconnect();
+      bloom.filter.disconnect();
+      bloom.gain.disconnect();
+    };
+    try {
+      bloom.oscillator.stop(now + seconds + 0.02);
+    } catch {
+      /* already stopped */
+    }
+  }
 
   /**
    * Open the soloist's filter with velocity. Non-soloists are left entirely
@@ -7140,23 +7612,27 @@ export class SoundEngine {
     this.detachFormants(voice);
     // A trail can be retired mid-presence, so the halo is stopped here rather
     // than only on demotion; otherwise its oscillator outlives the voice.
-    const halo = voice.halo;
-    if (halo) {
-      voice.halo = null;
+    // Same for the bloom: it is an oscillator of its own feeding the pan node,
+    // so nothing upstream stops it.
+    for (const layer of [voice.halo, voice.bloom]) {
+      if (!layer) continue;
       try {
-        halo.oscillator.stop();
+        layer.oscillator.stop();
       } catch {
         /* already stopped */
       }
-      halo.oscillator.disconnect();
-      halo.filter.disconnect();
-      halo.gain.disconnect();
+      layer.oscillator.disconnect();
+      layer.filter.disconnect();
+      layer.gain.disconnect();
     }
+    voice.halo = null;
+    voice.bloom = null;
     voice.oscillatorLevel?.disconnect();
     voice.fifthOscillatorLevel?.disconnect();
     voice.fifthGainNode?.disconnect();
     voice.filterNode.disconnect();
     voice.gainNode.disconnect();
+    voice.articulationNode.disconnect();
     voice.fadeNode.disconnect();
     voice.panNode.disconnect();
     voice.bedRoute.disconnect();
@@ -7480,6 +7956,7 @@ export class SoundEngine {
       // mid-cycle cut. Released here over the same fast fade instead; it
       // nulls `voice.halo`, so the later disconnect does not touch it again.
       this.releaseHalo(voice, 0.03);
+      this.releaseBloom(voice, 0.03);
       if (voice.oscillator) {
         voice.oscillator.onended = () => this.disconnectVoice(voice);
         try {
@@ -7498,6 +7975,7 @@ export class SoundEngine {
       voice.active = false;
     }
     this.voices.clear();
+    this.phrasings.clear();
     this.prevPositions.clear();
     this.prevSampleTimesMs.clear();
     this.crossingCooldowns.clear();
