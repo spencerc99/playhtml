@@ -1,0 +1,553 @@
+// ABOUTME: Visual system for passpals — bone paper, black rules, one acid green.
+// ABOUTME: Brutalist grid with the chunky window chrome of an older chat client.
+
+$bone: #f4f2ec;
+$ink: #111111;
+$acid: #b6ff3b;
+$muted: #8a8781;
+$rule: 2px solid $ink;
+$hairline: 1px solid rgba(17, 17, 17, 0.2);
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: $bone;
+  color: $ink;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#passpals {
+  height: 100%;
+}
+
+::selection {
+  background: $acid;
+  color: $ink;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid $acid;
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- the gate */
+
+.pp-gate {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5em;
+  padding: 2em 1em 3em;
+}
+
+.pp-card {
+  width: min(640px, 100%);
+  border: $rule;
+  background: $bone;
+  box-shadow: 8px 8px 0 $ink;
+}
+
+.pp-card-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  background: $ink;
+  color: $bone;
+  padding: 0.5em 0.9em;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.pp-card-bar-note {
+  color: $acid;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.pp-card-body {
+  padding: 1.6em 1.5em 1.8em;
+
+  p {
+    margin: 0 0 1em;
+  }
+}
+
+.pp-lede {
+  font-size: 17px;
+  line-height: 1.35;
+  border-bottom: $rule;
+  padding-bottom: 0.7em;
+}
+
+.pp-notes {
+  list-style: none;
+  margin: 1.4em 0;
+  padding: 0;
+  font-size: 12px;
+  color: $muted;
+
+  li {
+    border-left: $rule;
+    padding: 0 0 0 0.8em;
+    margin-bottom: 0.8em;
+  }
+
+  strong {
+    color: $ink;
+  }
+}
+
+.pp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  border-top: $rule;
+  padding-top: 1.3em;
+
+  label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: $muted;
+  }
+
+  input {
+    border: $rule;
+    background: transparent;
+    padding: 0.7em 0.8em;
+    font-size: 16px;
+    letter-spacing: 0.08em;
+  }
+}
+
+.pp-form-row {
+  display: flex;
+  gap: 0.6em;
+
+  button {
+    flex: 1;
+  }
+}
+
+button {
+  border: $rule;
+  background: $ink;
+  color: $bone;
+  padding: 0.7em 1em;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+
+  &:hover {
+    background: $acid;
+    color: $ink;
+  }
+}
+
+.pp-ghost {
+  background: transparent;
+  color: $ink;
+}
+
+.pp-tiny {
+  padding: 0.25em 0.5em;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+.pp-error {
+  margin: 1em 0 0;
+  font-size: 12px;
+  color: #c42348;
+}
+
+.pp-colophon {
+  font-size: 11px;
+  color: $muted;
+  letter-spacing: 0.08em;
+
+  a {
+    color: inherit;
+  }
+}
+
+/* ---------------------------------------------------------------- the room */
+
+.pp-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  background: $ink;
+  color: $bone;
+  padding: 0.55em 1em;
+  border-bottom: $rule;
+}
+
+.pp-titlebar-name {
+  font-size: 15px;
+  letter-spacing: 0.05em;
+}
+
+.pp-titlebar-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.pp-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border: 1px solid currentColor;
+  display: inline-block;
+}
+
+.pp-dot-live {
+  background: $acid;
+  border-color: $ink;
+}
+
+.pp-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 330px;
+}
+
+.pp-rail {
+  border-right: $rule;
+  padding: 1.1em 1em;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5em;
+}
+
+.pp-block {
+  h2 {
+    margin: 0 0 0.6em;
+    font-size: 10px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: $muted;
+    border-bottom: $hairline;
+    padding-bottom: 0.4em;
+  }
+
+  p {
+    margin: 0 0 0.5em;
+  }
+}
+
+.pp-password {
+  font-size: 20px;
+  line-height: 1.2;
+  word-break: break-all;
+  letter-spacing: 0.02em;
+}
+
+.pp-masked {
+  color: $muted;
+}
+
+.pp-hash {
+  margin-top: 0.8em !important;
+  font-size: 10px;
+  color: $muted;
+  letter-spacing: 0.16em;
+  word-break: break-all;
+}
+
+.pp-roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.22em 0;
+  }
+}
+
+.pp-you,
+.pp-typing {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: $muted;
+  border: $hairline;
+  padding: 0 0.35em;
+}
+
+.pp-typing {
+  border-color: $ink;
+  background: $acid;
+  color: $ink;
+}
+
+.pp-stats {
+  font-size: 12px;
+  color: $muted;
+
+  strong {
+    color: $ink;
+    font-size: 16px;
+    font-weight: 400;
+  }
+}
+
+.pp-logoff {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+.pp-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pp-pane-letters {
+  border-left: $rule;
+  background: rgba(17, 17, 17, 0.03);
+}
+
+.pp-pane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  padding: 0.7em 1em;
+  border-bottom: $rule;
+
+  h2 {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+  }
+
+  span {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: $muted;
+  }
+}
+
+.pp-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1em;
+}
+
+/* Chat reads from the bottom up, the way a chat window should. */
+.pp-pane-chat .pp-scroll {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+
+  // Keep long histories from being squashed by the flex container.
+  > * {
+    flex: 0 0 auto;
+  }
+}
+
+.pp-empty {
+  max-width: 58ch;
+  font-size: 12px;
+  color: $muted;
+
+  p {
+    margin: 0 0 0.7em;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.pp-empty-lede {
+  font-size: 18px;
+  line-height: 1.3;
+  color: $ink;
+}
+
+.pp-line {
+  margin: 0 0 0.45em;
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.pp-time {
+  font-size: 10px;
+  color: $muted;
+  letter-spacing: 0.06em;
+  flex: 0 0 auto;
+}
+
+.pp-handle {
+  flex: 0 0 auto;
+
+  &::after {
+    content: ":";
+    color: $muted;
+  }
+}
+
+.pp-said {
+  flex: 1 1 12ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pp-letter {
+  border: $rule;
+  background: $bone;
+  padding: 0.7em 0.8em;
+  margin-bottom: 0.8em;
+  box-shadow: 3px 3px 0 $ink;
+}
+
+.pp-letter-body {
+  margin: 0 0 0.6em;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pp-letter-sign {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.8em;
+  font-size: 11px;
+}
+
+.pp-composer {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  border-top: $rule;
+  padding: 0.7em;
+
+  input,
+  textarea {
+    flex: 1;
+    min-width: 0;
+    border: $hairline;
+    background: $bone;
+    padding: 0.5em 0.6em;
+    resize: none;
+  }
+
+  button {
+    flex: 0 0 auto;
+  }
+}
+
+.pp-composer-letter {
+  align-items: stretch;
+  flex-direction: column;
+
+  button {
+    align-self: flex-end;
+  }
+}
+
+.pp-prompt {
+  color: $muted;
+}
+
+/* --------------------------------------------------------------- narrower */
+
+@media (max-width: 900px) {
+  // Stack as a normal document instead of a grid: grid rows would divide the
+  // viewport between the panes and clip their composers.
+  .pp-shell {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .pp-body {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .pp-pane {
+    flex: 0 0 auto;
+  }
+
+  // Two columns keeps the room details from eating the whole first screen.
+  .pp-rail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 1.1em 1.2em;
+    border-right: 0;
+    border-bottom: $rule;
+    overflow: visible;
+  }
+
+  .pp-logoff {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+
+  .pp-pane {
+    min-height: 0;
+  }
+
+  .pp-pane-letters {
+    border-left: 0;
+    border-top: $rule;
+  }
+
+  .pp-scroll {
+    min-height: 22vh;
+    max-height: 45vh;
+  }
+}
