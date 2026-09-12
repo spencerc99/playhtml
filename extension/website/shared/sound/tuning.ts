@@ -53,8 +53,6 @@ export const PHRASING_TUNING = {
   articulationSettleDelayMs: 50,
   articulationSettleLevel: 0.6,
   articulationSettleTimeConstant: 1.5,
-  /** Where a voice's articulation starts before its first note. */
-  articulationRestLevel: 0.6,
 
   /**
    * The octave "bloom": a quiet ×2 layer crossfaded in with speed, replacing

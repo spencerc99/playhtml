@@ -5878,14 +5878,58 @@ describe("phrasing", () => {
 
     walk(engine, 0, { x: 200, y: 300 }, { x: 6, y: 0 }, 60, 0);
 
-    // Nothing phrased ran: no articulation curve, no motion state to read, and
-    // no bloom oscillator beyond the voice's own.
+    // Nothing phrased ran: no articulation curve and no motion state to read.
     expect(engine.getArticulation(0)).toBeNull();
     const settles = createdNodes
       .filter((node): node is TestGainNode => node instanceof TestGainNode)
       .flatMap((node) => node.gain.events)
       .filter((event) => event.method === "setTarget");
     expect(settles).toHaveLength(0);
+
+    // And no gain node sits below unity purely because the phrase envelope
+    // exists. The envelope multiplies the voice's own gain, so a node parked
+    // at the settled level with nothing ever articulating it would quietly
+    // take 40% off the whole bed — which is what "exactly as it was" is really
+    // asserting.
+    const parkedBelowUnity = createdNodes
+      .filter((node): node is TestGainNode => node instanceof TestGainNode)
+      .filter((node) => {
+        const events = node.gain.events;
+        if (events.length !== 1 || events[0].method !== "set") return false;
+        const value = events[0].value ?? 0;
+        return value > 0 && value < 1;
+      });
+    expect(parkedBelowUnity).toHaveLength(0);
+    engine.dispose();
+  });
+
+  it("hands a sounding voice back to full level when phrasing is turned off", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setConfig({ phrasing: true });
+    engine.setCanvasWidth(1000);
+
+    const run = walk(engine, 0, { x: 200, y: 300 }, { x: 6, y: 0 }, 40, 0);
+    walk(engine, 0, run, { x: 0, y: 6 }, 60, run.ms);
+
+    // The voice is mid-settle, so its envelope is somewhere under unity.
+    const articulation = engine.getArticulation(0);
+    expect(articulation).not.toBeNull();
+    expect(articulation!).toBeLessThan(1);
+
+    engine.setConfig({ phrasing: false });
+
+    // Turning phrasing off must not leave the bed parked at whatever level the
+    // last note happened to settle to — nothing will ever articulate it again.
+    const restored = createdNodes
+      .filter((node): node is TestGainNode => node instanceof TestGainNode)
+      .some((node) =>
+        node.gain.events.some(
+          (event) => event.method === "linearRamp" && event.value === 1,
+        ),
+      );
+    expect(restored).toBe(true);
+    expect(engine.getArticulation(0)).toBeNull();
     engine.dispose();
   });
 });

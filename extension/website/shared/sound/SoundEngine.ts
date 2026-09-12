@@ -2176,6 +2176,23 @@ export class SoundEngine {
 
     // Turning the arc off must hand the reverb back to its fixed default,
     // otherwise it stays frozen at whatever the last energy value set.
+    // Phrasing turned off mid-scene leaves every voice holding whatever level
+    // its last note settled to, so the bed stays quiet until something
+    // articulates it again — which, with phrasing off, nothing ever does. The
+    // node is handed back to unity here rather than on the next tick, which a
+    // paused canvas may never run.
+    if (config.phrasing === false) {
+      for (const [trailIndex, voice] of this.voices) {
+        this.rampParam(voice.articulationNode.gain, 1, FORMANT_TOGGLE_SECONDS);
+        if (voice.lingerDeveloped) this.settleFromLinger(voice);
+        this.releaseBloom(voice);
+        if (voice.reverbSend && !voice.present) {
+          this.rampParam(voice.reverbSend.gain, 1, FORMANT_TOGGLE_SECONDS);
+        }
+        this.phrasings.delete(trailIndex);
+      }
+    }
+
     if (config.energyArc === false && this.reverbGain) {
       this.energy = 0;
       this.lastEnergyTickMs = null;
@@ -3387,12 +3404,11 @@ export class SoundEngine {
     this.parameterAutomation.set(fade.gain, 1, now);
     // The phrase envelope multiplies the motion-following gain. See
     // `Voice.articulationNode`.
+    // At unity until a note strikes it. Anything else would mean the voice is
+    // quieter than its gain says purely because this node exists — which with
+    // phrasing off, where no note ever strikes, would be the whole bed.
     const articulation = ctx.createGain();
-    this.parameterAutomation.set(
-      articulation.gain,
-      PHRASING_TUNING.articulationRestLevel,
-      now,
-    );
+    this.parameterAutomation.set(articulation.gain, 1, now);
     filter.connect(gain);
     gain.connect(articulation);
     articulation.connect(fade);
