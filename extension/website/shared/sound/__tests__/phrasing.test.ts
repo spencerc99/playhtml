@@ -62,6 +62,26 @@ describe("smoothed motion", () => {
     expect(angleDiffDegrees(before!, after!)).toBeLessThan(15);
   });
 
+  it("does not let jitter after a fast run steal the heading", () => {
+    // The speed EMA takes several frames to drain after a fast gesture, so
+    // during that drain a cursor that has effectively stopped is still "moving"
+    // as far as the turn test is concerned. Weighting the heading by how far
+    // each frame actually travelled is what stops a sub-pixel twitch from
+    // rotating the line and earning a note nobody gestured.
+    const state = createPhrasingState(0);
+    let now = travel(state, 12, 0, 60);
+    beginNote(state, now);
+    const held = headingAngle(state)!;
+    for (let i = 0; i < 20; i++) {
+      now += 16;
+      advanceMotion(state, 0.01, 0.05, 1);
+      expect(turnDecision(state, now)).toBeNull();
+    }
+    expect(angleDiffDegrees(held, headingAngle(state)!)).toBeLessThan(
+      PHRASING_TUNING.turnDegrees,
+    );
+  });
+
   it("normalizes speed against the frame the sample actually spans", () => {
     // A replay running at half rate travels twice as far per frame; without
     // the scale that reads as a trail moving twice as fast.
@@ -145,11 +165,10 @@ describe("articulation", () => {
   it("swells to full on a note and then relaxes toward the settled level", () => {
     const state = createPhrasingState(0);
     travel(state, 6, 0, 20);
+    // Neutral before the first note, so a voice that is never articulated —
+    // every voice, with phrasing off — sounds at exactly its own gain.
+    expect(articulationAt(state, 999)).toBe(1);
     beginNote(state, 1000);
-    expect(articulationAt(state, 1000)).toBeCloseTo(
-      PHRASING_TUNING.articulationRestLevel,
-      5,
-    );
     expect(articulationAt(state, 1000 + PHRASING_TUNING.articulationAttackMs))
       .toBeCloseTo(1, 5);
     const settling = articulationAt(state, 2500);
@@ -169,6 +188,10 @@ describe("articulation", () => {
     beginNote(state, 1000);
     const settled = articulationAt(state, 4000);
     beginNote(state, 4000);
+    // The attack climbs from the level actually sounding, not from a fixed
+    // floor, so re-articulating a settled line is continuous rather than a dip
+    // followed by a jump.
+    expect(articulationAt(state, 4000)).toBeCloseTo(settled, 5);
     expect(articulationAt(state, 4000 + PHRASING_TUNING.articulationAttackMs))
       .toBeGreaterThan(settled);
   });

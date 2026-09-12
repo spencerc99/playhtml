@@ -46,6 +46,13 @@ export interface PhrasingState {
   articulation: number;
   /** Tick time the articulation envelope was last re-struck. */
   articulationStartedMs: number;
+  /**
+   * Where the envelope stood when the current note struck, so the attack is
+   * modelled from the level actually sounding rather than from a fixed
+   * constant. The audio ramp starts from whatever the param holds; this has to
+   * say the same thing or the drawing and the sound drift apart.
+   */
+  articulationFrom: number;
   /** Smoothed 0-1 bloom amount, so the octave layer crossfades rather than steps. */
   bloom: number;
 }
@@ -61,8 +68,11 @@ export const createPhrasingState = (elapsedMs: number): PhrasingState => ({
   stateSinceMs: elapsedMs,
   stillSinceMs: elapsedMs,
   recent: [],
-  articulation: PHRASING_TUNING.articulationRestLevel,
+  // Neutral until a note strikes: an unarticulated voice is at full level, not
+  // at the level a settled one relaxes to.
+  articulation: 1,
   articulationStartedMs: Number.NEGATIVE_INFINITY,
+  articulationFrom: 1,
   bloom: 0,
 });
 
@@ -89,25 +99,37 @@ export function advanceMotion(
   const distance = Math.hypot(scaledX, scaledY);
   state.speed = ema(state.speed, distance, speedAlpha);
   if (distance > 0) {
-    // The unit vector, so a fast frame does not out-vote a slow one on
-    // direction. Magnitude is already carried by `speed`.
-    const unitX = scaledX / distance;
-    const unitY = scaledY / distance;
+    // The velocity components as they are, *not* normalized to a unit vector.
+    //
+    // Normalizing gave a sub-pixel twitch exactly the same say in the heading
+    // as a full-speed frame, and the speed EMA takes several frames to drain
+    // after a fast run — so a hand coming to rest could spin the held heading
+    // through a right angle on jitter alone and earn itself a note it never
+    // gestured. Smoothing the real components weights each frame by how far it
+    // actually travelled, which is what makes the heading a gesture's
+    // direction rather than the last twitch's.
     if (!state.hasHeading) {
-      state.headingX = unitX;
-      state.headingY = unitY;
+      state.headingX = scaledX;
+      state.headingY = scaledY;
       state.hasHeading = true;
     } else {
-      state.headingX = ema(state.headingX, unitX, headingAlpha);
-      state.headingY = ema(state.headingY, unitY, headingAlpha);
+      state.headingX = ema(state.headingX, scaledX, headingAlpha);
+      state.headingY = ema(state.headingY, scaledY, headingAlpha);
     }
   }
 }
 
-/** The smoothed heading as an angle, or null while the vector is too small to mean anything. */
+/**
+ * The smoothed heading as an angle, or null while the vector is too small to
+ * mean anything.
+ *
+ * The vector now carries magnitude as well as direction, so the floor is in
+ * the same units as speed: well under what counts as moving, because every
+ * caller that acts on a heading already gates on speed itself.
+ */
 export function headingAngle(state: PhrasingState): number | null {
   const magnitude = Math.hypot(state.headingX, state.headingY);
-  if (magnitude < 1e-3) return null;
+  if (magnitude < PHRASING_TUNING.moveMinSpeed * 0.1) return null;
   return Math.atan2(state.headingY, state.headingX);
 }
 
@@ -146,8 +168,9 @@ export function turnDecision(
 export function beginNote(state: PhrasingState, elapsedMs: number): void {
   state.noteHeading = headingAngle(state) ?? state.noteHeading;
   state.noteStartedMs = elapsedMs;
+  state.articulationFrom = articulationAt(state, elapsedMs);
   state.articulationStartedMs = elapsedMs;
-  state.articulation = 1;
+  state.articulation = state.articulationFrom;
 }
 
 /**
@@ -178,16 +201,15 @@ export function articulationAt(
     articulationSettleDelayMs,
     articulationSettleLevel,
     articulationSettleTimeConstant,
-    articulationRestLevel,
   } = PHRASING_TUNING;
-  if (state.articulationStartedMs === Number.NEGATIVE_INFINITY) {
-    return articulationRestLevel;
-  }
+  // A voice that has never taken a note is at full level, so phrasing off —
+  // where no note ever strikes — leaves the line exactly as loud as it was.
+  if (state.articulationStartedMs === Number.NEGATIVE_INFINITY) return 1;
   const age = elapsedMs - state.articulationStartedMs;
-  if (age < 0) return articulationRestLevel;
+  if (age < 0) return state.articulationFrom;
   if (age < articulationAttackMs) {
     const progress = age / articulationAttackMs;
-    return articulationRestLevel + (1 - articulationRestLevel) * progress;
+    return state.articulationFrom + (1 - state.articulationFrom) * progress;
   }
   const settleAge = (age - articulationSettleDelayMs) / 1000;
   if (settleAge <= 0) return 1;
