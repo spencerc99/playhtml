@@ -1,7 +1,7 @@
 // ABOUTME: Curates collected image scraps and arranges them in a deterministic scatter collage.
 // ABOUTME: Shows source provenance on hover and links each surviving image to its page.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
@@ -1293,6 +1293,7 @@ export function ScrapCollage({
   showKindFilter = false,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const archiveScrollRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [selectedKind, setSelectedKind] =
     useState<ScrapKindFilter>("all");
@@ -1477,9 +1478,10 @@ export function ScrapCollage({
     }
   }, [kindCounts, selectedKind]);
 
-  useEffect(() => {
-    if (!archiveMode) setArchiveScrollTop(0);
-  }, [archiveMode]);
+  useLayoutEffect(() => {
+    if (archiveScrollRef.current) archiveScrollRef.current.scrollTop = 0;
+    setArchiveScrollTop(0);
+  }, [archiveMode, selectedKind]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -1999,6 +2001,7 @@ export function ScrapCollage({
       ))}
       {archiveMode ? (
         <div
+          ref={archiveScrollRef}
           className="scrap-collage__scroll"
           onScroll={(event) =>
             setArchiveScrollTop(event.currentTarget.scrollTop)

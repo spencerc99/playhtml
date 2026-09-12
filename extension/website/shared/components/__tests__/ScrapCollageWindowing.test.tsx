@@ -148,4 +148,48 @@ describe("ScrapCollage archive-mode windowing", () => {
     expect(scrolledKeys.length).toBeLessThan(5_000);
     expect(scrolledKeys).not.toEqual(initialKeys);
   });
+
+  it("starts filtered archives at the newest scrap after scrolling", () => {
+    const images: ScrapItem[] = Array.from({ length: 10 }, (_, index) => ({
+      id: `image${index}`,
+      key: `image${index}`,
+      kind: "image",
+      src: `https://images.example/${index}.png`,
+      naturalWidth: 400,
+      naturalHeight: 300,
+      pageTitle: "Images",
+      domain: "images.example",
+      pageUrl: "https://images.example/",
+      ts: 5_000 + index,
+    }));
+    act(() => {
+      root.render(
+        <ScrapCollage items={[...buildItems(5_000), ...images]} seed={1} showKindFilter />,
+      );
+    });
+    act(() => {
+      container.querySelector<HTMLButtonElement>(
+        '[aria-label="Scrap view"] button:last-child',
+      )!.click();
+    });
+    const scroll = container.querySelector<HTMLDivElement>(".scrap-collage__scroll")!;
+    act(() => {
+      scroll.scrollTop = 20_000;
+      scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    const kinds = container.querySelector<HTMLSelectElement>(
+      '[aria-label="Kinds of scraps shown"]',
+    )!;
+    for (const kind of ["image", "button", "all"]) {
+      act(() => {
+        kinds.value = kind;
+        kinds.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      expect(scroll.scrollTop).toBe(0);
+      const tiles = container.querySelectorAll<HTMLElement>("[data-scrap-key]");
+      expect(tiles.length).toBeGreaterThan(0);
+      expect(tiles[0].dataset.scrapKey).toBe(kind === "button" ? "s4999" : "image9");
+      if (kind === "image") expect(tiles).toHaveLength(10);
+    }
+  });
 });
