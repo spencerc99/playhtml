@@ -235,6 +235,21 @@ const calculateViewportSize = (
   return { width, height };
 };
 
+/**
+ * Identifies how much footage a scroll recording holds. A live recording keeps
+ * growing while the person is still scrolling, and it keeps the same eventId
+ * throughout (the id of its first event), so this is what distinguishes the
+ * version already on screen from a longer one that has since arrived.
+ */
+export function scrollAnimationVersion(animation: ScrollAnimation): string {
+  return [
+    animation.endTime,
+    animation.scrollEvents.length,
+    animation.resizeEvents?.length ?? 0,
+    animation.zoomEvents?.length ?? 0,
+  ].join(":");
+}
+
 export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
   memo(({
     animations,
@@ -286,13 +301,54 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       activeViewportsRef.current = activeViewports;
     }, [activeViewports]);
 
+    /**
+     * Swap longer footage into windows that are already on screen. A live
+     * recording is still being written while it plays, so rather than letting
+     * it end at whatever it held when it was admitted, it keeps scrolling as
+     * new events arrive. The playhead stays continuous because the animation's
+     * duration and its timeline grow by the same amount (see getViewportFrame).
+     */
+    const extendActiveViewports = useCallback(() => {
+      if (!continuous) return;
+      commitActiveViewports((previous) => {
+        let changed = false;
+        const next = previous.map((viewport) => {
+          // A window already fading out has had its run; extending it would
+          // resurrect footage the viewer has visibly finished with.
+          if (viewport.phase === "fade-out") return viewport;
+          const id = viewport.animation.eventId;
+          if (!id) return viewport;
+          const latest = continuousQueue.current(id);
+          if (
+            !latest ||
+            latest.version === scrollAnimationVersion(viewport.animation)
+          ) {
+            return viewport;
+          }
+          changed = true;
+          return {
+            ...viewport,
+            animation: latest.value,
+            durationMs: latest.value.endTime - latest.value.startTime,
+          };
+        });
+        return changed ? next : previous;
+      });
+    }, [commitActiveViewports, continuous, continuousQueue]);
+
     // Initialize animation queue when animations change
     useEffect(() => {
       if (continuous) {
         continuousQueue.update(animations.map((animation) => {
           if (!animation.eventId) throw new Error("Installation scroll recording requires an event id");
-          return { id: animation.eventId, live: installationLiveEventIds.has(animation.eventId), value: animation };
+          return {
+            id: animation.eventId,
+            live: installationLiveEventIds.has(animation.eventId),
+            value: animation,
+            version: scrollAnimationVersion(animation),
+          };
         }));
+        extendActiveViewports();
         return;
       }
       if (animations.length > 0) {
@@ -309,7 +365,13 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           `[Scroll Dynamic] Initialized queue with ${shuffled.length} animations`,
         );
       }
-    }, [animations, continuous, continuousQueue, installationLiveEventIds]);
+    }, [
+      animations,
+      continuous,
+      continuousQueue,
+      extendActiveViewports,
+      installationLiveEventIds,
+    ]);
 
     // Get the next animation from the queue
     const getNextAnimation = useCallback((): ScrollAnimation | null => {

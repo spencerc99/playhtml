@@ -797,6 +797,16 @@ interface VisibleTypingRecording {
   durationMs: number;
 }
 
+/**
+ * Identifies how much footage a typing recording holds. A live recording keeps
+ * growing while the person is still typing, and it keeps the same id
+ * throughout (the id of its first event), so this is what distinguishes the
+ * version already on screen from a longer one that has since arrived.
+ */
+export function typingTrackVersion(track: TypingTrack): string {
+  return `${track.state.durationMs}:${track.actions.length}:${track.finalText.length}`;
+}
+
 export function ContinuousTyping({
   typingStates,
   settings,
@@ -820,9 +830,27 @@ export function ContinuousTyping({
     queue.update(
       schedule.tracks.map((track) => {
         const id = track.state.animation.event.id;
-        return { id, live: liveEventIds.has(id), value: { ...track, id } };
+        const versioned = { ...track, id };
+        return {
+          id,
+          live: liveEventIds.has(id),
+          value: versioned,
+          version: typingTrackVersion(versioned),
+        };
       }),
     );
+    // Keep boxes already on screen typing as their recording grows, rather than
+    // ending at whatever text had arrived when they were admitted. `startedAt`
+    // and `speed` are preserved so the characters already typed stay put and
+    // the longer sequence simply continues from there.
+    for (const recording of visible.current) {
+      const latest = queue.current(recording.track.id);
+      if (!latest || latest.version === typingTrackVersion(recording.track)) {
+        continue;
+      }
+      recording.track = latest.value;
+      recording.durationMs = latest.value.state.durationMs / recording.speed;
+    }
   }, [queue, typingStates, liveEventIds]);
 
   useEffect(() => {
