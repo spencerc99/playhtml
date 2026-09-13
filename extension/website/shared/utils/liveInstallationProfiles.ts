@@ -82,7 +82,9 @@ const SCROLLING_SETTINGS = {
   windowScale: 0.7,
   textboxOpacity: 0.2,
   keyboardRandomizeOrder: true,
-  liveScrollWindow: 20,
+  // Finished windows stay as pale sediment; kept modest because each window
+  // is heavy SVG and up to 30 can still be replaying on top of them.
+  liveScrollWindow: 16,
   liveSedimentFloor: 0.3,
 } satisfies Partial<MovementSettings>;
 
