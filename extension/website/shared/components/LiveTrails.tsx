@@ -767,7 +767,9 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           );
           const activeOpacity = getActiveTrailOpacity(draw, clockMs);
           const visibility = getTrailVisibility(entry.visibility, clockMs);
-          visibilityByTrail.set(key, visibility);
+          // Click marks recede with their trail's ink so a dark person's
+          // rings don't stay heavy over pale sediment.
+          visibilityByTrail.set(key, visibility * settleOpacity);
           const activeStartProgress =
             draw.activeFromVariedPoint === null || ts.variedPoints.length < 2
               ? null
