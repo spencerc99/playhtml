@@ -71,6 +71,7 @@ export default defineContentScript({
       private globalCleanup: (() => void) | null = null;
       private emoteCleanup: (() => void) | null = null;
       private customSiteCleanup: (() => void) | null = null;
+      private wayfarerCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
       private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
@@ -1061,6 +1062,9 @@ export default defineContentScript({
         // experiments run on every page. Set up presence first (which may init
         // our own playhtml for cursor sites), then always give the experiments
         // a chance to run — ensureGlobalFeatures is idempotent and self-gating.
+        // The map widget needs no connection, so it goes up before presence
+        // setup, which can wait on a socket that never opens.
+        await this.ensureWayfarerWidget();
         await this.setupPresence();
         await this.ensureGlobalFeatures();
 
@@ -1170,6 +1174,25 @@ export default defineContentScript({
         }
       }
 
+      /**
+       * Show the walking internet map in the corner of this page. Self-gating:
+       * the widget skips frames, non-http(s) pages, and the map page itself, and
+       * the cleanup is cleared by teardown so a bfcache restore can rebuild it.
+       */
+      private async ensureWayfarerWidget() {
+        if (this.wayfarerCleanup) return; // already running on this page
+        if (!(await isFeatureEnabled("MAP_WAYFARER"))) return;
+
+        try {
+          const { initWayfarerWidget } = await import(
+            "../features/wayfarer/widget"
+          );
+          this.wayfarerCleanup = initWayfarerWidget();
+        } catch (err) {
+          console.error("[we-were-online] initWayfarerWidget failed:", err);
+        }
+      }
+
       private listenForPresenceCount() {
         if (!("cursors" in window)) return;
 
@@ -1192,6 +1215,8 @@ export default defineContentScript({
         this.emoteCleanup = null;
         this.globalCleanup?.();
         this.globalCleanup = null;
+        this.wayfarerCleanup?.();
+        this.wayfarerCleanup = null;
       }
 
       // Recreate the collaborative-feature resources torn down before the page
