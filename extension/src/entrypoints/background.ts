@@ -780,8 +780,8 @@ export default defineBackground(() => {
           const dateRange =
             agg?.firstVisit && agg?.lastVisit
               ? {
-                  oldest: new Date(agg.firstVisit).toLocaleDateString(),
-                  newest: new Date(agg.lastVisit).toLocaleDateString(),
+                  oldest: new Date(agg.firstVisit).toISOString(),
+                  newest: new Date(agg.lastVisit).toISOString(),
                 }
               : null
 
