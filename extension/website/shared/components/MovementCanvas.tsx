@@ -12,6 +12,11 @@ import { CollectionEvent } from "../types";
 import { Controls } from "./Controls";
 import { AnimatedTrails } from "./AnimatedTrails";
 import { LiveTrails } from "./LiveTrails";
+import {
+  DEFAULT_SEDIMENT_SETTINGS,
+  liveTrailAccumulationLimits,
+  type SedimentSettings,
+} from "../utils/liveTrailSediment";
 import { LiveIndicator } from "./LiveIndicator";
 import { SoundEngine } from "../sound/SoundEngine";
 import { attachSoundWakeListeners } from "../sound/soundWake";
@@ -950,9 +955,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   // archive's event set is fixed, so it bypasses accumulation. A group's events
   // are freed when its trail has fully faded out (LiveTrails reports the id).
   const evictIdsRef = useRef<Set<string>>(new Set());
+  const liveAccumulation = useMemo(
+    () =>
+      liveTrailAccumulationLimits(
+        settings.liveTrailWindowMode,
+        settings.liveTrailWindow,
+      ),
+    [settings.liveTrailWindowMode, settings.liveTrailWindow],
+  );
   const trailEvents = useAccumulatedEvents(filteredEvents, {
     enabled: live,
-    maxGroups: 60,
+    maxGroups: liveAccumulation.maxGroups,
+    maxEvents: liveAccumulation.maxEvents,
     evictIdsRef,
   });
   const activeTrailEvents = hasCursorViz ? trailEvents : EMPTY_EVENTS;
@@ -1426,8 +1440,23 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       clickRingDelayMs: settings.clickRingDelayMs,
       clickAnimationStopPoint: settings.clickAnimationStopPoint,
       trailVisualStyle: settings.trailVisualStyle,
+      sediment: {
+        windowMode: settings.liveTrailWindowMode,
+        windowCount: settings.liveTrailWindow,
+        coverageBudget: settings.liveTrailCoverage,
+        style: settings.liveSedimentStyle,
+        floorOpacity: settings.liveSedimentFloor,
+        freshOpacity: DEFAULT_SEDIMENT_SETTINGS.freshOpacity,
+        activeHalo: settings.liveActiveHalo,
+      } satisfies SedimentSettings,
     }),
     [
+      settings.liveTrailWindowMode,
+      settings.liveTrailWindow,
+      settings.liveTrailCoverage,
+      settings.liveSedimentStyle,
+      settings.liveSedimentFloor,
+      settings.liveActiveHalo,
       settings.strokeWidth,
       settings.trailOpacity,
       settings.animationSpeed,

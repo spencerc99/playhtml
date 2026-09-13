@@ -14,8 +14,8 @@ export interface AccumulatedGroup {
 
 export type AccumulatedGroups = Map<string, AccumulatedGroup>;
 
-/** Defensive cap on total accumulated events across all groups. */
-const MAX_ACCUMULATED = 8000;
+/** Default defensive cap on total accumulated events across all groups. */
+export const DEFAULT_MAX_ACCUMULATED_EVENTS = 8000;
 
 function groupKey(e: CollectionEvent): string {
   return `${e.meta.pid}|${e.meta.url || ""}`;
@@ -70,6 +70,7 @@ export function accumulateEvents(
   evictIds?: Iterable<string>,
   maxGroups?: number,
   finishedEventIds?: ReadonlySet<string>,
+  maxEvents: number = DEFAULT_MAX_ACCUMULATED_EVENTS,
 ): AccumulatedGroups {
   // Clone the prior map shallowly (group objects are replaced when they change).
   const next: AccumulatedGroups = new Map(prev);
@@ -146,12 +147,12 @@ export function accumulateEvents(
   // and re-anchor it). Keeps groupsRef and the flattened output consistent.
   let total = 0;
   for (const group of next.values()) total += group.events.length;
-  if (total > MAX_ACCUMULATED && next.size > 1) {
+  if (total > maxEvents && next.size > 1) {
     const byRecency = Array.from(next.entries()).sort(
       (a, b) => b[1].lastTs - a[1].lastTs,
     );
     // Drop from the stalest end until under budget, but always keep one group.
-    for (let i = byRecency.length - 1; i > 0 && total > MAX_ACCUMULATED; i--) {
+    for (let i = byRecency.length - 1; i > 0 && total > maxEvents; i--) {
       total -= byRecency[i][1].events.length;
       next.delete(byRecency[i][0]);
     }
@@ -163,6 +164,8 @@ export function accumulateEvents(
 interface UseAccumulatedEventsOptions {
   /** Cap on concurrent participant+url groups; the oldest are evicted past it. */
   maxGroups?: number;
+  /** Cap on total retained events; whole oldest groups are evicted past it. */
+  maxEvents?: number;
   /**
    * A mutable set of group ids to drop (their trails fully faded out on screen).
    * Drained on each accumulation pass. A ref so the owner can collect ids over
@@ -190,6 +193,7 @@ export function useAccumulatedEvents(
   options: UseAccumulatedEventsOptions = {},
 ): CollectionEvent[] {
   const maxGroups = options.maxGroups;
+  const maxEvents = options.maxEvents ?? DEFAULT_MAX_ACCUMULATED_EVENTS;
   const evictIdsRef = options.evictIdsRef;
   const enabled = options.enabled ?? true;
   const groupsRef = useRef<AccumulatedGroups>(new Map());
@@ -221,6 +225,7 @@ export function useAccumulatedEvents(
       evict,
       maxGroups,
       finishedEventIdsRef.current,
+      maxEvents,
     );
 
     // Density-evicted history remains retired while it is in the live window.
@@ -239,7 +244,7 @@ export function useAccumulatedEvents(
     }
     result.sort((a, b) => a.ts - b.ts);
     return { events: result, evictions: evict };
-  }, [events, maxGroups, enabled, evictIdsRef]);
+  }, [events, maxGroups, maxEvents, enabled, evictIdsRef]);
 
   // Clear the applied evictions after commit (not inside the memo, so a
   // double-invoked memo can't drop them).

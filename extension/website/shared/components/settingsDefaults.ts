@@ -109,6 +109,23 @@ export const DEFAULT_SETTINGS = {
   // Session-only by default — handy when poking at a configuration, not a
   // setting you'd want baked into a saved/shared URL.
   debugMode: false,
+  // Live cursor field: how settled trails accumulate and recede. Settled
+  // trails stay as sediment until newer ink pushes them out of a window that
+  // is sized by trail count or by ink coverage (multiple of the screen area),
+  // never by time. Deeper sediment dims toward `liveSedimentFloor` and, in the
+  // wash styles, mixes toward the paper color; the multiply styles composite
+  // settled ink so overlaps build density. `liveActiveHalo` cuts a paper gutter
+  // under ink that is actively tracing so a new trail reads on top of any color.
+  liveTrailWindowMode: "count" as "count" | "coverage",
+  liveTrailWindow: 80,
+  liveTrailCoverage: 1.5,
+  liveSedimentStyle: "opacity" as
+    | "opacity"
+    | "wash"
+    | "multiply"
+    | "wash-multiply",
+  liveSedimentFloor: 0.2,
+  liveActiveHalo: true,
 };
 
 export type MovementSettings = typeof DEFAULT_SETTINGS;
