@@ -69,6 +69,7 @@
     "load-test:full": "bun tools/load-test/src/runner.ts --config full-suite",
     "smoke": "cd smoke-tests && bun run test",
     "smoke:extension": "VITE_WORKER_URL=http://127.0.0.1:18787 bun run --cwd extension build -- --mode development && node smoke-tests/extension-smoke.mjs",
+    "smoke:wayfarer": "VITE_WORKER_URL=http://127.0.0.1:18787 VITE_INTERNET_MAP_URL='http://127.0.0.1:18790/internet-map/?data=fixture' bun run --cwd extension build -- --mode development && node smoke-tests/internet-map-wayfarer-smoke.mjs",
     "smoke:partykit": "cd smoke-tests && bun run test:partykit",
     "smoke:partykit:bridge": "cd smoke-tests && bun run test:partykit:bridge",
     "smoke:partykit:limits": "cd smoke-tests && bun run test:partykit:limits",
