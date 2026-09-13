@@ -57,6 +57,14 @@ const CURSOR_SETTINGS = {
   trailOpacity: 0.9,
   maxConcurrentTrails: 24,
   textboxOpacity: 0.2,
+  // Settled trails stay as pale, multiplied sediment until 100 newer trails
+  // have landed on top; tracing ink carries a paper halo so it reads on top.
+  liveTrailWindowMode: "count",
+  liveTrailWindow: 100,
+  liveSedimentStyle: "wash-multiply",
+  liveSedimentFloor: 0.3,
+  liveSedimentWash: 0.7,
+  liveActiveHalo: true,
 } satisfies Partial<MovementSettings>;
 
 const SCROLLING_SETTINGS = {
@@ -74,6 +82,8 @@ const SCROLLING_SETTINGS = {
   windowScale: 0.7,
   textboxOpacity: 0.2,
   keyboardRandomizeOrder: true,
+  liveScrollWindow: 20,
+  liveSedimentFloor: 0.3,
 } satisfies Partial<MovementSettings>;
 
 const TYPING_SETTINGS = {
@@ -98,6 +108,8 @@ const TYPING_SETTINGS = {
   maxConcurrentTyping: 30,
   keyboardSizeCap: 0.3,
   keyboardMaxAspect: 2.5,
+  liveTypingWindow: 40,
+  liveSedimentFloor: 0.3,
 } satisfies Partial<MovementSettings>;
 
 const CLICK_SETTINGS = {

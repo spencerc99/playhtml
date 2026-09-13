@@ -12,6 +12,7 @@ import {
   sedimentOpacity,
   sedimentUsesMultiply,
   sedimentWashAmount,
+  sedimentWashColor,
   washTowardPaper,
 } from "../liveTrailSediment";
 
@@ -121,9 +122,22 @@ describe("wash", () => {
   it("only the wash styles mix toward paper", () => {
     expect(sedimentWashAmount(1, "opacity")).toBe(0);
     expect(sedimentWashAmount(1, "multiply")).toBe(0);
-    expect(sedimentWashAmount(1, "wash")).toBeGreaterThan(0.5);
-    expect(sedimentWashAmount(0, "wash")).toBe(0);
-    expect(sedimentWashAmount(1, "wash-multiply")).toBeGreaterThan(0.5);
+    expect(sedimentWashAmount(1, "wash", 0.7)).toBeCloseTo(0.7);
+    expect(sedimentWashAmount(0, "wash")).toBeGreaterThan(0);
+    expect(sedimentWashAmount(0, "wash")).toBeLessThan(0.2);
+    expect(sedimentWashAmount(1, "wash-multiply", 0.4)).toBeCloseTo(0.4);
+  });
+
+  it("washes dark colors harder than light ones at the same depth, never fully to paper", () => {
+    const navy = parseRgb(sedimentWashColor("#1f3a5f", 1, "wash", 0.7))!;
+    const yellow = parseRgb(sedimentWashColor("rgb(255, 232, 0)", 1, "wash", 0.7))!;
+    expect(navy[0]).toBeGreaterThan(190);
+    expect(navy[2]).toBeGreaterThan(navy[0]);
+    expect(yellow[2]).toBeLessThan(200);
+    expect(sedimentWashColor("#000000", 1, "wash", 1)).not.toBe(
+      "rgb(250, 247, 242)",
+    );
+    expect(sedimentWashColor("#336699", 0.5, "opacity")).toBe("#336699");
   });
 
   it("mixes rgb, hex, and hsl colors toward the paper and leaves depth zero untouched", () => {

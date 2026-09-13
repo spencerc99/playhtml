@@ -1309,6 +1309,28 @@ export const Controls: React.FC<ControlsProps> = memo(
             <span>{(settings.liveSedimentFloor ?? 0.2).toFixed(2)}</span>
           </div>
 
+          {(settings.liveSedimentStyle === "wash" ||
+            settings.liveSedimentStyle === "wash-multiply") && (
+            <div className="control-group">
+              <label htmlFor="live-sediment-wash">Deepest Ink Wash</label>
+              <input
+                id="live-sediment-wash"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={settings.liveSedimentWash ?? 0.7}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    liveSedimentWash: parseFloat(e.target.value),
+                  }))
+                }
+              />
+              <span>{(settings.liveSedimentWash ?? 0.7).toFixed(2)}</span>
+            </div>
+          )}
+
           <div className="control-group">
             <label>
               <input
@@ -1730,6 +1752,25 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label htmlFor="live-typing-window">Live: Finished Boxes Kept</label>
+            <input
+              id="live-typing-window"
+              type="range"
+              min="0"
+              max="120"
+              step="5"
+              value={settings.liveTypingWindow ?? 40}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveTypingWindow: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.liveTypingWindow ?? 40}</span>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="keyboard-overlap">Overlap Factor</label>
             <input
               id="keyboard-overlap"
@@ -1963,6 +2004,25 @@ export const Controls: React.FC<ControlsProps> = memo(
               }
             />
             <span>{settings.maxConcurrentScrolls}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="live-scroll-window">Live: Finished Windows Kept</label>
+            <input
+              id="live-scroll-window"
+              type="range"
+              min="0"
+              max="60"
+              step="2"
+              value={settings.liveScrollWindow ?? 20}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveScrollWindow: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.liveScrollWindow ?? 20}</span>
           </div>
 
           <div className="control-group">

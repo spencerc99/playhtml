@@ -22,17 +22,20 @@ export interface SedimentSettings {
   floorOpacity: number;
   /** Opacity factor of a trail the moment it has settled. */
   freshOpacity: number;
+  /** In the wash styles, how far (0..1) the deepest sediment is mixed toward the paper. */
+  maxWash: number;
   /** Draw a paper-colored halo under actively tracing ink so it separates from dense sediment. */
   activeHalo: boolean;
 }
 
 export const DEFAULT_SEDIMENT_SETTINGS: SedimentSettings = {
   windowMode: "count",
-  windowCount: 80,
+  windowCount: 100,
   coverageBudget: 1.5,
-  style: "opacity",
-  floorOpacity: 0.2,
+  style: "wash-multiply",
+  floorOpacity: 0.3,
   freshOpacity: 0.55,
+  maxWash: 0.7,
   activeHalo: true,
 };
 
@@ -134,19 +137,67 @@ export function sedimentOpacity(
   );
 }
 
-/** How far (0..1) a settled trail's color is mixed toward the paper at `depth`. */
-export function sedimentWashAmount(depth: number, style: SedimentStyle): number {
+/** How far (0..1) a settled trail's color is mixed toward the paper at `depth`.
+ *  Even freshly settled ink takes a little wash so it steps back from the
+ *  live trails at once; the rest ramps in with depth up to `maxWash`. */
+export function sedimentWashAmount(
+  depth: number,
+  style: SedimentStyle,
+  maxWash: number = DEFAULT_SEDIMENT_SETTINGS.maxWash,
+): number {
   if (style !== "wash" && style !== "wash-multiply") return 0;
   const d = Math.min(1, Math.max(0, depth));
-  return MAX_WASH * Math.pow(d, 0.8);
+  const top = Math.min(1, Math.max(0, maxWash));
+  const base = Math.min(top, FRESH_WASH);
+  return base + (top - base) * Math.pow(d, 0.7);
+}
+
+/** The washed color for settled ink. Dark colors get extra lightening: at the
+ *  same mix a navy trail still reads as heavy ink while a yellow one has
+ *  already vanished, so the wash is scaled by how dark the color is (up to
+ *  1.5x for black) and capped so hue never fully disappears. */
+export function sedimentWashColor(
+  color: string,
+  depth: number,
+  style: SedimentStyle,
+  maxWash: number = DEFAULT_SEDIMENT_SETTINGS.maxWash,
+): string {
+  const amount = sedimentWashAmount(depth, style, maxWash);
+  if (amount <= 0) return color;
+  const darkness = 1 - colorLightness(color);
+  const compensated = Math.min(
+    MAX_COMPENSATED_WASH,
+    amount * (1 + DARK_WASH_BOOST * darkness),
+  );
+  return washTowardPaper(color, compensated);
+}
+
+const lightnessCache = new Map<string, number>();
+
+/** Perceived lightness (0..1, Rec. 601 luma) of a color, cached per color
+ *  string, so yellow counts as light and navy as dark. Unparseable colors
+ *  count as mid-gray. */
+export function colorLightness(color: string): number {
+  const cached = lightnessCache.get(color);
+  if (cached !== undefined) return cached;
+  const rgb = parseRgb(color);
+  const lightness = rgb
+    ? (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
+    : 0.5;
+  lightnessCache.set(color, lightness);
+  return lightness;
 }
 
 export function sedimentUsesMultiply(style: SedimentStyle): boolean {
   return style === "multiply" || style === "wash-multiply";
 }
 
-// Deepest sediment keeps almost half of its own color so hue still reads.
-const MAX_WASH = 0.55;
+// Freshly settled ink already takes this much wash so it steps back at once.
+const FRESH_WASH = 0.12;
+// Dark colors wash up to this much harder than light ones at the same depth.
+const DARK_WASH_BOOST = 0.5;
+// However dark and deep, sediment keeps at least this much of its own color.
+const MAX_COMPENSATED_WASH = 0.88;
 // Wash amounts are quantized so a slowly drifting depth doesn't rewrite the
 // path color attribute every frame.
 const WASH_STEPS = 24;

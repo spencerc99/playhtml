@@ -1362,6 +1362,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       maxConcurrentTyping: settings.maxConcurrentTyping,
       trailVisualStyle: settings.trailVisualStyle,
       randomizeColors: settings.randomizeColors,
+      liveTypingWindow: settings.liveTypingWindow,
+      liveSedimentFloor: settings.liveSedimentFloor,
     }),
     [
       settings.animationSpeed,
@@ -1372,6 +1374,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.maxConcurrentTyping,
       settings.trailVisualStyle,
       settings.randomizeColors,
+      settings.liveTypingWindow,
+      settings.liveSedimentFloor,
     ],
   );
 
@@ -1390,8 +1394,12 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       windowBleed: settings.windowBleed,
       showTitleBar: settings.showTitleBar,
       trailVisualStyle: settings.trailVisualStyle,
+      liveScrollWindow: settings.liveScrollWindow,
+      liveSedimentFloor: settings.liveSedimentFloor,
     }),
     [
+      settings.liveScrollWindow,
+      settings.liveSedimentFloor,
       settings.scrollSpeed,
       settings.backgroundOpacity,
       settings.maxConcurrentScrolls,
@@ -1447,6 +1455,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         style: settings.liveSedimentStyle,
         floorOpacity: settings.liveSedimentFloor,
         freshOpacity: DEFAULT_SEDIMENT_SETTINGS.freshOpacity,
+        maxWash: settings.liveSedimentWash,
         activeHalo: settings.liveActiveHalo,
       } satisfies SedimentSettings,
     }),
@@ -1456,6 +1465,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.liveTrailCoverage,
       settings.liveSedimentStyle,
       settings.liveSedimentFloor,
+      settings.liveSedimentWash,
       settings.liveActiveHalo,
       settings.strokeWidth,
       settings.trailOpacity,

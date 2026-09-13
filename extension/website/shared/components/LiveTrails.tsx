@@ -35,8 +35,7 @@ import {
   PAPER_COLOR,
   sedimentOpacity,
   sedimentUsesMultiply,
-  sedimentWashAmount,
-  washTowardPaper,
+  sedimentWashColor,
   type SedimentCandidate,
   type SedimentSettings,
 } from "../utils/liveTrailSediment";
@@ -808,9 +807,11 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
                   outline: activeOutline,
                 },
             {
-              color: washTowardPaper(
+              color: sedimentWashColor(
                 ts.trail.color,
-                sedimentWashAmount(draw.depth, sediment.style),
+                draw.depth,
+                sediment.style,
+                sediment.maxWash,
               ),
               blend: useMultiply ? "multiply" : "normal",
               outline: baseOutline,

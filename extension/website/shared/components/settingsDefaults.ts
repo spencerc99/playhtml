@@ -117,15 +117,21 @@ export const DEFAULT_SETTINGS = {
   // settled ink so overlaps build density. `liveActiveHalo` cuts a paper gutter
   // under ink that is actively tracing so a new trail reads on top of any color.
   liveTrailWindowMode: "count" as "count" | "coverage",
-  liveTrailWindow: 80,
+  liveTrailWindow: 100,
   liveTrailCoverage: 1.5,
-  liveSedimentStyle: "opacity" as
+  liveSedimentStyle: "wash-multiply" as
     | "opacity"
     | "wash"
     | "multiply"
     | "wash-multiply",
-  liveSedimentFloor: 0.2,
+  liveSedimentFloor: 0.3,
+  liveSedimentWash: 0.7,
   liveActiveHalo: true,
+  // Live typing and scrolling screens keep finished recordings the same way:
+  // a count window of settled boxes/windows that recede by depth (down to
+  // `liveSedimentFloor`) instead of fading out on a timer.
+  liveTypingWindow: 40,
+  liveScrollWindow: 20,
 };
 
 export type MovementSettings = typeof DEFAULT_SETTINGS;

@@ -176,6 +176,9 @@ export const HEADLINE_SPECS: SettingSpec[] = [
     "trails",
   ),
   num("liveSedimentFloor", "liveSedimentFloor", "trails"),
+  num("liveSedimentWash", "liveSedimentWash", "trails"),
+  num("liveTypingWindow", "liveTypingWindow", "typing"),
+  num("liveScrollWindow", "liveScrollWindow", "scrolling"),
   bool("liveActiveHalo", "liveActiveHalo", "trails"),
 
   // Navigation — view mode is structurally different (timeline vs radial),
