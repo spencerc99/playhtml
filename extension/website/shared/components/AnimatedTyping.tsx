@@ -814,7 +814,7 @@ const TYPING_FRESH_OPACITY = 0.85;
 const TYPING_DEPTH_TAU_MS = 1200;
 // Saturation of the deepest box in the window: settled boxes desaturate toward
 // the paper the way settled cursor ink washes out.
-const TYPING_MIN_SATURATION = 0.55;
+const TYPING_MIN_SATURATION = 0.7;
 
 export type TypingPhase = "typing" | "settled" | "fade-out";
 

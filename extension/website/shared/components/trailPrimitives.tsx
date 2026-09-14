@@ -176,6 +176,8 @@ export interface ImperativeTrailHandle {
       baseProgress: number;
       opacity: number;
       outline?: TrailOutline | null;
+      /** Geometry width for the resumed portion when it differs from the base. */
+      strokeWidth?: number;
     },
     appearance?: TrailAppearance,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
@@ -213,6 +215,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
     const lastActiveRendererIdRef = useRef("");
     const lastActiveOpacityRef = useRef<number | null>(null);
     const lastActiveOutlineKeyRef = useRef("");
+    const lastActiveStrokeWidthRef = useRef<number | null>(null);
     const finishedFrameRef = useRef<ReturnType<typeof computeTrailFrame>>(null);
     const finishedFrameSizeRef = useRef<number | null>(null);
 
@@ -231,6 +234,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
       lastActiveRendererIdRef.current = "";
       lastActiveOpacityRef.current = null;
       lastActiveOutlineKeyRef.current = "";
+      lastActiveStrokeWidthRef.current = null;
     }, [trailState]);
 
     const hideTrail = useCallback(() => {
@@ -367,11 +371,16 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
 
           const activePathEl = activePathRef.current;
           if (activePathEl && activeSegment) {
+            const activeStrokeWidth = activeSegment.strokeWidth ?? strokeWidth;
+            const activeStrokeSize = renderer.getStrokeSize(
+              activeStrokeWidth,
+              fixedMonoStrokeWidth,
+            );
             const activePathData = computeTrailSegmentPath(
               trailState,
               activeSegment.startProgress,
               trailProgress,
-              strokeSize,
+              activeStrokeSize,
             );
             if (activePathData) {
               if (
@@ -379,6 +388,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                 lastActiveRendererIdRef.current !== renderer.id ||
                 lastActiveOpacityRef.current !== activeSegment.opacity ||
                 lastStrokeWidthRef.current !== strokeWidth ||
+                lastActiveStrokeWidthRef.current !== activeStrokeWidth ||
                 lastCursorTypeRef.current !== frame.cursorType ||
                 lastTrailColorRef.current !== trailColor ||
                 lastActiveOutlineKeyRef.current !== activeOutlineKey ||
@@ -392,7 +402,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                   blend,
                   pathData: activePathData,
                   trailOpacity: activeSegment.opacity,
-                  strokeWidth,
+                  strokeWidth: activeStrokeWidth,
                   cursorType: frame.cursorType,
                   trailProgress,
                   // The resumed portion always draws in the trail's true color;
@@ -403,6 +413,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                 lastActivePathDataRef.current = activePathData;
                 lastActiveRendererIdRef.current = renderer.id;
                 lastActiveOpacityRef.current = activeSegment.opacity;
+                lastActiveStrokeWidthRef.current = activeStrokeWidth;
                 lastActiveOutlineKeyRef.current = activeOutlineKey;
               }
             } else {

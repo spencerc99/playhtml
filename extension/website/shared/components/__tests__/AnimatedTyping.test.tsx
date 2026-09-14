@@ -210,7 +210,7 @@ describe("stepTypingSediment", () => {
 
   it("maps depth to a saturation wash from full to the floor", () => {
     expect(typingSedimentSaturation(0)).toBe(1);
-    expect(typingSedimentSaturation(1)).toBeCloseTo(0.55, 5);
-    expect(typingSedimentSaturation(0.5)).toBeCloseTo(0.775, 5);
+    expect(typingSedimentSaturation(1)).toBeCloseTo(0.7, 5);
+    expect(typingSedimentSaturation(0.5)).toBeCloseTo(0.85, 5);
   });
 });

@@ -11,6 +11,19 @@ export type SedimentWindowMode = "count" | "coverage";
  *  - wash-multiply: both of the above. */
 export type SedimentStyle = "opacity" | "wash" | "multiply" | "wash-multiply";
 
+/** How actively tracing ink is set apart from the settled field.
+ *  - none: the wash alone separates fresh strokes.
+ *  - paper: a paper-colored gutter cut under the ink (reads as a white border).
+ *  - shade: a soft edge in a darker shade of the trail's own hue.
+ *  - weight: the stroke is drawn heavier while tracing and relaxes as it settles. */
+export type ActiveEmphasis = "none" | "paper" | "shade" | "weight";
+export const ACTIVE_EMPHASIS_MODES: readonly ActiveEmphasis[] = [
+  "none",
+  "paper",
+  "shade",
+  "weight",
+];
+
 export interface SedimentSettings {
   windowMode: SedimentWindowMode;
   /** Count mode: how many settled trails stay on screen. */
@@ -24,8 +37,8 @@ export interface SedimentSettings {
   freshOpacity: number;
   /** In the wash styles, how far (0..1) the deepest sediment is mixed toward the paper. */
   maxWash: number;
-  /** Draw a paper-colored halo under actively tracing ink so it separates from dense sediment. */
-  activeHalo: boolean;
+  /** How actively tracing ink is set apart from dense sediment. */
+  activeEmphasis: ActiveEmphasis;
 }
 
 export const DEFAULT_SEDIMENT_SETTINGS: SedimentSettings = {
@@ -36,7 +49,7 @@ export const DEFAULT_SEDIMENT_SETTINGS: SedimentSettings = {
   floorOpacity: 0.3,
   freshOpacity: 0.55,
   maxWash: 0.7,
-  activeHalo: true,
+  activeEmphasis: "none",
 };
 
 /** How much live cursor history to retain upstream of the window: enough
@@ -170,6 +183,22 @@ export function sedimentWashColor(
     amount * (1 + DARK_WASH_BOOST * darkness),
   );
   return washTowardPaper(color, compensated);
+}
+
+const shadeCache = new Map<string, string>();
+
+/** A darker shade of `color` for the shade emphasis: mixed toward black so it
+ *  reads as the same ink with a deeper edge, never as a separate outline. */
+export function shadeOfColor(color: string, amount = 0.35): string {
+  const key = `${color}|${amount}`;
+  const cached = shadeCache.get(key);
+  if (cached !== undefined) return cached;
+  const rgb = parseRgb(color);
+  const result = rgb
+    ? `rgb(${rgb.map((c) => Math.round(c * (1 - amount))).join(", ")})`
+    : color;
+  shadeCache.set(key, result);
+  return result;
 }
 
 const lightnessCache = new Map<string, number>();

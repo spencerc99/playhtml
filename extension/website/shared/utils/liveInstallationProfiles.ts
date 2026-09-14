@@ -58,13 +58,14 @@ const CURSOR_SETTINGS = {
   maxConcurrentTrails: 24,
   textboxOpacity: 0.2,
   // Settled trails stay as pale, multiplied sediment until 100 newer trails
-  // have landed on top; tracing ink carries a paper halo so it reads on top.
+  // have landed on top. The paper halo under tracing ink is available but off:
+  // the wash alone separates fresh strokes, and the halo read as a white border.
   liveTrailWindowMode: "count",
   liveTrailWindow: 100,
   liveSedimentStyle: "wash-multiply",
   liveSedimentFloor: 0.3,
   liveSedimentWash: 0.7,
-  liveActiveHalo: true,
+  liveActiveEmphasis: "none",
 } satisfies Partial<MovementSettings>;
 
 const SCROLLING_SETTINGS = {
@@ -82,10 +83,11 @@ const SCROLLING_SETTINGS = {
   windowScale: 0.7,
   textboxOpacity: 0.2,
   keyboardRandomizeOrder: true,
-  // Finished windows stay as pale sediment; kept modest because each window
-  // is heavy SVG and up to 30 can still be replaying on top of them.
-  liveScrollWindow: 16,
-  liveSedimentFloor: 0.3,
+  // Finished windows stay as sediment so the screen reads as a pile of pages.
+  // Each window is heavy SVG and up to 30 can still be replaying on top, so
+  // watch frame rate on the installation machine before raising this further.
+  liveScrollWindow: 28,
+  liveSedimentFloor: 0.4,
 } satisfies Partial<MovementSettings>;
 
 const TYPING_SETTINGS = {
@@ -110,8 +112,10 @@ const TYPING_SETTINGS = {
   maxConcurrentTyping: 30,
   keyboardSizeCap: 0.3,
   keyboardMaxAspect: 2.5,
-  liveTypingWindow: 40,
-  liveSedimentFloor: 0.3,
+  // Finished boxes pile up as sediment; a higher floor than the cursor field
+  // because the boxes are small and would otherwise vanish into the paper.
+  liveTypingWindow: 80,
+  liveSedimentFloor: 0.45,
 } satisfies Partial<MovementSettings>;
 
 const CLICK_SETTINGS = {

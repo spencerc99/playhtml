@@ -1456,7 +1456,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         floorOpacity: settings.liveSedimentFloor,
         freshOpacity: DEFAULT_SEDIMENT_SETTINGS.freshOpacity,
         maxWash: settings.liveSedimentWash,
-        activeHalo: settings.liveActiveHalo,
+        activeEmphasis: settings.liveActiveEmphasis,
       } satisfies SedimentSettings,
     }),
     [
@@ -1466,7 +1466,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       settings.liveSedimentStyle,
       settings.liveSedimentFloor,
       settings.liveSedimentWash,
-      settings.liveActiveHalo,
+      settings.liveActiveEmphasis,
       settings.strokeWidth,
       settings.trailOpacity,
       settings.animationSpeed,

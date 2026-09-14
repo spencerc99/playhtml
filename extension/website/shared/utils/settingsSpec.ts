@@ -2,6 +2,7 @@
 // ABOUTME: Headline params stay readable; everything else lives in a ?s= blob.
 
 import { DEFAULT_SETTINGS } from "../components/settingsDefaults";
+import { ACTIVE_EMPHASIS_MODES } from "./liveTrailSediment";
 import {
   parseFilterChip,
   formatFilterChip,
@@ -179,7 +180,12 @@ export const HEADLINE_SPECS: SettingSpec[] = [
   num("liveSedimentWash", "liveSedimentWash", "trails"),
   num("liveTypingWindow", "liveTypingWindow", "typing"),
   num("liveScrollWindow", "liveScrollWindow", "scrolling"),
-  bool("liveActiveHalo", "liveActiveHalo", "trails"),
+  enumSpec(
+    "liveActiveEmphasis",
+    "liveActiveEmphasis",
+    ACTIVE_EMPHASIS_MODES,
+    "trails",
+  ),
 
   // Navigation — view mode is structurally different (timeline vs radial),
   // so it makes sense to call it out in the URL.

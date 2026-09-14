@@ -1332,19 +1332,22 @@ export const Controls: React.FC<ControlsProps> = memo(
           )}
 
           <div className="control-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.liveActiveHalo ?? true}
-                onChange={(e) =>
-                  setSettings((s: any) => ({
-                    ...s,
-                    liveActiveHalo: e.target.checked,
-                  }))
-                }
-              />
-              Paper halo under tracing ink
-            </label>
+            <label htmlFor="live-active-emphasis">Tracing Ink Emphasis</label>
+            <select
+              id="live-active-emphasis"
+              value={settings.liveActiveEmphasis ?? "none"}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveActiveEmphasis: e.target.value,
+                }))
+              }
+            >
+              <option value="none">None (wash only)</option>
+              <option value="paper">Paper gutter</option>
+              <option value="shade">Darker edge, same hue</option>
+              <option value="weight">Heavier stroke while tracing</option>
+            </select>
           </div>
 
           <div className="control-group">

@@ -51,6 +51,7 @@ describe("advanceDrawState", () => {
       dimmedAt: 9000,
       activeFromVariedPoint: null,
       activeDimmedAt: null,
+      finishedAt: 8000,
       depth: 0.4,
       departs: true,
       inkArea: 120,
@@ -70,6 +71,7 @@ describe("advanceDrawState", () => {
       dimmedAt: 9000,
       activeFromVariedPoint: 4,
       activeDimmedAt: null,
+      finishedAt: 8000,
       depth: 0.4,
       departs: false,
       inkArea: 120,
@@ -185,7 +187,11 @@ describe("advanceSettlingState", () => {
   });
 });
 
-function settledDrawAt(settledAt: number, inkArea = 100): LiveTrailDrawState {
+function settledDrawAt(
+  settledAt: number,
+  inkArea = 100,
+  finishedAt = settledAt,
+): LiveTrailDrawState {
   return {
     ...createLiveTrailDrawState(0, 2, 2),
     drawProgress: 1,
@@ -194,6 +200,7 @@ function settledDrawAt(settledAt: number, inkArea = 100): LiveTrailDrawState {
     settled: true,
     settledAt,
     dimmedAt: settledAt,
+    finishedAt,
     inkArea,
   };
 }
@@ -260,6 +267,25 @@ describe("applySedimentWindow", () => {
     expect(draws.get("new-small")!.departs).toBe(false);
     expect(draws.get("big")!.departs).toBe(false);
     expect(draws.get("old-small")!.departs).toBe(true);
+  });
+
+  it("evicts in the order people finished drawing, not in settle order", () => {
+    // "slow" finished first (its last event is oldest) but took longer to
+    // play back, so it settled after "quick". It must still leave first.
+    const draws = new Map<string, LiveTrailDrawState>([
+      ["slow", settledDrawAt(9_000, 100, 1_000)],
+      ["quick", settledDrawAt(5_000, 100, 4_000)],
+      ["newest", settledDrawAt(6_000, 100, 6_000)],
+    ]);
+    applySedimentWindow(
+      draws,
+      new Set(draws.keys()),
+      { ...DEFAULT_SEDIMENT_SETTINGS, windowMode: "count", windowCount: 2 },
+      1_000_000,
+    );
+    expect(draws.get("slow")!.departs).toBe(true);
+    expect(draws.get("quick")!.departs).toBe(false);
+    expect(draws.get("newest")!.departs).toBe(false);
   });
 
   it("ignores trails that are no longer kept on screen", () => {
