@@ -26,17 +26,19 @@ import {
   startTrailVisibilityTransition,
   type TrailVisibilityTransition,
 } from "./trailVisibility";
-import type { TrailOutline } from "../styles/trailRenderers";
+import type { TrailBlend, TrailOutline } from "../styles/trailRenderers";
 import {
   approachDepth,
   assignSedimentDepths,
   DEFAULT_SEDIMENT_SETTINGS,
   estimateInkArea,
+  lightInkEdgeStrength,
   PAPER_COLOR,
   sedimentOpacity,
   sedimentUsesMultiply,
   sedimentWashColor,
   shadeOfColor,
+  type ActiveEmphasis,
   type SedimentCandidate,
   type SedimentSettings,
 } from "../utils/liveTrailSediment";
@@ -159,6 +161,59 @@ export function getBaseHaloOpacity(
 ): number {
   if (draw.dimmedAt === null) return 1;
   return Math.max(0, 1 - (clockMs - draw.dimmedAt) / DIM_FADE_MS);
+}
+
+/** Compositing mode for a trail's base ink. Only ink that has finished dimming
+ *  into sediment multiplies, so overlapping settled trails still build density
+ *  while live ink keeps its own color instead of muddying into the pile. The
+ *  switch lands at the END of the dim, when the ink is already faint, so the
+ *  change reads as part of settling rather than a pop. */
+export function getSettledInkBlend(
+  draw: LiveTrailDrawState,
+  clockMs: number,
+  useMultiply: boolean,
+): TrailBlend {
+  if (!useMultiply || draw.dimmedAt === null) return "normal";
+  return clockMs - draw.dimmedAt >= DIM_FADE_MS ? "multiply" : "normal";
+}
+
+/** The single outline a live stroke gets. There is one outline element per
+ *  path, so the emphasis gutter and the contrast edge cannot both draw:
+ *  - paper: the paper gutter wins outright.
+ *  - shade: the same-hue edge, taking whichever opacity is larger.
+ *  - none/weight: a darker same-hue edge, scaled by how light the color is, so
+ *    a yellow or pastel stroke keeps its shape over pale sediment while a pink
+ *    or blue one (which already pops) gets nothing.
+ *  Settled ink passes `activeness` 0 and gets no edge — it is meant to recede. */
+export function getLiveInkOutline(
+  emphasis: ActiveEmphasis,
+  activeness: number,
+  color: string,
+  strokeWidth: number,
+): TrailOutline | null {
+  if (activeness <= 0) return null;
+
+  if (emphasis === "paper") {
+    return {
+      color: PAPER_COLOR,
+      width: Math.max(HALO_MIN_WIDTH, strokeWidth * HALO_WIDTH_FACTOR),
+      opacity: activeness * HALO_OPACITY,
+    };
+  }
+
+  const strength = lightInkEdgeStrength(color);
+  const contrastOpacity = SHADE_OPACITY * strength * activeness;
+  const opacity =
+    emphasis === "shade"
+      ? Math.max(activeness * SHADE_OPACITY, contrastOpacity)
+      : contrastOpacity;
+  if (opacity <= 0) return null;
+
+  return {
+    color: shadeOfColor(color, 0.35 + 0.25 * strength),
+    width: Math.max(SHADE_MIN_WIDTH, strokeWidth * SHADE_WIDTH_FACTOR),
+    opacity,
+  };
 }
 
 /** Assign every settled, present trail its window depth and departure flag.
@@ -695,13 +750,6 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         lastFrameClockRef.current = clockMs;
         const useMultiply = sedimentUsesMultiply(sediment.style);
         const emphasis = sediment.activeEmphasis;
-        const outlineWidth =
-          emphasis === "shade"
-            ? Math.max(SHADE_MIN_WIDTH, strokeWidth * SHADE_WIDTH_FACTOR)
-            : Math.max(HALO_MIN_WIDTH, strokeWidth * HALO_WIDTH_FACTOR);
-        const outlineOpacity =
-          emphasis === "shade" ? SHADE_OPACITY : HALO_OPACITY;
-        const drawsOutline = emphasis === "paper" || emphasis === "shade";
 
         // Re-rank the settled field before drawing: every settled trail gets
         // its depth target for this frame, and any pushed out of the window
@@ -805,24 +853,18 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             draw.activeFromVariedPoint === null
               ? getBaseHaloOpacity(draw, clockMs)
               : 0;
-          const outlineColor =
-            emphasis === "shade" ? shadeOfColor(ts.trail.color) : PAPER_COLOR;
-          const baseOutline: TrailOutline | null =
-            drawsOutline && baseActiveness > 0
-              ? {
-                  color: outlineColor,
-                  width: outlineWidth,
-                  opacity: baseActiveness * outlineOpacity,
-                }
-              : null;
-          const activeOutline: TrailOutline | null =
-            drawsOutline && activeOpacity > 0
-              ? {
-                  color: outlineColor,
-                  width: outlineWidth,
-                  opacity: activeOpacity * outlineOpacity,
-                }
-              : null;
+          const baseOutline: TrailOutline | null = getLiveInkOutline(
+            emphasis,
+            baseActiveness,
+            ts.trail.color,
+            strokeWidth,
+          );
+          const activeOutline: TrailOutline | null = getLiveInkOutline(
+            emphasis,
+            activeOpacity,
+            ts.trail.color,
+            strokeWidth,
+          );
           const baseStrokeWidth =
             emphasis === "weight"
               ? strokeWidth * (1 + WEIGHT_FACTOR * baseActiveness)
@@ -857,7 +899,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
                 sediment.style,
                 sediment.maxWash,
               ),
-              blend: useMultiply ? "multiply" : "normal",
+              blend: getSettledInkBlend(draw, clockMs, useMultiply),
               outline: baseOutline,
             },
           );

@@ -7,6 +7,7 @@ import {
   assignSedimentDepths,
   DEFAULT_SEDIMENT_SETTINGS,
   estimateInkArea,
+  lightInkEdgeStrength,
   liveTrailAccumulationLimits,
   parseRgb,
   sedimentOpacity,
@@ -152,6 +153,24 @@ describe("wash", () => {
     expect(washTowardPaper("#336699", 0.301)).toBe(
       washTowardPaper("#336699", 0.31),
     );
+  });
+});
+
+describe("lightInkEdgeStrength", () => {
+  it("asks for no edge from colors that already carry against the pile", () => {
+    expect(lightInkEdgeStrength("rgb(255, 72, 176)")).toBe(0);
+    expect(lightInkEdgeStrength("rgb(0, 120, 191)")).toBe(0);
+    expect(lightInkEdgeStrength("black")).toBe(0);
+  });
+
+  it("ramps up for light colors and tops out near paper", () => {
+    expect(lightInkEdgeStrength("rgb(255, 232, 0)")).toBeCloseTo(0.73, 2);
+    expect(lightInkEdgeStrength("#e8e3d3")).toBeGreaterThan(0.85);
+    expect(lightInkEdgeStrength("white")).toBe(1);
+  });
+
+  it("asks for no edge from a color it cannot read", () => {
+    expect(lightInkEdgeStrength("not-a-color")).toBe(0);
   });
 });
 

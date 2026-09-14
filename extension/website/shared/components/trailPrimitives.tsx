@@ -399,7 +399,10 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                   haloEl: activeHaloRef.current,
                   outlineEl: activeOutlineRef.current,
                   outline: activeOutline,
-                  blend,
+                  // The resumed portion is live ink: it always composites
+                  // normally so it reads in its own color over the settled
+                  // pile instead of multiplying into it.
+                  blend: "normal",
                   pathData: activePathData,
                   trailOpacity: activeSegment.opacity,
                   strokeWidth: activeStrokeWidth,

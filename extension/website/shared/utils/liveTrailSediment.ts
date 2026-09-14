@@ -217,6 +217,33 @@ export function colorLightness(color: string): number {
   return lightness;
 }
 
+const lightEdgeCache = new Map<string, number>();
+
+// Below this perceived lightness a color already reads clearly against the
+// pale sediment pile and needs no edge; at or above the upper bound it needs
+// the full edge to hold its shape.
+const LIGHT_EDGE_MIN_LUMA = 0.6;
+const LIGHT_EDGE_MAX_LUMA = 0.92;
+
+/** How strongly a live stroke in `color` needs a darker same-hue edge to stay
+ *  legible over pale sediment, 0 (dark enough on its own) .. 1 (nearly paper).
+ *  Ramps linearly with perceived lightness; unparseable colors get no edge. */
+export function lightInkEdgeStrength(color: string): number {
+  const cached = lightEdgeCache.get(color);
+  if (cached !== undefined) return cached;
+  const lightness = colorLightness(color);
+  const strength = Math.min(
+    1,
+    Math.max(
+      0,
+      (lightness - LIGHT_EDGE_MIN_LUMA) /
+        (LIGHT_EDGE_MAX_LUMA - LIGHT_EDGE_MIN_LUMA),
+    ),
+  );
+  lightEdgeCache.set(color, strength);
+  return strength;
+}
+
 export function sedimentUsesMultiply(style: SedimentStyle): boolean {
   return style === "multiply" || style === "wash-multiply";
 }
