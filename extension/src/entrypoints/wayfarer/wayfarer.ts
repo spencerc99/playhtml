@@ -14,6 +14,7 @@ import {
 import {
   buildJourneyMessage,
   buildWidgetSrc,
+  cursorColorOf,
   isMapMessage,
   mapOrigin,
   openMapUrl,
@@ -28,10 +29,15 @@ const targetOrigin = mapOrigin(INTERNET_MAP_URL);
 
 let journey: Journey = emptyJourney();
 let mapReady = false;
+/** the person's cursor colour, once the background has said what it is */
+let cursorColor: string | null = null;
 
 function sendJourney() {
   if (!mapReady || !mapFrame?.contentWindow) return;
-  mapFrame.contentWindow.postMessage(buildJourneyMessage(journey), targetOrigin);
+  mapFrame.contentWindow.postMessage(
+    buildJourneyMessage(journey, cursorColor),
+    targetOrigin,
+  );
 }
 
 function applyWidgetState(collapsed: boolean) {
@@ -84,6 +90,14 @@ openButton?.addEventListener("click", () => {
 });
 
 async function boot() {
+  try {
+    cursorColor = cursorColorOf(
+      await browser.runtime.sendMessage({ type: "GET_PUBLIC_PLAYER_IDENTITY" }),
+    );
+  } catch {
+    cursorColor = null;
+  }
+
   try {
     const response = (await browser.runtime.sendMessage({
       type: "WAYFARER_GET_JOURNEY",

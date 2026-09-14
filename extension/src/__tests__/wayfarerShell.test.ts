@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildJourneyMessage,
   buildWidgetSrc,
+  cursorColorOf,
   isMapMessage,
   mapOrigin,
   openMapUrl,
@@ -106,6 +107,32 @@ describe("buildJourneyMessage", () => {
         { url: "https://b.com/2", title: "B", ts: 2 },
       ],
     });
+  });
+});
+
+describe("buildJourneyMessage colour", () => {
+  it("carries the cursor colour when there is one and omits it otherwise", () => {
+    const journey = appendStop(emptyJourney(), { url: "https://a.com/1" }, 1);
+    expect(buildJourneyMessage(journey, "hsl(210, 70%, 60%)").color).toBe("hsl(210, 70%, 60%)");
+    expect("color" in buildJourneyMessage(journey, null)).toBe(false);
+    expect("color" in buildJourneyMessage(journey)).toBe(false);
+  });
+});
+
+describe("cursorColorOf", () => {
+  const publicKey = `pk_${"ab".repeat(65)}`;
+
+  it("reads the first palette colour of a valid identity", () => {
+    expect(
+      cursorColorOf({ publicKey, playerStyle: { colorPalette: ["#ff8800", "#000"] } }),
+    ).toBe("#ff8800");
+  });
+
+  it("is null for no identity, a malformed one, or an empty palette", () => {
+    expect(cursorColorOf(null)).toBeNull();
+    expect(cursorColorOf({ playerStyle: { colorPalette: ["#fff"] } })).toBeNull();
+    expect(cursorColorOf({ publicKey, playerStyle: { colorPalette: [] } })).toBeNull();
+    expect(cursorColorOf({ publicKey, playerStyle: { colorPalette: ["   "] } })).toBeNull();
   });
 });
 

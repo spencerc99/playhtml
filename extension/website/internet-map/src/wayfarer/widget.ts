@@ -21,6 +21,8 @@ export interface JourneyMessage {
   source: typeof SHELL_SOURCE;
   type: "journey";
   stops: JourneyStop[];
+  /** the person's cursor colour, so the walker is drawn as their cursor */
+  color?: string | null;
 }
 
 export type WidgetState = "locating" | "walking" | "arrived" | "lost";
@@ -63,7 +65,8 @@ export class WidgetBridge {
   }
 
   /** The person's journey, oldest first. Only the newest stop is new to us. */
-  journey(stops: JourneyStop[]) {
+  journey(stops: JourneyStop[], color?: string | null) {
+    if (color !== undefined) this.wf.setColor(color);
     const last = stops[stops.length - 1];
     if (!last || typeof last.url !== "string") return;
     if (last.url === this.target) return;

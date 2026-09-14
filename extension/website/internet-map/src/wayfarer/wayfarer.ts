@@ -19,6 +19,7 @@ import { RoadGraph } from "../route";
 import { Theme } from "../theme";
 import { Walker, Arrival } from "./walker";
 import { subHost } from "./locate";
+import { CursorSprite, parseCursorColor } from "./cursor";
 
 export interface WayfarerContext {
   cam: Camera;
@@ -92,6 +93,9 @@ export class Wayfarer {
   /** how long a planned journey should take on screen */
   tripSeconds = TRIP_SECONDS;
   private walkingPace: number;
+  /** the person's own cursor colour, when something has told us it; else the theme's */
+  private cursorColor: string | null = null;
+  private sprite = new CursorSprite();
 
   private pointer: { x: number; y: number } | null = null;
   /**
@@ -131,6 +135,18 @@ export class Wayfarer {
   }
 
   onStatus(fn: (s: WayfarerStatus) => void) { this.listeners.push(fn); }
+
+  /**
+   * Colour the character as the person's cursor. Anything that is not a
+   * plain colour is ignored, and null goes back to the theme's walker.
+   */
+  setColor(value: unknown) {
+    this.cursorColor = value === null ? null : parseCursorColor(value);
+    this.c.draw();
+  }
+
+  /** what the character is drawn in right now */
+  get color(): string { return this.cursorColor ?? this.c.theme().walker; }
 
   // ------------------------------------------------------------ mode
 
@@ -479,10 +495,10 @@ export class Wayfarer {
       ctx.restore();
     }
 
-    // breadcrumbs
+    // breadcrumbs, in the cursor's own colour when it has one
     if (this.trail.length >= 4) {
       ctx.save();
-      ctx.strokeStyle = t.walkerTrail;
+      ctx.strokeStyle = this.cursorColor ?? t.walkerTrail;
       ctx.lineWidth = Math.max(1.5, cw * 0.28);
       ctx.lineCap = "round"; ctx.lineJoin = "round";
       const n = this.trail.length / 2;
@@ -515,31 +531,18 @@ export class Wayfarer {
       ctx.restore();
     }
 
-    // the character
+    // the character: your cursor, standing on the map. The tip is where the
+    // walker is; a soft disc behind it keeps it legible over built ground.
     const sx = cam.toScreenX(w.x), sy = cam.toScreenY(w.y);
-    const r = Math.max(7, cw * 0.85);
+    const size = Math.max(16, cw * 1.7);
+    const bob = w.moving ? Math.round(Math.sin(performance.now() / 110) * Math.max(1, size * 0.06)) : 0;
+    const r = size * 0.55;
     ctx.save();
     ctx.fillStyle = t.walkerHalo;
-    ctx.globalAlpha = 0.82;
-    ctx.beginPath(); ctx.arc(sx, sy, r + 3, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.arc(sx + size * 0.28, sy + size * 0.36, r, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = t.walker;
-    ctx.fillStyle = t.walker;
-    ctx.lineWidth = Math.max(2, r * 0.22);
-    ctx.beginPath(); ctx.arc(sx, sy, r * 0.78, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(sx, sy, r * 0.28, 0, Math.PI * 2); ctx.fill();
-    // which way it faces
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(sx + w.hx * r * 0.78, sy + w.hy * r * 0.78);
-    ctx.lineTo(sx + w.hx * r * 1.45, sy + w.hy * r * 1.45);
-    ctx.stroke();
-    // a bob while walking, so it reads as walking and not sliding
-    if (w.moving) {
-      const step = Math.sin(performance.now() / 90) * r * 0.18;
-      ctx.globalAlpha = 0.5;
-      ctx.beginPath(); ctx.arc(sx - w.hy * step, sy + w.hx * step, r * 0.12, 0, Math.PI * 2); ctx.fill();
-    }
+    this.sprite.draw(ctx, sx, sy + bob, size, this.color);
 
     // where it is, in words, over its head — unless it is at a door, where
     // the landing mark and the building's own label already say so
@@ -553,9 +556,9 @@ export class Wayfarer {
       ctx.strokeStyle = t.labelHalo;
       ctx.lineJoin = "round";
       const label = s.page >= 0 ? this.pageName(s.page) : s.host;
-      ctx.strokeText(label, sx, sy - r - 6);
+      ctx.strokeText(label, sx + size * 0.3, sy - 6);
       ctx.fillStyle = t.label;
-      ctx.fillText(label, sx, sy - r - 6);
+      ctx.fillText(label, sx + size * 0.3, sy - 6);
     }
     ctx.restore();
   }

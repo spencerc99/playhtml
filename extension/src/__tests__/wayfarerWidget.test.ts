@@ -150,13 +150,28 @@ describe("initWayfarerWidget", () => {
     expect(host.style.height).toBe("184px");
   });
 
-  it("does nothing on the map page itself", () => {
+  it("frames nothing on the map page itself, and tells it the cursor colour instead", async () => {
     window.history.pushState({}, "", "/internet-map/");
+    delete document.documentElement.dataset.wwoCursorColor;
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(async (message: unknown) => {
+      if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
+        return {
+          publicKey: `pk_${"ab".repeat(65)}`,
+          playerStyle: { colorPalette: ["hsl(120, 70%, 60%)"] },
+        } as never;
+      }
+      return {} as never;
+    });
+    const heard: unknown[] = [];
+    document.addEventListener("wwo:cursor-color", (e) => heard.push((e as CustomEvent).detail));
 
     cleanup = initWayfarerWidget();
+    await vi.runAllTimersAsync();
 
     expect(hostElement()).toBeNull();
     expect(visitMessages()).toHaveLength(0);
+    expect(document.documentElement.dataset.wwoCursorColor).toBe("hsl(120, 70%, 60%)");
+    expect(heard).toEqual([{ color: "hsl(120, 70%, 60%)" }]);
   });
 
   it("removes the host and stops recording on cleanup", () => {

@@ -1,6 +1,7 @@
 // ABOUTME: Pure message-protocol helpers shared by the wayfarer shell page and its tests.
 // ABOUTME: Builds the framed map URL, validates inbound map messages, and shapes outbound journeys.
 
+import { toPublicPlayerIdentity } from "@playhtml/common";
 import type { Journey } from "./journey";
 
 /** Marker on every message the map sends up to the shell. */
@@ -36,6 +37,8 @@ export interface JourneyMessage {
   source: typeof WAYFARER_MESSAGE_SOURCE;
   type: "journey";
   stops: Journey["stops"];
+  /** the person's cursor colour, so the map draws the walker as their cursor */
+  color?: string;
 }
 
 const WALK_STATES: MapWalkState[] = ["locating", "walking", "arrived", "lost"];
@@ -78,8 +81,11 @@ export function isMapMessage(value: unknown): value is MapMessage {
 }
 
 /** The whole journey, oldest stop first. The map diffs it, so re-sending is cheap. */
-export function buildJourneyMessage(journey: Journey): JourneyMessage {
-  return {
+export function buildJourneyMessage(
+  journey: Journey,
+  color: string | null = null,
+): JourneyMessage {
+  const message: JourneyMessage = {
     source: WAYFARER_MESSAGE_SOURCE,
     type: "journey",
     stops: journey.stops.map((stop) => ({
@@ -88,6 +94,18 @@ export function buildJourneyMessage(journey: Journey): JourneyMessage {
       ts: stop.ts,
     })),
   };
+  if (color) message.color = color;
+  return message;
+}
+
+/**
+ * The colour a person's cursor is drawn in, out of whatever the background
+ * answers for their identity. Null when there is no identity or no colour.
+ */
+export function cursorColorOf(identity: unknown): string | null {
+  const publicIdentity = toPublicPlayerIdentity(identity);
+  const color = publicIdentity?.playerStyle.colorPalette[0];
+  return typeof color === "string" && color.trim() ? color : null;
 }
 
 /** Full-page map, opened walking, centred on wherever the person is now. */

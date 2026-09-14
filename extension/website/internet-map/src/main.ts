@@ -630,6 +630,23 @@ $("#wk-leave").onclick = () => wayfarer.leave();
 // a handle for tests and the console; nothing in the page relies on it
 (window as any).__wayfarer = wayfarer;
 
+/**
+ * The character is your cursor, so it wants your cursor's colour. ?color= says
+ * it outright; otherwise the extension, when installed, writes the person's
+ * colour onto the document and announces it, in whichever order it and the
+ * map happen to boot.
+ */
+const CURSOR_COLOR_ATTR = "wwoCursorColor";
+const urlColor = q.get("color");
+if (urlColor) wayfarer.setColor(urlColor);
+else if (document.documentElement.dataset[CURSOR_COLOR_ATTR]) {
+  wayfarer.setColor(document.documentElement.dataset[CURSOR_COLOR_ATTR]);
+}
+document.addEventListener("wwo:cursor-color", (e) => {
+  if (urlColor) return;
+  wayfarer.setColor((e as CustomEvent<{ color?: unknown }>).detail?.color);
+});
+
 // ------------------------------------------------------------------ picking
 /**
  * Which building is under the cursor — one array index, because the grid
@@ -914,7 +931,7 @@ if (WIDGET) {
     (m) => { if (window.parent !== window) window.parent.postMessage(m, "*"); });
   addEventListener("message", (e) => {
     if (e.source !== window.parent || !isJourneyMessage(e.data)) return;
-    bridge.journey(e.data.stops);
+    bridge.journey(e.data.stops, e.data.color);
   });
   (window as any).__wayfarerBridge = bridge;
   bridge.start();
