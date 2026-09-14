@@ -1,7 +1,7 @@
 // ABOUTME: Curates collected image scraps and arranges them in a deterministic scatter collage.
 // ABOUTME: Shows source provenance on hover and links each surviving image to its page.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
@@ -567,11 +567,29 @@ export function buildArchiveWindow(
       sizeBounds.upperArea,
     );
     const dimensions = itemSize(item, tier, itemSeed);
+    const rotation = seededRandom(itemSeed, 4) * 12 - 6;
+    if (item.kind === "image") {
+      const angle = (Math.abs(rotation) * Math.PI) / 180;
+      const rotatedWidth =
+        dimensions.width * Math.cos(angle) + dimensions.height * Math.sin(angle);
+      const rotatedHeight =
+        dimensions.height * Math.cos(angle) + dimensions.width * Math.sin(angle);
+      const scale = Math.min(
+        1,
+        (cellWidth * 0.8) / rotatedWidth,
+        (ARCHIVE_ROW_HEIGHT * 0.8) / rotatedHeight,
+      );
+      dimensions.width *= scale;
+      dimensions.height *= scale;
+    }
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
-    const jitterX = (seededRandom(itemSeed, 2) - 0.5) * cellWidth * 0.45;
+    const jitterX =
+      (seededRandom(itemSeed, 2) - 0.5) * cellWidth *
+      (item.kind === "image" ? 0.2 : 0.45);
     const jitterY =
-      (seededRandom(itemSeed, 3) - 0.5) * ARCHIVE_ROW_HEIGHT * 0.35;
+      (seededRandom(itemSeed, 3) - 0.5) * ARCHIVE_ROW_HEIGHT *
+      (item.kind === "image" ? 0.2 : 0.35);
     const unclampedX =
       (column + 0.5) * cellWidth + jitterX - dimensions.width / 2;
     const unclampedY =
@@ -589,7 +607,7 @@ export function buildArchiveWindow(
       y,
       width: dimensions.width,
       height: dimensions.height,
-      rotation: seededRandom(itemSeed, 4) * 12 - 6,
+      rotation,
       zIndex:
         Math.floor(seededRandom(itemSeed, 5) * ARCHIVE_STACK_LAYER_COUNT) + 1,
       cardAbove: y - scrollTop > viewportHeight * 0.58,
@@ -1293,6 +1311,7 @@ export function ScrapCollage({
   showKindFilter = false,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const archiveScrollRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [selectedKind, setSelectedKind] =
     useState<ScrapKindFilter>("all");
@@ -1477,9 +1496,10 @@ export function ScrapCollage({
     }
   }, [kindCounts, selectedKind]);
 
-  useEffect(() => {
-    if (!archiveMode) setArchiveScrollTop(0);
-  }, [archiveMode]);
+  useLayoutEffect(() => {
+    if (archiveScrollRef.current) archiveScrollRef.current.scrollTop = 0;
+    setArchiveScrollTop(0);
+  }, [archiveMode, selectedKind]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -1999,6 +2019,7 @@ export function ScrapCollage({
       ))}
       {archiveMode ? (
         <div
+          ref={archiveScrollRef}
           className="scrap-collage__scroll"
           onScroll={(event) =>
             setArchiveScrollTop(event.currentTarget.scrollTop)

@@ -44,6 +44,42 @@ describe("buildArchiveWindow", () => {
       layout: [],
     });
   });
+
+  it("keeps varied image sizes inside their archive cells, including rotation", () => {
+    const items: ScrapItem[] = Array.from({ length: 100 }, (_, index) => ({
+      id: `image${index}`,
+      key: `image${index}`,
+      kind: "image",
+      src: `https://images.example/${index}.png`,
+      naturalWidth: 200 + (index % 10) * 180,
+      naturalHeight: 200 + (index % 7) * 240,
+      pageTitle: "Images",
+      domain: "images.example",
+      pageUrl: "https://images.example/",
+      ts: index,
+    }));
+    for (const width of [320, 900, 1200]) {
+      const columns = Math.floor(width / 160);
+      const cellWidth = width / columns;
+      for (const scrap of buildArchiveWindow(items, width, 0, 600, 1).layout) {
+        const angle = Math.abs(scrap.rotation) * Math.PI / 180;
+        const rotatedWidth = scrap.width * Math.cos(angle) + scrap.height * Math.sin(angle);
+        const rotatedHeight = scrap.height * Math.cos(angle) + scrap.width * Math.sin(angle);
+        const centerX = scrap.x + scrap.width / 2;
+        const centerY = scrap.y + scrap.height / 2;
+        const column = scrap.slotIndex % columns;
+        const row = Math.floor(scrap.slotIndex / columns);
+        expect(centerX - rotatedWidth / 2).toBeGreaterThanOrEqual(column * cellWidth);
+        expect(centerX + rotatedWidth / 2).toBeLessThanOrEqual((column + 1) * cellWidth);
+        expect(centerY - rotatedHeight / 2).toBeGreaterThanOrEqual(row * 112);
+        expect(centerY + rotatedHeight / 2).toBeLessThanOrEqual((row + 1) * 112);
+        expect(scrap.width / scrap.height).toBeCloseTo(
+          (scrap.item as Extract<ScrapItem, { kind: "image" }>).naturalWidth /
+          (scrap.item as Extract<ScrapItem, { kind: "image" }>).naturalHeight,
+        );
+      }
+    }
+  });
 });
 
 describe("archive-mode identity", () => {
@@ -147,5 +183,49 @@ describe("ScrapCollage archive-mode windowing", () => {
     expect(scrolledKeys.length).toBeGreaterThan(0);
     expect(scrolledKeys.length).toBeLessThan(5_000);
     expect(scrolledKeys).not.toEqual(initialKeys);
+  });
+
+  it("starts filtered archives at the newest scrap after scrolling", () => {
+    const images: ScrapItem[] = Array.from({ length: 10 }, (_, index) => ({
+      id: `image${index}`,
+      key: `image${index}`,
+      kind: "image",
+      src: `https://images.example/${index}.png`,
+      naturalWidth: 400,
+      naturalHeight: 300,
+      pageTitle: "Images",
+      domain: "images.example",
+      pageUrl: "https://images.example/",
+      ts: 5_000 + index,
+    }));
+    act(() => {
+      root.render(
+        <ScrapCollage items={[...buildItems(5_000), ...images]} seed={1} showKindFilter />,
+      );
+    });
+    act(() => {
+      container.querySelector<HTMLButtonElement>(
+        '[aria-label="Scrap view"] button:last-child',
+      )!.click();
+    });
+    const scroll = container.querySelector<HTMLDivElement>(".scrap-collage__scroll")!;
+    act(() => {
+      scroll.scrollTop = 20_000;
+      scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    const kinds = container.querySelector<HTMLSelectElement>(
+      '[aria-label="Kinds of scraps shown"]',
+    )!;
+    for (const kind of ["image", "button", "all"]) {
+      act(() => {
+        kinds.value = kind;
+        kinds.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      expect(scroll.scrollTop).toBe(0);
+      const tiles = container.querySelectorAll<HTMLElement>("[data-scrap-key]");
+      expect(tiles.length).toBeGreaterThan(0);
+      expect(tiles[0].dataset.scrapKey).toBe(kind === "button" ? "s4999" : "image9");
+      if (kind === "image") expect(tiles).toHaveLength(10);
+    }
   });
 });
