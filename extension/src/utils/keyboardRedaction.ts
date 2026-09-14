@@ -1,6 +1,8 @@
 // ABOUTME: Shared keyboard-text redaction helpers used by KeyboardCollector and Collections UI
 // ABOUTME: Exposes PII redaction and a legibility-percent control (0 = cadence only, 100 = full text)
 
+import type { TypingAction } from "../collectors/types";
+
 export const REDACTION_CHAR = "\u2588"; // U+2588 FULL BLOCK
 export const LEGIBILITY_KEY = "collection_keyboard_privacy_level";
 export const DEFAULT_LEGIBILITY = 0;
@@ -25,7 +27,7 @@ export function redactNonWhitespace(text: string): string {
 }
 
 // Deterministic 32-bit hash so the same (seed, position) always redacts the
-// same character within a typing session — avoids preview flicker on re-render.
+// same word within a typing session — avoids preview flicker on re-render.
 function hash(seed: number, i: number): number {
   let x = (seed ^ (i * 0x9e3779b1)) >>> 0;
   x = Math.imul(x ^ (x >>> 16), 0x7feb352d) >>> 0;
@@ -38,7 +40,7 @@ function hash(seed: number, i: number): number {
  *
  *   0   → every non-whitespace char replaced (old "abstract" mode)
  *   100 → PII-only redaction (old "full" mode)
- *   50  → roughly half of non-PII characters replaced, stable per seed
+ *   50  → roughly half of whitespace-delimited words replaced, stable per seed
  *
  * PII is always redacted regardless of legibility. The seed keeps the random
  * pattern stable for a given (text, session) so the preview and the stored
@@ -57,17 +59,45 @@ export function redactWithLegibility(
   const piiRedacted = redactPII(text);
   const hideThreshold = (100 - pct) / 100;
 
-  let out = "";
-  for (let i = 0; i < piiRedacted.length; i++) {
-    const ch = piiRedacted[i];
-    if (/\s/.test(ch) || ch === REDACTION_CHAR) {
-      out += ch;
-      continue;
+  return piiRedacted.replace(/\S+/g, (word, offset: number) => {
+    const r = hash(seed, offset) / 0x100000000;
+    return r < hideThreshold ? REDACTION_CHAR.repeat(word.length) : word;
+  });
+}
+
+/** Redact every replay state, including text erased by subsequent edits. */
+export function redactTypingSequence(
+  sequence: TypingAction[],
+  legibilityPct: number,
+  seed: number,
+): TypingAction[] {
+  const visible: { char: string; hidden: boolean }[] = [];
+  const typed = sequence.map((action) => {
+    const characters = (action.text ?? "")
+      .split("")
+      .map((char) => ({ char, hidden: false }));
+    if (action.action === "type") {
+      for (const character of characters) visible.push(character);
+    } else if (action.action === "backspace" && action.deletedCount) {
+      visible.splice(Math.max(0, visible.length - action.deletedCount));
     }
-    const r = hash(seed, i) / 0xffffffff;
-    out += r < hideThreshold ? REDACTION_CHAR : ch;
-  }
-  return out;
+    const text = visible.map((character) => character.char).join("");
+    const redacted = redactWithLegibility(text, legibilityPct, seed);
+    visible.forEach((character, index) => {
+      if (redacted[index] === REDACTION_CHAR) character.hidden = true;
+    });
+    return characters;
+  });
+  return sequence.map((action, index) => ({
+    ...action,
+    ...(action.text !== undefined
+      ? {
+          text: typed[index]
+            .map(({ char, hidden }) => (hidden ? REDACTION_CHAR : char))
+            .join(""),
+        }
+      : {}),
+  }));
 }
 
 /**
