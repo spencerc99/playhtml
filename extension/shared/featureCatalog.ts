@@ -67,6 +67,13 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: true,
   },
+  MAP_WAYFARER: {
+    name: "Map walker",
+    description:
+      "Watch a tiny traveller walk the internet map to each site you visit.",
+    defaultStage: "internal",
+    requiresReload: true,
+  },
 } as const satisfies Record<string, FeatureDefinition>;
 
 export type FeatureId = keyof typeof FEATURE_DEFINITIONS;

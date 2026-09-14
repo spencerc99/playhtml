@@ -31,7 +31,15 @@ export default defineConfig({
     },
     web_accessible_resources: [
       {
-        resources: ["content-scripts/content.css", "inventory/*"],
+        resources: [
+          "content-scripts/content.css",
+          "inventory/*",
+          // The wayfarer shell is framed by every http(s) page, and WXT emits
+          // its JS/CSS as hashed files under chunks/ and assets/.
+          "wayfarer.html",
+          "chunks/*",
+          "assets/*",
+        ],
         matches: ["<all_urls>"],
       },
     ],

@@ -60,6 +60,8 @@ export function attachControls(
   onClick: (x: number, y: number) => void,
   /** true while a gesture is in flight, so the caller can draw cheaply */
   onInteract: (active: boolean) => void = () => {},
+  /** false while something else owns the camera, so a drag is only a click */
+  canPan: () => boolean = () => true,
 ) {
   let idle: number | undefined;
   const settle = () => {
@@ -74,7 +76,7 @@ export function attachControls(
     el.setPointerCapture(e.pointerId);
   });
   el.addEventListener("pointermove", (e) => {
-    if (drag) {
+    if (drag && canPan()) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.moved = Math.max(drag.moved, Math.abs(dx) + Math.abs(dy));
       cam.cx = drag.cx - dx / cam.k;

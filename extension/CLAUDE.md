@@ -178,6 +178,16 @@ The `extension/website/` Vite app serves both the marketing/landing pages
   manager (`saved.html`)
 - `extension/website/rabbithole/`, `conversations/`, `keypresses/`,
   `sounds/`, `components-preview/` — individual experiments
+- `extension/website/internet-map/` — the ASCII internet map (vendored from
+  jackyzha0/internet-map). Data bundles carry real browsing URLs and are NOT
+  committed; run `bun run extension/website/scripts/internet-map-fixture.ts`
+  to write a synthetic bundle to `public/internet-map/data/fixture/` and open
+  `/internet-map/?data=fixture`. `?walk=1` (or the `walk` button / `W`) enters
+  walk mode: a character on the roads, led by the cursor, click a building to
+  travel there. `?widget=1` is the chrome-less frame the extension's
+  `MAP_WAYFARER` corner widget embeds (`src/entrypoints/wayfarer/`), fed the
+  person's journey over postMessage. `bun run smoke:wayfarer` drives both in a
+  real browser against the fixture.
 - `extension/website/social-playground/` — **the place to develop and test
   new on-page social features** (satchel/inventory, bottles, emote wheel, …)
   without installing the extension. It boots the REAL extension code on the

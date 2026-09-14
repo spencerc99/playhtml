@@ -12,6 +12,14 @@ const DEFAULT_WORKER_URL = "https://playhtml-game-api.spencerc99.workers.dev";
 export const WORKER_URL: string =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ?? DEFAULT_WORKER_URL;
 
+const DEFAULT_INTERNET_MAP_URL = "https://wewere.online/internet-map/";
+
+/** Base URL of the hosted internet map. Overridable so local builds (and the
+ * extension's wayfarer widget) can point at a dev server. */
+export const INTERNET_MAP_URL: string =
+  (import.meta.env.VITE_INTERNET_MAP_URL as string | undefined) ??
+  DEFAULT_INTERNET_MAP_URL;
+
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
 export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;
 export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;

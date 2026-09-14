@@ -70,6 +70,11 @@ import {
 } from '../features/slowMode/slowMode'
 import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
 import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
+import {
+  WAYFARER_JOURNEY_KEY,
+  appendStop,
+  normalizeJourney,
+} from '../features/wayfarer/journey'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -504,6 +509,38 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
+    if (message.type === 'WAYFARER_VISIT') {
+      // Only a content script speaks for a page it is running on.
+      if (!sender.tab || typeof message.url !== 'string') {
+        reply({ journey: null })
+        return
+      }
+      browser.storage.local
+        .get(WAYFARER_JOURNEY_KEY)
+        .then((stored) => {
+          const journey = appendStop(
+            normalizeJourney(stored[WAYFARER_JOURNEY_KEY]),
+            { url: message.url, title: message.title },
+            Date.now(),
+          )
+          return browser.storage.local
+            .set({ [WAYFARER_JOURNEY_KEY]: journey })
+            .then(() => reply({ journey }))
+        })
+        .catch(() => reply({ journey: null }))
+      return true
+    }
+
+    if (message.type === 'WAYFARER_GET_JOURNEY') {
+      browser.storage.local
+        .get(WAYFARER_JOURNEY_KEY)
+        .then((stored) =>
+          reply({ journey: normalizeJourney(stored[WAYFARER_JOURNEY_KEY]) }),
+        )
+        .catch(() => reply({ journey: null }))
+      return true
+    }
+
     if (message.type === 'GET_SLOW_MODE_HOSTED_RIDE') {
       if (
         typeof message.rideId !== 'string' ||
