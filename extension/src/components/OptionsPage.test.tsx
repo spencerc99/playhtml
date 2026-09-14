@@ -10,6 +10,7 @@ import { OptionsPage } from "./OptionsPage";
 const featureState = vi.hoisted(() => ({
   experimentAccess: false,
   bagSettingsEnabled: true,
+  isFirefox: false,
 }));
 
 vi.mock("./OptionsPage.scss", () => ({}));
@@ -26,6 +27,7 @@ vi.mock("../features/useFeatureAccess", () => ({
   useFeatureState: () => ({ enabled: featureState.bagSettingsEnabled }),
 }));
 vi.mock("../utils/extensionPage", () => ({
+  isFirefoxExtensionPageUrl: () => featureState.isFirefox,
   isSafariExtensionPageUrl: () => false,
 }));
 vi.mock("../storage/playerIdentity", () => ({
@@ -62,6 +64,7 @@ describe("OptionsPage", () => {
     ).IS_REACT_ACT_ENVIRONMENT = true;
     featureState.experimentAccess = false;
     featureState.bagSettingsEnabled = true;
+    featureState.isFirefox = false;
     vi.mocked(browser.storage.local.get).mockResolvedValue({});
   });
 
@@ -121,6 +124,22 @@ describe("OptionsPage", () => {
         "community",
         "your data",
       ]);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("defers Firefox new tab management to Firefox", async () => {
+    featureState.isFirefox = true;
+    const { container, root } = await renderOptions();
+    try {
+      const browserSection = container.querySelector("#browser");
+      expect(browserSection?.textContent).toContain(
+        "Firefox manages this new tab page",
+      );
+      expect(
+        browserSection?.querySelector('input[type="checkbox"]'),
+      ).toBeNull();
     } finally {
       cleanup(root, container);
     }
