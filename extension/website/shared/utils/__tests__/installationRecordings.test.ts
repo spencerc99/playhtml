@@ -5,6 +5,7 @@ import type { CollectionEvent } from "../../types";
 import {
   collectInstallationRecordings,
   LIVE_RECORDING_RETENTION_MS,
+  pruneRetainedLive,
 } from "../../hooks/useInstallationRecordings";
 
 function event(
@@ -134,3 +135,66 @@ for (const [kind, type] of [
     });
   });
 }
+
+describe("retained live footage", () => {
+  const viewport = (id: string, ts: number) => event(id, ts, "viewport", "run");
+
+  /**
+   * Runs the reservoir's own loop — retain arrivals, collect, prune — so the
+   * pruning of one pass is what the next pass has to work with.
+   */
+  function runReservoir(arrivals: CollectionEvent[][]) {
+    const retained = new Map<string, CollectionEvent>();
+    let last!: ReturnType<typeof collectInstallationRecordings>;
+    for (const batch of arrivals) {
+      for (const e of batch) retained.set(e.id, e);
+      const now = batch.at(-1)!.ts;
+      last = collectInstallationRecordings(
+        [],
+        [...retained.values()],
+        "scrolling",
+        now,
+      );
+      pruneRetainedLive(retained, last.liveEventIdsByRecording);
+    }
+    return { retained, last };
+  }
+
+  it("keeps a still-growing recording whole however long the person goes on", () => {
+    // Scroll samples land every 500ms but a group only breaks after 15 minutes
+    // of silence, so one unbroken run can outlast any fixed age bound. Losing
+    // its first event would change the recording's id and restart the window.
+    const start = 1_000_000;
+    const arrivals: CollectionEvent[][] = [];
+    for (let minute = 0; minute < 20; minute++) {
+      arrivals.push([viewport(`ev_${minute}`, start + minute * 60_000)]);
+    }
+    const { retained, last } = runReservoir(arrivals);
+
+    expect(retained.has("ev_0")).toBe(true);
+    expect(retained.size).toBe(20);
+    expect(last.liveEventIdsByRecording).toHaveLength(1);
+    expect(last.liveEventIdsByRecording[0][0]).toBe("ev_0");
+  });
+
+  it("frees footage whose recording has retired", () => {
+    const retained = new Map<string, CollectionEvent>();
+    for (const e of [viewport("old", 0), viewport("new", 500)]) {
+      retained.set(e.id, e);
+    }
+    // No recording claims them any more.
+    pruneRetainedLive(retained, []);
+    expect(retained.size).toBe(0);
+  });
+
+  it("evicts whole recordings, oldest first, rather than truncating one", () => {
+    const retained = new Map<string, CollectionEvent>();
+    for (const e of [viewport("a1", 0), viewport("a2", 1), viewport("b1", 2)]) {
+      retained.set(e.id, e);
+    }
+    // Two recordings, oldest first, with the cap standing in as already full:
+    // the older one goes entirely and the newer survives intact.
+    pruneRetainedLive(retained, [["a1", "a2"], ["b1"]], 2);
+    expect([...retained.keys()]).toEqual(["b1"]);
+  });
+});

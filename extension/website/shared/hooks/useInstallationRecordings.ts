@@ -14,11 +14,16 @@ import { groupTypingEvents } from "../utils/typingEventGroups";
 export const LIVE_RECORDING_RETENTION_MS = 60_000;
 
 /**
- * Memory bound on retained live events. Many times the retention window, so a
- * recording that is still being written is never truncated from the front while
- * it is on screen.
+ * Last-resort memory bound on retained live events. Retirement is what normally
+ * frees footage; this only matters if enough people are active at once to
+ * outrun it. Eviction is by whole recording (see `useInstallationRecordings`),
+ * never by age: a recording holds one unbroken run of scrolling or typing, and
+ * an unbroken run can last as long as the person does — scroll samples land
+ * every 500ms while `SCROLL_SESSION_THRESHOLD` only breaks a group after 15
+ * minutes of silence. Dropping the front of a still-growing recording would
+ * change its first event, and its id with it, so the window on screen could no
+ * longer be matched and extended and would restart as a second window.
  */
-const RETAINED_LIVE_MAX_AGE_MS = LIVE_RECORDING_RETENTION_MS * 10;
 const RETAINED_LIVE_MAX_EVENTS = 10_000;
 
 /** How often retention and growth are re-evaluated. */
@@ -39,6 +44,12 @@ export interface InstallationRecordings {
    * true, because retirement is driven by the clock rather than by arrivals.
    */
   hasRetirableRecordings: boolean;
+  /**
+   * The live event ids making up each surviving recording, oldest recording
+   * first. Lets the reservoir free footage a whole recording at a time rather
+   * than event by event.
+   */
+  liveEventIdsByRecording: string[][];
 }
 
 export function collectInstallationRecordings(
@@ -69,6 +80,11 @@ export function collectInstallationRecordings(
     events: groups.flatMap((recording) => recording.events),
     liveEventIds: liveIds,
     hasRetirableRecordings: kept.some((entry) => entry.retirable),
+    liveEventIdsByRecording: groups.map((recording) =>
+      recording.events
+        .filter((event) => liveIds.has(event.id))
+        .map((event) => event.id),
+    ),
     signature: groups
       .map(
         (recording) =>
@@ -83,7 +99,29 @@ const EMPTY_RECORDINGS: InstallationRecordings = {
   liveEventIds: new Set(),
   signature: "",
   hasRetirableRecordings: false,
+  liveEventIdsByRecording: [],
 };
+
+/**
+ * Frees retained live footage a whole recording at a time: first anything no
+ * surviving recording still claims (its recording retired, or it was never
+ * usable footage), then, only if that still leaves too much, the oldest
+ * recordings entire. Never part of a recording — see RETAINED_LIVE_MAX_EVENTS.
+ */
+export function pruneRetainedLive(
+  retainedLive: Map<string, CollectionEvent>,
+  liveEventIdsByRecording: readonly string[][],
+  maxEvents: number = RETAINED_LIVE_MAX_EVENTS,
+): void {
+  const claimed = new Set(liveEventIdsByRecording.flat());
+  for (const id of retainedLive.keys()) {
+    if (!claimed.has(id)) retainedLive.delete(id);
+  }
+  for (const recording of liveEventIdsByRecording) {
+    if (retainedLive.size <= maxEvents) return;
+    for (const id of recording) retainedLive.delete(id);
+  }
+}
 
 export function useInstallationRecordings(
   archive: CollectionEvent[],
@@ -122,14 +160,6 @@ export function useInstallationRecordings(
       if (!changed && !retirementPending) return;
       const now = Date.now();
       previousArchive = inputs.current.archive;
-      // Bound retained live footage independently of the fetched archive. Age
-      // first so a burst of traffic never evicts an in-progress recording.
-      for (const [id, event] of retainedLive) {
-        if (event.ts < now - RETAINED_LIVE_MAX_AGE_MS) retainedLive.delete(id);
-      }
-      while (retainedLive.size > RETAINED_LIVE_MAX_EVENTS) {
-        retainedLive.delete(retainedLive.keys().next().value!);
-      }
       const next = collectInstallationRecordings(
         inputs.current.archive,
         [...retainedLive.values()],
@@ -137,6 +167,7 @@ export function useInstallationRecordings(
         now,
       );
       retirementPending = next.hasRetirableRecordings;
+      pruneRetainedLive(retainedLive, next.liveEventIdsByRecording);
       if (next.signature === signature) return;
       signature = next.signature;
       setRecordings(next);
