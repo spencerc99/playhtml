@@ -4,13 +4,20 @@ import { describe, expect, it } from "vitest";
 import type { ActiveViewport, ScrollAnimation } from "../../types";
 import { getViewportTitleText } from "../../utils/titleText";
 import {
+  advanceContinuousViewportPhases,
   buildViewportAnimationTimeline,
+  countAdmittedViewports,
   getScrollQueueIndex,
   getViewportFrame,
   getResizeDimensionsAtTime,
   getScrollPositionAtTime,
   getZoomLevelAtTime,
+  settledViewportOpacity,
 } from "../AnimatedScrollViewports";
+import {
+  INSTALLATION_FADE_MS,
+  INSTALLATION_SCROLL_HOLD_MS,
+} from "../../utils/installationPlaybackQueue";
 
 function makeAnimation(
   overrides: Partial<ScrollAnimation> = {},
@@ -216,5 +223,161 @@ describe("viewport frames", () => {
     expect(getViewportFrame(v, timeline, 2000, 4)).toEqual(
       getViewportFrame(v, timeline, 3000, 4),
     );
+  });
+});
+
+describe("continuous viewport sediment", () => {
+  function animatingWindow(
+    id: string,
+    animationStartTime: number,
+    durationMs = 1000,
+  ): ActiveViewport {
+    return {
+      id,
+      animation: makeAnimation(),
+      rect: { x: 0, y: 0, width: 400, height: 300 },
+      phase: "animating",
+      phaseStartTime: animationStartTime,
+      animationStartTime,
+      durationMs,
+      backgroundSeed: 1,
+    };
+  }
+  const settings = { scrollSpeed: 1, liveScrollWindow: 2 };
+  // A 1 s replay at speed 1 plus the hold: the window settles at start + this.
+  const REPLAY_MS = 1000 + INSTALLATION_SCROLL_HOLD_MS;
+
+  it("settles a finished window and keeps it far past the old hold-and-fade lifetime", () => {
+    let state = [animatingWindow("a", 0)];
+    let result = advanceContinuousViewportPhases(state, REPLAY_MS, settings);
+    expect(result.viewports[0].phase).toBe("settled");
+    expect(result.viewports[0].settledAt).toBe(REPLAY_MS);
+    expect(result.changed).toBe(true);
+
+    result = advanceContinuousViewportPhases(
+      result.viewports,
+      REPLAY_MS + 120_000,
+      settings,
+    );
+    expect(result.viewports).toHaveLength(1);
+    expect(result.viewports[0].phase).toBe("settled");
+    expect(result.departedIds).toEqual([]);
+  });
+
+  it("pushes the oldest settled window out once the count window overflows", () => {
+    const state = [
+      animatingWindow("a", 0),
+      animatingWindow("b", 100),
+      animatingWindow("c", 200),
+    ];
+    const one = advanceContinuousViewportPhases(state, REPLAY_MS, settings);
+    const two = advanceContinuousViewportPhases(
+      one.viewports,
+      REPLAY_MS + 100,
+      settings,
+    );
+    expect(two.viewports.map((v) => v.phase)).toEqual([
+      "settled",
+      "settled",
+      "animating",
+    ]);
+
+    const three = advanceContinuousViewportPhases(
+      two.viewports,
+      REPLAY_MS + 200,
+      settings,
+    );
+    expect(three.viewports.map((v) => [v.id, v.phase])).toEqual([
+      ["a", "fade-out"],
+      ["b", "settled"],
+      ["c", "settled"],
+    ]);
+
+    const gone = advanceContinuousViewportPhases(
+      three.viewports,
+      REPLAY_MS + 200 + INSTALLATION_FADE_MS,
+      settings,
+    );
+    expect(gone.departedIds).toEqual(["a"]);
+    expect(gone.viewports.map((v) => v.id)).toEqual(["b", "c"]);
+  });
+
+  it("ranks newer settled windows shallower and glides depth toward the target", () => {
+    const state = [
+      animatingWindow("old", 0),
+      animatingWindow("new", 500),
+    ];
+    const snapped = advanceContinuousViewportPhases(
+      state,
+      REPLAY_MS + 500,
+      { scrollSpeed: 1, liveScrollWindow: 4 },
+    );
+    expect(snapped.depths.get("new")).toBeCloseTo(1 / 4);
+    expect(snapped.depths.get("old")).toBeCloseTo(2 / 4);
+
+    // With a real time step the depth eases instead of snapping.
+    const fresh = [animatingWindow("a", 0)];
+    const settled = advanceContinuousViewportPhases(fresh, REPLAY_MS, {
+      scrollSpeed: 1,
+      liveScrollWindow: 4,
+    });
+    const eased = advanceContinuousViewportPhases(
+      settled.viewports,
+      REPLAY_MS + 100,
+      { scrollSpeed: 1, liveScrollWindow: 4 },
+      100,
+    );
+    expect(eased.depths.get("a")).toBeGreaterThan(0);
+    expect(eased.depths.get("a")).toBeLessThan(1 / 4);
+  });
+
+  it("fades a finished window at once when the window is zero", () => {
+    const result = advanceContinuousViewportPhases(
+      [animatingWindow("a", 0)],
+      REPLAY_MS,
+      { scrollSpeed: 1, liveScrollWindow: 0 },
+    );
+    expect(result.viewports[0].phase).toBe("fade-out");
+  });
+
+  it("does not count settled windows toward the admission cap", () => {
+    const viewports: ActiveViewport[] = [
+      { ...animatingWindow("a", 0), phase: "settled", settledAt: 5 },
+      { ...animatingWindow("b", 0), phase: "settled", settledAt: 6 },
+      animatingWindow("c", 0),
+      { ...animatingWindow("d", 0), phase: "fade-in" },
+    ];
+    expect(countAdmittedViewports(viewports)).toBe(2);
+  });
+
+  it("renders a settled window at its depth-derived opacity and fades from there", () => {
+    const base = animatingWindow("a", 0);
+    const timeline = buildViewportAnimationTimeline(base.animation);
+    const settled: ActiveViewport = {
+      ...base,
+      phase: "settled",
+      phaseStartTime: 5000,
+      settledAt: 5000,
+      depth: 0.5,
+    };
+    const frame = getViewportFrame(settled, timeline, 9000, 1, true, 0.3);
+    expect(frame.opacity).toBeCloseTo(settledViewportOpacity(0.5, 0.3), 2);
+    expect(frame.settledDepth).toBe(0.5);
+    expect(frame.settledSaturation).toBeLessThan(1);
+
+    const fading: ActiveViewport = {
+      ...settled,
+      phase: "fade-out",
+      phaseStartTime: 9000,
+    };
+    const half = getViewportFrame(
+      fading,
+      timeline,
+      9000 + INSTALLATION_FADE_MS / 2,
+      1,
+      true,
+      0.3,
+    );
+    expect(half.opacity).toBeCloseTo(settledViewportOpacity(0.5, 0.3) / 2, 2);
   });
 });

@@ -109,6 +109,30 @@ export const DEFAULT_SETTINGS = {
   // Session-only by default — handy when poking at a configuration, not a
   // setting you'd want baked into a saved/shared URL.
   debugMode: false,
+  // Live cursor field: how settled trails accumulate and recede. Settled
+  // trails stay as sediment until newer ink pushes them out of a window that
+  // is sized by trail count or by ink coverage (multiple of the screen area),
+  // never by time. Deeper sediment dims toward `liveSedimentFloor` and, in the
+  // wash styles, mixes toward the paper color; the multiply styles composite
+  // settled ink so overlaps build density. `liveActiveEmphasis` optionally sets
+  // tracing ink apart further: a paper gutter, a darker edge in its own hue, or
+  // extra stroke weight that relaxes as the trail settles.
+  liveTrailWindowMode: "count" as "count" | "coverage",
+  liveTrailWindow: 100,
+  liveTrailCoverage: 1.5,
+  liveSedimentStyle: "wash-multiply" as
+    | "opacity"
+    | "wash"
+    | "multiply"
+    | "wash-multiply",
+  liveSedimentFloor: 0.3,
+  liveSedimentWash: 0.7,
+  liveActiveEmphasis: "none" as "none" | "paper" | "shade" | "weight",
+  // Live typing and scrolling screens keep finished recordings the same way:
+  // a count window of settled boxes/windows that recede by depth (down to
+  // `liveSedimentFloor`) instead of fading out on a timer.
+  liveTypingWindow: 80,
+  liveScrollWindow: 30,
 };
 
 export type MovementSettings = typeof DEFAULT_SETTINGS;

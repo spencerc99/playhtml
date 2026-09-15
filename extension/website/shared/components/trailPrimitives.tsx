@@ -8,7 +8,11 @@ import {
   getCursorHotspot,
   getCursorScaleFactor,
 } from "../cursors";
-import { type TrailRenderer } from "../styles/trailRenderers";
+import {
+  type TrailBlend,
+  type TrailOutline,
+  type TrailRenderer,
+} from "../styles/trailRenderers";
 import {
   buildFreehandPathSegment,
   type FinishedTrailOrderEntry,
@@ -140,10 +144,24 @@ export function computeTrailSegmentPath(
   );
 }
 
+function outlineKeyOf(outline: TrailOutline | null): string {
+  if (!outline || outline.opacity <= 0) return "";
+  return `${outline.color}|${outline.width}|${outline.opacity.toFixed(3)}`;
+}
+
 // Imperatively-updated trail. Renders SVG structure once on mount, then the
 // parent rAF loop updates DOM attributes directly via the ref handle.
 // Path and cursor are rendered as siblings (not nested) so they can live in
 // separate SVG layers — paths below, cursors on top.
+/** Per-frame styling the live animator layers on top of a trail's own color:
+ * a washed color for settled ink, its blend mode, and a paper gutter under
+ * actively tracing ink. */
+export interface TrailAppearance {
+  color?: string;
+  blend?: TrailBlend;
+  outline?: TrailOutline | null;
+}
+
 export interface ImperativeTrailHandle {
   update(
     elapsedTimeMs: number,
@@ -157,7 +175,11 @@ export interface ImperativeTrailHandle {
       startProgress: number;
       baseProgress: number;
       opacity: number;
+      outline?: TrailOutline | null;
+      /** Geometry width for the resumed portion when it differs from the base. */
+      strokeWidth?: number;
     },
+    appearance?: TrailAppearance,
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
   getGroup(): SVGGElement | null;
   hide(): void;
@@ -176,8 +198,10 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
     const haloRef = useRef<SVGPathElement>(null);
+    const outlineRef = useRef<SVGPathElement>(null);
     const activePathRef = useRef<SVGPathElement>(null);
     const activeHaloRef = useRef<SVGPathElement>(null);
+    const activeOutlineRef = useRef<SVGPathElement>(null);
     const lastGroupOpacityRef = useRef("");
     const lastPathDataRef = useRef("");
     const lastRendererIdRef = useRef("");
@@ -185,9 +209,13 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
     const lastStrokeWidthRef = useRef<number | null>(null);
     const lastCursorTypeRef = useRef<string | undefined>(undefined);
     const lastTrailColorRef = useRef("");
+    const lastOutlineKeyRef = useRef("");
+    const lastBlendRef = useRef<TrailBlend | undefined>(undefined);
     const lastActivePathDataRef = useRef("");
     const lastActiveRendererIdRef = useRef("");
     const lastActiveOpacityRef = useRef<number | null>(null);
+    const lastActiveOutlineKeyRef = useRef("");
+    const lastActiveStrokeWidthRef = useRef<number | null>(null);
     const finishedFrameRef = useRef<ReturnType<typeof computeTrailFrame>>(null);
     const finishedFrameSizeRef = useRef<number | null>(null);
 
@@ -200,9 +228,13 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
       lastStrokeWidthRef.current = null;
       lastCursorTypeRef.current = undefined;
       lastTrailColorRef.current = "";
+      lastOutlineKeyRef.current = "";
+      lastBlendRef.current = undefined;
       lastActivePathDataRef.current = "";
       lastActiveRendererIdRef.current = "";
       lastActiveOpacityRef.current = null;
+      lastActiveOutlineKeyRef.current = "";
+      lastActiveStrokeWidthRef.current = null;
     }, [trailState]);
 
     const hideTrail = useCallback(() => {
@@ -227,9 +259,16 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
           evictionFade,
           progressOverride,
           activeSegment,
+          appearance,
         ) {
           const group = groupRef.current;
           if (!group) return null;
+          const trailColor = appearance?.color ?? trailState.trail.color;
+          const blend = appearance?.blend;
+          const outline = appearance?.outline ?? null;
+          const outlineKey = outlineKeyOf(outline);
+          const activeOutline = activeSegment?.outline ?? null;
+          const activeOutlineKey = outlineKeyOf(activeOutline);
 
           if (evictionFade <= 0) {
             hideTrail();
@@ -295,17 +334,22 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                 lastTrailOpacityRef.current !== trailOpacity ||
                 lastStrokeWidthRef.current !== strokeWidth ||
                 lastCursorTypeRef.current !== frame.cursorType ||
-                lastTrailColorRef.current !== trailState.trail.color
+                lastTrailColorRef.current !== trailColor ||
+                lastOutlineKeyRef.current !== outlineKey ||
+                lastBlendRef.current !== blend
               ) {
                 renderer.updatePath({
                   pathEl,
                   haloEl: haloRef.current,
+                  outlineEl: outlineRef.current,
+                  outline,
+                  blend,
                   pathData,
                   trailOpacity,
                   strokeWidth,
                   cursorType: frame.cursorType,
                   trailProgress,
-                  trailColor: trailState.trail.color,
+                  trailColor,
                   fixedMonoStrokeWidth,
                 });
                 lastPathDataRef.current = pathData;
@@ -313,22 +357,30 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                 lastTrailOpacityRef.current = trailOpacity;
                 lastStrokeWidthRef.current = strokeWidth;
                 lastCursorTypeRef.current = frame.cursorType;
-                lastTrailColorRef.current = trailState.trail.color;
+                lastTrailColorRef.current = trailColor;
+                lastOutlineKeyRef.current = outlineKey;
+                lastBlendRef.current = blend;
               }
             } else {
               pathEl.style.display = "none";
               if (haloRef.current) haloRef.current.style.display = "none";
+              if (outlineRef.current) outlineRef.current.style.display = "none";
               lastPathDataRef.current = "";
             }
           }
 
           const activePathEl = activePathRef.current;
           if (activePathEl && activeSegment) {
+            const activeStrokeWidth = activeSegment.strokeWidth ?? strokeWidth;
+            const activeStrokeSize = renderer.getStrokeSize(
+              activeStrokeWidth,
+              fixedMonoStrokeWidth,
+            );
             const activePathData = computeTrailSegmentPath(
               trailState,
               activeSegment.startProgress,
               trailProgress,
-              strokeSize,
+              activeStrokeSize,
             );
             if (activePathData) {
               if (
@@ -336,28 +388,44 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                 lastActiveRendererIdRef.current !== renderer.id ||
                 lastActiveOpacityRef.current !== activeSegment.opacity ||
                 lastStrokeWidthRef.current !== strokeWidth ||
+                lastActiveStrokeWidthRef.current !== activeStrokeWidth ||
                 lastCursorTypeRef.current !== frame.cursorType ||
-                lastTrailColorRef.current !== trailState.trail.color
+                lastTrailColorRef.current !== trailColor ||
+                lastActiveOutlineKeyRef.current !== activeOutlineKey ||
+                lastBlendRef.current !== blend
               ) {
                 renderer.updatePath({
                   pathEl: activePathEl,
                   haloEl: activeHaloRef.current,
+                  outlineEl: activeOutlineRef.current,
+                  outline: activeOutline,
+                  // The resumed portion is live ink: it always composites
+                  // normally so it reads in its own color over the settled
+                  // pile instead of multiplying into it.
+                  blend: "normal",
                   pathData: activePathData,
                   trailOpacity: activeSegment.opacity,
-                  strokeWidth,
+                  strokeWidth: activeStrokeWidth,
                   cursorType: frame.cursorType,
                   trailProgress,
+                  // The resumed portion always draws in the trail's true color;
+                  // only the settled base gets washed.
                   trailColor: trailState.trail.color,
                   fixedMonoStrokeWidth,
                 });
                 lastActivePathDataRef.current = activePathData;
                 lastActiveRendererIdRef.current = renderer.id;
                 lastActiveOpacityRef.current = activeSegment.opacity;
+                lastActiveStrokeWidthRef.current = activeStrokeWidth;
+                lastActiveOutlineKeyRef.current = activeOutlineKey;
               }
             } else {
               activePathEl.style.display = "none";
               if (activeHaloRef.current) {
                 activeHaloRef.current.style.display = "none";
+              }
+              if (activeOutlineRef.current) {
+                activeOutlineRef.current.style.display = "none";
               }
               lastActivePathDataRef.current = "";
             }
@@ -366,8 +434,12 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
             if (activeHaloRef.current) {
               activeHaloRef.current.style.display = "none";
             }
+            if (activeOutlineRef.current) {
+              activeOutlineRef.current.style.display = "none";
+            }
             lastActivePathDataRef.current = "";
             lastActiveOpacityRef.current = null;
+            lastActiveOutlineKeyRef.current = "";
           }
 
           return { trailProgress, cursorPosition };
@@ -381,12 +453,24 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
     return (
       <g ref={groupRef} opacity="0">
         <path
+          ref={outlineRef}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: "none" }}
+        />
+        <path
           ref={haloRef}
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{ display: "none" }}
         />
         <path ref={pathRef} fill={color} style={{ display: "none" }} />
+        <path
+          ref={activeOutlineRef}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: "none" }}
+        />
         <path
           ref={activeHaloRef}
           strokeLinecap="round"

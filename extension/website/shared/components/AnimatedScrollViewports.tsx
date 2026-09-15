@@ -24,6 +24,13 @@ import {
   INSTALLATION_FADE_MS,
   INSTALLATION_SCROLL_HOLD_MS,
 } from "../utils/installationPlaybackQueue";
+import {
+  DEFAULT_SEDIMENT_SETTINGS,
+  approachDepth,
+  assignSedimentDepths,
+  sedimentOpacity,
+  type SedimentCandidate,
+} from "../utils/liveTrailSediment";
 import { PagePreview } from "./PagePreview";
 import { useDebugHover } from "./DebugHover";
 
@@ -36,6 +43,20 @@ const FRAME_INTERVAL_MS = 1000 / 30; // Visual update cadence
 const MIN_VIEWPORT_SIZE = 150; // Minimum viewport dimension
 const PACKING_ATTEMPTS = 15; // Number of random positions to try when packing
 const VIEWPORT_MARGIN = 8; // Gap between viewports
+
+// Continuous installation mode only. A window that has finished replaying is
+// not removed on a timer: it settles as sediment and stays until enough newer
+// windows have settled on top of it to push it out of this count window.
+const LIVE_SCROLL_WINDOW_DEFAULT = 20;
+// Opacity of the deepest window still kept in that count window.
+const LIVE_SEDIMENT_FLOOR_DEFAULT = 0.3;
+// Opacity of a window the moment it settles.
+const SETTLED_FRESH_OPACITY = 0.8;
+// Settled windows also desaturate with depth, from full color to this floor.
+const SETTLED_FLOOR_SATURATION = 0.6;
+// Time constant for a window's glide toward its target depth, so the field
+// re-layers smoothly as new windows settle instead of stepping.
+const DEPTH_TAU_MS = 1200;
 
 interface AnimatedScrollViewportsProps {
   animations: ScrollAnimation[];
@@ -57,6 +78,10 @@ interface AnimatedScrollViewportsProps {
     windowBleed?: number;
     showTitleBar?: boolean;
     trailVisualStyle?: string;
+    /** Continuous mode: how many settled windows stay on screen (0 = fade at once). */
+    liveScrollWindow?: number;
+    /** Continuous mode: opacity of the deepest settled window. */
+    liveSedimentFloor?: number;
   };
   // Live URL → metadata lookup. Read at render time so title bars update as
   // navigation events stream in, even for viewports that were added before
@@ -235,6 +260,163 @@ const calculateViewportSize = (
   return { width, height };
 };
 
+export interface ContinuousViewportSettings {
+  scrollSpeed: number;
+  liveScrollWindow?: number;
+}
+
+export interface ContinuousViewportAdvance {
+  /** The windows still on screen, in admission order (newest last). */
+  viewports: ActiveViewport[];
+  /** True when a phase changed or a window was removed — the only times the
+   *  React tree needs to be committed again. */
+  changed: boolean;
+  /** Ids of windows removed by this pass. */
+  departedIds: string[];
+  /** Smoothed sediment depth per window that has settled. */
+  depths: Map<string, number>;
+}
+
+/** Sediment scheduler for the continuous installation mode.
+ *
+ *  A window fades in, replays its scroll, then SETTLES instead of fading out.
+ *  Settled windows are never removed on a timer: they are ranked newest-first
+ *  and keep their place until `liveScrollWindow` newer windows have settled on
+ *  top of them, at which point they fade out over INSTALLATION_FADE_MS. Each
+ *  settled window's depth glides toward its rank in that window so the field
+ *  recedes smoothly. `liveScrollWindow: 0` restores the old behavior: a window
+ *  fades out as soon as its replay is done.
+ *
+ *  Pure: nothing here touches refs, the DOM, or React. `depthStepMs` is the
+ *  time since the last pass; 0 (the default) snaps depths to their target. */
+export function advanceContinuousViewportPhases(
+  viewports: readonly ActiveViewport[],
+  currentTime: number,
+  settings: ContinuousViewportSettings,
+  depthStepMs = 0,
+): ContinuousViewportAdvance {
+  const windowCount = Math.max(
+    0,
+    Math.floor(settings.liveScrollWindow ?? LIVE_SCROLL_WINDOW_DEFAULT),
+  );
+  const scrollSpeed = settings.scrollSpeed > 0 ? settings.scrollSpeed : 1;
+  let changed = false;
+
+  const advanced = viewports.map((viewport) => {
+    if (viewport.phase === "fade-in") {
+      if (currentTime - viewport.phaseStartTime >= INSTALLATION_FADE_MS) {
+        changed = true;
+        return {
+          ...viewport,
+          phase: "animating" as ViewportPhase,
+          phaseStartTime: currentTime,
+        };
+      }
+      return viewport;
+    }
+    if (viewport.phase === "animating") {
+      const replayMs =
+        viewport.durationMs / scrollSpeed + INSTALLATION_SCROLL_HOLD_MS;
+      if (currentTime - viewport.animationStartTime >= replayMs) {
+        changed = true;
+        if (windowCount === 0) {
+          return {
+            ...viewport,
+            phase: "fade-out" as ViewportPhase,
+            phaseStartTime: currentTime,
+          };
+        }
+        return {
+          ...viewport,
+          phase: "settled" as ViewportPhase,
+          phaseStartTime: currentTime,
+          settledAt: currentTime,
+          depth: 0,
+        };
+      }
+    }
+    return viewport;
+  });
+
+  const candidates: SedimentCandidate[] = [];
+  for (const viewport of advanced) {
+    if (viewport.phase !== "settled") continue;
+    candidates.push({
+      id: viewport.id,
+      settledAt: viewport.settledAt ?? viewport.phaseStartTime,
+      // Count mode ignores ink area; the window rect keeps it meaningful if a
+      // coverage window is ever wanted here.
+      inkArea: viewport.rect.width * viewport.rect.height,
+    });
+  }
+  const assignments = assignSedimentDepths(
+    candidates,
+    {
+      ...DEFAULT_SEDIMENT_SETTINGS,
+      windowMode: "count",
+      windowCount: Math.max(1, windowCount),
+    },
+    1,
+  );
+
+  const depths = new Map<string, number>();
+  const settled = advanced.map((viewport) => {
+    if (viewport.phase === "settled") {
+      const assignment = assignments.get(viewport.id);
+      const depth = approachDepth(
+        viewport.depth ?? 0,
+        assignment?.depth ?? 0,
+        depthStepMs,
+        DEPTH_TAU_MS,
+      );
+      depths.set(viewport.id, depth);
+      if (windowCount === 0 || assignment?.departs) {
+        changed = true;
+        return {
+          ...viewport,
+          phase: "fade-out" as ViewportPhase,
+          phaseStartTime: currentTime,
+          depth,
+        };
+      }
+      return viewport;
+    }
+    // A window that settled before it started fading keeps its depth, so the
+    // fade continues from the sediment opacity it had rather than from full.
+    if (viewport.phase === "fade-out" && viewport.settledAt !== undefined) {
+      depths.set(viewport.id, viewport.depth ?? 0);
+    }
+    return viewport;
+  });
+
+  const departedIds: string[] = [];
+  const kept = settled.filter((viewport) => {
+    if (
+      viewport.phase === "fade-out" &&
+      currentTime - viewport.phaseStartTime >= INSTALLATION_FADE_MS
+    ) {
+      changed = true;
+      departedIds.push(viewport.id);
+      return false;
+    }
+    return true;
+  });
+
+  return { viewports: kept, changed, departedIds, depths };
+}
+
+/** Windows that hold a slot in the arrival cap. Settled sediment does not:
+ *  if it did, the field would fill once and never take another window. */
+export function countAdmittedViewports(
+  viewports: readonly ActiveViewport[],
+): number {
+  let count = 0;
+  for (const viewport of viewports) {
+    if (viewport.phase !== "settled") count++;
+  }
+  return count;
+}
+
 export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
   memo(({
     animations,
@@ -258,6 +440,9 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const animationFrameRef = useRef<number | null>(null);
     const lastFillCheckRef = useRef(0);
     const lastFrameUpdateRef = useRef(0);
+    // Draw-clock time of the last sediment pass, so depth glides at the real
+    // elapsed rate rather than per frame.
+    const lastDepthTickRef = useRef<number | null>(null);
     const startTimeRef = useRef<number | null>(null);
     const completionSignaledRef = useRef(false);
     const continuous = installationLiveEventIds !== undefined;
@@ -337,8 +522,18 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           (v) => v.phase !== "fade-out",
         );
 
-        // Every visible window counts toward the installation cap.
-        const activeCount = continuous ? activeViewportsRef.current.length : visibleViewports.length;
+        // Settled sediment does not hold a slot in the installation cap — only
+        // windows still fading in, replaying, or leaving do — so the field can
+        // keep taking new windows after it has filled with sediment.
+        const activeCount = continuous
+          ? countAdmittedViewports(activeViewportsRef.current)
+          : visibleViewports.length;
+
+        // Settled windows are also invisible to placement: new windows are
+        // meant to land on top of them, that layering is the point.
+        const placementViewports = continuous
+          ? visibleViewports.filter((v) => v.phase !== "settled")
+          : visibleViewports;
 
         if (activeCount >= (continuous ? Math.min(30, maxConcurrentScrolls) : maxConcurrentScrolls)) {
           return; // At capacity
@@ -387,7 +582,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           // Coverage-aware tie-break: try a few candidates and pick the one
           // whose center is farthest from any currently-active viewport.
           // Cheap (4 samples × N active), keeps placements from clumping.
-          const activeCenters = visibleViewports.map((v) => ({
+          const activeCenters = placementViewports.map((v) => ({
             cx: v.rect.x + v.rect.width / 2,
             cy: v.rect.y + v.rect.height / 2,
           }));
@@ -426,7 +621,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           }
           position = best;
         } else {
-          const occupiedRects = visibleViewports.map((v) => v.rect);
+          const occupiedRects = placementViewports.map((v) => v.rect);
           position = findAvailablePosition(
             size.width,
             size.height,
@@ -473,6 +668,32 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         const currentViewports = activeViewportsRef.current;
         if (currentViewports.length === 0) return;
 
+        if (continuous) {
+          const previousTick = lastDepthTickRef.current;
+          lastDepthTickRef.current = currentTime;
+          const result = advanceContinuousViewportPhases(
+            currentViewports,
+            currentTime,
+            settingsRef.current,
+            previousTick === null ? 0 : currentTime - previousTick,
+          );
+          // One O(n) depth pass for the whole field, written straight onto the
+          // window objects: these windows are heavy SVG, so the per-frame
+          // opacity/saturation update reads the depth imperatively instead of
+          // re-rendering every window whenever a depth glides.
+          for (const viewport of result.viewports) {
+            const depth = result.depths.get(viewport.id);
+            if (depth !== undefined) viewport.depth = depth;
+          }
+          if (result.changed) {
+            for (const id of result.departedIds) {
+              console.log(`[Scroll Dynamic] Removed viewport ${id}`);
+            }
+            commitActiveViewports(() => result.viewports);
+          }
+          return;
+        }
+
         let changed = false;
         const updated = currentViewports.map((viewport) => {
           // Check phase transitions
@@ -488,9 +709,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
             }
           } else if (viewport.phase === "animating") {
             const animElapsed = currentTime - viewport.animationStartTime;
-            if (animElapsed >= (continuous
-              ? viewport.durationMs / settingsRef.current.scrollSpeed + INSTALLATION_SCROLL_HOLD_MS
-              : viewport.durationMs + FADE_OUT_DELAY)) {
+            if (animElapsed >= viewport.durationMs + FADE_OUT_DELAY) {
               changed = true;
               return {
                 ...viewport,
@@ -824,12 +1043,35 @@ export function getZoomLevelAtTime(
   return start.zoom + (end.zoom - start.zoom) * progress;
 }
 
+/** Opacity of a settled window at `depth`, easing from the value it has the
+ *  moment it settles down to the floor of the sediment window. */
+export function settledViewportOpacity(
+  depth: number,
+  floorOpacity = LIVE_SEDIMENT_FLOOR_DEFAULT,
+): number {
+  return sedimentOpacity(depth, {
+    freshOpacity: SETTLED_FRESH_OPACITY,
+    floorOpacity,
+  });
+}
+
+/** Settled windows also lose color with depth, so the freshly arrived ones
+ *  read as the live layer. Quantized so a gliding depth does not rewrite the
+ *  filter every frame. */
+export function settledViewportSaturation(depth: number): number {
+  const d = Math.min(1, Math.max(0, depth));
+  return (
+    Math.round((1 - (1 - SETTLED_FLOOR_SATURATION) * d) * 100) / 100
+  );
+}
+
 export function getViewportFrame(
   viewport: ActiveViewport,
   timeline: ViewportAnimationTimeline,
   currentTime: number,
   scrollSpeed: number,
   installationPlayback = false,
+  sedimentFloor = LIVE_SEDIMENT_FLOOR_DEFAULT,
 ) {
   const {
     animation,
@@ -838,7 +1080,15 @@ export function getViewportFrame(
     phaseStartTime,
     animationStartTime,
     durationMs,
+    settledAt,
   } = viewport;
+  // Sediment depth only ever applies to a window that has settled (continuous
+  // installation mode); everything else renders at full color and opacity.
+  const hasSettled = settledAt !== undefined;
+  const depth = hasSettled ? Math.min(1, Math.max(0, viewport.depth ?? 0)) : 0;
+  const settledDepth = Math.round(depth * 100) / 100;
+  const settledSaturation = hasSettled ? settledViewportSaturation(depth) : 1;
+
   // Calculate opacity based on phase
   let opacity = 1;
   if (phase === "fade-in") {
@@ -847,12 +1097,19 @@ export function getViewportFrame(
       (currentTime - phaseStartTime) / (installationPlayback ? INSTALLATION_FADE_MS : FADE_IN_DURATION),
     );
     opacity = fadeProgress;
+  } else if (phase === "settled") {
+    opacity =
+      Math.round(settledViewportOpacity(depth, sedimentFloor) * 1000) / 1000;
   } else if (phase === "fade-out") {
     const fadeProgress = Math.min(
       1,
       (currentTime - phaseStartTime) / (installationPlayback ? INSTALLATION_FADE_MS : FADE_OUT_DURATION),
     );
-    opacity = 1 - fadeProgress;
+    // A window that settled first fades from its sediment opacity, not from full.
+    const base = hasSettled
+      ? Math.round(settledViewportOpacity(depth, sedimentFloor) * 1000) / 1000
+      : 1;
+    opacity = base * (1 - fadeProgress);
   }
 
   // Calculate animation progress
@@ -950,6 +1207,8 @@ export function getViewportFrame(
   const thumbTravel = trackHeight - thumbHeight;
   return {
     opacity,
+    settledDepth,
+    settledSaturation,
     scrollY,
     scrollRange,
     visualWidth,
@@ -989,6 +1248,7 @@ const DynamicViewportRect = memo(
       showZoomEvents?: boolean;
       showTitleBar?: boolean;
       trailVisualStyle?: string;
+      liveSedimentFloor?: number;
     };
     livePageTitle?: string;
     liveFaviconUrl?: string;
@@ -1006,6 +1266,7 @@ const DynamicViewportRect = memo(
       clock.currentTime,
       settings.scrollSpeed,
       settings.installationPlayback,
+      settings.liveSedimentFloor,
     );
     const {
       opacity,
@@ -1038,6 +1299,7 @@ const DynamicViewportRect = memo(
           currentTime,
           settings.scrollSpeed,
           settings.installationPlayback,
+          settings.liveSedimentFloor,
         );
         // Geometry and iframe previews need React; scroll and fade only change SVG attributes.
         if (
@@ -1051,6 +1313,31 @@ const DynamicViewportRect = memo(
         }
         if (!previous || next.opacity !== previous.opacity)
           groupRef.current?.setAttribute("opacity", String(next.opacity));
+        // Settled windows recede in color as well as opacity, and publish their
+        // depth for the installation harness. Both ride the same imperative
+        // pass as the opacity so a gliding depth never re-renders the window.
+        if (!previous || next.settledSaturation !== previous.settledSaturation) {
+          const group = groupRef.current;
+          if (group) {
+            group.style.filter =
+              next.settledSaturation >= 1
+                ? ""
+                : `saturate(${next.settledSaturation})`;
+          }
+        }
+        if (!previous || next.settledDepth !== previous.settledDepth) {
+          const group = groupRef.current;
+          if (group) {
+            if (viewport.phase === "settled") {
+              group.setAttribute(
+                "data-scroll-depth",
+                next.settledDepth.toFixed(2),
+              );
+            } else {
+              group.removeAttribute("data-scroll-depth");
+            }
+          }
+        }
         if (
           !previous ||
           next.scrolledContentTransform !== previous.scrolledContentTransform

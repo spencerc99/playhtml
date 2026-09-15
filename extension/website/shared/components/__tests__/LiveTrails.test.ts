@@ -11,14 +11,26 @@ import { DEFAULT_SETTINGS } from "../settingsDefaults";
 import {
   advanceDrawState,
   advanceSettlingState,
+  applySedimentWindow,
   createLiveSoundFrame,
+  createLiveTrailDrawState,
   getActiveTrailOpacity,
+  getBaseHaloOpacity,
   getDrawClockTime,
   getLiveDrawDuration,
+  getLiveInkOutline,
   getLiveTrailOpacity,
+  getSettledInkBlend,
   LiveTrails,
   shouldDepartTrail,
+  type LiveTrailDrawState,
 } from "../LiveTrails";
+import {
+  DEFAULT_SEDIMENT_SETTINGS,
+  lightInkEdgeStrength,
+  PAPER_COLOR,
+  shadeOfColor,
+} from "../../utils/liveTrailSediment";
 import { DEFAULT_CINEMATIC_CONFIG } from "../../utils/cinematicCamera";
 import { COMPLETED_OPACITY } from "../trailPrimitives";
 import {
@@ -46,6 +58,10 @@ describe("advanceDrawState", () => {
       dimmedAt: 9000,
       activeFromVariedPoint: null,
       activeDimmedAt: null,
+      finishedAt: 8000,
+      depth: 0.4,
+      departs: true,
+      inkArea: 120,
     };
 
     advanceDrawState(draw, 4, 10, 10_000, 4000);
@@ -62,6 +78,10 @@ describe("advanceDrawState", () => {
       dimmedAt: 9000,
       activeFromVariedPoint: 4,
       activeDimmedAt: null,
+      finishedAt: 8000,
+      depth: 0.4,
+      departs: false,
+      inkArea: 120,
     });
 
     expect(getLiveTrailOpacity(draw, 11_000)).toBe(COMPLETED_OPACITY);
@@ -174,28 +194,213 @@ describe("advanceSettlingState", () => {
   });
 });
 
-describe("shouldDepartTrail", () => {
-  const settledDraw = {
-    seenAt: 0,
-    total: 2,
-    variedTotal: 2,
+function settledDrawAt(
+  settledAt: number,
+  inkArea = 100,
+  finishedAt = settledAt,
+): LiveTrailDrawState {
+  return {
+    ...createLiveTrailDrawState(0, 2, 2),
     drawProgress: 1,
     grewAt: 1000,
     caughtUpAt: 1000,
     settled: true,
-    settledAt: 10_000,
-    dimmedAt: 10_000,
-    activeFromVariedPoint: null,
-    activeDimmedAt: null,
+    settledAt,
+    dimmedAt: settledAt,
+    finishedAt,
+    inkArea,
   };
+}
 
-  it("keeps a settled trail for 60 seconds before departure", () => {
-    expect(shouldDepartTrail(settledDraw, 69_999)).toBe(false);
-    expect(shouldDepartTrail(settledDraw, 70_000)).toBe(true);
+describe("shouldDepartTrail", () => {
+  it("keeps a settled trail until the sediment window pushes it out, however long that takes", () => {
+    const draw = settledDrawAt(10_000);
+    expect(shouldDepartTrail(draw)).toBe(false);
+    draw.departs = true;
+    expect(shouldDepartTrail(draw)).toBe(true);
   });
 
   it("does not depart a trail that has resumed", () => {
-    expect(shouldDepartTrail(settledDraw, 70_000, true)).toBe(false);
+    const draw = settledDrawAt(10_000);
+    draw.departs = true;
+    expect(shouldDepartTrail(draw, true)).toBe(false);
+  });
+
+  it("never departs a trail that is still tracing", () => {
+    const draw = createLiveTrailDrawState(0, 2, 2);
+    draw.departs = true;
+    expect(shouldDepartTrail(draw)).toBe(false);
+  });
+});
+
+describe("applySedimentWindow", () => {
+  it("ranks settled trails newest-first by count and flags the overflow", () => {
+    const draws = new Map<string, LiveTrailDrawState>([
+      ["oldest", settledDrawAt(1_000)],
+      ["middle", settledDrawAt(2_000)],
+      ["newest", settledDrawAt(3_000)],
+      ["tracing", createLiveTrailDrawState(4_000, 2, 2)],
+    ]);
+    const targets = applySedimentWindow(
+      draws,
+      new Set(draws.keys()),
+      { ...DEFAULT_SEDIMENT_SETTINGS, windowMode: "count", windowCount: 2 },
+      1_000_000,
+    );
+
+    expect(targets.get("newest")).toBe(0.5);
+    expect(targets.get("middle")).toBe(1);
+    expect(targets.get("oldest")).toBe(1);
+    expect(targets.get("tracing")).toBe(0);
+    expect(draws.get("newest")!.departs).toBe(false);
+    expect(draws.get("middle")!.departs).toBe(false);
+    expect(draws.get("oldest")!.departs).toBe(true);
+    expect(draws.get("tracing")!.departs).toBe(false);
+  });
+
+  it("fills a coverage window by ink area so sprawling trails push older ink out sooner", () => {
+    const draws = new Map<string, LiveTrailDrawState>([
+      ["old-small", settledDrawAt(1_000, 100)],
+      ["big", settledDrawAt(2_000, 1_500)],
+      ["new-small", settledDrawAt(3_000, 200)],
+    ]);
+    applySedimentWindow(
+      draws,
+      new Set(draws.keys()),
+      { ...DEFAULT_SEDIMENT_SETTINGS, windowMode: "coverage", coverageBudget: 1 },
+      1_600,
+    );
+
+    expect(draws.get("new-small")!.departs).toBe(false);
+    expect(draws.get("big")!.departs).toBe(false);
+    expect(draws.get("old-small")!.departs).toBe(true);
+  });
+
+  it("evicts in the order people finished drawing, not in settle order", () => {
+    // "slow" finished first (its last event is oldest) but took longer to
+    // play back, so it settled after "quick". It must still leave first.
+    const draws = new Map<string, LiveTrailDrawState>([
+      ["slow", settledDrawAt(9_000, 100, 1_000)],
+      ["quick", settledDrawAt(5_000, 100, 4_000)],
+      ["newest", settledDrawAt(6_000, 100, 6_000)],
+    ]);
+    applySedimentWindow(
+      draws,
+      new Set(draws.keys()),
+      { ...DEFAULT_SEDIMENT_SETTINGS, windowMode: "count", windowCount: 2 },
+      1_000_000,
+    );
+    expect(draws.get("slow")!.departs).toBe(true);
+    expect(draws.get("quick")!.departs).toBe(false);
+    expect(draws.get("newest")!.departs).toBe(false);
+  });
+
+  it("ignores trails that are no longer kept on screen", () => {
+    const draws = new Map<string, LiveTrailDrawState>([
+      ["gone", settledDrawAt(5_000)],
+      ["kept", settledDrawAt(1_000)],
+    ]);
+    applySedimentWindow(
+      draws,
+      new Set(["kept"]),
+      { ...DEFAULT_SEDIMENT_SETTINGS, windowMode: "count", windowCount: 1 },
+      1_000_000,
+    );
+    expect(draws.get("kept")!.departs).toBe(false);
+  });
+});
+
+describe("settled ink appearance", () => {
+  it("eases the settled opacity toward the depth-derived target", () => {
+    const draw = settledDrawAt(10_000);
+    expect(getLiveTrailOpacity(draw, 10_000, 0.3)).toBe(1);
+    expect(getLiveTrailOpacity(draw, 10_600, 0.3)).toBeCloseTo(0.65);
+    expect(getLiveTrailOpacity(draw, 20_000, 0.3)).toBeCloseTo(0.3);
+  });
+
+  it("drops the paper halo as a trail dims into sediment", () => {
+    const draw = settledDrawAt(10_000);
+    expect(getBaseHaloOpacity(createLiveTrailDrawState(0, 2, 2), 5_000)).toBe(1);
+    expect(getBaseHaloOpacity(draw, 10_600)).toBeCloseTo(0.5);
+    expect(getBaseHaloOpacity(draw, 12_000)).toBe(0);
+  });
+});
+
+describe("getSettledInkBlend", () => {
+  it("never multiplies while a trail is still tracing", () => {
+    const draw = createLiveTrailDrawState(0, 2, 2);
+    expect(getSettledInkBlend(draw, 5_000, true)).toBe("normal");
+  });
+
+  it("never multiplies during the dim, and multiplies once dimmed", () => {
+    const draw = settledDrawAt(10_000);
+    expect(getSettledInkBlend(draw, 10_000, true)).toBe("normal");
+    expect(getSettledInkBlend(draw, 11_100, true)).toBe("normal");
+    expect(getSettledInkBlend(draw, 11_200, true)).toBe("multiply");
+    expect(getSettledInkBlend(draw, 30_000, true)).toBe("multiply");
+  });
+
+  it("stays normal when the sediment style does not multiply", () => {
+    const draw = settledDrawAt(10_000);
+    expect(getSettledInkBlend(draw, 30_000, false)).toBe("normal");
+  });
+
+  it("keeps a resumed trail's base at whatever its own dim says", () => {
+    const draw = settledDrawAt(10_000);
+    draw.activeFromVariedPoint = 3;
+    draw.settled = false;
+    expect(getSettledInkBlend(draw, 30_000, true)).toBe("multiply");
+  });
+});
+
+describe("getLiveInkOutline", () => {
+  const yellow = "rgb(255, 232, 0)";
+  const blue = "rgb(0, 120, 191)";
+
+  it("gives settled ink no edge at all", () => {
+    expect(getLiveInkOutline("none", 0, yellow, 6)).toBeNull();
+    expect(getLiveInkOutline("paper", 0, yellow, 6)).toBeNull();
+    expect(getLiveInkOutline("shade", 0, blue, 6)).toBeNull();
+    expect(getLiveInkOutline("weight", 0, blue, 6)).toBeNull();
+  });
+
+  it("edges light live ink and leaves dark live ink bare without emphasis", () => {
+    const light = getLiveInkOutline("none", 1, yellow, 6);
+    expect(light).not.toBeNull();
+    expect(light?.opacity).toBeCloseTo(0.55 * 0.7284, 2);
+    expect(light?.width).toBeCloseTo(6 * 0.9);
+    expect(light?.color).not.toBe(yellow);
+    expect(getLiveInkOutline("none", 1, blue, 6)).toBeNull();
+    expect(getLiveInkOutline("weight", 1, blue, 6)).toBeNull();
+  });
+
+  it("scales the light edge with how live the ink still is", () => {
+    const full = getLiveInkOutline("weight", 1, yellow, 6);
+    const half = getLiveInkOutline("weight", 0.5, yellow, 6);
+    expect(half?.opacity).toBeCloseTo((full?.opacity ?? 0) / 2);
+  });
+
+  it("lets the paper gutter win, for light and dark ink alike", () => {
+    const light = getLiveInkOutline("paper", 1, yellow, 6);
+    const dark = getLiveInkOutline("paper", 1, blue, 6);
+    expect(light?.color).toBe(PAPER_COLOR);
+    expect(dark?.color).toBe(PAPER_COLOR);
+    expect(light?.opacity).toBeCloseTo(0.85);
+    expect(light?.width).toBeCloseTo(6 * 1.3);
+  });
+
+  it("takes the larger opacity under the shade emphasis", () => {
+    const light = getLiveInkOutline("shade", 1, yellow, 6);
+    const dark = getLiveInkOutline("shade", 1, blue, 6);
+    expect(light?.opacity).toBeCloseTo(0.55);
+    expect(dark?.opacity).toBeCloseTo(0.55);
+    expect(light?.color).toBe(shadeOfColor(yellow, 0.35 + 0.25 * lightInkEdgeStrength(yellow)));
+    expect(dark?.color).toBe(shadeOfColor(blue, 0.35));
+  });
+
+  it("keeps the edge at least a legible width for hairline strokes", () => {
+    expect(getLiveInkOutline("none", 1, yellow, 1)?.width).toBe(3);
+    expect(getLiveInkOutline("paper", 1, yellow, 1)?.width).toBe(4);
   });
 });
 

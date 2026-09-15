@@ -8,8 +8,15 @@ import {
   InstallationPlaybackQueue,
   INSTALLATION_TYPING_ARRIVAL_MS,
   INSTALLATION_FADE_MS,
-  INSTALLATION_TYPING_HOLD_MS,
 } from "../utils/installationPlaybackQueue";
+import {
+  approachDepth,
+  assignSedimentDepths,
+  DEFAULT_SEDIMENT_SETTINGS,
+  sedimentOpacity,
+  type SedimentAssignment,
+  type SedimentCandidate,
+} from "../utils/liveTrailSediment";
 import { RISO_COLORS } from "../utils/eventUtils";
 import {
   isMonochromeStyle,
@@ -34,6 +41,12 @@ interface TypingSettings {
    * letters take the participant's vibrant color (matching their cursor). */
   trailVisualStyle?: string;
   randomizeColors?: boolean;
+  /** Installation playback: how many finished typing boxes stay on screen as
+   * sediment. A finished box leaves only once this many newer boxes have
+   * settled on top of it; 0 means it leaves as soon as it finishes. */
+  liveTypingWindow?: number;
+  /** Opacity of the deepest box still inside that window. */
+  liveSedimentFloor?: number;
 }
 
 interface AnimatedTypingProps {
@@ -791,11 +804,166 @@ export const AnimatedTyping: React.FC<AnimatedTypingProps> = memo(
   },
 );
 
-interface VisibleTypingRecording {
-  track: TypingTrack;
+export const DEFAULT_LIVE_TYPING_WINDOW = 40;
+export const DEFAULT_LIVE_SEDIMENT_FLOOR = 0.3;
+// Opacity of a box the moment it settles, before depth pushes it down toward
+// the floor. Matches the cursor field's fresh sediment step-back.
+const TYPING_FRESH_OPACITY = 0.85;
+// Depth glides toward its target with this time constant so a box re-ranking
+// as newer ones settle on top of it slides down instead of jumping.
+const TYPING_DEPTH_TAU_MS = 1200;
+// Saturation of the deepest box in the window: settled boxes desaturate toward
+// the paper the way settled cursor ink washes out.
+const TYPING_MIN_SATURATION = 0.7;
+
+export type TypingPhase = "typing" | "settled" | "fade-out";
+
+/** The bookkeeping the sediment scheduler needs from a visible recording.
+ * `settledAt`, `departingAt` and `depth` are written by `stepTypingSediment`. */
+export interface TypingSedimentState {
+  id: string;
   startedAt: number;
-  speed: number;
   durationMs: number;
+  /** Draw-clock time the box finished typing, or null while it types. */
+  settledAt: number | null;
+  /** Draw-clock time the sediment window pushed it out, or null while kept. */
+  departingAt: number | null;
+  /** Smoothed position in the window, 0 just settled .. 1 about to leave. */
+  depth: number;
+}
+
+export interface TypingSedimentOptions {
+  /** How many settled boxes stay on screen. 0 departs them immediately. */
+  windowCount: number;
+  /** Opacity of the deepest box still inside the window. */
+  floorOpacity: number;
+}
+
+export interface TypingSedimentFrame {
+  phase: TypingPhase;
+  depth: number;
+  opacity: number;
+}
+
+export interface TypingSedimentStep<T> {
+  /** Records still on screen, in their original (start-order) order. */
+  kept: T[];
+  frames: Map<string, TypingSedimentFrame>;
+  /** Records still typing — the only ones the admission cap applies to. */
+  typingCount: number;
+}
+
+/** CSS saturation for a settled box at `depth`: full at the surface, washed
+ * toward the paper at the bottom of the window. */
+export function typingSedimentSaturation(depth: number): number {
+  const d = Math.min(1, Math.max(0, depth));
+  return 1 - (1 - TYPING_MIN_SATURATION) * d;
+}
+
+/** Advance the installation typing field by one frame.
+ *
+ * Finished boxes settle rather than expiring on a timer: they stay until
+ * enough newer boxes have settled on top of them to push them out of a
+ * count window (`assignSedimentDepths` in count mode), then fade out over
+ * INSTALLATION_FADE_MS and are dropped. Mutates each record's `settledAt`,
+ * `departingAt` and `depth` in place (the caller owns the array). */
+export function stepTypingSediment<T extends TypingSedimentState>(
+  records: readonly T[],
+  now: number,
+  dtMs: number,
+  options: TypingSedimentOptions,
+): TypingSedimentStep<T> {
+  const windowCount = Math.max(0, Math.floor(options.windowCount));
+  const floorOpacity = options.floorOpacity;
+
+  const kept: T[] = [];
+  for (const record of records) {
+    if (
+      record.settledAt === null &&
+      now - record.startedAt >= record.durationMs
+    ) {
+      record.settledAt = now;
+    }
+    if (
+      record.departingAt !== null &&
+      now - record.departingAt >= INSTALLATION_FADE_MS
+    ) {
+      continue;
+    }
+    kept.push(record);
+  }
+
+  const candidates: SedimentCandidate[] = [];
+  for (const record of kept) {
+    if (record.settledAt === null || record.departingAt !== null) continue;
+    // Typing boxes have no meaningful ink area, so the window is purely by
+    // count and the screen area is irrelevant.
+    candidates.push({ id: record.id, settledAt: record.settledAt, inkArea: 0 });
+  }
+  const assignments: Map<string, SedimentAssignment> =
+    windowCount > 0
+      ? assignSedimentDepths(
+          candidates,
+          {
+            ...DEFAULT_SEDIMENT_SETTINGS,
+            windowMode: "count",
+            windowCount,
+            freshOpacity: TYPING_FRESH_OPACITY,
+            floorOpacity,
+          },
+          1,
+        )
+      : new Map();
+
+  const frames = new Map<string, TypingSedimentFrame>();
+  let typingCount = 0;
+
+  for (const record of kept) {
+    const isTyping = record.settledAt === null;
+    if (isTyping) typingCount++;
+
+    const assignment = assignments.get(record.id);
+    if (!isTyping && record.departingAt === null) {
+      // A window of 0 keeps nothing: a box leaves as soon as it settles.
+      if (windowCount === 0 || assignment?.departs) {
+        record.departingAt = now;
+      }
+    }
+
+    const target = isTyping ? 0 : assignment?.depth ?? record.depth;
+    record.depth = approachDepth(record.depth, target, dtMs, TYPING_DEPTH_TAU_MS);
+
+    const settledOpacity = sedimentOpacity(record.depth, {
+      freshOpacity: TYPING_FRESH_OPACITY,
+      floorOpacity,
+    });
+
+    let phase: TypingPhase;
+    let opacity: number;
+    if (record.departingAt !== null) {
+      phase = "fade-out";
+      const progress = Math.min(
+        1,
+        Math.max(0, (now - record.departingAt) / INSTALLATION_FADE_MS),
+      );
+      opacity = settledOpacity * (1 - progress);
+    } else if (isTyping) {
+      phase = "typing";
+      opacity = 1;
+    } else {
+      phase = "settled";
+      opacity = settledOpacity;
+    }
+
+    frames.set(record.id, { phase, depth: record.depth, opacity });
+  }
+
+  return { kept, frames, typingCount };
+}
+
+interface VisibleTypingRecording extends TypingSedimentState {
+  track: TypingTrack;
+  speed: number;
 }
 
 export function ContinuousTyping({
@@ -814,6 +982,7 @@ export function ContinuousTyping({
   const [frame, setFrame] = useState({
     now: 0,
     recordings: [] as VisibleTypingRecording[],
+    phases: new Map<string, TypingSedimentFrame>(),
   });
 
   useEffect(() => {
@@ -832,16 +1001,19 @@ export function ContinuousTyping({
     let lastFrame = -Infinity;
     const animate = (now: number) => {
       if (now - lastFrame >= 1000 / 30) {
+        const dtMs = Number.isFinite(lastFrame) ? now - lastFrame : 1000 / 30;
         lastFrame = now;
-        visible.current = visible.current.filter(
-          (recording) =>
-            now - recording.startedAt <
-            recording.durationMs +
-              INSTALLATION_TYPING_HOLD_MS +
-              INSTALLATION_FADE_MS,
-        );
+        const step = stepTypingSediment(visible.current, now, dtMs, {
+          windowCount:
+            settingsRef.current.liveTypingWindow ?? DEFAULT_LIVE_TYPING_WINDOW,
+          floorOpacity:
+            settingsRef.current.liveSedimentFloor ?? DEFAULT_LIVE_SEDIMENT_FLOOR,
+        });
+        visible.current = step.kept;
+        // Only boxes that are still typing count against the cap — settled
+        // sediment would otherwise stop the field from ever filling.
         if (
-          visible.current.length <
+          step.typingCount <
             Math.min(30, settingsRef.current.maxConcurrentTyping) &&
           now - lastArrival >= INSTALLATION_TYPING_ARRIVAL_MS
         ) {
@@ -853,15 +1025,19 @@ export function ContinuousTyping({
               settingsRef.current.keyboardAnimationSpeed *
               settingsRef.current.animationSpeed;
             visible.current.push({
+              id: track.id,
               track,
               startedAt: now,
               speed,
               durationMs: track.state.durationMs / speed,
+              settledAt: null,
+              departingAt: null,
+              depth: 0,
             });
             lastArrival = now;
           }
         }
-        setFrame({ now, recordings: [...visible.current] });
+        setFrame({ now, recordings: [...visible.current], phases: step.frames });
       }
       frameId = requestAnimationFrame(animate);
     };
@@ -871,19 +1047,16 @@ export function ContinuousTyping({
 
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-      {frame.recordings.map(({ track, startedAt, speed, durationMs }) => {
+      {/* Start order is preserved, so the most recently admitted boxes render
+          last and stay on top of the sediment underneath them. */}
+      {frame.recordings.map(({ track, startedAt, speed }) => {
         const elapsed = frame.now - startedAt;
-        const typingElapsed = elapsed;
-        const typing = typingElapsed < durationMs;
-        const fadeStart =
-          durationMs + INSTALLATION_TYPING_HOLD_MS;
-        const opacity = Math.max(
-          0,
-          Math.min(
-            1,
-            1 - (elapsed - fadeStart) / INSTALLATION_FADE_MS,
-          ),
-        );
+        // A box admitted this frame has no entry yet: it is still typing.
+        const sediment = frame.phases.get(track.id);
+        const phase = sediment?.phase ?? "typing";
+        const typing = phase === "typing";
+        const depth = sediment?.depth ?? 0;
+        const opacity = sediment?.opacity ?? 1;
         const state = track.state;
         const active: ActiveTyping = {
           id: track.id,
@@ -891,9 +1064,9 @@ export function ContinuousTyping({
           y: state.animation.y,
           color: state.animation.color,
           currentText: typing
-            ? getTypingTextAtTime(track, typingElapsed, speed)
+            ? getTypingTextAtTime(track, elapsed, speed)
             : track.finalText,
-          showCaret: typing && Math.floor(typingElapsed / 530) % 2 === 0,
+          showCaret: typing && Math.floor(elapsed / 530) % 2 === 0,
           textboxSize: state.textboxSize,
           fontSize: state.fontSize,
           positionOffset: state.positionOffset,
@@ -903,10 +1076,18 @@ export function ContinuousTyping({
           <div
             key={track.id}
             data-typing-recording={track.id}
-            data-typing-phase={
-              typing ? "typing" : elapsed >= fadeStart ? "fade-out" : "hold"
-            }
-            style={{ position: "absolute", inset: 0, opacity }}
+            data-typing-phase={phase}
+            data-typing-depth={typing ? undefined : depth.toFixed(2)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              opacity,
+              // Desaturating on the wrapper keeps TypingBox (and its memo
+              // comparison) untouched while old boxes wash toward the paper.
+              filter: typing
+                ? undefined
+                : `saturate(${typingSedimentSaturation(depth).toFixed(2)})`,
+            }}
           >
             <TypingBox typing={active} settings={settings} track={track} />
           </div>

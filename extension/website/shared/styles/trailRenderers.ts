@@ -4,6 +4,13 @@
 export interface TrailStyleParams {
   pathEl: SVGPathElement;
   haloEl?: SVGPathElement | null;
+  /** Sits under the halo and path; strokes a paper-colored gutter around the
+   * ink so an actively tracing trail separates from dense settled ink. */
+  outlineEl?: SVGPathElement | null;
+  outline?: TrailOutline | null;
+  /** Compositing mode for the ink itself. Multiply lets overlapping settled
+   * trails build density instead of covering each other. */
+  blend?: TrailBlend;
   pathData: string;
   trailOpacity: number;
   strokeWidth: number;
@@ -11,6 +18,38 @@ export interface TrailStyleParams {
   trailProgress: number;
   trailColor: string;
   fixedMonoStrokeWidth: number;
+}
+
+export interface TrailOutline {
+  color: string;
+  /** Total stroke width; the gutter extends half of this past the ink edge. */
+  width: number;
+  opacity: number;
+}
+
+export type TrailBlend = "normal" | "multiply";
+
+function applyOutline(
+  outlineEl: SVGPathElement | null | undefined,
+  outline: TrailOutline | null | undefined,
+  pathData: string,
+): void {
+  if (!outlineEl) return;
+  if (!outline || outline.opacity <= 0 || outline.width <= 0) {
+    outlineEl.style.display = "none";
+    return;
+  }
+  setPathAttribute(outlineEl, "d", pathData);
+  setPathAttribute(outlineEl, "fill", outline.color);
+  setPathAttribute(outlineEl, "stroke", outline.color);
+  setPathAttribute(outlineEl, "strokeWidth", String(outline.width));
+  setPathAttribute(outlineEl, "opacity", String(outline.opacity));
+  outlineEl.style.display = "";
+}
+
+function applyBlend(pathEl: SVGPathElement, blend: TrailBlend | undefined): void {
+  const value = blend === "multiply" ? "multiply" : "";
+  if (pathEl.style.mixBlendMode !== value) pathEl.style.mixBlendMode = value;
 }
 
 function parseColor(input: string): [number, number, number] | null {
@@ -220,12 +259,24 @@ export const colorRenderer: TrailRenderer = {
   getStrokeSize(strokeWidth) {
     return strokeWidth;
   },
-  updatePath({ pathEl, haloEl, pathData, trailOpacity, strokeWidth, trailColor }) {
+  updatePath({
+    pathEl,
+    haloEl,
+    outlineEl,
+    outline,
+    blend,
+    pathData,
+    trailOpacity,
+    strokeWidth,
+    trailColor,
+  }) {
     setPathAttribute(pathEl, "d", pathData);
     setPathAttribute(pathEl, "fill", trailColor);
     setPathAttribute(pathEl, "opacity", String(trailOpacity));
     removePathAttribute(pathEl, "filter");
+    applyBlend(pathEl, blend);
     pathEl.style.display = "";
+    applyOutline(outlineEl, outline, pathData);
 
     if (haloEl) {
       const distance = getDistanceFromBg(trailColor);
@@ -273,13 +324,15 @@ export const monochromeRenderer: TrailRenderer = {
   getStrokeSize(_strokeWidth, fixedMonoStrokeWidth) {
     return fixedMonoStrokeWidth;
   },
-  updatePath({ pathEl, haloEl, pathData, trailOpacity }) {
+  updatePath({ pathEl, haloEl, outlineEl, outline, blend, pathData, trailOpacity }) {
     setPathAttribute(pathEl, "d", pathData);
     setPathAttribute(pathEl, "fill", "#000");
     setPathAttribute(pathEl, "opacity", String(0.8 * trailOpacity));
     setPathAttribute(pathEl, "filter", "url(#ink-texture)");
+    applyBlend(pathEl, blend);
     pathEl.style.display = "";
     if (haloEl) haloEl.style.display = "none";
+    applyOutline(outlineEl, outline, pathData);
   },
   getCursorColor(_trailColor, cursorType) {
     // Cursor icon matches the cursor type — pointer is white, default is black
