@@ -26,6 +26,12 @@ const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
   resolveReady: () => void;
   createPresenceRoom: ReturnType<typeof vi.fn>;
   presence: unknown;
+  setMockPlayerIdentity: (next: {
+    publicKey?: string;
+    name?: string;
+    playerStyle?: { colorPalette: string[]; cursorStyle?: string };
+    createdAt?: number;
+  }) => void;
 };
 
 describe("usePresence", () => {
@@ -102,6 +108,35 @@ describe("usePresence", () => {
       });
     });
     expect(captured!.presences.get("me")).not.toHaveProperty("x");
+  });
+
+  it("re-derives myIdentity on a later identity change instead of freezing at sync completion", async () => {
+    let captured: ReturnType<typeof usePresence<"selection">> | null = null;
+
+    function TestComponent() {
+      captured = usePresence("selection");
+      return <div />;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured!.myIdentity).not.toBeNull();
+    });
+    expect(captured!.myIdentity?.publicKey).toBe("me");
+
+    // Simulates the "we were online" extension injecting identity post-sync.
+    act(() => {
+      mockedPlayhtml.setMockPlayerIdentity({ publicKey: "injected-pid" });
+    });
+
+    await waitFor(() => {
+      expect(captured!.myIdentity?.publicKey).toBe("injected-pid");
+    });
   });
 });
 
