@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef, memo, useMemo } from "react";
 import { TypingState, TypingAction, ActiveTyping } from "../types";
 import { useDebugHover } from "./DebugHover";
-import { redactWithLegibility } from "@extension/utils/keyboardRedaction";
 import {
   InstallationPlaybackQueue,
   INSTALLATION_TYPING_ARRIVAL_MS,
@@ -24,7 +23,6 @@ interface TypingSettings {
   textboxOpacity: number;
   keyboardShowCaret: boolean;
   keyboardAnimationSpeed: number;
-  keyboardLegibilityPct: number;
   /** Hard cap on actively-typing sessions on screen at the same time. When a
    * new session would push the active set past this number, it's deferred
    * until an existing one finishes. Completed sessions still linger via the
@@ -466,7 +464,7 @@ const TypingBox = memo(
         >
           {/* Text content */}
           <span style={{ position: "relative", zIndex: 1 }}>
-            {redactWithLegibility(currentText, settings.keyboardLegibilityPct, 0)}
+            {currentText}
             {settings.keyboardShowCaret && showCaret && (
               <span
                 style={{
@@ -492,8 +490,6 @@ const TypingBox = memo(
       prev.typing.color === next.typing.color &&
       prev.settings.textboxOpacity === next.settings.textboxOpacity &&
       prev.settings.keyboardShowCaret === next.settings.keyboardShowCaret &&
-      prev.settings.keyboardLegibilityPct ===
-        next.settings.keyboardLegibilityPct &&
       prev.settings.trailVisualStyle === next.settings.trailVisualStyle &&
       prev.settings.randomizeColors === next.settings.randomizeColors
     );

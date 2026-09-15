@@ -67,11 +67,6 @@ export const DEFAULT_SETTINGS = {
   keyboardAnimationSpeed: 0.5,
   keyboardPositionRandomness: 0.3,
   keyboardRandomizeOrder: false,
-  /** 0–100% legibility for typing-viz playback. 100 = full text (PII
-   * still redacted), 0 = cadence only (every non-whitespace replaced
-   * with U+2588), in between mixes deterministically. Mirrors the
-   * extension's collection-time legibility setting. */
-  keyboardLegibilityPct: 100,
   // Hard cap on actively-typing sessions on screen at once. Once full,
   // additional sessions defer until a slot frees. Recently-completed
   // sessions still linger via the visualization's completed-tail buffer.
