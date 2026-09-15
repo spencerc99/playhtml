@@ -1,6 +1,6 @@
 // ABOUTME: Renders an abstract preview of a web page inside an SVG foreignObject.
 // ABOUTME: Renders at desktop width then scales down to fit the viewport rect.
-import React, { memo } from "react";
+import { memo } from "react";
 
 interface PagePreviewProps {
   url: string;

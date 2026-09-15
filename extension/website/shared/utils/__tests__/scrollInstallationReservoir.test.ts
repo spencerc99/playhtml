@@ -20,7 +20,7 @@ function scrollWindow(
     id: `${id}-${suffix}`,
     type: "viewport" as const,
     ts: ts + offset,
-    data: { event: "scroll", scrollX: 0, scrollY },
+    data: { event: "scroll" as const, scrollX: 0, scrollY },
     meta: {
       pid: options.pid ?? "person",
       sid: options.sid ?? id,

@@ -1,7 +1,7 @@
 // ABOUTME: Verifies responsive density and the compact internet-scraps control pane.
 // ABOUTME: Covers view, amount, kind, shuffle, cycle, and collapse controls.
 
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -11,22 +11,25 @@ import {
 } from "../ScrapCollage";
 
 function buildItems(count: number): ScrapItem[] {
-  return Array.from({ length: count }, (_, index) => ({
-    id: `s${index}`,
-    key: `s${index}`,
-    kind: index % 2 === 0 ? ("image" as const) : ("button" as const),
-    ...(index % 2 === 0
+  return Array.from({ length: count }, (_, index) => {
+    const base = {
+      id: `s${index}`,
+      key: `s${index}`,
+      pageTitle: `Page ${index}`,
+      domain: `d${index}.example`,
+      pageUrl: `https://d${index}.example/`,
+      ts: index,
+    };
+    return index % 2 === 0
       ? {
+          ...base,
+          kind: "image" as const,
           src: `https://cdn.example/s${index}.jpg`,
           naturalWidth: 400,
           naturalHeight: 300,
         }
-      : { text: `Scrap ${index}`, styles: {} }),
-    pageTitle: `Page ${index}`,
-    domain: `d${index}.example`,
-    pageUrl: `https://d${index}.example/`,
-    ts: index,
-  }));
+      : { ...base, kind: "button" as const, text: `Scrap ${index}`, styles: {} };
+  });
 }
 
 describe("responsiveTargetCount", () => {

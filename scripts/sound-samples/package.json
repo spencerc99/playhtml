@@ -1,0 +1,10 @@
+{
+  "name": "sound-samples-render",
+  "private": true,
+  "scripts": {
+    "render": "bun run render.ts"
+  },
+  "dependencies": {
+    "node-web-audio-api": "^2.2.0"
+  }
+}

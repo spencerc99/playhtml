@@ -69,3 +69,24 @@ jobs:
           smoke-tests/playwright-report
           smoke-tests/test-results
         retention-days: 7
+
+  sound-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      - name: Prepare workspace
+        run: bun run setup
+      - name: Install native audio library
+        run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-0
+      - name: Install native audio renderer
+        run: bun install --frozen-lockfile
+        working-directory: scripts/sound-samples
+      - name: Check audio continuity
+        run: bun run test:sound
