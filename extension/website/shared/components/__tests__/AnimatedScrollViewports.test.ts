@@ -5,6 +5,7 @@ import type { ActiveViewport, ScrollAnimation } from "../../types";
 import { getViewportTitleText } from "../../utils/titleText";
 import {
   buildViewportAnimationTimeline,
+  scrollAnimationVersion,
   getScrollQueueIndex,
   getViewportFrame,
   getResizeDimensionsAtTime,
@@ -216,5 +217,108 @@ describe("viewport frames", () => {
     expect(getViewportFrame(v, timeline, 2000, 4)).toEqual(
       getViewportFrame(v, timeline, 3000, 4),
     );
+  });
+});
+
+describe("live recordings that grow while they play", () => {
+  const makeViewport = (animation: ScrollAnimation): ActiveViewport => ({
+    id: "viewport",
+    animation,
+    rect: { x: 0, y: 0, width: 400, height: 300 },
+    phase: "animating",
+    phaseStartTime: 0,
+    animationStartTime: 0,
+    durationMs: animation.endTime - animation.startTime,
+    backgroundSeed: 1,
+  });
+
+  it("distinguishes more footage from the same footage", () => {
+    const animation = makeAnimation();
+    expect(scrollAnimationVersion(animation)).toBe(
+      scrollAnimationVersion(makeAnimation()),
+    );
+    const grown = makeAnimation({
+      scrollEvents: [
+        ...animation.scrollEvents,
+        {
+          scrollX: 0,
+          scrollY: 1,
+          timestamp: 1100,
+          viewportWidth: 1280,
+          viewportHeight: 720,
+        },
+      ],
+      endTime: 1100,
+    });
+    expect(scrollAnimationVersion(grown)).not.toBe(
+      scrollAnimationVersion(animation),
+    );
+  });
+
+  it("keeps the playhead continuous when the recording is extended", () => {
+    // The window is mid-playback at 400ms of wall clock.
+    const animation = makeAnimation();
+    const before = getViewportFrame(
+      makeViewport(animation),
+      buildViewportAnimationTimeline(animation),
+      400,
+      1,
+      true,
+    );
+
+    // More scrolling arrives, so the same window is handed longer footage.
+    const grown = makeAnimation({
+      scrollEvents: [
+        ...animation.scrollEvents,
+        {
+          scrollX: 0,
+          scrollY: 1,
+          timestamp: 1100,
+          viewportWidth: 1280,
+          viewportHeight: 720,
+        },
+      ],
+      endTime: 1100,
+    });
+    const after = getViewportFrame(
+      makeViewport(grown),
+      buildViewportAnimationTimeline(grown),
+      400,
+      1,
+      true,
+    );
+
+    // Duration and timeline grow together, so the position already on screen
+    // does not jump — playback simply carries on past where it would have ended.
+    expect(after.scrollY).toBeCloseTo(before.scrollY);
+  });
+
+  it("carries on past the end the recording had when it was admitted", () => {
+    const animation = makeAnimation();
+    const grown = makeAnimation({
+      scrollEvents: [
+        ...animation.scrollEvents,
+        {
+          scrollX: 0,
+          scrollY: 1,
+          timestamp: 1100,
+          viewportWidth: 1280,
+          viewportHeight: 720,
+        },
+      ],
+      endTime: 1100,
+    });
+    const timeline = buildViewportAnimationTimeline(grown);
+    // 900ms is past the original 650ms of footage: without the extension this
+    // window would have been parked on its final frame.
+    const parked = getViewportFrame(
+      makeViewport(animation),
+      buildViewportAnimationTimeline(animation),
+      900,
+      1,
+      true,
+    );
+    const extended = getViewportFrame(makeViewport(grown), timeline, 900, 1, true);
+    expect(extended.scrollY).toBeGreaterThan(parked.scrollY);
   });
 });
