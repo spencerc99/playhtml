@@ -209,14 +209,11 @@ export function createPageDataChannel<T>(
         return;
       }
 
-      detachPageDataObserver(name, deps);
       doc().transact(() => {
         storePlay()[PAGE_TAG] ??= {};
         storePlay()[PAGE_TAG]![name] = clonePlain(nextValue);
         proxyByTagAndId.get(PAGE_TAG)?.set(name, storePlay()[PAGE_TAG]![name]);
       });
-      attachObserver();
-      notifyPageDataListeners(name, deps, listeners);
     },
 
     onUpdate(callback: (data: T) => void): () => void {

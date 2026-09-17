@@ -82,6 +82,20 @@ describe("playhtml.createPageData", () => {
     expect(updates).toEqual([1, 2]);
   });
 
+  it("coalesces synchronous primitive notifications", async () => {
+    const channel = playhtml.createPageData("test-primitive-coalescing", 0);
+    const updates: number[] = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    for (let value = 1; value <= 100; value++) {
+      channel.setData(value);
+    }
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(channel.getData()).toBe(100);
+    expect(updates).toEqual([100]);
+  });
+
   it("uses a remotely updated primitive value for functional updates", () => {
     const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
       play: {},
