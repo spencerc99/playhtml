@@ -184,7 +184,10 @@ export interface ScrollViewportState {
 }
 
 // Dynamic viewport system types
-export type ViewportPhase = 'fade-in' | 'animating' | 'fade-out';
+// 'settled' only occurs in the continuous installation mode: a window that has
+// finished its replay stays on screen as sediment until newer windows push it
+// out of the count window, and only then does it fade out.
+export type ViewportPhase = 'fade-in' | 'animating' | 'settled' | 'fade-out';
 
 export interface ActiveViewport {
   id: string;
@@ -195,6 +198,8 @@ export interface ActiveViewport {
   animationStartTime: number;  // When animation started (real time)
   durationMs: number;  // How long the animation runs
   backgroundSeed: number;
+  settledAt?: number;  // Continuous mode: when the replay finished (real time)
+  depth?: number;  // Continuous mode: smoothed sediment depth, 0 fresh .. 1 leaving
 }
 
 // Navigation graph types for animated navigation visualization

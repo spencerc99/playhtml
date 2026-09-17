@@ -4,6 +4,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { CollectionEvent } from "../types";
 import { STREAM_URL } from "../config";
+import {
+  parseMockLiveStreamOptions,
+  startMockLiveStream,
+} from "../utils/mockLiveStream";
 
 interface StreamFrame {
   events: CollectionEvent[];
@@ -48,6 +52,55 @@ export function useLiveEvents(
   const SEEN_LIMIT = 2000;
 
   useEffect(() => {
+    // Shared accept path for every source of frames: dedupe against the
+    // seen-set, bound that set by its own FIFO, then append under the cap.
+    const acceptEvents = (frameEvents: CollectionEvent[]) => {
+      if (frameEvents.length === 0) return; // empty batch — normal
+      const seen = seenIdsRef.current;
+      const order = seenOrderRef.current;
+      const incoming = frameEvents.filter((e) => {
+        if (!e.id) {
+          // event.id is a required field upstream; a missing one means the
+          // ingest/enrichment pipeline produced a malformed event.
+          console.warn("[useLiveEvents] event without id (upstream bug):", e);
+          return false;
+        }
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        order.push(e.id);
+        return true;
+      });
+      // Bound the seen-set by its own FIFO, evicting the OLDEST ids — never
+      // by the display array. Evicted ids are old enough that the server's
+      // ring buffer no longer holds them, so they can't be replayed.
+      if (order.length > SEEN_LIMIT) {
+        const removeCount = order.length - SEEN_LIMIT;
+        for (let i = 0; i < removeCount; i++) seen.delete(order[i]);
+        order.splice(0, removeCount);
+      }
+      if (incoming.length === 0) return;
+      setEvents((prev) => {
+        const next = [...prev, ...incoming];
+        return next.length > maxRef.current
+          ? next.slice(next.length - maxRef.current)
+          : next;
+      });
+    };
+
+    // Dev-only offline mode: generate synthetic activity instead of opening a
+    // socket, so the live pages can be exercised without the worker.
+    const mockOptions =
+      typeof window === "undefined"
+        ? null
+        : parseMockLiveStreamOptions(window.location.search);
+    if (mockOptions) {
+      setConnected(true);
+      const stopMockStream = startMockLiveStream(mockOptions, acceptEvents);
+      return () => {
+        stopMockStream();
+      };
+    }
+
     let ws: WebSocket | null = null;
     let closed = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -76,36 +129,7 @@ export function useLiveEvents(
           console.warn("[useLiveEvents] frame missing events array:", frame);
           return;
         }
-        if (frame.events.length === 0) return; // empty batch — normal
-        const seen = seenIdsRef.current;
-        const order = seenOrderRef.current;
-        const incoming = frame.events.filter((e) => {
-          if (!e.id) {
-            // event.id is a required field upstream; a missing one means the
-            // ingest/enrichment pipeline produced a malformed event.
-            console.warn("[useLiveEvents] event without id (upstream bug):", e);
-            return false;
-          }
-          if (seen.has(e.id)) return false;
-          seen.add(e.id);
-          order.push(e.id);
-          return true;
-        });
-        // Bound the seen-set by its own FIFO, evicting the OLDEST ids — never
-        // by the display array. Evicted ids are old enough that the server's
-        // ring buffer no longer holds them, so they can't be replayed.
-        if (order.length > SEEN_LIMIT) {
-          const removeCount = order.length - SEEN_LIMIT;
-          for (let i = 0; i < removeCount; i++) seen.delete(order[i]);
-          order.splice(0, removeCount);
-        }
-        if (incoming.length === 0) return;
-        setEvents((prev) => {
-          const next = [...prev, ...incoming];
-          return next.length > maxRef.current
-            ? next.slice(next.length - maxRef.current)
-            : next;
-        });
+        acceptEvents(frame.events);
       };
 
       ws.onclose = () => {
