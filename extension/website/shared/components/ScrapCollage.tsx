@@ -6,13 +6,22 @@ import { createPortal } from "react-dom";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
 import {
+  isImageContentHash,
   canonicalButtonKey,
   canonicalCursorKey,
   canonicalImageKey,
   canonicalSvgIconKey,
 } from "../utils/scrapIdentity";
 
+import {
+  groupPhotoEncounters,
+  type ScrapSource,
+} from "../utils/scrapPhotoGroups";
+
 interface ScrapItemBase {
+  sources?: ScrapSource[];
+  encounterCount?: number;
+  encounterDay?: string;
   id: string;
   key: string;
   pageTitle: string;
@@ -27,6 +36,7 @@ export type ScrapItem = ScrapItemBase &
     | {
         kind: "image";
         src: string;
+        contentHash?: string;
         alt?: string;
         naturalWidth: number;
         naturalHeight: number;
@@ -157,7 +167,9 @@ function itemOrder(item: ScrapItem, seed: number): number {
 export function canonicalScrapKey(item: ScrapItem): string {
   switch (item.kind) {
     case "image":
-      return canonicalImageKey(item.src);
+      return isImageContentHash(item.contentHash)
+        ? `image:sha256:${item.contentHash}`
+        : canonicalImageKey(item.src);
     case "button":
       return canonicalButtonKey(item.domain, item.text, item.styles.backgroundColor);
     case "svg-icon":
@@ -182,7 +194,7 @@ function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
 
 function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
   const newestByCanonicalKey = new Map<string, ScrapItem>();
-  for (const item of items) {
+  for (const item of groupPhotoEncounters(items)) {
     const canonicalKey = canonicalScrapKey(item);
     const current = newestByCanonicalKey.get(canonicalKey);
     if (!current || item.ts > current.ts) {

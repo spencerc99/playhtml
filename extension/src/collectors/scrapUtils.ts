@@ -1,8 +1,10 @@
 // ABOUTME: Builds stable identities for locally captured internet scraps.
 // ABOUTME: Sanitizes inline SVG markup before it reaches extension rendering surfaces.
 
+import { scrapEncounterDay } from "@movement/utils/scrapEncounterDay";
 import type { ScrapEventData } from "./types";
 import {
+  canonicalScrapPageUrl,
   canonicalButtonKey,
   canonicalCursorKey,
   canonicalImageKey,
@@ -149,6 +151,30 @@ export function getCanonicalScrapKey(
     default:
       return undefined;
   }
+}
+
+/** Identifies an image encounter on a source page and capture-local day. */
+export function getScrapEncounterKey(
+  domain: string,
+  data: unknown,
+  pageUrl: string,
+  timestamp: number,
+  timeZone: string,
+): string | undefined {
+  const key = getCanonicalScrapKey(domain, data);
+  if (
+    key === undefined ||
+    typeof data !== "object" ||
+    data === null ||
+    !("kind" in data) ||
+    data.kind !== "image"
+  )
+    return key;
+  return JSON.stringify([
+    key,
+    canonicalScrapPageUrl(pageUrl),
+    scrapEncounterDay(timestamp, timeZone),
+  ]);
 }
 
 function getUseReference(use: SVGUseElement): string | null {
