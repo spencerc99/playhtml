@@ -1,7 +1,13 @@
 // ABOUTME: Examine view that lifts a clicked scrap out of the collage into a centered detail view.
 // ABOUTME: Shows a specimen-label side panel of provenance and supports arrow navigation between scraps.
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ScrapItem } from "./ScrapCollage";
 
 /** Fraction of the viewport's smaller dimension the lifted scrap fills. */
@@ -61,7 +67,10 @@ export function kindDetailRows(item: ScrapItem): ProvenanceRow[] {
     }
     case "svg-icon":
       return [
-        { label: "dimensions", value: formatDimensions(item.width, item.height) },
+        {
+          label: "dimensions",
+          value: formatDimensions(item.width, item.height),
+        },
       ];
     case "cursor": {
       const rows: ProvenanceRow[] = [];
@@ -99,7 +108,8 @@ export function liftedSize(
   origin: { width: number; height: number },
   viewport: { width: number; height: number },
 ): { width: number; height: number } {
-  const target = Math.min(viewport.width, viewport.height) * LIFTED_VIEWPORT_FRACTION;
+  const target =
+    Math.min(viewport.width, viewport.height) * LIFTED_VIEWPORT_FRACTION;
   if (origin.width <= 0 || origin.height <= 0) {
     return { width: target, height: target };
   }
@@ -278,6 +288,38 @@ const LIGHTBOX_STYLES = `
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  .scrap-lightbox__places {
+    margin-top: 16px;
+    font: 10px/1.6 "Martian Mono", monospace;
+    overflow-wrap: anywhere;
+  }
+  .scrap-lightbox__places h3 { font: inherit; margin: 0; }
+  .scrap-lightbox__places p { color: #827a72; font-size: 9px; margin: 4px 0 8px; }
+  .scrap-lightbox__timeline {
+    max-height: 220px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    border-block: 1px solid rgba(61, 56, 51, 0.14);
+  }
+  .scrap-lightbox__timeline ol { list-style: none; padding: 0; margin: 0; }
+  .scrap-lightbox__timeline li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(61, 56, 51, 0.08);
+  }
+  .scrap-lightbox__timeline h4 { margin: 0; padding: 10px 0 4px; font: inherit; color: #827a72; }
+  .scrap-lightbox__timeline time { color: #827a72; font-size: 9px; white-space: nowrap; padding-top: 1px; }
+  .scrap-lightbox__timeline a { color: #3d3833; min-width: 0; text-decoration: none; }
+  .scrap-lightbox__timeline a:hover { text-decoration: underline; }
+  .scrap-lightbox__encounter-url { display: none !important; }
+  .scrap-lightbox__timeline a:focus .scrap-lightbox__encounter-url { display: block !important; }
+  .scrap-lightbox__timeline strong { display: block; font-weight: 500; }
+  .scrap-lightbox__timeline span { display: block; color: #827a72; font-size: 9px; overflow-wrap: anywhere; }
+  .scrap-lightbox__timeline:focus-visible { outline: 2px solid #5b8db8; outline-offset: 2px; }
 
   .scrap-lightbox__rows {
     margin: 16px 0 0;
@@ -688,6 +730,23 @@ export function ScrapLightbox({
     ...kindDetailRows(item),
   ];
 
+  const encounterDates = new Map<
+    string,
+    NonNullable<ScrapItem["sources"]>[number]["encounters"]
+  >();
+  for (const encounter of (item.sources ?? [])
+    .flatMap((source) => source.encounters)
+    .sort((a, b) => b.ts - a.ts)) {
+    const date = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(encounter.ts);
+    const entries = encounterDates.get(date) ?? [];
+    entries.push(encounter);
+    encounterDates.set(date, entries);
+  }
+
   return (
     <div
       ref={overlayRef}
@@ -753,6 +812,59 @@ export function ScrapLightbox({
               </div>
             )}
           </div>
+          {item.kind === "image" && item.sources && item.sources.length > 0 && (
+            <section
+              className="scrap-lightbox__places"
+              aria-label="Places this photo was found"
+            >
+              <h3>Encounter history</h3>
+              <p>Newest first · one saved visit per place per day</p>
+              <div
+                className="scrap-lightbox__timeline"
+                tabIndex={0}
+                role="region"
+                aria-label="Scrollable encounter history"
+              >
+                {[...encounterDates].map(([date, encounters]) => (
+                  <section key={date} aria-label={date}>
+                    <h4>{date}</h4>
+                    <ol>
+                      {encounters.map((encounter) => (
+                        <li
+                          key={JSON.stringify([
+                            encounter.pageUrl,
+                            encounter.day,
+                          ])}
+                        >
+                          <a
+                            href={encounter.pageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={encounter.pageUrl}
+                          >
+                            <strong>{encounter.domain}</strong>
+                            <span>
+                              {encounter.pageTitle.trim() ||
+                                new URL(encounter.pageUrl).pathname}
+                            </span>
+                            <span className="scrap-lightbox__encounter-url">
+                              {encounter.pageUrl}
+                            </span>
+                          </a>
+                          <time dateTime={new Date(encounter.ts).toISOString()}>
+                            {new Intl.DateTimeFormat("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            }).format(encounter.ts)}
+                          </time>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                ))}
+              </div>
+            </section>
+          )}
           {item.pageUrl && (
             <div className="scrap-lightbox__actions">
               <a

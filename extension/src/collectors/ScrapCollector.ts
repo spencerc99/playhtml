@@ -2,7 +2,11 @@
 // ABOUTME: Applies per-kind filtering, visibility timing, sanitization, and page-session limits.
 
 import { BaseCollector } from "./BaseCollector";
-import { getCanonicalScrapKey, serializeSvg } from "./scrapUtils";
+import {
+  getCanonicalScrapKey,
+  getScrapEncounterKey,
+  serializeSvg,
+} from "./scrapUtils";
 import type {
   ButtonScrapData,
   CursorScrapData,
@@ -308,7 +312,13 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       displayHeight: bounds.height,
       pageTitle: document.title,
     };
-    const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
+    const canonicalKey = getScrapEncounterKey(
+      this.pageDomain(),
+      data,
+      window.location.href,
+      Date.now(),
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    )!;
     if (this.seenCanonicalImageKeys.has(canonicalKey)) return;
 
     const faviconUrl = getFaviconUrl();
