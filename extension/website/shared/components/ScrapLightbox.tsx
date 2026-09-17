@@ -306,15 +306,18 @@ const LIGHTBOX_STYLES = `
   .scrap-lightbox__timeline ol { list-style: none; padding: 0; margin: 0; }
   .scrap-lightbox__timeline li {
     display: grid;
-    grid-template-columns: 92px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
     padding: 8px 0;
     border-bottom: 1px solid rgba(61, 56, 51, 0.08);
   }
-  .scrap-lightbox__timeline time { color: #827a72; font-size: 9px; }
+  .scrap-lightbox__timeline h4 { margin: 0; padding: 10px 0 4px; font: inherit; color: #827a72; }
+  .scrap-lightbox__timeline time { color: #827a72; font-size: 9px; white-space: nowrap; padding-top: 1px; }
   .scrap-lightbox__timeline a { color: #3d3833; min-width: 0; text-decoration: none; }
   .scrap-lightbox__timeline a:hover { text-decoration: underline; }
-  .scrap-lightbox__timeline strong { display: block; font-weight: 400; }
+  .scrap-lightbox__encounter-url { display: none !important; }
+  .scrap-lightbox__timeline a:focus .scrap-lightbox__encounter-url { display: block !important; }
+  .scrap-lightbox__timeline strong { display: block; font-weight: 500; }
   .scrap-lightbox__timeline span { display: block; color: #827a72; font-size: 9px; overflow-wrap: anywhere; }
   .scrap-lightbox__timeline:focus-visible { outline: 2px solid #5b8db8; outline-offset: 2px; }
 
@@ -727,6 +730,23 @@ export function ScrapLightbox({
     ...kindDetailRows(item),
   ];
 
+  const encounterDates = new Map<
+    string,
+    NonNullable<ScrapItem["sources"]>[number]["encounters"]
+  >();
+  for (const encounter of (item.sources ?? [])
+    .flatMap((source) => source.encounters)
+    .sort((a, b) => b.ts - a.ts)) {
+    const date = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(encounter.ts);
+    const entries = encounterDates.get(date) ?? [];
+    entries.push(encounter);
+    encounterDates.set(date, entries);
+  }
+
   return (
     <div
       ref={overlayRef}
@@ -805,31 +825,43 @@ export function ScrapLightbox({
                 role="region"
                 aria-label="Scrollable encounter history"
               >
-                <ol>
-                  {item.sources
-                    .flatMap((source) => source.encounters)
-                    .sort((a, b) => b.ts - a.ts)
-                    .map((encounter) => (
-                      <li
-                        key={JSON.stringify([encounter.pageUrl, encounter.day])}
-                      >
-                        <time dateTime={new Date(encounter.ts).toISOString()}>
-                          {formatCollectedMoment(encounter.ts)}
-                        </time>
-                        <a
-                          href={encounter.pageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={encounter.pageUrl}
+                {[...encounterDates].map(([date, encounters]) => (
+                  <section key={date} aria-label={date}>
+                    <h4>{date}</h4>
+                    <ol>
+                      {encounters.map((encounter) => (
+                        <li
+                          key={JSON.stringify([
+                            encounter.pageUrl,
+                            encounter.day,
+                          ])}
                         >
-                          <strong>
-                            {encounter.pageTitle.trim() || encounter.domain}
-                          </strong>
-                          <span>{encounter.pageUrl}</span>
-                        </a>
-                      </li>
-                    ))}
-                </ol>
+                          <a
+                            href={encounter.pageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={encounter.pageUrl}
+                          >
+                            <strong>{encounter.domain}</strong>
+                            <span>
+                              {encounter.pageTitle.trim() ||
+                                new URL(encounter.pageUrl).pathname}
+                            </span>
+                            <span className="scrap-lightbox__encounter-url">
+                              {encounter.pageUrl}
+                            </span>
+                          </a>
+                          <time dateTime={new Date(encounter.ts).toISOString()}>
+                            {new Intl.DateTimeFormat("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            }).format(encounter.ts)}
+                          </time>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                ))}
               </div>
             </section>
           )}

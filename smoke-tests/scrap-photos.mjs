@@ -55,8 +55,14 @@ const server = createServer((request, response) => {
       : slug === "second"
         ? "b"
         : "different";
+  const title =
+    {
+      first: "Ceramics journal",
+      second: "Objects worth keeping",
+      third: "Studio references",
+    }[slug] || "Color studies";
   response.end(
-    `<!doctype html><title>${slug} collection</title><style>body{margin:50px;background:#faf9f6;font:20px sans-serif}img{width:300px;height:200px}</style><h1>${slug} collection</h1><img alt="Collected artwork" src="/photo/${src}.svg">`,
+    `<!doctype html><title>${title}</title><style>body{margin:50px;background:#faf9f6;font:20px sans-serif}img{width:300px;height:200px}</style><h1>${title}</h1><img alt="Collected artwork" src="/photo/${src}.svg">`,
   );
 });
 await new Promise((resolveListen, reject) => {
@@ -149,7 +155,7 @@ async function seedUnchecked(count, prefix) {
                 src: `${origin}/photo/slow-${prefix}-${i}.svg`,
                 naturalWidth: 600,
                 naturalHeight: 400,
-                pageTitle: `Saved collection ${i + 1}`,
+                pageTitle: `Visual notebook · page ${i + 1}`,
               },
             });
           tx.oncomplete = done;
@@ -242,6 +248,20 @@ try {
     scraps.getByText("Encounter history", { exact: true }),
   ).toBeVisible();
   await expect(scraps.locator(".scrap-lightbox__timeline li")).toHaveCount(4);
+  await expect(scraps.locator(".scrap-lightbox__timeline h4")).toHaveCount(2);
+  await expect(
+    scraps.locator(".scrap-lightbox__timeline section").first().locator("li"),
+  ).toHaveCount(3);
+  await expect(
+    scraps.locator(".scrap-lightbox__timeline section").last().locator("li"),
+  ).toHaveCount(1);
+  await expect(
+    scraps.locator(".scrap-lightbox__timeline a").first(),
+  ).toHaveAttribute("title", `${origin}/third`);
+  await scraps.locator(".scrap-lightbox__timeline a").first().focus();
+  await expect(
+    scraps.locator(".scrap-lightbox__encounter-url").first(),
+  ).toBeVisible();
   const moments = await scraps
     .locator(".scrap-lightbox__timeline time")
     .evaluateAll((nodes) =>
