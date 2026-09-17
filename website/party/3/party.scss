@@ -2,8 +2,8 @@
 // ABOUTME: Applies the playhtml design tokens, physical objects, motion, and responsive layouts.
 
 :root {
-  --ph-paper: #f4efe5;
-  --ph-paper-warm: #ebe4d5;
+  --ph-paper: #f3f1ed;
+  --ph-paper-warm: #e8e5dd;
   --ph-ink: #1c1c1c;
   --ph-ink-2: #3b3b3b;
   --ph-ink-3: #6a6a66;
@@ -174,7 +174,7 @@ h1 {
 .party-room__wall--second {
   right: 0;
   left: 1480px;
-  background-color: #f7f2e6;
+  background-color: #f2f0ec;
   background-image:
     repeating-linear-gradient(
       90deg,
@@ -223,7 +223,7 @@ h1 {
 .party-room__floor {
   position: absolute;
   inset: 34% 0 0;
-  background-color: #fbf8f1;
+  background-color: #f7f7f4;
   background-image:
     repeating-linear-gradient(
       90deg,
@@ -1103,7 +1103,7 @@ h1 {
   overflow: hidden;
   border: 1.5px solid var(--ph-ink);
   border-radius: 6px;
-  background: #fbf8f0;
+  background: #f7f7f4;
 }
 .party-cake > img {
   position: absolute;
@@ -1168,7 +1168,7 @@ h1 {
   outline-offset: -2px;
 }
 .party-cake__cell.is-finished {
-  background: #fbf8f0;
+  background: #f7f7f4;
   animation: ph-eat-cell 300ms ease-out;
 }
 .party-cake__bite {
@@ -1194,7 +1194,7 @@ h1 {
     17% 15%,
     34% 8%
   );
-  background: #fbf8f0;
+  background: #f7f7f4;
   animation: ph-eat-cell 300ms ease-out;
   pointer-events: none;
 }
@@ -2009,14 +2009,8 @@ h1 {
   gap: 6px;
   background: var(--ph-paper-warm);
 }
-.party-footer a:nth-of-type(1) {
+.party-footer a {
   background: var(--ph-sage-wash);
-}
-.party-footer a:nth-of-type(2) {
-  background: var(--ph-ultramarine-wash);
-}
-.party-footer a:nth-of-type(3) {
-  background: var(--ph-mustard);
 }
 .presence-balloons {
   display: inline-flex;
