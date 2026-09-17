@@ -20,6 +20,12 @@ export default defineConfig({
     action: {
       default_title: "we were online",
     },
+    chrome_url_overrides:
+      browser === "firefox"
+        ? {
+            newtab: "walking-record.html",
+          }
+        : undefined,
     commands: {
       "open-inventory": {
         suggested_key: {
