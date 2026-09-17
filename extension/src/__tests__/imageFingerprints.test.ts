@@ -1,0 +1,176 @@
+// ABOUTME: Exercises fingerprint downloads against a real local HTTP server.
+// ABOUTME: Verifies exact byte matching, response validation, and bounded body reads.
+
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { createServer } from "node:http";
+import { webcrypto } from "node:crypto";
+import { transferableAbortController } from "node:util";
+import {
+  ImageFingerprints,
+  fetchImageFingerprint,
+  MAX_FINGERPRINT_BYTES,
+} from "../storage/imageFingerprints";
+
+import { indexedDB, IDBKeyRange } from "fake-indexeddb";
+import { LocalEventStore } from "../storage/LocalEventStore";
+import type { CollectionEvent } from "../collectors/types";
+
+const svg =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="orange"/></svg>';
+const requests: string[] = [];
+let active = 0;
+let peak = 0;
+const server = createServer((request, response) => {
+  requests.push(request.url!);
+  active++;
+  peak = Math.max(peak, active);
+  response.on("close", () => active--);
+  if (request.url === "/redirect") {
+    response.writeHead(302, { location: "/a" });
+    response.end();
+    return;
+  }
+  if (request.url === "/missing") {
+    response.writeHead(404);
+    response.end();
+    return;
+  }
+  if (request.url === "/html") {
+    response.setHeader("content-type", "text/html");
+    response.end(svg);
+    return;
+  }
+  response.setHeader("content-type", "image/svg+xml");
+  if (request.url === "/oversized") {
+    response.setHeader("content-length", MAX_FINGERPRINT_BYTES + 1);
+    response.end();
+    return;
+  }
+  if (request.url === "/streamed") {
+    response.write(Buffer.alloc(MAX_FINGERPRINT_BYTES + 1));
+    response.end();
+    return;
+  }
+  if (request.url === "/empty") {
+    response.end();
+    return;
+  }
+  if (request.url === "/timeout") {
+    response.flushHeaders();
+    return;
+  }
+  setTimeout(
+    () =>
+      response.end(
+        request.url === "/different" ? svg.replace("orange", "blue") : svg,
+      ),
+    10,
+  );
+});
+let origin: string;
+beforeAll(async () => {
+  vi.stubGlobal("crypto", webcrypto);
+  globalThis.indexedDB = indexedDB;
+  vi.stubGlobal("IDBKeyRange", IDBKeyRange);
+  vi.stubGlobal(
+    "AbortController",
+    class {
+      constructor() {
+        return transferableAbortController();
+      }
+    },
+  );
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Missing test server address");
+  origin = `http://127.0.0.1:${address.port}`;
+});
+afterAll(async () => {
+  vi.unstubAllGlobals();
+  server.closeAllConnections();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+describe("image fingerprints", () => {
+  it("matches identical bytes across URLs and distinguishes different images", async () => {
+    const first = await fetchImageFingerprint(`${origin}/a`);
+    expect(first).toMatch(/^[a-f0-9]{64}$/);
+    expect(await fetchImageFingerprint(`${origin}/b`)).toBe(first);
+    expect(await fetchImageFingerprint(`${origin}/different`)).not.toBe(first);
+  });
+  it("keeps failed, empty, and oversized downloads unchecked", async () => {
+    for (const path of ["missing", "html", "oversized", "streamed", "empty"]) {
+      expect(await fetchImageFingerprint(`${origin}/${path}`)).toBeUndefined();
+    }
+  });
+  it("does not follow redirects or request non-HTTP sources", async () => {
+    requests.length = 0;
+    expect(await fetchImageFingerprint(`${origin}/redirect`)).toBeUndefined();
+    expect(requests).toEqual(["/redirect"]);
+    expect(
+      await fetchImageFingerprint("data:image/png;base64,AAAA"),
+    ).toBeUndefined();
+    expect(
+      await fetchImageFingerprint("file:///tmp/image.png"),
+    ).toBeUndefined();
+    expect(
+      await fetchImageFingerprint("https://user:password@example.com/image"),
+    ).toBeUndefined();
+    expect(requests).toEqual(["/redirect"]);
+  });
+  it("bounds queued work and reuses hashes without discarding encounters", async () => {
+    const store = new LocalEventStore();
+    try {
+      const events: CollectionEvent[] = Array.from({ length: 36 }, (_, i) => ({
+        id: `queue-${i}`,
+        type: "element",
+        ts: 1,
+        domain: "example.com",
+        meta: {
+          pid: "test",
+          sid: "test",
+          url: `https://example.com/${i}`,
+          vw: 100,
+          vh: 100,
+          tz: "UTC",
+        },
+        data: {
+          kind: "image",
+          src: `${origin}/queue-${i}`,
+          naturalWidth: 100,
+          naturalHeight: 100,
+          pageTitle: "Test",
+        },
+      }));
+      const accepted = await store.addEvents(events);
+      const fingerprints = new ImageFingerprints(store);
+      peak = 0;
+      expect(await fingerprints.process(accepted)).toEqual({
+        checked: 32,
+        skipped: 4,
+      });
+      expect(peak).toBeLessThanOrEqual(2);
+      expect(await store.queryByType("element")).toHaveLength(36);
+      const requestCount = requests.length;
+      const repeated = {
+        ...events[0],
+        id: "another-place",
+        meta: { ...events[0].meta, url: "https://another.example/page" },
+      };
+      expect(
+        await fingerprints.process(await store.addEvents([repeated])),
+      ).toEqual({ checked: 1, skipped: 0 });
+      expect(requests).toHaveLength(requestCount);
+    } finally {
+      (store as unknown as { db: IDBDatabase }).db?.close();
+    }
+  });
+
+  it("aborts a response that never finishes", async () => {
+    expect(await fetchImageFingerprint(`${origin}/timeout`)).toBeUndefined();
+  }, 15000);
+});

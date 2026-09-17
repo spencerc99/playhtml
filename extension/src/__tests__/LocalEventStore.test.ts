@@ -126,17 +126,22 @@ async function openVersion7Database(
   });
 }
 
-async function openVersion11Database(
+async function openScrapDatabase(
   seedEvents: CollectionEvent[],
+  version = 11,
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = fakeIndexedDB.open(DB_NAME, 11);
+    const request = fakeIndexedDB.open(DB_NAME, version);
     request.onupgradeneeded = () => {
       const db = request.result;
       const eventStore = db.createObjectStore(STORE_NAME, { keyPath: "id" });
       eventStore.createIndex("ts", "ts", { unique: false });
       eventStore.createIndex("type", "type", { unique: false });
       eventStore.createIndex("uploadState", "uploadState", { unique: false });
+      if (version >= 12)
+        eventStore.createIndex("canonicalScrapKey", "canonicalScrapKey", {
+          unique: false,
+        });
       eventStore.createIndex("domain", "domain", { unique: false });
       eventStore.createIndex("normalizedUrl", "normalizedUrl", {
         unique: false,
@@ -503,7 +508,7 @@ describe("LocalEventStore aggregates", () => {
 
     const upgradedDatabase = await new Promise<IDBDatabase>(
       (resolve, reject) => {
-        const request = fakeIndexedDB.open(DB_NAME, 13);
+        const request = fakeIndexedDB.open(DB_NAME, 15);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       },
@@ -1507,6 +1512,138 @@ describe("LocalEventStore pending uploads", () => {
 });
 
 describe("LocalEventStore scrap deduplication", () => {
+  it("retains the same photo on distinct source pages but suppresses repeat visits", async () => {
+    const store = createStore();
+    const first = scrapEvent("first-place");
+    const second = {
+      ...scrapEvent("second-place"),
+      meta: { ...first.meta, url: "https://example.com/another?q=1" },
+    };
+    const third = {
+      ...scrapEvent("third-place"),
+      meta: { ...first.meta, url: "https://example.com/another?q=2" },
+    };
+    await store.addEvents([first, second, third]);
+    await store.addEvents([
+      {
+        ...second,
+        id: "repeat",
+        meta: { ...second.meta, url: `${second.meta.url}#section` },
+      },
+    ]);
+    expect(
+      (await store.queryByType("element")).map(({ id }) => id).sort(),
+    ).toEqual(["first-place", "second-place", "third-place"]);
+  });
+
+  it("keeps one encounter per source page and local calendar day", async () => {
+    const store = createStore();
+    const first = {
+      ...scrapEvent("day-one"),
+      ts: Date.parse("2026-09-16T23:30:00-07:00"),
+    };
+    first.meta = { ...first.meta, tz: "America/Los_Angeles" };
+    const repeat = {
+      ...first,
+      id: "same-day",
+      ts: Date.parse("2026-09-16T23:59:00-07:00"),
+    };
+    const nextDay = {
+      ...first,
+      id: "day-two",
+      ts: Date.parse("2026-09-17T00:01:00-07:00"),
+    };
+    await store.addEvents([first, repeat, nextDay]);
+    await store.addEvents([first, nextDay]);
+    expect(
+      (await store.queryByType("element")).map(({ id }) => id).sort(),
+    ).toEqual(["day-one", "day-two"]);
+    expect((await store.getGlobalStats())?.eventsByType.element).toBe(2);
+  });
+
+  it.each([12, 13])(
+    "migrates persisted image identities from version %i without fetching or removing encounters",
+    async (version) => {
+      const archived = {
+        ...scrapEvent("archived"),
+        canonicalScrapKey:
+          version === 12
+            ? "https://assets.example/image.png"
+            : JSON.stringify([
+                "https://assets.example/image.png",
+                "https://example.com/page",
+              ]),
+      };
+      const database = await openScrapDatabase([archived], version);
+      database.close();
+      const store = createStore();
+      await store.addEvents([
+        scrapEvent("repeat"),
+        {
+          ...scrapEvent("elsewhere"),
+          meta: { ...archived.meta, url: "https://other.example/photo" },
+        },
+      ]);
+      expect(
+        (await store.queryByType("element")).map(({ id }) => id).sort(),
+      ).toEqual(["archived", "elsewhere"]);
+      expect((await store.queryUncheckedImages()).events).toHaveLength(2);
+      await store.ensureHistoricalStats();
+    },
+  );
+
+  it("updates fingerprints without dropping source records or changing counts", async () => {
+    const store = createStore();
+    await store.addEvents([
+      scrapEvent("a"),
+      scrapEvent("b", "https://assets.example/copy.png"),
+    ]);
+    expect(
+      await store.setImageContentHash(
+        "a",
+        "https://assets.example/image.png",
+        "a".repeat(64),
+      ),
+    ).toBe(true);
+    expect(
+      await store.setImageContentHash(
+        "missing",
+        "https://assets.example/image.png",
+        "a".repeat(64),
+      ),
+    ).toBe(false);
+    expect(
+      await store.setImageContentHash(
+        "b",
+        "https://wrong.example/image",
+        "a".repeat(64),
+      ),
+    ).toBe(false);
+    expect(await store.queryByType("element")).toHaveLength(2);
+    expect((await store.getGlobalStats())?.eventsByType.element).toBe(2);
+    expect(
+      (await store.queryUncheckedImages()).events.map(({ id }) => id),
+    ).toEqual(["b"]);
+  });
+
+  it("pages unchecked images without revisiting skipped records", async () => {
+    const store = createStore();
+    await store.addEvents(
+      ["a", "b", "c", "d"].map((id) =>
+        scrapEvent(id, `https://assets.example/${id}.png`),
+      ),
+    );
+    const first = await store.queryUncheckedImages();
+    expect(first.events.map(({ id }) => id)).toEqual(["a", "b"]);
+    expect(first.done).toBe(false);
+    const second = await store.queryUncheckedImages(first.afterId);
+    expect(second.events.map(({ id }) => id)).toEqual(["c", "d"]);
+    expect(await store.queryUncheckedImages(second.afterId)).toEqual({
+      events: [],
+      done: true,
+    });
+  });
+
   it("stores one canonical scrap and counts only the accepted event", async () => {
     const store = createStore();
 
@@ -1577,7 +1714,7 @@ describe("LocalEventStore scrap deduplication", () => {
       "archived-duplicate",
       "https://assets.example/image.png?cache=2",
     );
-    const version11Database = await openVersion11Database([
+    const version11Database = await openScrapDatabase([
       archivedFirst,
       archivedDuplicate,
     ]);
@@ -1605,7 +1742,13 @@ describe("LocalEventStore scrap deduplication", () => {
       new Promise<number>((resolve, reject) => {
         const request = eventStore
           .index("canonicalScrapKey")
-          .count("https://assets.example/image.png");
+          .count(
+            JSON.stringify([
+              "https://assets.example/image.png",
+              "https://example.com/page",
+              "1969-12-31",
+            ]),
+          );
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       }),
@@ -1636,7 +1779,11 @@ describe("LocalEventStore scrap deduplication", () => {
       ),
     ).resolves.toMatchObject({
       uploadState: "pending",
-      canonicalScrapKey: "https://assets.example/image.png",
+      canonicalScrapKey: JSON.stringify([
+        "https://assets.example/image.png",
+        "https://example.com/page",
+        "1969-12-31",
+      ]),
     });
 
     await store.addEvents([

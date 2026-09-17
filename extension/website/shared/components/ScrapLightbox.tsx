@@ -279,6 +279,17 @@ const LIGHTBOX_STYLES = `
     white-space: nowrap;
   }
 
+  .scrap-lightbox__places {
+    margin-top: 16px;
+    font: 10px/1.6 "Martian Mono", monospace;
+    overflow-wrap: anywhere;
+  }
+  .scrap-lightbox__places h3 { font: inherit; }
+  .scrap-lightbox__places ul { list-style: none; padding: 0; margin: 0; }
+  .scrap-lightbox__places li { margin-top: 10px; }
+  .scrap-lightbox__places a { color: #3d3833; }
+  .scrap-lightbox__places span { display: block; color: #827a72; font-size: 9px; }
+
   .scrap-lightbox__rows {
     margin: 16px 0 0;
     padding-top: 14px;
@@ -753,6 +764,38 @@ export function ScrapLightbox({
               </div>
             )}
           </div>
+          {item.kind === "image" && item.sources && item.sources.length > 0 && (
+            <section
+              className="scrap-lightbox__places"
+              aria-label="Places this photo was found"
+            >
+              <h3>
+                {item.encounterCount}{" "}
+                {item.encounterCount === 1 ? "encounter" : "encounters"} across{" "}
+                {item.sources.length}{" "}
+                {item.sources.length === 1 ? "place" : "places"}
+              </h3>
+              <p>Counted once per place per day, from saved visits.</p>
+              <ul>
+                {item.sources.map((source) => (
+                  <li key={source.pageUrl}>
+                    <a
+                      href={source.pageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {source.pageTitle.trim() || source.pageUrl}
+                    </a>
+                    <span>
+                      {source.domain} · {source.encounterCount}{" "}
+                      {source.encounterCount === 1 ? "encounter" : "encounters"}
+                    </span>
+                    <span>last found {formatCollectedMoment(source.ts)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {item.pageUrl && (
             <div className="scrap-lightbox__actions">
               <a
