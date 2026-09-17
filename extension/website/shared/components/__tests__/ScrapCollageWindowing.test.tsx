@@ -1,7 +1,7 @@
 // ABOUTME: Verifies that the full Internet Scraps archive is windowed to the scroll viewport.
 // ABOUTME: Keeps archive layout work bounded and limits the visible stacking depth.
 
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

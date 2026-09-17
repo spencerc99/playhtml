@@ -7,13 +7,29 @@ export interface CollectionEvent {
   id: string;
   type: string;
   ts: number;
+  /**
+   * The event's payload, whose shape follows `type`. Cursor events carry a
+   * position, and are the only kind most of this code reads, so their fields
+   * are named here; scroll, resize and typing events carry their own, which
+   * the few places that want them reach through a narrowing cast.
+   */
   data: {
-    x: number;
-    y: number;
-    event?: "move" | "click" | "hold" | "cursor_change";
+    /** Present on cursor events, which is everything the trail code reads. */
+    x?: number;
+    y?: number;
+    event?:
+      | "move"
+      | "click"
+      | "hold"
+      | "cursor_change"
+      | "scroll"
+      | "resize"
+      | "zoom"
+      | "type";
     cursor?: string;
     button?: number;
     duration?: number;
+    [key: string]: unknown;
   };
   domain?: string;
   normalizedUrl?: string;
@@ -37,6 +53,13 @@ export interface Trail {
    * trails include their segment start so a replacement segment does not reuse
    * the completed draw state of the previous segment. */
   id: string;
+  /**
+   * The participant this trail belongs to. Carried separately from `id`, which
+   * also encodes the page and the segment start — anything matching a trail to
+   * a person (the navigation accent finding whose trail hopped) needs the
+   * participant on its own rather than parsed back out of a composite key.
+   */
+  pid: string;
   startTime: number;
   endTime: number;
   clicks: Array<{

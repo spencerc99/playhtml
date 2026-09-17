@@ -12,11 +12,11 @@ import {
 
 function recordedEvents(): CollectionEvent[] {
   return [
-    { ts: 1000, data: { event: "scroll", scrollY: 0, scrollX: 0 } },
-    { ts: 11000, data: { event: "scroll", scrollY: 0.25, scrollX: 0 } },
-    { ts: 21000, data: { event: "resize", width: 900, height: 700 } },
-    { ts: 31000, data: { event: "zoom", zoom: 1.5 } },
-    { ts: 41000, data: { event: "scroll", scrollY: 1, scrollX: 0 } },
+    { ts: 1000, data: { event: "scroll" as const, scrollY: 0, scrollX: 0 } },
+    { ts: 11000, data: { event: "scroll" as const, scrollY: 0.25, scrollX: 0 } },
+    { ts: 21000, data: { event: "resize" as const, width: 900, height: 700 } },
+    { ts: 31000, data: { event: "zoom" as const, zoom: 1.5 } },
+    { ts: 41000, data: { event: "scroll" as const, scrollY: 1, scrollX: 0 } },
   ].map((event, index) => ({
     ...event,
     id: `viewport-${index}`,
