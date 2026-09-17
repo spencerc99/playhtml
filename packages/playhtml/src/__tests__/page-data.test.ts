@@ -96,6 +96,70 @@ describe("playhtml.createPageData", () => {
     expect(updates).toEqual([100]);
   });
 
+  it("keeps notifying after a nullable root becomes an object", async () => {
+    type Value = { nested: { count: number } } | null;
+    const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const channel = createPageDataChannel<Value>(
+      "nullable-object",
+      null,
+      createPageDataTestDeps(store),
+    );
+    const updates: Value[] = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData({ nested: { count: 1 } });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    channel.setData({ nested: { count: 2 } });
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(channel.getData()).toEqual({ nested: { count: 2 } });
+    expect(updates).toEqual([
+      { nested: { count: 1 } },
+      { nested: { count: 2 } },
+    ]);
+  });
+
+  it("keeps notifying after a remote nullable root becomes an object", async () => {
+    type Value = { nested: { count: number } } | null;
+    const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const secondStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const firstDoc = getYjsDoc(firstStore);
+    const secondDoc = getYjsDoc(secondStore);
+    const secondChannel = createPageDataChannel<Value>(
+      "remote-nullable-object",
+      null,
+      createPageDataTestDeps(secondStore),
+    );
+    const updates: Value[] = [];
+    secondChannel.onUpdate((value) => updates.push(value));
+    Y.applyUpdate(firstDoc, Y.encodeStateAsUpdate(secondDoc));
+
+    firstStore.play[PAGE_TAG]!["remote-nullable-object"] = {
+      nested: { count: 1 },
+    };
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    const firstValue = firstStore.play[PAGE_TAG]!["remote-nullable-object"] as {
+      nested: { count: number };
+    };
+    firstValue.nested.count = 2;
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(secondChannel.getData()).toEqual({ nested: { count: 2 } });
+    expect(updates).toEqual([
+      { nested: { count: 1 } },
+      { nested: { count: 2 } },
+    ]);
+  });
+
   it("uses a remotely updated primitive value for functional updates", () => {
     const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
       play: {},

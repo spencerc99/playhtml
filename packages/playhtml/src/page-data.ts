@@ -103,7 +103,14 @@ function attachPageDataObserver<T>(
   const pageData = getYjsValue(getStorePlay()[PAGE_TAG]);
   if (!pageData || typeof (pageData as any).observe !== "function") return;
   const observer = ((event: { keysChanged?: Set<string> }) => {
-    if (event.keysChanged?.has(name)) notify();
+    if (!event.keysChanged?.has(name)) return;
+    notify();
+    const nextValue = getStorePlay()[PAGE_TAG]?.[name];
+    const nextYVal = getYjsValue(nextValue);
+    if (nextYVal && typeof (nextYVal as any).observeDeep === "function") {
+      detachPageDataObserver(name, deps);
+      attachPageDataObserver(name, deps, listeners);
+    }
   }) as PageDataObserver;
   observer.target = pageData;
   observer.mode = "shallow";
