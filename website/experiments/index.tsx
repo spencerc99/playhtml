@@ -2,7 +2,7 @@ import "../home.scss";
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 
-const ExperimentNumber = 10;
+const ExperimentNumber = 11;
 
 const Experiments: Record<number, any> = {
   1: {
@@ -10,6 +10,7 @@ const Experiments: Record<number, any> = {
   },
   2: { slug: "two" },
   10: { slug: "cinderblock", title: "cinderblock yard" },
+  11: { slug: "passpals", title: "passpals" },
 };
 
 function padZero(str) {
