@@ -17,6 +17,7 @@ interface SourcePage {
 }
 
 export interface ScrapSource extends SourcePage {
+  encounters: (SourcePage & { day: string })[];
   encounterDays: string[];
   encounterCount: number;
 }
@@ -70,19 +71,40 @@ export function groupPhotoEncounters<T extends PhotoEncounter>(
       const pageKey = canonicalScrapPageUrl(source.pageUrl);
       const previous = sources.get(pageKey);
       // Standalone collage inputs without a capture day use UTC.
-      const days =
-        "encounterDays" in source
-          ? source.encounterDays
-          : [item.encounterDay ?? scrapEncounterDay(source.ts, "UTC")];
-      const encounterDays = [
-        ...new Set([...(previous?.encounterDays ?? []), ...days]),
-      ].sort();
+      const encountersByDay = new Map(
+        (previous?.encounters ?? []).map((encounter) => [
+          encounter.day,
+          encounter,
+        ]),
+      );
+      const incoming =
+        "encounters" in source
+          ? source.encounters
+          : [
+              {
+                pageUrl: source.pageUrl,
+                pageTitle: source.pageTitle,
+                domain: source.domain,
+                ts: source.ts,
+                day: item.encounterDay ?? scrapEncounterDay(source.ts, "UTC"),
+              },
+            ];
+      for (const encounter of incoming) {
+        const existing = encountersByDay.get(encounter.day);
+        if (!existing || encounter.ts > existing.ts)
+          encountersByDay.set(encounter.day, encounter);
+      }
+      const encounters = [...encountersByDay.values()].sort(
+        (a, b) => b.ts - a.ts,
+      );
+      const encounterDays = [...encountersByDay.keys()].sort();
       const latest = previous && previous.ts > source.ts ? previous : source;
       sources.set(pageKey, {
         pageUrl: latest.pageUrl,
         pageTitle: latest.pageTitle,
         domain: latest.domain,
         ts: latest.ts,
+        encounters,
         encounterDays,
         encounterCount: encounterDays.length,
       });

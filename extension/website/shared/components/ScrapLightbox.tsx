@@ -1,7 +1,13 @@
 // ABOUTME: Examine view that lifts a clicked scrap out of the collage into a centered detail view.
 // ABOUTME: Shows a specimen-label side panel of provenance and supports arrow navigation between scraps.
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ScrapItem } from "./ScrapCollage";
 
 /** Fraction of the viewport's smaller dimension the lifted scrap fills. */
@@ -61,7 +67,10 @@ export function kindDetailRows(item: ScrapItem): ProvenanceRow[] {
     }
     case "svg-icon":
       return [
-        { label: "dimensions", value: formatDimensions(item.width, item.height) },
+        {
+          label: "dimensions",
+          value: formatDimensions(item.width, item.height),
+        },
       ];
     case "cursor": {
       const rows: ProvenanceRow[] = [];
@@ -99,7 +108,8 @@ export function liftedSize(
   origin: { width: number; height: number },
   viewport: { width: number; height: number },
 ): { width: number; height: number } {
-  const target = Math.min(viewport.width, viewport.height) * LIFTED_VIEWPORT_FRACTION;
+  const target =
+    Math.min(viewport.width, viewport.height) * LIFTED_VIEWPORT_FRACTION;
   if (origin.width <= 0 || origin.height <= 0) {
     return { width: target, height: target };
   }
@@ -284,11 +294,29 @@ const LIGHTBOX_STYLES = `
     font: 10px/1.6 "Martian Mono", monospace;
     overflow-wrap: anywhere;
   }
-  .scrap-lightbox__places h3 { font: inherit; }
-  .scrap-lightbox__places ul { list-style: none; padding: 0; margin: 0; }
-  .scrap-lightbox__places li { margin-top: 10px; }
-  .scrap-lightbox__places a { color: #3d3833; }
-  .scrap-lightbox__places span { display: block; color: #827a72; font-size: 9px; }
+  .scrap-lightbox__places h3 { font: inherit; margin: 0; }
+  .scrap-lightbox__places p { color: #827a72; font-size: 9px; margin: 4px 0 8px; }
+  .scrap-lightbox__timeline {
+    max-height: 220px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    border-block: 1px solid rgba(61, 56, 51, 0.14);
+  }
+  .scrap-lightbox__timeline ol { list-style: none; padding: 0; margin: 0; }
+  .scrap-lightbox__timeline li {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(61, 56, 51, 0.08);
+  }
+  .scrap-lightbox__timeline time { color: #827a72; font-size: 9px; }
+  .scrap-lightbox__timeline a { color: #3d3833; min-width: 0; text-decoration: none; }
+  .scrap-lightbox__timeline a:hover { text-decoration: underline; }
+  .scrap-lightbox__timeline strong { display: block; font-weight: 400; }
+  .scrap-lightbox__timeline span { display: block; color: #827a72; font-size: 9px; overflow-wrap: anywhere; }
+  .scrap-lightbox__timeline:focus-visible { outline: 2px solid #5b8db8; outline-offset: 2px; }
 
   .scrap-lightbox__rows {
     margin: 16px 0 0;
@@ -769,31 +797,40 @@ export function ScrapLightbox({
               className="scrap-lightbox__places"
               aria-label="Places this photo was found"
             >
-              <h3>
-                {item.encounterCount}{" "}
-                {item.encounterCount === 1 ? "encounter" : "encounters"} across{" "}
-                {item.sources.length}{" "}
-                {item.sources.length === 1 ? "place" : "places"}
-              </h3>
-              <p>Counted once per place per day, from saved visits.</p>
-              <ul>
-                {item.sources.map((source) => (
-                  <li key={source.pageUrl}>
-                    <a
-                      href={source.pageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {source.pageTitle.trim() || source.pageUrl}
-                    </a>
-                    <span>
-                      {source.domain} · {source.encounterCount}{" "}
-                      {source.encounterCount === 1 ? "encounter" : "encounters"}
-                    </span>
-                    <span>last found {formatCollectedMoment(source.ts)}</span>
-                  </li>
-                ))}
-              </ul>
+              <h3>Encounter history</h3>
+              <p>Newest first · one saved visit per place per day</p>
+              <div
+                className="scrap-lightbox__timeline"
+                tabIndex={0}
+                role="region"
+                aria-label="Scrollable encounter history"
+              >
+                <ol>
+                  {item.sources
+                    .flatMap((source) => source.encounters)
+                    .sort((a, b) => b.ts - a.ts)
+                    .map((encounter) => (
+                      <li
+                        key={JSON.stringify([encounter.pageUrl, encounter.day])}
+                      >
+                        <time dateTime={new Date(encounter.ts).toISOString()}>
+                          {formatCollectedMoment(encounter.ts)}
+                        </time>
+                        <a
+                          href={encounter.pageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={encounter.pageUrl}
+                        >
+                          <strong>
+                            {encounter.pageTitle.trim() || encounter.domain}
+                          </strong>
+                          <span>{encounter.pageUrl}</span>
+                        </a>
+                      </li>
+                    ))}
+                </ol>
+              </div>
             </section>
           )}
           {item.pageUrl && (

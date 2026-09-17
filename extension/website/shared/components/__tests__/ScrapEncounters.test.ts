@@ -129,6 +129,10 @@ describe("photo encounters", () => {
       options,
     );
     expect(grouped[0].encounterCount).toBe(3);
+    expect(grouped[0].sources?.[0].encounters.map(({ ts }) => ts)).toEqual([
+      Date.parse("2026-09-17T10:00:00Z"),
+      Date.parse("2026-09-16T11:00:00Z"),
+    ]);
     expect(grouped[0].sources?.map((source) => source.encounterCount)).toEqual([
       2, 1,
     ]);

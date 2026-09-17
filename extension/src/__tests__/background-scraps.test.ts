@@ -3,7 +3,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CollectionEvent } from "@playhtml/extension-types";
-import { hashScrapString, serializeScrapStyles } from "../collectors/scrapUtils";
+import {
+  hashScrapString,
+  serializeScrapStyles,
+} from "../collectors/scrapUtils";
 
 const originalDefineBackground = (globalThis as any).defineBackground;
 
@@ -81,17 +84,18 @@ describe("background scrap queries", () => {
       hotspotY: 3,
       pageTitle: "Cursor page",
     });
-    const unknown = createEvent("future", 500, {
-      kind: "future-kind",
-      pageTitle: "Future page",
-    }, undefined);
-    const queryByType = vi.fn().mockResolvedValue([
-      button,
-      unknown,
-      image,
-      cursor,
-      svg,
-    ]);
+    const unknown = createEvent(
+      "future",
+      500,
+      {
+        kind: "future-kind",
+        pageTitle: "Future page",
+      },
+      undefined,
+    );
+    const queryByType = vi
+      .fn()
+      .mockResolvedValue([button, unknown, image, cursor, svg]);
     const onMessageAddListener = vi.fn();
 
     vi.doMock("../storage/LocalEventStore", () => ({
@@ -195,6 +199,15 @@ describe("background scrap queries", () => {
               pageTitle: "Image page",
               domain: "example.com",
               ts: 100,
+              encounters: [
+                {
+                  pageUrl: "https://example.com/image",
+                  pageTitle: "Image page",
+                  domain: "example.com",
+                  ts: 100,
+                  day: "1969-12-31",
+                },
+              ],
               encounterDays: ["1969-12-31"],
               encounterCount: 1,
             },
@@ -216,20 +229,18 @@ describe("background scrap queries", () => {
       naturalHeight: 400,
       pageTitle: "Photo",
     };
-    const queryByType = vi
-      .fn()
-      .mockResolvedValue([
-        createEvent("first-place", 100, photo),
-        createEvent("other-photo", 50, {
-          ...photo,
-          src: "https://cdn.example.com/other.jpg",
-          contentHash: "b".repeat(64),
-        }),
-        createEvent("second-place", 1, {
-          ...photo,
-          src: "https://cdn.example.com/copy.jpg",
-        }),
-      ]);
+    const queryByType = vi.fn().mockResolvedValue([
+      createEvent("first-place", 100, photo),
+      createEvent("other-photo", 50, {
+        ...photo,
+        src: "https://cdn.example.com/other.jpg",
+        contentHash: "b".repeat(64),
+      }),
+      createEvent("second-place", 1, {
+        ...photo,
+        src: "https://cdn.example.com/copy.jpg",
+      }),
+    ]);
     const onMessageAddListener = vi.fn();
 
     vi.doMock("../storage/LocalEventStore", () => ({

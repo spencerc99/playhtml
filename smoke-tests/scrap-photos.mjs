@@ -239,13 +239,24 @@ try {
     scraps.getByRole("region", { name: "Places this photo was found" }),
   ).toBeVisible();
   await expect(
-    scraps.getByText("4 encounters across 3 places", { exact: true }),
+    scraps.getByText("Encounter history", { exact: true }),
   ).toBeVisible();
-  await expect(
-    scraps
-      .locator(".scrap-lightbox__places li")
-      .filter({ has: scraps.locator(`a[href="${origin}/first"]`) }),
-  ).toContainText("2 encounters");
+  await expect(scraps.locator(".scrap-lightbox__timeline li")).toHaveCount(4);
+  const moments = await scraps
+    .locator(".scrap-lightbox__timeline time")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => Date.parse(node.getAttribute("datetime"))),
+    );
+  assert.deepEqual(
+    moments,
+    [...moments].sort((a, b) => b - a),
+  );
+  const timeline = scraps.getByRole("region", {
+    name: "Scrollable encounter history",
+  });
+  await expect(timeline).toHaveCSS("overflow-y", "auto");
+  await timeline.focus();
+  await expect(timeline).toBeFocused();
   await expect(scraps.locator(".scrap-lightbox")).toHaveCSS("opacity", "1");
   await expect
     .poll(() =>
@@ -257,7 +268,7 @@ try {
   for (const slug of ["first", "second", "third"]) {
     await expect(
       scraps.locator(`.scrap-lightbox__places a[href="${origin}/${slug}"]`),
-    ).toHaveCount(1);
+    ).toHaveCount(slug === "first" ? 2 : 1);
   }
   await scraps.screenshot({ path: resolve(evidence, "photo-places.png") });
   await scraps.setViewportSize({ width: 390, height: 844 });
@@ -350,6 +361,27 @@ try {
     (await records()).filter((event) => event.data.contentHash).length,
     15,
   );
+  await reopened
+    .locator(".scrap-collage__tile")
+    .filter({ has: reopened.locator('img:not([src*="different"])') })
+    .click();
+  const history = reopened.getByRole("region", {
+    name: "Scrollable encounter history",
+  });
+  await expect(reopened.locator(".scrap-lightbox__timeline li")).toHaveCount(
+    14,
+  );
+  await expect
+    .poll(() => history.evaluate((el) => el.scrollHeight > el.clientHeight))
+    .toBe(true);
+  await history.focus();
+  await reopened.keyboard.press("End");
+  await expect
+    .poll(() => history.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(0);
+  await reopened.screenshot({
+    path: resolve(evidence, "history-scrolled.png"),
+  });
   assert.deepEqual(pageErrors, []);
   console.log(
     JSON.stringify({
