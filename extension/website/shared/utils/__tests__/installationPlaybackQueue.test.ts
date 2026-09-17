@@ -1,5 +1,5 @@
 // ABOUTME: Tests continuous live-first admissions while archive playback remains available.
-// ABOUTME: Covers exhaustion, active-window exclusion, and fresh arrivals during playback.
+// ABOUTME: Covers exhaustion, active-window exclusion, growth, and fresh arrivals during playback.
 import { describe, expect, it } from "vitest";
 import { InstallationPlaybackQueue } from "../installationPlaybackQueue";
 
@@ -38,5 +38,33 @@ describe("installation playback queue", () => {
     queue.update([item("live", true), item("a"), item("fresh", true)]);
     expect(queue.take(new Set())).toBe("fresh");
     expect(queue.take(new Set())).toBe("a");
+  });
+
+  it("offers a live recording ahead of the archive again once it has grown", () => {
+    const queue = new InstallationPlaybackQueue<string>();
+    const live = (value: string, version: number) => ({
+      id: "live",
+      live: true,
+      value,
+      version,
+    });
+    queue.update([live("short", 1), item("a"), item("b")]);
+    expect(queue.take(new Set())).toBe("short");
+    // Same version — already played, so the archive gets its turn.
+    queue.update([live("short", 1), item("a"), item("b")]);
+    expect(queue.take(new Set())).toBe("a");
+    // More footage arrived, so it jumps the archive again.
+    queue.update([live("longer", 2), item("a"), item("b")]);
+    expect(queue.take(new Set())).toBe("longer");
+  });
+
+  it("hands players the newest version of a recording they are showing", () => {
+    const queue = new InstallationPlaybackQueue<string>();
+    queue.update([{ id: "live", live: true, value: "short", version: 1 }]);
+    expect(queue.current("live")?.value).toBe("short");
+    queue.update([{ id: "live", live: true, value: "longer", version: 2 }]);
+    expect(queue.current("live")?.value).toBe("longer");
+    queue.update([]);
+    expect(queue.current("live")).toBeNull();
   });
 });
