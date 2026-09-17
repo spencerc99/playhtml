@@ -20,6 +20,7 @@ const svg =
 const requests: string[] = [];
 let active = 0;
 let peak = 0;
+let changingImage = svg;
 const server = createServer((request, response) => {
   requests.push(request.url!);
   active++;
@@ -62,7 +63,11 @@ const server = createServer((request, response) => {
   setTimeout(
     () =>
       response.end(
-        request.url === "/different" ? svg.replace("orange", "blue") : svg,
+        request.url === "/changing"
+          ? changingImage
+          : request.url === "/different"
+            ? svg.replace("orange", "blue")
+            : svg,
       ),
     10,
   );
@@ -122,7 +127,7 @@ describe("image fingerprints", () => {
     ).toBeUndefined();
     expect(requests).toEqual(["/redirect"]);
   });
-  it("bounds queued work and reuses hashes without discarding encounters", async () => {
+  it("bounds queued work and downloads later encounters again", async () => {
     const store = new LocalEventStore();
     try {
       const events: CollectionEvent[] = Array.from({ length: 36 }, (_, i) => ({
@@ -164,7 +169,59 @@ describe("image fingerprints", () => {
       expect(
         await fingerprints.process(await store.addEvents([repeated])),
       ).toEqual({ checked: 1, skipped: 0 });
-      expect(requests).toHaveLength(requestCount);
+      expect(requests).toHaveLength(requestCount + 1);
+    } finally {
+      (store as unknown as { db: IDBDatabase }).db?.close();
+    }
+  });
+
+  it("shares concurrent requests but fingerprints changed bytes on later visits", async () => {
+    const store = new LocalEventStore();
+    const fingerprints = new ImageFingerprints(store);
+    const event = (id: string): CollectionEvent => ({
+      id,
+      type: "element",
+      ts: 1,
+      domain: "example.com",
+      meta: {
+        pid: "test",
+        sid: "test",
+        url: `https://example.com/${id}`,
+        vw: 100,
+        vh: 100,
+        tz: "UTC",
+      },
+      data: {
+        kind: "image",
+        src: `${origin}/changing`,
+        naturalWidth: 100,
+        naturalHeight: 100,
+        pageTitle: id,
+      },
+    });
+    try {
+      changingImage = svg;
+      const count = requests.filter((url) => url === "/changing").length;
+      const accepted = await store.addEvents([
+        event("changing-a"),
+        event("changing-b"),
+      ]);
+      await Promise.all(accepted.map((item) => fingerprints.process([item])));
+      expect(requests.filter((url) => url === "/changing")).toHaveLength(
+        count + 1,
+      );
+      changingImage = svg.replace("orange", "blue");
+      await fingerprints.process(await store.addEvents([event("changing-c")]));
+      expect(requests.filter((url) => url === "/changing")).toHaveLength(
+        count + 2,
+      );
+      const saved = await store.queryByType("element");
+      const hash = (id: string) =>
+        (saved.find((item) => item.id === id)!.data as { contentHash: string })
+          .contentHash;
+      expect(hash("changing-a")).toMatch(/^[a-f0-9]{64}$/);
+      expect(hash("changing-b")).toBe(hash("changing-a"));
+      expect(hash("changing-c")).not.toBe(hash("changing-a"));
     } finally {
       (store as unknown as { db: IDBDatabase }).db?.close();
     }

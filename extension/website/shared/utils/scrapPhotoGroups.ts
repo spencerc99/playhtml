@@ -34,19 +34,6 @@ type PhotoEncounter = SourcePage & {
 export function groupPhotoEncounters<T extends PhotoEncounter>(
   items: T[],
 ): T[] {
-  const hashesByUrl = new Map<string, { hash: string; ts: number }>();
-  for (const item of items) {
-    if (
-      item.kind !== "image" ||
-      !item.src ||
-      !isImageContentHash(item.contentHash)
-    )
-      continue;
-    const url = canonicalImageKey(item.src);
-    const current = hashesByUrl.get(url);
-    if (!current || item.ts > current.ts)
-      hashesByUrl.set(url, { hash: item.contentHash, ts: item.ts });
-  }
   const photos = new Map<string, T>();
   const sourcesByKey = new Map<string, Map<string, ScrapSource>>();
   const otherItems: T[] = [];
@@ -57,8 +44,8 @@ export function groupPhotoEncounters<T extends PhotoEncounter>(
     }
     const hash = isImageContentHash(original.contentHash)
       ? original.contentHash
-      : hashesByUrl.get(canonicalImageKey(original.src))?.hash;
-    const item = hash ? { ...original, contentHash: hash } : original;
+      : undefined;
+    const item = hash ? { ...original, key: `image:sha256:${hash}` } : original;
     const key = hash ? `image:sha256:${hash}` : canonicalImageKey(original.src);
     const current = photos.get(key);
     if (!current || item.ts > current.ts) photos.set(key, item);

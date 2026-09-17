@@ -7,7 +7,6 @@ import type { LocalEventStore } from "./LocalEventStore";
 
 export const MAX_FINGERPRINT_BYTES = 5 * 1024 * 1024;
 const MAX_PENDING_IMAGES = 32;
-const MAX_CACHED_IMAGES = 128;
 const DOWNLOAD_TIMEOUT_MS = 10_000;
 
 export async function fetchImageFingerprint(
@@ -25,6 +24,7 @@ export async function fetchImageFingerprint(
       return;
     const response = await fetch(url, {
       credentials: "omit",
+      cache: "no-store",
       referrerPolicy: "no-referrer",
       redirect: "error",
       signal: controller.signal,
@@ -74,13 +74,10 @@ export class ImageFingerprints {
   private active = 0;
   private waiting: Array<() => void> = [];
   private pending = new Map<string, Promise<string | undefined>>();
-  private cached = new Map<string, string>();
 
   constructor(private store: LocalEventStore) {}
 
   private fingerprint(src: string): Promise<string | undefined> {
-    const cached = this.cached.get(src);
-    if (cached) return Promise.resolve(cached);
     const pending = this.pending.get(src);
     if (pending) return pending;
     if (this.pending.size >= MAX_PENDING_IMAGES)
@@ -89,12 +86,6 @@ export class ImageFingerprints {
       const run = () => {
         this.active++;
         void fetchImageFingerprint(src).then((hash) => {
-          if (hash) {
-            this.cached.set(src, hash);
-            if (this.cached.size > MAX_CACHED_IMAGES) {
-              this.cached.delete(this.cached.keys().next().value!);
-            }
-          }
           this.pending.delete(src);
           this.active--;
           this.waiting.shift()?.();

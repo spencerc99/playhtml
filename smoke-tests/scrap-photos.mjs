@@ -15,6 +15,7 @@ await mkdir(evidence, { recursive: true });
 const profile = await mkdtemp(resolve(tmpdir(), "wwo-scrap-photos-"));
 const image =
   '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="#f0c77c"/><circle cx="300" cy="200" r="100" fill="#b76841"/><path d="M220 190L300 130L380 190L300 250Z" fill="#ffeed1"/></svg>';
+let changingColor = "#a182cb";
 const downloads = [];
 let active = 0;
 let peak = 0;
@@ -32,9 +33,11 @@ const server = createServer((request, response) => {
       response.on("close", () => active--);
     }
     response.setHeader("content-type", "image/svg+xml");
-    const body = request.url.includes("different")
-      ? image.replace("#f0c77c", "#aecfd3")
-      : image;
+    const body = request.url.includes("changing")
+      ? image.replace("#f0c77c", changingColor)
+      : request.url.includes("different")
+        ? image.replace("#f0c77c", "#aecfd3")
+        : image;
     setTimeout(
       () => response.end(body),
       request.url.includes("slow") ? 700 : 20,
@@ -402,12 +405,73 @@ try {
   await reopened.screenshot({
     path: resolve(evidence, "history-scrolled.png"),
   });
+  const changingEvent = (id) => ({
+    ...original,
+    id,
+    ts: Date.now(),
+    meta: { ...original.meta, url: `${origin}/${id}` },
+    data: {
+      ...original.data,
+      contentHash: undefined,
+      src: `${origin}/photo/slow-changing.svg`,
+    },
+  });
+  const beforeChanging = downloads.filter((request) =>
+    request.url.includes("changing"),
+  ).length;
+  await reopened.evaluate(
+    (events) => chrome.runtime.sendMessage({ type: "STORE_EVENTS", events }),
+    [changingEvent("changing-a"), changingEvent("changing-b")],
+  );
+  await expect
+    .poll(
+      async () =>
+        (await records()).filter(
+          (event) => event.id.startsWith("changing-") && event.data.contentHash,
+        ).length,
+    )
+    .toBe(2);
+  assert.equal(
+    downloads.filter((request) => request.url.includes("changing")).length,
+    beforeChanging + 1,
+  );
+  changingColor = "#85b593";
+  await reopened.evaluate(
+    (events) => chrome.runtime.sendMessage({ type: "STORE_EVENTS", events }),
+    [changingEvent("changing-c")],
+  );
+  await expect
+    .poll(
+      async () =>
+        (await records()).filter(
+          (event) => event.id.startsWith("changing-") && event.data.contentHash,
+        ).length,
+    )
+    .toBe(3);
+  const changingRecords = (await records()).filter((event) =>
+    event.id.startsWith("changing-"),
+  );
+  assert.equal(
+    changingRecords[0].data.contentHash,
+    changingRecords[1].data.contentHash,
+  );
+  assert.notEqual(
+    changingRecords[0].data.contentHash,
+    changingRecords[2].data.contentHash,
+  );
+  assert.equal(
+    downloads.filter((request) => request.url.includes("changing")).length,
+    beforeChanging + 2,
+  );
+  await reopened.reload();
+  await reopened.getByRole("button", { name: "archive", exact: true }).click();
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(4);
   assert.deepEqual(pageErrors, []);
   console.log(
     JSON.stringify({
       result: "passed",
-      records: 15,
-      visiblePhotos: 2,
+      records: 18,
+      visiblePhotos: 4,
       peakDownloads: peak,
       evidence,
     }),

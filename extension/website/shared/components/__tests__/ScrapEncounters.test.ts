@@ -61,7 +61,7 @@ describe("photo encounters", () => {
     expect(photos[0]).not.toHaveProperty("sources");
   });
 
-  it("keeps different content separate and joins unchecked encounters of a known URL", () => {
+  it("keeps unchecked encounters separate from fingerprints even at a known URL", () => {
     const grouped = curateScraps(
       [
         photo(
@@ -87,10 +87,13 @@ describe("photo encounters", () => {
       ],
       options,
     );
-    expect(grouped).toHaveLength(2);
+    expect(grouped).toHaveLength(3);
+    expect(
+      grouped.find((item) => item.id === "unchecked")?.contentHash,
+    ).toBeUndefined();
     expect(
       grouped.find((item) => item.id === "unchecked")?.sources,
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
   it("counts distinct days per place without double-counting copies or regrouping", () => {
     const hash = "a".repeat(64);
