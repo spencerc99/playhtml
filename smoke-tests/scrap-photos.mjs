@@ -310,6 +310,17 @@ try {
   ).toHaveCount(0);
   await scraps.getByRole("button", { name: "archive", exact: true }).click();
   await expect(scraps.locator(".scrap-collage__tile")).toHaveCount(8);
+  await expect
+    .poll(() =>
+      scraps
+        .locator(".scrap-collage__tile img")
+        .evaluateAll(
+          (images) =>
+            images.length === 8 &&
+            images.every((image) => image.complete && image.naturalWidth > 0),
+        ),
+    )
+    .toBe(true);
   await scraps.screenshot({
     path: resolve(evidence, "archive-no-photo-check.png"),
   });
