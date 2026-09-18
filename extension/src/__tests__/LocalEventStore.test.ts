@@ -1587,7 +1587,6 @@ describe("LocalEventStore scrap deduplication", () => {
       expect(
         (await store.queryByType("element")).map(({ id }) => id).sort(),
       ).toEqual(["archived", "elsewhere"]);
-      expect((await store.queryUncheckedImages()).events).toHaveLength(2);
       await store.ensureHistoricalStats();
     },
   );
@@ -1621,27 +1620,14 @@ describe("LocalEventStore scrap deduplication", () => {
     ).toBe(false);
     expect(await store.queryByType("element")).toHaveLength(2);
     expect((await store.getGlobalStats())?.eventsByType.element).toBe(2);
+    const records = await store.queryByType("element");
     expect(
-      (await store.queryUncheckedImages()).events.map(({ id }) => id),
-    ).toEqual(["b"]);
-  });
-
-  it("pages unchecked images without revisiting skipped records", async () => {
-    const store = createStore();
-    await store.addEvents(
-      ["a", "b", "c", "d"].map((id) =>
-        scrapEvent(id, `https://assets.example/${id}.png`),
-      ),
+      (records.find(({ id }) => id === "a")?.data as { contentHash: string })
+        .contentHash,
+    ).toBe("a".repeat(64));
+    expect(records.find(({ id }) => id === "b")?.data).not.toHaveProperty(
+      "contentHash",
     );
-    const first = await store.queryUncheckedImages();
-    expect(first.events.map(({ id }) => id)).toEqual(["a", "b"]);
-    expect(first.done).toBe(false);
-    const second = await store.queryUncheckedImages(first.afterId);
-    expect(second.events.map(({ id }) => id)).toEqual(["c", "d"]);
-    expect(await store.queryUncheckedImages(second.afterId)).toEqual({
-      events: [],
-      done: true,
-    });
   });
 
   it("stores one canonical scrap and counts only the accepted event", async () => {
@@ -1757,10 +1743,9 @@ describe("LocalEventStore scrap deduplication", () => {
 
   it("preserves upload state and canonical keys in a skipped version 8 upgrade", async () => {
     const archivedScrap = scrapEvent("archived");
-    const version8Database = await openVersion8Database(
-      { ...aggregate() },
-      [archivedScrap],
-    );
+    const version8Database = await openVersion8Database({ ...aggregate() }, [
+      archivedScrap,
+    ]);
     version8Database.close();
 
     const store = createStore();

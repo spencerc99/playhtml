@@ -1268,61 +1268,6 @@ export class LocalEventStore {
     });
   }
 
-  /** Reads a bounded page of unchecked images in primary-key order. */
-  async queryUncheckedImages(
-    afterId?: string,
-  ): Promise<{ events: CollectionEvent[]; afterId?: string; done: boolean }> {
-    await this.ensureInitialized();
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        reject(new Error("Database not initialized"));
-        return;
-      }
-      const transaction = this.db.transaction(STORE_NAME, "readonly");
-      const request = transaction
-        .objectStore(STORE_NAME)
-        .index("type")
-        .openCursor(IDBKeyRange.only("element"));
-      const events: CollectionEvent[] = [];
-      let scanned = 0;
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) {
-          resolve({ events, done: true });
-          return;
-        }
-        if (
-          afterId !== undefined &&
-          indexedDB.cmp(cursor.primaryKey, afterId) < 0
-        ) {
-          cursor.continuePrimaryKey("element", afterId);
-          return;
-        }
-        if (cursor.primaryKey === afterId) {
-          cursor.continue();
-          return;
-        }
-        const event = cursor.value as StoredCollectionEvent;
-        const data = event.data as Partial<ImageScrapData> | null;
-        if (
-          data?.kind === "image" &&
-          typeof data.src === "string" &&
-          !isImageContentHash(data.contentHash)
-        ) {
-          events.push(toCollectionEvent(event));
-        }
-        scanned++;
-        if (events.length === 2 || scanned === 200) {
-          resolve({ events, afterId: event.id, done: false });
-          return;
-        }
-        cursor.continue();
-      };
-      request.onerror = () => reject(request.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-  }
-
   /** Updates only a retained image's fingerprint; a deleted event stays deleted. */
   async setImageContentHash(
     id: string,
