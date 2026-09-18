@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import type { ScrapSource } from "@movement/utils/scrapPhotoGroups";
-import { PhotoCheck } from "./PhotoCheck";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
   ScrapCollage,
@@ -289,10 +288,6 @@ export function ScrapsPage() {
           images that washed up while you browsed
         </p>
       </header>
-
-      {!loading && !error && items.length > 0 && (
-        <PhotoCheck onComplete={() => setRevision((value) => value + 1)} />
-      )}
 
       {!loading && !error && items.length > 0 && (
         <div
