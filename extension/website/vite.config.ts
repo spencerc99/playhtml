@@ -5,10 +5,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { glob } from "glob";
+import { auditLocal } from "./scripts/auditLocal";
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), auditLocal(__dirname, mode === "commute-audit")],
+  ...(mode === "commute-audit" ? { publicDir: false, preview: { host: "127.0.0.1" } } : {}),
+  server: {
+    ...(mode === "commute-audit" ? { host: "127.0.0.1" } : {}),
+    fs: { deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/private-data/**"] },
+  },
   resolve: {
     alias: {
       "@movement": path.resolve(__dirname, "./shared"),
@@ -35,10 +41,10 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      input: glob.sync(path.resolve(__dirname, "**/*.html"), {
-        ignore: ["**/node_modules/**", "**/dist/**"],
+      input: mode === "commute-audit" ? path.resolve(__dirname, "commute-audit/index.html") : glob.sync(path.resolve(__dirname, "**/*.html"), {
+        ignore: ["**/node_modules/**", "**/dist/**", "**/commute-audit/**"],
       }),
     },
     emptyOutDir: true,
   },
-});
+}));

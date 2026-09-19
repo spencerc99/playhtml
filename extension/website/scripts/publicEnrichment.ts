@@ -3,6 +3,7 @@
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { request } from "node:https";
 
 import type { ExternalEvidence } from "../commute-audit/evaluationTypes";
 
@@ -28,7 +29,9 @@ export function isPrivateAddress(address: string): boolean {
   if (isIP(normalized) !== 6) return true;
   if (normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) return true;
   const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-  return mapped ? isPrivateIpv4(mapped) : false;
+  if (mapped) return isPrivateIpv4(mapped);
+  // Only globally routable unicast IPv6 is eligible; mapped and transition addresses are excluded.
+  return !/^[23][0-9a-f]{3}:/.test(normalized) || normalized.startsWith("2002:") || normalized.startsWith("2001:0:");
 }
 
 export async function validatePublicUrl(rawUrl: string): Promise<URL> {
@@ -108,20 +111,41 @@ export function extractPublicMetadata(html: string): Omit<ExternalEvidence, "sta
   };
 }
 
-async function readBounded(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const decoder = new TextDecoder();
-  let bytes = 0;
-  let result = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    bytes += value.byteLength;
-    if (bytes > MAX_RESPONSE_BYTES) throw new Error("response exceeded 512 KiB limit");
-    result += decoder.decode(value, { stream: true });
-  }
-  return result + decoder.decode();
+function fetchPublic(url: URL): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const outgoing = request(url, {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { "User-Agent": "InternetCommuteResearch/1.0 (+https://wewere.online)" },
+      // Validate the address used by the connection, not only a preceding DNS lookup.
+      lookup(hostname, options, callback) {
+        lookup(hostname, { all: true, verbatim: true }).then((addresses) => {
+          if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
+            callback(new Error("hostname resolves to a private or unsupported address"), "", 4);
+          } else if (options.all) callback(null, addresses);
+          else callback(null, addresses[0].address, addresses[0].family);
+        }, (error: Error) => callback(error, "", 4));
+      },
+    }, (incoming) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      incoming.on("error", reject);
+      incoming.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > MAX_RESPONSE_BYTES) incoming.destroy(new Error("response exceeded 512 KiB limit"));
+        else chunks.push(chunk);
+      });
+      incoming.on("end", () => {
+        const headers = new Headers();
+        for (const [key, value] of Object.entries(incoming.headers)) {
+          if (value !== undefined) headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+        }
+        const status = incoming.statusCode ?? 502;
+        resolve(new Response([204, 205, 304].includes(status) ? null : Buffer.concat(chunks), { status, headers }));
+      });
+    });
+    outgoing.on("error", reject);
+    outgoing.end();
+  });
 }
 
 export async function enrichPublicPage(rawUrl: string): Promise<ExternalEvidence> {
@@ -129,11 +153,7 @@ export async function enrichPublicPage(rawUrl: string): Promise<ExternalEvidence
   try {
     let url = await validatePublicUrl(rawUrl);
     for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
-      const response = await fetch(url, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { "User-Agent": "InternetCommuteResearch/1.0 (+https://wewere.online)" },
-      });
+      const response = await fetchPublic(url);
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
         if (!location || redirect === MAX_REDIRECTS) throw new Error("redirect chain could not be followed safely");
@@ -144,7 +164,7 @@ export async function enrichPublicPage(rawUrl: string): Promise<ExternalEvidence
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const contentType = response.headers.get("content-type") ?? "";
       if (!contentType.toLowerCase().includes("text/html")) return { status: "available", checkedAt, finalUrl: url.href, contentType, source: "http" };
-      return { status: "available", checkedAt, finalUrl: url.href, contentType, ...extractPublicMetadata(await readBounded(response)) };
+      return { status: "available", checkedAt, finalUrl: url.href, contentType, ...extractPublicMetadata(await response.text()) };
     }
     throw new Error("redirect limit exceeded");
   } catch (error) {

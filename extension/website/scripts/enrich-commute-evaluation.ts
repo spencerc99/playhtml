@@ -1,7 +1,7 @@
 // ABOUTME: Selects a bounded, domain-capped commute candidate set for public metadata enrichment.
 // ABOUTME: Persists resumable evidence privately so repeated audit runs avoid duplicate requests.
 
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +10,7 @@ import { enrichPublicPage } from "./publicEnrichment";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "../../..");
-const dataPath = path.resolve(scriptDirectory, "../public/commute-evaluation-data.json");
+const dataPath = path.join(repositoryRoot, "private-data/commute-evaluation-data.json");
 const cachePath = path.join(repositoryRoot, "private-data/commute-enrichment.json");
 const limit = Number(process.argv.find((argument) => argument.startsWith("--limit="))?.slice(8) ?? 120);
 const concurrency = 4;
@@ -33,6 +33,7 @@ async function run(): Promise<void> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("--limit must be an integer from 1 to 500");
   const data = JSON.parse(await readFile(dataPath, "utf8")) as CommuteEvaluationData;
   const cache = await loadCache();
+  await mkdir(path.dirname(cachePath), { recursive: true, mode: 0o700 });
   const domainCounts = new Map<string, number>();
   const selected = [...data.candidates].sort((first, second) => priority(second) - priority(first)).filter((candidate) => {
     if (cache[candidate.url]) return false;
@@ -43,15 +44,18 @@ async function run(): Promise<void> {
   }).slice(0, limit);
 
   let cursor = 0;
+  let saving = Promise.resolve();
   async function worker(): Promise<void> {
     while (cursor < selected.length) {
       const candidate = selected[cursor++];
       cache[candidate.url] = await enrichPublicPage(candidate.url);
-      await writeFile(cachePath, `${JSON.stringify(cache)}\n`, { encoding: "utf8", mode: 0o600 });
+      saving = saving.then(() => writeFile(cachePath, `${JSON.stringify(cache)}\n`, { encoding: "utf8", mode: 0o600 }));
+      await saving;
       process.stdout.write(`\rEnriched ${cursor.toLocaleString()} / ${selected.length.toLocaleString()} candidates`);
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, selected.length) }, () => worker()));
+  await writeFile(cachePath, `${JSON.stringify(cache)}\n`, { encoding: "utf8", mode: 0o600 });
   if (selected.length > 0) process.stdout.write("\n");
   await chmod(cachePath, 0o600);
   const values = Object.values(cache);

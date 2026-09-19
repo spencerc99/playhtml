@@ -15,8 +15,9 @@ const MAX_EVENTS = 20_000;
 const MIN_INTERVAL_MS = 1;
 const MAX_CONCURRENT_REQUESTS = 4;
 const DEFAULT_START = "2026-01-19T00:00:00.000Z";
-const CHECKPOINT_DIRECTORY = "/tmp/playhtml-commute-audit-checkpoints";
-const STATE_PATH = "/tmp/playhtml-commute-audit-state.bin";
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const CHECKPOINT_DIRECTORY = path.join(repositoryRoot, "private-data/commute-audit-checkpoints");
+const STATE_PATH = path.join(repositoryRoot, "private-data/commute-audit-state.bin");
 const ORIGIN_HEADERS = {
   Origin: "https://wewere.online",
   Referer: "https://wewere.online/commute/",
@@ -110,12 +111,12 @@ async function loadInterval(from: number, to: number): Promise<CollectionEvent[]
   return first;
 }
 
-function checkpointPath(from: number): string {
-  return path.join(CHECKPOINT_DIRECTORY, `${new Date(from).toISOString().slice(0, 10)}.json`);
+function checkpointPath(from: number, to: number): string {
+  return path.join(CHECKPOINT_DIRECTORY, `${from}-${to}.json`);
 }
 
 async function loadDay(from: number, to: number): Promise<CollectionEvent[]> {
-  const filePath = checkpointPath(from);
+  const filePath = checkpointPath(from, to);
   try {
     return JSON.parse(await readFile(filePath, "utf8")) as CollectionEvent[];
   } catch (error) {
@@ -154,7 +155,7 @@ async function run(): Promise<void> {
       end?: number;
       start: number;
     };
-    if (state.start === start) {
+    if (state.start === start && (!option("to") || state.end === end)) {
       builder = state.builder;
       Object.setPrototypeOf(builder, HistoryAuditBuilder.prototype);
       completedThrough = state.completedThrough;
@@ -172,7 +173,7 @@ async function run(): Promise<void> {
   if (hasFlag("checkpoint-only")) {
     while (dayStart < end) {
       try {
-        const events = JSON.parse(await readFile(checkpointPath(dayStart), "utf8")) as CollectionEvent[];
+        const events = JSON.parse(await readFile(checkpointPath(dayStart, Math.min(end, dayStart + dayMs - 1)), "utf8")) as CollectionEvent[];
         builder.addEvents(events);
         const dayEnd = Math.min(end, dayStart + dayMs - 1);
         completedThrough = dayEnd;
@@ -212,8 +213,9 @@ async function run(): Promise<void> {
 
   const data = builder.finalize(new Date(start).toISOString(), new Date(end).toISOString());
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const outputPath = path.resolve(scriptDirectory, "../public/commute-audit-data.json");
-  await writeFile(outputPath, `${JSON.stringify(data)}\n`, "utf8");
+  const outputPath = path.resolve(scriptDirectory, "../../../private-data/commute-audit-data.json");
+  await mkdir(path.dirname(outputPath), { recursive: true, mode: 0o700 });
+  await writeFile(outputPath, `${JSON.stringify(data)}\n`, { encoding: "utf8", mode: 0o600 });
   await rm(CHECKPOINT_DIRECTORY, { recursive: true });
   await rm(STATE_PATH);
   process.stdout.write("\n");

@@ -19,7 +19,7 @@ function navigation(
     type: "navigation",
     ts,
     data: { event, title },
-    meta: { pid, sid: `${pid}-session`, url },
+    meta: { pid, sid: `${pid}-session`, url, vw: 1280, vh: 720, tz: "UTC" },
   };
 }
 

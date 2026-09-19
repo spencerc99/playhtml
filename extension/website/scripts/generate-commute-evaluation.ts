@@ -18,7 +18,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "../../..");
 const defaultExportRoot = path.join(repositoryRoot, "private-data/production-db-exports");
 const defaultEnrichmentPath = path.join(repositoryRoot, "private-data/commute-enrichment.json");
-const defaultOutputPath = path.resolve(scriptDirectory, "../public/commute-evaluation-data.json");
+const defaultOutputPath = path.join(repositoryRoot, "private-data/commute-evaluation-data.json");
 
 function option(name: string): string | undefined {
   const prefix = `--${name}=`;

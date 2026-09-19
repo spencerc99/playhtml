@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 
 import type { CommuteAuditData } from "./auditTypes";
+import { parseCorrections, type Correction, type Corrections } from "./corrections";
 import {
   CHARACTER_LABELS,
   CONTENT_CATEGORIES,
@@ -15,13 +16,9 @@ import {
   PAGE_TYPES,
   PROMOTION_JUDGMENTS,
   SAMPLE_LANES,
-  type CharacterLabel,
   type CommuteEvaluationData,
-  type ContentCategory,
   type EvaluationCandidate,
-  type ExposureLabel,
   type FormulaScores,
-  type PageType,
   type PromotionJudgment,
   type SampleLane,
 } from "./evaluationTypes";
@@ -33,17 +30,6 @@ const FORMULA_LABELS: Record<keyof FormulaScores, string> = {
   hiddenPlatform: "Hidden platform items",
   humanWeb: "Human web",
 };
-
-interface Correction {
-  category?: ContentCategory;
-  pageType?: PageType;
-  exposure?: ExposureLabel;
-  character?: CharacterLabel;
-  judgment?: PromotionJudgment;
-  updatedAt: string;
-}
-
-type Corrections = Record<string, Correction>;
 
 function compact(value: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
@@ -150,7 +136,7 @@ function CandidateList({ candidates, selectedId, formula, corrections, onSelect 
 }
 
 function LabelSelect<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly T[]; onChange(value: T): void }) {
-  return <label><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
+  return <label><span>{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
 }
 
 function CandidateDetail({ candidate, correction, onChange, onRevert }: { candidate: EvaluationCandidate; correction?: Correction; onChange(patch: Partial<Correction>): void; onRevert(): void }) {
@@ -202,8 +188,9 @@ function ContextSnapshot({ data }: { data?: CommuteAuditData }) {
 
 function Workbench({ data, history }: { data: CommuteEvaluationData; history?: CommuteAuditData }) {
   const [corrections, setCorrections] = useState<Corrections>(() => {
-    try { return JSON.parse(localStorage.getItem(CORRECTIONS_KEY) ?? "{}"); } catch { return {}; }
+    try { return parseCorrections(JSON.parse(localStorage.getItem(CORRECTIONS_KEY) ?? "{}"), new Set(data.candidates.map((candidate) => candidate.id))); } catch { return {}; }
   });
+  const [importError, setImportError] = useState<string>();
   const [formula, setFormula] = useState<keyof FormulaScores>("balanced");
   const [lane, setLane] = useState<SampleLane | "All">("All");
   const [judgment, setJudgment] = useState<PromotionJudgment | "All">("All");
@@ -248,13 +235,15 @@ function Workbench({ data, history }: { data: CommuteEvaluationData; history?: C
 
   async function importCorrections(file?: File): Promise<void> {
     if (!file) return;
-    const payload = JSON.parse(await file.text()) as { corrections?: Corrections };
-    if (!payload.corrections || typeof payload.corrections !== "object") throw new Error("Correction file is missing corrections");
-    const candidateIds = new Set(data.candidates.map((candidate) => candidate.id));
-    const imported = Object.fromEntries(Object.entries(payload.corrections).filter(([id]) => candidateIds.has(id)));
-    const next = { ...corrections, ...imported };
-    localStorage.setItem(CORRECTIONS_KEY, JSON.stringify(next));
-    setCorrections(next);
+    try {
+      const payload = JSON.parse(await file.text()) as { corrections?: unknown };
+      const candidateIds = new Set(data.candidates.map((candidate) => candidate.id));
+      const imported = parseCorrections(payload?.corrections, candidateIds);
+      const next = { ...corrections, ...imported };
+      localStorage.setItem(CORRECTIONS_KEY, JSON.stringify(next));
+      setCorrections(next);
+      setImportError(undefined);
+    } catch (error) { setImportError(error instanceof Error ? error.message : "Could not import corrections"); }
   }
 
   return (
@@ -262,7 +251,7 @@ function Workbench({ data, history }: { data: CommuteEvaluationData; history?: C
       <header className="hero"><div><p className="eyebrow">Internal evaluation workbench · generated {new Date(data.summary.generatedAt).toLocaleString()}</p><h1>Finding the human web</h1><p className="lede">Test which evidence can classify pages consistently and surface hidden gems without mistaking a large platform for a popular item.</p></div><div className="date-range"><span>{data.summary.startDate.slice(0, 10)}</span><i /><span>{data.summary.endDate.slice(0, 10)}</span></div></header>
       <section className="stats-grid">
         <Stat label="Unique public pages" value={compact(data.summary.publicPages)} detail={`${compact(data.summary.navigationEvents)} navigation events processed`} />
-        <Stat label="Evaluation sample" value={data.summary.candidates.toLocaleString()} detail="eight overlapping diagnostic lanes" />
+        <Stat label="Evaluation sample" value={data.summary.candidates.toLocaleString()} detail={`${SAMPLE_LANES.length} overlapping diagnostic lanes`} />
         <Stat label="Manual judgments" value={reviewed.toLocaleString()} detail={`${falsePositives} false positive · ${falseNegatives} false negative`} />
         <Stat label="Metadata coverage" value={percent(data.summary.metadataCoverage)} detail={`${data.summary.enrichmentAvailable} candidates externally enriched`} />
       </section>
@@ -274,6 +263,7 @@ function Workbench({ data, history }: { data: CommuteEvaluationData; history?: C
         <div className="workbench-grid"><CandidateList candidates={filtered} selectedId={selected?.id} formula={formula} corrections={corrections} onSelect={setSelectedId} />{selected && <CandidateDetail candidate={selected} correction={corrections[selected.id]} onChange={(patch) => updateCorrection(selected.id, patch)} onRevert={() => revertCorrection(selected.id)} />}</div>
       </section>
 
+      {importError && <p role="alert">{importError}</p>}
       <div className="two-column">
         <section className="panel"><p className="section-number">03 · Coverage</p><h2>Where rules still guess</h2><p>Uncertainty is retained rather than collapsed into a convenient category.</p><CoverageTable data={data} /></section>
         <section className="panel"><p className="section-number">04 · Sample design</p><h2>What enters review</h2><p>Lane overlap is intentional: it reveals candidates that satisfy multiple definitions of a hidden gem.</p><div className="lane-list">{data.lanes.map((row) => <div key={row.lane}><strong>{row.lane}</strong><span>{row.candidates}</span><small>{row.promote} promote · {row.doNotPromote} reject · {row.uncertain} uncertain</small></div>)}</div></section>
