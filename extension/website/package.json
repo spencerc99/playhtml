@@ -8,7 +8,13 @@
     "build": "vite build",
     "lint": "tsc && eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "capture": "tsx scripts/capture-matrix.ts"
+    "capture": "tsx scripts/capture-matrix.ts",
+    "audit:commute": "tsx scripts/generate-commute-evaluation.ts",
+    "audit:commute:dev": "vite --mode commute-audit",
+    "audit:commute:build": "vite build --mode commute-audit",
+    "audit:commute:preview": "vite preview --mode commute-audit",
+    "audit:commute:enrich": "tsx scripts/enrich-commute-evaluation.ts",
+    "audit:commute:history": "tsx scripts/generate-commute-audit.ts"
   },
   "dependencies": {
     "@playhtml/common": "workspace:*",
@@ -35,6 +41,7 @@
     "glob": "^10.4.5",
     "path": "^0.12.7",
     "playwright": "^1.49.0",
+    "tldts": "^7.0.19",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.2.2"

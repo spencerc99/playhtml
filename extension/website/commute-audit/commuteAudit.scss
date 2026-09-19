@@ -1,0 +1,169 @@
+// ABOUTME: Styles the local Internet Commute evaluation workbench as a dense research notebook.
+// ABOUTME: Keeps evidence, ranking comparisons, correction controls, and cohort context readable.
+
+$ink: #20201d;
+$paper: #f2efe7;
+$panel: #faf8f2;
+$line: #cbc6b8;
+$muted: #69675f;
+$green: #327d71;
+$red: #a8493f;
+$amber: #9a6a22;
+
+* { box-sizing: border-box; }
+body { margin: 0; color: $ink; background: $paper; font-family: "Atkinson Hyperlegible", sans-serif; }
+button, input, select { font: inherit; }
+button { color: inherit; }
+a { color: inherit; text-underline-offset: 3px; }
+code { padding: 2px 5px; background: #dfdbcf; font-family: "Martian Mono", monospace; font-size: 13px; }
+
+.audit-shell { width: min(1540px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 100px; }
+.audit-shell--empty { min-height: 100vh; display: grid; align-content: center; max-width: 760px; }
+.eyebrow, .section-number { margin: 0 0 10px; color: $green; font-family: "Martian Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; padding: 0 0 38px; border-bottom: 1px solid $ink; }
+h1 { max-width: 960px; margin: 0; font-family: Georgia, serif; font-size: clamp(48px, 7vw, 104px); font-weight: 400; letter-spacing: -.055em; line-height: .9; }
+.lede { max-width: 820px; margin: 25px 0 0; color: $muted; font-size: 20px; line-height: 1.4; }
+.date-range { min-width: 250px; display: flex; align-items: center; gap: 10px; font-family: "Martian Mono", monospace; font-size: 11px; }
+.date-range i { flex: 1; height: 1px; background: $ink; }
+.empty-copy { max-width: 640px; font-size: 20px; line-height: 1.6; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid $ink; border-top: 0; }
+.stat { min-height: 150px; padding: 22px; border-right: 1px solid $ink; }
+.stat:last-child { border: 0; }
+.stat p, .stat small { margin: 0; color: $muted; }
+.stat strong { display: block; margin: 12px 0 7px; font-family: Georgia, serif; font-size: 42px; font-weight: 400; }
+.stat small { font-family: "Martian Mono", monospace; font-size: 10px; }
+
+.panel { margin-top: 24px; padding: 28px; border: 1px solid $line; background: $panel; overflow: hidden; }
+.panel h2 { margin: 0; font-family: Georgia, serif; font-size: 34px; font-weight: 400; letter-spacing: -.025em; }
+.panel > p:not(.section-number), .panel-heading p { max-width: 820px; margin: 8px 0 24px; color: $muted; }
+.panel-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 30px; }
+.two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+select, input { min-height: 40px; padding: 8px 30px 8px 10px; border: 1px solid $line; border-radius: 0; background: #fff; color: $ink; }
+
+.formula-grid { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid $line; }
+.formula-grid article { min-height: 230px; padding: 20px; border-right: 1px solid $line; background: #fff; }
+.formula-grid article:last-child { border-right: 0; }
+.formula-grid header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; }
+.formula-grid h3 { margin: 0; font-family: Georgia, serif; font-size: 23px; font-weight: 400; }
+.formula-grid header > strong { font-family: Georgia, serif; font-size: 32px; font-weight: 400; }
+.formula-grid p { min-height: 34px; margin: 4px 0 22px; color: $muted; font-size: 12px; }
+.formula-grid dl { margin: 0; }
+.formula-grid dl div { display: flex; justify-content: space-between; gap: 15px; padding: 7px 0; border-top: 1px solid #e2ded4; font-size: 12px; }
+.formula-grid dt { color: $muted; }
+.formula-grid dd { margin: 0; font-family: "Martian Mono", monospace; font-size: 10px; }
+
+.review-actions { display: flex; align-items: center; gap: 12px; }
+.review-actions strong { font-family: "Martian Mono", monospace; font-size: 11px; }
+.review-actions button, .import-corrections, .judgment-control button { min-height: 38px; padding: 8px 12px; border: 1px solid $ink; background: transparent; cursor: pointer; }
+.review-actions button:hover, .import-corrections:hover { background: $ink; color: $panel; }
+.import-corrections { display: inline-flex; align-items: center; }
+.import-corrections input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
+.queue-filters { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(145px, auto)); gap: 8px; margin: 5px 0 12px; }
+.workbench-grid { display: grid; grid-template-columns: minmax(420px, .9fr) minmax(520px, 1.1fr); min-height: 720px; border: 1px solid $line; background: #fff; }
+
+.candidate-list { max-height: 820px; overflow: auto; border-right: 1px solid $line; }
+.candidate-row { width: 100%; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto 42px; align-items: center; gap: 11px; padding: 13px 12px; border: 0; border-bottom: 1px solid #e2ded4; background: #fff; text-align: left; cursor: pointer; }
+.candidate-row:hover, .candidate-row--selected { background: #eeebe2; }
+.candidate-row--selected { box-shadow: inset 3px 0 $green; }
+.candidate-rank, .candidate-score { font-family: "Martian Mono", monospace; font-size: 10px; }
+.candidate-rank { color: $muted; }
+.candidate-score { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid $ink; border-radius: 50%; font-weight: 700; }
+.candidate-name { min-width: 0; }
+.candidate-name strong, .candidate-name small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.candidate-name strong { font-size: 13px; }
+.candidate-name small { margin-top: 4px; color: $muted; font-size: 11px; }
+.judgment { padding: 3px 6px; border: 1px solid $line; font-family: "Martian Mono", monospace; font-size: 8px; text-transform: uppercase; white-space: nowrap; }
+.judgment--promote { border-color: $green; color: $green; }
+.judgment--do-not-promote { border-color: $red; color: $red; }
+.judgment--uncertain { border-color: $amber; color: $amber; }
+.no-results { padding: 20px; color: $muted; }
+
+.candidate-detail { max-height: 820px; padding: 24px; overflow: auto; }
+.detail-heading { display: flex; justify-content: space-between; gap: 24px; }
+.detail-heading h3 { max-width: 680px; margin: 0 0 8px; font-family: Georgia, serif; font-size: 29px; font-weight: 400; line-height: 1.08; }
+.detail-heading a { color: $muted; font-size: 12px; }
+.detail-score { flex: 0 0 auto; width: 64px; height: 64px; display: grid; place-items: center; border: 1px solid $ink; border-radius: 50%; font-family: Georgia, serif; font-size: 24px; }
+.detail-score small { display: block; margin-top: -17px; font-family: "Martian Mono", monospace; font-size: 7px; text-transform: uppercase; }
+.observation-grid { display: grid; grid-template-columns: repeat(4, 1fr); margin: 24px 0; border: 1px solid $line; }
+.observation-grid div { min-height: 84px; padding: 13px; border-right: 1px solid $line; }
+.observation-grid div:last-child { border: 0; }
+.observation-grid strong, .observation-grid span { display: block; }
+.observation-grid strong { font-family: Georgia, serif; font-size: 24px; font-weight: 400; }
+.observation-grid span { margin-top: 5px; color: $muted; font-size: 10px; }
+.label-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.label-grid label span, .judgment-control > span { display: block; margin-bottom: 5px; color: $muted; font-family: "Martian Mono", monospace; font-size: 9px; text-transform: uppercase; }
+.label-grid select { width: 100%; }
+.judgment-control { margin-top: 18px; }
+.judgment-control div { display: grid; grid-template-columns: repeat(3, 1fr); }
+.judgment-control button + button { border-left: 0; }
+.judgment-control button[aria-pressed="true"] { background: $ink; color: #fff; }
+.judgment-control .revert-correction { width: 100%; margin-top: 8px; border-color: $line; color: $muted; }
+.evidence-section { margin-top: 24px; padding-top: 18px; border-top: 1px solid $line; }
+.evidence-section h4 { margin: 0 0 12px; font-family: "Martian Mono", monospace; font-size: 10px; text-transform: uppercase; }
+.evidence-section ul { margin: 0; padding-left: 20px; color: $muted; font-size: 13px; line-height: 1.5; }
+.evidence-section p, .evidence-section small { color: $muted; }
+.component-list { display: grid; gap: 7px; }
+.component-list > div { display: grid; grid-template-columns: 110px 1fr 28px; align-items: center; gap: 8px; font-size: 11px; }
+.component-list i { height: 7px; background: #e5e1d7; }
+.component-list b { display: block; height: 100%; background: $green; }
+.component-list strong { font-family: "Martian Mono", monospace; font-size: 9px; text-align: right; }
+
+.coverage-table > div { display: grid; grid-template-columns: 130px minmax(90px, 1fr) 90px; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid $line; }
+.coverage-table strong, .coverage-table span { font-size: 12px; }
+.coverage-table small { grid-column: 2 / -1; color: $muted; font-size: 11px; }
+.coverage-track { height: 8px; background: #e3dfd4; }
+.coverage-track i { display: block; height: 100%; background: $green; }
+.lane-list > div { display: grid; grid-template-columns: 1fr auto; gap: 4px 15px; padding: 11px 0; border-bottom: 1px solid $line; }
+.lane-list strong, .lane-list span { font-size: 12px; }
+.lane-list span { font-family: "Martian Mono", monospace; }
+.lane-list small { grid-column: 1 / -1; color: $muted; }
+
+.context-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 55px; }
+.context-grid h3 { margin: 0 0 16px; font-family: Georgia, serif; font-size: 23px; font-weight: 400; }
+.context-bar { display: grid; grid-template-columns: 65px 1fr 42px 100px; align-items: center; gap: 10px; padding: 10px 0; font-size: 12px; }
+.context-bar i { height: 8px; background: #e3dfd4; }
+.context-bar b { display: block; height: 100%; background: $green; }
+.context-bar small, .context-category small { color: $muted; }
+.context-category { display: grid; grid-template-columns: 1fr auto; gap: 3px 15px; padding: 9px 0; border-bottom: 1px solid $line; font-size: 12px; }
+.context-category small { grid-column: 1 / -1; }
+.context-missing { color: $muted; }
+.methodology ul { columns: 2; column-gap: 50px; padding-left: 20px; color: $muted; line-height: 1.5; }
+.methodology li { margin: 0 0 10px; break-inside: avoid; }
+
+@media (max-width: 1100px) {
+  .formula-grid { grid-template-columns: repeat(2, 1fr); }
+  .formula-grid article:nth-child(2) { border-right: 0; }
+  .formula-grid article:nth-child(-n+2) { border-bottom: 1px solid $line; }
+  .queue-filters { grid-template-columns: 1fr 1fr; }
+  .workbench-grid { grid-template-columns: 1fr; }
+  .candidate-list { max-height: 520px; border-right: 0; border-bottom: 1px solid $line; }
+  .candidate-detail { max-height: none; }
+}
+
+@media (max-width: 800px) {
+  .audit-shell { width: min(100% - 24px, 1540px); padding-top: 24px; }
+  .hero, .panel-heading { align-items: flex-start; flex-direction: column; }
+  .date-range { width: 100%; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .stat:nth-child(2) { border-right: 0; }
+  .stat:nth-child(-n+2) { border-bottom: 1px solid $ink; }
+  .two-column, .context-grid { grid-template-columns: 1fr; gap: 0; }
+  .observation-grid { grid-template-columns: repeat(2, 1fr); }
+  .observation-grid div:nth-child(2) { border-right: 0; }
+  .observation-grid div:nth-child(-n+2) { border-bottom: 1px solid $line; }
+  .methodology ul { columns: 1; }
+}
+
+@media (max-width: 560px) {
+  h1 { font-size: 48px; }
+  .stats-grid, .formula-grid, .queue-filters, .label-grid { grid-template-columns: 1fr; }
+  .stat, .formula-grid article { border-right: 0; border-bottom: 1px solid $ink; }
+  .review-actions { align-items: flex-start; flex-direction: column; }
+  .panel { padding: 18px; }
+  .candidate-row { grid-template-columns: 30px minmax(0, 1fr) 38px; }
+  .candidate-row .judgment { grid-column: 2 / -1; width: max-content; }
+  .candidate-detail { padding: 18px; }
+  .context-bar { grid-template-columns: 55px 1fr 35px; }
+  .context-bar small { grid-column: 2 / -1; }
+}

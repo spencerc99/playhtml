@@ -31,6 +31,7 @@
     "db:new": "supabase migration new",
     "db:lint": "supabase db lint --local --level warning",
     "db:local-env": "bun run scripts/write-local-supabase-env.ts",
+    "db:export:production": "bash scripts/export-production-db.sh",
     "db:verify": "supabase db reset && supabase db lint --local --level warning",
     "deploy-server": "bunx wrangler deploy --config partykit/wrangler.jsonc",
     "deploy-server:staging": "bunx wrangler deploy --config partykit/wrangler.jsonc --env staging",
