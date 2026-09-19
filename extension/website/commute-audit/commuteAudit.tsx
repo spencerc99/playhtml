@@ -75,15 +75,16 @@ function FormulaComparison({ data, corrections }: { data: CommuteEvaluationData;
   return (
     <div className="formula-grid">
       {data.formulas.map((summary) => {
+        const bootstrapCount = summary.promotedInTop50 + summary.doNotPromoteInTop50 + summary.uncertainInTop50;
         const rows = [...data.candidates].sort((first, second) => second.scores[summary.formula] - first.scores[summary.formula]).slice(0, 50);
         const judged = rows.filter((candidate) => reviewed.has(candidate.id) && corrections[candidate.id].judgment !== "Uncertain");
         const promoted = judged.filter((candidate) => corrections[candidate.id].judgment === "Promote").length;
         return (
           <article key={summary.formula}>
             <header><h3>{FORMULA_LABELS[summary.formula]}</h3><strong>{judged.length === 0 ? "—" : percent(promoted / judged.length)}</strong></header>
-            <p>manual precision in reviewed sample top 50</p>
+            <p>manual precision in reviewed sample top {rows.length}</p>
             <dl>
-              <div><dt>Bootstrap promote</dt><dd>{summary.promotedInTop50}/50</dd></div>
+              <div><dt>Bootstrap promote</dt><dd>{summary.promotedInTop50}/{bootstrapCount}</dd></div>
               <div><dt>Unique domains</dt><dd>{summary.uniqueDomainsInTop50}</dd></div>
               <div><dt>Major platforms</dt><dd>{percent(summary.mainstreamShare)}</dd></div>
               <div><dt>Reviewed</dt><dd>{judged.length}</dd></div>

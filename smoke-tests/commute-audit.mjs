@@ -48,6 +48,13 @@ try {
   await page.goto(`${base}/commute-audit/`);
   await page.getByRole("heading", { name: "Finding the human web" }).waitFor();
   assert.equal(await page.locator(".candidate-row").count(), 3);
+  const dataset = JSON.parse(await readFile(artifact, "utf8"));
+  for (const [index, formula] of dataset.formulas.entries()) {
+    const count = formula.promotedInTop50 + formula.doNotPromoteInTop50 + formula.uncertainInTop50;
+    assert.equal(count, 3);
+    assert.equal(await page.locator(".formula-grid article").nth(index).locator("dd").first().textContent(), `${formula.promotedInTop50}/${count}`);
+    assert.equal(await page.locator(".formula-grid article").nth(index).locator("p").textContent(), "manual precision in reviewed sample top 3");
+  }
   await page.screenshot({ path: path.join(evidence, "overview.png"), fullPage: true });
   await page.getByLabel("Search candidates").fill("Wikipedia");
   assert.equal(await page.locator(".candidate-row").count(), 1);
